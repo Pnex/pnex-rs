@@ -1,0 +1,40 @@
+# Infra de développement PNEX — PostgreSQL 18 + Keycloak 26.
+# Usage : docker compose up -d
+# Le backend lit DATABASE_URL (voir .env.example).
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: pnex-postgres
+    environment:
+      POSTGRES_USER: pnex
+      POSTGRES_PASSWORD: pnex
+      POSTGRES_DB: pnex
+    ports:
+      - "5432:5432"
+    volumes:
+      # PG 18+ : monter /var/lib/postgresql (pas .../data) — les données vont
+      # dans un sous-répertoire par version majeure (compat pg_upgrade).
+      - pnex-pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pnex -d pnex"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3
+    container_name: pnex-keycloak
+    command: start-dev
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      # Dev only : realm H2 embarqué, pas de persistance externe nécessaire
+      # tant qu'on n'a pas de configuration de realm à conserver (Phase 3).
+    ports:
+      - "8080:8080"
+
+volumes:
+  pnex-pgdata:

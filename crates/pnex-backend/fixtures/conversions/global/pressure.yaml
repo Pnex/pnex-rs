@@ -1,0 +1,123 @@
+# Global Pressure Conversions
+# These conversions are available for all users to import
+
+- global_id: "bar_to_psi_v1"
+  name: "Bar to Psi"
+  version: 1
+  category: "pressure"
+  tags: ["pressure", "imperial", "metric", "engineering"]
+  description: "Convert pressure from Bar to Pounds per Square Inch"
+  from_unit: "bar"
+  to_unit: "psi"
+  conversion_type: "linear"
+  multiplier: 14.5038
+
+- global_id: "kpa_to_psi_v1"
+  name: "kPa to Psi"
+  version: 1
+  category: "pressure"
+  tags: ["pressure", "imperial", "metric", "engineering"]
+  description: "Convert pressure from Kilopascals to Pounds per Square Inch"
+  from_unit: "kPa"
+  to_unit: "psi"
+  conversion_type: "linear"
+  multiplier: 0.145038
+
+- global_id: "pa_to_bar_v1"
+  name: "Pascal to Bar"
+  version: 1
+  category: "pressure"
+  tags: ["pressure", "metric", "scientific"]
+  description: "Convert pressure from Pascal to Bar"
+  from_unit: "Pa"
+  to_unit: "bar"
+  conversion_type: "linear"
+  multiplier: 0.00001
+
+- global_id: "atm_to_bar_v1"
+  name: "Atmosphere to Bar"
+  version: 1
+  category: "pressure"
+  tags: ["pressure", "standard", "atmospheric"]
+  description: "Convert pressure from Standard Atmosphere to Bar"
+  from_unit: "atm"
+  to_unit: "bar"
+  conversion_type: "linear"
+  multiplier: 1.01325
+
+- global_id: "mmhg_to_bar_v1"
+  name: "mmHg to Bar"
+  version: 1
+  category: "pressure"
+  tags: ["pressure", "medical", "barometric"]
+  description: "Convert pressure from Millimeters of Mercury to Bar"
+  from_unit: "mmHg"
+  to_unit: "bar"
+  conversion_type: "linear"
+  multiplier: 0.00133322
+
+- global_id: "psi_to_kpa_v1"
+  name: "Psi to kPa"
+  version: 1
+  category: "pressure"
+  tags: ["pressure", "imperial", "metric", "engineering"]
+  description: "Convert pressure from Pounds per Square Inch to Kilopascals"
+  from_unit: "psi"
+  to_unit: "kPa"
+  conversion_type: "linear"
+  multiplier: 6.89476
+
+- global_id: "bar_to_atm_v1"
+  name: "Bar to Atmosphere"
+  version: 1
+  category: "pressure"
+  tags: ["pressure", "standard", "atmospheric", "metric"]
+  description: "Convert pressure from Bar to Standard Atmosphere"
+  from_unit: "bar"
+  to_unit: "atm"
+  conversion_type: "linear"
+  multiplier: 0.986923
+
+- global_id: "torr_to_mmhg_v1"
+  name: "Torr to mmHg"
+  version: 1
+  category: "pressure"
+  tags: ["pressure", "medical", "vacuum", "scientific"]
+  description: "Convert pressure from Torr to Millimeters of Mercury"
+  from_unit: "Torr"
+  to_unit: "mmHg"
+  conversion_type: "linear"
+  multiplier: 1.0
+
+- global_id: "mpa_to_psi_v1"
+  name: "Megapascal to Psi"
+  version: 1
+  category: "pressure"
+  tags: ["pressure", "high", "engineering", "hydraulic"]
+  description: "Convert pressure from Megapascal to Pounds per Square Inch"
+  from_unit: "MPa"
+  to_unit: "psi"
+  conversion_type: "linear"
+  multiplier: 145.038
+
+- global_id: "inh2o_to_pa_v1"
+  name: "Inches of Water to Pascal"
+  version: 1
+  category: "pressure"
+  tags: ["pressure", "low", "draft", "ventilation"]
+  description: "Convert pressure from Inches of Water to Pascal"
+  from_unit: "inH₂O"
+  to_unit: "Pa"
+  conversion_type: "linear"
+  multiplier: 249.089
+
+- global_id: "bar_to_pa_v1"
+  name: "Bar to Pascal"
+  version: 1
+  category: "pressure"
+  tags: ["pressure", "metric", "scientific", "engineering", "SI"]
+  description: "Convert pressure from Bar to Pascal (SI unit)"
+  from_unit: "bar"
+  to_unit: "Pa"
+  conversion_type: "linear"
+  multiplier: 100000.0

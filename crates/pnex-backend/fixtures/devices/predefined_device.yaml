@@ -1,0 +1,65 @@
+# Inputs devices
+- name: soil_sensor
+  pretty_name: Soil Sensor
+  revision: 0.1.12
+  device_type_name: sensor
+  capabilities_names:
+    - soil_moisture
+    - soil_temperature
+  board_name: esp8266
+  device_doc_url: "http://example.com/doc1"
+  prestashop_product_id: 101
+  prestashop_buy_url: "http://example.com/buy1"
+  byod_doc_url: "http://example.com/byod1"
+  image_source_url: "http://example.com/image1"
+  stl_files_url: "http://example.com/stl1"
+  description: "Read Soil moisture and temperature"
+
+# Generic/Custom devices for dynamic data publication
+- name: custom_sensor
+  pretty_name: Custom Sensor (Dynamic)
+  revision: 1.0.0
+  device_type_name: sensor
+  capabilities_names: []  # No predefined capabilities - allows dynamic measurements
+  board_name: generic
+  device_doc_url: "/docs/DYNAMIC_DEVICES.md"
+  prestashop_product_id: 200
+  prestashop_buy_url: "http://example.com/custom"
+  byod_doc_url: "/docs/DYNAMIC_DEVICES.md"
+  image_source_url: "http://example.com/custom_sensor"
+  stl_files_url: "http://example.com/custom"
+  description: "Generic sensor for publishing custom measurements. Supports dynamic data publication - publish any sensor data without predefined schema. Perfect for prototyping and custom IoT projects."
+
+- name: custom_device
+  pretty_name: Custom Device (Dynamic)
+  revision: 1.0.0
+  device_type_name: mixed
+  capabilities_names: []  # No predefined capabilities - allows dynamic measurements
+  board_name: generic
+  device_doc_url: "/docs/DYNAMIC_DEVICES.md"
+  prestashop_product_id: 201
+  prestashop_buy_url: "http://example.com/custom"
+  byod_doc_url: "/docs/DYNAMIC_DEVICES.md"
+  image_source_url: "http://example.com/custom_device"
+  stl_files_url: "http://example.com/custom"
+  description: "Generic mixed device (sensor + actuator) for publishing custom measurements and controlling outputs. Fully flexible - define your own capabilities at runtime. Ideal for complex custom IoT solutions."
+
+# Outputs devices
+- name: 4_chan_relay
+  pretty_name: 4 channel relay
+  revision: 0.1.12
+  device_type_name: actuator
+  capabilities_names:
+    - relay_1
+    - relay_2
+    - relay_3
+    - relay_4
+  board_name: esp8266
+  device_doc_url: "http://example.com/doc1"
+  prestashop_product_id: 107
+  prestashop_buy_url: "http://example.com/buy1"
+  byod_doc_url: "http://example.com/byod1"
+  image_source_url: "http://example.com/image1"
+  stl_files_url: "http://example.com/stl1"
+  description: "Control 4 relays"
+

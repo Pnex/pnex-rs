@@ -1,0 +1,41 @@
+- name: "Free"
+  max_sensor_devices: 3
+  max_actuator_devices: 1
+  max_mixed_devices: 0
+  min_build_interval: "15 minutes"
+  data_retention: "1 day"
+
+- name: "Basic"
+  max_sensor_devices: 5
+  max_actuator_devices: 2
+  max_mixed_devices: 2
+  min_build_interval: "5 minutes"
+  data_retention: "7 days"
+
+- name: "Pro"
+  max_sensor_devices: 10
+  max_actuator_devices: 5
+  max_mixed_devices: 5
+  min_build_interval: "3 minute"
+  data_retention: "6 months"
+
+- name: "Enterprise"
+  max_sensor_devices: 50
+  max_actuator_devices: 25
+  max_mixed_devices: 20
+  min_build_interval: "2 minutes"
+  data_retention: "1 years"
+
+- name: "Ultimate"
+  max_sensor_devices: 100
+  max_actuator_devices: 50
+  max_mixed_devices: 50
+  min_build_interval: "1 minute"
+  data_retention: "2 years"
+
+- name: "Admin"
+  max_sensor_devices: 1000
+  max_actuator_devices: 1000
+  max_mixed_devices: 1000
+  min_build_interval: "1 seconds"
+  data_retention: "5 minutes"

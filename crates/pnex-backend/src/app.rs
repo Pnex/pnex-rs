@@ -10,6 +10,9 @@ use loco_rs::{
     Result,
 };
 
+use pnex_migration::Migrator;
+use std::path::Path;
+
 use crate::controllers;
 
 pub struct App;
@@ -35,7 +38,7 @@ impl Hooks for App {
         environment: &Environment,
         config: Config,
     ) -> Result<BootResult> {
-        create_app::<Self>(mode, environment, config).await
+        create_app::<Self, Migrator>(mode, environment, config).await
     }
 
     fn routes(_ctx: &AppContext) -> AppRoutes {
@@ -48,7 +51,19 @@ impl Hooks for App {
         Ok(())
     }
 
-    fn register_tasks(_tasks: &mut Tasks) {
-        // Phase 2+ : tâches seed/maintenance (équivalents commandes Django).
+    fn register_tasks(tasks: &mut Tasks) {
+        tasks.register(crate::tasks::seed::Seed);
+    }
+
+    async fn truncate(_ctx: &AppContext) -> Result<()> {
+        // Phase 4 : troncature des tables de test (une fois les entities
+        // générées). Aucune table à tronquer tant que l'API n'existe pas.
+        Ok(())
+    }
+
+    async fn seed(_ctx: &AppContext, _base: &Path) -> Result<()> {
+        // Le seed catalogue passe par la tâche `seed` (register_tasks), qui
+        // réutilise les fixtures YAML Django — pas par ce hook générique.
+        Ok(())
     }
 }

@@ -6,16 +6,49 @@
 
 **Phase 0 — Inventaire & capture des contrats : TERMINÉE** (revue humaine validée le 2026-08-15).
 
-- [x] Lecture de `migration.md`, cadrage
-- [x] Exploration du repo Django `pnex-server` (6 axes : models, API DRF,
-      WS/Channels/crypto, Celery/NATS/K8s/firmware, ETL/ES/metrics, auth/tenant)
-      → rapports dans `docs/phase0/`
-- [x] Rédaction `docs/inventory.md` (table maîtresse Django → cible Rust → phase)
-- [x] Capture des contrats dans `docs/contracts/` (exemples .http + README parité)
-- [x] Revue humaine de la Phase 0 — points ouverts tranchés (décisions D4-D11,
-      voir `docs/inventory.md` §0 et §7)
+**Phase 1 — Squelette du workspace : TERMINÉE** (merge sur `main`, CI verte).
 
-**Phase 1 — Squelette du workspace : EN COURS** (branche `phase-1-squelette`).
+**Phase 2 — Couche données : EN COURS** (branche `phase-2-modeles-db`).
+
+- [x] `compose.yaml` : PostgreSQL 18-alpine + Keycloak 26.3 (start-dev),
+      volume PG sur `/var/lib/postgresql` (convention PG 18+), `.env.example`
+- [x] Loco branché SeaORM/PG : crate `pnex-migration`, feature `with-db`,
+      sections `database` dans les configs, `cli::main::<App, Migrator>`
+- [x] 5 migrations (orgs/users, devices, ETL, sites, firmware) :
+      organizations + organization_members (D2), tier sur l'org (D11),
+      scoping `org_id` partout (ex-user_id), sites PK UUID,
+      metrics.\* et tables rapport SUPPRIMÉS (D3), `argo_wf_job_name` supprimé
+- [x] **Modèle « sans copies »** (directive user) : entités standard
+      (conversions, formules, fluides) = `org_id` NULL, fournies par l'app,
+      partagées en lecture ; une org ne matérialise une ligne que si elle
+      crée/personnalise. Tables Django `formula_imports`/`conversion_imports`
+      (copie par user) **supprimées**
+- [x] Durations Django INTERVAL → colonnes `*_secs` (bigint)
+- [x] 27 entities SeaORM générées (`cargo loco db entities`)
+- [x] `/health/ready` branché sur un `SELECT 1` réel (ok/degraded, testé
+      avec PG up et PG coupé)
+- [x] Seed idempotent `cargo loco task seed` : fixtures YAML Django
+      réutilisées telles quelles (5 types, 22 caps, 4 MCU + generic à la
+      volée, 4 predefined, 6 tiers, 66 conversions, 39 formules, 26 fluides ;
+      global_id non-UUID → uuid5 DNS comme Django)
+- [x] Test d'invariants de schéma (`migration/tests/schema_invariants.rs`) :
+      scoping org NOT NULL, catalogue ETL nullable, tables de copie absentes
+- [x] Quotas Free unifiés sur le tier fixture (3/1/0) — les 5/2/1 codés en
+      dur dans les views Django étaient des fallbacks divergents
+- [x] Taskfile : `db:up/down/migrate/entities/seed/reset` ; CI : service
+      PostgreSQL 18 pour le job test
+
+**Bug loco-rs 1.0.1 constaté** : le suffixe `?` des refs `create_table`
+(référence nullable) ne produit ni colonne nullable ni `ON DELETE SET NULL`.
+Contournement : colonnes déclarées + FK `SET NULL` en SQL brut. Test
+d'invariants en garde-fou.
+
+**Prochaine : revue humaine Phase 2**, puis Phase 3 — Auth & multi-tenant
+(Keycloak JWT, JIT provisioning users, middleware scoping org).
+
+## Anciennes phases (détail)
+
+### Phase 1 — Squelette du workspace (TERMINÉE, merge `main`)
 
 - [x] Workspace Cargo 4 crates : `pnex-core` (serde pur, natif+wasm32),
       `pnex-backend` (Loco v1.0, bin `pnex-server`), `pnex-frontend`
@@ -54,6 +87,8 @@
 | 2026-08-15 | **Remote GitHub `Pnex/pnex-rs`** (opensource) ajouté — commits poussés au fil de l'eau | Demandé par l'utilisateur 2026-08-15 |
 | 2026-08-15 | **Phase 1 technique** : scaffold Loco v1.0 (`--db none --bg async --assets clientside`) puis trim ; dx 0.7.10 n'a pas de flag `--project` (il faut `cd` dans le crate) et sort dans `target/dx/...` (le Taskfile copie vers `crates/pnex-frontend/dist`) ; assets via macro `asset!()` (manganis hash les fichiers), pas via `[web.resource].style` | Constaté à l'implémentation |
 | 2026-08-15 | **Rust = version officielle** (Django = POC jamais en prod) : divergences cosmétiques non à justifier, contrats fonctionnels Phase 0 conservés ; conventions (noms, chemins, git, API) centralisées dans `convention.md` ; répertoires des crates renommés `crates/pnex-*` pour correspondre aux noms de packages | Demandé par l'utilisateur 2026-08-15 |
+| 2026-08-15 | **Phase 2 — modèle « sans copies »** : fonctions/conversions/fluides **standard = fournis par l'app** (`org_id` NULL, partagées en lecture) ; fonctions **user = par org** (ligne matérialisée seulement si l'org crée/personnalise). Tables Django `formula_imports`/`conversion_imports` (copie par user + suivi de mise à jour) supprimées | Demandé par l'utilisateur 2026-08-15 (« éviter de faire des copies à chaque org/utilisateur ») |
+| 2026-08-15 | **Phase 2 technique** : Durations Django INTERVAL → `*_secs` bigint ; quotas Free unifiés sur 3/1/0 (tier fixture — les 5/2/1 des views Django étaient des fallbacks divergents) ; `global_id` non-UUID → uuid5 DNS (parité bootstrap_db Django) ; **bug loco-rs 1.0.1** : refs `?` nullable non fonctionnelles → FK SET NULL posées en SQL brut, test d'invariants en garde-fou | Constaté à l'implémentation |
 
 ## Principes directeurs (confirmés par l'utilisateur)
 
@@ -63,6 +98,11 @@
 
 ## Journal
 
+- 2026-08-15 : **Phase 2 — couche données implémentée** (branche
+  `phase-2-modeles-db`) : compose PG 18 + Keycloak 26.3, SeaORM branché,
+  5 migrations, 27 entities, modèle sans copies, /health/ready réel,
+  seed idempotent (fixtures Django), test d'invariants, tâches Taskfile db:*,
+  CI avec service PG. En attente de revue humaine.
 - 2026-08-15 : **Nettoyage Phase 1 (noms & positionnement)** : répertoires des
   crates renommés `crates/pnex-*` (= noms de packages), toutes les références
   alignées (Cargo.toml, Taskfile, CI, configs Loco, .gitignore, doc) ;

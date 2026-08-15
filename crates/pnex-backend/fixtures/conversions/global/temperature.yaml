@@ -1,0 +1,60 @@
+# Global Temperature Conversions
+# These conversions are available for all users to import
+
+- global_id: "celsius_to_fahrenheit_v1"
+  name: "Celsius to Fahrenheit"
+  version: 1
+  category: "temperature"
+  tags: ["temperature", "weather", "cooking", "everyday"]
+  description: "Convert temperature from Celsius to Fahrenheit"
+  from_unit: "°C"
+  to_unit: "°F"
+  conversion_type: "affine"
+  multiplier: 1.8
+  offset: 32
+
+- global_id: "fahrenheit_to_celsius_v1"
+  name: "Fahrenheit to Celsius"
+  version: 1
+  category: "temperature"
+  tags: ["temperature", "weather", "cooking", "everyday"]
+  description: "Convert temperature from Fahrenheit to Celsius"
+  from_unit: "°F"
+  to_unit: "°C"
+  conversion_type: "custom"
+  expression: "(x - 32) * 5/9"
+
+- global_id: "celsius_to_kelvin_v1"
+  name: "Celsius to Kelvin"
+  version: 1
+  category: "temperature"
+  tags: ["temperature", "scientific", "thermodynamics", "physics"]
+  description: "Convert temperature from Celsius to Kelvin"
+  from_unit: "°C"
+  to_unit: "K"
+  conversion_type: "affine"
+  multiplier: 1.0
+  offset: 273.15
+
+- global_id: "kelvin_to_celsius_v1"
+  name: "Kelvin to Celsius"
+  version: 1
+  category: "temperature"
+  tags: ["temperature", "scientific", "thermodynamics", "physics"]
+  description: "Convert temperature from Kelvin to Celsius"
+  from_unit: "K"
+  to_unit: "°C"
+  conversion_type: "affine"
+  multiplier: 1.0
+  offset: -273.15
+
+- global_id: "fahrenheit_to_kelvin_v1"
+  name: "Fahrenheit to Kelvin"
+  version: 1
+  category: "temperature"
+  tags: ["temperature", "scientific", "engineering"]
+  description: "Convert temperature from Fahrenheit to Kelvin"
+  from_unit: "°F"
+  to_unit: "K"
+  conversion_type: "custom"
+  expression: "(x - 32) * 5/9 + 273.15"
