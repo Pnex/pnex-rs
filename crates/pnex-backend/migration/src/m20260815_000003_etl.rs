@@ -1,10 +1,17 @@
-//! ETL — conversions, formules (+ data sources), fluides.
+//! ETL — conversions, formules (+ data sources), mélanges de fluides custom.
 //!
 //! Modèle « sans copies » (divergence assumée vs Django) : les entités
 //! fournies par l'app ont `org_id` NULL et sont **référencées directement**
 //! par les orgs ; une ligne `org_id` n'existe que si l'org crée ou
 //! personnalise la sienne. Les tables Django FormulaImport/ConversionImport
 //! (copie par user + suivi de mise à jour) sont supprimées.
+//!
+//! **Pas de catalogue de fluides en base** (directive) : les propriétés de
+//! fluides passent par le service externe FastAPI (CoolProp/RefProp), qui est
+//! la source de vérité — ses messages d'erreur sont renvoyés tels quels au
+//! client. Seules les orgs définissent des **mélanges custom** (table
+//! `fluid_mixtures`). Les FluidCatalog/FluidPropertyGroup Django (miroir
+//! statique de FluidsList / config app) disparaissent.
 //!
 //! Références nullable = suffixe `?` sur le nom de la table référencée
 //! (colonne nullable + ON DELETE SET NULL) ; ne pas redéclarer la colonne
@@ -21,62 +28,19 @@ impl MigrationTrait for Migration {
     async fn up(&self, m: &SchemaManager) -> Result<(), DbErr> {
         create_table(
             m,
-            "fluid_property_group",
-            &[
-                ("id", ColType::PkAuto),
-                ("name", ColType::StringLenUniq(50)),
-                ("display_name", ColType::StringLen(100)),
-                ("group_type", ColType::Enum(
-                    "fluid_group_type".to_string(),
-                    vec![
-                        "basic_thermo".to_string(),
-                        "specific_heat".to_string(),
-                        "transport".to_string(),
-                        "psychrometric".to_string(),
-                        "all_thermo".to_string(),
-                        "custom".to_string(),
-                    ],
-                )),
-                ("property_codes", ColType::JsonBinaryNull),
-                ("description", ColType::TextNull),
-                ("default_fluid", ColType::StringLenNull(100)),
-                ("cache_ttl", ColType::IntegerWithDefault(60)),
-                ("is_predefined", ColType::BooleanWithDefault(false)),
-            ],
-            &[],
-        )
-        .await?;
-
-        create_table(
-            m,
-            "fluid_catalog",
+            "fluid_mixture",
             &[
                 ("id", ColType::PkAuto),
                 ("name", ColType::StringLen(100)),
-                ("coolprop_name", ColType::StringLen(200)),
-                ("category", ColType::Enum(
-                    "fluid_category".to_string(),
-                    vec![
-                        "water".to_string(),
-                        "refrigerant".to_string(),
-                        "air".to_string(),
-                        "hydrocarbon".to_string(),
-                        "cryogenic".to_string(),
-                        "mixture".to_string(),
-                        "other".to_string(),
-                    ],
-                )),
-                ("is_predefined", ColType::BooleanWithDefault(false)),
                 ("description", ColType::TextNull),
-                ("chemical_formula", ColType::StringLenNull(50)),
-                ("cas_number", ColType::StringLenNull(50)),
-                ("min_temperature_k", ColType::DoubleNull),
-                ("max_temperature_k", ColType::DoubleNull),
-                ("min_pressure_pa", ColType::DoubleNull),
-                ("max_pressure_pa", ColType::DoubleNull),
+                // Composition structurée du mélange, ex.
+                // [{"fluid": "R32", "fraction": 0.5, "basis": "mole"}, …].
+                // Le rendu vers la syntaxe du service fluids se fait côté
+                // Rust, pas en base.
+                ("composition", ColType::JsonBinary),
             ],
-            // NULL = fluide fourni par l'app (catalogue global).
-            &[("organizations?", "org_id")],
+            // Mélange custom = toujours propriété d'une org (scoping D2).
+            &[("organizations", "org_id")],
         )
         .await?;
 
@@ -130,6 +94,9 @@ impl MigrationTrait for Migration {
                         "rate_of_change".to_string(),
                     ],
                 )),
+                // Le fluide est nommé dans l'expression même
+                // (ex. PropsSI('H','T',t,'P',p,'Water')) — résolu à runtime
+                // par le service fluids, sans référence catalogue en base.
                 ("expression", ColType::Text),
                 ("result_unit", ColType::TextNull),
                 ("fluid_config", ColType::JsonBinaryNull),
@@ -143,9 +110,8 @@ impl MigrationTrait for Migration {
                 ("cache_ttl", ColType::IntegerWithDefault(60)),
                 ("last_computed_at", ColType::TimestampWithTimeZoneNull),
             ],
-            // NULL = formule fournie par l'app, partagée sans copie ;
-            // groupe de propriétés de fluide optionnel.
-            &[("organizations?", "org_id"), ("fluid_property_groups?", "fluid_property_group_id")],
+            // NULL = formule fournie par l'app, partagée sans copie.
+            &[("organizations?", "org_id")],
         )
         .await?;
 
@@ -182,8 +148,7 @@ impl MigrationTrait for Migration {
         // Doubles unique_together Django → index uniques partiels (NULL org =
         // ligne globale). global_id des formules est unique.
         let sql = String::from(
-            "CREATE UNIQUE INDEX uniq_fluid_catalogs_org_coolprop ON fluid_catalogs (org_id, coolprop_name) WHERE org_id IS NOT NULL;
-             CREATE UNIQUE INDEX uniq_fluid_catalogs_predefined_coolprop ON fluid_catalogs (coolprop_name) WHERE is_predefined;
+            "CREATE UNIQUE INDEX uniq_fluid_mixtures_org_name ON fluid_mixtures (org_id, name);
              CREATE UNIQUE INDEX uniq_unit_conversions_org_units ON unit_conversions (org_id, from_unit, to_unit) WHERE org_id IS NOT NULL;
              CREATE UNIQUE INDEX uniq_unit_conversions_predefined_units ON unit_conversions (from_unit, to_unit) WHERE is_predefined;
              CREATE UNIQUE INDEX uniq_formulas_global_id ON formulas (global_id) WHERE global_id IS NOT NULL;
@@ -197,14 +162,11 @@ impl MigrationTrait for Migration {
         drop_table(m, "formula_data_source").await?;
         drop_table(m, "formula").await?;
         drop_table(m, "unit_conversion").await?;
-        drop_table(m, "fluid_catalog").await?;
-        drop_table(m, "fluid_property_group").await?;
+        drop_table(m, "fluid_mixture").await?;
         for e in [
                 "data_source_kind",
                 "formula_kind",
                 "conversion_kind",
-                "fluid_category",
-                "fluid_group_type",
                 "constant_kind",
             ] {
                 drop_enum_type(m, e).await?;

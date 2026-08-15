@@ -4,24 +4,31 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "subscription_tiers")]
+#[sea_orm(table_name = "fluid_mixtures")]
 pub struct Model {
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
     #[sea_orm(primary_key)]
     pub id: i64,
-    #[sea_orm(unique)]
+    #[sea_orm(unique_key = "uniq_fluid_mixtures_org_name")]
     pub name: String,
-    pub max_sensor_devices: i32,
-    pub max_actuator_devices: i32,
-    pub max_mixed_devices: i32,
-    pub min_build_interval_secs: i64,
-    pub data_retention_secs: Option<i64>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub description: Option<String>,
+    #[sea_orm(column_type = "JsonBinary")]
+    pub composition: Json,
+    #[sea_orm(unique_key = "uniq_fluid_mixtures_org_name")]
+    pub org_id: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_many = "super::organizations::Entity")]
+    #[sea_orm(
+        belongs_to = "super::organizations::Entity",
+        from = "Column::OrgId",
+        to = "super::organizations::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
     Organizations,
 }
 

@@ -19,20 +19,27 @@
       scoping `org_id` partout (ex-user_id), sites PK UUID,
       metrics.\* et tables rapport SUPPRIMÉS (D3), `argo_wf_job_name` supprimé
 - [x] **Modèle « sans copies »** (directive user) : entités standard
-      (conversions, formules, fluides) = `org_id` NULL, fournies par l'app,
+      (conversions, formules) = `org_id` NULL, fournies par l'app,
       partagées en lecture ; une org ne matérialise une ligne que si elle
       crée/personnalise. Tables Django `formula_imports`/`conversion_imports`
       (copie par user) **supprimées**
+- [x] **Allègement fluides** (directive user) : catalogue de fluides
+      supprimé de la base — le service FastAPI externe (CoolProp/RefProp)
+      est la source de vérité, ses erreurs sont renvoyées telles quelles au
+      client ; tables Django `fluid_catalogs`/`fluid_property_groups`
+      supprimées, remplacées par `fluid_mixtures` (mélanges custom par org,
+      org_id NOT NULL, composition JSONB)
 - [x] Durations Django INTERVAL → colonnes `*_secs` (bigint)
-- [x] 27 entities SeaORM générées (`cargo loco db entities`)
+- [x] Entities SeaORM générées (`cargo loco db entities`, stubs models/)
 - [x] `/health/ready` branché sur un `SELECT 1` réel (ok/degraded, testé
       avec PG up et PG coupé)
 - [x] Seed idempotent `cargo loco task seed` : fixtures YAML Django
       réutilisées telles quelles (5 types, 22 caps, 4 MCU + generic à la
-      volée, 4 predefined, 6 tiers, 66 conversions, 39 formules, 26 fluides ;
+      volée, 4 predefined, 6 tiers, 66 conversions, 39 formules ;
       global_id non-UUID → uuid5 DNS comme Django)
 - [x] Test d'invariants de schéma (`migration/tests/schema_invariants.rs`) :
-      scoping org NOT NULL, catalogue ETL nullable, tables de copie absentes
+      scoping org NOT NULL, catalogue ETL nullable, tables de copie et
+      catalogue fluides absents, actions ON DELETE
 - [x] Quotas Free unifiés sur le tier fixture (3/1/0) — les 5/2/1 codés en
       dur dans les views Django étaient des fallbacks divergents
 - [x] Taskfile : `db:up/down/migrate/entities/seed/reset` ; CI : service
@@ -90,7 +97,8 @@ actions ON DELETE (`SET NULL` sur nullable, `CASCADE` sur obligatoire).
 | 2026-08-15 | **Remote GitHub `Pnex/pnex-rs`** (opensource) ajouté — commits poussés au fil de l'eau | Demandé par l'utilisateur 2026-08-15 |
 | 2026-08-15 | **Phase 1 technique** : scaffold Loco v1.0 (`--db none --bg async --assets clientside`) puis trim ; dx 0.7.10 n'a pas de flag `--project` (il faut `cd` dans le crate) et sort dans `target/dx/...` (le Taskfile copie vers `crates/pnex-frontend/dist`) ; assets via macro `asset!()` (manganis hash les fichiers), pas via `[web.resource].style` | Constaté à l'implémentation |
 | 2026-08-15 | **Rust = version officielle** (Django = POC jamais en prod) : divergences cosmétiques non à justifier, contrats fonctionnels Phase 0 conservés ; conventions (noms, chemins, git, API) centralisées dans `convention.md` ; répertoires des crates renommés `crates/pnex-*` pour correspondre aux noms de packages | Demandé par l'utilisateur 2026-08-15 |
-| 2026-08-15 | **Phase 2 — modèle « sans copies »** : fonctions/conversions/fluides **standard = fournis par l'app** (`org_id` NULL, partagées en lecture) ; fonctions **user = par org** (ligne matérialisée seulement si l'org crée/personnalise). Tables Django `formula_imports`/`conversion_imports` (copie par user + suivi de mise à jour) supprimées | Demandé par l'utilisateur 2026-08-15 (« éviter de faire des copies à chaque org/utilisateur ») |
+| 2026-08-15 | **Phase 2 — modèle « sans copies »** : fonctions/conversions **standard = fournies par l'app** (`org_id` NULL, partagées en lecture) ; fonctions **user = par org** (ligne matérialisée seulement si l'org crée/personnalise). Tables Django `formula_imports`/`conversion_imports` (copie par user + suivi de mise à jour) supprimées | Demandé par l'utilisateur 2026-08-15 (« éviter de faire des copies à chaque org/utilisateur ») |
+| 2026-08-15 | **Phase 2 — fluides hors base** : catalogue de fluides supprimé de la DB — le service FastAPI externe (CoolProp/RefProp) est la source de vérité et ses **messages d'erreur sont renvoyés tels quels au client** ; la base ne garde que les **mélanges custom par org** (`fluid_mixtures`, composition JSONB) ; `fluid_property_groups` (config app) passe en code Rust | Demandé par l'utilisateur 2026-08-15 (« on va gérer tout côté service FastAPI refprop… alléger la base, sauf mélanges custom ») |
 | 2026-08-15 | **Phase 2 technique** : Durations Django INTERVAL → `*_secs` bigint ; quotas Free unifiés sur 3/1/0 (tier fixture — les 5/2/1 des views Django étaient des fallbacks divergents) ; `global_id` non-UUID → uuid5 DNS (parité bootstrap_db Django) ; refs `?` nullable de loco-rs : le « bug » était un mauvais usage (`?` sur le 1er élément, pas de colonne dans `cols`) — corrigé, FK SET NULL via refs pures | Constaté à l'implémentation |
 
 ## Principes directeurs (confirmés par l'utilisateur)

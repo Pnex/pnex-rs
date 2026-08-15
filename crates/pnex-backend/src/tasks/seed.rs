@@ -7,12 +7,12 @@ use loco_rs::prelude::*;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 
 use crate::models::_entities::{
-    device_capabilities, device_types, fluid_catalogs, formulas, mcu_boards,
+    device_capabilities, device_types, formulas, mcu_boards,
     predefined_device_capabilities, predefined_devices, subscription_tiers,
     unit_conversions,
 };
 use crate::models::_entities::sea_orm_active_enums::{
-    CapabilityMode, ConversionKind, FluidCategory, FormulaKind,
+    CapabilityMode, ConversionKind, FormulaKind,
 };
 
 pub struct Seed;
@@ -22,7 +22,7 @@ impl Task for Seed {
     fn task(&self) -> TaskInfo {
         TaskInfo {
             name: "seed".to_string(),
-            detail: "Seed idempotent du catalogue global (fixtures YAML Django réutilisées) : device types, capabilities, MCU boards, predefined devices, tiers, conversions globales, formules globales, fluides.\nUsage :\ncargo loco task seed".to_string(),
+            detail: "Seed idempotent du catalogue global (fixtures YAML Django réutilisées) : device types, capabilities, MCU boards, predefined devices, tiers, conversions globales, formules globales.\nUsage :\ncargo loco task seed".to_string(),
         }
     }
 
@@ -51,8 +51,10 @@ impl Task for Seed {
             n += seed_global_formulas(db, &file).await?;
         }
         println!("  formules globales : {n}");
-        let n = seed_fluids(db, &base.join("fluids/common_fluids.yaml")).await?;
-        println!("  fluides : {n}");
+
+        // Pas de seed de fluides : le service externe FastAPI (CoolProp/
+        // RefProp) est la source de vérité du catalogue ; la base ne garde
+        // que les mélanges custom créés par les orgs.
 
         println!("✅ Seed terminé (idempotent : relançable sans effet de bord)");
         Ok(())
@@ -441,59 +443,6 @@ async fn seed_global_formulas(db: &Db, path: &std::path::Path) -> Result<usize> 
         am.tags = Set(r.tags.clone().map(serde_json::to_value).transpose()?);
         am.compute_on_event = Set(r.compute_on_event);
         am.cache_ttl = Set(r.cache_ttl);
-        am.save(db).await?;
-    }
-    Ok(rows.len())
-}
-
-async fn seed_fluids(db: &Db, path: &std::path::Path) -> Result<usize> {
-    #[derive(serde::Deserialize)]
-    struct Row {
-        name: String,
-        coolprop_name: String,
-        category: String,
-        description: Option<String>,
-        chemical_formula: Option<String>,
-        cas_number: Option<String>,
-        min_temperature_k: Option<f64>,
-        max_temperature_k: Option<f64>,
-        min_pressure_pa: Option<f64>,
-        max_pressure_pa: Option<f64>,
-    }
-    let rows: Vec<Row> = read_yaml(path)?;
-    for r in &rows {
-        let category = match r.category.as_str() {
-            "water" => FluidCategory::Water,
-            "refrigerant" => FluidCategory::Refrigerant,
-            "air" => FluidCategory::Air,
-            "hydrocarbon" => FluidCategory::Hydrocarbon,
-            "cryogenic" => FluidCategory::Cryogenic,
-            "mixture" => FluidCategory::Mixture,
-            "other" => FluidCategory::Other,
-            other => {
-                return Err(Error::string(&format!("catégorie fluide inconnue : {other:?}")))
-            }
-        };
-        let existing = fluid_catalogs::Entity::find()
-            .filter(fluid_catalogs::Column::CoolpropName.eq(&r.coolprop_name))
-            .filter(fluid_catalogs::Column::IsPredefined.eq(true))
-            .one(db)
-            .await?;
-        let mut am = existing.map_or_else(<fluid_catalogs::ActiveModel as Default>::default, |m| {
-            m.into_active_model()
-        });
-        am.org_id = Set(None);
-        am.name = Set(r.name.clone());
-        am.coolprop_name = Set(r.coolprop_name.clone());
-        am.category = Set(category);
-        am.is_predefined = Set(true);
-        am.description = Set(r.description.clone());
-        am.chemical_formula = Set(r.chemical_formula.clone());
-        am.cas_number = Set(r.cas_number.clone());
-        am.min_temperature_k = Set(r.min_temperature_k);
-        am.max_temperature_k = Set(r.max_temperature_k);
-        am.min_pressure_pa = Set(r.min_pressure_pa);
-        am.max_pressure_pa = Set(r.max_pressure_pa);
         am.save(db).await?;
     }
     Ok(rows.len())

@@ -56,13 +56,14 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
         "sites",
         "svg_files",
         "build_records",
+        "fluid_mixtures",
     ] {
         assert_eq!(nullable_of(&db, t, "org_id").await, "NO", "{t}.org_id doit être NOT NULL");
     }
 
     // Catalogue ETL partagé sans copies : org_id NULL = ligne fournie par
     // l'app (directive « pas de copies par org/utilisateur »).
-    for t in ["unit_conversions", "formulas", "fluid_catalogs"] {
+    for t in ["unit_conversions", "formulas"] {
         assert_eq!(nullable_of(&db, t, "org_id").await, "YES", "{t}.org_id doit être nullable");
         // Référence nullable loco (`("organizations?", "org_id")`) :
         // colonne nullable + ON DELETE SET NULL ('n' dans pg_constraint).
@@ -89,18 +90,24 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
         "organizations.subscription_tier_id doit être SET NULL on delete"
     );
 
-    // Les tables de copie Django (formula/conversion_imports) n'existent plus.
+    // Catalogue de fluides supprimé (directive) : le service externe FastAPI
+    // (CoolProp/RefProp) est la source de vérité ; la base ne garde que les
+    // mélanges custom par org. Tables périmées interdites de retour.
     let row = sea_orm::ConnectionTrait::query_one_raw(
         &db,
         sea_orm::Statement::from_string(
             sea_orm::DatabaseBackend::Postgres,
             "select count(*)::int as n from information_schema.tables \
-             where table_name in ('formula_imports', 'conversion_imports')",
+             where table_name in ('formula_imports', 'conversion_imports', \
+             'fluid_catalogs', 'fluid_property_groups')",
         ),
     )
     .await
     .unwrap()
     .unwrap();
     let n: i32 = row.try_get("", "n").unwrap();
-    assert_eq!(n, 0, "les tables d'import par copie doivent rester supprimées");
+    assert_eq!(
+        n, 0,
+        "tables de copie et catalogue fluides doivent rester supprimées"
+    );
 }

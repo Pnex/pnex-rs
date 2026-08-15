@@ -47,6 +47,21 @@
   jamais `fullstack`/`ssr`/`server`).
 - `pnex-core` doit compiler sur natif **et** wasm32 — zéro dépendance native.
 
+## Fluides : rien en base, tout au service externe
+
+- **Pas de catalogue de fluides en DB** (directive) : les propriétés de
+  fluides passent par le service FastAPI externe (CoolProp aujourd'hui,
+  RefProp demain), qui est la **source de vérité**. En cas d'erreur, le
+  message du service est **renvoyé tel quel au client** (pas de traduction).
+- La base ne garde que les **mélanges custom** créés par les orgs
+  (`fluid_mixtures`, `org_id` NOT NULL, composition JSONB structurée).
+- Les tables Django `fluid_catalogs`/`fluid_property_groups` (miroir statique
+  de FluidsList / config app) sont supprimées — le rendu vers la syntaxe du
+  service fluids et les groupes de propriétés sont du code Rust, pas de la
+  donnée. Garde-fou : `schema_invariants.rs` interdit leur retour.
+- Le fluide d'une formule est nommé **dans l'expression même**
+  (ex. `PropsSI('H','T',t,'P',p,'Water')`) — résolu à runtime par le service.
+
 ## Migrations (loco-rs `create_table` DSL)
 
 - Toujours déclarer `("id", ColType::PkAuto)` en tête des colonnes — la DSL
