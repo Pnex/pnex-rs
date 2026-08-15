@@ -8,6 +8,7 @@
 //! - il ne contient que des DTO/constantes partagés, pas de logique métier.
 
 pub mod api;
+pub use api::*;
 
 use serde::{Deserialize, Serialize};
 

@@ -5,9 +5,13 @@
 //! est le CSS Tailwind v4 généré (`npm run css:build`, Taskfile) — pattern
 //! manganis `asset!()` hérité de la Phase 1.
 
+mod api;
 mod app;
+mod auth;
+mod components;
 mod i18n;
 mod pages;
+mod state;
 mod storage;
 
 use crate::app::Route;
@@ -20,6 +24,12 @@ fn main() {
 #[component]
 fn App() -> Element {
     i18n::init();
+    // Restauration de session (tokens → user-info) une seule fois au boot.
+    use_hook(|| {
+        spawn(async {
+            state::session::boot().await;
+        });
+    });
     rsx! {
         link { rel: "stylesheet", href: asset!("/assets/tailwind.css") }
         Router::<Route> {}

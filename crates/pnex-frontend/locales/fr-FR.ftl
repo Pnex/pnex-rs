@@ -23,6 +23,17 @@ common-error = Erreur
 common-close = Fermer
 
 # Divers
-login-title = Se connecter à PNEX
+login-welcome = Bienvenue sur PNeX
+login-tagline = Platform Nexus
+login-description = Connectez des milliers d'appareils IoT avec une ingestion de données fluide
+login-signin = Se connecter à PNeX
+login-register = Créer un compte
+login-reset = Mot de passe oublié ?
+login-footer = Authentification sécurisée par la plateforme PNeX
+callback-exchanging = Connexion en cours…
+callback-failed = Échec de la connexion
+callback-back = Retour à la connexion
 not-found = Page introuvable : { $path }
+toast-session-expired = Votre session a expiré. Veuillez vous reconnecter.
+shell-logout = Se déconnecter
 server-url-title = URL du serveur

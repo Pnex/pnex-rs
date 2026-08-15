@@ -23,6 +23,17 @@ common-error = Error
 common-close = Close
 
 # Divers
-login-title = Sign in to PNEX
+login-welcome = Welcome to PNeX
+login-tagline = Platform Nexus
+login-description = Connecting thousands of IoT devices with seamless data ingestion
+login-signin = Sign in to PNeX
+login-register = Create account
+login-reset = Forgot password?
+login-footer = Secure authentication powered by PNeX Platform
+callback-exchanging = Signing you in…
+callback-failed = Sign-in failed
+callback-back = Back to sign in
 not-found = Page not found: { $path }
+toast-session-expired = Your session has expired. Please sign in again.
+shell-logout = Log out
 server-url-title = Server URL
