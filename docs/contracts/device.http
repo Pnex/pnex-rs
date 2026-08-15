@@ -1,0 +1,35 @@
+###
+#app  secret ysm0B7EFYL3c3dzOF5mwvXWbY8wBEJVo3dC5c1DtN0LcakYI4i4bvkUduRYv4QxZCdtyDKhLCTl2cIvGcKoeq2rSDTT5TacWj2AZNGe6qVbRS4kQrTiJSjRLj5zMx9rW
+POST https://api.yourdomain.com/api-token-auth/
+Content-Type: application/json
+
+{
+  "username": "admin@example.com",
+  "password": "6b65f8-2f1105-4fe2081-04509eb-8be7-f53b",
+  "client_id": "rcwjMo4bC3TggoCoeRaPZ4SX0Eh0kUZRxbCgMohO"
+}
+
+###
+# use device token for that purpose
+GET https://api.yourdomain.com/api/v1/devices/
+Authorization: Bearer HgpZCDbybZoaCg6cojGMZLvLA8tQQn
+Content-Type: application/json
+
+
+###
+# use device token for that purpose
+POST https://api.yourdomain.com/api/v1/devices/
+Authorization: Token xTA3rQMH8XgnDcNreopZppuyEN2_apbJBra6XuUg5PM
+Content-Type: application/json
+
+{
+  "device_id": "4-chan-dev-shan",
+  "predefined_device_name": "4_chan_relay"
+}
+
+
+###
+# use device token for that purpose
+DELETE http://0.0.0.0:8000/api/v1/devices/962434631136149505
+Authorization: Bearer 9tbRR1Cp5TDNImubfUwayrpQrF7zuZ
+Content-Type: application/json

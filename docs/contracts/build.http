@@ -1,0 +1,35 @@
+POST http://0.0.0.0:8000/api-token-auth/
+Content-Type: application/json
+
+{
+  "username": "admin@example.com",
+  "password": "6b65f8-2f1105-4fe2081-04509eb-8be7-f53b",
+  "client_id": "CRj3niLuAkLmF946hKDhTkCIEsa9vW5X0R0wTBJf"
+}
+
+###
+# post firmware
+POST http://0.0.0.0:8000/api/v1/build-firmware/
+Content-Type: application/json
+Authorization: Bearer AB13E1mDOlQeap29FPYBd9KhI6FP5d
+
+
+{
+	"wifi_ssid": "coloc",
+	"wifi_password": "ZaFjX9FyN8",
+    "device_id": "dev-device-11",
+	"predefined_device_name": "Soil Sensor",
+	"pnex_host": "api.yourdomain.com",
+	"metadata": "",
+	"force_rebuild": true
+}
+
+###
+# download firmware
+GET https://api.yourdomain.com/api/v1/download/firmware/dev-device-11/
+Authorization: Bearer AB13E1mDOlQeap29FPYBd9KhI6FP5d
+
+###
+# get build records list
+GET http://0.0.0.0:8000/api/v1/build-records/
+Authorization: Bearer AB13E1mDOlQeap29FPYBd9KhI6FP5d
