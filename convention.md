@@ -47,6 +47,25 @@
   jamais `fullstack`/`ssr`/`server`).
 - `pnex-core` doit compiler sur natif **et** wasm32 — zéro dépendance native.
 
+## Migrations (loco-rs `create_table` DSL)
+
+- Toujours déclarer `("id", ColType::PkAuto)` en tête des colonnes — la DSL
+  n'ajoute **pas** le PK automatiquement.
+- Référence nullable = suffixe `?` sur le **nom de la table référencée**
+  (1er élément du tuple) : `&[("organizations?", "org_id")]` → colonne
+  nullable + `ON DELETE SET NULL`. Référence obligatoire (sans `?`) →
+  `CASCADE`. **Ne pas redéclarer la colonne FK dans `cols`** : la déclaration
+  écraserait la colonne générée (type correct) mais perdrait la FK.
+- Le nom de table référencée passe par `normalize_table` (pluriel cruet) :
+  passer `"user"` ou `"users"` est équivalent ; la colonne dérivée est
+  `user_id`.
+- Index uniques composites/partiels : SQL brut `execute_unprepared`, noms
+  **sous-tirets** (`uniq_…`, `idx_…`) — les tirets ne sont valides que dans
+  les identifiants quotés par sea-query (contraintes FK générées).
+- Invariants structurels garantis par `migration/tests/schema_invariants.rs`
+  (nullabilité org_id, actions ON DELETE, absence des tables de copie) —
+  à étendre à chaque invariant structurant.
+
 ## API
 
 - URLs **sans slash terminal** (convention Rust/Axum, assumée).

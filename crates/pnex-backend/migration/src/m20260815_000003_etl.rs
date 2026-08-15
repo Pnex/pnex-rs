@@ -6,25 +6,15 @@
 //! personnalise la sienne. Les tables Django FormulaImport/ConversionImport
 //! (copie par user + suivi de mise à jour) sont supprimées.
 //!
-//! NB : les FK nullable sont posées en SQL brut — le suffixe `?` des refs
-//! `create_table` de loco-rs 1.0.1 ne produit ni colonne nullable ni
-//! ON DELETE SET NULL (constaté par test, voir tests/schema_invariants.rs).
+//! Références nullable = suffixe `?` sur le nom de la table référencée
+//! (colonne nullable + ON DELETE SET NULL) ; ne pas redéclarer la colonne
+//! dans `cols`, sinon la déclaration écrase celle générée par le ref.
 
 use loco_rs::schema::*;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
-
-const NULLABLE_FKS: &[(&str, &str, &str)] = &[
-    // (table, colonne, table référencée)
-    ("fluid_catalogs", "org_id", "organizations"),
-    ("unit_conversions", "org_id", "organizations"),
-    ("formulas", "org_id", "organizations"),
-    ("formulas", "fluid_property_group_id", "fluid_property_groups"),
-    ("formula_data_sources", "device_registry_id", "device_registries"),
-    ("formula_data_sources", "unit_conversion_id", "unit_conversions"),
-];
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
@@ -62,8 +52,6 @@ impl MigrationTrait for Migration {
             "fluid_catalog",
             &[
                 ("id", ColType::PkAuto),
-                // NULL = fluide fourni par l'app (catalogue global).
-                ("org_id", ColType::BigIntegerNull),
                 ("name", ColType::StringLen(100)),
                 ("coolprop_name", ColType::StringLen(200)),
                 ("category", ColType::Enum(
@@ -87,7 +75,8 @@ impl MigrationTrait for Migration {
                 ("min_pressure_pa", ColType::DoubleNull),
                 ("max_pressure_pa", ColType::DoubleNull),
             ],
-            &[],
+            // NULL = fluide fourni par l'app (catalogue global).
+            &[("organizations?", "org_id")],
         )
         .await?;
 
@@ -96,8 +85,6 @@ impl MigrationTrait for Migration {
             "unit_conversion",
             &[
                 ("id", ColType::PkAuto),
-                // NULL = conversion fournie par l'app, partagée sans copie.
-                ("org_id", ColType::BigIntegerNull),
                 ("name", ColType::StringLen(255)),
                 ("from_unit", ColType::StringLen(50)),
                 ("to_unit", ColType::StringLen(50)),
@@ -122,7 +109,8 @@ impl MigrationTrait for Migration {
                 ("tags", ColType::JsonBinaryNull),
                 ("import_count", ColType::IntegerWithDefault(0)),
             ],
-            &[],
+            // NULL = conversion fournie par l'app, partagée sans copie.
+            &[("organizations?", "org_id")],
         )
         .await?;
 
@@ -131,9 +119,6 @@ impl MigrationTrait for Migration {
             "formula",
             &[
                 ("id", ColType::PkAuto),
-                // NULL = formule fournie par l'app, partagée sans copie.
-                ("org_id", ColType::BigIntegerNull),
-                ("fluid_property_group_id", ColType::BigIntegerNull),
                 ("name", ColType::StringLen(255)),
                 ("description", ColType::TextNull),
                 ("formula_type", ColType::Enum(
@@ -158,7 +143,9 @@ impl MigrationTrait for Migration {
                 ("cache_ttl", ColType::IntegerWithDefault(60)),
                 ("last_computed_at", ColType::TimestampWithTimeZoneNull),
             ],
-            &[],
+            // NULL = formule fournie par l'app, partagée sans copie ;
+            // groupe de propriétés de fluide optionnel.
+            &[("organizations?", "org_id"), ("fluid_property_groups?", "fluid_property_group_id")],
         )
         .await?;
 
@@ -167,8 +154,6 @@ impl MigrationTrait for Migration {
             "formula_data_source",
             &[
                 ("id", ColType::PkAuto),
-                ("device_registry_id", ColType::BigIntegerNull),
-                ("unit_conversion_id", ColType::BigIntegerNull),
                 ("source_type", ColType::Enum(
                     "data_source_kind".to_string(),
                     vec!["device".to_string(), "constant".to_string()],
@@ -186,13 +171,17 @@ impl MigrationTrait for Migration {
                 ("variable_name", ColType::StringLen(100)),
                 ("sort_order", ColType::IntegerWithDefault(0)),
             ],
-            &[("formulas", "formula_id")],
+            &[
+                ("formulas", "formula_id"),
+                ("device_registries?", "device_registry_id"),
+                ("unit_conversions?", "unit_conversion_id"),
+            ],
         )
         .await?;
 
         // Doubles unique_together Django → index uniques partiels (NULL org =
         // ligne globale). global_id des formules est unique.
-        let mut sql = String::from(
+        let sql = String::from(
             "CREATE UNIQUE INDEX uniq_fluid_catalogs_org_coolprop ON fluid_catalogs (org_id, coolprop_name) WHERE org_id IS NOT NULL;
              CREATE UNIQUE INDEX uniq_fluid_catalogs_predefined_coolprop ON fluid_catalogs (coolprop_name) WHERE is_predefined;
              CREATE UNIQUE INDEX uniq_unit_conversions_org_units ON unit_conversions (org_id, from_unit, to_unit) WHERE org_id IS NOT NULL;
@@ -200,11 +189,6 @@ impl MigrationTrait for Migration {
              CREATE UNIQUE INDEX uniq_formulas_global_id ON formulas (global_id) WHERE global_id IS NOT NULL;
              CREATE UNIQUE INDEX uniq_formula_data_sources_formula_var ON formula_data_sources (formula_id, variable_name);",
         );
-        for (table, col, ref_table) in NULLABLE_FKS {
-            sql.push_str(&format!(
-                "ALTER TABLE {table} ADD CONSTRAINT fk_{table}_{col}_to_{ref_table} FOREIGN KEY ({col}) REFERENCES {ref_table} (id) ON DELETE SET NULL;"
-            ));
-        }
         m.get_connection().execute_unprepared(&sql).await?;
         Ok(())
     }

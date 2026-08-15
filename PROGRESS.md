@@ -38,10 +38,13 @@
 - [x] Taskfile : `db:up/down/migrate/entities/seed/reset` ; CI : service
       PostgreSQL 18 pour le job test
 
-**Bug loco-rs 1.0.1 constaté** : le suffixe `?` des refs `create_table`
-(référence nullable) ne produit ni colonne nullable ni `ON DELETE SET NULL`.
-Contournement : colonnes déclarées + FK `SET NULL` en SQL brut. Test
-d'invariants en garde-fou.
+**Correction (post-revue)** : le « bug loco-rs 1.0.1 » était une erreur
+d'usage. Le suffixe `?` se met sur le **nom de la table référencée**
+(1er élément du tuple de refs) et la colonne ne doit **pas** être
+redéclarée dans `cols` — sinon la déclaration écrase la colonne générée,
+sans FK `SET NULL`. Migrations 000001/000003 réécrites avec les refs `?`
+pures (plus de SQL brut pour les FK), test d'invariants étendu aux
+actions ON DELETE (`SET NULL` sur nullable, `CASCADE` sur obligatoire).
 
 **Prochaine : revue humaine Phase 2**, puis Phase 3 — Auth & multi-tenant
 (Keycloak JWT, JIT provisioning users, middleware scoping org).
@@ -88,7 +91,7 @@ d'invariants en garde-fou.
 | 2026-08-15 | **Phase 1 technique** : scaffold Loco v1.0 (`--db none --bg async --assets clientside`) puis trim ; dx 0.7.10 n'a pas de flag `--project` (il faut `cd` dans le crate) et sort dans `target/dx/...` (le Taskfile copie vers `crates/pnex-frontend/dist`) ; assets via macro `asset!()` (manganis hash les fichiers), pas via `[web.resource].style` | Constaté à l'implémentation |
 | 2026-08-15 | **Rust = version officielle** (Django = POC jamais en prod) : divergences cosmétiques non à justifier, contrats fonctionnels Phase 0 conservés ; conventions (noms, chemins, git, API) centralisées dans `convention.md` ; répertoires des crates renommés `crates/pnex-*` pour correspondre aux noms de packages | Demandé par l'utilisateur 2026-08-15 |
 | 2026-08-15 | **Phase 2 — modèle « sans copies »** : fonctions/conversions/fluides **standard = fournis par l'app** (`org_id` NULL, partagées en lecture) ; fonctions **user = par org** (ligne matérialisée seulement si l'org crée/personnalise). Tables Django `formula_imports`/`conversion_imports` (copie par user + suivi de mise à jour) supprimées | Demandé par l'utilisateur 2026-08-15 (« éviter de faire des copies à chaque org/utilisateur ») |
-| 2026-08-15 | **Phase 2 technique** : Durations Django INTERVAL → `*_secs` bigint ; quotas Free unifiés sur 3/1/0 (tier fixture — les 5/2/1 des views Django étaient des fallbacks divergents) ; `global_id` non-UUID → uuid5 DNS (parité bootstrap_db Django) ; **bug loco-rs 1.0.1** : refs `?` nullable non fonctionnelles → FK SET NULL posées en SQL brut, test d'invariants en garde-fou | Constaté à l'implémentation |
+| 2026-08-15 | **Phase 2 technique** : Durations Django INTERVAL → `*_secs` bigint ; quotas Free unifiés sur 3/1/0 (tier fixture — les 5/2/1 des views Django étaient des fallbacks divergents) ; `global_id` non-UUID → uuid5 DNS (parité bootstrap_db Django) ; refs `?` nullable de loco-rs : le « bug » était un mauvais usage (`?` sur le 1er élément, pas de colonne dans `cols`) — corrigé, FK SET NULL via refs pures | Constaté à l'implémentation |
 
 ## Principes directeurs (confirmés par l'utilisateur)
 
