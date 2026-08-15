@@ -20,6 +20,7 @@
 | D10 | **Tokens DRF supprimés** — auth user = JWT Keycloak uniquement ; devices = DeviceToken (inchangés) | Phase 3 |
 | D11 | **Abonnement/tier attaché à l'org** (pas au user) — cohérent avec D2 : plusieurs users par org, un abonnement par org | Phase 2/3 |
 | D12 | **Timestamps télémétrie** : (a) le backend accepte un timestamp device **optionnel** ; s'il est absent → **dt d'ingestion serveur** (trace garantie) ; (b) provenance stockée dans le doc (`ts_source: "device"\|"server"`), `_timestamp` OpenObserve = ingestion → deux traces ; (c) v2 du protocole d'ingestion versionné avec timestamp optionnel (comme D8 pour le chiffrement) ; (d) SNTP côté ESP32 recommandé (trivial, connecté internet) — indépendant de la migration, mais nécessaire pour le buffering hors-ligne futur (mesures différées correctement datées) | Phase 5 |
+| D13 | **Actuateurs : plus de serveur dans la boucle — chantier M2M différé**. Les actionneurs **ingèrent eux-mêmes leur config**, et **actuateurs ↔ capteurs communiquent en direct** (M2M). Le serveur PNEX garde uniquement : stockage/édition des configs (API + UI) et **capture/ETL** des télémétries. Toute la mécanique de distribution (broadcast desired-state, push WS de config, protocole actuateur) est **un chantier séparé à concevoir plus tard** — ne pas sur-concevoir en Phases 4-5 | Phase 4/5 (réduit) + chantier M2M futur |
 
 ## 1. Apps Django → destins
 
@@ -49,7 +50,7 @@
 | DeviceType, DeviceCapability, MCUBoard, PredefinedDevice | SeaORM (catalogue global + fixtures YAML) | 2 |
 | DeviceRegistry (+ discovered_measurements) | SeaORM ; scoping **org_id** (D2) | 2/4 |
 | DeviceToken (token + encryption_key) | SeaORM ; hook génération (token_urlsafe(32) + clé ChaCha20) | 2/4 |
-| ActuatorChannelConfig | SeaORM — **schéma du desired-state broadcasté** ; logique de contrôle (modes, hystérésis) évaluée à l'edge | 2/5 |
+| ActuatorChannelConfig | SeaORM — stockage/édition du **schéma de config** (API + UI). La distribution aux devices et la logique de contrôle = **chantier M2M différé (D13)** — pas de broadcast à concevoir maintenant | 2/4 |
 | UnitConversion, Formula, FormulaDataSource | SeaORM | 2/8 |
 | FluidCatalog, FluidPropertyGroup | SeaORM (validation via CoolProp FastAPI) | 2/8 |
 | FormulaImport, ConversionImport | SeaORM | 2/8 |
@@ -69,7 +70,7 @@ Logique save()/clean()/signals → hooks SeaORM + validation service (détail mo
 | /api/v1/user-info, preferences, device-statistics | Loco + concept org | 3/4 |
 | /api/v1/devices CRUD (+ réactivation implicite, quota tiers, metadata-only) | Loco | 4 |
 | /api/v1/device-capabilities, predefined-devices | Loco ( catalogue global) | 4 |
-| /api/v1/actuator-channels CRUD + by_device | Loco (desired-state) | 4/5 |
+| /api/v1/actuator-channels CRUD + by_device | Loco — stockage/édition de config ; distribution aux devices = **chantier M2M différé (D13)** | 4 |
 | /api/v1/actuator-channels/pod-status/{id} | **SUPPRIMÉ** (pods K8s) | — |
 | /api/v1/metrics (ES query) | Loco → OpenObserve query API | 5 |
 | /api/v1/live-metrics (Redis db 2) | Loco (voir §5 état live) | 5 |
@@ -89,9 +90,9 @@ PUT/PATCH devices = metadata only ; suffixes .json ; 3 schémas d'auth actifs.
 | Élément | Cible | Phase |
 |---|---|---|
 | ws/sensor/ingest (ChaCha20, key=value, PING/PONG, capabilities, dynamic measurements) | Loco WS Axum — parité comportementale | 5 |
-| ws/actuator/cast — **partie CONFIG** (send_initial_config, push Protobuf chiffré) | Loco WS — **desired-state broadcast** (« version N + hash », edge pull le delta) | 5 |
-| ws/actuator/cast — **partie STATE** (réception ActuatorState → docs unifiés) | Loco WS — collecte télémétrie | 5 |
-| ws/actuator/cast — **flux sensor_data agrégée** (on_nats_sensor_data) | **SUPPRIMÉ** — dépendait des pods de contrôle ; l'edge agrège lui-même | — |
+| ws/actuator/cast — **partie CONFIG** (send_initial_config, push Protobuf chiffré) | **Chantier M2M différé (D13)** — les actionneurs ingèrent leur config eux-mêmes ; mécanisme de distribution conçu avec le chantier M2M, pas avant | différé |
+| ws/actuator/cast — **partie STATE** (réception ActuatorState → docs unifiés) | À décider dans le chantier M2M (D13) : si l'actuateur rapporte encore son état au serveur pour la capture, ou si tout passe par le canal capteurs | différé |
+| ws/actuator/cast — **flux sensor_data agrégée** (on_nats_sensor_data) | **SUPPRIMÉ** — dépendait des pods de contrôle ; actuateurs ↔ capteurs en direct (D13) | — |
 | ws/metrics/live (dashboard) | Loco WS — **corriger le bug de sujets** (`sensors.*` vs `sensor.*.*.measurement.>`) | 5 |
 | ws/etl/formulas/evaluate | Loco WS → query OpenObserve + moteur WASM | 8 |
 | ws/firmware/builds (notifications) | Loco WS (job queue PG → push) | 6 |
