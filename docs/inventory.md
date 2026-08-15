@@ -144,8 +144,19 @@ Les points ouverts de la première passe ont été résolus (décisions D4-D11 e
 6. ~~Retention par org vs tier~~ → **D11** : le tier s'attache à l'org.
 7. ~~Rapport ad hoc~~ → **D7** : conception repoussée ; provisioning/cron O2 par
    API exigé, génération live en tâche backend.
-8. Bugs Django à ne pas reproduire (inchangé) : sujets NATS dashboard,
-   `timestamp` vs `@timestamp`, endpoints morts, `download_url` rapports.
+8. **Bugs Django à ne pas reproduire** (confirmé par l'utilisateur) — comportements
+   corrigés attendus en cible (ils deviennent le contrat de référence des tests
+   de parité) :
+   - Dashboard live : souscription sur `sensor.*.*.measurement.>` (via le
+     WildcardBuilder équivalent), **plus** le pattern pluriel `sensors.*` —
+     le flux live doit effectivement recevoir les mesures.
+   - `/metrics/` : lire `@timestamp` (et non `timestamp`) → `event_time` rempli.
+   - Endpoints morts (`save_view` annotations, `emqx/authn`) : **restent absents**.
+   - `download_url` : cohérent avec la vraie route (le concept disparaît de toute
+     façon avec D3 — rapports OpenObserve).
+   - Cache TTL de validation device (code mort en Django) : décision explicite
+     côté Loco — **oui, un cache** (10 s, comme prévu par la config WS), puisque
+     la validation DB par message était une lacune, pas une fonctionnalité.
 
 1. **D4 chiffrement** : ChaCha20 nu (compatibilité firmware ESP32 existant) vs
    Poly1305 (robustesse). Recommandation : garder nu à parité stricte Phase 5,
