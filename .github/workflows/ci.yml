@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: cargo check (natif + wasm32)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace
+      - run: cargo check -p pnex-core -p pnex-frontend --target wasm32-unknown-unknown
+
+  test:
+    name: cargo test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+
+  frontend:
+    name: dx build (web)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Installer dx
+        run: cargo install dioxus-cli --locked
+      - name: Build front (release)
+        run: |
+          cd crates/frontend
+          dx build --platform web --release
+      - name: Copier vers dist (format servi par Loco)
+        run: |
+          rm -rf crates/frontend/dist
+          cp -r target/dx/pnex-frontend/release/web/public crates/frontend/dist

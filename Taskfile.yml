@@ -1,0 +1,83 @@
+version: '3'
+
+env:
+  FRONT_DIST: crates/frontend/dist
+  DX_OUT: target/dx/pnex-frontend
+
+tasks:
+  default:
+    desc: Aperçu des tâches
+    cmds:
+      - task --list
+
+  # ---------- Build ----------
+
+  build:frontend:
+    desc: Build le front Dioxus (wasm, release) et le copie dans crates/frontend/dist
+    sources:
+      - crates/frontend/src/**/*
+      - crates/frontend/assets/**/*
+      - crates/frontend/Dioxus.toml
+      - crates/core/src/**/*
+    generates:
+      - "{{.FRONT_DIST}}/**/*"
+    cmds:
+      - cd crates/frontend && dx build --platform web --release
+      - rm -rf {{.FRONT_DIST}}
+      - cp -r {{.DX_OUT}}/release/web/public {{.FRONT_DIST}}
+
+  build:
+    desc: Build complet (front + workspace natif)
+    deps: [build:frontend]
+    cmds:
+      - cargo build --workspace
+
+  check:
+    desc: cargo check natif + wasm32 (garde-fou « jamais de rouge »)
+    cmds:
+      - cargo check --workspace
+      - cargo check -p pnex-core -p pnex-frontend --target wasm32-unknown-unknown
+
+  test:
+    desc: Tests du workspace
+    cmds:
+      - cargo test --workspace
+
+  # ---------- Dev ----------
+
+  dev:
+    desc: Front debug + serveur Loco (http://localhost:5150) servant le front statique
+    deps: [dev:frontend]
+    cmds:
+      - task: dev:backend
+
+  dev:frontend:
+    desc: Build debug du front vers crates/frontend/dist (pour serving Loco)
+    sources:
+      - crates/frontend/src/**/*
+      - crates/frontend/assets/**/*
+      - crates/frontend/Dioxus.toml
+      - crates/core/src/**/*
+    generates:
+      - "{{.FRONT_DIST}}/**/*"
+    cmds:
+      - cd crates/frontend && dx build --platform web
+      - rm -rf {{.FRONT_DIST}}
+      - cp -r {{.DX_OUT}}/debug/web/public {{.FRONT_DIST}}
+
+  dev:backend:
+    desc: Démarre le backend Loco (hot-rebuild via bacon ou relance manuelle)
+    cmds:
+      - cd crates/backend && cargo run --bin pnex-server -- start
+
+  dev:hot:
+    desc: Boucle de dev front avec hot-reload (dx serve) — API Loco sur :5150 à part
+    cmds:
+      - cd crates/frontend && dx serve --platform web
+
+  # ---------- Qualité ----------
+
+  lint:
+    desc: Clippy sur tout le workspace
+    cmds:
+      - cargo clippy --workspace -- -D warnings

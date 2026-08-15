@@ -15,8 +15,26 @@
 - [x] Revue humaine de la Phase 0 — points ouverts tranchés (décisions D4-D11,
       voir `docs/inventory.md` §0 et §7)
 
-**Prochaine : Phase 1 — Squelette du workspace** (4 crates, app Loco minimale avec
-health route, Dioxus web/CSR servi en statique par Loco, Taskfile, CI).
+**Phase 1 — Squelette du workspace : EN COURS** (branche `phase-1-squelette`).
+
+- [x] Workspace Cargo 4 crates : `pnex-core` (serde pur, natif+wasm32),
+      `pnex-backend` (Loco v1.0, bin `pnex-server`), `pnex-frontend`
+      (Dioxus 0.7 CSR web), `pnex-firmware-builder` (stub Phase 6)
+- [x] Backend minimal : `/health/live` + `/health/ready` (DB « unconfigured »
+      jusqu'en Phase 2), front servi en statique (middleware static + fallback SPA)
+- [x] Taskfile (`task check/test/build/dev/dev:hot/lint`), CI GitHub Actions
+      (check natif+wasm32, test, dx build web)
+- [x] Doc `docs/architecture/features.md` — piège fullstack/hydration documenté
+- [x] Vérifié : `task check` vert (natif + wasm32), `task test` vert,
+      `dx build --release` OK, serving bout-en-bout (live/ready/front/wasm 200)
+- [x] Remote GitHub `Pnex/pnex-rs` ajouté (opensource) — push au fil de l'eau
+
+**Divergences assumées vs Django** (Phase 1) : service renommé
+`og-device-hub` → `pnex-server` ; health **sans slash terminal** ; `/health/ready`
+sans DB (Phase 2 branchera le check PG, le « cache » deviendra OpenObserve).
+
+**Prochaine : revue humaine Phase 1**, puis Phase 2 — Modèles & DB
+(PostgreSQL, SeaORM, organisations D2, seed fixtures YAML).
 
 ## Décisions
 
@@ -30,6 +48,9 @@ health route, Dioxus web/CSR servi en statique par Loco, Taskfile, CI).
 | 2026-08-15 | **Rapports → OpenObserve Report Server** : rapports PDF = **scheduled reports de dashboards OpenObserve** (rendu PDF via Report Server, SMTP, cron). Supprime matplotlib + WeasyPrint + Celery generate_report + stockage S3 des rapports | `schedule {cron, email_to}` de ReportConfiguration mappe 1:1. Le layout JSON ReportTemplate était du **code mort**. Formula results déjà indexés dans OpenObserve (`source_type: "formula"`) |
 | 2026-08-15 | **D13 — Actuateurs sans serveur au milieu (chantier M2M différé)** : les actionneurs **ingèrent leur propre config**, actuateurs ↔ capteurs **communiquent en direct**. Le serveur garde : stockage/édition des configs (API+UI) + capture/ETL. La mécanique de distribution (broadcast desired-state, push WS, protocole) est reportée à un chantier séparé — ne pas sur-concevoir Phases 4-5 | Vision edge complète confirmée par l'utilisateur ; ws/actuator/cast (config + state) marqué « différé » dans l'inventaire |
 | 2026-08-15 | **Revue de phase — points tranchés (D4-D12)** : firmware sur **MinIO/S3 conservé** (abstraction `ArtifactStore`, PG écarté — binaires RTOS/OS complets trop lourds pour PG/backups/WAL) ; rétention artifacts = structure maintenant, gestion plus tard ; rapports = conception détaillée repoussée mais exigences verrouillées (**provisioning/cron OpenObserve par API** via service account, génération live en **tâche backend** anti-saturation) ; **ChaCha20 nu à parité** + versionnement protocole pour upgrade AEAD ultérieur ; **état live device → Postgres** (`device_state` upsert + purge TTL) ; **tokens DRF supprimés** (JWT Keycloak seul, DeviceToken inchangés) ; **abonnement attaché à l'org** ; **timestamps télémétrie** (D12) : fallback dt d'ingestion + provenance, protocole v2 avec timestamp optionnel, SNTP recommandé côté ESP32 | Revue humaine 2026-08-15 — l'utilisateur a validé l'ensemble et délégué les choix restants ; D12 ajouté suite à sa question sur les devices sans NTP |
+| 2026-08-15 | **Renommage service** : `og-device-hub` (héritage Django) → `pnex-server` — l'ancien nom n'est plus utilisé | Demandé par l'utilisateur 2026-08-15 |
+| 2026-08-15 | **Remote GitHub `Pnex/pnex-rs`** (opensource) ajouté — commits poussés au fil de l'eau | Demandé par l'utilisateur 2026-08-15 |
+| 2026-08-15 | **Phase 1 technique** : scaffold Loco v1.0 (`--db none --bg async --assets clientside`) puis trim ; dx 0.7.10 n'a pas de flag `--project` (il faut `cd` dans le crate) et sort dans `target/dx/...` (le Taskfile copie vers `crates/frontend/dist`) ; assets via macro `asset!()` (manganis hash les fichiers), pas via `[web.resource].style` | Constaté à l'implémentation |
 
 ## Principes directeurs (confirmés par l'utilisateur)
 
@@ -39,6 +60,10 @@ health route, Dioxus web/CSR servi en statique par Loco, Taskfile, CI).
 
 ## Journal
 
+- 2026-08-15 : **Phase 1 — squelette du workspace implémenté** (branche
+  `phase-1-squelette`) : 4 crates, Loco v1.0 minimal (health), Dioxus 0.7 CSR,
+  Taskfile, CI, doc features. Chaîne vérifiée vert-de-vert (check natif+wasm,
+  tests, build release, serving statique). En attente de revue humaine.
 - 2026-08-15 : **Phase 0 terminée et validée**. Livrables : `docs/inventory.md`,
   `docs/phase0/` (6 rapports), `docs/contracts/` (exemples .http + règles de parité).
   Décisions D1-D11 consignées. Prochaine étape : Phase 1 (squelette workspace).

@@ -1,0 +1,24 @@
+# Rust
+/target
+**/*.rs.bk
+
+# Frontend (Dioxus / dx)
+crates/frontend/dist
+crates/frontend/.dx
+**/dist/
+
+# Environnement & secrets
+.env
+.env.*
+!.env.example
+*.age
+secrets/
+
+# Éditeurs
+.idea/
+.vscode/
+*.swp
+
+# Outillage local
+.task/
+.claude/settings.local.json*

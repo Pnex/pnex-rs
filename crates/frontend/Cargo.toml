@@ -1,0 +1,18 @@
+[package]
+name = "pnex-frontend"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Web UI PNEX — Dioxus 0.7, CSR pur, servi en statique par le backend Loco"
+
+[dependencies]
+dioxus = { version = "0.7" }
+pnex-core = { workspace = true }
+
+# CSR web uniquement. Les features `desktop`/`mobile` ne seront jamais activées.
+# ⚠️ PAS de feature fullstack/ssr/server-fn : le serveur est Loco (Axum), pas
+# le runtime Dioxus — les deux servings Axum entrent en collision (piège
+# documenté dans docs/architecture/features.md).
+[features]
+default = ["web"]
+web = ["dioxus/web"]

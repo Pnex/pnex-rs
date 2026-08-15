@@ -1,0 +1,9 @@
+[package]
+name = "pnex-firmware-builder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Orchestration des builds firmware (shell-out toolchain PlatformIO/esptool) — Phase 6"
+
+[dependencies]
+thiserror = { workspace = true }

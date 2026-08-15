@@ -1,0 +1,20 @@
+# pnex-server — configuration tests (loco testing)
+
+logger:
+  enable: false
+  pretty_backtrace: true
+  level: debug
+  format: compact
+
+server:
+  port: 5150
+  host: http://localhost
+  middlewares:
+    fallback:
+      enable: false
+    static:
+      # Pas de front requis en test — évite l'échec must_exist sans dist/.
+      enable: false
+
+workers:
+  mode: ForegroundBlocking
