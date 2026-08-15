@@ -104,7 +104,48 @@
   `TEST_DATABASE_URL`, vidée entre tests par le hook `truncate`
   (`dangerously_truncate` dans config/test.yaml).
 
-## API
+## Front (Phase 3 — port de l'UI `pnex-ui`)
+
+- **i18n obligatoire, zéro libellé en dur** : tout texte visible passe par
+  `t!("clé")` (Fluent via `dioxus-i18n`, wrapper `src/i18n.rs`). Locales
+  `locales/{fr-FR,en-US}.ftl` embarquées, fallback en-US, **parité des clés
+  obligatoire** entre locales. Résolution : localStorage (`pnex.locale`) >
+  `profile.language` (après login) > `navigator.language` > en-US.
+- **Serveur** : le web est **same-origin** (front servi par Loco, URLs
+  relatives, jamais de sélection de serveur). La config d'URL serveur
+  « façon Bitwarden » n'existe que pour les futures cibles
+  desktop/ios/android : seam unique `api/config.rs` + clé `pnex.api_base` +
+  écran `pages/server_url.rs` (non routé). Le dev hot (`task dev:hot`, dx
+  :5151) utilise `PNEX_API_BASE_URL` à la compilation + CORS dev verrouillé
+  dans development.yaml (jamais en prod).
+- **Tailwind v4** : source `style/tailwind.css` (`@source "../src"`), généré
+  vers `assets/tailwind.css` (gitignoré) par `task css:build` **avant tout
+  build dx** (toujours passer par la Taskfile). Le scanner lit du texte brut :
+  les classes conditionnelles sont des **littéraux complets** (`match` qui
+  retourne deux chaînes entières), jamais `format!("bg-{c}-100")`.
+- **Client HTTP** (`api/client.rs`) : reqwest en `thread_local` (futurs
+  `!Send` en wasm — la cible desktop devra les rendre `Send`). Bearer +
+  `X-Org-Id` (lu depuis le signal `ORG`, jamais sur `/oauth2/*`), refresh 401
+  single-flight + retry unique, échec → expiration de session + toast.
+  **Messages d'erreur relayés tels quels** au client (detail > message >
+  bloc error/description), pas de traduction.
+- **Toasts** : `ToastMessage::Text` (message serveur relayé tel quel) vs
+  `ToastMessage::Key` (clé i18n traduite à l'affichage) — jamais de texte
+  UI en dur stocké dans un toast.
+- **État global** (`state/`) : `SESSION`, `ORG`, `TOASTS` en `GlobalSignal`.
+  Mutation depuis une fn : méthode intrinsèque `with_mut(&self)` (les setters
+  du trait Writable exigent `&mut`, impossible sur un static). L'org courante
+  est persistée (`pnex.org`) via `state::org::set` — seule voie d'écriture.
+- **Routing** : routes **statiques** uniquement ; le détail d'org est porté
+  par le signal `ORG` (les props de route ne redémarrent pas `use_resource`).
+  Pas de route `/login` : le shell rend `Login` à la place de l'Outlet
+  (parité `AuthWrapper` React). `WebHistory` fourni par défaut par dioxus-web.
+- **Login** : PKCE redirect uniquement (verifier/challenge S256, verifier en
+  sessionStorage, consommé au callback). Register/reset = `action=`
+  (`kc_action` Keycloak). Logout local (end-session Keycloak = durcissement
+  futur).
+
+
 
 - URLs **sans slash terminal** (convention Rust/Axum, assumée).
 - Endpoints préfixés par domaine (`/health/*`, puis `/api/...`, `/ws/...`).

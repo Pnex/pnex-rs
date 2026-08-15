@@ -90,8 +90,75 @@ actions ON DELETE (`SET NULL` sur nullable, `CASCADE` sur obligatoire).
       `dangerously_truncate` en test (le create/drop de base loco bute sur
       le pool — workaround), `.env.example` complété.
 
-**Reste Phase 3** : revue humaine, puis brancher le front Dioxus (login
-PKCE, sélecteur d'org) si intégré à cette phase.
+**Front Phase 3 (port de `pnex-ui` React) : EN COURS** — directives user :
+sélection de serveur **supprimée pour le web** (same-origin), URL serveur
+auto-hébergée « façon Bitwarden » **uniquement pour desktop/ios/android**
+(décision : architecturer seulement — cfg natif compilé, écran `ServerUrl`
+écrit non routé, build desktop = phase explicite ultérieure) ; **i18n
+obligatoire dès maintenant** (zéro libellé en dur, fr-FR + en-US) ; login =
+**PKCE redirect** (pas de form password).
+
+Commits faits (gates verts à chacun : `task check` natif+wasm32, `task test`,
+`task lint`, `task build:frontend`) :
+
+- [x] `Socle UI front : routeur Dioxus, Tailwind v4 et i18n fr-FR/en-US` —
+      routes statiques + callback OAuth en query segments ; Tailwind v4 via
+      `@tailwindcss/cli` (package.json dans le crate, `style/tailwind.css` →
+      `assets/tailwind.css` généré gitignoré, tâches `css:build`/`css:watch`,
+      step npm en CI) ; i18n Fluent (`dioxus-i18n`), locales embarquées,
+      résolution localStorage > navigator.language > en-US ; stockage
+      clé/valeur abstrait (web-sys localStorage/sessionStorage, mémoire en
+      natif) ; CORS dev-only :5151 dans development.yaml (dx serve)
+- [x] `DTO API phase 3 dans pnex-core` — TokenResponse, UserInfo/UserProfile,
+      OrgMembership/TierInfo/DeviceCount, OrgSummary/OrgDetail/OrgMember,
+      ProfilePatch, CreateOrg/UpdateOrg/AddMember/UpdateMember (rôles strings
+      minuscules), tests de désérialisation sur les formes réelles
+- [x] `Front : client HTTP, session, login PKCE, shell et toasts` — client
+      reqwest (URLs relatives, Bearer + X-Org-Id, refresh 401 **single-flight**
+      + retry unique, messages d'erreur relayés **tels quels** : detail >
+      message > bloc error, 204→None) ; PKCE S256 (vecteur RFC 7636 testé),
+      redirect `/api/v1/oauth2/sso` (action register/reset), callback
+      `/auth/callback` → échange → user-info → session ; session globale
+      Booting/LoggedOut/Authenticated (boot au start, langue du profil, org
+      restaurée/validée) ; shell complet (sidebar `Layout.tsx` portée, garde
+      de session = Login en place de l'Outlet, sélecteur d'org, toasts 5 s)
+- [x] `Backend : PATCH /api/v1/profile` — patch partiel, language normalisée
+      courte (en/fr), theme light/dark/auto, bornes = colonnes, 400 sur
+      invalide, profil créé aux défauts si absent ; 2 tests HTTP
+
+Constats techniques Dioxus 0.7.10 (vérifiés dans les sources, à retenir) :
+
+- `dioxus-web` fournit le **WebHistory par défaut** au launch (pas de
+  `RouterConfig::history()` — cette API n'existe pas en 0.7.10) ;
+- mutation d'un `GlobalSignal` depuis une fn : méthode intrinsèque
+  `with_mut(&self)` (les setters du trait Writable exigent `&mut`, impossible
+  sur un static) ; `SESSION.cloned()` pour lecture réactive ;
+- attribut SVG `viewBox` s'écrit `view_box` en rsx ;
+- `spawn` n'exige pas `Send` → futurs reqwest wasm (`!Send`) OK ; le client
+  vit en `thread_local` pour cette raison (la cible desktop devra rendre les
+  futurs `Send` — noté features.md) ;
+- `Link` ajoute `active_class` en plus de `class` (ordre CSS imprévisible) →
+  classes actives/inactives = littéraux complets calculés côté Rust.
+
+Reste front (ordre) :
+
+- [ ] page Organisations : liste/création/sélection + détail (membres, rôles,
+      rename, suppression, ajout par email) — `api/orgs.rs` déjà écrit
+- [ ] Dashboard sur données réelles `user-info` (device_count, orgs, tier,
+      by_type) + Profil (identité lecture, préférences PATCH, switcher FR/EN
+      persistant, change password → sso?action=reset, logout)
+- [ ] pages Devices/Builds/Catalog en empty-states « Phase 4/6 »
+- [ ] test de parité des clés fr-FR/en-US (.ftl)
+- [ ] docs : features.md (desktop = phase explicite, architecture préparée),
+      convention.md (conventions front), ce fichier
+- [ ] **e2e réel** (`task db:up && task dev` → :5150, Keycloak docker) :
+      login alice → dashboard ; switcher FR/EN + reload + PATCH en base ;
+      CRUD orgs avec bob (rôles, ≥1 owner, suppression, erreurs en toast) ;
+      changement d'org → refetch X-Org-Id réseau ; access_token corrompu →
+      refresh transparent ; refresh_token supprimé → session expirée ;
+      deep links + back/forward ; logout ; `task dev:hot` :5151 (CORS dev) ;
+      liens register/reset
+- [ ] push + revue humaine Phase 3 (backend + front ensemble)
 
 ## Anciennes phases (détail)
 
