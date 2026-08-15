@@ -65,3 +65,35 @@ role-owner = Propriétaire
 role-admin = Administrateur
 role-viewer = Observateur
 toast-saved = Modifications enregistrées
+
+# Tableau de bord
+dash-subtitle = Suivez vos appareils, organisations et abonnement
+dash-total-devices = Appareils au total
+dash-active-devices = Appareils actifs
+dash-orgs = Organisations
+dash-tier = Tier actuel
+dash-active-org = Organisation active
+dash-quotas = Capacités du tier
+dash-quota-sensor = Appareils capteurs
+dash-quota-actuator = Appareils actionneurs
+dash-quota-mixed = Appareils mixtes
+dash-by-type = Appareils par type
+dash-no-devices = Aucun appareil pour l'instant (Phase 4)
+
+# Profil
+profile-subtitle = Gérez les réglages et préférences de votre compte
+profile-identity = Informations de profil
+profile-username = Nom d'utilisateur
+profile-email = E-mail
+profile-keycloak-managed = L'identité est gérée par le serveur d'authentification (Keycloak).
+profile-preferences = Préférences
+profile-language = Langue
+profile-timezone = Fuseau horaire
+profile-date-format = Format de date
+profile-theme = Thème
+profile-theme-light = Clair
+profile-theme-dark = Sombre
+profile-theme-auto = Automatique
+profile-account = Compte
+profile-change-password = Changer de mot de passe
+profile-theme-note = Le thème est enregistré dans votre profil ; son application à l'interface arrive avec le mode sombre (phase ultérieure).

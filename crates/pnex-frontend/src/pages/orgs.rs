@@ -177,7 +177,7 @@ fn org_row(
 }
 
 /// Badge de rôle — classes littérales complètes (scan Tailwind).
-fn role_badge(role: &str) -> (&'static str, String) {
+pub fn role_badge(role: &str) -> (&'static str, String) {
     let label = match role {
         "owner" => t!("role-owner"),
         "admin" => t!("role-admin"),

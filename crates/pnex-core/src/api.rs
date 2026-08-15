@@ -40,7 +40,7 @@ pub struct UserInfo {
 }
 
 /// Bloc `profile` de `user-info` (préférences utilisateur).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UserProfile {
     pub language: String,
     pub timezone: String,
