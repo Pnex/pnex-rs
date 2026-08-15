@@ -25,14 +25,17 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.3
     container_name: pnex-keycloak
-    command: start-dev
+    command: start-dev --import-realm
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
       KC_HTTP_ENABLED: "true"
       KC_HOSTNAME_STRICT: "false"
-      # Dev only : realm H2 embarqué, pas de persistance externe nécessaire
-      # tant qu'on n'a pas de configuration de realm à conserver (Phase 3).
+    volumes:
+      # Realm de dev versionné (pnex-realm : client public pnex + users de
+      # test) — importé si le realm n'existe pas encore (H2 dev = perdu à
+      # chaque recréation du conteneur, donc réimporté automatiquement).
+      - ./deploy/keycloak:/opt/keycloak/data/import
     ports:
       - "8080:8080"
 

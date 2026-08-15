@@ -56,10 +56,42 @@ pures (plus de SQL brut pour les FK), test d'invariants étendu aux
 actions ON DELETE (`SET NULL` sur nullable, `CASCADE` sur obligatoire).
 
 **Phase 3 — Auth & multi-tenant : EN COURS** (branche
-`phase-3-auth-multitenant`) : Keycloak JWT (JWKS, PKCE S256), JIT
-provisioning users + org personnelle owner + tier Free, endpoints
-organisations/memberships, middleware de scoping org, tests d'isolation
-tenant.
+`phase-3-auth-multitenant`).
+
+- [x] Realm Keycloak provisionné par fichier versionné
+      (`deploy/keycloak/pnex-realm-realm.json`, import compose
+      `--import-realm`) : client public `pnex` (PKCE S256 forcé, redirect
+      localhost:*), users de test alice/bob. Recréation auto du conteneur =
+      réimport.
+- [x] Validation JWT locale par JWKS (`auth/jwks.rs`) : RS256, `iss` + `aud`
+      explicites, exp, refresh sur `kid` inconnu — durcissements des failles
+      Django n°3-4 (rapport Phase 0 §3). CORS inutile par conception (front
+      same-origin servi par le backend) — faille n°1 réglée. Refus par
+      défaut via extracteur `AuthUser` — faille n°2.
+- [x] JIT provisioning transactionnel (`auth/provisioning.rs`) : users +
+      user_profiles + org personnelle owner + tier Free, idempotent,
+      re-vérification en transaction (concurrence), resync email/nom.
+- [x] Extracteur `OrgContext` (`X-Org-Id` + membership) : point d'ancrage
+      du scoping multi-tenant (remplace le filtrage par-viewset Django).
+- [x] Proxy OAuth2 (`controllers/oauth2.rs`) : token (password +
+      authorization_code+PKCE), refresh, sso 302 (`kc_action`), erreurs
+      Keycloak relayées telles quelles.
+- [x] `GET /api/v1/user-info` : identité + profil + orgs (rôle, tier) +
+      device_count agrégé sur les orgs du user.
+- [x] Endpoints organisations (`controllers/orgs.rs`) : CRUD + membres
+      (ajout par email d'un user déjà provisionné, rôles lowercase,
+      garde-fous : ≥1 owner, suppression = owner et dernier membre).
+- [x] Tests : `auth_jwks.rs` (7 tests : iss/aud/exp/RS256/kid/malformé
+      contre mock JWKS — pas de Keycloak en CI) et `tenant_isolation.rs`
+      (4 tests HTTP : 401 sans token, JIT, isolation croisée alice/bob,
+      rôles viewer/owner + garde-fous).
+- [x] Configs : `settings.keycloak` (base_url/realm/client_id) dans les 3
+      configs, `auto_migrate` en dev/test, hook `truncate` +
+      `dangerously_truncate` en test (le create/drop de base loco bute sur
+      le pool — workaround), `.env.example` complété.
+
+**Reste Phase 3** : revue humaine, puis brancher le front Dioxus (login
+PKCE, sélecteur d'org) si intégré à cette phase.
 
 ## Anciennes phases (détail)
 
@@ -114,6 +146,12 @@ tenant.
 
 ## Journal
 
+- 2026-08-15 : **Phase 3 — auth & multi-tenant implémentée** (branche
+  `phase-3-auth-multitenant`) : realm Keycloak versionné, validation JWKS
+  durcie, JIT provisioning (user + profil + org owner/Free), extracteurs
+  AuthUser/OrgContext, proxy OAuth2, user-info, CRUD orgs+membres, 11 tests
+  (JWKS mock + isolation tenant HTTP). Vérifié bout-en-bout contre Keycloak
+  réel (alice/bob). En attente de revue humaine.
 - 2026-08-15 : **Phase 2 — couche données implémentée** (branche
   `phase-2-modeles-db`) : compose PG 18 + Keycloak 26.3, SeaORM branché,
   5 migrations, 27 entities, modèle sans copies, /health/ready réel,
