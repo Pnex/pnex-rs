@@ -19,6 +19,7 @@
 | D9 | **État live device → PostgreSQL** (table `device_state` : upsert + purge périodique type TTL logique) — cohérent « que du PG » ; Redis db 2 supprimé | Phase 5 |
 | D10 | **Tokens DRF supprimés** — auth user = JWT Keycloak uniquement ; devices = DeviceToken (inchangés) | Phase 3 |
 | D11 | **Abonnement/tier attaché à l'org** (pas au user) — cohérent avec D2 : plusieurs users par org, un abonnement par org | Phase 2/3 |
+| D12 | **Timestamps télémétrie** : (a) le backend accepte un timestamp device **optionnel** ; s'il est absent → **dt d'ingestion serveur** (trace garantie) ; (b) provenance stockée dans le doc (`ts_source: "device"\|"server"`), `_timestamp` OpenObserve = ingestion → deux traces ; (c) v2 du protocole d'ingestion versionné avec timestamp optionnel (comme D8 pour le chiffrement) ; (d) SNTP côté ESP32 recommandé (trivial, connecté internet) — indépendant de la migration, mais nécessaire pour le buffering hors-ligne futur (mesures différées correctement datées) | Phase 5 |
 
 ## 1. Apps Django → destins
 
