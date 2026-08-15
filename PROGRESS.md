@@ -144,6 +144,12 @@ Constats techniques Dioxus 0.7.10 (vérifiés dans les sources, à retenir) :
   appel, l'échange PKCE du callback). `api_base()` résout donc l'origine de
   la page (`location.origin`) quand `PNEX_API_BASE_URL` n'est pas fixé à la
   compilation — same-origin conservé, URLs absolues ;
+- **Provisioning : re-liaison par email quand le `sub` Keycloak change**
+  (realm réimporté, migration d'IdP) — sinon l'INSERT violait
+  `users_email_key` (unique) → 500 sur user-info. Test
+  `sub_change_avec_meme_email_relie_le_meme_user`. En contre-mesure dev,
+  alice/bob ont des UUIDs pinés dans le realm (une recréation du conteneur
+  Keycloak ne churne plus les identités) ;
 - **Keycloak : les jokers de `redirectUris` ne sont valides qu'en FIN
   d'URI** — `http://localhost:*/*` (joker sur le port) ne matche rien →
   « Invalid parameter: redirect_uri » au login. Realm corrigé en URIs

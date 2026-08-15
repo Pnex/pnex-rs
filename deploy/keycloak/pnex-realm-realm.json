@@ -45,7 +45,8 @@
           "value": "alice-pass",
           "temporary": false
         }
-      ]
+      ],
+      "id": "00000000-0000-4000-8000-00000000000a"
     },
     {
       "username": "bob",
@@ -60,7 +61,8 @@
           "value": "bob-pass",
           "temporary": false
         }
-      ]
+      ],
+      "id": "00000000-0000-4000-8000-00000000000b"
     }
   ]
 }

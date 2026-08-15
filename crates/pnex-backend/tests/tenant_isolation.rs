@@ -12,6 +12,7 @@ use pnex_backend::app::App;
 use serial_test::serial;
 
 struct Env {
+    base: String,
     alice: String,
     bob: String,
 }
@@ -29,6 +30,7 @@ where
     unsafe { std::env::set_var("KEYCLOAK_URL", &base) };
     let config: RequestConfig = RequestConfigBuilder::new().build();
     let env = Env {
+        base: base.clone(),
         alice: common::valid_token(
             &base,
             "00000000-0000-0000-0000-00000000000a",
@@ -122,6 +124,41 @@ async fn jit_provisioning_cree_user_profil_et_org_owner() {
         let body2: serde_json::Value = res2.json();
         assert_eq!(body2["id"], body["id"]);
         assert_eq!(body2["orgs"].as_array().unwrap().len(), 1);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn sub_change_avec_meme_email_relie_le_meme_user() {
+    with_app(|server, env| async move {
+        // alice se provisionne avec un premier sub.
+        let sub_a = "00000000-0000-0000-0000-0000000000aa";
+        let token_a = common::valid_token(&env.base, sub_a, "alice", "relink@example.com");
+        let first: serde_json::Value = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", bearer(&token_a))
+            .await
+            .json();
+        assert_eq!(first["username"], "alice");
+
+        // Le même email revient avec un sub inconnu (realm Keycloak
+        // réimporté, migration d'IdP) : la ligne users doit être RE-LIÉE,
+        // pas dupliquée (email unique) — même id, mêmes orgs.
+        let sub_b = "00000000-0000-0000-0000-0000000000ab";
+        let token_b = common::valid_token(&env.base, sub_b, "alice", "relink@example.com");
+        let second = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", bearer(&token_b))
+            .await;
+        assert_eq!(second.status_code(), 200, "re-liaison par email, pas de 500");
+        let second: serde_json::Value = second.json();
+        assert_eq!(second["id"], first["id"], "même utilisateur re-lie");
+        assert_eq!(
+            second["orgs"].as_array().unwrap().len(),
+            first["orgs"].as_array().unwrap().len(),
+            "aucune org personnelle dupliquée"
+        );
     })
     .await;
 }
