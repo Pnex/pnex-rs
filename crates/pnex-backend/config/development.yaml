@@ -1,5 +1,5 @@
 # pnex-server — configuration développement
-# (scaffold Loco v1, adapté : front Dioxus servi en statique depuis ../frontend/dist)
+# (scaffold Loco v1, adapté : front Dioxus servi en statique depuis ../pnex-frontend/dist)
 
 logger:
   enable: true
@@ -20,8 +20,8 @@ server:
       precompressed: false
       folder:
         uri: "/"
-        path: "../frontend/dist"
-      fallback: "../frontend/dist/index.html"
+        path: "../pnex-frontend/dist"
+      fallback: "../pnex-frontend/dist/index.html"
 
 workers:
   # Phase 6 : passage en queue PostgreSQL (décision §3 migration.md).

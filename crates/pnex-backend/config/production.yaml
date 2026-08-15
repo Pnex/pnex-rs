@@ -19,8 +19,8 @@ server:
       precompressed: true
       folder:
         uri: "/"
-        path: "../frontend/dist"
-      fallback: "../frontend/dist/index.html"
+        path: "../pnex-frontend/dist"
+      fallback: "../pnex-frontend/dist/index.html"
 
 workers:
   mode: BackgroundAsync

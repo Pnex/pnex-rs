@@ -3,8 +3,8 @@
 **/*.rs.bk
 
 # Frontend (Dioxus / dx)
-crates/frontend/dist
-crates/frontend/.dx
+crates/pnex-frontend/dist
+crates/pnex-frontend/.dx
 **/dist/
 
 # Environnement & secrets

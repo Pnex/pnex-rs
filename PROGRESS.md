@@ -29,9 +29,11 @@
       `dx build --release` OK, serving bout-en-bout (live/ready/front/wasm 200)
 - [x] Remote GitHub `Pnex/pnex-rs` ajouté (opensource) — push au fil de l'eau
 
-**Divergences assumées vs Django** (Phase 1) : service renommé
-`og-device-hub` → `pnex-server` ; health **sans slash terminal** ; `/health/ready`
-sans DB (Phase 2 branchera le check PG, le « cache » deviendra OpenObserve).
+**Positionnement** (2026-08-15) : Django était un POC jamais passé en prod —
+**la version Rust devient la version officielle**. Pas de parité cosmétique
+(slashs terminaux, etc.) ; seuls les contrats fonctionnels Phase 0
+(`docs/contracts/`) doivent être conservés. Conventions centralisées dans
+`convention.md`. `/health/ready` reste honnête sans DB jusqu'en Phase 2.
 
 **Prochaine : revue humaine Phase 1**, puis Phase 2 — Modèles & DB
 (PostgreSQL, SeaORM, organisations D2, seed fixtures YAML).
@@ -50,7 +52,8 @@ sans DB (Phase 2 branchera le check PG, le « cache » deviendra OpenObserve).
 | 2026-08-15 | **Revue de phase — points tranchés (D4-D12)** : firmware sur **MinIO/S3 conservé** (abstraction `ArtifactStore`, PG écarté — binaires RTOS/OS complets trop lourds pour PG/backups/WAL) ; rétention artifacts = structure maintenant, gestion plus tard ; rapports = conception détaillée repoussée mais exigences verrouillées (**provisioning/cron OpenObserve par API** via service account, génération live en **tâche backend** anti-saturation) ; **ChaCha20 nu à parité** + versionnement protocole pour upgrade AEAD ultérieur ; **état live device → Postgres** (`device_state` upsert + purge TTL) ; **tokens DRF supprimés** (JWT Keycloak seul, DeviceToken inchangés) ; **abonnement attaché à l'org** ; **timestamps télémétrie** (D12) : fallback dt d'ingestion + provenance, protocole v2 avec timestamp optionnel, SNTP recommandé côté ESP32 | Revue humaine 2026-08-15 — l'utilisateur a validé l'ensemble et délégué les choix restants ; D12 ajouté suite à sa question sur les devices sans NTP |
 | 2026-08-15 | **Renommage service** : `og-device-hub` (héritage Django) → `pnex-server` — l'ancien nom n'est plus utilisé | Demandé par l'utilisateur 2026-08-15 |
 | 2026-08-15 | **Remote GitHub `Pnex/pnex-rs`** (opensource) ajouté — commits poussés au fil de l'eau | Demandé par l'utilisateur 2026-08-15 |
-| 2026-08-15 | **Phase 1 technique** : scaffold Loco v1.0 (`--db none --bg async --assets clientside`) puis trim ; dx 0.7.10 n'a pas de flag `--project` (il faut `cd` dans le crate) et sort dans `target/dx/...` (le Taskfile copie vers `crates/frontend/dist`) ; assets via macro `asset!()` (manganis hash les fichiers), pas via `[web.resource].style` | Constaté à l'implémentation |
+| 2026-08-15 | **Phase 1 technique** : scaffold Loco v1.0 (`--db none --bg async --assets clientside`) puis trim ; dx 0.7.10 n'a pas de flag `--project` (il faut `cd` dans le crate) et sort dans `target/dx/...` (le Taskfile copie vers `crates/pnex-frontend/dist`) ; assets via macro `asset!()` (manganis hash les fichiers), pas via `[web.resource].style` | Constaté à l'implémentation |
+| 2026-08-15 | **Rust = version officielle** (Django = POC jamais en prod) : divergences cosmétiques non à justifier, contrats fonctionnels Phase 0 conservés ; conventions (noms, chemins, git, API) centralisées dans `convention.md` ; répertoires des crates renommés `crates/pnex-*` pour correspondre aux noms de packages | Demandé par l'utilisateur 2026-08-15 |
 
 ## Principes directeurs (confirmés par l'utilisateur)
 
@@ -60,6 +63,11 @@ sans DB (Phase 2 branchera le check PG, le « cache » deviendra OpenObserve).
 
 ## Journal
 
+- 2026-08-15 : **Nettoyage Phase 1 (noms & positionnement)** : répertoires des
+  crates renommés `crates/pnex-*` (= noms de packages), toutes les références
+  alignées (Cargo.toml, Taskfile, CI, configs Loco, .gitignore, doc) ;
+  `convention.md` créé (noms, chemins, git, API, langue) ; repositionnement
+  « Rust = version officielle, Django = POC » — slashs terminaux Django abandonnés.
 - 2026-08-15 : **Phase 1 — squelette du workspace implémenté** (branche
   `phase-1-squelette`) : 4 crates, Loco v1.0 minimal (health), Dioxus 0.7 CSR,
   Taskfile, CI, doc features. Chaîne vérifiée vert-de-vert (check natif+wasm,

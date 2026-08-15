@@ -43,9 +43,9 @@ jobs:
         run: cargo install dioxus-cli --locked
       - name: Build front (release)
         run: |
-          cd crates/frontend
+          cd crates/pnex-frontend
           dx build --platform web --release
       - name: Copier vers dist (format servi par Loco)
         run: |
-          rm -rf crates/frontend/dist
-          cp -r target/dx/pnex-frontend/release/web/public crates/frontend/dist
+          rm -rf crates/pnex-frontend/dist
+          cp -r target/dx/pnex-frontend/release/web/public crates/pnex-frontend/dist

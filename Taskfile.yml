@@ -1,7 +1,7 @@
 version: '3'
 
 env:
-  FRONT_DIST: crates/frontend/dist
+  FRONT_DIST: crates/pnex-frontend/dist
   DX_OUT: target/dx/pnex-frontend
 
 tasks:
@@ -13,16 +13,16 @@ tasks:
   # ---------- Build ----------
 
   build:frontend:
-    desc: Build le front Dioxus (wasm, release) et le copie dans crates/frontend/dist
+    desc: Build le front Dioxus (wasm, release) et le copie dans crates/pnex-frontend/dist
     sources:
-      - crates/frontend/src/**/*
-      - crates/frontend/assets/**/*
-      - crates/frontend/Dioxus.toml
-      - crates/core/src/**/*
+      - crates/pnex-frontend/src/**/*
+      - crates/pnex-frontend/assets/**/*
+      - crates/pnex-frontend/Dioxus.toml
+      - crates/pnex-core/src/**/*
     generates:
       - "{{.FRONT_DIST}}/**/*"
     cmds:
-      - cd crates/frontend && dx build --platform web --release
+      - cd crates/pnex-frontend && dx build --platform web --release
       - rm -rf {{.FRONT_DIST}}
       - cp -r {{.DX_OUT}}/release/web/public {{.FRONT_DIST}}
 
@@ -52,28 +52,28 @@ tasks:
       - task: dev:backend
 
   dev:frontend:
-    desc: Build debug du front vers crates/frontend/dist (pour serving Loco)
+    desc: Build debug du front vers crates/pnex-frontend/dist (pour serving Loco)
     sources:
-      - crates/frontend/src/**/*
-      - crates/frontend/assets/**/*
-      - crates/frontend/Dioxus.toml
-      - crates/core/src/**/*
+      - crates/pnex-frontend/src/**/*
+      - crates/pnex-frontend/assets/**/*
+      - crates/pnex-frontend/Dioxus.toml
+      - crates/pnex-core/src/**/*
     generates:
       - "{{.FRONT_DIST}}/**/*"
     cmds:
-      - cd crates/frontend && dx build --platform web
+      - cd crates/pnex-frontend && dx build --platform web
       - rm -rf {{.FRONT_DIST}}
       - cp -r {{.DX_OUT}}/debug/web/public {{.FRONT_DIST}}
 
   dev:backend:
     desc: Démarre le backend Loco (hot-rebuild via bacon ou relance manuelle)
     cmds:
-      - cd crates/backend && cargo run --bin pnex-server -- start
+      - cd crates/pnex-backend && cargo run --bin pnex-server -- start
 
   dev:hot:
     desc: Boucle de dev front avec hot-reload (dx serve) — API Loco sur :5150 à part
     cmds:
-      - cd crates/frontend && dx serve --platform web
+      - cd crates/pnex-frontend && dx serve --platform web
 
   # ---------- Qualité ----------
 

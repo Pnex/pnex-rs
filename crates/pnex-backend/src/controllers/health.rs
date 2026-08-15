@@ -1,8 +1,8 @@
-//! Probes santé — parité Django `health/views.py`, service renommé `pnex-server`.
+//! Probes santé — inspirés du Django POC, mais la version Rust fait désormais
+//! référence (pas de parité cosmétique, ex. slashs terminaux).
 //!
 //! Phase 1 : `/health/live` complet ; `/health/ready` honnête sans DB
 //! (le check PG arrive en Phase 2, le check cache deviendra OpenObserve).
-//! Divergence assumée : pas de slash terminal (Django servait `/health/live/`).
 
 use loco_rs::prelude::*;
 use pnex_core::{HealthLive, HealthReady, SERVICE_NAME};

@@ -46,9 +46,9 @@ web = ["dioxus/web"]
 ## Serving du front
 
 - `dx build --platform web` sort dans `target/dx/pnex-frontend/<mode>/web/public` ;
-- le Taskfile copie ce dossier vers `crates/frontend/dist` (gitignoré) ;
-- Loco sert `crates/frontend/dist` via le middleware `static` avec fallback
-  `index.html` (SPA) — cf. `crates/backend/config/*.yaml`.
+- le Taskfile copie ce dossier vers `crates/pnex-frontend/dist` (gitignoré) ;
+- Loco sert `crates/pnex-frontend/dist` via le middleware `static` avec fallback
+  `index.html` (SPA) — cf. `crates/pnex-backend/config/*.yaml`.
 
 En boucle de dev front pure : `task dev:hot` (dx serve, hot-reload, port dx).
 Le backend tourne à part (`task dev:backend`, port 5150).
