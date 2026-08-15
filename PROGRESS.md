@@ -139,6 +139,11 @@ Constats techniques Dioxus 0.7.10 (vérifiés dans les sources, à retenir) :
   futurs `Send` — noté features.md) ;
 - `Link` ajoute `active_class` en plus de `class` (ordre CSS imprévisible) →
   classes actives/inactives = littéraux complets calculés côté Rust ;
+- **reqwest exige des URLs absolues, même en wasm** : `Url::parse` refuse
+  les chemins seuls (RelativeUrlWithoutBase → « builder error » au premier
+  appel, l'échange PKCE du callback). `api_base()` résout donc l'origine de
+  la page (`location.origin`) quand `PNEX_API_BASE_URL` n'est pas fixé à la
+  compilation — same-origin conservé, URLs absolues ;
 - **Keycloak : les jokers de `redirectUris` ne sont valides qu'en FIN
   d'URI** — `http://localhost:*/*` (joker sur le port) ne matche rien →
   « Invalid parameter: redirect_uri » au login. Realm corrigé en URIs
