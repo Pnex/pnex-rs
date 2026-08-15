@@ -8,7 +8,9 @@
 
 **Phase 1 — Squelette du workspace : TERMINÉE** (merge sur `main`, CI verte).
 
-**Phase 2 — Couche données : EN COURS** (branche `phase-2-modeles-db`).
+**Phase 2 — Couche données : TERMINÉE** (merge sur `main`, CI verte —
+inclut les corrections post-revue : refs `?` loco-rs pures et allègement
+fluides).
 
 - [x] `compose.yaml` : PostgreSQL 18-alpine + Keycloak 26.3 (start-dev),
       volume PG sur `/var/lib/postgresql` (convention PG 18+), `.env.example`
@@ -53,8 +55,11 @@ sans FK `SET NULL`. Migrations 000001/000003 réécrites avec les refs `?`
 pures (plus de SQL brut pour les FK), test d'invariants étendu aux
 actions ON DELETE (`SET NULL` sur nullable, `CASCADE` sur obligatoire).
 
-**Prochaine : revue humaine Phase 2**, puis Phase 3 — Auth & multi-tenant
-(Keycloak JWT, JIT provisioning users, middleware scoping org).
+**Phase 3 — Auth & multi-tenant : EN COURS** (branche
+`phase-3-auth-multitenant`) : Keycloak JWT (JWKS, PKCE S256), JIT
+provisioning users + org personnelle owner + tier Free, endpoints
+organisations/memberships, middleware de scoping org, tests d'isolation
+tenant.
 
 ## Anciennes phases (détail)
 
