@@ -9,7 +9,12 @@ default-run = "pnex-server"
 
 [dependencies]
 pnex-core = { workspace = true }
-loco-rs = { version = "1.0", default-features = false, features = ["cli"] }
+pnex-migration = { path = "migration" }
+loco-rs = { version = "1.0", default-features = false, features = [
+  "cli",
+  "with-db",
+] }
+sea-orm = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { version = "1.45", default-features = false, features = [
@@ -21,6 +26,9 @@ tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 regex = { version = "1.11" }
 axum-extra = { version = "0.10", features = ["form"] }
+chrono = { workspace = true }
+uuid = { workspace = true, features = ["v5"] }
+serde_yaml = "0.9"
 
 [[bin]]
 name = "pnex-server"

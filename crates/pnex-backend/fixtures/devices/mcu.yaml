@@ -1,0 +1,11 @@
+- name: "esp32-wroom-32"
+  soc: "esp32"
+  details: {"no": "details"}
+
+- name: "esp8266"
+  soc: "esp8266"
+  details: {"no": "details"}
+
+- name: "esp32-c3"
+  soc: "esp32-c3"
+  details: {"no": "details"}

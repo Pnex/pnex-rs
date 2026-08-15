@@ -1,0 +1,24 @@
+[package]
+name = "pnex-migration"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "pnex_migration"
+path = "src/lib.rs"
+
+[dependencies]
+loco-rs = { workspace = true }
+
+[dependencies.sea-orm-migration]
+version = "2.0"
+features = [
+  "runtime-tokio-rustls", # ASYNC_RUNTIME
+  "sqlx-postgres",       # DATABASE_DRIVER
+]
+
+[dev-dependencies]
+tokio = { version = "1.45", features = ["rt", "macros"] }
+sea-orm = { version = "2.0", features = ["sqlx-postgres", "runtime-tokio-rustls"] }

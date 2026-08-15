@@ -1,11 +1,14 @@
 //! Probes santé — inspirés du Django POC, mais la version Rust fait désormais
 //! référence (pas de parité cosmétique, ex. slashs terminaux).
 //!
-//! Phase 1 : `/health/live` complet ; `/health/ready` honnête sans DB
-//! (le check PG arrive en Phase 2, le check cache deviendra OpenObserve).
+//! `/health/ready` exécute un `SELECT 1` réel sur le pool SeaORM depuis la
+//! Phase 2. Le « cache » Django (Redis, non critique) deviendra un check
+//! OpenObserve en Phase 5.
 
+use axum::extract::State;
 use loco_rs::prelude::*;
 use pnex_core::{HealthLive, HealthReady, SERVICE_NAME};
+use sea_orm::ConnectionTrait;
 
 #[debug_handler]
 async fn live() -> Result<Response> {
@@ -16,12 +19,19 @@ async fn live() -> Result<Response> {
 }
 
 #[debug_handler]
-async fn ready() -> Result<Response> {
-    // Phase 2 branchera le check PostgreSQL ; le « cache » Django (Redis,
-    // non critique dans la réponse ready) devient OpenObserve en Phase 5.
+async fn ready(State(ctx): State<AppContext>) -> Result<Response> {
+    let database = match ctx.db.execute_unprepared("SELECT 1").await {
+        Ok(_) => "ok".to_string(),
+        Err(err) => {
+            tracing::error!(%err, "health/ready : check PostgreSQL échoué");
+            "error".to_string()
+        }
+    };
+
     format::json(HealthReady {
-        status: "ok".to_string(),
-        database: "unconfigured".to_string(),
+        status: if database == "ok" { "ok" } else { "degraded" }.to_string(),
+        database,
+        // Phase 5 : check OpenObserve (remplace le check Redis Django).
         cache: "not-applicable".to_string(),
     })
 }

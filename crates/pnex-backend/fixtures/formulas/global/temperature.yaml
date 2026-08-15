@@ -1,0 +1,45 @@
+# Global Temperature Formulas
+# These formulas are available for all users to import
+
+- global_id: "temperature_difference_v1"
+  name: "Temperature Difference"
+  version: 1
+  category: "temperature"
+  tags: ["delta", "difference", "heat"]
+  description: "Calculate temperature difference: temp_hot - temp_cold"
+  expression: "temp_hot - temp_cold"
+  result_unit: "°C"
+  formula_type: "simple_math"
+  data_sources:
+    - variable_name: "temp_hot"
+      measurement_name: "temperature"
+      suggested_unit: "°C"
+      description: "Hot temperature measurement"
+    - variable_name: "temp_cold"
+      measurement_name: "temperature"
+      suggested_unit: "°C"
+      description: "Cold temperature measurement"
+
+- global_id: "heat_transfer_v1"
+  name: "Heat Transfer"
+  version: 1
+  category: "temperature"
+  tags: ["heat", "transfer", "energy"]
+  description: "Calculate heat transfer: mass_flow * specific_heat * delta_temp"
+  expression: "mass_flow * specific_heat * delta_temp"
+  result_unit: "kW"
+  formula_type: "simple_math"
+  data_sources:
+    - variable_name: "mass_flow"
+      measurement_name: "flow_rate"
+      suggested_unit: "kg/s"
+      description: "Mass flow rate"
+    - variable_name: "specific_heat"
+      measurement_name: "specific_heat"
+      suggested_unit: "kJ/(kg·K)"
+      description: "Specific heat capacity"
+    - variable_name: "delta_temp"
+      measurement_name: "temperature_difference"
+      suggested_unit: "K"
+      description: "Temperature difference"
+

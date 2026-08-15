@@ -1,0 +1,5 @@
+- name: "sensor"
+- name: "actuator"
+- name: "mixed"
+- name: "wifi_mesh"
+- name: "power_supply"

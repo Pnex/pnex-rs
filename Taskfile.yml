@@ -75,6 +75,42 @@ tasks:
     cmds:
       - cd crates/pnex-frontend && dx serve --platform web
 
+  # ---------- Base de données ----------
+
+  db:up:
+    desc: Démarre PostgreSQL 18 + Keycloak 26 (docker compose)
+    cmds:
+      - docker compose up -d
+
+  db:down:
+    desc: Stoppe les conteneurs (données conservées dans le volume)
+    cmds:
+      - docker compose stop
+
+  db:migrate:
+    desc: Applique les migrations SeaORM (développement)
+    cmds:
+      - cd crates/pnex-backend && cargo loco db migrate
+
+  db:entities:
+    desc: Régénère les entities SeaORM depuis le schéma (après migration)
+    cmds:
+      - cd crates/pnex-backend && cargo loco db entities
+
+  db:seed:
+    desc: Seed idempotent du catalogue global (fixtures YAML Django)
+    cmds:
+      - cd crates/pnex-backend && cargo loco task seed
+
+  db:reset:
+    desc: Recrée la base from scratch : drop, migrate, seed
+    cmds:
+      - |
+        docker exec pnex-postgres psql -U pnex -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'pnex' AND pid <> pg_backend_pid()" || true
+        docker exec pnex-postgres psql -U pnex -d postgres -c "DROP DATABASE IF EXISTS pnex" -c "CREATE DATABASE pnex"
+      - task: db:migrate
+      - task: db:seed
+
   # ---------- Qualité ----------
 
   lint:

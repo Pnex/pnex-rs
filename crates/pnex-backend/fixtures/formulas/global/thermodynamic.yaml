@@ -1,0 +1,217 @@
+# Global Thermodynamic Formulas
+# These formulas use CoolProp for fluid property calculations
+# Users can import these formulas and configure their own data sources
+
+- global_id: "enthalpy_calculation_v1"
+  name: "Enthalpy (h) - Water"
+  version: 1
+  category: "thermodynamic"
+  tags: ["enthalpy", "fluid", "thermodynamic", "coolprop", "water"]
+  description: "Calculate specific enthalpy of Water using CoolProp: h = PropsSI('H', 'T', temperature, 'P', pressure, 'Water'). Users can change 'Water' to any fluid from the fluid catalog."
+  expression: "PropsSI('H', 'T', temperature, 'P', pressure, 'Water')"
+  result_unit: "J/kg"
+  formula_type: "fluid_property"
+  data_sources:
+    - variable_name: "temperature"
+      measurement_name: "temperature"
+      suggested_unit: "K"
+      description: "Temperature in Kelvin"
+    - variable_name: "pressure"
+      measurement_name: "pressure"
+      suggested_unit: "Pa"
+      description: "Pressure in Pascal"
+
+- global_id: "entropy_calculation_v1"
+  name: "Entropy (s) - Water"
+  version: 1
+  category: "thermodynamic"
+  tags: ["entropy", "fluid", "thermodynamic", "coolprop", "water"]
+  description: "Calculate specific entropy of Water using CoolProp: s = PropsSI('S', 'T', temperature, 'P', pressure, 'Water'). Users can change 'Water' to any fluid from the fluid catalog."
+  expression: "PropsSI('S', 'T', temperature, 'P', pressure, 'Water')"
+  result_unit: "J/(kg·K)"
+  formula_type: "fluid_property"
+  data_sources:
+    - variable_name: "temperature"
+      measurement_name: "temperature"
+      suggested_unit: "K"
+      description: "Temperature in Kelvin"
+    - variable_name: "pressure"
+      measurement_name: "pressure"
+      suggested_unit: "Pa"
+      description: "Pressure in Pascal"
+
+- global_id: "density_calculation_v1"
+  name: "Density (ρ)"
+  version: 1
+  category: "thermodynamic"
+  tags: ["density", "fluid", "thermodynamic", "coolprop"]
+  description: "Calculate density using CoolProp: ρ = PropsSI('D', 'T', temperature, 'P', pressure, fluid)"
+  expression: "PropsSI('D', 'T', temperature, 'P', pressure, fluid)"
+  result_unit: "kg/m³"
+  formula_type: "fluid_property"
+  data_sources:
+    - variable_name: "temperature"
+      measurement_name: "temperature"
+      suggested_unit: "K"
+      description: "Temperature in Kelvin"
+    - variable_name: "pressure"
+      measurement_name: "pressure"
+      suggested_unit: "Pa"
+      description: "Pressure in Pascal"
+    - variable_name: "fluid"
+      source_type: "fluid"
+      description: "Fluid selection for property calculation"
+
+- global_id: "internal_energy_calculation_v1"
+  name: "Internal Energy (u)"
+  version: 1
+  category: "thermodynamic"
+  tags: ["internal_energy", "fluid", "thermodynamic", "coolprop"]
+  description: "Calculate specific internal energy using CoolProp: u = PropsSI('U', 'T', temperature, 'P', pressure, fluid)"
+  expression: "PropsSI('U', 'T', temperature, 'P', pressure, fluid)"
+  result_unit: "J/kg"
+  formula_type: "fluid_property"
+  data_sources:
+    - variable_name: "temperature"
+      measurement_name: "temperature"
+      suggested_unit: "K"
+      description: "Temperature in Kelvin"
+    - variable_name: "pressure"
+      measurement_name: "pressure"
+      suggested_unit: "Pa"
+      description: "Pressure in Pascal"
+    - variable_name: "fluid"
+      source_type: "fluid"
+      description: "Fluid selection for property calculation"
+
+- global_id: "quality_calculation_v1"
+  name: "Vapor Quality (x)"
+  version: 1
+  category: "thermodynamic"
+  tags: ["quality", "vapor", "two-phase", "coolprop"]
+  description: "Calculate vapor quality using CoolProp: x = PropsSI('Q', 'T', temperature, 'P', pressure, fluid)"
+  expression: "PropsSI('Q', 'T', temperature, 'P', pressure, fluid)"
+  result_unit: ""
+  formula_type: "fluid_property"
+  data_sources:
+    - variable_name: "temperature"
+      measurement_name: "temperature"
+      suggested_unit: "K"
+      description: "Temperature in Kelvin"
+    - variable_name: "pressure"
+      measurement_name: "pressure"
+      suggested_unit: "Pa"
+      description: "Pressure in Pascal"
+    - variable_name: "fluid"
+      source_type: "fluid"
+      description: "Fluid selection for property calculation"
+
+- global_id: "specific_heat_cp_v1"
+  name: "Specific Heat at Constant Pressure (cp)"
+  version: 1
+  category: "thermodynamic"
+  tags: ["specific_heat", "cp", "fluid", "coolprop"]
+  description: "Calculate specific heat at constant pressure using CoolProp: cp = PropsSI('C', 'T', temperature, 'P', pressure, fluid)"
+  expression: "PropsSI('C', 'T', temperature, 'P', pressure, fluid)"
+  result_unit: "J/(kg·K)"
+  formula_type: "fluid_property"
+  data_sources:
+    - variable_name: "temperature"
+      measurement_name: "temperature"
+      suggested_unit: "K"
+      description: "Temperature in Kelvin"
+    - variable_name: "pressure"
+      measurement_name: "pressure"
+      suggested_unit: "Pa"
+      description: "Pressure in Pascal"
+    - variable_name: "fluid"
+      source_type: "fluid"
+      description: "Fluid selection for property calculation"
+
+- global_id: "specific_heat_cv_v1"
+  name: "Specific Heat at Constant Volume (cv)"
+  version: 1
+  category: "thermodynamic"
+  tags: ["specific_heat", "cv", "fluid", "coolprop"]
+  description: "Calculate specific heat at constant volume using CoolProp: cv = PropsSI('O', 'T', temperature, 'P', pressure, fluid)"
+  expression: "PropsSI('O', 'T', temperature, 'P', pressure, fluid)"
+  result_unit: "J/(kg·K)"
+  formula_type: "fluid_property"
+  data_sources:
+    - variable_name: "temperature"
+      measurement_name: "temperature"
+      suggested_unit: "K"
+      description: "Temperature in Kelvin"
+    - variable_name: "pressure"
+      measurement_name: "pressure"
+      suggested_unit: "Pa"
+      description: "Pressure in Pascal"
+    - variable_name: "fluid"
+      source_type: "fluid"
+      description: "Fluid selection for property calculation"
+
+- global_id: "speed_of_sound_v1"
+  name: "Speed of Sound (a)"
+  version: 1
+  category: "thermodynamic"
+  tags: ["speed_of_sound", "acoustic", "fluid", "coolprop"]
+  description: "Calculate speed of sound using CoolProp: a = PropsSI('A', 'T', temperature, 'P', pressure, fluid)"
+  expression: "PropsSI('A', 'T', temperature, 'P', pressure, fluid)"
+  result_unit: "m/s"
+  formula_type: "fluid_property"
+  data_sources:
+    - variable_name: "temperature"
+      measurement_name: "temperature"
+      suggested_unit: "K"
+      description: "Temperature in Kelvin"
+    - variable_name: "pressure"
+      measurement_name: "pressure"
+      suggested_unit: "Pa"
+      description: "Pressure in Pascal"
+    - variable_name: "fluid"
+      source_type: "fluid"
+      description: "Fluid selection for property calculation"
+
+- global_id: "viscosity_calculation_v1"
+  name: "Dynamic Viscosity (μ)"
+  version: 1
+  category: "thermodynamic"
+  tags: ["viscosity", "fluid", "transport", "coolprop"]
+  description: "Calculate dynamic viscosity using CoolProp: μ = PropsSI('V', 'T', temperature, 'P', pressure, fluid)"
+  expression: "PropsSI('V', 'T', temperature, 'P', pressure, fluid)"
+  result_unit: "Pa·s"
+  formula_type: "fluid_property"
+  data_sources:
+    - variable_name: "temperature"
+      measurement_name: "temperature"
+      suggested_unit: "K"
+      description: "Temperature in Kelvin"
+    - variable_name: "pressure"
+      measurement_name: "pressure"
+      suggested_unit: "Pa"
+      description: "Pressure in Pascal"
+    - variable_name: "fluid"
+      source_type: "fluid"
+      description: "Fluid selection for property calculation"
+
+- global_id: "thermal_conductivity_v1"
+  name: "Thermal Conductivity (k)"
+  version: 1
+  category: "thermodynamic"
+  tags: ["thermal_conductivity", "fluid", "transport", "coolprop"]
+  description: "Calculate thermal conductivity using CoolProp: k = PropsSI('L', 'T', temperature, 'P', pressure, fluid)"
+  expression: "PropsSI('L', 'T', temperature, 'P', pressure, fluid)"
+  result_unit: "W/(m·K)"
+  formula_type: "fluid_property"
+  data_sources:
+    - variable_name: "temperature"
+      measurement_name: "temperature"
+      suggested_unit: "K"
+      description: "Temperature in Kelvin"
+    - variable_name: "pressure"
+      measurement_name: "pressure"
+      suggested_unit: "Pa"
+      description: "Pressure in Pascal"
+    - variable_name: "fluid"
+      source_type: "fluid"
+      description: "Fluid selection for property calculation"
