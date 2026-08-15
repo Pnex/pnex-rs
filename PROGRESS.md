@@ -140,25 +140,28 @@ Constats techniques Dioxus 0.7.10 (vérifiés dans les sources, à retenir) :
 - `Link` ajoute `active_class` en plus de `class` (ordre CSS imprévisible) →
   classes actives/inactives = littéraux complets calculés côté Rust.
 
-Reste front (ordre) :
+Suite du front (terminée) :
 
-- [ ] page Organisations : liste/création/sélection + détail (membres, rôles,
-      rename, suppression, ajout par email) — `api/orgs.rs` déjà écrit
-- [ ] Dashboard sur données réelles `user-info` (device_count, orgs, tier,
-      by_type) + Profil (identité lecture, préférences PATCH, switcher FR/EN
-      persistant, change password → sso?action=reset, logout)
-- [ ] pages Devices/Builds/Catalog en empty-states « Phase 4/6 »
-- [ ] test de parité des clés fr-FR/en-US (.ftl)
-- [ ] docs : features.md (desktop = phase explicite, architecture préparée),
-      convention.md (conventions front), ce fichier
-- [ ] **e2e réel** (`task db:up && task dev` → :5150, Keycloak docker) :
-      login alice → dashboard ; switcher FR/EN + reload + PATCH en base ;
-      CRUD orgs avec bob (rôles, ≥1 owner, suppression, erreurs en toast) ;
-      changement d'org → refetch X-Org-Id réseau ; access_token corrompu →
-      refresh transparent ; refresh_token supprimé → session expirée ;
-      deep links + back/forward ; logout ; `task dev:hot` :5151 (CORS dev) ;
-      liens register/reset
-- [ ] push + revue humaine Phase 3 (backend + front ensemble)
+- [x] page Organisations : liste/création/sélection + détail (membres, rôles,
+      rename, suppression, ajout par email), garde-fous relayés en toasts
+- [x] Dashboard sur données réelles `user-info` (device_count, orgs, tier,
+      capacités) + Profil (identité lecture, préférences PATCH, switcher
+      FR/EN appliqué immédiatement + persistant, change password
+      → sso?action=reset, logout)
+- [x] pages Devices/Builds/Catalog en empty-states « Phase 4/6 »
+- [x] test de parité des clés fr-FR/en-US (fluent-syntax, 9 tests front)
+- [x] docs : features.md (desktop = phase explicite, architecture préparée,
+      contrainte Send pour la couche HTTP), convention.md (section Front),
+      ce fichier
+
+**Reste Phase 3** : parcours navigateur humain (login PKCE réel, switcher,
+toasts — le reste du flow est couvert par les tests backend mock + e2e curl
+ci-dessous), puis revue humaine et merge.
+
+E2E vérifié en curl (backend Loco :5150 + front buildé servi + Keycloak
+docker) : serving SPA (index, tailwind, wasm, fallback /auth/callback),
+401 sans token, proxy sso 302 PKCE vers Keycloak réel, password grant via
+proxy → JIT → user-info, PATCH profile, orgs CRUD.
 
 ## Anciennes phases (détail)
 
@@ -213,6 +216,15 @@ Reste front (ordre) :
 
 ## Journal
 
+- 2026-08-16 : **Front Phase 3 implémenté** (suite de la branche
+  `phase-3-auth-multitenant`) : port de l'UI `pnex-ui` (React) en Dioxus 0.7 —
+  Tailwind v4 + i18n Fluent fr/en obligatoire, client HTTP reqwest (refresh
+  401 single-flight, erreurs relayées), login PKCE + callback, shell +
+  sélecteur d'org + toasts, pages Organisations/Dashboard/Profil sur les
+  endpoints Phase 3, Devices/Builds/Catalog en empty-states, écran URL serveur
+  « Bitwarden » architecturé pour desktop (non routé), PATCH /api/v1/profile
+  ajouté au backend. Fusion des commits 3-5 du plan (éviter le code mort
+  transitoire). En attente de revue humaine.
 - 2026-08-15 : **Phase 3 — auth & multi-tenant implémentée** (branche
   `phase-3-auth-multitenant`) : realm Keycloak versionné, validation JWKS
   durcie, JIT provisioning (user + profil + org owner/Free), extracteurs

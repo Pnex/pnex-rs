@@ -23,6 +23,8 @@ tasks:
     generates:
       - "{{.FRONT_DIST}}/**/*"
     cmds:
+      # Vide la sortie dx (les assets hashés des builds précédents s'y accumulent)
+      - rm -rf {{.DX_OUT}}/release/web/public
       - cd crates/pnex-frontend && dx build --platform web --release
       - rm -rf {{.FRONT_DIST}}
       - cp -r {{.DX_OUT}}/release/web/public {{.FRONT_DIST}}
@@ -77,6 +79,7 @@ tasks:
     generates:
       - "{{.FRONT_DIST}}/**/*"
     cmds:
+      - rm -rf {{.DX_OUT}}/debug/web/public
       - cd crates/pnex-frontend && dx build --platform web
       - rm -rf {{.FRONT_DIST}}
       - cp -r {{.DX_OUT}}/debug/web/public {{.FRONT_DIST}}
