@@ -1,0 +1,28 @@
+# pnex-server — configuration développement
+# (scaffold Loco v1, adapté : front Dioxus servi en statique depuis ../pnex-frontend/dist)
+
+logger:
+  enable: true
+  pretty_backtrace: true
+  level: debug
+  format: compact
+
+server:
+  port: 5150
+  binding: localhost
+  host: http://localhost
+  middlewares:
+    fallback:
+      enable: false
+    static:
+      enable: true
+      must_exist: true
+      precompressed: false
+      folder:
+        uri: "/"
+        path: "../pnex-frontend/dist"
+      fallback: "../pnex-frontend/dist/index.html"
+
+workers:
+  # Phase 6 : passage en queue PostgreSQL (décision §3 migration.md).
+  mode: BackgroundAsync

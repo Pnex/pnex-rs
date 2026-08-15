@@ -1,0 +1,26 @@
+# pnex-server — configuration production (K8s/GitOps, secrets via SOPS/age)
+
+logger:
+  enable: true
+  pretty_backtrace: false
+  level: info
+  format: json
+
+server:
+  port: 5150
+  binding: 0.0.0.0
+  host: http://localhost
+  middlewares:
+    fallback:
+      enable: false
+    static:
+      enable: true
+      must_exist: true
+      precompressed: true
+      folder:
+        uri: "/"
+        path: "../pnex-frontend/dist"
+      fallback: "../pnex-frontend/dist/index.html"
+
+workers:
+  mode: BackgroundAsync

@@ -1,0 +1,10 @@
+[package]
+name = "pnex-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Types partagés PNEX — compile en natif et wasm32, aucune dépendance native"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
