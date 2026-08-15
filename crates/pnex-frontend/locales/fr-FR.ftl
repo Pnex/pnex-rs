@@ -97,3 +97,12 @@ profile-theme-auto = Automatique
 profile-account = Compte
 profile-change-password = Changer de mot de passe
 profile-theme-note = Le thème est enregistré dans votre profil ; son application à l'interface arrive avec le mode sombre (phase ultérieure).
+
+# Pages en attente de phase
+empty-phase = Arrive en phase { $phase }
+empty-devices-title = Gestion des appareils
+empty-devices-message = L'API des appareils arrive à la phase suivante — enregistrement, données temps réel et métadonnées suivront.
+empty-builds-title = Build firmware
+empty-builds-message = Les builds firmware et leur statut en direct arrivent avec le worker de build intégré.
+empty-catalog-title = Catalogue d'appareils
+empty-catalog-message = Le catalogue des appareils prédéfinis (cartes, capacités) arrive avec l'API des appareils.

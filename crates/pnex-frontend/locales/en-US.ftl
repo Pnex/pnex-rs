@@ -97,3 +97,12 @@ profile-theme-auto = Auto
 profile-account = Account
 profile-change-password = Change password
 profile-theme-note = The theme is stored in your profile; its application to the interface comes with the dark mode (later phase).
+
+# Pages en attente de phase
+empty-phase = Comes in phase { $phase }
+empty-devices-title = Device management
+empty-devices-message = The device API lands in the next phase — registration, live data and metadata will follow.
+empty-builds-title = Firmware build
+empty-builds-message = Firmware builds and their live status arrive with the in-house build worker.
+empty-catalog-title = Device catalog
+empty-catalog-message = The catalog of predefined devices (boards, capabilities) lands with the devices API.

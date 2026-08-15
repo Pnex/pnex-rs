@@ -87,3 +87,34 @@ pub fn set_locale(tag: &str) {
     }
     crate::storage::local().set(crate::storage::KEY_LOCALE, tag);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `t!` panique sur une clé absente de la langue courante : les deux
+    /// locales doivent définir exactement les mêmes clés.
+    fn keys(source: &'static str) -> Vec<String> {
+        let resource = fluent_syntax::parser::parse(source).expect("fichier .ftl valide");
+        resource
+            .body
+            .iter()
+            .filter_map(|entry| match entry {
+                fluent_syntax::ast::Entry::Message(message) => Some(message.id.name.to_string()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn parite_cles_fr_en() {
+        let mut en = keys(include_str!("../locales/en-US.ftl"));
+        let mut fr = keys(include_str!("../locales/fr-FR.ftl"));
+        en.sort();
+        fr.sort();
+        assert_eq!(
+            en, fr,
+            "fr-FR et en-US doivent définir exactement les mêmes clés"
+        );
+    }
+}

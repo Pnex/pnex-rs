@@ -4,7 +4,22 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 
+use crate::components::empty_state::{EmptyState, cpu_icon};
+
 #[component]
 pub fn Devices() -> Element {
-    rsx! { h1 { class: "text-3xl font-bold text-gray-900", {t!("nav-devices")} } }
+    rsx! {
+        div { class: "p-6",
+            div { class: "mb-8",
+                h1 { class: "text-3xl font-bold text-gray-900", {t!("nav-devices")} }
+                p { class: "text-gray-600 mt-2", {t!("empty-devices-message")} }
+            }
+            EmptyState {
+                icon: cpu_icon(),
+                title: t!("empty-devices-title"),
+                message: t!("empty-devices-message"),
+                phase: "4".to_string(),
+            }
+        }
+    }
 }

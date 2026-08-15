@@ -33,6 +33,10 @@ getrandom = "0.2"
 # TLS natif pour la future cible desktop (URL serveur auto-hébergée https).
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
+[dev-dependencies]
+# Parse les .ftl pour le test de parité des clés fr-FR/en-US.
+fluent-syntax = "0.11"
+
 # CSR web uniquement. ⚠️ PAS de feature fullstack/ssr/server-fn : le serveur
 # est Loco (Axum), pas le runtime Dioxus — les deux servings Axum entrent en
 # collision (piège documenté dans docs/architecture/features.md).
