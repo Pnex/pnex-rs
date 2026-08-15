@@ -2,16 +2,37 @@
 //! multi-tenant : le profil reste par utilisateur, l'abonnement est porté par
 //! les organisations (D11). `device_count` agrège sur les orgs dont l'utilisateur
 //! est membre (les devices sont scoping org depuis la Phase 2).
+//!
+//! `PATCH /api/v1/profile` — préférences du profil (langue, timezone, format
+//! de date, thème) : consommé par la page Profil et le switcher de langue du
+//! front.
 
 use axum::extract::State;
 use loco_rs::prelude::*;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use serde::Deserialize;
 
 use crate::auth::AuthUser;
 use crate::models::_entities::{
     device_registries, device_types, organization_members, organizations, predefined_devices,
-    subscription_tiers, user_profiles,
+    sea_orm_active_enums::UiTheme, subscription_tiers, user_profiles,
 };
+
+/// Bloc `profile` tel qu'exposé par `GET /user-info` et `PATCH /profile`
+/// (forme unique).
+fn profile_json(profile: &user_profiles::Model) -> serde_json::Value {
+    serde_json::json!({
+        "language": profile.language,
+        "timezone": profile.timezone,
+        "date_format": profile.date_format,
+        "theme": profile.theme,
+        "preferences": profile.preferences,
+        "grafana_url": profile.grafana_url,
+        "llm_endpoint_openapi_compatible": profile.llm_endpoint_openapi_compatible,
+        "llm_token": profile.llm_token,
+        "llm_model": profile.llm_model,
+    })
+}
 
 pub async fn user_info(
     State(ctx): State<AppContext>,
@@ -110,17 +131,7 @@ pub async fn user_info(
         "username": auth.claims.preferred_username,
         "email": user.email,
         "full_name": user.full_name,
-        "profile": profile.map(|p| serde_json::json!({
-            "language": p.language,
-            "timezone": p.timezone,
-            "date_format": p.date_format,
-            "theme": p.theme,
-            "preferences": p.preferences,
-            "grafana_url": p.grafana_url,
-            "llm_endpoint_openapi_compatible": p.llm_endpoint_openapi_compatible,
-            "llm_token": p.llm_token,
-            "llm_model": p.llm_model,
-        })),
+        "profile": profile.as_ref().map(profile_json),
         "orgs": orgs,
         "device_count": {
             "total": total,
@@ -131,8 +142,138 @@ pub async fn user_info(
     format::json(body)
 }
 
+/// Corps accepté par `PATCH /api/v1/profile` (DTO partagé `pnex-core`).
+#[derive(Deserialize, Default)]
+pub struct ProfilePatch {
+    pub language: Option<String>,
+    pub timezone: Option<String>,
+    pub date_format: Option<String>,
+    pub theme: Option<String>,
+}
+
+/// Langue acceptée (formes courtes UI normalisées en stockage) : en, fr.
+fn normalize_language(input: &str) -> Option<String> {
+    match input.to_ascii_lowercase().as_str() {
+        "en" | "en-us" => Some("en".into()),
+        "fr" | "fr-fr" => Some("fr".into()),
+        _ => None,
+    }
+}
+
+/// Thème accepté (minuscules, parité string_value SeaORM).
+fn parse_theme(input: &str) -> Option<UiTheme> {
+    match input {
+        "light" => Some(UiTheme::Light),
+        "dark" => Some(UiTheme::Dark),
+        "auto" => Some(UiTheme::Auto),
+        _ => None,
+    }
+}
+
+/// `PATCH /api/v1/profile` — met à jour les préférences du profil de
+/// l'utilisateur authentifié. Champs fournis uniquement, valeurs invalides →
+/// 400 (message français), renvoie le bloc `profile` à jour.
+async fn update_profile(
+    State(ctx): State<AppContext>,
+    auth: AuthUser,
+    Json(patch): Json<ProfilePatch>,
+) -> Result<Response> {
+    if patch.language.is_none()
+        && patch.timezone.is_none()
+        && patch.date_format.is_none()
+        && patch.theme.is_none()
+    {
+        return Err(Error::BadRequest(
+            "au moins un champ est requis (language, timezone, date_format, theme)".into(),
+        ));
+    }
+
+    let language = match patch.language.as_deref() {
+        None => None,
+        Some(raw) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return Err(Error::BadRequest("language ne peut pas être vide".into()));
+            }
+            Some(
+                normalize_language(trimmed)
+                    .ok_or_else(|| Error::BadRequest("language non supportée (en, fr)".into()))?,
+            )
+        }
+    };
+    let timezone = match patch.timezone.as_deref() {
+        None => None,
+        Some(raw) => {
+            let trimmed = raw.trim();
+            // Bornes = colonnes (timezone 50, date_format 20).
+            if trimmed.is_empty() || trimmed.len() > 50 {
+                return Err(Error::BadRequest("timezone invalide".into()));
+            }
+            Some(trimmed.to_string())
+        }
+    };
+    let date_format = match patch.date_format.as_deref() {
+        None => None,
+        Some(raw) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() || trimmed.len() > 20 {
+                return Err(Error::BadRequest("date_format invalide".into()));
+            }
+            Some(trimmed.to_string())
+        }
+    };
+    let theme = match patch.theme.as_deref() {
+        None => None,
+        Some(raw) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return Err(Error::BadRequest("theme ne peut pas être vide".into()));
+            }
+            Some(
+                parse_theme(trimmed)
+                    .ok_or_else(|| Error::BadRequest("theme invalide (light, dark, auto)".into()))?,
+            )
+        }
+    };
+
+    // Le profil est créé par le JIT provisioning ; par robustesse on le crée
+    // avec les défauts s'il manque (ordre d'appels en test, reprise de données).
+    let existing = user_profiles::Entity::find()
+        .filter(user_profiles::Column::UserId.eq(auth.user.id))
+        .one(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    let profile = match existing {
+        Some(model) => model,
+        None => user_profiles::ActiveModel {
+            user_id: sea_orm::Set(auth.user.id),
+            ..Default::default()
+        }
+        .insert(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?,
+    };
+
+    let mut active: user_profiles::ActiveModel = profile.into();
+    if let Some(language) = language {
+        active.language = sea_orm::Set(language);
+    }
+    if let Some(timezone) = timezone {
+        active.timezone = sea_orm::Set(timezone);
+    }
+    if let Some(date_format) = date_format {
+        active.date_format = sea_orm::Set(Some(date_format));
+    }
+    if let Some(theme) = theme {
+        active.theme = sea_orm::Set(theme);
+    }
+    let updated = active.update(&ctx.db).await.map_err(|_| Error::InternalServerError)?;
+    format::json(profile_json(&updated))
+}
+
 pub fn routes() -> Routes {
     Routes::new()
         .prefix("/api/v1")
         .add("/user-info", get(user_info))
+        .add("/profile", patch(update_profile))
 }
