@@ -138,7 +138,11 @@ Constats techniques Dioxus 0.7.10 (vérifiés dans les sources, à retenir) :
   vit en `thread_local` pour cette raison (la cible desktop devra rendre les
   futurs `Send` — noté features.md) ;
 - `Link` ajoute `active_class` en plus de `class` (ordre CSS imprévisible) →
-  classes actives/inactives = littéraux complets calculés côté Rust.
+  classes actives/inactives = littéraux complets calculés côté Rust ;
+- **Keycloak : les jokers de `redirectUris` ne sont valides qu'en FIN
+  d'URI** — `http://localhost:*/*` (joker sur le port) ne matche rien →
+  « Invalid parameter: redirect_uri » au login. Realm corrigé en URIs
+  explicites (5150 backend, 5151 dev hot, localhost + 127.0.0.1).
 
 Suite du front (terminée) :
 
