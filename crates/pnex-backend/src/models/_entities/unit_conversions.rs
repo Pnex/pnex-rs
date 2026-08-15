@@ -2,16 +2,15 @@
 
 use super::sea_orm_active_enums::ConversionKind;
 use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "unit_conversions")]
 pub struct Model {
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
     #[sea_orm(primary_key)]
     pub id: i64,
-    #[sea_orm(unique_key = "uniq_unit_conversions_org_units")]
-    pub org_id: Option<i64>,
     pub name: String,
     #[sea_orm(unique_key = "uniq_unit_conversions_predefined_units")]
     pub from_unit: String,
@@ -33,6 +32,8 @@ pub struct Model {
     #[sea_orm(column_type = "JsonBinary", nullable)]
     pub tags: Option<Json>,
     pub import_count: i32,
+    #[sea_orm(unique_key = "uniq_unit_conversions_org_units")]
+    pub org_id: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -60,5 +61,3 @@ impl Related<super::organizations::Entity> for Entity {
         Relation::Organizations.def()
     }
 }
-
-impl ActiveModelBehavior for ActiveModel {}

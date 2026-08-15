@@ -2,16 +2,15 @@
 
 use super::sea_orm_active_enums::FormulaKind;
 use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "formulas")]
 pub struct Model {
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
     #[sea_orm(primary_key)]
     pub id: i64,
-    pub org_id: Option<i64>,
-    pub fluid_property_group_id: Option<i64>,
     pub name: String,
     #[sea_orm(column_type = "Text", nullable)]
     pub description: Option<String>,
@@ -33,18 +32,11 @@ pub struct Model {
     pub compute_on_event: bool,
     pub cache_ttl: i32,
     pub last_computed_at: Option<DateTimeWithTimeZone>,
+    pub org_id: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(
-        belongs_to = "super::fluid_property_groups::Entity",
-        from = "Column::FluidPropertyGroupId",
-        to = "super::fluid_property_groups::Column::Id",
-        on_update = "NoAction",
-        on_delete = "SetNull"
-    )]
-    FluidPropertyGroups,
     #[sea_orm(has_many = "super::formula_data_sources::Entity")]
     FormulaDataSources,
     #[sea_orm(
@@ -55,12 +47,6 @@ pub enum Relation {
         on_delete = "SetNull"
     )]
     Organizations,
-}
-
-impl Related<super::fluid_property_groups::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::FluidPropertyGroups.def()
-    }
 }
 
 impl Related<super::formula_data_sources::Entity> for Entity {
@@ -74,5 +60,3 @@ impl Related<super::organizations::Entity> for Entity {
         Relation::Organizations.def()
     }
 }
-
-impl ActiveModelBehavior for ActiveModel {}

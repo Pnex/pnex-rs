@@ -103,7 +103,7 @@ tasks:
       - cd crates/pnex-backend && cargo loco task seed
 
   db:reset:
-    desc: Recrée la base from scratch : drop, migrate, seed
+    desc: "Recrée la base from scratch : drop, migrate, seed"
     cmds:
       - |
         docker exec pnex-postgres psql -U pnex -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'pnex' AND pid <> pg_backend_pid()" || true

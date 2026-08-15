@@ -49,12 +49,10 @@ impl MigrationTrait for Migration {
             &[
                 ("id", ColType::PkAuto),
                 ("name", ColType::StringLenUniq(255)),
-                // D11 : l'abonnement est porté par l'org, pas par le user.
-                // FK posée en SQL brut (SET NULL) : le suffixe `?` des refs
-                // loco-rs 1.0.1 ne fonctionne pas (voir tests/schema_invariants.rs).
-                ("subscription_tier_id", ColType::BigIntegerNull),
             ],
-            &[],
+            // D11 : l'abonnement est porté par l'org, pas par le user.
+            // Référence nullable (`?`) : colonne nullable + ON DELETE SET NULL.
+            &[("subscription_tiers?", "subscription_tier_id")],
         )
         .await?;
 
@@ -101,8 +99,7 @@ impl MigrationTrait for Migration {
             .execute_unprepared(
                 "CREATE UNIQUE INDEX uniq_users_keycloak_uuid ON users (keycloak_uuid) WHERE keycloak_uuid IS NOT NULL;
                  CREATE UNIQUE INDEX uniq_organization_members_org_user ON organization_members (org_id, user_id);
-                 CREATE UNIQUE INDEX uniq_user_profiles_user ON user_profiles (user_id);
-                 ALTER TABLE organizations ADD CONSTRAINT fk_organizations_subscription_tier_id_to_subscription_tiers FOREIGN KEY (subscription_tier_id) REFERENCES subscription_tiers (id) ON DELETE SET NULL;",
+                 CREATE UNIQUE INDEX uniq_user_profiles_user ON user_profiles (user_id);",
             )
             .await?;
         Ok(())

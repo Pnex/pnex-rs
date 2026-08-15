@@ -3,16 +3,15 @@
 use super::sea_orm_active_enums::ConstantKind;
 use super::sea_orm_active_enums::DataSourceKind;
 use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "formula_data_sources")]
 pub struct Model {
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
     #[sea_orm(primary_key)]
     pub id: i64,
-    pub device_registry_id: Option<i64>,
-    pub unit_conversion_id: Option<i64>,
     pub source_type: DataSourceKind,
     pub measurement_name: Option<String>,
     pub constant_type: Option<ConstantKind>,
@@ -23,6 +22,8 @@ pub struct Model {
     pub sort_order: i32,
     #[sea_orm(unique_key = "uniq_formula_data_sources_formula_var")]
     pub formula_id: i64,
+    pub device_registry_id: Option<i64>,
+    pub unit_conversion_id: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -70,5 +71,3 @@ impl Related<super::unit_conversions::Entity> for Entity {
         Relation::UnitConversions.def()
     }
 }
-
-impl ActiveModelBehavior for ActiveModel {}
