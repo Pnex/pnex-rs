@@ -14,6 +14,7 @@ tasks:
 
   build:frontend:
     desc: Build le front Dioxus (wasm, release) et le copie dans crates/pnex-frontend/dist
+    deps: [css:build]
     sources:
       - crates/pnex-frontend/src/**/*
       - crates/pnex-frontend/assets/**/*
@@ -25,6 +26,20 @@ tasks:
       - cd crates/pnex-frontend && dx build --platform web --release
       - rm -rf {{.FRONT_DIST}}
       - cp -r {{.DX_OUT}}/release/web/public {{.FRONT_DIST}}
+
+  # ---------- CSS (Tailwind v4) ----------
+
+  css:build:
+    desc: Génère crates/pnex-frontend/assets/tailwind.css (requis avant tout build dx)
+    dir: crates/pnex-frontend
+    cmds:
+      - npm run css:build
+
+  css:watch:
+    desc: Regénère le CSS Tailwind à la volée (à lancer à côté de dev:hot)
+    dir: crates/pnex-frontend
+    cmds:
+      - npm run css:watch
 
   build:
     desc: Build complet (front + workspace natif)
@@ -53,6 +68,7 @@ tasks:
 
   dev:frontend:
     desc: Build debug du front vers crates/pnex-frontend/dist (pour serving Loco)
+    deps: [css:build]
     sources:
       - crates/pnex-frontend/src/**/*
       - crates/pnex-frontend/assets/**/*
@@ -71,9 +87,20 @@ tasks:
       - cd crates/pnex-backend && cargo run --bin pnex-server -- start
 
   dev:hot:
-    desc: Boucle de dev front avec hot-reload (dx serve) — API Loco sur :5150 à part
+    desc: Dev front hot-reload (dx :5151 + Tailwind watch) — API Loco sur :5150 à part
+    deps: [css:watch]
     cmds:
-      - cd crates/pnex-frontend && dx serve --platform web
+      - task: dev:hot:dx
+
+  dev:hot:dx:
+    desc: dx serve avec hot-reload, API pointée sur le backend Loco (:5150)
+    env:
+      # En dev hot le front est servi par dx (:5151), pas par Loco : l'URL de
+      # base de l'API devient explicite (seam cf. api/config.rs). CORS dev
+      # côté Loco cf. config/development.yaml.
+      PNEX_API_BASE_URL: http://localhost:5150
+    cmds:
+      - cd crates/pnex-frontend && dx serve --platform web --port 5151
 
   # ---------- Base de données ----------
 

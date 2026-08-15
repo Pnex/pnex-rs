@@ -6,13 +6,41 @@ license.workspace = true
 description = "Web UI PNEX — Dioxus 0.7, CSR pur, servi en statique par le backend Loco"
 
 [dependencies]
-dioxus = { version = "0.7" }
+dioxus = { version = "0.7", features = ["router"] }
 pnex-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+# Client HTTP unique pour wasm ET natif : sur wasm32, reqwest délègue au
+# fetch() du navigateur ; côté natif il servira la cible desktop (URL serveur
+# configurable — cf. api/config.rs). gloo-net écarté (wasm uniquement).
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+# PKCE : challenge S256 (RFC 7636) — pur Rust, compile en wasm32.
+sha2 = "0.10"
+base64 = "0.22"
+futures = "0.3"
+# Timer wasm+natif (auto-dismiss des toasts ; futurs pings WS).
+futures-timer = "3"
+# i18n Fluent (fr-FR + en-US), réactif via le signal I18n de Dioxus.
+dioxus-i18n = "0.5"
 
-# CSR web uniquement. Les features `desktop`/`mobile` ne seront jamais activées.
-# ⚠️ PAS de feature fullstack/ssr/server-fn : le serveur est Loco (Axum), pas
-# le runtime Dioxus — les deux servings Axum entrent en collision (piège
-# documenté dans docs/architecture/features.md).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["Window", "Location", "Storage", "Navigator"] }
+getrandom = { version = "0.2", features = ["js"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+getrandom = "0.2"
+# TLS natif pour la future cible desktop (URL serveur auto-hébergée https).
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+
+# CSR web uniquement. ⚠️ PAS de feature fullstack/ssr/server-fn : le serveur
+# est Loco (Axum), pas le runtime Dioxus — les deux servings Axum entrent en
+# collision (piège documenté dans docs/architecture/features.md).
+#
+# desktop/mobile : décision explicite de phase ultérieure — l'architecture est
+# préparée (api/config.rs pour l'URL du serveur, storage natif) mais les
+# features ne sont pas activées ici.
 [features]
 default = ["web"]
 web = ["dioxus/web"]
+router = ["dioxus/router"]

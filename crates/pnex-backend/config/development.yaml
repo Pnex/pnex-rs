@@ -22,6 +22,23 @@ server:
         uri: "/"
         path: "../pnex-frontend/dist"
       fallback: "../pnex-frontend/dist/index.html"
+    # CORS DEV UNIQUEMENT : `task dev:hot` sert le front via dx sur :5151
+    # (origine différente du backend :5150). En prod le front est servi par
+    # le backend (same-origin) — jamais de CORS hors développement.
+    cors:
+      enable: true
+      allow_origins:
+        - "http://localhost:5151"
+      allow_headers:
+        - "Content-Type"
+        - "Authorization"
+        - "X-Org-Id"
+      allow_methods:
+        - "GET"
+        - "POST"
+        - "PATCH"
+        - "DELETE"
+        - "OPTIONS"
 
 workers:
   # Phase 6 : passage en queue PostgreSQL (décision §3 migration.md).
