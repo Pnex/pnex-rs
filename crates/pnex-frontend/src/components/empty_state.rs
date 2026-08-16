@@ -1,10 +1,7 @@
-//! Empty-state « page en attente de phase » — les pages non encore portées
-//! (Builds : Phase 6 firmware).
+//! Empty-state « page en attente de phase » — les pages non encore portées.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-
-use crate::components::icons;
 
 #[component]
 pub fn EmptyState(icon: Element, title: String, message: String, phase: String) -> Element {
@@ -22,9 +19,4 @@ pub fn EmptyState(icon: Element, title: String, message: String, phase: String) 
             }
         }
     }
-}
-
-/// Icônes courantes des empty-states (passées en prop d'`EmptyState`).
-pub fn wrench_icon() -> Element {
-    rsx! { icons::Wrench { class: "h-8 w-8 text-gray-400" } }
 }

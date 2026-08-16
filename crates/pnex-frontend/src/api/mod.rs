@@ -2,6 +2,7 @@
 //! refresh 401 single-flight, messages d'erreur relayés tels quels.
 
 pub mod auth;
+pub mod builds;
 pub mod client;
 pub mod config;
 pub mod devices;

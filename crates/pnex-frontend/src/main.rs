@@ -13,6 +13,7 @@ mod i18n;
 mod pages;
 mod state;
 mod storage;
+mod util;
 
 use crate::app::Route;
 use dioxus::prelude::*;

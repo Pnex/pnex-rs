@@ -41,18 +41,9 @@ fn next_id() -> u64 {
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
-/// Attente portable : `futures_timer::Delay` panique sur wasm32
-/// (`Instant::now()` → « time not implemented on this platform ») —
-/// `gloo-timers` (setTimeout) côté navigateur.
-async fn sleep(duration: Duration) {
-    #[cfg(target_arch = "wasm32")]
-    gloo_timers::future::TimeoutFuture::new(
-        duration.as_millis().min(u32::MAX as u128) as u32,
-    )
-    .await;
-    #[cfg(not(target_arch = "wasm32"))]
-    futures_timer::Delay::new(duration).await;
-}
+/// Attente portable — déplacée vers `crate::util` (réutilisée par le
+/// polling des builds) ; alias local pour la lisibilité.
+use crate::util::sleep;
 
 /// Affiche un toast (auto-dismiss 5 s).
 pub fn show(kind: ToastKind, message: ToastMessage) {

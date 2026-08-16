@@ -101,8 +101,30 @@ profile-theme-note = Le thème est enregistré dans votre profil ; son applicati
 
 # Pages en attente de phase
 empty-phase = Arrive en phase { $phase }
-empty-builds-title = Build firmware
-empty-builds-message = Les builds firmware et leur statut en direct arrivent avec le worker de build intégré.
+
+# Builds firmware (Phase 6)
+builds-subtitle = Compilez le firmware de vos appareils avec leurs secrets de provisioning et téléchargez le binaire.
+builds-form-title = Nouveau build
+builds-field-device = Appareil
+builds-field-device-placeholder = Choisir un appareil…
+builds-field-ssid = SSID WiFi
+builds-field-wifi-password = Mot de passe WiFi
+builds-field-server = Serveur PNEX (hôte)
+builds-submit = Compiler le firmware
+builds-form-incomplete = Choisissez un appareil et renseignez le SSID et le serveur.
+builds-launched = Build lancé — le suivi se fait dans la liste ci-dessous.
+builds-col-device = Appareil
+builds-col-phase = Phase
+builds-col-date = Dernière activité
+builds-col-actions = Actions
+builds-phase-queued = En file
+builds-phase-running = En cours
+builds-phase-succeeded = Réussi
+builds-phase-failed = Échoué
+builds-download = Télécharger
+builds-delete = Supprimer
+builds-deleted = Record de build supprimé.
+builds-empty = Aucun build pour l'instant — enregistrez un appareil puis compilez son firmware.
 empty-catalog-title = Catalogue d'appareils
 empty-catalog-message = Le catalogue des appareils prédéfinis (cartes, capacités) arrive avec l'API des appareils.
 catalog-subtitle = Parcourez et découvrez les appareils disponibles pour vos projets
