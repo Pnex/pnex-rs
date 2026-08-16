@@ -1,9 +1,9 @@
 //! Devices — registre scopé org (D2) + catalogue global partagé.
 //!
-//! Parité des contrats Django (`docs/phase0/api-rest.md` §4) :
+//! Contrats (`docs/phase0/api-rest.md` §4, pagination D14) :
 //! - `GET /api/v1/devices` : filtres `device_type` (« all » = no-op),
-//!   `capability`, `device_id` (exact), `active` (true|false) — liste non
-//!   paginée ;
+//!   `capability`, `device_id` (exact), `active` (true|false) + pagination
+//!   `limit`/`offset` → enveloppe `{count, next, previous, results}` ;
 //! - `POST` : réactivation implicite d'un device inactif connu (200) ou 400
 //!   « already registered and active », quota tier par type, sinon création
 //!   inactive + DeviceToken auto (token urlsafe 32 octets + clé ChaCha20 en
@@ -20,7 +20,10 @@
 //!   logs) ;
 //! - catalogue `predefined-devices` authentifié (Django : AllowAny) ;
 //! - filtre `revision` fonctionnel (Django filtrait `version=`, champ
-//!   inexistant → 500).
+//!   inexistant → 500) ;
+//! - **pagination obligatoire** (D14) : listes paginées en SQL (catalogue :
+//!   SeaORM `count`/`offset`/`limit` ; registre org : filtre puis découpage,
+//!   ensemble borné par les quotas tier).
 
 use axum::extract::{Path, Query, RawQuery, State};
 use axum::http::StatusCode;
@@ -29,12 +32,15 @@ use base64::Engine as _;
 use loco_rs::prelude::*;
 use rand::RngCore;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ExprTrait, QueryFilter,
-    QueryOrder, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ExprTrait, PaginatorTrait,
+    QueryFilter, QueryOrder, QuerySelect, QueryTrait, Set, TransactionTrait,
 };
+use sea_orm::sea_query::Expr;
+use sea_orm::sea_query::extension::postgres::PgExpr;
 use serde::Deserialize;
 use std::collections::HashMap;
 
+use super::pagination;
 use crate::auth::{AuthUser, OrgContext};
 use crate::models::_entities::{
     build_records, device_capabilities, device_registries, device_tokens, device_types,
@@ -281,14 +287,24 @@ struct ListDevicesQuery {
     device_id: Option<String>,
     /// « true » | « false » ; autre/absent = tous.
     active: Option<String>,
+    /// Recherche OU sur device_id, modèle (nom/pretty/description), type et
+    /// capacités.
+    search: Option<String>,
+    limit: Option<String>,
+    offset: Option<String>,
 }
 
-/// `GET /api/v1/devices` — devices de l'org, non paginé.
+/// `GET /api/v1/devices` — devices de l'org, paginés (D14).
+///
+/// Les filtres `capability`/`search` portent sur la M2M du modèle :
+/// l'ensemble org est borné par les quotas tier, on filtre en Rust puis on
+/// découpe — le count reflète bien le total filtré.
 async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Query(q): Query<ListDevicesQuery>,
 ) -> Result<Response> {
+    let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
     let rows = device_registries::Entity::find()
         .filter(device_registries::Column::OrgId.eq(org.org.id))
         .find_also_related(predefined_devices::Entity)
@@ -347,6 +363,33 @@ async fn list(
             Some("false") if device.active => continue,
             _ => {}
         }
+        // Recherche multi-champs : device_id, modèle (nom/pretty/description),
+        // type, capacités — OU insensible à la casse.
+        let term = q
+            .search
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_lowercase);
+        if let Some(term) = &term {
+            let pd_caps = caps.get(&predefined.id).map(Vec::as_slice).unwrap_or(&[]);
+            let text_hit = pagination::rust_search_match(
+                &Some(term.clone()),
+                &[
+                    device.device_id.as_str(),
+                    predefined.name.as_str(),
+                    predefined.pretty_name.as_deref().unwrap_or_default(),
+                    predefined.description.as_deref().unwrap_or_default(),
+                    type_name,
+                ],
+            );
+            let cap_hit = pd_caps
+                .iter()
+                .any(|cap| str::contains(&cap.name.to_lowercase(), term.as_str()));
+            if !text_hit && !cap_hit {
+                continue;
+            }
+        }
         let token = tokens.get(&device.id);
         devices.push(device_dto(
             device,
@@ -356,7 +399,33 @@ async fn list(
             token,
         ));
     }
-    format::json(devices)
+
+    // Découpage après filtrage + liens conservant les filtres actifs.
+    let count = devices.len() as i64;
+    let (skip, take) = page.slice(devices.len());
+    let mut filters = Vec::new();
+    if let Some(t) = q.device_type.as_ref().filter(|t| t.as_str() != "all") {
+        filters.push(("device_type".to_string(), t.clone()));
+    }
+    if let Some(c) = &q.capability {
+        filters.push(("capability".to_string(), c.clone()));
+    }
+    if let Some(v) = &q.device_id {
+        filters.push(("device_id".to_string(), v.clone()));
+    }
+    if let Some(v) = &q.active {
+        filters.push(("active".to_string(), v.clone()));
+    }
+    if let Some(v) = &q.search {
+        filters.push(("search".to_string(), v.clone()));
+    }
+    format::json(pagination::envelope(
+        "/api/v1/devices",
+        &filters,
+        page,
+        count,
+        devices.into_iter().skip(skip).take(take).collect(),
+    ))
 }
 
 /// `POST /api/v1/devices` — création inactive + token, ou réactivation.
@@ -571,14 +640,20 @@ async fn delete(
 struct CapabilityQuery {
     /// input | output | input_output (autre valeur → liste vide).
     mode: Option<String>,
+    /// Recherche OU sur le nom.
+    search: Option<String>,
+    limit: Option<String>,
+    offset: Option<String>,
 }
 
-/// `GET /api/v1/device-capabilities` — catalogue, authentifié.
+/// `GET /api/v1/device-capabilities` — catalogue, authentifié. Table de
+/// référence bornée : le filtre `mode` reste en Rust, puis découpage.
 async fn capabilities(
     State(ctx): State<AppContext>,
     _auth: AuthUser,
     Query(q): Query<CapabilityQuery>,
 ) -> Result<Response> {
+    let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
     let rows = device_capabilities::Entity::find()
         .order_by_asc(device_capabilities::Column::Id)
         .all(&ctx.db)
@@ -590,6 +665,7 @@ async fn capabilities(
             q.mode
                 .as_deref()
                 .is_none_or(|m| capability_mode_str(c.mode) == m)
+                && pagination::rust_search_match(&q.search, &[c.name.as_str()])
         })
         .map(|c| pnex_core::DeviceCapability {
             id: c.id,
@@ -597,7 +673,22 @@ async fn capabilities(
             mode: capability_mode_str(c.mode).to_string(),
         })
         .collect();
-    format::json(caps)
+    let count = caps.len() as i64;
+    let (skip, take) = page.slice(caps.len());
+    let mut filters = Vec::new();
+    if let Some(m) = &q.mode {
+        filters.push(("mode".to_string(), m.clone()));
+    }
+    if let Some(s) = &q.search {
+        filters.push(("search".to_string(), s.clone()));
+    }
+    format::json(pagination::envelope(
+        "/api/v1/device-capabilities",
+        &filters,
+        page,
+        count,
+        caps.into_iter().skip(skip).take(take).collect(),
+    ))
 }
 
 /// Query-string en map multi-valeurs (`capabilities=a&capabilities=b`).
@@ -611,9 +702,14 @@ fn raw_query_map(raw: Option<&str>) -> HashMap<String, Vec<String>> {
     map
 }
 
-/// `GET /api/v1/predefined-devices` — catalogue global, authentifié.
-/// Filtres : `capabilities` (répétable, OU), `board`, `device_type`,
-/// `name`/`pretty_name` (icontains), `revision` (exact).
+/// `GET /api/v1/predefined-devices` — catalogue global, authentifié,
+/// **paginé en SQL** (D14) : count + LIMIT/OFFSET côté base, hydration
+/// (noms type/board, capacités) limitée à la seule page renvoyée.
+///
+/// Filtres : `capabilities` (répétable, OU — sous-requête M2M), `board`,
+/// `device_type`, `name`/`pretty_name` (icontains via ILIKE), `revision`
+/// (exact), `search` (OU multi-champs : nom, pretty, description, type,
+/// board, capacités — ILIKE).
 async fn predefined_list(
     State(ctx): State<AppContext>,
     _auth: AuthUser,
@@ -622,19 +718,170 @@ async fn predefined_list(
     let params = raw_query_map(raw.as_deref());
     let first = |k: &str| params.get(k).and_then(|v| v.first().cloned());
     let caps_filter = params.get("capabilities").cloned().unwrap_or_default();
-    let (board_f, type_f, name_f, pretty_f, rev_f) = (
+    let (board_f, type_f, name_f, pretty_f, rev_f, search_f) = (
         first("board"),
         first("device_type"),
         first("name"),
         first("pretty_name"),
         first("revision"),
+        first("search"),
     );
+    let page = pagination::PageParams::from_map(&params);
 
-    let rows = predefined_devices::Entity::find()
+    // Liens next/previous : rejouer les filtres actifs.
+    let mut filters: Vec<(String, String)> = caps_filter
+        .iter()
+        .map(|c| ("capabilities".to_string(), c.clone()))
+        .collect();
+    for (key, value) in [
+        ("board", &board_f),
+        ("device_type", &type_f),
+        ("name", &name_f),
+        ("pretty_name", &pretty_f),
+        ("revision", &rev_f),
+        ("search", &search_f),
+    ] {
+        if let Some(v) = value {
+            filters.push((key.to_string(), v.clone()));
+        }
+    }
+
+    // Résolution des filtres par nom → id (type, board). Nom inconnu →
+    // liste vide cohérente avec le count.
+    let empty_page = |page: pagination::PageParams, filters: &[(String, String)]| {
+        format::json(pagination::envelope(
+            "/api/v1/predefined-devices",
+            filters,
+            page,
+            0,
+            Vec::<pnex_core::PredefinedDevice>::new(),
+        ))
+    };
+    let type_id = match type_f.as_deref() {
+        Some(name) => device_types::Entity::find()
+            .filter(device_types::Column::Name.eq(name))
+            .one(&ctx.db)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .map(|t| t.id),
+        None => None,
+    };
+    if type_f.is_some() && type_id.is_none() {
+        return empty_page(page, &filters);
+    }
+    let board_id = match board_f.as_deref() {
+        Some(name) => mcu_boards::Entity::find()
+            .filter(mcu_boards::Column::Name.eq(name))
+            .one(&ctx.db)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .map(|b| b.id),
+        None => None,
+    };
+    if board_f.is_some() && board_id.is_none() {
+        return empty_page(page, &filters);
+    }
+
+    let mut query = predefined_devices::Entity::find();
+    if let Some(id) = type_id {
+        query = query.filter(predefined_devices::Column::DeviceTypeId.eq(id));
+    }
+    if let Some(id) = board_id {
+        query = query.filter(predefined_devices::Column::BoardId.eq(id));
+    }
+    if let Some(n) = &name_f {
+        query = query.filter(
+            Expr::col((predefined_devices::Entity, predefined_devices::Column::Name))
+                .ilike(format!("%{n}%")),
+        );
+    }
+    if let Some(p) = &pretty_f {
+        query = query.filter(
+            Expr::col((predefined_devices::Entity, predefined_devices::Column::PrettyName))
+                .ilike(format!("%{p}%")),
+        );
+    }
+    if let Some(r) = &rev_f {
+        query = query.filter(predefined_devices::Column::Revision.eq(r));
+    }
+    if !caps_filter.is_empty() {
+        // OU sur la M2M : id IN (sous-requête des liens vers les caps visées).
+        let sub = predefined_device_capabilities::Entity::find()
+            .left_join(device_capabilities::Entity)
+            .filter(device_capabilities::Column::Name.is_in(caps_filter))
+            .select_only()
+            .column(predefined_device_capabilities::Column::PredefinedDeviceId);
+        query = query.filter(predefined_devices::Column::Id.in_subquery(sub.into_query()));
+    }
+    if let Some(s) = search_f
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        // Recherche OU multi-champs, poussée en SQL (ILIKE PG = insensible à
+        // la casse) pour rester compatible avec le LIMIT/OFFSET base.
+        let pat = format!("%{s}%");
+        let text_or_refs = sea_orm::Condition::any()
+            .add(
+                Expr::col((predefined_devices::Entity, predefined_devices::Column::Name))
+                    .ilike(pat.clone()),
+            )
+            .add(
+                Expr::col((predefined_devices::Entity, predefined_devices::Column::PrettyName))
+                    .ilike(pat.clone()),
+            )
+            .add(
+                Expr::col((predefined_devices::Entity, predefined_devices::Column::Description))
+                    .ilike(pat.clone()),
+            )
+            .add(predefined_devices::Column::DeviceTypeId.in_subquery(
+                device_types::Entity::find()
+                    .filter(
+                        Expr::col((device_types::Entity, device_types::Column::Name))
+                            .ilike(pat.clone()),
+                    )
+                    .select_only()
+                    .column(device_types::Column::Id)
+                    .into_query(),
+            ))
+            .add(predefined_devices::Column::BoardId.in_subquery(
+                mcu_boards::Entity::find()
+                    .filter(
+                        Expr::col((mcu_boards::Entity, mcu_boards::Column::Name))
+                            .ilike(pat.clone()),
+                    )
+                    .select_only()
+                    .column(mcu_boards::Column::Id)
+                    .into_query(),
+            ))
+            .add(predefined_devices::Column::Id.in_subquery(
+                predefined_device_capabilities::Entity::find()
+                    .left_join(device_capabilities::Entity)
+                    .filter(
+                        Expr::col((device_capabilities::Entity, device_capabilities::Column::Name))
+                            .ilike(pat),
+                    )
+                    .select_only()
+                    .column(predefined_device_capabilities::Column::PredefinedDeviceId)
+                    .into_query(),
+            ));
+        query = query.filter(text_or_refs);
+    }
+
+    let count = query
+        .clone()
+        .count(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)? as i64;
+    let rows = query
         .order_by_asc(predefined_devices::Column::Id)
+        .offset(page.offset as u64)
+        .limit(page.limit as u64)
         .all(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?;
+
+    // Hydration de la page uniquement.
     let type_names: HashMap<i64, String> = device_types::Entity::find()
         .all(&ctx.db)
         .await
@@ -655,48 +902,9 @@ async fn predefined_list(
     )
     .await?;
 
-    let mut out = Vec::new();
-    for pd in rows {
-        let type_name = type_names
-            .get(&pd.device_type_id)
-            .map(String::as_str)
-            .unwrap_or_default();
-        let board_name = board_names
-            .get(&pd.board_id)
-            .map(String::as_str)
-            .unwrap_or_default();
-        let cap_names: Vec<String> = caps
-            .get(&pd.id)
-            .map(|list| list.iter().map(|c| c.name.clone()).collect())
-            .unwrap_or_default();
-
-        if !caps_filter.is_empty() && !caps_filter.iter().any(|c| cap_names.contains(c)) {
-            continue;
-        }
-        if board_f.as_deref().is_some_and(|b| b != board_name) {
-            continue;
-        }
-        if type_f.as_deref().is_some_and(|t| t != type_name) {
-            continue;
-        }
-        if name_f
-            .as_deref()
-            .is_some_and(|n| !pd.name.to_lowercase().contains(&n.to_lowercase()))
-        {
-            continue;
-        }
-        if pretty_f.as_deref().is_some_and(|p| {
-            !pd.pretty_name
-                .as_deref()
-                .is_some_and(|v| v.to_lowercase().contains(&p.to_lowercase()))
-        }) {
-            continue;
-        }
-        if rev_f.as_deref().is_some_and(|r| pd.revision != r) {
-            continue;
-        }
-
-        out.push(pnex_core::PredefinedDevice {
+    let out: Vec<pnex_core::PredefinedDevice> = rows
+        .into_iter()
+        .map(|pd| pnex_core::PredefinedDevice {
             name: pd.name,
             pretty_name: pd.pretty_name,
             prestashop_product_id: pd.prestashop_product_id,
@@ -705,12 +913,27 @@ async fn predefined_list(
             image_source_url: pd.image_source_url,
             description: pd.description,
             revision: pd.revision,
-            device_type: type_name.to_string(),
-            capabilities: cap_names,
-            board: board_name.to_string(),
-        });
-    }
-    format::json(out)
+            device_type: type_names
+                .get(&pd.device_type_id)
+                .cloned()
+                .unwrap_or_default(),
+            capabilities: caps
+                .get(&pd.id)
+                .map(|list| list.iter().map(|c| c.name.clone()).collect())
+                .unwrap_or_default(),
+            board: board_names
+                .get(&pd.board_id)
+                .cloned()
+                .unwrap_or_default(),
+        })
+        .collect();
+    format::json(pagination::envelope(
+        "/api/v1/predefined-devices",
+        &filters,
+        page,
+        count,
+        out,
+    ))
 }
 
 pub fn routes() -> Routes {

@@ -21,6 +21,7 @@ common-save = Enregistrer
 common-search = Rechercher…
 common-error = Erreur
 common-close = Fermer
+common-refresh = Rafraîchir
 
 # Divers
 login-welcome = Bienvenue sur PNeX
@@ -104,6 +105,18 @@ empty-builds-title = Build firmware
 empty-builds-message = Les builds firmware et leur statut en direct arrivent avec le worker de build intégré.
 empty-catalog-title = Catalogue d'appareils
 empty-catalog-message = Le catalogue des appareils prédéfinis (cartes, capacités) arrive avec l'API des appareils.
+catalog-subtitle = Parcourez et découvrez les appareils disponibles pour vos projets
+catalog-search-placeholder = Rechercher (nom, description, carte, capacité…)
+catalog-type-all = Tous les types
+catalog-board-all = Toutes les cartes
+catalog-empty = Aucun appareil trouvé
+catalog-empty-hint = Essayez d'ajuster votre recherche ou vos filtres
+catalog-no-image = Pas d'image disponible
+catalog-rev = Rév.
+catalog-capabilities = Capacités
+catalog-docs = Docs
+catalog-buy = Acheter
+catalog-configure = Configurer
 
 # Appareils (Phase 4)
 devices-subtitle = Enregistrez vos appareils, consultez leurs tokens de provisioning et leurs métadonnées.
@@ -115,10 +128,12 @@ devices-capability-all = Toutes les capacités
 devices-status-all = Tous les statuts
 devices-status-active = Actif
 devices-status-inactive = Inactif
-devices-search-placeholder = Rechercher par device_id…
+devices-search-placeholder = Rechercher (id, modèle, type, capacité…)
 devices-new-placeholder = Identifiant de l'appareil (device_id)
 devices-model-placeholder = — Modèle —
 devices-model-required = Choisissez un modèle dans le catalogue.
+devices-id-required = Renseignez l'identifiant de l'appareil (device_id).
+devices-register-title = Enregistrer un nouvel appareil
 devices-catalog-loading = Catalogue en cours de chargement…
 devices-register = Enregistrer
 devices-created = Appareil enregistré — token de provisioning généré.
@@ -142,3 +157,5 @@ devices-encryption-key = Clé de chiffrement (ChaCha20)
 devices-metadata = Métadonnées (JSON)
 devices-metadata-save = Enregistrer les métadonnées
 devices-metadata-invalid = JSON invalide
+pagination-previous = Précédent
+pagination-next = Suivant

@@ -4,12 +4,13 @@
 //! (réactivation d'un device inactif connu) — l'appelant distingue sur la
 //! présence de `detail`.
 
-use pnex_core::{CreateDevice, Device, DeviceCapability, PredefinedDevice};
+use pnex_core::{CreateDevice, Device, DeviceCapability, Paginated, PredefinedDevice};
 
 use crate::api::client;
 use crate::api::error::ApiError;
 
-/// Filtres de `GET /api/v1/devices` (parité query Django) — absents = tous.
+/// Filtres de `GET /api/v1/devices` + pagination (D14) — absents = défauts
+/// serveur (limit 10, offset 0).
 #[derive(Default)]
 pub struct DeviceFilters {
     /// Nom de type (« all » côté serveur = no-op, ici on n'envoie rien).
@@ -17,7 +18,11 @@ pub struct DeviceFilters {
     pub capability: Option<String>,
     /// Correspondance exacte.
     pub device_id: Option<String>,
+    /// Recherche OU multi-champs (device_id, modèle, type, capacités).
+    pub search: Option<String>,
     pub active: Option<bool>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
 }
 
 impl DeviceFilters {
@@ -32,8 +37,17 @@ impl DeviceFilters {
         if let Some(v) = &self.device_id {
             parts.push(format!("device_id={}", urlencode(v)));
         }
+        if let Some(v) = &self.search {
+            parts.push(format!("search={}", urlencode(v)));
+        }
         if let Some(v) = self.active {
             parts.push(format!("active={v}"));
+        }
+        if let Some(v) = self.limit {
+            parts.push(format!("limit={v}"));
+        }
+        if let Some(v) = self.offset {
+            parts.push(format!("offset={v}"));
         }
         if parts.is_empty() {
             String::new()
@@ -57,8 +71,8 @@ fn urlencode(value: &str) -> String {
     out
 }
 
-/// `GET /api/v1/devices` — devices de l'org courante, non paginé.
-pub async fn list(filters: &DeviceFilters) -> Result<Vec<Device>, ApiError> {
+/// `GET /api/v1/devices` — devices de l'org courante, enveloppe paginée.
+pub async fn list(filters: &DeviceFilters) -> Result<Paginated<Device>, ApiError> {
     client::request(
         reqwest::Method::GET,
         &format!("/api/v1/devices{}", filters.to_query()),
@@ -103,13 +117,61 @@ pub async fn delete(id: i64) -> Result<(), ApiError> {
     .map(|_| ())
 }
 
-/// `GET /api/v1/device-capabilities` — catalogue global.
+/// `GET /api/v1/device-capabilities` — table de référence bornée : on
+/// demande la page max (100) et on ne remonte que les résultats.
 pub async fn capabilities() -> Result<Vec<DeviceCapability>, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/device-capabilities", None).await
+    let paged: Paginated<DeviceCapability> = client::request(
+        reqwest::Method::GET,
+        "/api/v1/device-capabilities?limit=100",
+        None,
+    )
+    .await?;
+    Ok(paged.results)
 }
 
-/// `GET /api/v1/predefined-devices` — catalogue global (non filtré : la page
-/// crée depuis la liste complète).
+/// `GET /api/v1/predefined-devices` — catalogue global (page max pour les
+/// `<select>` du formulaire d'enregistrement ; les pages dédiées font leur
+/// propre pagination).
 pub async fn predefined_devices() -> Result<Vec<PredefinedDevice>, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/predefined-devices", None).await
+    let paged: Paginated<PredefinedDevice> = client::request(
+        reqwest::Method::GET,
+        "/api/v1/predefined-devices?limit=100",
+        None,
+    )
+    .await?;
+    Ok(paged.results)
+}
+
+/// Filtres de la page Catalogue — recherche + type + board, poussés au
+/// serveur (D14 : la grille est paginée côté API).
+#[derive(Default)]
+pub struct CatalogFilters {
+    pub search: Option<String>,
+    pub device_type: Option<String>,
+    pub board: Option<String>,
+    pub limit: i64,
+    pub offset: i64,
+}
+
+/// `GET /api/v1/predefined-devices` — page du catalogue avec filtres.
+pub async fn predefined_devices_page(
+    filters: &CatalogFilters,
+) -> Result<Paginated<PredefinedDevice>, ApiError> {
+    let mut parts: Vec<String> = vec![format!("limit={}", filters.limit)];
+    if let Some(v) = &filters.search {
+        parts.push(format!("search={}", urlencode(v)));
+    }
+    if let Some(v) = &filters.device_type {
+        parts.push(format!("device_type={}", urlencode(v)));
+    }
+    if let Some(v) = &filters.board {
+        parts.push(format!("board={}", urlencode(v)));
+    }
+    parts.push(format!("offset={}", filters.offset));
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/predefined-devices?{}", parts.join("&")),
+        None,
+    )
+    .await
 }

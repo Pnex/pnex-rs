@@ -11,6 +11,7 @@ use dioxus_i18n::t;
 
 use crate::api;
 use crate::components::icons;
+use crate::components::pager::Pager;
 use crate::state::{org, session, toasts};
 
 /// Rôle de l'utilisateur dans l'org courante (« owner »/« admin »/« viewer »).
@@ -23,6 +24,10 @@ fn current_role() -> Option<String> {
         .map(|m| m.role.clone())
 }
 
+/// Taille de page de la liste (alignée sur le défaut serveur, D14 :
+/// `PAGINATION_DEFAULT_LIMIT`, 10).
+const PAGE_SIZE: i64 = 10;
+
 #[component]
 pub fn Devices() -> Element {
     let mut reload = use_signal(|| 0u32);
@@ -31,9 +36,16 @@ pub fn Devices() -> Element {
     let mut filter_status = use_signal(|| "all".to_string());
     let mut filter_capability = use_signal(String::new);
     let mut search = use_signal(String::new);
+    // Page courante (0-based) — remise à 0 à chaque changement de filtre.
+    let mut page = use_signal(|| 0i64);
     // Formulaire d'enregistrement.
     let mut new_device_id = use_signal(String::new);
     let mut new_model = use_signal(String::new);
+    // Token du dernier enregistrement — affiché dans une modale dès la
+    // création (le device_id et le token ne sont montrés qu'une fois, au
+    // porteur ; l'UI React d'origine les affichait immédiatement).
+    let mut created =
+        use_signal(|| None::<(String, pnex_core::DeviceTokenInfo)>);
 
     let can_write = current_role()
         .is_some_and(|role| matches!(role.as_str(), "owner" | "admin"));
@@ -48,7 +60,8 @@ pub fn Devices() -> Element {
                 let value = filter_capability().trim().to_string();
                 if value.is_empty() { None } else { Some(value) }
             },
-            device_id: {
+            device_id: None,
+            search: {
                 let value = search().trim().to_string();
                 if value.is_empty() { None } else { Some(value) }
             },
@@ -57,6 +70,8 @@ pub fn Devices() -> Element {
                 "false" => Some(false),
                 _ => None,
             },
+            limit: Some(PAGE_SIZE),
+            offset: Some(page() * PAGE_SIZE),
         };
         async move {
             let _ = reload();
@@ -95,6 +110,7 @@ pub fn Devices() -> Element {
                                 class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                                 onchange: move |event| {
                                     filter_type.set(event.value());
+                                    page.set(0);
                                     reload.with_mut(|r| *r += 1);
                                 },
                                 option { value: "all", selected: filter_type() == "all", {t!("devices-type-all")} }
@@ -106,6 +122,7 @@ pub fn Devices() -> Element {
                                 class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                                 onchange: move |event| {
                                     filter_status.set(event.value());
+                                    page.set(0);
                                     reload.with_mut(|r| *r += 1);
                                 },
                                 option { value: "all", selected: filter_status() == "all", {t!("devices-status-all")} }
@@ -118,6 +135,7 @@ pub fn Devices() -> Element {
                                         class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                                         onchange: move |event| {
                                             filter_capability.set(event.value());
+                                            page.set(0);
                                             reload.with_mut(|r| *r += 1);
                                         },
                                         option { value: "", selected: filter_capability().is_empty(), {t!("devices-capability-all")} }
@@ -141,6 +159,7 @@ pub fn Devices() -> Element {
                                 onkeydown: move |event| {
                                     if event.key() == Key::Enter {
                                         event.prevent_default();
+                                        page.set(0);
                                         reload.with_mut(|r| *r += 1);
                                     }
                                 },
@@ -152,14 +171,34 @@ pub fn Devices() -> Element {
                             }
                         }
 
-                        // Enregistrement (owner/admin)
+                        // Enregistrement (owner/admin) — titre + bordure pour
+                        // distinguer du champ de recherche ci-dessus (confusion
+                        // fréquente : le device_id se saisit ICI).
                         if can_write {
                             form {
-                                class: "mb-6 flex flex-wrap gap-2 items-center",
+                                class: "mb-6 p-4 border border-gray-200 rounded-lg bg-gray-50 flex flex-wrap gap-2 items-center",
                                 onsubmit: move |event| {
+                                    // Sans prevent_default, le navigateur soumet
+                                    // le formulaire nativement → navigation →
+                                    // rechargement du SPA (perte des toasts et
+                                    // de la requête en cours).
+                                    event.prevent_default();
                                     let id = crate::pages::orgs::field(&event, "device_id").trim().to_string();
-                                    let name = new_model.cloned().trim().to_string();
-                                    if id.is_empty() { return; }
+                                    // Modèle lu dans le FormData (état réel du
+                                    // DOM au submit) — le signal `new_model` ne
+                                    // suit que `onchange`, qui peut manquer ;
+                                    // en retour on resynchronise le signal.
+                                    let name = crate::pages::orgs::field(&event, "model").trim().to_string();
+                                    let name = if name.is_empty() {
+                                        new_model.cloned().trim().to_string()
+                                    } else {
+                                        new_model.set(name.clone());
+                                        name
+                                    };
+                                    if id.is_empty() {
+                                        toasts::error("devices-id-required");
+                                        return;
+                                    }
                                     if name.is_empty() {
                                         toasts::error("devices-model-required");
                                         return;
@@ -172,13 +211,22 @@ pub fn Devices() -> Element {
                                             metadata: None,
                                         }).await {
                                             Ok(body) => {
-                                                // 201 → device créé ; 200 →
-                                                // réactivation (message serveur
-                                                // relayé tel quel).
+                                                // 201 → device créé : le token
+                                                // de provisioning part dans la
+                                                // modale ; 200 → réactivation
+                                                // (message serveur relayé tel quel).
                                                 if let Some(detail) = body.get("detail").and_then(|d| d.as_str()) {
                                                     toasts::success(detail.to_string());
                                                 } else {
-                                                    toasts::success("devices-created");
+                                                    match serde_json::from_value::<pnex_core::Device>(body) {
+                                                        Ok(device) if device.device_token.is_some() => {
+                                                            created.set(Some((
+                                                                device.device_id,
+                                                                device.device_token.unwrap(),
+                                                            )));
+                                                        }
+                                                        _ => toasts::success("devices-created"),
+                                                    }
                                                 }
                                             }
                                             Err(err) => toasts::error(err.message),
@@ -186,12 +234,16 @@ pub fn Devices() -> Element {
                                         reload.with_mut(|r| *r += 1);
                                     });
                                 },
+                                div { class: "w-full text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1",
+                                    {t!("devices-register-title")}
+                                }
                                 input {
                                     class: "flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm",
                                     r#type: "text",
                                     name: "device_id",
                                     placeholder: t!("devices-new-placeholder"),
                                     value: "{new_device_id}",
+                                    oninput: move |event| new_device_id.set(event.value()),
                                 }
                                 match &*catalogue.read() {
                                     Some(Ok(models)) => rsx! {
@@ -223,10 +275,10 @@ pub fn Devices() -> Element {
                         }
 
                         match &*list.value().read() {
-                            Some(Ok(devices)) if devices.is_empty() => rsx! {
+                            Some(Ok(paged)) if paged.results.is_empty() && paged.count == 0 => rsx! {
                                 p { class: "text-gray-500 text-center py-12", {t!("devices-empty")} }
                             },
-                            Some(Ok(devices)) => rsx! {
+                            Some(Ok(paged)) => rsx! {
                                 div { class: "bg-white rounded-lg shadow-sm overflow-hidden",
                                     table { class: "min-w-full divide-y divide-gray-200",
                                         thead { class: "bg-gray-50",
@@ -239,11 +291,19 @@ pub fn Devices() -> Element {
                                             }
                                         }
                                         tbody { class: "bg-white divide-y divide-gray-200",
-                                            for device in devices.clone() {
+                                            for device in paged.results.clone() {
                                                 {device_row(device, selected)}
                                             }
                                         }
                                     }
+                                }
+                                Pager {
+                                    count: paged.count,
+                                    page_size: PAGE_SIZE,
+                                    page: page,
+                                    on_navigate: move |new_page| {
+                                        page.set(new_page);
+                                    },
                                 }
                             },
                             Some(Err(err)) => rsx! {
@@ -254,6 +314,39 @@ pub fn Devices() -> Element {
                                     span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-blue-600" }
                                 }
                             },
+                        }
+
+                        // Modale du token du dernier enregistrement.
+                        if let Some((device_id, token)) = created() {
+                            div {
+                                class: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4",
+                                onclick: move |_| created.set(None),
+                                div {
+                                    class: "bg-white rounded-lg shadow-xl max-w-lg w-full p-6 space-y-4",
+                                    onclick: move |event| event.stop_propagation(),
+                                    h3 { class: "text-lg font-semibold text-gray-900", {t!("devices-created")} }
+                                    p { class: "text-sm text-gray-600",
+                                        code { class: "text-sm", {device_id.clone()} }
+                                    }
+                                    div {
+                                        p { class: "text-xs text-gray-500 mb-1", {t!("devices-token-value")} }
+                                        code { class: "block p-3 bg-gray-50 rounded-lg text-sm break-all", {token.token.clone()} }
+                                    }
+                                    div {
+                                        p { class: "text-xs text-gray-500 mb-1", {t!("devices-encryption-key")} }
+                                        code { class: "block p-3 bg-gray-50 rounded-lg text-sm break-all",
+                                            {token.encryption_key.clone().unwrap_or_else(|| "—".into())}
+                                        }
+                                    }
+                                    div { class: "flex justify-end pt-2",
+                                        button {
+                                            class: "px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors",
+                                            onclick: move |_| created.set(None),
+                                            {t!("common-close")}
+                                        }
+                                    }
+                                }
+                            }
                         }
                     },
                 }

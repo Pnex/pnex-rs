@@ -267,7 +267,11 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
             .add_header("X-Org-Id", org.to_string())
             .await
             .json();
-        assert_eq!(list.as_array().unwrap().len(), 2, "pas de doublon : {list:?}");
+        assert_eq!(
+            list["results"].as_array().unwrap().len(),
+            2,
+            "pas de doublon : {list:?}"
+        );
 
         // Device inactif + token désactivé → réactivation réactive le token.
         use pnex_backend::models::_entities::{device_registries, device_tokens};
@@ -333,25 +337,37 @@ async fn filtres_de_liste() {
         let get = |query: &'static str| list_devices(&server, &env.alice, org, query);
 
         let all = get("").await;
-        assert_eq!(all.as_array().unwrap().len(), 2);
+        assert_eq!(all["results"].as_array().unwrap().len(), 2);
+        assert_eq!(all["count"], 2);
 
         let sensors = get("?device_type=sensor").await;
-        assert_eq!(sensors.as_array().unwrap().len(), 1);
-        assert_eq!(sensors[0]["device_id"], "esp-s1");
+        assert_eq!(sensors["results"].as_array().unwrap().len(), 1);
+        assert_eq!(sensors["results"][0]["device_id"], "esp-s1");
 
         // « all » = no-op (parité Django).
-        assert_eq!(get("?device_type=all").await.as_array().unwrap().len(), 2);
+        assert_eq!(get("?device_type=all").await["results"].as_array().unwrap().len(), 2);
 
         let by_cap = get("?capability=relay").await;
-        assert_eq!(by_cap.as_array().unwrap().len(), 1);
-        assert_eq!(by_cap[0]["device_id"], "esp-a1");
+        assert_eq!(by_cap["results"].as_array().unwrap().len(), 1);
+        assert_eq!(by_cap["results"][0]["device_id"], "esp-a1");
 
         let by_id = get("?device_id=esp-s1").await;
-        assert_eq!(by_id.as_array().unwrap().len(), 1);
+        assert_eq!(by_id["results"].as_array().unwrap().len(), 1);
+
+        // Recherche multi-champs : par identifiant, puis par capacité.
+        let by_search = get("?search=S1").await;
+        assert_eq!(by_search["results"].as_array().unwrap().len(), 1);
+        assert_eq!(by_search["results"][0]["device_id"], "esp-s1");
+        let by_search_cap = get("?search=relay").await;
+        assert_eq!(by_search_cap["results"].as_array().unwrap().len(), 1);
+        assert_eq!(by_search_cap["results"][0]["device_id"], "esp-a1");
+        // Casse ignorée, terme introuvable → vide.
+        assert_eq!(get("?search=ESP-A1").await["results"].as_array().unwrap().len(), 1);
+        assert_eq!(get("?search=zzz").await["results"].as_array().unwrap().len(), 0);
 
         // Aucun actif : le filtre active=true vide la liste.
-        assert_eq!(get("?active=true").await.as_array().unwrap().len(), 0);
-        assert_eq!(get("?active=false").await.as_array().unwrap().len(), 2);
+        assert_eq!(get("?active=true").await["results"].as_array().unwrap().len(), 0);
+        assert_eq!(get("?active=false").await["results"].as_array().unwrap().len(), 2);
     })
     .await;
 }
@@ -473,7 +489,7 @@ async fn isolation_tenant_et_roles() {
                 .add_header("X-Org-Id", org_id.to_string())
                 .await
                 .json();
-            assert_eq!(list.as_array().unwrap().len(), expected);
+            assert_eq!(list["results"].as_array().unwrap().len(), expected);
         }
 
         // Bob n'atteint pas le device d'alice (ni lecture, ni écriture).
@@ -584,7 +600,7 @@ async fn catalogue_global_partage() {
             .add_header("Authorization", bearer(&env.alice))
             .await
             .json();
-        let caps = caps.as_array().expect("liste");
+        let caps = caps["results"].as_array().expect("enveloppe");
         assert!(caps.iter().any(|c| c["name"] == "relay" && c["mode"] == "output"));
         assert!(caps.iter().any(|c| c["mode"] == "input"));
 
@@ -593,14 +609,14 @@ async fn catalogue_global_partage() {
             .add_header("Authorization", bearer(&env.alice))
             .await
             .json();
-        assert_eq!(outputs.as_array().unwrap().len(), 1);
+        assert_eq!(outputs["results"].as_array().unwrap().len(), 1);
 
         let none: serde_json::Value = server
             .get("/api/v1/device-capabilities?mode=bidon")
             .add_header("Authorization", bearer(&env.alice))
             .await
             .json();
-        assert_eq!(none.as_array().unwrap().len(), 0);
+        assert_eq!(none["results"].as_array().unwrap().len(), 0);
 
         // Predefined devices : capabilities = noms, filtres combinables.
         let pds: serde_json::Value = server
@@ -608,7 +624,7 @@ async fn catalogue_global_partage() {
             .add_header("Authorization", bearer(&env.alice))
             .await
             .json();
-        let pds = pds.as_array().expect("liste");
+        let pds = pds["results"].as_array().expect("enveloppe");
         assert_eq!(pds.len(), 4);
         let relay_pd = pds
             .iter()
@@ -619,7 +635,7 @@ async fn catalogue_global_partage() {
         assert_eq!(relay_pd["capabilities"], serde_json::json!(["relay"]));
         assert!(
             relay_pd.get("id").is_none(),
-            "pas d'id dans le contrat Django"
+            "pas d'id dans le contrat catalogue"
         );
 
         // Filtres : device_type, capabilities (OU), name icontains.
@@ -628,7 +644,7 @@ async fn catalogue_global_partage() {
             .add_header("Authorization", bearer(&env.alice))
             .await
             .json();
-        assert_eq!(sensors.as_array().unwrap().len(), 2);
+        assert_eq!(sensors["results"].as_array().unwrap().len(), 2);
 
         let by_caps: serde_json::Value = server
             .get("/api/v1/predefined-devices?capabilities=relay&capabilities=read_temperature")
@@ -636,7 +652,7 @@ async fn catalogue_global_partage() {
             .await
             .json();
         assert_eq!(
-            by_caps.as_array().unwrap().len(),
+            by_caps["results"].as_array().unwrap().len(),
             3,
             "OU sur capabilities : sensor_probe_v1, 4_chan_relay et mixed_hub_v1"
         );
@@ -646,7 +662,30 @@ async fn catalogue_global_partage() {
             .add_header("Authorization", bearer(&env.alice))
             .await
             .json();
-        assert_eq!(icontains.as_array().unwrap().len(), 1);
+        assert_eq!(icontains["results"].as_array().unwrap().len(), 1);
+
+        // Recherche multi-champs (D14) : board, capacité, type — en SQL.
+        let by_board: serde_json::Value = server
+            .get("/api/v1/predefined-devices?search=ESP32")
+            .add_header("Authorization", bearer(&env.alice))
+            .await
+            .json();
+        assert_eq!(by_board["count"], 4, "tous sur board esp32 (casse ignorée)");
+        let by_cap_search: serde_json::Value = server
+            .get("/api/v1/predefined-devices?search=RELAY")
+            .add_header("Authorization", bearer(&env.alice))
+            .await
+            .json();
+        assert_eq!(
+            by_cap_search["count"], 2,
+            "4_chan_relay (nom et cap) + mixed_hub_v1 (cap relay)"
+        );
+        let by_type_search: serde_json::Value = server
+            .get("/api/v1/predefined-devices?search=actuator")
+            .add_header("Authorization", bearer(&env.alice))
+            .await
+            .json();
+        assert_eq!(by_type_search["count"], 1);
 
         // Bob voit le même catalogue (global, pas scopé org).
         let bob_pds: serde_json::Value = server
@@ -654,7 +693,99 @@ async fn catalogue_global_partage() {
             .add_header("Authorization", bearer(&env.bob))
             .await
             .json();
-        assert_eq!(bob_pds.as_array().unwrap().len(), 4);
+        assert_eq!(bob_pds["results"].as_array().unwrap().len(), 4);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn pagination_des_listes() {
+    with_app(|server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        // Tier Free : 3 capteurs max — parfait pour 3 pages de 2.
+        for n in 1..=3 {
+            create_device(&server, &env.alice, org, &format!("esp-s{n}"), "sensor_probe_v1").await;
+        }
+
+        // Registre : page 1 → next explicite, previous absent.
+        let page1 = list_devices(&server, &env.alice, org, "?limit=2").await;
+        assert_eq!(page1["count"], 3);
+        assert_eq!(page1["results"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            page1["next"].as_str().unwrap(),
+            "/api/v1/devices?limit=2&offset=2"
+        );
+        assert!(page1["previous"].is_null());
+
+        // Dernière page incomplète : next absent, previous pointe en 0.
+        let page2 = list_devices(&server, &env.alice, org, "?limit=2&offset=2").await;
+        assert_eq!(page2["results"].as_array().unwrap().len(), 1);
+        assert!(page2["next"].is_null());
+        assert_eq!(
+            page2["previous"].as_str().unwrap(),
+            "/api/v1/devices?limit=2&offset=0"
+        );
+
+        // Offset au-delà de la fin : page vide cohérente.
+        let beyond = list_devices(&server, &env.alice, org, "?limit=2&offset=9").await;
+        assert_eq!(beyond["count"], 3);
+        assert_eq!(beyond["results"].as_array().unwrap().len(), 0);
+        assert!(beyond["next"].is_null());
+
+        // Les liens conservent les filtres actifs.
+        let filtered = list_devices(&server, &env.alice, org, "?device_type=sensor&limit=2").await;
+        assert_eq!(
+            filtered["next"].as_str().unwrap(),
+            "/api/v1/devices?device_type=sensor&limit=2&offset=2"
+        );
+
+        // Défaut : 10 par page (var d'env PAGINATION_DEFAULT_LIMIT).
+        let def = list_devices(&server, &env.alice, org, "").await;
+        assert_eq!(def["count"], 3);
+        assert_eq!(def["results"].as_array().unwrap().len(), 3, "3 < défaut 10");
+
+        // Catalogue : pagination SQL (count exact, pages).
+        let cat1: serde_json::Value = server
+            .get("/api/v1/predefined-devices?limit=2")
+            .add_header("Authorization", bearer(&env.alice))
+            .await
+            .json();
+        assert_eq!(cat1["count"], 4);
+        assert_eq!(cat1["results"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            cat1["next"].as_str().unwrap(),
+            "/api/v1/predefined-devices?limit=2&offset=2"
+        );
+        let cat3: serde_json::Value = server
+            .get("/api/v1/predefined-devices?limit=2&offset=2")
+            .add_header("Authorization", bearer(&env.alice))
+            .await
+            .json();
+        assert_eq!(cat3["results"].as_array().unwrap().len(), 2);
+        assert!(cat3["next"].is_null());
+
+        // Capabilities : même enveloppe.
+        let caps: serde_json::Value = server
+            .get("/api/v1/device-capabilities?limit=1")
+            .add_header("Authorization", bearer(&env.alice))
+            .await
+            .json();
+        assert_eq!(caps["count"], 2);
+        assert_eq!(caps["results"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            caps["next"].as_str().unwrap(),
+            "/api/v1/device-capabilities?limit=1&offset=1"
+        );
+
+        // Orgs de l'utilisateur : enveloppe également (une org perso ici).
+        let orgs: serde_json::Value = server
+            .get("/api/v1/orgs")
+            .add_header("Authorization", bearer(&env.alice))
+            .await
+            .json();
+        assert_eq!(orgs["count"], 1);
+        assert_eq!(orgs["results"].as_array().unwrap().len(), 1);
     })
     .await;
 }

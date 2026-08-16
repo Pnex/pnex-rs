@@ -13,12 +13,13 @@
 //! s'être connecté au moins une fois). Les invitations par email à un
 //! utilisateur inexistant attendent l'infrastructure SMTP (phase ultérieure).
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use loco_rs::prelude::*;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, ExprTrait, PaginatorTrait, QueryFilter, Set};
 use serde::Deserialize;
 
+use super::pagination;
 use crate::auth::AuthUser;
 use crate::models::_entities::{
     organization_members, organizations, sea_orm_active_enums::OrgMemberRole, subscription_tiers,
@@ -93,8 +94,22 @@ impl From<RoleParam> for OrgMemberRole {
 
 // ─────────────────────────────── Orgs ───────────────────────────────
 
-/// `GET /api/v1/orgs` — orgs dont je suis membre (avec rôle et tier).
-async fn list(State(ctx): State<AppContext>, auth: AuthUser) -> Result<Response> {
+#[derive(Debug, Default, Deserialize)]
+struct ListOrgsQuery {
+    /// Recherche OU sur le nom de l'org.
+    search: Option<String>,
+    limit: Option<String>,
+    offset: Option<String>,
+}
+
+/// `GET /api/v1/orgs` — orgs dont je suis membre (avec rôle et tier),
+/// paginées (D14) + recherche sur le nom.
+async fn list(
+    State(ctx): State<AppContext>,
+    auth: AuthUser,
+    Query(q): Query<ListOrgsQuery>,
+) -> Result<Response> {
+    let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
     let memberships = organization_members::Entity::find()
         .filter(organization_members::Column::UserId.eq(auth.user.id))
         .find_also_related(organizations::Entity)
@@ -110,22 +125,36 @@ async fn list(State(ctx): State<AppContext>, auth: AuthUser) -> Result<Response>
         .map(|t| (t.id, t.name))
         .collect();
 
+    // L'ensemble (orgs d'un user) est borné par nature : filtre Rust puis
+    // découpage — le count reflète le total filtré.
     let orgs: Vec<serde_json::Value> = memberships
         .into_iter()
-        .filter_map(|(m, org)| {
-            org.map(|o| {
-                serde_json::json!({
-                    "id": o.id,
-                    "name": o.name,
-                    "role": role_str(m.role),
-                    "subscription_tier": o.subscription_tier_id
-                        .and_then(|id| tiers.get(&id).cloned()),
-                    "created_at": o.created_at,
-                })
+        .filter_map(|(m, org)| org.map(|o| (m, o)))
+        .filter(|(_, o)| pagination::rust_search_match(&q.search, &[o.name.as_str()]))
+        .map(|(m, o)| {
+            serde_json::json!({
+                "id": o.id,
+                "name": o.name,
+                "role": role_str(m.role),
+                "subscription_tier": o.subscription_tier_id
+                    .and_then(|id| tiers.get(&id).cloned()),
+                "created_at": o.created_at,
             })
         })
         .collect();
-    format::json(orgs)
+    let count = orgs.len() as i64;
+    let (skip, take) = page.slice(orgs.len());
+    let filters = q
+        .search
+        .map(|s| vec![("search".to_string(), s)])
+        .unwrap_or_default();
+    format::json(pagination::envelope(
+        "/api/v1/orgs",
+        &filters,
+        page,
+        count,
+        orgs.into_iter().skip(skip).take(take).collect(),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -304,16 +333,52 @@ async fn list_members_json(
         .collect())
 }
 
-/// `GET /api/v1/orgs/:id/members` — membres uniquement.
+#[derive(Debug, Default, Deserialize)]
+struct MembersQuery {
+    /// Recherche OU sur email et nom complet.
+    search: Option<String>,
+    limit: Option<String>,
+    offset: Option<String>,
+}
+
+/// `GET /api/v1/orgs/:id/members` — membres uniquement, paginés (D14) +
+/// recherche sur email/nom complet.
 async fn members(
     State(ctx): State<AppContext>,
     auth: AuthUser,
     Path(org_id): Path<i64>,
+    Query(q): Query<MembersQuery>,
 ) -> Result<Response> {
     if membership_of(&ctx.db, auth.user.id, org_id).await?.is_none() {
         return Err(Error::NotFound);
     }
-    format::json(list_members_json(&ctx.db, org_id).await?)
+    let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let members = list_members_json(&ctx.db, org_id).await?;
+    let filtered: Vec<serde_json::Value> = members
+        .into_iter()
+        .filter(|m| {
+            pagination::rust_search_match(
+                &q.search,
+                &[
+                    m["email"].as_str().unwrap_or_default(),
+                    m["full_name"].as_str().unwrap_or_default(),
+                ],
+            )
+        })
+        .collect();
+    let count = filtered.len() as i64;
+    let (skip, take) = page.slice(filtered.len());
+    let filters = q
+        .search
+        .map(|s| vec![("search".to_string(), s)])
+        .unwrap_or_default();
+    format::json(pagination::envelope(
+        &format!("/api/v1/orgs/{org_id}/members"),
+        &filters,
+        page,
+        count,
+        filtered.into_iter().skip(skip).take(take).collect(),
+    ))
 }
 
 #[derive(Deserialize)]

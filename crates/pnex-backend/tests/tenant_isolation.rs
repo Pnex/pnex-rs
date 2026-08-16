@@ -232,7 +232,9 @@ async fn un_tenant_ne_voit_pas_les_orgs_de_l_autre() {
             .add_header("Authorization", bearer(&env.alice))
             .await
             .json();
-        let alice_org_id = alice_orgs[0]["id"].as_i64().expect("id org alice");
+        let alice_org_id = alice_orgs["results"][0]["id"]
+            .as_i64()
+            .expect("id org alice");
 
         // Bob ne voit pas l'org d'alice, ni en lecture ni en écriture.
         let res = server
