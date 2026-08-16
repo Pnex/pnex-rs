@@ -262,7 +262,7 @@ async fn ensure_token(
 }
 
 /// Quota du tier de l'org pour ce type de device (None = pas de plafond).
-async fn tier_limit_for(
+pub(crate) async fn tier_limit_for(
     db: &DatabaseConnection,
     org: &OrgContext,
     type_name: &str,

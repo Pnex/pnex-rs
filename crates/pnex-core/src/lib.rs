@@ -10,6 +10,9 @@
 pub mod api;
 pub use api::*;
 
+pub mod builds;
+pub use builds::*;
+
 pub mod devices;
 pub use devices::*;
 

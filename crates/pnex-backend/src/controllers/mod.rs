@@ -1,3 +1,4 @@
+pub mod builds;
 pub mod devices;
 pub mod health;
 pub mod oauth2;

@@ -21,9 +21,10 @@ pub const PHASE_SUCCEEDED: &str = "succeeded";
 pub const PHASE_FAILED: &str = "failed";
 
 /// Source du firmware : arborescence locale (dev/edge) ou dépôt git
-/// (branche/tag, clone `--depth 1` par job).
+/// (branche/tag, clone `--depth 1` par job). Variantes en minuscules dans
+/// la config (`kind: local` / `kind: git`).
 #[derive(Clone, Debug, Deserialize)]
-#[serde(tag = "kind")]
+#[serde(tag = "kind", rename_all = "lowercase")]
 pub enum FirmwareSourceCfg {
     Local { path: String },
     Git { repo: String, git_ref: String },

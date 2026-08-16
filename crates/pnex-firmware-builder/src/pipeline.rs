@@ -214,6 +214,28 @@ fn find_artifact(project: &Path, name: &str) -> Result<PathBuf, BuildError> {
     )))
 }
 
+/// Un token-programme qui contient un `/` est un chemin (pas une recherche
+/// PATH) : on le résout en absolu contre le CWD du process — le sous-process
+/// tourne ensuite dans le workspace, où un chemin relatif ne pointerait
+/// plus rien (fixtures des tests, wrappers locaux).
+fn resolve_program(token: &str) -> String {
+    if !token.contains('/') {
+        return token.to_string();
+    }
+    let path = std::path::Path::new(token);
+    match std::env::current_dir()
+        .map_err(|e| e.to_string())
+        .and_then(|cwd| {
+            cwd.join(path).canonicalize().map_err(|e| e.to_string())
+        })
+    {
+        Ok(abs) => abs.display().to_string(),
+        // Introuvable : on le passe tel quel, l'erreur de lancement du
+        // sous-process sera explicite.
+        Err(_) => token.to_string(),
+    }
+}
+
 // ─────────────────── Pipeline ───────────────────
 
 /// Exécute un build complet. Retourne la clé + la taille de l'artefact
@@ -250,6 +272,7 @@ pub async fn run_build(
         return Err(BuildError::Tool("pio_cmd vide".into()));
     }
     pio_argv.push("run".into());
+    pio_argv[0] = resolve_program(&pio_argv[0]);
     let mut pio = Command::new(&pio_argv[0]);
     pio.args(&pio_argv[1..]);
     pio.current_dir(&project);
@@ -275,12 +298,13 @@ pub async fn run_build(
                 .iter()
                 .map(|(off, file)| Ok(((*off).to_string(), find_artifact(&project, file)?)))
                 .collect::<Result<_, BuildError>>()?;
-            let esptool_argv = crate::merge_args(
+            let mut esptool_argv = crate::merge_args(
                 &config.esptool_cmd,
                 &device.soc,
                 &final_bin,
                 &inputs,
             );
+            esptool_argv[0] = resolve_program(&esptool_argv[0]);
             let mut esptool = Command::new(&esptool_argv[0]);
             esptool.args(&esptool_argv[1..]);
             esptool.current_dir(ws);
