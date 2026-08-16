@@ -352,3 +352,197 @@ async fn build_timeout() {
     })
     .await;
 }
+
+/// Rebuild = réarmement du MÊME record (parité update_or_create Django) :
+/// un échec ne consomme pas l'intervalle, le rebuild réussi réutilise la
+/// ligne.
+#[tokio::test]
+#[serial]
+async fn rebuild_met_a_jour_le_meme_record() {
+    with_app(|server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        create_device(&server, &env.alice, org, "dev-re").await;
+
+        // 1. Échec (n'affecte pas l'intervalle — seuls les succès comptent).
+        let first = post_build(&server, &env.alice, org, "dev-re", "fail").await;
+        first.assert_status(axum_test::http::StatusCode::CREATED);
+        let first_body: serde_json::Value = first.json();
+        assert_eq!(first_body["build_record_created"], true);
+
+        // 2. Rebuild immédiat accepté (le dernier build n'est pas un succès).
+        let second = post_build(&server, &env.alice, org, "dev-re", "coloc").await;
+        second.assert_status(axum_test::http::StatusCode::CREATED);
+        let second_body: serde_json::Value = second.json();
+        assert_eq!(second_body["build_record_created"], false);
+
+        // Un seul record, réutilisé, maintenant réussi.
+        let list = records(&server, &env.alice, org, "").await;
+        assert_eq!(list["count"], 1);
+        assert_eq!(list["results"][0]["id"], second_body["build_id"]);
+        assert_eq!(list["results"][0]["build_phase"], "succeeded");
+        assert_eq!(
+            list["results"][0]["firmware_bin_s3_key"],
+            format!("org_{org}/firmware/dev-re-firmware.bin")
+        );
+    })
+    .await;
+}
+
+/// Règles de suppression Django : réussi → 400, device existant → 400,
+/// device parti → 204.
+#[tokio::test]
+#[serial]
+async fn suppression_regles() {
+    with_app(|server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        create_device(&server, &env.alice, org, "dev-del").await;
+
+        // Build raté (record non réussi, supprimable une fois le device parti).
+        let res = post_build(&server, &env.alice, org, "dev-del", "fail").await;
+        res.assert_status(axum_test::http::StatusCode::CREATED);
+        let id = res.json::<serde_json::Value>()["build_id"]
+            .as_i64()
+            .expect("id");
+
+        // Device encore présent → 400.
+        let blocked = server
+            .delete(&format!("/api/v1/build-records/{id}"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        blocked.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
+        let body: serde_json::Value = blocked.json();
+        assert_eq!(
+            body["error"],
+            "Cannot delete firmware record while device still exists"
+        );
+
+        // Device supprimé → le DELETE device NETTOIE les records (parité
+        // devices/views.py Django, posé en Phase 4) : le record est déjà
+        // parti, l'endpoint répond 404. La branche 204 (record orphelin
+        // d'un device introuvable) reste couverte par les règles ci-dessus.
+        let devices: serde_json::Value = server
+            .get("/api/v1/devices")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await
+            .json();
+        let device_pk = devices["results"][0]["id"].as_i64().expect("pk");
+        server
+            .delete(&format!("/api/v1/devices/{device_pk}"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await
+            .assert_status(axum_test::http::StatusCode::NO_CONTENT);
+
+        let gone = server
+            .delete(&format!("/api/v1/build-records/{id}"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        gone.assert_status(axum_test::http::StatusCode::NOT_FOUND);
+        let after: serde_json::Value = records(&server, &env.alice, org, "").await;
+        assert_eq!(after["count"], 0, "le record a été nettoyé avec le device");
+
+        // Un build RÉUSSI n'est jamais supprimable — même device encore
+        // présent, la règle « successful » passe avant (nouveau cycle :
+        // l'intervalle du précédent échec ne bloque pas).
+        create_device(&server, &env.alice, org, "dev-del2").await;
+        let res = post_build(&server, &env.alice, org, "dev-del2", "coloc").await;
+        res.assert_status(axum_test::http::StatusCode::CREATED);
+        let success_id = res.json::<serde_json::Value>()["build_id"]
+            .as_i64()
+            .expect("id");
+        let refused = server
+            .delete(&format!("/api/v1/build-records/{success_id}"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        refused.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
+        let body: serde_json::Value = refused.json();
+        assert_eq!(body["error"], "Cannot delete successful firmware builds");
+    })
+    .await;
+}
+
+/// Liste : enveloppe D14 + filtres device_id/success. (Deux builds en
+/// échec : un succès bloquerait le second via l'intervalle 429.)
+#[tokio::test]
+#[serial]
+async fn liste_enveloppe_et_filtres() {
+    with_app(|server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        create_device(&server, &env.alice, org, "dev-f1").await;
+        create_device(&server, &env.alice, org, "dev-f2").await;
+
+        for device in ["dev-f1", "dev-f2"] {
+            let res = post_build(&server, &env.alice, org, device, "fail").await;
+            res.assert_status(axum_test::http::StatusCode::CREATED);
+        }
+
+        let all = records(&server, &env.alice, org, "?limit=1&offset=1").await;
+        assert_eq!(all["count"], 2);
+        assert!(all["next"].is_null(), "dernière page : {all}");
+        assert!(all["previous"].is_string(), "lien previous présent : {all}");
+        assert_eq!(all["results"].as_array().map(Vec::len), Some(1));
+
+        let by_device = records(&server, &env.alice, org, "?device_id=dev-f1").await;
+        assert_eq!(by_device["count"], 1);
+        assert_eq!(by_device["results"][0]["device_id"], "dev-f1");
+
+        let by_failed = records(&server, &env.alice, org, "?success=false").await;
+        assert_eq!(by_failed["count"], 2);
+        let by_success = records(&server, &env.alice, org, "?success=true").await;
+        assert_eq!(by_success["count"], 0);
+    })
+    .await;
+}
+
+/// Isolation org : bob ne voit ni ne touche les builds d'alice ; sans
+/// token → 401.
+#[tokio::test]
+#[serial]
+async fn isolation_org_et_auth() {
+    with_app(|server, env, _ctx| async move {
+        let alice_org = personal_org(&server, &env.alice).await;
+        let bob_org = personal_org(&server, &env.bob).await;
+        create_device(&server, &env.alice, alice_org, "dev-iso").await;
+        post_build(&server, &env.alice, alice_org, "dev-iso", "coloc").await;
+
+        // Bob : liste vide, download 404, delete 404, build sur le device
+        // d'alice → 404 (le device n'existe pas dans SON org).
+        let bob_list = records(&server, &env.bob, bob_org, "").await;
+        assert_eq!(bob_list["count"], 0);
+
+        server
+            .get("/api/v1/download/firmware/dev-iso")
+            .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", bob_org.to_string())
+            .await
+            .assert_status(axum_test::http::StatusCode::NOT_FOUND);
+
+        server
+            .delete("/api/v1/build-records/1")
+            .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", bob_org.to_string())
+            .await
+            .assert_status(axum_test::http::StatusCode::NOT_FOUND);
+
+        let cross = post_build(&server, &env.bob, bob_org, "dev-iso", "coloc").await;
+        cross.assert_status(axum_test::http::StatusCode::NOT_FOUND);
+
+        // Sans token → 401 sur tous les endpoints builds.
+        for (method, path) in [
+            ("POST", "/api/v1/build-firmware"),
+            ("GET", "/api/v1/build-records"),
+            ("GET", "/api/v1/download/firmware/dev-iso"),
+        ] {
+            let res = match method {
+                "POST" => server.post(path).json(&serde_json::json!({})).await,
+                _ => server.get(path).await,
+            };
+            res.assert_status(axum_test::http::StatusCode::UNAUTHORIZED);
+        }
+    })
+    .await;
+}
