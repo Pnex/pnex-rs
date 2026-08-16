@@ -45,4 +45,12 @@ impl KeycloakSettings {
     pub fn authorize_endpoint(&self) -> String {
         format!("{}/protocol/openid-connect/auth", self.issuer())
     }
+
+    /// Endpoint d'inscription (le « Register » de la page de login Keycloak).
+    /// ≠ authorize + `kc_action=register`, ignoré silencieusement quand une
+    /// session SSO existe déjà (l'utilisateur était re-logué au lieu de voir
+    /// le formulaire d'inscription).
+    pub fn registration_endpoint(&self) -> String {
+        format!("{}/protocol/openid-connect/registrations", self.issuer())
+    }
 }

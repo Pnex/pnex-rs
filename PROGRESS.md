@@ -150,6 +150,11 @@ Constats techniques Dioxus 0.7.10 (vérifiés dans les sources, à retenir) :
   `sub_change_avec_meme_email_relie_le_meme_user`. En contre-mesure dev,
   alice/bob ont des UUIDs pinés dans le realm (une recréation du conteneur
   Keycloak ne churne plus les identités) ;
+- **Keycloak : `kc_action=register` sur l'authorize est ignoré quand une
+  session SSO existe** (re-login silencieux au lieu du formulaire
+  d'inscription). Le proxy SSO utilise l'endpoint registrations dédié pour
+  `action=register` (kc_action=UPDATE_PASSWORD conservé pour reset) — test
+  de non-régression sur les deux Location ;
 - **Keycloak : les jokers de `redirectUris` ne sont valides qu'en FIN
   d'URI** — `http://localhost:*/*` (joker sur le port) ne matche rien →
   « Invalid parameter: redirect_uri » au login. Realm corrigé en URIs

@@ -165,6 +165,41 @@ async fn sub_change_avec_meme_email_relie_le_meme_user() {
 
 #[tokio::test]
 #[serial]
+async fn sso_register_pointe_vers_registrations_et_reset_vers_kc_action() {
+    with_app(|server, _env| async move {
+        // register : endpoint registrations dédié (kc_action=register est
+        // ignoré en session SSO existante → re-login au lieu du formulaire).
+        let res = server
+            .get("/api/v1/oauth2/sso?code_challenge=abc&code_challenge_method=S256&action=register")
+            .await;
+        assert_eq!(res.status_code(), 302);
+        let location = res
+            .headers()
+            .get("location")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert!(location.contains("/protocol/openid-connect/registrations?"), "{location}");
+        assert!(location.contains("code_challenge=abc"), "{location}");
+
+        // reset : required action UPDATE_PASSWORD sur l'authorize classique.
+        let res = server
+            .get("/api/v1/oauth2/sso?code_challenge=abc&code_challenge_method=S256&action=reset")
+            .await;
+        let location = res
+            .headers()
+            .get("location")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert!(location.contains("/protocol/openid-connect/auth?"), "{location}");
+        assert!(location.contains("kc_action=UPDATE_PASSWORD"), "{location}");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
 async fn un_tenant_ne_voit_pas_les_orgs_de_l_autre() {
     with_app(|server, env| async move {
         // Provisionne alice puis bob.

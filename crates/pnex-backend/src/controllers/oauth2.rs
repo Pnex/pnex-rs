@@ -6,7 +6,8 @@
 //!   quelles (400 `{"error": ...}`) ;
 //! - `POST /api/v1/oauth2/refresh` : `grant_type=refresh_token` ;
 //! - `GET /api/v1/oauth2/sso` : 302 vers l'authorize endpoint Keycloak,
-//!   PKCE S256 obligatoire, `kc_action=register|UPDATE_PASSWORD`.
+//!   PKCE S256 obligatoire ; `action=register` utilise l'endpoint
+//!   registrations dédié, `action=reset` pose `kc_action=UPDATE_PASSWORD`.
 //!
 //! Le client reste public (pas de secret côté navigateur) : PKCE suffit.
 
@@ -201,16 +202,20 @@ async fn sso(
         ("code_challenge", code_challenge),
         ("code_challenge_method", "S256".into()),
     ];
-    match params.action.as_deref() {
-        Some("register") => pairs.push(("kc_action", "register".into())),
-        Some("reset") => pairs.push(("kc_action", "UPDATE_PASSWORD".into())),
-        _ => {}
-    }
-    let location = format!(
-        "{}?{}",
-        settings.authorize_endpoint(),
-        form_urlencode(&pairs)
-    );
+    // `action=register` : endpoint registrations dédié (kc_action=register
+    // est ignoré quand une session SSO existe — re-login silencieux au lieu
+    // du formulaire d'inscription). `action=reset` : required action
+    // UPDATE_PASSWORD après authentification.
+    let endpoint = match params.action.as_deref() {
+        Some("register") => settings.registration_endpoint(),
+        _ => {
+            if params.action.as_deref() == Some("reset") {
+                pairs.push(("kc_action", "UPDATE_PASSWORD".into()));
+            }
+            settings.authorize_endpoint()
+        }
+    };
+    let location = format!("{}?{}", endpoint, form_urlencode(&pairs));
 
     let mut response = Response::new(axum::body::Body::empty());
     *response.status_mut() = StatusCode::FOUND;
