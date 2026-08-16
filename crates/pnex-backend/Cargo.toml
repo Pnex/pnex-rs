@@ -21,7 +21,14 @@ tokio = { version = "1.45", default-features = false, features = [
   "rt-multi-thread",
 ] }
 async-trait = { version = "0.1" }
-axum = { version = "0.8" }
+axum = { version = "0.8", features = ["ws"] }
+# ChaCha20 nu (RFC 7539, sans Poly1305) — parité crypto_utils Django (D8)
+chacha20 = "0.9"
+# Ingestion metrics OpenObserve : Prometheus remote-write (protobuf+snappy)
+prost = "0.13"
+snap = "1"
+# Pliage d'accents pour la normalisation des noms de mesures (D16)
+deunicode = "1"
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 regex = { version = "1.11" }
@@ -47,7 +54,10 @@ path = "src/bin/main.rs"
 
 [dev-dependencies]
 loco-rs = { version = "1.0", default-features = false, features = ["testing"] }
-axum-test = { version = "17" }
+axum-test = { version = "17", features = ["ws"] }
+# Client WS de l'exemple ingest_client (rôle firmware en e2e manuel)
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
 serial_test = { version = "3.1" }
 rstest = { version = "0.25" }
 insta = { version = "1.34", features = ["redactions", "yaml", "filters"] }

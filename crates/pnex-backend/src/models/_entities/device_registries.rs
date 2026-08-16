@@ -26,6 +26,8 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
+    #[sea_orm(has_one = "super::device_states::Entity")]
+    DeviceStates,
     #[sea_orm(has_one = "super::device_tokens::Entity")]
     DeviceTokens,
     #[sea_orm(has_many = "super::formula_data_sources::Entity")]
@@ -46,6 +48,12 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     PredefinedDevices,
+}
+
+impl Related<super::device_states::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::DeviceStates.def()
+    }
 }
 
 impl Related<super::device_tokens::Entity> for Entity {

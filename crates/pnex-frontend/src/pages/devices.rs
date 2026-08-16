@@ -371,14 +371,17 @@ fn device_row(device: pnex_core::Device, mut selected: Signal<Option<i64>>) -> E
             }
             td { class: "td text-gray-600", {device.predefined_device_name.clone()} }
             td { class: "td",
-                if device.active {
-                    span { class: "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800",
-                        {t!("devices-status-active")}
+                div { class: "flex flex-col gap-0.5",
+                    if device.active {
+                        span { class: "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 w-fit",
+                            {t!("devices-status-active")}
+                        }
+                    } else {
+                        span { class: "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 w-fit",
+                            {t!("devices-status-inactive")}
+                        }
                     }
-                } else {
-                    span { class: "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600",
-                        {t!("devices-status-inactive")}
-                    }
+                    {last_seen_label(&device.last_seen)}
                 }
             }
             td { class: "td",
@@ -407,6 +410,24 @@ fn type_badge(device_type: &str) -> (&'static str, String) {
         _ => "bg-gray-100 text-gray-800",
     };
     (badge, label)
+}
+
+/// Libellé « vu à HH:MM:SS » (heure locale) sous le badge de statut —
+/// le bail de vie Phase 5 rend cette information vivante.
+fn last_seen_label(last_seen: &Option<String>) -> Element {
+    let label = match last_seen
+        .as_deref()
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+    {
+        Some(ts) => {
+            let local = ts.with_timezone(&chrono::Local);
+            format!("{} {}", t!("devices-last-seen-at"), local.format("%H:%M:%S"))
+        }
+        None => t!("devices-last-seen-never"),
+    };
+    rsx! {
+        span { class: "text-[11px] text-gray-400", {label} }
+    }
 }
 
 #[component]

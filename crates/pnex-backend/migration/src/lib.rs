@@ -8,6 +8,7 @@
 //! 3. etl — conversions, formules, fluides
 //! 4. sites — sites/SVG/diagrammes/annotations (PK UUID)
 //! 5. firmware — build records
+//! 6. ingestion — état live device (D9) + correspondance OpenObserve (D2)
 
 pub use sea_orm_migration::prelude::*;
 
@@ -16,6 +17,7 @@ mod m20260815_000002_devices;
 mod m20260815_000003_etl;
 mod m20260815_000004_sites;
 mod m20260815_000005_firmware;
+mod m20260816_000006_ingestion;
 
 pub struct Migrator;
 
@@ -28,6 +30,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260815_000003_etl::Migration),
             Box::new(m20260815_000004_sites::Migration),
             Box::new(m20260815_000005_firmware::Migration),
+            Box::new(m20260816_000006_ingestion::Migration),
         ]
     }
 }

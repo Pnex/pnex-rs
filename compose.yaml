@@ -1,4 +1,4 @@
-# Infra de développement PNEX — PostgreSQL 18 + Keycloak 26.
+# Infra de développement PNEX — PostgreSQL 18 + Keycloak 26 + OpenObserve.
 # Usage : docker compose up -d
 # Le backend lit DATABASE_URL (voir .env.example).
 
@@ -39,5 +39,21 @@ services:
     ports:
       - "8080:8080"
 
+  # Stockage télémétrie (D1) : ingestion backend → org OpenObserve par org
+  # PNEX (D2) — le provisioning org + token d'ingestion est automatisé
+  # côté backend (services/openobserve).
+  openobserve:
+    image: openobserve/openobserve:v0.92.1
+    container_name: pnex-openobserve
+    environment:
+      ZO_ROOT_USER_EMAIL: ${OPENOBSERVE_ROOT_EMAIL:-root@pnex.local}
+      ZO_ROOT_USER_PASSWORD: ${OPENOBSERVE_ROOT_PASSWORD:-Pnex-dev-2026!}
+      ZO_DATA_DIR: /data
+    ports:
+      - "5080:5080"
+    volumes:
+      - pnex-o2data:/data
+
 volumes:
   pnex-pgdata:
+  pnex-o2data:

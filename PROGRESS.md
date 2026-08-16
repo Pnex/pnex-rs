@@ -238,10 +238,59 @@ docker) : serving SPA (index, tailwind, wasm, fallback /auth/callback),
 401 sans token, proxy sso 302 PKCE vers Keycloak réel, password grant via
 proxy → JIT → user-info, PATCH profile, orgs CRUD.
 
-**Prochaine : Phase 5 — Ingestion télémétrie + ETL + broadcast config**
-(WS ChaCha20 device → Loco → OpenObserve, état live en PG, protocole
-versionné D12). Le patron tranche verticale éprouvé en Phase 4 (types
-core → endpoints Loco → vues Dioxus → tests de parité) sert de référence.
+**Phase 5 (tranche 1) — Ingestion télémétrie collecte : TERMINÉE** (merge
+sur `main` le 2026-08-16, revue utilisateur — go après e2e réelle vécue
+ensemble : metrics O2, anti-clone, reaper, normalisation D16 ; gates verts
+au merge : check natif+wasm32, 64 tests, clippy -D warnings, build front).
+Périmètre à la demande de l'utilisateur : **collecte uniquement** —
+broadcast desired-state et tout l'actuateur restent au chantier M2M (D13).
+La suite de la Phase 5 (lecture métrics front, `ws/metrics/live`) reste à
+faire et sera re-planifiée après la Phase 6.
+
+- [x] Migration 000006 : `device_states` (bail de vie D9 : last_seen,
+      connected — remplace Redis db2 Django) + `openobserve_orgs`
+      (correspondance org PNEX ↔ org O2 + token d'ingestion correlé)
+- [x] WS `/ws/sensor/ingest` (`controllers/ws_ingest.rs`, contrat
+      `docs/contracts/ws-sensor-ingest.md`) : parité SensorIngest Django —
+      auth b64 query (+trim du `\n` firmware), frames
+      base64(nonce‖ChaCha20-nu), PING/PONG, key=value, validation
+      stricte/découverte plafonnée, erreurs chiffrées, close codes
+      4001-4008 ; durcissements : cache revalidation 10 s (§7.8 — Django
+      requêtait la DB à chaque frame à ~10 fps), last_seen sur toute frame
+      valide, déconnexion propre = bail libéré immédiatement
+- [x] **Anti-clone (décision user, D15)** : sessions en-process → 4003
+      immédiat + fallback `device_states` frais (crash/autre process) ;
+      reaper 5 s seul écrivain de `active` (parité Celery Django),
+      TTL silence 10 s configurable ; limite assumée : first-live-wins,
+      un clone peut prendre la place après TTL
+- [x] **OpenObserve metrics (D15)** : batcher 500/10 s → Prometheus
+      remote-write `/api/{org}/prometheus/api/v1/write` (prost+snappy —
+      demande user : les données vont dans les **metrics**, pas les logs),
+      séries `metric{device_id, pred_dev, source_type, ts_source}` ;
+      provisioning paresseux idempotent (org `pnex_org_{id}` cherchée par
+      nom avant création — O2 v0.92.1 ne dédoublonne pas ; user d'ingestion
+      admin + passcode, password réinitialisable par root si ligne PG
+      perdue) ; compose `openobserve` v0.92.1 (port 5080) ;
+      `/health/ready` check O2 (not-configured si absent)
+- [x] Reaper déplacé dans `after_routes` : `loco start` sans flag est
+      ServerOnly (connect_workers jamais appelé — constaté en e2e)
+- [x] DTO devices + `last_seen` ; page Devices : « vu à HH:MM:SS » /
+      « jamais vu » sous le badge de statut, i18n fr/en
+- [x] **Normalisation des noms de mesures (D16)** : canonisation avant
+      validation/découverte/stockage (accents, casse, séparateurs fondus) —
+      `Soil-Moisture` ≡ `soil_moisture`, fini les rejets cosmétiques ;
+      le nom de série O2 est canonique
+- [x] Exemple `ingest_client` (rôle firmware chiffré, gère les close
+      frames) ; 9 tests WS + 3 tests mock O2 fidèle + tests unitaires
+      (crypto, fraîcheur, promwrite, mots de passe) — 63 au workspace
+- [x] E2E réelle vérifiée (PG + Keycloak + O2) : création device via API
+      → client chiffré → org O2 auto-provisionnée → données visibles via
+      `/prometheus/api/v1/query` ; clone → close 4003 ; reconnect
+      immédiat après déconnexion propre ; reaper active=true/false
+
+**Prochaine : revue humaine Phase 5**, puis suite Phase 5 (lecture
+télémétrie/metrics live pour le front, `ws/metrics/live` corrigé du bug
+de sujets Django) ou Phase 6 (worker build firmware).
 
 ## Anciennes phases (détail)
 
@@ -289,6 +338,8 @@ core → endpoints Loco → vues Dioxus → tests de parité) sert de référenc
 | 2026-08-15 | **Phase 2 technique** : Durations Django INTERVAL → `*_secs` bigint ; quotas Free unifiés sur 3/1/0 (tier fixture — les 5/2/1 des views Django étaient des fallbacks divergents) ; `global_id` non-UUID → uuid5 DNS (parité bootstrap_db Django) ; refs `?` nullable de loco-rs : le « bug » était un mauvais usage (`?` sur le 1er élément, pas de colonne dans `cols`) — corrigé, FK SET NULL via refs pures | Constaté à l'implémentation |
 | 2026-08-16 | **Phase 4 — actuator-channels différés** : la config des canaux actionneurs (CRUD backend, DTO, table) n'est PAS implémentée en Phase 4 ; elle sera conçue avec le chantier M2M (D13) dont dépend sa distribution aux devices. Le périmètre Phase 4 = devices sensors + catalogue | Demandé par l'utilisateur 2026-08-16 (« pour le moment ne traite pas les actuator… réflexion à avoir sur le M2M ») |
 | 2026-08-16 | **D14 — Pagination + recherche obligatoires sur toutes les listes** : écart assumé avec le scaffold Django (tableaux nus) ; enveloppe unique `{count, next, previous, results}` (forme LimitOffset DRF) partout, `limit`/`offset`/`search`, défaut `PAGINATION_DEFAULT_LIMIT` (10), max 100 | Demandé par l'utilisateur 2026-08-16 (« on ne garde pas la parité Django, on l'améliore » — sans pagination bornée, base et réponses souffriraient à l'échelle). Détail complet dans `docs/inventory.md` D14 |
+| 2026-08-16 | **D16 — Normalisation des noms de mesures** : canonisation (trim, accents pliés, minuscules, séparateurs fondus) avant validation stricte/découverte/stockage ; `Soil-Moisture` ≡ `soil_moisture` ; résultat vide → `error:invalid_format`. Mapping par capacité écarté (trop lourd pour le bénéfice) | Demandé par l'utilisateur 2026-08-16 (« normaliser, c'est plus simple ? ») — choix de l'option légère parmi les 3 proposées |
+| 2026-08-16 | **D15 — Ingestion : bail anti-clone first-live-wins + sortie metrics OpenObserve** : le premier device qui ingère occupe la place (4003 pour un clone), déconnexion propre libère le bail, reaper désactive après TTL silence (10 s, configurable) ; télémétrie ingérée en Prometheus remote-write (metrics O2, pas les logs), org O2 + token d'ingestion provisionnés automatiquement et correlés en base | Demandé par l'utilisateur 2026-08-16 (« le premier occupe la place → active… si plus de données depuis 10 s → deactivated » ; « les données doivent arriver dans les metrics »). Détail dans `docs/inventory.md` D15, contrat `docs/contracts/ws-sensor-ingest.md` |
 
 ## Principes directeurs (confirmés par l'utilisateur)
 
@@ -298,6 +349,21 @@ core → endpoints Loco → vues Dioxus → tests de parité) sert de référenc
 
 ## Journal
 
+- 2026-08-16 : **Phase 5 (tranche collecte) mergée sur `main`** : go
+  utilisateur après e2e réelle (données visibles dans les metrics O2,
+  clone rejeté 4003, reaper, `Soil-Moisture` → série canonique
+  `soil_moisture` — D16 ajoutée au passage sur sa demande). Gates
+  repassées au merge. 7 commits. Prochaine : Phase 6 (worker build
+  firmware) — la lecture métrics front de la Phase 5 sera re-planifiée
+  après.
+- 2026-08-16 : **Phase 5 (tranche collecte) implémentée** (branche
+  `phase-5-ingestion`) : WS ingestion ChaCha20 + bail anti-clone + reaper
+  + sortie metrics OpenObserve (Prometheus remote-write, provisioning
+  automatique correlé en base). Décisions user D15 (TTL 10 s, metrics pas
+  logs). Constats techniques O2 v0.92.1 (identifier ≠ name, pas de
+  dédoublonnage des noms d'org, /healthz, rôle admin seul natif, Bearer
+  passcode non supporté) et loco (ServerOnly par défaut → reaper dans
+  after_routes) consignés dans les docs de code. En attente de revue.
 - 2026-08-16 : **Phase 4 mergée sur `main`** : revue utilisateur — CRUD
   devices puis tranche pagination/recherche D14 validés. Gates repassés
   au merge (check natif+wasm32, 48 tests, clippy -D warnings, build
