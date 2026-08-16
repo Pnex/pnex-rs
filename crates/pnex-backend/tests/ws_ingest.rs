@@ -212,9 +212,15 @@ async fn cycle_ingest_chiffre_complet() {
             "ERROR:decryption_failed"
         );
 
-        // Le sink a reçu exactement la mesure valide, avec le routage org.
+        // D16 : nom normalisé (casse/séparateurs/accents fonduus) → la
+        // mesure passe la validation stricte et sort canonique.
+        ws.send_text(encrypt("Read-Temperature = 19.5", &dev.key)).await;
+        assert_eq!(decrypt(&ws.receive_text().await, &dev.key), "ok");
+
+        // Le sink a reçu exactement les mesures valides, avec le routage org.
         let points = sink.0.lock().expect("sink").clone();
-        assert_eq!(points.len(), 1);
+        assert_eq!(points.len(), 2);
+        assert_eq!(points[1].metric_name, "read_temperature");
         let p = &points[0];
         assert_eq!(p.org_id, org);
         assert_eq!(p.device_id, "capteur-jardin");
@@ -352,13 +358,19 @@ async fn dynamique_decouverte_et_plafond() {
             ws.send_text(encrypt(&format!("{name}={value}"), &dev.key)).await;
             assert_eq!(decrypt(&ws.receive_text().await, &dev.key), "ok");
         }
+
+        // D16 : style différent = même mesure découverte (pas de doublon —
+        // le plafond de 2 n'est pas atteint).
+        ws.send_text(encrypt("Pression = 1.4", &dev.key)).await;
+        assert_eq!(decrypt(&ws.receive_text().await, &dev.key), "ok");
         ws.send_text(encrypt("tension=3.3", &dev.key)).await;
         assert_eq!(
             decrypt(&ws.receive_text().await, &dev.key),
             "error:too_many_measurements"
         );
 
-        // La découverte est persistée (JSONB, relecture au reconnect).
+        // La découverte est persistée (JSONB, relecture au reconnect) —
+        // noms canoniques (D16).
         let row = device_registries::Entity::find_by_id(dev.id)
             .one(&ctx.db)
             .await
@@ -366,6 +378,13 @@ async fn dynamique_decouverte_et_plafond() {
             .expect("dev");
         let names = row.discovered_measurements.expect("jsonb");
         assert!(names.get("pression").is_some() && names.get("humidite").is_some());
+
+        // Nom normalisé vide → format invalide.
+        ws.send_text(encrypt("---=1", &dev.key)).await;
+        assert_eq!(
+            decrypt(&ws.receive_text().await, &dev.key),
+            "error:invalid_format"
+        );
         ws.close().await;
     })
     .await;

@@ -4847,6 +4847,7 @@ dependencies = [
  "base64 0.22.1",
  "chacha20 0.9.1",
  "chrono",
+ "deunicode",
  "form_urlencoded",
  "futures-util",
  "insta",

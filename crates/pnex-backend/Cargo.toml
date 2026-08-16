@@ -27,6 +27,8 @@ chacha20 = "0.9"
 # Ingestion metrics OpenObserve : Prometheus remote-write (protobuf+snappy)
 prost = "0.13"
 snap = "1"
+# Pliage d'accents pour la normalisation des noms de mesures (D16)
+deunicode = "1"
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 regex = { version = "1.11" }

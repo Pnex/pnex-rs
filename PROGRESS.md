@@ -272,6 +272,10 @@ desired-state et tout l'actuateur restent au chantier M2M (D13).
       ServerOnly (connect_workers jamais appelé — constaté en e2e)
 - [x] DTO devices + `last_seen` ; page Devices : « vu à HH:MM:SS » /
       « jamais vu » sous le badge de statut, i18n fr/en
+- [x] **Normalisation des noms de mesures (D16)** : canonisation avant
+      validation/découverte/stockage (accents, casse, séparateurs fondus) —
+      `Soil-Moisture` ≡ `soil_moisture`, fini les rejets cosmétiques ;
+      le nom de série O2 est canonique
 - [x] Exemple `ingest_client` (rôle firmware chiffré, gère les close
       frames) ; 9 tests WS + 3 tests mock O2 fidèle + tests unitaires
       (crypto, fraîcheur, promwrite, mots de passe) — 63 au workspace
@@ -330,6 +334,7 @@ de sujets Django) ou Phase 6 (worker build firmware).
 | 2026-08-15 | **Phase 2 technique** : Durations Django INTERVAL → `*_secs` bigint ; quotas Free unifiés sur 3/1/0 (tier fixture — les 5/2/1 des views Django étaient des fallbacks divergents) ; `global_id` non-UUID → uuid5 DNS (parité bootstrap_db Django) ; refs `?` nullable de loco-rs : le « bug » était un mauvais usage (`?` sur le 1er élément, pas de colonne dans `cols`) — corrigé, FK SET NULL via refs pures | Constaté à l'implémentation |
 | 2026-08-16 | **Phase 4 — actuator-channels différés** : la config des canaux actionneurs (CRUD backend, DTO, table) n'est PAS implémentée en Phase 4 ; elle sera conçue avec le chantier M2M (D13) dont dépend sa distribution aux devices. Le périmètre Phase 4 = devices sensors + catalogue | Demandé par l'utilisateur 2026-08-16 (« pour le moment ne traite pas les actuator… réflexion à avoir sur le M2M ») |
 | 2026-08-16 | **D14 — Pagination + recherche obligatoires sur toutes les listes** : écart assumé avec le scaffold Django (tableaux nus) ; enveloppe unique `{count, next, previous, results}` (forme LimitOffset DRF) partout, `limit`/`offset`/`search`, défaut `PAGINATION_DEFAULT_LIMIT` (10), max 100 | Demandé par l'utilisateur 2026-08-16 (« on ne garde pas la parité Django, on l'améliore » — sans pagination bornée, base et réponses souffriraient à l'échelle). Détail complet dans `docs/inventory.md` D14 |
+| 2026-08-16 | **D16 — Normalisation des noms de mesures** : canonisation (trim, accents pliés, minuscules, séparateurs fondus) avant validation stricte/découverte/stockage ; `Soil-Moisture` ≡ `soil_moisture` ; résultat vide → `error:invalid_format`. Mapping par capacité écarté (trop lourd pour le bénéfice) | Demandé par l'utilisateur 2026-08-16 (« normaliser, c'est plus simple ? ») — choix de l'option légère parmi les 3 proposées |
 | 2026-08-16 | **D15 — Ingestion : bail anti-clone first-live-wins + sortie metrics OpenObserve** : le premier device qui ingère occupe la place (4003 pour un clone), déconnexion propre libère le bail, reaper désactive après TTL silence (10 s, configurable) ; télémétrie ingérée en Prometheus remote-write (metrics O2, pas les logs), org O2 + token d'ingestion provisionnés automatiquement et correlés en base | Demandé par l'utilisateur 2026-08-16 (« le premier occupe la place → active… si plus de données depuis 10 s → deactivated » ; « les données doivent arriver dans les metrics »). Détail dans `docs/inventory.md` D15, contrat `docs/contracts/ws-sensor-ingest.md` |
 
 ## Principes directeurs (confirmés par l'utilisateur)

@@ -48,9 +48,16 @@ base64( nonce(12 octets) ‖ ChaCha20(ciphertext) )
 
 - 1 mesure par frame, pas de JSON, pas de batch, pas de timestamp device
   (v1 ; D12 : provenance `ts_source` réservée pour la v2).
+- **Normalisation du nom (D16)** : trim, accentspliés (`Température`→
+  `temperature`), minuscules, tout non `[a-z0-9_:]` → `_` (répétitions
+  fondues). `Soil-Moisture`, `soil moisture` et `soil_moisture` désignent
+  la même mesure — la comparaison aux capacités, la découverte dynamique
+  et le nom de série O2 utilisent toutes le nom canonique. Un nom qui
+  normalise à vide (`---`) → `error:invalid_format`.
 - Devices **stricts** (modèle `custom_sensor`/`custom_device` exclus) : le
-  nom doit être une capacité du predefined device. Devices **dynamiques** :
-  découverte automatique plafonnée à `max_unique_measurements` (100).
+  nom (normalisé) doit être une capacité du predefined device. Devices
+  **dynamiques** : découverte automatique plafonnée à
+  `max_unique_measurements` (100).
 
 ## 4. Close codes (frame Close après upgrade accepté)
 

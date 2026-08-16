@@ -79,6 +79,34 @@ fn encrypt_frame(plain: &str, key: &[u8; 32]) -> String {
     STANDARD.encode(wire)
 }
 
+// ──────────────── Normalisation des noms de mesures ────────────────
+
+/// Harmonisation capability ↔ mesure (D16) : trim, pliage des accents
+/// (deunicode), minuscules, tout non `[a-z0-9_:]` → `_` (répétitions
+/// fondues, `_` de bord supprimés). `Soil-Moisture`, `soil moisture` et
+/// `soil_moisture` → `soil_moisture`. Vide si le nom n'est que des
+/// séparateurs (→ `error:invalid_format` côté appelant). Appliquée avant
+/// validation stricte, découverte dynamique ET stockage — la même mesure a
+/// le même nom partout (O2 compris, où promwrite n'a plus qu'un rôle de
+/// garde-fou).
+pub(crate) fn normalize_measurement_name(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut pending_sep = false; // séparateur fondu, flushé devant du contenu
+    for c in deunicode::deunicode(raw.trim()).chars() {
+        let c = c.to_ascii_lowercase();
+        if c.is_ascii_lowercase() || c.is_ascii_digit() || c == ':' {
+            if pending_sep {
+                out.push('_');
+                pending_sep = false;
+            }
+            out.push(c);
+        } else {
+            pending_sep = !out.is_empty();
+        }
+    }
+    out
+}
+
 // ───────────────────────── Sessions ouvertes ─────────────────────────
 
 /// Devices avec une session WS ouverte dans CE process — étage 1 de
@@ -161,9 +189,13 @@ impl Snapshot {
             allow_dynamic: device.allow_dynamic_measurements,
             discovered: super::devices::discovered_names(&device.discovered_measurements)
                 .into_iter()
+                .map(|n| normalize_measurement_name(&n))
                 .collect(),
             max_unique: device.max_unique_measurements,
-            capabilities: caps.into_iter().map(|c| c.name).collect(),
+            capabilities: caps
+                .into_iter()
+                .map(|c| normalize_measurement_name(&c.name))
+                .collect(),
         })
     }
 }
@@ -369,10 +401,18 @@ async fn session_loop(
             reply(&mut socket, &key, "error:measurement_name_too_long").await;
             continue;
         }
+        // Harmonisation capability ↔ mesure (D16) : le nom est normalisé
+        // AVANT validation/découverte/stockage — `Soil-Moisture`,
+        // `soil moisture` et `soil_moisture` désignent la même mesure.
+        let name = normalize_measurement_name(name);
+        if name.is_empty() {
+            reply(&mut socket, &key, "error:invalid_format").await;
+            continue;
+        }
 
         // Validation : strict → capacités du modèle ; dynamic → découverte
         // plafonnée (`ping=x` suit le même chemin — parité Django).
-        if !snap.allow_dynamic && !snap.capabilities.contains(name) {
+        if !snap.allow_dynamic && !snap.capabilities.contains(&name) {
             reply(
                 &mut socket,
                 &key,
@@ -381,12 +421,12 @@ async fn session_loop(
             .await;
             continue;
         }
-        if snap.allow_dynamic && !snap.discovered.contains(name) {
+        if snap.allow_dynamic && !snap.discovered.contains(&name) {
             if snap.discovered.len() as i32 >= snap.max_unique {
                 reply(&mut socket, &key, "error:too_many_measurements").await;
                 continue;
             }
-            snap.discovered.insert(name.to_string());
+            snap.discovered.insert(name.clone());
             persist_discovered(&ctx.db, snap.device_registry_id, &snap.discovered).await;
         }
 
@@ -464,5 +504,29 @@ mod tests {
         roundtrip("PONG");
         roundtrip("soil_moisture=42");
         roundtrip("error:invalid_capability:measurement 'x' not in device capabilities");
+    }
+
+    /// D16 : styles d'écriture variés → même nom canonique.
+    #[test]
+    fn normalisation_noms_de_mesures() {
+        assert_eq!(
+            normalize_measurement_name("soil_moisture"),
+            "soil_moisture"
+        );
+        assert_eq!(
+            normalize_measurement_name("Soil-Moisture"),
+            "soil_moisture"
+        );
+        assert_eq!(
+            normalize_measurement_name("  soil  moisture "),
+            "soil_moisture"
+        );
+        assert_eq!(
+            normalize_measurement_name("Température Extérieure"),
+            "temperature_exterieure"
+        );
+        assert_eq!(normalize_measurement_name("PH;2"), "ph_2");
+        assert_eq!(normalize_measurement_name("---"), "");
+        assert_eq!(normalize_measurement_name("___x___"), "x");
     }
 }
