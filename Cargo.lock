@@ -4886,7 +4886,12 @@ dependencies = [
 name = "pnex-firmware-builder"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "tempfile",
  "thiserror 2.0.20",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
