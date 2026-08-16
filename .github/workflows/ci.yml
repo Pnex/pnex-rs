@@ -18,6 +18,10 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      # asset!() exige assets/tailwind.css à la compilation ; le CSS réel est
+      # gitignoré (généré par npm dans le job dx build) — stub pour compiler.
+      - name: Stub Tailwind (compilation)
+        run: test -f crates/pnex-frontend/assets/tailwind.css || printf '/* Stub CI — CSS reel genere par npm run css:build */\n' > crates/pnex-frontend/assets/tailwind.css
       - run: cargo check --workspace
       - run: cargo check -p pnex-core -p pnex-frontend --target wasm32-unknown-unknown
 
@@ -44,6 +48,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Stub Tailwind (compilation)
+        run: test -f crates/pnex-frontend/assets/tailwind.css || printf '/* Stub CI — CSS reel genere par npm run css:build */\n' > crates/pnex-frontend/assets/tailwind.css
       - run: cargo test --workspace
 
   frontend:

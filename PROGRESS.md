@@ -255,6 +255,14 @@ parité), patron pour les suivantes.
   imports morts en wasm nettoyés, PROGRESS.md clôturé. Go au merge donné
   par l'utilisateur après les correctifs post-e2e. Prochaine : Phase 4
   (devices CRUD).
+- 2026-08-16 : **CI rouge détectée au merge** (rouge en fait depuis les
+  commits front, les gates locaux masquaient le problème — le CSS existait
+  sur la machine de dev) : `asset!("/assets/tailwind.css")` exige le
+  fichier à la compilation mais il est gitignoré, et seuls les builds dx le
+  généraient. Fix : task `css:ensure` (stub, sans npm) dont dépendent
+  check/test/lint + step stub identique dans les jobs CI check/test
+  (vérifié : recompilation forcée bin + bin de test avec le stub seul,
+  natif et wasm32).
 - 2026-08-16 : **Front Phase 3 implémenté** (suite de la branche
   `phase-3-auth-multitenant`) : port de l'UI `pnex-ui` (React) en Dioxus 0.7 —
   Tailwind v4 + i18n Fluent fr/en obligatoire, client HTTP reqwest (refresh

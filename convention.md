@@ -120,7 +120,11 @@
   dans development.yaml (jamais en prod).
 - **Tailwind v4** : source `style/tailwind.css` (`@source "../src"`), généré
   vers `assets/tailwind.css` (gitignoré) par `task css:build` **avant tout
-  build dx** (toujours passer par la Taskfile). Le scanner lit du texte brut :
+  build dx** (toujours passer par la Taskfile). La macro `asset!()` exige le
+  fichier **à la compilation** : `task check`/`test`/`lint` dépendent de
+  `task css:ensure` (stub vide si le CSS réel est absent — jamais l'inverse),
+  et la CI génère le même stub dans les jobs check/test (le job dx build
+  produit le CSS réel via npm). Le scanner lit du texte brut :
   les classes conditionnelles sont des **littéraux complets** (`match` qui
   retourne deux chaînes entières), jamais `format!("bg-{c}-100")`.
 - **Client HTTP** (`api/client.rs`) : reqwest en `thread_local` (futurs

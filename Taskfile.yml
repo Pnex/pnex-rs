@@ -37,6 +37,14 @@ tasks:
     cmds:
       - npm run css:build
 
+  css:ensure:
+    desc: Garantit l'existence de assets/tailwind.css (stub) — la macro asset!() l'exige à la compilation
+    cmds:
+      # Le CSS réel est gitignoré (généré par css:build) : sans ce stub, tout
+      # fresh clone casse sur cargo check/test/clippy (asset! ne trouve pas le
+      # fichier). N'écrase jamais le CSS réel s'il existe.
+      - test -f crates/pnex-frontend/assets/tailwind.css || printf '/* Stub — CSS reel genere par task css:build (npm) */\n' > crates/pnex-frontend/assets/tailwind.css
+
   css:watch:
     desc: Regénère le CSS Tailwind à la volée (à lancer à côté de dev:hot)
     dir: crates/pnex-frontend
@@ -51,12 +59,14 @@ tasks:
 
   check:
     desc: cargo check natif + wasm32 (garde-fou « jamais de rouge »)
+    deps: [css:ensure]
     cmds:
       - cargo check --workspace
       - cargo check -p pnex-core -p pnex-frontend --target wasm32-unknown-unknown
 
   test:
     desc: Tests du workspace
+    deps: [css:ensure]
     cmds:
       - cargo test --workspace
 
@@ -145,5 +155,6 @@ tasks:
 
   lint:
     desc: Clippy sur tout le workspace
+    deps: [css:ensure]
     cmds:
       - cargo clippy --workspace -- -D warnings
