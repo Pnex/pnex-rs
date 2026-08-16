@@ -1,9 +1,35 @@
 # Build firmware côté serveur — contraintes du dépôt `pnex-firmwares`
 
-> **Statut : conception, Phase 6.** Rien de ceci n'est implémenté. Ce document
-> consigne (a) l'architecture cible validée (Appendice X) et (b) les faits
-> **vérifiés** dans le dépôt firmware `/home/shan/Documents/shan-perso/pnex-firmwares`
-> qui conditionnent l'interface du futur worker de build.
+> **Statut : IMPLÉMENTÉ (Phase 6, 2026-08-16).** Ce document conserve (a)
+> l'architecture cible validée (Appendice X), (b) les faits **vérifiés** dans
+> le dépôt firmware `/home/shan/Documents/shan-perso/pnex-firmwares` qui
+> conditionnent l'interface du worker, et (c) les écarts de l'implémentation.
+>
+> **Réalisé dans** : crate `pnex-firmware-builder` (pipeline + `ArtifactStore`),
+> worker `BuildFirmwareWorker` (queue PG loco `pg_loco_queue`, SKIP LOCKED
+> intégré), `controllers/builds.rs` (contrat `docs/contracts/build.http`),
+> pages front Builds + enregistrement avec build auto.
+>
+> **Écarts vs la conception initiale** :
+> - chemins de parité Django (`/api/v1/build-firmware`, `/build-records`,
+>   `/download/firmware/{device_id}`) au lieu du `POST /builds` évoqué en §1 ;
+> - `ArtifactStore` à deux backends (décision user) : `local` (FS, edge)
+>   implémenté d'abord, `s3` différé (erreurs `NotImplemented` claires),
+>   sélection `STORAGE_BACKEND` (env) surchargeant la config — pas de
+>   MinIO dans compose pour l'instant ;
+> - logs : `tracing` serveur + queue des 30 dernières lignes dans l'erreur
+>   du record — le stream des logs vers OpenObserve est **différé** ;
+> - suivi des builds par **polling** front (~5 s, décision user) — pas de
+>   WS `ws/firmware/builds` (retiré de la Phase 6, cf. inventory §4) ;
+> - secrets WiFi/hôte transportés dans `pg_loco_queue.task_data` (limite
+>   documentée : visibles de l'admin DB, parité spec k8s Django ; purge via
+>   `cargo loco jobs clear-jobs`) ; **token + clé relus en base** par le
+>   worker, jamais en queue ; workspace tmp effacé au drop (secrets
+>   compilés dans les artefacts intermédiaires) ;
+> - cache : `~/.platformio` partagé (préchauffer une fois par machine) ;
+>   le cache proxy dédié sccache/bucket est **différé** ;
+> - cancellation tokens et clés de config de rétention (D6) : structure
+>   posée, gestion différée.
 
 ## 1. Architecture cible (Appendice X, résumé)
 

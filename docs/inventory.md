@@ -12,7 +12,7 @@
 | D2 | **L'organisation est le tenant** : tables `organizations` + `organizations_members` en PG ; 1 org OpenObserve par org PNEX ; **plusieurs users par org** ; scoping `org_id` au lieu de `user_id`. Nouveau concept vs Django | Phases 2, 3, 4 |
 | D3 | **Rapports → OpenObserve** : scheduled reports de dashboards (Report Server + SMTP + cron). Supprime matplotlib/WeasyPrint/Celery/S3-rapports | Phase 5/8 |
 | D4 | Le chiffrement device actuel est **ChaCha20 NU (sans Poly1305)** — migration.md dit « ChaCha20-Poly1305 ». Décision à prendre : compatibilité exacte (nu) ou upgrade AEAD (breaking firmware) | Phase 5 |
-| D5 | **Firmware → MinIO/S3 conservé** (abstraction `ArtifactStore` en Rust ; disque possible en dev). PG large objects **écarté** : binaires potentiellement lourds (RTOS/OS complet), backups/WAL gonflés | Phase 6 |
+| D5 | **Firmware → `ArtifactStore` à deux backends (révisé Phase 6 sur décision user)** : `local` (système de fichiers — pratique edge) implémenté **en premier**, `s3` (cloud) plomberie différée ; sélection `STORAGE_BACKEND` (surcharge env de la config). PG large objects **écarté** : binaires potentiellement lourds (RTOS/OS complet), backups/WAL gonflés | Phase 6 ✅ |
 | D6 | **Rétention des artifacts : structure posée maintenant, gestion plus tard** — clés `org_{id}/firmware/…`, champ/config de rétention + job worker placeholder | Phase 6 |
 | D7 | **Rapports : discussion de conception repoussée** ; exigences verrouillées : (a) tout OpenObserve doit être provisionnable/cron-able **via API** (service account — orgs, dashboards, reports) ; (b) génération à la demande = **tâche backend** (job queue PG) pour éviter la saturation | Phase 8 |
 | D8 | **ChaCha20 nu à parité stricte** (compatibilité firmware ESP32 existant), versionnement du protocole de chiffrement pour permettre un upgrade AEAD ultérieur | Phase 5 |
@@ -36,7 +36,7 @@
 | metrics | Lecture ES (modèles PG hérités) | → Phase 5 (OpenObserve) ; modèles PG SUPPRIMÉS |
 | sites | Sites/SVG/annotations | → Loco Phase 4+ (tranche verticale après devices) |
 | subscription | Tiers + profils | → Loco Phase 2/3 (+ concept org D2) |
-| firmware_builder | Builds firmware | → worker Loco Phase 6 |
+| firmware_builder | **FAIT (Phase 6)** — worker Loco `BuildFirmwareWorker` sur queue PG | ✅ 6 |
 | k8s_ctl | StatefulSets actuateurs | **SUPPRIMÉ** (§3 : régulation à l'edge) |
 | bootstrap_db | Fixtures YAML | → seed Phase 2 (mêmes YAML réutilisables) |
 | health | Probes | → Loco Phase 1 |
@@ -77,7 +77,7 @@ Logique save()/clean()/signals → hooks SeaORM + validation service (détail mo
 | /api/v1/actuator-channels/pod-status/{id} | **SUPPRIMÉ** (pods K8s) | — |
 | /api/v1/metrics (ES query) | Loco → OpenObserve query API | 5 |
 | /api/v1/live-metrics (Redis db 2) | Loco (voir §5 état live) | 5 |
-| /api/v1/build-firmware, download, build-records | Loco + worker | 6 |
+| /api/v1/build-firmware, download, build-records | **FAIT (Phase 6)** — `controllers/builds.rs`, contrat `docs/contracts/build.http` (queue PG + worker, phases queued/running/succeeded/failed) | ✅ 6 |
 | /api/v1/sites/* (5 viewsets UUID) | Loco | 4+ |
 | /api/v1/etl/unit-conversions, formulas (+evaluate, import), global-*, imports | Loco (+ moteur WASM) | 8 |
 | /api/v1/etl/templates, configurations, executions, generate | **SUPPRIMÉS (D3)** — OpenObserve reports | — |
@@ -98,7 +98,7 @@ PUT/PATCH devices = metadata only ; suffixes .json ; 3 schémas d'auth actifs.
 | ws/actuator/cast — **flux sensor_data agrégée** (on_nats_sensor_data) | **SUPPRIMÉ** — dépendait des pods de contrôle ; actuateurs ↔ capteurs en direct (D13) | — |
 | ws/metrics/live (dashboard) | Loco WS — **corriger le bug de sujets** (`sensors.*` vs `sensor.*.*.measurement.>`) | 5 |
 | ws/etl/formulas/evaluate | Loco WS → query OpenObserve + moteur WASM | 8 |
-| ws/firmware/builds (notifications) | Loco WS (job queue PG → push) | 6 |
+| ws/firmware/builds (notifications) | **DIFFÉRÉ (décision user Phase 6)** — le front suit les builds par polling (~5 s) tant que queued/running ; le WS utilisateur (auth JWT, broadcast org) pourra venir avec le chantier M2M | différé |
 | crypto_utils.py ChaCha20 nu | crate Rust `chacha20` — **D4 : nu ou Poly1305 ?** | 5 |
 | actuator_message.proto | réutilisé tel quel (prost-2) | 5 |
 | Auth device WS (token+device_id base64 query) | idem Loco | 5 |
@@ -111,13 +111,13 @@ PUT/PATCH devices = metadata only ; suffixes .json ; 3 schémas d'auth actifs.
 | Elasticsearch + indices user_* + mappings time_series | **OpenObserve** — streams par org (D2), dimensions (device_id, metric_name, source_type), retention par org/tier | 5 |
 | Consume NATS → ES (batch 500/10 s) | **SUPPRIMÉ** — écriture directe backend → OpenObserve (bulk) | 5 |
 | etl_compute (event-driven formulas NATS) | Moteur ETL **dans Loco** : évaluateur Rust + WASM (D1) — déclenchement événementiel interne | 5/8 |
-| Redis db 0 (Celery) + beat (5 tâches) | **SUPPRIMÉ** — worker Loco, queue PG (fan-out par user → jobs itératifs) | 6 |
-| Redis db 1 (channels layer) | **SUPPRIMÉ** — notifs WS gérées par Loco | 6 |
+| Redis db 0 (Celery) + beat (5 tâches) | **FAIT (Phase 6)** — queue PostgreSQL loco (`pg_loco_queue`, SKIP LOCKED intégré), worker in-process `--server-and-worker`, reaper de reprise 30 min | ✅ 6 |
+| Redis db 1 (channels layer) | **SUPPRIMÉ** — notifs WS gérées par Loco (firmware builds : polling, cf. §4) | 6 |
 | Redis db 2 (device state : pings, last values, états actuateurs) | À décider : Postgres (TTL logique) ou garder Redis — **point ouvert** | 5 |
 | k8s_ctl + pods compute par actuateur + run_compute_controller | **SUPPRIMÉ** — régulation à l'edge (M2M) | — |
 | Argo Workflows + backend argowf | **SUPPRIMÉ** | — |
-| firmware build (k8s_job script : git clone → pio run → esptool merge-bin → S3) | crate `firmware-builder` (shell-out toolchain), job Loco, timeout dur, secrets scopés | 6 |
-| MinIO/S3 (firmware binaires + rapports) | Rapports : **SUPPRIMÉ (D3)**. Firmware : **MinIO/S3 conservé** (D5) derrière `ArtifactStore` ; rétention différée (D6) | 6 |
+| firmware build (k8s_job script : git clone → pio run → esptool merge-bin → S3) | **FAIT (Phase 6)** — crate `pnex-firmware-builder` (pipeline subprocess : source locale ou git clone → pio run → merge-bin → ArtifactStore), worker Loco `BuildFirmwareWorker`, timeout dur + kill, workspace tmp par job (secrets effacés au drop), env du child réduite | ✅ 6 |
+| MinIO/S3 (firmware binaires + rapports) | Rapports : **SUPPRIMÉ (D3)**. Firmware : **FAIT (Phase 6, D5 révisé)** — `ArtifactStore` à deux backends, `local` (FS, edge) implémenté d'abord, sélection `STORAGE_BACKEND` ; S3 = plomberie différée ; rétention différée (D6) | ✅ 6 |
 | CoolProp in-process (5 points d'injection) | **service FastAPI externe conservé**, appelé par host fn WASM + validation catalogue | 8 |
 | Rapports matplotlib/WeasyPrint/Celery | **SUPPRIMÉ (D3)** — OpenObserve Report Server + SMTP + cron | — |
 
@@ -175,8 +175,9 @@ Les points ouverts de la première passe ont été résolus (décisions D4-D11 e
    (expressions type `safe_eval`) vont dans l'évaluateur Rust à parité stricte ;
    le WASM est pour les fonctions custom multi-langages futures. Format de
    distribution des modules WASM utilisateur (upload, versioning, signature) à définir.
-5. **MinIO** pour firmware uniquement (D3 a supprimé les rapports) : conserver /
-   disque / PG large objects. Avant Phase 6.
+5. ~~**MinIO** pour firmware uniquement~~ **Résolu (D5 révisé, Phase 6)** :
+   abstraction `ArtifactStore`, backend `local` d'abord (edge), `s3` différé,
+   sélection `STORAGE_BACKEND`.
 6. **Retention par org vs par tier** : en D2 plusieurs users par org — le tier
    d'abonnement s'attache à l'org ou au user ?
 7. **Rapport ad hoc** (génération à la demande hors cron) : export dashboard

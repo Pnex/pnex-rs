@@ -1,35 +1,65 @@
-POST http://0.0.0.0:8000/api-token-auth/
+### Contrat builds firmware (Phase 6) — parité Django adaptée
+#
+# Adaptations vs Django POC (api-rest.md §6) :
+# - chemins sans slash terminal (convention.md) ;
+# - scoping org (D2) : X-Org-Id requis, `org_id` dans les records au lieu
+#   du `user` Django ;
+# - plus de champs k8s/Argo (`backend`, `job_name`, `argo_wf_job_name`) —
+#   la réponse de création expose `build_id` + `status` ;
+# - phases canoniques minuscules : queued (nouveau — Django n'avait pas
+#   d'état en file, submit synchrone) | running (Running) | succeeded
+#   (Succeeded) | failed (Failed) ; Deleted supprimé (plus de job k8s) ;
+# - build-records paginé (D14, enveloppe {count,next,previous,results}) ;
+# - `insecure`/`server_port`/`force_rebuild`/`metadata` acceptés, ignorés ;
+# - erreurs forme Django {"error": "..."} ; validation champ {"<champ>": "..."}.
+#
+# Secret d'exécution : WiFi + hôte passent par la queue PG (visibles de
+# l'admin DB, parité spec k8s Django — cf. firmware-build.md) ; token et
+# clé de chiffrement sont relus en base par le worker.
+
+@host = http://localhost:5150
+@token = $PNEX_ACCESS_TOKEN
+
+### Lancer un build — 201 ; erreurs : 400 validation/modèle, 404 device,
+### 403 quota devices, 429 intervalle min (dernier build RÉUSSI de l'org).
+# (ForegroundBlocking en test / BackgroundQueue via --server-and-worker.)
+POST {{host}}/api/v1/build-firmware
 Content-Type: application/json
+Authorization: Bearer {{token}}
+X-Org-Id: 4
 
 {
-  "username": "admin@example.com",
-  "password": "6b65f8-2f1105-4fe2081-04509eb-8be7-f53b",
-  "client_id": "CRj3niLuAkLmF946hKDhTkCIEsa9vW5X0R0wTBJf"
+  "wifi_ssid": "coloc",
+  "wifi_password": "ZaFjX9FyN8",
+  "device_id": "capteur-jardin",
+  "predefined_device_name": "sensor_probe_v1",
+  "pnex_host": "dev1.pnex.io"
 }
 
-###
-# post firmware
-POST http://0.0.0.0:8000/api/v1/build-firmware/
-Content-Type: application/json
-Authorization: Bearer AB13E1mDOlQeap29FPYBd9KhI6FP5d
+# → 201
+# {
+#   "build_record_created": true,
+#   "build_id": 12,
+#   "status": "queued",
+#   "message": "Firmware build job created successfully"
+# }
 
+### Records de l'org — paginés D14, filtres device_id (exact) et
+### success=true|false ; tri id DESC (plus récent d'abord).
+GET {{host}}/api/v1/build-records?limit=10&offset=0
+Authorization: Bearer {{token}}
+X-Org-Id: 4
 
-{
-	"wifi_ssid": "coloc",
-	"wifi_password": "ZaFjX9FyN8",
-    "device_id": "dev-device-11",
-	"predefined_device_name": "Soil Sensor",
-	"pnex_host": "api.yourdomain.com",
-	"metadata": "",
-	"force_rebuild": true
-}
+### Supprimer un record — 400 si build réussi, 400 si le device existe
+### encore, 204 sinon (l'artefact n'est PAS supprimé — rétention D6) ;
+### 404 si le record a déjà été nettoyé avec son device.
+DELETE {{host}}/api/v1/build-records/12
+Authorization: Bearer {{token}}
+X-Org-Id: 4
 
-###
-# download firmware
-GET https://api.yourdomain.com/api/v1/download/firmware/dev-device-11/
-Authorization: Bearer AB13E1mDOlQeap29FPYBd9KhI6FP5d
-
-###
-# get build records list
-GET http://0.0.0.0:8000/api/v1/build-records/
-Authorization: Bearer AB13E1mDOlQeap29FPYBd9KhI6FP5d
+### Télécharger le binaire du dernier build réussi du device — proxy des
+### octets (pas d'URL présignée), attachment {device_id}-firmware.bin ;
+### 404 si aucun build réussi / artefact absent.
+GET {{host}}/api/v1/download/firmware/capteur-jardin
+Authorization: Bearer {{token}}
+X-Org-Id: 4

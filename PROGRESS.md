@@ -288,9 +288,66 @@ faire et sera re-planifiée après la Phase 6.
       `/prometheus/api/v1/query` ; clone → close 4003 ; reconnect
       immédiat après déconnexion propre ; reaper active=true/false
 
-**Prochaine : revue humaine Phase 5**, puis suite Phase 5 (lecture
+**Phase 6 — Worker de build firmware : IMPLÉMENTÉE** (branche
+`phase-6-firmware-builder`, en attente de revue humaine). Périmètre :
+job asynchrone queue PostgreSQL → worker Loco subprocess PlatformIO →
+artefact `.bin` téléchargeable. **Décisions user de la phase** :
+`ArtifactStore` à deux backends — `local` (FS, edge) **d'abord**, `s3`
+différé, sélection `STORAGE_BACKEND` (révision D5) ; suivi des builds par
+**polling** front (WS firmware builds différé) ; front complet
+(l'enregistrement d'un device collecte URL serveur + SSID + mdp WiFi et
+déclenche le build — directive firmware-build.md §3).
+
+- [x] Crate `pnex-firmware-builder` : trait `ArtifactStore`
+      (put/get/delete/exists) + `LocalStore` (sanitize anti-traversal,
+      clés D6 `org_{id}/firmware/{device_id}-firmware.bin`) + `S3Store`
+      plomberie différée (`NotImplemented`) ; pipeline `run_build`
+      (workspace TempDir effacé au drop — secrets compilés dans les
+      artefacts intermédiaires ; source copie locale préservant le layout
+      `common_libs/` ou git clone `--depth 1` ; `pio run` avec **env
+      réduite** PATH/HOME/PLATFORMIO_CORE_DIR + config device — WiFi
+      clair, HOST/TOKEN/DEVICE_ID base64, jamais en argv ; merge-bin
+      esptool par SoC, esp8266 = image unique sans merge ; deadline
+      globale + kill_on_drop) — 15 tests unitaires
+- [x] Queue + worker : feature loco `worker`, `pg_loco_queue` (SKIP LOCKED
+      intégré, reaper de reprise 30 min), dev/prod en `BackgroundQueue`
+      `num_workers 1` (contention ~/.platformio) ; `BuildFirmwareWorker` :
+      running → run_build → succeeded(+clé)/failed, `Ok(())` sur échec
+      (échecs compilation déterministes, pas de rejeu) ; **token + clé
+      relus en base au perform** (jamais en queue) ; smoke : worker
+      enregistré sous `start --server-and-worker`
+- [x] Endpoints parité Django (`controllers/builds.rs`, contrat
+      `docs/contracts/build.http`) : POST /build-firmware (ordre Django :
+      validation → modèle 400 → device 404 exacte → quota 403 → 429
+      intervalle dernier build RÉUSSI vs `min_build_interval_secs` →
+      upsert un record par (org, device_id) → 201 `{build_record_created,
+      build_id, status, message}` — plus de champs k8s) ; GET
+      /build-records paginé D14 + filtres device_id/success ; DELETE
+      (400 succès / 400 device existe / 204, artefact conservé D6) ;
+      GET /download/firmware/{device_id} (proxy octets, attachment) ;
+      phases canoniques queued|running|succeeded|failed (mapping Django
+      consigné) — 11 tests de parité (toolchain remplacée par fixtures
+      scripts : échec/timeout pilotés par WIFI_SSID, propagation b64
+      prouvée bout-en-bout)
+- [x] Front : page Builds (formulaire device+WiFi+serveur prérempli,
+      liste paginée, badges de phase, téléchargement data-URI, polling
+      ~5 s tant que queued/running) ; enregistrement device avec «
+      Compiler maintenant » (défaut coché) → build auto après création,
+      ligne d'état dans la modale token, erreurs 429/403 en toast ; i18n
+      fr/en
+- [x] Docs : `build.http` réécrit (contrats Rust + adaptations),
+      `firmware-build.md` statut implémenté + écarts, inventory (D5
+      révisé, lignes FAIT, ws/firmware/builds neutralisé), .env.example,
+      Taskfile `dev:backend:worker`
+- [x] Limites assumées : secrets WiFi/hôte lisibles dans
+      `pg_loco_queue.task_data` par l'admin DB (parité spec k8s Django,
+      purge `cargo loco jobs clear-jobs`) ; S3/rétention D6/logs → O2/
+      cache proxy/cancellation tokens différés ; e2e réelle (pio + flash
+      ESP) à vivre avec l'utilisateur
+
+**Prochaine : revue humaine Phase 6**, puis suite Phase 5 (lecture
 télémétrie/metrics live pour le front, `ws/metrics/live` corrigé du bug
-de sujets Django) ou Phase 6 (worker build firmware).
+de sujets Django).
 
 ## Anciennes phases (détail)
 
@@ -339,6 +396,8 @@ de sujets Django) ou Phase 6 (worker build firmware).
 | 2026-08-16 | **Phase 4 — actuator-channels différés** : la config des canaux actionneurs (CRUD backend, DTO, table) n'est PAS implémentée en Phase 4 ; elle sera conçue avec le chantier M2M (D13) dont dépend sa distribution aux devices. Le périmètre Phase 4 = devices sensors + catalogue | Demandé par l'utilisateur 2026-08-16 (« pour le moment ne traite pas les actuator… réflexion à avoir sur le M2M ») |
 | 2026-08-16 | **D14 — Pagination + recherche obligatoires sur toutes les listes** : écart assumé avec le scaffold Django (tableaux nus) ; enveloppe unique `{count, next, previous, results}` (forme LimitOffset DRF) partout, `limit`/`offset`/`search`, défaut `PAGINATION_DEFAULT_LIMIT` (10), max 100 | Demandé par l'utilisateur 2026-08-16 (« on ne garde pas la parité Django, on l'améliore » — sans pagination bornée, base et réponses souffriraient à l'échelle). Détail complet dans `docs/inventory.md` D14 |
 | 2026-08-16 | **D16 — Normalisation des noms de mesures** : canonisation (trim, accents pliés, minuscules, séparateurs fondus) avant validation stricte/découverte/stockage ; `Soil-Moisture` ≡ `soil_moisture` ; résultat vide → `error:invalid_format`. Mapping par capacité écarté (trop lourd pour le bénéfice) | Demandé par l'utilisateur 2026-08-16 (« normaliser, c'est plus simple ? ») — choix de l'option légère parmi les 3 proposées |
+| 2026-08-16 | **D5 révisé — `ArtifactStore` à deux backends, local d'abord** : stockage d'artefacts abstrait (`local` FS pratique pour l'edge / `s3` pour le cloud), sélection `STORAGE_BACKEND` ; Phase 6 implémente `local`, S3 = plomberie différée | Demandé par l'utilisateur 2026-08-16 (« possibilité d'utiliser un stockage local (pratique pour du edge) ou s3 (cloud) — commencer par du local, STORAGE_BACKEND=local ») |
+| 2026-08-16 | **Phase 6 — suivi des builds par polling, WS différé** : le front rafraîchit la liste des records ~5 s tant qu'un build est queued/running ; `ws/firmware/builds` (parité Django) sera réexaminé avec le chantier M2M | Demandé par l'utilisateur 2026-08-16 (choix « Polling d'abord » parmi les options proposées) |
 | 2026-08-16 | **D15 — Ingestion : bail anti-clone first-live-wins + sortie metrics OpenObserve** : le premier device qui ingère occupe la place (4003 pour un clone), déconnexion propre libère le bail, reaper désactive après TTL silence (10 s, configurable) ; télémétrie ingérée en Prometheus remote-write (metrics O2, pas les logs), org O2 + token d'ingestion provisionnés automatiquement et correlés en base | Demandé par l'utilisateur 2026-08-16 (« le premier occupe la place → active… si plus de données depuis 10 s → deactivated » ; « les données doivent arriver dans les metrics »). Détail dans `docs/inventory.md` D15, contrat `docs/contracts/ws-sensor-ingest.md` |
 
 ## Principes directeurs (confirmés par l'utilisateur)
@@ -349,6 +408,15 @@ de sujets Django) ou Phase 6 (worker build firmware).
 
 ## Journal
 
+- 2026-08-16 : **Phase 6 — worker de build firmware implémentée** (branche
+  `phase-6-firmware-builder`) : crate `pnex-firmware-builder` (pipeline
+  subprocess pio/esptool + `ArtifactStore` local-first, S3 différé —
+  `STORAGE_BACKEND`), queue PostgreSQL loco + `BuildFirmwareWorker`,
+  endpoints parité Django (build-firmware, build-records D14, download
+  proxy — 11 tests avec toolchain fixture), front Builds + enregistrement
+  avec build auto (polling ~5 s, WS différé), docs à jour (contrat
+  build.http, firmware-build.md, inventory D5 révisé). En attente de
+  revue humaine.
 - 2026-08-16 : **Phase 5 (tranche collecte) mergée sur `main`** : go
   utilisateur après e2e réelle (données visibles dans les metrics O2,
   clone rejeté 4003, reaper, `Soil-Moisture` → série canonique
