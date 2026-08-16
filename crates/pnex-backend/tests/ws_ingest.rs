@@ -399,3 +399,66 @@ async fn revalidation_token_desactive() {
     })
     .await;
 }
+
+/// Reaper : `active` suit la fraîcheur du bail — frais → true, silence ou
+/// absence de state → false (seul écrivain, parité handle_sensors Django).
+#[tokio::test]
+#[serial]
+async fn reaper_active_suit_la_fraicheur() {
+    with_app(|server, auth, ctx| async move {
+        let dev = create_device(&server, &auth, "reaper-target", "sensor_probe_v1").await;
+        let active_of = |db: &sea_orm::DatabaseConnection, id: i64| {
+            let db = db.clone();
+            async move {
+                use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+                use pnex_backend::models::_entities::device_registries;
+                device_registries::Entity::find()
+                    .filter(device_registries::Column::Id.eq(id))
+                    .one(&db)
+                    .await
+                    .expect("dev")
+                    .expect("dev")
+                    .active
+            }
+        };
+
+        // Créé inactif, sans bail : le reaper le laisse inactif.
+        pnex_backend::services::device_liveness::deactivate_stale(&ctx.db, 2)
+            .await
+            .expect("reaper");
+        assert!(!active_of(&ctx.db, dev.id).await);
+
+        // Bail frais → activé.
+        pnex_backend::services::device_liveness::touch(&ctx.db, dev.id, Some(true))
+            .await
+            .expect("touch");
+        pnex_backend::services::device_liveness::deactivate_stale(&ctx.db, 2)
+            .await
+            .expect("reaper");
+        assert!(active_of(&ctx.db, dev.id).await);
+
+        // Silence (last_seen périmé) → désactivé, bail connected nettoyé.
+        sea_orm::ConnectionTrait::execute_unprepared(
+            &ctx.db,
+            "UPDATE device_states SET last_seen_at = now() - interval '60 seconds'",
+        )
+        .await
+        .expect("vieillir");
+        let (on, off) =
+            pnex_backend::services::device_liveness::deactivate_stale(&ctx.db, 2)
+                .await
+                .expect("reaper");
+        assert!(!active_of(&ctx.db, dev.id).await);
+        assert_eq!((on, off), (0, 1));
+        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+        use pnex_backend::models::_entities::device_states;
+        let state = device_states::Entity::find()
+            .filter(device_states::Column::DeviceRegistryId.eq(dev.id))
+            .one(&ctx.db)
+            .await
+            .expect("state")
+            .expect("state");
+        assert!(!state.connected, "le bail d'un crash est expiré/nettoyé");
+    })
+    .await;
+}
