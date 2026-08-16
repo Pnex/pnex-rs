@@ -7,6 +7,9 @@
 //!   niveau des types exposés) ;
 //! - il ne contient que des DTO/constantes partagés, pas de logique métier.
 
+pub mod api;
+pub use api::*;
+
 use serde::{Deserialize, Serialize};
 
 /// Nom du service. Django répondait `og-device-hub` — obsolète, le service

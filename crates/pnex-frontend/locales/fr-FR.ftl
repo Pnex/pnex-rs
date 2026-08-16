@@ -1,0 +1,108 @@
+# PNEX front — Français.
+# Parité de clés avec en-US.ftl (test de parité).
+
+app-name = PNEX
+app-tagline = Platform Nexus
+
+# Navigation
+nav-dashboard = Tableau de bord
+nav-devices = Appareils
+nav-builds = Build firmware
+nav-catalog = Catalogue d'appareils
+nav-orgs = Organisations
+nav-profile = Profil
+
+# Générique
+common-loading = Chargement…
+common-cancel = Annuler
+common-confirm = Confirmer
+common-retry = Réessayer
+common-save = Enregistrer
+common-search = Rechercher…
+common-error = Erreur
+common-close = Fermer
+
+# Divers
+login-welcome = Bienvenue sur PNeX
+login-tagline = Platform Nexus
+login-description = Connectez des milliers d'appareils IoT avec une ingestion de données fluide
+login-signin = Se connecter à PNeX
+login-register = Créer un compte
+login-reset = Mot de passe oublié ?
+login-footer = Authentification sécurisée par la plateforme PNeX
+callback-exchanging = Connexion en cours…
+callback-failed = Échec de la connexion
+callback-back = Retour à la connexion
+not-found = Page introuvable : { $path }
+toast-session-expired = Votre session a expiré. Veuillez vous reconnecter.
+shell-logout = Se déconnecter
+server-url-title = URL du serveur
+
+# Organisations
+orgs-title = Organisations
+orgs-subtitle = Gérez vos organisations et leurs membres
+orgs-new-placeholder = Nom de la nouvelle organisation…
+orgs-create = Créer
+orgs-empty = Aucune organisation pour l'instant
+orgs-col-name = Nom
+orgs-col-role = Votre rôle
+orgs-col-tier = Tier
+common-actions = Actions
+orgs-current = Active
+orgs-select = Définir active
+orgs-manage = Gérer
+orgs-back = Retour aux organisations
+orgs-rename = Renommer
+orgs-rename-placeholder = Nouveau nom…
+orgs-add-member = Ajouter un membre
+orgs-email-placeholder = membre@exemple.com (connecté au moins une fois)
+orgs-members = Membres
+orgs-remove-member = Retirer le membre
+orgs-confirm-delete-title = Supprimer cette organisation ?
+orgs-confirm-delete-message = Action irréversible. L'organisation ne doit plus avoir d'autres membres, ses données seront supprimées.
+orgs-delete = Supprimer
+role-owner = Propriétaire
+role-admin = Administrateur
+role-viewer = Observateur
+toast-saved = Modifications enregistrées
+
+# Tableau de bord
+dash-subtitle = Suivez vos appareils, organisations et abonnement
+dash-total-devices = Appareils au total
+dash-active-devices = Appareils actifs
+dash-orgs = Organisations
+dash-tier = Tier actuel
+dash-active-org = Organisation active
+dash-quotas = Capacités du tier
+dash-quota-sensor = Appareils capteurs
+dash-quota-actuator = Appareils actionneurs
+dash-quota-mixed = Appareils mixtes
+dash-by-type = Appareils par type
+dash-no-devices = Aucun appareil pour l'instant (Phase 4)
+
+# Profil
+profile-subtitle = Gérez les réglages et préférences de votre compte
+profile-identity = Informations de profil
+profile-username = Nom d'utilisateur
+profile-email = E-mail
+profile-keycloak-managed = L'identité est gérée par le serveur d'authentification (Keycloak).
+profile-preferences = Préférences
+profile-language = Langue
+profile-timezone = Fuseau horaire
+profile-date-format = Format de date
+profile-theme = Thème
+profile-theme-light = Clair
+profile-theme-dark = Sombre
+profile-theme-auto = Automatique
+profile-account = Compte
+profile-change-password = Changer de mot de passe
+profile-theme-note = Le thème est enregistré dans votre profil ; son application à l'interface arrive avec le mode sombre (phase ultérieure).
+
+# Pages en attente de phase
+empty-phase = Arrive en phase { $phase }
+empty-devices-title = Gestion des appareils
+empty-devices-message = L'API des appareils arrive à la phase suivante — enregistrement, données temps réel et métadonnées suivront.
+empty-builds-title = Build firmware
+empty-builds-message = Les builds firmware et leur statut en direct arrivent avec le worker de build intégré.
+empty-catalog-title = Catalogue d'appareils
+empty-catalog-message = Le catalogue des appareils prédéfinis (cartes, capacités) arrive avec l'API des appareils.

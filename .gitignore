@@ -7,6 +7,10 @@ crates/pnex-frontend/dist
 crates/pnex-frontend/.dx
 **/dist/
 
+# Front — Tailwind v4 (CSS généré) et node_modules
+crates/pnex-frontend/assets/tailwind.css
+crates/pnex-frontend/node_modules/
+
 # Environnement & secrets
 .env
 .env.*

@@ -1,9 +1,20 @@
-//! PNEX frontend — Dioxus CSR web.
+//! PNEX frontend — Dioxus CSR web, servi en statique par le backend Loco
+//! (same-origin : URLs API relatives, pas de CORS).
 //!
-//! Squelette Phase 1 : une page vide qui prouve la chaîne de build
-//! (wasm32 + assets servis par Loco). L'app réelle arrive en Phase 3+.
-//! Les appels API se feront via gloo-net vers le backend Loco.
+//! Socle : i18n Fluent (fr-FR/en-US) + routeur statique. La feuille de style
+//! est le CSS Tailwind v4 généré (`npm run css:build`, Taskfile) — pattern
+//! manganis `asset!()` hérité de la Phase 1.
 
+mod api;
+mod app;
+mod auth;
+mod components;
+mod i18n;
+mod pages;
+mod state;
+mod storage;
+
+use crate::app::Route;
 use dioxus::prelude::*;
 
 fn main() {
@@ -12,16 +23,15 @@ fn main() {
 
 #[component]
 fn App() -> Element {
+    i18n::init();
+    // Restauration de session (tokens → user-info) une seule fois au boot.
+    use_hook(|| {
+        spawn(async {
+            state::session::boot().await;
+        });
+    });
     rsx! {
-        // Feuille de style bundlée par manganis (hashée en build).
-        link { rel: "stylesheet", href: asset!("/assets/main.css") }
-        header { class: "app-header",
-            h1 { "PNEX" }
-            p { "Squelette Phase 1 — backend Loco opérationnel" }
-        }
-        main {
-            // Consomme pnex-core pour prouver le partage de types wasm ↔ natif.
-            p { class: "status", "{pnex_core::SERVICE_NAME} : en attente du backend" }
-        }
+        link { rel: "stylesheet", href: asset!("/assets/tailwind.css") }
+        Router::<Route> {}
     }
 }

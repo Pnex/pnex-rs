@@ -20,9 +20,23 @@ workers:
   mode: ForegroundBlocking
 
 database:
-  uri: {{ get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex_test") }}
+  # Tests : base persistante migrée au boot, vidée entre les tests via le
+  # hook `truncate` (le create/drop de base du framework loco bute sur les
+  # connexions du pool restées ouvertes).
+  dangerously_truncate: true
+  # Migre au boot (dev/test) — en prod les migrations restent explicites.
+  auto_migrate: true
+  uri: {{ get_env(name="TEST_DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex_test") }}
   enable_logging: false
   connect_timeout: {{ get_env(name="DB_CONNECT_TIMEOUT", default="500") }}
   idle_timeout: {{ get_env(name="DB_IDLE_TIMEOUT", default="500") }}
   min_connections: 1
   max_connections: 5
+
+# Auth Keycloak (Phase 3) : validation JWKS locale + JIT provisioning.
+settings:
+  keycloak:
+    base_url: {{ get_env(name="KEYCLOAK_URL", default="http://localhost:8080") }}
+    realm: {{ get_env(name="KEYCLOAK_REALM", default="pnex-realm") }}
+    client_id: {{ get_env(name="KEYCLOAK_CLIENT_ID", default="pnex") }}
+# En test : issuer redirigeable vers un JWKS mock (voir tests/auth_*).

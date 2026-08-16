@@ -55,11 +55,147 @@ sans FK `SET NULL`. Migrations 000001/000003 réécrites avec les refs `?`
 pures (plus de SQL brut pour les FK), test d'invariants étendu aux
 actions ON DELETE (`SET NULL` sur nullable, `CASCADE` sur obligatoire).
 
-**Phase 3 — Auth & multi-tenant : EN COURS** (branche
-`phase-3-auth-multitenant`) : Keycloak JWT (JWKS, PKCE S256), JIT
-provisioning users + org personnelle owner + tier Free, endpoints
-organisations/memberships, middleware de scoping org, tests d'isolation
-tenant.
+**Phase 3 — Auth & multi-tenant : TERMINÉE** (merge sur `main` le
+2026-08-16, revue utilisateur — go donné après e2e curl ; gates verts :
+check natif+wasm32, 30 tests, clippy -D warnings).
+
+- [x] Realm Keycloak provisionné par fichier versionné
+      (`deploy/keycloak/pnex-realm-realm.json`, import compose
+      `--import-realm`) : client public `pnex` (PKCE S256 forcé, redirect
+      localhost:*), users de test alice/bob. Recréation auto du conteneur =
+      réimport.
+- [x] Validation JWT locale par JWKS (`auth/jwks.rs`) : RS256, `iss` + `aud`
+      explicites, exp, refresh sur `kid` inconnu — durcissements des failles
+      Django n°3-4 (rapport Phase 0 §3). CORS inutile par conception (front
+      same-origin servi par le backend) — faille n°1 réglée. Refus par
+      défaut via extracteur `AuthUser` — faille n°2.
+- [x] JIT provisioning transactionnel (`auth/provisioning.rs`) : users +
+      user_profiles + org personnelle owner + tier Free, idempotent,
+      re-vérification en transaction (concurrence), resync email/nom.
+- [x] Extracteur `OrgContext` (`X-Org-Id` + membership) : point d'ancrage
+      du scoping multi-tenant (remplace le filtrage par-viewset Django).
+- [x] Proxy OAuth2 (`controllers/oauth2.rs`) : token (password +
+      authorization_code+PKCE), refresh, sso 302 (`kc_action`), erreurs
+      Keycloak relayées telles quelles.
+- [x] `GET /api/v1/user-info` : identité + profil + orgs (rôle, tier) +
+      device_count agrégé sur les orgs du user.
+- [x] Endpoints organisations (`controllers/orgs.rs`) : CRUD + membres
+      (ajout par email d'un user déjà provisionné, rôles lowercase,
+      garde-fous : ≥1 owner, suppression = owner et dernier membre).
+- [x] Tests : `auth_jwks.rs` (7 tests : iss/aud/exp/RS256/kid/malformé
+      contre mock JWKS — pas de Keycloak en CI) et `tenant_isolation.rs`
+      (4 tests HTTP : 401 sans token, JIT, isolation croisée alice/bob,
+      rôles viewer/owner + garde-fous).
+- [x] Configs : `settings.keycloak` (base_url/realm/client_id) dans les 3
+      configs, `auto_migrate` en dev/test, hook `truncate` +
+      `dangerously_truncate` en test (le create/drop de base loco bute sur
+      le pool — workaround), `.env.example` complété.
+
+**Front Phase 3 (port de `pnex-ui` React) : TERMINÉ** — directives user :
+sélection de serveur **supprimée pour le web** (same-origin), URL serveur
+auto-hébergée « façon Bitwarden » **uniquement pour desktop/ios/android**
+(décision : architecturer seulement — cfg natif compilé, écran `ServerUrl`
+écrit non routé, build desktop = phase explicite ultérieure) ; **i18n
+obligatoire dès maintenant** (zéro libellé en dur, fr-FR + en-US) ; login =
+**PKCE redirect** (pas de form password).
+
+Commits faits (gates verts à chacun : `task check` natif+wasm32, `task test`,
+`task lint`, `task build:frontend`) :
+
+- [x] `Socle UI front : routeur Dioxus, Tailwind v4 et i18n fr-FR/en-US` —
+      routes statiques + callback OAuth en query segments ; Tailwind v4 via
+      `@tailwindcss/cli` (package.json dans le crate, `style/tailwind.css` →
+      `assets/tailwind.css` généré gitignoré, tâches `css:build`/`css:watch`,
+      step npm en CI) ; i18n Fluent (`dioxus-i18n`), locales embarquées,
+      résolution localStorage > navigator.language > en-US ; stockage
+      clé/valeur abstrait (web-sys localStorage/sessionStorage, mémoire en
+      natif) ; CORS dev-only :5151 dans development.yaml (dx serve)
+- [x] `DTO API phase 3 dans pnex-core` — TokenResponse, UserInfo/UserProfile,
+      OrgMembership/TierInfo/DeviceCount, OrgSummary/OrgDetail/OrgMember,
+      ProfilePatch, CreateOrg/UpdateOrg/AddMember/UpdateMember (rôles strings
+      minuscules), tests de désérialisation sur les formes réelles
+- [x] `Front : client HTTP, session, login PKCE, shell et toasts` — client
+      reqwest (URLs relatives, Bearer + X-Org-Id, refresh 401 **single-flight**
+      + retry unique, messages d'erreur relayés **tels quels** : detail >
+      message > bloc error, 204→None) ; PKCE S256 (vecteur RFC 7636 testé),
+      redirect `/api/v1/oauth2/sso` (action register/reset), callback
+      `/auth/callback` → échange → user-info → session ; session globale
+      Booting/LoggedOut/Authenticated (boot au start, langue du profil, org
+      restaurée/validée) ; shell complet (sidebar `Layout.tsx` portée, garde
+      de session = Login en place de l'Outlet, sélecteur d'org, toasts 5 s)
+- [x] `Backend : PATCH /api/v1/profile` — patch partiel, language normalisée
+      courte (en/fr), theme light/dark/auto, bornes = colonnes, 400 sur
+      invalide, profil créé aux défauts si absent ; 2 tests HTTP
+
+Constats techniques Dioxus 0.7.10 (vérifiés dans les sources, à retenir) :
+
+- `dioxus-web` fournit le **WebHistory par défaut** au launch (pas de
+  `RouterConfig::history()` — cette API n'existe pas en 0.7.10) ;
+- mutation d'un `GlobalSignal` depuis une fn : méthode intrinsèque
+  `with_mut(&self)` (les setters du trait Writable exigent `&mut`, impossible
+  sur un static) ; `SESSION.cloned()` pour lecture réactive ;
+- attribut SVG `viewBox` s'écrit `view_box` en rsx ;
+- `spawn` n'exige pas `Send` → futurs reqwest wasm (`!Send`) OK ; le client
+  vit en `thread_local` pour cette raison (la cible desktop devra rendre les
+  futurs `Send` — noté features.md) ;
+- `Link` ajoute `active_class` en plus de `class` (ordre CSS imprévisible) →
+  classes actives/inactives = littéraux complets calculés côté Rust ;
+- **reqwest exige des URLs absolues, même en wasm** : `Url::parse` refuse
+  les chemins seuls (RelativeUrlWithoutBase → « builder error » au premier
+  appel, l'échange PKCE du callback). `api_base()` résout donc l'origine de
+  la page (`location.origin`) quand `PNEX_API_BASE_URL` n'est pas fixé à la
+  compilation — same-origin conservé, URLs absolues ;
+- **Provisioning : re-liaison par email quand le `sub` Keycloak change**
+  (realm réimporté, migration d'IdP) — sinon l'INSERT violait
+  `users_email_key` (unique) → 500 sur user-info. Test
+  `sub_change_avec_meme_email_relie_le_meme_user`. En contre-mesure dev,
+  alice/bob ont des UUIDs pinés dans le realm (une recréation du conteneur
+  Keycloak ne churne plus les identités) ;
+- **Logout = end-session Keycloak** (RP-initiated logout) : le front purge
+  ses tokens puis redirige en pleine page vers le proxy
+  `/api/v1/oauth2/logout` (id_token_hint + post_logout_redirect_uri) —
+  sinon le cookie SSO survit et le login suivant ré-authentifie sans
+  formulaire. L'id_token est stocké côté front (scope openid envoyé par le
+  proxy token). ⚠️ **Keycloak sépare les valeurs de
+  `post.logout.redirect.uris` par `##`** (espace = pattern unique invalide
+  → « Invalid redirect uri ») ;
+- **Keycloak : `kc_action=register` sur l'authorize est ignoré quand une
+  session SSO existe** (re-login silencieux au lieu du formulaire
+  d'inscription). Le proxy SSO utilise l'endpoint registrations dédié pour
+  `action=register` (kc_action=UPDATE_PASSWORD conservé pour reset) — test
+  de non-régression sur les deux Location ;
+- **Keycloak : les jokers de `redirectUris` ne sont valides qu'en FIN
+  d'URI** — `http://localhost:*/*` (joker sur le port) ne matche rien →
+  « Invalid parameter: redirect_uri » au login. Realm corrigé en URIs
+  explicites (5150 backend, 5151 dev hot, localhost + 127.0.0.1).
+
+Suite du front (terminée) :
+
+- [x] page Organisations : liste/création/sélection + détail (membres, rôles,
+      rename, suppression, ajout par email), garde-fous relayés en toasts
+- [x] Dashboard sur données réelles `user-info` (device_count, orgs, tier,
+      capacités) + Profil (identité lecture, préférences PATCH, switcher
+      FR/EN appliqué immédiatement + persistant, change password
+      → sso?action=reset, logout)
+- [x] pages Devices/Builds/Catalog en empty-states « Phase 4/6 »
+- [x] test de parité des clés fr-FR/en-US (fluent-syntax, 9 tests front)
+- [x] docs : features.md (desktop = phase explicite, architecture préparée,
+      contrainte Send pour la couche HTTP), convention.md (section Front),
+      ce fichier
+
+**Clôture Phase 3** : le parcours navigateur humain (login PKCE réel,
+switcher, toasts) a été validé au fil des correctifs post-e2e (logout
+end-session, register, re-liaison sub) ; l'utilisateur a donné le go au
+merge le 2026-08-16.
+
+E2E vérifié en curl (backend Loco :5150 + front buildé servi + Keycloak
+docker) : serving SPA (index, tailwind, wasm, fallback /auth/callback),
+401 sans token, proxy sso 302 PKCE vers Keycloak réel, password grant via
+proxy → JIT → user-info, PATCH profile, orgs CRUD.
+
+**Prochaine : Phase 4 — Gestion des devices (CRUD)**, première tranche
+verticale complète (types core → endpoints Loco → vues Dioxus → tests de
+parité), patron pour les suivantes.
 
 ## Anciennes phases (détail)
 
@@ -114,6 +250,26 @@ tenant.
 
 ## Journal
 
+- 2026-08-16 : **Phase 3 mergée sur `main`** : gates repassés au merge
+  (check natif+wasm32 sans warning, 30 tests, clippy -D warnings), deux
+  imports morts en wasm nettoyés, PROGRESS.md clôturé. Go au merge donné
+  par l'utilisateur après les correctifs post-e2e. Prochaine : Phase 4
+  (devices CRUD).
+- 2026-08-16 : **Front Phase 3 implémenté** (suite de la branche
+  `phase-3-auth-multitenant`) : port de l'UI `pnex-ui` (React) en Dioxus 0.7 —
+  Tailwind v4 + i18n Fluent fr/en obligatoire, client HTTP reqwest (refresh
+  401 single-flight, erreurs relayées), login PKCE + callback, shell +
+  sélecteur d'org + toasts, pages Organisations/Dashboard/Profil sur les
+  endpoints Phase 3, Devices/Builds/Catalog en empty-states, écran URL serveur
+  « Bitwarden » architecturé pour desktop (non routé), PATCH /api/v1/profile
+  ajouté au backend. Fusion des commits 3-5 du plan (éviter le code mort
+  transitoire). En attente de revue humaine.
+- 2026-08-15 : **Phase 3 — auth & multi-tenant implémentée** (branche
+  `phase-3-auth-multitenant`) : realm Keycloak versionné, validation JWKS
+  durcie, JIT provisioning (user + profil + org owner/Free), extracteurs
+  AuthUser/OrgContext, proxy OAuth2, user-info, CRUD orgs+membres, 11 tests
+  (JWKS mock + isolation tenant HTTP). Vérifié bout-en-bout contre Keycloak
+  réel (alice/bob). En attente de revue humaine.
 - 2026-08-15 : **Phase 2 — couche données implémentée** (branche
   `phase-2-modeles-db`) : compose PG 18 + Keycloak 26.3, SeaORM branché,
   5 migrations, 27 entities, modèle sans copies, /health/ready réel,

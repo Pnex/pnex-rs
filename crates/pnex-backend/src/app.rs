@@ -44,6 +44,9 @@ impl Hooks for App {
     fn routes(_ctx: &AppContext) -> AppRoutes {
         AppRoutes::with_default_routes()
             .add_route(controllers::health::routes())
+            .add_route(controllers::oauth2::routes())
+            .add_route(controllers::user_info::routes())
+            .add_route(controllers::orgs::routes())
     }
 
     async fn connect_workers(_ctx: &AppContext, _queue: &Queue) -> Result<()> {
@@ -55,9 +58,31 @@ impl Hooks for App {
         tasks.register(crate::tasks::seed::Seed);
     }
 
-    async fn truncate(_ctx: &AppContext) -> Result<()> {
-        // Phase 4 : troncature des tables de test (une fois les entities
-        // générées). Aucune table à tronquer tant que l'API n'existe pas.
+    async fn truncate(ctx: &AppContext) -> Result<()> {
+        // Utilisé par les tests (config `dangerously_truncate`) : vide toutes
+        // les tables applicatives (seaql_migrations exclue), RESTART IDENTITY
+        // pour des ids déterministes entre tests.
+        use sea_orm::ConnectionTrait;
+        let rows = ctx
+            .db
+            .query_all_raw(sea_orm::Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' \
+                 AND tablename <> 'seaql_migrations'",
+            ))
+            .await?;
+        let tables: Vec<String> = rows
+            .iter()
+            .filter_map(|row| row.try_get::<String>("", "tablename").ok())
+            .collect();
+        if !tables.is_empty() {
+            ctx.db
+                .execute_unprepared(&format!(
+                    "TRUNCATE {} RESTART IDENTITY CASCADE",
+                    tables.join(", ")
+                ))
+                .await?;
+        }
         Ok(())
     }
 
