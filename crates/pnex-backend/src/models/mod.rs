@@ -25,3 +25,5 @@ pub mod svg_files;
 pub mod unit_conversions;
 pub mod user_profiles;
 pub mod users;
+pub mod openobserve_orgs;
+pub mod device_states;

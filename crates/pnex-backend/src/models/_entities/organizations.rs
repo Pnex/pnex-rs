@@ -25,6 +25,8 @@ pub enum Relation {
     FluidMixtures,
     #[sea_orm(has_many = "super::formulas::Entity")]
     Formulas,
+    #[sea_orm(has_one = "super::openobserve_orgs::Entity")]
+    OpenobserveOrgs,
     #[sea_orm(has_many = "super::organization_members::Entity")]
     OrganizationMembers,
     #[sea_orm(has_many = "super::sites::Entity")]
@@ -64,6 +66,12 @@ impl Related<super::fluid_mixtures::Entity> for Entity {
 impl Related<super::formulas::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Formulas.def()
+    }
+}
+
+impl Related<super::openobserve_orgs::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::OpenobserveOrgs.def()
     }
 }
 

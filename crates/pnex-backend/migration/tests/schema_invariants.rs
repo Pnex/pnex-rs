@@ -75,13 +75,27 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
     }
 
     // Références obligatoires : CASCADE ('c').
-    for (t, col) in [("device_registries", "org_id"), ("build_records", "org_id")] {
+    for (t, col) in [
+        ("device_registries", "org_id"),
+        ("build_records", "org_id"),
+        // Phase 5 : état live (D9) et correspondance OpenObserve (D2) suivent
+        // la disparition du device / de l'org.
+        ("device_states", "device_registry_id"),
+        ("openobserve_orgs", "org_id"),
+    ] {
         assert_eq!(
             fk_del_type(&db, t, col).await,
             "c",
             "{t}.{col} doit être CASCADE on delete"
         );
     }
+
+    // Bail de vie (D9) : 1:1 avec le registre, last_seen toujours renseigné.
+    assert_eq!(
+        nullable_of(&db, "device_states", "last_seen_at").await,
+        "NO",
+        "device_states.last_seen_at doit être NOT NULL"
+    );
 
     // L'abonnement porté par l'org (D11) : SET NULL quand le tier disparaît.
     assert_eq!(

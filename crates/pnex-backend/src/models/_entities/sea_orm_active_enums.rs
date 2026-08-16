@@ -54,6 +54,20 @@ pub enum FormulaKind {
     RateOfChange,
 }
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Copy, Serialize, Deserialize)]
+#[sea_orm(
+    rs_type = "Enum",
+    db_type = "Enum",
+    enum_name = "openobserve_org_status"
+)]
+pub enum OpenobserveOrgStatus {
+    #[sea_orm(string_value = "pending")]
+    Pending,
+    #[sea_orm(string_value = "provisioned")]
+    Provisioned,
+    #[sea_orm(string_value = "failed")]
+    Failed,
+}
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Copy, Serialize, Deserialize)]
 #[sea_orm(rs_type = "Enum", db_type = "Enum", enum_name = "org_member_role")]
 pub enum OrgMemberRole {
     #[sea_orm(string_value = "owner")]
