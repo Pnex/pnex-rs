@@ -408,6 +408,15 @@ de sujets Django).
 
 ## Journal
 
+- 2026-08-16 : **Session UI réelle après Phase 6** — trois constats
+  consignés dans `docs/observations.md` (registre dédié, à traiter plus
+  tard sur demande user) : O1 fallback d'org après re-login sur une org
+  viewer (`user-info` sans ORDER BY + `org::clear()` au logout — piégeait
+  l'UI en « tout vide »), O3 auto-build proposé à tort pour les devices
+  custom (échec propre, parité Django), O4 raison d'échec invisible dans
+  l'UI. Au passage : `task dev` lance désormais le backend **avec le
+  worker** (commit `81c37a2`) — sans lui, les builds restaient `queued`
+  (constat O2 résolu).
 - 2026-08-16 : **Phase 6 — worker de build firmware implémentée** (branche
   `phase-6-firmware-builder`) : crate `pnex-firmware-builder` (pipeline
   subprocess pio/esptool + `ArtifactStore` local-first, S3 différé —
