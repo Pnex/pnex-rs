@@ -41,6 +41,19 @@ fn next_id() -> u64 {
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
+/// Attente portable : `futures_timer::Delay` panique sur wasm32
+/// (`Instant::now()` → « time not implemented on this platform ») —
+/// `gloo-timers` (setTimeout) côté navigateur.
+async fn sleep(duration: Duration) {
+    #[cfg(target_arch = "wasm32")]
+    gloo_timers::future::TimeoutFuture::new(
+        duration.as_millis().min(u32::MAX as u128) as u32,
+    )
+    .await;
+    #[cfg(not(target_arch = "wasm32"))]
+    futures_timer::Delay::new(duration).await;
+}
+
 /// Affiche un toast (auto-dismiss 5 s).
 pub fn show(kind: ToastKind, message: ToastMessage) {
     let toast = Toast {
@@ -51,7 +64,7 @@ pub fn show(kind: ToastKind, message: ToastMessage) {
     let id = toast.id;
     TOASTS.with_mut(|toasts| toasts.push(toast));
     spawn(async move {
-        futures_timer::Delay::new(Duration::from_secs(5)).await;
+        sleep(Duration::from_secs(5)).await;
         dismiss(id);
     });
 }

@@ -11,7 +11,11 @@ Content-Type: application/json
 
 ###
 # use device token for that purpose
-GET https://api.yourdomain.com/api/v1/devices/
+# Pagination D14 : toutes les listes renvoient {count, next, previous, results}.
+# limit (défaut env PAGINATION_DEFAULT_LIMIT=10, max 100), offset ≥ 0,
+# search = OU multi-champs insensible à la casse (device_id, modèle, type, caps).
+# → 200 {"count": 12, "next": "/api/v1/devices?limit=10&offset=10", "previous": null, "results": [...]}
+GET https://api.yourdomain.com/api/v1/devices/?limit=10&offset=0&search=relay
 Authorization: Bearer HgpZCDbybZoaCg6cojGMZLvLA8tQQn
 Content-Type: application/json
 

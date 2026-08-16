@@ -267,7 +267,7 @@ GET https://api.yourdomain.com/api/v1/download/firmware/dev-device-11/
 
 ## 11. Points d'attention pour Loco/Axum
 
-1. **Pas de pagination** → tableaux nus ; metrics/live-metrics wrappent `{count, results}`.
+1. **Pas de pagination** → tableaux nus ; metrics/live-metrics wrappent `{count, results}`. **→ dépassé en Rust (D14)** : toutes les listes paginent désormais avec l'enveloppe `{count, next, previous, results}` + `limit`/`offset`/`search` — écart assumé avec le scaffold Django.
 2. **204 avec body JSON** (devices, build-records) — non standard, à trancher.
 3. **Réactivation implicite** POST /devices/ (200 vs 201) — contrat important.
 4. PUT/PATCH devices : **metadata uniquement**.

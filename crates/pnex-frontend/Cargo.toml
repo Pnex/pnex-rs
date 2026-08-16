@@ -26,6 +26,9 @@ dioxus-i18n = "0.5"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = ["Window", "Location", "Storage", "Navigator"] }
+# Delay wasm : futures-timer panique sur wasm32 (`Instant::now()` non
+# implémenté — `sys/time/unsupported.rs`).
+gloo-timers = { version = "0.3", features = ["futures"] }
 getrandom = { version = "0.2", features = ["js"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

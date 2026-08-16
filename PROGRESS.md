@@ -12,6 +12,51 @@
 inclut les corrections post-revue : refs `?` loco-rs pures et allègement
 fluides).
 
+**Phase 4 — Devices (CRUD + catalogue + pagination D14) : TERMINÉE**
+(merge sur `main` le 2026-08-16, revue utilisateur — CRUD devices puis
+pagination validés ; gates verts au merge : check natif+wasm32, 48 tests,
+clippy -D warnings, build front). **Périmètre réduit à la demande de
+l'utilisateur : sensors uniquement — `actuator-channels` (backend comme
+DTO) est différé** pour réfléchir avec le chantier M2M (D13) ; la
+table/migration n'existe donc pas encore.
+
+- [x] DTO `pnex-core::devices` (registre org, catalogue) — org_id à la
+      place du `user` Django, dates en RFC 3339, tests roundtrip
+- [x] Backend `controllers/devices.rs` : CRUD `/api/v1/devices`
+      (réactivation implicite 200 vs 400 device actif, quotas tier par
+      type — inactifs comptés, création inactive + DeviceToken auto en
+      transaction : token urlsafe 32 o + clé ChaCha20 base64, update
+      metadata-only 400 exact, DELETE nettoie build_records + token),
+      catalogue authentifié `/api/v1/device-capabilities` + `/api/v1/
+      predefined-devices` (filtre capabilities multi OU)
+- [x] Durcissements documentés (vs Django POC) : écriture owner/admin,
+      catalogue authentifié, 204 sans body (le body sur 204 de Django
+      était illisible côté navigateur), filtre `revision` fonctionnel
+      (Django filtrait `version=` inexistant → 500)
+- [x] 8 tests de parité HTTP (mock JWKS) : cycle création/réactivation/
+      refus, filtres, metadata-only, quotas 3/1/0, isolation tenant,
+      rôles, suppression, catalogue partagé
+- [x] Front : page Devices (filtres type/statut/capacité + recherche,
+      enregistrement depuis le catalogue, détail avec token masqué +
+      éditeur JSON metadata, suppression confirmée ; écriture masquée
+      viewer), dashboard quotas « x / max » réels, i18n fr/en
+- [x] **Pagination + recherche sur toutes les listes (D14)** : enveloppe
+      unique `{count, next, previous, results}` (forme LimitOffset DRF)
+      sur devices, predefined-devices, device-capabilities, orgs et
+      membres ; `limit` (défaut var `PAGINATION_DEFAULT_LIMIT` à 10,
+      max 100) / `offset`, invalide → défauts silencieux ; `search` OU
+      insensible à la casse multi-champs (ILIKE + sous-requêtes SQL côté
+      catalogue, filtre Rust puis découpage sur les ensembles bornés par
+      quotas). Front : composant Pager + champ recherche (debounce
+      gloo-timers — futures-timer panique sur wasm32) sur
+      Devices/Catalogue/Organisations. Test `pagination_des_listes` +
+      roundtrip de l'enveloppe dans le core
+- [x] Doc conception build firmware (`docs/architecture/firmware-build.md`,
+      Phase 6) : architecture cible du worker + contraintes vérifiées du
+      dépôt `pnex-firmwares` (config device en vars d'env de `pio run`,
+      HOST/TOKEN/DEVICE_ID en base64)
+
+
 - [x] `compose.yaml` : PostgreSQL 18-alpine + Keycloak 26.3 (start-dev),
       volume PG sur `/var/lib/postgresql` (convention PG 18+), `.env.example`
 - [x] Loco branché SeaORM/PG : crate `pnex-migration`, feature `with-db`,
@@ -193,9 +238,10 @@ docker) : serving SPA (index, tailwind, wasm, fallback /auth/callback),
 401 sans token, proxy sso 302 PKCE vers Keycloak réel, password grant via
 proxy → JIT → user-info, PATCH profile, orgs CRUD.
 
-**Prochaine : Phase 4 — Gestion des devices (CRUD)**, première tranche
-verticale complète (types core → endpoints Loco → vues Dioxus → tests de
-parité), patron pour les suivantes.
+**Prochaine : Phase 5 — Ingestion télémétrie + ETL + broadcast config**
+(WS ChaCha20 device → Loco → OpenObserve, état live en PG, protocole
+versionné D12). Le patron tranche verticale éprouvé en Phase 4 (types
+core → endpoints Loco → vues Dioxus → tests de parité) sert de référence.
 
 ## Anciennes phases (détail)
 
@@ -241,6 +287,8 @@ parité), patron pour les suivantes.
 | 2026-08-15 | **Phase 2 — modèle « sans copies »** : fonctions/conversions **standard = fournies par l'app** (`org_id` NULL, partagées en lecture) ; fonctions **user = par org** (ligne matérialisée seulement si l'org crée/personnalise). Tables Django `formula_imports`/`conversion_imports` (copie par user + suivi de mise à jour) supprimées | Demandé par l'utilisateur 2026-08-15 (« éviter de faire des copies à chaque org/utilisateur ») |
 | 2026-08-15 | **Phase 2 — fluides hors base** : catalogue de fluides supprimé de la DB — le service FastAPI externe (CoolProp/RefProp) est la source de vérité et ses **messages d'erreur sont renvoyés tels quels au client** ; la base ne garde que les **mélanges custom par org** (`fluid_mixtures`, composition JSONB) ; `fluid_property_groups` (config app) passe en code Rust | Demandé par l'utilisateur 2026-08-15 (« on va gérer tout côté service FastAPI refprop… alléger la base, sauf mélanges custom ») |
 | 2026-08-15 | **Phase 2 technique** : Durations Django INTERVAL → `*_secs` bigint ; quotas Free unifiés sur 3/1/0 (tier fixture — les 5/2/1 des views Django étaient des fallbacks divergents) ; `global_id` non-UUID → uuid5 DNS (parité bootstrap_db Django) ; refs `?` nullable de loco-rs : le « bug » était un mauvais usage (`?` sur le 1er élément, pas de colonne dans `cols`) — corrigé, FK SET NULL via refs pures | Constaté à l'implémentation |
+| 2026-08-16 | **Phase 4 — actuator-channels différés** : la config des canaux actionneurs (CRUD backend, DTO, table) n'est PAS implémentée en Phase 4 ; elle sera conçue avec le chantier M2M (D13) dont dépend sa distribution aux devices. Le périmètre Phase 4 = devices sensors + catalogue | Demandé par l'utilisateur 2026-08-16 (« pour le moment ne traite pas les actuator… réflexion à avoir sur le M2M ») |
+| 2026-08-16 | **D14 — Pagination + recherche obligatoires sur toutes les listes** : écart assumé avec le scaffold Django (tableaux nus) ; enveloppe unique `{count, next, previous, results}` (forme LimitOffset DRF) partout, `limit`/`offset`/`search`, défaut `PAGINATION_DEFAULT_LIMIT` (10), max 100 | Demandé par l'utilisateur 2026-08-16 (« on ne garde pas la parité Django, on l'améliore » — sans pagination bornée, base et réponses souffriraient à l'échelle). Détail complet dans `docs/inventory.md` D14 |
 
 ## Principes directeurs (confirmés par l'utilisateur)
 
@@ -250,6 +298,24 @@ parité), patron pour les suivantes.
 
 ## Journal
 
+- 2026-08-16 : **Phase 4 mergée sur `main`** : revue utilisateur — CRUD
+  devices puis tranche pagination/recherche D14 validés. Gates repassés
+  au merge (check natif+wasm32, 48 tests, clippy -D warnings, build
+  front forcé). Trois commits de clôture : pagination D14, doc
+  conception firmware Phase 6, journal PROGRESS.
+- 2026-08-16 : **Pagination + recherche D14 implémentées** (par-dessus le
+  CRUD devices, même branche) : enveloppe DRF sur les 5 listes de l'API,
+  `search` multi-champs (SQL ILIKE sur le catalogue, filtre Rust sur les
+  ensembles bornés par quotas), Pager front + recherche avec debounce
+  (gloo-timers : futures-timer panique sur wasm32). Doc conception du
+  worker firmware Phase 6 ajoutée au passage (contraintes vérifiées du
+  dépôt pnex-firmwares).
+- 2026-08-16 : **Phase 4 implémentée** (branche `phase-4-devices-crud`) :
+  devices CRUD scopé org + catalogue global, backend et front, 8 tests de
+  parité (41 au total sur le workspace). **Décision utilisateur : les
+  actuator-channels ne sont PAS traités** (DTO retirés du core après coup)
+  — la config par canal et sa distribution attendent la réflexion M2M
+  (D13). En attente de revue humaine avant merge.
 - 2026-08-16 : **Phase 3 mergée sur `main`** : gates repassés au merge
   (check natif+wasm32 sans warning, 30 tests, clippy -D warnings), deux
   imports morts en wasm nettoyés, PROGRESS.md clôturé. Go au merge donné

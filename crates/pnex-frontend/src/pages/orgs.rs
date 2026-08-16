@@ -14,7 +14,7 @@ use crate::state::{org, toasts};
 
 
 /// Valeur texte d'un champ de formulaire (`FormValue::Text`).
-fn field(event: &dioxus::events::FormEvent, name: &str) -> String {
+pub fn field(event: &dioxus::events::FormEvent, name: &str) -> String {
     event
         .values()
         .iter()
@@ -48,6 +48,8 @@ pub fn Orgs() -> Element {
             form {
                 class: "mb-6 flex gap-2",
                 onsubmit: move |event| {
+                    // Bloque la soumission native (rechargement du SPA).
+                    event.prevent_default();
                     let name = field(&event, "name");
                     let name = name.trim().to_string();
                     if name.is_empty() { return; }
@@ -91,10 +93,10 @@ pub fn Orgs() -> Element {
                 },
                 None => rsx! {
                     match &*list.value().read() {
-                        Some(Ok(orgs)) if orgs.is_empty() => rsx! {
+                        Some(Ok(paged)) if paged.results.is_empty() => rsx! {
                             p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
                         },
-                        Some(Ok(orgs)) => rsx! {
+                        Some(Ok(paged)) => rsx! {
                             div { class: "bg-white rounded-lg shadow-sm overflow-hidden",
                                 table { class: "min-w-full divide-y divide-gray-200",
                                     thead { class: "bg-gray-50",
@@ -106,7 +108,7 @@ pub fn Orgs() -> Element {
                                         }
                                     }
                                     tbody { class: "bg-white divide-y divide-gray-200",
-                                        for summary in orgs.clone() {
+                                        for summary in paged.results.clone() {
                                             {org_row(summary, selected, org::current())}
                                         }
                                     }
@@ -243,6 +245,8 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                         form {
                             class: "p-6 border-b border-gray-200 flex gap-2",
                             onsubmit: move |event| {
+                                // Bloque la soumission native (rechargement du SPA).
+                                event.prevent_default();
                                 let value = field(&event, "name");
                                 let value = value.trim().to_string();
                                 if value.is_empty() { return; }
@@ -276,6 +280,8 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                         form {
                             class: "p-6 border-b border-gray-200 flex flex-wrap gap-2",
                             onsubmit: move |event| {
+                                // Bloque la soumission native (rechargement du SPA).
+                                event.prevent_default();
                                 let email = field(&event, "email");
                                 let email = email.trim().to_string();
                                 if email.is_empty() { return; }

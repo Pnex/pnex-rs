@@ -1,6 +1,5 @@
-//! Empty-state « page en attente de phase » — les pages Devices/Builds/
-//! Catalog sont portées visuellement mais leurs endpoints arrivent en
-//! Phase 4 (devices, catalogue) et 6 (builds firmware).
+//! Empty-state « page en attente de phase » — les pages non encore portées
+//! (Builds : Phase 6 firmware).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -26,14 +25,6 @@ pub fn EmptyState(icon: Element, title: String, message: String, phase: String) 
 }
 
 /// Icônes courantes des empty-states (passées en prop d'`EmptyState`).
-pub fn cpu_icon() -> Element {
-    rsx! { icons::Cpu { class: "h-8 w-8 text-gray-400" } }
-}
-
 pub fn wrench_icon() -> Element {
     rsx! { icons::Wrench { class: "h-8 w-8 text-gray-400" } }
-}
-
-pub fn package_icon() -> Element {
-    rsx! { icons::Package { class: "h-8 w-8 text-gray-400" } }
 }
