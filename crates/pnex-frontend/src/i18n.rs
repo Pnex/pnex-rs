@@ -90,8 +90,6 @@ pub fn set_locale(tag: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     /// `t!` panique sur une clé absente de la langue courante : les deux
     /// locales doivent définir exactement les mêmes clés.
     fn keys(source: &'static str) -> Vec<String> {

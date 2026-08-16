@@ -11,6 +11,8 @@
 //!   C'est le seam multi-plateforme du portage : rien d'autre ne connaît
 //!   l'origine de l'API.
 
+// Uniquement côté natif (lecture de l'URL serveur stockée — cible desktop).
+#[cfg(not(target_arch = "wasm32"))]
 use crate::storage::KeyValueStorage;
 
 /// Base à préfixer à tous les chemins d'API (jamais de slash final).
