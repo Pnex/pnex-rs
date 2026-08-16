@@ -21,6 +21,10 @@ pub struct TokenResponse {
     pub refresh_token: String,
     pub expires_in: i64,
     pub token_type: String,
+    /// Émis avec `scope=openid` — requis pour l'end-session Keycloak
+    /// (`id_token_hint`).
+    #[serde(default)]
+    pub id_token: Option<String>,
 }
 
 /// `GET /api/v1/user-info` — identité + profil + orgs + comptage devices.

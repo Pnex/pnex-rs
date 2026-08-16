@@ -14,6 +14,7 @@
 /// Clés utilisées par l'app (préfixe `pnex.`).
 pub const KEY_ACCESS_TOKEN: &str = "pnex.access_token";
 pub const KEY_REFRESH_TOKEN: &str = "pnex.refresh_token";
+pub const KEY_ID_TOKEN: &str = "pnex.id_token";
 pub const KEY_ORG: &str = "pnex.org";
 pub const KEY_LOCALE: &str = "pnex.locale";
 /// URL du serveur auto-hébergé — cible desktop/mobile uniquement (le web est

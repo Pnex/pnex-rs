@@ -7,7 +7,9 @@
 //! - `POST /api/v1/oauth2/refresh` : `grant_type=refresh_token` ;
 //! - `GET /api/v1/oauth2/sso` : 302 vers l'authorize endpoint Keycloak,
 //!   PKCE S256 obligatoire ; `action=register` utilise l'endpoint
-//!   registrations dédié, `action=reset` pose `kc_action=UPDATE_PASSWORD`.
+//!   registrations dédié, `action=reset` pose `kc_action=UPDATE_PASSWORD` ;
+//! - `GET /api/v1/oauth2/logout` : 302 vers l'end-session Keycloak
+//!   (RP-initiated logout, `id_token_hint` + `post_logout_redirect_uri`).
 //!
 //! Le client reste public (pas de secret côté navigateur) : PKCE suffit.
 
@@ -67,7 +69,12 @@ async fn relay(response: reqwest::Response) -> Result<Response> {
 async fn token(State(ctx): State<AppContext>, Json(params): Json<TokenParams>) -> Result<Response> {
     let settings = KeycloakSettings::from_config(&ctx.config)?;
 
-    let mut form: Vec<(&str, String)> = vec![("client_id", settings.client_id.clone())];
+    // Scope standard (comme le flow SSO) : garantit l'émission de l'id_token,
+    // requis pour l'end-session (`id_token_hint`).
+    let mut form: Vec<(&str, String)> = vec![
+        ("client_id", settings.client_id.clone()),
+        ("scope", "openid profile email".into()),
+    ];
     match params.grant_type {
         Some(GrantKind::Password) => {
             let (Some(username), Some(password)) = (params.username, params.password) else {
@@ -133,6 +140,55 @@ async fn refresh(
         ..Default::default()
     };
     token(State(ctx), Json(params)).await
+}
+
+#[derive(Deserialize)]
+pub struct LogoutParams {
+    /// Retour après déconnexion (défaut : origine du requérant).
+    pub post_logout_redirect_uri: Option<String>,
+    /// `id_token_hint` — identifie la session à détruire sans interaction.
+    pub id_token: Option<String>,
+}
+
+/// `GET /api/v1/oauth2/logout` — 302 vers l'end-session Keycloak
+/// (RP-initiated logout). Le front purge ses tokens AVANT de rediriger :
+/// au retour sur `/`, l'app boote déconnectée et le cookie SSO est mort.
+async fn logout(
+    State(ctx): State<AppContext>,
+    Query(params): Query<LogoutParams>,
+    request: axum::extract::Request,
+) -> Result<Response> {
+    let settings = KeycloakSettings::from_config(&ctx.config)?;
+    let post_logout_redirect_uri = params.post_logout_redirect_uri.unwrap_or_else(|| {
+        let host = request
+            .headers()
+            .get(header::HOST)
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("localhost:5150");
+        format!("http://{host}/")
+    });
+
+    let mut pairs: Vec<(&str, String)> = vec![
+        ("client_id", settings.client_id.clone()),
+        ("post_logout_redirect_uri", post_logout_redirect_uri),
+    ];
+    if let Some(id_token) = params.id_token {
+        pairs.push(("id_token_hint", id_token));
+    }
+    let location = format!(
+        "{}?{}",
+        settings.end_session_endpoint(),
+        form_urlencode(&pairs)
+    );
+
+    let mut response = Response::new(axum::body::Body::empty());
+    *response.status_mut() = StatusCode::FOUND;
+    response.headers_mut().insert(
+        header::LOCATION,
+        HeaderValue::from_str(&location)
+            .map_err(|_| Error::BadRequest("post_logout_redirect_uri invalide".into()))?,
+    );
+    Ok(response)
 }
 
 #[derive(Deserialize)]
@@ -233,4 +289,5 @@ pub fn routes() -> Routes {
         .add("/token", post(token))
         .add("/refresh", post(refresh))
         .add("/sso", get(sso))
+        .add("/logout", get(logout))
 }

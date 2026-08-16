@@ -150,6 +150,14 @@ Constats techniques Dioxus 0.7.10 (vérifiés dans les sources, à retenir) :
   `sub_change_avec_meme_email_relie_le_meme_user`. En contre-mesure dev,
   alice/bob ont des UUIDs pinés dans le realm (une recréation du conteneur
   Keycloak ne churne plus les identités) ;
+- **Logout = end-session Keycloak** (RP-initiated logout) : le front purge
+  ses tokens puis redirige en pleine page vers le proxy
+  `/api/v1/oauth2/logout` (id_token_hint + post_logout_redirect_uri) —
+  sinon le cookie SSO survit et le login suivant ré-authentifie sans
+  formulaire. L'id_token est stocké côté front (scope openid envoyé par le
+  proxy token). ⚠️ **Keycloak sépare les valeurs de
+  `post.logout.redirect.uris` par `##`** (espace = pattern unique invalide
+  → « Invalid redirect uri ») ;
 - **Keycloak : `kc_action=register` sur l'authorize est ignoré quand une
   session SSO existe** (re-login silencieux au lieu du formulaire
   d'inscription). Le proxy SSO utilise l'endpoint registrations dédié pour

@@ -53,4 +53,10 @@ impl KeycloakSettings {
     pub fn registration_endpoint(&self) -> String {
         format!("{}/protocol/openid-connect/registrations", self.issuer())
     }
+
+    /// Endpoint de déconnexion (RP-initiated logout OIDC) — détruit la session
+    /// SSO navigateur, sinon le login suivant ré-authentifie sans formulaire.
+    pub fn end_session_endpoint(&self) -> String {
+        format!("{}/protocol/openid-connect/logout", self.issuer())
+    }
 }

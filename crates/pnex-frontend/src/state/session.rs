@@ -43,13 +43,15 @@ pub fn login(user: UserInfo) {
     SESSION.with_mut(|s| *s = SessionState::Authenticated { user: Box::new(user) });
 }
 
-/// Déconnexion locale : purge tokens + org (la locale est conservée) et
-/// repasse le shell en mode login. L'end-session Keycloak est un durcissement
-/// futur (consigné dans PROGRESS.md).
+/// Déconnexion : purge locale (tokens + org, la locale est conservée) puis
+/// end-session Keycloak en pleine page — sinon le cookie SSO survit et le
+/// login suivant ré-authentifie sans formulaire. En expiration de session
+/// (refresh échoué), `expire()` fait la purge seule.
 pub fn logout() {
     api::auth::clear_tokens();
     crate::state::org::clear();
     SESSION.with_mut(|s| *s = SessionState::LoggedOut);
+    api::auth::end_session();
 }
 
 /// Session expirée (refresh échoué) — purge + notification.

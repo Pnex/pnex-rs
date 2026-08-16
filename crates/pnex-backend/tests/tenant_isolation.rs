@@ -182,6 +182,21 @@ async fn sso_register_pointe_vers_registrations_et_reset_vers_kc_action() {
         assert!(location.contains("/protocol/openid-connect/registrations?"), "{location}");
         assert!(location.contains("code_challenge=abc"), "{location}");
 
+        // logout : end-session Keycloak avec id_token_hint + retour.
+        let res = server
+            .get("/api/v1/oauth2/logout?id_token=jwt.jwt.jwt")
+            .await;
+        assert_eq!(res.status_code(), 302);
+        let location = res
+            .headers()
+            .get("location")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert!(location.contains("/protocol/openid-connect/logout?"), "{location}");
+        assert!(location.contains("id_token_hint=jwt.jwt.jwt"), "{location}");
+        assert!(location.contains("post_logout_redirect_uri="), "{location}");
+
         // reset : required action UPDATE_PASSWORD sur l'authorize classique.
         let res = server
             .get("/api/v1/oauth2/sso?code_challenge=abc&code_challenge_method=S256&action=reset")

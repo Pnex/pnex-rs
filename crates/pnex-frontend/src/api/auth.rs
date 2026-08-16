@@ -5,7 +5,7 @@ use pnex_core::TokenResponse;
 use crate::api::client;
 use crate::api::error::ApiError;
 use crate::auth::pkce;
-use crate::storage::{self, KeyValueStorage, KEY_ACCESS_TOKEN, KEY_PKCE_VERIFIER, KEY_REFRESH_TOKEN};
+use crate::storage::{self, KeyValueStorage, KEY_ACCESS_TOKEN, KEY_ID_TOKEN, KEY_PKCE_VERIFIER, KEY_REFRESH_TOKEN};
 
 /// `POST /api/v1/oauth2/token` (grant `authorization_code` + PKCE).
 pub async fn exchange_code(
@@ -36,11 +36,15 @@ pub async fn refresh_tokens(refresh_token: &str) -> Result<TokenResponse, ApiErr
     .await
 }
 
-/// Stocke les tokens (connecté).
+/// Stocke les tokens (connecté) — l'id_token sert à l'end-session Keycloak.
 pub fn store_tokens(tokens: &TokenResponse) {
     let local = storage::local();
     local.set(KEY_ACCESS_TOKEN, &tokens.access_token);
     local.set(KEY_REFRESH_TOKEN, &tokens.refresh_token);
+    match &tokens.id_token {
+        Some(id_token) => local.set(KEY_ID_TOKEN, id_token),
+        None => local.remove(KEY_ID_TOKEN),
+    }
 }
 
 /// Purge les tokens (déconnexion / expiration).
@@ -48,6 +52,28 @@ pub fn clear_tokens() {
     let local = storage::local();
     local.remove(KEY_ACCESS_TOKEN);
     local.remove(KEY_REFRESH_TOKEN);
+    local.remove(KEY_ID_TOKEN);
+}
+
+/// Déconnexion Keycloak : redirige en pleine page vers le proxy end-session
+/// (la session SSO du navigateur est détruite — sans ça, le login suivant
+/// ré-authentifie silencieusement). À appeler APRÈS la purge locale.
+#[cfg(target_arch = "wasm32")]
+pub fn end_session() {
+    let Some(window) = web_sys::window() else { return };
+    let mut url = format!(
+        "/api/v1/oauth2/logout?post_logout_redirect_uri={}",
+        pkce::urlencode(&format!("{}/", window.location().origin().ok().unwrap_or_default()))
+    );
+    if let Some(id_token) = storage::local().get(KEY_ID_TOKEN) {
+        url.push_str(&format!("&id_token={}", pkce::urlencode(&id_token)));
+    }
+    let _ = window.location().set_href(&url);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn end_session() {
+    // Cible desktop : la webview gérera sa propre session (phase desktop).
 }
 
 /// URI de callback du flow PKCE — même calcul au départ et au retour (l'URI
