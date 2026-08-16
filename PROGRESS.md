@@ -55,8 +55,9 @@ sans FK `SET NULL`. Migrations 000001/000003 réécrites avec les refs `?`
 pures (plus de SQL brut pour les FK), test d'invariants étendu aux
 actions ON DELETE (`SET NULL` sur nullable, `CASCADE` sur obligatoire).
 
-**Phase 3 — Auth & multi-tenant : EN COURS** (branche
-`phase-3-auth-multitenant`).
+**Phase 3 — Auth & multi-tenant : TERMINÉE** (merge sur `main` le
+2026-08-16, revue utilisateur — go donné après e2e curl ; gates verts :
+check natif+wasm32, 30 tests, clippy -D warnings).
 
 - [x] Realm Keycloak provisionné par fichier versionné
       (`deploy/keycloak/pnex-realm-realm.json`, import compose
@@ -90,7 +91,7 @@ actions ON DELETE (`SET NULL` sur nullable, `CASCADE` sur obligatoire).
       `dangerously_truncate` en test (le create/drop de base loco bute sur
       le pool — workaround), `.env.example` complété.
 
-**Front Phase 3 (port de `pnex-ui` React) : EN COURS** — directives user :
+**Front Phase 3 (port de `pnex-ui` React) : TERMINÉ** — directives user :
 sélection de serveur **supprimée pour le web** (same-origin), URL serveur
 auto-hébergée « façon Bitwarden » **uniquement pour desktop/ios/android**
 (décision : architecturer seulement — cfg natif compilé, écran `ServerUrl`
@@ -182,14 +183,19 @@ Suite du front (terminée) :
       contrainte Send pour la couche HTTP), convention.md (section Front),
       ce fichier
 
-**Reste Phase 3** : parcours navigateur humain (login PKCE réel, switcher,
-toasts — le reste du flow est couvert par les tests backend mock + e2e curl
-ci-dessous), puis revue humaine et merge.
+**Clôture Phase 3** : le parcours navigateur humain (login PKCE réel,
+switcher, toasts) a été validé au fil des correctifs post-e2e (logout
+end-session, register, re-liaison sub) ; l'utilisateur a donné le go au
+merge le 2026-08-16.
 
 E2E vérifié en curl (backend Loco :5150 + front buildé servi + Keycloak
 docker) : serving SPA (index, tailwind, wasm, fallback /auth/callback),
 401 sans token, proxy sso 302 PKCE vers Keycloak réel, password grant via
 proxy → JIT → user-info, PATCH profile, orgs CRUD.
+
+**Prochaine : Phase 4 — Gestion des devices (CRUD)**, première tranche
+verticale complète (types core → endpoints Loco → vues Dioxus → tests de
+parité), patron pour les suivantes.
 
 ## Anciennes phases (détail)
 
@@ -244,6 +250,11 @@ proxy → JIT → user-info, PATCH profile, orgs CRUD.
 
 ## Journal
 
+- 2026-08-16 : **Phase 3 mergée sur `main`** : gates repassés au merge
+  (check natif+wasm32 sans warning, 30 tests, clippy -D warnings), deux
+  imports morts en wasm nettoyés, PROGRESS.md clôturé. Go au merge donné
+  par l'utilisateur après les correctifs post-e2e. Prochaine : Phase 4
+  (devices CRUD).
 - 2026-08-16 : **Front Phase 3 implémenté** (suite de la branche
   `phase-3-auth-multitenant`) : port de l'UI `pnex-ui` (React) en Dioxus 0.7 —
   Tailwind v4 + i18n Fluent fr/en obligatoire, client HTTP reqwest (refresh
