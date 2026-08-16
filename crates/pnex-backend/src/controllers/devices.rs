@@ -102,7 +102,7 @@ fn generate_device_key() -> String {
 }
 
 /// Noms des mesures découvertes (clés du JSONB) si le dynamic est autorisé.
-fn discovered_names(value: &Option<serde_json::Value>) -> Vec<String> {
+pub(crate) fn discovered_names(value: &Option<serde_json::Value>) -> Vec<String> {
     value
         .as_ref()
         .and_then(|j| j.as_object())
@@ -111,7 +111,7 @@ fn discovered_names(value: &Option<serde_json::Value>) -> Vec<String> {
 }
 
 /// Capacités par predefined device (join table), pour les ids donnés.
-async fn capabilities_of(
+pub(crate) async fn capabilities_of(
     db: &DatabaseConnection,
     pd_ids: &[i64],
 ) -> Result<HashMap<i64, Vec<device_capabilities::Model>>> {

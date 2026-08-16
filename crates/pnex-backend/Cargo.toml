@@ -21,7 +21,9 @@ tokio = { version = "1.45", default-features = false, features = [
   "rt-multi-thread",
 ] }
 async-trait = { version = "0.1" }
-axum = { version = "0.8" }
+axum = { version = "0.8", features = ["ws"] }
+# ChaCha20 nu (RFC 7539, sans Poly1305) — parité crypto_utils Django (D8)
+chacha20 = "0.9"
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 regex = { version = "1.11" }
@@ -47,7 +49,7 @@ path = "src/bin/main.rs"
 
 [dev-dependencies]
 loco-rs = { version = "1.0", default-features = false, features = ["testing"] }
-axum-test = { version = "17" }
+axum-test = { version = "17", features = ["ws"] }
 serial_test = { version = "3.1" }
 rstest = { version = "0.25" }
 insta = { version = "1.34", features = ["redactions", "yaml", "filters"] }

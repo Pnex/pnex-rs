@@ -49,6 +49,7 @@ impl Hooks for App {
             .add_route(controllers::orgs::routes())
             .add_route(controllers::devices::routes())
             .add_route(controllers::devices::catalogue_routes())
+            .add_route(controllers::ws_ingest::routes())
     }
 
     async fn connect_workers(_ctx: &AppContext, _queue: &Queue) -> Result<()> {

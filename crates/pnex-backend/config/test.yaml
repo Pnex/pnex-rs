@@ -35,6 +35,15 @@ database:
 
 # Auth Keycloak (Phase 3) : validation JWKS locale + JIT provisioning.
 settings:
+  # Ingestion Phase 5 (valeurs par défaut si absent — cf. services/settings.rs)
+  ingestion:
+    # TTL court (expiry du bail testable vite) + cache 0 (revalidation
+    # systématique → close 4005 déterministe).
+    silence_ttl_secs: 2
+    reaper_interval_secs: 1
+    token_cache_secs: 0
+    batch_max: {{ get_env(name="PNEX_BATCH_MAX", default="500") }}
+    batch_flush_secs: {{ get_env(name="PNEX_BATCH_FLUSH_SECS", default="10") }}
   keycloak:
     base_url: {{ get_env(name="KEYCLOAK_URL", default="http://localhost:8080") }}
     realm: {{ get_env(name="KEYCLOAK_REALM", default="pnex-realm") }}
