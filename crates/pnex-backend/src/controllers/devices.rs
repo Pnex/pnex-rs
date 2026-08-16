@@ -43,9 +43,9 @@ use std::collections::HashMap;
 use super::pagination;
 use crate::auth::{AuthUser, OrgContext};
 use crate::models::_entities::{
-    build_records, device_capabilities, device_registries, device_tokens, device_types,
-    mcu_boards, predefined_device_capabilities, predefined_devices, subscription_tiers,
-    sea_orm_active_enums::CapabilityMode,
+    build_records, device_capabilities, device_registries, device_states, device_tokens,
+    device_types, mcu_boards, predefined_device_capabilities, predefined_devices,
+    subscription_tiers, sea_orm_active_enums::CapabilityMode,
 };
 
 // ─────────────────────────── Aides ───────────────────────────
@@ -142,6 +142,7 @@ fn device_dto(
     type_name: &str,
     capabilities: &[device_capabilities::Model],
     token: Option<&device_tokens::Model>,
+    last_seen: Option<String>,
 ) -> pnex_core::Device {
     pnex_core::Device {
         id: device.id,
@@ -159,6 +160,7 @@ fn device_dto(
             })
             .collect(),
         active: device.active,
+        last_seen,
         device_token: token.map(|t| pnex_core::DeviceTokenInfo {
             token: t.token.clone(),
             encryption_key: t.encryption_key.clone(),
@@ -200,12 +202,19 @@ async fn device_full(
         .one(db)
         .await
         .map_err(|_| Error::InternalServerError)?;
+    let last_seen = device_states::Entity::find()
+        .filter(device_states::Column::DeviceRegistryId.eq(device.id))
+        .one(db)
+        .await
+        .map_err(|_| Error::InternalServerError)?
+        .map(|s| s.last_seen_at.to_rfc3339());
     Ok(device_dto(
         device,
         &predefined,
         &type_name,
         &capabilities,
         token.as_ref(),
+        last_seen,
     ))
 }
 
@@ -334,6 +343,18 @@ async fn list(
         .into_iter()
         .map(|t| (t.device_registry_id, t))
         .collect();
+    // Bails de vie (Phase 5) : last_seen par device, même requête batchée.
+    let states: HashMap<i64, String> = device_states::Entity::find()
+        .filter(
+            device_states::Column::DeviceRegistryId
+                .is_in(rows.iter().map(|(d, _)| d.id).collect::<Vec<_>>()),
+        )
+        .all(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?
+        .into_iter()
+        .map(|s| (s.device_registry_id, s.last_seen_at.to_rfc3339()))
+        .collect();
 
     let mut devices = Vec::new();
     for (device, predefined) in rows {
@@ -391,12 +412,14 @@ async fn list(
             }
         }
         let token = tokens.get(&device.id);
+        let last_seen = states.get(&device.id).cloned();
         devices.push(device_dto(
             device,
             &predefined,
             type_name,
             caps.get(&predefined.id).map(Vec::as_slice).unwrap_or(&[]),
             token,
+            last_seen,
         ));
     }
 

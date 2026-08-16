@@ -83,6 +83,10 @@ pub struct Device {
     /// Capacités du predefined device (objets {id, name, mode}).
     pub capabilities: Vec<DeviceCapability>,
     pub active: bool,
+    /// Dernière donnée reçue (bail de vie Phase 5, `device_states`) —
+    /// RFC 3339, absent si le device n'a jamais ingéré.
+    #[serde(default)]
+    pub last_seen: Option<String>,
     #[serde(default)]
     pub device_token: Option<DeviceTokenInfo>,
     pub allow_dynamic_measurements: bool,
@@ -130,6 +134,7 @@ mod tests {
             "device_type": "actuator",
             "capabilities": [{ "id": 1, "name": "relay", "mode": "output" }],
             "active": false,
+            "last_seen": "2026-08-16T12:00:00+00:00",
             "device_token": {
                 "token": "tok",
                 "encryption_key": "key",
@@ -143,6 +148,10 @@ mod tests {
         let device: Device = serde_json::from_str(json).unwrap();
         assert_eq!(device.org_id, 7);
         assert_eq!(device.device_token.as_ref().unwrap().token, "tok");
+        assert_eq!(
+            device.last_seen.as_deref(),
+            Some("2026-08-16T12:00:00+00:00")
+        );
         let back = serde_json::to_value(&device).unwrap();
         assert_eq!(back, serde_json::from_str::<serde_json::Value>(json).unwrap());
     }
