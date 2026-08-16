@@ -41,6 +41,15 @@ pub fn Devices() -> Element {
     // Formulaire d'enregistrement.
     let mut new_device_id = use_signal(String::new);
     let mut new_model = use_signal(String::new);
+    // Build automatique à l'enregistrement (directive utilisateur,
+    // firmware-build.md §3) : WiFi + serveur collectés ICI, le firmware est
+    // compilé dès la création (case « Compiler maintenant », cochée défaut).
+    let mut reg_ssid = use_signal(String::new);
+    let mut reg_wifi_password = use_signal(String::new);
+    let mut reg_host = use_signal(crate::util::default_host);
+    let mut reg_build_now = use_signal(|| true);
+    // Ligne d'état « build lancé » dans la modale token (Some = lancé).
+    let mut build_launched = use_signal(|| false);
     // Token du dernier enregistrement — affiché dans une modale dès la
     // création (le device_id et le token ne sont montrés qu'une fois, au
     // porteur ; l'UI React d'origine les affichait immédiatement).
@@ -203,7 +212,19 @@ pub fn Devices() -> Element {
                                         toasts::error("devices-model-required");
                                         return;
                                     }
+                                    // Snapshot du build auto avant le spawn.
+                                    let build_now = reg_build_now()
+                                        && !reg_ssid().trim().is_empty()
+                                        && !reg_host().trim().is_empty();
+                                    let build_params = build_now.then(|| {
+                                        (
+                                            reg_ssid().trim().to_string(),
+                                            reg_wifi_password(),
+                                            reg_host().trim().to_string(),
+                                        )
+                                    });
                                     new_device_id.set(String::new());
+                                    build_launched.set(false);
                                     spawn(async move {
                                         match api::devices::create(pnex_core::CreateDevice {
                                             device_id: id,
@@ -220,6 +241,23 @@ pub fn Devices() -> Element {
                                                 } else {
                                                     match serde_json::from_value::<pnex_core::Device>(body) {
                                                         Ok(device) if device.device_token.is_some() => {
+                                                            // Build automatique (device créé, token
+                                                            // prêt) — les erreurs (429 intervalle,
+                                                            // 403 quota) partent en toast, la modale
+                                                            // reste utile pour le token.
+                                                            if let Some((ssid, wifi_password, host)) = build_params {
+                                                                let params = pnex_core::CreateBuild {
+                                                                    device_id: device.device_id.clone(),
+                                                                    predefined_device_name: device.predefined_device_name.clone(),
+                                                                    wifi_ssid: ssid,
+                                                                    wifi_password,
+                                                                    pnex_host: host,
+                                                                };
+                                                                match api::builds::create(params).await {
+                                                                    Ok(_) => build_launched.set(true),
+                                                                    Err(err) => toasts::error(err.message),
+                                                                }
+                                                            }
                                                             created.set(Some((
                                                                 device.device_id,
                                                                 device.device_token.unwrap(),
@@ -236,6 +274,43 @@ pub fn Devices() -> Element {
                                 },
                                 div { class: "w-full text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1",
                                     {t!("devices-register-title")}
+                                }
+                                // Rangée firmware (build auto) : WiFi + serveur —
+                                // directive utilisateur (firmware-build.md §3) :
+                                // le formulaire d'enregistrement collecte tout ce
+                                // qu'il faut pour flasher directement le device.
+                                div { class: "w-full flex flex-wrap gap-2 items-center",
+                                    label { class: "flex items-center gap-1.5 text-sm text-gray-700",
+                                        input {
+                                            class: "rounded border-gray-300",
+                                            r#type: "checkbox",
+                                            checked: reg_build_now,
+                                            onchange: move |event| reg_build_now.set(event.checked()),
+                                        }
+                                        {t!("devices-build-now")}
+                                    }
+                                    input {
+                                        class: "flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                                        r#type: "text",
+                                        placeholder: t!("devices-build-ssid"),
+                                        value: "{reg_ssid}",
+                                        oninput: move |event| reg_ssid.set(event.value()),
+                                    }
+                                    input {
+                                        class: "flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                                        r#type: "password",
+                                        placeholder: t!("devices-build-wifi-password"),
+                                        value: "{reg_wifi_password}",
+                                        oninput: move |event| reg_wifi_password.set(event.value()),
+                                    }
+                                    input {
+                                        class: "flex-1 min-w-40 px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                                        r#type: "text",
+                                        placeholder: "dev1.pnex.io",
+                                        title: t!("devices-build-server-url"),
+                                        value: "{reg_host}",
+                                        oninput: move |event| reg_host.set(event.value()),
+                                    }
                                 }
                                 input {
                                     class: "flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm",
@@ -336,6 +411,12 @@ pub fn Devices() -> Element {
                                         p { class: "text-xs text-gray-500 mb-1", {t!("devices-encryption-key")} }
                                         code { class: "block p-3 bg-gray-50 rounded-lg text-sm break-all",
                                             {token.encryption_key.clone().unwrap_or_else(|| "—".into())}
+                                        }
+                                    }
+                                    if build_launched() {
+                                        p { class: "text-sm text-indigo-600",
+                                            icons::Wrench { class: "h-4 w-4 inline mr-1" }
+                                            {t!("devices-build-status")}
                                         }
                                     }
                                     div { class: "flex justify-end pt-2",

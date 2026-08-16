@@ -11,7 +11,7 @@ use dioxus_i18n::t;
 use crate::api;
 use crate::components::pager::Pager;
 use crate::state::{org, session, toasts};
-use crate::util::{save_blob, sleep};
+use crate::util::{default_host, save_blob, sleep};
 
 const PAGE_SIZE: i64 = 10;
 
@@ -24,22 +24,6 @@ fn current_role() -> Option<String> {
         .iter()
         .find(|m| m.id == org_id)
         .map(|m| m.role.clone())
-}
-
-/// Hôte du serveur préremplI : l'origine courante du front (le backend
-/// sert le front en same-origin — le device doit pouvoir le joindre).
-fn default_host() -> String {
-    #[cfg(target_arch = "wasm32")]
-    {
-        web_sys::window()
-            .and_then(|w| w.location().host().ok())
-            .filter(|h| !h.is_empty())
-            .unwrap_or_else(|| "localhost:5150".to_string())
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        "localhost:5150".to_string()
-    }
 }
 
 #[component]

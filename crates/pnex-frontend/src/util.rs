@@ -44,3 +44,20 @@ pub fn save_blob(filename: &str, bytes: &[u8]) {
         let _ = (filename, bytes);
     }
 }
+
+/// Hôte du serveur prérempli (formulaires de build) : l'origine courante
+/// du front — le backend sert le front en same-origin, le device doit
+/// pouvoir joindre cet hôte.
+pub fn default_host() -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        web_sys::window()
+            .and_then(|w| w.location().host().ok())
+            .filter(|h| !h.is_empty())
+            .unwrap_or_else(|| "localhost:5150".to_string())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        "localhost:5150".to_string()
+    }
+}
