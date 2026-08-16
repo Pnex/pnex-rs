@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use loco_rs::{
     app::{AppContext, Hooks},
-    bgworker::Queue,
+    bgworker::{BackgroundWorker, Queue},
     boot::{create_app, BootResult, StartMode},
     config::Config,
     controller::AppRoutes,
@@ -62,10 +62,14 @@ impl Hooks for App {
         Ok(router)
     }
 
-    async fn connect_workers(_ctx: &AppContext, _queue: &Queue) -> Result<()> {
-        // Phase 6 : workers firmware-build etc. (queue PostgreSQL). Le
-        // reaper de liveness vit dans after_routes (doit tourner y compris
-        // en ServerOnly).
+    async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {
+        // Appelé uniquement en mode BackgroundQueue — c'est-à-dire quand le
+        // process drive la queue (`loco start --server-and-worker` ou
+        // `--worker-only`). Le reaper de liveness vit dans after_routes
+        // (doit tourner y compris en ServerOnly).
+        queue
+            .register(crate::workers::build_firmware::BuildFirmwareWorker::build(ctx))
+            .await?;
         Ok(())
     }
 

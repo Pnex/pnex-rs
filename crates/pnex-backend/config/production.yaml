@@ -23,7 +23,19 @@ server:
       fallback: "../pnex-frontend/dist/index.html"
 
 workers:
-  mode: BackgroundAsync
+  # Phase 6 : queue PostgreSQL. SaaS : deux déploiements du MÊME binaire —
+  # API (slim, `loco start`) et worker (fat, toolchain pio, `loco start
+  # --worker-only`).
+  mode: BackgroundQueue
+
+queue:
+  kind: Postgres
+  uri: {{ get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") }}
+  num_workers: {{ get_env(name="PNEX_QUEUE_NUM_WORKERS", default="1") }}
+  poll_interval_sec: 1
+  reaper:
+    age_minutes: 30
+    interval_seconds: 120
 
 database:
   uri: {{ get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") }}
@@ -50,3 +62,21 @@ settings:
     base_url: {{ get_env(name="KEYCLOAK_URL", default="http://localhost:8080") }}
     realm: {{ get_env(name="KEYCLOAK_REALM", default="pnex-realm") }}
     client_id: {{ get_env(name="KEYCLOAK_CLIENT_ID", default="pnex") }}
+  # Firmware Phase 6 — source git par défaut (déploiement cloud), local
+  # pour l'edge. STORAGE_BACKEND surcharge storage.backend (D5).
+  firmware:
+    source:
+      kind: {{ get_env(name="PNEX_FIRMWARE_SOURCE_KIND", default="git") }}
+      path: {{ get_env(name="PNEX_FIRMWARE_SOURCE_PATH", default="") }}
+      repo: {{ get_env(name="PNEX_FIRMWARE_GIT_REPO", default="https://github.com/Pnex/iot-firmware.git") }}
+      git_ref: {{ get_env(name="PNEX_FIRMWARE_GIT_REF", default="main") }}
+    storage:
+      backend: {{ get_env(name="STORAGE_BACKEND", default="local") }}
+      local_root: {{ get_env(name="PNEX_ARTIFACTS_DIR", default="/var/lib/pnex/artifacts") }}
+      s3_endpoint: {{ get_env(name="PNEX_S3_ENDPOINT", default="") }}
+      s3_bucket: {{ get_env(name="PNEX_S3_BUCKET", default="") }}
+      s3_region: {{ get_env(name="PNEX_S3_REGION", default="") }}
+      s3_path_style: {{ get_env(name="PNEX_S3_PATH_STYLE", default="false") }}
+    pio_cmd: {{ get_env(name="PNEX_PIO_CMD", default="pio") }}
+    esptool_cmd: {{ get_env(name="PNEX_ESPTOOL_CMD", default="esptool") }}
+    timeout_secs: {{ get_env(name="PNEX_BUILD_TIMEOUT_SECS", default="900") }}

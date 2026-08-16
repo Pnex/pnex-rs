@@ -4854,6 +4854,7 @@ dependencies = [
  "jsonwebtoken 9.3.1",
  "loco-rs",
  "pnex-core",
+ "pnex-firmware-builder",
  "pnex-migration",
  "prost",
  "rand 0.9.5",

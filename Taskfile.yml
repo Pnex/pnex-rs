@@ -97,9 +97,14 @@ tasks:
       - cp -r {{.DX_OUT}}/debug/web/public {{.FRONT_DIST}}
 
   dev:backend:
-    desc: Démarre le backend Loco (hot-rebuild via bacon ou relance manuelle)
+    desc: Démarre le backend Loco (serveur seul — hot-rebuild via bacon ou relance manuelle)
     cmds:
       - cd crates/pnex-backend && cargo run --bin pnex-server -- start
+
+  dev:backend:worker:
+    desc: Backend Loco + worker de build firmware (drive la queue pg_loco_queue — Phase 6)
+    cmds:
+      - cd crates/pnex-backend && cargo run --bin pnex-server -- start --server-and-worker
 
   dev:hot:
     desc: Dev front hot-reload (dx :5151 + Tailwind watch) — API Loco sur :5150 à part

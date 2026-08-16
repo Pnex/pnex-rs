@@ -17,6 +17,8 @@ server:
       enable: false
 
 workers:
+  # ForegroundBlocking : perform_later exécute le worker INLINE dans la
+  # requête de test — le build est déjà terminal quand le POST répond.
   mode: ForegroundBlocking
 
 database:
@@ -48,4 +50,16 @@ settings:
     base_url: {{ get_env(name="KEYCLOAK_URL", default="http://localhost:8080") }}
     realm: {{ get_env(name="KEYCLOAK_REALM", default="pnex-realm") }}
     client_id: {{ get_env(name="KEYCLOAK_CLIENT_ID", default="pnex") }}
+  # Firmware Phase 6 — toolchain remplacée par des scripts de fixture
+  # (rapides, échec/timeout pilotés par des valeurs de wifi_ssid).
+  firmware:
+    source:
+      kind: local
+      path: ./tests/fixtures/firmware/workspace
+    storage:
+      backend: local
+      local_root: {{ get_env(name="PNEX_ARTIFACTS_DIR", default="/tmp/pnex-test-artifacts") }}
+    pio_cmd: ./tests/fixtures/firmware/fake_pio.sh
+    esptool_cmd: ./tests/fixtures/firmware/fake_esptool.sh
+    timeout_secs: 2
 # En test : issuer redirigeable vers un JWKS mock (voir tests/auth_*).

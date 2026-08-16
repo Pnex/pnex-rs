@@ -9,10 +9,13 @@ default-run = "pnex-server"
 
 [dependencies]
 pnex-core = { workspace = true }
+pnex-firmware-builder = { workspace = true }
 pnex-migration = { path = "migration" }
 loco-rs = { version = "1.0", default-features = false, features = [
   "cli",
   "with-db",
+  # Worker de build firmware : provider queue PostgreSQL (Phase 6)
+  "worker",
 ] }
 sea-orm = { workspace = true }
 serde = { workspace = true }
