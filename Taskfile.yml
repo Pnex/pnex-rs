@@ -42,7 +42,9 @@ tasks:
     cmds:
       # Le CSS réel est gitignoré (généré par css:build) : sans ce stub, tout
       # fresh clone casse sur cargo check/test/clippy (asset! ne trouve pas le
-      # fichier). N'écrase jamais le CSS réel s'il existe.
+      # fichier). Le dossier assets/ n'existe pas non plus dans un clone frais
+      # (aucun fichier tracké). N'écrase jamais le CSS réel s'il existe.
+      - mkdir -p crates/pnex-frontend/assets
       - test -f crates/pnex-frontend/assets/tailwind.css || printf '/* Stub — CSS reel genere par task css:build (npm) */\n' > crates/pnex-frontend/assets/tailwind.css
 
   css:watch:
