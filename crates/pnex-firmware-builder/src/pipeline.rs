@@ -133,15 +133,17 @@ fn tail(out: &Output, n: usize) -> String {
 // ─────────────────── Source ───────────────────
 
 /// Copie récursive (std::fs, bloquant : l'arborescence firmware sans
-/// `.pio`/`.git` fait quelques centaines de Ko). Préserve le layout
-/// complet — le projet ET ses frères (`common_libs/`).
+/// `.pio`/`.git`/`.venv` fait quelques centaines de Ko). Préserve le layout
+/// complet — le projet ET ses frères (`common_libs/`). Les venv
+/// (`.venv` d'`uv run pio`) sont exclus : la toolchain s'invoque par
+/// chemin absolu ou via PATH, jamais depuis la copie.
 fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if matches!(name.as_ref(), ".git" | ".pio" | "node_modules") {
+        if matches!(name.as_ref(), ".git" | ".pio" | ".venv" | "node_modules") {
             continue;
         }
         let from = entry.path();
