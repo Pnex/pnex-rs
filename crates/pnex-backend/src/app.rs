@@ -47,6 +47,8 @@ impl Hooks for App {
             .add_route(controllers::oauth2::routes())
             .add_route(controllers::user_info::routes())
             .add_route(controllers::orgs::routes())
+            .add_route(controllers::devices::routes())
+            .add_route(controllers::devices::catalogue_routes())
     }
 
     async fn connect_workers(_ctx: &AppContext, _queue: &Queue) -> Result<()> {

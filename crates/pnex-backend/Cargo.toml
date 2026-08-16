@@ -25,6 +25,11 @@ axum = { version = "0.8" }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 regex = { version = "1.11" }
+# Génération des DeviceTokens (parité secrets.token_urlsafe + clé ChaCha20)
+rand = "0.9"
+base64 = "0.22"
+# Parsing query-string multi-valeurs (filtre `capabilities` répétable)
+form_urlencoded = "1"
 axum-extra = { version = "0.10", features = ["form"] }
 chrono = { workspace = true }
 uuid = { workspace = true, features = ["v5"] }
