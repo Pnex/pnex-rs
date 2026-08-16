@@ -57,6 +57,11 @@ database:
 # Auth Keycloak (Phase 3) : validation JWKS locale + JIT provisioning.
 # Le front étant servi par le backend (same-origin), pas de CORS nécessaire.
 settings:
+  # OpenObserve (D1/D2) — absent = télémétrie désactivée (sink noop)
+  openobserve:
+    base_url: {{ get_env(name="OPENOBSERVE_URL", default="http://localhost:5080") }}
+    root_email: {{ get_env(name="OPENOBSERVE_ROOT_EMAIL", default="root@pnex.local") }}
+    root_password: {{ get_env(name="OPENOBSERVE_ROOT_PASSWORD", default="Pnex-dev-2026!") }}
   # Ingestion Phase 5 (valeurs par défaut si absent — cf. services/settings.rs)
   ingestion:
     silence_ttl_secs: {{ get_env(name="PNEX_SILENCE_TTL_SECS", default="10") }}

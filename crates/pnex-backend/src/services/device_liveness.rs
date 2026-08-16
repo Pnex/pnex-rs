@@ -104,12 +104,14 @@ pub async fn deactivate_stale(
     Ok((on, off))
 }
 
-/// Tâche de fond du reaper (mode `BackgroundAsync` uniquement — pas en
-/// test `ForegroundBlocking`, la logique y est testée directement).
-/// Détachée : vit tant que le runtime du serveur.
+/// Tâche de fond du reaper, lancée au boot (`after_routes`) dans tout mode
+/// serveur — `loco start` sans flag est `ServerOnly` (connect_workers
+/// n'est PAS appelé), le reaper doit vivre dans le process serveur.
+/// Skip uniquement en test (`ForegroundBlocking`), où la logique est
+/// appelée directement. Détachée : vit tant que le runtime.
 pub fn spawn_reaper(ctx: &AppContext) {
     use loco_rs::config::WorkerMode;
-    if !matches!(ctx.config.workers.mode, WorkerMode::BackgroundAsync) {
+    if matches!(ctx.config.workers.mode, WorkerMode::ForegroundBlocking) {
         return;
     }
     let settings = IngestSettings::from_config(&ctx.config);

@@ -52,12 +52,20 @@ impl Hooks for App {
             .add_route(controllers::ws_ingest::routes())
     }
 
-    async fn connect_workers(ctx: &AppContext, _queue: &Queue) -> Result<()> {
-        // Reaper de liveness (D9) : flippe device_registries.active selon la
-        // fraîcheur device_states — seul écrivain, parité Celery Django.
-        // No-op hors BackgroundAsync (les tests appellent la logique directe).
+    async fn after_routes(router: axum::Router, ctx: &AppContext) -> Result<axum::Router> {
+        // Batcher télémétrie → OpenObserve (no-op si non configuré : le sink
+        // noop reste en place — tests, déploiements sans télémétrie).
+        crate::services::openobserve::spawn_batcher(ctx);
+        // Reaper de liveness : ici et non connect_workers — `loco start`
+        // sans flag est ServerOnly (connect_workers jamais appelé).
         crate::services::device_liveness::spawn_reaper(ctx);
-        // Phase 6 : workers firmware-build etc. (queue PostgreSQL).
+        Ok(router)
+    }
+
+    async fn connect_workers(_ctx: &AppContext, _queue: &Queue) -> Result<()> {
+        // Phase 6 : workers firmware-build etc. (queue PostgreSQL). Le
+        // reaper de liveness vit dans after_routes (doit tourner y compris
+        // en ServerOnly).
         Ok(())
     }
 
