@@ -238,10 +238,14 @@ docker) : serving SPA (index, tailwind, wasm, fallback /auth/callback),
 401 sans token, proxy sso 302 PKCE vers Keycloak réel, password grant via
 proxy → JIT → user-info, PATCH profile, orgs CRUD.
 
-**Phase 5 (tranche 1) — Ingestion télémétrie collecte : IMPLÉMENTÉE** sur
-la branche `phase-5-ingestion` (en attente de revue humaine). Périmètre à
-la demande de l'utilisateur : **collecte uniquement** — broadcast
-desired-state et tout l'actuateur restent au chantier M2M (D13).
+**Phase 5 (tranche 1) — Ingestion télémétrie collecte : TERMINÉE** (merge
+sur `main` le 2026-08-16, revue utilisateur — go après e2e réelle vécue
+ensemble : metrics O2, anti-clone, reaper, normalisation D16 ; gates verts
+au merge : check natif+wasm32, 64 tests, clippy -D warnings, build front).
+Périmètre à la demande de l'utilisateur : **collecte uniquement** —
+broadcast desired-state et tout l'actuateur restent au chantier M2M (D13).
+La suite de la Phase 5 (lecture métrics front, `ws/metrics/live`) reste à
+faire et sera re-planifiée après la Phase 6.
 
 - [x] Migration 000006 : `device_states` (bail de vie D9 : last_seen,
       connected — remplace Redis db2 Django) + `openobserve_orgs`
@@ -345,6 +349,13 @@ de sujets Django) ou Phase 6 (worker build firmware).
 
 ## Journal
 
+- 2026-08-16 : **Phase 5 (tranche collecte) mergée sur `main`** : go
+  utilisateur après e2e réelle (données visibles dans les metrics O2,
+  clone rejeté 4003, reaper, `Soil-Moisture` → série canonique
+  `soil_moisture` — D16 ajoutée au passage sur sa demande). Gates
+  repassées au merge. 7 commits. Prochaine : Phase 6 (worker build
+  firmware) — la lecture métrics front de la Phase 5 sera re-planifiée
+  après.
 - 2026-08-16 : **Phase 5 (tranche collecte) implémentée** (branche
   `phase-5-ingestion`) : WS ingestion ChaCha20 + bail anti-clone + reaper
   + sortie metrics OpenObserve (Prometheus remote-write, provisioning
