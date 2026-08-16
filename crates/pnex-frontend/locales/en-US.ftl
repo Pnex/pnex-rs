@@ -100,9 +100,45 @@ profile-theme-note = The theme is stored in your profile; its application to the
 
 # Pages en attente de phase
 empty-phase = Comes in phase { $phase }
-empty-devices-title = Device management
-empty-devices-message = The device API lands in the next phase — registration, live data and metadata will follow.
 empty-builds-title = Firmware build
 empty-builds-message = Firmware builds and their live status arrive with the in-house build worker.
 empty-catalog-title = Device catalog
 empty-catalog-message = The catalog of predefined devices (boards, capabilities) lands with the devices API.
+
+# Devices (Phase 4)
+devices-subtitle = Register your devices, inspect their provisioning tokens and metadata.
+devices-type-all = All types
+devices-type-sensor = Sensor
+devices-type-actuator = Actuator
+devices-type-mixed = Mixed
+devices-capability-all = All capabilities
+devices-status-all = All statuses
+devices-status-active = Active
+devices-status-inactive = Inactive
+devices-search-placeholder = Search by device_id…
+devices-new-placeholder = Device identifier (device_id)
+devices-model-placeholder = — Model —
+devices-model-required = Pick a model from the catalog.
+devices-catalog-loading = Loading catalog…
+devices-register = Register
+devices-created = Device registered — provisioning token generated.
+devices-empty = No device matches — register one above.
+devices-col-id = Device
+devices-col-type = Type
+devices-col-model = Model
+devices-col-status = Status
+devices-detail = Detail
+devices-back = Back to devices
+devices-delete = Delete
+devices-confirm-delete-title = Delete this device?
+devices-confirm-delete-message = The device, its token and its firmware build records will be permanently removed.
+devices-capabilities = Capabilities
+devices-token = Provisioning token
+devices-token-active = Active
+devices-token-show = Show token
+devices-token-hide = Hide token
+devices-token-value = Token (hand it to the firmware)
+devices-encryption-key = Encryption key (ChaCha20)
+devices-metadata = Metadata (JSON)
+devices-metadata-save = Save metadata
+devices-metadata-invalid = Invalid JSON

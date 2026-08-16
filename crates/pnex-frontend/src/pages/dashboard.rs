@@ -30,6 +30,10 @@ pub fn Dashboard() -> Element {
         .into_iter()
         .collect();
     by_type.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    // Usage réel par type (comptage devices agrégé sur les orgs de l'user).
+    let used_of = |name: &str| user.device_count.by_type.get(name).copied().unwrap_or(0);
+    let (used_sensor, used_actuator, used_mixed) =
+        (used_of("sensor"), used_of("actuator"), used_of("mixed"));
 
     rsx! {
         div { class: "p-6",
@@ -85,13 +89,13 @@ pub fn Dashboard() -> Element {
                                 }}
                             }
                             if let Some(tier) = tier {
-                                // Capacités du tier (les compteurs par catégorie
-                                // arrivent avec les devices en Phase 4).
+                                // Quotas : usage réel / plafond du tier de
+                                // l'org active.
                                 div { class: "p-4 bg-gray-50 rounded-lg space-y-2",
                                     p { class: "text-sm font-medium text-gray-700", {t!("dash-quotas")} }
-                                    {quota_row(t!("dash-quota-sensor"), tier.max_sensor_devices.max(0) as u64)}
-                                    {quota_row(t!("dash-quota-actuator"), tier.max_actuator_devices.max(0) as u64)}
-                                    {quota_row(t!("dash-quota-mixed"), tier.max_mixed_devices.max(0) as u64)}
+                                    {quota_row(t!("dash-quota-sensor"), used_sensor, tier.max_sensor_devices.max(0) as u64)}
+                                    {quota_row(t!("dash-quota-actuator"), used_actuator, tier.max_actuator_devices.max(0) as u64)}
+                                    {quota_row(t!("dash-quota-mixed"), used_mixed, tier.max_mixed_devices.max(0) as u64)}
                                 }
                             }
                         } else {
@@ -145,11 +149,11 @@ fn stat_card(
     }
 }
 
-fn quota_row(label: String, max: u64) -> Element {
+fn quota_row(label: String, used: u64, max: u64) -> Element {
     rsx! {
         div { class: "flex items-center justify-between text-sm",
             span { class: "text-gray-600", {label} }
-            span { class: "font-medium text-gray-900", "{max}" }
+            span { class: "font-medium text-gray-900", "{used} / {max}" }
         }
     }
 }

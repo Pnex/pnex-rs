@@ -26,10 +26,6 @@ pub fn EmptyState(icon: Element, title: String, message: String, phase: String) 
 }
 
 /// Icônes courantes des empty-states (passées en prop d'`EmptyState`).
-pub fn cpu_icon() -> Element {
-    rsx! { icons::Cpu { class: "h-8 w-8 text-gray-400" } }
-}
-
 pub fn wrench_icon() -> Element {
     rsx! { icons::Wrench { class: "h-8 w-8 text-gray-400" } }
 }

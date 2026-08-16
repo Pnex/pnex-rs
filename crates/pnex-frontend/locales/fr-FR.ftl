@@ -100,9 +100,45 @@ profile-theme-note = Le thème est enregistré dans votre profil ; son applicati
 
 # Pages en attente de phase
 empty-phase = Arrive en phase { $phase }
-empty-devices-title = Gestion des appareils
-empty-devices-message = L'API des appareils arrive à la phase suivante — enregistrement, données temps réel et métadonnées suivront.
 empty-builds-title = Build firmware
 empty-builds-message = Les builds firmware et leur statut en direct arrivent avec le worker de build intégré.
 empty-catalog-title = Catalogue d'appareils
 empty-catalog-message = Le catalogue des appareils prédéfinis (cartes, capacités) arrive avec l'API des appareils.
+
+# Appareils (Phase 4)
+devices-subtitle = Enregistrez vos appareils, consultez leurs tokens de provisioning et leurs métadonnées.
+devices-type-all = Tous les types
+devices-type-sensor = Capteur
+devices-type-actuator = Actionneur
+devices-type-mixed = Mixte
+devices-capability-all = Toutes les capacités
+devices-status-all = Tous les statuts
+devices-status-active = Actif
+devices-status-inactive = Inactif
+devices-search-placeholder = Rechercher par device_id…
+devices-new-placeholder = Identifiant de l'appareil (device_id)
+devices-model-placeholder = — Modèle —
+devices-model-required = Choisissez un modèle dans le catalogue.
+devices-catalog-loading = Catalogue en cours de chargement…
+devices-register = Enregistrer
+devices-created = Appareil enregistré — token de provisioning généré.
+devices-empty = Aucun appareil ne correspond — enregistrez-en un ci-dessus.
+devices-col-id = Appareil
+devices-col-type = Type
+devices-col-model = Modèle
+devices-col-status = Statut
+devices-detail = Détail
+devices-back = Retour aux appareils
+devices-delete = Supprimer
+devices-confirm-delete-title = Supprimer cet appareil ?
+devices-confirm-delete-message = L'appareil, son token et ses enregistrements de build firmware seront supprimés définitivement.
+devices-capabilities = Capacités
+devices-token = Token de provisioning
+devices-token-active = Actif
+devices-token-show = Afficher le token
+devices-token-hide = Masquer le token
+devices-token-value = Token (à transmettre au firmware)
+devices-encryption-key = Clé de chiffrement (ChaCha20)
+devices-metadata = Métadonnées (JSON)
+devices-metadata-save = Enregistrer les métadonnées
+devices-metadata-invalid = JSON invalide

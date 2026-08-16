@@ -14,7 +14,7 @@ use crate::state::{org, toasts};
 
 
 /// Valeur texte d'un champ de formulaire (`FormValue::Text`).
-fn field(event: &dioxus::events::FormEvent, name: &str) -> String {
+pub fn field(event: &dioxus::events::FormEvent, name: &str) -> String {
     event
         .values()
         .iter()
