@@ -78,7 +78,7 @@ tasks:
     desc: Front debug + serveur Loco avec worker de builds (http://localhost:5150)
     deps: [dev:frontend]
     cmds:
-      - task: dev:backend:worker
+      - task: dev:backend
 
   dev:frontend:
     desc: Build debug du front vers crates/pnex-frontend/dist (pour serving Loco)
