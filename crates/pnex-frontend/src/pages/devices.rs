@@ -7,13 +7,18 @@
 //!
 //! Le détail est piloté par un signal local `selected` + `key` (cf. orgs.rs).
 
+use std::time::Duration;
+
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 
 use crate::api;
+use crate::components::badges::{date_label, phase_badge};
 use crate::components::icons;
+use crate::components::modal::Modal;
 use crate::components::pager::Pager;
 use crate::state::{org, session, toasts};
+use crate::util::{save_blob, sleep};
 
 /// Rôle de l'utilisateur dans l'org courante (« owner »/« admin »/« viewer »).
 fn current_role() -> Option<String> {
@@ -41,6 +46,10 @@ pub fn Devices() -> Element {
     let mut page = use_signal(|| 0i64);
     // Assistant d'enregistrement (mont/démont = état propre à chaque ouverture).
     let mut wizard_open = use_signal(|| false);
+    // Cible du modal de recompilation (device_id, modèle).
+    let mut rebuild_target = use_signal(|| None::<(String, String)>);
+    // Polling : un seul minuteur à la fois, relancé tant qu'un build vole.
+    let mut polling = use_signal(|| false);
 
     let can_write = current_role()
         .is_some_and(|role| matches!(role.as_str(), "owner" | "admin"));
@@ -76,6 +85,25 @@ pub fn Devices() -> Element {
 
     // Capacités pour le filtre (le wizard charge son propre catalogue).
     let capabilities = use_resource(|| async move { api::devices::capabilities().await });
+
+    // Polling ~5 s tant qu'un build d'un device de la page est queued/running
+    // (colonne Firmware — le WS de notification reste différé).
+    if let Some(Ok(paged)) = &*list.read() {
+        let in_flight = paged.results.iter().any(|device| {
+            device
+                .latest_build
+                .as_ref()
+                .is_some_and(|build| matches!(build.build_phase.as_deref(), Some("queued") | Some("running")))
+        });
+        if in_flight && !polling() {
+            polling.set(true);
+            spawn(async move {
+                sleep(Duration::from_secs(5)).await;
+                polling.set(false);
+                reload.with_mut(|r| *r += 1);
+            });
+        }
+    }
 
     rsx! {
         div { class: "p-6",
@@ -188,12 +216,13 @@ pub fn Devices() -> Element {
                                                 th { class: "th", {t!("devices-col-type")} }
                                                 th { class: "th", {t!("devices-col-model")} }
                                                 th { class: "th", {t!("devices-col-status")} }
+                                                th { class: "th", {t!("devices-col-firmware")} }
                                                 th { class: "th", {t!("common-actions")} }
                                             }
                                         }
                                         tbody { class: "bg-white divide-y divide-gray-200",
                                             for device in paged.results.clone() {
-                                                {device_row(device, selected)}
+                                                {device_row(device, can_write, selected, rebuild_target)}
                                             }
                                         }
                                     }
@@ -225,6 +254,20 @@ pub fn Devices() -> Element {
                                 on_changed: move |_| reload.with_mut(|r| *r += 1),
                             }
                         }
+
+                        // Recompilation d'un device de la liste.
+                        if let Some((rebuild_id, rebuild_model)) = rebuild_target() {
+                            RebuildModal {
+                                key: "{rebuild_id}",
+                                device_id: rebuild_id,
+                                model: rebuild_model,
+                                on_close: move |_| rebuild_target.set(None),
+                                on_launched: move |_| {
+                                    rebuild_target.set(None);
+                                    reload.with_mut(|r| *r += 1);
+                                },
+                            }
+                        }
                     },
                 }
             }
@@ -232,10 +275,29 @@ pub fn Devices() -> Element {
     }
 }
 
-/// Ligne device : identifiant firmware, type, modèle, statut, action détail.
-fn device_row(device: pnex_core::Device, mut selected: Signal<Option<i64>>) -> Element {
+/// Ligne device : identifiant firmware, type, modèle, statut, dernier build
+/// firmware (badge + téléchargement), actions (détail, recompilation).
+fn device_row(
+    device: pnex_core::Device,
+    can_write: bool,
+    mut selected: Signal<Option<i64>>,
+    mut rebuild_target: Signal<Option<(String, String)>>,
+) -> Element {
     let pk = device.id;
     let (type_badge, type_label) = type_badge(&device.device_type);
+    // Badge + date du dernier build, téléchargement si succès.
+    let firmware = device.latest_build.as_ref().map(|build| {
+        let (class, label) = phase_badge(build.build_phase.as_deref());
+        (class, label, date_label(&build.updated_at), build.success)
+    });
+    let downloadable = firmware.as_ref().is_some_and(|f| f.3);
+    // O3 : jamais de build proposé pour les types custom (le back échoue de
+    // toute façon — le workspace firmware ne les contient pas).
+    let can_rebuild = can_write && !device.allow_dynamic_measurements;
+    let rebuild_id = device.device_id.clone();
+    let rebuild_model = device.predefined_device_name.clone();
+    let download_id = device.device_id.clone();
+
     rsx! {
         tr { key: "{pk}", class: "hover:bg-gray-50",
             td { class: "td font-medium text-gray-900",
@@ -262,10 +324,161 @@ fn device_row(device: pnex_core::Device, mut selected: Signal<Option<i64>>) -> E
                 }
             }
             td { class: "td",
-                button {
-                    class: "px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors",
-                    onclick: move |_| selected.set(Some(pk)),
-                    {t!("devices-detail")}
+                div { class: "flex flex-col gap-0.5",
+                    match &firmware {
+                        Some((class, label, date, _)) => rsx! {
+                            span { class: "{class} w-fit", {label.clone()} }
+                            span { class: "text-[11px] text-gray-400", {date.clone()} }
+                        },
+                        None => rsx! {
+                            span { class: "text-xs text-gray-400", {t!("devices-build-never")} }
+                        },
+                    }
+                    if downloadable {
+                        button {
+                            class: "w-fit px-2 py-0.5 text-xs text-indigo-600 hover:text-indigo-700 transition-colors",
+                            r#type: "button",
+                            onclick: move |_| {
+                                let id = download_id.clone();
+                                spawn(async move {
+                                    match api::builds::download(&id).await {
+                                        Ok(bytes) => save_blob(&format!("{id}-firmware.bin"), &bytes),
+                                        Err(err) => toasts::error(err.message),
+                                    }
+                                });
+                            },
+                            icons::Download { class: "h-3.5 w-3.5 inline mr-0.5" }
+                            {t!("builds-download")}
+                        }
+                    }
+                }
+            }
+            td { class: "td",
+                div { class: "flex items-center gap-1.5",
+                    if can_rebuild {
+                        button {
+                            class: "px-3 py-1 text-sm bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors",
+                            title: t!("devices-rebuild-title"),
+                            onclick: move |_| {
+                                rebuild_target.set(Some((rebuild_id.clone(), rebuild_model.clone())));
+                            },
+                            icons::Wrench { class: "h-3.5 w-3.5 inline mr-0.5" }
+                            {t!("devices-rebuild")}
+                        }
+                    }
+                    button {
+                        class: "px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors",
+                        onclick: move |_| selected.set(Some(pk)),
+                        {t!("devices-detail")}
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Modal de recompilation : les secrets WiFi ne sont pas stockés côté
+/// serveur, on les redemande à chaque build.
+#[component]
+fn RebuildModal(
+    device_id: String,
+    model: String,
+    on_close: Callback<()>,
+    on_launched: Callback<()>,
+) -> Element {
+    let mut ssid = use_signal(String::new);
+    let mut wifi_password = use_signal(String::new);
+    let mut host = use_signal(crate::util::default_host);
+    let mut launching = use_signal(|| false);
+
+    // Captures par valeur pour la closure 'static du spawn (les props
+    // restent utilisées par le rendu).
+    let submit_device = device_id.clone();
+    let submit_model = model.clone();
+    let submit = move |_| {
+        let wifi_ssid = ssid().trim().to_string();
+        let pnex_host = host().trim().to_string();
+        if wifi_ssid.is_empty() || wifi_password().is_empty() || pnex_host.is_empty() {
+            toasts::error("devices-rebuild-incomplete");
+            return;
+        }
+        launching.set(true);
+        let params = pnex_core::CreateBuild {
+            device_id: submit_device.clone(),
+            predefined_device_name: submit_model.clone(),
+            wifi_ssid,
+            wifi_password: wifi_password(),
+            pnex_host,
+        };
+        spawn(async move {
+            match api::builds::create(params).await {
+                Ok(_) => {
+                    toasts::success("builds-launched");
+                    on_close.call(());
+                    on_launched.call(());
+                }
+                Err(err) => {
+                    launching.set(false);
+                    toasts::error(err.message);
+                }
+            }
+        });
+    };
+
+    rsx! {
+        Modal {
+            title: t!("devices-rebuild-title"),
+            max_width: "max-w-md".to_string(),
+            on_close,
+            div { class: "space-y-4",
+                p { class: "text-sm text-gray-600",
+                    code { class: "font-medium", {device_id.clone()} }
+                    " · "
+                    {model.clone()}
+                }
+                label { class: "block",
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("builds-field-ssid")} }
+                    input {
+                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        r#type: "text",
+                        value: "{ssid}",
+                        oninput: move |event| ssid.set(event.value()),
+                    }
+                }
+                label { class: "block",
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("builds-field-wifi-password")} }
+                    input {
+                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        r#type: "password",
+                        value: "{wifi_password}",
+                        oninput: move |event| wifi_password.set(event.value()),
+                    }
+                }
+                label { class: "block",
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("builds-field-server")} }
+                    input {
+                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        r#type: "text",
+                        placeholder: "dev1.pnex.io",
+                        value: "{host}",
+                        oninput: move |event| host.set(event.value()),
+                    }
+                }
+                div { class: "flex justify-end gap-2 pt-2",
+                    button {
+                        class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
+                        r#type: "button",
+                        onclick: move |_| on_close.call(()),
+                        {t!("common-cancel")}
+                    }
+                    button {
+                        class: "px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed",
+                        r#type: "button",
+                        disabled: launching(),
+                        onclick: submit,
+                        icons::Wrench { class: "h-4 w-4 inline mr-1" }
+                        {t!("builds-submit")}
+                    }
                 }
             }
         }
@@ -334,6 +547,11 @@ fn DeviceDetail(
             let token = device.device_token.clone();
             let device_id = device.device_id.clone();
             let metadata_text = metadata_to_text(&device.metadata);
+            // Dernier build (colonne Firmware en détail).
+            let firmware_badge = device.latest_build.as_ref().map(|build| {
+                let (class, label) = phase_badge(build.build_phase.as_deref());
+                (class, label, date_label(&build.updated_at))
+            });
             rsx! {
                 div { class: "bg-white rounded-lg shadow-sm",
                     div { class: "p-6 border-b border-gray-200 flex items-center justify-between gap-4",
@@ -346,6 +564,12 @@ fn DeviceDetail(
                             }
                             h2 { class: "text-xl font-semibold text-gray-900",
                                 code { {device_id.clone()} }
+                            }
+                            if let Some((class, label, date)) = &firmware_badge {
+                                div { class: "flex items-center gap-2 mt-1",
+                                    span { class: "{class} w-fit", {label.clone()} }
+                                    span { class: "text-xs text-gray-400", {date.clone()} }
+                                }
                             }
                         }
                         if can_write {
