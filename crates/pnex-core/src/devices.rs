@@ -66,6 +66,18 @@ pub struct DeviceTokenInfo {
     pub created: Option<String>,
 }
 
+/// Dernier build firmware du device — un record par (org, device_id) en base
+/// (upsert au rebuild), hydraté dans le DTO pour l'UI (colonne Firmware).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LatestBuild {
+    pub success: bool,
+    /// « queued » | « running » | « succeeded » | « failed ».
+    #[serde(default)]
+    pub build_phase: Option<String>,
+    /// RFC 3339 — dernier changement de phase.
+    pub updated_at: String,
+}
+
 /// Device du registre — `GET /api/v1/devices` et détail (même forme en liste
 /// et en détail, parité `DeviceRegistrySerializer`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,6 +101,10 @@ pub struct Device {
     pub last_seen: Option<String>,
     #[serde(default)]
     pub device_token: Option<DeviceTokenInfo>,
+    /// Statut du dernier build firmware (`null` si jamais compilé) —
+    /// enrichissement Rust, sans équivalent Django.
+    #[serde(default)]
+    pub latest_build: Option<LatestBuild>,
     pub allow_dynamic_measurements: bool,
     /// Noms des mesures découvertes (uniquement si dynamic autorisé).
     #[serde(default)]
@@ -141,6 +157,11 @@ mod tests {
                 "is_active": true,
                 "created": "2026-08-16T10:00:00+00:00"
             },
+            "latest_build": {
+                "success": true,
+                "build_phase": "succeeded",
+                "updated_at": "2026-08-16T11:00:00+00:00"
+            },
             "allow_dynamic_measurements": false,
             "discovered_measurements": [],
             "max_unique_measurements": 100
@@ -152,8 +173,33 @@ mod tests {
             device.last_seen.as_deref(),
             Some("2026-08-16T12:00:00+00:00")
         );
+        let build = device.latest_build.as_ref().unwrap();
+        assert!(build.success);
+        assert_eq!(build.build_phase.as_deref(), Some("succeeded"));
         let back = serde_json::to_value(&device).unwrap();
         assert_eq!(back, serde_json::from_str::<serde_json::Value>(json).unwrap());
+    }
+
+    #[test]
+    fn latest_build_absent_parses() {
+        // Charge sans le champ (client ancien / backend non enrichi) → None.
+        let json = r#"{
+            "id": 42,
+            "org_id": 7,
+            "device_id": "d",
+            "metadata": null,
+            "predefined_device_name": "soil_sensor",
+            "device_type": "sensor",
+            "capabilities": [],
+            "active": true,
+            "last_seen": null,
+            "device_token": null,
+            "allow_dynamic_measurements": false,
+            "discovered_measurements": [],
+            "max_unique_measurements": 100
+        }"#;
+        let device: Device = serde_json::from_str(json).unwrap();
+        assert!(device.latest_build.is_none());
     }
 
     #[test]

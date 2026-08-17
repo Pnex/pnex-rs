@@ -502,6 +502,62 @@ async fn suppression_nettoie_token_et_build_records() {
 
 #[tokio::test]
 #[serial]
+async fn latest_build_hydrate_liste_et_detail() {
+    with_app(|server, env, ctx| async move {
+        use pnex_backend::models::_entities::build_records;
+        use sea_orm::{ActiveModelTrait, Set};
+
+        let org = personal_org(&server, &env.alice).await;
+        let s1: serde_json::Value =
+            create_device(&server, &env.alice, org, "esp-s1", "sensor_probe_v1")
+                .await
+                .json();
+        create_device(&server, &env.alice, org, "esp-a1", "sensor_probe_v1").await;
+
+        // Record de build succeeded pour esp-s1 uniquement (insertion directe —
+        // un record par (org, device_id), upsert côté contrôleur builds).
+        build_records::ActiveModel {
+            device_id: Set(Some("esp-s1".into())),
+            success: Set(true),
+            build_phase: Set(Some("succeeded".into())),
+            org_id: Set(org),
+            ..Default::default()
+        }
+        .insert(&ctx.db)
+        .await
+        .expect("build record");
+
+        // Liste : hydratation par device de la page (colonne Firmware).
+        let list = list_devices(&server, &env.alice, org, "").await;
+        let results = list["results"].as_array().expect("results");
+        let s1_row = results
+            .iter()
+            .find(|d| d["device_id"] == "esp-s1")
+            .expect("esp-s1 en liste");
+        let build = s1_row["latest_build"].as_object().expect("latest_build");
+        assert_eq!(build["success"], true);
+        assert_eq!(build["build_phase"], "succeeded");
+        assert!(build["updated_at"].as_str().is_some(), "RFC 3339");
+        let a1_row = results
+            .iter()
+            .find(|d| d["device_id"] == "esp-a1")
+            .expect("esp-a1 en liste");
+        assert!(a1_row["latest_build"].is_null(), "sans build → null");
+
+        // Détail : même hydratation via device_full.
+        let detail: serde_json::Value = server
+            .get(&format!("/api/v1/devices/{}", s1["id"].as_i64().unwrap()))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await
+            .json();
+        assert_eq!(detail["latest_build"]["build_phase"], "succeeded");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
 async fn catalogue_global_partage() {
     with_app(|server, env, _ctx| async move {
         // Capabilities : formes exactes + filtre mode (+ valeur inconnue vide).

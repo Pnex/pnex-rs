@@ -135,6 +135,17 @@ pub(crate) async fn capabilities_of(
     Ok(map)
 }
 
+/// Dernier build du device pour le DTO (colonne Firmware de l'UI). Un record
+/// par (org, device_id) en base — `order_by_desc(Id)` défensif si ce n'était
+/// plus le cas.
+fn latest_build_dto(record: build_records::Model) -> pnex_core::LatestBuild {
+    pnex_core::LatestBuild {
+        success: record.success,
+        build_phase: record.build_phase,
+        updated_at: record.updated_at.to_rfc3339(),
+    }
+}
+
 /// Assemble le DTO `Device` (pnex-core) depuis le registre + son contexte.
 fn device_dto(
     device: device_registries::Model,
@@ -143,6 +154,7 @@ fn device_dto(
     capabilities: &[device_capabilities::Model],
     token: Option<&device_tokens::Model>,
     last_seen: Option<String>,
+    latest_build: Option<pnex_core::LatestBuild>,
 ) -> pnex_core::Device {
     pnex_core::Device {
         id: device.id,
@@ -167,6 +179,7 @@ fn device_dto(
             is_active: t.is_active,
             created: Some(t.created_at.to_rfc3339()),
         }),
+        latest_build,
         allow_dynamic_measurements: device.allow_dynamic_measurements,
         discovered_measurements: if device.allow_dynamic_measurements {
             discovered_names(&device.discovered_measurements)
@@ -208,6 +221,14 @@ async fn device_full(
         .await
         .map_err(|_| Error::InternalServerError)?
         .map(|s| s.last_seen_at.to_rfc3339());
+    let latest_build = build_records::Entity::find()
+        .filter(build_records::Column::OrgId.eq(device.org_id))
+        .filter(build_records::Column::DeviceId.eq(&device.device_id))
+        .order_by_desc(build_records::Column::Id)
+        .one(db)
+        .await
+        .map_err(|_| Error::InternalServerError)?
+        .map(latest_build_dto);
     Ok(device_dto(
         device,
         &predefined,
@@ -215,6 +236,7 @@ async fn device_full(
         &capabilities,
         token.as_ref(),
         last_seen,
+        latest_build,
     ))
 }
 
@@ -420,12 +442,35 @@ async fn list(
             caps.get(&predefined.id).map(Vec::as_slice).unwrap_or(&[]),
             token,
             last_seen,
+            None,
         ));
     }
 
     // Découpage après filtrage + liens conservant les filtres actifs.
     let count = devices.len() as i64;
     let (skip, take) = page.slice(devices.len());
+
+    // Dernier build par device de la page (batché, clé = device_id string du
+    // registre — même sémantique que build_records). `order_by_desc(Id)` :
+    // le record le plus récent gagne dans la map.
+    let mut page_devices: Vec<pnex_core::Device> =
+        devices.into_iter().skip(skip).take(take).collect();
+    let page_device_ids: Vec<String> = page_devices.iter().map(|d| d.device_id.clone()).collect();
+    if !page_device_ids.is_empty() {
+        let mut builds: HashMap<String, pnex_core::LatestBuild> = build_records::Entity::find()
+            .filter(build_records::Column::OrgId.eq(org.org.id))
+            .filter(build_records::Column::DeviceId.is_in(page_device_ids))
+            .order_by_desc(build_records::Column::Id)
+            .all(&ctx.db)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .into_iter()
+            .filter_map(|r| r.device_id.clone().map(|k| (k, latest_build_dto(r))))
+            .collect();
+        for device in &mut page_devices {
+            device.latest_build = builds.remove(&device.device_id);
+        }
+    }
     let mut filters = Vec::new();
     if let Some(t) = q.device_type.as_ref().filter(|t| t.as_str() != "all") {
         filters.push(("device_type".to_string(), t.clone()));
@@ -447,7 +492,7 @@ async fn list(
         &filters,
         page,
         count,
-        devices.into_iter().skip(skip).take(take).collect(),
+        page_devices,
     ))
 }
 
