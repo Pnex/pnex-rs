@@ -9,7 +9,7 @@
 
 use axum::extract::State;
 use loco_rs::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
 
 use crate::auth::AuthUser;
@@ -47,9 +47,13 @@ pub async fn user_info(
         .await
         .map_err(|_| Error::InternalServerError)?;
 
-    // Orgs dont l'utilisateur est membre, avec tier et rôle.
+    // Orgs dont l'utilisateur est membre, avec tier et rôle. Ordre déterministe
+    // par id d'org croissant (l'org personnelle JIT d'abord) — sans cela
+    // l'ordre est arbitraire côté Postgres et le fallback d'org du front peut
+    // atterrir sur une org viewer (observation O1).
     let memberships = organization_members::Entity::find()
         .filter(organization_members::Column::UserId.eq(user.id))
+        .order_by_asc(organization_members::Column::OrgId)
         .find_also_related(organizations::Entity)
         .all(db)
         .await

@@ -297,6 +297,28 @@ async fn roles_viewer_owner_et_garde_fous() {
             .json();
         assert_eq!(added["role"], "viewer", "rôle lowercase en entrée/sortie");
 
+        // O1 : orgs de bob listées par id croissant (org personnelle JIT
+        // d'abord) — ordre déterministe pour le fallback d'org du front,
+        // qui sinon peut atterrir sur une org viewer.
+        let bob_info: serde_json::Value = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", bearer(&env.bob))
+            .await
+            .json();
+        let bob_orgs = bob_info["orgs"].as_array().expect("orgs bob");
+        assert!(
+            bob_orgs.len() >= 2,
+            "bob a son org personnelle + Atelier Co : {bob_orgs:?}"
+        );
+        let bob_org_ids: Vec<i64> = bob_orgs.iter().filter_map(|o| o["id"].as_i64()).collect();
+        let mut sorted_ids = bob_org_ids.clone();
+        sorted_ids.sort();
+        assert_eq!(bob_org_ids, sorted_ids, "orgs triées par id croissant");
+        assert_eq!(
+            bob_orgs[0]["role"], "owner",
+            "l'org personnelle (non viewer) sort en premier"
+        );
+
         // Bob (viewer) lit, mais ne peut pas écrire.
         let res = server
             .get(&format!("/api/v1/orgs/{org_id}"))

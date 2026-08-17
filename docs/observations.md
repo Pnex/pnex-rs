@@ -31,7 +31,10 @@
 - **Fichiers** : `crates/pnex-backend/src/controllers/user_info.rs:51`,
   `crates/pnex-frontend/src/state/org.rs:30`,
   `crates/pnex-frontend/src/state/session.rs:52`.
-- **Statut** : à traiter (correctif proposé, en attente de go user).
+- **Statut** : ✅ résolu (2026-08-17, itération UI Phase 6) — backend :
+  `order_by_asc(OrgId)` sur les memberships de `user-info` (org personnelle
+  JIT d'abord, ordre déterministe) ; front : le fallback de `org::restore()`
+  préfère la première membership non-viewer.
 
 ### O2 — `loco start` seul ne drive pas la queue : builds bloqués `queued`
 
