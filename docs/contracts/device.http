@@ -14,6 +14,8 @@ Content-Type: application/json
 # Pagination D14 : toutes les listes renvoient {count, next, previous, results}.
 # limit (défaut env PAGINATION_DEFAULT_LIMIT=10, max 100), offset ≥ 0,
 # search = OU multi-champs insensible à la casse (device_id, modèle, type, caps).
+# Tri : id DESC (plus récents d'abord — un device fraîchement enregistré
+# apparaît en page 1 ; Django n'imposait pas de tri).
 # Chaque device porte `latest_build` (enrichissement Rust, pas de parité
 # Django) : {success, build_phase: queued|running|succeeded|failed,
 # updated_at} ou null — un record de build par (org, device_id).

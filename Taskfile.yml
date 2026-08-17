@@ -98,6 +98,15 @@ tasks:
 
   dev:backend:
     desc: Démarre le backend Loco (serveur + worker de builds — cible utilisée par task dev)
+    # Toolchain épinglée sur le venv du dépôt firmwares quand il existe
+    # (sinon `pio` du PATH — qui peut être une installation divergente et
+    # faire échouer certains projets : cf. docs/observations.md O7).
+    env:
+      PNEX_PIO_CMD:
+        sh: test -x "$HOME/Documents/shan-perso/pnex-firmwares/.venv/bin/pio" && echo "$HOME/Documents/shan-perso/pnex-firmwares/.venv/bin/pio" || echo pio
+      PNEX_ESPTOOL_CMD:
+        sh: test -x "$HOME/Documents/shan-perso/pnex-firmwares/.venv/bin/esptool" && echo "$HOME/Documents/shan-perso/pnex-firmwares/.venv/bin/esptool" || echo esptool
+      PNEX_ARTIFACTS_DIR: /tmp/pnex-artifacts
     cmds:
       - cd crates/pnex-backend && cargo run --bin pnex-server -- start --server-and-worker
 

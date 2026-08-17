@@ -96,3 +96,20 @@
   démos et le `device_count` de `user-info`.
 - **Piste** : purge SQL ciblée ou reset db dev.
 - **Statut** : noté, cosmétique.
+
+### O7 — `task dev` sans toolchain épinglée : builds soil_sensor échouent
+
+- **Symptôme** (vécu 2026-08-17) : builds lancés depuis l'UI sur le serveur
+  `task dev` — `4_chan_relay` réussit, `soil_sensor` échoue en ~2 s
+  (`silly-yak`, job 53 ms côté worker). Le même projet compile en 5,9 s
+  avec le venv `pio` du dépôt firmwares.
+- **Cause** : le serveur hérite du shell utilisateur ; `pio` résolu sur le
+  PATH peut être une installation divergente de celle du venv
+  `pnex-firmwares/.venv` (la config connue-bonne). Mes serveurs de debug
+  portaient `PNEX_PIO_CMD`/`PNEX_ESPTOOL_CMD`/`PNEX_ARTIFACTS_DIR`,
+  `task dev` non.
+- **Corrigé** : `dev:backend` (Taskfile) évalue ces trois variables —
+  venv du dépôt firmwares s'il existe (`$HOME`-based), fallback `pio` du
+  PATH. Les déploiements prod documentent déjà ces variables
+  (`firmware-build.md`, `.env.example`).
+- **Statut** : ✅ résolu (2026-08-17).

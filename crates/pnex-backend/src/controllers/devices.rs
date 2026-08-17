@@ -339,7 +339,9 @@ async fn list(
     let rows = device_registries::Entity::find()
         .filter(device_registries::Column::OrgId.eq(org.org.id))
         .find_also_related(predefined_devices::Entity)
-        .order_by_asc(device_registries::Column::Id)
+        // Plus récents d'abord : un device fraîchement enregistré (wizard)
+        // apparaît en page 1 — écart assumé vs Django (pas de tri explicite).
+        .order_by_desc(device_registries::Column::Id)
         .all(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?;
