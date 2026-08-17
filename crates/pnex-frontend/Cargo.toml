@@ -30,9 +30,14 @@ web-sys = { version = "0.3", features = [
   "Location",
   "Storage",
   "Navigator",
-  # Téléchargement du firmware (ancre de download) — builds.rs
+  # Téléchargement du firmware (ancre de download) — util::save_blob ;
+  # copie presse-papier (token du wizard) — util::copy_text
   "Document",
   "HtmlAnchorElement",
+  "HtmlTextAreaElement",
+  "HtmlElement",
+  "HtmlDocument",
+  "Node",
 ] }
 # Delay wasm : futures-timer panique sur wasm32 (`Instant::now()` non
 # implémenté — `sys/time/unsupported.rs`).

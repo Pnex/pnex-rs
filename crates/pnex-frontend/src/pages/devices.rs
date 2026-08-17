@@ -1,8 +1,9 @@
 //! Gestion des appareils — portée du `Devices.tsx` React sur l'API Phase 4 :
-//! liste filtrable (type, statut, device_id), enregistrement (device_id +
-//! modèle du catalogue), détail (token de provisioning, métadonnées JSON),
-//! suppression. Le scoping org vient du client (`X-Org-Id`), l'écriture est
-//! réservée owner/admin (le serveur force, l'UI masque).
+//! liste filtrable (type, statut, device_id), enregistrement via l'assistant
+//! modal (`components/device_wizard.rs` : build auto suivi en modale, snippet
+//! Python pour les customs), détail (token de provisioning, métadonnées
+//! JSON), suppression. Le scoping org vient du client (`X-Org-Id`), l'écriture
+//! est réservée owner/admin (le serveur force, l'UI masque).
 //!
 //! Le détail est piloté par un signal local `selected` + `key` (cf. orgs.rs).
 
@@ -38,23 +39,8 @@ pub fn Devices() -> Element {
     let mut search = use_signal(String::new);
     // Page courante (0-based) — remise à 0 à chaque changement de filtre.
     let mut page = use_signal(|| 0i64);
-    // Formulaire d'enregistrement.
-    let mut new_device_id = use_signal(String::new);
-    let mut new_model = use_signal(String::new);
-    // Build automatique à l'enregistrement (directive utilisateur,
-    // firmware-build.md §3) : WiFi + serveur collectés ICI, le firmware est
-    // compilé dès la création (case « Compiler maintenant », cochée défaut).
-    let mut reg_ssid = use_signal(String::new);
-    let mut reg_wifi_password = use_signal(String::new);
-    let mut reg_host = use_signal(crate::util::default_host);
-    let mut reg_build_now = use_signal(|| true);
-    // Ligne d'état « build lancé » dans la modale token (Some = lancé).
-    let mut build_launched = use_signal(|| false);
-    // Token du dernier enregistrement — affiché dans une modale dès la
-    // création (le device_id et le token ne sont montrés qu'une fois, au
-    // porteur ; l'UI React d'origine les affichait immédiatement).
-    let mut created =
-        use_signal(|| None::<(String, pnex_core::DeviceTokenInfo)>);
+    // Assistant d'enregistrement (mont/démont = état propre à chaque ouverture).
+    let mut wizard_open = use_signal(|| false);
 
     let can_write = current_role()
         .is_some_and(|role| matches!(role.as_str(), "owner" | "admin"));
@@ -88,15 +74,24 @@ pub fn Devices() -> Element {
         }
     });
 
-    // Catalogue pour le formulaire d'enregistrement + capacités pour le filtre.
-    let catalogue = use_resource(|| async move { api::devices::predefined_devices().await });
+    // Capacités pour le filtre (le wizard charge son propre catalogue).
     let capabilities = use_resource(|| async move { api::devices::capabilities().await });
 
     rsx! {
         div { class: "p-6",
-            div { class: "mb-8",
-                h1 { class: "text-3xl font-bold text-gray-900", {t!("nav-devices")} }
-                p { class: "text-gray-600 mt-2", {t!("devices-subtitle")} }
+            div { class: "mb-8 flex items-center justify-between flex-wrap gap-3",
+                div {
+                    h1 { class: "text-3xl font-bold text-gray-900", {t!("nav-devices")} }
+                    p { class: "text-gray-600 mt-2", {t!("devices-subtitle")} }
+                }
+                if can_write {
+                    button {
+                        class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium",
+                        onclick: move |_| wizard_open.set(true),
+                        icons::Plus { class: "h-4 w-4 inline mr-1" }
+                        {t!("devices-register")}
+                    }
+                }
             }
 
             if org::current().is_none() {
@@ -180,175 +175,6 @@ pub fn Devices() -> Element {
                             }
                         }
 
-                        // Enregistrement (owner/admin) — titre + bordure pour
-                        // distinguer du champ de recherche ci-dessus (confusion
-                        // fréquente : le device_id se saisit ICI).
-                        if can_write {
-                            form {
-                                class: "mb-6 p-4 border border-gray-200 rounded-lg bg-gray-50 flex flex-wrap gap-2 items-center",
-                                onsubmit: move |event| {
-                                    // Sans prevent_default, le navigateur soumet
-                                    // le formulaire nativement → navigation →
-                                    // rechargement du SPA (perte des toasts et
-                                    // de la requête en cours).
-                                    event.prevent_default();
-                                    let id = crate::pages::orgs::field(&event, "device_id").trim().to_string();
-                                    // Modèle lu dans le FormData (état réel du
-                                    // DOM au submit) — le signal `new_model` ne
-                                    // suit que `onchange`, qui peut manquer ;
-                                    // en retour on resynchronise le signal.
-                                    let name = crate::pages::orgs::field(&event, "model").trim().to_string();
-                                    let name = if name.is_empty() {
-                                        new_model.cloned().trim().to_string()
-                                    } else {
-                                        new_model.set(name.clone());
-                                        name
-                                    };
-                                    if id.is_empty() {
-                                        toasts::error("devices-id-required");
-                                        return;
-                                    }
-                                    if name.is_empty() {
-                                        toasts::error("devices-model-required");
-                                        return;
-                                    }
-                                    // Snapshot du build auto avant le spawn.
-                                    let build_now = reg_build_now()
-                                        && !reg_ssid().trim().is_empty()
-                                        && !reg_host().trim().is_empty();
-                                    let build_params = build_now.then(|| {
-                                        (
-                                            reg_ssid().trim().to_string(),
-                                            reg_wifi_password(),
-                                            reg_host().trim().to_string(),
-                                        )
-                                    });
-                                    new_device_id.set(String::new());
-                                    build_launched.set(false);
-                                    spawn(async move {
-                                        match api::devices::create(pnex_core::CreateDevice {
-                                            device_id: id,
-                                            predefined_device_name: name,
-                                            metadata: None,
-                                        }).await {
-                                            Ok(body) => {
-                                                // 201 → device créé : le token
-                                                // de provisioning part dans la
-                                                // modale ; 200 → réactivation
-                                                // (message serveur relayé tel quel).
-                                                if let Some(detail) = body.get("detail").and_then(|d| d.as_str()) {
-                                                    toasts::success(detail.to_string());
-                                                } else {
-                                                    match serde_json::from_value::<pnex_core::Device>(body) {
-                                                        Ok(device) if device.device_token.is_some() => {
-                                                            // Build automatique (device créé, token
-                                                            // prêt) — les erreurs (429 intervalle,
-                                                            // 403 quota) partent en toast, la modale
-                                                            // reste utile pour le token.
-                                                            if let Some((ssid, wifi_password, host)) = build_params {
-                                                                let params = pnex_core::CreateBuild {
-                                                                    device_id: device.device_id.clone(),
-                                                                    predefined_device_name: device.predefined_device_name.clone(),
-                                                                    wifi_ssid: ssid,
-                                                                    wifi_password,
-                                                                    pnex_host: host,
-                                                                };
-                                                                match api::builds::create(params).await {
-                                                                    Ok(_) => build_launched.set(true),
-                                                                    Err(err) => toasts::error(err.message),
-                                                                }
-                                                            }
-                                                            created.set(Some((
-                                                                device.device_id,
-                                                                device.device_token.unwrap(),
-                                                            )));
-                                                        }
-                                                        _ => toasts::success("devices-created"),
-                                                    }
-                                                }
-                                            }
-                                            Err(err) => toasts::error(err.message),
-                                        }
-                                        reload.with_mut(|r| *r += 1);
-                                    });
-                                },
-                                div { class: "w-full text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1",
-                                    {t!("devices-register-title")}
-                                }
-                                // Rangée firmware (build auto) : WiFi + serveur —
-                                // directive utilisateur (firmware-build.md §3) :
-                                // le formulaire d'enregistrement collecte tout ce
-                                // qu'il faut pour flasher directement le device.
-                                div { class: "w-full flex flex-wrap gap-2 items-center",
-                                    label { class: "flex items-center gap-1.5 text-sm text-gray-700",
-                                        input {
-                                            class: "rounded border-gray-300",
-                                            r#type: "checkbox",
-                                            checked: reg_build_now,
-                                            onchange: move |event| reg_build_now.set(event.checked()),
-                                        }
-                                        {t!("devices-build-now")}
-                                    }
-                                    input {
-                                        class: "flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm",
-                                        r#type: "text",
-                                        placeholder: t!("devices-build-ssid"),
-                                        value: "{reg_ssid}",
-                                        oninput: move |event| reg_ssid.set(event.value()),
-                                    }
-                                    input {
-                                        class: "flex-1 min-w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm",
-                                        r#type: "password",
-                                        placeholder: t!("devices-build-wifi-password"),
-                                        value: "{reg_wifi_password}",
-                                        oninput: move |event| reg_wifi_password.set(event.value()),
-                                    }
-                                    input {
-                                        class: "flex-1 min-w-40 px-3 py-2 border border-gray-300 rounded-lg text-sm",
-                                        r#type: "text",
-                                        placeholder: "dev1.pnex.io",
-                                        title: t!("devices-build-server-url"),
-                                        value: "{reg_host}",
-                                        oninput: move |event| reg_host.set(event.value()),
-                                    }
-                                }
-                                input {
-                                    class: "flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm",
-                                    r#type: "text",
-                                    name: "device_id",
-                                    placeholder: t!("devices-new-placeholder"),
-                                    value: "{new_device_id}",
-                                    oninput: move |event| new_device_id.set(event.value()),
-                                }
-                                match &*catalogue.read() {
-                                    Some(Ok(models)) => rsx! {
-                                        select {
-                                            class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
-                                            name: "model",
-                                            onchange: move |event| new_model.set(event.value()),
-                                            option { value: "", selected: new_model().is_empty(), {t!("devices-model-placeholder")} }
-                                            for pd in models {
-                                                option {
-                                                    value: "{pd.name}",
-                                                    selected: new_model() == pd.name,
-                                                    {pd.pretty_name.clone().unwrap_or_else(|| pd.name.clone())}
-                                                }
-                                            }
-                                        }
-                                        button {
-                                            class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm",
-                                            r#type: "submit",
-                                            icons::Plus { class: "h-4 w-4 inline mr-1" }
-                                            {t!("devices-register")}
-                                        }
-                                    },
-                                    _ => rsx! {
-                                        span { class: "text-sm text-gray-400", {t!("devices-catalog-loading")} }
-                                    },
-                                }
-                            }
-                        }
-
                         match &*list.value().read() {
                             Some(Ok(paged)) if paged.results.is_empty() && paged.count == 0 => rsx! {
                                 p { class: "text-gray-500 text-center py-12", {t!("devices-empty")} }
@@ -391,42 +217,12 @@ pub fn Devices() -> Element {
                             },
                         }
 
-                        // Modale du token du dernier enregistrement.
-                        if let Some((device_id, token)) = created() {
-                            div {
-                                class: "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4",
-                                onclick: move |_| created.set(None),
-                                div {
-                                    class: "bg-white rounded-lg shadow-xl max-w-lg w-full p-6 space-y-4",
-                                    onclick: move |event| event.stop_propagation(),
-                                    h3 { class: "text-lg font-semibold text-gray-900", {t!("devices-created")} }
-                                    p { class: "text-sm text-gray-600",
-                                        code { class: "text-sm", {device_id.clone()} }
-                                    }
-                                    div {
-                                        p { class: "text-xs text-gray-500 mb-1", {t!("devices-token-value")} }
-                                        code { class: "block p-3 bg-gray-50 rounded-lg text-sm break-all", {token.token.clone()} }
-                                    }
-                                    div {
-                                        p { class: "text-xs text-gray-500 mb-1", {t!("devices-encryption-key")} }
-                                        code { class: "block p-3 bg-gray-50 rounded-lg text-sm break-all",
-                                            {token.encryption_key.clone().unwrap_or_else(|| "—".into())}
-                                        }
-                                    }
-                                    if build_launched() {
-                                        p { class: "text-sm text-indigo-600",
-                                            icons::Wrench { class: "h-4 w-4 inline mr-1" }
-                                            {t!("devices-build-status")}
-                                        }
-                                    }
-                                    div { class: "flex justify-end pt-2",
-                                        button {
-                                            class: "px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors",
-                                            onclick: move |_| created.set(None),
-                                            {t!("common-close")}
-                                        }
-                                    }
-                                }
+                        // Assistant d'enregistrement (monté à la demande :
+                        // l'état interne se réinitialise à chaque ouverture).
+                        if wizard_open() {
+                            crate::components::device_wizard::DeviceWizard {
+                                on_close: move |_| wizard_open.set(false),
+                                on_changed: move |_| reload.with_mut(|r| *r += 1),
                             }
                         }
                     },

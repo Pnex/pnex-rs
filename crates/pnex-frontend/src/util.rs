@@ -61,3 +61,47 @@ pub fn default_host() -> String {
         "localhost:5150".to_string()
     }
 }
+
+/// Copie dans le presse-papier navigateur : textarea temporaire hors écran
+/// puis `exec_command("copy")` (synchrone, sans API Clipboard ni promise —
+/// la valeur reste affichée et sélectionnable à côté). No-op en natif.
+pub fn copy_text(text: &str) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use web_sys::wasm_bindgen::JsCast;
+        let Some(window) = web_sys::window() else { return };
+        let Some(document) = window.document() else { return };
+        let Ok(element) = document.create_element("textarea") else { return };
+        let Ok(area) = element.dyn_into::<web_sys::HtmlTextAreaElement>() else {
+            return;
+        };
+        area.set_value(text);
+        let _ = area.set_attribute("style", "position:fixed;left:-9999px");
+        if let Some(body) = document.body() {
+            let _ = body.append_child(&area);
+            area.select();
+            // exec_command vit sur HtmlDocument (cast d'une seconde vue).
+            if let Ok(html_doc) = document.clone().dyn_into::<web_sys::HtmlDocument>() {
+                let _ = html_doc.exec_command("copy");
+            }
+            let _ = body.remove_child(&area);
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = text;
+    }
+}
+
+/// URL WebSocket d'ingestion pour les devices custom (snippet Python du
+/// wizard) : schéma ws/wss selon le protocole de la page, hôte courant.
+pub fn ws_ingest_url() -> String {
+    #[cfg(target_arch = "wasm32")]
+    let secure = web_sys::window()
+        .and_then(|w| w.location().protocol().ok())
+        .is_some_and(|p| p == "https:");
+    #[cfg(not(target_arch = "wasm32"))]
+    let secure = false;
+    let scheme = if secure { "wss" } else { "ws" };
+    format!("{scheme}://{}/ws/sensor/ingest", default_host())
+}
