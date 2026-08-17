@@ -408,6 +408,19 @@ de sujets Django).
 
 ## Journal
 
+- 2026-08-17 : **Itération UI Phase 6 — fusion Builds → Devices** (retour
+  utilisateur : la page Builds autonome est inutile). Colonne Firmware
+  dans la liste des devices (badge de phase + téléchargement + polling
+  5 s) alimentée par un champ `latest_build` sur le DTO Device (hydratation
+  batchée côté liste, requête unique côté détail) ; enregistrement
+  refondu en **wizard modal** (portage du DeviceWizard React : identifiant
+  + shuffle, métadonnées, cartes dynamique/traditionnel, WiFi, revue) qui
+  build automatiquement les non-custom et suit la progression **dans la
+  modale**, et affiche token + script Python publisher interpolé pour les
+  custom ; bouton « Recompiler » (modal WiFi, masqué pour les custom) ;
+  page Builds supprimée (endpoints conservés, parité contrat). Correctifs
+  O1 (ordre user-info + fallback non-viewer) et O3 (jamais de build
+  proposé aux custom) résolus — cf. `docs/observations.md`.
 - 2026-08-16 : **Session UI réelle après Phase 6** — trois constats
   consignés dans `docs/observations.md` (registre dédié, à traiter plus
   tard sur demande user) : O1 fallback d'org après re-login sur une org

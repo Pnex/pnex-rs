@@ -61,8 +61,10 @@
   ne pas proposer « Compiler maintenant » à l'enregistrement d'un
   `custom_*` ni dans le formulaire Builds ; afficher à la place le
   **snippet de configuration** du code source pour guider l'utilisateur.
-- **Statut** : différé volontairement (user 2026-08-16 : « on va les
-  traiter plus tard »).
+- **Statut** : ✅ résolu (2026-08-17, itération UI Phase 6) — le wizard
+  n'a pas d'étape WiFi pour les custom (écran token + script Python
+  publisher interpolé à la place) et le bouton « Recompiler » de la liste
+  est masqué quand `allow_dynamic_measurements`.
 
 ### O4 — Raison d'échec d'un build invisible dans l'UI
 

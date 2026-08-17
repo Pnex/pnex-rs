@@ -8,7 +8,7 @@
 //! `Router` nu bénéficie des deep links et du back/forward navigateur sans
 //! configuration.
 
-use crate::pages::{self, AuthCallback, Builds, Catalog, Dashboard, Devices, NotFound, Orgs, Profile};
+use crate::pages::{self, AuthCallback, Catalog, Dashboard, Devices, NotFound, Orgs, Profile};
 use dioxus::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, Routable)]
@@ -26,9 +26,6 @@ pub enum Route {
 
         #[route("/devices")]
         Devices {},
-
-        #[route("/builds")]
-        Builds {},
 
         #[route("/catalog")]
         Catalog {},

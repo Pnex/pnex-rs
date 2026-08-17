@@ -14,6 +14,9 @@ Content-Type: application/json
 # Pagination D14 : toutes les listes renvoient {count, next, previous, results}.
 # limit (défaut env PAGINATION_DEFAULT_LIMIT=10, max 100), offset ≥ 0,
 # search = OU multi-champs insensible à la casse (device_id, modèle, type, caps).
+# Chaque device porte `latest_build` (enrichissement Rust, pas de parité
+# Django) : {success, build_phase: queued|running|succeeded|failed,
+# updated_at} ou null — un record de build par (org, device_id).
 # → 200 {"count": 12, "next": "/api/v1/devices?limit=10&offset=10", "previous": null, "results": [...]}
 GET https://api.yourdomain.com/api/v1/devices/?limit=10&offset=0&search=relay
 Authorization: Bearer HgpZCDbybZoaCg6cojGMZLvLA8tQQn

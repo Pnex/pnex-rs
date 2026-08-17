@@ -111,10 +111,6 @@ fn Nav() -> Element {
                 crate::components::icons::Cpu { class: "h-5 w-5" }
                 span { {t!("nav-devices")} }
             }
-            Link { to: Route::Builds {}, class: nav_class(route == Route::Builds {}),
-                crate::components::icons::Wrench { class: "h-5 w-5" }
-                span { {t!("nav-builds")} }
-            }
             Link { to: Route::Catalog {}, class: nav_class(route == Route::Catalog {}),
                 crate::components::icons::Package { class: "h-5 w-5" }
                 span { {t!("nav-catalog")} }

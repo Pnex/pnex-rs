@@ -73,20 +73,13 @@ pub async fn create(params: CreateBuild) -> Result<CreateBuildResponse, ApiError
     .await
 }
 
-/// `DELETE /api/v1/build-records/{id}` — 204 attendu.
-pub async fn delete(id: i64) -> Result<(), ApiError> {
-    client::request_opt::<serde_json::Value>(
-        reqwest::Method::DELETE,
-        &format!("/api/v1/build-records/{id}"),
-        None,
-    )
-    .await
-    .map(|_| ())
-}
-
 /// `GET /api/v1/download/firmware/{device_id}` — octets du binaire (proxy
 /// serveur). L'appelant déclenche le téléchargement navigateur
 /// (`util::save_blob`).
+///
+/// (`DELETE /build-records/{id}` reste servi par le backend — parité du
+/// contrat Django — mais n'a plus d'entrée UI : un record n'y est
+/// supprimable que si le build a échoué ET que le device a disparu.)
 pub async fn download(device_id: &str) -> Result<Vec<u8>, ApiError> {
     client::request_bytes(
         reqwest::Method::GET,
