@@ -18,10 +18,14 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      # asset!() exige assets/tailwind.css à la compilation ; le CSS réel est
-      # gitignoré (généré par npm dans le job dx build) — stub pour compiler.
-      - name: Stub Tailwind (compilation)
-        run: mkdir -p crates/pnex-frontend/assets && test -f crates/pnex-frontend/assets/tailwind.css || printf '/* Stub CI — CSS reel genere par npm run css:build */\n' > crates/pnex-frontend/assets/tailwind.css
+      # asset!() exige assets/tailwind.css et assets/flasher.js à la
+      # compilation ; les fichiers réels sont gitignorés (générés par npm
+      # dans le job dx build) — stubs pour compiler.
+      - name: Stubs Tailwind + flasher.js (compilation)
+        run: |
+          mkdir -p crates/pnex-frontend/assets
+          test -f crates/pnex-frontend/assets/tailwind.css || printf '/* Stub CI — CSS reel genere par npm run css:build */\n' > crates/pnex-frontend/assets/tailwind.css
+          test -f crates/pnex-frontend/assets/flasher.js || printf '/* Stub CI — bundle reel genere par npm run js:build */\n' > crates/pnex-frontend/assets/flasher.js
       - run: cargo check --workspace
       - run: cargo check -p pnex-core -p pnex-frontend --target wasm32-unknown-unknown
 
@@ -48,8 +52,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Stub Tailwind (compilation)
-        run: mkdir -p crates/pnex-frontend/assets && test -f crates/pnex-frontend/assets/tailwind.css || printf '/* Stub CI — CSS reel genere par npm run css:build */\n' > crates/pnex-frontend/assets/tailwind.css
+      - name: Stubs Tailwind + flasher.js (compilation)
+        run: |
+          mkdir -p crates/pnex-frontend/assets
+          test -f crates/pnex-frontend/assets/tailwind.css || printf '/* Stub CI — CSS reel genere par npm run css:build */\n' > crates/pnex-frontend/assets/tailwind.css
+          test -f crates/pnex-frontend/assets/flasher.js || printf '/* Stub CI — bundle reel genere par npm run js:build */\n' > crates/pnex-frontend/assets/flasher.js
       - run: cargo test --workspace
 
   frontend:
@@ -66,11 +73,12 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: crates/pnex-frontend/package-lock.json
-      - name: CSS Tailwind v4
+      - name: CSS Tailwind v4 + bundle flasher.js (esptool-js)
         working-directory: crates/pnex-frontend
         run: |
           npm ci
           npm run css:build
+          npm run js:build
       - name: Installer dx
         run: cargo install dioxus-cli --locked
       - name: Build front (release)

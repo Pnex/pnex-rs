@@ -428,6 +428,12 @@ de sujets Django).
 
 ## Journal
 
+- 2026-08-18 : **CI rouge au merge — stub flasher.js manquant** : `asset!()`
+  exige `assets/flasher.js` à la compilation mais le bundle esptool-js est
+  gitignoré (généré par `npm run js:build`, comme tailwind.css par
+  `css:build`) — les jobs check/test stubbent désormais les deux, et le job
+  front build le vrai bundle JS (`npm run js:build` ajouté au côté de
+  `css:build`).
 - 2026-08-18 : **Convergence monorepo — firmware aplati dans `firmware/` +
   source embarquée dans le binaire** (branche `phase-6-firmware-builder`).
   L'ex-dépôt `pnex-firmwares` (working tree, incl. `common_libs/crypto`
