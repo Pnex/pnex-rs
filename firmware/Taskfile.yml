@@ -1,0 +1,31 @@
+# https://taskfile.dev
+
+version: '3'
+
+
+tasks:
+  default:
+    cmds:
+      - task --list-all
+    silent: true
+
+  gen-requirements:
+    desc: generate requirements.txt
+    #language=sh
+    cmds:
+      - |
+        docker build -f gen_req.dockerfile . -t gen-req
+        container_id=$(docker run -d gen-req /bin/sh -c "sleep 10")
+        docker cp "${container_id}:/app/requirements.txt" "${PWD}/requirements.txt"
+        docker rm -f "${container_id}"
+    aliases:
+      - gr
+
+  build-docker:
+    desc: build docker image
+    #language=sh
+    cmds:
+      - docker build -f Dockerfile . -t 192.168.1.100/pnex/pio-builder:latest
+      - docker -D push 192.168.1.100/pnex/pio-builder:latest
+    aliases:
+      - bd

@@ -1,0 +1,23 @@
+# https://taskfile.dev
+
+version: '3'
+
+dotenv: ['.env']
+
+tasks:
+  default:
+    cmds:
+      - task --list-all
+    silent: true
+
+  flash-firmware:
+    cmds:
+      - pipenv run pio run --target upload
+    aliases:
+      - fm
+
+  dev-monitor:
+    cmds:
+      - pipenv run pio device monitor -b 115200
+    aliases:
+      - m

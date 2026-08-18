@@ -93,15 +93,31 @@ pub fn copy_text(text: &str) {
     }
 }
 
+/// Page courante servie en https → les WebSocket du device parlent wss.
+/// En natif (desktop) : faux.
+pub fn page_secure() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        web_sys::window()
+            .and_then(|w| w.location().protocol().ok())
+            .is_some_and(|p| p == "https:")
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        false
+    }
+}
+
+/// Valeur par défaut du toggle « WebSocket SSL » des formulaires de build :
+/// suit le protocole de la page (déploiement local http → ws, industriel
+/// https → wss). L'utilisateur peut inverser.
+pub fn default_ws_ssl() -> bool {
+    page_secure()
+}
+
 /// URL WebSocket d'ingestion pour les devices custom (snippet Python du
 /// wizard) : schéma ws/wss selon le protocole de la page, hôte courant.
 pub fn ws_ingest_url() -> String {
-    #[cfg(target_arch = "wasm32")]
-    let secure = web_sys::window()
-        .and_then(|w| w.location().protocol().ok())
-        .is_some_and(|p| p == "https:");
-    #[cfg(not(target_arch = "wasm32"))]
-    let secure = false;
-    let scheme = if secure { "wss" } else { "ws" };
+    let scheme = if page_secure() { "wss" } else { "ws" };
     format!("{scheme}://{}/ws/sensor/ingest", default_host())
 }

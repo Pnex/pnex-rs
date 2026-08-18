@@ -14,6 +14,7 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 
 use super::badges::{date_label, phase_badge};
+use super::flash_modal::FlashModal;
 use super::icons;
 use super::modal::Modal;
 use crate::api;
@@ -215,6 +216,9 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
     let mut ssid = use_signal(String::new);
     let mut wifi_password = use_signal(String::new);
     let mut host = use_signal(default_host);
+    // wss (TLS, industriel) ou ws (local) — défaut selon le protocole de la
+    // page, l'utilisateur peut inverser.
+    let mut ws_ssl = use_signal(crate::util::default_ws_ssl);
     let mut creating = use_signal(|| false);
     let mut created = use_signal(|| None::<pnex_core::Device>);
     let mut build_record = use_signal(|| None::<pnex_core::BuildRecord>);
@@ -222,6 +226,8 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
     let mut reactivation_msg = use_signal(String::new);
     // Polling : un seul minuteur à la fois (pattern page Builds).
     let mut polling = use_signal(|| false);
+    // Flash navigateur du firmware fraîchement buildé (Web Serial).
+    let mut flash_open = use_signal(|| false);
     // Retour visuel des boutons copier (« Copié » pendant 2 s).
     let copied_token = use_signal(|| false);
     let copied_key = use_signal(|| false);
@@ -312,6 +318,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                     wifi_ssid: ssid().trim().to_string(),
                                     wifi_password: wifi_password(),
                                     pnex_host: host().trim().to_string(),
+                                    ws_ssl: ws_ssl(),
                                 };
                                 if let Err(err) = api::builds::create(params).await {
                                     build_launch_error.set(Some(err.message));
@@ -584,7 +591,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
 
                     // ── Étape 3 (custom) : revue — pas de WiFi ──
                     Step::Config if custom => rsx! {
-                        {review_panel(&device_id(), &selected(), &meta_rows(), None, None, false)}
+                        {review_panel(&device_id(), &selected(), &meta_rows(), None, None, false, false)}
                         p { class: "text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3",
                             {t!("wizard-custom-review-note")}
                         }
@@ -637,6 +644,18 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                         oninput: move |event| host.set(event.value()),
                                     }
                                 }
+                                label { class: "flex items-start gap-2 sm:col-span-2 select-none" ,
+                                    input {
+                                        class: "mt-0.5 h-4 w-4 accent-blue-600",
+                                        r#type: "checkbox",
+                                        checked: ws_ssl(),
+                                        onchange: move |event| ws_ssl.set(event.checked()),
+                                    }
+                                    span {
+                                        span { class: "text-xs font-medium text-gray-500 block", {t!("builds-field-ws-ssl")} }
+                                        span { class: "text-xs text-gray-400", {t!("builds-field-ws-ssl-help")} }
+                                    }
+                                }
                             }
                             p { class: "text-xs text-gray-400", {t!("wizard-config-help")} }
                             div { class: "flex justify-between pt-2",
@@ -658,7 +677,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
 
                     // ── Étape 4 (traditionnel) : revue ──
                     Step::Review => rsx! {
-                        {review_panel(&device_id(), &selected(), &meta_rows(), Some(ssid().as_str()), Some(host().as_str()), true)}
+                        {review_panel(&device_id(), &selected(), &meta_rows(), Some(ssid().as_str()), Some(host().as_str()), ws_ssl(), true)}
                         p { class: "text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg p-3",
                             {t!("wizard-review-build-note")}
                         }
@@ -737,12 +756,23 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                                 span { class: "text-xs text-gray-400", {date_label(&record.updated_at)} }
                                             }
                                             if record.success {
-                                                button {
-                                                    class: "w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium",
-                                                    r#type: "button",
-                                                    onclick: download,
-                                                    icons::Download { class: "h-4 w-4 inline mr-1" }
-                                                    {t!("builds-download")}
+                                                div { class: "space-y-2",
+                                                    button {
+                                                        class: "w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium",
+                                                        r#type: "button",
+                                                        onclick: download,
+                                                        icons::Download { class: "h-4 w-4 inline mr-1" }
+                                                        {t!("builds-download")}
+                                                    }
+                                                    // Flash direct en Web Serial (Chromium —
+                                                    // le modal avertit sinon).
+                                                    button {
+                                                        class: "w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium",
+                                                        r#type: "button",
+                                                        onclick: move |_| flash_open.set(true),
+                                                        icons::Zap { class: "h-4 w-4 inline mr-1" }
+                                                        {t!("devices-flash")}
+                                                    }
                                                 }
                                             } else if record.build_phase.as_deref() == Some("failed") {
                                                 div { class: "bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700",
@@ -789,6 +819,18 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                             }
                         }
                     },
+                }
+            }
+        }
+
+        // Flash navigateur du firmware buildé (Web Serial — la modale se
+        // superpose à celle du wizard, l'état se réinitialise à l'ouverture).
+        if flash_open() {
+            if let Some(device) = created() {
+                FlashModal {
+                    key: "{device.device_id}",
+                    device_id: device.device_id,
+                    on_close: move |_| flash_open.set(false),
                 }
             }
         }
@@ -903,6 +945,7 @@ fn review_panel(
     rows: &[(String, String)],
     ssid: Option<&str>,
     host: Option<&str>,
+    ws_ssl: bool,
     with_build: bool,
 ) -> Element {
     let model = selected
@@ -945,7 +988,9 @@ fn review_panel(
                 }
                 div { class: "flex justify-between",
                     span { class: "text-gray-500", {t!("builds-field-server")} }
-                    span { class: "font-medium text-gray-900", {host.unwrap_or_default()} }
+                    span { class: "font-medium text-gray-900",
+                        {format!("{}://{}", if ws_ssl { "wss" } else { "ws" }, host.unwrap_or_default())}
+                    }
                 }
             }
         }

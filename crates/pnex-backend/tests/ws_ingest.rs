@@ -171,7 +171,7 @@ async fn connect(
 async fn cycle_ingest_chiffre_complet() {
     telemetry::reset_sink();
     with_app(|server, auth, ctx| async move {
-        let dev = create_device(&server, &auth, "capteur-jardin", "sensor_probe_v1").await;
+        let dev = create_device(&server, &auth, "capteur-jardin", "soil_sensor").await;
         let sink = Arc::new(RecSink::default());
         telemetry::set_sink(sink.clone());
         let org = personal_org(&server, &auth).await;
@@ -226,7 +226,7 @@ async fn cycle_ingest_chiffre_complet() {
         assert_eq!(p.device_id, "capteur-jardin");
         assert_eq!(p.metric_name, "read_temperature");
         assert_eq!(p.value, "21.5");
-        assert_eq!(p.pred_dev, "sensor_probe_v1");
+        assert_eq!(p.pred_dev, "soil_sensor");
         assert_eq!(p.source_type, "sensor");
         assert_eq!(p.ts_source, "server");
 
@@ -252,8 +252,8 @@ async fn cycle_ingest_chiffre_complet() {
 #[serial]
 async fn close_codes_authentification() {
     with_app(|server, auth, ctx| async move {
-        let dev = create_device(&server, &auth, "dev-a", "sensor_probe_v1").await;
-        let other = create_device(&server, &auth, "dev-b", "sensor_probe_v1").await;
+        let dev = create_device(&server, &auth, "dev-a", "soil_sensor").await;
+        let other = create_device(&server, &auth, "dev-b", "soil_sensor").await;
 
         // 4002 : pas de token.
         let mut ws = server
@@ -303,7 +303,7 @@ async fn close_codes_authentification() {
 #[serial]
 async fn anti_clone_bail() {
     with_app(|server, auth, _ctx| async move {
-        let dev = create_device(&server, &auth, "clone-target", "sensor_probe_v1").await;
+        let dev = create_device(&server, &auth, "clone-target", "soil_sensor").await;
 
         // Session 1 ouverte.
         let mut ws1 = connect(&server, &dev.token, &dev.device_id).await;
@@ -396,7 +396,7 @@ async fn dynamique_decouverte_et_plafond() {
 #[serial]
 async fn revalidation_token_desactive() {
     with_app(|server, auth, ctx| async move {
-        let dev = create_device(&server, &auth, "ephemere", "sensor_probe_v1").await;
+        let dev = create_device(&server, &auth, "ephemere", "soil_sensor").await;
         let mut ws = connect(&server, &dev.token, &dev.device_id).await;
         ws.send_text(encrypt("PING", &dev.key)).await;
         assert_eq!(decrypt(&ws.receive_text().await, &dev.key), "PONG");
@@ -425,7 +425,7 @@ async fn revalidation_token_desactive() {
 #[serial]
 async fn reaper_active_suit_la_fraicheur() {
     with_app(|server, auth, ctx| async move {
-        let dev = create_device(&server, &auth, "reaper-target", "sensor_probe_v1").await;
+        let dev = create_device(&server, &auth, "reaper-target", "soil_sensor").await;
         let active_of = |db: &sea_orm::DatabaseConnection, id: i64| {
             let db = db.clone();
             async move {

@@ -9,7 +9,9 @@ logger:
 
 server:
   port: 5150
-  binding: localhost
+  # 0.0.0.0 : exposition LAN pour tests e2e (device/ESP → ws://192.168.1.15:5150).
+  # Revenir à `localhost` hors tests device.
+  binding: 0.0.0.0
   host: http://localhost
   middlewares:
     fallback:
@@ -90,13 +92,10 @@ settings:
     realm: {{ get_env(name="KEYCLOAK_REALM", default="pnex-realm") }}
     client_id: {{ get_env(name="KEYCLOAK_CLIENT_ID", default="pnex") }}
   # Firmware Phase 6 (défauts champ par champ — cf. services/firmware.rs).
-  # STORAGE_BACKEND surcharge storage.backend ; S3 = plomberie différée (D5).
+  # Source du firmware : embarquée dans le binaire (firmware/ du monorepo,
+  # compilée dedans — aucune config). STORAGE_BACKEND surcharge
+  # storage.backend ; S3 = plomberie différée (D5).
   firmware:
-    source:
-      kind: {{ get_env(name="PNEX_FIRMWARE_SOURCE_KIND", default="local") }}
-      path: {{ get_env(name="PNEX_FIRMWARE_SOURCE_PATH", default="/home/shan/Documents/shan-perso/pnex-firmwares") }}
-      repo: {{ get_env(name="PNEX_FIRMWARE_GIT_REPO", default="https://github.com/Pnex/iot-firmware.git") }}
-      git_ref: {{ get_env(name="PNEX_FIRMWARE_GIT_REF", default="main") }}
     storage:
       backend: {{ get_env(name="STORAGE_BACKEND", default="local") }}
       local_root: {{ get_env(name="PNEX_ARTIFACTS_DIR", default="./artifacts") }}

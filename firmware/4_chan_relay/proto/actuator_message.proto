@@ -1,0 +1,103 @@
+syntax = "proto3";
+
+// ============================================================
+// CONFIGURATION MESSAGES (Server → Device)
+// ============================================================
+
+message ActuatorConfig {
+    string device_id = 1;
+    uint32 timestamp = 2;
+    repeated ChannelConfig channels = 3;
+    uint32 data_timeout_seconds = 4;  // Timeout for safe mode (default 10s)
+}
+
+message ChannelConfig {
+    uint32 number = 1;
+    bool enabled = 2;
+    ChannelMode mode = 3;
+    // REMOVED: string sensor_input = 4;  // ESP32 doesn't need sensor names - server already knows which sensors to aggregate
+    SafeMode safe_mode = 5;
+
+    // Binary mode fields
+    float threshold = 6;
+    Comparison comparison = 7;
+    uint32 hysteresis_seconds = 8;
+    float hysteresis_value = 13;  // Value-based hysteresis (creates deadband)
+    bool invert_logic = 14;  // Invert ON/OFF logic (useful for cooling: turn ON when above threshold, OFF when below)
+
+    // PWM mode fields
+    float min_sensor_value = 9;
+    float max_sensor_value = 10;
+    uint32 min_pwm = 11;
+    uint32 max_pwm = 12;
+}
+
+enum ChannelMode {
+    MODE_BINARY = 0;
+    MODE_PWM = 1;
+    MODE_FOLLOW = 2;
+}
+
+enum Comparison {
+    LESS_THAN = 0;
+    GREATER_THAN = 1;
+}
+
+enum SafeMode {
+    SAFE_OFF = 0;
+    SAFE_ON = 1;
+    SAFE_KEEP = 2;
+}
+
+// ============================================================
+// SENSOR DATA MESSAGES (Server → Device)
+// ============================================================
+// SIMPLIFIED (2025): Server aggregates all sensors, ESP32 just gets the value.
+// No sensor names, no cache lookup needed - just channel → value mapping.
+
+message SensorData {
+    uint32 timestamp = 1;
+    repeated ChannelData channel_data = 2;  // One entry per channel
+}
+
+message ChannelData {
+    uint32 channel = 1;        // Which channel (1-4)
+    float value = 2;           // Aggregated sensor value from server
+    bool fresh = 3;            // true = data is current, false = stale/missing
+}
+
+// ============================================================
+// STATE MESSAGES (Device → Server)
+// ============================================================
+
+message ActuatorState {
+    string device_id = 1;
+    uint32 timestamp = 2;
+    repeated ChannelState channels = 3;
+}
+
+message ChannelState {
+    uint32 number = 1;
+    ChannelStateValue state = 2;
+    uint32 pwm_value = 3;      // Only for PWM/Follow mode
+    StateReason reason = 4;
+    float sensor_value = 5;    // Current sensor value used
+    float threshold = 6;       // Threshold used (binary mode)
+}
+
+enum ChannelStateValue {
+    STATE_OFF = 0;
+    STATE_ON = 1;
+    STATE_PWM = 2;
+}
+
+enum StateReason {
+    REASON_SENSOR_BELOW_THRESHOLD = 0;
+    REASON_SENSOR_ABOVE_THRESHOLD = 1;
+    REASON_PWM_CALCULATED = 2;
+    REASON_HYSTERESIS_ACTIVE = 3;
+    REASON_STALE_SENSOR_DATA = 4;
+    REASON_TIMEOUT = 5;
+    REASON_DISABLED = 6;
+    REASON_SAFE_MODE = 7;
+}

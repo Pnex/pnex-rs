@@ -7,8 +7,9 @@ crates/pnex-frontend/dist
 crates/pnex-frontend/.dx
 **/dist/
 
-# Front — Tailwind v4 (CSS généré) et node_modules
+# Front — Tailwind v4 (CSS généré), bundle esptool-js et node_modules
 crates/pnex-frontend/assets/tailwind.css
+crates/pnex-frontend/assets/flasher.js
 crates/pnex-frontend/node_modules/
 
 # Environnement & secrets
@@ -22,6 +23,10 @@ secrets/
 .idea/
 .vscode/
 *.swp
+
+# Firmware PlatformIO (toolchain locale et caches de build pio)
+firmware/.venv/
+firmware/**/.pio/
 
 # Outillage local
 .task/

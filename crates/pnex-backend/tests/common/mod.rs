@@ -168,7 +168,7 @@ pub async fn seed_catalogue(db: &sea_orm::DatabaseConnection) {
     .expect("board");
 
     for (name, type_name, caps) in [
-        ("sensor_probe_v1", "sensor", vec!["read_temperature"]),
+        ("soil_sensor", "sensor", vec!["read_temperature"]),
         ("4_chan_relay", "actuator", vec!["relay"]),
         ("custom_sensor", "sensor", vec![]),
         ("mixed_hub_v1", "mixed", vec!["read_temperature", "relay"]),

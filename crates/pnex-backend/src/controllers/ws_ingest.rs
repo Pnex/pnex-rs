@@ -336,6 +336,10 @@ async fn session_loop(
     let throttle = Duration::from_secs(1);
     let mut last_validation = Instant::now();
     let mut last_touch = Instant::now();
+    // Les rejets de déchiffrement ne sont pas loggés par frame (~10 fps) :
+    // un avertissement unique par session suffit à voir une firmware qui
+    // parle en clair ou une clé désynchronisée.
+    let mut warned_decrypt_failure = false;
 
     while let Some(Ok(msg)) = socket.recv().await {
         let Message::Text(text) = msg else {
@@ -372,6 +376,13 @@ async fn session_loop(
         let plain = match decrypt_frame(&text, &key) {
             Some(p) => p,
             None => {
+                if !warned_decrypt_failure {
+                    warned_decrypt_failure = true;
+                    tracing::warn!(
+                        device = %snap.device_id,
+                        "frame WS indéchiffrable — firmware en clair ou clé ≠ device_tokens.encryption_key ?"
+                    );
+                }
                 reply(&mut socket, &key, "ERROR:decryption_failed").await;
                 continue;
             }

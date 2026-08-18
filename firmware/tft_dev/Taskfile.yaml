@@ -1,0 +1,21 @@
+# https://taskfile.dev
+
+version: '3'
+
+tasks:
+  default:
+    cmds:
+      - task --list-all
+    silent: true
+
+  flash-firmware:
+    cmds:
+      - pio run --target upload
+    aliases:
+      - fm
+
+  dev-monitor:
+    cmds:
+      - pio device monitor -b 115200
+    aliases:
+      - m

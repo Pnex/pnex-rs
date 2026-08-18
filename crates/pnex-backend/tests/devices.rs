@@ -141,14 +141,14 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
         let org = personal_org(&server, &env.alice).await;
 
         // Création : inactive + token + clé de chiffrement (base64 44 chars).
-        let res = create_device(&server, &env.alice, org, "esp-001", "sensor_probe_v1").await;
+        let res = create_device(&server, &env.alice, org, "esp-001", "soil_sensor").await;
         assert_eq!(res.status_code(), 201, "création → 201");
         let body: serde_json::Value = res.json();
         let device_pk = body["id"].as_i64().expect("id");
         assert_eq!(body["active"], false, "créé inactif (parité Django)");
         assert_eq!(body["org_id"], org);
         assert_eq!(body["device_type"], "sensor");
-        assert_eq!(body["predefined_device_name"], "sensor_probe_v1");
+        assert_eq!(body["predefined_device_name"], "soil_sensor");
         assert_eq!(body["allow_dynamic_measurements"], false);
         assert_eq!(body["discovered_measurements"], serde_json::json!([]));
         let caps = body["capabilities"].as_array().expect("capabilities");
@@ -165,7 +165,7 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
         assert_eq!(custom["allow_dynamic_measurements"], true);
 
         // Device inactif connu → réactivation 200 (pas de nouvelle création).
-        let res = create_device(&server, &env.alice, org, "esp-001", "sensor_probe_v1").await;
+        let res = create_device(&server, &env.alice, org, "esp-001", "soil_sensor").await;
         assert_eq!(res.status_code(), 200);
         assert_eq!(
             res.json::<serde_json::Value>()["detail"],
@@ -203,7 +203,7 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
         let mut d: device_registries::ActiveModel = dev.into();
         d.active = Set(false);
         d.update(&ctx.db).await.expect("désactive device");
-        let res = create_device(&server, &env.alice, org, "esp-001", "sensor_probe_v1").await;
+        let res = create_device(&server, &env.alice, org, "esp-001", "soil_sensor").await;
         assert_eq!(res.status_code(), 200, "réactivation device inactif");
         let detail: serde_json::Value = server
             .get(&format!("/api/v1/devices/{device_pk}"))
@@ -215,7 +215,7 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
         assert_eq!(detail["device_token"]["is_active"], true, "token réactivé");
 
         // Device actif → 400 exact.
-        let res = create_device(&server, &env.alice, org, "esp-001", "sensor_probe_v1").await;
+        let res = create_device(&server, &env.alice, org, "esp-001", "soil_sensor").await;
         assert_eq!(res.status_code(), 400);
         assert_eq!(
             res.json::<serde_json::Value>()["detail"],
@@ -239,7 +239,7 @@ async fn filtres_de_liste() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         for (id, predefined) in [
-            ("esp-s1", "sensor_probe_v1"),
+            ("esp-s1", "soil_sensor"),
             ("esp-a1", "4_chan_relay"),
         ] {
             create_device(&server, &env.alice, org, id, predefined).await;
@@ -288,7 +288,7 @@ async fn update_metadata_uniquement() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let created: serde_json::Value =
-            create_device(&server, &env.alice, org, "esp-001", "sensor_probe_v1")
+            create_device(&server, &env.alice, org, "esp-001", "soil_sensor")
                 .await
                 .json();
         let id = created["id"].as_i64().expect("id");
@@ -332,11 +332,11 @@ async fn quotas_tier_par_type() {
         // Tier Free : 3 sensors, 1 actuator, 0 mixed.
         for n in 1..=3 {
             let res =
-                create_device(&server, &env.alice, org, &format!("esp-s{n}"), "sensor_probe_v1")
+                create_device(&server, &env.alice, org, &format!("esp-s{n}"), "soil_sensor")
                     .await;
             assert_eq!(res.status_code(), 201, "capteur {n}");
         }
-        let res = create_device(&server, &env.alice, org, "esp-s4", "sensor_probe_v1").await;
+        let res = create_device(&server, &env.alice, org, "esp-s4", "soil_sensor").await;
         assert_eq!(res.status_code(), 400, "4e capteur refusé");
         assert_eq!(
             res.json::<serde_json::Value>()["detail"],
@@ -374,12 +374,12 @@ async fn isolation_tenant_et_roles() {
 
         // Même device_id dans deux orgs : deux devices distincts.
         let created: serde_json::Value =
-            create_device(&server, &env.alice, alice_org, "esp-001", "sensor_probe_v1")
+            create_device(&server, &env.alice, alice_org, "esp-001", "soil_sensor")
                 .await
                 .json();
         let alice_device = created["id"].as_i64().expect("id");
         let created_bob: serde_json::Value =
-            create_device(&server, &env.bob, bob_org, "esp-001", "sensor_probe_v1")
+            create_device(&server, &env.bob, bob_org, "esp-001", "soil_sensor")
                 .await
                 .json();
         assert_ne!(
@@ -436,7 +436,7 @@ async fn isolation_tenant_et_roles() {
             .add_header("X-Org-Id", alice_org.to_string())
             .await;
         assert_eq!(res.status_code(), 200, "viewer lit les devices de l'org");
-        let res = create_device(&server, &env.bob, alice_org, "esp-v", "sensor_probe_v1").await;
+        let res = create_device(&server, &env.bob, alice_org, "esp-v", "soil_sensor").await;
         assert_eq!(res.status_code(), 403, "viewer ne crée pas");
         let _ = ctx;
     })
@@ -452,7 +452,7 @@ async fn suppression_nettoie_token_et_build_records() {
 
         let org = personal_org(&server, &env.alice).await;
         let created: serde_json::Value =
-            create_device(&server, &env.alice, org, "esp-001", "sensor_probe_v1")
+            create_device(&server, &env.alice, org, "esp-001", "soil_sensor")
                 .await
                 .json();
         let id = created["id"].as_i64().expect("id");
@@ -509,10 +509,10 @@ async fn latest_build_hydrate_liste_et_detail() {
 
         let org = personal_org(&server, &env.alice).await;
         let s1: serde_json::Value =
-            create_device(&server, &env.alice, org, "esp-s1", "sensor_probe_v1")
+            create_device(&server, &env.alice, org, "esp-s1", "soil_sensor")
                 .await
                 .json();
-        create_device(&server, &env.alice, org, "esp-a1", "sensor_probe_v1").await;
+        create_device(&server, &env.alice, org, "esp-a1", "soil_sensor").await;
 
         // Record de build succeeded pour esp-s1 uniquement (insertion directe —
         // un record par (org, device_id), upsert côté contrôleur builds).
@@ -620,11 +620,11 @@ async fn catalogue_global_partage() {
         assert_eq!(
             by_caps["results"].as_array().unwrap().len(),
             3,
-            "OU sur capabilities : sensor_probe_v1, 4_chan_relay et mixed_hub_v1"
+            "OU sur capabilities : soil_sensor, 4_chan_relay et mixed_hub_v1"
         );
 
         let icontains: serde_json::Value = server
-            .get("/api/v1/predefined-devices?name=PROBE")
+            .get("/api/v1/predefined-devices?name=SOIL")
             .add_header("Authorization", bearer(&env.alice))
             .await
             .json();
@@ -671,7 +671,7 @@ async fn pagination_des_listes() {
         let org = personal_org(&server, &env.alice).await;
         // Tier Free : 3 capteurs max — parfait pour 3 pages de 2.
         for n in 1..=3 {
-            create_device(&server, &env.alice, org, &format!("esp-s{n}"), "sensor_probe_v1").await;
+            create_device(&server, &env.alice, org, &format!("esp-s{n}"), "soil_sensor").await;
         }
 
         // Registre : page 1 → next explicite, previous absent.

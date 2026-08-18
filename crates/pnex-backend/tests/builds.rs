@@ -80,7 +80,7 @@ async fn create_device(
         .add_header("Content-Type", "application/json")
         .json(&serde_json::json!({
             "device_id": device_id,
-            "predefined_device_name": "sensor_probe_v1",
+            "predefined_device_name": "soil_sensor",
         }))
         .await;
     res.assert_status(axum_test::http::StatusCode::CREATED);
@@ -101,7 +101,7 @@ async fn post_build(
         .json(&serde_json::json!({
             "wifi_ssid": wifi_ssid,
             "wifi_password": "pass-wifi",
-            "predefined_device_name": "sensor_probe_v1",
+            "predefined_device_name": "soil_sensor",
             "pnex_host": "dev1.pnex.io",
             "device_id": device_id,
         }))
@@ -171,10 +171,13 @@ async fn build_reussi_chemin_complet() {
             "attachment; filename=\"capteur-jardin-firmware.bin\""
         );
         let content = dl.text();
-        assert!(content.contains("fixture ssid=coloc"), "{content}");
+        let ssid_b64 = base64::engine::general_purpose::STANDARD.encode("coloc");
+        assert!(content.contains(&format!("fixture ssid={ssid_b64}")), "{content}");
         let host_b64 = base64::engine::general_purpose::STANDARD
             .encode("dev1.pnex.io");
         assert!(content.contains(&format!("host={host_b64}")), "{content}");
+        // ws_ssl absent du corps → défaut true (wss) propagé au sous-process.
+        assert!(content.contains("ssl=true"), "{content}");
     })
     .await;
 }
@@ -258,7 +261,7 @@ async fn validation_400() {
                 serde_json::json!({
                     "wifi_ssid": "",
                     "wifi_password": "p",
-                    "predefined_device_name": "sensor_probe_v1",
+                    "predefined_device_name": "soil_sensor",
                     "pnex_host": "dev1.pnex.io",
                     "device_id": "dev-val",
                 }),
@@ -269,7 +272,7 @@ async fn validation_400() {
                 serde_json::json!({
                     "wifi_ssid": "x".repeat(101),
                     "wifi_password": "p",
-                    "predefined_device_name": "sensor_probe_v1",
+                    "predefined_device_name": "soil_sensor",
                     "pnex_host": "dev1.pnex.io",
                     "device_id": "dev-val",
                 }),

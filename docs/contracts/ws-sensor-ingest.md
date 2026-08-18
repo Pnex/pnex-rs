@@ -35,16 +35,16 @@ base64( nonce(12 octets) ‖ ChaCha20(ciphertext) )
 
 ## 3. Device → serveur
 
-| Frame (plaintext) | Réponse (chiffrée) | Effet |
-|---|---|---|
-| `PING` (casse ignorée) | `PONG` | heartbeat — rafraîchit le bail |
-| `name=value` (split 1er `=`) | `ok` | point de télémétrie horodaté serveur |
-| `ping=<x>` | `ok` | mesure ordinaire + heartbeat (parité Django) |
-| sans `=` | `error:invalid_format` | |
-| `=v` (nom vide) | `error:empty_key` | |
-| nom > 100 chars | `error:measurement_name_too_long` | |
-| mesure hors capacités (device strict) | `error:invalid_capability:<détail>` | |
-| nouvelle mesure au-delà du plafond (device dynamique) | `error:too_many_measurements` | |
+| Frame (plaintext)                                     | Réponse (chiffrée)                  | Effet                                        |
+|-------------------------------------------------------|-------------------------------------|----------------------------------------------|
+| `PING` (casse ignorée)                                | `PONG`                              | heartbeat — rafraîchit le bail               |
+| `name=value` (split 1er `=`)                          | `ok`                                | point de télémétrie horodaté serveur         |
+| `ping=<x>`                                            | `ok`                                | mesure ordinaire + heartbeat (parité Django) |
+| sans `=`                                              | `error:invalid_format`              |                                              |
+| `=v` (nom vide)                                       | `error:empty_key`                   |                                              |
+| nom > 100 chars                                       | `error:measurement_name_too_long`   |                                              |
+| mesure hors capacités (device strict)                 | `error:invalid_capability:<détail>` |                                              |
+| nouvelle mesure au-delà du plafond (device dynamique) | `error:too_many_measurements`       |                                              |
 
 - 1 mesure par frame, pas de JSON, pas de batch, pas de timestamp device
   (v1 ; D12 : provenance `ts_source` réservée pour la v2).
@@ -61,14 +61,14 @@ base64( nonce(12 octets) ‖ ChaCha20(ciphertext) )
 
 ## 4. Close codes (frame Close après upgrade accepté)
 
-| Code | Cause |
-|---|---|
+| Code | Cause                                                         |
+|------|---------------------------------------------------------------|
 | 4001 | token inconnu/inactif, décodage impossible, erreur inattendue |
-| 4002 | paramètre `token` absent |
-| 4003 | device déjà connecté (bail tenu — cf. §5) |
-| 4005 | token invalidé en cours de session (revalidation ~10 s) |
-| 4006 | `device_id` ≠ device du token |
-| 4008 | clé de chiffrement absente/invalide |
+| 4002 | paramètre `token` absent                                      |
+| 4003 | device déjà connecté (bail tenu — cf. §5)                     |
+| 4005 | token invalidé en cours de session (revalidation ~10 s)       |
+| 4006 | `device_id` ≠ device du token                                 |
+| 4008 | clé de chiffrement absente/invalide                           |
 
 ## 5. Bail de vie / anti-clone (D9, décision user 2026-08-16)
 

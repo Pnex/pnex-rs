@@ -14,6 +14,7 @@ use dioxus_i18n::t;
 
 use crate::api;
 use crate::components::badges::{date_label, phase_badge};
+use crate::components::flash_modal::FlashModal;
 use crate::components::icons;
 use crate::components::modal::Modal;
 use crate::components::pager::Pager;
@@ -48,6 +49,8 @@ pub fn Devices() -> Element {
     let mut wizard_open = use_signal(|| false);
     // Cible du modal de recompilation (device_id, modèle).
     let mut rebuild_target = use_signal(|| None::<(String, String)>);
+    // Cible du modal de flash navigateur (device_id).
+    let mut flash_target = use_signal(|| None::<String>);
     // Polling : un seul minuteur à la fois, relancé tant qu'un build vole.
     let mut polling = use_signal(|| false);
 
@@ -222,7 +225,7 @@ pub fn Devices() -> Element {
                                         }
                                         tbody { class: "bg-white divide-y divide-gray-200",
                                             for device in paged.results.clone() {
-                                                {device_row(device, can_write, selected, rebuild_target)}
+                                                {device_row(device, can_write, selected, rebuild_target, flash_target)}
                                             }
                                         }
                                     }
@@ -268,6 +271,17 @@ pub fn Devices() -> Element {
                                 },
                             }
                         }
+
+                        // Flash navigateur d'un device de la liste (Web Serial,
+                        // Chromium — l'état interne se réinitialise à chaque
+                        // ouverture).
+                        if let Some(flash_id) = flash_target() {
+                            FlashModal {
+                                key: "{flash_id}",
+                                device_id: flash_id,
+                                on_close: move |_| flash_target.set(None),
+                            }
+                        }
                     },
                 }
             }
@@ -282,6 +296,7 @@ fn device_row(
     can_write: bool,
     mut selected: Signal<Option<i64>>,
     mut rebuild_target: Signal<Option<(String, String)>>,
+    mut flash_target: Signal<Option<String>>,
 ) -> Element {
     let pk = device.id;
     let (type_badge, type_label) = type_badge(&device.device_type);
@@ -297,6 +312,7 @@ fn device_row(
     let rebuild_id = device.device_id.clone();
     let rebuild_model = device.predefined_device_name.clone();
     let download_id = device.device_id.clone();
+    let flash_id = device.device_id.clone();
 
     rsx! {
         tr { key: "{pk}", class: "hover:bg-gray-50",
@@ -335,20 +351,34 @@ fn device_row(
                         },
                     }
                     if downloadable {
-                        button {
-                            class: "w-fit px-2 py-0.5 text-xs text-indigo-600 hover:text-indigo-700 transition-colors",
-                            r#type: "button",
-                            onclick: move |_| {
-                                let id = download_id.clone();
-                                spawn(async move {
-                                    match api::builds::download(&id).await {
-                                        Ok(bytes) => save_blob(&format!("{id}-firmware.bin"), &bytes),
-                                        Err(err) => toasts::error(err.message),
-                                    }
-                                });
-                            },
-                            icons::Download { class: "h-3.5 w-3.5 inline mr-0.5" }
-                            {t!("builds-download")}
+                        div { class: "flex items-center gap-3",
+                            button {
+                                class: "w-fit px-2 py-0.5 text-xs text-indigo-600 hover:text-indigo-700 transition-colors",
+                                r#type: "button",
+                                onclick: move |_| {
+                                    let id = download_id.clone();
+                                    spawn(async move {
+                                        match api::builds::download(&id).await {
+                                            Ok(bytes) => save_blob(&format!("{id}-firmware.bin"), &bytes),
+                                            Err(err) => toasts::error(err.message),
+                                        }
+                                    });
+                                },
+                                icons::Download { class: "h-3.5 w-3.5 inline mr-0.5" }
+                                {t!("builds-download")}
+                            }
+                            // Flash navigateur (Web Serial — Chromium uniquement,
+                            // le modal affiche l'avertissement sinon).
+                            button {
+                                class: "w-fit px-2 py-0.5 text-xs text-emerald-600 hover:text-emerald-700 transition-colors",
+                                r#type: "button",
+                                title: t!("devices-flash-title"),
+                                onclick: move |_| {
+                                    flash_target.set(Some(flash_id.clone()));
+                                },
+                                icons::Zap { class: "h-3.5 w-3.5 inline mr-0.5" }
+                                {t!("devices-flash")}
+                            }
                         }
                     }
                 }
@@ -389,6 +419,8 @@ fn RebuildModal(
     let mut ssid = use_signal(String::new);
     let mut wifi_password = use_signal(String::new);
     let mut host = use_signal(crate::util::default_host);
+    // wss/ws — défaut selon le protocole de la page, inversable.
+    let mut ws_ssl = use_signal(crate::util::default_ws_ssl);
     let mut launching = use_signal(|| false);
 
     // Captures par valeur pour la closure 'static du spawn (les props
@@ -409,6 +441,7 @@ fn RebuildModal(
             wifi_ssid,
             wifi_password: wifi_password(),
             pnex_host,
+            ws_ssl: ws_ssl(),
         };
         spawn(async move {
             match api::builds::create(params).await {
@@ -462,6 +495,18 @@ fn RebuildModal(
                         placeholder: "dev1.pnex.io",
                         value: "{host}",
                         oninput: move |event| host.set(event.value()),
+                    }
+                }
+                label { class: "flex items-start gap-2 select-none",
+                    input {
+                        class: "mt-0.5 h-4 w-4 accent-amber-600",
+                        r#type: "checkbox",
+                        checked: ws_ssl(),
+                        onchange: move |event| ws_ssl.set(event.checked()),
+                    }
+                    span {
+                        span { class: "text-xs font-medium text-gray-500 block", {t!("builds-field-ws-ssl")} }
+                        span { class: "text-xs text-gray-400", {t!("builds-field-ws-ssl-help")} }
                     }
                 }
                 div { class: "flex justify-end gap-2 pt-2",

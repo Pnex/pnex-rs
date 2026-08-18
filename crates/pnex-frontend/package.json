@@ -3,11 +3,16 @@
   "version": "1.0.0",
   "scripts": {
     "css:build": "tailwindcss -i style/tailwind.css -o assets/tailwind.css",
-    "css:watch": "tailwindcss -i style/tailwind.css -o assets/tailwind.css --watch"
+    "css:watch": "tailwindcss -i style/tailwind.css -o assets/tailwind.css --watch",
+    "js:build": "esbuild js/flasher.js --bundle --format=iife --outfile=assets/flasher.js"
   },
   "type": "commonjs",
+  "dependencies": {
+    "esptool-js": "0.6.1"
+  },
   "devDependencies": {
     "@tailwindcss/cli": "4.3.3",
+    "esbuild": "0.28.2",
     "tailwindcss": "4.3.3"
   },
   "private": true

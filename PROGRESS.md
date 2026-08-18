@@ -335,6 +335,26 @@ déclenche le build — directive firmware-build.md §3).
       Compiler maintenant » (défaut coché) → build auto après création,
       ligne d'état dans la modale token, erreurs 429/403 en toast ; i18n
       fr/en
+- [x] **SSID/mot de passe WiFi en base64** (fix build failed) : un SSID
+      contenant un espace (« Chez Shan ») faisait éclater le flag
+      `-D WIFI_SSID=\"…\"` de platformio.ini (quote non terminée → échec
+      de compilation du firmware). WIFI_SSID/WIFI_PASSWORD passent en
+      base64 comme HOST/TOKEN/DEVICE_ID (côté serveur `child_env`, côté
+      firmware décodage au setup dans config.h/soil_sensor/4_chan_relay) ;
+      fixture/tests pio adaptés (valeurs pilotes b64), Taskfile fw:flash,
+      build.sh, docs §2.1
+- [x] **`ws_ssl` — schéma WebSocket du firmware configurable** : le firmware
+      parlait toujours `wss://` (handshake TLS en échec contre un serveur
+      local sans TLS). Champ `CreateBuild.ws_ssl` (bool, défaut `true` =
+      parité industrielle) → queue → `BuildSecrets` → env `WS_SSL`
+      true/false du sous-process `pio run` ; côté dépôt `pnex-firmwares` :
+      define `WS_SSL` (config.h partagé), schéma ws/wss dynamique +
+      `setInsecure()` conditionnel (`soil_sensor`, `4_chan_relay`) ;
+      front : toggle « SSL WebSocket » dans le wizard et la modale de
+      recompilation, défaut selon le protocole de la page (http local →
+      ws, https industriel → wss), revue du build affichant
+      `ws://`/`wss://{host}` ; docs firmware-build.md §2.1 (6 variables)
+      + build.http
 - [x] Docs : `build.http` réécrit (contrats Rust + adaptations),
       `firmware-build.md` statut implémenté + écarts, inventory (D5
       révisé, lignes FAIT, ws/firmware/builds neutralisé), .env.example,
@@ -408,6 +428,34 @@ de sujets Django).
 
 ## Journal
 
+- 2026-08-18 : **Convergence monorepo — firmware aplati dans `firmware/` +
+  source embarquée dans le binaire** (branche `phase-6-firmware-builder`).
+  L'ex-dépôt `pnex-firmwares` (working tree, incl. `common_libs/crypto`
+  non commité là-bas) est copié tel quel dans `firmware/` ; `build.sh`
+  (secrets réels : SSID, mdp WiFi, token) supprimé — **token et mdp à
+  révoquer** (exposés via l'ex-repo public `iot-firmware`, supprimé par
+  l'utilisateur). Table rase côté build : `FirmwareSource`
+  (Local/Git/clone) **supprimé** — la source est embarquée à la
+  compilation (`include_dir!` via build.rs filtré, ~430 Ko) et extraite
+  dans un tmp par job (invariant SaaS : `.pio` n'écrit jamais dans la
+  source). Config : plus de sélecteur ni de vars
+  `PNEX_FIRMWARE_SOURCE_*`/`GIT_*` ; Taskfile racine re-racé sur
+  `firmware/` (include `firmware:`, toolchain épinglée O7 préservée) ;
+  workflow CI `firmware` compile soil_sensor + 4_chan_relay à chaque
+  changement de `firmware/`.
+- 2026-08-17 : **Flash firmware navigateur (Web Serial + esptool-js)** sur la
+  branche `phase-6-firmware-builder`. Glue JS unique (`js/flasher.js`,
+  esptool-js 0.6.1 épinglé, bundlé esbuild IIFE → `assets/flasher.js`,
+  pattern Tailwind : tasks `js:build`/`js:ensure`, gitignoré) exposant
+  `window.pnexFlash(bytes, onEvent)` ; pont Rust `flash.rs` (js-sys +
+  wasm-bindgen, `Closure` d'événements JSON, stubs natifs) ; `FlashModal`
+  (téléchargement des octets à l'ouverture, clic = flow complet — geste
+  utilisateur requis par `requestPort()`), boutons « Flasher » sur la ligne
+  device et l'écran de succès du wizard. L'artefact servi est l'image mergée
+  @0x0 (esp8266 image unique, esp32 bootloader+partitions+app) → un seul
+  `writeFlash`, paramètres alignés sur le merge serveur (dio/40m/4MB).
+  Constat d'exploration : le « esptool.js patché » de l'ancienne UI
+  pnex-ui n'a jamais existé (aucun flash navigateur dans le POC React).
 - 2026-08-17 : **Itération UI Phase 6 — fusion Builds → Devices** (retour
   utilisateur : la page Builds autonome est inutile). Colonne Firmware
   dans la liste des devices (badge de phase + téléchargement + polling

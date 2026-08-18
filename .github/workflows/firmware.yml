@@ -1,0 +1,42 @@
+# Garde-fou « une version pnex = un firmware qui compile » : le firmware
+# est convergé dans le monorepo (firmware/), ce workflow compile les projets
+# predefined devices à chaque changement — les secrets de build (${sysenv.*}
+# de platformio.ini) restent vides, comme le pré-build du Dockerfile
+# pio-builder (l'image mergée finale est produite par le worker avec la
+# config device).
+
+name: Firmware
+
+on:
+  push:
+    branches: ["*"]
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware.yml"
+  pull_request:
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware.yml"
+
+jobs:
+  compile:
+    name: pio run (soil_sensor + 4_chan_relay)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: firmware/uv.lock
+      # Cache des toolchains/platforms PlatformIO (téléchargées sinon à
+      # chaque run : ~100 Mo).
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/*/platformio.ini') }}
+      - name: Compile soil_sensor
+        working-directory: firmware
+        run: uv run pio run -d soil_sensor
+      - name: Compile 4_chan_relay
+        working-directory: firmware
+        run: uv run pio run -d 4_chan_relay

@@ -294,6 +294,7 @@ async fn create(
         wifi_ssid,
         wifi_password,
         pnex_host,
+        ws_ssl: params.ws_ssl,
     };
     if BuildFirmwareWorker::perform_later(&ctx, args).await.is_err() {
         return Ok(error_status(

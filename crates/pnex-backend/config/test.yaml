@@ -52,10 +52,9 @@ settings:
     client_id: {{ get_env(name="KEYCLOAK_CLIENT_ID", default="pnex") }}
   # Firmware Phase 6 — toolchain remplacée par des scripts de fixture
   # (rapides, échec/timeout pilotés par des valeurs de wifi_ssid).
+  # Firmware : source embarquée dans le binaire (aucune config de source —
+  # table rase) ; toolchain remplacée par les fixtures (fake pio/esptool).
   firmware:
-    source:
-      kind: local
-      path: ./tests/fixtures/firmware/workspace
     storage:
       backend: local
       local_root: {{ get_env(name="PNEX_ARTIFACTS_DIR", default="/tmp/pnex-test-artifacts") }}

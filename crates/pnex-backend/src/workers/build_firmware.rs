@@ -43,6 +43,8 @@ pub struct BuildFirmwareArgs {
     pub wifi_ssid: String,
     pub wifi_password: String,
     pub pnex_host: String,
+    /// WebSocket `wss://` (TLS) ou `ws://` (local) — figé à la demande.
+    pub ws_ssl: bool,
 }
 
 pub struct BuildFirmwareWorker {
@@ -125,7 +127,6 @@ impl BuildFirmwareWorker {
             .ok_or_else(|| format!("token du device {} introuvable", args.device_id))?;
 
         let config = BuildConfig {
-            source: self.settings.source(),
             pio_cmd: self.settings.pio_cmd.clone(),
             esptool_cmd: self.settings.esptool_cmd.clone(),
             timeout_secs: self.settings.timeout_secs,
@@ -135,6 +136,7 @@ impl BuildFirmwareWorker {
             wifi_ssid: args.wifi_ssid.clone(),
             wifi_password: args.wifi_password.clone(),
             host: args.pnex_host.clone(),
+            ws_ssl: args.ws_ssl,
             token,
             device_id: args.device_id.clone(),
             encryption_key,

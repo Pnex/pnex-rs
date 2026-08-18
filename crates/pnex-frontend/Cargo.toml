@@ -39,6 +39,11 @@ web-sys = { version = "0.3", features = [
   "HtmlDocument",
   "Node",
 ] }
+# Flash navigateur (flash.rs) : pont vers les globales du bundle
+# assets/flasher.js (esptool-js). Versions unifiées avec web-sys.
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
 # Delay wasm : futures-timer panique sur wasm32 (`Instant::now()` non
 # implémenté — `sys/time/unsupported.rs`).
 gloo-timers = { version = "0.3", features = ["futures"] }

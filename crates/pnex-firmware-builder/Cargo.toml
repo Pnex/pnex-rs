@@ -9,6 +9,7 @@ description = "Orchestration des builds firmware (shell-out toolchain PlatformIO
 thiserror = { workspace = true }
 async-trait = "0.1"
 base64 = "0.22"
+include_dir = "0.7"
 tokio = { version = "1.45", default-features = false, features = [
   "process",
   "time",

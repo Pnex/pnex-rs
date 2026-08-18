@@ -11,6 +11,8 @@
 #   (Succeeded) | failed (Failed) ; Deleted supprimé (plus de job k8s) ;
 # - build-records paginé (D14, enveloppe {count,next,previous,results}) ;
 # - `insecure`/`server_port`/`force_rebuild`/`metadata` acceptés, ignorés ;
+# - `ws_ssl` (bool, défaut true) : firmware en wss:// (TLS, industriel) ou
+#   ws:// (déploiement local / Raspberry Pi sans TLS) ;
 # - erreurs forme Django {"error": "..."} ; validation champ {"<champ>": "..."}.
 #
 # Secret d'exécution : WiFi + hôte passent par la queue PG (visibles de
@@ -32,8 +34,9 @@ X-Org-Id: 4
   "wifi_ssid": "coloc",
   "wifi_password": "ZaFjX9FyN8",
   "device_id": "capteur-jardin",
-  "predefined_device_name": "sensor_probe_v1",
-  "pnex_host": "dev1.pnex.io"
+  "predefined_device_name": "soil_sensor",
+  "pnex_host": "dev1.pnex.io",
+  "ws_ssl": true
 }
 
 # → 201

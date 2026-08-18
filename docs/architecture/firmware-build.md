@@ -1,9 +1,22 @@
-# Build firmware côté serveur — contraintes du dépôt `pnex-firmwares`
+# Build firmware côté serveur — contraintes du firmware embarqué (`firmware/`)
 
-> **Statut : IMPLÉMENTÉ (Phase 6, 2026-08-16).** Ce document conserve (a)
-> l'architecture cible validée (Appendice X), (b) les faits **vérifiés** dans
-> le dépôt firmware `/home/shan/Documents/shan-perso/pnex-firmwares` qui
-> conditionnent l'interface du worker, et (c) les écarts de l'implémentation.
+> **Statut : IMPLÉMENTÉ (Phase 6, 2026-08-16 ; convergence monorepo
+> 2026-08-18).** Ce document conserve (a) l'architecture cible validée
+> (Appendice X), (b) les faits **vérifiés** dans l'arborescence
+> `firmware/` du monorepo (ex-dépôt `pnex-firmwares`, aplati) qui
+> conditionnent l'interface du worker, et (c) les écarts de
+> l'implémentation.
+>
+> **Convergence monorepo (2026-08-18)** : le firmware vit dans `firmware/`
+> et la source est **embarquée dans le binaire serveur**
+> (`pnex_firmware_builder::embedded`, `include_dir!` — ~430 Ko). Plus de
+> sélecteur de source (`FirmwareSource` Local/Git supprimé) : une version
+> du serveur compile exactement la version du firmware qui l'accompagne.
+> Le build extrait toujours la source dans un **tmp par job** (invariant
+> SaaS/distribué : `.pio` n'écrit jamais dans la source, builds
+> concurrents isolés, drop = effacement des secrets). Seule la toolchain
+> `pio`/`esptool` reste externe (installée sur la machine ou l'image
+> worker).
 >
 > **Réalisé dans** : crate `pnex-firmware-builder` (pipeline + `ArtifactStore`),
 > worker `BuildFirmwareWorker` (queue PG loco `pg_loco_queue`, SKIP LOCKED
@@ -50,11 +63,11 @@
   (toolchain). Même binaire, flag de lancement différent.
 - Front Dioxus CSR = assets statiques servis par Loco — pas de pod web.
 
-## 2. Contrat de build constaté dans `pnex-firmwares` (vérifié)
+## 2. Contrat de build constaté dans `firmware/` (vérifié)
 
-Le dépôt firmware est un workspace **PlatformIO** (ESP8266, framework
+Le firmware est un workspace **PlatformIO** (ESP8266, framework
 Arduino) : projets `soil_sensor`, `4_chan_relay`, `tft_dev` + libs partagées
-`common_libs` (config, display) + outils dev `ws-server` (Python).
+`common_libs` (config, crypto, display) + outils dev `ws-server` (Python).
 
 ### 2.1 Les build args = variables d'environnement → `-D` defines
 
@@ -67,6 +80,8 @@ build_flags =
     -D HOST=\"${sysenv.HOST}\"
     -D TOKEN=\"${sysenv.TOKEN}\"
     -D DEVICE_ID=\"${sysenv.DEVICE_ID}\"
+    -D ENCRYPTION_KEY=\"${sysenv.ENCRYPTION_KEY}\"
+    -D WS_SSL=\"${sysenv.WS_SSL}\"
 ```
 
 → **le worker doit transmettre la config device en variables d'environnement
@@ -75,11 +90,13 @@ du sous-process `pio run`**, pas en argv. Valeurs consommées par
 
 | Variable | Encodage | Exemple vérifié (`4_chan_relay/build.sh`) |
 |---|---|---|
-| `WIFI_SSID` | clair | `Coloc` |
-| `WIFI_PASSWORD` | clair | mot de passe WiFi |
+| `WIFI_SSID` | **base64** | `Q2hleiBTaGFu` = `Chez Shan` (les espaces d'un SSID littéral casseraient le flag `-D`) |
+| `WIFI_PASSWORD` | **base64** | mot de passe WiFi encodé |
 | `HOST` | **base64** | `ZGV2MS5wbmV4Lmlv` = `dev1.pnex.io` |
 | `TOKEN` | **base64** | token du device (cf. `device_tokens`) |
 | `DEVICE_ID` | **base64** | `cHN5Y2hvbG9naWNhbC10ZQo=` = `psychological-te` |
+| `WS_SSL` | clair `true`/`false` | `true` → `wss://` (TLS, industriel), `false` → `ws://` (local/Raspberry Pi sans TLS) |
+| `ENCRYPTION_KEY` | **base64** | `device_tokens.encryption_key` (32 octets ChaCha20) ; vide → frames en clair (mock `ws-server/` uniquement — le serveur réel répond `ERROR:decryption_failed` à tout et le device ne passe jamais actif). Consommée par `common_libs/crypto` |
 
 `4_chan_relay` ajoute des flags fixes : `CORE_DEBUG_LEVEL=3`,
 `PB_FIELD_16BIT=1`, `PB_ENABLE_MALLOC=1` (nanopb — proto binaire sur WS).
@@ -87,7 +104,10 @@ du sous-process `pio run`**, pas en argv. Valeurs consommées par
 ### 2.2 Pattern d'invocation local (`build.sh` de chaque firmware)
 
 ```bash
-export WIFI_SSID=... WIFI_PASSWORD=... HOST=... TOKEN=... DEVICE_ID=...
+export WIFI_SSID=$(echo -n "Chez Shan" | base64) WIFI_PASSWORD=$(echo -n <mdp> | base64)
+export HOST=$(echo -n dev1.pnex.io | base64) TOKEN=$(echo -n <token> | base64) DEVICE_ID=$(echo -n <device_id> | base64)
+export ENCRYPTION_KEY=<clé_chacha20_b64>   # device_tokens.encryption_key, déjà en base64 : telle quelle
+export WS_SSL=false   # true → wss (TLS), false → ws (local)
 uv run pio "$@"       # pio run | pio run --target upload | pio device monitor
 ```
 
@@ -98,22 +118,55 @@ la structure du workspace complet).
 
 ### 2.3 Image de build
 
-`Dockerfile` du dépôt : `python:3.12` + pio + AWS CLI + protobuf-compiler,
+`firmware/Dockerfile` : `python:3.12` + pio + AWS CLI + protobuf-compiler,
 **pré-build** des deps de `soil_sensor` et `4_chan_relay` (`RUN cd … && pio
 run`) pour chauffer le cache d'images layers. Tag de référence :
-`192.168.1.100/pnex/pio-builder:latest`.
+`192.168.1.100/pnex/pio-builder:latest` (build via `task
+firmware:build-docker`).
 
 ## 3. Implications pour pnex-rust (Phase 6)
 
 - **`BuildFirmwareArgs`** (job queue) : `build_id`, `device_id`, `target`,
-  `firmware_config`. Le worker résout config + secrets (store) puis spawn
-  `pio run` avec les 5 variables §2.1 (base64 pour HOST/TOKEN/DEVICE_ID —
-  attention à l'encodage, pas du clair).
+  `firmware_config`. Le worker résout config + secrets (store), **extrait
+  la source embarquée dans un tmp par job** puis spawn `pio run` avec les
+  variables §2.1 (WIFI_SSID, WIFI_PASSWORD, HOST, TOKEN, DEVICE_ID **en
+  base64** — un SSID avec espaces casserait le flag `-D` ; `WS_SSL`
+  true/false pour le schéma ws/wss du firmware).
 - **UI (page Devices / future page Builds)** — directives utilisateur :
   - le formulaire d'enregistrement devra à terme collecter **URL du serveur,
     SSID WiFi, mot de passe WiFi** (paramètres de build du firmware) ;
   - pour un **device custom** (custom_sensor/custom_device), afficher un
     **snippet de configuration** du code source pour guider l'utilisateur.
-- Artefact `.bin` → MinIO/S3 (Décision D5 : parité script k8s_job Django —
-  git clone → `pio run` → `esptool merge-bin` → ArtifactStore), timeout dur,
-  secrets scopés org.
+- Artefact `.bin` → MinIO/S3 (Décision D5 : extraction de la source
+  embarquée → `pio run` → `esptool merge-bin` → ArtifactStore), timeout
+  dur, secrets scopés org. Le workflow CI `firmware`
+  (`.github/workflows/firmware.yml`) compile les projets predefined à
+  chaque changement de `firmware/` — « une version pnex = un firmware qui
+  compile ».
+
+## 4. Flash navigateur (esptool-js, Web Serial)
+
+Le front Dioxus flashe le firmware directement depuis le navigateur via
+**Web Serial** (Chrome/Edge/Opera uniquement — Firefox/Safari non supportés,
+le modal affiche l'avertissement et renvoie vers le téléchargement + esptool).
+
+- **Glue JS** : `crates/pnex-frontend/js/flasher.js` importe `esptool-js`
+  (épinglé 0.6.1, npm) et expose deux globales — `pnexFlashSupported()` et
+  `pnexFlash(bytes, onEvent)`. Bundlé par esbuild en IIFE
+  (`npm run js:build` → `assets/flasher.js`, gitignoré, task `js:ensure`
+  pour les fresh clones — même pattern que le CSS Tailwind). Chargé comme
+  script classique via `asset!()` dans `App` ; consommé par
+  `crates/pnex-frontend/src/flash.rs` (js-sys/wasm-bindgen, callbacks JSON).
+- **Un seul `writeFlash` à l'adresse 0x0** : l'artefact servi par
+  `GET /api/v1/download/firmware/{id}` est toujours l'image mergée complète
+  (§1/`merge.rs` — esp8266 : image unique ; esp32 : bootloader+partitions+app
+  mergées). Paramètres alignés sur le merge serveur : `dio` / `40m` / `4MB`,
+  `eraseAll: false`, compression activée, baud 921600 après sync.
+- **Contraintes Web Serial** : HTTPS (ou localhost), `requestPort()` doit
+  partir d'un geste utilisateur — c'est pourquoi le `FlashModal` télécharge
+  les octets à l'ouverture et déclenche tout le flow au clic, sans étape
+  réseau intermédiaire.
+- **UI** : bouton « Flasher » sur la ligne device (colonne Firmware) et sur
+  l'écran de succès du wizard ; progression par étapes (connexion, écriture %,
+  redémarrage) + chip détecté ; erreurs JS (annulation du sélecteur de port,
+  port occupé, sync échoué) affichées en clair avec bouton « Réessayer ».

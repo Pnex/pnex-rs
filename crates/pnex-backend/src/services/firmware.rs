@@ -1,6 +1,10 @@
 //! Réglages firmware (Phase 6) — `settings.firmware` de la config Loco,
 //! champ par champ avec défauts (pattern `IngestSettings`).
 //!
+//! Source du firmware : **embarquée dans le binaire** (convergence
+//! monorepo — cf. `pnex_firmware_builder::embedded`). Pas de sélecteur :
+//! une version du serveur compile la version du firmware qui l'accompagne.
+//!
 //! Storage : `STORAGE_BACKEND` (env) **surcharge** `storage.backend` de la
 //! config — décision utilisateur : abstraction à deux backends, `local`
 //! (FS, edge) d'abord, `s3` (cloud) différé (D5).
@@ -9,7 +13,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use loco_rs::config::Config;
-use pnex_firmware_builder::{ArtifactStore, FirmwareSource, LocalStore, S3Store};
+use pnex_firmware_builder::{ArtifactStore, LocalStore, S3Store};
 use serde::Deserialize;
 
 /// Phases canoniques d'un build (colonne `build_phase`, minuscules).
@@ -20,20 +24,9 @@ pub const PHASE_RUNNING: &str = "running";
 pub const PHASE_SUCCEEDED: &str = "succeeded";
 pub const PHASE_FAILED: &str = "failed";
 
-/// Source du firmware : arborescence locale (dev/edge) ou dépôt git
-/// (branche/tag, clone `--depth 1` par job). Variantes en minuscules dans
-/// la config (`kind: local` / `kind: git`).
-#[derive(Clone, Debug, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
-pub enum FirmwareSourceCfg {
-    Local { path: String },
-    Git { repo: String, git_ref: String },
-}
-
 /// Réglages résolus du worker de build.
 #[derive(Clone, Debug)]
 pub struct FirmwareSettings {
-    pub source: FirmwareSourceCfg,
     /// `local` | `s3` (surchargeable par `STORAGE_BACKEND`).
     pub storage_backend: String,
     /// Racine du backend local (créée au premier dépôt).
@@ -54,7 +47,6 @@ pub struct FirmwareSettings {
 /// Forme sérialisable partielle de `settings.firmware` (tout optionnel).
 #[derive(Default, Deserialize)]
 struct FirmwarePartial {
-    source: Option<FirmwareSourceCfg>,
     storage: Option<StoragePartial>,
     pio_cmd: Option<String>,
     esptool_cmd: Option<String>,
@@ -74,11 +66,6 @@ struct StoragePartial {
 impl Default for FirmwareSettings {
     fn default() -> Self {
         Self {
-            // Défaut Django : dépôt firmware public, branche main.
-            source: FirmwareSourceCfg::Git {
-                repo: "https://github.com/Pnex/iot-firmware.git".into(),
-                git_ref: "main".into(),
-            },
             storage_backend: "local".into(),
             local_root: PathBuf::from("./artifacts"),
             s3_endpoint: String::new(),
@@ -103,7 +90,6 @@ impl FirmwareSettings {
             .unwrap_or_default();
         let defaults = Self::default();
         let mut settings = Self {
-            source: partial.source.unwrap_or(defaults.source),
             storage_backend: partial
                 .storage
                 .as_ref()
@@ -163,19 +149,6 @@ impl FirmwareSettings {
             other => Err(format!("backend de stockage inconnu : {other}")),
         }
     }
-
-    /// Source du pipeline (type de la crate firmware-builder).
-    pub fn source(&self) -> FirmwareSource {
-        match &self.source {
-            FirmwareSourceCfg::Local { path } => FirmwareSource::Local {
-                path: PathBuf::from(path),
-            },
-            FirmwareSourceCfg::Git { repo, git_ref } => FirmwareSource::Git {
-                repo: repo.clone(),
-                git_ref: git_ref.clone(),
-            },
-        }
-    }
 }
 
 #[cfg(test)]
@@ -183,17 +156,13 @@ mod tests {
     use super::*;
 
     /// Sélecteur de magasin : local ok, s3 différé (NotImplemented), inconnu
-    /// rejeté. Défauts : local / pio / 900 s / dépôt git public.
+    /// rejeté. Défauts : local / pio / 900 s.
     #[tokio::test]
     async fn selecteur_de_magasin() {
         let mut settings = FirmwareSettings::default();
         assert_eq!(settings.storage_backend, "local");
         assert_eq!(settings.timeout_secs, 900);
         assert_eq!(settings.pio_cmd, "pio");
-        assert!(matches!(
-            settings.source,
-            FirmwareSourceCfg::Git { ref git_ref, .. } if git_ref == "main"
-        ));
 
         settings.storage_backend = "s3".into();
         let store = settings.store().expect("s3 plomberie");

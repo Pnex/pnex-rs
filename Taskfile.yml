@@ -4,6 +4,25 @@ env:
   FRONT_DIST: crates/pnex-frontend/dist
   DX_OUT: target/dx/pnex-frontend
 
+includes:
+  # Tâches propres au firmware (image Docker pio-builder, requirements) —
+  # `task firmware:build-docker`, `task firmware:gen-requirements`.
+  # dir explicite : docker build doit avoir firmware/ comme context.
+  firmware:
+    taskfile: ./firmware/Taskfile.yml
+    dir: ./firmware
+
+# Firmware convergé dans le monorepo (firmware/) + toolchain épinglée sur
+# son venv quand il existe (sinon `pio` du PATH — installation
+# potentiellement divergente : cf. docs/observations.md O7). Utilisée par
+# dev:backend et les tâches fw:*.
+vars:
+  FW_DIR: firmware
+  PIO_CMD:
+    sh: test -x "firmware/.venv/bin/pio" && echo "firmware/.venv/bin/pio" || echo pio
+  ESPTOOL_CMD:
+    sh: test -x "firmware/.venv/bin/esptool" && echo "firmware/.venv/bin/esptool" || echo esptool
+
 tasks:
   default:
     desc: Aperçu des tâches
@@ -14,7 +33,7 @@ tasks:
 
   build:frontend:
     desc: Build le front Dioxus (wasm, release) et le copie dans crates/pnex-frontend/dist
-    deps: [css:build]
+    deps: [css:build, js:build]
     sources:
       - crates/pnex-frontend/src/**/*
       - crates/pnex-frontend/assets/**/*
@@ -53,6 +72,23 @@ tasks:
     cmds:
       - npm run css:watch
 
+  # ---------- JS (flash navigateur esptool-js) ----------
+
+  js:build:
+    desc: Bundle assets/flasher.js (glue esptool-js, esbuild IIFE — requis avant tout build dx)
+    dir: crates/pnex-frontend
+    cmds:
+      - npm run js:build
+
+  js:ensure:
+    desc: Garantit l'existence de assets/flasher.js (stub) — la macro asset!() l'exige à la compilation
+    cmds:
+      # Même garde que css:ensure : le bundle réel est gitignoré (généré par
+      # js:build) et sans stub tout fresh clone casse sur cargo check/test.
+      # N'écrase jamais le bundle réel s'il existe.
+      - mkdir -p crates/pnex-frontend/assets
+      - test -f crates/pnex-frontend/assets/flasher.js || printf '/* Stub — bundle reel genere par task js:build (npm) */\n' > crates/pnex-frontend/assets/flasher.js
+
   build:
     desc: Build complet (front + workspace natif)
     deps: [build:frontend]
@@ -61,14 +97,14 @@ tasks:
 
   check:
     desc: cargo check natif + wasm32 (garde-fou « jamais de rouge »)
-    deps: [css:ensure]
+    deps: [css:ensure, js:ensure]
     cmds:
       - cargo check --workspace
       - cargo check -p pnex-core -p pnex-frontend --target wasm32-unknown-unknown
 
   test:
     desc: Tests du workspace
-    deps: [css:ensure]
+    deps: [css:ensure, js:ensure]
     cmds:
       - cargo test --workspace
 
@@ -82,7 +118,7 @@ tasks:
 
   dev:frontend:
     desc: Build debug du front vers crates/pnex-frontend/dist (pour serving Loco)
-    deps: [css:build]
+    deps: [css:build, js:build]
     sources:
       - crates/pnex-frontend/src/**/*
       - crates/pnex-frontend/assets/**/*
@@ -98,14 +134,11 @@ tasks:
 
   dev:backend:
     desc: Démarre le backend Loco (serveur + worker de builds — cible utilisée par task dev)
-    # Toolchain épinglée sur le venv du dépôt firmwares quand il existe
-    # (sinon `pio` du PATH — qui peut être une installation divergente et
-    # faire échouer certains projets : cf. docs/observations.md O7).
+    # Toolchain épinglée via les vars globales PIO_CMD/ESPTOOL_CMD (partagée
+    # avec les tâches fw:* de debug USB).
     env:
-      PNEX_PIO_CMD:
-        sh: test -x "$HOME/Documents/shan-perso/pnex-firmwares/.venv/bin/pio" && echo "$HOME/Documents/shan-perso/pnex-firmwares/.venv/bin/pio" || echo pio
-      PNEX_ESPTOOL_CMD:
-        sh: test -x "$HOME/Documents/shan-perso/pnex-firmwares/.venv/bin/esptool" && echo "$HOME/Documents/shan-perso/pnex-firmwares/.venv/bin/esptool" || echo esptool
+      PNEX_PIO_CMD: "{{.PIO_CMD}}"
+      PNEX_ESPTOOL_CMD: "{{.ESPTOOL_CMD}}"
       PNEX_ARTIFACTS_DIR: /tmp/pnex-artifacts
     cmds:
       - cd crates/pnex-backend && cargo run --bin pnex-server -- start --server-and-worker
@@ -131,6 +164,50 @@ tasks:
     cmds:
       - cd crates/pnex-frontend && dx serve --platform web --port 5151
 
+  # ---------- Firmware IoT (debug USB) ----------
+  # Les identifiants WiFi/HOST/TOKEN/DEVICE_ID sont compilés dans le firmware
+  # (build_flags -D … de platformio.ini) : « les paramètres sont ok » côté
+  # serveur ne dit rien de l'image réellement flashée. Le monitor série le
+  # révèle au boot ([WiFi] Connecting to <ssid>) — cf.
+  # docs/architecture/firmware-build.md §2.1.
+
+  fw:ports:
+    desc: Liste les ports série USB (identifier l'ESP — /dev/ttyUSB0, /dev/ttyACM0…)
+    cmds:
+      - "{{.PIO_CMD}} device list"
+
+  fw:monitor:
+    desc: Monitor série de l'ESP branché en USB (115200 + filtres de platformio.ini) — ex. task fw:monitor FIRMWARE=4_chan_relay PORT=/dev/ttyUSB0
+    dir: "{{.FW_DIR}}/{{.FIRMWARE}}"
+    vars:
+      FIRMWARE: soil_sensor
+    cmds:
+      - "{{.PIO_CMD}} device monitor{{if .PORT}} --port {{.PORT}}{{end}}"
+
+  fw:flash:
+    desc: Recompile + flash USB puis monitor — identifiants passés en env (WIFI_SSID, WIFI_PASSWORD, HOST, TOKEN, DEVICE_ID, ENCRYPTION_KEY — les 6 en base64, WS_SSL true/false)
+    dir: "{{.FW_DIR}}/{{.FIRMWARE}}"
+    vars:
+      FIRMWARE: soil_sensor
+    cmds:
+      - |
+        missing=0
+        for v in WIFI_SSID WIFI_PASSWORD HOST TOKEN DEVICE_ID ENCRYPTION_KEY; do
+          eval "val=\${$v}"
+          [ -n "$val" ] || { echo "MANQUANT : $v"; missing=1; }
+        done
+        if [ "$missing" -ne 0 ]; then
+          echo "Les identifiants sont compilés dans le firmware ; sans eux l'SSID est vide et le WiFi ne se connecte jamais."
+          echo "Les 6 variables sont en BASE64 (un SSID littéral avec espaces casserait le flag -D). Exemple :"
+          echo '  export WIFI_SSID=$(echo -n "Chez Shan" | base64) WIFI_PASSWORD=$(echo -n <mdp> | base64)'
+          echo '  export HOST=$(echo -n dev1.pnex.io | base64) TOKEN=$(echo -n <token> | base64) DEVICE_ID=$(echo -n <device_id> | base64)'
+          echo '  export ENCRYPTION_KEY=$(psql "postgres://pnex:pnex@localhost:5432/pnex" -t -A -c "SELECT encryption_key FROM device_tokens WHERE device_registry_id=(SELECT id FROM device_registries WHERE device_id='"'"'<device_id>'"'"') AND is_active")'
+          echo '  export WS_SSL=false  # ws:// en local, true pour wss://'
+          echo 'Sans ENCRYPTION_KEY, les frames partent en clair et le serveur les rejette (device jamais actif).'
+          exit 1
+        fi
+        {{.PIO_CMD}} run --target upload
+        {{.PIO_CMD}} device monitor
   # ---------- Base de données ----------
 
   db:up:

@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// `insecure`, `server_port`, `force_rebuild` et `metadata` du contrat
 /// Django sont acceptés et ignorés (serde tolère les champs inconnus) : le
-/// firmware actuel ne lit que le WiFi et l'hôte.
+/// firmware actuel ne lit que le WiFi, l'hôte et le schéma WebSocket.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateBuild {
     pub wifi_ssid: String,
@@ -33,6 +33,15 @@ pub struct CreateBuild {
     /// base64. Écart vs Django : tel quel, pas de `_extract_hostname`.
     pub pnex_host: String,
     pub device_id: String,
+    /// WebSocket en `wss://` (TLS, déploiement industriel) ou `ws://`
+    /// (serveur local / raspberry pi sans TLS). Défaut `true` : parité du
+    /// firmware qui parlait toujours wss.
+    #[serde(default = "default_ws_ssl")]
+    pub ws_ssl: bool,
+}
+
+fn default_ws_ssl() -> bool {
+    true
 }
 
 /// Réponse 201 du `POST /api/v1/build-firmware`.
@@ -102,8 +111,9 @@ mod tests {
                 "wifi_ssid": "coloc",
                 "wifi_password": "ZaFjX9",
                 "device_id": "dev-11",
-                "predefined_device_name": "sensor_probe_v1",
+                "predefined_device_name": "soil_sensor",
                 "pnex_host": "dev1.pnex.io",
+                "ws_ssl": false,
                 "insecure": 1,
                 "server_port": 443,
                 "force_rebuild": true,
@@ -113,6 +123,25 @@ mod tests {
         .unwrap();
         assert_eq!(payload.wifi_ssid, "coloc");
         assert_eq!(payload.pnex_host, "dev1.pnex.io");
+        // ws_ssl explicite dans la charge.
+        assert!(!payload.ws_ssl);
+    }
+
+    /// ws_ssl absent du corps → défaut true (parité firmware qui parlait
+    /// toujours wss ; le front local envoie explicitement false).
+    #[test]
+    fn create_build_ws_ssl_defaut_true() {
+        let payload: CreateBuild = serde_json::from_str(
+            r#"{
+                "wifi_ssid": "coloc",
+                "wifi_password": "ZaFjX9",
+                "device_id": "dev-11",
+                "predefined_device_name": "soil_sensor",
+                "pnex_host": "dev1.pnex.io"
+            }"#,
+        )
+        .unwrap();
+        assert!(payload.ws_ssl);
     }
 
     /// Réponse de création : sans backend/job_name (adaptation Rust).

@@ -62,14 +62,11 @@ settings:
     base_url: {{ get_env(name="KEYCLOAK_URL", default="http://localhost:8080") }}
     realm: {{ get_env(name="KEYCLOAK_REALM", default="pnex-realm") }}
     client_id: {{ get_env(name="KEYCLOAK_CLIENT_ID", default="pnex") }}
-  # Firmware Phase 6 — source git par défaut (déploiement cloud), local
-  # pour l'edge. STORAGE_BACKEND surcharge storage.backend (D5).
+  # Firmware Phase 6 — source embarquée dans le binaire (self-hosted/edge :
+  # le serveur build sa propre version du firmware, zéro clone git ni
+  # chemin local — aucune config de source). STORAGE_BACKEND surcharge
+  # storage.backend (D5).
   firmware:
-    source:
-      kind: {{ get_env(name="PNEX_FIRMWARE_SOURCE_KIND", default="git") }}
-      path: {{ get_env(name="PNEX_FIRMWARE_SOURCE_PATH", default="") }}
-      repo: {{ get_env(name="PNEX_FIRMWARE_GIT_REPO", default="https://github.com/Pnex/iot-firmware.git") }}
-      git_ref: {{ get_env(name="PNEX_FIRMWARE_GIT_REF", default="main") }}
     storage:
       backend: {{ get_env(name="STORAGE_BACKEND", default="local") }}
       local_root: {{ get_env(name="PNEX_ARTIFACTS_DIR", default="/var/lib/pnex/artifacts") }}

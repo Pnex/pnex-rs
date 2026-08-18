@@ -1,0 +1,11 @@
+# proto/actuator_message.options
+# Nanopb options for field size limits
+
+# String field size limits
+ActuatorConfig.device_id max_size:32
+ActuatorState.device_id max_size:32
+
+# Array size limits
+ActuatorConfig.channels max_count:4
+SensorData.channel_data max_count:4
+ActuatorState.channels max_count:4

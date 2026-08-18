@@ -299,7 +299,7 @@ fn point(org_id: i64, metric: &str, value: &str) -> TelemetryPoint {
         org_id,
         device_registry_id: 1,
         device_id: "capteur-1".into(),
-        pred_dev: "sensor_probe_v1".into(),
+        pred_dev: "soil_sensor".into(),
         metric_name: metric.into(),
         value: value.into(),
         timestamp: chrono::Utc::now(),

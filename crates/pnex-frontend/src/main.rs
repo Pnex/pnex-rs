@@ -9,6 +9,7 @@ mod api;
 mod app;
 mod auth;
 mod components;
+mod flash;
 mod i18n;
 mod pages;
 mod state;
@@ -33,6 +34,10 @@ fn App() -> Element {
     });
     rsx! {
         link { rel: "stylesheet", href: asset!("/assets/tailwind.css") }
+        // Glue esptool-js (flash navigateur, Web Serial) — script classique
+        // IIFE qui expose window.pnexFlash/pnexFlashSupported (cf. flash.rs).
+        // Consommé au clic sur « Flasher », aucun souci d'ordre de chargement.
+        script { src: asset!("/assets/flasher.js") }
         Router::<Route> {}
     }
 }
