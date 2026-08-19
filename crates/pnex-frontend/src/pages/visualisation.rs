@@ -93,8 +93,10 @@ pub fn Visualisation() -> Element {
     };
 
     // Points : une requête par série active (≤ 6), séquentielles —
-    // charge triviale au rythme du polling.
-    let series = use_resource(move || async move {
+    // charge triviale au rythme du polling. Les signaux sont lus dans la
+    // partie SYNCHRONE de la closure (pattern devices.rs) : l'abonnement
+    // au re-run est garanti sur active/window/reload.
+    let series = use_resource(move || {
         let _ = reload();
         let keys = active.read().clone();
         let window_key = WINDOWS
@@ -102,20 +104,22 @@ pub fn Visualisation() -> Element {
             .find(|(_, _, secs)| *secs == window())
             .map(|(key, _, _)| *key)
             .unwrap_or("24h");
-        let mut out = Vec::new();
-        for (metric, device_id) in &keys {
-            let points = api::telemetry::series(metric, device_id, window_key)
-                .await
-                .ok()
-                .filter(|s| s.available)
-                .map(|s| s.points);
-            out.push(ActiveSeries {
-                metric: metric.clone(),
-                device_id: device_id.clone(),
-                points,
-            });
+        async move {
+            let mut out = Vec::new();
+            for (metric, device_id) in &keys {
+                let points = api::telemetry::series(metric, device_id, window_key)
+                    .await
+                    .ok()
+                    .filter(|s| s.available)
+                    .map(|s| s.points);
+                out.push(ActiveSeries {
+                    metric: metric.clone(),
+                    device_id: device_id.clone(),
+                    points,
+                });
+            }
+            out
         }
-        out
     });
 
     // Polling auto-entretenu tant que la page est montée.
@@ -151,9 +155,16 @@ pub fn Visualisation() -> Element {
                 .collect()
         })
         .unwrap_or_default();
-    // Le device sélectionné doit exister pour la métrique (sinon on le
-    // réinitialise silencieusement au premier de la liste).
-    if !sel_device().is_empty() && !devices.contains(&sel_device()) {
+    // Sélections par défaut, piège des selects contrôlés : sans valeur
+    // portée par le signal, le select AFFICHE sa première option sans
+    // qu'elle soit « sélectionnée » — le bouton Ajouter restait grisé
+    // alors que l'utilisateur voyait un capteur (retour user 2026-08-19 :
+    // « rien ne s'affiche sur les graphes », aucun appel /series dans les
+    // logs). On ancre métrique ET device sur le premier élément valide.
+    if !metrics.contains(&sel_metric()) {
+        sel_metric.set(metrics.first().cloned().unwrap_or_default());
+    }
+    if !devices.contains(&sel_device()) {
         sel_device.set(devices.first().cloned().unwrap_or_default());
     }
     let can_add = !sel_metric().is_empty()

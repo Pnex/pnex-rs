@@ -450,7 +450,14 @@ de sujets Django).
   superposées avec chips, **chart SVG maison sans lib** — polyline +
   points, échelle Y globale, légende, polling 15 s). e2e réel vérifié
   sur le serveur dev (routes 401 sans token, dégradé 200, injection 400)
-  via user Keycloak temporaire créé puis supprimé.
+  via user Keycloak temporaire créé puis supprimé. **Retour user
+  « rien ne s'affiche sur les graphes »** : les logs ne montraient
+  AUCUN appel `/series` — piège des selects contrôlés Dioxus (le select
+  capteur AFFICHAIT sa première option sans que le signal la porte →
+  bouton Ajouter désactivé) ; correction = ancrage par défaut métrique +
+  device sur le premier élément valide, et lecture des signaux de la
+  ressource `series` dans la partie synchrone de la closure (pattern
+  devices.rs, abonnement garanti).
 
 - 2026-08-19 : **Dashboard basic — summary org + page front** (demande user,
   principe « l'UI est la seule interface »). `GET /api/v1/dashboard/summary`
