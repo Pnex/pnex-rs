@@ -10,6 +10,7 @@ nav-devices = Devices
 nav-catalog = Device Catalog
 nav-orgs = Organizations
 nav-profile = Profile
+nav-visualisation = Visualization
 
 # Générique
 common-loading = Loading…
@@ -239,3 +240,19 @@ flash-retry = Retry
 
 pagination-previous = Previous
 pagination-next = Next
+
+# Visualisation (per-sensor curves)
+vis-subtitle = Curves of the measurements stored in OpenObserve, sensor by sensor
+vis-series = Available series
+vis-metric = Metric
+vis-device = Sensor
+vis-window = Window
+vis-window-1h = 1h
+vis-window-6h = 6h
+vis-window-24h = 24h
+vis-add = Add
+vis-chart = Chart
+vis-empty = Add a series to display its curve
+vis-no-data = No telemetry data in this organization
+vis-no-points = No points in the selected window
+vis-unavailable = Telemetry unavailable (OpenObserve unreachable or organization not provisioned)

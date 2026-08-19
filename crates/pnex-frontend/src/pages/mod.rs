@@ -11,6 +11,7 @@ pub mod orgs;
 pub mod profile;
 pub mod server_url;
 pub mod shell;
+pub mod visualisation;
 
 pub use auth_callback::AuthCallback;
 pub use catalog::Catalog;
@@ -19,3 +20,4 @@ pub use devices::Devices;
 pub use not_found::NotFound;
 pub use orgs::Orgs;
 pub use profile::Profile;
+pub use visualisation::Visualisation;

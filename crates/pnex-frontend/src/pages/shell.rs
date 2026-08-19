@@ -107,6 +107,10 @@ fn Nav() -> Element {
                 crate::components::icons::Home { class: "h-5 w-5" }
                 span { {t!("nav-dashboard")} }
             }
+            Link { to: Route::Visualisation {}, class: nav_class(route == Route::Visualisation {}),
+                crate::components::icons::LineChart { class: "h-5 w-5" }
+                span { {t!("nav-visualisation")} }
+            }
             Link { to: Route::Devices {}, class: nav_class(route == Route::Devices {}),
                 crate::components::icons::Cpu { class: "h-5 w-5" }
                 span { {t!("nav-devices")} }

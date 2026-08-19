@@ -9,4 +9,5 @@ pub mod dashboard;
 pub mod devices;
 pub mod error;
 pub mod orgs;
+pub mod telemetry;
 pub mod user;

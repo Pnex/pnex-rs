@@ -10,6 +10,7 @@ nav-devices = Appareils
 nav-catalog = Catalogue d'appareils
 nav-orgs = Organisations
 nav-profile = Profil
+nav-visualisation = Visualisation
 
 # Générique
 common-loading = Chargement…
@@ -239,3 +240,19 @@ flash-retry = Réessayer
 
 pagination-previous = Précédent
 pagination-next = Suivant
+
+# Visualisation (courbes capteur par capteur)
+vis-subtitle = Courbes des mesures stockées dans OpenObserve, capteur par capteur
+vis-series = Séries disponibles
+vis-metric = Métrique
+vis-device = Capteur
+vis-window = Fenêtre
+vis-window-1h = 1 h
+vis-window-6h = 6 h
+vis-window-24h = 24 h
+vis-add = Ajouter
+vis-chart = Courbe
+vis-empty = Ajoutez une série pour afficher sa courbe
+vis-no-data = Aucune donnée de télémétrie dans cette organisation
+vis-no-points = Aucun point sur la fenêtre sélectionnée
+vis-unavailable = Télémétrie indisponible (OpenObserve injoignable ou organisation non provisionnée)
