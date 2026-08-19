@@ -37,6 +37,11 @@ struct MockState {
     org_creates: u32,
     user_creates: u32,
     resets: u32,
+    /// Basics reçus sur la route query Prometheus (ordre des tentatives).
+    query_basics: Vec<String>,
+    /// Simule un O2 qui refuse le Basic email:passcode sur la query
+    /// (comportement constaté selon versions) → fallback root.
+    reject_passcode_query: bool,
 }
 
 fn basic_of(header: Option<&str>) -> String {
@@ -234,6 +239,84 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                             }
                         }
                         axum::http::StatusCode::OK
+                    }
+                }
+            }),
+        )
+        .route(
+            "/api/{org}/prometheus/api/v1/query",
+            get({
+                let s = s.clone();
+                move |Path(org): Path<String>,
+                      headers: axum::http::HeaderMap| {
+                    let s = s.clone();
+                    async move {
+                        let basic =
+                            basic_of(headers.get("authorization").and_then(|v| v.to_str().ok()));
+                        let mut guard = s.lock().unwrap();
+                        guard.query_basics.push(basic.clone());
+                        // Auth : Basic email:passcode d'un user de l'org, ou
+                        // Basic root (fallback du client).
+                        let (email, secret) = basic.split_once(':').unwrap_or(("", ""));
+                        let passcode_ok = !guard.reject_passcode_query
+                            && guard
+                                .users
+                                .contains_key(&(org.clone(), email.to_string()))
+                            && secret == passcode_of(email);
+                        let root_ok = email == "root@pnex.local" && secret == "whatever";
+                        if !passcode_ok && !root_ok {
+                            return (
+                                axum::http::StatusCode::UNAUTHORIZED,
+                                axum::Json(serde_json::json!({
+                                    "message": "Unauthorized Access"
+                                })),
+                            );
+                        }
+                        // Dernier échantillon par (métrique, device_id) de
+                        // l'org — forme vector Prometheus exacte.
+                        #[allow(clippy::type_complexity)]
+                        let mut last: HashMap<
+                            (String, String),
+                            (Vec<(String, String)>, f64, i64),
+                        > = HashMap::new();
+                        for (o2_org, _b, metric, labels, value, ts_ms) in &guard.ingested {
+                            if o2_org != &org {
+                                continue;
+                            }
+                            let device = labels
+                                .iter()
+                                .find(|(n, _)| n == "device_id")
+                                .map(|(_, v)| v.clone())
+                                .unwrap_or_default();
+                            let entry = last
+                                .entry((metric.clone(), device))
+                                .or_insert((labels.clone(), *value, *ts_ms));
+                            if ts_ms >= &entry.2 {
+                                *entry = (labels.clone(), *value, *ts_ms);
+                            }
+                        }
+                        let result: Vec<serde_json::Value> = last
+                            .into_iter()
+                            .map(|((metric, _device), (labels, value, ts_ms))| {
+                                let mut metric_map = serde_json::Map::new();
+                                metric_map
+                                    .insert("__name__".to_string(), serde_json::json!(metric));
+                                for (n, v) in labels {
+                                    metric_map.insert(n, serde_json::json!(v));
+                                }
+                                serde_json::json!({
+                                    "metric": metric_map,
+                                    "value": [ts_ms as f64 / 1000.0, value.to_string()]
+                                })
+                            })
+                            .collect();
+                        (
+                            axum::http::StatusCode::OK,
+                            axum::Json(serde_json::json!({
+                                "status": "success",
+                                "data": {"resultType": "vector", "result": result}
+                            })),
+                        )
                     }
                 }
             }),
@@ -442,4 +525,91 @@ async fn batcher_flush_vers_openobserve() {
     })
     .await;
     telemetry::reset_sink();
+}
+
+/// Query Prometheus : le Basic email:passcode suffit (une seule tentative),
+/// la réponse vector est parsée et porte le DERNIER échantillon par série.
+#[tokio::test]
+async fn prom_query_authentifie_passcode_et_parse() {
+    let (base, mock) = spawn_mock_o2().await;
+    let email = "pnex-ingest+org7@pnex.local";
+    {
+        let mut guard = mock.lock().unwrap();
+        guard
+            .users
+            .insert(("mockid1".into(), email.into()), "pw".into());
+        for (value, ts_ms) in [(21.5, 1_755_600_000_000i64), (22.5, 1_755_600_030_000)] {
+            guard.ingested.push((
+                "mockid1".into(),
+                String::new(),
+                "read_temperature".into(),
+                vec![("device_id".into(), "capteur-1".into())],
+                value,
+                ts_ms,
+            ));
+        }
+        // Une autre org : ne doit pas fuiter dans la réponse.
+        guard.ingested.push((
+            "mockid2".into(),
+            String::new(),
+            "secret_metric".into(),
+            vec![("device_id".into(), "autre".into())],
+            99.0,
+            1_755_600_090_000,
+        ));
+    }
+    let client = o2_client(&base);
+    let resp = client
+        .prom_query(
+            "mockid1",
+            r#"last_over_time({__name__=~".+"}[1h])"#,
+            &format!("{email}:{}", passcode_of(email)),
+        )
+        .await
+        .expect("query passcode");
+    assert_eq!(resp.status, "success");
+    assert_eq!(resp.data.result_type, "vector");
+    assert_eq!(resp.data.result.len(), 1, "une série pour mockid1");
+    let sample = &resp.data.result[0];
+    assert_eq!(sample.metric["__name__"], "read_temperature");
+    assert_eq!(sample.metric["device_id"], "capteur-1");
+    assert_eq!(sample.value.1, "22.5", "dernier échantillon de la série");
+    assert_eq!(sample.value.0, 1_755_600_030.0);
+    // Le passcode a suffi : aucune tentative root.
+    assert_eq!(mock.lock().unwrap().query_basics.len(), 1);
+}
+
+/// Passcode refusé sur la query (401) → le client retente en Basic root
+/// et sert la réponse : deux tentatives dans l'ordre passcode puis root.
+#[tokio::test]
+async fn prom_query_fallback_root_si_passcode_refuse() {
+    let (base, mock) = spawn_mock_o2().await;
+    {
+        let mut guard = mock.lock().unwrap();
+        guard.reject_passcode_query = true;
+        guard.ingested.push((
+            "mockid1".into(),
+            String::new(),
+            "soil_moisture".into(),
+            vec![("device_id".into(), "capteur-1".into())],
+            42.0,
+            1_755_600_000_000,
+        ));
+    }
+    let client = o2_client(&base);
+    let resp = client
+        .prom_query(
+            "mockid1",
+            "{}",
+            "pnex-ingest+org7@pnex.local:o2oi_mauvais",
+        )
+        .await
+        .expect("query via root");
+    assert_eq!(resp.data.result.len(), 1);
+    assert_eq!(resp.data.result[0].metric["__name__"], "soil_moisture");
+
+    let basics = mock.lock().unwrap().query_basics.clone();
+    assert_eq!(basics.len(), 2, "passcode PUIS root");
+    assert!(basics[0].starts_with("pnex-ingest+org7@pnex.local:"));
+    assert_eq!(basics[1], "root@pnex.local:whatever");
 }

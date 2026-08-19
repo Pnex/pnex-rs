@@ -2,6 +2,8 @@
 //! l'ingestion). Erreurs remontées en texte — relayées dans
 //! `openobserve_orgs.last_error`.
 
+use std::collections::HashMap;
+
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use serde::Deserialize;
@@ -22,6 +24,31 @@ pub struct OrgRow {
 #[derive(Debug, Deserialize)]
 struct PasscodeResponse {
     data: PasscodeData,
+}
+
+/// Réponse d'une requête instantanée Prometheus (`/api/v1/query`) —
+/// forme vector attendue : un échantillon par série active.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PromQueryResponse {
+    pub status: String,
+    pub data: PromQueryData,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PromQueryData {
+    #[serde(rename = "resultType")]
+    pub result_type: String,
+    pub result: Vec<PromQuerySample>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PromQuerySample {
+    /// Labels de la série — `__name__` + labels portés à l'ingest
+    /// (`device_id`, `pred_dev`, `source_type`, `ts_source`).
+    pub metric: HashMap<String, String>,
+    /// (timestamp en secondes epoch, valeur en texte — re-parse
+    /// défensif côté consommateur).
+    pub value: (f64, String),
 }
 
 #[derive(Debug, Deserialize)]
@@ -232,6 +259,51 @@ impl Client {
             return Err(format!("ingest prometheus {status} : {text}"));
         }
         Ok(())
+    }
+
+    /// Requête instantanée Prometheus
+    /// (`GET /api/{org}/prometheus/api/v1/query?query=…`) — lecture des
+    /// métriques de l'org (dashboard).
+    ///
+    /// Auth : Basic `email:passcode` (le `ingestion_token` de la ligne PG)
+    /// d'abord ; sur 401/403, retry en Basic root — le mot de passe du
+    /// user d'ingestion n'est pas persisté (jeté au provisioning), on ne
+    /// peut pas faire de login-token, et le passcode ne passe pas
+    /// forcément sur la query selon la version d'O2.
+    pub async fn prom_query(
+        &self,
+        org_identifier: &str,
+        query: &str,
+        email_passcode: &str,
+    ) -> Result<PromQueryResponse, String> {
+        let passcode_basic = format!("Basic {}", STANDARD.encode(email_passcode));
+        let auths = [passcode_basic.as_str(), self.root_basic.as_str()];
+        let mut last_denial = String::new();
+        for auth in auths {
+            let resp = self
+                .http
+                .get(format!(
+                    "{}/api/{org_identifier}/prometheus/api/v1/query",
+                    self.base
+                ))
+                .query(&[("query", query)])
+                .header("Authorization", auth)
+                .send()
+                .await
+                .map_err(|e| format!("query injoignable : {e}"))?;
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            if status.as_u16() == 401 || status.as_u16() == 403 {
+                last_denial = status.to_string();
+                continue;
+            }
+            if !status.is_success() {
+                return Err(format!("query prometheus {status} : {text}"));
+            }
+            return serde_json::from_str::<PromQueryResponse>(&text)
+                .map_err(|e| format!("query illisible : {e}"));
+        }
+        Err(format!("query refusée (passcode puis root) : {last_denial}"))
     }
 
     /// `/healthz` répond (readiness — vérifié : `/health` n'existe pas en
