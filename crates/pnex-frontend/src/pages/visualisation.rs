@@ -144,36 +144,44 @@ pub fn Visualisation() -> Element {
             names
         })
         .unwrap_or_default();
-    // Devices de la métrique sélectionnée.
+    // Sélections EFFECTIVES, calculées — jamais de `set` au rendu : le
+    // set Dioxus notifie sans comparer les valeurs, muter pendant le
+    // rendu tant que le catalogue est vide bouclait à l'infini et
+    // gelait toute l'app (retour user 2026-08-19 : « toutes les pages
+    // bloquées »). Piège des selects contrôlés réglé par la même passe :
+    // sans valeur effective, le select AFFICHE sa première option sans
+    // qu'elle soit « sélectionnée » (bouton Ajouter restait désactivé,
+    // aucun appel /series dans les logs serveur).
+    let cur_metric = sel_metric();
+    let eff_metric = if metrics.contains(&cur_metric) {
+        cur_metric
+    } else {
+        metrics.first().cloned().unwrap_or_default()
+    };
+    // Devices de la métrique effective.
     let devices: Vec<String> = cat
         .as_ref()
         .map(|c| {
             c.series
                 .iter()
-                .filter(|s| s.metric == sel_metric())
+                .filter(|s| s.metric == eff_metric)
                 .map(|s| s.device_id.clone())
                 .collect()
         })
         .unwrap_or_default();
-    // Sélections par défaut, piège des selects contrôlés : sans valeur
-    // portée par le signal, le select AFFICHE sa première option sans
-    // qu'elle soit « sélectionnée » — le bouton Ajouter restait grisé
-    // alors que l'utilisateur voyait un capteur (retour user 2026-08-19 :
-    // « rien ne s'affiche sur les graphes », aucun appel /series dans les
-    // logs). On ancre métrique ET device sur le premier élément valide.
-    if !metrics.contains(&sel_metric()) {
-        sel_metric.set(metrics.first().cloned().unwrap_or_default());
-    }
-    if !devices.contains(&sel_device()) {
-        sel_device.set(devices.first().cloned().unwrap_or_default());
-    }
-    let can_add = !sel_metric().is_empty()
-        && !sel_device().is_empty()
+    let cur_device = sel_device();
+    let eff_device = if devices.contains(&cur_device) {
+        cur_device
+    } else {
+        devices.first().cloned().unwrap_or_default()
+    };
+    let can_add = !eff_metric.is_empty()
+        && !eff_device.is_empty()
         && active.read().len() < MAX_SERIES
         && !active
             .read()
             .iter()
-            .any(|(m, d)| *m == sel_metric() && *d == sel_device());
+            .any(|(m, d)| *m == eff_metric && *d == eff_device);
 
     // Chargement des points : flatten de la ressource.
     let loaded = match series.read().as_ref() {
@@ -228,10 +236,9 @@ pub fn Visualisation() -> Element {
                                         class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                                         onchange: move |event| {
                                             sel_metric.set(event.value());
-                                            sel_device.set(String::new());
                                         },
                                         for metric in &metrics {
-                                            option { value: "{metric}", selected: sel_metric() == *metric, {metric.clone()} }
+                                            option { value: "{metric}", selected: eff_metric == *metric, {metric.clone()} }
                                         }
                                     }
                                 }
@@ -241,7 +248,7 @@ pub fn Visualisation() -> Element {
                                         class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                                         onchange: move |event| sel_device.set(event.value()),
                                         for device in &devices {
-                                            option { value: "{device}", selected: sel_device() == *device, {device.clone()} }
+                                            option { value: "{device}", selected: eff_device == *device, {device.clone()} }
                                         }
                                     }
                                 }
@@ -270,9 +277,8 @@ pub fn Visualisation() -> Element {
                                     },
                                     disabled: !can_add,
                                     onclick: move |_| {
-                                        let (m, d) = (sel_metric(), sel_device());
                                         if can_add {
-                                            active.with_mut(|list| list.push((m, d)));
+                                            active.with_mut(|list| list.push((eff_metric.clone(), eff_device.clone())));
                                         }
                                     },
                                     icons::Plus { class: "h-4 w-4 mr-1" }
