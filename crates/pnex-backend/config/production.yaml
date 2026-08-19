@@ -71,14 +71,19 @@ settings:
   # le serveur build sa propre version du firmware, zéro clone git ni
   # chemin local — aucune config de source). Artefacts en base par défaut
   # (D5 v2, table firmware_artifacts — pods API stateless) ;
-  # STORAGE_BACKEND=s3 = tier industriel (plomberie différée). Aucune
-  # migration entre backends : on choisit son tier à l'installation.
+  # STORAGE_BACKEND=s3 = tier industriel (artefacts sur S3-compatible via
+  # opendal — données + queue restent en base). Aucune migration entre
+  # backends : on choisit son tier à l'installation.
   firmware:
     storage:
       backend: {{ get_env(name="STORAGE_BACKEND", default="db") }}
       s3_endpoint: {{ get_env(name="PNEX_S3_ENDPOINT", default="") }}
       s3_bucket: {{ get_env(name="PNEX_S3_BUCKET", default="") }}
       s3_region: {{ get_env(name="PNEX_S3_REGION", default="") }}
+      # Credentials injectés par secrets manager (SOPS/age) — jamais dans
+      # la config commitée (secret masqué dans les Debug/logs du serveur).
+      s3_access_key: {{ get_env(name="PNEX_S3_ACCESS_KEY", default="") }}
+      s3_secret_key: {{ get_env(name="PNEX_S3_SECRET_KEY", default="") }}
       s3_path_style: {{ get_env(name="PNEX_S3_PATH_STYLE", default="false") }}
     pio_cmd: {{ get_env(name="PNEX_PIO_CMD", default="pio") }}
     esptool_cmd: {{ get_env(name="PNEX_ESPTOOL_CMD", default="esptool") }}

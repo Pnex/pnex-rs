@@ -1,4 +1,5 @@
-# Infra de développement PNEX — PostgreSQL 18 + Keycloak 26 + OpenObserve.
+# Infra de développement PNEX — PostgreSQL 18 + Keycloak 26 + OpenObserve +
+# RustFS (S3-compatible, tier industriel D5 v2).
 # Usage : docker compose up -d
 # Le backend lit DATABASE_URL (voir .env.example).
 
@@ -54,6 +55,47 @@ services:
     volumes:
       - pnex-o2data:/data
 
+  # S3-compatible pour le tier industriel du stockage firmware (D5 v2) —
+  # tests e2e du S3Store (s3_cycle_reel, bucket pnex-test) et runs locaux
+  # STORAGE_BACKEND=s3 (bucket pnex). API :9000, console web :9001
+  # (rustfsadmin/rustfsadmin par défaut).
+  rustfs:
+    image: rustfs/rustfs:1.0.0-rc.2
+    container_name: pnex-rustfs
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - pnex-rustfsdata:/data
+
+  # One-shot : crée les buckets au premier démarrage (retente tant que
+  # rustfs n'écoute pas — pas de healthcheck sur l'image). AWS CLI plutôt
+  # que mc : aucun produit MinIO dans la stack (licence).
+  rustfs-init:
+    image: amazon/aws-cli:2.27.49
+    container_name: pnex-rustfs-init
+    depends_on:
+      - rustfs
+    restart: "no"
+    environment:
+      AWS_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      AWS_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: >
+      sh -c '
+      until aws --endpoint-url http://rustfs:9000 s3 ls >/dev/null 2>&1;
+      do echo "rustfs pas prêt, nouvelle tentative…"; sleep 1; done;
+      aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket pnex 2>/dev/null
+      || echo "pnex : existe déjà";
+      aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket pnex-test 2>/dev/null
+      || echo "pnex-test : existe déjà";
+      echo "buckets pnex + pnex-test prêts"
+      '
+
 volumes:
   pnex-pgdata:
   pnex-o2data:
+  pnex-rustfsdata:

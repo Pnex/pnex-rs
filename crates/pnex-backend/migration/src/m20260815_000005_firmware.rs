@@ -19,7 +19,7 @@ impl MigrationTrait for Migration {
                 ("device_id", ColType::StringLenNull(255)),
                 ("success", ColType::BooleanWithDefault(false)),
                 ("build_phase", ColType::StringLenNull(255)),
-                // Clé d'artefact dans l'ArtifactStore (MinIO/S3, D5) —
+                // Clé d'artefact dans l'ArtifactStore (S3-compatible, D5) —
                 // remplie par le worker de build (Phase 6).
                 ("firmware_bin_s3_key", ColType::StringLenNull(255)),
             ],

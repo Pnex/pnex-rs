@@ -1,13 +1,11 @@
-//! Magasin d'artefacts (D5 v2) : abstraction à backends — `db` (base de
-//! données, implémenté côté pnex-backend, défaut des tiers sqlite/postgres)
-//! et `s3` (cloud industriel, **différé** : plomberie de configuration
-//! seulement, méthodes `NotImplemented`). Cette crate reste volontairement
-//! sans dépendance DB : les implémentations réelles vivent dans le backend,
-//! [`InMemoryStore`] sert aux tests du pipeline.
+//! Magasin d'artefacts (D5 v2) : l'abstraction only — les implémentations
+//! réelles (`db` sur sqlite/postgres, `s3` via opendal) vivent côté
+//! pnex-backend ; cette crate reste volontairement sans dépendance DB ni
+//! cloud, [`InMemoryStore`] sert aux tests du pipeline.
 //!
 //! Clés logiques D6 : `org_{id}/firmware/{device_id}-firmware.bin`. Les
 //! octets transitent en RAM (binaires fusionnés de 1–4 Mo ; hypothèse
-//! documentée < ~50 Mo) — mappe 1:1 sur Put/GetObject S3 plus tard.
+//! documentée < ~50 Mo) — mappe 1:1 sur les BLOB SQL et Put/GetObject S3.
 
 use std::collections::HashMap;
 
@@ -71,43 +69,6 @@ impl ArtifactStore for InMemoryStore {
             .lock()
             .expect("InMemoryStore verrou empoisonné")
             .contains_key(key))
-    }
-}
-
-/// Backend S3 (ou MinIO compatible) — **différé** (D5 v2, tier industriel) :
-/// la plomberie de configuration existe pour valider les réglages maintenant,
-/// les opérations renvoient [`BuildError::NotImplemented`].
-pub struct S3Store {
-    pub endpoint: String,
-    pub bucket: String,
-    pub region: String,
-    pub path_style: bool,
-}
-
-#[async_trait]
-impl ArtifactStore for S3Store {
-    async fn put(&self, _key: &str, _bytes: &[u8]) -> Result<(), BuildError> {
-        Err(BuildError::NotImplemented(
-            "S3 put non implémenté (D5 — tier industriel, tranche ultérieure)".into(),
-        ))
-    }
-
-    async fn get(&self, _key: &str) -> Result<Vec<u8>, BuildError> {
-        Err(BuildError::NotImplemented(
-            "S3 get non implémenté (D5 — tier industriel, tranche ultérieure)".into(),
-        ))
-    }
-
-    async fn delete(&self, _key: &str) -> Result<(), BuildError> {
-        Err(BuildError::NotImplemented(
-            "S3 delete non implémenté (D5 — tier industriel, tranche ultérieure)".into(),
-        ))
-    }
-
-    async fn exists(&self, _key: &str) -> Result<bool, BuildError> {
-        Err(BuildError::NotImplemented(
-            "S3 exists non implémenté (D5 — tier industriel, tranche ultérieure)".into(),
-        ))
     }
 }
 
@@ -182,27 +143,5 @@ mod tests {
         );
         assert_eq!(sanitize_segment(".."), "_");
         assert_eq!(sanitize_segment("."), "_");
-    }
-
-    /// S3 : plomberie présente, opérations explicitement différées.
-    #[tokio::test]
-    async fn s3_differe() {
-        let store = S3Store {
-            endpoint: "http://minio:9000".into(),
-            bucket: "pnex".into(),
-            region: "fr-par".into(),
-            path_style: true,
-        };
-        for res in [
-            store.put("k", b"x").await.map(|_| ()),
-            store.get("k").await.map(|_| ()),
-            store.delete("k").await,
-            store.exists("k").await.map(|_| ()),
-        ] {
-            assert!(
-                matches!(res, Err(BuildError::NotImplemented(_))),
-                "S3 doit être explicitement différé"
-            );
-        }
     }
 }

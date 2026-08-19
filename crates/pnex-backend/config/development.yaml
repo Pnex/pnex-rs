@@ -103,8 +103,9 @@ settings:
   # Source du firmware : embarquée dans le binaire (firmware/ du monorepo,
   # compilée dedans — aucune config). Artefacts en base par défaut (D5 v2,
   # table firmware_artifacts) ; STORAGE_BACKEND surcharge storage.backend.
-  # S3 = tier industriel, plomberie différée. Aucune migration entre
-  # backends : on choisit son tier à l'installation.
+  # S3 = tier industriel (artefacts sur S3-compatible via opendal, données
+  # + queue restent en base). Aucune migration entre backends : on choisit
+  # son tier à l'installation.
   #
   # Tier hobbyist sqlite (tout-en-un : données + artefacts + queue dans un
   # seul fichier, mono-pod) :
@@ -115,6 +116,10 @@ settings:
       s3_endpoint: {{ get_env(name="PNEX_S3_ENDPOINT", default="") }}
       s3_bucket: {{ get_env(name="PNEX_S3_BUCKET", default="") }}
       s3_region: {{ get_env(name="PNEX_S3_REGION", default="") }}
+      # Credentials jamais commités — env/secrets manager uniquement
+      # (le secret est masqué dans les Debug/logs du serveur).
+      s3_access_key: {{ get_env(name="PNEX_S3_ACCESS_KEY", default="") }}
+      s3_secret_key: {{ get_env(name="PNEX_S3_SECRET_KEY", default="") }}
       s3_path_style: {{ get_env(name="PNEX_S3_PATH_STYLE", default="false") }}
     # Machine de dev : `uv run pio` dans le dépôt firmware (sinon `pio`).
     pio_cmd: {{ get_env(name="PNEX_PIO_CMD", default="pio") }}

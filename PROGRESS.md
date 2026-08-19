@@ -428,6 +428,28 @@ de sujets Django).
 
 ## Journal
 
+- 2026-08-19 : **Backend S3 réel — Phase C de D5 v2 (tier industriel)**.
+  `S3Store` sur opendal 0.57 (`services-s3` direct, pas la feature loco
+  `storage-aws-s3` — pas d'adressage path-style exposé, requis pour
+  RustFS & co ; même version que loco → un seul opendal-core) :
+  put/get/delete/exists → Operator write/read/delete/stat, layer Retry,
+  NotFound opendal → `BuildError::NotFound`. Credentials
+  `PNEX_S3_ACCESS_KEY`/`PNEX_S3_SECRET_KEY` (secret masqué dans le Debug
+  de `FirmwareSettings`) ; région défaut `us-east-1` (ignorée par
+  RustFS) ; **path-style = défaut opendal 0.57** (`enable_path_style` a
+  disparu — `PNEX_S3_PATH_STYLE=false` = opt-in host virtuel AWS).
+  Validation à la construction : bucket/endpoint/credentials requis →
+  erreur explicite, pas d'opé silencieusement cassées. Stub `S3Store`
+  du builder supprimé (l'implé vit côté backend, crate builder sans
+  dépendance cloud) + variante `BuildError::NotImplemented` retirée.
+  Tests : validation config sans réseau + e2e `#[ignore]` **passée
+  contre un vrai RustFS** (cycle put/écrasement/delete idempotent/
+  NotFound). Stack dev : service `rustfs` (+ init AWS CLI créant les
+  buckets `pnex`/`pnex-test`) dans compose.yaml — tier s3 testable
+  localement. **MinIO écarté du projet** (licence devenue inacceptable
+  pour nous — décision user) : aucune dépendance ni image MinIO, le
+  S3-compatible de référence est RustFS. Docs : firmware-build.md (tier
+  s3), inventory D5, .env.example.
 - 2026-08-19 : **Artefacts firmware en base + bascule postgres/sqlite
   (D5 v2 — trois tiers de déploiement, décision user)**. Backend `db` par
   défaut (`services/artifact_store.rs` + table `firmware_artifacts` :

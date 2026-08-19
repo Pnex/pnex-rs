@@ -30,9 +30,9 @@
 >   (table `firmware_artifacts`, backend `db` par défaut, implémentation
 >   `services/artifact_store.rs` côté backend — upsert `ON CONFLICT (key)`,
 >   zéro artefact orphelin, plafond défensif 50 Mo). Backend `local` (FS)
->   **supprimé**. `s3` = tier industriel, toujours différé (`NotImplemented`),
->   sélection `STORAGE_BACKEND=db|s3` (env) surchargeant la config.
->   Trois tiers de déploiement :
+>   **supprimé**. `s3` = tier industriel **implémenté** (Phase C, opendal —
+>   cf. ci-dessous), sélection `STORAGE_BACKEND=db|s3` (env) surchargeant
+>   la config. Trois tiers de déploiement :
 >   - **sqlite** (hobbyiste) : tout (données + artefacts + queue loco
 >     `sqlt_loco_queue`) dans un seul fichier — `DATABASE_URL=sqlite://…?mode=rwc`,
 >     bascule one-knob (le `queue.kind` des yaml suit le schéma de l'URI via
@@ -41,9 +41,15 @@
 >   - **postgres** (scalable) : tout en PG — pods API **stateless**, n'importe
 >     quel réplica sert le download (le pod worker reste stateful : toolchain
 >     pio + cache `~/.platformio`, inhérent à la compilation) ;
->   - **s3** (industriel) : artefacts sur S3-compatible, data/queue en PG ou
->     sqlite. **⚠ Aucun système de migration/réconciliation entre tiers** :
->     on choisit à l'installation, changer en cours de route = table rase ou
+>   - **s3** (industriel) : artefacts sur S3-compatible (AWS, RustFS,
+>     Scaleway…) via opendal 0.57 — data/queue restent en PG ou sqlite. Config
+>     `PNEX_S3_{ENDPOINT,BUCKET,REGION,ACCESS_KEY,SECRET_KEY,PATH_STYLE}` ;
+>     path-style = défaut (RustFS/auto-hébergé ; `PATH_STYLE=false` = host virtuel
+>     AWS), région défaut `us-east-1`, validation à la construction (config
+>     incomplète → erreur explicite). Stack dev : service `rustfs` dans
+>     compose.yaml (buckets `pnex`/`pnex-test` auto-créés). **⚠ Aucun
+>     système de migration/réconciliation entre tiers** : on choisit à
+>     l'installation, changer en cours de route = table rase ou
 >     export-import manuel.
 > - logs : `tracing` serveur + queue des 30 dernières lignes dans l'erreur
 >   du record — le stream des logs vers OpenObserve est **différé** ;
@@ -71,7 +77,7 @@
   **sous-process** (`tokio::process::Command`), stream les logs vers
   OpenObserve, dépose l'artefact `.bin` dans l'`ArtifactStore` (D5 v2 :
   backend `db` par défaut — table `firmware_artifacts` ; `s3` = tier
-  industriel différé), pose status=succeeded/failed.
+  industriel via opendal), pose status=succeeded/failed.
 - `num_workers` bas (1–2) par process ; scaling horizontal (réplicas), pas
   vertical. Timeout dur 10–15 min, retries bornés (échecs compilation
   déterministes). Cancellation tokens pour l'annulation utilisateur.
@@ -157,7 +163,7 @@ firmware:build-docker`).
     **snippet de configuration** du code source pour guider l'utilisateur.
 - Artefact `.bin` → `ArtifactStore` (D5 v2 : extraction de la source
   embarquée → `pio run` → `esptool merge-bin` → backend `db` par défaut,
-  `s3` pour le tier industriel), timeout
+  `s3` via opendal pour le tier industriel), timeout
   dur, secrets scopés org. Le workflow CI `firmware`
   (`.github/workflows/firmware.yml`) compile les projets predefined à
   chaque changement de `firmware/` — « une version pnex = un firmware qui

@@ -5,8 +5,8 @@
 //! dedans (`include_dir!`, convergence monorepo) — une version du serveur
 //! build exactement la version du firmware qui l'accompagne. Pipeline :
 //! extraction de la source embarquée → `pio run` → `esptool merge-bin` →
-//! dépôt de l'artefact dans un [`ArtifactStore`] (décision D5 v2 : backend
-//! `db` par défaut, implémenté côté backend ; `s3` = tier industriel différé).
+//! dépôt de l'artefact dans un [`ArtifactStore`] (décision D5 v2 : backends
+//! `db` et `s3`, implémentés côté pnex-backend ; ici seul le contrat).
 //!
 //! Contrat de build du firmware (vérifié, cf.
 //! `docs/architecture/firmware-build.md` §2) : la config device passe en
@@ -25,7 +25,7 @@ mod store;
 pub use env::{child_env, BuildSecrets};
 pub use merge::{merge_args, merge_offsets};
 pub use pipeline::{run_build, BuildConfig, DeviceSpec};
-pub use store::{artifact_key, sanitize_segment, ArtifactStore, InMemoryStore, S3Store};
+pub use store::{artifact_key, sanitize_segment, ArtifactStore, InMemoryStore};
 
 /// Étapes d'un build firmware (tracing par étape).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,8 +48,6 @@ pub enum BuildError {
     NotFound(String),
     #[error("magasin d'artefacts: {0}")]
     Store(String),
-    #[error("backend non implémenté: {0}")]
-    NotImplemented(String),
 }
 
 /// Résultat d'un build réussi — chemin logique dans l'`ArtifactStore`.
