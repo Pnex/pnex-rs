@@ -1,4 +1,5 @@
 pub mod builds;
+pub mod dashboard;
 pub mod devices;
 pub mod health;
 pub mod oauth2;

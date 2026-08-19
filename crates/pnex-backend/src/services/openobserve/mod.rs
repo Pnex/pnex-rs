@@ -23,7 +23,7 @@ pub mod provisioning;
 pub mod sink;
 
 pub use client::Client;
-pub use provisioning::{ensure_org_credentials, OrgCredentials};
+pub use provisioning::{ensure_org_credentials, provisioned_credentials, OrgCredentials};
 pub use sink::spawn_batcher;
 
 use loco_rs::config::Config;

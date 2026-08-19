@@ -613,3 +613,84 @@ async fn prom_query_fallback_root_si_passcode_refuse() {
     assert!(basics[0].starts_with("pnex-ingest+org7@pnex.local:"));
     assert_eq!(basics[1], "root@pnex.local:whatever");
 }
+
+/// Summary dashboard complet : PNEX_O2_URL active la section openobserve
+/// de test.yaml (Tera), l'org provisionnée + mesures dans le mock →
+/// available:true avec les dernières mesures triées et dédoublonnées par
+/// série. Harnais dédié : la variable doit être posée AVANT le boot.
+#[tokio::test]
+#[serial]
+async fn dashboard_summary_complet_contre_mock() {
+    let kc = common::spawn_mock_keycloak().await;
+    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+    unsafe { std::env::set_var("KEYCLOAK_URL", &kc) };
+    let alice = common::valid_token(
+        &kc,
+        "00000000-0000-0000-0000-00000000000a",
+        "alice",
+        "alice@example.com",
+    );
+    let (o2_base, mock) = spawn_mock_o2().await;
+    unsafe { std::env::set_var("PNEX_O2_URL", &o2_base) };
+    let config: RequestConfig = RequestConfigBuilder::new().build();
+    loco_rs::testing::request::request_with_config::<App, _, _>(
+        config,
+        move |server, ctx| async move {
+            common::seed_catalogue(&ctx.db).await;
+            // Le boot a lu la variable — on la retire pour ne pas fuiter
+            // sur les tests suivants du binaire.
+            unsafe { std::env::remove_var("PNEX_O2_URL") };
+
+            let org = personal_org(&server, &alice).await;
+            // Provisionne l'org O2 (comme la première donnée le ferait)
+            // puis pousse des mesures côté mock.
+            let client = o2_client(&o2_base);
+            let creds = ensure_org_credentials(&ctx.db, &client, org)
+                .await
+                .expect("provision");
+            {
+                let mut guard = mock.lock().unwrap();
+                for (metric, value, ts_ms) in [
+                    ("read_temperature", 21.5, 1_755_600_000_000i64),
+                    ("read_temperature", 22.0, 1_755_600_030_000),
+                    ("soil_moisture", 42.0, 1_755_600_060_000),
+                ] {
+                    guard.ingested.push((
+                        creds.o2_org.clone(),
+                        String::new(),
+                        metric.into(),
+                        vec![("device_id".into(), "esp-001".into())],
+                        value,
+                        ts_ms,
+                    ));
+                }
+            }
+
+            let res = server
+                .get("/api/v1/dashboard/summary")
+                .add_header("Authorization", format!("Bearer {alice}"))
+                .add_header("X-Org-Id", org.to_string())
+                .await;
+            assert_eq!(res.status_code(), 200);
+            let body: serde_json::Value = res.json();
+            assert_eq!(body["telemetry"]["available"], true);
+            let latest = body["telemetry"]["latest"].as_array().unwrap();
+            assert_eq!(latest.len(), 2, "une ligne par (métrique, device)");
+            assert_eq!(latest[0]["metric"], "soil_moisture", "tri ts décroissant");
+            assert_eq!(latest[0]["value"], 42.0);
+            assert_eq!(latest[0]["device_id"], "esp-001");
+            assert!(!latest[0]["timestamp"].as_str().unwrap_or("").is_empty());
+            assert_eq!(
+                latest[1]["value"], 22.0,
+                "dernier échantillon de read_temperature"
+            );
+
+            // Auth réelle : le Basic passcode a suffi (une tentative, pas
+            // de fallback root).
+            let basics = mock.lock().unwrap().query_basics.clone();
+            assert_eq!(basics.len(), 1);
+            assert!(basics[0].starts_with(&creds.email_passcode.split(':').next().unwrap()));
+        },
+    )
+    .await;
+}

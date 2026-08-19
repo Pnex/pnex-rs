@@ -150,6 +150,25 @@ pub async fn ensure_org_credentials(
     }
 }
 
+/// Credentials de l'org **en lecture seule** — `None` si l'org n'est pas
+/// encore provisionnée. Doctrine du module : jamais de provisioning sur le
+/// chemin HTTP utilisateur (dashboard) ; une org sans données se voit
+/// simplement `telemetry.available == false`.
+pub async fn provisioned_credentials(
+    db: &DatabaseConnection,
+    org_id: i64,
+) -> Result<Option<OrgCredentials>, String> {
+    let row = row_of(db, org_id).await.map_err(|e| format!("db : {e}"))?;
+    Ok(row
+        .filter(|r| r.status == OpenobserveOrgStatus::Provisioned)
+        .and_then(|r| {
+            r.ingestion_token.map(|token| OrgCredentials {
+                o2_org: r.o2_org,
+                email_passcode: token,
+            })
+        }))
+}
+
 async fn provision(
     _db: &DatabaseConnection,
     client: &Client,
