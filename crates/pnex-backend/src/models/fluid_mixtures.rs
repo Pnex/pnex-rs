@@ -1,5 +1,5 @@
+pub use super::_entities::fluid_mixtures::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
-pub use super::_entities::fluid_mixtures::{ActiveModel, Model, Entity};
 pub type FluidMixtures = Entity;
 
 #[async_trait::async_trait]

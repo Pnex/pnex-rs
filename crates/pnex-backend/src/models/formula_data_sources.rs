@@ -1,5 +1,5 @@
+pub use super::_entities::formula_data_sources::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
-pub use super::_entities::formula_data_sources::{ActiveModel, Model, Entity};
 pub type FormulaDataSources = Entity;
 
 #[async_trait::async_trait]

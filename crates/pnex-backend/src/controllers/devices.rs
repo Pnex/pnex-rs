@@ -31,12 +31,12 @@ use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine as _;
 use loco_rs::prelude::*;
 use rand::RngCore;
+use sea_orm::sea_query::extension::postgres::PgExpr;
+use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ExprTrait, PaginatorTrait,
     QueryFilter, QueryOrder, QuerySelect, QueryTrait, Set, TransactionTrait,
 };
-use sea_orm::sea_query::Expr;
-use sea_orm::sea_query::extension::postgres::PgExpr;
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -45,7 +45,7 @@ use crate::auth::{AuthUser, OrgContext};
 use crate::models::_entities::{
     build_records, device_capabilities, device_registries, device_states, device_tokens,
     device_types, mcu_boards, predefined_device_capabilities, predefined_devices,
-    subscription_tiers, sea_orm_active_enums::CapabilityMode,
+    sea_orm_active_enums::CapabilityMode, subscription_tiers,
 };
 
 // ─────────────────────────── Aides ───────────────────────────
@@ -69,20 +69,12 @@ fn forbidden(msg: &str) -> Error {
 
 /// Réponse exacte des vues Django : `{"detail": "..."}`.
 fn detail_status(status: StatusCode, msg: &str) -> Response {
-    (
-        status,
-        format::json(serde_json::json!({ "detail": msg })),
-    )
-        .into_response()
+    (status, format::json(serde_json::json!({ "detail": msg }))).into_response()
 }
 
 /// Erreur champ-par-champ, forme DRF : `{"<champ>": "..."}`.
 fn field_status(status: StatusCode, field: &str, msg: &str) -> Response {
-    (
-        status,
-        format::json(serde_json::json!({ field: msg })),
-    )
-        .into_response()
+    (status, format::json(serde_json::json!({ field: msg }))).into_response()
 }
 
 fn random_bytes(n: usize) -> Vec<u8> {
@@ -120,9 +112,7 @@ pub(crate) async fn capabilities_of(
     }
     let rows = predefined_device_capabilities::Entity::find()
         .find_also_related(device_capabilities::Entity)
-        .filter(
-            predefined_device_capabilities::Column::PredefinedDeviceId.is_in(pd_ids.to_vec()),
-        )
+        .filter(predefined_device_capabilities::Column::PredefinedDeviceId.is_in(pd_ids.to_vec()))
         .all(db)
         .await
         .map_err(|_| Error::InternalServerError)?;
@@ -267,7 +257,10 @@ async fn ensure_token(
         if !existing.is_active {
             let mut active: device_tokens::ActiveModel = existing.into();
             active.is_active = Set(true);
-            return active.update(db).await.map_err(|_| Error::InternalServerError);
+            return active
+                .update(db)
+                .await
+                .map_err(|_| Error::InternalServerError);
         }
         return Ok(existing);
     }
@@ -354,7 +347,10 @@ async fn list(
         .into_iter()
         .map(|t| (t.id, t.name))
         .collect();
-    let pd_ids: Vec<i64> = rows.iter().filter_map(|(_, pd)| pd.as_ref().map(|p| p.id)).collect();
+    let pd_ids: Vec<i64> = rows
+        .iter()
+        .filter_map(|(_, pd)| pd.as_ref().map(|p| p.id))
+        .collect();
     let caps = capabilities_of(&ctx.db, &pd_ids).await?;
     let tokens: HashMap<i64, device_tokens::Model> = device_tokens::Entity::find()
         .filter(
@@ -382,7 +378,9 @@ async fn list(
 
     let mut devices = Vec::new();
     for (device, predefined) in rows {
-        let Some(predefined) = predefined else { continue };
+        let Some(predefined) = predefined else {
+            continue;
+        };
         let type_name = type_names
             .get(&predefined.device_type_id)
             .map(String::as_str)
@@ -400,7 +398,10 @@ async fn list(
                 continue;
             }
         }
-        if q.device_id.as_deref().is_some_and(|v| v != device.device_id) {
+        if q.device_id
+            .as_deref()
+            .is_some_and(|v| v != device.device_id)
+        {
             continue;
         }
         match q.active.as_deref().map(str::to_ascii_lowercase).as_deref() {
@@ -549,7 +550,11 @@ async fn create(
                 "This device is already registered and active.",
             ));
         }
-        let txn = ctx.db.begin().await.map_err(|_| Error::InternalServerError)?;
+        let txn = ctx
+            .db
+            .begin()
+            .await
+            .map_err(|_| Error::InternalServerError)?;
         let mut active: device_registries::ActiveModel = existing.into();
         active.active = Set(true);
         let device = active
@@ -597,9 +602,12 @@ async fn create(
     }
 
     // Création inactive + token (transaction : jamais de device sans token).
-    let allow_dynamic =
-        matches!(predefined.name.as_str(), "custom_sensor" | "custom_device");
-    let txn = ctx.db.begin().await.map_err(|_| Error::InternalServerError)?;
+    let allow_dynamic = matches!(predefined.name.as_str(), "custom_sensor" | "custom_device");
+    let txn = ctx
+        .db
+        .begin()
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     let device = device_registries::ActiveModel {
         device_id: Set(device_id),
         metadata: Set(params.metadata),
@@ -867,8 +875,11 @@ async fn predefined_list(
     }
     if let Some(p) = &pretty_f {
         query = query.filter(
-            Expr::col((predefined_devices::Entity, predefined_devices::Column::PrettyName))
-                .ilike(format!("%{p}%")),
+            Expr::col((
+                predefined_devices::Entity,
+                predefined_devices::Column::PrettyName,
+            ))
+            .ilike(format!("%{p}%")),
         );
     }
     if let Some(r) = &rev_f {
@@ -883,11 +894,7 @@ async fn predefined_list(
             .column(predefined_device_capabilities::Column::PredefinedDeviceId);
         query = query.filter(predefined_devices::Column::Id.in_subquery(sub.into_query()));
     }
-    if let Some(s) = search_f
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
+    if let Some(s) = search_f.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         // Recherche OU multi-champs, poussée en SQL (ILIKE PG = insensible à
         // la casse) pour rester compatible avec le LIMIT/OFFSET base.
         let pat = format!("%{s}%");
@@ -897,44 +904,59 @@ async fn predefined_list(
                     .ilike(pat.clone()),
             )
             .add(
-                Expr::col((predefined_devices::Entity, predefined_devices::Column::PrettyName))
-                    .ilike(pat.clone()),
+                Expr::col((
+                    predefined_devices::Entity,
+                    predefined_devices::Column::PrettyName,
+                ))
+                .ilike(pat.clone()),
             )
             .add(
-                Expr::col((predefined_devices::Entity, predefined_devices::Column::Description))
-                    .ilike(pat.clone()),
+                Expr::col((
+                    predefined_devices::Entity,
+                    predefined_devices::Column::Description,
+                ))
+                .ilike(pat.clone()),
             )
-            .add(predefined_devices::Column::DeviceTypeId.in_subquery(
-                device_types::Entity::find()
-                    .filter(
-                        Expr::col((device_types::Entity, device_types::Column::Name))
-                            .ilike(pat.clone()),
-                    )
-                    .select_only()
-                    .column(device_types::Column::Id)
-                    .into_query(),
-            ))
-            .add(predefined_devices::Column::BoardId.in_subquery(
-                mcu_boards::Entity::find()
-                    .filter(
-                        Expr::col((mcu_boards::Entity, mcu_boards::Column::Name))
-                            .ilike(pat.clone()),
-                    )
-                    .select_only()
-                    .column(mcu_boards::Column::Id)
-                    .into_query(),
-            ))
-            .add(predefined_devices::Column::Id.in_subquery(
-                predefined_device_capabilities::Entity::find()
-                    .left_join(device_capabilities::Entity)
-                    .filter(
-                        Expr::col((device_capabilities::Entity, device_capabilities::Column::Name))
+            .add(
+                predefined_devices::Column::DeviceTypeId.in_subquery(
+                    device_types::Entity::find()
+                        .filter(
+                            Expr::col((device_types::Entity, device_types::Column::Name))
+                                .ilike(pat.clone()),
+                        )
+                        .select_only()
+                        .column(device_types::Column::Id)
+                        .into_query(),
+                ),
+            )
+            .add(
+                predefined_devices::Column::BoardId.in_subquery(
+                    mcu_boards::Entity::find()
+                        .filter(
+                            Expr::col((mcu_boards::Entity, mcu_boards::Column::Name))
+                                .ilike(pat.clone()),
+                        )
+                        .select_only()
+                        .column(mcu_boards::Column::Id)
+                        .into_query(),
+                ),
+            )
+            .add(
+                predefined_devices::Column::Id.in_subquery(
+                    predefined_device_capabilities::Entity::find()
+                        .left_join(device_capabilities::Entity)
+                        .filter(
+                            Expr::col((
+                                device_capabilities::Entity,
+                                device_capabilities::Column::Name,
+                            ))
                             .ilike(pat),
-                    )
-                    .select_only()
-                    .column(predefined_device_capabilities::Column::PredefinedDeviceId)
-                    .into_query(),
-            ));
+                        )
+                        .select_only()
+                        .column(predefined_device_capabilities::Column::PredefinedDeviceId)
+                        .into_query(),
+                ),
+            );
         query = query.filter(text_or_refs);
     }
 
@@ -966,11 +988,7 @@ async fn predefined_list(
         .into_iter()
         .map(|b| (b.id, b.name))
         .collect();
-    let caps = capabilities_of(
-        &ctx.db,
-        &rows.iter().map(|p| p.id).collect::<Vec<_>>(),
-    )
-    .await?;
+    let caps = capabilities_of(&ctx.db, &rows.iter().map(|p| p.id).collect::<Vec<_>>()).await?;
 
     let out: Vec<pnex_core::PredefinedDevice> = rows
         .into_iter()
@@ -991,10 +1009,7 @@ async fn predefined_list(
                 .get(&pd.id)
                 .map(|list| list.iter().map(|c| c.name.clone()).collect())
                 .unwrap_or_default(),
-            board: board_names
-                .get(&pd.board_id)
-                .cloned()
-                .unwrap_or_default(),
+            board: board_names.get(&pd.board_id).cloned().unwrap_or_default(),
         })
         .collect();
     format::json(pagination::envelope(
@@ -1010,7 +1025,10 @@ pub fn routes() -> Routes {
     Routes::new()
         .prefix("/api/v1/devices")
         .add("", get(list).post(create))
-        .add("/{id}", get(detail).put(update).patch(update).delete(delete))
+        .add(
+            "/{id}",
+            get(detail).put(update).patch(update).delete(delete),
+        )
 }
 
 /// Routes du catalogue global (préfixe /api/v1 commun).

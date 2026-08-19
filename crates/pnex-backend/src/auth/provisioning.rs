@@ -17,7 +17,8 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::models::_entities::{
-    organization_members, organizations, sea_orm_active_enums::{OrgMemberRole, UiTheme},
+    organization_members, organizations,
+    sea_orm_active_enums::{OrgMemberRole, UiTheme},
     subscription_tiers, user_profiles, users,
 };
 
@@ -39,8 +40,7 @@ pub async fn get_or_create_user(
     db: &DatabaseConnection,
     claims: &Claims,
 ) -> Result<users::Model, ProvisionError> {
-    let kc_uuid =
-        Uuid::parse_str(&claims.sub).map_err(|_| ProvisionError::InvalidSub)?;
+    let kc_uuid = Uuid::parse_str(&claims.sub).map_err(|_| ProvisionError::InvalidSub)?;
 
     if let Some(user) = users::Entity::find()
         .filter(users::Column::KeycloakUuid.eq(kc_uuid))
@@ -50,65 +50,67 @@ pub async fn get_or_create_user(
         return sync_user(db, user, claims).await;
     }
 
-    let email = claims
-        .email
-        .clone()
-        .ok_or(ProvisionError::MissingEmail)?;
+    let email = claims.email.clone().ok_or(ProvisionError::MissingEmail)?;
     let full_name = claims.display_name();
 
-    db.transaction(|txn| Box::pin(async move {
-        // Re-vérification dans la transaction : deux requêtes simultanées du
-        // même nouvel utilisateur ne doivent produire qu'une ligne users.
-        if let Some(existing) = users::Entity::find()
-            .filter(users::Column::KeycloakUuid.eq(kc_uuid))
-            .one(txn)
-            .await?
-        {
-            return Ok(existing);
-        }
-
-        // Liaison par email : même personne avec un `sub` inconnu (realm
-        // Keycloak réimporté — les users du realm de dev n'ont pas d'id fixe,
-        // migration d'IdP…). `users.email` est unique : on RE-LIE la ligne
-        // existante au lieu d'insérer un doublon (qui violerait la contrainte).
-        if let Some(existing) = users::Entity::find()
-            .filter(users::Column::Email.eq(&email))
-            .one(txn)
-            .await?
-        {
-            let mut active: users::ActiveModel = existing.into();
-            active.keycloak_uuid = Set(Some(kc_uuid));
-            if !full_name.is_empty() {
-                active.full_name = Set(Some(full_name.clone()));
+    db.transaction(|txn| {
+        Box::pin(async move {
+            // Re-vérification dans la transaction : deux requêtes simultanées du
+            // même nouvel utilisateur ne doivent produire qu'une ligne users.
+            if let Some(existing) = users::Entity::find()
+                .filter(users::Column::KeycloakUuid.eq(kc_uuid))
+                .one(txn)
+                .await?
+            {
+                return Ok(existing);
             }
-            let relinked = active.update(txn).await?;
-            tracing::info!(user_id = relinked.id, "utilisateur re-lie par email (sub Keycloak change)");
-            return Ok(relinked);
-        }
 
-        let user = users::ActiveModel {
-            keycloak_uuid: Set(Some(kc_uuid)),
-            email: Set(email),
-            full_name: Set(Some(full_name.clone())),
-            ..Default::default()
-        }
-        .insert(txn)
-        .await?;
+            // Liaison par email : même personne avec un `sub` inconnu (realm
+            // Keycloak réimporté — les users du realm de dev n'ont pas d'id fixe,
+            // migration d'IdP…). `users.email` est unique : on RE-LIE la ligne
+            // existante au lieu d'insérer un doublon (qui violerait la contrainte).
+            if let Some(existing) = users::Entity::find()
+                .filter(users::Column::Email.eq(&email))
+                .one(txn)
+                .await?
+            {
+                let mut active: users::ActiveModel = existing.into();
+                active.keycloak_uuid = Set(Some(kc_uuid));
+                if !full_name.is_empty() {
+                    active.full_name = Set(Some(full_name.clone()));
+                }
+                let relinked = active.update(txn).await?;
+                tracing::info!(
+                    user_id = relinked.id,
+                    "utilisateur re-lie par email (sub Keycloak change)"
+                );
+                return Ok(relinked);
+            }
 
-        user_profiles::ActiveModel {
-            user_id: Set(user.id),
-            language: Set("en".into()),
-            timezone: Set("UTC".into()),
-            theme: Set(UiTheme::Light),
-            ..Default::default()
-        }
-        .insert(txn)
-        .await?;
+            let user = users::ActiveModel {
+                keycloak_uuid: Set(Some(kc_uuid)),
+                email: Set(email),
+                full_name: Set(Some(full_name.clone())),
+                ..Default::default()
+            }
+            .insert(txn)
+            .await?;
 
-        create_personal_org(txn, &user, &full_name).await?;
+            user_profiles::ActiveModel {
+                user_id: Set(user.id),
+                language: Set("en".into()),
+                timezone: Set("UTC".into()),
+                theme: Set(UiTheme::Light),
+                ..Default::default()
+            }
+            .insert(txn)
+            .await?;
 
-        Ok(user)
-    }))
+            create_personal_org(txn, &user, &full_name).await?;
+
+            Ok(user)
+        })
+    })
     .await
     .map_err(|err| match err {
         sea_orm::TransactionError::Connection(db_err) => ProvisionError::Db(db_err),
@@ -136,7 +138,11 @@ async fn sync_user(
 }
 
 /// Org personnelle : tier Free, l'utilisateur en est owner.
-async fn create_personal_org<C>(db: &C, user: &users::Model, display: &str) -> Result<(), sea_orm::DbErr>
+async fn create_personal_org<C>(
+    db: &C,
+    user: &users::Model,
+    display: &str,
+) -> Result<(), sea_orm::DbErr>
 where
     C: sea_orm::ConnectionTrait,
 {

@@ -1,5 +1,5 @@
+pub use super::_entities::device_registries::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
-pub use super::_entities::device_registries::{ActiveModel, Model, Entity};
 pub type DeviceRegistries = Entity;
 
 #[async_trait::async_trait]

@@ -16,7 +16,9 @@ pub enum SessionState {
     Booting,
     LoggedOut,
     /// Boxé : UserInfo est volumineux (clippy large_enum_variant).
-    Authenticated { user: Box<UserInfo> },
+    Authenticated {
+        user: Box<UserInfo>,
+    },
 }
 
 pub static SESSION: GlobalSignal<SessionState> = GlobalSignal::new(|| SessionState::Booting);
@@ -40,7 +42,11 @@ pub async fn boot() {
 pub fn login(user: UserInfo) {
     crate::state::org::restore(&user.orgs);
     apply_profile_language(&user);
-    SESSION.with_mut(|s| *s = SessionState::Authenticated { user: Box::new(user) });
+    SESSION.with_mut(|s| {
+        *s = SessionState::Authenticated {
+            user: Box::new(user),
+        }
+    });
 }
 
 /// Déconnexion : purge locale (tokens + org, la locale est conservée) puis

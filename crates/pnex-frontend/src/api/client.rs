@@ -27,7 +27,8 @@ use crate::storage::{self, KeyValueStorage, KEY_ACCESS_TOKEN, KEY_REFRESH_TOKEN}
 
 const OAUTH_PREFIX: &str = "/api/v1/oauth2";
 
-type RefreshFuture = futures::future::Shared<Pin<Box<dyn Future<Output = Result<(), ApiError>> + 'static>>>;
+type RefreshFuture =
+    futures::future::Shared<Pin<Box<dyn Future<Output = Result<(), ApiError>> + 'static>>>;
 
 thread_local! {
     static HTTP: reqwest::Client = reqwest::Client::new();
@@ -51,9 +52,11 @@ pub async fn request_opt<T: DeserializeOwned>(
         if status == 204 || text.trim().is_empty() {
             return Ok(None);
         }
-        serde_json::from_str(&text).map(Some).map_err(|err| ApiError {
-            message: format!("réponse illisible : {err}"),
-        })
+        serde_json::from_str(&text)
+            .map(Some)
+            .map_err(|err| ApiError {
+                message: format!("réponse illisible : {err}"),
+            })
     } else {
         Err(ApiError {
             message: crate::api::error::extract_message(status, &text),

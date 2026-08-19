@@ -67,12 +67,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .expect("org personnelle")
 }
 
-async fn create_device(
-    server: &axum_test::TestServer,
-    token: &str,
-    org_id: i64,
-    device_id: &str,
-) {
+async fn create_device(server: &axum_test::TestServer, token: &str, org_id: i64, device_id: &str) {
     let res = server
         .post("/api/v1/devices")
         .add_header("Authorization", bearer(token))
@@ -172,9 +167,11 @@ async fn build_reussi_chemin_complet() {
         );
         let content = dl.text();
         let ssid_b64 = base64::engine::general_purpose::STANDARD.encode("coloc");
-        assert!(content.contains(&format!("fixture ssid={ssid_b64}")), "{content}");
-        let host_b64 = base64::engine::general_purpose::STANDARD
-            .encode("dev1.pnex.io");
+        assert!(
+            content.contains(&format!("fixture ssid={ssid_b64}")),
+            "{content}"
+        );
+        let host_b64 = base64::engine::general_purpose::STANDARD.encode("dev1.pnex.io");
         assert!(content.contains(&format!("host={host_b64}")), "{content}");
         // ws_ssl absent du corps → défaut true (wss) propagé au sous-process.
         assert!(content.contains("ssl=true"), "{content}");
@@ -347,7 +344,10 @@ async fn build_timeout() {
         let res = post_build(&server, &env.alice, org, "dev-slow", "sleep").await;
         res.assert_status(axum_test::http::StatusCode::CREATED);
         // Inline : le timeout a déjà couru dans la requête (2 s budget).
-        assert!(started.elapsed().as_secs() >= 2, "le timeout doit avoir couru");
+        assert!(
+            started.elapsed().as_secs() >= 2,
+            "le timeout doit avoir couru"
+        );
 
         let list = records(&server, &env.alice, org, "").await;
         assert_eq!(list["results"][0]["build_phase"], "failed");

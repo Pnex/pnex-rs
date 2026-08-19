@@ -28,14 +28,15 @@ impl KeycloakSettings {
     }
 
     pub fn issuer(&self) -> String {
-        format!("{}/realms/{}", self.base_url.trim_end_matches('/'), self.realm)
+        format!(
+            "{}/realms/{}",
+            self.base_url.trim_end_matches('/'),
+            self.realm
+        )
     }
 
     pub fn jwks_url(&self) -> String {
-        format!(
-            "{}/protocol/openid-connect/certs",
-            self.issuer()
-        )
+        format!("{}/protocol/openid-connect/certs", self.issuer())
     }
 
     pub fn token_endpoint(&self) -> String {

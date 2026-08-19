@@ -13,12 +13,12 @@ use axum::routing::{get, post, put};
 use axum::Router;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
-use prost::Message as _;
 use loco_rs::testing::request::{RequestConfig, RequestConfigBuilder};
 use pnex_backend::app::App;
 use pnex_backend::services::openobserve::{self, ensure_org_credentials, Client};
 use pnex_backend::services::settings::IngestSettings;
 use pnex_backend::services::telemetry::{self, TelemetryPoint};
+use prost::Message as _;
 use serial_test::serial;
 
 // ───────────────────────── Mock OpenObserve ─────────────────────────
@@ -41,7 +41,10 @@ struct MockState {
 
 fn basic_of(header: Option<&str>) -> String {
     // "Basic b64(email:…)" → "email:…"
-    let raw = header.unwrap_or_default().strip_prefix("Basic ").unwrap_or("");
+    let raw = header
+        .unwrap_or_default()
+        .strip_prefix("Basic ")
+        .unwrap_or("");
     String::from_utf8(STANDARD.decode(raw).unwrap_or_default()).unwrap_or_default()
 }
 
@@ -66,9 +69,9 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                             std::iter::once(serde_json::json!({
                                 "identifier": "default", "name": "default"
                             }))
-                            .chain(guard.orgs.iter().map(|(name, id)| {
-                                serde_json::json!({"identifier": id, "name": name})
-                            }))
+                            .chain(guard.orgs.iter().map(
+                                |(name, id)| serde_json::json!({"identifier": id, "name": name}),
+                            ))
                             .collect();
                         axum::Json(serde_json::json!({ "data": data }))
                     }
@@ -155,9 +158,8 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                 move |Path(org): Path<String>, headers: axum::http::HeaderMap| {
                     let s = s.clone();
                     async move {
-                        let basic = basic_of(
-                            headers.get("authorization").and_then(|v| v.to_str().ok()),
-                        );
+                        let basic =
+                            basic_of(headers.get("authorization").and_then(|v| v.to_str().ok()));
                         let (email, password) = basic.split_once(':').unwrap_or(("", ""));
                         let guard = s.lock().unwrap();
                         let auth_ok = guard
@@ -191,21 +193,21 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                       body: axum::body::Bytes| {
                     let s = s.clone();
                     async move {
-                        let basic = basic_of(
-                            headers.get("authorization").and_then(|v| v.to_str().ok()),
-                        );
+                        let basic =
+                            basic_of(headers.get("authorization").and_then(|v| v.to_str().ok()));
                         // Décode snappy + protobuf comme le vrai O2.
                         let raw = snap::raw::Decoder::new()
                             .decompress_vec(&body)
                             .unwrap_or_default();
-                        let req = pnex_backend::services::openobserve::promwrite::WriteRequest::decode(
-                            raw.as_slice(),
-                        )
-                        .unwrap_or_else(|_| {
-                            pnex_backend::services::openobserve::promwrite::WriteRequest {
-                                timeseries: vec![],
-                            }
-                        });
+                        let req =
+                            pnex_backend::services::openobserve::promwrite::WriteRequest::decode(
+                                raw.as_slice(),
+                            )
+                            .unwrap_or_else(|_| {
+                                pnex_backend::services::openobserve::promwrite::WriteRequest {
+                                    timeseries: vec![],
+                                }
+                            });
                         let mut guard = s.lock().unwrap();
                         for ts in req.timeseries {
                             let metric = ts
@@ -319,13 +321,20 @@ async fn provisioning_idempotent() {
         let org = personal_org(&server, &auth).await;
         let client = o2_client(&o2_base);
 
-        let first = ensure_org_credentials(&ctx.db, &client, org).await.expect("provision 1");
-        let second = ensure_org_credentials(&ctx.db, &client, org).await.expect("provision 2");
+        let first = ensure_org_credentials(&ctx.db, &client, org)
+            .await
+            .expect("provision 1");
+        let second = ensure_org_credentials(&ctx.db, &client, org)
+            .await
+            .expect("provision 2");
         assert_eq!(first.o2_org, second.o2_org);
 
         {
             let guard = mock.lock().unwrap();
-            assert_eq!(guard.org_creates, 1, "org créée une seule fois (lookup par nom)");
+            assert_eq!(
+                guard.org_creates, 1,
+                "org créée une seule fois (lookup par nom)"
+            );
             assert_eq!(guard.user_creates, 1, "user créé une seule fois");
             assert_eq!(guard.resets, 0);
         }
@@ -336,9 +345,10 @@ async fn provisioning_idempotent() {
         );
 
         // Ligne en base : correlée org ↔ org O2 ↔ token, provisioned.
+        use pnex_backend::models::_entities::{
+            openobserve_orgs, sea_orm_active_enums::OpenobserveOrgStatus,
+        };
         use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-        use pnex_backend::models::_entities::{openobserve_orgs,
-            sea_orm_active_enums::OpenobserveOrgStatus};
         let row = openobserve_orgs::Entity::find()
             .filter(openobserve_orgs::Column::OrgId.eq(org))
             .one(&ctx.db)
@@ -347,7 +357,10 @@ async fn provisioning_idempotent() {
             .expect("row");
         assert_eq!(row.status, OpenobserveOrgStatus::Provisioned);
         assert_eq!(row.o2_org, first.o2_org);
-        assert_eq!(row.ingestion_token.as_deref(), Some(first.email_passcode.as_str()));
+        assert_eq!(
+            row.ingestion_token.as_deref(),
+            Some(first.email_passcode.as_str())
+        );
     })
     .await;
 }
@@ -360,24 +373,28 @@ async fn provisioning_recupere_ligne_perdue() {
     with_app(|server, auth, ctx, o2_base, mock| async move {
         let org = personal_org(&server, &auth).await;
         let client = o2_client(&o2_base);
-        let first = ensure_org_credentials(&ctx.db, &client, org).await.expect("provision");
+        let first = ensure_org_credentials(&ctx.db, &client, org)
+            .await
+            .expect("provision");
 
         // Simule la perte de la ligne (O2 intact).
-        sea_orm::ConnectionTrait::execute_unprepared(
-            &ctx.db,
-            "DELETE FROM openobserve_orgs",
-        )
-        .await
-        .expect("perte ligne");
+        sea_orm::ConnectionTrait::execute_unprepared(&ctx.db, "DELETE FROM openobserve_orgs")
+            .await
+            .expect("perte ligne");
 
-        let second = ensure_org_credentials(&ctx.db, &client, org).await.expect("re-provision");
+        let second = ensure_org_credentials(&ctx.db, &client, org)
+            .await
+            .expect("re-provision");
         assert_eq!(first.o2_org, second.o2_org, "même org retrouvée par nom");
         assert_eq!(first.email_passcode, second.email_passcode);
 
         let guard = mock.lock().unwrap();
         assert_eq!(guard.org_creates, 1, "aucune 2e org créée côté O2");
         assert_eq!(guard.user_creates, 1);
-        assert_eq!(guard.resets, 1, "password réinitialisé pour reprendre la main");
+        assert_eq!(
+            guard.resets, 1,
+            "password réinitialisé pour reprendre la main"
+        );
     })
     .await;
 }

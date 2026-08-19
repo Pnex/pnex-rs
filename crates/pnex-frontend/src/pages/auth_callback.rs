@@ -54,7 +54,12 @@ pub fn AuthCallback(code: String, error: String, error_description: String) -> E
 /// serveur, tel quel (convention projet) ; les conditions purement locales
 /// (code/verifier absents) renvoient une chaîne vide, la page affiche alors
 /// le libellé générique.
-async fn run(code: &str, error: &str, error_description: &str, nav: dioxus::router::Navigator) -> Result<(), String> {
+async fn run(
+    code: &str,
+    error: &str,
+    error_description: &str,
+    nav: dioxus::router::Navigator,
+) -> Result<(), String> {
     if !error.is_empty() {
         let detail = if error_description.is_empty() {
             error.to_string()

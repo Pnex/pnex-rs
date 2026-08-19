@@ -177,7 +177,10 @@ mod tests {
         assert!(build.success);
         assert_eq!(build.build_phase.as_deref(), Some("succeeded"));
         let back = serde_json::to_value(&device).unwrap();
-        assert_eq!(back, serde_json::from_str::<serde_json::Value>(json).unwrap());
+        assert_eq!(
+            back,
+            serde_json::from_str::<serde_json::Value>(json).unwrap()
+        );
     }
 
     #[test]
@@ -229,12 +232,12 @@ mod tests {
             "board": "esp32"
         }"#;
         let pd: PredefinedDevice = serde_json::from_str(json).unwrap();
-        assert_eq!(pd.capabilities, vec!["relay".to_string(), "pwm".to_string()]);
+        assert_eq!(
+            pd.capabilities,
+            vec!["relay".to_string(), "pwm".to_string()]
+        );
         // Pas d'id dans le contrat Django.
         let back = serde_json::to_value(&pd).unwrap();
         assert!(back.get("id").is_none());
     }
-
-
-
 }

@@ -34,10 +34,7 @@ fn profile_json(profile: &user_profiles::Model) -> serde_json::Value {
     })
 }
 
-pub async fn user_info(
-    State(ctx): State<AppContext>,
-    auth: AuthUser,
-) -> Result<Response> {
+pub async fn user_info(State(ctx): State<AppContext>, auth: AuthUser) -> Result<Response> {
     let db = &ctx.db;
     let user = auth.user;
 
@@ -76,12 +73,14 @@ pub async fn user_info(
         let tier = org
             .subscription_tier_id
             .and_then(|id| tiers.get(&id))
-            .map(|t| serde_json::json!({
-                "name": t.name,
-                "max_sensor_devices": t.max_sensor_devices,
-                "max_actuator_devices": t.max_actuator_devices,
-                "max_mixed_devices": t.max_mixed_devices,
-            }));
+            .map(|t| {
+                serde_json::json!({
+                    "name": t.name,
+                    "max_sensor_devices": t.max_sensor_devices,
+                    "max_actuator_devices": t.max_actuator_devices,
+                    "max_mixed_devices": t.max_mixed_devices,
+                })
+            });
         orgs.push(serde_json::json!({
             "id": org.id,
             "name": org.name,
@@ -91,8 +90,7 @@ pub async fn user_info(
     }
 
     // Comptage devices sur les orgs du user (via predefined → device_type).
-    let mut by_type: serde_json::Map<String, serde_json::Value> =
-        serde_json::Map::new();
+    let mut by_type: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
     let mut total = 0usize;
     let mut active = 0usize;
     if !org_ids.is_empty() {
@@ -226,19 +224,19 @@ async fn update_profile(
             Some(trimmed.to_string())
         }
     };
-    let theme = match patch.theme.as_deref() {
-        None => None,
-        Some(raw) => {
-            let trimmed = raw.trim();
-            if trimmed.is_empty() {
-                return Err(Error::BadRequest("theme ne peut pas être vide".into()));
+    let theme =
+        match patch.theme.as_deref() {
+            None => None,
+            Some(raw) => {
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    return Err(Error::BadRequest("theme ne peut pas être vide".into()));
+                }
+                Some(parse_theme(trimmed).ok_or_else(|| {
+                    Error::BadRequest("theme invalide (light, dark, auto)".into())
+                })?)
             }
-            Some(
-                parse_theme(trimmed)
-                    .ok_or_else(|| Error::BadRequest("theme invalide (light, dark, auto)".into()))?,
-            )
-        }
-    };
+        };
 
     // Le profil est créé par le JIT provisioning ; par robustesse on le crée
     // avec les défauts s'il manque (ordre d'appels en test, reprise de données).
@@ -271,7 +269,10 @@ async fn update_profile(
     if let Some(theme) = theme {
         active.theme = sea_orm::Set(theme);
     }
-    let updated = active.update(&ctx.db).await.map_err(|_| Error::InternalServerError)?;
+    let updated = active
+        .update(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     format::json(profile_json(&updated))
 }
 

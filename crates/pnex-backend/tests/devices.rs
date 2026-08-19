@@ -238,10 +238,7 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
 async fn filtres_de_liste() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
-        for (id, predefined) in [
-            ("esp-s1", "soil_sensor"),
-            ("esp-a1", "4_chan_relay"),
-        ] {
+        for (id, predefined) in [("esp-s1", "soil_sensor"), ("esp-a1", "4_chan_relay")] {
             create_device(&server, &env.alice, org, id, predefined).await;
         }
         let get = |query: &'static str| list_devices(&server, &env.alice, org, query);
@@ -255,7 +252,13 @@ async fn filtres_de_liste() {
         assert_eq!(sensors["results"][0]["device_id"], "esp-s1");
 
         // « all » = no-op (parité Django).
-        assert_eq!(get("?device_type=all").await["results"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            get("?device_type=all").await["results"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
 
         let by_cap = get("?capability=relay").await;
         assert_eq!(by_cap["results"].as_array().unwrap().len(), 1);
@@ -272,12 +275,36 @@ async fn filtres_de_liste() {
         assert_eq!(by_search_cap["results"].as_array().unwrap().len(), 1);
         assert_eq!(by_search_cap["results"][0]["device_id"], "esp-a1");
         // Casse ignorée, terme introuvable → vide.
-        assert_eq!(get("?search=ESP-A1").await["results"].as_array().unwrap().len(), 1);
-        assert_eq!(get("?search=zzz").await["results"].as_array().unwrap().len(), 0);
+        assert_eq!(
+            get("?search=ESP-A1").await["results"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            get("?search=zzz").await["results"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
 
         // Aucun actif : le filtre active=true vide la liste.
-        assert_eq!(get("?active=true").await["results"].as_array().unwrap().len(), 0);
-        assert_eq!(get("?active=false").await["results"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            get("?active=true").await["results"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(
+            get("?active=false").await["results"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
     })
     .await;
 }
@@ -331,9 +358,14 @@ async fn quotas_tier_par_type() {
 
         // Tier Free : 3 sensors, 1 actuator, 0 mixed.
         for n in 1..=3 {
-            let res =
-                create_device(&server, &env.alice, org, &format!("esp-s{n}"), "soil_sensor")
-                    .await;
+            let res = create_device(
+                &server,
+                &env.alice,
+                org,
+                &format!("esp-s{n}"),
+                "soil_sensor",
+            )
+            .await;
             assert_eq!(res.status_code(), 201, "capteur {n}");
         }
         let res = create_device(&server, &env.alice, org, "esp-s4", "soil_sensor").await;
@@ -389,10 +421,7 @@ async fn isolation_tenant_et_roles() {
         );
 
         // Chaque org ne voit que ses devices.
-        for (token, org_id, expected) in [
-            (&env.alice, alice_org, 1),
-            (&env.bob, bob_org, 1),
-        ] {
+        for (token, org_id, expected) in [(&env.alice, alice_org, 1), (&env.bob, bob_org, 1)] {
             let list: serde_json::Value = server
                 .get("/api/v1/devices")
                 .add_header("Authorization", bearer(token))
@@ -448,7 +477,9 @@ async fn isolation_tenant_et_roles() {
 async fn suppression_nettoie_token_et_build_records() {
     with_app(|server, env, ctx| async move {
         use pnex_backend::models::_entities::{build_records, device_registries, device_tokens};
-        use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set};
+        use sea_orm::{
+            ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set,
+        };
 
         let org = personal_org(&server, &env.alice).await;
         let created: serde_json::Value =
@@ -567,7 +598,9 @@ async fn catalogue_global_partage() {
             .await
             .json();
         let caps = caps["results"].as_array().expect("enveloppe");
-        assert!(caps.iter().any(|c| c["name"] == "relay" && c["mode"] == "output"));
+        assert!(caps
+            .iter()
+            .any(|c| c["name"] == "relay" && c["mode"] == "output"));
         assert!(caps.iter().any(|c| c["mode"] == "input"));
 
         let outputs: serde_json::Value = server
@@ -671,7 +704,14 @@ async fn pagination_des_listes() {
         let org = personal_org(&server, &env.alice).await;
         // Tier Free : 3 capteurs max — parfait pour 3 pages de 2.
         for n in 1..=3 {
-            create_device(&server, &env.alice, org, &format!("esp-s{n}"), "soil_sensor").await;
+            create_device(
+                &server,
+                &env.alice,
+                org,
+                &format!("esp-s{n}"),
+                "soil_sensor",
+            )
+            .await;
         }
 
         // Registre : page 1 → next explicite, previous absent.

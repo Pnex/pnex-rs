@@ -7,10 +7,8 @@ use std::time::Duration;
 /// `gloo-timers` (setTimeout) côté navigateur.
 pub async fn sleep(duration: Duration) {
     #[cfg(target_arch = "wasm32")]
-    gloo_timers::future::TimeoutFuture::new(
-        duration.as_millis().min(u32::MAX as u128) as u32,
-    )
-    .await;
+    gloo_timers::future::TimeoutFuture::new(duration.as_millis().min(u32::MAX as u128) as u32)
+        .await;
     #[cfg(not(target_arch = "wasm32"))]
     futures_timer::Delay::new(duration).await;
 }
@@ -29,9 +27,15 @@ pub fn save_blob(filename: &str, bytes: &[u8]) {
             "data:application/octet-stream;base64,{}",
             base64::engine::general_purpose::STANDARD.encode(bytes)
         );
-        let Some(window) = web_sys::window() else { return };
-        let Some(document) = window.document() else { return };
-        let Ok(element) = document.create_element("a") else { return };
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let Some(document) = window.document() else {
+            return;
+        };
+        let Ok(element) = document.create_element("a") else {
+            return;
+        };
         let Ok(anchor) = element.dyn_into::<web_sys::HtmlAnchorElement>() else {
             return;
         };
@@ -69,9 +73,15 @@ pub fn copy_text(text: &str) {
     #[cfg(target_arch = "wasm32")]
     {
         use web_sys::wasm_bindgen::JsCast;
-        let Some(window) = web_sys::window() else { return };
-        let Some(document) = window.document() else { return };
-        let Ok(element) = document.create_element("textarea") else { return };
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let Some(document) = window.document() else {
+            return;
+        };
+        let Ok(element) = document.create_element("textarea") else {
+            return;
+        };
         let Ok(area) = element.dyn_into::<web_sys::HtmlTextAreaElement>() else {
             return;
         };

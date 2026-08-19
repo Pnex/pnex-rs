@@ -16,7 +16,9 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use loco_rs::prelude::*;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, ExprTrait, PaginatorTrait, QueryFilter, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, ExprTrait, PaginatorTrait, QueryFilter, Set,
+};
 use serde::Deserialize;
 
 use super::pagination;
@@ -43,7 +45,9 @@ async fn membership_of(
         .await
         .map_err(|_| Error::InternalServerError)?;
     // find_also_related sur une FK obligatoire : l'org existe toujours.
-    Ok(row.filter(|(_, org)| org.is_some()).map(|(m, org)| (m, org.unwrap())))
+    Ok(row
+        .filter(|(_, org)| org.is_some())
+        .map(|(m, org)| (m, org.unwrap())))
 }
 
 fn forbidden(msg: &str) -> Error {
@@ -271,7 +275,10 @@ async fn update(
 
     let mut active: organizations::ActiveModel = org.into();
     active.name = Set(name);
-    let org = active.update(&ctx.db).await.map_err(|_| Error::InternalServerError)?;
+    let org = active
+        .update(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     format::json(serde_json::json!({ "id": org.id, "name": org.name }))
 }
 
@@ -349,7 +356,10 @@ async fn members(
     Path(org_id): Path<i64>,
     Query(q): Query<MembersQuery>,
 ) -> Result<Response> {
-    if membership_of(&ctx.db, auth.user.id, org_id).await?.is_none() {
+    if membership_of(&ctx.db, auth.user.id, org_id)
+        .await?
+        .is_none()
+    {
         return Err(Error::NotFound);
     }
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
@@ -405,8 +415,7 @@ async fn add_member(
     if !can_write(membership.role) {
         return Err(forbidden("owner ou admin requis pour ajouter un membre"));
     }
-    if matches!(params.role, RoleParam::Owner) && !matches!(membership.role, OrgMemberRole::Owner)
-    {
+    if matches!(params.role, RoleParam::Owner) && !matches!(membership.role, OrgMemberRole::Owner) {
         return Err(forbidden("owner requis pour promouvoir au rôle owner"));
     }
 
@@ -490,14 +499,13 @@ async fn update_member(
         return Err(forbidden("owner ou admin requis pour modifier un rôle"));
     }
     // Modifier un owner (ou promouvoir au rôle owner) : owner uniquement.
-    let touches_owner = matches!(target.role, OrgMemberRole::Owner)
-        || matches!(params.role, RoleParam::Owner);
+    let touches_owner =
+        matches!(target.role, OrgMemberRole::Owner) || matches!(params.role, RoleParam::Owner);
     if touches_owner && !matches!(membership.role, OrgMemberRole::Owner) {
         return Err(forbidden("owner requis pour modifier un owner"));
     }
     // Garde : au moins un owner reste.
-    if matches!(target.role, OrgMemberRole::Owner) && !matches!(params.role, RoleParam::Owner)
-    {
+    if matches!(target.role, OrgMemberRole::Owner) && !matches!(params.role, RoleParam::Owner) {
         let owners = organization_members::Entity::find()
             .filter(
                 organization_members::Column::OrgId

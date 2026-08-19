@@ -25,8 +25,7 @@ fn encrypt(plain: &str, key: &[u8; 32]) -> String {
     let mut nonce = [0u8; 12];
     rand::rng().fill_bytes(&mut nonce);
     let mut buf = plain.as_bytes().to_vec();
-    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(&nonce))
-        .apply_keystream(&mut buf);
+    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(&nonce)).apply_keystream(&mut buf);
     let mut wire = nonce.to_vec();
     wire.extend_from_slice(&buf);
     STANDARD.encode(wire)
@@ -36,8 +35,7 @@ fn decrypt(raw: &str, key: &[u8; 32]) -> String {
     let bytes = STANDARD.decode(raw.trim()).expect("b64");
     let (nonce, ct) = bytes.split_at(12);
     let mut buf = ct.to_vec();
-    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(nonce))
-        .apply_keystream(&mut buf);
+    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(nonce)).apply_keystream(&mut buf);
     String::from_utf8(buf).expect("utf8")
 }
 
@@ -182,7 +180,8 @@ async fn cycle_ingest_chiffre_complet() {
         assert_eq!(decrypt(&ws.receive_text().await, &dev.key), "PONG");
 
         // Mesure valide (capacité du modèle) → ok + point scopé org.
-        ws.send_text(encrypt("read_temperature=21.5", &dev.key)).await;
+        ws.send_text(encrypt("read_temperature=21.5", &dev.key))
+            .await;
         assert_eq!(decrypt(&ws.receive_text().await, &dev.key), "ok");
 
         // Mesure hors capacités (device strict) → error:invalid_capability.
@@ -206,7 +205,8 @@ async fn cycle_ingest_chiffre_complet() {
         );
 
         // Frame non déchiffrable (clé désynchronisée) → ERROR:decryption_failed.
-        ws.send_text(encrypt("read_temperature=1", &[9u8; 32])).await;
+        ws.send_text(encrypt("read_temperature=1", &[9u8; 32]))
+            .await;
         assert_eq!(
             decrypt(&ws.receive_text().await, &dev.key),
             "ERROR:decryption_failed"
@@ -214,7 +214,8 @@ async fn cycle_ingest_chiffre_complet() {
 
         // D16 : nom normalisé (casse/séparateurs/accents fonduus) → la
         // mesure passe la validation stricte et sort canonique.
-        ws.send_text(encrypt("Read-Temperature = 19.5", &dev.key)).await;
+        ws.send_text(encrypt("Read-Temperature = 19.5", &dev.key))
+            .await;
         assert_eq!(decrypt(&ws.receive_text().await, &dev.key), "ok");
 
         // Le sink a reçu exactement les mesures valides, avec le routage org.
@@ -231,8 +232,8 @@ async fn cycle_ingest_chiffre_complet() {
         assert_eq!(p.ts_source, "server");
 
         // Le bail de vie est pris (last_seen frais, connected).
-        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
         use pnex_backend::models::_entities::device_states;
+        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
         let state = device_states::Entity::find()
             .filter(device_states::Column::DeviceRegistryId.eq(dev.id))
             .one(&ctx.db)
@@ -272,8 +273,8 @@ async fn close_codes_authentification() {
         assert_eq!(close_code(ws.receive_message().await), Some(4006));
 
         // 4008 : clé absente.
-        use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
         use pnex_backend::models::_entities::device_tokens;
+        use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
         let mut row: device_tokens::ActiveModel = device_tokens::Entity::find()
             .filter(device_tokens::Column::DeviceRegistryId.eq(other.id))
             .one(&ctx.db)
@@ -341,21 +342,21 @@ async fn dynamique_decouverte_et_plafond() {
         let dev = create_device(&server, &auth, "custom-1", "custom_sensor").await;
 
         // Plafond à 2 mesures distinctes pour tester vite.
-        use sea_orm::{ActiveModelTrait, EntityTrait, Set};
         use pnex_backend::models::_entities::device_registries;
-        let mut row: device_registries::ActiveModel =
-            device_registries::Entity::find_by_id(dev.id)
-                .one(&ctx.db)
-                .await
-                .expect("dev")
-                .expect("dev")
-                .into();
+        use sea_orm::{ActiveModelTrait, EntityTrait, Set};
+        let mut row: device_registries::ActiveModel = device_registries::Entity::find_by_id(dev.id)
+            .one(&ctx.db)
+            .await
+            .expect("dev")
+            .expect("dev")
+            .into();
         row.max_unique_measurements = Set(2);
         row.update(&ctx.db).await.expect("plafond");
 
         let mut ws = connect(&server, &dev.token, &dev.device_id).await;
         for (name, value) in [("pression", "1.2"), ("humidite", "88")] {
-            ws.send_text(encrypt(&format!("{name}={value}"), &dev.key)).await;
+            ws.send_text(encrypt(&format!("{name}={value}"), &dev.key))
+                .await;
             assert_eq!(decrypt(&ws.receive_text().await, &dev.key), "ok");
         }
 
@@ -401,8 +402,8 @@ async fn revalidation_token_desactive() {
         ws.send_text(encrypt("PING", &dev.key)).await;
         assert_eq!(decrypt(&ws.receive_text().await, &dev.key), "PONG");
 
-        use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
         use pnex_backend::models::_entities::device_tokens;
+        use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
         let mut row: device_tokens::ActiveModel = device_tokens::Entity::find()
             .filter(device_tokens::Column::DeviceRegistryId.eq(dev.id))
             .one(&ctx.db)
@@ -429,8 +430,8 @@ async fn reaper_active_suit_la_fraicheur() {
         let active_of = |db: &sea_orm::DatabaseConnection, id: i64| {
             let db = db.clone();
             async move {
-                use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
                 use pnex_backend::models::_entities::device_registries;
+                use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
                 device_registries::Entity::find()
                     .filter(device_registries::Column::Id.eq(id))
                     .one(&db)
@@ -463,14 +464,13 @@ async fn reaper_active_suit_la_fraicheur() {
         )
         .await
         .expect("vieillir");
-        let (on, off) =
-            pnex_backend::services::device_liveness::deactivate_stale(&ctx.db, 2)
-                .await
-                .expect("reaper");
+        let (on, off) = pnex_backend::services::device_liveness::deactivate_stale(&ctx.db, 2)
+            .await
+            .expect("reaper");
         assert!(!active_of(&ctx.db, dev.id).await);
         assert_eq!((on, off), (0, 1));
-        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
         use pnex_backend::models::_entities::device_states;
+        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
         let state = device_states::Entity::find()
             .filter(device_states::Column::DeviceRegistryId.eq(dev.id))
             .one(&ctx.db)

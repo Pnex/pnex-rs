@@ -27,8 +27,8 @@ where
     loco_rs::testing::request::request_with_config::<App, _, _>(
         config,
         move |server, ctx| async move {
-            use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
             use pnex_backend::models::_entities::subscription_tiers as tiers;
+            use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
             if tiers::Entity::find()
                 .filter(tiers::Column::Name.eq("Free"))
                 .one(&ctx.db)

@@ -17,7 +17,7 @@ use tokio::sync::mpsc;
 
 use crate::services::openobserve::client::Client;
 use crate::services::openobserve::promwrite;
-use crate::services::openobserve::{ensure_org_credentials, OrgCredentials, OpenobserveSettings};
+use crate::services::openobserve::{ensure_org_credentials, OpenobserveSettings, OrgCredentials};
 use crate::services::settings::IngestSettings;
 use crate::services::telemetry::{self, TelemetryPoint, TelemetrySink};
 

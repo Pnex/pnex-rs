@@ -22,13 +22,21 @@ use wasm_bindgen::{closure::Closure, JsCast, JsValue};
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FlashEvent {
     /// Changement d'étape : `connect` | `write` | `reset`.
-    Stage { stage: String },
+    Stage {
+        stage: String,
+    },
     /// Chip détecté au sync (ex. « ESP32-D0WD-V3 ») — affiché tel quel.
-    Chip { chip: String },
+    Chip {
+        chip: String,
+    },
     /// Progression d'écriture, 0-100.
-    Progress { percent: u8 },
+    Progress {
+        percent: u8,
+    },
     Done,
-    Error { message: String },
+    Error {
+        message: String,
+    },
 }
 
 /// Web Serial disponible ? Chrome/Edge/Opera uniquement — false sur
@@ -125,11 +133,16 @@ mod tests {
     fn decode_evenements_flasher_js() {
         assert_eq!(
             serde_json::from_str::<FlashEvent>(r#"{"type":"stage","stage":"write"}"#).unwrap(),
-            FlashEvent::Stage { stage: "write".into() }
+            FlashEvent::Stage {
+                stage: "write".into()
+            }
         );
         assert_eq!(
-            serde_json::from_str::<FlashEvent>(r#"{"type":"chip","chip":"ESP32-D0WD-V3"}"#).unwrap(),
-            FlashEvent::Chip { chip: "ESP32-D0WD-V3".into() }
+            serde_json::from_str::<FlashEvent>(r#"{"type":"chip","chip":"ESP32-D0WD-V3"}"#)
+                .unwrap(),
+            FlashEvent::Chip {
+                chip: "ESP32-D0WD-V3".into()
+            }
         );
         assert_eq!(
             serde_json::from_str::<FlashEvent>(r#"{"type":"progress","percent":42}"#).unwrap(),

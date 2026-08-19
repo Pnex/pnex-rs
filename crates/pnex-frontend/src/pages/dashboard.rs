@@ -23,12 +23,7 @@ pub fn Dashboard() -> Element {
         .map(|tier| tier.name.clone())
         .unwrap_or_else(|| "—".into());
     let tier = active_org.and_then(|m| m.subscription_tier.as_ref());
-    let mut by_type: Vec<(String, u64)> = user
-        .device_count
-        .by_type
-        .clone()
-        .into_iter()
-        .collect();
+    let mut by_type: Vec<(String, u64)> = user.device_count.by_type.clone().into_iter().collect();
     by_type.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
     // Usage réel par type (comptage devices agrégé sur les orgs de l'user).
     let used_of = |name: &str| user.device_count.by_type.get(name).copied().unwrap_or(0);

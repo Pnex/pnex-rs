@@ -162,39 +162,67 @@ mod tests {
         assert!(!rust_search_match(&Some("zzz".into()), &["4_chan_relay"]));
         // Absent/vide → pas de filtre.
         assert!(rust_search_match(&None, &[]));
-        assert!(rust_search_match(&Some("   ".into()), &["quoi que ce soit"]));
+        assert!(rust_search_match(
+            &Some("   ".into()),
+            &["quoi que ce soit"]
+        ));
     }
 
     #[test]
     fn offsets_de_navigation() {
-        let page = PageParams { limit: 20, offset: 0 };
+        let page = PageParams {
+            limit: 20,
+            offset: 0,
+        };
         assert_eq!(page.next_offset(40), Some(20));
         assert_eq!(page.previous_offset(), None);
 
-        let page = PageParams { limit: 20, offset: 20 };
-        assert_eq!(page.next_offset(40), None, "40 items = dernière page en 2×20");
+        let page = PageParams {
+            limit: 20,
+            offset: 20,
+        };
+        assert_eq!(
+            page.next_offset(40),
+            None,
+            "40 items = dernière page en 2×20"
+        );
         assert_eq!(page.previous_offset(), Some(0));
 
-        let page = PageParams { limit: 20, offset: 40 };
+        let page = PageParams {
+            limit: 20,
+            offset: 40,
+        };
         assert_eq!(page.next_offset(41), None, "dernière page incomplète");
         assert_eq!(page.previous_offset(), Some(20));
 
         // offset « au milieu du vide » : previous ramène sur une page réelle.
-        let page = PageParams { limit: 20, offset: 55 };
+        let page = PageParams {
+            limit: 20,
+            offset: 55,
+        };
         assert_eq!(page.previous_offset(), Some(35));
     }
 
     #[test]
     fn slice_ne_deborde_pas() {
-        let page = PageParams { limit: 20, offset: 30 };
+        let page = PageParams {
+            limit: 20,
+            offset: 30,
+        };
         assert_eq!(page.slice(35), (30, 5), "take borné par la fin du Vec");
-        let page = PageParams { limit: 20, offset: 50 };
+        let page = PageParams {
+            limit: 20,
+            offset: 50,
+        };
         assert_eq!(page.slice(35), (35, 0), "offset au-delà → vide");
     }
 
     #[test]
     fn enveloppe_conserve_les_filtres() {
-        let page = PageParams { limit: 2, offset: 0 };
+        let page = PageParams {
+            limit: 2,
+            offset: 0,
+        };
         let body = envelope(
             "/api/v1/devices",
             &[("device_type".into(), "sen sor".into())],

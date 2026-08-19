@@ -19,7 +19,10 @@ pub fn generate() -> Pkce {
     getrandom::getrandom(&mut bytes).expect("entropie PKCE indisponible");
     let verifier = URL_SAFE_NO_PAD.encode(bytes);
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
-    Pkce { verifier, challenge }
+    Pkce {
+        verifier,
+        challenge,
+    }
 }
 
 /// Encodage pour cent form-urlencoded (caractères non réservés conservés).

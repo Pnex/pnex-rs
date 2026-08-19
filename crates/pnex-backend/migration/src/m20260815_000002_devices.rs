@@ -14,7 +14,9 @@ impl MigrationTrait for Migration {
             m,
             "device_type",
             &[
-                ("id", ColType::PkAuto),("name", ColType::StringLenUniq(100))],
+                ("id", ColType::PkAuto),
+                ("name", ColType::StringLenUniq(100)),
+            ],
             &[],
         )
         .await?;
@@ -25,15 +27,18 @@ impl MigrationTrait for Migration {
             &[
                 ("id", ColType::PkAuto),
                 ("name", ColType::StringLenUniq(255)),
-                ("mode", ColType::EnumWithDefault(
-                    "capability_mode".to_string(),
-                    vec![
+                (
+                    "mode",
+                    ColType::EnumWithDefault(
+                        "capability_mode".to_string(),
+                        vec![
+                            "input".to_string(),
+                            "output".to_string(),
+                            "input_output".to_string(),
+                        ],
                         "input".to_string(),
-                        "output".to_string(),
-                        "input_output".to_string(),
-                    ],
-                    "input".to_string(),
-                )),
+                    ),
+                ),
             ],
             &[],
         )
@@ -45,7 +50,10 @@ impl MigrationTrait for Migration {
             &[
                 ("id", ColType::PkAuto),
                 ("name", ColType::StringLen(255)),
-                ("soc", ColType::StringLenWithDefault(255, "esp32".to_string())),
+                (
+                    "soc",
+                    ColType::StringLenWithDefault(255, "esp32".to_string()),
+                ),
                 ("details", ColType::JsonBinaryNull),
             ],
             &[],
@@ -59,7 +67,10 @@ impl MigrationTrait for Migration {
                 ("id", ColType::PkAuto),
                 ("name", ColType::StringUniq),
                 ("pretty_name", ColType::StringLenNull(255)),
-                ("revision", ColType::StringLenWithDefault(50, "".to_string())),
+                (
+                    "revision",
+                    ColType::StringLenWithDefault(50, "".to_string()),
+                ),
                 ("device_doc_url", ColType::StringLenNull(1024)),
                 ("prestashop_product_id", ColType::StringLenNull(64)),
                 ("prestashop_buy_url", ColType::StringLenNull(1024)),
@@ -90,7 +101,10 @@ impl MigrationTrait for Migration {
                 ("device_id", ColType::StringLen(255)),
                 ("metadata", ColType::JsonBinaryNull),
                 ("active", ColType::BooleanWithDefault(false)),
-                ("allow_dynamic_measurements", ColType::BooleanWithDefault(true)),
+                (
+                    "allow_dynamic_measurements",
+                    ColType::BooleanWithDefault(true),
+                ),
                 ("discovered_measurements", ColType::JsonBinaryNull),
                 ("max_unique_measurements", ColType::IntegerWithDefault(100)),
             ],

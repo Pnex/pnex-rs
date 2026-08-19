@@ -14,10 +14,10 @@ pub mod provisioning;
 pub mod settings;
 
 use axum::extract::FromRequestParts;
-use sea_orm::ExprTrait;
-use axum::http::request::Parts;
 use axum::http::header::AUTHORIZATION;
+use axum::http::request::Parts;
 use loco_rs::prelude::*;
+use sea_orm::ExprTrait;
 
 use crate::models::_entities::{
     organization_members, organizations, sea_orm_active_enums::OrgMemberRole, users,
@@ -35,7 +35,9 @@ pub struct AuthUser {
 
 fn bearer_token(parts: &Parts) -> Option<String> {
     let value = parts.headers.get(AUTHORIZATION)?.to_str().ok()?;
-    let token = value.strip_prefix("Bearer ").or_else(|| value.strip_prefix("bearer "))?;
+    let token = value
+        .strip_prefix("Bearer ")
+        .or_else(|| value.strip_prefix("bearer "))?;
     if token.is_empty() {
         None
     } else {
@@ -50,9 +52,8 @@ impl FromRequestParts<AppContext> for AuthUser {
         parts: &mut Parts,
         state: &AppContext,
     ) -> Result<Self, Self::Rejection> {
-        let token = bearer_token(parts).ok_or_else(|| {
-            loco_rs::Error::Unauthorized(WWW_AUTHENTICATE.to_string())
-        })?;
+        let token = bearer_token(parts)
+            .ok_or_else(|| loco_rs::Error::Unauthorized(WWW_AUTHENTICATE.to_string()))?;
 
         let settings = settings::KeycloakSettings::from_config(&state.config)?;
         let verifier = jwks::verifier_for(&settings).await;
@@ -66,7 +67,8 @@ impl FromRequestParts<AppContext> for AuthUser {
             .map_err(|err| {
                 tracing::error!(%err, "JIT provisioning échoué");
                 match err {
-                    provisioning::ProvisionError::MissingEmail | provisioning::ProvisionError::InvalidSub => {
+                    provisioning::ProvisionError::MissingEmail
+                    | provisioning::ProvisionError::InvalidSub => {
                         loco_rs::Error::Unauthorized(err.to_string())
                     }
                     _ => loco_rs::Error::InternalServerError,

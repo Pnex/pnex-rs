@@ -12,7 +12,6 @@ use crate::api;
 use crate::components::icons;
 use crate::state::{org, toasts};
 
-
 /// Valeur texte d'un champ de formulaire (`FormValue::Text`).
 pub fn field(event: &dioxus::events::FormEvent, name: &str) -> String {
     event

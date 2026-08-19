@@ -195,4 +195,3 @@ pub async fn seed_catalogue(db: &sea_orm::DatabaseConnection) {
         }
     }
 }
-

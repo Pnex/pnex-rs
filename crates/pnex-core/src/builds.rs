@@ -100,7 +100,10 @@ mod tests {
         assert!(record.success);
         assert_eq!(record.build_phase.as_deref(), Some("succeeded"));
         let back = serde_json::to_value(&record).unwrap();
-        assert_eq!(back, serde_json::from_str::<serde_json::Value>(json).unwrap());
+        assert_eq!(
+            back,
+            serde_json::from_str::<serde_json::Value>(json).unwrap()
+        );
     }
 
     /// Charge minimale du POST ; champs hérités de Django tolérés.

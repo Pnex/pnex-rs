@@ -16,7 +16,7 @@
 use std::sync::OnceLock;
 
 use axum::extract::{Query, State};
-use axum::http::{HeaderValue, StatusCode, header};
+use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use loco_rs::prelude::*;
 use serde::Deserialize;
@@ -117,7 +117,10 @@ async fn token(State(ctx): State<AppContext>, Json(params): Json<TokenParams>) -
             tracing::error!(%err, "Keycloak injoignable (token)");
             Error::CustomError(
                 StatusCode::BAD_GATEWAY,
-                loco_rs::controller::ErrorDetail::new("upstream", "Keycloak injoignable".to_string()),
+                loco_rs::controller::ErrorDetail::new(
+                    "upstream",
+                    "Keycloak injoignable".to_string(),
+                ),
             )
         })?;
     relay(kc).await
@@ -235,7 +238,9 @@ async fn sso(
             "code_challenge requis (PKCE obligatoire)".into(),
         ));
     };
-    let method = params.code_challenge_method.unwrap_or_else(|| "S256".into());
+    let method = params
+        .code_challenge_method
+        .unwrap_or_else(|| "S256".into());
     if method != "S256" {
         return Err(Error::BadRequest(
             "code_challenge_method doit être S256".into(),

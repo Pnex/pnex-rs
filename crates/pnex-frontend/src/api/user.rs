@@ -8,12 +8,7 @@ use crate::api::error::ApiError;
 /// `GET /api/v1/user-info` — identité + profil + orgs + comptage devices.
 /// Déclenche le JIT provisioning côté backend à la première requête.
 pub async fn get_user_info() -> Result<UserInfo, ApiError> {
-    client::request(
-        reqwest::Method::GET,
-        "/api/v1/user-info",
-        None,
-    )
-    .await
+    client::request(reqwest::Method::GET, "/api/v1/user-info", None).await
 }
 
 /// `PATCH /api/v1/profile` — préférences (champs fournis uniquement).

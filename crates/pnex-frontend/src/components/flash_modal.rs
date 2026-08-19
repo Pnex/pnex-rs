@@ -15,7 +15,10 @@ use super::{icons, modal::Modal};
 #[derive(Clone, PartialEq)]
 enum FlashState {
     /// Stage brute du glue JS (connect/write/reset) + progression 0-100.
-    Flashing { stage: String, percent: u8 },
+    Flashing {
+        stage: String,
+        percent: u8,
+    },
     Done,
     Failed(String),
 }
@@ -48,7 +51,10 @@ pub fn FlashModal(device_id: String, on_close: Callback<()>) -> Element {
             Some(Ok(bytes)) => bytes.clone(),
             _ => return,
         };
-        state.set(Some(FlashState::Flashing { stage: "connect".to_string(), percent: 0 }));
+        state.set(Some(FlashState::Flashing {
+            stage: "connect".to_string(),
+            percent: 0,
+        }));
         chip.set(String::new());
         spawn(async move {
             let outcome = flash::flash(bytes, |event| match event {
@@ -59,7 +65,10 @@ pub fn FlashModal(device_id: String, on_close: Callback<()>) -> Element {
                 }),
                 FlashEvent::Chip { chip: name } => chip.set(name),
                 FlashEvent::Progress { percent } => state.with_mut(|current| {
-                    if let Some(FlashState::Flashing { percent: current, .. }) = current {
+                    if let Some(FlashState::Flashing {
+                        percent: current, ..
+                    }) = current
+                    {
                         *current = percent;
                     }
                 }),

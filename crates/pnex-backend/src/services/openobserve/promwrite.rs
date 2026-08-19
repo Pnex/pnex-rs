@@ -125,9 +125,11 @@ mod tests {
     /// labellisées, les non numériques sont écartés.
     #[test]
     fn roundtrip_series_et_labels() {
-        let mut req = WriteRequest::decode(encode(&[point("soil_moisture", "42.5")])
-            .unwrap()
-            .as_slice())
+        let mut req = WriteRequest::decode(
+            encode(&[point("soil_moisture", "42.5")])
+                .unwrap()
+                .as_slice(),
+        )
         .expect("decode");
         assert_eq!(req.timeseries.len(), 1);
         let ts = req.timeseries.remove(0);
@@ -139,7 +141,10 @@ mod tests {
             .value
             .clone();
         assert_eq!(name, "soil_moisture");
-        assert!(ts.labels.iter().any(|l| l.name == "device_id" && l.value == "capteur-1"));
+        assert!(ts
+            .labels
+            .iter()
+            .any(|l| l.name == "device_id" && l.value == "capteur-1"));
         assert_eq!(ts.samples[0].value, 42.5);
 
         assert!(encode(&[point("x", "n/a")]).is_none());

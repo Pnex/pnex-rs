@@ -1,5 +1,5 @@
+pub use super::_entities::annotations::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
-pub use super::_entities::annotations::{ActiveModel, Model, Entity};
 pub type Annotations = Entity;
 
 #[async_trait::async_trait]

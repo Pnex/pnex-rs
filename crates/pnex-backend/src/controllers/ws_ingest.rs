@@ -40,9 +40,7 @@ use loco_rs::prelude::*;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde::Deserialize;
 
-use crate::models::_entities::{
-    device_registries, device_tokens, predefined_devices,
-};
+use crate::models::_entities::{device_registries, device_tokens, predefined_devices};
 use crate::services::device_liveness;
 use crate::services::settings::IngestSettings;
 use crate::services::telemetry::{self, TelemetryPoint};
@@ -111,8 +109,7 @@ pub(crate) fn normalize_measurement_name(raw: &str) -> String {
 
 /// Devices avec une session WS ouverte dans CE process — étage 1 de
 /// l'anti-clone (rejet 4003 immédiat, sans course).
-static OPEN_SESSIONS: LazyLock<Mutex<HashSet<i64>>> =
-    LazyLock::new(|| Mutex::new(HashSet::new()));
+static OPEN_SESSIONS: LazyLock<Mutex<HashSet<i64>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
 
 /// Retire le device des sessions ouvertes à la sortie, tous chemins compris.
 struct SessionGuard(i64);
@@ -168,12 +165,10 @@ impl Snapshot {
         db: &DatabaseConnection,
         device: device_registries::Model,
     ) -> Result<Self> {
-        let Some(predefined) = predefined_devices::Entity::find_by_id(
-            device.predefined_device_id,
-        )
-        .one(db)
-        .await
-        .map_err(|_| Error::InternalServerError)?
+        let Some(predefined) = predefined_devices::Entity::find_by_id(device.predefined_device_id)
+            .one(db)
+            .await
+            .map_err(|_| Error::InternalServerError)?
         else {
             return Err(Error::InternalServerError);
         };
@@ -292,9 +287,7 @@ async fn ws_ingest(
         open.insert(snap.device_registry_id);
     }
     let guard = SessionGuard(snap.device_registry_id);
-    if let Ok(Some(state)) =
-        device_liveness::state_of(&ctx.db, snap.device_registry_id).await
-    {
+    if let Ok(Some(state)) = device_liveness::state_of(&ctx.db, snap.device_registry_id).await {
         if state.connected
             && device_liveness::is_fresh(
                 state.last_seen_at.with_timezone(&chrono::Utc),
@@ -427,7 +420,9 @@ async fn session_loop(
             reply(
                 &mut socket,
                 &key,
-                &format!("error:invalid_capability:measurement '{name}' not in device capabilities"),
+                &format!(
+                    "error:invalid_capability:measurement '{name}' not in device capabilities"
+                ),
             )
             .await;
             continue;
@@ -482,8 +477,7 @@ async fn persist_discovered(
             .flatten()
             .map(|m| m.into())
             .unwrap_or_default();
-    active.discovered_measurements =
-        Set(Some(serde_json::to_value(map).unwrap_or_default()));
+    active.discovered_measurements = Set(Some(serde_json::to_value(map).unwrap_or_default()));
     let _ = active.update(db).await;
 }
 
@@ -520,14 +514,8 @@ mod tests {
     /// D16 : styles d'écriture variés → même nom canonique.
     #[test]
     fn normalisation_noms_de_mesures() {
-        assert_eq!(
-            normalize_measurement_name("soil_moisture"),
-            "soil_moisture"
-        );
-        assert_eq!(
-            normalize_measurement_name("Soil-Moisture"),
-            "soil_moisture"
-        );
+        assert_eq!(normalize_measurement_name("soil_moisture"), "soil_moisture");
+        assert_eq!(normalize_measurement_name("Soil-Moisture"), "soil_moisture");
         assert_eq!(
             normalize_measurement_name("  soil  moisture "),
             "soil_moisture"

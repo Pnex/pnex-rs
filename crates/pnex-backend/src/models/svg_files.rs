@@ -1,5 +1,5 @@
+pub use super::_entities::svg_files::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
-pub use super::_entities::svg_files::{ActiveModel, Model, Entity};
 pub type SvgFiles = Entity;
 
 #[async_trait::async_trait]

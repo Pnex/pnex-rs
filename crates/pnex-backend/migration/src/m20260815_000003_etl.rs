@@ -52,14 +52,17 @@ impl MigrationTrait for Migration {
                 ("name", ColType::StringLen(255)),
                 ("from_unit", ColType::StringLen(50)),
                 ("to_unit", ColType::StringLen(50)),
-                ("conversion_type", ColType::Enum(
-                    "conversion_kind".to_string(),
-                    vec![
-                        "linear".to_string(),
-                        "affine".to_string(),
-                        "custom".to_string(),
-                    ],
-                )),
+                (
+                    "conversion_type",
+                    ColType::Enum(
+                        "conversion_kind".to_string(),
+                        vec![
+                            "linear".to_string(),
+                            "affine".to_string(),
+                            "custom".to_string(),
+                        ],
+                    ),
+                ),
                 ("multiplier", ColType::DoubleWithDefault(1.0)),
                 ("offset", ColType::DoubleWithDefault(0.0)),
                 // Expression sûre évaluée côté Rust (parité safe_eval) — pas
@@ -85,15 +88,18 @@ impl MigrationTrait for Migration {
                 ("id", ColType::PkAuto),
                 ("name", ColType::StringLen(255)),
                 ("description", ColType::TextNull),
-                ("formula_type", ColType::Enum(
-                    "formula_kind".to_string(),
-                    vec![
-                        "simple_math".to_string(),
-                        "fluid_property".to_string(),
-                        "power_calculation".to_string(),
-                        "rate_of_change".to_string(),
-                    ],
-                )),
+                (
+                    "formula_type",
+                    ColType::Enum(
+                        "formula_kind".to_string(),
+                        vec![
+                            "simple_math".to_string(),
+                            "fluid_property".to_string(),
+                            "power_calculation".to_string(),
+                            "rate_of_change".to_string(),
+                        ],
+                    ),
+                ),
                 // Le fluide est nommé dans l'expression même
                 // (ex. PropsSI('H','T',t,'P',p,'Water')) — résolu à runtime
                 // par le service fluids, sans référence catalogue en base.
@@ -120,19 +126,25 @@ impl MigrationTrait for Migration {
             "formula_data_source",
             &[
                 ("id", ColType::PkAuto),
-                ("source_type", ColType::Enum(
-                    "data_source_kind".to_string(),
-                    vec!["device".to_string(), "constant".to_string()],
-                )),
+                (
+                    "source_type",
+                    ColType::Enum(
+                        "data_source_kind".to_string(),
+                        vec!["device".to_string(), "constant".to_string()],
+                    ),
+                ),
                 ("measurement_name", ColType::StringLenNull(255)),
-                ("constant_type", ColType::EnumNull(
-                    "constant_kind".to_string(),
-                    vec![
-                        "number".to_string(),
-                        "string".to_string(),
-                        "boolean".to_string(),
-                    ],
-                )),
+                (
+                    "constant_type",
+                    ColType::EnumNull(
+                        "constant_kind".to_string(),
+                        vec![
+                            "number".to_string(),
+                            "string".to_string(),
+                            "boolean".to_string(),
+                        ],
+                    ),
+                ),
                 ("constant_value", ColType::TextNull),
                 ("variable_name", ColType::StringLen(100)),
                 ("sort_order", ColType::IntegerWithDefault(0)),
@@ -164,13 +176,13 @@ impl MigrationTrait for Migration {
         drop_table(m, "unit_conversion").await?;
         drop_table(m, "fluid_mixture").await?;
         for e in [
-                "data_source_kind",
-                "formula_kind",
-                "conversion_kind",
-                "constant_kind",
-            ] {
-                drop_enum_type(m, e).await?;
-            }
+            "data_source_kind",
+            "formula_kind",
+            "conversion_kind",
+            "constant_kind",
+        ] {
+            drop_enum_type(m, e).await?;
+        }
         Ok(())
     }
 }

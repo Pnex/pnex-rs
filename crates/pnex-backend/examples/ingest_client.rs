@@ -21,8 +21,7 @@ fn encrypt(plain: &str, key: &[u8; 32]) -> String {
     let mut nonce = [0u8; 12];
     rand::rng().fill_bytes(&mut nonce);
     let mut buf = plain.as_bytes().to_vec();
-    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(&nonce))
-        .apply_keystream(&mut buf);
+    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(&nonce)).apply_keystream(&mut buf);
     let mut wire = nonce.to_vec();
     wire.extend_from_slice(&buf);
     STANDARD.encode(wire)
@@ -32,8 +31,7 @@ fn decrypt(raw: &str, key: &[u8; 32]) -> String {
     let bytes = STANDARD.decode(raw.trim()).expect("frame b64");
     let (nonce, ct) = bytes.split_at(12);
     let mut buf = ct.to_vec();
-    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(nonce))
-        .apply_keystream(&mut buf);
+    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(nonce)).apply_keystream(&mut buf);
     String::from_utf8(buf).expect("utf8")
 }
 
@@ -62,8 +60,10 @@ async fn main() {
             other => panic!("argument inconnu : {other}"),
         }
     }
-    assert!(!url.is_empty() && !token.is_empty() && !device_id.is_empty() && !key_b64.is_empty(),
-        "--url, --token, --device-id, --key requis");
+    assert!(
+        !url.is_empty() && !token.is_empty() && !device_id.is_empty() && !key_b64.is_empty(),
+        "--url, --token, --device-id, --key requis"
+    );
 
     let key: [u8; 32] = STANDARD
         .decode(key_b64.trim())
@@ -86,7 +86,9 @@ async fn main() {
     use futures_util::{SinkExt, StreamExt};
     let send = |plain: &str| encrypt(plain, &key);
     write
-        .send(tokio_tungstenite::tungstenite::Message::Text(send("PING").into()))
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            send("PING").into(),
+        ))
         .await
         .expect("envoi PING");
     let msg = read.next().await.expect("PONG attendu").expect("ws");
@@ -109,7 +111,9 @@ async fn main() {
     for i in 1..=count {
         let frame = format!("{metric}={}", 18.0 + i as f64 / 10.0);
         write
-            .send(tokio_tungstenite::tungstenite::Message::Text(send(&frame).into()))
+            .send(tokio_tungstenite::tungstenite::Message::Text(
+                send(&frame).into(),
+            ))
             .await
             .expect("envoi mesure");
         let msg = match read.next().await {
@@ -124,7 +128,10 @@ async fn main() {
             println!("✗ rejeté par le serveur (close {code})");
             return;
         }
-        println!("← {} (frame {i}/{count})", decrypt(&msg.into_text().expect("texte"), &key));
+        println!(
+            "← {} (frame {i}/{count})",
+            decrypt(&msg.into_text().expect("texte"), &key)
+        );
         tokio::time::sleep(std::time::Duration::from_millis(interval_ms)).await;
     }
     println!("✓ {count} mesures envoyées");

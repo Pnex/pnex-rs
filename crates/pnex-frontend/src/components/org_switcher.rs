@@ -10,9 +10,8 @@ use crate::state::{org, session};
 #[component]
 pub fn OrgSwitcher() -> Element {
     let mut open = use_signal(|| false);
-    let orgs: Vec<pnex_core::OrgMembership> = session::user()
-        .map(|user| user.orgs)
-        .unwrap_or_default();
+    let orgs: Vec<pnex_core::OrgMembership> =
+        session::user().map(|user| user.orgs).unwrap_or_default();
 
     if orgs.is_empty() {
         return rsx! {};

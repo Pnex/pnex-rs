@@ -16,7 +16,9 @@ impl std::fmt::Display for ApiError {
 
 impl ApiError {
     pub fn network(err: &reqwest::Error) -> Self {
-        Self { message: format!("réseau : {err}") }
+        Self {
+            message: format!("réseau : {err}"),
+        }
     }
 }
 
@@ -80,7 +82,10 @@ mod tests {
     #[test]
     fn error_detail_loco() {
         let body = r#"{"error":"forbidden","description":"action réservée aux owners"}"#;
-        assert_eq!(extract_message(403, body), "forbidden : action réservée aux owners");
+        assert_eq!(
+            extract_message(403, body),
+            "forbidden : action réservée aux owners"
+        );
     }
 
     #[test]

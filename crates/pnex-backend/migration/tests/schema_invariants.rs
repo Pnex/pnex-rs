@@ -2,7 +2,7 @@
 //! Nécessite PostgreSQL (compose.yaml) : DATABASE_URL vers une DB de test.
 
 use pnex_migration::Migrator;
-use sea_orm_migration::{MigratorTrait, sea_orm};
+use sea_orm_migration::{sea_orm, MigratorTrait};
 
 async fn nullable_of(db: &sea_orm::DatabaseConnection, table: &str, col: &str) -> String {
     let row = sea_orm::ConnectionTrait::query_one_raw(
@@ -58,13 +58,21 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
         "build_records",
         "fluid_mixtures",
     ] {
-        assert_eq!(nullable_of(&db, t, "org_id").await, "NO", "{t}.org_id doit être NOT NULL");
+        assert_eq!(
+            nullable_of(&db, t, "org_id").await,
+            "NO",
+            "{t}.org_id doit être NOT NULL"
+        );
     }
 
     // Catalogue ETL partagé sans copies : org_id NULL = ligne fournie par
     // l'app (directive « pas de copies par org/utilisateur »).
     for t in ["unit_conversions", "formulas"] {
-        assert_eq!(nullable_of(&db, t, "org_id").await, "YES", "{t}.org_id doit être nullable");
+        assert_eq!(
+            nullable_of(&db, t, "org_id").await,
+            "YES",
+            "{t}.org_id doit être nullable"
+        );
         // Référence nullable loco (`("organizations?", "org_id")`) :
         // colonne nullable + ON DELETE SET NULL ('n' dans pg_constraint).
         assert_eq!(

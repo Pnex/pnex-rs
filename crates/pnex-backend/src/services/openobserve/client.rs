@@ -68,7 +68,10 @@ impl Client {
         if let Some(json) = body {
             req = req.json(&json);
         }
-        let resp = req.send().await.map_err(|e| format!("openobserve injoignable : {e}"))?;
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| format!("openobserve injoignable : {e}"))?;
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
         Ok((status, text))
@@ -77,7 +80,12 @@ impl Client {
     /// Orgs existantes (identifier + name).
     pub async fn organizations(&self) -> Result<Vec<OrgRow>, String> {
         let (status, text) = self
-            .json_request(reqwest::Method::GET, "/api/organizations", &self.root_basic, None)
+            .json_request(
+                reqwest::Method::GET,
+                "/api/organizations",
+                &self.root_basic,
+                None,
+            )
             .await?;
         if !status.is_success() {
             return Err(format!("list orgs {status} : {text}"));
@@ -208,10 +216,10 @@ impl Client {
                 "{}/api/{org_identifier}/prometheus/api/v1/write",
                 self.base
             ))
-            .header("Authorization", format!(
-                "Basic {}",
-                STANDARD.encode(email_passcode)
-            ))
+            .header(
+                "Authorization",
+                format!("Basic {}", STANDARD.encode(email_passcode)),
+            )
             .header("Content-Encoding", "snappy")
             .header("Content-Type", "application/x-protobuf")
             .body(compressed)

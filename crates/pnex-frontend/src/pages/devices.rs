@@ -54,8 +54,7 @@ pub fn Devices() -> Element {
     // Polling : un seul minuteur à la fois, relancé tant qu'un build vole.
     let mut polling = use_signal(|| false);
 
-    let can_write = current_role()
-        .is_some_and(|role| matches!(role.as_str(), "owner" | "admin"));
+    let can_write = current_role().is_some_and(|role| matches!(role.as_str(), "owner" | "admin"));
 
     let list = use_resource(move || {
         let filters = api::devices::DeviceFilters {
@@ -65,12 +64,20 @@ pub fn Devices() -> Element {
             },
             capability: {
                 let value = filter_capability().trim().to_string();
-                if value.is_empty() { None } else { Some(value) }
+                if value.is_empty() {
+                    None
+                } else {
+                    Some(value)
+                }
             },
             device_id: None,
             search: {
                 let value = search().trim().to_string();
-                if value.is_empty() { None } else { Some(value) }
+                if value.is_empty() {
+                    None
+                } else {
+                    Some(value)
+                }
             },
             active: match filter_status().as_str() {
                 "true" => Some(true),
@@ -93,10 +100,12 @@ pub fn Devices() -> Element {
     // (colonne Firmware — le WS de notification reste différé).
     if let Some(Ok(paged)) = &*list.read() {
         let in_flight = paged.results.iter().any(|device| {
-            device
-                .latest_build
-                .as_ref()
-                .is_some_and(|build| matches!(build.build_phase.as_deref(), Some("queued") | Some("running")))
+            device.latest_build.as_ref().is_some_and(|build| {
+                matches!(
+                    build.build_phase.as_deref(),
+                    Some("queued") | Some("running")
+                )
+            })
         });
         if in_flight && !polling() {
             polling.set(true);
@@ -556,7 +565,11 @@ fn last_seen_label(last_seen: &Option<String>) -> Element {
     {
         Some(ts) => {
             let local = ts.with_timezone(&chrono::Local);
-            format!("{} {}", t!("devices-last-seen-at"), local.format("%H:%M:%S"))
+            format!(
+                "{} {}",
+                t!("devices-last-seen-at"),
+                local.format("%H:%M:%S")
+            )
         }
         None => t!("devices-last-seen-never"),
     };

@@ -44,9 +44,9 @@ enum Step {
 // ── Générateur d'identifiants (shuffle du POC, unique-names-generator) ──
 
 const ADJECTIVES: [&str; 24] = [
-    "amber", "brave", "calm", "dusk", "eager", "fuzzy", "gentle", "happy", "icy", "jolly",
-    "keen", "lucky", "mellow", "nimble", "olive", "proud", "quiet", "rapid", "silly", "tidy",
-    "urban", "vivid", "witty", "young",
+    "amber", "brave", "calm", "dusk", "eager", "fuzzy", "gentle", "happy", "icy", "jolly", "keen",
+    "lucky", "mellow", "nimble", "olive", "proud", "quiet", "rapid", "silly", "tidy", "urban",
+    "vivid", "witty", "young",
 ];
 const ANIMALS: [&str; 24] = [
     "otter", "falcon", "ibex", "lynx", "marmot", "newt", "osprey", "puffin", "quokka", "robin",
@@ -267,10 +267,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
     };
     let go_model_back = move |_| step.set(Step::Model);
     let go_review = move |_| {
-        if ssid().trim().is_empty()
-            || wifi_password().is_empty()
-            || host().trim().is_empty()
-        {
+        if ssid().trim().is_empty() || wifi_password().is_empty() || host().trim().is_empty() {
             toasts::error("wizard-config-incomplete");
             return;
         }
@@ -337,15 +334,14 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
     if step() == Step::BuildProgress && build_launch_error().is_none() {
         let in_flight = match build_record() {
             None => true,
-            Some(record) => {
-                !matches!(record.build_phase.as_deref(), Some("succeeded") | Some("failed"))
-            }
+            Some(record) => !matches!(
+                record.build_phase.as_deref(),
+                Some("succeeded") | Some("failed")
+            ),
         };
         if in_flight && !polling() {
             polling.set(true);
-            let polled_id = created()
-                .map(|device| device.device_id)
-                .unwrap_or_default();
+            let polled_id = created().map(|device| device.device_id).unwrap_or_default();
             spawn(async move {
                 sleep(Duration::from_secs(5)).await;
                 polling.set(false);
@@ -388,10 +384,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
         }
     };
     let python_script = created().map(|device| {
-        let token = device
-            .device_token
-            .map(|t| t.token)
-            .unwrap_or_default();
+        let token = device.device_token.map(|t| t.token).unwrap_or_default();
         PY_TEMPLATE
             .replace("__TOKEN__", &token)
             .replace("__DEVICE_ID__", &device.device_id)
@@ -429,8 +422,11 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
         }
         _ => Vec::new(),
     };
-    let custom_models: Vec<pnex_core::PredefinedDevice> =
-        visible_models.iter().filter(|pd| is_custom(&pd.name)).cloned().collect();
+    let custom_models: Vec<pnex_core::PredefinedDevice> = visible_models
+        .iter()
+        .filter(|pd| is_custom(&pd.name))
+        .cloned()
+        .collect();
     let traditional_models: Vec<pnex_core::PredefinedDevice> = visible_models
         .iter()
         .filter(|pd| !is_custom(&pd.name))
@@ -895,7 +891,10 @@ fn model_card(
     let is_selected = selected().as_ref().is_some_and(|s| s.name == name);
     let custom = is_custom(&pd.name);
     let (border, chip) = if custom {
-        ("border-amber-300 bg-amber-50", "bg-amber-100 text-amber-800")
+        (
+            "border-amber-300 bg-amber-50",
+            "bg-amber-100 text-amber-800",
+        )
     } else {
         ("border-blue-200 bg-white", "bg-blue-100 text-blue-800")
     };

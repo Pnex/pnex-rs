@@ -26,7 +26,12 @@ pub fn merge_offsets(soc: &str) -> Option<&'static [(&'static str, &'static str)
 
 /// Argv complet de la commande esptool merge-bin (parité Django). Les
 /// chemins d'entrées sont passés tels quels (absolus dans le workspace).
-pub fn merge_args(esptool_cmd: &str, soc: &str, out: &Path, inputs: &[(String, PathBuf)]) -> Vec<String> {
+pub fn merge_args(
+    esptool_cmd: &str,
+    soc: &str,
+    out: &Path,
+    inputs: &[(String, PathBuf)],
+) -> Vec<String> {
     let mut argv: Vec<String> = esptool_cmd.split_whitespace().map(String::from).collect();
     argv.extend([
         "--chip".into(),
@@ -59,7 +64,11 @@ mod tests {
         let esp32 = merge_offsets("esp32").expect("esp32");
         assert_eq!(
             esp32,
-            &[("0x1000", "bootloader.bin"), ("0x8000", "partitions.bin"), ("0x10000", "firmware.bin")]
+            &[
+                ("0x1000", "bootloader.bin"),
+                ("0x8000", "partitions.bin"),
+                ("0x10000", "firmware.bin")
+            ]
         );
         // Variantes esp32 (c3, s3…) → même layout.
         assert!(merge_offsets("esp32c3").is_some());
@@ -81,7 +90,9 @@ mod tests {
         assert_eq!(argv[4], "esp32");
         assert!(argv.contains(&"merge-bin".to_string()));
         assert!(argv.windows(2).any(|w| w == ["-o", "/tmp/out.bin"]));
-        assert!(argv.windows(2).any(|w| w == ["0x1000", "/w/bootloader.bin"]));
+        assert!(argv
+            .windows(2)
+            .any(|w| w == ["0x1000", "/w/bootloader.bin"]));
         assert!(argv.contains(&"--flash-mode".to_string()));
         assert!(argv.contains(&"dio".to_string()));
         assert!(argv.contains(&"40m".to_string()));

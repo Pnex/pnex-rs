@@ -37,6 +37,9 @@ mod tests {
         assert_eq!(page.results.len(), 1);
         assert!(page.previous.is_none());
         let back = serde_json::to_value(&page).unwrap();
-        assert_eq!(back, serde_json::from_str::<serde_json::Value>(json).unwrap());
+        assert_eq!(
+            back,
+            serde_json::from_str::<serde_json::Value>(json).unwrap()
+        );
     }
 }

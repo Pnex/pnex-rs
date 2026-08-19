@@ -28,7 +28,11 @@ pub fn Catalog() -> Element {
         let filters = api::devices::CatalogFilters {
             search: {
                 let value = search().trim().to_string();
-                if value.is_empty() { None } else { Some(value) }
+                if value.is_empty() {
+                    None
+                } else {
+                    Some(value)
+                }
             },
             device_type: match filter_type().as_str() {
                 "all" => None,

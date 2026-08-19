@@ -1,5 +1,5 @@
+pub use super::_entities::unit_conversions::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
-pub use super::_entities::unit_conversions::{ActiveModel, Model, Entity};
 pub type UnitConversions = Entity;
 
 #[async_trait::async_trait]

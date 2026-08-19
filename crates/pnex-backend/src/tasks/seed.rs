@@ -6,13 +6,10 @@
 use loco_rs::prelude::*;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 
+use crate::models::_entities::sea_orm_active_enums::{CapabilityMode, ConversionKind, FormulaKind};
 use crate::models::_entities::{
-    device_capabilities, device_types, formulas, mcu_boards,
-    predefined_device_capabilities, predefined_devices, subscription_tiers,
-    unit_conversions,
-};
-use crate::models::_entities::sea_orm_active_enums::{
-    CapabilityMode, ConversionKind, FormulaKind,
+    device_capabilities, device_types, formulas, mcu_boards, predefined_device_capabilities,
+    predefined_devices, subscription_tiers, unit_conversions,
 };
 
 pub struct Seed;
@@ -84,12 +81,14 @@ fn yaml_files(dir: &std::path::Path) -> Result<Vec<std::path::PathBuf>> {
     Ok(files)
 }
 
-
 /// Parité Django bootstrap_db : parse l'UUID sinon dérive un uuid5 DNS
 /// déterministe (stable entre les runs → update_or_create idempotent).
 fn parse_global_id(raw: &str) -> Result<uuid::Uuid> {
     uuid::Uuid::parse_str(raw).or_else(|_| {
-        Ok(uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_DNS, raw.as_bytes()))
+        Ok(uuid::Uuid::new_v5(
+            &uuid::Uuid::NAMESPACE_DNS,
+            raw.as_bytes(),
+        ))
     })
 }
 
@@ -111,7 +110,11 @@ fn parse_duration_secs(s: &str) -> Result<i64> {
         "week" => 604_800,
         "month" => 2_592_000,
         "year" => 31_536_000,
-        other => return Err(Error::string(&format!("unité de durée inconnue : {other:?}"))),
+        other => {
+            return Err(Error::string(&format!(
+                "unité de durée inconnue : {other:?}"
+            )))
+        }
     };
     Ok(amount * mult)
 }
@@ -151,16 +154,19 @@ async fn seed_simple_capabilities(db: &Db, path: &std::path::Path) -> Result<usi
             Some("output") => CapabilityMode::Output,
             Some("input_output") => CapabilityMode::InputOutput,
             Some(other) => {
-                return Err(Error::string(&format!("mode capability inconnu : {other:?}")))
+                return Err(Error::string(&format!(
+                    "mode capability inconnu : {other:?}"
+                )))
             }
         };
         let existing = device_capabilities::Entity::find()
             .filter(device_capabilities::Column::Name.eq(&r.name))
             .one(db)
             .await?;
-        let mut am = existing.map_or_else(<device_capabilities::ActiveModel as Default>::default, |m| {
-            m.into_active_model()
-        });
+        let mut am = existing.map_or_else(
+            <device_capabilities::ActiveModel as Default>::default,
+            |m| m.into_active_model(),
+        );
         am.name = Set(r.name.clone());
         am.mode = Set(mode);
         am.save(db).await?;
@@ -180,8 +186,9 @@ async fn seed_mcu_boards(db: &Db, path: &std::path::Path) -> Result<usize> {
             .filter(mcu_boards::Column::Name.eq(&r.name))
             .one(db)
             .await?;
-        let mut am =
-            existing.map_or_else(<mcu_boards::ActiveModel as Default>::default, |m| m.into_active_model());
+        let mut am = existing.map_or_else(<mcu_boards::ActiveModel as Default>::default, |m| {
+            m.into_active_model()
+        });
         am.name = Set(r.name.clone());
         am.soc = Set(r.soc.clone().unwrap_or_else(|| "esp32".to_string()));
         am.save(db).await?;
@@ -213,7 +220,10 @@ async fn seed_predefined_devices(db: &Db, path: &std::path::Path) -> Result<usiz
             .one(db)
             .await?
             .ok_or_else(|| {
-                Error::string(&format!("device_type {} absent du seed", r.device_type_name))
+                Error::string(&format!(
+                    "device_type {} absent du seed",
+                    r.device_type_name
+                ))
             })?;
 
         // Quirk Django conservée : le board « generic » n'est pas dans mcu.yaml,
@@ -240,24 +250,20 @@ async fn seed_predefined_devices(db: &Db, path: &std::path::Path) -> Result<usiz
             .one(db)
             .await?;
         let is_update = existing.is_some();
-        let mut am = existing.map_or_else(
-            <predefined_devices::ActiveModel as Default>::default,
-            |m| m.into_active_model(),
-        );
+        let mut am = existing
+            .map_or_else(<predefined_devices::ActiveModel as Default>::default, |m| {
+                m.into_active_model()
+            });
         am.name = Set(r.name.clone());
         am.pretty_name = Set(r.pretty_name.clone());
         am.revision = Set(r.revision.clone().unwrap_or_default());
         am.device_type_id = Set(device_type.id);
         am.board_id = Set(board.id);
         am.device_doc_url = Set(r.device_doc_url.clone());
-        am.prestashop_product_id = Set(
-            r.prestashop_product_id
-                .as_ref()
-                .map(|v| match v {
-                    serde_json::Value::String(s) => s.clone(),
-                    other => other.to_string(),
-                }),
-        );
+        am.prestashop_product_id = Set(r.prestashop_product_id.as_ref().map(|v| match v {
+            serde_json::Value::String(s) => s.clone(),
+            other => other.to_string(),
+        }));
         am.prestashop_buy_url = Set(r.prestashop_buy_url.clone());
         am.byod_doc_url = Set(r.byod_doc_url.clone());
         am.image_source_url = Set(r.image_source_url.clone());
@@ -271,9 +277,7 @@ async fn seed_predefined_devices(db: &Db, path: &std::path::Path) -> Result<usiz
 
         // M2M : remplacement atomique des liens (idempotent).
         predefined_device_capabilities::Entity::delete_many()
-            .filter(
-                predefined_device_capabilities::Column::PredefinedDeviceId.eq(device.id),
-            )
+            .filter(predefined_device_capabilities::Column::PredefinedDeviceId.eq(device.id))
             .exec(db)
             .await?;
         for cap_name in &r.capabilities_names {
@@ -281,9 +285,7 @@ async fn seed_predefined_devices(db: &Db, path: &std::path::Path) -> Result<usiz
                 .filter(device_capabilities::Column::Name.eq(cap_name))
                 .one(db)
                 .await?
-                .ok_or_else(|| {
-                    Error::string(&format!("capability {cap_name} absente du seed"))
-                })?;
+                .ok_or_else(|| Error::string(&format!("capability {cap_name} absente du seed")))?;
             predefined_device_capabilities::ActiveModel {
                 predefined_device_id: Set(device.id),
                 device_capability_id: Set(cap.id),
@@ -315,20 +317,20 @@ async fn seed_subscription_tiers(db: &Db, path: &std::path::Path) -> Result<usiz
             .filter(subscription_tiers::Column::Name.eq(&r.name))
             .one(db)
             .await?;
-        let mut am = existing.map_or_else(<subscription_tiers::ActiveModel as Default>::default, |m| {
-            m.into_active_model()
-        });
+        let mut am = existing
+            .map_or_else(<subscription_tiers::ActiveModel as Default>::default, |m| {
+                m.into_active_model()
+            });
         am.name = Set(r.name.clone());
         am.max_sensor_devices = Set(r.max_sensor_devices);
         am.max_actuator_devices = Set(r.max_actuator_devices);
         am.max_mixed_devices = Set(r.max_mixed_devices);
         am.min_build_interval_secs = Set(parse_duration_secs(&r.min_build_interval)?);
-        am.data_retention_secs = Set(
-            r.data_retention
-                .as_deref()
-                .map(parse_duration_secs)
-                .transpose()?,
-        );
+        am.data_retention_secs = Set(r
+            .data_retention
+            .as_deref()
+            .map(parse_duration_secs)
+            .transpose()?);
         am.save(db).await?;
     }
     Ok(rows.len())
@@ -359,7 +361,9 @@ async fn seed_global_conversions(db: &Db, path: &std::path::Path) -> Result<usiz
             "affine" => ConversionKind::Affine,
             "custom" => ConversionKind::Custom,
             other => {
-                return Err(Error::string(&format!("conversion_type inconnu : {other:?}")))
+                return Err(Error::string(&format!(
+                    "conversion_type inconnu : {other:?}"
+                )))
             }
         };
         let global_id = parse_global_id(&r.global_id)?;
@@ -367,9 +371,10 @@ async fn seed_global_conversions(db: &Db, path: &std::path::Path) -> Result<usiz
             .filter(unit_conversions::Column::GlobalId.eq(global_id))
             .one(db)
             .await?;
-        let mut am = existing.map_or_else(<unit_conversions::ActiveModel as Default>::default, |m| {
-            m.into_active_model()
-        });
+        let mut am = existing
+            .map_or_else(<unit_conversions::ActiveModel as Default>::default, |m| {
+                m.into_active_model()
+            });
         am.org_id = Set(None);
         am.name = Set(r.name.clone());
         am.from_unit = Set(r.from_unit.clone());
@@ -418,17 +423,16 @@ async fn seed_global_formulas(db: &Db, path: &std::path::Path) -> Result<usize> 
             "fluid_property" => FormulaKind::FluidProperty,
             "power_calculation" => FormulaKind::PowerCalculation,
             "rate_of_change" => FormulaKind::RateOfChange,
-            other => {
-                return Err(Error::string(&format!("formula_type inconnu : {other:?}")))
-            }
+            other => return Err(Error::string(&format!("formula_type inconnu : {other:?}"))),
         };
         let global_id = parse_global_id(&r.global_id)?;
         let existing = formulas::Entity::find()
             .filter(formulas::Column::GlobalId.eq(global_id))
             .one(db)
             .await?;
-        let mut am =
-            existing.map_or_else(<formulas::ActiveModel as Default>::default, |m| m.into_active_model());
+        let mut am = existing.map_or_else(<formulas::ActiveModel as Default>::default, |m| {
+            m.into_active_model()
+        });
         am.org_id = Set(None);
         am.name = Set(r.name.clone());
         am.description = Set(r.description.clone());

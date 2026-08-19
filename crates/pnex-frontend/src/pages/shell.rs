@@ -140,11 +140,7 @@ fn SidebarBrand() -> Element {
 #[component]
 fn SidebarFooter() -> Element {
     let identity = session::user()
-        .map(|user| {
-            user.full_name
-                .or(user.email)
-                .unwrap_or(user.username)
-        })
+        .map(|user| user.full_name.or(user.email).unwrap_or(user.username))
         .unwrap_or_default();
     rsx! {
         div { class: "p-4 border-t border-gray-800 space-y-3",

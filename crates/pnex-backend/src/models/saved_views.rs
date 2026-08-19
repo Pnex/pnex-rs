@@ -1,5 +1,5 @@
+pub use super::_entities::saved_views::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
-pub use super::_entities::saved_views::{ActiveModel, Model, Entity};
 pub type SavedViews = Entity;
 
 #[async_trait::async_trait]

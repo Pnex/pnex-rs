@@ -1,5 +1,5 @@
+pub use super::_entities::build_records::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
-pub use super::_entities::build_records::{ActiveModel, Model, Entity};
 pub type BuildRecords = Entity;
 
 #[async_trait::async_trait]

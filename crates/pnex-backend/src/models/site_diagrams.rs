@@ -1,5 +1,5 @@
+pub use super::_entities::site_diagrams::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
-pub use super::_entities::site_diagrams::{ActiveModel, Model, Entity};
 pub type SiteDiagrams = Entity;
 
 #[async_trait::async_trait]

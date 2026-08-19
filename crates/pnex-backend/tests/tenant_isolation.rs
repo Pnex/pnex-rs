@@ -49,8 +49,8 @@ where
         move |server, ctx| async move {
             // La base de test est vierge : on y met le tier Free (le seed
             // complet est une tâche, hors périmètre ici).
-            use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
             use pnex_backend::models::_entities::subscription_tiers as tiers;
+            use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
             if tiers::Entity::find()
                 .filter(tiers::Column::Name.eq("Free"))
                 .one(&ctx.db)
@@ -151,7 +151,11 @@ async fn sub_change_avec_meme_email_relie_le_meme_user() {
             .get("/api/v1/user-info")
             .add_header("Authorization", bearer(&token_b))
             .await;
-        assert_eq!(second.status_code(), 200, "re-liaison par email, pas de 500");
+        assert_eq!(
+            second.status_code(),
+            200,
+            "re-liaison par email, pas de 500"
+        );
         let second: serde_json::Value = second.json();
         assert_eq!(second["id"], first["id"], "même utilisateur re-lie");
         assert_eq!(
@@ -179,7 +183,10 @@ async fn sso_register_pointe_vers_registrations_et_reset_vers_kc_action() {
             .and_then(|v| v.to_str().ok())
             .unwrap_or_default()
             .to_string();
-        assert!(location.contains("/protocol/openid-connect/registrations?"), "{location}");
+        assert!(
+            location.contains("/protocol/openid-connect/registrations?"),
+            "{location}"
+        );
         assert!(location.contains("code_challenge=abc"), "{location}");
 
         // logout : end-session Keycloak avec id_token_hint + retour.
@@ -193,7 +200,10 @@ async fn sso_register_pointe_vers_registrations_et_reset_vers_kc_action() {
             .and_then(|v| v.to_str().ok())
             .unwrap_or_default()
             .to_string();
-        assert!(location.contains("/protocol/openid-connect/logout?"), "{location}");
+        assert!(
+            location.contains("/protocol/openid-connect/logout?"),
+            "{location}"
+        );
         assert!(location.contains("id_token_hint=jwt.jwt.jwt"), "{location}");
         assert!(location.contains("post_logout_redirect_uri="), "{location}");
 
@@ -207,7 +217,10 @@ async fn sso_register_pointe_vers_registrations_et_reset_vers_kc_action() {
             .and_then(|v| v.to_str().ok())
             .unwrap_or_default()
             .to_string();
-        assert!(location.contains("/protocol/openid-connect/auth?"), "{location}");
+        assert!(
+            location.contains("/protocol/openid-connect/auth?"),
+            "{location}"
+        );
         assert!(location.contains("kc_action=UPDATE_PASSWORD"), "{location}");
     })
     .await;

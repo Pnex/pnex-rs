@@ -1,5 +1,5 @@
+pub use super::_entities::subscription_tiers::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
-pub use super::_entities::subscription_tiers::{ActiveModel, Model, Entity};
 pub type SubscriptionTiers = Entity;
 
 #[async_trait::async_trait]

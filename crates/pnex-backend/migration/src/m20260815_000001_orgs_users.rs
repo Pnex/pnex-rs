@@ -36,7 +36,10 @@ impl MigrationTrait for Migration {
                 ("max_mixed_devices", ColType::Integer),
                 // Django : DurationField INTERVAL PG. Rust = version officielle :
                 // secondes entières, plus simples à typer côté SeaORM.
-                ("min_build_interval_secs", ColType::BigIntegerWithDefault(900)),
+                (
+                    "min_build_interval_secs",
+                    ColType::BigIntegerWithDefault(900),
+                ),
                 ("data_retention_secs", ColType::BigIntegerNull),
             ],
             &[],
@@ -61,11 +64,18 @@ impl MigrationTrait for Migration {
             "organization_member",
             &[
                 ("id", ColType::PkAuto),
-                ("role", ColType::EnumWithDefault(
-                    "org_member_role".to_string(),
-                    vec!["owner".to_string(), "admin".to_string(), "viewer".to_string()],
-                    "viewer".to_string(),
-                )),
+                (
+                    "role",
+                    ColType::EnumWithDefault(
+                        "org_member_role".to_string(),
+                        vec![
+                            "owner".to_string(),
+                            "admin".to_string(),
+                            "viewer".to_string(),
+                        ],
+                        "viewer".to_string(),
+                    ),
+                ),
             ],
             &[("users", "user_id"), ("organizations", "org_id")],
         )
@@ -76,17 +86,29 @@ impl MigrationTrait for Migration {
             "user_profile",
             &[
                 ("id", ColType::PkAuto),
-                ("language", ColType::StringLenWithDefault(10, "en".to_string())),
-                ("timezone", ColType::StringLenWithDefault(50, "UTC".to_string())),
+                (
+                    "language",
+                    ColType::StringLenWithDefault(10, "en".to_string()),
+                ),
+                (
+                    "timezone",
+                    ColType::StringLenWithDefault(50, "UTC".to_string()),
+                ),
                 ("date_format", ColType::StringLenNull(20)),
-                ("theme", ColType::EnumWithDefault(
-                    "ui_theme".to_string(),
-                    vec!["light".to_string(), "dark".to_string(), "auto".to_string()],
-                    "auto".to_string(),
-                )),
+                (
+                    "theme",
+                    ColType::EnumWithDefault(
+                        "ui_theme".to_string(),
+                        vec!["light".to_string(), "dark".to_string(), "auto".to_string()],
+                        "auto".to_string(),
+                    ),
+                ),
                 ("preferences", ColType::JsonBinaryNull),
                 ("grafana_url", ColType::StringLenNull(500)),
-                ("llm_endpoint_openapi_compatible", ColType::StringLenNull(500)),
+                (
+                    "llm_endpoint_openapi_compatible",
+                    ColType::StringLenNull(500),
+                ),
                 ("llm_token", ColType::StringLenNull(500)),
                 ("llm_model", ColType::StringLenNull(100)),
             ],

@@ -60,7 +60,10 @@ mod tests {
         assert!(tmp.path().join("soil_sensor/platformio.ini").is_file());
         assert!(tmp.path().join("4_chan_relay/platformio.ini").is_file());
         assert!(tmp.path().join("common_libs/config/config.h").is_file());
-        assert!(tmp.path().join("common_libs/crypto/chacha_crypto.h").is_file());
+        assert!(tmp
+            .path()
+            .join("common_libs/crypto/chacha_crypto.h")
+            .is_file());
         assert!(!tmp.path().join(".venv").exists());
         assert!(!tmp.path().join("soil_sensor/.pio").exists());
     }

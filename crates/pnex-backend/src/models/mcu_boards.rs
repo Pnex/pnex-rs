@@ -1,5 +1,5 @@
+pub use super::_entities::mcu_boards::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
-pub use super::_entities::mcu_boards::{ActiveModel, Model, Entity};
 pub type McuBoards = Entity;
 
 #[async_trait::async_trait]

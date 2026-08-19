@@ -1,5 +1,5 @@
+pub use super::_entities::device_states::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
-pub use super::_entities::device_states::{ActiveModel, Model, Entity};
 pub type DeviceStates = Entity;
 
 #[async_trait::async_trait]

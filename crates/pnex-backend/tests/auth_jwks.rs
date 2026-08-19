@@ -3,7 +3,7 @@
 
 mod common;
 
-use common::{TokenSpec, mint_token, spawn_mock_keycloak};
+use common::{mint_token, spawn_mock_keycloak, TokenSpec};
 use pnex_backend::auth::{
     claims::Aud,
     jwks::{self, JwksVerifier},
@@ -119,10 +119,8 @@ async fn kid_inconnu_rejete_apres_rafraichissement() {
     let token = jsonwebtoken::encode(
         &header,
         &claims,
-        &jsonwebtoken::EncodingKey::from_rsa_pem(include_bytes!(
-            "fixtures/jwks_test_key.pem"
-        ))
-        .expect("clé"),
+        &jsonwebtoken::EncodingKey::from_rsa_pem(include_bytes!("fixtures/jwks_test_key.pem"))
+            .expect("clé"),
     )
     .expect("token kid inconnu");
     assert!(matches!(

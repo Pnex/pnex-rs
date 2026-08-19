@@ -80,7 +80,9 @@ pub fn current_tag() -> String {
 /// Change la langue courante (no-op si tag inconnu) et persiste le choix.
 #[allow(dead_code)]
 pub fn set_locale(tag: &str) {
-    let Some(id) = locale_from_tag(tag) else { return };
+    let Some(id) = locale_from_tag(tag) else {
+        return;
+    };
     let mut current = i18n();
     if current.language() != id {
         current.set_language(id);

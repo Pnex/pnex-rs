@@ -6,12 +6,10 @@
 
 use loco_rs::prelude::*;
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, sea_query::OnConflict,
+    sea_query::OnConflict, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
 };
 
-use crate::models::_entities::{
-    openobserve_orgs, sea_orm_active_enums::OpenobserveOrgStatus,
-};
+use crate::models::_entities::{openobserve_orgs, sea_orm_active_enums::OpenobserveOrgStatus};
 
 use super::client::Client;
 
@@ -41,7 +39,12 @@ pub fn generate_password() -> String {
         set[rng.random_range(0..set.len())] as char
     }
     let mut rng = rand::rng();
-    let mut chars: Vec<char> = vec![pick(&mut rng, LOWER), pick(&mut rng, UPPER), pick(&mut rng, DIGIT), pick(&mut rng, SPECIAL)];
+    let mut chars: Vec<char> = vec![
+        pick(&mut rng, LOWER),
+        pick(&mut rng, UPPER),
+        pick(&mut rng, DIGIT),
+        pick(&mut rng, SPECIAL),
+    ];
     for _ in 4..24 {
         let set = ALL[rng.random_range(0..ALL.len())];
         chars.push(pick(&mut rng, set));
@@ -53,10 +56,7 @@ pub fn generate_password() -> String {
     chars.into_iter().collect()
 }
 
-async fn row_of(
-    db: &DatabaseConnection,
-    org_id: i64,
-) -> Result<Option<openobserve_orgs::Model>> {
+async fn row_of(db: &DatabaseConnection, org_id: i64) -> Result<Option<openobserve_orgs::Model>> {
     openobserve_orgs::Entity::find()
         .filter(openobserve_orgs::Column::OrgId.eq(org_id))
         .one(db)
@@ -74,7 +74,10 @@ async fn record(
     last_error: Option<String>,
 ) -> Result<()> {
     let mut conflict = OnConflict::column(openobserve_orgs::Column::OrgId)
-        .update_columns([openobserve_orgs::Column::Status, openobserve_orgs::Column::LastError])
+        .update_columns([
+            openobserve_orgs::Column::Status,
+            openobserve_orgs::Column::LastError,
+        ])
         .to_owned();
     if let Some(o) = &o2_org {
         conflict.value(openobserve_orgs::Column::O2Org, o.clone());
@@ -106,10 +109,7 @@ pub async fn ensure_org_credentials(
     client: &Client,
     org_id: i64,
 ) -> Result<OrgCredentials, String> {
-    if let Some(row) = row_of(db, org_id)
-        .await
-        .map_err(|e| format!("db : {e}"))?
-    {
+    if let Some(row) = row_of(db, org_id).await.map_err(|e| format!("db : {e}"))? {
         if row.status == OpenobserveOrgStatus::Provisioned {
             if let Some(token) = row.ingestion_token.clone() {
                 return Ok(OrgCredentials {
@@ -123,13 +123,28 @@ pub async fn ensure_org_credentials(
     let result = provision(db, client, org_id).await;
     match result {
         Ok(creds) => {
-            record(db, org_id, Some(creds.o2_org.clone()), Some(creds.email_passcode.clone()), OpenobserveOrgStatus::Provisioned, None)
-                .await
-                .map_err(|e| format!("db : {e}"))?;
+            record(
+                db,
+                org_id,
+                Some(creds.o2_org.clone()),
+                Some(creds.email_passcode.clone()),
+                OpenobserveOrgStatus::Provisioned,
+                None,
+            )
+            .await
+            .map_err(|e| format!("db : {e}"))?;
             Ok(creds)
         }
         Err(msg) => {
-            let _ = record(db, org_id, None, None, OpenobserveOrgStatus::Failed, Some(msg.clone())).await;
+            let _ = record(
+                db,
+                org_id,
+                None,
+                None,
+                OpenobserveOrgStatus::Failed,
+                Some(msg.clone()),
+            )
+            .await;
             Err(msg)
         }
     }
@@ -151,7 +166,11 @@ async fn provision(
     match client.create_user(&identifier, &email, &password).await {
         Ok(true) => {}
         // User préexistant (ligne PG perdue) : root reprend la main.
-        Ok(false) => client.reset_user_password(&identifier, &email, &password).await?,
+        Ok(false) => {
+            client
+                .reset_user_password(&identifier, &email, &password)
+                .await?
+        }
         Err(e) => return Err(e),
     }
     let passcode = client.passcode(&identifier, &email, &password).await?;

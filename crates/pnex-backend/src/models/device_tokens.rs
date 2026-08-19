@@ -1,5 +1,5 @@
+pub use super::_entities::device_tokens::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
-pub use super::_entities::device_tokens::{ActiveModel, Model, Entity};
 pub type DeviceTokens = Entity;
 
 #[async_trait::async_trait]

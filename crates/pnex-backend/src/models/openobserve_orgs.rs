@@ -1,5 +1,5 @@
+pub use super::_entities::openobserve_orgs::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
-pub use super::_entities::openobserve_orgs::{ActiveModel, Model, Entity};
 pub type OpenobserveOrgs = Entity;
 
 #[async_trait::async_trait]
