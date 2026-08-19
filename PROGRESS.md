@@ -428,6 +428,30 @@ de sujets Django).
 
 ## Journal
 
+- 2026-08-19 : **Visualisation — courbes capteur par capteur + formalisation
+  du query O2** (demande user : « une petite courbe des données qu'il a
+  dans prom/openobserve, un truc à la influxdb, quick and dirty »).
+  Constats e2e complémentaires sur O2 v0.92.1 : `query_range` accepte le
+  nom nu ET l'égalité `device_id="…"`, rend les points réels sans remplir
+  les trous (`values: [[ts,"val"],…]`) ; l'instant
+  `last_over_time(nom[24h])` énumère une série par device (catalogue).
+  Deux endpoints lecture seule (`/api/v1/telemetry/catalog` et
+  `/series?metric&device_id&window=1h|6h|24h`, viewer inclus) :
+  `services/visualization.rs` (≠ `services::telemetry` qui est le côté
+  INGEST — le module read-side a failli l'écraser, renommé à temps),
+  step = fenêtre/120, cap 240 points, passcode→root, timeout 5 s,
+  dégradation `available:false` (doctrine dashboard).
+  **Anti-injection PromQL** : charset fermé métrique/device + fenêtre
+  preset → 400 AVANT toute construction de requête, y compris sans O2
+  configuré (bug relevé par le test : le controller court-circuitait
+  avant la validation — le short-circuit vit désormais dans le service
+  via `Option<&Client>`). Front : page Visualisation (pickers
+  métrique/capteur depuis le catalogue, fenêtres 1h/6h/24h, ≤ 6 séries
+  superposées avec chips, **chart SVG maison sans lib** — polyline +
+  points, échelle Y globale, légende, polling 15 s). e2e réel vérifié
+  sur le serveur dev (routes 401 sans token, dégradé 200, injection 400)
+  via user Keycloak temporaire créé puis supprimé.
+
 - 2026-08-19 : **Dashboard basic — summary org + page front** (demande user,
   principe « l'UI est la seule interface »). `GET /api/v1/dashboard/summary`
   (une requête pour toute la page, viewer inclus) : liveness PG au TTL de
