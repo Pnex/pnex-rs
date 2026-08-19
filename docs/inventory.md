@@ -13,7 +13,7 @@
 | D3 | **Rapports → OpenObserve** : scheduled reports de dashboards (Report Server + SMTP + cron). Supprime matplotlib/WeasyPrint/Celery/S3-rapports | Phase 5/8 |
 | D4 | Le chiffrement device actuel est **ChaCha20 NU (sans Poly1305)** — migration.md dit « ChaCha20-Poly1305 ». Décision à prendre : compatibilité exacte (nu) ou upgrade AEAD (breaking firmware) | Phase 5 |
 | D5 | **Firmware → `ArtifactStore` (v2, révisé 2026-08-18 sur décision user — trois tiers de déploiement)** : backend `db` **par défaut** (binaires en table `firmware_artifacts`, 1–4 Mo bornés par la flash, upsert `ON CONFLICT` par device → zéro orphelin) — tier **sqlite** hobbyiste (données + artefacts + queue dans un fichier, mono-pod) et tier **postgres** scalable (pods API stateless) ; backend `s3` (industriel) **implémenté** (opendal 0.57, e2e RustFS validée — Phase C) ; `local` (FS) **supprimé**. Sélection `STORAGE_BACKEND=db\|s3` (surcharge env). **⚠ Pas de migration/réconciliation entre tiers** (choix à l'installation). La v1 (PG large objects écartés : binaires lourds, WAL gonflés) est caduque — la réalité est bornée à 4 Mo/image, fréquence de builds faible | Phase 6 ✅ |
-| D6 | **Rétention des artifacts : structure posée maintenant, gestion plus tard** — clés `org_{id}/firmware/…`, champ/config de rétention + job worker placeholder | Phase 6 |
+| D6 | **Pas de rétention des artefacts firmware** (décision user 2026-08-19 : le binaire doit rester disponible pour re-flash/recompile dans tous les cas) — les artefacts vivent aussi longtemps que le device. Le volume reste borné par l'upsert par device (1 artefact/device, 1–4 Mo) | ✅ clos |
 | D7 | **Rapports : discussion de conception repoussée** ; exigences verrouillées : (a) tout OpenObserve doit être provisionnable/cron-able **via API** (service account — orgs, dashboards, reports) ; (b) génération à la demande = **tâche backend** (job queue PG) pour éviter la saturation | Phase 8 |
 | D8 | **ChaCha20 nu à parité stricte** (compatibilité firmware ESP32 existant), versionnement du protocole de chiffrement pour permettre un upgrade AEAD ultérieur | Phase 5 |
 | D9 | **État live device → PostgreSQL** (table `device_state` : upsert + purge périodique type TTL logique) — cohérent « que du PG » ; Redis db 2 supprimé | Phase 5 |
@@ -117,7 +117,7 @@ PUT/PATCH devices = metadata only ; suffixes .json ; 3 schémas d'auth actifs.
 | k8s_ctl + pods compute par actuateur + run_compute_controller | **SUPPRIMÉ** — régulation à l'edge (M2M) | — |
 | Argo Workflows + backend argowf | **SUPPRIMÉ** | — |
 | firmware build (k8s_job script : git clone → pio run → esptool merge-bin → S3) | **FAIT (Phase 6)** — crate `pnex-firmware-builder` (pipeline subprocess : source locale ou git clone → pio run → merge-bin → ArtifactStore), worker Loco `BuildFirmwareWorker`, timeout dur + kill, workspace tmp par job (secrets effacés au drop), env du child réduite | ✅ 6 |
-| MinIO/S3 (firmware binaires + rapports) | Rapports : **SUPPRIMÉ (D3)**. Firmware : **FAIT (Phase 6, D5 v2 + Phase C)** — `ArtifactStore` backend `db` par défaut (table `firmware_artifacts`, upsert par device — tiers sqlite tout-en-un / postgres pods stateless), `local` supprimé ; S3 = tier industriel **implémenté** (opendal, e2e RustFS — MinIO écarté, licence) ; rétention différée (D6) | ✅ 6 |
+| MinIO/S3 (firmware binaires + rapports) | Rapports : **SUPPRIMÉ (D3)**. Firmware : **FAIT (Phase 6, D5 v2 + Phase C)** — `ArtifactStore` backend `db` par défaut (table `firmware_artifacts`, upsert par device — tiers sqlite tout-en-un / postgres pods stateless), `local` supprimé ; S3 = tier industriel **implémenté** (opendal, e2e RustFS — MinIO écarté, licence) ; pas de rétention (D6 clos — artefacts conservés pour re-flash) | ✅ 6 |
 | CoolProp in-process (5 points d'injection) | **service FastAPI externe conservé**, appelé par host fn WASM + validation catalogue | 8 |
 | Rapports matplotlib/WeasyPrint/Celery | **SUPPRIMÉ (D3)** — OpenObserve Report Server + SMTP + cron | — |
 
@@ -146,8 +146,8 @@ Les points ouverts de la première passe ont été résolus (décisions D4-D11 e
    en Phase 8.
 5. ~~MinIO~~ → **D5 v2** : artefacts firmware en base par défaut
    (`firmware_artifacts`), S3 = tier industriel derrière `ArtifactStore` ;
-   **D6** : rétention structurée mais gestion différée (l'upsert par device
-   évite déjà les orphelins).
+   **D6 clos** : pas de rétention — l'upsert par device borne le volume
+   (1 artefact/device, 1–4 Mo), le binaire reste toujours re-flashable.
 6. ~~Retention par org vs tier~~ → **D11** : le tier s'attache à l'org.
 7. ~~Rapport ad hoc~~ → **D7** : conception repoussée ; provisioning/cron O2 par
    API exigé, génération live en tâche backend.

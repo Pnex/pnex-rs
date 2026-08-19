@@ -63,8 +63,10 @@
 >   compilés dans les artefacts intermédiaires) ;
 > - cache : `~/.platformio` partagé (préchauffer une fois par machine) ;
 >   le cache proxy dédié sccache/bucket est **différé** ;
-> - cancellation tokens et clés de config de rétention (D6) : structure
->   posée, gestion différée.
+> - cancellation tokens : structure posée, gestion différée ; rétention :
+>   **aucune (D6 clos)** — le binaire doit rester disponible pour
+>   re-flash/recompile dans tous les cas (l'upsert par device borne le
+>   volume à 1 artefact de 1–4 Mo par device).
 
 ## 1. Architecture cible (Appendice X, résumé)
 
