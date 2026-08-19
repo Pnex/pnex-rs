@@ -39,9 +39,6 @@ struct MockState {
     resets: u32,
     /// Basics reçus sur la route query Prometheus (ordre des tentatives).
     query_basics: Vec<String>,
-    /// Simule un O2 qui refuse le Basic email:passcode sur la query
-    /// (comportement constaté selon versions) → fallback root.
-    reject_passcode_query: bool,
 }
 
 fn basic_of(header: Option<&str>) -> String {
@@ -255,16 +252,12 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                             basic_of(headers.get("authorization").and_then(|v| v.to_str().ok()));
                         let mut guard = s.lock().unwrap();
                         guard.query_basics.push(basic.clone());
-                        // Auth : Basic email:passcode d'un user de l'org, ou
-                        // Basic root (fallback du client).
+                        // Auth : Basic root UNIQUEMENT — fidèle au vrai O2
+                        // v0.92.1 où le Basic email:passcode est refusé sur
+                        // la query (il ne sert que l'ingestion).
                         let (email, secret) = basic.split_once(':').unwrap_or(("", ""));
-                        let passcode_ok = !guard.reject_passcode_query
-                            && guard
-                                .users
-                                .contains_key(&(org.clone(), email.to_string()))
-                            && secret == passcode_of(email);
                         let root_ok = email == "root@pnex.local" && secret == "whatever";
-                        if !passcode_ok && !root_ok {
+                        if !root_ok {
                             return (
                                 axum::http::StatusCode::UNAUTHORIZED,
                                 axum::Json(serde_json::json!({
@@ -527,10 +520,12 @@ async fn batcher_flush_vers_openobserve() {
     telemetry::reset_sink();
 }
 
-/// Query Prometheus : le Basic email:passcode suffit (une seule tentative),
-/// la réponse vector est parsée et porte le DERNIER échantillon par série.
+/// Query Prometheus sur le vrai O2 v0.92.1 (constaté e2e) : le Basic
+/// email:passcode est REFUSÉ sur la query (il ne sert que l'ingestion) —
+/// le client tente passcode puis bascule en Basic root, qui répond. La
+/// réponse vector est parsée et porte le DERNIER échantillon par série.
 #[tokio::test]
-async fn prom_query_authentifie_passcode_et_parse() {
+async fn prom_query_bascule_root_et_parse() {
     let (base, mock) = spawn_mock_o2().await;
     let email = "pnex-ingest+org7@pnex.local";
     {
@@ -566,7 +561,7 @@ async fn prom_query_authentifie_passcode_et_parse() {
             &format!("{email}:{}", passcode_of(email)),
         )
         .await
-        .expect("query passcode");
+        .expect("query via root");
     assert_eq!(resp.status, "success");
     assert_eq!(resp.data.result_type, "vector");
     assert_eq!(resp.data.result.len(), 1, "une série pour mockid1");
@@ -575,43 +570,29 @@ async fn prom_query_authentifie_passcode_et_parse() {
     assert_eq!(sample.metric["device_id"], "capteur-1");
     assert_eq!(sample.value.1, "22.5", "dernier échantillon de la série");
     assert_eq!(sample.value.0, 1_755_600_030.0);
-    // Le passcode a suffi : aucune tentative root.
-    assert_eq!(mock.lock().unwrap().query_basics.len(), 1);
-}
 
-/// Passcode refusé sur la query (401) → le client retente en Basic root
-/// et sert la réponse : deux tentatives dans l'ordre passcode puis root.
-#[tokio::test]
-async fn prom_query_fallback_root_si_passcode_refuse() {
-    let (base, mock) = spawn_mock_o2().await;
-    {
-        let mut guard = mock.lock().unwrap();
-        guard.reject_passcode_query = true;
-        guard.ingested.push((
-            "mockid1".into(),
-            String::new(),
-            "soil_moisture".into(),
-            vec![("device_id".into(), "capteur-1".into())],
-            42.0,
-            1_755_600_000_000,
-        ));
-    }
-    let client = o2_client(&base);
-    let resp = client
-        .prom_query(
-            "mockid1",
-            "{}",
-            "pnex-ingest+org7@pnex.local:o2oi_mauvais",
-        )
-        .await
-        .expect("query via root");
-    assert_eq!(resp.data.result.len(), 1);
-    assert_eq!(resp.data.result[0].metric["__name__"], "soil_moisture");
-
+    // Passcode tenté puis refusé, root a répondu.
     let basics = mock.lock().unwrap().query_basics.clone();
     assert_eq!(basics.len(), 2, "passcode PUIS root");
-    assert!(basics[0].starts_with("pnex-ingest+org7@pnex.local:"));
+    assert_eq!(basics[0], format!("{email}:{}", passcode_of(email)));
     assert_eq!(basics[1], "root@pnex.local:whatever");
+}
+
+/// Passcode ET root refusés (ex. mot de passe root retourné) → erreur
+/// explicite, pas de panique — le dashboard dégradera en available:false.
+#[tokio::test]
+async fn prom_query_erreur_si_tout_refuse() {
+    let (base, _mock) = spawn_mock_o2().await;
+    let client = Client::new(&openobserve::OpenobserveSettings {
+        base_url: base,
+        root_email: "root@pnex.local".into(),
+        root_password: "mauvais-mot-de-passe".into(),
+    });
+    let err = client
+        .prom_query("mockid1", "up", "pnex-ingest+org7@pnex.local:o2oi_x")
+        .await
+        .expect_err("les deux auths sont refusées");
+    assert!(err.contains("refusée"), "message : {err}");
 }
 
 /// Summary dashboard complet : PNEX_O2_URL active la section openobserve
@@ -685,11 +666,12 @@ async fn dashboard_summary_complet_contre_mock() {
                 "dernier échantillon de read_temperature"
             );
 
-            // Auth réelle : le Basic passcode a suffi (une tentative, pas
-            // de fallback root).
+            // Auth : passcode refusé puis root a répondu (comportement
+            // réel v0.92.1).
             let basics = mock.lock().unwrap().query_basics.clone();
-            assert_eq!(basics.len(), 1);
-            assert!(basics[0].starts_with(&creds.email_passcode.split(':').next().unwrap()));
+            assert_eq!(basics.len(), 2, "passcode PUIS root");
+            assert_eq!(basics[0], creds.email_passcode);
+            assert_eq!(basics[1], "root@pnex.local:whatever");
         },
     )
     .await;

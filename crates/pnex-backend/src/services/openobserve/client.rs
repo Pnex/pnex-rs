@@ -266,10 +266,11 @@ impl Client {
     /// métriques de l'org (dashboard).
     ///
     /// Auth : Basic `email:passcode` (le `ingestion_token` de la ligne PG)
-    /// d'abord ; sur 401/403, retry en Basic root — le mot de passe du
-    /// user d'ingestion n'est pas persisté (jeté au provisioning), on ne
-    /// peut pas faire de login-token, et le passcode ne passe pas
-    /// forcément sur la query selon la version d'O2.
+    /// d'abord ; sur 401/403, retry en Basic root — **c'est le chemin
+    /// réel** : constaté e2e sur O2 v0.92.1, le Basic email:passcode est
+    /// refusé sur la query (il ne sert que l'ingestion). Le passcode
+    /// reste tenté d'abord (moindre privilège, et future-proof si O2
+    /// l'accepte un jour).
     pub async fn prom_query(
         &self,
         org_identifier: &str,
