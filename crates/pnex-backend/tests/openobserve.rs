@@ -342,6 +342,107 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
             }),
         )
         .route(
+            "/api/{org}/prometheus/api/v1/query_range",
+            get({
+                let s = s.clone();
+                move |Path(org): Path<String>,
+                      headers: axum::http::HeaderMap,
+                      axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>| {
+                    let s = s.clone();
+                async move {
+                        let basic =
+                            basic_of(headers.get("authorization").and_then(|v| v.to_str().ok()));
+                        let mut guard = s.lock().unwrap();
+                        guard.query_basics.push(basic.clone());
+                        // Auth root uniquement, comme la query instantanée
+                        // (fidèle v0.92.1 : passcode = ingestion seule).
+                        let (email, secret) = basic.split_once(':').unwrap_or(("", ""));
+                        if email != "root@pnex.local" || secret != "whatever" {
+                            return (
+                                axum::http::StatusCode::UNAUTHORIZED,
+                                axum::Json(serde_json::json!({
+                                    "message": "Unauthorized Access"
+                                })),
+                            );
+                        }
+                        // Formes réelles utilisées par le backend : nom nu
+                        // `soil_moisture` ou égalité
+                        // `soil_moisture{device_id="fuzzy-zebra"}`.
+                        let query = params.get("query").map(String::as_str).unwrap_or("");
+                        let (name, device_filter) = match query.split_once('{') {
+                            Some((n, sel)) => (
+                                n.to_string(),
+                                sel.split("device_id=\"")
+                                    .nth(1)
+                                    .and_then(|r| r.split('"').next())
+                                    .map(str::to_string),
+                            ),
+                            None => (query.to_string(), None),
+                        };
+                        let start: f64 =
+                            params.get("start").and_then(|v| v.parse().ok()).unwrap_or(0.0);
+                        let end: f64 = params
+                            .get("end")
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(f64::MAX);
+                        // Points par (métrique, device) dans la fenêtre —
+                        // forme matrix Prometheus exacte, ts en secondes.
+                        #[allow(clippy::type_complexity)]
+                        let mut series: HashMap<
+                            (String, String),
+                            (Vec<(String, String)>, Vec<(f64, f64)>),
+                        > = HashMap::new();
+                        for (o2_org, _b, metric, labels, value, ts_ms) in &guard.ingested {
+                            if o2_org != &org || metric != &name {
+                                continue;
+                            }
+                            let device = labels
+                                .iter()
+                                .find(|(n, _)| n == "device_id")
+                                .map(|(_, v)| v.clone())
+                                .unwrap_or_default();
+                            if device_filter.as_ref().is_some_and(|d| d != &device) {
+                                continue;
+                            }
+                            let ts_s = *ts_ms as f64 / 1000.0;
+                            if ts_s < start || ts_s > end {
+                                continue;
+                            }
+                            series
+                                .entry((metric.clone(), device))
+                                .or_insert((labels.clone(), vec![]))
+                                .1
+                                .push((ts_s, *value));
+                        }
+                        let result: Vec<serde_json::Value> = series
+                            .into_iter()
+                            .map(|((metric, _device), (labels, mut points))| {
+                                points.sort_by(|a, b| a.0.total_cmp(&b.0));
+                                let mut metric_map = serde_json::Map::new();
+                                metric_map
+                                    .insert("__name__".to_string(), serde_json::json!(metric));
+                                for (n, v) in labels {
+                                    metric_map.insert(n, serde_json::json!(v));
+                                }
+                                let values: Vec<serde_json::Value> = points
+                                    .into_iter()
+                                    .map(|(ts, v)| serde_json::json!([ts, v.to_string()]))
+                                    .collect();
+                                serde_json::json!({ "metric": metric_map, "values": values })
+                            })
+                            .collect();
+                        (
+                            axum::http::StatusCode::OK,
+                            axum::Json(serde_json::json!({
+                                "status": "success",
+                                "data": {"resultType": "matrix", "result": result}
+                            })),
+                        )
+                    }
+                }
+            }),
+        )
+        .route(
             "/api/{org}/streams",
             get({
                 let s = s.clone();
@@ -674,6 +775,83 @@ async fn prom_query_erreur_si_tout_refuse() {
         .await
         .expect_err("les deux auths sont refusées");
     assert!(err.contains("refusé"), "message : {err}");
+}
+
+/// Query range Prometheus (page Visualisation) : même bascule
+/// passcode→root que la query instantanée, sélecteur égalité
+/// `{device_id="…"}` respecté, points rendus en ordre chronologique
+/// dans la fenêtre [start, end] uniquement.
+#[tokio::test]
+async fn query_range_bascule_root_et_parse() {
+    let (base, mock) = spawn_mock_o2().await;
+    let email = "pnex-ingest+org7@pnex.local";
+    {
+        let mut guard = mock.lock().unwrap();
+        guard
+            .users
+            .insert(("mockid1".into(), email.into()), "pw".into());
+        // Trois points pour fuzzy-zebra (dont un HORS fenêtre) et un
+        // point d'un autre device — seuls les deux premiers doivent
+        // revenir, le filtre device excluant le reste.
+        for (value, ts_ms) in [
+            (100.0, 1_755_600_000_000i64),
+            (99.5, 1_755_600_030_000),
+            (98.0, 1_755_600_300_000),
+        ] {
+            guard.ingested.push((
+                "mockid1".into(),
+                String::new(),
+                "soil_moisture".into(),
+                vec![("device_id".into(), "fuzzy-zebra".into())],
+                value,
+                ts_ms,
+            ));
+        }
+        guard.ingested.push((
+            "mockid1".into(),
+            String::new(),
+            "soil_moisture".into(),
+            vec![("device_id".into(), "autre-capteur".into())],
+            42.0,
+            1_755_600_015_000,
+        ));
+    }
+    let client = o2_client(&base);
+    let email_passcode = format!("{email}:{}", passcode_of(email));
+    // Fenêtre couvrant les deux premiers points uniquement.
+    let resp = client
+        .prom_query_range(
+            "mockid1",
+            r#"soil_moisture{device_id="fuzzy-zebra"}"#,
+            1_755_600_000,
+            1_755_600_060,
+            30,
+            &email_passcode,
+        )
+        .await
+        .expect("query range via root");
+    assert_eq!(resp.status, "success");
+    assert_eq!(resp.data.result_type, "matrix");
+    assert_eq!(resp.data.result.len(), 1, "une seule série (filtre device)");
+    let sample = &resp.data.result[0];
+    assert_eq!(sample.metric["__name__"], "soil_moisture");
+    assert_eq!(sample.metric["device_id"], "fuzzy-zebra");
+    assert_eq!(sample.values.len(), 2, "point hors fenêtre exclu");
+    assert_eq!(sample.values[0], (1_755_600_000.0, "100".to_string()));
+    assert_eq!(sample.values[1], (1_755_600_030.0, "99.5".to_string()));
+
+    // Nom nu SANS sélecteur : les deux devices de la métrique.
+    let resp = client
+        .prom_query_range("mockid1", "soil_moisture", 0, 1_755_600_400, 60, &email_passcode)
+        .await
+        .expect("nom nu accepté");
+    assert_eq!(resp.data.result.len(), 2, "une série par device");
+
+    // Passcode tenté puis refusé, root a répondu (sur chaque appel).
+    let basics = mock.lock().unwrap().query_basics.clone();
+    assert_eq!(basics.len(), 4, "2 appels × (passcode PUIS root)");
+    assert_eq!(basics[0], email_passcode);
+    assert_eq!(basics[1], "root@pnex.local:whatever");
 }
 
 /// Summary dashboard complet : PNEX_O2_URL active la section openobserve

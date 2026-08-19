@@ -51,6 +51,30 @@ pub struct PromQuerySample {
     pub value: (f64, String),
 }
 
+/// Réponse d'une requête range Prometheus
+/// (`/api/v1/query_range`) — une série porte sa liste de points.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PromRangeResponse {
+    pub status: String,
+    pub data: PromRangeData,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PromRangeData {
+    #[serde(rename = "resultType")]
+    pub result_type: String,
+    pub result: Vec<PromRangeSample>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PromRangeSample {
+    /// Labels de la série — `__name__` + labels portés à l'ingest.
+    pub metric: HashMap<String, String>,
+    /// Points `(timestamp secondes epoch, valeur texte)` — O2 ne remplit
+    /// pas les trous entre deux pas : seuls les points réels sont rendus.
+    pub values: Vec<(f64, String)>,
+}
+
 /// Réponse de `GET /api/{org}/streams?type=metrics` — seuls les noms nous
 /// intéressent (les stats/schema sont ignorés par serde).
 #[derive(Debug, Clone, Deserialize)]
@@ -337,6 +361,40 @@ impl Client {
             .await?;
         serde_json::from_str::<PromQueryResponse>(&text)
             .map_err(|e| format!("query illisible : {e}"))
+    }
+
+    /// Requête range Prometheus
+    /// (`GET /api/{org}/prometheus/api/v1/query_range?query&start&end&step`)
+    /// — lecture d'une série sur une fenêtre (page Visualisation).
+    ///
+    /// Constat e2e v0.92.1 : le nom nu ou l'égalité
+    /// (`soil_moisture{device_id="x"}`) fonctionnent — `start`/`end` en
+    /// secondes epoch, `step` en secondes. O2 rend les points réels sans
+    /// remplir les trous.
+    pub async fn prom_query_range(
+        &self,
+        org_identifier: &str,
+        query: &str,
+        start_epoch: i64,
+        end_epoch: i64,
+        step_secs: i64,
+        email_passcode: &str,
+    ) -> Result<PromRangeResponse, String> {
+        let text = self
+            .get_with_auth_fallback(
+                &format!("{}/api/{org_identifier}/prometheus/api/v1/query_range", self.base),
+                &[
+                    ("query", query),
+                    ("start", &start_epoch.to_string()),
+                    ("end", &end_epoch.to_string()),
+                    ("step", &step_secs.to_string()),
+                ],
+                email_passcode,
+                "query range prometheus",
+            )
+            .await?;
+        serde_json::from_str::<PromRangeResponse>(&text)
+            .map_err(|e| format!("query range illisible : {e}"))
     }
 
     /// Streams **metrics** de l'org (noms de métriques existantes) —
