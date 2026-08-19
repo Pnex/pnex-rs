@@ -9,6 +9,7 @@ pub mod device_registries;
 pub mod device_states;
 pub mod device_tokens;
 pub mod device_types;
+pub mod firmware_artifacts;
 pub mod fluid_mixtures;
 pub mod formula_data_sources;
 pub mod formulas;

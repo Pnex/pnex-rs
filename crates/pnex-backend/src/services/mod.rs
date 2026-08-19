@@ -1,6 +1,7 @@
 //! Services métier (hors contrôleleurs HTTP) : télémétrie, bail de vie,
 //! OpenObserve, réglages firmware.
 
+pub mod artifact_store;
 pub mod device_liveness;
 pub mod firmware;
 pub mod openobserve;

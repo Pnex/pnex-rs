@@ -130,7 +130,7 @@ impl BuildFirmwareWorker {
             pio_cmd: self.settings.pio_cmd.clone(),
             esptool_cmd: self.settings.esptool_cmd.clone(),
             timeout_secs: self.settings.timeout_secs,
-            store: self.settings.store()?,
+            store: self.settings.store(&self.db)?,
         };
         let secrets = BuildSecrets {
             wifi_ssid: args.wifi_ssid.clone(),

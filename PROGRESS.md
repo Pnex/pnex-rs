@@ -428,6 +428,25 @@ de sujets Django).
 
 ## Journal
 
+- 2026-08-19 : **Artefacts firmware en base + bascule postgres/sqlite
+  (D5 v2 — trois tiers de déploiement, décision user)**. Backend `db` par
+  défaut (`services/artifact_store.rs` + table `firmware_artifacts` :
+  upsert `ON CONFLICT (key)` par device → zéro orphelin, sha256, plafond
+  50 Mo) ; `local` (FS) supprimé, `s3` = tier industriel différé. Tier
+  **sqlite** hobbyiste : tout (données + artefacts + queue
+  `sqlt_loco_queue`) dans un fichier — bascule one-knob
+  `DATABASE_URL=sqlite://…?mode=rwc` (le `queue.kind` des yaml suit le
+  schéma de l'URI via Tera `starting_with`) ; tier **postgres** scalable :
+  pods API stateless. Portabilité : `uuid_pk` conditionnel PG
+  (gen_random_uuid) dans la migration sites, `Hooks::truncate` portable
+  (sqlite : transaction + `PRAGMA defer_foreign_keys`), reaper liveness en
+  SQL bindé (plus de `interval` PG), feature `sqlx-sqlite` workspace +
+  migration. **⚠ Pas de migration/réconciliation entre tiers** (décision
+  user : on choisit à l'installation, rien en prod = wipe autorisé).
+  Tests : suite inchangée sur PG + smoke test e2e sqlite
+  (`tests/sqlite_smoke.rs` — boot, build fixture, artefact en table,
+  download). Vars d'env retirées : `PNEX_ARTIFACTS_DIR`,
+  `PNEX_FIRMWARE_SOURCE_*`/`GIT_*` (mortes), `local_root`.
 - 2026-08-18 : **CI rouge au merge — stub flasher.js manquant** : `asset!()`
   exige `assets/flasher.js` à la compilation mais le bundle esptool-js est
   gitignoré (généré par `npm run js:build`, comme tailwind.css par

@@ -26,15 +26,31 @@
 > **Écarts vs la conception initiale** :
 > - chemins de parité Django (`/api/v1/build-firmware`, `/build-records`,
 >   `/download/firmware/{device_id}`) au lieu du `POST /builds` évoqué en §1 ;
-> - `ArtifactStore` à deux backends (décision user) : `local` (FS, edge)
->   implémenté d'abord, `s3` différé (erreurs `NotImplemented` claires),
->   sélection `STORAGE_BACKEND` (env) surchargeant la config — pas de
->   MinIO dans compose pour l'instant ;
+> - `ArtifactStore` — **D5 v2 (2026-08-18)** : les binaires vivent **en base**
+>   (table `firmware_artifacts`, backend `db` par défaut, implémentation
+>   `services/artifact_store.rs` côté backend — upsert `ON CONFLICT (key)`,
+>   zéro artefact orphelin, plafond défensif 50 Mo). Backend `local` (FS)
+>   **supprimé**. `s3` = tier industriel, toujours différé (`NotImplemented`),
+>   sélection `STORAGE_BACKEND=db|s3` (env) surchargeant la config.
+>   Trois tiers de déploiement :
+>   - **sqlite** (hobbyiste) : tout (données + artefacts + queue loco
+>     `sqlt_loco_queue`) dans un seul fichier — `DATABASE_URL=sqlite://…?mode=rwc`,
+>     bascule one-knob (le `queue.kind` des yaml suit le schéma de l'URI via
+>     Tera). Mono-pod uniquement, jamais `sqlite::memory:` (pools db et queue
+>     distincts) ;
+>   - **postgres** (scalable) : tout en PG — pods API **stateless**, n'importe
+>     quel réplica sert le download (le pod worker reste stateful : toolchain
+>     pio + cache `~/.platformio`, inhérent à la compilation) ;
+>   - **s3** (industriel) : artefacts sur S3-compatible, data/queue en PG ou
+>     sqlite. **⚠ Aucun système de migration/réconciliation entre tiers** :
+>     on choisit à l'installation, changer en cours de route = table rase ou
+>     export-import manuel.
 > - logs : `tracing` serveur + queue des 30 dernières lignes dans l'erreur
 >   du record — le stream des logs vers OpenObserve est **différé** ;
 > - suivi des builds par **polling** front (~5 s, décision user) — pas de
 >   WS `ws/firmware/builds` (retiré de la Phase 6, cf. inventory §4) ;
-> - secrets WiFi/hôte transportés dans `pg_loco_queue.task_data` (limite
+> - secrets WiFi/hôte transportés dans le `task_data` de la queue loco
+>   (`pg_loco_queue` / `sqlt_loco_queue` selon le tier — limite
 >   documentée : visibles de l'admin DB, parité spec k8s Django ; purge via
 >   `cargo loco jobs clear-jobs`) ; **token + clé relus en base** par le
 >   worker, jamais en queue ; workspace tmp effacé au drop (secrets
@@ -47,13 +63,15 @@
 ## 1. Architecture cible (Appendice X, résumé)
 
 - Le build est un **job asynchrone** : `POST /builds` → enregistrement
-  `Build` (status=queued) → enqueue **queue PostgreSQL** (Loco, `SKIP LOCKED`)
-  → réponse immédiate `{build_id}`. Le handler HTTP **ne compile jamais**.
+  `Build` (status=queued) → enqueue **queue loco** (PostgreSQL `SKIP LOCKED`,
+  ou sqlite selon le tier) → réponse immédiate `{build_id}`. Le handler HTTP
+  **ne compile jamais**.
 - Un **worker Loco** (`cargo loco start --worker`, ou `--server-and-worker` en
   self-hosted) claim le job, passe status=running, pilote la toolchain en
   **sous-process** (`tokio::process::Command`), stream les logs vers
-  OpenObserve, pousse l'artefact `.bin` vers MinIO/S3, pose
-  status=succeeded/failed.
+  OpenObserve, dépose l'artefact `.bin` dans l'`ArtifactStore` (D5 v2 :
+  backend `db` par défaut — table `firmware_artifacts` ; `s3` = tier
+  industriel différé), pose status=succeeded/failed.
 - `num_workers` bas (1–2) par process ; scaling horizontal (réplicas), pas
   vertical. Timeout dur 10–15 min, retries bornés (échecs compilation
   déterministes). Cancellation tokens pour l'annulation utilisateur.
@@ -137,8 +155,9 @@ firmware:build-docker`).
     SSID WiFi, mot de passe WiFi** (paramètres de build du firmware) ;
   - pour un **device custom** (custom_sensor/custom_device), afficher un
     **snippet de configuration** du code source pour guider l'utilisateur.
-- Artefact `.bin` → MinIO/S3 (Décision D5 : extraction de la source
-  embarquée → `pio run` → `esptool merge-bin` → ArtifactStore), timeout
+- Artefact `.bin` → `ArtifactStore` (D5 v2 : extraction de la source
+  embarquée → `pio run` → `esptool merge-bin` → backend `db` par défaut,
+  `s3` pour le tier industriel), timeout
   dur, secrets scopés org. Le workflow CI `firmware`
   (`.github/workflows/firmware.yml`) compile les projets predefined à
   chaque changement de `firmware/` — « une version pnex = un firmware qui

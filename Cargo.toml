@@ -24,6 +24,7 @@ thiserror = "2"
 loco-rs = { version = "1.0" }
 sea-orm = { version = "2.0", features = [
   "sqlx-postgres",
+  "sqlx-sqlite", # tier hobbyist : tout-en-un sqlite (données + artefacts + queue)
   "runtime-tokio-rustls",
   "macros",
 ] }

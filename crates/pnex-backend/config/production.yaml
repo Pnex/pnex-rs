@@ -28,9 +28,14 @@ workers:
   # --worker-only`).
   mode: BackgroundQueue
 
+# Queue : le backend suit le schéma de DATABASE_URL (one-knob). Tier
+# scalable = postgres (pods API stateless, artefacts servis par tout
+# réplica) ; tier hobbyist = sqlite (mono-pod uniquement). Jamais
+# `sqlite::memory:` en mode app.
+{% set db_url = get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") %}
 queue:
-  kind: Postgres
-  uri: {{ get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") }}
+  kind: {% if db_url is starting_with("sqlite") %}Sqlite{% else %}Postgres{% endif %}
+  uri: {{ db_url }}
   num_workers: {{ get_env(name="PNEX_QUEUE_NUM_WORKERS", default="1") }}
   poll_interval_sec: 1
   reaper:
@@ -64,12 +69,13 @@ settings:
     client_id: {{ get_env(name="KEYCLOAK_CLIENT_ID", default="pnex") }}
   # Firmware Phase 6 — source embarquée dans le binaire (self-hosted/edge :
   # le serveur build sa propre version du firmware, zéro clone git ni
-  # chemin local — aucune config de source). STORAGE_BACKEND surcharge
-  # storage.backend (D5).
+  # chemin local — aucune config de source). Artefacts en base par défaut
+  # (D5 v2, table firmware_artifacts — pods API stateless) ;
+  # STORAGE_BACKEND=s3 = tier industriel (plomberie différée). Aucune
+  # migration entre backends : on choisit son tier à l'installation.
   firmware:
     storage:
-      backend: {{ get_env(name="STORAGE_BACKEND", default="local") }}
-      local_root: {{ get_env(name="PNEX_ARTIFACTS_DIR", default="/var/lib/pnex/artifacts") }}
+      backend: {{ get_env(name="STORAGE_BACKEND", default="db") }}
       s3_endpoint: {{ get_env(name="PNEX_S3_ENDPOINT", default="") }}
       s3_bucket: {{ get_env(name="PNEX_S3_BUCKET", default="") }}
       s3_region: {{ get_env(name="PNEX_S3_REGION", default="") }}

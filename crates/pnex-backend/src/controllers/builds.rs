@@ -43,20 +43,12 @@ use crate::workers::build_firmware::{BuildFirmwareArgs, BuildFirmwareWorker};
 
 /// Réponse d'erreur des vues build Django : `{"error": "..."}`.
 fn error_status(status: StatusCode, msg: &str) -> Response {
-    (
-        status,
-        format::json(serde_json::json!({ "error": msg })),
-    )
-        .into_response()
+    (status, format::json(serde_json::json!({ "error": msg }))).into_response()
 }
 
 /// Erreur champ-par-champ, forme DRF : `{"<champ>": "..."}`.
 fn field_status(status: StatusCode, field: &str, msg: &str) -> Response {
-    (
-        status,
-        format::json(serde_json::json!({ field: msg })),
-    )
-        .into_response()
+    (status, format::json(serde_json::json!({ field: msg }))).into_response()
 }
 
 fn forbidden(msg: &str) -> Error {
@@ -81,10 +73,7 @@ fn record_dto(r: build_records::Model) -> pnex_core::BuildRecord {
 }
 
 /// Intervalle min du tier de l'org (None = pas de contrainte).
-async fn min_build_interval(
-    db: &DatabaseConnection,
-    org: &OrgContext,
-) -> Result<Option<i64>> {
+async fn min_build_interval(db: &DatabaseConnection, org: &OrgContext) -> Result<Option<i64>> {
     let Some(tier_id) = org.org.subscription_tier_id else {
         return Ok(None);
     };
@@ -98,11 +87,7 @@ async fn min_build_interval(
 
 /// Nombre de devices du type donné dans l'org (tous états — parité quota
 /// Django, cf. devices create).
-async fn count_devices_of_type(
-    db: &DatabaseConnection,
-    org_id: i64,
-    type_id: i64,
-) -> Result<i64> {
+async fn count_devices_of_type(db: &DatabaseConnection, org_id: i64, type_id: i64) -> Result<i64> {
     let rows = device_registries::Entity::find()
         .filter(device_registries::Column::OrgId.eq(org_id))
         .find_also_related(predefined_devices::Entity)
@@ -111,9 +96,7 @@ async fn count_devices_of_type(
         .map_err(|_| Error::InternalServerError)?;
     Ok(rows
         .iter()
-        .filter(|(_, pd)| {
-            pd.as_ref().is_some_and(|p| p.device_type_id == type_id)
-        })
+        .filter(|(_, pd)| pd.as_ref().is_some_and(|p| p.device_type_id == type_id))
         .count() as i64)
 }
 
@@ -135,7 +118,11 @@ async fn create(
     let checks = [
         ("wifi_ssid", params.wifi_ssid.trim(), 100),
         ("wifi_password", params.wifi_password.as_str(), 100),
-        ("predefined_device_name", params.predefined_device_name.trim(), 100),
+        (
+            "predefined_device_name",
+            params.predefined_device_name.trim(),
+            100,
+        ),
         ("pnex_host", params.pnex_host.trim(), 200),
         ("device_id", params.device_id.trim(), 100),
     ];
@@ -266,7 +253,13 @@ async fn create(
             record.success = Set(false);
             record.build_phase = Set(Some(PHASE_QUEUED.to_string()));
             record.firmware_bin_s3_key = Set(None);
-            (record.update(&ctx.db).await.map_err(|_| Error::InternalServerError)?, false)
+            (
+                record
+                    .update(&ctx.db)
+                    .await
+                    .map_err(|_| Error::InternalServerError)?,
+                false,
+            )
         }
         None => (
             build_records::ActiveModel {
@@ -296,7 +289,10 @@ async fn create(
         pnex_host,
         ws_ssl: params.ws_ssl,
     };
-    if BuildFirmwareWorker::perform_later(&ctx, args).await.is_err() {
+    if BuildFirmwareWorker::perform_later(&ctx, args)
+        .await
+        .is_err()
+    {
         return Ok(error_status(
             StatusCode::INTERNAL_SERVER_ERROR,
             "Failed to submit firmware build job",
@@ -454,12 +450,9 @@ async fn download(
     };
     let settings = FirmwareSettings::from_config(&ctx.config);
     let store = settings
-        .store()
+        .store(&ctx.db)
         .map_err(|_| Error::InternalServerError)?;
-    let bytes = store
-        .get(&key)
-        .await
-        .map_err(|_| Error::NotFound)?;
+    let bytes = store.get(&key).await.map_err(|_| Error::NotFound)?;
     let filename = format!(
         "{}-firmware.bin",
         pnex_firmware_builder::sanitize_segment(device_id.trim())

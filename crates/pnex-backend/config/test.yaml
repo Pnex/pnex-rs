@@ -54,10 +54,11 @@ settings:
   # (rapides, échec/timeout pilotés par des valeurs de wifi_ssid).
   # Firmware : source embarquée dans le binaire (aucune config de source —
   # table rase) ; toolchain remplacée par les fixtures (fake pio/esptool).
+  # Artefacts en base (D5 v2) — le smoke test sqlite (tests/sqlite_smoke.rs)
+  # bascule TEST_DATABASE_URL sur un fichier sqlite temporaire.
   firmware:
     storage:
-      backend: local
-      local_root: {{ get_env(name="PNEX_ARTIFACTS_DIR", default="/tmp/pnex-test-artifacts") }}
+      backend: db
     pio_cmd: ./tests/fixtures/firmware/fake_pio.sh
     esptool_cmd: ./tests/fixtures/firmware/fake_esptool.sh
     timeout_secs: 2

@@ -49,11 +49,19 @@ workers:
   # déposer des jobs.
   mode: BackgroundQueue
 
-# File d'attente des workers (Phase 6) — table pg_loco_queue créée par loco.
+# File d'attente des workers (Phase 6) — table pg_loco_queue / sqlt_loco_queue
+# créée par loco. Le backend suit le schéma de DATABASE_URL : bascule
+# one-knob vers le tier hobbyist sqlite en pointant DATABASE_URL sur un
+# fichier sqlite (db + queue ensemble). ATTENTION : jamais `sqlite::memory:`
+# en mode app — les pools db et queue sont distincts et ne partageraient
+# pas une base mémoire.
+{% set db_url = get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") %}
 queue:
-  kind: Postgres
-  uri: {{ get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") }}
-  # 1 : contention du cache ~/.platformio ; scaling horizontal par réplicas.
+  kind: {% if db_url is starting_with("sqlite") %}Sqlite{% else %}Postgres{% endif %}
+  uri: {{ db_url }}
+  # 1 : contention du cache ~/.platformio ; scaling horizontal par réplicas
+  # (PG). Côté sqlite, un seul dequeue à la fois (verrou applicatif loco) —
+  # sans effet pour des builds de plusieurs minutes.
   num_workers: {{ get_env(name="PNEX_QUEUE_NUM_WORKERS", default="1") }}
   poll_interval_sec: 1
   # Reprise des jobs orphelins (crash worker en cours de build) — âge >
@@ -93,12 +101,17 @@ settings:
     client_id: {{ get_env(name="KEYCLOAK_CLIENT_ID", default="pnex") }}
   # Firmware Phase 6 (défauts champ par champ — cf. services/firmware.rs).
   # Source du firmware : embarquée dans le binaire (firmware/ du monorepo,
-  # compilée dedans — aucune config). STORAGE_BACKEND surcharge
-  # storage.backend ; S3 = plomberie différée (D5).
+  # compilée dedans — aucune config). Artefacts en base par défaut (D5 v2,
+  # table firmware_artifacts) ; STORAGE_BACKEND surcharge storage.backend.
+  # S3 = tier industriel, plomberie différée. Aucune migration entre
+  # backends : on choisit son tier à l'installation.
+  #
+  # Tier hobbyist sqlite (tout-en-un : données + artefacts + queue dans un
+  # seul fichier, mono-pod) :
+  #   DATABASE_URL="sqlite://./pnex.sqlite?mode=rwc"
   firmware:
     storage:
-      backend: {{ get_env(name="STORAGE_BACKEND", default="local") }}
-      local_root: {{ get_env(name="PNEX_ARTIFACTS_DIR", default="./artifacts") }}
+      backend: {{ get_env(name="STORAGE_BACKEND", default="db") }}
       s3_endpoint: {{ get_env(name="PNEX_S3_ENDPOINT", default="") }}
       s3_bucket: {{ get_env(name="PNEX_S3_BUCKET", default="") }}
       s3_region: {{ get_env(name="PNEX_S3_REGION", default="") }}

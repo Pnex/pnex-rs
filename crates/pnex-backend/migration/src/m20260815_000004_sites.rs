@@ -1,10 +1,28 @@
 //! Sites — PK UUID (parité Django sites), FK uuid→uuid entre tables,
 //! scoping org_id (D2). Annotation.linked_devices reste un JSON dénormalisé
 //! sans FK (lien faible assumé côté Django, conservé).
+//!
+//! Portabilité sqlite (tier hobbyist) : `gen_random_uuid()` n'existe que
+//! côté PG — le défaut DB n'est posé que sur ce backend ; sur sqlite l'UUID
+//! doit être fourni par l'app (`Uuid::new_v4()` à l'insert). Note : déjà
+//! appliquée sur les dev PG, cette édition ne joue que sur des bases neuves
+//! (schéma PG identique de toute façon).
 
 #![allow(dead_code)]
 use sea_orm_migration::prelude::*;
 use sea_orm_migration::schema::*;
+
+/// PK UUID avec défaut `gen_random_uuid()` sur PG uniquement (fonction
+/// serveur absente de sqlite).
+fn uuid_pk(m: &SchemaManager, iden: impl IntoIden) -> ColumnDef {
+    let mut binding = uuid(iden);
+    let col = binding.primary_key();
+    if matches!(m.get_database_backend(), sea_orm::DatabaseBackend::Postgres) {
+        col.default(Expr::cust("gen_random_uuid()")).take()
+    } else {
+        col.take()
+    }
+}
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -78,14 +96,8 @@ enum Organization {
 }
 
 fn timestamps(mut t: TableCreateStatement) -> TableCreateStatement {
-    t.col(
-        timestamp_with_time_zone(Alias::new("created_at"))
-            .default(Expr::current_timestamp()),
-    )
-    .col(
-        timestamp_with_time_zone(Alias::new("updated_at"))
-            .default(Expr::current_timestamp()),
-    );
+    t.col(timestamp_with_time_zone(Alias::new("created_at")).default(Expr::current_timestamp()))
+        .col(timestamp_with_time_zone(Alias::new("updated_at")).default(Expr::current_timestamp()));
     t.take()
 }
 
@@ -96,11 +108,7 @@ impl MigrationTrait for Migration {
         sites
             .table(Alias::new("sites"))
             .if_not_exists()
-            .col(
-                uuid(Site::Id)
-                    .primary_key()
-                    .default(Expr::cust("gen_random_uuid()")),
-            )
+            .col(uuid_pk(m, Site::Id))
             .col(big_integer(Site::OrgId).not_null())
             .foreign_key(
                 ForeignKey::create()
@@ -117,18 +125,22 @@ impl MigrationTrait for Migration {
             .col(json_binary_null(Site::Tags))
             .col(json_binary_null(Site::Metadata))
             .col(decimal_len(Site::DefaultZoom, 5, 2).not_null().default(1.0))
-            .col(decimal_len(Site::DefaultPanX, 10, 2).not_null().default(0.0))
-            .col(decimal_len(Site::DefaultPanY, 10, 2).not_null().default(0.0));
+            .col(
+                decimal_len(Site::DefaultPanX, 10, 2)
+                    .not_null()
+                    .default(0.0),
+            )
+            .col(
+                decimal_len(Site::DefaultPanY, 10, 2)
+                    .not_null()
+                    .default(0.0),
+            );
         m.create_table(timestamps(sites.take())).await?;
 
         let mut svg = Table::create();
         svg.table(Alias::new("svg_files"))
             .if_not_exists()
-            .col(
-                uuid(SvgFile::Id)
-                    .primary_key()
-                    .default(Expr::cust("gen_random_uuid()")),
-            )
+            .col(uuid_pk(m, SvgFile::Id))
             .col(big_integer(SvgFile::OrgId).not_null())
             .foreign_key(
                 ForeignKey::create()
@@ -148,11 +160,7 @@ impl MigrationTrait for Migration {
         diagrams
             .table(Alias::new("site_diagrams"))
             .if_not_exists()
-            .col(
-                uuid(SiteDiagram::Id)
-                    .primary_key()
-                    .default(Expr::cust("gen_random_uuid()")),
-            )
+            .col(uuid_pk(m, SiteDiagram::Id))
             .col(uuid(SiteDiagram::SiteId).not_null())
             .foreign_key(
                 ForeignKey::create()
@@ -178,11 +186,7 @@ impl MigrationTrait for Migration {
         let mut ann = Table::create();
         ann.table(Alias::new("annotations"))
             .if_not_exists()
-            .col(
-                uuid(Annotation::Id)
-                    .primary_key()
-                    .default(Expr::cust("gen_random_uuid()")),
-            )
+            .col(uuid_pk(m, Annotation::Id))
             .col(uuid(Annotation::SiteDiagramId).not_null())
             .foreign_key(
                 ForeignKey::create()
@@ -205,11 +209,7 @@ impl MigrationTrait for Migration {
         views
             .table(Alias::new("saved_views"))
             .if_not_exists()
-            .col(
-                uuid(SavedView::Id)
-                    .primary_key()
-                    .default(Expr::cust("gen_random_uuid()")),
-            )
+            .col(uuid_pk(m, SavedView::Id))
             .col(uuid(SavedView::SiteDiagramId).not_null())
             .foreign_key(
                 ForeignKey::create()
@@ -225,14 +225,16 @@ impl MigrationTrait for Migration {
             .col(json_binary_null(SavedView::Tags));
         m.create_table(timestamps(views.take())).await?;
 
-        m.get_connection()
-            .execute_unprepared(
-                "CREATE UNIQUE INDEX uniq_site_diagrams_site_svg ON site_diagrams (site_id, svg_file_id);
-                 CREATE INDEX idx_sites_org_name ON sites (org_id, name);
-                 CREATE INDEX idx_site_diagrams_site_order ON site_diagrams (site_id, display_order);
-                 CREATE INDEX idx_saved_views_diagram_created ON saved_views (site_diagram_id, created_at);",
-            )
-            .await?;
+        // Un statement par appel : sqlite n'accepte pas les batches implicites
+        // via execute_unprepared.
+        for stmt in [
+            "CREATE UNIQUE INDEX uniq_site_diagrams_site_svg ON site_diagrams (site_id, svg_file_id)",
+            "CREATE INDEX idx_sites_org_name ON sites (org_id, name)",
+            "CREATE INDEX idx_site_diagrams_site_order ON site_diagrams (site_id, display_order)",
+            "CREATE INDEX idx_saved_views_diagram_created ON saved_views (site_diagram_id, created_at)",
+        ] {
+            m.get_connection().execute_unprepared(stmt).await?;
+        }
         Ok(())
     }
 

@@ -66,7 +66,11 @@ fn base_env(extra: &[(&str, &str)]) -> Vec<(String, String)> {
             vars.push((name.to_string(), v));
         }
     }
-    vars.extend(extra.iter().map(|(k, v)| ((*k).to_string(), (*v).to_string())));
+    vars.extend(
+        extra
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string())),
+    );
     vars
 }
 
@@ -117,8 +121,8 @@ async fn run_step(
 
 /// Queue des `n` dernières lignes (stdout ‖ stderr) d'une sortie enfant.
 fn tail(out: &Output, n: usize) -> String {
-    let text = String::from_utf8_lossy(&out.stdout).into_owned()
-        + &String::from_utf8_lossy(&out.stderr);
+    let text =
+        String::from_utf8_lossy(&out.stdout).into_owned() + &String::from_utf8_lossy(&out.stderr);
     let lines: Vec<&str> = text.lines().collect();
     let start = lines.len().saturating_sub(n);
     lines[start..].join("\n")
@@ -164,9 +168,7 @@ fn resolve_program(token: &str) -> String {
     let path = std::path::Path::new(token);
     match std::env::current_dir()
         .map_err(|e| e.to_string())
-        .and_then(|cwd| {
-            cwd.join(path).canonicalize().map_err(|e| e.to_string())
-        })
+        .and_then(|cwd| cwd.join(path).canonicalize().map_err(|e| e.to_string()))
     {
         Ok(abs) => abs.display().to_string(),
         // Introuvable : on le passe tel quel, l'erreur de lancement du
@@ -184,8 +186,7 @@ pub async fn run_build(
     secrets: &BuildSecrets,
     device: &DeviceSpec,
 ) -> Result<crate::BuildArtifact, BuildError> {
-    let deadline =
-        tokio::time::Instant::now() + Duration::from_secs(config.timeout_secs.max(1));
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(config.timeout_secs.max(1));
     // Le drop du TempDir efface le workspace (secrets) dans tous les chemins.
     let workspace = tempfile::tempdir().map_err(|e| BuildError::Source(format!("tmp : {e}")))?;
     let ws = workspace.path();
@@ -237,12 +238,8 @@ pub async fn run_build(
                 .iter()
                 .map(|(off, file)| Ok(((*off).to_string(), find_artifact(&project, file)?)))
                 .collect::<Result<_, BuildError>>()?;
-            let mut esptool_argv = crate::merge_args(
-                &config.esptool_cmd,
-                &device.soc,
-                &final_bin,
-                &inputs,
-            );
+            let mut esptool_argv =
+                crate::merge_args(&config.esptool_cmd, &device.soc, &final_bin, &inputs);
             esptool_argv[0] = resolve_program(&esptool_argv[0]);
             let mut esptool = Command::new(&esptool_argv[0]);
             esptool.args(&esptool_argv[1..]);
@@ -268,7 +265,7 @@ pub async fn run_build(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::LocalStore;
+    use crate::InMemoryStore;
 
     /// Fabrique une fausse toolchain : `pio` écrit les artefacts (avec les
     /// env reçues), `esptool` concatène les fichiers passés en offset.
@@ -287,8 +284,7 @@ mod tests {
         .expect("esptool");
         for f in [&pio, &esptool] {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(f, std::fs::Permissions::from_mode(0o755))
-                .expect("chmod");
+            std::fs::set_permissions(f, std::fs::Permissions::from_mode(0o755)).expect("chmod");
         }
         (pio.display().to_string(), esptool.display().to_string())
     }
@@ -321,7 +317,7 @@ mod tests {
     async fn pipeline_complet_esp32() {
         let tmp = tempfile::tempdir().expect("tmp");
         let (pio, esptool) = fake_toolchain(tmp.path());
-        let store = Arc::new(LocalStore::new(tmp.path().join("artifacts")).expect("store"));
+        let store = Arc::new(InMemoryStore::default());
         let config = BuildConfig {
             pio_cmd: pio,
             esptool_cmd: esptool,
@@ -335,7 +331,10 @@ mod tests {
         assert!(artifact.size_bytes > 0);
         let bytes = store.get(&artifact.key).await.expect("get");
         let text = String::from_utf8_lossy(&bytes);
-        assert!(text.contains(&format!("pio ssid={}", STANDARD.encode("coloc"))), "{text}");
+        assert!(
+            text.contains(&format!("pio ssid={}", STANDARD.encode("coloc"))),
+            "{text}"
+        );
         // HOST arrive en base64 au firmware (vérifié par le fake pio).
         use base64::engine::general_purpose::STANDARD;
         use base64::Engine as _;
@@ -352,7 +351,7 @@ mod tests {
     async fn esp8266_sans_merge() {
         let tmp = tempfile::tempdir().expect("tmp");
         let (pio, _) = fake_toolchain(tmp.path());
-        let store = Arc::new(LocalStore::new(tmp.path().join("artifacts")).expect("store"));
+        let store = Arc::new(InMemoryStore::default());
         let config = BuildConfig {
             pio_cmd: pio,
             esptool_cmd: "false".into(),
@@ -373,7 +372,7 @@ mod tests {
         std::fs::write(&pio, "#!/bin/sh\necho erreur de compilation\nexit 1\n").expect("pio");
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&pio, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-        let store = Arc::new(LocalStore::new(tmp.path().join("artifacts")).expect("store"));
+        let store = Arc::new(InMemoryStore::default());
         let config = BuildConfig {
             pio_cmd: pio.display().to_string(),
             esptool_cmd: "false".into(),
@@ -383,7 +382,10 @@ mod tests {
         let err = run_build(&config, &secrets(), &device("esp8266"))
             .await
             .expect_err("échec attendue");
-        assert!(matches!(err, BuildError::Tool(ref m) if m.contains("erreur de compilation")), "{err}");
+        assert!(
+            matches!(err, BuildError::Tool(ref m) if m.contains("erreur de compilation")),
+            "{err}"
+        );
     }
 
     /// Timeout dur : sous-process endormi tué à la deadline (test borné).
@@ -394,9 +396,8 @@ mod tests {
         let sleeper = tmp.path().join("sleeper.sh");
         std::fs::write(&sleeper, "#!/bin/sh\nsleep 30\n").expect("sleeper");
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&sleeper, std::fs::Permissions::from_mode(0o755))
-            .expect("chmod");
-        let store = Arc::new(LocalStore::new(tmp.path().join("artifacts")).expect("store"));
+        std::fs::set_permissions(&sleeper, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        let store = Arc::new(InMemoryStore::default());
         let config = BuildConfig {
             pio_cmd: sleeper.display().to_string(),
             esptool_cmd: "false".into(),
@@ -414,8 +415,7 @@ mod tests {
     /// Projet absent de la source (predefined name ≠ sous-répertoire).
     #[tokio::test]
     async fn projet_introuvable() {
-        let tmp = tempfile::tempdir().expect("tmp");
-        let store = Arc::new(LocalStore::new(tmp.path().join("artifacts")).expect("store"));
+        let store = Arc::new(InMemoryStore::default());
         let config = BuildConfig {
             pio_cmd: "true".into(),
             esptool_cmd: "true".into(),
@@ -427,6 +427,9 @@ mod tests {
         let err = run_build(&config, &secrets(), &dev)
             .await
             .expect_err("source attendue");
-        assert!(matches!(err, BuildError::Source(ref m) if m.contains("inconnu")), "{err}");
+        assert!(
+            matches!(err, BuildError::Source(ref m) if m.contains("inconnu")),
+            "{err}"
+        );
     }
 }

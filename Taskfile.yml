@@ -139,7 +139,6 @@ tasks:
     env:
       PNEX_PIO_CMD: "{{.PIO_CMD}}"
       PNEX_ESPTOOL_CMD: "{{.ESPTOOL_CMD}}"
-      PNEX_ARTIFACTS_DIR: /tmp/pnex-artifacts
     cmds:
       - cd crates/pnex-backend && cargo run --bin pnex-server -- start --server-and-worker
 

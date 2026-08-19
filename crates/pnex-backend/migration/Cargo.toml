@@ -17,8 +17,9 @@ version = "2.0"
 features = [
   "runtime-tokio-rustls", # ASYNC_RUNTIME
   "sqlx-postgres",       # DATABASE_DRIVER
+  "sqlx-sqlite",         # tier hobbyist sqlite
 ]
 
 [dev-dependencies]
 tokio = { version = "1.45", features = ["rt", "macros"] }
-sea-orm = { version = "2.0", features = ["sqlx-postgres", "runtime-tokio-rustls"] }
+sea-orm = { version = "2.0", features = ["sqlx-postgres", "sqlx-sqlite", "runtime-tokio-rustls"] }

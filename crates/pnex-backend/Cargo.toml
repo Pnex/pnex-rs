@@ -38,6 +38,8 @@ regex = { version = "1.11" }
 # Génération des DeviceTokens (parité secrets.token_urlsafe + clé ChaCha20)
 rand = "0.9"
 base64 = "0.22"
+# Empreinte sha256 des artefacts firmware (intégrité, table firmware_artifacts)
+sha2 = "0.10"
 # Parsing query-string multi-valeurs (filtre `capabilities` répétable)
 form_urlencoded = "1"
 axum-extra = { version = "0.10", features = ["form"] }
@@ -64,3 +66,5 @@ futures-util = "0.3"
 serial_test = { version = "3.1" }
 rstest = { version = "0.25" }
 insta = { version = "1.34", features = ["redactions", "yaml", "filters"] }
+# Smoke test sqlite : fichier de base temporaire
+tempfile = "3"

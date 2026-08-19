@@ -69,7 +69,9 @@ impl Hooks for App {
         // `--worker-only`). Le reaper de liveness vit dans after_routes
         // (doit tourner y compris en ServerOnly).
         queue
-            .register(crate::workers::build_firmware::BuildFirmwareWorker::build(ctx))
+            .register(crate::workers::build_firmware::BuildFirmwareWorker::build(
+                ctx,
+            ))
             .await?;
         Ok(())
     }
@@ -80,28 +82,83 @@ impl Hooks for App {
 
     async fn truncate(ctx: &AppContext) -> Result<()> {
         // Utilisé par les tests (config `dangerously_truncate`) : vide toutes
-        // les tables applicatives (seaql_migrations exclue), RESTART IDENTITY
-        // pour des ids déterministes entre tests.
-        use sea_orm::ConnectionTrait;
+        // les tables applicatives (migrations + queue loco exclues), ids
+        // réinitialisés pour des tests déterministes. Portable PG/sqlite :
+        // catalogue de tables par backend, puis TRUNCATE côté PG ou DELETE
+        // dans UNE transaction avec `PRAGMA defer_foreign_keys` côté sqlite
+        // (le pool peut répartir des statements hors transaction sur
+        // plusieurs connexions — une transaction épingle une seule connexion).
+        use sea_orm::{ConnectionTrait, DatabaseBackend, Statement, TransactionTrait};
+        let backend = ctx.db.get_database_backend();
+        // Tables internes exclues : suivi des migrations + queue loco (pg/sqlt).
+        let excluded = [
+            "seaql_migrations",
+            "pg_loco_queue",
+            "sqlt_loco_queue",
+            "sqlt_loco_queue_lock",
+        ];
+        let (sql, col) = match backend {
+            DatabaseBackend::Sqlite => (
+                "SELECT name FROM sqlite_master WHERE type = 'table' \
+                 AND name NOT LIKE 'sqlite_%'",
+                "name",
+            ),
+            _ => (
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'",
+                "tablename",
+            ),
+        };
         let rows = ctx
             .db
-            .query_all_raw(sea_orm::Statement::from_string(
-                sea_orm::DatabaseBackend::Postgres,
-                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' \
-                 AND tablename <> 'seaql_migrations'",
-            ))
+            .query_all_raw(Statement::from_string(backend, sql.to_string()))
             .await?;
         let tables: Vec<String> = rows
             .iter()
-            .filter_map(|row| row.try_get::<String>("", "tablename").ok())
+            .filter_map(|row| row.try_get::<String>("", col).ok())
+            .filter(|t| !excluded.contains(&t.as_str()))
             .collect();
-        if !tables.is_empty() {
-            ctx.db
-                .execute_unprepared(&format!(
-                    "TRUNCATE {} RESTART IDENTITY CASCADE",
-                    tables.join(", ")
-                ))
-                .await?;
+        if tables.is_empty() {
+            return Ok(());
+        }
+        match backend {
+            DatabaseBackend::Sqlite => {
+                ctx.db
+                    .transaction(|txn| {
+                        Box::pin(async move {
+                            // Désaxe les FK pour la durée des DELETE (l'ordre
+                            // des tables devient indifférent, repositionné au
+                            // commit). Reset des autoincrement best-effort —
+                            // sqlite_sequence n'existe qu'avec AUTOINCREMENT.
+                            txn.execute_unprepared("PRAGMA defer_foreign_keys = ON")
+                                .await?;
+                            for t in &tables {
+                                txn.execute_unprepared(&format!(r#"DELETE FROM "{t}""#))
+                                    .await?;
+                            }
+                            let names = tables
+                                .iter()
+                                .map(|t| format!("'{t}'"))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            let _ = txn
+                                .execute_unprepared(&format!(
+                                    "DELETE FROM sqlite_sequence WHERE name IN ({names})"
+                                ))
+                                .await;
+                            Ok::<(), sea_orm::DbErr>(())
+                        })
+                    })
+                    .await
+                    .map_err(|e| loco_rs::Error::Message(e.to_string()))?;
+            }
+            _ => {
+                ctx.db
+                    .execute_unprepared(&format!(
+                        "TRUNCATE {} RESTART IDENTITY CASCADE",
+                        tables.join(", ")
+                    ))
+                    .await?;
+            }
         }
         Ok(())
     }

@@ -9,6 +9,7 @@
 //! 4. sites — sites/SVG/diagrammes/annotations (PK UUID)
 //! 5. firmware — build records
 //! 6. ingestion — état live device (D9) + correspondance OpenObserve (D2)
+//! 7. firmware artefacts — binaires en base (D5 v2)
 
 pub use sea_orm_migration::prelude::*;
 
@@ -18,6 +19,7 @@ mod m20260815_000003_etl;
 mod m20260815_000004_sites;
 mod m20260815_000005_firmware;
 mod m20260816_000006_ingestion;
+mod m20260817_000007_firmware_artifacts;
 
 pub struct Migrator;
 
@@ -31,6 +33,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260815_000004_sites::Migration),
             Box::new(m20260815_000005_firmware::Migration),
             Box::new(m20260816_000006_ingestion::Migration),
+            Box::new(m20260817_000007_firmware_artifacts::Migration),
         ]
     }
 }

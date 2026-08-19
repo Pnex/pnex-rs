@@ -8,9 +8,9 @@
 //! frais → true, périmé/absent → false), qui ne touchait jamais `active`
 //! depuis le consumer WS.
 
-use chrono::{DateTime, TimeDelta, Utc};
+use chrono::{DateTime, FixedOffset, TimeDelta, Utc};
 use loco_rs::prelude::*;
-use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set, sea_query::OnConflict};
+use sea_orm::{sea_query::OnConflict, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set};
 
 use crate::models::_entities::device_states;
 use crate::services::settings::IngestSettings;
@@ -69,35 +69,48 @@ pub async fn state_of(
 /// state frais → `active=true` ; actif sans state frais (silence, absence
 /// de ligne) → `active=false`. Nettoie aussi les `connected` périmés des
 /// sessions mortes sans close (crash). Retourne (activés, désactivés).
+///
+/// SQL dialect-free : le cutoff est calculé côté Rust puis bindé
+/// (`Statement::from_sql_and_values` rend `$1`/`?` selon le backend) —
+/// `interval` est du PG pur. ⚠ Ne jamais laisser `last_seen_at` au default
+/// DB côté sqlite : le format `CURRENT_TIMESTAMP` diffère du RFC3339 bindé
+/// par sea-orm (comparaison lexicographique faussée) — l'app le `Set()`
+/// toujours explicitement (`touch`).
 pub async fn deactivate_stale(
     db: &DatabaseConnection,
     silence_ttl_secs: i64,
 ) -> Result<(u64, u64)> {
+    use sea_orm::Statement;
+    let cutoff: DateTime<FixedOffset> = (Utc::now() - TimeDelta::seconds(silence_ttl_secs)).into();
+    let backend = db.get_database_backend();
     let on = db
-        .execute_unprepared(&format!(
+        .execute_raw(Statement::from_sql_and_values(
+            backend,
             "UPDATE device_registries d SET active = true \
              WHERE NOT d.active AND EXISTS (SELECT 1 FROM device_states s \
-             WHERE s.device_registry_id = d.id AND s.last_seen_at + interval '{ttl} seconds' > now())",
-            ttl = silence_ttl_secs,
+             WHERE s.device_registry_id = d.id AND s.last_seen_at > $1)",
+            [cutoff.into()],
         ))
         .await
         .map_err(|_| Error::InternalServerError)?
         .rows_affected();
     let off = db
-        .execute_unprepared(&format!(
+        .execute_raw(Statement::from_sql_and_values(
+            backend,
             "UPDATE device_registries d SET active = false \
              WHERE d.active AND NOT EXISTS (SELECT 1 FROM device_states s \
-             WHERE s.device_registry_id = d.id AND s.last_seen_at + interval '{ttl} seconds' > now())",
-            ttl = silence_ttl_secs,
+             WHERE s.device_registry_id = d.id AND s.last_seen_at > $1)",
+            [cutoff.into()],
         ))
         .await
         .map_err(|_| Error::InternalServerError)?
         .rows_affected();
     let _ = db
-        .execute_unprepared(&format!(
+        .execute_raw(Statement::from_sql_and_values(
+            backend,
             "UPDATE device_states SET connected = false \
-             WHERE connected AND last_seen_at + interval '{ttl} seconds' <= now()",
-            ttl = silence_ttl_secs,
+             WHERE connected AND last_seen_at <= $1",
+            [cutoff.into()],
         ))
         .await
         .map_err(|_| Error::InternalServerError)?;
@@ -124,7 +137,11 @@ pub fn spawn_reaper(ctx: &AppContext) {
             tick.tick().await;
             match deactivate_stale(&db, settings.silence_ttl_secs).await {
                 Ok((on, off)) if on + off > 0 => {
-                    tracing::info!(devices_activees = on, devices_desactives = off, "reaper liveness");
+                    tracing::info!(
+                        devices_activees = on,
+                        devices_desactives = off,
+                        "reaper liveness"
+                    );
                 }
                 Ok(_) => {}
                 Err(_) => tracing::warn!("reaper liveness : échec, retry au prochain tick"),

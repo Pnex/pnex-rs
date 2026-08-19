@@ -5,8 +5,8 @@
 //! dedans (`include_dir!`, convergence monorepo) — une version du serveur
 //! build exactement la version du firmware qui l'accompagne. Pipeline :
 //! extraction de la source embarquée → `pio run` → `esptool merge-bin` →
-//! dépôt de l'artefact dans un [`ArtifactStore`] (décision D5 : backend
-//! `local` d'abord, `s3` différé).
+//! dépôt de l'artefact dans un [`ArtifactStore`] (décision D5 v2 : backend
+//! `db` par défaut, implémenté côté backend ; `s3` = tier industriel différé).
 //!
 //! Contrat de build du firmware (vérifié, cf.
 //! `docs/architecture/firmware-build.md` §2) : la config device passe en
@@ -25,7 +25,7 @@ mod store;
 pub use env::{child_env, BuildSecrets};
 pub use merge::{merge_args, merge_offsets};
 pub use pipeline::{run_build, BuildConfig, DeviceSpec};
-pub use store::{artifact_key, sanitize_segment, ArtifactStore, LocalStore, S3Store};
+pub use store::{artifact_key, sanitize_segment, ArtifactStore, InMemoryStore, S3Store};
 
 /// Étapes d'un build firmware (tracing par étape).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

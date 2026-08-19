@@ -7,6 +7,7 @@ pub use super::device_registries::Entity as DeviceRegistries;
 pub use super::device_states::Entity as DeviceStates;
 pub use super::device_tokens::Entity as DeviceTokens;
 pub use super::device_types::Entity as DeviceTypes;
+pub use super::firmware_artifacts::Entity as FirmwareArtifacts;
 pub use super::fluid_mixtures::Entity as FluidMixtures;
 pub use super::formula_data_sources::Entity as FormulaDataSources;
 pub use super::formulas::Entity as Formulas;
