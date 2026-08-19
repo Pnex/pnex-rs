@@ -22,6 +22,9 @@ pub use devices::*;
 pub mod pagination;
 pub use pagination::*;
 
+pub mod telemetry;
+pub use telemetry::*;
+
 use serde::{Deserialize, Serialize};
 
 /// Nom du service. Django répondait `og-device-hub` — obsolète, le service
