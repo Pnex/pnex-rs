@@ -77,7 +77,7 @@ Logique save()/clean()/signals → hooks SeaORM + validation service (détail mo
 | /api/v1/actuator-channels/pod-status/{id} | **SUPPRIMÉ** (pods K8s) | — |
 | /api/v1/metrics (ES query) | Loco → OpenObserve query API | 5 |
 | /api/v1/live-metrics (Redis db 2) | Loco (voir §5 état live) | 5 |
-| /api/v1/dashboard/summary | **FAIT (2026-08-19)** — `controllers/dashboard.rs` : liveness PG (TTL silence) + stats builds + dernières mesures O2 (query Prometheus catch-all, passcode→fallback root constaté e2e v0.92.1, timeout 3 s, dégradation `available:false`) ; page Dashboard (polling 15 s) | ✅ |
+| /api/v1/dashboard/summary | **FAIT (2026-08-19)** — `controllers/dashboard.rs` : liveness PG (TTL silence) + stats builds + dernières mesures O2 (découverte `/streams?type=metrics` puis une query par nom — les sélecteurs `{__name__=~…}` renvoient vide sur O2 v0.92.1, constat e2e ; passcode→fallback root ; timeout 3 s ; dégradation `available:false`) ; page Dashboard (polling 15 s, listes plafonnées ~10) | ✅ |
 | /api/v1/build-firmware, download, build-records | **FAIT (Phase 6)** — `controllers/builds.rs`, contrat `docs/contracts/build.http` (queue PG + worker, phases queued/running/succeeded/failed) | ✅ 6 |
 | /api/v1/sites/* (5 viewsets UUID) | Loco | 4+ |
 | /api/v1/etl/unit-conversions, formulas (+evaluate, import), global-*, imports | Loco (+ moteur WASM) | 8 |

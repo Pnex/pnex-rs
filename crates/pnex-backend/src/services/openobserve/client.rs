@@ -51,6 +51,18 @@ pub struct PromQuerySample {
     pub value: (f64, String),
 }
 
+/// Réponse de `GET /api/{org}/streams?type=metrics` — seuls les noms nous
+/// intéressent (les stats/schema sont ignorés par serde).
+#[derive(Debug, Clone, Deserialize)]
+struct StreamsResponse {
+    list: Vec<StreamRow>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StreamRow {
+    name: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct PasscodeData {
     passcode: String,
@@ -261,37 +273,31 @@ impl Client {
         Ok(())
     }
 
-    /// Requête instantanée Prometheus
-    /// (`GET /api/{org}/prometheus/api/v1/query?query=…`) — lecture des
-    /// métriques de l'org (dashboard).
-    ///
-    /// Auth : Basic `email:passcode` (le `ingestion_token` de la ligne PG)
-    /// d'abord ; sur 401/403, retry en Basic root — **c'est le chemin
-    /// réel** : constaté e2e sur O2 v0.92.1, le Basic email:passcode est
-    /// refusé sur la query (il ne sert que l'ingestion). Le passcode
-    /// reste tenté d'abord (moindre privilège, et future-proof si O2
-    /// l'accepte un jour).
-    pub async fn prom_query(
+    /// GET authentifié avec bascule : Basic `email:passcode` d'abord, sur
+    /// 401/403 retry en Basic root — **c'est le chemin réel** : constaté
+    /// e2e sur O2 v0.92.1, le Basic email:passcode est refusé sur les
+    /// endpoints de lecture (il ne sert que l'ingestion). Le passcode
+    /// reste tenté d'abord (moindre privilège, future-proof si O2
+    /// l'accepte un jour). Retourne le corps texte en cas de succès.
+    async fn get_with_auth_fallback(
         &self,
-        org_identifier: &str,
-        query: &str,
+        url: &str,
+        query_pairs: &[(&str, &str)],
         email_passcode: &str,
-    ) -> Result<PromQueryResponse, String> {
+        what: &str,
+    ) -> Result<String, String> {
         let passcode_basic = format!("Basic {}", STANDARD.encode(email_passcode));
         let auths = [passcode_basic.as_str(), self.root_basic.as_str()];
         let mut last_denial = String::new();
         for auth in auths {
             let resp = self
                 .http
-                .get(format!(
-                    "{}/api/{org_identifier}/prometheus/api/v1/query",
-                    self.base
-                ))
-                .query(&[("query", query)])
+                .get(url)
+                .query(query_pairs)
                 .header("Authorization", auth)
                 .send()
                 .await
-                .map_err(|e| format!("query injoignable : {e}"))?;
+                .map_err(|e| format!("{what} injoignable : {e}"))?;
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
             if status.as_u16() == 401 || status.as_u16() == 403 {
@@ -299,12 +305,60 @@ impl Client {
                 continue;
             }
             if !status.is_success() {
-                return Err(format!("query prometheus {status} : {text}"));
+                return Err(format!("{what} {status} : {text}"));
             }
-            return serde_json::from_str::<PromQueryResponse>(&text)
-                .map_err(|e| format!("query illisible : {e}"));
+            return Ok(text);
         }
-        Err(format!("query refusée (passcode puis root) : {last_denial}"))
+        Err(format!("{what} refusé (passcode puis root) : {last_denial}"))
+    }
+
+    /// Requête instantanée Prometheus
+    /// (`GET /api/{org}/prometheus/api/v1/query?query=…`) — lecture des
+    /// métriques de l'org (dashboard).
+    ///
+    /// ⚠ Constat e2e sur O2 v0.92.1 : les sélecteurs `{__name__=~"..."}`
+    /// (regex) ne renvoient **rien**, même avec des noms explicites —
+    /// seul le **nom nu** (`last_over_time(soil_moisture[1h])`) ou
+    /// l'égalité `{__name__="x"}` fonctionnent. Les noms à interroger se
+    /// découvrent via [`Client::metric_streams`].
+    pub async fn prom_query(
+        &self,
+        org_identifier: &str,
+        query: &str,
+        email_passcode: &str,
+    ) -> Result<PromQueryResponse, String> {
+        let text = self
+            .get_with_auth_fallback(
+                &format!("{}/api/{org_identifier}/prometheus/api/v1/query", self.base),
+                &[("query", query)],
+                email_passcode,
+                "query prometheus",
+            )
+            .await?;
+        serde_json::from_str::<PromQueryResponse>(&text)
+            .map_err(|e| format!("query illisible : {e}"))
+    }
+
+    /// Streams **metrics** de l'org (noms de métriques existantes) —
+    /// `GET /api/{org}/streams?type=metrics`. Sert de découverte pour la
+    /// query Prometheus (cf. `prom_query` : pas de sélecteur regex sur
+    /// `__name__` en v0.92.1).
+    pub async fn metric_streams(
+        &self,
+        org_identifier: &str,
+        email_passcode: &str,
+    ) -> Result<Vec<String>, String> {
+        let text = self
+            .get_with_auth_fallback(
+                &format!("{}/api/{org_identifier}/streams", self.base),
+                &[("type", "metrics")],
+                email_passcode,
+                "streams metrics",
+            )
+            .await?;
+        serde_json::from_str::<StreamsResponse>(&text)
+            .map(|r| r.list.into_iter().map(|s| s.name).collect())
+            .map_err(|e| format!("streams illisibles : {e}"))
     }
 
     /// `/healthz` répond (readiness — vérifié : `/health` n'existe pas en

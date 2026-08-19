@@ -432,11 +432,17 @@ de sujets Django).
   principe « l'UI est la seule interface »). `GET /api/v1/dashboard/summary`
   (une requête pour toute la page, viewer inclus) : liveness PG au TTL de
   silence (≠ booléen `active` du reaper), stats builds (0.0 si vide, jamais
-  NaN), dernières mesures **OpenObserve** — query Prometheus catch-all
-  `last_over_time({__name__=~".+"}[1h])`. **Constat e2e sur O2 v0.92.1** :
-  Basic email:passcode refusé sur la query (401, ingestion only) → le
-  client `prom_query` tente passcode puis bascule Basic root (le vrai
-  chemin ; mock aligné). Doctrine tenue : timeout 3 s, cap 12 lignes,
+  NaN), dernières mesures **OpenObserve**. **Deux constats e2e sur O2
+  v0.92.1** : (1) Basic email:passcode refusé sur la lecture (401,
+  ingestion only) → `prom_query` tente passcode puis bascule Basic root
+  (le vrai chemin ; mock aligné) ; (2) les sélecteurs `{__name__=~"..."}`
+  renvoient un vector **vide**, même avec noms explicites — seuls le nom
+  nu ou l'égalité sélectionnent → les noms se découvrent via
+  `/api/{org}/streams?type=metrics` puis **une query par métrique**
+  (`last_over_time(nom[1h])`), le tout sous timeout 3 s global (retour
+  user « last measurement : rien affiché » — la query catch-all
+  initiale ne matchait rien sur le vrai O2, le mock l'a révélé en le
+  reproduisant). Doctrine tenue :
   jamais de provisioning ni de 500 depuis la branche télémétrie
   (`telemetry.available:false`). Front : 2 cartes org-scope, liste
   liveness, table mesures, polling 15 s (rafraîchissement auto affiché),

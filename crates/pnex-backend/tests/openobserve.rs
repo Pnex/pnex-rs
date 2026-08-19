@@ -245,9 +245,10 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
             get({
                 let s = s.clone();
                 move |Path(org): Path<String>,
-                      headers: axum::http::HeaderMap| {
+                      headers: axum::http::HeaderMap,
+                      axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>| {
                     let s = s.clone();
-                    async move {
+                async move {
                         let basic =
                             basic_of(headers.get("authorization").and_then(|v| v.to_str().ok()));
                         let mut guard = s.lock().unwrap();
@@ -265,6 +266,26 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                                 })),
                             );
                         }
+                        // Fidèle v0.92.1 : les sélecteurs {__name__=~"..."}
+                        // (regex) renvoient un vector VIDE — seul le nom nu
+                        // (éventuellement wrapped dans last_over_time)
+                        // sélectionne.
+                        let query = params.get("query").map(String::as_str).unwrap_or("");
+                        let regex_selector = query.contains("__name__=~");
+                        let metric_of_query = if regex_selector {
+                            None
+                        } else {
+                            query
+                                .strip_prefix("last_over_time(")
+                                .and_then(|rest| rest.split('[').next())
+                                .or_else(|| {
+                                    query
+                                        .chars()
+                                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
+                                        .then(|| query)
+                                })
+                                .map(str::to_string)
+                        };
                         // Dernier échantillon par (métrique, device_id) de
                         // l'org — forme vector Prometheus exacte.
                         #[allow(clippy::type_complexity)]
@@ -274,6 +295,12 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                         > = HashMap::new();
                         for (o2_org, _b, metric, labels, value, ts_ms) in &guard.ingested {
                             if o2_org != &org {
+                                continue;
+                            }
+                            if regex_selector {
+                                continue; // aucun match, fidèle v0.92.1
+                            }
+                            if metric_of_query.as_ref().is_some_and(|w| w != metric) {
                                 continue;
                             }
                             let device = labels
@@ -309,6 +336,53 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                                 "status": "success",
                                 "data": {"resultType": "vector", "result": result}
                             })),
+                        )
+                    }
+                }
+            }),
+        )
+        .route(
+            "/api/{org}/streams",
+            get({
+                let s = s.clone();
+                move |Path(org): Path<String>,
+                      headers: axum::http::HeaderMap,
+                      axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>| {
+                    let s = s.clone();
+                    async move {
+                        let basic =
+                            basic_of(headers.get("authorization").and_then(|v| v.to_str().ok()));
+                        let mut guard = s.lock().unwrap();
+                        guard.query_basics.push(basic.clone());
+                        let (email, secret) = basic.split_once(':').unwrap_or(("", ""));
+                        if email != "root@pnex.local" || secret != "whatever" {
+                            return (
+                                axum::http::StatusCode::UNAUTHORIZED,
+                                axum::Json(serde_json::json!({
+                                    "message": "Unauthorized Access"
+                                })),
+                            );
+                        }
+                        // Streams metrics distincts de l'org (type=metrics
+                        // comme le client le demande).
+                        if params.get("type").map(String::as_str) != Some("metrics") {
+                            return (axum::http::StatusCode::BAD_REQUEST, axum::Json(serde_json::json!({"message": "type requis"})));
+                        }
+                        let mut names: Vec<String> = guard
+                            .ingested
+                            .iter()
+                            .filter(|(o2_org, _, _, _, _, _)| o2_org == &org)
+                            .map(|(_, _, metric, _, _, _)| metric.clone())
+                            .collect();
+                        names.sort();
+                        names.dedup();
+                        let list: Vec<serde_json::Value> = names
+                            .into_iter()
+                            .map(|name| serde_json::json!({ "name": name }))
+                            .collect();
+                        (
+                            axum::http::StatusCode::OK,
+                            axum::Json(serde_json::json!({ "list": list })),
                         )
                     }
                 }
@@ -524,6 +598,8 @@ async fn batcher_flush_vers_openobserve() {
 /// email:passcode est REFUSÉ sur la query (il ne sert que l'ingestion) —
 /// le client tente passcode puis bascule en Basic root, qui répond. La
 /// réponse vector est parsée et porte le DERNIER échantillon par série.
+/// Au passage : le sélecteur regex `{__name__=~…}` renvoie VIDE (constat
+/// e2e) — seuls les noms nus sélectionnent.
 #[tokio::test]
 async fn prom_query_bascule_root_et_parse() {
     let (base, mock) = spawn_mock_o2().await;
@@ -554,12 +630,9 @@ async fn prom_query_bascule_root_et_parse() {
         ));
     }
     let client = o2_client(&base);
+    let email_passcode = format!("{email}:{}", passcode_of(email));
     let resp = client
-        .prom_query(
-            "mockid1",
-            r#"last_over_time({__name__=~".+"}[1h])"#,
-            &format!("{email}:{}", passcode_of(email)),
-        )
+        .prom_query("mockid1", "last_over_time(read_temperature[1h])", &email_passcode)
         .await
         .expect("query via root");
     assert_eq!(resp.status, "success");
@@ -571,11 +644,19 @@ async fn prom_query_bascule_root_et_parse() {
     assert_eq!(sample.value.1, "22.5", "dernier échantillon de la série");
     assert_eq!(sample.value.0, 1_755_600_030.0);
 
-    // Passcode tenté puis refusé, root a répondu.
+    // Constat e2e v0.92.1 : le catch-all regex ne sélectionne RIEN.
+    let resp = client
+        .prom_query("mockid1", r#"last_over_time({__name__=~".+"}[1h])"#, &email_passcode)
+        .await
+        .expect("requête acceptée");
+    assert!(resp.data.result.is_empty(), "catch-all vide sur O2 réel");
+
+    // Passcode tenté puis refusé, root a répondu (sur chaque appel).
     let basics = mock.lock().unwrap().query_basics.clone();
-    assert_eq!(basics.len(), 2, "passcode PUIS root");
-    assert_eq!(basics[0], format!("{email}:{}", passcode_of(email)));
+    assert_eq!(basics.len(), 4, "2 appels × (passcode PUIS root)");
+    assert_eq!(basics[0], email_passcode);
     assert_eq!(basics[1], "root@pnex.local:whatever");
+    assert_eq!(basics[3], "root@pnex.local:whatever");
 }
 
 /// Passcode ET root refusés (ex. mot de passe root retourné) → erreur
@@ -592,7 +673,7 @@ async fn prom_query_erreur_si_tout_refuse() {
         .prom_query("mockid1", "up", "pnex-ingest+org7@pnex.local:o2oi_x")
         .await
         .expect_err("les deux auths sont refusées");
-    assert!(err.contains("refusée"), "message : {err}");
+    assert!(err.contains("refusé"), "message : {err}");
 }
 
 /// Summary dashboard complet : PNEX_O2_URL active la section openobserve
@@ -667,11 +748,13 @@ async fn dashboard_summary_complet_contre_mock() {
             );
 
             // Auth : passcode refusé puis root a répondu (comportement
-            // réel v0.92.1).
+            // réel v0.92.1) — sur le streams ET chaque query par métrique
+            // (2 métriques : read_temperature, soil_moisture).
             let basics = mock.lock().unwrap().query_basics.clone();
-            assert_eq!(basics.len(), 2, "passcode PUIS root");
+            assert_eq!(basics.len(), 6, "streams + 2 queries × (passcode PUIS root)");
             assert_eq!(basics[0], creds.email_passcode);
             assert_eq!(basics[1], "root@pnex.local:whatever");
+            assert_eq!(basics[5], "root@pnex.local:whatever");
         },
     )
     .await;

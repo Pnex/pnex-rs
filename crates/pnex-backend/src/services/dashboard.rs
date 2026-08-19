@@ -22,16 +22,12 @@ use crate::models::_entities::{
 use crate::services::device_liveness;
 use crate::services::openobserve::{self, client::Client};
 
-/// Requête instantanée catch-all : dernier échantillon de chaque série de
-/// l'org sur 1 h. L'org O2 est dédiée à l'org PNEX (D2), inutile
-/// d'énumérer les noms de métriques — couvre les devices dynamiques non
-/// encore découverts. Plan B si O2 rejette le sélecteur regex :
-/// énumérer les noms connus (constante isolée pour ça).
-const LATEST_QUERY: &str = r#"last_over_time({__name__=~".+"}[1h])"#;
+/// Fenêtre de recherche du dernier échantillon de chaque série.
+const LATEST_WINDOW: &str = "1h";
 
-/// Timeout du seul appel O2 du summary — le dashboard répond quoi qu'il
-/// arrive, une page ne doit pas traîner 10 s (timeout http du client)
-/// parce qu'O2 est lent.
+/// Timeout de TOUT le chemin O2 du summary (découverte des streams +
+/// queries) — le dashboard répond quoi qu'il arrive, une page ne doit pas
+/// traîner 10 s (timeout http du client) parce qu'O2 est lent.
 const O2_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Borné côté serveur : la table du dashboard reste lisible (demande user
@@ -42,6 +38,19 @@ const LATEST_CAP: usize = 10;
 /// actifs (live d'abord) — les compteurs de la carte restent calculés
 /// sur l'ensemble des devices de l'org.
 const LIVENESS_CAP: usize = 10;
+
+/// Nombre max de streams interrogés (défensif : sélecteur borné même si
+/// une org a des dizaines de métriques dynamiques).
+const STREAMS_CAP: usize = 12;
+
+/// Nom de métrique Prometheus valide (charset officiel) — les streams au
+/// nom exotique sont ignorés plutôt que de casser la requête.
+fn is_valid_metric_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
+}
 
 /// Liveness des devices de l'org : jointure registre × dernier état,
 /// frais au sens du TTL de silence (`device_liveness::is_fresh`, même
@@ -141,6 +150,11 @@ pub async fn build_stats(db: &DatabaseConnection, org_id: i64) -> Result<BuildSt
 
 /// Dernières mesures de l'org depuis OpenObserve — **dégradée par
 /// conception** : aucune erreur ne remonte, `available: false` suffit.
+///
+/// Constat e2e v0.92.1 : pas de sélecteur regex sur `__name__` (renvoie
+/// vide) → les noms de métriques se découvrent via `/streams?type=metrics`
+/// puis **une requête par nom** (`last_over_time(nom[1h])`), le tout sous
+/// le timeout global `O2_TIMEOUT`.
 pub async fn latest_measurements(
     db: &DatabaseConnection,
     client: &Client,
@@ -159,19 +173,42 @@ pub async fn latest_measurements(
     else {
         return degraded;
     };
-    let query = tokio::time::timeout(
-        O2_TIMEOUT,
-        client.prom_query(&creds.o2_org, LATEST_QUERY, &creds.email_passcode),
-    )
+    let fetch = tokio::time::timeout(O2_TIMEOUT, async {
+        let streams = client
+            .metric_streams(&creds.o2_org, &creds.email_passcode)
+            .await?;
+        let mut samples = Vec::new();
+        for name in streams
+            .iter()
+            .filter(|n| is_valid_metric_name(n))
+            .take(STREAMS_CAP)
+        {
+            // Une métrique injoignable n'emporte pas les autres.
+            match client
+                .prom_query(
+                    &creds.o2_org,
+                    &format!("last_over_time({name}[{LATEST_WINDOW}])"),
+                    &creds.email_passcode,
+                )
+                .await
+            {
+                Ok(resp) => samples.extend(resp.data.result),
+                Err(e) => {
+                    tracing::debug!(org_id, metric = %name, erreur = %e, "stream non interrogé")
+                }
+            }
+        }
+        Ok::<_, String>(samples)
+    })
     .await;
-    let samples = match query {
-        Ok(Ok(resp)) => resp.data.result,
+    let samples = match fetch {
+        Ok(Ok(samples)) => samples,
         Ok(Err(e)) => {
-            tracing::warn!(org_id, erreur = %e, "dashboard : query O2 en échec, télémétrie dégradée");
+            tracing::warn!(org_id, erreur = %e, "dashboard : O2 en échec, télémétrie dégradée");
             return degraded;
         }
         Err(_) => {
-            tracing::warn!(org_id, "dashboard : query O2 expirée (3 s), télémétrie dégradée");
+            tracing::warn!(org_id, "dashboard : chemin O2 expiré (3 s), télémétrie dégradée");
             return degraded;
         }
     };
