@@ -113,6 +113,38 @@ async fn dashboard_summary_degrade_sans_o2() {
         assert_eq!(body["builds"]["succeeded"], 0);
         assert_eq!(body["builds"]["success_rate"], 0.0);
 
+        // Cap liveness : 12 devices de plus (insertion directe, quota
+        // contourné) → total 13 mais liste plafonnée à 10, compteurs
+        // complets (demande user : « only latest ~10 »).
+        {
+            use pnex_backend::models::_entities::{device_registries, predefined_devices};
+            use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+            let soil = predefined_devices::Entity::find()
+                .filter(predefined_devices::Column::Name.eq("soil_sensor"))
+                .one(&_ctx.db)
+                .await
+                .unwrap()
+                .unwrap();
+            for i in 0..12 {
+                device_registries::ActiveModel {
+                    device_id: Set(format!("cap-{i:02}")),
+                    org_id: Set(org),
+                    predefined_device_id: Set(soil.id),
+                    ..Default::default()
+                }
+                .insert(&_ctx.db)
+                .await
+                .unwrap();
+            }
+        }
+        let body: serde_json::Value = summary(&server, &env.alice, org)
+            .await
+            .json();
+        assert_eq!(body["liveness"]["total"], 13, "compteur complet");
+        assert_eq!(body["liveness"]["live"], 0);
+        let list = body["liveness"]["devices"].as_array().unwrap();
+        assert_eq!(list.len(), 10, "liste plafonnée à ~10");
+
         // Sans X-Org-Id → 400 (extracteur OrgContext).
         let res = server
             .get("/api/v1/dashboard/summary")

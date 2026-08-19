@@ -34,13 +34,21 @@ const LATEST_QUERY: &str = r#"last_over_time({__name__=~".+"}[1h])"#;
 /// parce qu'O2 est lent.
 const O2_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// Borné côté serveur : la table du dashboard reste lisible.
-const LATEST_CAP: usize = 12;
+/// Borné côté serveur : la table du dashboard reste lisible (demande user
+/// 2026-08-19 — « only latest ~10 », pas tout l'historique).
+const LATEST_CAP: usize = 10;
+
+/// Idem pour la liste liveness : les ~10 devices les plus récemment
+/// actifs (live d'abord) — les compteurs de la carte restent calculés
+/// sur l'ensemble des devices de l'org.
+const LIVENESS_CAP: usize = 10;
 
 /// Liveness des devices de l'org : jointure registre × dernier état,
 /// frais au sens du TTL de silence (`device_liveness::is_fresh`, même
-/// définition que le reaper — pas le booléen `active`, potentially périmé
-/// entre deux ticks). Tri live d'abord, puis dernier signe décroissant.
+/// définition que le reaper — pas le booléen `active`, possiblement périmé
+/// entre deux ticks). Tri live d'abord, puis dernier signe décroissant,
+/// puis **tronqué à `LIVENESS_CAP`** — `total`/`live` restent les comptes
+/// complets de l'org.
 pub async fn liveness(
     db: &DatabaseConnection,
     org_id: i64,
@@ -97,9 +105,12 @@ pub async fn liveness(
         .collect();
     devices.sort_by(|a, b| b.0.live.cmp(&a.0.live).then_with(|| b.1.cmp(&a.1)));
 
+    // Compteurs sur l'ensemble, PUIS troncature de la liste.
     let live = devices.iter().filter(|(d, _)| d.live).count() as u64;
+    let total = devices.len() as u64;
+    devices.truncate(LIVENESS_CAP);
     Ok(LivenessSummary {
-        total: devices.len() as u64,
+        total,
         live,
         devices: devices.into_iter().map(|(d, _)| d).collect(),
     })

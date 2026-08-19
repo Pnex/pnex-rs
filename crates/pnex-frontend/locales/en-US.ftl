@@ -68,6 +68,7 @@ toast-saved = Changes saved
 
 # Tableau de bord
 dash-subtitle = Monitor your devices, organizations and subscription
+dash-auto-refresh = Auto · 15 s
 dash-total-devices = Total devices
 dash-active-devices = Active devices
 dash-orgs = Organizations

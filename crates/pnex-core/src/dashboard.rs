@@ -26,10 +26,12 @@ pub struct DashboardSummary {
 /// `device_registries` × `device_states`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LivenessSummary {
+    /// Comptes complets de l'org — la liste est tronquée, pas les compteurs.
     pub total: u64,
     /// Devices dont `last_seen_at` est plus frais que le TTL de silence.
     pub live: u64,
-    /// Triés live d'abord, puis `last_seen` décroissant.
+    /// Triés live d'abord, puis `last_seen` décroissant — plafonnés à ~10
+    /// côté backend (demande user : « only latest ~10 », pas toute l'org).
     pub devices: Vec<DeviceLiveness>,
 }
 
@@ -53,7 +55,7 @@ pub struct TelemetrySummary {
     /// Le front affiche un encart, jamais d'erreur bloquante.
     pub available: bool,
     /// Dernier échantillon par (métrique, device), tri ts décroissant,
-    /// plafonné à 12 lignes côté backend.
+    /// plafonné à ~10 lignes côté backend.
     pub latest: Vec<LatestMeasurement>,
 }
 

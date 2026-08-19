@@ -439,8 +439,12 @@ de sujets Django).
   chemin ; mock aligné). Doctrine tenue : timeout 3 s, cap 12 lignes,
   jamais de provisioning ni de 500 depuis la branche télémétrie
   (`telemetry.available:false`). Front : 2 cartes org-scope, liste
-  liveness, table mesures, polling 15 s, dégradation silencieuse, i18n
-  fr/en. D6 clos par la même occasion (aucune rétention d'artefacts —
+  liveness, table mesures, polling 15 s (rafraîchissement auto affiché),
+  dégradation silencieuse, i18n fr/en. **Caps ~10 côté serveur** (retour
+  user 2026-08-19 : « only latest ~10 », pas toute l'org) — liste
+  liveness tronquée après tri (compteurs complets, compteur
+  « affichés / total » côté front), mesures plafonnées à 10. D6 clos par
+  la même occasion (aucune rétention d'artefacts —
   re-flash/recompile toujours possibles). Mock O2 enrichi (route query,
   trace des Basic) ; test.yaml : section openobserve conditionnelle sur
   `PNEX_O2_URL` (Tera).

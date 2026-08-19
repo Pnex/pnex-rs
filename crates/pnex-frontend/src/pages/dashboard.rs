@@ -4,8 +4,10 @@
 //! - summary **org** de `/api/v1/dashboard/summary` (2026-08-19) : liveness
 //!   des devices (TTL de silence), stats builds, dernières mesures
 //!   OpenObserve — les cartes « Appareils en ligne » et « Réussite des
-//!   builds » et les deux sections en bas. Polling 15 s, télémétrie
-//!   dégradée silencieuse (encart, jamais de toast en erreur répétée).
+//!   builds » et les deux sections en bas. Polling 15 s (la valeur reste
+//!   affichée pendant le re-fetch), listes plafonnées à ~10 côté serveur
+//!   (compteur « affichés / total » si tronquées), télémétrie dégradée
+//!   silencieuse (encart, jamais de toast en erreur répétée).
 
 use std::time::Duration;
 
@@ -71,6 +73,15 @@ pub fn Dashboard() -> Element {
         .filter(|x| x.builds.total > 0)
         .map(|x| format!("{:.0}%", x.builds.success_rate * 100.0));
     let liveness_list = s.as_ref().map(|x| x.liveness.devices.as_slice());
+    let liveness_total = s.as_ref().map(|x| x.liveness.total);
+    // Compteur « affichés / total » quand la liste est tronquée (cap ~10
+    // côté backend).
+    let liveness_more = match (liveness_list, liveness_total) {
+        (Some(list), Some(total)) if total > list.len() as u64 => {
+            Some(format!("{} / {}", list.len(), total))
+        }
+        _ => None,
+    };
     let telemetry = s.as_ref().map(|x| &x.telemetry);
 
     // Polling auto-entretenu tant que la page est montée.
@@ -91,19 +102,22 @@ pub fn Dashboard() -> Element {
                     h1 { class: "text-3xl font-bold text-gray-900", {t!("nav-dashboard")} }
                     p { class: "text-gray-600 mt-2", {t!("dash-subtitle")} }
                 }
-                button {
-                    class: "inline-flex items-center px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
-                    onclick: move |_| {
-                        reload.with_mut(|r| *r += 1);
-                        spawn(async {
-                            match crate::api::user::get_user_info().await {
-                                Ok(fresh) => session::login(fresh),
-                                Err(err) => toasts::error(err.message),
-                            }
-                        });
-                    },
-                    icons::RefreshCw { class: "h-4 w-4 mr-2" }
-                    {t!("common-retry")}
+                div { class: "flex items-center gap-3",
+                    span { class: "text-xs text-gray-400", {t!("dash-auto-refresh")} }
+                    button {
+                        class: "inline-flex items-center px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                        onclick: move |_| {
+                            reload.with_mut(|r| *r += 1);
+                            spawn(async {
+                                match crate::api::user::get_user_info().await {
+                                    Ok(fresh) => session::login(fresh),
+                                    Err(err) => toasts::error(err.message),
+                                }
+                            });
+                        },
+                        icons::RefreshCw { class: "h-4 w-4 mr-2" }
+                        {t!("common-retry")}
+                    }
                 }
             }
 
@@ -184,6 +198,9 @@ pub fn Dashboard() -> Element {
                                             }
                                         }
                                     }
+                                }
+                                if let Some(counter) = &liveness_more {
+                                    p { class: "text-xs text-gray-400 text-right mt-2", {counter.clone()} }
                                 }
                             },
                         }
