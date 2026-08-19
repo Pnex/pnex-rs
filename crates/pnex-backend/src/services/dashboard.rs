@@ -43,15 +43,6 @@ const LIVENESS_CAP: usize = 10;
 /// une org a des dizaines de métriques dynamiques).
 const STREAMS_CAP: usize = 12;
 
-/// Nom de métrique Prometheus valide (charset officiel) — les streams au
-/// nom exotique sont ignorés plutôt que de casser la requête.
-fn is_valid_metric_name(name: &str) -> bool {
-    !name.is_empty()
-        && name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
-}
-
 /// Liveness des devices de l'org : jointure registre × dernier état,
 /// frais au sens du TTL de silence (`device_liveness::is_fresh`, même
 /// définition que le reaper — pas le booléen `active`, possiblement périmé
@@ -93,8 +84,7 @@ pub async fn liveness(
         .map(|(device, state)| {
             let last_seen = state.as_ref().map(|s| s.last_seen_at);
             let seen_utc = last_seen.map(|t| t.with_timezone(&Utc));
-            let live = seen_utc
-                .is_some_and(|t| device_liveness::is_fresh(t, silence_ttl_secs));
+            let live = seen_utc.is_some_and(|t| device_liveness::is_fresh(t, silence_ttl_secs));
             let (name, type_id) = predefined
                 .get(&device.predefined_device_id)
                 .cloned()
@@ -104,7 +94,10 @@ pub async fn liveness(
                     id: device.id,
                     device_id: device.device_id,
                     predefined_device_name: name,
-                    device_type: types.get(&type_id).cloned().unwrap_or_else(|| "unknown".into()),
+                    device_type: types
+                        .get(&type_id)
+                        .cloned()
+                        .unwrap_or_else(|| "unknown".into()),
                     live,
                     last_seen: seen_utc.map(|t| t.to_rfc3339()),
                 },
@@ -180,7 +173,7 @@ pub async fn latest_measurements(
         let mut samples = Vec::new();
         for name in streams
             .iter()
-            .filter(|n| is_valid_metric_name(n))
+            .filter(|n| openobserve::valid_metric_name(n))
             .take(STREAMS_CAP)
         {
             // Une métrique injoignable n'emporte pas les autres.
@@ -208,7 +201,10 @@ pub async fn latest_measurements(
             return degraded;
         }
         Err(_) => {
-            tracing::warn!(org_id, "dashboard : chemin O2 expiré (3 s), télémétrie dégradée");
+            tracing::warn!(
+                org_id,
+                "dashboard : chemin O2 expiré (3 s), télémétrie dégradée"
+            );
             return degraded;
         }
     };
@@ -221,8 +217,7 @@ pub async fn latest_measurements(
             let metric = s.metric.get("__name__")?.clone();
             let device_id = s.metric.get("device_id")?.clone();
             let value: f64 = s.value.1.parse().ok()?;
-            let timestamp = DateTime::from_timestamp(s.value.0 as i64, 0)
-                .map(|t| t.to_rfc3339());
+            let timestamp = DateTime::from_timestamp(s.value.0 as i64, 0).map(|t| t.to_rfc3339());
             Some(LatestMeasurement {
                 metric,
                 device_id,

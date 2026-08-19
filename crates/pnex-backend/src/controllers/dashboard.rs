@@ -23,8 +23,8 @@ pub fn routes() -> Routes {
 
 async fn summary(org: OrgContext, State(ctx): State<AppContext>) -> Result<Response> {
     let ingest = IngestSettings::from_config(&ctx.config);
-    let o2_client = OpenobserveSettings::from_config(&ctx.config)
-        .map(|settings| Client::new(&settings));
+    let o2_client =
+        OpenobserveSettings::from_config(&ctx.config).map(|settings| Client::new(&settings));
 
     let (liveness, builds, telemetry) = tokio::join!(
         dashboard::liveness(&ctx.db, org.org.id, ingest.silence_ttl_secs),

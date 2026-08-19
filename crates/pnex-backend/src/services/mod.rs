@@ -8,3 +8,4 @@ pub mod firmware;
 pub mod openobserve;
 pub mod settings;
 pub mod telemetry;
+pub mod visualization;

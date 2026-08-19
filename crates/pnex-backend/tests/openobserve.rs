@@ -246,9 +246,11 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                 let s = s.clone();
                 move |Path(org): Path<String>,
                       headers: axum::http::HeaderMap,
-                      axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>| {
+                      axum::extract::Query(params): axum::extract::Query<
+                    HashMap<String, String>,
+                >| {
                     let s = s.clone();
-                async move {
+                    async move {
                         let basic =
                             basic_of(headers.get("authorization").and_then(|v| v.to_str().ok()));
                         let mut guard = s.lock().unwrap();
@@ -282,7 +284,7 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                                     query
                                         .chars()
                                         .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
-                                        .then(|| query)
+                                        .then_some(query)
                                 })
                                 .map(str::to_string)
                         };
@@ -308,9 +310,11 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                                 .find(|(n, _)| n == "device_id")
                                 .map(|(_, v)| v.clone())
                                 .unwrap_or_default();
-                            let entry = last
-                                .entry((metric.clone(), device))
-                                .or_insert((labels.clone(), *value, *ts_ms));
+                            let entry = last.entry((metric.clone(), device)).or_insert((
+                                labels.clone(),
+                                *value,
+                                *ts_ms,
+                            ));
                             if ts_ms >= &entry.2 {
                                 *entry = (labels.clone(), *value, *ts_ms);
                             }
@@ -347,9 +351,11 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                 let s = s.clone();
                 move |Path(org): Path<String>,
                       headers: axum::http::HeaderMap,
-                      axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>| {
+                      axum::extract::Query(params): axum::extract::Query<
+                    HashMap<String, String>,
+                >| {
                     let s = s.clone();
-                async move {
+                    async move {
                         let basic =
                             basic_of(headers.get("authorization").and_then(|v| v.to_str().ok()));
                         let mut guard = s.lock().unwrap();
@@ -379,8 +385,10 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                             ),
                             None => (query.to_string(), None),
                         };
-                        let start: f64 =
-                            params.get("start").and_then(|v| v.parse().ok()).unwrap_or(0.0);
+                        let start: f64 = params
+                            .get("start")
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(0.0);
                         let end: f64 = params
                             .get("end")
                             .and_then(|v| v.parse().ok())
@@ -448,7 +456,9 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                 let s = s.clone();
                 move |Path(org): Path<String>,
                       headers: axum::http::HeaderMap,
-                      axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>| {
+                      axum::extract::Query(params): axum::extract::Query<
+                    HashMap<String, String>,
+                >| {
                     let s = s.clone();
                     async move {
                         let basic =
@@ -467,7 +477,10 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                         // Streams metrics distincts de l'org (type=metrics
                         // comme le client le demande).
                         if params.get("type").map(String::as_str) != Some("metrics") {
-                            return (axum::http::StatusCode::BAD_REQUEST, axum::Json(serde_json::json!({"message": "type requis"})));
+                            return (
+                                axum::http::StatusCode::BAD_REQUEST,
+                                axum::Json(serde_json::json!({"message": "type requis"})),
+                            );
                         }
                         let mut names: Vec<String> = guard
                             .ingested
@@ -733,7 +746,11 @@ async fn prom_query_bascule_root_et_parse() {
     let client = o2_client(&base);
     let email_passcode = format!("{email}:{}", passcode_of(email));
     let resp = client
-        .prom_query("mockid1", "last_over_time(read_temperature[1h])", &email_passcode)
+        .prom_query(
+            "mockid1",
+            "last_over_time(read_temperature[1h])",
+            &email_passcode,
+        )
         .await
         .expect("query via root");
     assert_eq!(resp.status, "success");
@@ -747,7 +764,11 @@ async fn prom_query_bascule_root_et_parse() {
 
     // Constat e2e v0.92.1 : le catch-all regex ne sélectionne RIEN.
     let resp = client
-        .prom_query("mockid1", r#"last_over_time({__name__=~".+"}[1h])"#, &email_passcode)
+        .prom_query(
+            "mockid1",
+            r#"last_over_time({__name__=~".+"}[1h])"#,
+            &email_passcode,
+        )
         .await
         .expect("requête acceptée");
     assert!(resp.data.result.is_empty(), "catch-all vide sur O2 réel");
@@ -842,7 +863,14 @@ async fn query_range_bascule_root_et_parse() {
 
     // Nom nu SANS sélecteur : les deux devices de la métrique.
     let resp = client
-        .prom_query_range("mockid1", "soil_moisture", 0, 1_755_600_400, 60, &email_passcode)
+        .prom_query_range(
+            "mockid1",
+            "soil_moisture",
+            0,
+            1_755_600_400,
+            60,
+            &email_passcode,
+        )
         .await
         .expect("nom nu accepté");
     assert_eq!(resp.data.result.len(), 2, "une série par device");
@@ -929,10 +957,125 @@ async fn dashboard_summary_complet_contre_mock() {
             // réel v0.92.1) — sur le streams ET chaque query par métrique
             // (2 métriques : read_temperature, soil_moisture).
             let basics = mock.lock().unwrap().query_basics.clone();
-            assert_eq!(basics.len(), 6, "streams + 2 queries × (passcode PUIS root)");
+            assert_eq!(
+                basics.len(),
+                6,
+                "streams + 2 queries × (passcode PUIS root)"
+            );
             assert_eq!(basics[0], creds.email_passcode);
             assert_eq!(basics[1], "root@pnex.local:whatever");
             assert_eq!(basics[5], "root@pnex.local:whatever");
+        },
+    )
+    .await;
+}
+
+/// Endpoints Visualisation complets : PNEX_O2_URL active la section
+/// openobserve de test.yaml, l'org provisionnée + points dans le mock →
+/// catalogue disponible (une série par métrique × device) et série sur
+/// fenêtre avec points ordonnés. Les points utilisent des timestamps
+/// RÉELS (now) : contrairement au mock instantané, query_range filtre
+/// sur [start, end] calculés serveur.
+#[tokio::test]
+#[serial]
+async fn visualization_catalog_et_series_contre_mock() {
+    let kc = common::spawn_mock_keycloak().await;
+    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+    unsafe { std::env::set_var("KEYCLOAK_URL", &kc) };
+    let alice = common::valid_token(
+        &kc,
+        "00000000-0000-0000-0000-00000000000a",
+        "alice",
+        "alice@example.com",
+    );
+    let (o2_base, mock) = spawn_mock_o2().await;
+    unsafe { std::env::set_var("PNEX_O2_URL", &o2_base) };
+    let config: RequestConfig = RequestConfigBuilder::new().build();
+    loco_rs::testing::request::request_with_config::<App, _, _>(
+        config,
+        move |server, ctx| async move {
+            common::seed_catalogue(&ctx.db).await;
+            unsafe { std::env::remove_var("PNEX_O2_URL") };
+
+            let org = personal_org(&server, &alice).await;
+            let client = o2_client(&o2_base);
+            let creds = ensure_org_credentials(&ctx.db, &client, org)
+                .await
+                .expect("provision");
+            let now_ms = chrono::Utc::now().timestamp_millis();
+            {
+                let mut guard = mock.lock().unwrap();
+                for (metric, value, ts_ms) in [
+                    ("soil_moisture", 100.0, now_ms - 120_000),
+                    ("soil_moisture", 99.5, now_ms - 60_000),
+                    ("read_temperature", 21.5, now_ms - 90_000),
+                ] {
+                    guard.ingested.push((
+                        creds.o2_org.clone(),
+                        String::new(),
+                        metric.into(),
+                        vec![
+                            ("device_id".into(), "esp-001".into()),
+                            ("pred_dev".into(), "soil_sensor".into()),
+                        ],
+                        value,
+                        ts_ms,
+                    ));
+                }
+            }
+
+            // Catalogue : une série par (métrique × device), triée.
+            let res = server
+                .get("/api/v1/telemetry/catalog")
+                .add_header("Authorization", format!("Bearer {alice}"))
+                .add_header("X-Org-Id", org.to_string())
+                .await;
+            assert_eq!(res.status_code(), 200);
+            let body: serde_json::Value = res.json();
+            assert_eq!(body["available"], true);
+            let series = body["series"].as_array().unwrap();
+            assert_eq!(series.len(), 2);
+            assert_eq!(series[0]["metric"], "read_temperature", "tri alphabétique");
+            assert_eq!(series[0]["device_id"], "esp-001");
+            assert_eq!(series[0]["pred_dev"], "soil_sensor");
+            assert_eq!(series[0]["last_value"], 21.5);
+            assert_eq!(series[1]["metric"], "soil_moisture");
+            assert_eq!(series[1]["last_value"], 99.5, "dernier échantillon");
+
+            // Série : points ordonnés de la fenêtre (1 h couvre now-2 min).
+            let res = server
+                .get("/api/v1/telemetry/series?metric=soil_moisture&device_id=esp-001&window=1h")
+                .add_header("Authorization", format!("Bearer {alice}"))
+                .add_header("X-Org-Id", org.to_string())
+                .await;
+            assert_eq!(res.status_code(), 200);
+            let body: serde_json::Value = res.json();
+            assert_eq!(body["available"], true);
+            let points = body["points"].as_array().unwrap();
+            assert_eq!(points.len(), 2, "les deux points de la série");
+            assert_eq!(points[0]["value"], 100.0, "ordre chronologique");
+            assert_eq!(points[1]["value"], 99.5);
+            let ts0 = points[0]["ts"].as_f64().unwrap();
+            let ts1 = points[1]["ts"].as_f64().unwrap();
+            assert!(ts0 < ts1);
+            // Timestamps réels : dans la fenêtre 1 h qui vient de s'ouvrir
+            // (les points datent de now-2 min et now-1 min).
+            let now_secs = now_ms as f64 / 1000.0;
+            assert!(
+                ts0 > now_secs - 3600.0 && ts1 <= now_secs,
+                "timestamps dans la fenêtre : {ts0}..{ts1} vs now {now_secs}"
+            );
+
+            // Le filtre device exclut les autres devices (fidélité mock).
+            let res = server
+                .get("/api/v1/telemetry/series?metric=soil_moisture&device_id=autre&window=1h")
+                .add_header("Authorization", format!("Bearer {alice}"))
+                .add_header("X-Org-Id", org.to_string())
+                .await;
+            assert_eq!(res.status_code(), 200);
+            let body: serde_json::Value = res.json();
+            assert_eq!(body["available"], true);
+            assert_eq!(body["points"].as_array().unwrap().len(), 0);
         },
     )
     .await;

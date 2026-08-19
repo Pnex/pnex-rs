@@ -65,7 +65,11 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .expect("org personnelle")
 }
 
-async fn summary(server: &axum_test::TestServer, token: &str, org_id: i64) -> axum_test::TestResponse {
+async fn summary(
+    server: &axum_test::TestServer,
+    token: &str,
+    org_id: i64,
+) -> axum_test::TestResponse {
     server
         .get("/api/v1/dashboard/summary")
         .add_header("Authorization", bearer(token))
@@ -137,9 +141,7 @@ async fn dashboard_summary_degrade_sans_o2() {
                 .unwrap();
             }
         }
-        let body: serde_json::Value = summary(&server, &env.alice, org)
-            .await
-            .json();
+        let body: serde_json::Value = summary(&server, &env.alice, org).await.json();
         assert_eq!(body["liveness"]["total"], 13, "compteur complet");
         assert_eq!(body["liveness"]["live"], 0);
         let list = body["liveness"]["devices"].as_array().unwrap();
@@ -181,9 +183,7 @@ async fn dashboard_summary_cloisonne_par_org() {
             .as_i64()
             .expect("org perso bob");
 
-        let body: serde_json::Value = summary(&server, &env.bob, org_bob)
-            .await
-            .json();
+        let body: serde_json::Value = summary(&server, &env.bob, org_bob).await.json();
         assert_eq!(body["liveness"]["total"], 0, "org de bob vide");
         assert_eq!(body["builds"]["total"], 0);
     })

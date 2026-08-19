@@ -49,3 +49,14 @@ impl OpenobserveSettings {
             .and_then(|v| serde_json::from_value(v.clone()).ok())
     }
 }
+
+/// Nom de métrique Prometheus valide (charset officiel) — sert de
+/// validation anti-injection avant toute interpolation dans une
+/// requête PromQL ; les streams au nom exotique sont ignorés plutôt
+/// que de casser la requête.
+pub(crate) fn valid_metric_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
+}

@@ -333,7 +333,9 @@ impl Client {
             }
             return Ok(text);
         }
-        Err(format!("{what} refusé (passcode puis root) : {last_denial}"))
+        Err(format!(
+            "{what} refusé (passcode puis root) : {last_denial}"
+        ))
     }
 
     /// Requête instantanée Prometheus
@@ -382,7 +384,10 @@ impl Client {
     ) -> Result<PromRangeResponse, String> {
         let text = self
             .get_with_auth_fallback(
-                &format!("{}/api/{org_identifier}/prometheus/api/v1/query_range", self.base),
+                &format!(
+                    "{}/api/{org_identifier}/prometheus/api/v1/query_range",
+                    self.base
+                ),
                 &[
                     ("query", query),
                     ("start", &start_epoch.to_string()),
