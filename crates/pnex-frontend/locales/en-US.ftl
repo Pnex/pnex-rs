@@ -79,6 +79,18 @@ dash-quota-actuator = Actuator devices
 dash-quota-mixed = Mixed devices
 dash-by-type = Devices by type
 dash-no-devices = No devices yet (Phase 4)
+dash-live-sensors = Devices online
+dash-build-success = Build success rate
+dash-no-builds = No builds yet
+dash-liveness = Device status
+dash-last-measurements = Latest measurements
+dash-no-measurements = No measurements yet
+dash-telemetry-unavailable = Telemetry unavailable (OpenObserve not configured or unreachable)
+dash-col-device = Device
+dash-col-metric = Metric
+dash-col-value = Value
+dash-col-time = Time
+dash-never = never
 
 # Profil
 profile-subtitle = Manage your account settings and preferences

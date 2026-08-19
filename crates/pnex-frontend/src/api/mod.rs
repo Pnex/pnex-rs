@@ -5,6 +5,7 @@ pub mod auth;
 pub mod builds;
 pub mod client;
 pub mod config;
+pub mod dashboard;
 pub mod devices;
 pub mod error;
 pub mod orgs;
