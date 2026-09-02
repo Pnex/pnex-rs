@@ -40,6 +40,22 @@ pub fn api_base() -> String {
     }
 }
 
+/// Hôte connectable par le device (« host:port ») — préremplissage du
+/// formulaire du secteur PNEXCFG (FlashModal Brick 0) : l'hôte de la page
+/// en web, vide en natif (champ à saisir).
+pub fn device_connect_host() -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        web_sys::window()
+            .map(|w| w.location().host().ok().unwrap_or_default())
+            .unwrap_or_default()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        String::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

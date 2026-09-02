@@ -5,7 +5,8 @@
 // consommées par src/flash.rs (wasm-bindgen) :
 //
 //   window.pnexFlashSupported() -> boolean
-//   window.pnexFlash(bytes: Uint8Array, onEvent: (json: string) => void) -> Promise
+//   window.pnexFlash(entries: [{data: Uint8Array, address: number}],
+//                    onEvent: (json: string) => void) -> Promise
 //
 // onEvent reçoit des chaînes JSON {type:"stage"|"chip"|"progress"|"done"|"error", ...}
 // parsées côté Rust avec serde_json (pas de dépendance serde-wasm-bindgen).
@@ -22,7 +23,10 @@ const emit = (onEvent, event) => onEvent(JSON.stringify(event));
 
 window.pnexFlashSupported = () => "serial" in navigator;
 
-window.pnexFlash = async (bytes, onEvent) => {
+window.pnexFlash = async (entries, onEvent) => {
+  // entries = [{ data: Uint8Array, address: number }, ...] — un seul
+  // writeFlash multi-entrées : firmware mergé @0x0 (+ secteur PNEXCFG1
+  // @0x200000 pour le firmware générique, Brick 0 B0.1).
   // requestPort() exige un geste utilisateur : cet appel doit partir du
   // handler du clic, sans attente réseau intermédiaire (les octets firmware
   // sont téléchargés à l'ouverture du modal, pas au clic).
@@ -38,7 +42,7 @@ window.pnexFlash = async (bytes, onEvent) => {
 
     emit(onEvent, { type: "stage", stage: "write" });
     await loader.writeFlash({
-      fileArray: [{ data: bytes, address: 0x0 }],
+      fileArray: entries.map((e) => ({ data: e.data, address: e.address })),
       flashMode: "dio",
       flashFreq: "40m",
       flashSize: "4MB",

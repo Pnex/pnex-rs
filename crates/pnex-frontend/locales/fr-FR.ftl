@@ -256,3 +256,36 @@ vis-empty = Ajoutez une série pour afficher sa courbe
 vis-no-data = Aucune donnée de télémétrie dans cette organisation
 vis-no-points = Aucun point sur la fenêtre sélectionnée
 vis-unavailable = Télémétrie indisponible (OpenObserve injoignable ou organisation non provisionnée)
+
+# ─────────────── Brick 0 — pins devices génériques ───────────────
+pins-title = Pins
+pins-connected = Connecté
+pins-offline = Hors ligne
+pins-auto-refresh = actualisation 15 s
+pins-not-provisioned = Device non provisionné — il apparaîtra ici après sa première connexion (/ws/device).
+pins-role-sensor = capteur
+pins-role-actuator = actionneur
+pins-last-value = Dernière valeur
+pins-high = HIGH
+pins-low = LOW
+pins-mode = Mode
+pins-mode-in = Entrée (digital_in)
+pins-mode-out = Sortie (digital_out)
+pins-safe-state = État de repos
+pins-safe-low = LOW (sûr)
+pins-safe-high = HIGH (sûr)
+pins-apply-mode = Appliquer le mode
+pins-write-high = Écrire HIGH
+pins-write-low = Écrire LOW
+pins-subscribe-off = Lecture manuelle
+pins-subscribe-1s = Lire chaque 1 s
+pins-subscribe-5s = Lire chaque 5 s
+pins-subscribe-15s = Lire chaque 15 s
+pins-subscribe-60s = Lire chaque 60 s
+pins-apply = Appliquer
+
+# ─────────────── Brick 0 — flash firmware générique (secteur PNEXCFG) ───────────────
+flashcfg-ssid = SSID WiFi
+flashcfg-password = Mot de passe WiFi
+flashcfg-host = Serveur (host:port)
+flashcfg-prepare = Préparer le flash (secteur de config)

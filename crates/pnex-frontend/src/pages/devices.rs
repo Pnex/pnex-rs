@@ -50,7 +50,7 @@ pub fn Devices() -> Element {
     // Cible du modal de recompilation (device_id, modèle).
     let mut rebuild_target = use_signal(|| None::<(String, String)>);
     // Cible du modal de flash navigateur (device_id).
-    let mut flash_target = use_signal(|| None::<String>);
+    let mut flash_target = use_signal(|| None::<(i64, String, bool)>);
     // Polling : un seul minuteur à la fois, relancé tant qu'un build vole.
     let mut polling = use_signal(|| false);
 
@@ -284,10 +284,12 @@ pub fn Devices() -> Element {
                         // Flash navigateur d'un device de la liste (Web Serial,
                         // Chromium — l'état interne se réinitialise à chaque
                         // ouverture).
-                        if let Some(flash_id) = flash_target() {
+                        if let Some((flash_pk, flash_id, flash_generic)) = flash_target() {
                             FlashModal {
                                 key: "{flash_id}",
+                                device_pk: flash_pk,
                                 device_id: flash_id,
+                                needs_config: flash_generic,
                                 on_close: move |_| flash_target.set(None),
                             }
                         }
@@ -305,7 +307,7 @@ fn device_row(
     can_write: bool,
     mut selected: Signal<Option<i64>>,
     mut rebuild_target: Signal<Option<(String, String)>>,
-    mut flash_target: Signal<Option<String>>,
+    mut flash_target: Signal<Option<(i64, String, bool)>>,
 ) -> Element {
     let pk = device.id;
     let (type_badge, type_label) = type_badge(&device.device_type);
@@ -321,6 +323,8 @@ fn device_row(
     let rebuild_id = device.device_id.clone();
     let rebuild_model = device.predefined_device_name.clone();
     let download_id = device.device_id.clone();
+    let flash_pk = device.id;
+    let flash_generic = device.predefined_device_name == "generic_esp8266";
     let flash_id = device.device_id.clone();
 
     rsx! {
@@ -383,7 +387,7 @@ fn device_row(
                                 r#type: "button",
                                 title: t!("devices-flash-title"),
                                 onclick: move |_| {
-                                    flash_target.set(Some(flash_id.clone()));
+                                    flash_target.set(Some((flash_pk, flash_id.clone(), flash_generic)));
                                 },
                                 icons::Zap { class: "h-3.5 w-3.5 inline mr-0.5" }
                                 {t!("devices-flash")}
@@ -654,6 +658,14 @@ fn DeviceDetail(
                                     }
                                 }
                             }
+                        }
+                    }
+
+                    // Brick 0 — Pins (devices génériques uniquement).
+                    if device.predefined_device_name == "generic_esp8266" {
+                        crate::components::pins_panel::PinsPanel {
+                            device_pk,
+                            can_write,
                         }
                     }
 

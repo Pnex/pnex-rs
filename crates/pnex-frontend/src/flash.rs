@@ -3,7 +3,7 @@
 //!
 //! Le module JS expose deux globales :
 //!   - `window.pnexFlashSupported()` → Web Serial dispo ?
-//!   - `window.pnexFlash(bytes, onEvent)` → promise du flow complet
+//!   - `window.pnexFlash(entries, onEvent)` → promise du flow complet
 //!     (requestPort → sync → writeFlash @0x0 → hard reset) ;
 //!     `onEvent` reçoit des chaînes JSON décodées ici en `FlashEvent`
 //!     (serde_json — pas de dépendance serde-wasm-bindgen).
@@ -49,19 +49,28 @@ pub fn supported() -> bool {
         .unwrap_or(false)
 }
 
-/// Flash `bytes` (image mergée @0x0) sur la carte choisie dans le sélecteur
+/// Flash les `entries` [(adresse, octets)] en un seul writeFlash (firmware
 /// de ports natif. Doit être appelé depuis un handler de clic :
 /// `requestPort()` exige un geste utilisateur.
 #[cfg(target_arch = "wasm32")]
-pub async fn flash<F>(bytes: Vec<u8>, mut on_event: F) -> Result<(), String>
+pub async fn flash<F>(entries: Vec<(u32, Vec<u8>)>, mut on_event: F) -> Result<(), String>
 where
     F: FnMut(FlashEvent),
 {
     let flash_fn = global_function("pnexFlash")
         .ok_or_else(|| "flasher.js non chargé (window.pnexFlash absent)".to_string())?;
 
-    let array = js_sys::Uint8Array::new_with_length(bytes.len() as u32);
-    array.copy_from(&bytes);
+    // [{ data: Uint8Array, address: Number }, ...] — un seul writeFlash
+    // esptool-js avec toutes les entrées (firmware + secteur PNEXCFG).
+    let entries_array = js_sys::Array::new();
+    for (address, bytes) in entries {
+        let array = js_sys::Uint8Array::new_with_length(bytes.len() as u32);
+        array.copy_from(&bytes);
+        let entry = js_sys::Object::new();
+        js_sys::Reflect::set(&entry, &"data".into(), &array).ok();
+        js_sys::Reflect::set(&entry, &"address".into(), &js_sys::Number::from(address)).ok();
+        entries_array.push(&entry);
+    }
 
     // Callback d'événements : la Closure reste vivante jusqu'au retour de
     // l'await (locale possédée), le JS n'en garde qu'un emprunt.
@@ -72,7 +81,7 @@ where
     }) as Box<dyn FnMut(String)>);
 
     let promise = flash_fn
-        .call2(&JsValue::NULL, &array, closure.as_js_value())
+        .call2(&JsValue::NULL, &entries_array, closure.as_js_value())
         .and_then(|value| {
             value
                 .dyn_into::<js_sys::Promise>()
@@ -116,7 +125,7 @@ pub fn supported() -> bool {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn flash<F>(_bytes: Vec<u8>, _on_event: F) -> Result<(), String>
+pub async fn flash<F>(_entries: Vec<(u32, Vec<u8>)>, _on_event: F) -> Result<(), String>
 where
     F: FnMut(FlashEvent),
 {

@@ -9,4 +9,5 @@ pub mod icons;
 pub mod modal;
 pub mod org_switcher;
 pub mod pager;
+pub mod pins_panel;
 pub mod toasts;

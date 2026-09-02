@@ -256,3 +256,36 @@ vis-empty = Add a series to display its curve
 vis-no-data = No telemetry data in this organization
 vis-no-points = No points in the selected window
 vis-unavailable = Telemetry unavailable (OpenObserve unreachable or organization not provisioned)
+
+# ─────────────── Brick 0 — pins of generic devices ───────────────
+pins-title = Pins
+pins-connected = Connected
+pins-offline = Offline
+pins-auto-refresh = 15 s refresh
+pins-not-provisioned = Device not provisioned yet — it will appear here after its first connection (/ws/device).
+pins-role-sensor = sensor
+pins-role-actuator = actuator
+pins-last-value = Last value
+pins-high = HIGH
+pins-low = LOW
+pins-mode = Mode
+pins-mode-in = Input (digital_in)
+pins-mode-out = Output (digital_out)
+pins-safe-state = Safe state
+pins-safe-low = LOW (safe)
+pins-safe-high = HIGH (safe)
+pins-apply-mode = Apply mode
+pins-write-high = Write HIGH
+pins-write-low = Write LOW
+pins-subscribe-off = Manual read
+pins-subscribe-1s = Read every 1 s
+pins-subscribe-5s = Read every 5 s
+pins-subscribe-15s = Read every 15 s
+pins-subscribe-60s = Read every 60 s
+pins-apply = Apply
+
+# ─────────────── Brick 0 — generic firmware flash (PNEXCFG sector) ───────────────
+flashcfg-ssid = WiFi SSID
+flashcfg-password = WiFi password
+flashcfg-host = Server (host:port)
+flashcfg-prepare = Prepare flash (config sector)
