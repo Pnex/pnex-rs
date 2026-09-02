@@ -2,7 +2,9 @@
 //!
 //! `build.rs` recopie l'arborescence `firmware/` du monorepo (filtrée :
 //! jamais `.git`/`.pio`/`.venv`/`build.sh`) dans `OUT_DIR`, et
-//! `include_dir!` l'embarque ici — ~430 Ko pour 41 fichiers trackés. Le
+//! `include_dir!` l'embarque ici — ~430 Ko (le watch `rerun-if-changed`
+//! porte sur la racine `firmware/`, donc les projets nouveaux sont
+//! ré-embarqués). Le
 //! binaire serveur est auto-porteur : sur un Raspi/self-hosted, il build
 //! *sa* version du firmware sans clone git ni chemin local. Seule la
 //! toolchain (`pio`) reste externe.

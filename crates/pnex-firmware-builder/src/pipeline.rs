@@ -433,3 +433,43 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod real_pio_tests {
+    use super::*;
+    use crate::InMemoryStore;
+
+    /// Repro manuel (Ignored) : pipeline RÉEL avec pio installé sur la
+    /// machine (`cargo test -p pnex-firmware-builder manuel_pio -- --ignored`).
+    /// Reproduit exactement le chemin du worker BuildFirmwareWorker.
+    #[tokio::test]
+    #[ignore]
+    async fn manuel_pio_reel_generic_esp8266() {
+        let store = Arc::new(InMemoryStore::default());
+        let config = BuildConfig {
+            pio_cmd: "pio".into(),
+            esptool_cmd: "esptool".into(),
+            timeout_secs: 900,
+            store,
+        };
+        let secrets = BuildSecrets {
+            wifi_ssid: "test-wifi".into(),
+            wifi_password: "test-pass".into(),
+            host: "localhost:5150".into(),
+            ws_ssl: false,
+            token: "fake-token".into(),
+            device_id: "young-walrus".into(),
+            encryption_key: None,
+        };
+        let device = DeviceSpec {
+            org_id: 1,
+            device_id: "young-walrus".into(),
+            project: "generic_esp8266".into(),
+            soc: "esp8266".into(),
+        };
+        let artifact = run_build(&config, &secrets, &device)
+            .await
+            .expect("build réel doit passer");
+        assert!(artifact.size_bytes > 100_000, "bin trop petit ?");
+    }
+}

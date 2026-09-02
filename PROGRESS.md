@@ -428,6 +428,18 @@ de sujets Django).
 
 ## Journal
 
+- 2026-09-02 (soir) : **Fix build firmware « toujours failed » + seed 5ᵉ carte**.
+  Trois causes empilées : (1) fixture overlay YAML en map au lieu d'une
+  séquence → seed plantait avant l'insert du device générique (4 cartes au
+  lieu de 5) ; (2) toolchain pio disparue (`~/.platformio/penv` effacé) →
+  réinstall `uv tool install platformio esptool` ; (3) **cause racine du
+  fail en 0,2 s** : `build.rs` n'émettait `rerun-if-changed` que par fichier
+  suivi → un projet *nouveau* (`generic_esp8266/`) n'était jamais
+  ré-embarqué dans le binaire → « projet introuvable » pour tout build
+  serveur du générique. Watch porté sur la racine `firmware/` (scan
+  récursif cargo) ; test manuel `manuel_pio_reel_generic_esp8266` (ignored)
+  rejoue le chemin exact du worker. Leçon : l'embarquement compile-time est
+  une cache — il faut qu'il suive sa source.
 - 2026-09-02 : **Brick 0 — firmware générique ESP8266 + socle capabilities
   implémenté** (4 tranches, gates verts à chaque commit ; e2e carte réelle
   restante). **core** : proto `/ws/device` (source de vérité du contrat,

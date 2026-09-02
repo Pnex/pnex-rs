@@ -7,18 +7,19 @@
 //! gonfleraient le binaire serveur. `build.sh` est exclu aussi : c'est un
 //! fichier local de convenience qui a historiquement contenu des secrets.
 //!
-//! `rerun-if-changed` est émis **par fichier** de la copie filtrée (pas sur
-//! le dossier entier) : les allers-retours de `.pio`/`.venv` ne déclenchent
-//! pas de recompilation du serveur. Contrepartie assumée : un fichier
-//! *nouveau* dans firmware/ ne re-déclenche pas le script (toucher un
-//! fichier existant ou `cargo clean -p pnex-firmware-builder` suffit).
+//! `rerun-if-changed` est émis sur la **racine** `firmware/` (scan récursif
+//! cargo) : un projet *nouveau* (ex. `generic_esp8266`, qui a coûté une
+//! heure de diagnostic quand il n'était jamais ré-embarqué) déclenche le
+//! script. Contrepartie assumée : le churn `.pio`/`.venv` local re-déclenche
+//! une recompilation — sans effet sur la copie (ces dossiers sont filtrés),
+//! seul le temps de build incremental serveur paie le churn.
 
 use std::fs;
 use std::path::Path;
 
 const SKIP_DIRS: &[&str] = &[".git", ".pio", ".venv", "node_modules"];
 
-fn copy_filtered(src: &Path, dst: &Path, tracked: &mut Vec<String>) -> std::io::Result<()> {
+fn copy_filtered(src: &Path, dst: &Path) -> std::io::Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
@@ -30,10 +31,9 @@ fn copy_filtered(src: &Path, dst: &Path, tracked: &mut Vec<String>) -> std::io::
         let from = entry.path();
         let to = dst.join(name.as_ref());
         if from.is_dir() {
-            copy_filtered(&from, &to, tracked)?;
+            copy_filtered(&from, &to)?;
         } else {
             fs::copy(&from, &to)?;
-            tracked.push(from.display().to_string());
         }
     }
     Ok(())
@@ -50,15 +50,14 @@ fn main() {
     let _ = fs::remove_dir_all(&target);
     fs::create_dir_all(&target).expect("créer firmware-embed");
 
-    let mut tracked = Vec::new();
     if source.is_dir() {
-        copy_filtered(&source, &target, &mut tracked).expect("copier firmware/ vers OUT_DIR");
+        copy_filtered(&source, &target).expect("copier firmware/ vers OUT_DIR");
+        // Scan récursif cargo sur la racine : capte les projets/fichiers
+        // *nouveaux* (le per-fichier seul laissait l'embarquement périmé).
+        println!("cargo:rerun-if-changed={}", source.display());
     } else {
         // Crate compilée hors monorepo : arborescence vide — l'erreur claire
         // est levée à l'exécution (embedded.rs), pas à la compilation.
         println!("cargo:warning=arborescence firmware/ introuvable — source embarquée vide");
-    }
-    for file in tracked {
-        println!("cargo:rerun-if-changed={file}");
     }
 }

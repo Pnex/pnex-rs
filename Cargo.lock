@@ -5027,6 +5027,8 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "include_dir",
+ "serde",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
