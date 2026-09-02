@@ -83,7 +83,6 @@ static void forceAllOff() {
 static char cfg_ssid[101];
 static char cfg_password[101];
 static char cfg_host[65];
-static char cfg_token[65];
 static char cfg_device_id[65];
 static bool wifi_ok = false;
 static unsigned long last_ping_ms = 0;
@@ -94,7 +93,7 @@ static uint32_t reconnect_delay_ms = 1000;
 const unsigned long PING_INTERVAL_MS = 5000;
 const unsigned long PONG_TIMEOUT_MS = 15000;
 
-static char conn_str[192];
+static char conn_str[256];
 
 // Prototypes
 void connectWiFi();
@@ -123,8 +122,11 @@ void setup() {
     cfg_password[n] = '\0';
     n = cryptoB64Decode(HOST, (unsigned char*)cfg_host);
     cfg_host[n] = '\0';
-    n = cryptoB64Decode(TOKEN, (unsigned char*)cfg_token);
-    cfg_token[n] = '\0';
+    // TOKEN et DEVICE_ID restent en base64 : le contrat d'auth des routes WS
+    // (`decode_param`) est « paramètre b64 → décodage serveur → lookup » —
+    // soil_sensor passe les macros telles quelles, le générique fait pareil
+    // (envoyés en clair, le rejet 4002 arrive avant l'annonce — leçon du
+    // 2026-09-02).
     n = cryptoB64Decode(DEVICE_ID, (unsigned char*)cfg_device_id);
     cfg_device_id[n] = '\0';
     Serial.printf("[pnex-generic] config ok : device_id=%s host=%s ssl=%d\n",
@@ -136,8 +138,9 @@ void setup() {
     connectWiFi();
 
     // URL selon WS_SSL compilé (port implicite : 443/80, comme le custom).
-    snprintf(conn_str, sizeof(conn_str), "%s://%s/ws/device?token=%s&device_id=%s",
-             ws_use_tls() ? "wss" : "ws", cfg_host, cfg_token, cfg_device_id);
+    // token/device_id en base64 (macros compilées) — contrat `decode_param`.
+    snprintf(conn_str, sizeof(conn_str), "%s://%s/ws/device?token=" TOKEN "&device_id=" DEVICE_ID,
+             ws_use_tls() ? "wss" : "ws", cfg_host);
     Serial.printf("[WS] %s\n", conn_str);
 
     if (ws_use_tls()) {
