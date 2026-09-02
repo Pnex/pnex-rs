@@ -20,7 +20,7 @@ on:
 
 jobs:
   compile:
-    name: pio run (soil_sensor + 4_chan_relay)
+    name: pio run (soil_sensor + 4_chan_relay + generic_esp8266)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,3 +40,8 @@ jobs:
       - name: Compile 4_chan_relay
         working-directory: firmware
         run: uv run pio run -d 4_chan_relay
+      # Brick 0 : le .bin générique (aucun secret au build — la config
+      # device vit dans le secteur PNEXCFG1 injecté au flash, B0.1).
+      - name: Compile generic_esp8266
+        working-directory: firmware
+        run: uv run pio run -d generic_esp8266
