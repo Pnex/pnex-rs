@@ -48,6 +48,17 @@ static DEVICE_SESSIONS: LazyLock<Mutex<HashMap<i64, mpsc::UnboundedSender<Server
 pub(crate) static LAST_VALUES: LazyLock<Mutex<HashMap<i64, HashMap<i32, serde_json::Value>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// Watchdog d'inactivité d'une session device : AUCUNE frame reçue pendant
+/// cette durée → la session est fermée (garde libéré, reconnexion
+/// possible). Le firmware pingue toutes les 5 s quand il est vivant ; 45 s
+/// de silence = pair mort (power cycle, reflash — la carte meurt sans
+/// close TCP). Sans lui, la tâche reste parkée sur `socket.recv()` à jamais
+/// (TCP half-open) : l'entrée `DEVICE_SESSIONS` rejette alors toute
+/// reconnexion en 4003 « Device already connected » — une carte reflashée
+/// restait verrouillée dehors jusqu'au redémarrage du serveur (leçon
+/// 2026-09-02).
+const DEVICE_WATCHDOG_SECS: u64 = 45;
+
 /// Retire le device des registres à la sortie, tous chemins compris.
 struct DeviceSessionGuard(i64);
 
@@ -209,8 +220,22 @@ async fn session_loop(
                 };
                 let _ = socket.send(Message::Text(encrypt_frame(&plain, &key).into())).await;
             }
-            // ── Uplink : frame du device ──
-            incoming = socket.recv() => {
+            // ── Uplink : frame du device, sous watchdog d'inactivité (une
+            // tâche parkée sur un TCP half-open ne meurt jamais seule) ──
+            incoming = tokio::time::timeout(
+                Duration::from_secs(DEVICE_WATCHDOG_SECS),
+                socket.recv(),
+            ) => {
+                let incoming = match incoming {
+                    Ok(incoming) => incoming,
+                    Err(_) => {
+                        tracing::warn!(
+                            device = %snap.device_id,
+                            "session muette > {DEVICE_WATCHDOG_SECS} s — fermeture anti-zombie"
+                        );
+                        break;
+                    }
+                };
                 let Some(Ok(msg)) = incoming else { break };
                 let Message::Text(text) = msg else { continue };
                 // Revalidation périodique du token (4005, parité ingest).

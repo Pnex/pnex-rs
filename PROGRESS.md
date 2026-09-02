@@ -428,6 +428,24 @@ de sujets Django).
 
 ## Journal
 
+- 2026-09-02 (nuit, suite) : **Première connexion d'un device générique —
+  trois bugs en chaîne** (jeune e2e réelle). (1) Le firmware générique
+  envoyait le **token en clair** dans l'URL WS alors que `decode_param`
+  attend du base64 (contrat ingest) → rejet 4002 avant l'annonce ; les
+  macros b64 TOKEN/DEVICE_ID passent désormais telles quelles (parité
+  soil_sensor). (2) Le wizard/Rebuild pré-remplissait l'hôte avec l'origine
+  du navigateur — `localhost:5150` quand l'UI est ouverte sur la machine
+  serveur — la carte se connectait à elle-même ; le champ est vide par
+  défaut + avertissement LAN en direct (`devices-host-loopback-hint`).
+  (3) **Session zombie** : une mort sans close TCP (reflash/power cycle)
+  laisse la tâche de session parkée sur `socket.recv()` à jamais —
+  l'entrée `DEVICE_SESSIONS` rejette alors toute reconnexion en 4003
+  « Device already connected » (la carte était verrouillée dehors jusqu'au
+  redémarrage). Watchdog d'inactivité 45 s dans `session_loop` : aucune
+  frame pendant 45 s → fermeture, garde libéré. Leçons : la machine de dev
+  a DEUX IP LAN (WiFi .16 + Ethernet USB .185) — les deux joignables ; les
+  logs serveur ne vont que sur stdout (à redirection en fichier, plus tard).
+
 - 2026-09-02 (nuit) : **Rectification B0.1 : toujours compiler par device + fix suppression UI**.
   Décision utilisateur : pas d'artefact générique réutilisable — le
   generic_esp8266 est compilé PAR DEVICE (config en env de build pio,
