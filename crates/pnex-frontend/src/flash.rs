@@ -61,7 +61,8 @@ where
         .ok_or_else(|| "flasher.js non chargé (window.pnexFlash absent)".to_string())?;
 
     // [{ data: Uint8Array, address: Number }, ...] — un seul writeFlash
-    // esptool-js avec toutes les entrées (firmware + secteur PNEXCFG).
+    // esptool-js, toutes entrées confondues (aujourd'hui : l'image unique
+    // @0x0 ; le multi-entrées reste disponible si besoin).
     let entries_array = js_sys::Array::new();
     for (address, bytes) in entries {
         let array = js_sys::Uint8Array::new_with_length(bytes.len() as u32);

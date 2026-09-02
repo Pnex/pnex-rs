@@ -1,6 +1,5 @@
-//! Endpoints pins Brick 0 — `GET /api/v1/devices/{id}/pins`,
-//! `POST /api/v1/devices/{id}/commands` (action manuelle D17),
-//! `POST /api/v1/devices/{id}/config-sector` (secteur PNEXCFG1 4 Ko).
+//! Endpoints pins Brick 0 — `GET /api/v1/devices/{id}/pins` et
+//! `POST /api/v1/devices/{id}/commands` (action manuelle D17).
 
 use crate::api::client;
 use crate::api::error::ApiError;
@@ -50,16 +49,6 @@ impl Command {
     }
 }
 
-/// Corps `POST /config-sector` (chaînes claires — le secteur PNEXCFG1 fait
-/// le reste).
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct ConfigSectorRequest {
-    pub wifi_ssid: String,
-    pub wifi_password: String,
-    pub host: String,
-    pub ws_ssl: bool,
-}
-
 /// `GET /devices/{id}/pins`.
 pub async fn pins(device_pk: i64) -> Result<PinsResponse, ApiError> {
     client::request(
@@ -83,15 +72,4 @@ pub async fn command(device_pk: i64, cmd: Command) -> Result<(), ApiError> {
         message: "réponse vide inattendue".into(),
     })
     .map(|_| ())
-}
-
-/// `POST /config-sector` — les 4096 octets du secteur PNEXCFG1 à flasher
-/// (token device inclus côté serveur, jamais au client).
-pub async fn config_sector(device_pk: i64, req: &ConfigSectorRequest) -> Result<Vec<u8>, ApiError> {
-    client::request_bytes_with_body(
-        reqwest::Method::POST,
-        &format!("/api/v1/devices/{device_pk}/config-sector"),
-        serde_json::to_value(req).unwrap_or_default(),
-    )
-    .await
 }

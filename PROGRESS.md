@@ -428,6 +428,16 @@ de sujets Django).
 
 ## Journal
 
+- 2026-09-02 (nuit) : **Rectification B0.1 : toujours compiler par device + fix suppression UI**.
+  Décision utilisateur : pas d'artefact générique réutilisable — le
+  generic_esp8266 est compilé PAR DEVICE (config en env de build pio,
+  parité soil_sensor) ; le flux secteur PNEXCFG1 est retiré (endpoint
+  config-sector, module builder, formulaire FlashModal, clés i18n).
+  Fix suppression device : la tâche `spawn` Dioxus est liée au scope —
+  l'`on_back` synchrone démonterait DeviceDetail et ABORT la requête
+  (ni toast ni suppression) ; navigation + refresh déplacés APRÈS
+  l'await. brick0.md : B0.1 marquée abandonnée, §5 réécrit, DoD §9
+  ajustée.
 - 2026-09-02 (soir) : **Fix build firmware « toujours failed » + seed 5ᵉ carte**.
   Trois causes empilées : (1) fixture overlay YAML en map au lieu d'une
   séquence → seed plantait avant l'insert du device générique (4 cartes au

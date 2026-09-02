@@ -4,17 +4,16 @@
 //!   `last_value` (mémoire de session, absent si offline) ; viewer inclus ;
 //! - `POST /api/v1/devices/{id}/commands` — action **manuelle** (D17) :
 //!   `caps::validate` AVANT tout push (400 + raison si illégal), maj de
-//!   l'instance, downlink mpsc → le device répond Ack/StateReport ;
-//! - `POST /api/v1/devices/{id}/config-sector` — secteur PNEXCFG1 4 Ko
-//!   (B0.1) à flasher à 0x200000 à côté du .bin générique ; inclut le
-//!   token device (écriture owner/admin, jamais au viewer).
+//!   l'instance, downlink mpsc → le device répond Ack/StateReport.
 //!
-//! Les deux POST refusent proprement (409) si le device n'est pas
-//! connecté — jamais d'attente serveur (D17 : pas de boucle, action UI).
+//! Le POST refuse proprement (409) si le device n'est pas connecté —
+//! jamais d'attente serveur (D17 : pas de boucle, action utilisateur).
+//! (L'endpoint `config-sector` a été retiré : décision du 2026-09-02,
+//! le générique est compilé par device — plus de secteur PNEXCFG1.)
 
 use axum::extract::{Path, State};
-use axum::http::{header, StatusCode};
-use axum::response::{IntoResponse, Response};
+use axum::http::StatusCode;
+use axum::response::Response;
 use loco_rs::prelude::*;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::Deserialize;
@@ -22,7 +21,7 @@ use std::collections::HashMap;
 
 use crate::auth::OrgContext;
 use crate::controllers::ws_device;
-use crate::models::_entities::{device_capability_instances, device_registries, device_tokens};
+use crate::models::_entities::{device_capability_instances, device_registries};
 use pnex_core::{Mode, ModeOpts, SafeState, ServerMsg};
 
 pub fn routes() -> Routes {
@@ -30,7 +29,6 @@ pub fn routes() -> Routes {
         .prefix("/api/v1/devices")
         .add("/{id}/pins", get(pins))
         .add("/{id}/commands", post(commands))
-        .add("/{id}/config-sector", post(config_sector))
 }
 
 /// Device de l'org courante, sinon 404 (le 404 masque l'existence —
@@ -286,56 +284,4 @@ fn forbidden() -> Error {
         StatusCode::FORBIDDEN,
         loco_rs::controller::ErrorDetail::new("forbidden", "écriture réservée owner/admin".to_string()),
     )
-}
-
-// ───────────────── POST /config-sector (B0.1 : flash sans compilation) ─────────────────
-
-#[derive(Deserialize)]
-struct ConfigSectorBody {
-    wifi_ssid: String,
-    wifi_password: String,
-    host: String,
-    #[serde(default = "default_ws_ssl")]
-    ws_ssl: bool,
-}
-fn default_ws_ssl() -> bool {
-    true
-}
-async fn config_sector(
-    State(ctx): State<AppContext>,
-    org: OrgContext,
-    Path(id): Path<i64>,
-    body: String,
-) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
-    let device = device_of_org(&ctx.db, &org, id).await?;
-    let b: ConfigSectorBody = serde_json::from_str(&body)
-        .map_err(|e| bad_request(&format!("corps invalide : {e}")))?;
-    let Some(token_row) = device_tokens::Entity::find()
-        .filter(device_tokens::Column::DeviceRegistryId.eq(device.id))
-        .one(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?
-    else {
-        return Err(Error::NotFound);
-    };
-    let sector = pnex_firmware_builder::DeviceConfig {
-        wifi_ssid: b.wifi_ssid,
-        wifi_password: b.wifi_password,
-        host: b.host,
-        token: token_row.token,
-        device_id: device.device_id.clone(),
-        ws_ssl: b.ws_ssl,
-    };
-    let bytes = pnex_firmware_builder::build_config_sector(&sector)
-        .map_err(|e| bad_request(&e.to_string()))?;
-    let mut resp = ([(header::CONTENT_TYPE, "application/octet-stream")], bytes).into_response();
-    resp.headers_mut().insert(
-        header::CONTENT_DISPOSITION,
-        header::HeaderValue::from_static("attachment; filename=\"config.bin\""),
-    )
-        ;
-    Ok(resp)
 }

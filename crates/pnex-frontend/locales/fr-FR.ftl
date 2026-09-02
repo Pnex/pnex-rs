@@ -285,7 +285,3 @@ pins-subscribe-60s = Lire chaque 60 s
 pins-apply = Appliquer
 
 # ─────────────── Brick 0 — flash firmware générique (secteur PNEXCFG) ───────────────
-flashcfg-ssid = SSID WiFi
-flashcfg-password = Mot de passe WiFi
-flashcfg-host = Serveur (host:port)
-flashcfg-prepare = Préparer le flash (secteur de config)

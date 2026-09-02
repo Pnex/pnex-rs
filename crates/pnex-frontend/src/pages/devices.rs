@@ -284,12 +284,10 @@ pub fn Devices() -> Element {
                         // Flash navigateur d'un device de la liste (Web Serial,
                         // Chromium — l'état interne se réinitialise à chaque
                         // ouverture).
-                        if let Some((flash_pk, flash_id, flash_generic)) = flash_target() {
+                        if let Some((_, flash_id, _)) = flash_target() {
                             FlashModal {
                                 key: "{flash_id}",
-                                device_pk: flash_pk,
                                 device_id: flash_id,
-                                needs_config: flash_generic,
                                 on_close: move |_| flash_target.set(None),
                             }
                         }
@@ -733,12 +731,19 @@ fn DeviceDetail(
                             let device_pk = device_pk;
                             spawn(async move {
                                 match api::devices::delete(device_pk).await {
-                                    Ok(()) => toasts::success("toast-saved"),
+                                    Ok(()) => {
+                                        toasts::success("toast-saved");
+                                        // Navigation + refresh APRÈS la requête :
+                                        // spawn est lié au scope du composant — un
+                                        // on_back synchrone démonterait DeviceDetail
+                                        // et annulerait la tâche (requête avortée,
+                                        // ni toast ni suppression).
+                                        on_back.call(());
+                                        on_changed.call(());
+                                    }
                                     Err(err) => toasts::error(err.message),
                                 }
                             });
-                            on_back.call(());
-                            on_changed.call(());
                         },
                         on_cancel: move |_| confirm_delete.set(false),
                     }

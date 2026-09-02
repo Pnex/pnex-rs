@@ -11,7 +11,7 @@
 
 | # | Décision | Motif |
 |---|---|---|
-| B0.1 | **Artefact générique = un `.bin` + config injectée au flash.** Zéro compilation par provisioning : le wizard collecte WiFi/host/token/device_id comme aujourd'hui, mais l'artefact = firmware générique (compilé une fois par version de source) + un secteur de config flashé à offset dédié | Le workflow custom actuel (recompiler à chaque provisioning, secrets au build) est trop compliqué — c'est le problème que Brick 0 supprime |
+| B0.1 | ~~**Artefact générique = un `.bin` + config injectée au flash**~~ **ABANDONNÉE le 2026-09-02** (décision utilisateur : « toujours compiler par device ») — remplacée par : le générique est **compilé par device** comme les customs, config (WiFi/hôte/token/device_id) injectée en env du build pio (base64, `common_libs/config`), secrets dans le .bin. Le wizard garde son build auto ; le flux secteur PNEXCFG1 (endpoint + FlashModal multi-entrées) a été retiré | Rejugé par l'utilisateur après implémentation du secteur : la compilation par device est le modèle mental retenu (wifi/token/device_id changent) ; ThingsBoard reste l'inspiration pour le canal RPC `/ws/device`, pas pour l'artefact |
 | B0.2 | **Workflow inchangé** : enregistrement via le wizard existant (device pré-créé dans `device_registry`, token + clé ChaCha20 générés comme aujourd'hui) → flash → le device s'annonce sur `/ws/device` → validé contre la ligne existante. **Pas d'auto-création à l'annonce** | Même workflow qu'avant, sinon incompréhensible. L'auto-création casserait le scoping org (à qui rattacher le device ?) |
 | B0.3 | **`device_profiles` différé à P5** (avec les policies `Profiled`/`Locked`). P0 = policy `Validated` uniquement : admission des caps validée contre chip-caps + overlay board | La table ne sert qu'à `Profiled` ; l'ajout ultérieur est trivial (table + check d'allowlist) |
 | B0.4 | **ChaCha20 nu dès P0** — framing `base64(nonce(12)‖ct)` identique à `/ws/sensor/ingest`, clé = `device_tokens.encryption_key`, code `common_libs/crypto` réutilisé tel quel | Déjà en place des deux côtés ; le stage « plaintext d'abord » du PRD n'économisait rien |
@@ -113,28 +113,29 @@ Conventions des firmwares existants reprises : PING 5 s / PONG 15 s,
 `ESP.wdtEnable(WDTO_4S)` + `wdtFeed` dans toute attente, `yield()`
 régulier, buffers statiques (stack ~4 Ko), backoff reconnect 1 s→60 s.
 
-- **Boot** : lit le secteur de config (§5). Config absente/corrompue →
-  LED clignote vite, retry boucle (pas de portail captif — la config
-  arrive par le flash, décision B0.1).
+- **Boot** : décode la config compilée (base64 → clair, parité
+  soil_sensor). Pas de portail captif — la config arrive du build.
 - **Boucle** : connecte WS → `Announce` → applique `ProvisionAck`
   (modes initiaux, safe-states) → traite `SetMode`/`Write`/`Subscribe`,
   publie `StateReport`, PING périodique.
 - **Perte de lien / PONG timeout / WDT** → toutes les sorties vers leur
   `safe_state` (pattern `forceAllOff()` de `4_chan_relay`).
 
-## 5. Config injectée au flash (B0.1)
+## 5. Config device — B0.1 abandonnée (2026-09-02)
 
-- **Offset `0x200000`** (4 Mo), 1 secteur 4 Ko : le `.bin` applicatif
-  esp8266 reste < 1 Mo et le SDK ne touche pas cette zone (à re-valider
-  au premier flash réel). Pas de filesystem dans le générique.
-- Format : magic `PNEXCFG1` + version + CRC32 + JSON compact
-  `{wifi_ssid, wifi_password, host, token, device_id, ws_ssl}` —
-  **chaînes claires, pas de base64** (la contrainte `-D` du build a disparu).
-- **Écriture = 2 entrées dans un seul `writeFlash` esptool-js**
-  (firmware@0x0 + config@0x200000) — le glue `flasher.js` accepte un
-  tableau ; fallback : image paddée côté worker si esptool-js coinçait.
-- `FlashModal` **inchangée** pour l'utilisateur : elle télécharge les
-  deux blocs à l'ouverture, un clic = flash complet.
+La variante « secteur PNEXCFG1 flashé à `0x200000` » a été **implémentée
+puis retirée** le jour même : le générique est désormais **compilé par
+device** — les 5+1 variables (WIFI_SSID/WIFI_PASSWORD/HOST/TOKEN/
+DEVICE_ID en base64 + WS_SSL) transitent en env du sous-process `pio run`
+(`child_env`, déjà en place pour soil_sensor/4_chan_relay) et sont
+consommées via `common_libs/config`. Conséquences :
+
+- plus d'endpoint `POST /devices/{id}/config-sector` ni de formulaire
+  secteur dans `FlashModal` (flash d'une seule image @0x0) ;
+- le module `pnex_firmware_builder::config_sector` (magic/CRC32) et
+  `firmware/generic_esp8266/src/config_sector.h` sont supprimés ;
+- chaque inscription reste un build pio (~1-4 min), wizard inchangé pour
+  l'utilisateur, token affiché comme pour les customs.
 
 ## 6. Backend — routes & service provisioning
 
@@ -155,9 +156,6 @@ régulier, buffers statiques (stack ~4 Ko), backoff reconnect 1 s→60 s.
   PRD : **pas de caps catalogue `digital_in`/…** — les modes vivent dans
   l'enum `pnex-core::Mode`, des lignes catalogue auraient doublé la source
   de vérité (modèle sans copies).
-- `POST /devices/{id}/config-sector` (ajout vs PRD) : construit le secteur
-  PNEXCFG1 (token inclus côté serveur, **jamais au client**), retourne les
-  4 096 octets à flasher en 2e entrée ; écriture owner/admin.
 - Les commandes sont validées puis **persistées avant push** (409 offline) :
   le prochain `Announce` pousse un `ProvisionAck` avec le mode persisté —
   la config survit à l'offline et aux re-announce (l'admission fait un
@@ -190,8 +188,8 @@ statique-only), visible pour les devices `generic_esp8266` :
 
 ## 9. Definition of Done
 
-1. Le wizard enregistre un device `generic_esp8266` ; **aucune
-   compilation** : flash depuis l'UI du `.bin` générique + config.
+1. Le wizard enregistre un device `generic_esp8266` (build par device
+   lancé, décision 2026-09-02) ; flash navigateur de l'image unique.
 2. Le device se connecte, s'annonce, apparaît **Active** avec la carte
    de pins NodeMCU (labels D0…D8/A0).
 3. `D1` (GPIO5) en `digital_out`, toggle HIGH/LOW → LED/réagit.
@@ -204,11 +202,8 @@ statique-only), visible pour les devices `generic_esp8266` :
 
 ## 10. Reste ouvert (à trancher à l'implémentation)
 
-- Offset config `0x200000` + sémantique erase : à valider au **premier
-  flash réel** (esptool-js erase par entrée — le reste est du code) ;
-  firmware compilé (RAM 44 %, flash 40 %) mais **jamais flashé sur carte
-  réelle** à ce stade.
-- e2e complète avec carte réelle (DoD §9) : à vivre avec l'utilisateur.
+- e2e complète avec carte réelle (DoD §9) : à vivre avec l'utilisateur
+  (le firmware, recompilé par device, n'a jamais été flashé sur carte).
 - `Ack` des commandes : journalisé serveur (tracing) mais **non persisté** —
   l'état réel remonte par `StateReport` (mémoire last_values + série O2) ;
   une persistance du dernier ack par pin reste possible si besoin UI.

@@ -97,30 +97,6 @@ pub async fn request_bytes(method: reqwest::Method, path: &str) -> Result<Vec<u8
     }
 }
 
-/// Requête authentifiée avec **corps** attendant des **octets** (secteur de
-/// config PNEXCFG : POST JSON → application/octet-stream).
-pub async fn request_bytes_with_body(
-    method: reqwest::Method,
-    path: &str,
-    body: serde_json::Value,
-) -> Result<Vec<u8>, ApiError> {
-    let mut response = send(method.clone(), path, Some(body.clone())).await?;
-    if response.status() == reqwest::StatusCode::UNAUTHORIZED && !path.starts_with(OAUTH_PREFIX) {
-        ensure_refresh().await?;
-        response = send(method, path, Some(body)).await?;
-    }
-    let status = response.status().as_u16();
-    let bytes = response.bytes().await.unwrap_or_default();
-    if (200..300).contains(&status) {
-        Ok(bytes.to_vec())
-    } else {
-        let text = String::from_utf8_lossy(&bytes).into_owned();
-        Err(ApiError {
-            message: crate::api::error::extract_message(status, &text),
-        })
-    }
-}
-
 async fn send(
     method: reqwest::Method,
     path: &str,

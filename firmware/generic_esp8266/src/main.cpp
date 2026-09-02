@@ -1,9 +1,13 @@
-// Firmware générique ESP8266 (Brick 0) — un .bin réutilisable, config
-// injectée au flash dans le secteur PNEXCFG1 à 0x200000 (B0.1). Tout le
-// comportement est piloté par le serveur : pin map poussée dans le
-// `ProvisionAck`, commandes `SetMode`/`Write`/`Subscribe` avec `cmd_id` et
-// réponse `Ack` (sémantique RPC à la ThingsBoard), lectures cadencées
-// remontées en `StateReport`.
+// Firmware générique ESP8266 (Brick 0) — comportement 100 % piloté par le
+// serveur : pin map poussée dans le `ProvisionAck`, commandes
+// `SetMode`/`Write`/`Subscribe` avec `cmd_id` et réponse `Ack` (sémantique
+// RPC à la ThingsBoard), lectures cadencées remontées en `StateReport`.
+//
+// Config device (wifi/hôte/token/device_id) **compilée dans le .bin** —
+// décision utilisateur du 2026-09-02 : le device « générique » est compilé
+// par device comme les firmwares custom (parité soil_sensor), via les
+// variables d'environnement du sous-process `pio run` (base64, common_libs/
+// config). Le secteur flash PNEXCFG1 (B0.1 d'origine) a été retiré.
 //
 // Contrat fil : `crates/pnex-core/src/proto.rs` (miroir ArduinoJson) ;
 // framing = base64(nonce 12 ‖ ChaCha20-nu) via common_libs/crypto ; PING
@@ -13,7 +17,7 @@
 #include <ESP8266WiFi.h>
 #include <ArduinoWebsockets.h>
 #include <ArduinoJson.h>
-#include "config_sector.h"
+#include <config.h>
 #include "chacha_crypto.h"
 
 using namespace websockets;
@@ -76,7 +80,11 @@ static void forceAllOff() {
 
 // ───────────────────────── État session ─────────────────────────
 
-static DeviceConfig cfg;
+static char cfg_ssid[101];
+static char cfg_password[101];
+static char cfg_host[65];
+static char cfg_token[65];
+static char cfg_device_id[65];
 static bool wifi_ok = false;
 static unsigned long last_ping_ms = 0;
 static unsigned long last_pong_ms = 0;
@@ -107,33 +115,32 @@ void setup() {
     delay(500);
 
     Serial.println("\n[pnex-generic] boot");
-    if (!cfg_load(cfg)) {
-        // Config absente/corrompue : pas de portail (B0.1 — la config arrive
-        // par le flash). LED clignote vite, retry de lecture en boucle.
-        Serial.println("[pnex-generic] secteur PNEXCFG1 absent/corrompu (0x200000)");
-        pinMode(LED_BUILTIN, OUTPUT);
-        while (!cfg_load(cfg)) {
-            digitalWrite(LED_BUILTIN, LOW);
-            delay(80);
-            digitalWrite(LED_BUILTIN, HIGH);
-            delay(120);
-            ESP.wdtFeed();
-        }
-    }
-    Serial.printf("[pnex-generic] config ok : device_id=%s host=%s ws_ssl=%d\n",
-                  cfg.device_id, cfg.host, cfg.ws_ssl);
+    // Décodage base64 de la config compilée (parité soil_sensor) — les
+    // macros WIFI_SSID/HOST/… arrivent en base64 depuis child_env (env.rs).
+    unsigned int n = cryptoB64Decode(WIFI_SSID, (unsigned char*)cfg_ssid);
+    cfg_ssid[n] = '\0';
+    n = cryptoB64Decode(WIFI_PASSWORD, (unsigned char*)cfg_password);
+    cfg_password[n] = '\0';
+    n = cryptoB64Decode(HOST, (unsigned char*)cfg_host);
+    cfg_host[n] = '\0';
+    n = cryptoB64Decode(TOKEN, (unsigned char*)cfg_token);
+    cfg_token[n] = '\0';
+    n = cryptoB64Decode(DEVICE_ID, (unsigned char*)cfg_device_id);
+    cfg_device_id[n] = '\0';
+    Serial.printf("[pnex-generic] config ok : device_id=%s host=%s ssl=%d\n",
+                  cfg_device_id, cfg_host, ws_use_tls());
 
     ESP.wdtDisable();
     ESP.wdtEnable(WDTO_4S);
 
     connectWiFi();
 
-    // URL selon WS_SSL du secteur (port implicite : 443/80, comme le custom).
+    // URL selon WS_SSL compilé (port implicite : 443/80, comme le custom).
     snprintf(conn_str, sizeof(conn_str), "%s://%s/ws/device?token=%s&device_id=%s",
-             cfg.ws_ssl ? "wss" : "ws", cfg.host, cfg.token, cfg.device_id);
+             ws_use_tls() ? "wss" : "ws", cfg_host, cfg_token, cfg_device_id);
     Serial.printf("[WS] %s\n", conn_str);
 
-    if (cfg.ws_ssl) {
+    if (ws_use_tls()) {
         client.setInsecure();
     }
     client.onMessage(onMessageCallback);
@@ -200,8 +207,8 @@ void loop() {
 // ───────────────────────── WiFi / WS ─────────────────────────
 
 void connectWiFi() {
-    Serial.printf("[WiFi] connexion à %s ", cfg.wifi_ssid);
-    WiFi.begin(cfg.wifi_ssid, cfg.wifi_password);
+    Serial.printf("[WiFi] connexion à %s ", cfg_ssid);
+    WiFi.begin(cfg_ssid, cfg_password);
     int attempts = 0;
     while (WiFi.status() != WL_CONNECTED && attempts < 40) {
         delay(500);
