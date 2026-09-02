@@ -8,10 +8,13 @@ namespace {
 constexpr size_t KEY_LEN = 32;    // ChaCha20 : 256 bits
 constexpr size_t NONCE_LEN = 12;  // RFC 7539 : 96 bits, frais par message
 
-// Frames les plus longues : erreurs serveur `error:invalid_capability:
-// measurement '<nom ≤ 100 car.>' not in device capabilities` (~150 o).
-constexpr size_t MAX_PLAIN = 160;
-constexpr size_t MAX_WIRE = 232;  // b64 de (NONCE_LEN + MAX_PLAIN), paddée
+// Frames les plus longues : le `ProvisionAck` du device générique (~600 o
+// en clair pour 10 pins NodeMCU, ~800 o fil b64) et les erreurs serveur
+// `error:invalid_capability: measurement '…' not in device capabilities`
+// (~150 o). ~2,6 Ko de RAM statique supplémentaire — acceptable même sur
+// les customs (heap ESP8266 ~40 Ko).
+constexpr size_t MAX_PLAIN = 1024;
+constexpr size_t MAX_WIRE = 1384;  // b64 de (NONCE_LEN + MAX_PLAIN), paddée
 
 uint8_t s_key[KEY_LEN];
 bool s_ready = false;

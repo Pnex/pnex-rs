@@ -129,6 +129,13 @@ void setup() {
     // 2026-09-02).
     n = cryptoB64Decode(DEVICE_ID, (unsigned char*)cfg_device_id);
     cfg_device_id[n] = '\0';
+    // Clé des frames WS — SANS elle cryptoReady()=false et cryptoEncryptFrame
+    // renvoie le clair (mode mock) : le serveur ne déchiffre rien, l'annonce
+    // n'atteint jamais l'admission (leçon 2026-09-02 : 0 instances, boucle
+    // PONG timeout, « not provisioned yet »).
+    if (!cryptoSetKey(ENCRYPTION_KEY)) {
+        Serial.println("[CRYPTO] clé ENCRYPTION_KEY invalide — frames non chiffrées");
+    }
     Serial.printf("[pnex-generic] config ok : device_id=%s host=%s ssl=%d\n",
                   cfg_device_id, cfg_host, ws_use_tls());
 

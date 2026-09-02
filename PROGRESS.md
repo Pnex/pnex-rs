@@ -428,6 +428,21 @@ de sujets Django).
 
 ## Journal
 
+- 2026-09-02 (nuit, fin) : **Le device générique connecte enfin — deux
+  derniers bugs + une alerte de conception**. (4) Le firmware générique
+  n'appelait **jamais `cryptoSetKey(ENCRYPTION_KEY)`** : `cryptoReady()=
+  false`, les frames partaient en clair (mode mock de `common_libs/crypto`),
+  le serveur ne déchiffrait rien — annonce jamais admise, 0 instances,
+  « Device not provisioned yet » malgré un device « Actif ». (5)
+  **`ws_device` n'avait pas de handler PING→PONG** (parité ingest
+  manquante) : le firmware pingue toutes les 5 s, le serveur ne répondait
+  jamais → PONG timeout 15 s → boucle de reconnexion infinie. (6) Le
+  `ProvisionAck` (10 pins ≈ 600 o) dépassait la taille max de frame du
+  firmware (`MAX_WIRE = 232 o`, dimensionné pour les erreurs d'ingest) —
+  porté à 1024/1384 o (~2,6 Ko de RAM statique en plus). Leçon : **grep du
+  littéral b64 de la clé dans le .bin** — une clé de la base absente de
+  l'artefact a tranché entre cinq hypothèses.
+
 - 2026-09-02 (nuit, suite) : **Première connexion d'un device générique —
   trois bugs en chaîne** (jeune e2e réelle). (1) Le firmware générique
   envoyait le **token en clair** dans l'URL WS alors que `decode_param`

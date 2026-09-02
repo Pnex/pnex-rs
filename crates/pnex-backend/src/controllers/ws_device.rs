@@ -255,6 +255,21 @@ async fn session_loop(
                     Some(p) => p,
                     None => { tracing::warn!(device = %snap.device_id, "frame device indéchiffrable"); continue; }
                 };
+                // PING/PONG au niveau frame (parité ingest) — le firmware
+                // pingue toutes les 5 s ; sans réponse il ferme après 15 s
+                // (PONG timeout) et boucle reconnexion. Manquait sur /ws/device
+                // (leçon 2026-09-02 : sessions de 15 s, device « actif » mais
+                // jamais provisionné).
+                if plain.trim().eq_ignore_ascii_case("ping") {
+                    let _ = socket
+                        .send(Message::Text(encrypt_frame("PONG", &key).into()))
+                        .await;
+                    if last_touch.elapsed() >= throttle {
+                        let _ = device_liveness::touch(&ctx.db, snap.device_registry_id, None).await;
+                        last_touch = Instant::now();
+                    }
+                    continue;
+                }
                 match serde_json::from_str::<DeviceMsg>(&plain) {
                     Ok(DeviceMsg::Announce { chip, board, fw }) => {
                         handle_announce(&ctx, &mut socket, &key, &mut snap, &chip, &board, &fw).await;
