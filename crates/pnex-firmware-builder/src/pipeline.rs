@@ -157,24 +157,42 @@ fn find_artifact(project: &Path, name: &str) -> Result<PathBuf, BuildError> {
     )))
 }
 
+/// Ancre secondaire de résolution : la racine du monorepo, figée à la
+/// compilation (`CARGO_MANIFEST_DIR` du builder = `crates/pnex-firmware-builder`).
+/// Le worker tourne avec cwd = `crates/pnex-backend` : un chemin d'outil
+/// relatif configuré depuis la racine (Taskfile) doit rester résolvable —
+/// sinon tous les builds firmware échouent au spawn (leçon 2026-09-02).
+const REPO_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+
 /// Un token-programme qui contient un `/` est un chemin (pas une recherche
-/// PATH) : on le résout en absolu contre le CWD du process — le sous-process
-/// tourne ensuite dans le workspace, où un chemin relatif ne pointerait
-/// plus rien (fixtures des tests, wrappers locaux).
+/// PATH) : résolu en absolu contre le cwd du process, puis — sinon — contre
+/// la racine du monorepo [`REPO_ROOT`]. Le sous-process tourne ensuite dans
+/// le workspace tmp, où un chemin relatif ne pointerait plus rien.
 fn resolve_program(token: &str) -> String {
     if !token.contains('/') {
         return token.to_string();
     }
-    let path = std::path::Path::new(token);
-    match std::env::current_dir()
-        .map_err(|e| e.to_string())
-        .and_then(|cwd| cwd.join(path).canonicalize().map_err(|e| e.to_string()))
-    {
-        Ok(abs) => abs.display().to_string(),
-        // Introuvable : on le passe tel quel, l'erreur de lancement du
-        // sous-process sera explicite.
-        Err(_) => token.to_string(),
+    let try_anchor = |anchor: &Path| -> Option<String> {
+        anchor
+            .join(token)
+            .canonicalize()
+            .ok()
+            .map(|p| p.display().to_string())
+    };
+    // 1) cwd du process (résolution historique — fixtures des tests, wrappers).
+    if let Ok(cwd) = std::env::current_dir() {
+        if let Some(abs) = try_anchor(&cwd) {
+            return abs;
+        }
     }
+    // 2) racine du monorepo — les chemins relatifs du Taskfile restent
+    //    résolvables quel que soit le cwd du worker.
+    if let Some(abs) = try_anchor(Path::new(REPO_ROOT)) {
+        return abs;
+    }
+    // Introuvable des deux côtés : on le passe tel quel, l'erreur de
+    // lancement du sous-process sera explicite.
+    token.to_string()
 }
 
 // ─────────────────── Pipeline ───────────────────
@@ -410,6 +428,26 @@ mod tests {
             .expect_err("timeout attendu");
         assert!(matches!(err, BuildError::Timeout), "{err}");
         assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    /// Un chemin relatif configuré depuis la racine du monorepo se résout
+    /// même quand le cwd est ailleurs (worker : crates/pnex-backend).
+    #[test]
+    fn chemin_relatif_resolu_depuis_la_racine_monorepo() {
+        // Existe depuis la racine du monorepo, pas depuis le cwd des tests
+        // (crates/pnex-firmware-builder).
+        let token = "crates/pnex-firmware-builder/Cargo.toml";
+        let resolved = resolve_program(token);
+        assert!(Path::new(&resolved).is_absolute(), "{resolved}");
+        assert!(resolved.ends_with("Cargo.toml"), "{resolved}");
+    }
+
+    /// Un chemin introuvable (aucune ancre) passe tel quel — l'erreur de
+    /// spawn du sous-process reste le signal.
+    #[test]
+    fn chemin_introuvable_passe_telquel() {
+        let token = "n importe/quelle chemin";
+        assert_eq!(resolve_program(token), token);
     }
 
     /// Projet absent de la source (predefined name ≠ sous-répertoire).

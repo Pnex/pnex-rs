@@ -18,10 +18,14 @@ includes:
 # dev:backend et les tâches fw:*.
 vars:
   FW_DIR: firmware
+  # Chemins ABSOLUS ({{.ROOT_DIR}} = racine du monorepo) : le worker de
+  # build tourne avec cwd = crates/pnex-backend — un chemin relatif résolu
+  # depuis lui pointe à côté (cause d'un fail instantané de TOUS les
+  # builds firmware, cf. journal 2026-09-02).
   PIO_CMD:
-    sh: test -x "firmware/.venv/bin/pio" && echo "firmware/.venv/bin/pio" || echo pio
+    sh: test -x "{{.ROOT_DIR}}/firmware/.venv/bin/pio" && echo "{{.ROOT_DIR}}/firmware/.venv/bin/pio" || echo pio
   ESPTOOL_CMD:
-    sh: test -x "firmware/.venv/bin/esptool" && echo "firmware/.venv/bin/esptool" || echo esptool
+    sh: test -x "{{.ROOT_DIR}}/firmware/.venv/bin/esptool" && echo "{{.ROOT_DIR}}/firmware/.venv/bin/esptool" || echo esptool
 
 tasks:
   default:
