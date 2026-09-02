@@ -438,6 +438,12 @@ de sujets Django).
   (ni toast ni suppression) ; navigation + refresh déplacés APRÈS
   l'await. brick0.md : B0.1 marquée abandonnée, §5 réécrit, DoD §9
   ajustée.
+  Leçon supplémentaire (fix e0c1a8f→0ae8916) : **chemins d'outils relatifs
+  vs cwd du worker** — le Taskfile expose PIO_CMD relatif à la racine mais
+  le serveur tourne dans crates/pnex-backend ; `resolve_program` ne
+  résolvait que depuis le cwd → spawn impossible pour TOUS les builds.
+  Double correctif : chemins absolus `{{.ROOT_DIR}}` côté Taskfile + ancre
+  `REPO_ROOT` (CARGO_MANIFEST_DIR) côté `resolve_program`.
 - 2026-09-02 (soir) : **Fix build firmware « toujours failed » + seed 5ᵉ carte**.
   Trois causes empilées : (1) fixture overlay YAML en map au lieu d'une
   séquence → seed plantait avant l'insert du device générique (4 cartes au
