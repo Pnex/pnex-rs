@@ -19,7 +19,7 @@ use super::icons;
 use super::modal::Modal;
 use crate::api;
 use crate::state::toasts;
-use crate::util::{copy_text, default_host, save_blob, sleep, ws_ingest_url};
+use crate::util::{copy_text, save_blob, sleep, ws_ingest_url};
 
 /// Types custom (mesures dynamiques) — parité back `allow_dynamic`.
 fn is_custom(name: &str) -> bool {
@@ -215,7 +215,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
     // transitent que la queue de build.
     let mut ssid = use_signal(String::new);
     let mut wifi_password = use_signal(String::new);
-    let mut host = use_signal(default_host);
+    let mut host = use_signal(crate::util::default_device_host);
     // wss (TLS, industriel) ou ws (local) — défaut selon le protocole de la
     // page, l'utilisateur peut inverser.
     let mut ws_ssl = use_signal(crate::util::default_ws_ssl);
@@ -635,9 +635,14 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                     input {
                                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                                         r#type: "text",
-                                        placeholder: "dev1.pnex.io",
+                                        placeholder: "192.168.1.16:5150",
                                         value: "{host}",
                                         oninput: move |event| host.set(event.value()),
+                                    }
+                                    if crate::util::is_loopback_host(&host()) {
+                                        p { class: "mt-1 text-xs text-amber-600",
+                                            {t!("devices-host-loopback-hint")}
+                                        }
                                     }
                                 }
                                 label { class: "flex items-start gap-2 sm:col-span-2 select-none" ,

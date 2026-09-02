@@ -429,7 +429,7 @@ fn RebuildModal(
 ) -> Element {
     let mut ssid = use_signal(String::new);
     let mut wifi_password = use_signal(String::new);
-    let mut host = use_signal(crate::util::default_host);
+    let mut host = use_signal(crate::util::default_device_host);
     // wss/ws — défaut selon le protocole de la page, inversable.
     let mut ws_ssl = use_signal(crate::util::default_ws_ssl);
     let mut launching = use_signal(|| false);
@@ -503,9 +503,14 @@ fn RebuildModal(
                     input {
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         r#type: "text",
-                        placeholder: "dev1.pnex.io",
+                        placeholder: "192.168.1.16:5150",
                         value: "{host}",
                         oninput: move |event| host.set(event.value()),
+                    }
+                    if crate::util::is_loopback_host(&host()) {
+                        p { class: "mt-1 text-xs text-amber-600",
+                            {t!("devices-host-loopback-hint")}
+                        }
                     }
                 }
                 label { class: "flex items-start gap-2 select-none",

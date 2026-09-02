@@ -119,6 +119,7 @@ empty-phase = Comes in phase { $phase }
 builds-field-ssid = WiFi SSID
 builds-field-wifi-password = WiFi password
 builds-field-server = PNEX server (host)
+devices-host-loopback-hint = The device cannot reach "localhost" — enter the server's LAN address (e.g. 192.168.1.16:5150).
 builds-field-ws-ssl = WebSocket SSL (wss)
 builds-field-ws-ssl-help = Checked for wss:// (TLS, industrial deployment) — unchecked for ws:// (local server / Raspberry Pi without TLS).
 builds-submit = Build firmware

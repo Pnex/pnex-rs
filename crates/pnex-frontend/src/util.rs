@@ -66,6 +66,32 @@ pub fn default_host() -> String {
     }
 }
 
+/// Un hôte joignable par le navigateur mais pas par un device : boucle
+/// locale. Le wizard pré-remplit `localhost:5150` quand l'UI est ouverte
+/// sur la machine du serveur — un ESP8266 dialant `localhost` se connecte
+/// à LUI-MÊME (leçon du 2026-09-02, builds « échec de connexion »).
+pub fn is_loopback_host(host: &str) -> bool {
+    let host = host.trim();
+    host.starts_with("localhost")
+        || host.starts_with("127.")
+        || host.starts_with("[::1]")
+        || host == "::1"
+}
+
+/// Hôte prérempli pour les formulaires de build FIRMWARE : comme
+/// [`default_host`] mais vide sur une origine en boucle locale — le champ
+/// reste à remplir consciemment (IP LAN du serveur), l'UI affiche un
+/// avertissement si l'utilisateur saisit quand même une adresse locale.
+/// L'URL du snippet Python des customs garde [`default_host`] : un script
+/// sur le PC, lui, JOINT localhost.
+pub fn default_device_host() -> String {
+    if is_loopback_host(&default_host()) {
+        String::new()
+    } else {
+        default_host()
+    }
+}
+
 /// Copie dans le presse-papier navigateur : textarea temporaire hors écran
 /// puis `exec_command("copy")` (synchrone, sans API Clipboard ni promise —
 /// la valeur reste affichée et sélectionnable à côté). No-op en natif.
