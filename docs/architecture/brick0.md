@@ -1,6 +1,6 @@
 # Brick 0 — Firmware générique ESP8266 + socle capabilities
 
-> **Statut : PRD ancré au repo (2026-09-02) — prêt pour implémentation.**
+> **Statut : IMPLÉMENTÉ (tranches 1-4, 2026-09-02) — e2e carte réelle restante.**
 > Le PRD d'origine (revue conversationnelle) est résolu par les décisions
 > ci-dessous ; ce document fait foi. Docs liés :
 > `docs/contracts/ws-sensor-ingest.md` (patterns WS réutilisés tels quels),
@@ -28,7 +28,7 @@ Trois niveaux — **channel → capability instance → (profile différé)** :
 | **Overlay board** (câblage NodeMCU/D1 mini) | labels D0…D8/A0 → GPIO, LED onboard (GPIO2, active-LOW), pull par défaut, safe-states | **Data** — `mcu_boards.details` (JSONB déjà en schéma, jamais seedé) + fixture YAML seedée |
 | **Capability instance** (état live d'un pin d'un device) | mode courant, config, snapshot des contraintes validées | **PG** — nouvelle table `device_capability_instances` |
 
-Migration 000008 :
+Migration 000008 (nom réel : `device_capability_instances`) :
 
 ```
 device_capability_instances
@@ -149,10 +149,20 @@ régulier, buffers statiques (stack ~4 Ko), backoff reconnect 1 s→60 s.
 - `ensure_token` / `generate_token` / `generate_device_key`
   (`controllers/devices.rs:80-94,247`) passent `pub(crate)` — réutilisés
   tels quels (le wizard crée déjà le device + token).
-- Seed : caps `digital_in`/`digital_out`/`analog_in` (si absentes du
-  catalogue), predefined `generic_esp8266`, overlay NodeMCU en YAML
-  (`fixtures/devices/board_overlay_nodemcu.yaml` → `mcu_boards.details`)
-  — overlay **contribuable en data**, jamais en `.h` (§2.3 PRD).
+- Seed : predefined `generic_esp8266` (type **mixed**) + overlay NodeMCU en
+  YAML (`fixtures/devices/board_overlay_nodemcu.yaml` → `mcu_boards.details`)
+  — overlay **contribuable en data**, jamais en `.h` (§2.3 PRD). Écart vs
+  PRD : **pas de caps catalogue `digital_in`/…** — les modes vivent dans
+  l'enum `pnex-core::Mode`, des lignes catalogue auraient doublé la source
+  de vérité (modèle sans copies).
+- `POST /devices/{id}/config-sector` (ajout vs PRD) : construit le secteur
+  PNEXCFG1 (token inclus côté serveur, **jamais au client**), retourne les
+  4 096 octets à flasher en 2e entrée ; écriture owner/admin.
+- Les commandes sont validées puis **persistées avant push** (409 offline) :
+  le prochain `Announce` pousse un `ProvisionAck` avec le mode persisté —
+  la config survit à l'offline et aux re-announce (l'admission fait un
+  **upsert** : les modes choisis survivent, seuls les pins nouveaux prennent
+  le défaut).
 
 ## 7. UI (Dioxus)
 
@@ -194,10 +204,16 @@ statique-only), visible pour les devices `generic_esp8266` :
 
 ## 10. Reste ouvert (à trancher à l'implémentation)
 
-- Offset config `0x200000` + sémantique erase : à valider au premier
-  flash réel (esptool erase par secteur d'entrée).
-- `writeFlash` multi-entrées esptool-js 0.6.1 : vérifier ; sinon image
-  paddée worker (le doc §5 part sur multi-entrées).
+- Offset config `0x200000` + sémantique erase : à valider au **premier
+  flash réel** (esptool-js erase par entrée — le reste est du code) ;
+  firmware compilé (RAM 44 %, flash 40 %) mais **jamais flashé sur carte
+  réelle** à ce stade.
+- e2e complète avec carte réelle (DoD §9) : à vivre avec l'utilisateur.
+- `Ack` des commandes : journalisé serveur (tracing) mais **non persisté** —
+  l'état réel remonte par `StateReport` (mémoire last_values + série O2) ;
+  une persistance du dernier ack par pin reste possible si besoin UI.
+- Quota Free : **mixed 0 → 1** (décision implémentation, à valider en revue
+  — Brick 0 doit rester prototypable en Free).
 - Espacement des versions de firmware générique : l'`Announce` porte
   `fw` ; politique de mise à jour (re-flash) à définir quand il y aura
   une v2 du `.bin`.

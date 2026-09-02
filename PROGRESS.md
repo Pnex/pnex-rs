@@ -428,6 +428,36 @@ de sujets Django).
 
 ## Journal
 
+- 2026-09-02 : **Brick 0 — firmware générique ESP8266 + socle capabilities
+  implémenté** (4 tranches, gates verts à chaque commit ; e2e carte réelle
+  restante). **core** : proto `/ws/device` (source de vérité du contrat,
+  miroir firmware C++), chip-caps `caps::validate` (point unique : GPIO6-11
+  flash SPI interdits, strapping GPIO15 boot-LOW, pull-up GPIO16, A0 ADC
+  canal 17), types overlay board. **backend** : migration
+  `device_capability_instances`, admission `Announce` policy `Validated`
+  (load_overlay → validate → upsert : les modes SetMode survivent aux
+  re-announce), `/ws/device` (framing/crypto/close codes repris de l'ingest,
+  registre DEVICE_SESSIONS mpsc = downlink, StateReport → last_values +
+  série O2 `d5`-style `source_type=generic_gpio`), REST pins/commands/
+  config-sector (caps::validate AVANT push, 409 offline — D17 jamais
+  d'attente serveur), secteur PNEXCFG1 dans le crate builder (magic+version
+  +CRC32 IEEE+JSON clair, pad 0xFF). **firmware** : `generic_esp8266` compile
+  (RAM 44 %) — zéro secret au build, secteur PNEXCFG lu au boot, boucle
+  Announce/ProvisionAck/SetMode/Write/Subscribe + Ack, forceAllOff sur toute
+  perte, PING 5 s/PONG 15 s, backoff 1 s→60 s. **front** : FlashModal
+  multi-entrées (writeFlash esptool-js : firmware @0x0 + secteur @0x200000 ;
+  formulaire WiFi/hôte quand needs_config — préremplissage hôte/schéma de la
+  page), section Pins du détail device (polling 15 s, selects mode/safe-state
+  à valeurs effectives, toggle HIGH/LOW, cadences input, D17 : tout est
+  bouton). **Décision produit à valider** : quota Free mixed 0→1 (le
+  prototypage générique doit rester accessible en Free — 0 aurait tué Brick 0
+  pour les comptes Free). Constats : (a) le re-announce ré-exécutant
+  l'admission, un replace naïf aurait réinitialisé les modes à chaque
+  reconnexion → upsert ; (b) la revalidation token (cache 0 s en test)
+  vidait le snapshot des pins à CHAQUE frame → pins chargés dans
+  build_snapshot ; (c) NodeMCU **D5 = GPIO14** (pas GPIO5) — piège des
+  labels overlay vs numéros silicium, les tests l'ont mordu deux fois.
+
 - 2026-08-19 : **Visualisation — courbes capteur par capteur + formalisation
   du query O2** (demande user : « une petite courbe des données qu'il a
   dans prom/openobserve, un truc à la influxdb, quick and dirty »).
