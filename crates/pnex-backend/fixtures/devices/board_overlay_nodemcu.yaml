@@ -1,0 +1,17 @@
+# Brick 0 — overlay board NodeMCU/D1 mini (niveau « data » du modèle 3 couches).
+# Écrit dans mcu_boards.details du board « esp8266 » par le seed ; contribuable
+# en data sans recompilation (brick0.md §1 — jamais en .h, B0.6).
+board_name: esp8266
+overlay:
+  board: nodemcu
+  pins:
+    - { label: D0, gpio: 16, kind: digital }
+    - { label: D1, gpio: 5, kind: digital }
+    - { label: D2, gpio: 4, kind: digital }
+    - { label: D3, gpio: 0, kind: digital }
+    - { label: D4, gpio: 2, kind: digital }
+    - { label: D5, gpio: 14, kind: digital }
+    - { label: D6, gpio: 12, kind: digital }
+    - { label: D7, gpio: 13, kind: digital }
+    - { label: D8, gpio: 15, kind: digital }
+    - { label: A0, gpio: 17, kind: analog }

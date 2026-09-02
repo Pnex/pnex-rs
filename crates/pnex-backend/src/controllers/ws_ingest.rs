@@ -50,7 +50,7 @@ use crate::services::telemetry::{self, TelemetryPoint};
 /// Déchiffre une frame device : `base64(nonce 12 ‖ ct)` → plaintext UTF-8.
 /// None = illisible (→ `ERROR:decryption_failed`, parité Django qui
 /// valait len(key)==32 et len(combined)≥12).
-fn decrypt_frame(raw: &str, key: &[u8; 32]) -> Option<String> {
+pub(crate) fn decrypt_frame(raw: &str, key: &[u8; 32]) -> Option<String> {
     let trimmed = raw.trim();
     let bytes = STANDARD
         .decode(trimmed)
@@ -66,7 +66,7 @@ fn decrypt_frame(raw: &str, key: &[u8; 32]) -> Option<String> {
 }
 
 /// Chiffre une frame serveur : plaintext → `base64(nonce 12 ‖ ct)`.
-fn encrypt_frame(plain: &str, key: &[u8; 32]) -> String {
+pub(crate) fn encrypt_frame(plain: &str, key: &[u8; 32]) -> String {
     let mut nonce = [0u8; 12];
     use rand::RngCore;
     rand::rng().fill_bytes(&mut nonce);
@@ -125,11 +125,11 @@ impl Drop for SessionGuard {
 /// Vue du device validée (rafraîchie au rythme du cache de revalidation) :
 /// porte le routage org (D2 — suit un changement d'org du device) et les
 /// règles de validation des mesures.
-struct Snapshot {
-    device_registry_id: i64,
-    org_id: i64,
-    device_id: String,
-    pred_dev: String,
+pub(crate) struct Snapshot {
+    pub(crate) device_registry_id: i64,
+    pub(crate) org_id: i64,
+    pub(crate) device_id: String,
+    pub(crate) pred_dev: String,
     allow_dynamic: bool,
     discovered: HashSet<String>,
     max_unique: i32,
@@ -141,7 +141,7 @@ impl Snapshot {
     /// Charge le device d'un token actif + son contexte de validation.
     /// `Ok(None)` = token inconnu/inactif (→ 4001) ; le mismatch device_id
     /// est départagé par l'appelant (→ 4006) sur la ligne registre.
-    async fn load(
+    pub(crate) async fn load(
         db: &DatabaseConnection,
         token: &str,
     ) -> Result<Option<(device_tokens::Model, device_registries::Model)>> {
@@ -211,7 +211,7 @@ pub fn routes() -> Routes {
 
 /// Accepte l'upgrade puis referme immédiatement avec le code — Django
 /// `close(code=…)` ; un statut HTTP ne peut pas porter un 4xxx WS.
-fn reject(ws: WebSocketUpgrade, code: u16, reason: &'static str) -> Response {
+pub(crate) fn reject(ws: WebSocketUpgrade, code: u16, reason: &'static str) -> Response {
     ws.on_upgrade(move |mut socket| async move {
         let _ = socket
             .send(Message::Close(Some(CloseFrame {
@@ -225,7 +225,7 @@ fn reject(ws: WebSocketUpgrade, code: u16, reason: &'static str) -> Response {
 
 /// Décode un paramètre query base64 → texte (trim : les valeurs encodées
 /// côté firmware avec `echo | base64` portent un `\n`).
-fn decode_param(raw: &str) -> Option<String> {
+pub(crate) fn decode_param(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     let bytes = STANDARD
         .decode(trimmed)

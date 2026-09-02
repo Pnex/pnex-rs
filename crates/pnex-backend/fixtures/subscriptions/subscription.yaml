@@ -1,7 +1,9 @@
 - name: "Free"
   max_sensor_devices: 3
   max_actuator_devices: 1
-  max_mixed_devices: 0
+  # Brick 0 : le prototypage générique est le cœur de l'offre — Free garde
+  # 1 device générique (type mixed) malgré le 0 mixed historique.
+  max_mixed_devices: 1
   min_build_interval: "15 minutes"
   data_retention: "1 day"
 

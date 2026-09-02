@@ -386,8 +386,11 @@ async fn quotas_tier_par_type() {
             "Device limit reached for actuator devices in your subscription tier."
         );
 
-        // mixed = 0 : refus immédiat.
+        // mixed : 1 autorisé (Brick 0 — device générique prototypable en Free),
+        // le 2e est refusé.
         let res = create_device(&server, &env.alice, org, "esp-m1", "mixed_hub_v1").await;
+        assert_eq!(res.status_code(), 201);
+        let res = create_device(&server, &env.alice, org, "esp-m2", "mixed_hub_v1").await;
         assert_eq!(res.status_code(), 400);
         assert_eq!(
             res.json::<serde_json::Value>()["detail"],
@@ -624,7 +627,7 @@ async fn catalogue_global_partage() {
             .await
             .json();
         let pds = pds["results"].as_array().expect("enveloppe");
-        assert_eq!(pds.len(), 4);
+        assert_eq!(pds.len(), 5, "4 predefined + generic_esp8266 (Brick 0)");
         let relay_pd = pds
             .iter()
             .find(|p| p["name"] == "4_chan_relay")
@@ -669,7 +672,7 @@ async fn catalogue_global_partage() {
             .add_header("Authorization", bearer(&env.alice))
             .await
             .json();
-        assert_eq!(by_board["count"], 4, "tous sur board esp32 (casse ignorée)");
+        assert_eq!(by_board["count"], 4, "board esp32 seulement — generic_esp8266 est sur esp8266, exclu du filtre");
         let by_cap_search: serde_json::Value = server
             .get("/api/v1/predefined-devices?search=RELAY")
             .add_header("Authorization", bearer(&env.alice))
@@ -692,7 +695,7 @@ async fn catalogue_global_partage() {
             .add_header("Authorization", bearer(&env.bob))
             .await
             .json();
-        assert_eq!(bob_pds["results"].as_array().unwrap().len(), 4);
+        assert_eq!(bob_pds["results"].as_array().unwrap().len(), 5);
     })
     .await;
 }
@@ -757,7 +760,7 @@ async fn pagination_des_listes() {
             .add_header("Authorization", bearer(&env.alice))
             .await
             .json();
-        assert_eq!(cat1["count"], 4);
+        assert_eq!(cat1["count"], 5, "4 + generic_esp8266 (Brick 0)");
         assert_eq!(cat1["results"].as_array().unwrap().len(), 2);
         assert_eq!(
             cat1["next"].as_str().unwrap(),
@@ -769,7 +772,16 @@ async fn pagination_des_listes() {
             .await
             .json();
         assert_eq!(cat3["results"].as_array().unwrap().len(), 2);
-        assert!(cat3["next"].is_null());
+        // 5e predefined (generic_esp8266) → une dernière page de 1, next non null.
+        assert_eq!(cat3["next"].as_str().unwrap(),
+            "/api/v1/predefined-devices?limit=2&offset=4");
+        let cat4: serde_json::Value = server
+            .get("/api/v1/predefined-devices?limit=2&offset=4")
+            .add_header("Authorization", bearer(&env.alice))
+            .await
+            .json();
+        assert_eq!(cat4["results"].as_array().unwrap().len(), 1);
+        assert!(cat4["next"].is_null(), "fin de catalogue");
 
         // Capabilities : même enveloppe.
         let caps: serde_json::Value = server

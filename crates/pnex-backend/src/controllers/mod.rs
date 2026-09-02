@@ -7,4 +7,6 @@ pub mod orgs;
 pub mod pagination;
 pub mod user_info;
 pub mod visualization;
+pub mod pins;
+pub mod ws_device;
 pub mod ws_ingest;

@@ -3,6 +3,7 @@
 pub use super::annotations::Entity as Annotations;
 pub use super::build_records::Entity as BuildRecords;
 pub use super::device_capabilities::Entity as DeviceCapabilities;
+pub use super::device_capability_instances::Entity as DeviceCapabilityInstances;
 pub use super::device_registries::Entity as DeviceRegistries;
 pub use super::device_states::Entity as DeviceStates;
 pub use super::device_tokens::Entity as DeviceTokens;

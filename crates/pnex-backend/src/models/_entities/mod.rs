@@ -5,6 +5,7 @@ pub mod prelude;
 pub mod annotations;
 pub mod build_records;
 pub mod device_capabilities;
+pub mod device_capability_instances;
 pub mod device_registries;
 pub mod device_states;
 pub mod device_tokens;

@@ -6,6 +6,8 @@ license.workspace = true
 description = "Orchestration des builds firmware (shell-out toolchain PlatformIO/esptool) — Phase 6"
 
 [dependencies]
+serde_json = { workspace = true }
+serde = { workspace = true }
 thiserror = { workspace = true }
 async-trait = "0.1"
 base64 = "0.22"
@@ -14,6 +16,7 @@ tokio = { version = "1.45", default-features = false, features = [
   "process",
   "time",
   "fs",
+  "macros",
 ] }
 tracing = "0.1"
 tempfile = "3"

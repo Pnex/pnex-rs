@@ -33,6 +33,8 @@ impl Task for Seed {
         println!("  capabilities : {n}");
         let n = seed_mcu_boards(db, &base.join("devices/mcu.yaml")).await?;
         println!("  mcu boards : {n}");
+        let n = seed_board_overlays(db, &base.join("devices/board_overlay_nodemcu.yaml")).await?;
+        println!("  overlays board : {n}");
         let n = seed_predefined_devices(db, &base.join("devices/predefined_device.yaml")).await?;
         println!("  predefined devices : {n}");
         let n = seed_subscription_tiers(db, &base.join("subscriptions/subscription.yaml")).await?;
@@ -196,8 +198,32 @@ async fn seed_mcu_boards(db: &Db, path: &std::path::Path) -> Result<usize> {
     Ok(rows.len())
 }
 
-async fn seed_predefined_devices(db: &Db, path: &std::path::Path) -> Result<usize> {
+/// Brick 0 — écrit l'overlay board (fixture YAML → JSON) dans
+/// `mcu_boards.details`. L'overlay est du **data** : contribuable sans
+/// recompilation, jamais en `.h` (brick0.md §1, B0.6).
+async fn seed_board_overlays(db: &Db, path: &std::path::Path) -> Result<usize> {
     #[derive(serde::Deserialize)]
+    struct Row {
+        board_name: String,
+        overlay: pnex_core::BoardOverlay,
+    }
+    let rows: Vec<Row> = read_yaml(path)?;
+    for r in &rows {
+        let board = mcu_boards::Entity::find()
+            .filter(mcu_boards::Column::Name.eq(&r.board_name))
+            .one(db)
+            .await?
+            .ok_or_else(|| {
+                Error::string(&format!("board {} absent du seed", r.board_name))
+            })?;
+        let mut am: mcu_boards::ActiveModel = board.into();
+        am.details = Set(Some(serde_json::to_value(&r.overlay)?));
+        am.update(db).await?;
+    }
+    Ok(rows.len())
+}
+
+async fn seed_predefined_devices(db: &Db, path: &std::path::Path) -> Result<usize> {    #[derive(serde::Deserialize)]
     struct Row {
         name: String,
         pretty_name: Option<String>,

@@ -53,6 +53,8 @@ impl Hooks for App {
             .add_route(controllers::dashboard::routes())
             .add_route(controllers::visualization::routes())
             .add_route(controllers::ws_ingest::routes())
+            .add_route(controllers::ws_device::routes())
+            .add_route(controllers::pins::routes())
     }
 
     async fn after_routes(router: axum::Router, ctx: &AppContext) -> Result<axum::Router> {

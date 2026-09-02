@@ -16,12 +16,14 @@
 //! jamais en argv (lisible via `ps`). Le workspace est un tmp par job,
 //! effacé au drop (secrets compilés dans les artefacts intermédiaires).
 
+mod config_sector;
 mod embedded;
 mod env;
 mod merge;
 mod pipeline;
 mod store;
 
+pub use config_sector::{build as build_config_sector, parse as parse_config_sector, DeviceConfig, CONFIG_OFFSET};
 pub use env::{child_env, BuildSecrets};
 pub use merge::{merge_args, merge_offsets};
 pub use pipeline::{run_build, BuildConfig, DeviceSpec};

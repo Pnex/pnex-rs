@@ -10,6 +10,7 @@
 //! 5. firmware — build records
 //! 6. ingestion — état live device (D9) + correspondance OpenObserve (D2)
 //! 7. firmware artefacts — binaires en base (D5 v2)
+//! 8. capability instances — état live des pins (Brick 0)
 
 pub use sea_orm_migration::prelude::*;
 
@@ -20,6 +21,7 @@ mod m20260815_000004_sites;
 mod m20260815_000005_firmware;
 mod m20260816_000006_ingestion;
 mod m20260817_000007_firmware_artifacts;
+mod m20260819_000008_device_capability_instances;
 
 pub struct Migrator;
 
@@ -34,6 +36,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260815_000005_firmware::Migration),
             Box::new(m20260816_000006_ingestion::Migration),
             Box::new(m20260817_000007_firmware_artifacts::Migration),
+            Box::new(m20260819_000008_device_capability_instances::Migration),
         ]
     }
 }

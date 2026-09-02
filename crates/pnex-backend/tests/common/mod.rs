@@ -121,7 +121,8 @@ pub async fn seed_catalogue(db: &sea_orm::DatabaseConnection) {
         name: Set("Free".into()),
         max_sensor_devices: Set(3),
         max_actuator_devices: Set(1),
-        max_mixed_devices: Set(0),
+        // Brick 0 : 1 mixed autorisé en Free (device générique).
+        max_mixed_devices: Set(1),
         min_build_interval_secs: Set(300),
         data_retention_secs: Set(Some(86_400)),
         ..Default::default()
@@ -166,18 +167,47 @@ pub async fn seed_catalogue(db: &sea_orm::DatabaseConnection) {
     .insert(db)
     .await
     .expect("board");
+    // Brick 0 : board esp8266 avec overlay NodeMCU (mcu_boards.details),
+    // consommé par generic_esp8266 via services::provisioning.
+    let overlay: pnex_core::BoardOverlay = serde_json::from_value(serde_json::json!({
+        "board": "nodemcu",
+        "pins": [
+            {"label": "D0", "gpio": 16, "kind": "digital"},
+            {"label": "D1", "gpio": 5, "kind": "digital"},
+            {"label": "D2", "gpio": 4, "kind": "digital"},
+            {"label": "D3", "gpio": 0, "kind": "digital"},
+            {"label": "D4", "gpio": 2, "kind": "digital"},
+            {"label": "D5", "gpio": 14, "kind": "digital"},
+            {"label": "D6", "gpio": 12, "kind": "digital"},
+            {"label": "D7", "gpio": 13, "kind": "digital"},
+            {"label": "D8", "gpio": 15, "kind": "digital"},
+            {"label": "A0", "gpio": 17, "kind": "analog"}
+        ]
+    }))
+    .expect("overlay inline");
+    let board8266 = mcu_boards::ActiveModel {
+        name: Set("esp8266".into()),
+        soc: Set("esp8266".into()),
+        details: Set(Some(serde_json::to_value(&overlay).expect("overlay json"))),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .expect("board esp8266");
 
     for (name, type_name, caps) in [
         ("soil_sensor", "sensor", vec!["read_temperature"]),
         ("4_chan_relay", "actuator", vec!["relay"]),
         ("custom_sensor", "sensor", vec![]),
         ("mixed_hub_v1", "mixed", vec!["read_temperature", "relay"]),
+        // Brick 0 : device générique (board esp8266 + overlay).
+        ("generic_esp8266", "mixed", vec![]),
     ] {
         let pd = predefined_devices::ActiveModel {
             name: Set(name.into()),
             revision: Set("v1".into()),
             device_type_id: Set(type_ids[type_name]),
-            board_id: Set(board.id),
+            board_id: Set(if name == "generic_esp8266" { board8266.id } else { board.id }),
             ..Default::default()
         }
         .insert(db)

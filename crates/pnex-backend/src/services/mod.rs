@@ -7,5 +7,6 @@ pub mod device_liveness;
 pub mod firmware;
 pub mod openobserve;
 pub mod settings;
+pub mod provisioning;
 pub mod telemetry;
 pub mod visualization;

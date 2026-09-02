@@ -63,3 +63,13 @@
   stl_files_url: "http://example.com/stl1"
   description: "Control 4 relays"
 
+# Brick 0 — firmware générique : un seul .bin réutilisable, config injectée
+# au flash (B0.1). Le device s'annonce sur /ws/device, admission Validated
+# contre chip-caps + overlay (B0.2/B0.3 — pas d'auto-création à l'annonce).
+- name: generic_esp8266
+  pretty_name: Generic ESP8266 (NodeMCU / D1 mini)
+  revision: 1.0.0
+  device_type_name: mixed
+  capabilities_names: []
+  board_name: esp8266
+  description: "Carte de dev ESP8266 en firmware générique : pins pilotés depuis l'UI (modes, write, subscribe), sans compilation par device."
