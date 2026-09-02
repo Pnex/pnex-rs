@@ -22,6 +22,18 @@ pub use devices::*;
 pub mod pagination;
 pub use pagination::*;
 
+/// Protocole fil `/ws/device` (Brick 0) — source de vérité du contrat device.
+pub mod proto;
+pub use proto::*;
+
+/// Chip-caps ESP8266 — validation des pins (point unique, Brick 0).
+pub mod caps;
+pub use caps::*;
+
+/// Overlays board en data (`mcu_boards.details`) — types partagés (Brick 0).
+pub mod boards;
+pub use boards::*;
+
 pub mod telemetry;
 pub use telemetry::*;
 
