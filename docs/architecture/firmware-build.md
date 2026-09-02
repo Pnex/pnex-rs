@@ -16,7 +16,10 @@
 > SaaS/distribué : `.pio` n'écrit jamais dans la source, builds
 > concurrents isolés, drop = effacement des secrets). Seule la toolchain
 > `pio`/`esptool` reste externe (installée sur la machine ou l'image
-> worker).
+> worker). Sur la machine de dev : `uv tool install platformio esptool`
+> — shims en `~/.local/bin`, shebang direct vers le venv uv (pas d'appel
+> `uv` à l'exécution, donc seul `~/.local/bin` doit être dans le PATH
+> du process serveur ; cache `~/.platformio` conservé).
 >
 > **Réalisé dans** : crate `pnex-firmware-builder` (pipeline + `ArtifactStore`),
 > worker `BuildFirmwareWorker` (queue PG loco `pg_loco_queue`, SKIP LOCKED
