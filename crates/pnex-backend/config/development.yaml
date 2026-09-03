@@ -125,3 +125,17 @@ settings:
     pio_cmd: {{ get_env(name="PNEX_PIO_CMD", default="pio") }}
     esptool_cmd: {{ get_env(name="PNEX_ESPTOOL_CMD", default="esptool") }}
     timeout_secs: {{ get_env(name="PNEX_BUILD_TIMEOUT_SECS", default="900") }}
+  # Moteur de flow ETL (D18) — superviseur du runtime headless
+  # `pnex-flow-runtime` (process enfant, mode B ; cf. services/flow_supervisor.rs).
+  # enabled=false : flows éditables en base mais jamais exécutés (défaut).
+  # env_allowlist : seules ces variables franchissent la frontière process —
+  # aucun secret dans flows.json (PRD §8).
+  flow:
+    enabled: {{ get_env(name="PNEX_FLOW_ENABLED", default="false") }}
+    runtime_cmd: {{ get_env(name="PNEX_FLOW_RUNTIME_CMD", default="pnex-flow-runtime") }}
+    state_dir: {{ get_env(name="PNEX_FLOW_STATE_DIR", default="./flow-state") }}
+    restart_backoff_secs: {{ get_env(name="PNEX_FLOW_BACKOFF_SECS", default="5") }}
+    restart_backoff_max_secs: {{ get_env(name="PNEX_FLOW_BACKOFF_MAX_SECS", default="60") }}
+    terminate_secs: {{ get_env(name="PNEX_FLOW_TERMINATE_SECS", default="10") }}
+    reload_ack_secs: {{ get_env(name="PNEX_FLOW_RELOAD_ACK_SECS", default="10") }}
+    env_allowlist: ["DATABASE_URL"]

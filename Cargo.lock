@@ -5223,6 +5223,7 @@ dependencies = [
  "futures-util",
  "insta",
  "jsonwebtoken 9.3.1",
+ "libc",
  "loco-rs",
  "opendal",
  "pnex-core",

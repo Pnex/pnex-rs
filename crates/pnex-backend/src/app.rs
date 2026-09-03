@@ -64,6 +64,10 @@ impl Hooks for App {
         // Reaper de liveness : ici et non connect_workers — `loco start`
         // sans flag est ServerOnly (connect_workers jamais appelé).
         crate::services::device_liveness::spawn_reaper(ctx);
+        // Superviseur du runtime de flows ETL (D18, mode B) : process enfant
+        // isolé, même logique — ici et non connect_workers, gate sur
+        // settings.flow.enabled.
+        crate::services::flow_supervisor::spawn_supervisor(ctx);
         Ok(router)
     }
 

@@ -31,3 +31,7 @@ firmware/**/.pio/
 # Outillage local
 .task/
 .claude/settings.local.json*
+
+# Moteur de flow ETL (D18) — état du runtime (flows.json + runtime.json)
+crates/pnex-backend/flow-state/
+flow-state/
