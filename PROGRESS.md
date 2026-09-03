@@ -428,6 +428,21 @@ de sujets Django).
 
 ## Journal
 
+- 2026-09-03 (matin) : **Fin du chantier e2e generic_esp8266 — le 7ᵉ bug
+  était un wrap arithmétique**. Le serveur envoyait bien les PONG (prouvé
+  par un client device synthétique Python : même clé, framing ChaCha20
+  contrepérouvé), mais la carte fermait sa session juste après son 1ᵉʳ
+  ping. Firmware instrumenté (prints de frames sur le serial) puis flash
+  direct esptool : la carte recevait le PONG, le déchiffrait (« PONG »,
+  4 octets) — et déclarait quand même le timeout. Cause : `now` capturé au
+  début de `loop()`, `last_pong_ms` posé à `millis()` PENDANT `poll()` →
+  `now - last_pong_ms` non-signé **wrappe** à ~4,29 Md → `>= 15000` vrai.
+  Fix : recapturer `now = millis()` après `client.poll()`. Méthode
+  retenue pour ce type de deadlock : instrumentation println côté serveur
+  (le logger Loco filtre les cibles app), client synthétique pour isoler
+  le sens du flux, capture série passive via pyserial (le port DTR/RTS
+  reset la carte — ne pas confondre « muet » et « absent »).
+
 - 2026-09-02 (nuit, fin) : **Le device générique connecte enfin — deux
   derniers bugs + une alerte de conception**. (4) Le firmware générique
   n'appelait **jamais `cryptoSetKey(ENCRYPTION_KEY)`** : `cryptoReady()=

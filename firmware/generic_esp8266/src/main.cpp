@@ -184,6 +184,12 @@ void loop() {
     }
 
     client.poll();
+    // Le callback peut avoir avancé `last_pong_ms` (millis() pendant poll) —
+    // réinsérer l'horloge AVANT les comparaisons : `now - last_pong_ms` en
+    // non-signé wrappe sinon à ~4,29 Md quand last_pong_ms > now, et le
+    // « PONG timeout » se déclenche immédiatement après avoir reçu… le PONG
+    // (leçon 2026-09-03 : la carte bouclait reconnect toutes les ~6 s).
+    now = millis();
 
     // PING 5 s ; silence > 15 s → safe-state + reconnect (§3/§8).
     if (now - last_ping_ms >= PING_INTERVAL_MS) {
