@@ -108,7 +108,11 @@ pub(crate) async fn admit(
                 let mut am: device_capability_instances::ActiveModel = r.clone().into();
                 am.label = Set(pin.label.clone());
                 am.mode = Set(mode_str(mode).to_string());
-                am.config = Set(Some(serde_json::to_value(cfg).unwrap_or_default()));
+                // ⚠ config conservée TELLE QUELLE (pullup, safe_state ET
+                // interval_ms) : le round-trip par `ModeOpts` — sans champ
+                // interval_ms — réécrivait la config à CHAQUE re-announce et
+                // effaçait la cadence persistée (« Read every 1 s » perdu au
+                // premier reconnect — leçon 2026-09-03).
                 am.constraints_snapshot =
                     Set(Some(serde_json::to_value(validated).unwrap_or_default()));
                 am.enabled = Set(true);

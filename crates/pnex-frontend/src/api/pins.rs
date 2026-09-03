@@ -14,6 +14,11 @@ pub struct PinInfo {
     pub pullup: bool,
     pub safe_state: String,
     pub enabled: bool,
+    /// Cadence de lecture persistée (ms, 0/absent = manuel) — initialise
+    /// le select de cadence à sa valeur effective (leçon des selects
+    /// contrôlés : le select doit AFFICHER l'état réel, pas un défaut).
+    #[serde(default)]
+    pub interval_ms: Option<u32>,
     #[serde(default)]
     pub last_value: Option<serde_json::Value>,
 }

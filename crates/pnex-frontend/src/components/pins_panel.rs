@@ -23,7 +23,10 @@ fn PinCard(device_pk: i64, pin: api::pins::PinInfo, connected: bool, can_write: 
     let safe_init = pin.safe_state.clone();
     let mut mode_sel = use_signal(move || mode_init);
     let mut safe_sel = use_signal(move || safe_init);
-    let mut interval_sel = use_signal(|| "0".to_string());
+    // Cadence effective (persistée en base, re-poussée au device après
+    // chaque reconnexion) — le select affiche l'état réel, pas « manuel ».
+    let interval_init = pin.interval_ms.unwrap_or(0).to_string();
+    let mut interval_sel = use_signal(move || interval_init);
     let mut busy = use_signal(|| false);
 
     let is_digital = pin.mode == "digital_in" || pin.mode == "digital_out";

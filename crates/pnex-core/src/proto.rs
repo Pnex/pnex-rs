@@ -19,7 +19,9 @@ use serde_json::Value;
 
 /// Modes P0 d'une capability instance — le rôle sensor/actuator se dérive du
 /// mode (pas de colonne `role` : modèle sans copies, B0.6).
-/// `digital_in`/`analog_in` → sensor ; `digital_out` → actuator.
+/// `digital_in`/`adc_in` → sensor ; `digital_out` → actuator. ⚠ Le fil
+/// sérialise `AdcIn` → `"adc_in"` (serde snake_case) — la chaîne
+/// `analog_in` est la convention **base** (colonnes `mode`), jamais le fil.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Mode {

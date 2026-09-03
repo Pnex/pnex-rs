@@ -82,12 +82,17 @@ pub(crate) struct DeviceSnapshot {
     pub(crate) labels: HashMap<i32, String>,
     /// gpio → contraintes validées (mode courant, safe_state, pullup).
     pub(crate) pins: HashMap<i32, pnex_core::ValidatedPin>,
+    /// gpio → cadence de lecture persistée (0 = pas de subscribe) —
+    /// re-poussée après chaque `Announce` (restauration du desired-state).
+    pub(crate) intervals: HashMap<i32, u32>,
 }
 
 impl DeviceSnapshot {
     /// Recharge les instances persistées après admission (ou re-announce).
     async fn reload_pins(&mut self, db: &DatabaseConnection) {
-        self.pins = load_pins(db, self.device_registry_id).await;
+        let (pins, intervals) = load_pins(db, self.device_registry_id).await;
+        self.pins = pins;
+        self.intervals = intervals;
     }
 }
 
@@ -339,6 +344,19 @@ async fn handle_announce(
         Ok(specs) => {
             snap.reload_pins(&ctx.db).await;
             send_server_msg(socket, key, &ServerMsg::ProvisionAck { caps: specs }).await;
+            // Restauration du desired-state : le ProvisionAck ne porte pas
+            // les cadences — re-pousser les Subscribe persistés, sinon un
+            // reflash/reconnect perdait les lectures périodiques alors que
+            // la base reste la source de vérité (leçon 2026-09-03).
+            for (&gpio, &ms) in &snap.intervals {
+                if ms > 0 {
+                    send_server_msg(socket, key, &ServerMsg::Subscribe {
+                        cmd_id: uuid::Uuid::new_v4().simple().to_string(),
+                        gpio: gpio as u16,
+                        interval_ms: ms,
+                    }).await;
+                }
+            }
         }
         Err(e) => {
             tracing::error!(device = %snap.device_id, "admission refusée : {e}");
@@ -365,13 +383,23 @@ async fn handle_state_report(_ctx: &AppContext, snap: &DeviceSnapshot, gpio: u16
         let mut lv = LAST_VALUES.lock().expect("last_values");
         lv.entry(snap.device_registry_id).or_default().insert(gpio as i32, value.clone());
     }
+    // Prometheus n'a pas de booléens (remote-write = f64) : un pin digital
+    // est stocké 1/0. La valeur brute reste dans LAST_VALUES pour l'UI
+    // (HIGH/LOW). Avant ce fix, `promwrite::series_of` parsait un f64 et
+    // TOUS les StateReports digitaux étaient silencieusement jetés —
+    // « aucune donnée en visualisation » malgré un subscribe 1 s (leçon
+    // 2026-09-03).
+    let numeric = match &value {
+        serde_json::Value::Bool(b) => serde_json::json!(i64::from(*b)),
+        other => other.clone(),
+    };
     telemetry::sink().send(TelemetryPoint {
         org_id: snap.org_id,
         device_registry_id: snap.device_registry_id,
         device_id: snap.device_id.clone(),
         pred_dev: snap.pred_dev.clone(),
         metric_name: name,
-        value: value.to_string(),
+        value: numeric.to_string(),
         timestamp: chrono::Utc::now(),
         ts_source: "server",
         source_type: "generic_gpio",
@@ -395,43 +423,60 @@ async fn build_snapshot(db: &DatabaseConnection, device: &device_registries::Mod
         .iter()
         .map(|p| (p.gpio as i32, p.label.clone()))
         .collect();
+    let (pins, intervals) = load_pins(db, device.id).await;
     let snap = DeviceSnapshot {
         device_registry_id: device.id,
         org_id: device.org_id,
         device_id: device.device_id.clone(),
         pred_dev: overlay.board.clone(),
         labels,
-        pins: load_pins(db, device.id).await,
+        pins,
+        intervals,
     };
     Ok(snap)
 }
 
-/// Instances persistées → carte gpio → contraintes validées (source de
-/// vérité : la base, remplie à l'admission et par les SetMode REST).
-async fn load_pins(db: &DatabaseConnection, device_registry_id: i64) -> HashMap<i32, pnex_core::ValidatedPin> {
+/// Instances persistées → cartes gpio → (contraintes validées, cadences).
+/// Source de vérité : la base, remplie à l'admission et par les SetMode/
+/// Subscribe REST — les modes survivent aux re-announce (upsert), les
+/// cadences sont re-poussées après chaque Announce.
+#[allow(clippy::type_complexity)]
+async fn load_pins(
+    db: &DatabaseConnection,
+    device_registry_id: i64,
+) -> (HashMap<i32, pnex_core::ValidatedPin>, HashMap<i32, u32>) {
     let rows = device_capability_instances::Entity::find()
         .filter(device_capability_instances::Column::DeviceRegistryId.eq(device_registry_id))
         .all(db)
         .await
         .unwrap_or_default();
-    rows.iter()
-        .map(|r| {
-            let cfg: pnex_core::ModeOpts = r
-                .config
-                .as_ref()
-                .and_then(|c| serde_json::from_value(c.clone()).ok())
-                .unwrap_or_default();
-            (
-                r.gpio,
-                pnex_core::ValidatedPin {
-                    gpio: r.gpio as u16,
-                    mode: str_to_mode(&r.mode),
-                    pullup: cfg.pullup.unwrap_or(false),
-                    safe_state: cfg.safe_state.unwrap_or(SafeState::Low),
-                },
-            )
-        })
-        .collect()
+    let mut pins = HashMap::new();
+    let mut intervals = HashMap::new();
+    for r in &rows {
+        let cfg: pnex_core::ModeOpts = r
+            .config
+            .as_ref()
+            .and_then(|c| serde_json::from_value(c.clone()).ok())
+            .unwrap_or_default();
+        pins.insert(
+            r.gpio,
+            pnex_core::ValidatedPin {
+                gpio: r.gpio as u16,
+                mode: str_to_mode(&r.mode),
+                pullup: cfg.pullup.unwrap_or(false),
+                safe_state: cfg.safe_state.unwrap_or(SafeState::Low),
+            },
+        );
+        let interval = r
+            .config
+            .as_ref()
+            .and_then(|c| c.get("interval_ms"))
+            .and_then(|v| v.as_u64())
+            .map(|v| v as u32)
+            .unwrap_or(0);
+        intervals.insert(r.gpio, interval);
+    }
+    (pins, intervals)
 }
 
 /// Mode fil (snake_case) → Mode code.

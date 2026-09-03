@@ -186,7 +186,13 @@ async fn announce_provision_et_state_report() {
         // StateReport D5=HIGH → mémoire + télémétrie (série d5, generic_gpio).
         let report = serde_json::json!({"t": "state_report", "gpio": 14, "value": 1}).to_string();
         ws.send_text(encrypt(&report, &dev.key)).await;
-        // Attente active brève : la session traite la frame en tâche de fond.
+        // StateReport D6 booléen (le firmware envoie true/false pour les pins
+        // digitaux) → télémétrie 1/0 (Prometheus n'a pas de booléens), UI
+        // garde le booléen brut pour l'affichage HIGH/LOW. Avant le fix, ce
+        // point était silencieusement jeté par le parse f64 de promwrite.
+        let report = serde_json::json!({"t": "state_report", "gpio": 12, "value": true}).to_string();
+        ws.send_text(encrypt(&report, &dev.key)).await;
+        // Attente active brève : la session traite les frames en tâche de fond.
         let org = personal_org(&server, &auth).await;
         for _ in 0..40 {
             let res = server
@@ -195,14 +201,15 @@ async fn announce_provision_et_state_report() {
                 .add_header("X-Org-Id", org.to_string())
                 .await;
             let body: serde_json::Value = res.json();
-            let d5row = body["pins"].as_array().unwrap().iter()
-                .find(|p| p["label"] == "D5").cloned();
-            if d5row.as_ref().and_then(|p| p.get("last_value")).is_some() {
+            let d6row = body["pins"].as_array().unwrap().iter()
+                .find(|p| p["label"] == "D6").cloned();
+            if d6row.as_ref().and_then(|p| p.get("last_value")).is_some() {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(25)).await;
         }
-        // GET /pins final : 10 pins, D5 avec last_value, connected=true.
+        // GET /pins final : 10 pins triés (A0, D0…D8 — l'ordre SQL est
+        // arbitraire), D5 numérique, D6 booléen brut, connected=true.
         let res = server
             .get(&format!("/api/v1/devices/{}/pins", dev.id))
             .add_header("Authorization", format!("Bearer {auth}"))
@@ -213,10 +220,15 @@ async fn announce_provision_et_state_report() {
         let pins = body["pins"].as_array().expect("pins array");
         assert_eq!(pins.len(), 10);
         assert_eq!(body["connected"], serde_json::json!(true));
+        let labels: Vec<&str> = pins.iter().map(|p| p["label"].as_str().unwrap()).collect();
+        assert_eq!(labels, vec!["A0", "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8"]);
         let d5 = pins.iter().find(|p| p["label"] == "D5").expect("D5");
         assert_eq!(d5["last_value"], serde_json::json!(1));
         assert_eq!(d5["mode"], serde_json::json!("digital_in"));
-        // Télémétrie : le point d5 est sorti vers le sink (même sortie que l'ingest).
+        let d6 = pins.iter().find(|p| p["label"] == "D6").expect("D6");
+        assert_eq!(d6["last_value"], serde_json::json!(true));
+        // Télémétrie : d5 numérique 1 ET d6 booléen converti "1" (même sortie
+        // que l'ingest).
         let pts = sink.0.lock().unwrap().clone();
         assert!(
             pts.iter().any(|p| p.metric_name == "d5"
@@ -224,6 +236,10 @@ async fn announce_provision_et_state_report() {
                 && p.value == "1"
                 && p.device_id == "gen-jardin"),
             "point télémétrie d5 attendu, reçu : {pts:?}"
+        );
+        assert!(
+            pts.iter().any(|p| p.metric_name == "d6" && p.value == "1"),
+            "point télémétrie d6 (bool → 1) attendu, reçu : {pts:?}"
         );
         ws.close().await;
     })

@@ -76,6 +76,10 @@ struct PinDto {
     pullup: bool,
     safe_state: String,
     enabled: bool,
+    /// Cadence persistée (ms) — initialisation du select UI à la valeur
+    /// effective (0 = manuel).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    interval_ms: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     last_value: Option<serde_json::Value>,
 }
@@ -93,7 +97,7 @@ async fn pins(
         .get(&device.id)
         .cloned()
         .unwrap_or_default();
-    let dtos: Vec<PinDto> = rows
+    let mut dtos: Vec<PinDto> = rows
         .iter()
         .map(|r| PinDto {
             gpio: r.gpio,
@@ -106,10 +110,29 @@ async fn pins(
                 SafeState::High => "high",
             }.into(),
             enabled: r.enabled,
+            interval_ms: r
+                .config
+                .as_ref()
+                .and_then(|c| c.get("interval_ms"))
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u32)
+                .filter(|v| *v > 0),
             last_value: last.get(&r.gpio).cloned(),
         })
         .collect();
+    // Tri naturel des labels (A0 < D0 < D1 < … < D8) : l'ordre SQL est
+    // arbitraire et changeait d'un poll à l'autre — les cartes de l'UI
+    // se mélangeaient (retour utilisateur 2026-09-03).
+    dtos.sort_by_key(|p| pin_sort_key(&p.label));
     format::json(serde_json::json!({ "pins": dtos, "connected": ws_device::is_connected(device.id) }))
+}
+
+/// Clé de tri « naturel » d'un label de pin : préfixe alphabétique puis
+/// numéro (A0 < D0 < … < D8) — comparable aux tris de fichiers explorateur.
+fn pin_sort_key(label: &str) -> (String, u32) {
+    let split = label.find(|c: char| c.is_ascii_digit()).unwrap_or(label.len());
+    let (alpha, num) = label.split_at(split);
+    (alpha.to_ascii_lowercase(), num.parse().unwrap_or(u32::MAX))
 }
 
 /// Config jsonb → ModeOpts (défauts si absent/illisible).

@@ -428,6 +428,38 @@ de sujets Django).
 
 ## Journal
 
+- 2026-09-03 (après-midi) : **Quatre correctifs sur les retours UI du
+  generic_esp8266 — et un e2e « reboot-proof » complet**. (1) **Ordre des
+  pins** : l'ordre SQL/HashMap est arbitraire et changeait d'un poll à
+  l'autre (cartes D0/D6/A0 mélangées à l'écran) — tri naturel des labels
+  dans `GET /pins` (A0 < D0 < … < D8, préfixe alpha puis numéro). (2)
+  **Booléens en télémétrie** : Prometheus n'a pas de booléens —
+  `promwrite::series_of` parsait un f64 et jetait silencieusement TOUS les
+  StateReports digitaux (`value: true/false`) ; « aucune donnée brute en
+  Visualisation malgré un subscribe 1 s ». Fix à la source
+  (`ws_device::handle_state_report`) : bool → 1/0 pour la série O2,
+  `LAST_VALUES` garde le booléen pour l'affichage HIGH/LOW de l'UI. (3)
+  **`adc_in` vs `analog_in`** : le fil sérialise `AdcIn` → `"adc_in"`
+  (serde snake_case du proto) mais le firmware ne comparait que
+  `"analog_in"` (convention BASE) — A0 tombait en digital_in sur la carte,
+  un subscribe A0 aurait lu du digitalRead(17). Firmware tolérant aux deux,
+  doc proto clarifiée. (4) **Cadences de lecture perdues à chaque
+  reconnect** : double cause — le `ProvisionAck` ne porte pas les
+  `interval_ms` (restauration du desired-state ajoutée : les Subscribe
+  persistés sont re-poussés après chaque Announce) et **l'upsert
+  d'admission réécrivait la config via un round-trip `ModeOpts` — sans
+  champ `interval_ms` — effaçant la cadence à CHAQUE re-announce** (leçon :
+  la config jsonb est un bagage, ne pas la re-sérialiser par un type plus
+  étroit). Firmware : logs `[CMD] set_mode/write/subscribe` + refus d'ack
+  systématiques (réponse à « rien ne s'affiche sur le moniteur quand j'écris
+  un pin » : normal avant, les prints n'existaient pas). UI : le select
+  « Read every » s'initialise à la cadence persistée (`interval_ms` exposé
+  dans le DTO) au lieu de retomber sur « manuel » au refresh. **Preuve
+  e2e** : reboot réel de la carte par esptool (RAM vidée) → watchdog réape
+  la session zombie → reconnexion → cadence survivante en base → Subscribe
+  re-poussé → série `d1` à 1 Hz dans O2 (181 pts/3 min) → `/telemetry/series`
+  rend les points. Vérifié aussi : `GET /pins` → `['A0','D0',…,'D8']`.
+
 - 2026-09-03 (matin) : **Fin du chantier e2e generic_esp8266 — le 7ᵉ bug
   était un wrap arithmétique**. Le serveur envoyait bien les PONG (prouvé
   par un client device synthétique Python : même clé, framing ChaCha20

@@ -276,6 +276,12 @@ void sendAnnounce() {
 }
 
 void sendAck(const char* cmd_id, bool ok, const char* err) {
+    if (!ok) {
+        // Refus : log systématique — une commande perdue/invalide doit se
+        // voir sur le moniteur (retour utilisateur « aucune trace des
+        // writes », leçon 2026-09-03).
+        Serial.printf("[CMD] refus (cmd %s) : %s\n", cmd_id, err ? err : "?");
+    }
     JsonDocument doc;
     doc["t"] = "ack";
     doc["cmd_id"] = cmd_id;
@@ -340,7 +346,12 @@ void applyProvisionAck(JsonDocument& doc) {
         const char* mode = cap["mode"] | "digital_in";
         if (strcmp(mode, "digital_out") == 0) {
             p.mode = M_DIGITAL_OUT;
-        } else if (strcmp(mode, "analog_in") == 0) {
+        } else if (strcmp(mode, "adc_in") == 0 || strcmp(mode, "analog_in") == 0) {
+            // adc_in = sérialisation serde du variant `AdcIn` du proto (le
+            // fil n'a JAMAIS porté « analog_in » — convention base only) ;
+            // tolérance conservée. Sans lui, A0 tombait en digital_in et un
+            // subscribe remontait du digitalRead(17) au lieu d'analogRead
+            // (leçon 2026-09-03).
             p.mode = M_ADC_IN;
         }
         p.pullup = cap["opts"]["pullup"] | false;
@@ -368,7 +379,7 @@ void handleSetMode(JsonDocument& doc) {
     const char* mode = doc["mode"] | "digital_in";
     if (strcmp(mode, "digital_out") == 0) {
         p->mode = M_DIGITAL_OUT;
-    } else if (strcmp(mode, "analog_in") == 0) {
+    } else if (strcmp(mode, "adc_in") == 0 || strcmp(mode, "analog_in") == 0) {
         p->mode = M_ADC_IN;
     } else {
         p->mode = M_DIGITAL_IN;
@@ -376,6 +387,8 @@ void handleSetMode(JsonDocument& doc) {
     p->pullup = doc["opts"]["pullup"] | false;
     p->safe_high = strcmp(doc["opts"]["safe_state"] | "low", "high") == 0;
     apply_pin(*p);
+    Serial.printf("[CMD] set_mode GPIO%u -> %s (safe=%s)\n",
+                  gpio, mode, p->safe_high ? "high" : "low");
     sendAck(cmd_id, true, nullptr);
 }
 
@@ -399,6 +412,7 @@ void handleWrite(JsonDocument& doc) {
         high = v.as<int>() != 0;
     }
     digitalWrite(gpio, high ? HIGH : LOW);
+    Serial.printf("[CMD] write GPIO%u -> %s\n", gpio, high ? "HIGH" : "LOW");
     // Confirmation immédiate : la boucle UI (polling /pins) voit l'état.
     sendStateReport(*p);
     sendAck(cmd_id, true, nullptr);
@@ -414,6 +428,7 @@ void handleSubscribe(JsonDocument& doc) {
     }
     p->interval_ms = doc["interval_ms"] | 0;
     p->last_read_ms = 0;
+    Serial.printf("[CMD] subscribe GPIO%u -> %u ms\n", gpio, (unsigned)p->interval_ms);
     sendAck(cmd_id, true, nullptr);
 }
 
