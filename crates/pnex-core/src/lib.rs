@@ -19,6 +19,10 @@ pub use dashboard::*;
 pub mod devices;
 pub use devices::*;
 
+/// Flows ETL (décision D18) — modèle typé + validation + projection flows.json.
+pub mod flow;
+pub use flow::*;
+
 pub mod pagination;
 pub use pagination::*;
 
