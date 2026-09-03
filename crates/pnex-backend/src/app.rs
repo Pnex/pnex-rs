@@ -50,6 +50,7 @@ impl Hooks for App {
             .add_route(controllers::devices::routes())
             .add_route(controllers::devices::catalogue_routes())
             .add_route(controllers::builds::routes())
+            .add_route(controllers::flows::routes())
             .add_route(controllers::dashboard::routes())
             .add_route(controllers::visualization::routes())
             .add_route(controllers::ws_ingest::routes())

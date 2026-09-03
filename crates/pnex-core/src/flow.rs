@@ -13,8 +13,12 @@
 //! custom uniquement. Les nœuds builtin EdgeLinkd non modélisés passent par
 //! [`FlowNodeKind::Red`] (config opaque).
 
-/// Id du « tab » Node-RED projeté (un flow PNEX = un tab).
-pub const FLOW_TAB_ID: &str = "pnexflow";
+/// Id du « tab » Node-RED projeté — unique par flow : le runtime EdgeLinkd
+/// exécute un seul `flows.json` multi-tabs, la projection concatène donc
+/// tous les flows déployés de l'instance.
+pub fn flow_tab_id(flow_id: i64) -> String {
+    format!("pnexflow{flow_id}")
+}
 
 use serde::{Deserialize, Serialize};
 
@@ -385,13 +389,15 @@ pub fn validate_sql_readonly(query: &str) -> Result<(), FlowViolation> {
 
 // ─────────────────────────────── Projection ───────────────────────────────
 
-/// Projette le graphe typé PNEX vers l'artefact Node-RED `flows.json`
-/// (tableau d'entrées) consommé par le runtime EdgeLinkd headless.
-/// Les métadonnées de version sont embarquées sur le tab et sur les nœuds
-/// custom (clés inconnues préservées par le désérialiseur EdgeLinkd).
+/// Projette le graphe typé PNEX vers les entrées Node-RED du `flows.json`
+/// (un tab + ses nœuds) consommées par le runtime EdgeLinkd headless.
+/// L'artefact complet = concaténation des projections de tous les flows
+/// déployés. Les métadonnées de version sont embarquées sur le tab et sur
+/// les nœuds custom (clés inconnues préservées par le désérialiseur).
 pub fn to_red_flows_json(g: &FlowGraph, meta: &FlowArtifactMeta) -> serde_json::Value {
+    let tab_id = flow_tab_id(meta.flow_id);
     let mut entries = vec![serde_json::json!({
-        "id": FLOW_TAB_ID,
+        "id": tab_id,
         "type": "tab",
         "label": format!("Flow #{} v{}", meta.flow_id, meta.version_number),
         "pnex_flow_id": meta.flow_id,
@@ -426,7 +432,7 @@ pub fn to_red_flows_json(g: &FlowGraph, meta: &FlowArtifactMeta) -> serde_json::
         {
             let obj = e.as_object_mut().expect("entrée flows.json");
             obj.insert("id".into(), serde_json::Value::String(n.id.clone()));
-            obj.insert("z".into(), serde_json::Value::String(FLOW_TAB_ID.to_string()));
+            obj.insert("z".into(), serde_json::Value::String(tab_id.clone()));
             if let Some(name) = &n.name {
                 obj.insert("name".into(), serde_json::Value::String(name.clone()));
             }
@@ -497,7 +503,21 @@ fn inject_entry(c: &InjectConfig) -> serde_json::Value {
 
 // ───────────────────────────── DTOs de l'API ─────────────────────────────
 
-/// Flow tel que renvoyé par l'API (graphes = dernière version).
+/// Résumé d'un flow (liste paginée — sans graphe, évite le N+1).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowSummary {
+    pub id: i64,
+    pub org_id: i64,
+    pub device_id: Option<i64>,
+    pub name: String,
+    pub status: String,
+    pub deployed_version_number: Option<i64>,
+    pub latest_version_number: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Flow tel que renvoyé par l'API (graphe = dernière version).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Flow {
     pub id: i64,
@@ -564,9 +584,11 @@ pub struct UpdateFlow {
 }
 
 /// Déploiement explicite d'une version (projection + rechargement runtime).
+/// `version_number` absent → dernière version.
 #[derive(Debug, Clone, Deserialize)]
 pub struct DeployFlow {
-    pub version_number: i64,
+    #[serde(default)]
+    pub version_number: Option<i64>,
 }
 
 /// État du runtime de flow vu par le superviseur backend.
@@ -734,7 +756,7 @@ mod tests {
         let meta = FlowArtifactMeta { flow_id: 12, version_number: 3 };
         let out = to_red_flows_json(&simple_graph(), &meta);
         assert_eq!(out[0], json!({
-            "id": "pnexflow", "type": "tab", "label": "Flow #12 v3",
+            "id": "pnexflow12", "type": "tab", "label": "Flow #12 v3",
             "pnex_flow_id": 12, "pnex_version": 3,
         }));
         // inject : intervalle projeté, payload JSON encodé en chaîne.
@@ -746,7 +768,7 @@ mod tests {
         assert_eq!(out[2]["query"], "SELECT 1");
         assert_eq!(out[2]["pnex_flow_id"], 12);
         assert_eq!(out[2]["pnex_version"], 3);
-        assert_eq!(out[2]["z"], "pnexflow");
+        assert_eq!(out[2]["z"], "pnexflow12");
         // debug : câblage vide, capture payload par défaut.
         assert_eq!(out[3]["type"], "debug");
         assert_eq!(out[3]["complete"], "payload");
@@ -775,7 +797,7 @@ mod tests {
         let out = to_red_flows_json(&g, &FlowArtifactMeta { flow_id: 1, version_number: 1 });
         assert_eq!(out[1]["type"], "change");
         assert_eq!(out[1]["rules"], json!([{"p": "payload"}]));
-        assert_eq!(out[1]["z"], "pnexflow");
+        assert_eq!(out[1]["z"], "pnexflow1");
     }
 
     #[test]
