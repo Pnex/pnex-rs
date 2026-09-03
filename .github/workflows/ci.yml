@@ -68,18 +68,31 @@ jobs:
   arm-check:
     name: cargo check ARM (pnex-flow-runtime)
     runs-on: ubuntu-latest
+    env:
+      # Build scripts C (ring, rquickjs-sys) compilent pour la cible même en
+      # `cargo check` — le cross-compilateur C est requis, pas le linker.
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+      CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+      AR_aarch64_unknown_linux_gnu: aarch64-linux-gnu-ar
+      CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+      CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
+      AR_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-ar
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
+      - name: Cross-compilateurs C (Raspberry Pi 64/32 bits)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: |
             aarch64-unknown-linux-gnu
             armv7-unknown-linux-gnueabihf
       - uses: Swatinem/rust-cache@v2
-      # `cargo check` ne lie pas : pas besoin de linker croisé. Cibles
-      # Raspberry Pi (PRD — cibles de premier rang chez EdgeLinkd aussi).
+      # Cibles Raspberry Pi (PRD — cibles de premier rang chez EdgeLinkd aussi).
       - run: cargo check -p pnex-flow-runtime --target aarch64-unknown-linux-gnu
       - run: cargo check -p pnex-flow-runtime --target armv7-unknown-linux-gnueabihf
 

@@ -101,9 +101,11 @@ changerait.
 - (f) `msg` malformé rejeté à la frontière du nœud (`pnex_core::SqlQueryRequest`,
   jamais de panic) + validation de graphe en 400 `{"violations": [...]}`.
 
-Empreinte mémoire : le measure Pi (PRD Phase 0) reste un TODO manuel — le
-`arm-check` CI couvre la compilation aarch64/armv7 (`cargo check`, sans
-linker). EdgeLinkd revendique ~10× moins de RAM que Node-RED (non vérifié).
+Empreinte mémoire : la mesure sur Pi (PRD Phase 0) reste un TODO manuel — le
+job CI `arm-check` couvre la compilation croisée aarch64/armv7 (`cargo check`
+avec cross-compilateurs C : les build scripts de `ring`/`rquickjs-sys`
+compilent pour la cible même sans lien). EdgeLinkd revendique ~10× moins de
+RAM que Node-RED (non vérifié).
 
 ## 5. Écarts vs la conception initiale
 
