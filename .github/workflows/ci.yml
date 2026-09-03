@@ -14,6 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # vendor/edgelinkd (D18) : submodule nécessaire à pnex-node-sql et
+          # pnex-flow-runtime. NON récursif — 3rd-party/node-red est inutile.
+          submodules: true
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -50,6 +54,8 @@ jobs:
       TEST_DATABASE_URL: postgres://pnex:pnex@localhost:5432/pnex_test
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Stubs Tailwind + flasher.js (compilation)
@@ -58,6 +64,24 @@ jobs:
           test -f crates/pnex-frontend/assets/tailwind.css || printf '/* Stub CI — CSS reel genere par npm run css:build */\n' > crates/pnex-frontend/assets/tailwind.css
           test -f crates/pnex-frontend/assets/flasher.js || printf '/* Stub CI — bundle reel genere par npm run js:build */\n' > crates/pnex-frontend/assets/flasher.js
       - run: cargo test --workspace
+
+  arm-check:
+    name: cargo check ARM (pnex-flow-runtime)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: |
+            aarch64-unknown-linux-gnu
+            armv7-unknown-linux-gnueabihf
+      - uses: Swatinem/rust-cache@v2
+      # `cargo check` ne lie pas : pas besoin de linker croisé. Cibles
+      # Raspberry Pi (PRD — cibles de premier rang chez EdgeLinkd aussi).
+      - run: cargo check -p pnex-flow-runtime --target aarch64-unknown-linux-gnu
+      - run: cargo check -p pnex-flow-runtime --target armv7-unknown-linux-gnueabihf
 
   frontend:
     name: dx build (web)
