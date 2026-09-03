@@ -1,11 +1,11 @@
 [
   {
-    "email": "alice@example.com",
-    "preferred_username": "alice",
-    "given_name": "Alice",
-    "family_name": "Martin",
+    "email": "admin@example.com",
+    "preferred_username": "admin",
+    "given_name": "Admin",
+    "family_name": "Local",
     "password": {
-      "Plain": "alice-pass"
+      "Plain": "admin-pass"
     },
     "roles": ["user"],
     "enabled": true,

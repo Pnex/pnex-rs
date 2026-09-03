@@ -26,7 +26,7 @@ services:
   # IdP OIDC full-Rust (D10) — DB embarquée hiqlite (volume /app/data),
   # l'équivalent Rust de Keycloak. Bootstrap au premier démarrage uniquement
   # (DB vide) : deploy/rauthy/bootstrap/*.json — client public pnex (PKCE
-  # S256) + users de test alice/bob. Admin UI : /auth/v1/admin (admin/admin).
+  # S256) + users de test admin/bob. Admin UI : /auth/v1/admin (admin/admin).
   # Ports raft/gossip hiqlite (8100/8200) volontairement non publiés.
   rauthy:
     image: ghcr.io/sebadob/rauthy:0.36.2
