@@ -36,7 +36,7 @@ where
             "./tests/fixtures/flow/fake_runtime.sh",
         )
     };
-    unsafe { std::env::set_var("PNEX_FLOW_STATE_DIR", &flow_state_dir()) };
+    unsafe { std::env::set_var("PNEX_FLOW_STATE_DIR", flow_state_dir()) };
     unsafe { std::env::set_var("PNEX_FLOW_RELOAD_ACK_SECS", "5") };
     let config: RequestConfig = RequestConfigBuilder::new().build();
     let env = Env {

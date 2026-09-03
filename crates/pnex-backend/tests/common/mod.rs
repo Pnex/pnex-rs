@@ -109,6 +109,24 @@ pub fn valid_token(base_url: &str, sub: &str, username: &str, email: &str) -> St
     })
 }
 
+/// Access token Rauthy « lean » (géométrie réelle D19) : SANS
+/// preferred_username/given_name/family_name — ces claims ne vivent que dans
+/// l'id_token. Sert à figer le fallback `username` de user-info.
+pub fn lean_token(base_url: &str, sub: &str, email: &str) -> String {
+    let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
+    header.kid = Some(KID.into());
+    header.typ = Some("JWT".into());
+    let claims = serde_json::json!({
+        "sub": sub,
+        "email": email,
+        // Slash final obligatoire : issuer Rauthy = `{base}/auth/v1/`.
+        "iss": format!("{base_url}/auth/v1/"),
+        "aud": ["account", "pnex"],
+        "exp": chrono::Utc::now().timestamp() + 3600,
+    });
+    jsonwebtoken::encode(&header, &claims, &encoding_key()).expect("signature token test")
+}
+
 /// Catalogue minimal pour les tests. Tier Free : 3 sensors / 1 actuator /
 /// 0 mixed (les quotas s'y testent vite).
 pub async fn seed_catalogue(db: &sea_orm::DatabaseConnection) {

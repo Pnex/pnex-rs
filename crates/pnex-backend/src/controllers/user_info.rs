@@ -130,7 +130,10 @@ pub async fn user_info(State(ctx): State<AppContext>, auth: AuthUser) -> Result<
 
     let body = serde_json::json!({
         "id": user.id,
-        "username": auth.claims.preferred_username.clone(),
+        // Tokens d'accès Rauthy lean : pas de preferred_username (il vit dans
+        // l'id_token) → fallback email de l'utilisateur provisionné. Null est
+        // interdit ici : le contrat UserInfo attend un string (D19).
+        "username": auth.claims.preferred_username.clone().unwrap_or_else(|| user.email.clone()),
         "email": user.email,
         "full_name": user.full_name,
         "profile": profile.as_ref().map(profile_json),

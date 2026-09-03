@@ -218,6 +218,30 @@ async fn sso_register_et_reset_pointent_vers_les_pages_rauthy() {
 
 #[tokio::test]
 #[serial]
+async fn token_lean_rauthy_username_reprend_l_email() {
+    with_app(|server, env| async move {
+        // Géométrie réelle d'un access token Rauthy (D19) : sans
+        // preferred_username (le claim vit dans l'id_token). La réponse
+        // user-info ne doit JAMAIS sérialiser `username: null` — le contrat
+        // partagé UserInfo attend un string (le front plante sinon :
+        // « réponse illisible : invalid type: null »).
+        let token = common::lean_token(
+            &env.base,
+            "00000000-0000-0000-0000-00000000000c",
+            "lean@example.com",
+        );
+        let body: serde_json::Value = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", bearer(&token))
+            .await
+            .json();
+        assert_eq!(body["username"], "lean@example.com");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
 async fn un_tenant_ne_voit_pas_les_orgs_de_l_autre() {
     with_app(|server, env| async move {
         // Provisionne alice puis bob.
