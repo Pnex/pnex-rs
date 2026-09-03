@@ -11,6 +11,8 @@ pub mod device_states;
 pub mod device_tokens;
 pub mod device_types;
 pub mod firmware_artifacts;
+pub mod flow_versions;
+pub mod flows;
 pub mod fluid_mixtures;
 pub mod formula_data_sources;
 pub mod formulas;
