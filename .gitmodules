@@ -1,0 +1,3 @@
+[submodule "vendor/edgelinkd"]
+	path = vendor/edgelinkd
+	url = https://github.com/oldrev/edgelinkd.git

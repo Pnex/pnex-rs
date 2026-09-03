@@ -57,6 +57,7 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
         "svg_files",
         "build_records",
         "fluid_mixtures",
+        "flows",
     ] {
         assert_eq!(
             nullable_of(&db, t, "org_id").await,
@@ -90,6 +91,10 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
         // la disparition du device / de l'org.
         ("device_states", "device_registry_id"),
         ("openobserve_orgs", "org_id"),
+        // D18 : un flow et ses versions suivent la org ; l'historique
+        // append-only suit le flow.
+        ("flows", "org_id"),
+        ("flow_versions", "flow_id"),
     ] {
         assert_eq!(
             fk_del_type(&db, t, col).await,
@@ -97,6 +102,46 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
             "{t}.{col} doit être CASCADE on delete"
         );
     }
+
+    // D18 — flows : références nullable en SET NULL ('n').
+    for (t, col) in [
+        // Attachement produit au device : le flow survit à la disparition
+        // du device, simplement dé-lié.
+        ("flows", "device_registry_id"),
+        // FK circulaire flows → flow_versions : une version n'est jamais
+        // supprimée (append-only), mais SET NULL si tel était le cas.
+        ("flows", "deployed_version_id"),
+    ] {
+        assert_eq!(
+            nullable_of(&db, t, col).await,
+            "YES",
+            "{t}.{col} doit être nullable"
+        );
+        assert_eq!(
+            fk_del_type(&db, t, col).await,
+            "n",
+            "{t}.{col} doit être SET NULL on delete"
+        );
+    }
+
+    // D18 — versionnement : (flow_id, version_number) unique.
+    let idx = sea_orm::ConnectionTrait::query_one_raw(
+        &db,
+        sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            "select count(*)::int as n from pg_indexes \
+             where indexname = 'uniq_flow_versions_flow_number' \
+             and tablename = 'flow_versions'",
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let n_idx: i32 = idx.try_get("", "n").unwrap();
+    assert_eq!(
+        n_idx, 1,
+        "l'index unique uniq_flow_versions_flow_number doit exister"
+    );
 
     // Bail de vie (D9) : 1:1 avec le registre, last_seen toujours renseigné.
     assert_eq!(
@@ -133,3 +178,50 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
         "tables de copie et catalogue fluides doivent rester supprimées"
     );
 }
+
+/// D18 — le `down()` de la migration flows doit casser proprement le cycle
+/// FK (contrainte circulaire retirée en premier). Auto-porté : la base
+/// scratch est créée/supprimée par le test lui-même (le down() est destructif).
+#[tokio::test]
+async fn down_flows_casse_le_cycle_fk_proprement() {
+    let base = std::env::var("TEST_DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://pnex:pnex@localhost:5432/pnex_test".to_string());
+    let admin_url = base.rsplit_once('/').map_or_else(|| base.clone(), |(prefix, _)| format!("{prefix}/postgres"));
+    let scratch = format!("pnex_flow_down_test_{}", std::process::id());
+
+    let admin = sea_orm::Database::connect(&admin_url).await.unwrap();
+    let _ = sea_orm::ConnectionTrait::execute_unprepared(
+        &admin,
+        &format!("DROP DATABASE IF EXISTS {scratch}"),
+    )
+    .await;
+    sea_orm::ConnectionTrait::execute_unprepared(&admin, &format!("CREATE DATABASE {scratch}"))
+        .await
+        .unwrap();
+
+    let url = base.rsplit_once('/').map_or_else(|| base.clone(), |(prefix, _)| format!("{prefix}/{scratch}"));
+    let db = sea_orm::Database::connect(&url).await.unwrap();
+    Migrator::up(&db, None).await.unwrap();
+    Migrator::down(&db, Some(1)).await.unwrap();
+
+    let row = sea_orm::ConnectionTrait::query_one_raw(
+        &db,
+        sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            "select count(*)::int as n from information_schema.tables \
+             where table_name in ('flows', 'flow_versions')",
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let n: i32 = row.try_get("", "n").unwrap();
+    assert_eq!(n, 0, "les tables flows doivent disparaître après down()");
+
+    let _ = sea_orm::ConnectionTrait::execute_unprepared(
+        &admin,
+        &format!("DROP DATABASE IF EXISTS {scratch}"),
+    )
+    .await;
+}
+

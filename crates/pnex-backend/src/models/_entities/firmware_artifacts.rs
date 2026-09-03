@@ -10,7 +10,9 @@ pub struct Model {
     pub updated_at: DateTimeWithTimeZone,
     #[sea_orm(primary_key)]
     pub id: i64,
+    #[sea_orm(unique)]
     pub key: String,
+    #[sea_orm(column_type = "VarBinary(StringLen::None)")]
     pub bytes: Vec<u8>,
     pub size_bytes: i64,
     pub sha256: Option<String>,

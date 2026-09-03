@@ -26,10 +26,14 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
+    #[sea_orm(has_many = "super::device_capability_instances::Entity")]
+    DeviceCapabilityInstances,
     #[sea_orm(has_one = "super::device_states::Entity")]
     DeviceStates,
     #[sea_orm(has_one = "super::device_tokens::Entity")]
     DeviceTokens,
+    #[sea_orm(has_many = "super::flows::Entity")]
+    Flows,
     #[sea_orm(has_many = "super::formula_data_sources::Entity")]
     FormulaDataSources,
     #[sea_orm(
@@ -50,6 +54,12 @@ pub enum Relation {
     PredefinedDevices,
 }
 
+impl Related<super::device_capability_instances::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::DeviceCapabilityInstances.def()
+    }
+}
+
 impl Related<super::device_states::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::DeviceStates.def()
@@ -59,6 +69,12 @@ impl Related<super::device_states::Entity> for Entity {
 impl Related<super::device_tokens::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::DeviceTokens.def()
+    }
+}
+
+impl Related<super::flows::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Flows.def()
     }
 }
 

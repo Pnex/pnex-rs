@@ -6,17 +6,25 @@ members = [
     "crates/pnex-backend/migration",
     "crates/pnex-frontend",
     "crates/pnex-firmware-builder",
+    "crates/pnex-node-sql",
+    "crates/pnex-flow-runtime",
 ]
+# EdgeLinkd vendored (submodule) reste un workspace séparé — sans exclude,
+# Cargo rattacherait ses crates au workspace PNEX et l'héritage
+# `workspace.dependencies` échouerait.
+exclude = ["vendor/edgelinkd"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 license = "AGPL-3.0-or-later"
-rust-version = "1.85"
+# 1.88 : edgelink-core (vendored, edition 2024) utilise les let-chains
+rust-version = "1.88"
 
 [workspace.dependencies]
 pnex-core = { path = "crates/pnex-core" }
 pnex-firmware-builder = { path = "crates/pnex-firmware-builder" }
+pnex-node-sql = { path = "crates/pnex-node-sql" }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

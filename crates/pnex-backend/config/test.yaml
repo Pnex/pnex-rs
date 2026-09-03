@@ -72,4 +72,16 @@ settings:
     pio_cmd: ./tests/fixtures/firmware/fake_pio.sh
     esptool_cmd: ./tests/fixtures/firmware/fake_esptool.sh
     timeout_secs: 2
+  # Flows ETL (D18) : COUPÉ par défaut (aucun process enfant dans les tests).
+  # Les tests de flows activent via env avant le boot (#[serial]) :
+  #   PNEX_FLOW_ENABLED=true + PNEX_FLOW_RUNTIME_CMD=<runtime réel ou fake>.
+  flow:
+    enabled: {{ get_env(name="PNEX_FLOW_ENABLED", default="false") }}
+    runtime_cmd: {{ get_env(name="PNEX_FLOW_RUNTIME_CMD", default="pnex-flow-runtime") }}
+    state_dir: {{ get_env(name="PNEX_FLOW_STATE_DIR", default="/tmp/pnex-flow-test-state") }}
+    restart_backoff_secs: 1
+    restart_backoff_max_secs: 2
+    terminate_secs: 2
+    reload_ack_secs: {{ get_env(name="PNEX_FLOW_RELOAD_ACK_SECS", default="5") }}
+    env_allowlist: ["DATABASE_URL"]
 # En test : issuer redirigeable vers un JWKS mock (voir tests/auth_*).

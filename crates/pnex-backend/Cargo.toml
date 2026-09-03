@@ -22,6 +22,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { version = "1.45", default-features = false, features = [
   "rt-multi-thread",
+  "time",
+  "io-util",
+  # Superviseur du runtime de flows (D18) : spawn + pipes
+  "process",
 ] }
 async-trait = { version = "0.1" }
 axum = { version = "0.8", features = ["ws"] }
@@ -37,6 +41,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 regex = { version = "1.11" }
 # Génération des DeviceTokens (parité secrets.token_urlsafe + clé ChaCha20)
 rand = "0.9"
+# Superviseur du runtime de flows (D18) : SIGUSR1 + test de vie du pid
+libc = "0.2"
 base64 = "0.22"
 # Empreinte sha256 des artefacts firmware (intégrité, table firmware_artifacts)
 sha2 = "0.10"

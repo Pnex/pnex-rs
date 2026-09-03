@@ -1,0 +1,113 @@
+### Contrat API flows ETL (D18) — exemples de requêtes/réponses.
+### Source de vérité = Postgres (flow_versions append-only) ; flows.json
+### n'est qu'un artefact projeté au deploy. Cf. docs/architecture/flow-engine.md.
+###
+### Erreurs : 400 champ-par-champ forme DRF {"<champ>": msg} ou
+### {"violations": [...]} pour un graphe invalide ; 409 {"error": "conflict",
+### "description": ...} si expected_version_number périmé (concurrence
+### optimiste — écart assumé vs 400) ; 503 {"error": "flow_runtime"} si le
+### moteur est coupé (settings.flow.enabled=false) ou sans acquittement.
+
+### Créer un flow (flow + version 1 en une transaction) — 201
+POST http://localhost:5150/api/v1/flows
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{
+  "name": "pipeline température",
+  "device_id": null,
+  "author": "alice",
+  "graph": {
+    "nodes": [
+      {
+        "id": "n1", "kind": "inject",
+        "config": { "repeat_secs": 60.0, "payload": null },
+        "outputs": [{ "port": 0, "targets": ["n2"] }]
+      },
+      {
+        "id": "n2", "kind": "pnex_sql",
+        "config": { "query": "SELECT 1", "params": [] },
+        "outputs": [{ "port": 0, "targets": ["n3"] }]
+      },
+      { "id": "n3", "kind": "debug", "config": {} }
+    ]
+  }
+}
+
+### 201 →
+### {
+###   "id": 1, "org_id": 1, "device_id": null,
+###   "name": "pipeline température", "status": "draft",
+###   "deployed_version_number": null, "latest_version_number": 1,
+###   "graph": { ... }, "created_at": "...", "updated_at": "..."
+### }
+
+### Lister les flows de l'org (D14 : {count, next, previous, results})
+### Filtres : search (nom), status (draft|deployed|error)
+GET http://localhost:5150/api/v1/flows?search=température&limit=20
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Détail d'un flow (graphe de la dernière version)
+GET http://localhost:5150/api/v1/flows/1
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Enregistrer une NOUVELLE version (append-only ; aucun rechargement
+### runtime — le déploiement est une action séparée).
+### 409 si expected_version_number ≠ version courante.
+PATCH http://localhost:5150/api/v1/flows/1
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{
+  "expected_version_number": 1,
+  "note": "double la fréquence",
+  "author": "alice",
+  "graph": { "nodes": [] }
+}
+
+### Historique (paginé, ordre descendant) ; "deployed": true sur la version
+### actuellement publiée.
+GET http://localhost:5150/api/v1/flows/1/versions
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Graphe d'une version précise (audit/rollback)
+GET http://localhost:5150/api/v1/flows/1/versions/1
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Déployer une version (absent = dernière) → reprojection de TOUS les flows
+### déployés de l'instance + rechargement à chaud (SIGUSR1). 503 si le moteur
+### est coupé. Rollback = même appel sur une version antérieure.
+POST http://localhost:5150/api/v1/flows/1/deploy
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{ "version_number": 2 }
+
+### Rollback explicite (alias sémantique du deploy)
+POST http://localhost:5150/api/v1/flows/1/rollback
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{ "version_number": 1 }
+
+### État du runtime vu par le superviseur
+GET http://localhost:5150/api/v1/flows/1/runtime
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### 200 →
+### { "running": true, "pid": 4242, "restarts": 1,
+###   "deployed_flow_id": 1, "deployed_version_number": 2 }
+
+### Supprimer (204 ; versions en cascade ; artefact reprojeté si déployé)
+DELETE http://localhost:5150/api/v1/flows/1
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}

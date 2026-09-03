@@ -21,6 +21,8 @@ pub enum Relation {
     BuildRecords,
     #[sea_orm(has_many = "super::device_registries::Entity")]
     DeviceRegistries,
+    #[sea_orm(has_many = "super::flows::Entity")]
+    Flows,
     #[sea_orm(has_many = "super::fluid_mixtures::Entity")]
     FluidMixtures,
     #[sea_orm(has_many = "super::formulas::Entity")]
@@ -54,6 +56,12 @@ impl Related<super::build_records::Entity> for Entity {
 impl Related<super::device_registries::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::DeviceRegistries.def()
+    }
+}
+
+impl Related<super::flows::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Flows.def()
     }
 }
 

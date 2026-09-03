@@ -475,6 +475,28 @@ de sujets Django).
   le sens du flux, capture série passive via pyserial (le port DTR/RTS
   reset la carte — ne pas confondre « muet » et « absent »).
 
+- 2026-09-03 : **Moteur de flow ETL « Node-RED full-Rust » — Phase 0 + Phase 1
+  implémentées** (worktree `worktree-etl-flow-engine`, en attente de revue
+  humaine). EdgeLinkd vendored en submodule épinglé (`d0a5e11`, Apache-2.0,
+  jamais patché — `vendor/README.md`). Décision **D18** : mode B renforcé —
+  notre binaire `pnex-flow-runtime` lie `edgelink-core` (features `core,js`,
+  bug amont `rquickjs` non conditionné documenté) + nœuds PNEX ; runtime
+  headless supervisé par Loco (`services/flow_supervisor.rs`, backoff
+  exponentiel, env enfant en allowlist), **SIGUSR1 = rechargement à chaud**
+  via `Engine::redeploy_flows` (aucune surface HTTP, éditeur Node-RED jamais
+  exposé). Modèle typé dans `pnex-core/src/flow.rs` (pur, wasm32) +
+  projection flows.json (`pnex_flow_id`/`pnex_version` embarqués) ;
+  `flows`/`flow_versions` versionnées append-only (FK circulaire PG-only,
+  409 concurrence optimiste — écart assumé) ; API `/api/v1/flows` (CRUD,
+  versions, deploy/rollback reprojetant tous les flows déployés, runtime) ;
+  premier nœud custom `pnex-sql` (SELECT-only au build, contrat typé en
+  frontière, sqlx Postgres, DATABASE_URL par env). Acceptance PRD verte :
+  (a) inject→debug headless lancé/arrêté par Loco, (b) vraie requête SQL via
+  le runtime, (c) save sans reload puis deploy v2, (d) rollback v1, (e) 409,
+  (f) rejets typés en frontière. Gates : check natif+wasm32, tests workspace,
+  clippy -D warnings ; CI + sous-module non récursif + job `arm-check`
+  (aarch64/armv7). Docs : `docs/architecture/flow-engine.md`,
+  `docs/contracts/flows.http`. En attente de revue humaine.
 - 2026-09-02 (nuit, fin) : **Le device générique connecte enfin — deux
   derniers bugs + une alerte de conception**. (4) Le firmware générique
   n'appelait **jamais `cryptoSetKey(ENCRYPTION_KEY)`** : `cryptoReady()=

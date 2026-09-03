@@ -35,3 +35,7 @@ firmware/**/.pio/
 
 # Graphe de connaissances graphify (généré, projet et sous-dossiers)
 graphify-out/
+
+# Moteur de flow ETL (D18) — état du runtime (flows.json + runtime.json)
+crates/pnex-backend/flow-state/
+flow-state/

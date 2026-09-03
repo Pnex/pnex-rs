@@ -1,6 +1,7 @@
 pub mod builds;
 pub mod dashboard;
 pub mod devices;
+pub mod flows;
 pub mod health;
 pub mod oauth2;
 pub mod orgs;
