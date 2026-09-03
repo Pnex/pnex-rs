@@ -31,3 +31,7 @@ firmware/**/.pio/
 # Outillage local
 .task/
 .claude/settings.local.json*
+.claude/worktrees/
+
+# Graphe de connaissances graphify (généré, projet et sous-dossiers)
+graphify-out/
