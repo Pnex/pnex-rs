@@ -56,7 +56,7 @@ pub fn spawn_supervisor(ctx: &AppContext) {
 
 /// Variante testable : réglages explicites.
 pub fn spawn_supervisor_with(settings: FlowSettings) {
-    if !SPAWNED.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+    if SPAWNED.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
         tracing::warn!("superviseur de flows déjà lancé dans ce process");
         return;
     }
@@ -110,6 +110,9 @@ fn state_dir_of(settings: &FlowSettings) -> PathBuf {
 
 struct ChildProc {
     pid: u32,
+    /// SIGUSR1 envoyés à CET enfant (acquittés par le compteur `redeploys`
+    /// de runtime.json — ou par la version projetée, pour le vrai runtime).
+    signals_sent: u64,
     /// Récepteur de fin de vie (description de l'exit — le watcher récolte
     /// le process dans sa propre tâche).
     exit_rx: std_mpsc::Receiver<String>,
@@ -131,7 +134,6 @@ async fn run_supervisor(settings: FlowSettings, mut rx: mpsc::Receiver<Superviso
     let mut started_at: Option<tokio::time::Instant> = None;
     let mut backoff = settings.restart_backoff_secs;
     let mut respawn_at = tokio::time::Instant::now();
-    let mut deploy_seq: u64 = 0;
     loop {
         // 1) Un enfant est-il mort ? → reprise avec backoff exponentiel borné
         // (reset si l'enfant a tenu assez longtemps pour être jugé stable).
@@ -167,9 +169,8 @@ async fn run_supervisor(settings: FlowSettings, mut rx: mpsc::Receiver<Superviso
         // 3) Commandes (non bloquant : on boucle à intervalle court).
         match rx.try_recv() {
             Ok(SupervisorCmd::Deploy { artifact, meta, reply }) => {
-                deploy_seq += 1;
                 let outcome =
-                    handle_deploy(&settings, &flows_path, &runtime_json, &mut child, &artifact, meta, deploy_seq).await;
+                    handle_deploy(&settings, &flows_path, &runtime_json, &mut child, &artifact, meta).await;
                 if outcome.is_ok() {
                     runtime_wanted = true;
                     started_at = Some(tokio::time::Instant::now());
@@ -197,7 +198,6 @@ async fn handle_deploy(
     child: &mut Option<ChildProc>,
     artifact: &Value,
     meta: FlowArtifactMeta,
-    deploy_seq: u64,
 ) -> Result<bool, String> {
     // 1) Écriture atomique de l'artefact (tmp + rename).
     let tmp = flows_path.with_extension("json.tmp");
@@ -221,34 +221,36 @@ async fn handle_deploy(
     let pid = child.as_ref().expect("enfant vivant").pid;
 
     // 3) SIGUSR1 — sauf au tout premier spawn, qui lit déjà le fichier frais.
+    let mut signals_sent = 0;
     if alive {
         if let Err(e) = signal_reload(pid) {
             return Err(format!("SIGUSR1 vers le pid {pid} : {e}"));
         }
+        signals_sent = 1;
+    }
+    if let Some(c) = child.as_mut() {
+        c.signals_sent += signals_sent;
     }
 
-    // 4) Acquittement : le runtime met à jour runtime.json (redeploys et/ou
-    //    version_number) une fois le redéploiement effectif.
+    // 4) Acquittement : le runtime met à jour runtime.json — soit avec la
+    //    version projetée (vrai runtime), soit en incrémentant son compteur
+    //    de rechargements (contrat générique, faux runtime de test). On
+    //    attend l'un ou l'autre.
+    let expected_signals = child.as_ref().map(|c| c.signals_sent).unwrap_or(0);
     let deadline = tokio::time::Instant::now() + Duration::from_secs(settings.reload_ack_secs);
     while tokio::time::Instant::now() < deadline {
         if let Ok(raw) = std::fs::read_to_string(runtime_json) {
             if let Ok(v) = serde_json::from_str::<Value>(&raw) {
-                let version_ok = v.get("version_number").and_then(|n| n.as_i64()) == Some(meta.version_number);
-                let flow_ok = v.get("flow_id").and_then(|n| n.as_i64()) == Some(meta.flow_id);
+                let version_ok = v.get("version_number").and_then(|n| n.as_i64()) == Some(meta.version_number)
+                    && v.get("flow_id").and_then(|n| n.as_i64()) == Some(meta.flow_id);
                 let redeploys = v.get("redeploys").and_then(|r| r.as_u64()).unwrap_or(0);
-                if version_ok && flow_ok && (alive || redeploys == 0) {
+                if version_ok || redeploys >= expected_signals {
                     tracing::info!(
                         flow_id = meta.flow_id,
                         version = meta.version_number,
                         pid,
                         "flow déployé"
                     );
-                    return Ok(!alive);
-                }
-                // Faux runtime de test : il n'écrit pas la version mais
-                // confirme par le compteur de rechargements.
-                if !version_ok && redeploys >= deploy_seq {
-                    tracing::info!(flow_id = meta.flow_id, version = meta.version_number, "flow déployé (acquitté par compteur)");
                     return Ok(!alive);
                 }
             }
@@ -306,7 +308,7 @@ fn spawn_child(settings: &FlowSettings, flows_path: &std::path::Path) -> Option<
         let status = child.wait().await;
         let _ = exit_tx.send(status.map_or_else(|e| e.to_string(), |s| s.to_string()));
     });
-    Some(ChildProc { pid, exit_rx })
+    Some(ChildProc { pid, signals_sent: 0, exit_rx })
 }
 
 async fn pump_lines(stream: impl tokio::io::AsyncRead + Unpin, level: tracing::Level) {

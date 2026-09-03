@@ -114,9 +114,28 @@ mod tests {
         assert_eq!(d.runtime_cmd, "pnex-flow-runtime");
         assert_eq!(d.env_allowlist, vec!["DATABASE_URL".to_string()]);
 
-        // Config sans section `flow` → défauts.
-        let config: Config = serde_json::from_value(serde_json::json!({})).unwrap_or_default();
+        // Config sans section `flow` → défauts (logger seul champ requis).
+        let minimal = serde_json::json!({
+            "logger": { "enable": false, "level": "info", "format": "compact" },
+            "server": { "port": 5150, "host": "http://localhost" },
+            "database": { "uri": "postgres://pnex:pnex@localhost:5432/pnex", "enable_logging": false, "auto_migrate": false, "connect_timeout": 500, "idle_timeout": 500, "min_connections": 1, "max_connections": 5 }
+        });
+        let config: Config = serde_json::from_value(minimal.clone())
+            .expect("config minimale désérialisable");
         let s = FlowSettings::from_config(&config);
         assert_eq!(s.state_dir, d.state_dir);
+
+        // Section partielle : seuls les champs fournis surchargent.
+        let config: Config = serde_json::from_value(serde_json::json!({
+            "logger": { "enable": false, "level": "info", "format": "compact" },
+            "server": { "port": 5150, "host": "http://localhost" },
+            "database": { "uri": "postgres://pnex:pnex@localhost:5432/pnex", "enable_logging": false, "auto_migrate": false, "connect_timeout": 500, "idle_timeout": 500, "min_connections": 1, "max_connections": 5 },
+            "settings": { "flow": { "enabled": true, "state_dir": "/tmp/flow-etat" } }
+        }))
+        .expect("config partielle désérialisable");
+        let s = FlowSettings::from_config(&config);
+        assert!(s.enabled);
+        assert_eq!(s.state_dir, "/tmp/flow-etat");
+        assert_eq!(s.runtime_cmd, d.runtime_cmd, "champ absent → défaut");
     }
 }

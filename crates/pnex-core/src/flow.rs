@@ -56,19 +56,13 @@ pub struct InjectConfig {
 /// Configuration du nœud custom `pnex-sql` — requête **lecture seule** sur
 /// Postgres. La connexion vient de l'env du runtime (`DATABASE_URL`), jamais
 /// du graphe (aucun secret dans flows.json).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PnexSqlConfig {
     pub query: String,
     /// Clés que `msg.payload` doit contenir (contrat d'entrée typé). Vide =
     /// tout payload accepté (déclencheur pur).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub params: Vec<String>,
-}
-
-impl Default for PnexSqlConfig {
-    fn default() -> Self {
-        Self { query: String::new(), params: Vec::new() }
-    }
 }
 
 /// Configuration du nœud `debug` (capture de la sortie d'un pipeline).
