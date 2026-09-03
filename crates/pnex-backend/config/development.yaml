@@ -132,7 +132,9 @@ settings:
   # aucun secret dans flows.json (PRD §8).
   flow:
     enabled: {{ get_env(name="PNEX_FLOW_ENABLED", default="false") }}
-    runtime_cmd: {{ get_env(name="PNEX_FLOW_RUNTIME_CMD", default="pnex-flow-runtime") }}
+    # Défaut dev : binaire du workspace (résolu contre la racine monorepo,
+    # quel que soit le cwd) — faire `cargo build -p pnex-flow-runtime` avant.
+    runtime_cmd: {{ get_env(name="PNEX_FLOW_RUNTIME_CMD", default="./target/debug/pnex-flow-runtime") }}
     state_dir: {{ get_env(name="PNEX_FLOW_STATE_DIR", default="./flow-state") }}
     restart_backoff_secs: {{ get_env(name="PNEX_FLOW_BACKOFF_SECS", default="5") }}
     restart_backoff_max_secs: {{ get_env(name="PNEX_FLOW_BACKOFF_MAX_SECS", default="60") }}
