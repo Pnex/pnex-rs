@@ -1,7 +1,7 @@
 //! Stockage clé/valeur du front, abstrait de la plateforme.
 //!
 //! - **web (wasm32)** : `localStorage` (persistance) et `sessionStorage`
-//!   (verifier PKCE — survit à la redirection vers Keycloak mais pas à la
+//!   (verifier PKCE — survit à la redirection vers l'IdP mais pas à la
 //!   fermeture de l'onglet) via web-sys. Les navigateurs hostiles au storage
 //!   (mode privé Safari) dégradent silencieusement en no-op.
 //! - **natif (future cible desktop/mobile)** : implémentation mémoire. Une

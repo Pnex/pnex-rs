@@ -1,11 +1,12 @@
-//! Validation locale des JWT Keycloak via JWKS (RS256), sans introspection —
-//! parité Django, **avec les durcissements** décidés en Phase 3 (rapport
+//! Validation locale des JWT Rauthy via JWKS (RS256), sans introspection —
+//! continuité Django, **avec les durcissements** décidés en Phase 3 (rapport
 //! Phase 0 §3.4-3.5) : vérification explicite de l'`iss`, audience restreinte
 //! à `{client_id, "account"}`, algorithme RS256 uniquement.
 //!
 //! Les JWKS sont mises en cache en mémoire et rafraîchies quand un `kid`
-//! inconnu apparaît (rotation de clés Keycloak) — Django cachait 1 h sans
-//! rafraîchissement sur `kid` inconnu.
+//! inconnu apparaît (rotation de clés Rauthy) — Django cachait 1 h sans
+//! rafraîchissement sur `kid` inconnu. Le client `pnex` est configuré côté
+//! Rauthy avec `access_token_alg: RS256` (deploy/rauthy/bootstrap/clients.json).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -15,7 +16,7 @@ use serde::Deserialize;
 use tokio::sync::{Mutex, RwLock};
 
 use super::claims::Claims;
-use super::settings::KeycloakSettings;
+use super::settings::RauthySettings;
 
 #[derive(Debug, thiserror::Error)]
 pub enum VerifyError {
@@ -31,7 +32,7 @@ pub enum VerifyError {
     BadIssuer,
     #[error("audience (aud) invalide")]
     BadAudience,
-    #[error("Keycloak injoignable pour les JWKS : {0}")]
+    #[error("Rauthy injoignable pour les JWKS : {0}")]
     JwksUnreachable(String),
 }
 
@@ -46,14 +47,18 @@ struct Jwk {
     kty: String,
     #[serde(default)]
     alg: Option<String>,
-    n: String,
-    e: String,
+    /// Absents sur les clés non-RSA (Rauthy publie aussi des clés OKP/EdDSA
+    /// dans le même ensemble) — les entrées sans `n`/`e` sont ignorées.
+    #[serde(default)]
+    n: Option<String>,
+    #[serde(default)]
+    e: Option<String>,
 }
 
 pub struct JwksVerifier {
     issuer: String,
-    /// Audience acceptée : le client PNEX + "account" (mapper par défaut
-    /// Keycloak). Un token émis pour un autre client du realm est rejeté.
+    /// Audience acceptée : le client PNEX + "account" (héritage Keycloak,
+    /// conservé par prudence). Un token émis pour un autre client est rejeté.
     audiences: Vec<String>,
     jwks_url: String,
     http: reqwest::Client,
@@ -61,12 +66,14 @@ pub struct JwksVerifier {
 }
 
 impl JwksVerifier {
-    pub fn new(settings: &KeycloakSettings) -> Self {
+    pub fn new(settings: &RauthySettings) -> Self {
         Self {
             issuer: settings.issuer(),
             audiences: vec![settings.client_id.clone(), "account".into()],
             jwks_url: settings.jwks_url(),
             http: reqwest::Client::builder()
+                // Rauthy refuse les requêtes sans User-Agent (400).
+                .user_agent("pnex-server")
                 .timeout(std::time::Duration::from_secs(5))
                 .build()
                 .expect("reqwest client"),
@@ -129,7 +136,11 @@ impl JwksVerifier {
                     continue;
                 }
             }
-            if let Ok(key) = DecodingKey::from_rsa_components(&jwk.n, &jwk.e) {
+            // Clés non-RSA (OKP/EdDSA) : pas de composants n/e → ignorées.
+            let (Some(n), Some(e)) = (jwk.n, jwk.e) else {
+                continue;
+            };
+            if let Ok(key) = DecodingKey::from_rsa_components(&n, &e) {
                 keys.insert(jwk.kid, Arc::new(key));
             }
         }
@@ -138,11 +149,11 @@ impl JwksVerifier {
 }
 
 /// Registre process-global : un vérifieur par issuer (dev/test/prod peuvent
-/// pointer vers des realms différents dans le même process de test).
+/// pointer vers des IdP différents dans le même process de test).
 static VERIFIERS: std::sync::OnceLock<Mutex<HashMap<String, Arc<JwksVerifier>>>> =
     std::sync::OnceLock::new();
 
-pub async fn verifier_for(settings: &KeycloakSettings) -> Arc<JwksVerifier> {
+pub async fn verifier_for(settings: &RauthySettings) -> Arc<JwksVerifier> {
     let registry = VERIFIERS.get_or_init(|| Mutex::new(HashMap::new()));
     let mut guard = registry.lock().await;
     guard

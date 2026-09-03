@@ -18,14 +18,14 @@ use serial_test::serial;
 /// `#[serial]` du binaire tourment dans le même process.
 struct EnvGuard {
     prev_db: Option<String>,
-    prev_keycloak: Option<String>,
+    prev_rauthy: Option<String>,
 }
 
 impl EnvGuard {
     fn capture() -> Self {
         Self {
             prev_db: std::env::var("TEST_DATABASE_URL").ok(),
-            prev_keycloak: std::env::var("KEYCLOAK_URL").ok(),
+            prev_rauthy: std::env::var("RAUTHY_URL").ok(),
         }
     }
 }
@@ -36,9 +36,9 @@ impl Drop for EnvGuard {
             Some(v) => unsafe { std::env::set_var("TEST_DATABASE_URL", v) },
             None => unsafe { std::env::remove_var("TEST_DATABASE_URL") },
         }
-        match self.prev_keycloak.take() {
-            Some(v) => unsafe { std::env::set_var("KEYCLOAK_URL", v) },
-            None => unsafe { std::env::remove_var("KEYCLOAK_URL") },
+        match self.prev_rauthy.take() {
+            Some(v) => unsafe { std::env::set_var("RAUTHY_URL", v) },
+            None => unsafe { std::env::remove_var("RAUTHY_URL") },
         }
     }
 }
@@ -57,8 +57,8 @@ async fn sqlite_boot_build_download() {
     let guard = EnvGuard::capture();
     unsafe { std::env::set_var("TEST_DATABASE_URL", &uri) };
 
-    let base = common::spawn_mock_keycloak().await;
-    unsafe { std::env::set_var("KEYCLOAK_URL", &base) };
+    let base = common::spawn_mock_rauthy().await;
+    unsafe { std::env::set_var("RAUTHY_URL", &base) };
     let alice = common::valid_token(
         &base,
         "00000000-0000-0000-0000-00000000000a",

@@ -120,7 +120,7 @@ async fn send(
     req.send().await.map_err(|err| ApiError::network(&err))
 }
 
-/// Refresh single-flight : un seul appel Keycloak à la fois, partagé entre
+/// Refresh single-flight : un seul appel IdP à la fois, partagé entre
 /// tous les appelants 401 concurrents. Échec → session expirée.
 async fn ensure_refresh() -> Result<(), ApiError> {
     // Aucun await entre l'emprunt et l'insertion → pas de course (mono-thread

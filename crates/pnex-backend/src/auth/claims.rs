@@ -1,13 +1,15 @@
-//! Claims Keycloak attendus dans les access tokens.
+//! Claims IdP attendus dans les access tokens.
 //!
-//! Parité fonctionnelle Django (`KeycloakJWTAuthentication`) : le provisioning
-//! JIT lit `preferred_username` (obligatoire), `email`, `given_name`,
-//! `family_name`. Les champs d'identité absents restent `None` — la validation
-//! (signature, `iss`, `aud`, `exp`) est faite dans [`super::jwks`].
+//! Continuité Django (`KeycloakJWTAuthentication`) : le provisioning JIT lit
+//! `email`, `given_name`, `family_name`, `preferred_username`. **Tous les
+//! champs d'identité sont optionnels** : Rauthy émet des access tokens lean
+//! (pas de `preferred_username`/`given_name`/`family_name` — ces claims
+//! vivent dans l'id_token et `/userinfo`). La validation (signature, `iss`,
+//! `aud`, `exp`) est faite dans [`super::jwks`].
 
 use serde::Deserialize;
 
-/// `aud` peut être une string ou une liste selon les mappers du client.
+/// `aud` peut être une string ou une liste selon l'IdP/client.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
 pub enum Aud {
@@ -26,9 +28,11 @@ impl Aud {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Claims {
-    /// UUID Keycloak — clé de JIT provisioning (`users.keycloak_uuid`).
+    /// `sub` de l'IdP (Rauthy : 24 caractères alphanumériques) — clé du JIT
+    /// provisioning (`users.idp_sub`).
     pub sub: String,
-    pub preferred_username: String,
+    /// Rauthy ne l'émet pas dans l'access token (claim du profil/id_token).
+    pub preferred_username: Option<String>,
     pub email: Option<String>,
     pub given_name: Option<String>,
     pub family_name: Option<String>,
@@ -38,13 +42,18 @@ pub struct Claims {
 }
 
 impl Claims {
-    /// Nom affiché : `given_name family_name`, sinon le username Keycloak.
+    /// Nom affiché : `given_name family_name`, sinon le username de l'IdP,
+    /// sinon l'email (Rauthy : access tokens lean, souvent email seul).
     pub fn display_name(&self) -> String {
         match (&self.given_name, &self.family_name) {
             (Some(g), Some(f)) => format!("{g} {f}"),
             (Some(g), None) => g.clone(),
             (None, Some(f)) => f.clone(),
-            (None, None) => self.preferred_username.clone(),
+            (None, None) => self
+                .preferred_username
+                .clone()
+                .or_else(|| self.email.clone())
+                .unwrap_or_else(|| self.sub.clone()),
         }
     }
 }

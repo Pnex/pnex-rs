@@ -1,5 +1,5 @@
-# Infra de développement PNEX — PostgreSQL 18 + Keycloak 26 + OpenObserve +
-# RustFS (S3-compatible, tier industriel D5 v2).
+# Infra de développement PNEX — PostgreSQL 18 + Rauthy (IdP OIDC full-Rust)
+# + OpenObserve + RustFS (S3-compatible, tier industriel D5 v2).
 # Usage : docker compose up -d
 # Le backend lit DATABASE_URL (voir .env.example).
 
@@ -23,22 +23,41 @@ services:
       timeout: 3s
       retries: 10
 
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.3
-    container_name: pnex-keycloak
-    command: start-dev --import-realm
+  # IdP OIDC full-Rust (D10) — DB embarquée hiqlite (volume /app/data),
+  # l'équivalent Rust de Keycloak. Bootstrap au premier démarrage uniquement
+  # (DB vide) : deploy/rauthy/bootstrap/*.json — client public pnex (PKCE
+  # S256) + users de test alice/bob. Admin UI : /auth/v1/admin (admin/admin).
+  # Ports raft/gossip hiqlite (8100/8200) volontairement non publiés.
+  rauthy:
+    image: ghcr.io/sebadob/rauthy:0.36.2
+    container_name: pnex-rauthy
+    depends_on:
+      - mailcrab
     environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
-      KC_HTTP_ENABLED: "true"
-      KC_HOSTNAME_STRICT: "false"
+      PUB_URL: localhost:8080
+      HQL_NODE_ID: 1
+      BOOTSTRAP_ADMIN_EMAIL: admin@localhost
+      BOOTSTRAP_ADMIN_PASSWORD_PLAIN: admin
+      # Inscription ouverte : l'activation des comptes passe par un mail —
+      # catcher SMTP en dev (UI des mails : http://localhost:1080).
+      SMTP_URL: mailcrab
+      SMTP_PORT: "1025"
+      SMTP_DANGER_INSECURE: "true"
     volumes:
-      # Realm de dev versionné (pnex-realm : client public pnex + users de
-      # test) — importé si le realm n'existe pas encore (H2 dev = perdu à
-      # chaque recréation du conteneur, donc réimporté automatiquement).
-      - ./deploy/keycloak:/opt/keycloak/data/import
+      - ./deploy/rauthy/config.toml:/app/config.toml:ro
+      - ./deploy/rauthy/bootstrap:/app/bootstrap:ro
+      - pnex-rauthydata:/app/data
     ports:
       - "8080:8080"
+
+  # Catcher SMTP dev — Rauthy active les comptes par mail après inscription
+  # ouverte. UI : http://localhost:1080 (image sans shell → pas de healthcheck,
+  # même approche que rustfs).
+  mailcrab:
+    image: marlonb/mailcrab:latest
+    container_name: pnex-mailcrab
+    ports:
+      - "1080:1080"
 
   # Stockage télémétrie (D1) : ingestion backend → org OpenObserve par org
   # PNEX (D2) — le provisioning org + token d'ingestion est automatisé
@@ -97,5 +116,6 @@ services:
 
 volumes:
   pnex-pgdata:
+  pnex-rauthydata:
   pnex-o2data:
   pnex-rustfsdata:

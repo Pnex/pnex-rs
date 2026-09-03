@@ -1,4 +1,4 @@
-//! Appels OAuth2 (proxy backend vers Keycloak) + démarrage du flow PKCE.
+//! Appels OAuth2 (proxy backend vers l'IdP Rauthy) + démarrage du flow PKCE.
 
 use pnex_core::TokenResponse;
 
@@ -38,7 +38,7 @@ pub async fn refresh_tokens(refresh_token: &str) -> Result<TokenResponse, ApiErr
     .await
 }
 
-/// Stocke les tokens (connecté) — l'id_token sert à l'end-session Keycloak.
+/// Stocke les tokens (connecté) — l'id_token sert à l'end-session Rauthy.
 pub fn store_tokens(tokens: &TokenResponse) {
     let local = storage::local();
     local.set(KEY_ACCESS_TOKEN, &tokens.access_token);
@@ -57,7 +57,7 @@ pub fn clear_tokens() {
     local.remove(KEY_ID_TOKEN);
 }
 
-/// Déconnexion Keycloak : redirige en pleine page vers le proxy end-session
+/// Déconnexion Rauthy : redirige en pleine page vers le proxy end-session
 /// (la session SSO du navigateur est détruite — sans ça, le login suivant
 /// ré-authentifie silencieusement). À appeler APRÈS la purge locale.
 #[cfg(target_arch = "wasm32")]
@@ -84,7 +84,7 @@ pub fn end_session() {
 }
 
 /// URI de callback du flow PKCE — même calcul au départ et au retour (l'URI
-/// doit être identique à la signature du code côté Keycloak).
+/// doit être identique à la signature du code côté Rauthy).
 pub fn redirect_uri() -> String {
     #[cfg(target_arch = "wasm32")]
     {
@@ -102,7 +102,7 @@ pub fn redirect_uri() -> String {
 
 /// Démarre le login PKCE : génère la paire verifier/challenge S256, stocke le
 /// verifier en sessionStorage (survit à la redirection, pas à l'onglet) puis
-/// redirige le navigateur vers le proxy SSO backend (302 → Keycloak).
+/// redirige le navigateur vers le proxy SSO backend (302 → Rauthy).
 ///
 /// `action` : `Some("register")` (création de compte) ou `Some("reset")`
 /// (changement de mot de passe) — mappés `kc_action` côté backend.
@@ -113,7 +113,7 @@ pub fn start_pkce_login(action: Option<&str>) {
     navigate(&url);
 }
 
-/// URL du proxy SSO backend (302 → Keycloak), PKCE S256 obligatoire.
+/// URL du proxy SSO backend (302 → Rauthy), PKCE S256 obligatoire.
 fn sso_url(challenge: &str, action: Option<&str>) -> String {
     let mut url = format!(
         "/api/v1/oauth2/sso?code_challenge={challenge}&code_challenge_method=S256&redirect_uri={}",
@@ -133,7 +133,7 @@ pub fn take_pkce_verifier() -> Option<String> {
     verifier
 }
 
-/// Redirection plein page (décharge le SPA pour la page Keycloak).
+/// Redirection plein page (décharge le SPA pour la page de login Rauthy).
 #[cfg(target_arch = "wasm32")]
 fn navigate(url: &str) {
     if let Some(window) = web_sys::window() {

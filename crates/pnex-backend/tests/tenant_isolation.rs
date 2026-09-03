@@ -1,5 +1,5 @@
 //! Isolation multi-tenant au niveau HTTP : deux utilisateurs (tokens mock
-//! signés par un faux Keycloak) ne doivent jamais voir ni modifier les
+//! signés par un faux Rauthy) ne doivent jamais voir ni modifier les
 //! organisations l'un de l'autre ; les règles de rôle s'appliquent.
 //!
 //! Nécessite PostgreSQL (DATABASE_URL / default pnex_test) — la base de test
@@ -17,17 +17,17 @@ struct Env {
     bob: String,
 }
 
-/// Boot l'app sur une base de test avec un faux Keycloak, exécute le callback.
+/// Boot l'app sur une base de test avec un faux Rauthy, exécute le callback.
 async fn with_app<F, Fut>(f: F)
 where
     F: FnOnce(axum_test::TestServer, Env) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
-    let base = common::spawn_mock_keycloak().await;
+    let base = common::spawn_mock_rauthy().await;
     // Rend visibles les warnings de l'extracteur (rejet JWT, provisioning).
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-    // settings.keycloak.base_url lit KEYCLOAK_URL — fixé avant le boot.
-    unsafe { std::env::set_var("KEYCLOAK_URL", &base) };
+    // settings.rauthy.base_url lit RAUTHY_URL — fixé avant le boot.
+    unsafe { std::env::set_var("RAUTHY_URL", &base) };
     let config: RequestConfig = RequestConfigBuilder::new().build();
     let env = Env {
         base: base.clone(),
@@ -142,7 +142,7 @@ async fn sub_change_avec_meme_email_relie_le_meme_user() {
             .json();
         assert_eq!(first["username"], "alice");
 
-        // Le même email revient avec un sub inconnu (realm Keycloak
+        // Le même email revient avec un sub inconnu (IdP migré — ex.
         // réimporté, migration d'IdP) : la ligne users doit être RE-LIÉE,
         // pas dupliquée (email unique) — même id, mêmes orgs.
         let sub_b = "00000000-0000-0000-0000-0000000000ab";
@@ -169,10 +169,10 @@ async fn sub_change_avec_meme_email_relie_le_meme_user() {
 
 #[tokio::test]
 #[serial]
-async fn sso_register_pointe_vers_registrations_et_reset_vers_kc_action() {
+async fn sso_register_et_reset_pointent_vers_les_pages_rauthy() {
     with_app(|server, _env| async move {
-        // register : endpoint registrations dédié (kc_action=register est
-        // ignoré en session SSO existante → re-login au lieu du formulaire).
+        // register : page UI d'inscription Rauthy (pas un endpoint OIDC,
+        // activation par mail — pas de params OAuth2).
         let res = server
             .get("/api/v1/oauth2/sso?code_challenge=abc&code_challenge_method=S256&action=register")
             .await;
@@ -183,13 +183,9 @@ async fn sso_register_pointe_vers_registrations_et_reset_vers_kc_action() {
             .and_then(|v| v.to_str().ok())
             .unwrap_or_default()
             .to_string();
-        assert!(
-            location.contains("/protocol/openid-connect/registrations?"),
-            "{location}"
-        );
-        assert!(location.contains("code_challenge=abc"), "{location}");
+        assert!(location.contains("/auth/v1/users/register"), "{location}");
 
-        // logout : end-session Keycloak avec id_token_hint + retour.
+        // logout : end-session Rauthy avec id_token_hint + retour.
         let res = server
             .get("/api/v1/oauth2/logout?id_token=jwt.jwt.jwt")
             .await;
@@ -200,14 +196,12 @@ async fn sso_register_pointe_vers_registrations_et_reset_vers_kc_action() {
             .and_then(|v| v.to_str().ok())
             .unwrap_or_default()
             .to_string();
-        assert!(
-            location.contains("/protocol/openid-connect/logout?"),
-            "{location}"
-        );
+        assert!(location.contains("/auth/v1/oidc/logout?"), "{location}");
         assert!(location.contains("id_token_hint=jwt.jwt.jwt"), "{location}");
         assert!(location.contains("post_logout_redirect_uri="), "{location}");
 
-        // reset : required action UPDATE_PASSWORD sur l'authorize classique.
+        // reset : page compte Rauthy (le changement de mot de passe vit dans
+        // l'IdP — équivalent du kc_action=UPDATE_PASSWORD Keycloak).
         let res = server
             .get("/api/v1/oauth2/sso?code_challenge=abc&code_challenge_method=S256&action=reset")
             .await;
@@ -217,11 +211,7 @@ async fn sso_register_pointe_vers_registrations_et_reset_vers_kc_action() {
             .and_then(|v| v.to_str().ok())
             .unwrap_or_default()
             .to_string();
-        assert!(
-            location.contains("/protocol/openid-connect/auth?"),
-            "{location}"
-        );
-        assert!(location.contains("kc_action=UPDATE_PASSWORD"), "{location}");
+        assert!(location.contains("/auth/v1/account"), "{location}");
     })
     .await;
 }

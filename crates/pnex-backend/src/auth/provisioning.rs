@@ -1,20 +1,19 @@
 //! JIT provisioning (parité Django `_get_or_create_user`, étendu multi-tenant) :
-//! à la première requête authentifiée d'un utilisateur Keycloak inconnu, on
+//! à la première requête authentifiée d'un utilisateur IdP inconnu, on
 //! crée en une transaction :
 //!
-//! 1. `users` (keycloak_uuid = `sub`, email, full_name)
+//! 1. `users` (idp_sub = `sub` de l'IdP, email, full_name)
 //! 2. `user_profiles` (valeurs par défaut — équivalent du signal Django)
 //! 3. son **organisation personnelle** (owner) sur le tier **Free**
 //!    (équivalent multi-tenant du signal UserProfile)
 //!
 //! Un utilisateur déjà connu est resynchronisé si son email/nom change côté
-//! Keycloak. Idempotent et sûr en concurrence (re-vérification dans la tx).
+//! Rauthy. Idempotent et sûr en concurrence (re-vérification dans la tx).
 
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
     TransactionTrait,
 };
-use uuid::Uuid;
 
 use crate::models::_entities::{
     organization_members, organizations,
@@ -26,24 +25,22 @@ use super::claims::Claims;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProvisionError {
-    #[error("le claim sub n'est pas un UUID valide")]
-    InvalidSub,
     #[error("le token ne contient pas d'email — requis à la première connexion")]
     MissingEmail,
     #[error(transparent)]
     Db(#[from] sea_orm::DbErr),
 }
 
-/// Trouve l'utilisateur par `keycloak_uuid`, ou le crée avec son profil et
+/// Trouve l'utilisateur par `idp_sub`, ou le crée avec son profil et
 /// son org personnelle owner (tier Free).
 pub async fn get_or_create_user(
     db: &DatabaseConnection,
     claims: &Claims,
 ) -> Result<users::Model, ProvisionError> {
-    let kc_uuid = Uuid::parse_str(&claims.sub).map_err(|_| ProvisionError::InvalidSub)?;
+    let idp_sub = claims.sub.clone();
 
     if let Some(user) = users::Entity::find()
-        .filter(users::Column::KeycloakUuid.eq(kc_uuid))
+        .filter(users::Column::IdpSub.eq(&idp_sub))
         .one(db)
         .await?
     {
@@ -58,16 +55,16 @@ pub async fn get_or_create_user(
             // Re-vérification dans la transaction : deux requêtes simultanées du
             // même nouvel utilisateur ne doivent produire qu'une ligne users.
             if let Some(existing) = users::Entity::find()
-                .filter(users::Column::KeycloakUuid.eq(kc_uuid))
+                .filter(users::Column::IdpSub.eq(&idp_sub))
                 .one(txn)
                 .await?
             {
                 return Ok(existing);
             }
 
-            // Liaison par email : même personne avec un `sub` inconnu (realm
-            // Keycloak réimporté — les users du realm de dev n'ont pas d'id fixe,
-            // migration d'IdP…). `users.email` est unique : on RE-LIE la ligne
+            // Liaison par email : même personne avec un `sub` inconnu (IdP
+            // migré — cas concret : Keycloak → Rauthy, les subs changent ; ou
+            // realm réimporté). `users.email` est unique : on RE-LIE la ligne
             // existante au lieu d'insérer un doublon (qui violerait la contrainte).
             if let Some(existing) = users::Entity::find()
                 .filter(users::Column::Email.eq(&email))
@@ -75,20 +72,20 @@ pub async fn get_or_create_user(
                 .await?
             {
                 let mut active: users::ActiveModel = existing.into();
-                active.keycloak_uuid = Set(Some(kc_uuid));
+                active.idp_sub = Set(Some(idp_sub.clone()));
                 if !full_name.is_empty() {
                     active.full_name = Set(Some(full_name.clone()));
                 }
                 let relinked = active.update(txn).await?;
                 tracing::info!(
                     user_id = relinked.id,
-                    "utilisateur re-lie par email (sub Keycloak change)"
+                    "utilisateur re-lie par email (sub IdP change, migration Keycloak→Rauthy)"
                 );
                 return Ok(relinked);
             }
 
             let user = users::ActiveModel {
-                keycloak_uuid: Set(Some(kc_uuid)),
+                idp_sub: Set(Some(idp_sub.clone())),
                 email: Set(email),
                 full_name: Set(Some(full_name.clone())),
                 ..Default::default()
@@ -118,7 +115,7 @@ pub async fn get_or_create_user(
     })
 }
 
-/// Resynchronise email/nom depuis Keycloak si divergents (parité Django).
+/// Resynchronise email/nom depuis l'IdP si divergents (parité Django).
 async fn sync_user(
     db: &DatabaseConnection,
     user: users::Model,

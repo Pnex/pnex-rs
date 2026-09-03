@@ -1,7 +1,7 @@
 //! PKCE RFC 7636 — verifier/challenge S256 et encodage d'URL.
 //!
 //! Le challenge S256 est exigé par le proxy SSO backend (le S256 est aussi
-//! forcé côté client Keycloak). Le verifier fait 43 caractères (32 octets
+//! forcé par le client OIDC). Le verifier fait 43 caractères (32 octets
 //! d'entropie en base64url sans padding).
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;

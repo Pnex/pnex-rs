@@ -115,7 +115,7 @@ tasks:
   # ---------- Dev ----------
 
   dev:
-    desc: Front debug + serveur Loco avec worker de builds (http://localhost:5150)
+    desc: Front debug + serveur Loco (worker de builds + moteur de flow ETL) — http://localhost:5150
     deps: [dev:frontend]
     cmds:
       - task: dev:backend
@@ -137,14 +137,25 @@ tasks:
       - cp -r {{.DX_OUT}}/debug/web/public {{.FRONT_DIST}}
 
   dev:backend:
-    desc: Démarre le backend Loco (serveur + worker de builds — cible utilisée par task dev)
+    desc: Démarre le backend Loco (serveur + worker de builds + moteur de flow ETL — cible utilisée par task dev)
+    # Le binaire du moteur doit exister avant le boot (runtime_cmd par défaut
+    # = ./target/debug/pnex-flow-runtime, cf. config/development.yaml).
+    deps: [flow:build]
     # Toolchain épinglée via les vars globales PIO_CMD/ESPTOOL_CMD (partagée
-    # avec les tâches fw:* de debug USB).
+    # avec les tâches fw:* de debug USB). PNEX_FLOW_ENABLED=true : le moteur
+    # de flow part avec le serveur — hors task dev, le défaut reste false
+    # (config/development.yaml).
     env:
       PNEX_PIO_CMD: "{{.PIO_CMD}}"
       PNEX_ESPTOOL_CMD: "{{.ESPTOOL_CMD}}"
+      PNEX_FLOW_ENABLED: "true"
     cmds:
       - cd crates/pnex-backend && cargo run --bin pnex-server -- start --server-and-worker
+
+  flow:build:
+    desc: Compile le runtime de flows ETL (pnex-flow-runtime) — lancé par dev:backend
+    cmds:
+      - cargo build -p pnex-flow-runtime
 
   dev:backend:server-only:
     desc: Backend Loco serveur seul (sans worker — la queue pg_loco_queue n'est pas drivée)
@@ -214,7 +225,7 @@ tasks:
   # ---------- Base de données ----------
 
   db:up:
-    desc: Démarre PostgreSQL 18 + Keycloak 26 (docker compose)
+    desc: Démarre PostgreSQL 18 + Rauthy (IdP) + mailcrab (docker compose)
     cmds:
       - docker compose up -d
 

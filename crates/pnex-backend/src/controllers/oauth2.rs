@@ -1,14 +1,14 @@
-//! Proxy OAuth2 vers Keycloak — parité fonctionnelle du contrat Django
-//! (`authent/oauth2_views.py`) :
+//! Proxy OAuth2 vers Rauthy (IdP OIDC full-Rust, D10) — continuité du contrat
+//! Django (`authent/oauth2_views.py`) :
 //!
 //! - `POST /api/v1/oauth2/token` : grants `password` (dev/tests) et
-//!   `authorization_code` + PKCE ; les erreurs Keycloak sont relayées telles
+//!   `authorization_code` + PKCE ; les erreurs Rauthy sont relayées telles
 //!   quelles (400 `{"error": ...}`) ;
 //! - `POST /api/v1/oauth2/refresh` : `grant_type=refresh_token` ;
-//! - `GET /api/v1/oauth2/sso` : 302 vers l'authorize endpoint Keycloak,
-//!   PKCE S256 obligatoire ; `action=register` utilise l'endpoint
-//!   registrations dédié, `action=reset` pose `kc_action=UPDATE_PASSWORD` ;
-//! - `GET /api/v1/oauth2/logout` : 302 vers l'end-session Keycloak
+//! - `GET /api/v1/oauth2/sso` : 302 vers l'authorize endpoint Rauthy, PKCE
+//!   S256 obligatoire ; `action=register` → page UI d'inscription Rauthy
+//!   (activation par mail), `action=reset` → page compte Rauthy ;
+//! - `GET /api/v1/oauth2/logout` : 302 vers `/auth/v1/oidc/logout`
 //!   (RP-initiated logout, `id_token_hint` + `post_logout_redirect_uri`).
 //!
 //! Le client reste public (pas de secret côté navigateur) : PKCE suffit.
@@ -21,12 +21,14 @@ use axum::response::{IntoResponse, Response};
 use loco_rs::prelude::*;
 use serde::Deserialize;
 
-use crate::auth::settings::KeycloakSettings;
+use crate::auth::settings::RauthySettings;
 
 fn http() -> &'static reqwest::Client {
     static HTTP: OnceLock<reqwest::Client> = OnceLock::new();
     HTTP.get_or_init(|| {
         reqwest::Client::builder()
+            // Rauthy refuse les requêtes sans User-Agent (400).
+            .user_agent("pnex-server")
             .timeout(std::time::Duration::from_secs(10))
             .build()
             .expect("reqwest client")
@@ -53,13 +55,13 @@ pub struct TokenParams {
     pub refresh_token: Option<String>,
 }
 
-/// Relaye la réponse Keycloak (statut + JSON) telle quelle.
+/// Relaye la réponse Rauthy (statut + JSON) telle quelle.
 async fn relay(response: reqwest::Response) -> Result<Response> {
     let status = StatusCode::from_u16(response.status().as_u16())
         .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     let body: serde_json::Value = response.json().await.unwrap_or(serde_json::json!({
         "error": "invalid_response",
-        "error_description": "Keycloak a renvoyé une réponse illisible",
+        "error_description": "Rauthy a renvoyé une réponse illisible",
     }));
     let mut response = axum::Json(body).into_response();
     *response.status_mut() = status;
@@ -67,7 +69,7 @@ async fn relay(response: reqwest::Response) -> Result<Response> {
 }
 
 async fn token(State(ctx): State<AppContext>, Json(params): Json<TokenParams>) -> Result<Response> {
-    let settings = KeycloakSettings::from_config(&ctx.config)?;
+    let settings = RauthySettings::from_config(&ctx.config)?;
 
     // Scope standard (comme le flow SSO) : garantit l'émission de l'id_token,
     // requis pour l'end-session (`id_token_hint`).
@@ -108,22 +110,19 @@ async fn token(State(ctx): State<AppContext>, Json(params): Json<TokenParams>) -
         }
     }
 
-    let kc = http()
+    let upstream = http()
         .post(settings.token_endpoint())
         .form(&form)
         .send()
         .await
         .map_err(|err| {
-            tracing::error!(%err, "Keycloak injoignable (token)");
+            tracing::error!(%err, "Rauthy injoignable (token)");
             Error::CustomError(
                 StatusCode::BAD_GATEWAY,
-                loco_rs::controller::ErrorDetail::new(
-                    "upstream",
-                    "Keycloak injoignable".to_string(),
-                ),
+                loco_rs::controller::ErrorDetail::new("upstream", "Rauthy injoignable".to_string()),
             )
         })?;
-    relay(kc).await
+    relay(upstream).await
 }
 
 async fn refresh(
@@ -153,7 +152,7 @@ pub struct LogoutParams {
     pub id_token: Option<String>,
 }
 
-/// `GET /api/v1/oauth2/logout` — 302 vers l'end-session Keycloak
+/// `GET /api/v1/oauth2/logout` — 302 vers l'end-session Rauthy
 /// (RP-initiated logout). Le front purge ses tokens AVANT de rediriger :
 /// au retour sur `/`, l'app boote déconnectée et le cookie SSO est mort.
 async fn logout(
@@ -161,7 +160,7 @@ async fn logout(
     Query(params): Query<LogoutParams>,
     request: axum::extract::Request,
 ) -> Result<Response> {
-    let settings = KeycloakSettings::from_config(&ctx.config)?;
+    let settings = RauthySettings::from_config(&ctx.config)?;
     let post_logout_redirect_uri = params.post_logout_redirect_uri.unwrap_or_else(|| {
         let host = request
             .headers()
@@ -231,7 +230,7 @@ async fn sso(
     Query(params): Query<SsoParams>,
     request: axum::extract::Request,
 ) -> Result<Response> {
-    let settings = KeycloakSettings::from_config(&ctx.config)?;
+    let settings = RauthySettings::from_config(&ctx.config)?;
 
     let Some(code_challenge) = params.code_challenge else {
         return Err(Error::BadRequest(
@@ -255,7 +254,7 @@ async fn sso(
         format!("http://{host}/auth/callback")
     });
 
-    let mut pairs: Vec<(&str, String)> = vec![
+    let pairs: Vec<(&str, String)> = vec![
         ("client_id", settings.client_id.clone()),
         ("response_type", "code".into()),
         ("scope", "openid profile email".into()),
@@ -263,20 +262,19 @@ async fn sso(
         ("code_challenge", code_challenge),
         ("code_challenge_method", "S256".into()),
     ];
-    // `action=register` : endpoint registrations dédié (kc_action=register
-    // est ignoré quand une session SSO existe — re-login silencieux au lieu
-    // du formulaire d'inscription). `action=reset` : required action
-    // UPDATE_PASSWORD après authentification.
-    let endpoint = match params.action.as_deref() {
-        Some("register") => settings.registration_endpoint(),
-        _ => {
-            if params.action.as_deref() == Some("reset") {
-                pairs.push(("kc_action", "UPDATE_PASSWORD".into()));
-            }
-            settings.authorize_endpoint()
-        }
+    // Pages UI Rauthy (pas des endpoints OIDC) : `action=register` →
+    // formulaire d'inscription (activation par mail), `action=reset` →
+    // page compte où vit le changement de mot de passe. Dans les deux cas,
+    // l'utilisateur revient à l'app pnex et (re)lance le login.
+    let location = match params.action.as_deref() {
+        Some("register") => settings.register_page(),
+        Some("reset") => settings.account_page(),
+        _ => format!(
+            "{}?{}",
+            settings.authorize_endpoint(),
+            form_urlencode(&pairs)
+        ),
     };
-    let location = format!("{}?{}", endpoint, form_urlencode(&pairs));
 
     let mut response = Response::new(axum::body::Body::empty());
     *response.status_mut() = StatusCode::FOUND;

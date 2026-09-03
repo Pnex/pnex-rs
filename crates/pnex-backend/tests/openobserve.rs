@@ -529,9 +529,9 @@ where
     ) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
-    let base = common::spawn_mock_keycloak().await;
+    let base = common::spawn_mock_rauthy().await;
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-    unsafe { std::env::set_var("KEYCLOAK_URL", &base) };
+    unsafe { std::env::set_var("RAUTHY_URL", &base) };
     let alice = common::valid_token(
         &base,
         "00000000-0000-0000-0000-00000000000a",
@@ -889,9 +889,9 @@ async fn query_range_bascule_root_et_parse() {
 #[tokio::test]
 #[serial]
 async fn dashboard_summary_complet_contre_mock() {
-    let kc = common::spawn_mock_keycloak().await;
+    let kc = common::spawn_mock_rauthy().await;
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-    unsafe { std::env::set_var("KEYCLOAK_URL", &kc) };
+    unsafe { std::env::set_var("RAUTHY_URL", &kc) };
     let alice = common::valid_token(
         &kc,
         "00000000-0000-0000-0000-00000000000a",
@@ -979,9 +979,9 @@ async fn dashboard_summary_complet_contre_mock() {
 #[tokio::test]
 #[serial]
 async fn visualization_catalog_et_series_contre_mock() {
-    let kc = common::spawn_mock_keycloak().await;
+    let kc = common::spawn_mock_rauthy().await;
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-    unsafe { std::env::set_var("KEYCLOAK_URL", &kc) };
+    unsafe { std::env::set_var("RAUTHY_URL", &kc) };
     let alice = common::valid_token(
         &kc,
         "00000000-0000-0000-0000-00000000000a",

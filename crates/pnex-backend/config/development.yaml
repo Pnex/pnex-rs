@@ -80,7 +80,7 @@ database:
   min_connections: {{ get_env(name="DB_MIN_CONNECTIONS", default="1") }}
   max_connections: {{ get_env(name="DB_MAX_CONNECTIONS", default="10") }}
 
-# Auth Keycloak (Phase 3) : validation JWKS locale + JIT provisioning.
+# Auth Rauthy (Phase 3/D19) : validation JWKS locale + JIT provisioning.
 # Le front étant servi par le backend (same-origin), pas de CORS nécessaire.
 settings:
   # OpenObserve (D1/D2) — absent = télémétrie désactivée (sink noop)
@@ -95,10 +95,9 @@ settings:
     token_cache_secs: {{ get_env(name="PNEX_TOKEN_CACHE_SECS", default="10") }}
     batch_max: {{ get_env(name="PNEX_BATCH_MAX", default="500") }}
     batch_flush_secs: {{ get_env(name="PNEX_BATCH_FLUSH_SECS", default="10") }}
-  keycloak:
-    base_url: {{ get_env(name="KEYCLOAK_URL", default="http://localhost:8080") }}
-    realm: {{ get_env(name="KEYCLOAK_REALM", default="pnex-realm") }}
-    client_id: {{ get_env(name="KEYCLOAK_CLIENT_ID", default="pnex") }}
+  rauthy:
+    base_url: {{ get_env(name="RAUTHY_URL", default="http://localhost:8080") }}
+    client_id: {{ get_env(name="RAUTHY_CLIENT_ID", default="pnex") }}
   # Firmware Phase 6 (défauts champ par champ — cf. services/firmware.rs).
   # Source du firmware : embarquée dans le binaire (firmware/ du monorepo,
   # compilée dedans — aucune config). Artefacts en base par défaut (D5 v2,
@@ -127,7 +126,8 @@ settings:
     timeout_secs: {{ get_env(name="PNEX_BUILD_TIMEOUT_SECS", default="900") }}
   # Moteur de flow ETL (D18) — superviseur du runtime headless
   # `pnex-flow-runtime` (process enfant, mode B ; cf. services/flow_supervisor.rs).
-  # enabled=false : flows éditables en base mais jamais exécutés (défaut).
+  # enabled=false : flows éditables en base mais jamais exécutés (défaut) —
+  # `task dev` force PNEX_FLOW_ENABLED=true pour partir avec le moteur.
   # env_allowlist : seules ces variables franchissent la frontière process —
   # aucun secret dans flows.json (PRD §8).
   flow:

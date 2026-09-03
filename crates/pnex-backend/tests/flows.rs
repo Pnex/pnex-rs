@@ -26,11 +26,16 @@ where
     F: FnOnce(axum_test::TestServer, Env, loco_rs::app::AppContext) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
-    let base = common::spawn_mock_keycloak().await;
+    let base = common::spawn_mock_rauthy().await;
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-    unsafe { std::env::set_var("KEYCLOAK_URL", &base) };
+    unsafe { std::env::set_var("RAUTHY_URL", &base) };
     unsafe { std::env::set_var("PNEX_FLOW_ENABLED", if enabled { "true" } else { "false" }) };
-    unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_CMD", "./tests/fixtures/flow/fake_runtime.sh") };
+    unsafe {
+        std::env::set_var(
+            "PNEX_FLOW_RUNTIME_CMD",
+            "./tests/fixtures/flow/fake_runtime.sh",
+        )
+    };
     unsafe { std::env::set_var("PNEX_FLOW_STATE_DIR", &flow_state_dir()) };
     unsafe { std::env::set_var("PNEX_FLOW_RELOAD_ACK_SECS", "5") };
     let config: RequestConfig = RequestConfigBuilder::new().build();
@@ -91,7 +96,13 @@ fn graph_inject_debug(repeat: f64) -> serde_json::Value {
     })
 }
 
-async fn create_flow(server: &axum_test::TestServer, token: &str, org_id: i64, name: &str, repeat: f64) -> serde_json::Value {
+async fn create_flow(
+    server: &axum_test::TestServer,
+    token: &str,
+    org_id: i64,
+    name: &str,
+    repeat: f64,
+) -> serde_json::Value {
     server
         .post("/api/v1/flows")
         .add_header("Authorization", bearer(token))
@@ -106,7 +117,8 @@ async fn create_flow(server: &axum_test::TestServer, token: &str, org_id: i64, n
 }
 
 async fn read_state_flows_json() -> serde_json::Value {
-    let raw = std::fs::read_to_string(format!("{}/flows.json", flow_state_dir())).expect("flows.json projeté");
+    let raw = std::fs::read_to_string(format!("{}/flows.json", flow_state_dir()))
+        .expect("flows.json projeté");
     serde_json::from_str(&raw).expect("flows.json valide")
 }
 
@@ -369,8 +381,10 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
             }))
             .await;
         assert_eq!(updated.status_code(), 200, "{}", updated.text());
-        assert!(std::fs::metadata(format!("{}/flows.json", flow_state_dir())).is_err(),
-            "un save ne doit pas écrire l'artefact");
+        assert!(
+            std::fs::metadata(format!("{}/flows.json", flow_state_dir())).is_err(),
+            "un save ne doit pas écrire l'artefact"
+        );
 
         // (a) Deploy v1 : artefact projeté + runtime enfant vivant.
         let deployed = server
@@ -391,7 +405,12 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
         assert_eq!(tab["pnex_flow_id"], flow_id);
         assert_eq!(tab["pnex_version"], 1);
         // inject v1 : l'intervalle projeté matérialise la version déployée.
-        let inject = artifact.as_array().unwrap().iter().find(|e| e["type"] == "inject").unwrap();
+        let inject = artifact
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["type"] == "inject")
+            .unwrap();
         assert_eq!(inject["repeat"], 1.0, "{inject}");
 
         // Runtime enfant vivant et rapporté par l'API.
@@ -414,7 +433,12 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
         assert_eq!(deployed_v2.status_code(), 200, "{}", deployed_v2.text());
         let artifact = read_state_flows_json().await;
         assert_eq!(artifact[0]["pnex_version"], 2);
-        let inject = artifact.as_array().unwrap().iter().find(|e| e["type"] == "inject").unwrap();
+        let inject = artifact
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["type"] == "inject")
+            .unwrap();
         assert_eq!(inject["repeat"], 2.0, "{inject}");
 
         // (d) Rollback v1 : l'ancien graphe revient en exécution.
@@ -428,7 +452,12 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
         assert_eq!(rolled.status_code(), 200, "{}", rolled.text());
         let artifact = read_state_flows_json().await;
         assert_eq!(artifact[0]["pnex_version"], 1);
-        let inject = artifact.as_array().unwrap().iter().find(|e| e["type"] == "inject").unwrap();
+        let inject = artifact
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["type"] == "inject")
+            .unwrap();
         assert_eq!(inject["repeat"], 1.0, "{inject}");
 
         // Version inconnue : 404.
@@ -451,7 +480,10 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
             .json(&serde_json::json!({}))
             .await;
         assert_eq!(latest.status_code(), 200, "{}", latest.text());
-        assert_eq!(latest.json::<serde_json::Value>()["deployed_version_number"], 2);
+        assert_eq!(
+            latest.json::<serde_json::Value>()["deployed_version_number"],
+            2
+        );
     })
     .await;
 }

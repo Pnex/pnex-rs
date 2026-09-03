@@ -184,7 +184,7 @@ statique-only), visible pour les devices `generic_esp8266` :
 - Safe-state à la déconnexion (firmware, tous les chemins de perte) +
   boot-safe (interdits strapping à l'admission).
 - Auth : device = token par device existant (pas de token partagé —
-  mieux que le PRD §8) ; REST = JWT Keycloak + `OrgContext` existants.
+  mieux que le PRD §8) ; REST = JWT Rauthy (D19) + `OrgContext` existants.
 
 ## 9. Definition of Done
 

@@ -23,7 +23,7 @@ impl ApiError {
 }
 
 /// Extrait le message d'un corps d'erreur JSON, ordre : `detail` (DRF/loco) >
-/// `message` > bloc `error`/`error_description`/`description` (Keycloak,
+/// `message` > bloc `error`/`error_description`/`description` (IdP Rauthy,
 /// ErrorDetail loco) > chaîne JSON nue > « HTTP n ».
 pub fn extract_message(status: u16, body: &str) -> String {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
@@ -74,7 +74,7 @@ mod tests {
     }
 
     #[test]
-    fn bloc_erreur_keycloak() {
+    fn bloc_erreur_idp() {
         let body = r#"{"error":"invalid_grant","error_description":"Code expired"}"#;
         assert_eq!(extract_message(400, body), "invalid_grant : Code expired");
     }

@@ -10,8 +10,11 @@ pub struct Model {
     pub updated_at: DateTimeWithTimeZone,
     #[sea_orm(primary_key)]
     pub id: i64,
+    /// `sub` de l'IdP (Rauthy — 24 caractères alphanumériques). Ancien nom :
+    /// `sub` de l'IdP (Rauthy — 24 caractères alphanumériques). Ancien nom :
+    /// `keycloak_uuid` (UUID, Keycloak).
     #[sea_orm(unique)]
-    pub keycloak_uuid: Option<Uuid>,
+    pub idp_sub: Option<String>,
     #[sea_orm(unique)]
     pub email: String,
     pub full_name: Option<String>,

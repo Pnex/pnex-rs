@@ -35,7 +35,7 @@ database:
   min_connections: 1
   max_connections: 5
 
-# Auth Keycloak (Phase 3) : validation JWKS locale + JIT provisioning.
+# Auth Rauthy (Phase 3/D19) : validation JWKS locale + JIT provisioning.
 settings:
   # Ingestion Phase 5 (valeurs par défaut si absent — cf. services/settings.rs)
   ingestion:
@@ -46,10 +46,9 @@ settings:
     token_cache_secs: 0
     batch_max: {{ get_env(name="PNEX_BATCH_MAX", default="500") }}
     batch_flush_secs: {{ get_env(name="PNEX_BATCH_FLUSH_SECS", default="10") }}
-  keycloak:
-    base_url: {{ get_env(name="KEYCLOAK_URL", default="http://localhost:8080") }}
-    realm: {{ get_env(name="KEYCLOAK_REALM", default="pnex-realm") }}
-    client_id: {{ get_env(name="KEYCLOAK_CLIENT_ID", default="pnex") }}
+  rauthy:
+    base_url: {{ get_env(name="RAUTHY_URL", default="http://localhost:8080") }}
+    client_id: {{ get_env(name="RAUTHY_CLIENT_ID", default="pnex") }}
   # OpenObserve : ABSENTE par défaut (télémétrie dégradée
   # available:false — tests sans O2). Renseigner PNEX_O2_URL pour le test
   # dashboard complet contre le mock (tests/openobserve.rs) ; root

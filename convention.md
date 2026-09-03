@@ -81,26 +81,34 @@
   (nullabilité org_id, actions ON DELETE, absence des tables de copie) —
   à étendre à chaque invariant structurant.
 
-## Auth (Phase 3)
+## Auth (Phase 3, IdP Rauthy depuis D19)
 
 - **Validation JWT locale par JWKS** (pas d'introspection) : RS256 uniquement,
   `iss` et `aud` vérifiés explicitement (durcissements vs Django POC),
   audience acceptée = `{client_id, "account"}`. Rafraîchissement des JWKS
-  quand un `kid` inconnu apparaît (rotation de clés).
+  quand un `kid` inconnu apparaît (rotation de clés). **Issuer Rauthy =
+  `{base}/auth/v1/` avec slash final** — la validation `jsonwebtoken` est un
+  match exact, l'omettre casse toute validation. La JWKS Rauthy mélange RSA
+  et OKP/EdDSA : le parser ignore les entrées sans `n`/`e`.
 - **Refus par défaut** : un endpoint qui prend l'extracteur `AuthUser` répond
   401 sans token valide — pas de permission AllowAny implicite.
 - **JIT provisioning** (`auth/provisioning.rs`) : première requête authentifiée
   crée en une transaction `users` + `user_profiles` + org personnelle
-  (owner, tier Free). Resynchronise email/nom si changés côté Keycloak.
+  (owner, tier Free). Resynchronise email/nom si changés côté IdP. `sub`
+  Rauthy = 24 caractères (pas un UUID) → colonne `users.idp_sub` (varchar) ;
+  re-liaison par email si le `sub` change (migration d'IdP). Access tokens
+  Rauthy lean (pas de `preferred_username`) → `display_name` retombe sur
+  l'email.
 - **Scoping org** : l'extracteur `OrgContext` (`X-Org-Id` + membership vérifié)
   est le point d'ancrage du multi-tenant — les contrôleurs ne filtrent jamais
   « à la main » par user.
 - **Rôles API en minuscules** (`owner`, `admin`, `viewer`) en entrée comme en
   sortie — les enums SeaORM générés sérialisent en Capitalized, on mappe via
   `controllers::orgs::role_str`/`RoleParam` (ne pas éditer `_entities/`).
-- **Tests sans Keycloak** : `tests/common/` fournit un mock JWKS (axum, port
-  aléatoire) + une clé RSA de test (`tests/fixtures/jwks_test_key.pem`,
-  sans valeur). `KEYCLOAK_URL` pointé dessus avant le boot. Base de test :
+- **Tests sans IdP** : `tests/common/` fournit un mock JWKS (axum, port
+  aléatoire, route `/auth/v1/oidc/certs`) + une clé RSA de test
+  (`tests/fixtures/jwks_test_key.pem`, sans valeur). `RAUTHY_URL` pointé
+  dessus avant le boot. Base de test :
   `TEST_DATABASE_URL`, vidée entre tests par le hook `truncate`
   (`dangerously_truncate` dans config/test.yaml).
 
@@ -146,8 +154,12 @@
   (parité `AuthWrapper` React). `WebHistory` fourni par défaut par dioxus-web.
 - **Login** : PKCE redirect uniquement (verifier/challenge S256, verifier en
   sessionStorage, consommé au callback). Register/reset = `action=`
-  (`kc_action` Keycloak). Logout local (end-session Keycloak = durcissement
-  futur).
+  (pages UI Rauthy : `/auth/v1/users/register`, `/auth/v1/account` — le
+  changement de mot de passe vit dans l'IdP). Logout = end-session Rauthy
+  `/auth/v1/oidc/logout` avec `id_token_hint`. Password grant (dev/tests) :
+  Rauthy exige l'**email** comme username ; ses refresh tokens portent
+  `nbf = exp_AT − 60` → refresh immédiat rejeté par design (l'UI ne
+  rafraîchit que sur 401).
 
 
 

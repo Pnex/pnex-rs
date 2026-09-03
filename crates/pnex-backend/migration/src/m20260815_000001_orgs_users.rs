@@ -10,14 +10,16 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, m: &SchemaManager) -> Result<(), DbErr> {
-        // Miroir minimal des comptes Keycloak — provisioning JIT en Phase 3.
-        // Pas de mot de passe : l'auth user est JWT Keycloak uniquement (D10).
+        // Miroir minimal des comptes de l'IdP (Rauthy) — provisioning JIT en
+        // Phase 3. Pas de mot de passe : l'auth user est JWT IdP uniquement
+        // (D10). `idp_sub` = `sub` de l'IdP (Rauthy : 24 caractères
+        // alphanumériques — pas un UUID, héritage Keycloak).
         create_table(
             m,
             "user",
             &[
                 ("id", ColType::PkAuto),
-                ("keycloak_uuid", ColType::UuidNull),
+                ("idp_sub", ColType::StringLenNull(64)),
                 ("email", ColType::StringLenUniq(255)),
                 ("full_name", ColType::StringLenNull(255)),
             ],
@@ -119,7 +121,7 @@ impl MigrationTrait for Migration {
         // Index uniques composites / partiels (bruts : la DSL ne couvre pas).
         m.get_connection()
             .execute_unprepared(
-                "CREATE UNIQUE INDEX uniq_users_keycloak_uuid ON users (keycloak_uuid) WHERE keycloak_uuid IS NOT NULL;
+                "CREATE UNIQUE INDEX uniq_users_idp_sub ON users (idp_sub) WHERE idp_sub IS NOT NULL;
                  CREATE UNIQUE INDEX uniq_organization_members_org_user ON organization_members (org_id, user_id);
                  CREATE UNIQUE INDEX uniq_user_profiles_user ON user_profiles (user_id);",
             )

@@ -1,0 +1,41 @@
+# Config dev Rauthy (IdP OIDC, D10) — http sur localhost:8080, DB embarquée
+# hiqlite persistée dans le volume pnex-rauthydata (compose.yaml).
+# Monté sur /app/config.toml ; les env du compose.yaml surchargent ces valeurs.
+# Référence complète : https://sebadob.github.io/rauthy/config/config.html
+
+[server]
+port_http = 8080
+port_https = 8443
+# Dev local : http direct, pas de reverse proxy ni de TLS.
+scheme = "http"
+pub_url = 'localhost:8080'
+
+[cluster]
+# Nœud hiqlite unique (single instance) — données sous /app/data (volume).
+node_id = 1
+data_dir = '/app/data'
+# Secrets raft/gossip hiqlite — obligatoires (≥ 16 chars, distincts).
+# Valeurs dev versionnées (parité admin/admin Keycloak) — NE PAS réutiliser.
+secret_raft = 'pnex-dev-raft-secret-1337'
+secret_api = 'pnex-dev-api-secret-7331'
+
+[encryption]
+# Clé dev versionnée (parité admin/admin Keycloak) — NE PAS réutiliser ailleurs.
+# Générer : echo "$(openssl rand -hex 4)/$(openssl rand -base64 32)"
+# Format : "<id>/<base64 de 32 octets>" — panic au boot si la clé ≠ 32 octets.
+key_active = 'adeeefd9'
+keys = ['adeeefd9/tN25iVTFn436TCrwtAI9nt+G7Ab6ziDruXCFlGkYVJg=']
+
+# Parité realm Keycloak (registrationAllowed) : inscription ouverte.
+# L'activation passe par un mail → catcher SMTP mailcrab (env compose).
+[user_registration]
+enable = true
+
+[bootstrap]
+# Le mot de passe admin vient de BOOTSTRAP_ADMIN_PASSWORD_PLAIN (compose.yaml).
+admin_email = 'admin@localhost'
+
+[webauthn]
+# Requis en 0.36 (pas de défaut appliqué malgré la doc) — dev local.
+rp_id = 'localhost'
+rp_origin = 'http://localhost:8080'

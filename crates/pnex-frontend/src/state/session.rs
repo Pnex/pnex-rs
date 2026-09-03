@@ -50,7 +50,7 @@ pub fn login(user: UserInfo) {
 }
 
 /// Déconnexion : purge locale (tokens + org, la locale est conservée) puis
-/// end-session Keycloak en pleine page — sinon le cookie SSO survit et le
+/// end-session Rauthy en pleine page — sinon le cookie SSO survit et le
 /// login suivant ré-authentifie sans formulaire. En expiration de session
 /// (refresh échoué), `expire()` fait la purge seule.
 pub fn logout() {

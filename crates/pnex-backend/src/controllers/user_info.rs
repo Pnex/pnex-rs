@@ -130,7 +130,7 @@ pub async fn user_info(State(ctx): State<AppContext>, auth: AuthUser) -> Result<
 
     let body = serde_json::json!({
         "id": user.id,
-        "username": auth.claims.preferred_username,
+        "username": auth.claims.preferred_username.clone(),
         "email": user.email,
         "full_name": user.full_name,
         "profile": profile.as_ref().map(profile_json),

@@ -1,4 +1,4 @@
-//! Authentification Keycloak : extracteurs Axum.
+//! Authentification Rauthy (IdP OIDC) : extracteurs Axum.
 //!
 //! - [`AuthUser`] : `Authorization: Bearer <jwt>` validé par JWKS (RS256,
 //!   `iss`/`aud`/`exp`), puis JIT provisioning (`users` + profil + org
@@ -55,7 +55,7 @@ impl FromRequestParts<AppContext> for AuthUser {
         let token = bearer_token(parts)
             .ok_or_else(|| loco_rs::Error::Unauthorized(WWW_AUTHENTICATE.to_string()))?;
 
-        let settings = settings::KeycloakSettings::from_config(&state.config)?;
+        let settings = settings::RauthySettings::from_config(&state.config)?;
         let verifier = jwks::verifier_for(&settings).await;
         let claims = verifier.verify(&token).await.map_err(|err| {
             tracing::warn!(%err, "rejet JWT");
@@ -67,8 +67,7 @@ impl FromRequestParts<AppContext> for AuthUser {
             .map_err(|err| {
                 tracing::error!(%err, "JIT provisioning échoué");
                 match err {
-                    provisioning::ProvisionError::MissingEmail
-                    | provisioning::ProvisionError::InvalidSub => {
+                    provisioning::ProvisionError::MissingEmail => {
                         loco_rs::Error::Unauthorized(err.to_string())
                     }
                     _ => loco_rs::Error::InternalServerError,

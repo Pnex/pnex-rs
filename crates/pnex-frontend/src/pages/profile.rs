@@ -1,7 +1,7 @@
-//! Profil — porté du `Profile.tsx` React : identité (gérée par Keycloak,
+//! Profil — porté du `Profile.tsx` React : identité (gérée par l'IdP Rauthy,
 //! lecture seule côté app), préférences (`PATCH /api/v1/profile` : langue,
 //! timezone, format de date, thème), changement de mot de passe (redirect
-//! Keycloak `kc_action=UPDATE_PASSWORD`), déconnexion.
+//! vers la page compte Rauthy `/auth/v1/account`), déconnexion.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -34,7 +34,7 @@ pub fn Profile() -> Element {
 
             div { class: "grid grid-cols-1 lg:grid-cols-3 gap-8",
                 div { class: "lg:col-span-2 space-y-6",
-                    // Identité — gérée par Keycloak, lecture seule.
+                    // Identité — gérée par l'IdP Rauthy, lecture seule.
                     div { class: "bg-white rounded-lg shadow-sm",
                         div { class: "p-6 border-b border-gray-200",
                             h2 { class: "text-lg font-semibold text-gray-900", {t!("profile-identity")} }
@@ -70,7 +70,7 @@ pub fn Profile() -> Element {
                                         value: "{user.email.clone().unwrap_or_default()}",
                                     }
                                 }
-                                p { class: "md:col-span-2 text-xs text-gray-500", {t!("profile-keycloak-managed")} }
+                                p { class: "md:col-span-2 text-xs text-gray-500", {t!("profile-idp-managed")} }
                             }
                         }
                     }

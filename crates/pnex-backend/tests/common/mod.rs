@@ -1,4 +1,4 @@
-//! Outils communs aux tests d'auth : serveur JWKS mock (remplace Keycloak en
+//! Outils communs aux tests d'auth : serveur JWKS mock (remplace Rauthy en
 //! CI) et fabrication de tokens signés.
 //!
 //! La clé `tests/fixtures/jwks_test_key.pem` est une clé RSA de test, sans
@@ -27,16 +27,16 @@ fn jwks_body() -> serde_json::Value {
 }
 
 /// Serve les JWKS sur un port aléatoire de 127.0.0.1 ; retourne l'URL de base
-/// (`http://127.0.0.1:{port}`) à utiliser comme `KEYCLOAK_URL`.
-pub async fn spawn_mock_keycloak() -> String {
+/// (`http://127.0.0.1:{port}`) à utiliser comme `RAUTHY_URL`.
+pub async fn spawn_mock_rauthy() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind mock");
     let addr = listener.local_addr().expect("addr mock");
     let app = Router::new().route(
-        "/realms/pnex-realm/protocol/openid-connect/certs",
+        "/auth/v1/oidc/certs",
         get(|| async { axum::Json(jwks_body()) }),
     );
     tokio::spawn(async move {
-        axum::serve(listener, app).await.expect("mock keycloak");
+        axum::serve(listener, app).await.expect("mock rauthy");
     });
     format!("http://{}", addr)
 }
@@ -103,7 +103,8 @@ pub fn valid_token(base_url: &str, sub: &str, username: &str, email: &str) -> St
         email: email.into(),
         given_name: given.into(),
         family_name: family.into(),
-        issuer: format!("{base_url}/realms/pnex-realm"),
+        // Slash final obligatoire : l'issuer Rauthy est `{base}/auth/v1/`.
+        issuer: format!("{base_url}/auth/v1/"),
         ..Default::default()
     })
 }
@@ -207,7 +208,11 @@ pub async fn seed_catalogue(db: &sea_orm::DatabaseConnection) {
             name: Set(name.into()),
             revision: Set("v1".into()),
             device_type_id: Set(type_ids[type_name]),
-            board_id: Set(if name == "generic_esp8266" { board8266.id } else { board.id }),
+            board_id: Set(if name == "generic_esp8266" {
+                board8266.id
+            } else {
+                board.id
+            }),
             ..Default::default()
         }
         .insert(db)

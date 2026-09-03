@@ -16,7 +16,7 @@ use dioxus::prelude::*;
 #[derive(Clone, Debug, PartialEq, Routable)]
 #[rustfmt::skip]
 pub enum Route {
-    // Callback OAuth — HORS shell (redirection plein page depuis Keycloak).
+    // Callback OAuth — HORS shell (redirection plein page depuis l'IdP Rauthy).
     // Les segments query sont infaillibles : absents → chaîne vide, tester
     // avec is_empty().
     #[route("/auth/callback?:code&:error&:error_description")]

@@ -71,9 +71,9 @@ where
     F: FnOnce(axum_test::TestServer, String, loco_rs::app::AppContext) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
-    let base = common::spawn_mock_keycloak().await;
+    let base = common::spawn_mock_rauthy().await;
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-    unsafe { std::env::set_var("KEYCLOAK_URL", &base) };
+    unsafe { std::env::set_var("RAUTHY_URL", &base) };
     let alice = common::valid_token(
         &base,
         "00000000-0000-0000-0000-00000000000a",
@@ -150,7 +150,6 @@ async fn announce_and_expect_provision(
     }
 }
 
-
 /// Connexion WS `/ws/device` (auth b64 query, comme le firmware).
 async fn connect(server: &axum_test::TestServer, d: &Dev) -> axum_test::TestWebSocket {
     server
@@ -190,7 +189,8 @@ async fn announce_provision_et_state_report() {
         // digitaux) → télémétrie 1/0 (Prometheus n'a pas de booléens), UI
         // garde le booléen brut pour l'affichage HIGH/LOW. Avant le fix, ce
         // point était silencieusement jeté par le parse f64 de promwrite.
-        let report = serde_json::json!({"t": "state_report", "gpio": 12, "value": true}).to_string();
+        let report =
+            serde_json::json!({"t": "state_report", "gpio": 12, "value": true}).to_string();
         ws.send_text(encrypt(&report, &dev.key)).await;
         // Attente active brève : la session traite les frames en tâche de fond.
         let org = personal_org(&server, &auth).await;
@@ -201,8 +201,12 @@ async fn announce_provision_et_state_report() {
                 .add_header("X-Org-Id", org.to_string())
                 .await;
             let body: serde_json::Value = res.json();
-            let d6row = body["pins"].as_array().unwrap().iter()
-                .find(|p| p["label"] == "D6").cloned();
+            let d6row = body["pins"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|p| p["label"] == "D6")
+                .cloned();
             if d6row.as_ref().and_then(|p| p.get("last_value")).is_some() {
                 break;
             }
@@ -221,7 +225,10 @@ async fn announce_provision_et_state_report() {
         assert_eq!(pins.len(), 10);
         assert_eq!(body["connected"], serde_json::json!(true));
         let labels: Vec<&str> = pins.iter().map(|p| p["label"].as_str().unwrap()).collect();
-        assert_eq!(labels, vec!["A0", "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8"]);
+        assert_eq!(
+            labels,
+            vec!["A0", "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8"]
+        );
         let d5 = pins.iter().find(|p| p["label"] == "D5").expect("D5");
         assert_eq!(d5["last_value"], serde_json::json!(1));
         assert_eq!(d5["mode"], serde_json::json!("digital_in"));
@@ -279,7 +286,9 @@ async fn commandes_validation_puis_offline_409() {
             .await;
         res.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
         assert!(
-            res.json::<serde_json::Value>().to_string().contains("strapping"),
+            res.json::<serde_json::Value>()
+                .to_string()
+                .contains("strapping"),
             "raison chip-caps attendue"
         );
         // set_mode légal mais device offline → 409 ; mode persisté quand même.
@@ -301,8 +310,12 @@ async fn commandes_validation_puis_offline_409() {
             .add_header("X-Org-Id", org.to_string())
             .await;
         let body: serde_json::Value = res.json();
-        let d5 = body["pins"].as_array().unwrap().iter()
-            .find(|p| p["label"] == "D5").expect("D5");
+        let d5 = body["pins"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["label"] == "D5")
+            .expect("D5");
         assert_eq!(d5["mode"], serde_json::json!("digital_out"));
         // write désormais légal sur D5 (gpio 14) mais toujours offline → 409.
         let res = server

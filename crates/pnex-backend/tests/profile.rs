@@ -8,15 +8,15 @@ use loco_rs::testing::request::{RequestConfig, RequestConfigBuilder};
 use pnex_backend::app::App;
 use serial_test::serial;
 
-/// Boot l'app sur la base de test avec le faux Keycloak, exécute le callback.
+/// Boot l'app sur la base de test avec le faux Rauthy, exécute le callback.
 async fn with_app<F, Fut>(f: F)
 where
     F: FnOnce(axum_test::TestServer, String) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
-    let base = common::spawn_mock_keycloak().await;
+    let base = common::spawn_mock_rauthy().await;
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-    unsafe { std::env::set_var("KEYCLOAK_URL", &base) };
+    unsafe { std::env::set_var("RAUTHY_URL", &base) };
     let config: RequestConfig = RequestConfigBuilder::new().build();
     let token = common::valid_token(
         &base,

@@ -2,9 +2,9 @@
 //! « Welcome to PNeX », fond sombre (le canvas réseau animé de l'original est
 //! approché par un dégradé + halos CSS, choix assumé cross-plateforme).
 //!
-//! Le login est un **redirect PKCE** vers Keycloak via le proxy backend (pas
+//! Le login est un **redirect PKCE** vers Rauthy via le proxy backend (pas
 //! de formulaire mot de passe dans l'UI) ; création de compte et réinitialisation
-//! passent par `kc_action` côté Keycloak.
+//! passent par les pages UI Rauthy (register/account).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;

@@ -78,9 +78,9 @@ where
     F: FnOnce(axum_test::TestServer, String, loco_rs::app::AppContext) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
-    let base = common::spawn_mock_keycloak().await;
+    let base = common::spawn_mock_rauthy().await;
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-    unsafe { std::env::set_var("KEYCLOAK_URL", &base) };
+    unsafe { std::env::set_var("RAUTHY_URL", &base) };
     let alice = common::valid_token(
         &base,
         "00000000-0000-0000-0000-00000000000a",

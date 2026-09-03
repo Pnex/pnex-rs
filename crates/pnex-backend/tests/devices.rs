@@ -22,9 +22,9 @@ where
     F: FnOnce(axum_test::TestServer, Env, loco_rs::app::AppContext) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
-    let base = common::spawn_mock_keycloak().await;
+    let base = common::spawn_mock_rauthy().await;
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-    unsafe { std::env::set_var("KEYCLOAK_URL", &base) };
+    unsafe { std::env::set_var("RAUTHY_URL", &base) };
     let config: RequestConfig = RequestConfigBuilder::new().build();
     let env = Env {
         alice: common::valid_token(
@@ -672,7 +672,10 @@ async fn catalogue_global_partage() {
             .add_header("Authorization", bearer(&env.alice))
             .await
             .json();
-        assert_eq!(by_board["count"], 4, "board esp32 seulement — generic_esp8266 est sur esp8266, exclu du filtre");
+        assert_eq!(
+            by_board["count"], 4,
+            "board esp32 seulement — generic_esp8266 est sur esp8266, exclu du filtre"
+        );
         let by_cap_search: serde_json::Value = server
             .get("/api/v1/predefined-devices?search=RELAY")
             .add_header("Authorization", bearer(&env.alice))
@@ -773,8 +776,10 @@ async fn pagination_des_listes() {
             .json();
         assert_eq!(cat3["results"].as_array().unwrap().len(), 2);
         // 5e predefined (generic_esp8266) → une dernière page de 1, next non null.
-        assert_eq!(cat3["next"].as_str().unwrap(),
-            "/api/v1/predefined-devices?limit=2&offset=4");
+        assert_eq!(
+            cat3["next"].as_str().unwrap(),
+            "/api/v1/predefined-devices?limit=2&offset=4"
+        );
         let cat4: serde_json::Value = server
             .get("/api/v1/predefined-devices?limit=2&offset=4")
             .add_header("Authorization", bearer(&env.alice))
