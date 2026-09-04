@@ -156,7 +156,16 @@ pub fn FlowEditor(
         let mut signature = String::new();
         for n in &g.nodes {
             if let pnex_core::FlowNodeKind::Device { config } = &n.kind {
-                for r in &config.reads {
+                // Seuls les couples complets sont jugés : un read en cours de
+                // saisie (device ou pin vide) n'est pas une violation de
+                // staleness — `device_bad_read` au save le couvre (sinon le
+                // bandeau crie « device «  » introuvable » au simple clic sur
+                // « Ajouter une lecture »).
+                for r in config
+                    .reads
+                    .iter()
+                    .filter(|r| !r.device_id.is_empty() && !r.pin.trim().is_empty())
+                {
                     reads.push((n.id.clone(), r.device_id.clone(), r.pin.clone()));
                     signature.push_str(&format!("{}:{}/{};", n.id, r.device_id, r.pin));
                 }

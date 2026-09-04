@@ -332,12 +332,29 @@ fn DeviceForm(mut cx: EditorCx, initial: DeviceConfig, can_write: bool) -> Eleme
     });
     let mut pins_cache = use_signal(std::collections::HashMap::<i64, Vec<api::pins::PinoutPin>>::new);
     let mut pins_requested = use_signal(std::collections::HashSet::<i64>::new);
-    // Précharge le pinout des devices déjà configurés + au changement de device.
-    let reads_snapshot = initial.reads.clone();
+    // Précharge le pinout des devices référencés par le nœud. La lecture du
+    // graphe se fait DANS la closure (dépendance suivie) : l'effet se
+    // re-déclenche au choix d'un device dans une ligne — un snapshot figé au
+    // montage ne verrait jamais les devices ajoutés ensuite (retour e2e
+    // 2026-09-04 : select pin désespérément vide). `pins_requested` évite les
+    // requêtes en double (l'effet re-tourne à chaque mutation du graphe).
     use_effect(move || {
+        let g = cx.graph.cloned();
         let list = devices.value().read().clone().unwrap_or_default();
-        let wanted: Vec<i64> = reads_snapshot
+        let Some(node_id) = cx.selected_node.cloned() else {
+            return;
+        };
+        let wanted: Vec<i64> = g
+            .nodes
             .iter()
+            .find(|n| n.id == node_id)
+            .and_then(|n| match &n.kind {
+                FlowNodeKind::Device { config } => Some(config.reads.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
+            .iter()
+            .filter(|r| !r.device_id.is_empty())
             .filter_map(|r| list.iter().find(|d| d.device_id == r.device_id).map(|d| d.id))
             .collect();
         for pk in wanted {
@@ -364,7 +381,8 @@ fn DeviceForm(mut cx: EditorCx, initial: DeviceConfig, can_write: bool) -> Eleme
                             select {
                                 class: "flex-1 px-2 py-1 border border-gray-300 rounded-lg text-sm",
                                 disabled: !can_write,
-                                value: "{read.device_id}",
+                                // Sélection par attribut `selected` des <option> :
+                                // `value` sur <select> est ignoré par les navigateurs.
                                 onchange: move |event| {
                                     let slug = event.value();
                                     patch_selected(&mut cx, move |node: &mut FlowNode| {
@@ -376,9 +394,14 @@ fn DeviceForm(mut cx: EditorCx, initial: DeviceConfig, can_write: bool) -> Eleme
                                         }
                                     });
                                 },
-                                option { value: "", {t!("flows-device-device-none")} }
+                                option { value: "", selected: read.device_id.is_empty(), {t!("flows-device-device-none")} }
                                 for device in devices.value().read().clone().unwrap_or_default() {
-                                    option { key: "{device.id}", value: "{device.device_id}", {device.device_id.clone()} }
+                                    option {
+                                        key: "{device.id}",
+                                        value: "{device.device_id}",
+                                        selected: read.device_id == device.device_id,
+                                        {device.device_id.clone()}
+                                    }
                                 }
                             }
                             button {
@@ -399,7 +422,6 @@ fn DeviceForm(mut cx: EditorCx, initial: DeviceConfig, can_write: bool) -> Eleme
                         select {
                             class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                             disabled: !can_write || read.device_id.is_empty(),
-                            value: "{read.pin}",
                             onchange: move |event| {
                                 let pin = event.value();
                                 patch_selected(&mut cx, move |node: &mut FlowNode| {
@@ -410,11 +432,12 @@ fn DeviceForm(mut cx: EditorCx, initial: DeviceConfig, can_write: bool) -> Eleme
                                     }
                                 });
                             },
-                            option { value: "", {t!("flows-device-pin-none")} }
+                            option { value: "", selected: read.pin.is_empty(), {t!("flows-device-pin-none")} }
                             for pin in input_pins_of(&devices, &pins_cache, &read.device_id) {
                                 option {
                                     key: "{pin.gpio}",
                                     value: "{pin.label}",
+                                    selected: read.pin == pin.label,
                                     {if pin.source == "overlay" {
                                         format!("{} ({} · {})", pin.label, pin.mode, t!("flows-device-pin-overlay"))
                                     } else {
@@ -423,8 +446,10 @@ fn DeviceForm(mut cx: EditorCx, initial: DeviceConfig, can_write: bool) -> Eleme
                                 }
                             }
                         }
-                        span { class: "block text-xs text-gray-400 font-mono",
-                            {pnex_core::device_payload_key(&read.device_id, &read.pin)}
+                        if !read.device_id.is_empty() && !read.pin.trim().is_empty() {
+                            span { class: "block text-xs text-gray-400 font-mono",
+                                {pnex_core::device_payload_key(&read.device_id, &read.pin)}
+                            }
                         }
                     }
                 }
