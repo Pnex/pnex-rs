@@ -3,8 +3,8 @@
 //! RSX.
 
 use pnex_core::{
-    DebugConfig, FlowGraph, FlowNode, FlowNodeKind, FlowWiring, InjectConfig, PnexSqlConfig,
-    Position,
+    CalcConfig, DebugConfig, DeviceConfig, FlowGraph, FlowNode, FlowNodeKind, FlowWiring,
+    InjectConfig, MetricConfig, PnexSqlConfig, Position,
 };
 
 /// Entrée de palette : kind + libellés i18n + couleur d'icône.
@@ -12,6 +12,9 @@ use pnex_core::{
 pub enum PaletteKind {
     Inject,
     PnexSql,
+    Device,
+    Calc,
+    Metric,
     Debug,
     Red,
 }
@@ -19,8 +22,9 @@ pub enum PaletteKind {
 /// Crée un nœud neuf d'un kind de palette, avec sa config par défaut :
 /// inject a un déclencheur initial (`once_delay_secs`, sinon violation
 /// `no_trigger`), pnex-sql une requête valide (la config est **requise** en
-/// serde), red un type vide (viole volontairement `bad_red_node` jusqu'à la
-/// saisie — le bandeau guide l'utilisateur).
+/// serde), device/calc/metric des configs **typées mais incomplètes**
+/// (violations `device_no_reads`/`calc_bad_expression`/`metric_name_missing`
+/// jusqu'à la saisie — le bandeau guide l'utilisateur), red un type vide.
 pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
     FlowNode {
         id: id.to_string(),
@@ -34,6 +38,11 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             PaletteKind::PnexSql => FlowNodeKind::PnexSql {
                 config: PnexSqlConfig { query: "SELECT 1".into(), params: vec![] },
             },
+            PaletteKind::Device => FlowNodeKind::Device {
+                config: DeviceConfig { reads: vec![], window_secs: 60.0 },
+            },
+            PaletteKind::Calc => FlowNodeKind::Calc { config: CalcConfig { expression: String::new() } },
+            PaletteKind::Metric => FlowNodeKind::Metric { config: MetricConfig { metric_name: String::new() } },
             PaletteKind::Debug => FlowNodeKind::Debug { config: DebugConfig::default() },
             PaletteKind::Red => FlowNodeKind::Red { type_name: String::new(), config: Default::default() },
         },

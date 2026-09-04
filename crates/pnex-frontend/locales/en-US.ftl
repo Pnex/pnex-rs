@@ -376,3 +376,22 @@ flows-versions-load-dirty-title = Unsaved changes
 flows-versions-load-dirty-message = Your local changes will be lost. Load this version?
 flows-versions-deploy-confirm-title = Deploy this version?
 flows-versions-deploy-confirm-message = The runtime will reload this earlier version (no new version is created).
+
+# ─────────────── ETL flows (D18) — device/calc/metric nodes (Phase 6) ───────────────
+flows-palette-device = Device
+flows-palette-device-help = Reads the latest pin values of one or more devices
+flows-palette-calc = Calc
+flows-palette-calc-help = Expression over the readings (variables = payload keys)
+flows-palette-metric = Metric
+flows-palette-metric-help = Writes the result to OpenObserve (etl_* series)
+flows-device-multi-help = To combine multiple devices in one calculation, group the readings in the same node.
+flows-device-device-none = Pick a device…
+flows-device-pin-none = Pick a pin…
+flows-device-add-read = Add a reading
+flows-device-window = Freshness window (s)
+flows-calc-vars = Detected variables:
+flows-calc-expression = Expression
+flows-calc-functions-help = Functions: abs round floor ceil sqrt pow min max log log10 log2 exp sin cos tan asin acos atan atan2 — constants pi, e.
+flows-metric-name = Metric name
+flows-metric-preview = Written series:
+flows-metric-labels-help = Written with device_id=flow_{ $id } · source_type=etl — appears in Visualization like a sensor.

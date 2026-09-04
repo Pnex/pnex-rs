@@ -162,7 +162,7 @@ async fn reproject_and_signal(ctx: &AppContext) -> Result<()> {
         };
         let graph: FlowGraph =
             serde_json::from_value(version.graph.clone()).map_err(|_| Error::InternalServerError)?;
-        let m = FlowArtifactMeta { flow_id: f.id, version_number: version.version_number };
+        let m = FlowArtifactMeta { flow_id: f.id, version_number: version.version_number, org_id: f.org_id };
         if meta.is_none() {
             meta = Some(m);
         }
@@ -173,7 +173,7 @@ async fn reproject_and_signal(ctx: &AppContext) -> Result<()> {
 
     flow_supervisor::deploy(
         serde_json::Value::Array(entries),
-        meta.unwrap_or(FlowArtifactMeta { flow_id: 0, version_number: 0 }),
+        meta.unwrap_or(FlowArtifactMeta { flow_id: 0, version_number: 0, org_id: 0 }),
     )
     .await
     .map_err(|e| {

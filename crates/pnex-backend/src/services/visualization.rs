@@ -47,14 +47,9 @@ pub const WINDOWS: &[(&str, i64)] = &[("1h", 3600), ("6h", 21_600), ("24h", 86_4
 /// Valeur de label `device_id` sûre à interpoler dans un sélecteur
 /// PromQL : charset fermé (nos device_id sont des slugs), aucune
 /// quote/brace/backslash possible — l'injection PromQL est bloquée en
-/// amont, pas échappée.
-fn valid_device_label(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 128
-        && value
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
-}
+/// amont, pas échappée. Vit dans pnex-core (`naming`) : source unique avec
+/// le runtime de flows.
+use pnex_core::valid_device_label;
 
 /// Séries disponibles de l'org (métrique × device, dernière valeur sur
 /// 24 h) — alimente les sélecteurs de la page Visualisation.

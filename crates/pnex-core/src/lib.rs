@@ -23,6 +23,22 @@ pub use devices::*;
 pub mod flow;
 pub use flow::*;
 
+/// Évaluateur d'expressions calc (nœud `calc`) — pur, wasm-safe, zéro dep.
+pub mod calc;
+pub use calc::*;
+
+/// Nommage métriques/clés — source de vérité unique backend ↔ runtime
+/// (`normalize_measurement_name` derrière la feature `naming`).
+pub mod naming;
+pub use naming::*;
+
+/// Messages prompb (remote-write OpenObserve) — feature `prompb`, jamais
+/// compilée pour le front wasm.
+#[cfg(feature = "prompb")]
+pub mod prompb;
+#[cfg(feature = "prompb")]
+pub use prompb::*;
+
 pub mod pagination;
 pub use pagination::*;
 

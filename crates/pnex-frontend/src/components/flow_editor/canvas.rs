@@ -17,7 +17,15 @@ use super::{EditorCx, Interaction};
 /// (cascade via `geometry::cascade_origin`).
 #[component]
 pub(crate) fn Palette(cx: EditorCx) -> Element {
-    let kinds = [PaletteKind::Inject, PaletteKind::PnexSql, PaletteKind::Debug, PaletteKind::Red];
+    let kinds = [
+        PaletteKind::Inject,
+        PaletteKind::PnexSql,
+        PaletteKind::Device,
+        PaletteKind::Calc,
+        PaletteKind::Metric,
+        PaletteKind::Debug,
+        PaletteKind::Red,
+    ];
     let entries: Vec<(PaletteKind, String, String)> = kinds
         .iter()
         .map(|kind| {
@@ -47,6 +55,9 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
     match kind {
         PaletteKind::Inject => (t!("flows-palette-inject").to_string(), t!("flows-palette-inject-help").to_string()),
         PaletteKind::PnexSql => (t!("flows-palette-pnex-sql").to_string(), t!("flows-palette-pnex-sql-help").to_string()),
+        PaletteKind::Device => (t!("flows-palette-device").to_string(), t!("flows-palette-device-help").to_string()),
+        PaletteKind::Calc => (t!("flows-palette-calc").to_string(), t!("flows-palette-calc-help").to_string()),
+        PaletteKind::Metric => (t!("flows-palette-metric").to_string(), t!("flows-palette-metric-help").to_string()),
         PaletteKind::Debug => (t!("flows-palette-debug").to_string(), t!("flows-palette-debug-help").to_string()),
         PaletteKind::Red => (t!("flows-palette-red").to_string(), t!("flows-palette-red-help").to_string()),
     }
@@ -324,6 +335,9 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
             kind_labels(PaletteKind::Inject)
         }
         pnex_core::FlowNodeKind::PnexSql { .. } => kind_labels(PaletteKind::PnexSql),
+        pnex_core::FlowNodeKind::Device { .. } => kind_labels(PaletteKind::Device),
+        pnex_core::FlowNodeKind::Calc { .. } => kind_labels(PaletteKind::Calc),
+        pnex_core::FlowNodeKind::Metric { .. } => kind_labels(PaletteKind::Metric),
         pnex_core::FlowNodeKind::Debug { .. } => kind_labels(PaletteKind::Debug),
         pnex_core::FlowNodeKind::Red { .. } => kind_labels(PaletteKind::Red),
     };
@@ -331,6 +345,9 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
     let (fill, stroke) = match &node.kind {
         pnex_core::FlowNodeKind::Inject { .. } => (geometry::INJECT_FILL, geometry::INJECT_STROKE),
         pnex_core::FlowNodeKind::PnexSql { .. } => (geometry::SQL_FILL, geometry::SQL_STROKE),
+        pnex_core::FlowNodeKind::Device { .. } => (geometry::DEVICE_FILL, geometry::DEVICE_STROKE),
+        pnex_core::FlowNodeKind::Calc { .. } => (geometry::CALC_FILL, geometry::CALC_STROKE),
+        pnex_core::FlowNodeKind::Metric { .. } => (geometry::METRIC_FILL, geometry::METRIC_STROKE),
         pnex_core::FlowNodeKind::Debug { .. } => (geometry::DEBUG_FILL, geometry::DEBUG_STROKE),
         pnex_core::FlowNodeKind::Red { .. } => (geometry::RED_FILL, geometry::RED_STROKE),
     };
@@ -445,6 +462,31 @@ fn node_subtitle(node: &FlowNode) -> String {
                 format!("{short}…")
             } else {
                 short
+            }
+        }
+        pnex_core::FlowNodeKind::Device { config } => {
+            let n = config.reads.len();
+            if n == 0 {
+                "—".into()
+            } else {
+                format!("{n} lecture(s) · {} s", config.window_secs)
+            }
+        }
+        pnex_core::FlowNodeKind::Calc { config } => {
+            let short: String = config.expression.chars().take(22).collect();
+            if config.expression.chars().count() > 22 {
+                format!("{short}…")
+            } else if short.is_empty() {
+                "—".into()
+            } else {
+                short
+            }
+        }
+        pnex_core::FlowNodeKind::Metric { config } => {
+            if config.metric_name.is_empty() {
+                "—".into()
+            } else {
+                pnex_core::etl_metric_name(&config.metric_name)
             }
         }
         pnex_core::FlowNodeKind::Debug { .. } => "debug".into(),

@@ -23,6 +23,13 @@ pub const INJECT_FILL: &str = "#ecfdf5";
 pub const INJECT_STROKE: &str = "#10b981";
 pub const SQL_FILL: &str = "#eff6ff";
 pub const SQL_STROKE: &str = "#3b82f6";
+/// Nœud device (ambre), calc (vert) et metric (rose) — Phase 6.
+pub const DEVICE_FILL: &str = "#fffbeb";
+pub const DEVICE_STROKE: &str = "#f59e0b";
+pub const CALC_FILL: &str = "#f0fdf4";
+pub const CALC_STROKE: &str = "#22c55e";
+pub const METRIC_FILL: &str = "#fdf2f8";
+pub const METRIC_STROKE: &str = "#ec4899";
 pub const DEBUG_FILL: &str = "#f5f3ff";
 pub const DEBUG_STROKE: &str = "#8b5cf6";
 pub const RED_FILL: &str = "#f9fafb";

@@ -1,63 +1,18 @@
-//! Encodage Prometheus remote-write (WriteRequest protobuf) — l'ingestion
+//! Encodage Prometheus remote-write des points d'ingestion — l'ingestion
 //! télémétrie va dans les **metrics** OpenObserve (`/prometheus/api/v1/write`),
 //! pas dans les logs : les points deviennent des séries
 //! `metric_name{device_id, pred_dev, source_type, ts_source}`.
+//!
+//! Les structs prompb et `sanitize_metric_name` vivent dans pnex-core
+//! (features `prompb`/`naming`) — source unique partagée avec le nœud
+//! `metric` du runtime de flows (Phase 6), qui projette ses séries `etl_*`
+//! sur les mêmes structs.
 
 use prost::Message;
 
+use pnex_core::{Label, Sample, TimeSeries, WriteRequest, sanitize_metric_name};
+
 use crate::services::telemetry::TelemetryPoint;
-
-// Messages prompb (prometheus/prompb/types.proto) — encodage prost à la
-// main, seuls les champs utilisés sont modélisés.
-#[derive(Clone, PartialEq, prost::Message)]
-pub struct WriteRequest {
-    #[prost(message, repeated, tag = "1")]
-    pub timeseries: Vec<TimeSeries>,
-}
-
-#[derive(Clone, PartialEq, prost::Message)]
-pub struct TimeSeries {
-    #[prost(message, repeated, tag = "1")]
-    pub labels: Vec<Label>,
-    #[prost(message, repeated, tag = "2")]
-    pub samples: Vec<Sample>,
-}
-
-#[derive(Clone, PartialEq, prost::Message)]
-pub struct Label {
-    #[prost(string, tag = "1")]
-    pub name: String,
-    #[prost(string, tag = "2")]
-    pub value: String,
-}
-
-#[derive(Clone, PartialEq, prost::Message)]
-pub struct Sample {
-    #[prost(double, tag = "1")]
-    pub value: f64,
-    /// Millisecondes epoch.
-    #[prost(int64, tag = "2")]
-    pub timestamp: i64,
-}
-
-/// Nom de métrique Prometheus valide : `[a-zA-Z_:][a-zA-Z0-9_:]*` — les
-/// caractères interdits deviennent `_`, un préfixe `_` interdit est
-/// évité (interdiction de ressembler aux séries internes).
-pub fn sanitize_metric_name(name: &str) -> String {
-    let mut out = String::with_capacity(name.len());
-    for (i, c) in name.chars().enumerate() {
-        let valid = c.is_ascii_alphanumeric() || c == '_' || c == ':';
-        if valid && !(i == 0 && c.is_ascii_digit()) {
-            out.push(c);
-        } else {
-            out.push('_');
-        }
-    }
-    if out.is_empty() {
-        out.push('m');
-    }
-    out
-}
 
 /// Un point → une série (labels dimensions, sample value + ts serveur ms).
 fn series_of(point: &TelemetryPoint) -> Option<TimeSeries> {

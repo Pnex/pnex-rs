@@ -376,3 +376,22 @@ flows-versions-load-dirty-title = Modifications non enregistrées
 flows-versions-load-dirty-message = Vos modifications locales seront perdues. Charger la version ?
 flows-versions-deploy-confirm-title = Déployer cette version ?
 flows-versions-deploy-confirm-message = Le runtime rechargera cette version antérieure (aucune nouvelle version n'est créée).
+
+# ─────────────── Flux ETL (D18) — nœuds device/calc/metric (Phase 6) ───────────────
+flows-palette-device = Appareil
+flows-palette-device-help = Lit les dernières valeurs des pins d'un ou plusieurs appareils
+flows-palette-calc = Calcul
+flows-palette-calc-help = Expression sur les lectures (variables = clés de payload)
+flows-palette-metric = Métrique
+flows-palette-metric-help = Écrit le résultat dans OpenObserve (série etl_*)
+flows-device-multi-help = Pour combiner plusieurs appareils dans un même calcul, regroupez les lectures dans le même nœud.
+flows-device-device-none = Choisir un appareil…
+flows-device-pin-none = Choisir un pin…
+flows-device-add-read = Ajouter une lecture
+flows-device-window = Fenêtre de fraîcheur (s)
+flows-calc-expression = Expression
+flows-calc-vars = Variables détectées :
+flows-calc-functions-help = Fonctions : abs round floor ceil sqrt pow min max log log10 log2 exp sin cos tan asin acos atan atan2 — constantes pi, e.
+flows-metric-name = Nom de la métrique
+flows-metric-preview = Série écrite :
+flows-metric-labels-help = Écrite avec device_id=flow_{ $id } · source_type=etl — apparaît dans Visualisation comme un capteur.

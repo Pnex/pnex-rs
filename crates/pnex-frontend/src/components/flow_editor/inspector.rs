@@ -7,10 +7,12 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::{
-    DebugConfig, FlowNode, FlowNodeKind, InjectConfig, PnexSqlConfig,
+    CalcConfig, DebugConfig, DeviceConfig, DeviceRead, FlowNode, FlowNodeKind, InjectConfig,
+    MetricConfig, PnexSqlConfig,
 };
 
 use super::{state, EditorCx};
+use crate::api;
 use crate::components::confirm::ConfirmDialog;
 
 #[component]
@@ -99,6 +101,15 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool) -> Element {
         FlowNodeKind::PnexSql { config } => rsx! {
             SqlForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::Device { config } => rsx! {
+            DeviceForm { cx, initial: config.clone(), can_write }
+        },
+        FlowNodeKind::Calc { config } => rsx! {
+            CalcForm { cx, initial: config.clone(), can_write }
+        },
+        FlowNodeKind::Metric { config } => rsx! {
+            MetricForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::Debug { config } => rsx! {
             DebugForm { cx, initial: config.clone(), can_write }
         },
@@ -139,6 +150,28 @@ fn remove_selected(cx: &mut EditorCx) {
 fn parse_secs(raw: &str) -> Option<f64> {
     let value = raw.trim().parse::<f64>().ok()?;
     value.is_finite().then_some(value)
+}
+
+/// Pins **d'entrée** disponibles pour un device d'une ligne de lecture :
+/// résout le pk depuis la liste devices, puis le pinout en cache. Vide si
+/// le device est inconnu ou le pinout pas encore chargé.
+fn input_pins_of(
+    devices: &Resource<Vec<pnex_core::Device>>,
+    cache: &Signal<std::collections::HashMap<i64, Vec<api::pins::PinInfo>>>,
+    device_slug: &str,
+) -> Vec<api::pins::PinInfo> {
+    let list = devices.value().read().clone().unwrap_or_default();
+    let Some(pk) = list.iter().find(|d| d.device_id == device_slug).map(|d| d.id) else {
+        return Vec::new();
+    };
+    cache
+        .cloned()
+        .get(&pk)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|pin| pin.mode != "digital_out")
+        .collect()
 }
 
 /// ─────────────── inject ───────────────
@@ -278,6 +311,226 @@ fn SqlForm(mut cx: EditorCx, initial: PnexSqlConfig, can_write: bool) -> Element
                     },
                 }
             }
+        }
+    }
+}
+
+/// ─────────────── device (lectures pins, Phase 6) ───────────────
+
+#[component]
+fn DeviceForm(mut cx: EditorCx, initial: DeviceConfig, can_write: bool) -> Element {
+    // Devices de l'org (slug → pk pour charger le pinout), chargés une fois.
+    let devices = use_resource(move || async move {
+        api::devices::list(&api::devices::DeviceFilters {
+            active: Some(true),
+            limit: Some(200),
+            ..Default::default()
+        })
+        .await
+        .map(|page| page.results)
+        .unwrap_or_default()
+    });
+    let mut pins_cache = use_signal(std::collections::HashMap::<i64, Vec<api::pins::PinInfo>>::new);
+    let mut pins_requested = use_signal(std::collections::HashSet::<i64>::new);
+    // Précharge le pinout des devices déjà configurés + au changement de device.
+    let reads_snapshot = initial.reads.clone();
+    use_effect(move || {
+        let list = devices.value().read().clone().unwrap_or_default();
+        let wanted: Vec<i64> = reads_snapshot
+            .iter()
+            .filter_map(|r| list.iter().find(|d| d.device_id == r.device_id).map(|d| d.id))
+            .collect();
+        for pk in wanted {
+            if !pins_requested.cloned().contains(&pk) {
+                pins_requested.insert(pk);
+                spawn(async move {
+                    if let Ok(resp) = api::pins::pins(pk).await {
+                        pins_cache.insert(pk, resp.pins);
+                    }
+                });
+            }
+        }
+    });
+
+    let mut window = use_signal(move || v_to_string(initial.window_secs));
+
+    rsx! {
+        div { class: "space-y-3",
+            p { class: "text-xs text-gray-500", {t!("flows-device-multi-help")} }
+            div { class: "space-y-2",
+                for (i, read) in initial.reads.iter().enumerate() {
+                    div { key: "{i}-{read.device_id}-{read.pin}", class: "rounded-lg border border-gray-200 p-2 space-y-2",
+                        div { class: "flex items-center gap-1",
+                            select {
+                                class: "flex-1 px-2 py-1 border border-gray-300 rounded-lg text-sm",
+                                disabled: !can_write,
+                                value: "{read.device_id}",
+                                onchange: move |event| {
+                                    let slug = event.value();
+                                    patch_selected(&mut cx, move |node: &mut FlowNode| {
+                                        if let FlowNodeKind::Device { config } = &mut node.kind {
+                                            if let Some(r) = config.reads.get_mut(i) {
+                                                r.device_id = slug;
+                                                r.pin.clear();
+                                            }
+                                        }
+                                    });
+                                },
+                                option { value: "", {t!("flows-device-device-none")} }
+                                for device in devices.value().read().clone().unwrap_or_default() {
+                                    option { key: "{device.id}", value: "{device.device_id}", {device.device_id.clone()} }
+                                }
+                            }
+                            button {
+                                class: "text-xs text-red-600 hover:text-red-700 px-1",
+                                disabled: !can_write,
+                                onclick: move |_| {
+                                    patch_selected(&mut cx, move |node: &mut FlowNode| {
+                                        if let FlowNodeKind::Device { config } = &mut node.kind {
+                                            if i < config.reads.len() {
+                                                config.reads.remove(i);
+                                            }
+                                        }
+                                    });
+                                },
+                                "✕"
+                            }
+                        }
+                        select {
+                            class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
+                            disabled: !can_write || read.device_id.is_empty(),
+                            value: "{read.pin}",
+                            onchange: move |event| {
+                                let pin = event.value();
+                                patch_selected(&mut cx, move |node: &mut FlowNode| {
+                                    if let FlowNodeKind::Device { config } = &mut node.kind {
+                                        if let Some(r) = config.reads.get_mut(i) {
+                                            r.pin = pin;
+                                        }
+                                    }
+                                });
+                            },
+                            option { value: "", {t!("flows-device-pin-none")} }
+                            for pin in input_pins_of(&devices, &pins_cache, &read.device_id) {
+                                option {
+                                    key: "{pin.gpio}",
+                                    value: "{pin.label}",
+                                    {format!("{} ({})", pin.label, pin.mode)}
+                                }
+                            }
+                        }
+                        span { class: "block text-xs text-gray-400 font-mono",
+                            {pnex_core::device_payload_key(&read.device_id, &read.pin)}
+                        }
+                    }
+                }
+            }
+            button {
+                class: "w-full px-2 py-1.5 text-sm text-blue-600 border border-dashed border-blue-300 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-40",
+                disabled: !can_write,
+                onclick: move |_| {
+                    patch_selected(&mut cx, move |node: &mut FlowNode| {
+                        if let FlowNodeKind::Device { config } = &mut node.kind {
+                            config.reads.push(DeviceRead::default());
+                        }
+                    });
+                },
+                {t!("flows-device-add-read")}
+            }
+            {text_field(t!("flows-device-window"), window, !can_write, move |event| {
+                let raw = event.value();
+                window.set(raw.clone());
+                patch_selected(&mut cx, move |node: &mut FlowNode| {
+                    if let FlowNodeKind::Device { config } = &mut node.kind {
+                        if let Some(w) = parse_secs(&raw) {
+                            config.window_secs = w;
+                        }
+                    }
+                });
+            })}
+        }
+    }
+}
+
+/// ─────────────── calc ───────────────
+
+#[component]
+fn CalcForm(mut cx: EditorCx, initial: CalcConfig, can_write: bool) -> Element {
+    let mut expression = use_signal(move || initial.expression.clone());
+    let errors = use_memo(move || pnex_core::validate_calc(&expression.cloned()));
+
+    rsx! {
+        div { class: "space-y-3",
+            label { class: "block",
+                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-calc-expression")} }
+                textarea {
+                    class: if !errors.cloned().is_empty() {
+                        "w-full h-20 px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm font-mono"
+                    } else {
+                        "w-full h-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono"
+                    },
+                    value: "{expression}",
+                    disabled: !can_write,
+                    oninput: move |event| {
+                        let raw = event.value();
+                        expression.set(raw.clone());
+                        patch_selected(&mut cx, move |node: &mut FlowNode| {
+                            if let FlowNodeKind::Calc { config } = &mut node.kind {
+                                config.expression = raw;
+                            }
+                        });
+                    },
+                }
+            }
+            if !errors.cloned().is_empty() {
+                div { class: "rounded-lg bg-red-50 border border-red-200 p-2 space-y-1",
+                    for e in errors.cloned() {
+                        p { class: "text-xs text-red-700", {e.to_string()} }
+                    }
+                }
+            }
+            if !expression.cloned().trim().is_empty() && errors.cloned().is_empty() {
+                p { class: "text-xs text-gray-500",
+                    {format!("{} : {}", t!("flows-calc-vars"), pnex_core::calc_variables(&expression.cloned()).join(", "))}
+                }
+            }
+            p { class: "text-xs text-gray-400", {t!("flows-calc-functions-help")} }
+        }
+    }
+}
+
+/// ─────────────── metric ───────────────
+
+#[component]
+fn MetricForm(mut cx: EditorCx, initial: MetricConfig, can_write: bool) -> Element {
+    let mut name = use_signal(move || initial.metric_name.clone());
+    let preview = use_memo(move || {
+        let raw = name.cloned();
+        if raw.trim().is_empty() {
+            String::new()
+        } else {
+            pnex_core::etl_metric_name(&raw)
+        }
+    });
+
+    rsx! {
+        div { class: "space-y-3",
+            {text_field(t!("flows-metric-name"), name, !can_write, move |event| {
+                let raw = event.value();
+                name.set(raw.clone());
+                patch_selected(&mut cx, move |node: &mut FlowNode| {
+                    if let FlowNodeKind::Metric { config } = &mut node.kind {
+                        config.metric_name = raw;
+                    }
+                });
+            })}
+            if !preview.cloned().is_empty() {
+                p { class: "text-xs text-gray-500",
+                    span { class: "font-medium", {t!("flows-metric-preview")} }
+                    code { class: "ml-1 px-1 rounded bg-gray-100", {preview.cloned()} }
+                }
+            }
+            p { class: "text-xs text-gray-400", {t!("flows-metric-labels-help")} }
         }
     }
 }

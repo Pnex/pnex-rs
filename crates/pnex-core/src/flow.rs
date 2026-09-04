@@ -22,6 +22,9 @@ pub fn flow_tab_id(flow_id: i64) -> String {
 
 use serde::{Deserialize, Serialize};
 
+use crate::calc::validate_calc;
+use crate::naming::{device_payload_key, valid_device_label};
+
 /// Statuts possibles d'un flow (`flows.status`, enum PG `flow_status`).
 pub const FLOW_STATUS_DRAFT: &str = "draft";
 pub const FLOW_STATUS_DEPLOYED: &str = "deployed";
@@ -59,10 +62,57 @@ pub struct InjectConfig {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PnexSqlConfig {
     pub query: String,
-    /// Clés que `msg.payload` doit contenir (contrat d'entrée typé). Vide =
-    /// tout payload accepté (déclencheur pur).
+    /// Clés que `msg.payload` en entrée doit contenir (contrat d'entrée typé).
+    /// Vide = tout payload accepté (déclencheur pur).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub params: Vec<String>,
+}
+
+/// Une lecture du nœud `device` : un couple (device, pin).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct DeviceRead {
+    /// Slug du device (dimension `device_id` des séries O2).
+    pub device_id: String,
+    /// Label du pin tel qu'affiché dans l'éditeur (la série O2 est le nom
+    /// normalisé, calculé par le runtime via `normalize_measurement_name`).
+    pub pin: String,
+}
+
+/// Configuration du nœud custom `device` — lecture des **dernières valeurs**
+/// des pins de un ou plusieurs devices. La lecture passe par OpenObserve
+/// (PromQL `last_over_time` sur la même série que l'ingestion) : une seule
+/// source de vérité, cohérente avec le dashboard/Visualisation. Aucune
+/// coordonnée d'accès ici — l'org est estampillée dans l'artefact au deploy
+/// (`pnex_org_id`) et les creds viennent de l'env du runtime.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct DeviceConfig {
+    /// Lectures (device, pin) — au moins une (validate_graph).
+    pub reads: Vec<DeviceRead>,
+    /// Fenêtre de fraîcheur (secondes) : la dernière valeur dans la fenêtre
+    /// est renvoyée, au-delà la clé est omise du payload. 1..=3600.
+    #[serde(default = "default_window_secs")]
+    pub window_secs: f64,
+}
+
+fn default_window_secs() -> f64 {
+    60.0
+}
+
+/// Configuration du nœud custom `calc` — expression sur les clés du payload
+/// device (variables identifiants, évaluateur [`crate::calc`]).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct CalcConfig {
+    pub expression: String,
+}
+
+/// Configuration du nœud custom `metric` — écriture d'une métrique
+/// OpenObserve (remote-write) : nom auto-préfixé `etl_`, labels
+/// `device_id="flow_{id}"`, `pred_dev="virtual_device"`, `source_type="etl"`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct MetricConfig {
+    /// Nom saisi par l'utilisateur — préfixé `etl_` et sanitisé à l'écriture
+    /// (`etl_metric_name`), prévisualisé à l'identique dans l'éditeur.
+    pub metric_name: String,
 }
 
 /// Configuration du nœud `debug` (capture de la sortie d'un pipeline).
@@ -104,6 +154,20 @@ pub enum FlowNodeKind {
     /// Nœud custom PNEX : requête SQL Postgres en lecture seule.
     PnexSql {
         config: PnexSqlConfig,
+    },
+    /// Nœud custom PNEX : lecture des dernières valeurs des pins d'un ou
+    /// plusieurs devices via OpenObserve (même série que l'ingestion).
+    Device {
+        config: DeviceConfig,
+    },
+    /// Nœud custom PNEX : calcul sur les clés du payload device.
+    Calc {
+        config: CalcConfig,
+    },
+    /// Nœud custom PNEX : écriture d'une métrique OpenObserve
+    /// (remote-write, préfixe `etl_`, device virtuel `flow_{id}`).
+    Metric {
+        config: MetricConfig,
     },
     /// Capture de sortie (nœud builtin `debug`).
     Debug {
@@ -166,11 +230,14 @@ pub struct FlowGraph {
 }
 
 /// Métadonnées embarquées dans l'artefact `flows.json` projeté (traçabilité
-/// de la version réellement en exécution).
+/// de la version réellement en exécution). `org_id` permet aux nœuds custom
+/// Phase 6 (device/metric) de déduire l'org OpenObserve (`pnex_org_{id}`)
+/// sans accès à la base.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FlowArtifactMeta {
     pub flow_id: i64,
     pub version_number: i64,
+    pub org_id: i64,
 }
 
 // ─────────────────────────── Contrats aux frontières ───────────────────────────
@@ -256,6 +323,69 @@ impl SqlQueryResult {
     }
 }
 
+/// Map numérique extraite d'un payload (clés device sanitisées → valeur).
+pub type NumericMap = std::collections::HashMap<String, f64>;
+
+/// Contrat d'entrée du nœud `calc` / de sortie du nœud `device` : objet JSON
+/// `clé → valeur numérique` (booléens convertis 1/0, parité avec
+/// `handle_state_report`). Rejeté à la frontière — jamais de panic.
+pub fn numeric_map_from_payload(
+    payload: Option<&serde_json::Value>,
+    node: &str,
+) -> Result<NumericMap, FlowViolation> {
+    let Some(serde_json::Value::Object(map)) = payload else {
+        return Err(FlowViolation::new(
+            None,
+            &format!("{node}_input_contract"),
+            format!(
+                "le nœud {node} attend un objet JSON en payload (sortie d'un nœud device), reçu : {}",
+                payload.map(type_of).unwrap_or("payload absent")
+            ),
+        ));
+    };
+    let mut out = NumericMap::with_capacity(map.len());
+    for (key, value) in map {
+        let v = match value {
+            serde_json::Value::Number(n) => n.as_f64().unwrap_or(f64::NAN),
+            serde_json::Value::Bool(b) => {
+                if *b {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            other => {
+                return Err(FlowViolation::new(
+                    None,
+                    &format!("{node}_input_contract"),
+                    format!("valeur non numérique pour la clé « {key} » (reçu : {})", type_of(other)),
+                ));
+            }
+        };
+        out.insert(key.clone(), v);
+    }
+    Ok(out)
+}
+
+/// Contrat d'entrée du nœud `metric` : une valeur numérique (sortie d'un
+/// nœud `calc`) — booléen converti 1/0, sinon rejet typé.
+pub fn metric_value_from_payload(payload: Option<&serde_json::Value>) -> Result<f64, FlowViolation> {
+    match payload {
+        Some(serde_json::Value::Number(n)) => n
+            .as_f64()
+            .ok_or_else(|| FlowViolation::new(None, "metric_input_contract", "valeur numérique hors plage f64")),
+        Some(serde_json::Value::Bool(b)) => Ok(if *b { 1.0 } else { 0.0 }),
+        other => Err(FlowViolation::new(
+            None,
+            "metric_input_contract",
+            format!(
+                "le nœud metric attend une valeur numérique en payload (sortie d'un nœud calc), reçu : {}",
+                other.map(type_of).unwrap_or("payload absent")
+            ),
+        )),
+    }
+}
+
 fn type_of(v: &serde_json::Value) -> &'static str {
     match v {
         serde_json::Value::Null => "null",
@@ -291,6 +421,21 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
             FlowNodeKind::PnexSql { config } => {
                 if let Err(e) = validate_sql_readonly(&config.query) {
                     v.push(FlowViolation::new(Some(&n.id), &e.code, e.message));
+                }
+            }
+            FlowNodeKind::Device { config } => validate_device(&n.id, config, &mut v),
+            FlowNodeKind::Calc { config } => {
+                for e in validate_calc(&config.expression) {
+                    v.push(FlowViolation::new(Some(&n.id), "calc_bad_expression", e.to_string()));
+                }
+            }
+            FlowNodeKind::Metric { config } => {
+                if config.metric_name.trim().is_empty() {
+                    v.push(FlowViolation::new(
+                        Some(&n.id),
+                        "metric_name_missing",
+                        "le nom de la métrique est requis",
+                    ));
                 }
             }
             FlowNodeKind::Debug { .. } => {}
@@ -337,6 +482,56 @@ fn validate_inject(id: &str, c: &InjectConfig, v: &mut Vec<FlowViolation>) {
             Some(id),
             "no_trigger",
             "le nœud inject n'a pas de déclencheur (repeat_secs, cron ou once_delay_secs requis)",
+        ));
+    }
+}
+
+/// Règles du nœud `device` : au moins une lecture, device_id en slug
+/// (`valid_device_label` — interpolé dans un sélecteur PromQL), pin non
+/// vide, clés de payload uniques, fenêtre bornée 1..=3600 s.
+fn validate_device(id: &str, c: &DeviceConfig, v: &mut Vec<FlowViolation>) {
+    if c.reads.is_empty() {
+        v.push(FlowViolation::new(
+            Some(id),
+            "device_no_reads",
+            "aucune lecture configurée (au moins un couple device/pin est requis)",
+        ));
+    }
+    let mut seen = std::collections::HashSet::new();
+    for r in &c.reads {
+        if !valid_device_label(&r.device_id) {
+            v.push(FlowViolation::new(
+                Some(id),
+                "device_bad_read",
+                format!(
+                    "device « {} » invalide (slug requis : lettres, chiffres, . _ -)",
+                    r.device_id
+                ),
+            ));
+        }
+        if r.pin.trim().is_empty() {
+            v.push(FlowViolation::new(
+                Some(id),
+                "device_bad_read",
+                format!("pin manquant pour le device « {} »", r.device_id),
+            ));
+        }
+        if !seen.insert(device_payload_key(&r.device_id, &r.pin)) {
+            v.push(FlowViolation::new(
+                Some(id),
+                "device_duplicate_key",
+                format!(
+                    "lecture dupliquée « {} » (les clés de payload doivent être uniques)",
+                    device_payload_key(&r.device_id, &r.pin)
+                ),
+            ));
+        }
+    }
+    if !(c.window_secs.is_finite() && (1.0..=3600.0).contains(&c.window_secs)) {
+        v.push(FlowViolation::new(
+            Some(id),
+            "device_window_range",
+            "window_secs doit être compris entre 1 et 3600",
         ));
     }
 }
@@ -396,6 +591,7 @@ pub fn to_red_flows_json(g: &FlowGraph, meta: &FlowArtifactMeta) -> serde_json::
         "label": format!("Flow #{} v{}", meta.flow_id, meta.version_number),
         "pnex_flow_id": meta.flow_id,
         "pnex_version": meta.version_number,
+        "pnex_org_id": meta.org_id,
     })];
 
     for n in &g.nodes {
@@ -408,6 +604,27 @@ pub fn to_red_flows_json(g: &FlowGraph, meta: &FlowArtifactMeta) -> serde_json::
                 "params": config.params,
                 "pnex_flow_id": meta.flow_id,
                 "pnex_version": meta.version_number,
+            }),
+            FlowNodeKind::Device { config } => serde_json::json!({
+                "type": "pnex-device",
+                "reads": config.reads,
+                "window_secs": config.window_secs,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+                "pnex_org_id": meta.org_id,
+            }),
+            FlowNodeKind::Calc { config } => serde_json::json!({
+                "type": "pnex-calc",
+                "expression": config.expression,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+            }),
+            FlowNodeKind::Metric { config } => serde_json::json!({
+                "type": "pnex-metric",
+                "metric_name": config.metric_name,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+                "pnex_org_id": meta.org_id,
             }),
             FlowNodeKind::Debug { config } => serde_json::json!({
                 "type": "debug",
@@ -749,11 +966,11 @@ mod tests {
 
     #[test]
     fn projection_flows_json_snapshot() {
-        let meta = FlowArtifactMeta { flow_id: 12, version_number: 3 };
+        let meta = FlowArtifactMeta { flow_id: 12, version_number: 3, org_id: 7 };
         let out = to_red_flows_json(&simple_graph(), &meta);
         assert_eq!(out[0], json!({
             "id": "pnexflow12", "type": "tab", "label": "Flow #12 v3",
-            "pnex_flow_id": 12, "pnex_version": 3,
+            "pnex_flow_id": 12, "pnex_version": 3, "pnex_org_id": 7,
         }));
         // inject : intervalle projeté, payload JSON encodé en chaîne.
         assert_eq!(out[1]["type"], "inject");
@@ -776,6 +993,161 @@ mod tests {
         assert_eq!(out[2]["name"], "query");
     }
 
+    fn node_device_reads(id: &str, reads: &[(&str, &str)]) -> FlowNode {
+        FlowNode {
+            id: id.into(),
+            name: None,
+            position: None,
+            outputs: vec![],
+            kind: FlowNodeKind::Device {
+                config: DeviceConfig {
+                    reads: reads
+                        .iter()
+                        .map(|(d, p)| DeviceRead { device_id: (*d).into(), pin: (*p).into() })
+                        .collect(),
+                    window_secs: 60.0,
+                },
+            },
+        }
+    }
+
+    #[test]
+    fn validate_device_calc_metric() {
+        // Device : lectures vides → device_no_reads.
+        let mut g = FlowGraph { nodes: vec![node_device_reads("d1", &[])] };
+        let codes: Vec<String> = validate_graph(&g).iter().map(|x| x.code.clone()).collect();
+        assert!(codes.contains(&"device_no_reads".to_string()), "{codes:?}");
+
+        // Device : lecture complète + déclencheur → vert.
+        g.nodes = vec![
+            node_inject("n1"),
+            node_device_reads("d1", &[("fuzzy-zebra", "D1")]),
+        ];
+        assert!(validate_graph(&g).is_empty(), "{:?}", validate_graph(&g));
+
+        // Device : slug invalide + pin vide + clé dupliquée + fenêtre hors bornes.
+        g.nodes = vec![FlowNode {
+            id: "d1".into(),
+            name: None,
+            position: None,
+            outputs: vec![],
+            kind: FlowNodeKind::Device {
+                config: DeviceConfig {
+                    reads: vec![
+                        DeviceRead { device_id: "deux mots".into(), pin: "D1".into() },
+                        DeviceRead { device_id: "a".into(), pin: "  ".into() },
+                        DeviceRead { device_id: "a-b".into(), pin: "c".into() },
+                        DeviceRead { device_id: "a".into(), pin: "b-c".into() },
+                    ],
+                    window_secs: 0.5,
+                },
+            },
+        }];
+        let codes: Vec<String> = validate_graph(&g).iter().map(|x| x.code.clone()).collect();
+        for code in ["device_bad_read", "device_duplicate_key", "device_window_range"] {
+            assert!(codes.contains(&code.to_string()), "{codes:?}");
+        }
+
+        // Calc : expression invalide rejetée, variables tolérées.
+        g.nodes = vec![FlowNode {
+            id: "c1".into(),
+            name: None,
+            position: None,
+            outputs: vec![],
+            kind: FlowNodeKind::Calc { config: CalcConfig { expression: "foo(a) + ".into() } },
+        }];
+        let codes: Vec<String> = validate_graph(&g).iter().map(|x| x.code.clone()).collect();
+        assert!(codes.contains(&"calc_bad_expression".to_string()), "{codes:?}");
+
+        g.nodes = vec![FlowNode {
+            id: "c1".into(),
+            name: None,
+            position: None,
+            outputs: vec![],
+            kind: FlowNodeKind::Calc { config: CalcConfig { expression: "a + b".into() } },
+        }];
+        assert!(validate_graph(&g).is_empty());
+
+        // Metric : nom requis.
+        g.nodes = vec![FlowNode {
+            id: "m1".into(),
+            name: None,
+            position: None,
+            outputs: vec![],
+            kind: FlowNodeKind::Metric { config: MetricConfig { metric_name: "  ".into() } },
+        }];
+        let codes: Vec<String> = validate_graph(&g).iter().map(|x| x.code.clone()).collect();
+        assert!(codes.contains(&"metric_name_missing".to_string()), "{codes:?}");
+    }
+
+    #[test]
+    fn projection_noeuds_phase6_estampilles() {
+        let g = FlowGraph {
+            nodes: vec![
+                node_device_reads("d1", &[("fuzzy-zebra", "D1")]),
+                FlowNode {
+                    id: "c1".into(),
+                    name: None,
+                    position: None,
+                    outputs: vec![],
+                    kind: FlowNodeKind::Calc { config: CalcConfig { expression: "a * 2".into() } },
+                },
+                FlowNode {
+                    id: "m1".into(),
+                    name: None,
+                    position: None,
+                    outputs: vec![],
+                    kind: FlowNodeKind::Metric { config: MetricConfig { metric_name: "moyenne".into() } },
+                },
+            ],
+        };
+        let out = to_red_flows_json(&g, &FlowArtifactMeta { flow_id: 9, version_number: 2, org_id: 4 });
+        assert_eq!(out[0]["pnex_org_id"], 4);
+        assert_eq!(out[1]["type"], "pnex-device");
+        assert_eq!(out[1]["pnex_flow_id"], 9);
+        assert_eq!(out[1]["pnex_version"], 2);
+        assert_eq!(out[1]["pnex_org_id"], 4);
+        assert_eq!(out[1]["window_secs"], 60.0);
+        assert_eq!(out[1]["reads"][0]["device_id"], "fuzzy-zebra");
+        assert_eq!(out[2]["type"], "pnex-calc");
+        assert_eq!(out[2]["expression"], "a * 2");
+        assert_eq!(out[3]["type"], "pnex-metric");
+        assert_eq!(out[3]["metric_name"], "moyenne");
+        assert_eq!(out[3]["pnex_org_id"], 4);
+    }
+
+    #[test]
+    fn contrats_payload_phase6() {
+        // Sortie device / entrée calc : objet numérique, bool → 1/0.
+        let payload = json!({"cap_1_D1": 21.5, "cap_2_D0": true});
+        let map = numeric_map_from_payload(Some(&payload), "calc").unwrap();
+        assert_eq!(map["cap_1_D1"], 21.5);
+        assert_eq!(map["cap_2_D0"], 1.0);
+        // Non-objet → rejet typé.
+        assert_eq!(
+            numeric_map_from_payload(Some(&json!(42)), "calc").unwrap_err().code,
+            "calc_input_contract"
+        );
+        assert_eq!(
+            numeric_map_from_payload(None, "calc").unwrap_err().code,
+            "calc_input_contract"
+        );
+        // Valeur non numérique → rejet avec la clé en cause.
+        assert_eq!(
+            numeric_map_from_payload(Some(&json!({"k": "texte"})), "calc")
+                .unwrap_err()
+                .message,
+            "valeur non numérique pour la clé « k » (reçu : chaîne)"
+        );
+        // Entrée metric : nombre, bool, sinon rejet.
+        assert_eq!(metric_value_from_payload(Some(&json!(21.5))).unwrap(), 21.5);
+        assert_eq!(metric_value_from_payload(Some(&json!(true))).unwrap(), 1.0);
+        assert_eq!(
+            metric_value_from_payload(Some(&json!({"a": 1}))).unwrap_err().code,
+            "metric_input_contract"
+        );
+    }
+
     #[test]
     fn projection_red_passthrough_conserve_la_config() {
         let g = FlowGraph {
@@ -790,7 +1162,7 @@ mod tests {
                 },
             }],
         };
-        let out = to_red_flows_json(&g, &FlowArtifactMeta { flow_id: 1, version_number: 1 });
+        let out = to_red_flows_json(&g, &FlowArtifactMeta { flow_id: 1, version_number: 1, org_id: 7 });
         assert_eq!(out[1]["type"], "change");
         assert_eq!(out[1]["rules"], json!([{"p": "payload"}]));
         assert_eq!(out[1]["z"], "pnexflow1");

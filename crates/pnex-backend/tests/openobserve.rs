@@ -202,11 +202,11 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                             .decompress_vec(&body)
                             .unwrap_or_default();
                         let req =
-                            pnex_backend::services::openobserve::promwrite::WriteRequest::decode(
+                            pnex_core::WriteRequest::decode(
                                 raw.as_slice(),
                             )
                             .unwrap_or_else(|_| {
-                                pnex_backend::services::openobserve::promwrite::WriteRequest {
+                                pnex_core::WriteRequest {
                                     timeseries: vec![],
                                 }
                             });

@@ -5254,6 +5254,8 @@ dependencies = [
 name = "pnex-core"
 version = "0.1.0"
 dependencies = [
+ "deunicode",
+ "prost",
  "serde",
  "serde_json",
 ]
