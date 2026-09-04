@@ -9,7 +9,7 @@
 //! configuration.
 
 use crate::pages::{
-    self, AuthCallback, Catalog, Dashboard, Devices, NotFound, Orgs, Profile, Visualisation,
+    self, AuthCallback, Catalog, Dashboard, Devices, Flows, NotFound, Orgs, Profile, Visualisation,
 };
 use dioxus::prelude::*;
 
@@ -31,6 +31,9 @@ pub enum Route {
 
         #[route("/devices")]
         Devices {},
+
+        #[route("/flows")]
+        Flows {},
 
         #[route("/catalog")]
         Catalog {},

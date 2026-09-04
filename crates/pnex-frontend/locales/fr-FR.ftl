@@ -285,3 +285,98 @@ pins-subscribe-60s = Lire chaque 60 s
 pins-apply = Appliquer
 
 # ─────────────── Brick 0 — flash firmware générique (secteur PNEXCFG) ───────────────
+
+# ─────────────── Flux ETL (D18) — liste et éditeur ───────────────
+nav-flows = Flux
+flows-subtitle = Pipelines ETL : créez, éditez et déployez vos flows
+flows-new = Nouveau flow
+flows-empty = Aucun flow pour l'instant
+flows-search-placeholder = Rechercher un flow…
+flows-filter-status-all = Tous les statuts
+flows-status-draft = Brouillon
+flows-status-deployed = Déployé
+flows-status-error = Erreur
+flows-col-name = Nom
+flows-col-status = Statut
+flows-col-versions = Versions
+flows-col-device = Appareil
+flows-col-updated = Mise à jour
+flows-open = Ouvrir
+flows-delete = Supprimer
+flows-confirm-delete-title = Supprimer ce flow ?
+flows-confirm-delete-message = Action irréversible : le flow et toutes ses versions seront supprimés.
+flows-version-deployed-tag = déployée
+
+flows-create-title = Nouveau flow
+flows-field-name = Nom du flow
+flows-field-name-required = Le nom est obligatoire.
+flows-field-device = Appareil (optionnel)
+flows-field-device-none = Aucun appareil
+flows-field-note = Note (optionnelle)
+toast-flow-created = Flow créé
+toast-flow-saved = Version enregistrée
+toast-flow-deployed = Flow déployé
+toast-flow-deleted = Flow supprimé
+
+flows-back-list = Retour à la liste
+flows-dirty-unsaved = Modifications non enregistrées
+flows-deploy = Déployer
+flows-deploy-need-save = Enregistrez la version courante avant de déployer
+flows-versions = Versions
+flows-readonly-banner = Prévisualisation en lecture seule — revenez à la dernière version pour éditer.
+flows-violations-banner-title = Graphe invalide :
+flows-conflict-title = Version périmée
+flows-conflict-message = Quelqu'un a enregistré une nouvelle version entre-temps.
+flows-conflict-reload = Recharger depuis le serveur
+flows-conflict-overwrite = Écraser avec ma version
+flows-runtime-running = Moteur actif
+flows-runtime-stopped = Moteur arrêté
+flows-runtime-unknown = Moteur inconnu
+
+flows-palette-title = Nœuds
+flows-palette-inject = Inject
+flows-palette-inject-help = Déclencheur : intervalle, cron ou unique
+flows-palette-pnex-sql = SQL PNEX
+flows-palette-pnex-sql-help = Requête Postgres en lecture seule
+flows-palette-debug = Debug
+flows-palette-debug-help = Capture la sortie d'un pipeline
+flows-palette-red = Node-RED brut
+flows-palette-red-help = Type builtin non modélisé (config JSON)
+flows-palette-add = Ajouter au canevas
+
+flows-inspector-empty = Sélectionnez un nœud pour éditer sa configuration
+flows-node-name = Nom du nœud
+flows-node-delete = Supprimer le nœud
+flows-inject-repeat = Intervalle (s)
+flows-inject-cron = Cron (5 ou 6 champs)
+flows-inject-once-delay = Délai initial (s)
+flows-inject-topic = Topic
+flows-inject-payload = Payload (JSON)
+flows-inject-payload-invalid = JSON invalide
+flows-sql-query = Requête SQL (lecture seule)
+flows-sql-params = Paramètres (clés du payload, séparées par des virgules)
+flows-debug-active = Capture activée
+flows-debug-complete = Propriété capturée (vide = payload)
+flows-debug-console = Recopie sur la console du runtime
+flows-red-type = Type Node-RED (ex. change, json)
+flows-red-config = Config (JSON)
+flows-red-config-invalid = JSON invalide
+
+flows-canvas-empty-hint = Ajoutez des nœuds depuis la palette pour construire votre pipeline
+flows-wire-remove-title = Couper ce câble ?
+flows-wire-remove-message = Le câblage entre les deux nœuds sera supprimé.
+flows-wire-remove = Couper
+
+flows-versions-title = Historique des versions
+flows-versions-col-author = Auteur
+flows-versions-col-note = Note
+flows-versions-col-date = Date
+flows-versions-empty = Aucune version
+flows-versions-load = Charger
+flows-versions-deploy = Déployer
+flows-versions-previewing-prefix = Prévisualisation
+flows-versions-back-to-latest = Revenir à la dernière version
+flows-versions-load-dirty-title = Modifications non enregistrées
+flows-versions-load-dirty-message = Vos modifications locales seront perdues. Charger la version ?
+flows-versions-deploy-confirm-title = Déployer cette version ?
+flows-versions-deploy-confirm-message = Le runtime rechargera cette version antérieure (aucune nouvelle version n'est créée).

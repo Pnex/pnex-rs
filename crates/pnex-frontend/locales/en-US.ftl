@@ -285,3 +285,98 @@ pins-subscribe-60s = Read every 60 s
 pins-apply = Apply
 
 # ─────────────── Brick 0 — generic firmware flash (PNEXCFG sector) ───────────────
+
+# ─────────────── ETL flows (D18) — list and editor ───────────────
+nav-flows = Flows
+flows-subtitle = ETL pipelines: create, edit and deploy your flows
+flows-new = New flow
+flows-empty = No flows yet
+flows-search-placeholder = Search a flow…
+flows-filter-status-all = All statuses
+flows-status-draft = Draft
+flows-status-deployed = Deployed
+flows-status-error = Error
+flows-col-name = Name
+flows-col-status = Status
+flows-col-versions = Versions
+flows-col-device = Device
+flows-col-updated = Updated
+flows-open = Open
+flows-delete = Delete
+flows-confirm-delete-title = Delete this flow?
+flows-confirm-delete-message = Irreversible: the flow and all its versions will be deleted.
+flows-version-deployed-tag = deployed
+
+flows-create-title = New flow
+flows-field-name = Flow name
+flows-field-name-required = Name is required.
+flows-field-device = Device (optional)
+flows-field-device-none = No device
+flows-field-note = Note (optional)
+toast-flow-created = Flow created
+toast-flow-saved = Version saved
+toast-flow-deployed = Flow deployed
+toast-flow-deleted = Flow deleted
+
+flows-back-list = Back to list
+flows-dirty-unsaved = Unsaved changes
+flows-deploy = Deploy
+flows-deploy-need-save = Save the current version before deploying
+flows-versions = Versions
+flows-readonly-banner = Read-only preview — go back to the latest version to edit.
+flows-violations-banner-title = Invalid graph:
+flows-conflict-title = Stale version
+flows-conflict-message = Someone saved a newer version in the meantime.
+flows-conflict-reload = Reload from server
+flows-conflict-overwrite = Overwrite with my version
+flows-runtime-running = Engine running
+flows-runtime-stopped = Engine stopped
+flows-runtime-unknown = Engine unknown
+
+flows-palette-title = Nodes
+flows-palette-inject = Inject
+flows-palette-inject-help = Trigger: interval, cron or once
+flows-palette-pnex-sql = PNEX SQL
+flows-palette-pnex-sql-help = Read-only Postgres query
+flows-palette-debug = Debug
+flows-palette-debug-help = Captures the pipeline output
+flows-palette-red = Raw Node-RED
+flows-palette-red-help = Unmodelled builtin type (JSON config)
+flows-palette-add = Add to canvas
+
+flows-inspector-empty = Select a node to edit its configuration
+flows-node-name = Node name
+flows-node-delete = Delete node
+flows-inject-repeat = Interval (s)
+flows-inject-cron = Cron (5 or 6 fields)
+flows-inject-once-delay = Initial delay (s)
+flows-inject-topic = Topic
+flows-inject-payload = Payload (JSON)
+flows-inject-payload-invalid = Invalid JSON
+flows-sql-query = SQL query (read-only)
+flows-sql-params = Parameters (payload keys, comma-separated)
+flows-debug-active = Capture enabled
+flows-debug-complete = Captured property (empty = payload)
+flows-debug-console = Also on the runtime console
+flows-red-type = Node-RED type (e.g. change, json)
+flows-red-config = Config (JSON)
+flows-red-config-invalid = Invalid JSON
+
+flows-canvas-empty-hint = Add nodes from the palette to build your pipeline
+flows-wire-remove-title = Cut this wire?
+flows-wire-remove-message = The wiring between the two nodes will be removed.
+flows-wire-remove = Cut
+
+flows-versions-title = Version history
+flows-versions-col-author = Author
+flows-versions-col-note = Note
+flows-versions-col-date = Date
+flows-versions-empty = No version
+flows-versions-load = Load
+flows-versions-deploy = Deploy
+flows-versions-previewing-prefix = Previewing
+flows-versions-back-to-latest = Back to latest version
+flows-versions-load-dirty-title = Unsaved changes
+flows-versions-load-dirty-message = Your local changes will be lost. Load this version?
+flows-versions-deploy-confirm-title = Deploy this version?
+flows-versions-deploy-confirm-message = The runtime will reload this earlier version (no new version is created).
