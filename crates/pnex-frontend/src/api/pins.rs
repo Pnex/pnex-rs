@@ -65,8 +65,10 @@ pub async fn pins(device_pk: i64) -> Result<PinsResponse, ApiError> {
 }
 
 /// `POST /devices/{id}/commands` — 400 si illégal (raison chip-caps
-/// relayée telle quelle), 409 si le device est offline.
-pub async fn command(device_pk: i64, cmd: Command) -> Result<(), ApiError> {
+/// relayée telle quelle), 409 si le device est offline. Le corps de réponse
+/// est retourné tel quel (contient `flow_impacts` quand un set_mode a arrêté
+/// des flows déployés — Phase 6).
+pub async fn command(device_pk: i64, cmd: Command) -> Result<serde_json::Value, ApiError> {
     client::request_opt::<serde_json::Value>(
         reqwest::Method::POST,
         &format!("/api/v1/devices/{device_pk}/commands"),
@@ -74,5 +76,4 @@ pub async fn command(device_pk: i64, cmd: Command) -> Result<(), ApiError> {
     )
     .await?
     .ok_or_else(|| ApiError::new("réponse vide inattendue"))
-    .map(|_| ())
 }

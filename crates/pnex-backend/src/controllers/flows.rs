@@ -142,7 +142,7 @@ fn reject_invalid_graph(graph: &FlowGraph) -> Option<Response> {
 /// demande au superviseur le rechargement. Erreur si le moteur est coupé ou
 /// n'acquitte pas (l'état DB reste `deployed` — cohérent avec ce qui sera
 /// relancé au prochain deploy/boot).
-async fn reproject_and_signal(ctx: &AppContext) -> Result<()> {
+pub(crate) async fn reproject_and_signal(ctx: &AppContext) -> Result<()> {
     let deployed_flows = flows::Entity::find()
         .filter(flows::Column::Status.eq(pnex_core::FLOW_STATUS_DEPLOYED))
         .all(&ctx.db)
@@ -523,6 +523,77 @@ async fn version_detail(
         graph,
     })
     .into_response())
+}
+
+// ─────────────────────────── Stop automatique (dépendance pin ↔ flows) ───────────────────────────
+
+/// Dépendances pin ↔ flows (Phase 6) : un changement de mode d'un pin
+/// (in↔out) invalide les lectures device des flows déployés — la série O2
+/// n'est plus alimentée, le pipeline ETL tournerait à vide ou sur des
+/// valeurs figées. Pour chaque flow **déployé** de l'org dont un nœud
+/// `device` lit ce (device_id, pin) : dé-déploiement immédiat (status →
+/// draft, `deployed_version_id` → NULL — la version publiée reste
+/// enregistrée, un redéploiement manuel est possible une fois la
+/// configuration cohérente) puis reprojection unique de l'artefact.
+///
+/// Retourne les impacts `(flow_id, nom)` pour l'UI ; appelée par le
+/// contrôleur pins (`set_mode`) **avant** le push device (la base est la
+/// source de vérité, le stop doit refléter la base même si le device est
+/// hors ligne).
+pub(crate) async fn stop_flows_reading_pin(
+    ctx: &AppContext,
+    org_id: i64,
+    device_id: &str,
+    pin_label: &str,
+) -> Result<Vec<(i64, String)>> {
+    let deployed = flows::Entity::find()
+        .filter(flows::Column::OrgId.eq(org_id))
+        .filter(flows::Column::Status.eq(pnex_core::FLOW_STATUS_DEPLOYED))
+        .all(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+
+    let mut impacts: Vec<(i64, String)> = Vec::new();
+    for flow in deployed {
+        let Some(version_id) = flow.deployed_version_id else { continue };
+        let Some(version) = flow_versions::Entity::find_by_id(version_id)
+            .one(&ctx.db)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+        else {
+            continue;
+        };
+        let Ok(graph) = serde_json::from_value::<FlowGraph>(version.graph) else {
+            continue;
+        };
+        let touches = graph.nodes.iter().any(|n| matches!(
+            &n.kind,
+            pnex_core::FlowNodeKind::Device { config } if config.reads.iter().any(|r| {
+                r.device_id == device_id && pnex_core::normalize_measurement_name(&r.pin) == pnex_core::normalize_measurement_name(pin_label)
+            })
+        ));
+        if !touches {
+            continue;
+        }
+        let mut active: flows::ActiveModel = flow.into();
+        active.status = Set(pnex_core::FLOW_STATUS_DRAFT.to_string());
+        active.deployed_version_id = Set(None);
+        let stopped = active.update(&ctx.db).await.map_err(|_| Error::InternalServerError)?;
+        tracing::warn!(
+            flow_id = stopped.id,
+            device_id,
+            pin = pin_label,
+            "flow dé-déployé automatiquement : le pin vient de changer de mode (in↔out)"
+        );
+        impacts.push((stopped.id, stopped.name));
+    }
+
+    // Un seul rechargement du runtime même si plusieurs flows ont été
+    // arrêtés — l'artefact est reprojeté sans eux.
+    if !impacts.is_empty() {
+        reproject_and_signal(ctx).await?;
+    }
+    Ok(impacts)
 }
 
 // ─────────────────────────── POST /flows/{id}/deploy | /rollback ───────────────────────────

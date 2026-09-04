@@ -93,6 +93,16 @@ pub(crate) fn Canvas(mut cx: EditorCx, on_cut_wire: Callback<(String, usize, Str
     let zoom = cx.zoom.cloned();
     let interaction = cx.interaction.cloned();
 
+    // Nœuds en violation (validation sauvegarde + staleness pin/device) —
+    // un câble est rouge dès qu'une de ses extrémités l'est.
+    let violation_nodes: std::collections::HashSet<String> = cx
+        .violations
+        .read()
+        .iter()
+        .filter_map(|v| v.node_id.clone())
+        .chain(cx.stale.read().iter().filter_map(|v| v.node_id.clone()))
+        .collect();
+
     // Câbles résolus : (source, port, cible, ancre départ, ancre arrivée).
     let mut wires: Vec<WireSeg> = Vec::new();
     for node in &graph.nodes {
@@ -177,7 +187,16 @@ pub(crate) fn Canvas(mut cx: EditorCx, on_cut_wire: Callback<(String, usize, Str
                             key: "wire-{source_id}-{port}-{target_id}",
                             d: geometry::wire_path(a, b),
                             fill: "none",
-                            stroke: geometry::WIRE_STROKE,
+                            // Câble rouge quand une extrémité porte une
+                            // violation (graphe invalide ou staleness
+                            // pin/device — le lien cassé saute aux yeux).
+                            stroke: if violation_nodes.contains(&source_id)
+                                || violation_nodes.contains(&target_id)
+                            {
+                                geometry::VIOLATION_STROKE
+                            } else {
+                                geometry::WIRE_STROKE
+                            },
                             "stroke-width": "2",
                             "pointer-events": "none",
                         }
@@ -328,6 +347,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         .violations
         .read()
         .iter()
+        .chain(cx.stale.read().iter())
         .any(|v| v.node_id.as_deref() == Some(node.id.as_str()));
 
     let (kind_label, _) = match &node.kind {

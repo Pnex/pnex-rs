@@ -57,6 +57,10 @@ pub(crate) struct EditorCx {
     pub(crate) zoom: Signal<f64>,
     /// Violations courantes (locales ou reçues en 400 du serveur).
     pub(crate) violations: Signal<Vec<FlowViolation>>,
+    /// Violations de **staleness** (client-only, jamais persistées) : pin
+    /// passé en sortie, pin disparu du pinout, device inconnu — le graphe
+    /// est structurellement valide mais sa lecture ne remontera rien.
+    pub(crate) stale: Signal<Vec<FlowViolation>>,
 }
 
 impl EditorCx {
@@ -66,11 +70,12 @@ impl EditorCx {
         self.graph.with_mut(f);
     }
 
-    /// Violations localisées sur un nœud donné.
+    /// Violations localisées sur un nœud donné (validation + staleness).
     pub(crate) fn violations_of(&self, node_id: &str) -> Vec<FlowViolation> {
         self.violations
             .read()
             .iter()
+            .chain(self.stale.read().iter())
             .filter(|v| v.node_id.as_deref() == Some(node_id))
             .cloned()
             .collect()
@@ -101,6 +106,7 @@ pub fn FlowEditor(
     let pan = use_signal(|| (0.0_f64, 0.0_f64));
     let zoom = use_signal(|| 1.0_f64);
     let mut violations = use_signal(Vec::<FlowViolation>::new);
+    let mut stale = use_signal(Vec::<FlowViolation>::new);
     let mut loaded_from = use_signal(|| None::<i64>);
 
     // Garde du chargement initial (jamais de `.set()` pendant le render).
@@ -131,10 +137,86 @@ pub fn FlowEditor(
         pan,
         zoom,
         violations,
+        stale,
     };
 
     // Dirty dérivé — jamais de signal dédié à tenir à jour.
     let dirty = graph() != saved_graph();
+
+    // ─── Staleness pin/device (Phase 6) ───
+    // Un graphe structurellement valide peut ne plus rien remonter : le pin
+    // a basculé in↔out (set_mode), le pin a disparu du pinout, le device est
+    // inconnu. Violations client-only (jamais persistées) → nœud + câble en
+    // rouge. Re-fetch uniquement au changement de CONFIG de lecture (pas au
+    // drag — la signature exclut les positions).
+    let mut stale_signature = use_signal(String::new);
+    use_effect(move || {
+        let g = graph.cloned(); // lecture suivie : re-déclenche au changement
+        let mut reads: Vec<(String, String, String)> = Vec::new();
+        let mut signature = String::new();
+        for n in &g.nodes {
+            if let pnex_core::FlowNodeKind::Device { config } = &n.kind {
+                for r in &config.reads {
+                    reads.push((n.id.clone(), r.device_id.clone(), r.pin.clone()));
+                    signature.push_str(&format!("{}:{}/{};", n.id, r.device_id, r.pin));
+                }
+            }
+        }
+        if signature == *stale_signature.cloned() {
+            return; // config inchangée (drag/pan) : rien à re-scruter
+        }
+        stale_signature.set(signature);
+        spawn(async move {
+            if reads.is_empty() {
+                stale.set(Vec::new());
+                return;
+            }
+            let devices = api::devices::list(&api::devices::DeviceFilters {
+                active: Some(true),
+                limit: Some(200),
+                ..Default::default()
+            })
+            .await
+            .map(|page| page.results)
+            .unwrap_or_default();
+            let mut pins_by_slug: std::collections::HashMap<String, Vec<api::pins::PinInfo>> =
+                std::collections::HashMap::new();
+            for slug in reads.iter().map(|(_, d, _)| d.clone()).collect::<std::collections::HashSet<_>>() {
+                let Some(pk) = devices.iter().find(|d| d.device_id == slug).map(|d| d.id) else {
+                    continue;
+                };
+                if let Ok(resp) = api::pins::pins(pk).await {
+                    pins_by_slug.insert(slug, resp.pins);
+                }
+            }
+            let mut found: Vec<FlowViolation> = Vec::new();
+            for (node_id, device_slug, pin_label) in reads {
+                match pins_by_slug.get(&device_slug) {
+                    None => found.push(FlowViolation::new(
+                        Some(&node_id),
+                        "pin_unavailable",
+                        format!("device « {device_slug} » introuvable (supprimé ou inactif)"),
+                    )),
+                    Some(pins) => match pins.iter().find(|p| p.label == pin_label) {
+                        None => found.push(FlowViolation::new(
+                            Some(&node_id),
+                            "pin_unavailable",
+                            format!("pin « {pin_label} » absent du device « {device_slug} »"),
+                        )),
+                        Some(pin) if pin.mode == "digital_out" => found.push(FlowViolation::new(
+                            Some(&node_id),
+                            "pin_unavailable",
+                            format!(
+                                "pin « {pin_label} » est en sortie (digital_out) — la lecture ne remontera aucune donnée"
+                            ),
+                        )),
+                        _ => {}
+                    },
+                }
+            }
+            stale.set(found);
+        });
+    });
 
     // --- Save (validate → PATCH) ---
     let mut saving = use_signal(|| false);
@@ -272,6 +354,10 @@ pub fn FlowEditor(
         _ => ("bg-gray-100 text-gray-800", t!("common-loading")),
     };
 
+    // Bandeau : violations de validation + staleness pin/device (Phase 6).
+    let banner: Vec<FlowViolation> =
+        violations.cloned().into_iter().chain(stale.cloned()).collect();
+
     rsx! {
         div { class: "flex flex-col gap-3",
             // ─── Toolbar ───
@@ -361,12 +447,12 @@ pub fn FlowEditor(
                 }
             }
 
-            // ─── Bandeau de violations (locales ou serveur) ───
-            if !violations.cloned().is_empty() {
+            // ─── Bandeau de violations (locales, serveur) + staleness ───
+            if !banner.is_empty() {
                 div { class: "bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-sm text-red-700",
                     span { class: "font-semibold mr-2", {t!("flows-violations-banner-title")} }
                     ul { class: "list-disc list-inside",
-                        for violation in violations.cloned() {
+                        for violation in banner.clone() {
                             li { key: "{violation.code}-{violation.node_id:?}",
                                 {match &violation.node_id {
                                     Some(node_id) => format!("#{node_id} : {}", violation.message),

@@ -283,6 +283,7 @@ pins-subscribe-5s = Lire chaque 5 s
 pins-subscribe-15s = Lire chaque 15 s
 pins-subscribe-60s = Lire chaque 60 s
 pins-apply = Appliquer
+pins-flows-stopped = Flows arrêtés (pin changé de mode) : { $names }
 
 # ─────────────── Brick 0 — flash firmware générique (secteur PNEXCFG) ───────────────
 

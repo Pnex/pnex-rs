@@ -196,6 +196,8 @@ async fn commands(
         .unwrap_or_default();
     let _ = &mut cfg;
 
+    // Impacts sur les flows déployés (rempli par set_mode — Phase 6).
+    let mut flow_impacts: Vec<(i64, String)> = Vec::new();
     let msg = match cmd.op.as_str() {
         "set_mode" => {
             let mode = str_to_mode_local(cmd.mode.as_deref().unwrap_or(""));
@@ -206,6 +208,13 @@ async fn commands(
             cfg.pullup = opts.pullup;
             cfg.safe_state = opts.safe_state;
             persist_instance(&ctx.db, row, mode, &cfg, None, Some(validated)).await?;
+            // Dépendances pin ↔ flows (Phase 6) : un pin qui passe in↔out
+            // invalide les lectures device des flows déployés — arrêt
+            // immédiat des flows impactés (base = source de vérité, avant
+            // même le push device).
+            flow_impacts =
+                super::flows::stop_flows_reading_pin(&ctx, org.org.id, &device.device_id, &row.label)
+                    .await?;
             ServerMsg::SetMode {
                 cmd_id: new_cmd_id(),
                 gpio: cmd.gpio,
@@ -255,7 +264,18 @@ async fn commands(
             loco_rs::controller::ErrorDetail::new("offline", "device non connecté".to_string()),
         ));
     }
-    format::json(serde_json::json!({ "sent": true }))
+    // Réponse enrichie : les flows arrêtés par le changement de mode
+    // (Phase 6) — l'UI les signale explicitement.
+    let mut body = serde_json::json!({ "sent": true });
+    if !flow_impacts.is_empty() {
+        body["flow_impacts"] = serde_json::json!(
+            flow_impacts
+                .iter()
+                .map(|(id, name)| serde_json::json!({"flow_id": id, "name": name}))
+                .collect::<Vec<_>>()
+        );
+    }
+    format::json(body)
 }
 
 /// Maj de l'instance (mode/config/snapshot) — la base est la source de

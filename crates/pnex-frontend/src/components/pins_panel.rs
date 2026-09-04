@@ -58,7 +58,18 @@ fn PinCard(device_pk: i64, pin: api::pins::PinInfo, connected: bool, can_write: 
             let outcome = api::pins::command(pk, cmd).await;
             busy.set(false);
             match outcome {
-                Ok(()) => {
+                Ok(body) => {
+                    // Un set_mode peut avoir arrêté des flows déployés lisant
+                    // ce pin (Phase 6) — l'utilisateur est prévenu explicitement.
+                    if let Some(impacts) = body["flow_impacts"].as_array() {
+                        let names: Vec<String> = impacts
+                            .iter()
+                            .filter_map(|f| f["name"].as_str().map(str::to_string))
+                            .collect();
+                        if !names.is_empty() {
+                            toasts::info(t!("pins-flows-stopped", names: names.join(", ")).to_string());
+                        }
+                    }
                     // L'état remonte par StateReport → visible au prochain poll.
                     sleep(Duration::from_millis(300)).await;
                     on_changed.call(());
