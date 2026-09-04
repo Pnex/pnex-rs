@@ -41,6 +41,11 @@ pub fn AuthCallback(code: String, error: String, error_description: String) -> E
                 },
                 _ => rsx! {
                     div { class: "text-center space-y-4",
+                        img {
+                            src: asset!("/assets/logo-light.png"),
+                            alt: "PNeX",
+                            class: "h-12 w-auto",
+                        }
                         span { class: "animate-spin inline-block rounded-full h-10 w-10 border-b-2 border-blue-400" }
                         p { class: "text-sm text-gray-300", {t!("callback-exchanging")} }
                     }

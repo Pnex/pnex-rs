@@ -146,51 +146,61 @@ async fn refresh(
 
 #[derive(Deserialize)]
 pub struct LogoutParams {
-    /// Retour après déconnexion (défaut : origine du requérant).
+    /// Retour après déconnexion (origine de l'app, ex. `http://localhost:5150/`).
+    /// Validé par Rauthy contre la liste autorisée du client — jamais ici.
     pub post_logout_redirect_uri: Option<String>,
-    /// `id_token_hint` — identifie la session à détruire sans interaction.
+    /// `id_token_hint` — optionnel : sans lui, Rauthy retombe sur la session
+    /// cookie (fallback interne `find_session_with_user_fallback`).
     pub id_token: Option<String>,
 }
 
-/// `GET /api/v1/oauth2/logout` — 302 vers l'end-session Rauthy
-/// (RP-initiated logout). Le front purge ses tokens AVANT de rediriger :
-/// au retour sur `/`, l'app boote déconnectée et le cookie SSO est mort.
+/// `GET /api/v1/oauth2/logout` — sert un formulaire HTML auto-soumis vers
+/// l'end-session Rauthy. Ce POST est une navigation TOP-LEVEL : le 302 final
+/// de Rauthy vers `post_logout_redirect_uri` devient une vraie navigation et
+/// le navigateur atterrit directement sur l'app (boot déconnecté → écran de
+/// login). C'est le seul chemin qui redirige réellement : la page logout SPA
+/// de Rauthy POSTe en `fetch` puis rejoint toujours sa landing hardcodée
+/// `/auth/v1/` — jamais l'app (vérifié dans le source 0.36.2).
 async fn logout(
     State(ctx): State<AppContext>,
     Query(params): Query<LogoutParams>,
-    request: axum::extract::Request,
 ) -> Result<Response> {
     let settings = RauthySettings::from_config(&ctx.config)?;
-    let post_logout_redirect_uri = params.post_logout_redirect_uri.unwrap_or_else(|| {
-        let host = request
-            .headers()
-            .get(header::HOST)
-            .and_then(|h| h.to_str().ok())
-            .unwrap_or("localhost:5150");
-        format!("http://{host}/")
-    });
+    let post_logout_redirect_uri = params
+        .post_logout_redirect_uri
+        .unwrap_or_else(|| format!("{}/auth/v1/", settings.base_url));
 
-    let mut pairs: Vec<(&str, String)> = vec![
-        ("client_id", settings.client_id.clone()),
-        ("post_logout_redirect_uri", post_logout_redirect_uri),
-    ];
-    if let Some(id_token) = params.id_token {
-        pairs.push(("id_token_hint", id_token));
+    // Échappement HTML minimal (l'id_token est base64url + points, l'URI
+    // vient du front — défense en profondeur contre une injection d'attribut).
+    fn esc(s: &str) -> String {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
     }
-    let location = format!(
-        "{}?{}",
-        settings.end_session_endpoint(),
-        form_urlencode(&pairs)
+    let hint = params
+        .id_token
+        .map(|t| {
+            format!(
+                r#"<input type="hidden" name="id_token_hint" value="{}">"#,
+                esc(&t)
+            )
+        })
+        .unwrap_or_default();
+    let html = format!(
+        "<!DOCTYPE html><html><body>\
+<form id=\"f\" method=\"POST\" action=\"{action}\">\
+{hint}\
+<input type=\"hidden\" name=\"post_logout_redirect_uri\" value=\"{uri}\">\
+</form>\
+<script>document.getElementById('f').submit()</script>\
+</body></html>",
+        action = esc(&settings.end_session_endpoint()),
+        hint = hint,
+        uri = esc(&post_logout_redirect_uri),
     );
 
-    let mut response = Response::new(axum::body::Body::empty());
-    *response.status_mut() = StatusCode::FOUND;
-    response.headers_mut().insert(
-        header::LOCATION,
-        HeaderValue::from_str(&location)
-            .map_err(|_| Error::BadRequest("post_logout_redirect_uri invalide".into()))?,
-    );
-    Ok(response)
+    Ok(([(header::CONTENT_TYPE, "text/html; charset=utf-8")], html).into_response())
 }
 
 #[derive(Deserialize)]

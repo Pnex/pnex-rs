@@ -93,6 +93,13 @@ tasks:
       - mkdir -p crates/pnex-frontend/assets
       - test -f crates/pnex-frontend/assets/flasher.js || printf '/* Stub — bundle reel genere par task js:build (npm) */\n' > crates/pnex-frontend/assets/flasher.js
 
+  # ---------- Rauthy (branding IdP) ----------
+
+  rauthy:branding:
+    desc: Applique thème + logo PNeX aux pages Rauthy (login/register/account) — nécessite RAUTHY_API_KEY='<nom>$<secret>'
+    cmds:
+      - bash deploy/rauthy/apply-branding.sh
+
   build:
     desc: Build complet (front + workspace natif)
     deps: [build:frontend]

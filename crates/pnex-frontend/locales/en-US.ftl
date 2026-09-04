@@ -1,9 +1,6 @@
 # PNEX front — English (fallback).
 # Toute clé ajoutée dans un autre locale doit exister ici (test de parité).
 
-app-name = PNEX
-app-tagline = Platform Nexus
-
 # Navigation
 nav-dashboard = Dashboard
 nav-devices = Devices
@@ -24,7 +21,6 @@ common-close = Close
 common-refresh = Refresh
 
 # Divers
-login-welcome = Welcome to PNeX
 login-tagline = Platform Nexus
 login-description = Connecting thousands of IoT devices with seamless data ingestion
 login-signin = Sign in to PNeX
@@ -37,6 +33,9 @@ callback-back = Back to sign in
 not-found = Page not found: { $path }
 toast-session-expired = Your session has expired. Please sign in again.
 shell-logout = Log out
+shell-logout-confirm-title = Sign out?
+shell-logout-confirm-message = Your session will be closed and you will need to sign in again.
+shell-logout-confirm-action = Sign out
 server-url-title = Server URL
 
 # Organisations

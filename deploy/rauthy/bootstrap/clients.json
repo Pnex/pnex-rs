@@ -1,7 +1,7 @@
 [
   {
     "id": "pnex",
-    "name": "PNEX UI",
+    "name": "PNeX",
     "secret": null,
     "enabled": true,
     "redirect_uris": [

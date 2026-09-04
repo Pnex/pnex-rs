@@ -50,14 +50,18 @@ pub fn login(user: UserInfo) {
 }
 
 /// Déconnexion : purge locale (tokens + org, la locale est conservée) puis
-/// end-session Rauthy en pleine page — sinon le cookie SSO survit et le
+/// end-session Rauthy en onglet annexe — sinon le cookie SSO survit et le
 /// login suivant ré-authentifie sans formulaire. En expiration de session
 /// (refresh échoué), `expire()` fait la purge seule.
 pub fn logout() {
+    // id_token lu AVANT la purge : sans `id_token_hint`, la page logout
+    // Rauthy affiche sa confirmation yes/no au lieu de détruire le SSO
+    // directement (l'auto-POST n'a lieu que si un hint est présent).
+    let id_token = api::auth::stored_id_token();
     api::auth::clear_tokens();
     crate::state::org::clear();
     SESSION.with_mut(|s| *s = SessionState::LoggedOut);
-    api::auth::end_session();
+    api::auth::end_session(id_token);
 }
 
 /// Session expirée (refresh échoué) — purge + notification.

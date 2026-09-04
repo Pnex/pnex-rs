@@ -1,5 +1,5 @@
-//! Page de connexion — portée du `AuthWrapper.tsx` React : branding
-//! « Welcome to PNeX », fond sombre (le canvas réseau animé de l'original est
+//! Page de connexion — portée du `AuthWrapper.tsx` React : wordmark logo
+//! officiel, fond sombre (le canvas réseau animé de l'original est
 //! approché par un dégradé + halos CSS, choix assumé cross-plateforme).
 //!
 //! Le login est un **redirect PKCE** vers Rauthy via le proxy backend (pas
@@ -10,7 +10,6 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 
 use crate::api;
-use crate::components::icons;
 use crate::i18n;
 
 #[component]
@@ -31,12 +30,14 @@ pub fn Login() -> Element {
             div { class: "relative z-10 min-h-screen flex items-center justify-center px-4",
                 div { class: "max-w-md w-full",
                     div { class: "bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-8 space-y-8",
-                        // Branding
+                        // Branding : wordmark officiel — le logo contient déjà
+                        // le nom, pas de titre texte redondant.
                         div { class: "text-center",
-                            div { class: "inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl mb-4 shadow-lg",
-                                icons::Zap { class: "h-8 w-8 text-white" }
+                            img {
+                                src: asset!("/assets/logo.png"),
+                                alt: "PNeX",
+                                class: "mx-auto h-16 w-auto mb-5",
                             }
-                            h2 { class: "text-3xl font-bold text-gray-900 mb-2", {t!("login-welcome")} }
                             p { class: "text-sm text-gray-600 mb-1", {t!("login-tagline")} }
                             p { class: "text-xs text-gray-500", {t!("login-description")} }
                         }

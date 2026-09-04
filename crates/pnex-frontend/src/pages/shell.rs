@@ -73,9 +73,8 @@ fn ShellContent() -> Element {
                             onclick: move |_| sidebar_open.set(true),
                             crate::components::icons::Menu { class: "h-6 w-6" }
                         }
-                        div { class: "flex items-center space-x-3",
-                            crate::components::icons::Zap { class: "h-6 w-6 text-blue-600" }
-                            span { class: "text-lg font-bold text-gray-900", {t!("app-name")} }
+                        div { class: "flex items-center",
+                            img { src: asset!("/assets/logo.png"), alt: "PNeX", class: "h-8 w-auto" }
                         }
                         div {}
                     }
@@ -133,10 +132,13 @@ fn Nav() -> Element {
 
 #[component]
 fn SidebarBrand() -> Element {
+    // Variante claire (lettres blanches, X rouge) : la variante navy serait
+    // illisible directement sur le bg-gray-900 de la sidebar.
     rsx! {
-        div { class: "flex items-center space-x-3",
-            crate::components::icons::Zap { class: "h-8 w-8 text-blue-400" }
-            span { class: "text-xl font-bold text-white", {t!("app-name")} }
+        img {
+            src: asset!("/assets/logo-light.png"),
+            alt: "PNeX",
+            class: "h-10 w-auto",
         }
     }
 }
@@ -146,6 +148,7 @@ fn SidebarFooter() -> Element {
     let identity = session::user()
         .map(|user| user.full_name.or(user.email).unwrap_or(user.username))
         .unwrap_or_default();
+    let mut confirm_logout = use_signal(|| false);
     rsx! {
         div { class: "p-4 border-t border-gray-800 space-y-3",
             OrgSwitcher {}
@@ -154,8 +157,20 @@ fn SidebarFooter() -> Element {
                 button {
                     class: "text-gray-400 hover:text-white transition-colors",
                     title: t!("shell-logout"),
-                    onclick: move |_| session::logout(),
+                    onclick: move |_| confirm_logout.set(true),
                     crate::components::icons::LogOut { class: "h-4 w-4" }
+                }
+            }
+            if confirm_logout() {
+                crate::components::confirm::ConfirmDialog {
+                    title: t!("shell-logout-confirm-title"),
+                    message: t!("shell-logout-confirm-message"),
+                    confirm_label: t!("shell-logout-confirm-action"),
+                    on_confirm: move |_| {
+                        confirm_logout.set(false);
+                        session::logout();
+                    },
+                    on_cancel: move |_| confirm_logout.set(false),
                 }
             }
         }

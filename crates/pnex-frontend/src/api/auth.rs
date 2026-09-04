@@ -57,11 +57,20 @@ pub fn clear_tokens() {
     local.remove(KEY_ID_TOKEN);
 }
 
-/// Déconnexion Rauthy : redirige en pleine page vers le proxy end-session
-/// (la session SSO du navigateur est détruite — sans ça, le login suivant
-/// ré-authentifie silencieusement). À appeler APRÈS la purge locale.
+/// Lit l'id_token stocké — `session::logout()` le capture AVANT la purge
+/// locale pour alimenter le `id_token_hint` du flux end-session.
+pub fn stored_id_token() -> Option<String> {
+    storage::local().get(KEY_ID_TOKEN)
+}
+
+/// Déconnexion Rauthy : navigation pleine page vers le proxy backend, qui
+/// sert un formulaire auto-soumis POSTant l'end-session en TOP-LEVEL — le
+/// 302 final de Rauthy vers `post_logout_redirect_uri` devient une vraie
+/// navigation : le navigateur atterrit sur `{origine}/` (boot déconnecté →
+/// écran de login). À appeler APRÈS la purge locale (l'id_token doit avoir
+/// été capturé avant).
 #[cfg(target_arch = "wasm32")]
-pub fn end_session() {
+pub fn end_session(id_token: Option<String>) {
     let Some(window) = web_sys::window() else {
         return;
     };
@@ -72,16 +81,14 @@ pub fn end_session() {
             window.location().origin().ok().unwrap_or_default()
         ))
     );
-    if let Some(id_token) = storage::local().get(KEY_ID_TOKEN) {
-        url.push_str(&format!("&id_token={}", pkce::urlencode(&id_token)));
+    if let Some(token) = id_token {
+        url.push_str(&format!("&id_token={}", pkce::urlencode(&token)));
     }
     let _ = window.location().set_href(&url);
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn end_session() {
-    // Cible desktop : la webview gérera sa propre session (phase desktop).
-}
+pub fn end_session(_id_token: Option<String>) {}
 
 /// URI de callback du flow PKCE — même calcul au départ et au retour (l'URI
 /// doit être identique à la signature du code côté Rauthy).

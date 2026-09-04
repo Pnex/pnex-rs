@@ -1,0 +1,28 @@
+{
+  "client_id": "pnex",
+  "light": {
+    "text": [225, 22, 11],
+    "text_high": [225, 22, 7],
+    "bg": [40, 30, 97],
+    "bg_high": [40, 20, 99],
+    "action": [221, 83, 53],
+    "accent": [221, 83, 53],
+    "error": [9, 78, 53],
+    "btn_text": "#ffffff",
+    "theme_sun": "#fbbf24",
+    "theme_moon": "#61c8e9"
+  },
+  "dark": {
+    "text": [220, 20, 93],
+    "text_high": [220, 25, 97],
+    "bg": [221, 39, 11],
+    "bg_high": [215, 28, 17],
+    "action": [217, 91, 60],
+    "accent": [217, 91, 60],
+    "error": [9, 85, 60],
+    "btn_text": "#ffffff",
+    "theme_sun": "#fbbf24",
+    "theme_moon": "#61c8e9"
+  },
+  "border_radius": "0.5rem"
+}

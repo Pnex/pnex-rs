@@ -33,6 +33,8 @@ fn App() -> Element {
         });
     });
     rsx! {
+        // Favicon : mark X seul — lisible en 32 px, contrairement au wordmark.
+        link { rel: "icon", type: "image/png", href: asset!("/assets/logo-mark.png") }
         link { rel: "stylesheet", href: asset!("/assets/tailwind.css") }
         // Glue esptool-js (flash navigateur, Web Serial) — script classique
         // IIFE qui expose window.pnexFlash/pnexFlashSupported (cf. flash.rs).

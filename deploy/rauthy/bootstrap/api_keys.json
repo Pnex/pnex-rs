@@ -1,0 +1,14 @@
+[
+  {
+    "name": "pnex-branding",
+    "secret": {
+      "Plain": "c1cb445debf753d916623fc2e0d996cef9a73f3b4664a9d3d29d16a5e5113e5c"
+    },
+    "access": [
+      {
+        "group": "Clients",
+        "access_rights": ["read", "create", "update", "delete"]
+      }
+    ]
+  }
+]
