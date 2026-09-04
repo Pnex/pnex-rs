@@ -1,17 +1,61 @@
 # Moteur de flow ETL « Node-RED full-Rust » — EdgeLinkd vendored, mode B
 
 > **Statut : IMPLÉMENTÉ (Phase 0 + Phase 1, 2026-09-03 — branché
-> `worktree-etl-flow-engine`, en attente de revue humaine).** Ce document
-> consigne (a) la décision d'intégration et de rechargement (spike PRD §5.1),
-> (b) les faits **vérifiés** sur EdgeLinkd au commit épinglé, (c) les écarts
-> vs la conception initiale.
+> `worktree-etl-flow-engine` ; Phase 5 — éditeur Dioxus — IMPLÉMENTÉ
+> 2026-09-04, branche `flow-engine-phase5-editeur` ; les deux en attente de
+> revue humaine).** Ce document consigne (a) la décision d'intégration et de
+> rechargement (spike PRD §5.1), (b) les faits **vérifiés** sur EdgeLinkd au
+> commit épinglé, (c) les écarts vs la conception initiale.
 >
 > **Rappel PRD (§3, garde-fous)** : ingestion uniquement (pas de write-side
 > device, frontière D13/D17) ; cœur EdgeLinkd jamais patché ; pas de
 > type-check global du graphe (contrats typés aux frontières des nœuds
 > custom) ; les utilisateurs n'écrivent pas de Rust ; l'éditeur Node-RED
 > embarqué n'est **jamais exposé** (runtime headless) ; tranches fines —
-> l'éditeur Dioxus est une phase ultérieure.
+> l'éditeur Dioxus est la phase 5 de la piste.
+
+## 0. Phase 5 — Éditeur de flows (2026-09-04)
+
+Éditeur drag & drop complet dans `crates/pnex-frontend/src/components/
+flow_editor/`, page `/flows` (liste + éditeur en sous-vue — routes
+statiques, pattern `devices.rs`). L'éditeur ne parle **qu'à l'API Loco**
+(garde-fou PRD respecté — zéro contact avec le runtime).
+
+Choix structurants :
+
+- **Canevas SVG pur Dioxus** (aucune dépendance npm/Rust ajoutée) — l'SVG
+  n'a **pas** de `view_box` : 1 unité utilisateur = 1 px CSS, conversion
+  `(client − origine − pan)/zoom`, origine (`getBoundingClientRect`)
+  mesurée au début de chaque geste.
+- **Gestes** : handlers `move`/`up` sur le root SVG (fiables quand le
+  pointeur sort du nœud), `pointerleave` annule un geste orphelin, hit-test
+  bbox **mathématique** (pas d'`elementFromPoint`), zoom molette borné
+  0.4–2.0 vers le curseur, drag snappé sur grille 20 px.
+- **Validation partagée** : `pnex_core::validate_graph` exécutée **dans le
+  navigateur** (pnex-core est wasm32) AVANT chaque save — surlignage des
+  nœuds en cause + bandeau ; le 400 `{"violations": [...]}` serveur est
+  traité à l'identique. Pas de cycle-détection ni de type-check ajoutés
+  (garde-fou PRD).
+- **Versioning** : save = PATCH avec `expected_version_number` (409 →
+  modal « Recharger depuis le serveur / Écraser avec ma version », les deux
+  branches repartent d'un détail frais) ; drawer d'historique — « Charger »
+  une ancienne version = édition (le prochain save crée v(n+1) avec ce
+  graphe), « Déployer cette version » = rollback serveur (ne crée pas de
+  version) ; dirty dérivé au rendu (`graph != saved_graph`, jamais de
+  signal dirty à tenir à jour — leçon brick0 « zéro set en render »).
+- **Inspecteur par kind** : inject/pnex_sql/debug/red, JSON (payload
+  inject, config red) validés localement avec drapeau d'invalidité (pattern
+  `MetadataEditor` devices) ; les violations du nœud sélectionné sont
+  listées dans l'inspecteur (messages pnex-core affichés tels quels).
+- **Deploy/rollback** : bouton gated `can_write && !dirty` (deploy =
+  publier une version enregistrée) ; chip runtime pollé 5 s
+  (`GET /flows/{id}/runtime`) — moteur actif/arrêté, pid/version au
+  survol ; 503 `flow_runtime` toasté tel quel.
+- **Frontières** : `ApiError` porte désormais `status`/`body` (409/400
+  distinguables sans parser le message) ; `Serialize` ajouté sur les DTOs
+  requête `pnex-core` (le front construit les requêtes typées) ; handlers
+  sans capture de `String` (l'id du nœud ciblé est relu du signal
+  sélection — piège FnMut).
 
 ## 1. Architecture cible
 
