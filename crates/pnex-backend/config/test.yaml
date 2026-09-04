@@ -82,5 +82,5 @@ settings:
     restart_backoff_max_secs: 2
     terminate_secs: 2
     reload_ack_secs: {{ get_env(name="PNEX_FLOW_RELOAD_ACK_SECS", default="5") }}
-    env_allowlist: ["DATABASE_URL"]
+    env_allowlist: ["DATABASE_URL", "OPENOBSERVE_URL", "OPENOBSERVE_ROOT_EMAIL", "OPENOBSERVE_ROOT_PASSWORD"]
 # En test : issuer redirigeable vers un JWKS mock (voir tests/auth_*).

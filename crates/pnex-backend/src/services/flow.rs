@@ -60,7 +60,12 @@ impl Default for FlowSettings {
             restart_backoff_max_secs: 60,
             terminate_secs: 10,
             reload_ack_secs: 10,
-            env_allowlist: vec!["DATABASE_URL".into()],
+            env_allowlist: vec![
+                "DATABASE_URL".into(),
+                "OPENOBSERVE_URL".into(),
+                "OPENOBSERVE_ROOT_EMAIL".into(),
+                "OPENOBSERVE_ROOT_PASSWORD".into(),
+            ],
         }
     }
 }
@@ -112,7 +117,15 @@ mod tests {
         let d = FlowSettings::default();
         assert!(!d.enabled, "le moteur est coupé par défaut");
         assert_eq!(d.runtime_cmd, "pnex-flow-runtime");
-        assert_eq!(d.env_allowlist, vec!["DATABASE_URL".to_string()]);
+        assert_eq!(
+            d.env_allowlist,
+            vec![
+                "DATABASE_URL".to_string(),
+                "OPENOBSERVE_URL".to_string(),
+                "OPENOBSERVE_ROOT_EMAIL".to_string(),
+                "OPENOBSERVE_ROOT_PASSWORD".to_string(),
+            ]
+        );
 
         // Config sans section `flow` → défauts (logger seul champ requis).
         let minimal = serde_json::json!({

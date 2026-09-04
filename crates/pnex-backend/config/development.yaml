@@ -140,4 +140,4 @@ settings:
     restart_backoff_max_secs: {{ get_env(name="PNEX_FLOW_BACKOFF_MAX_SECS", default="60") }}
     terminate_secs: {{ get_env(name="PNEX_FLOW_TERMINATE_SECS", default="10") }}
     reload_ack_secs: {{ get_env(name="PNEX_FLOW_RELOAD_ACK_SECS", default="10") }}
-    env_allowlist: ["DATABASE_URL"]
+    env_allowlist: ["DATABASE_URL", "OPENOBSERVE_URL", "OPENOBSERVE_ROOT_EMAIL", "OPENOBSERVE_ROOT_PASSWORD"]

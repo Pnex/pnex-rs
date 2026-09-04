@@ -64,6 +64,8 @@ async fn run() -> ExitCode {
     // Garde-fou d'édition de liens : les nœuds PNEX s'enregistrent via
     // inventory ; cette référence garantit leur inclusion dans le binaire.
     pnex_node_sql::registered();
+    // Nœuds Phase 6 (device/calc/metric) — même garde-fou anti-élagage.
+    pnex_node_device::registered();
 
     let reg = match RegistryBuilder::default().build() {
         Ok(r) => r,
