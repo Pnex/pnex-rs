@@ -166,6 +166,36 @@ mod tests {
     }
 
     #[test]
+    fn make_node_phase6_typed_but_incomplete() {
+        // Defaults typés mais volontairement incomplets : le bandeau guide
+        // la saisie (device_no_reads / calc_bad_expression /
+        // metric_name_missing), même règle que red.
+        let node = make_node("n1", PaletteKind::Device, Position { x: 0.0, y: 0.0 });
+        let codes: Vec<String> =
+            pnex_core::validate_graph(&FlowGraph { nodes: vec![node] })
+                .iter()
+                .map(|v| v.code.clone())
+                .collect();
+        assert!(codes.contains(&"device_no_reads".to_string()), "{codes:?}");
+
+        let node = make_node("n1", PaletteKind::Calc, Position { x: 0.0, y: 0.0 });
+        let codes: Vec<String> =
+            pnex_core::validate_graph(&FlowGraph { nodes: vec![node] })
+                .iter()
+                .map(|v| v.code.clone())
+                .collect();
+        assert!(codes.contains(&"calc_bad_expression".to_string()), "{codes:?}");
+
+        let node = make_node("n1", PaletteKind::Metric, Position { x: 0.0, y: 0.0 });
+        let codes: Vec<String> =
+            pnex_core::validate_graph(&FlowGraph { nodes: vec![node] })
+                .iter()
+                .map(|v| v.code.clone())
+                .collect();
+        assert!(codes.contains(&"metric_name_missing".to_string()), "{codes:?}");
+    }
+
+    #[test]
     fn cablage_add_et_remove() {
         let mut graph = graph_with_two();
         add_target(&mut graph, "n1", 0, "n2");
