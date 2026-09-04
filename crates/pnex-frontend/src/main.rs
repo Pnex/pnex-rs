@@ -14,6 +14,7 @@ mod i18n;
 mod pages;
 mod state;
 mod storage;
+mod tron;
 mod util;
 
 use crate::app::Route;
@@ -40,6 +41,9 @@ fn App() -> Element {
         // IIFE qui expose window.pnexFlash/pnexFlashSupported (cf. flash.rs).
         // Consommé au clic sur « Flasher », aucun souci d'ordre de chargement.
         script { src: asset!("/assets/flasher.js") }
+        // Fond animé de la page de login (gerbe de faisceaux WebGL2) —
+        // IIFE qui expose window.pnexTronGerbe (cf. tron.rs, login.rs).
+        script { src: asset!("/assets/tron-gerbe.js") }
         Router::<Route> {}
     }
 }

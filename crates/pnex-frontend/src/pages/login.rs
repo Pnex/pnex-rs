@@ -1,6 +1,6 @@
 //! Page de connexion — portée du `AuthWrapper.tsx` React : wordmark logo
-//! officiel, fond sombre (le canvas réseau animé de l'original est
-//! approché par un dégradé + halos CSS, choix assumé cross-plateforme).
+//! officiel, fond animé « gerbe de faisceaux » WebGL2 (assets/tron-gerbe.js
+//! via le pont `crate::tron`), dégradé sombre en secours (WebGL2 absent).
 //!
 //! Le login est un **redirect PKCE** vers Rauthy via le proxy backend (pas
 //! de formulaire mot de passe dans l'UI) ; création de compte et réinitialisation
@@ -11,6 +11,7 @@ use dioxus_i18n::t;
 
 use crate::api;
 use crate::i18n;
+use crate::tron;
 
 #[component]
 pub fn Login() -> Element {
@@ -18,14 +19,20 @@ pub fn Login() -> Element {
     let register = move |_| api::auth::start_pkce_login(Some("register"));
     let reset = move |_| api::auth::start_pkce_login(Some("reset"));
 
+    // Libère canvas + contexte GL à la navigation hors login.
+    use_drop(tron::unmount);
+
     rsx! {
         div { class: "relative min-h-screen overflow-hidden bg-gray-900",
-            // Fond : dégradé + halos bleus (approximation du réseau animé).
-            div { class: "absolute inset-0",
-                style: "background: linear-gradient(135deg, #111827 0%, #1e293b 100%)"
+            // Fond : gerbe WebGL montée dans ce div au onmounted (id passé
+            // au pont JS) ; le dégradé teal sombre n'est visible que si
+            // WebGL2 manque — même teinte que le fond du shader.
+            div {
+                id: "tron-gerbe-bg",
+                class: "absolute inset-0",
+                style: "background: linear-gradient(135deg, #040d10 0%, #0b2830 100%)",
+                onmounted: move |_| tron::mount("tron-gerbe-bg"),
             }
-            div { class: "absolute -top-24 -left-24 w-96 h-96 rounded-full bg-blue-500/10 blur-3xl" }
-            div { class: "absolute bottom-0 right-0 w-[28rem] h-[28rem] rounded-full bg-blue-400/10 blur-3xl" }
 
             div { class: "relative z-10 min-h-screen flex items-center justify-center px-4",
                 div { class: "max-w-md w-full",
