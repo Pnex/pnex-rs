@@ -188,25 +188,35 @@ pub fn FlowEditor(
             .await
             .map(|page| page.results)
             .unwrap_or_default();
-            let mut pins_by_slug: std::collections::HashMap<String, Vec<api::pins::PinInfo>> =
-                std::collections::HashMap::new();
+            let mut pinouts: std::collections::HashMap<
+                String,
+                Result<Vec<api::pins::PinoutPin>, String>,
+            > = std::collections::HashMap::new();
             for slug in reads.iter().map(|(_, d, _)| d.clone()).collect::<std::collections::HashSet<_>>() {
                 let Some(pk) = devices.iter().find(|d| d.device_id == slug).map(|d| d.id) else {
                     continue;
                 };
-                if let Ok(resp) = api::pins::pins(pk).await {
-                    pins_by_slug.insert(slug, resp.pins);
-                }
+                // Même source que l'inspecteur (`/pinout` : instances +
+                // overlay) — `/pins` (instances seules) déclarerait « absent »
+                // un pin que l'éditeur propose via l'overlay (défaut carte
+                // d'un device jamais configuré) : faux rouge.
+                let result = api::pins::pinout(pk).await.map_err(|e| e.message);
+                pinouts.insert(slug, result);
             }
             let mut found: Vec<FlowViolation> = Vec::new();
             for (node_id, device_slug, pin_label) in reads {
-                match pins_by_slug.get(&device_slug) {
+                match pinouts.get(&device_slug) {
                     None => found.push(FlowViolation::new(
                         Some(&node_id),
                         "pin_unavailable",
                         format!("device « {device_slug} » introuvable (supprimé ou inactif)"),
                     )),
-                    Some(pins) => match pins.iter().find(|p| p.label == pin_label) {
+                    Some(Err(err)) => found.push(FlowViolation::new(
+                        Some(&node_id),
+                        "pin_unavailable",
+                        format!("pinout de « {device_slug} » indisponible : {err}"),
+                    )),
+                    Some(Ok(pins)) => match pins.iter().find(|p| p.label == pin_label) {
                         None => found.push(FlowViolation::new(
                             Some(&node_id),
                             "pin_unavailable",

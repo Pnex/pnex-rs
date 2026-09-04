@@ -10,8 +10,10 @@
 //!   redeploys) ; stdout JSON-lines rejoué en `tracing`.
 //!
 //! Secrets : l'enfant ne reçoit que `PATH`, `HOME` + la allowlist
-//! d'environnement (`env_allowlist`, ex. `DATABASE_URL`) — jamais de secret
-//! dans `flows.json` (PRD §8).
+//! d'environnement (`env_allowlist`, ex. `DATABASE_URL`) + les creds
+//! OpenObserve **injectées depuis le yaml** (`settings.openobserve` — le
+//! serveur ne les a pas en env process) — jamais de secret dans `flows.json`
+//! (PRD §8).
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -285,6 +287,17 @@ fn spawn_child(settings: &FlowSettings, flows_path: &std::path::Path) -> Option<
         if let Ok(val) = std::env::var(key) {
             cmd.env(key, val);
         }
+    }
+    // Credentials OpenObserve : le serveur les tient du yaml
+    // (`settings.openobserve`), pas de son env process — l'allowlist seule ne
+    // transmettrait jamais rien (retour e2e 2026-09-04 : nœud device en
+    // échec au build, moteur en crash-loop sans acquittement). Même domaine
+    // de confiance que DATABASE_URL : le runtime lit/écrit la télémétrie
+    // (nœuds device/metric) pour le compte du serveur.
+    if let Some(o2) = &settings.o2 {
+        cmd.env("OPENOBSERVE_URL", o2.base_url.clone())
+            .env("OPENOBSERVE_ROOT_EMAIL", o2.root_email.clone())
+            .env("OPENOBSERVE_ROOT_PASSWORD", o2.root_password.clone());
     }
 
     let mut child = match cmd.spawn() {
