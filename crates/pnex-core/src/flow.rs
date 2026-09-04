@@ -549,8 +549,10 @@ pub struct FlowVersionDetail {
     pub graph: FlowGraph,
 }
 
-/// Création : flow + version 1 en une transaction.
-#[derive(Debug, Clone, Deserialize)]
+/// Création : flow + version 1 en une transaction. `Serialize` sert au
+/// front (l'éditeur construit la requête typée) — le backend ne lit que
+/// `Deserialize`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateFlow {
     pub name: String,
     #[serde(default)]
@@ -565,7 +567,7 @@ pub struct CreateFlow {
 /// Enregistrement d'une nouvelle version (append-only). La concurrence est
 /// optimiste : `expected_version_number` doit valoir la version courante,
 /// sinon rejet 409 — deux éditeurs ne s'écrasent pas.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateFlow {
     pub expected_version_number: i64,
     pub graph: FlowGraph,
@@ -579,7 +581,7 @@ pub struct UpdateFlow {
 
 /// Déploiement explicite d'une version (projection + rechargement runtime).
 /// `version_number` absent → dernière version.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeployFlow {
     #[serde(default)]
     pub version_number: Option<i64>,

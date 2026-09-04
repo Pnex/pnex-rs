@@ -73,8 +73,6 @@ pub async fn command(device_pk: i64, cmd: Command) -> Result<(), ApiError> {
         Some(cmd.to_json()),
     )
     .await?
-    .ok_or_else(|| ApiError {
-        message: "réponse vide inattendue".into(),
-    })
+    .ok_or_else(|| ApiError::new("réponse vide inattendue"))
     .map(|_| ())
 }

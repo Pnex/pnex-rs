@@ -38,6 +38,11 @@ web-sys = { version = "0.3", features = [
   "HtmlElement",
   "HtmlDocument",
   "Node",
+  # Éditeur de flows — conversion client→graphe : mesure du viewBox SVG
+  # (getBoundingClientRect) au début de chaque geste (flow_editor/geometry.rs).
+  "Element",
+  "DomRect",
+  "DomRectReadOnly",
 ] }
 # Flash navigateur (flash.rs) : pont vers les globales du bundle
 # assets/flasher.js (esptool-js). Versions unifiées avec web-sys.

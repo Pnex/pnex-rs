@@ -54,13 +54,9 @@ pub async fn request_opt<T: DeserializeOwned>(
         }
         serde_json::from_str(&text)
             .map(Some)
-            .map_err(|err| ApiError {
-                message: format!("réponse illisible : {err}"),
-            })
+            .map_err(|err| ApiError::new(format!("réponse illisible : {err}")))
     } else {
-        Err(ApiError {
-            message: crate::api::error::extract_message(status, &text),
-        })
+        Err(ApiError::http(status, &text))
     }
 }
 
@@ -72,9 +68,7 @@ pub async fn request<T: DeserializeOwned>(
 ) -> Result<T, ApiError> {
     request_opt(method, path, body)
         .await?
-        .ok_or_else(|| ApiError {
-            message: "réponse vide inattendue".into(),
-        })
+        .ok_or_else(|| ApiError::new("réponse vide inattendue"))
 }
 
 /// Requête authentifiée attendant des **octets** (téléchargement de
@@ -91,9 +85,7 @@ pub async fn request_bytes(method: reqwest::Method, path: &str) -> Result<Vec<u8
         Ok(bytes.to_vec())
     } else {
         let text = String::from_utf8_lossy(&bytes).into_owned();
-        Err(ApiError {
-            message: crate::api::error::extract_message(status, &text),
-        })
+        Err(ApiError::http(status, &text))
     }
 }
 
@@ -132,9 +124,7 @@ async fn ensure_refresh() -> Result<(), ApiError> {
             let future: RefreshFuture = async {
                 let Some(refresh_token) = storage::local().get(KEY_REFRESH_TOKEN) else {
                     crate::state::session::expire();
-                    return Err(ApiError {
-                        message: "session expirée".into(),
-                    });
+                    return Err(ApiError::new("session expirée"));
                 };
                 match crate::api::auth::refresh_tokens(&refresh_token).await {
                     Ok(tokens) => {
