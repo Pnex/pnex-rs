@@ -40,6 +40,8 @@ pub fn Flows() -> Element {
     let mut search = use_signal(String::new);
     let mut page = use_signal(|| 0i64);
     let mut create_open = use_signal(|| false);
+    // Cible de suppression (id, nom) — confirmation à la demande.
+    let mut delete_target = use_signal(|| None::<(i64, String)>);
 
     let can_write = current_role().is_some_and(|role| matches!(role.as_str(), "owner" | "admin"));
 
@@ -151,7 +153,7 @@ pub fn Flows() -> Element {
                                         }
                                         tbody { class: "bg-white divide-y divide-gray-200",
                                             for flow in paged.results.clone() {
-                                                {flow_row(flow, selected)}
+                                                {flow_row(flow, selected, can_write, delete_target)}
                                             }
                                         }
                                     }
@@ -173,6 +175,28 @@ pub fn Flows() -> Element {
                                     span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-blue-600" }
                                 }
                             },
+                        }
+
+                        // Suppression confirmée d'une ligne.
+                        if let Some((flow_id, flow_name)) = delete_target() {
+                            crate::components::confirm::ConfirmDialog {
+                                title: t!("flows-confirm-delete-title"),
+                                message: format!("« {flow_name} » — {}", t!("flows-confirm-delete-message")),
+                                confirm_label: t!("flows-delete"),
+                                on_confirm: move |_| {
+                                    delete_target.set(None);
+                                    spawn(async move {
+                                        match api::flows::delete(flow_id).await {
+                                            Ok(()) => {
+                                                toasts::success("toast-flow-deleted");
+                                                reload.with_mut(|r| *r += 1);
+                                            }
+                                            Err(err) => toasts::error(err.message),
+                                        }
+                                    });
+                                },
+                                on_cancel: move |_| delete_target.set(None),
+                            }
                         }
 
                         // Modal de création (monté à la demande).
@@ -197,6 +221,8 @@ pub fn Flows() -> Element {
 fn flow_row(
     flow: FlowSummary,
     mut selected: Signal<Option<i64>>,
+    can_write: bool,
+    mut delete_target: Signal<Option<(i64, String)>>,
 ) -> Element {
     let pk = flow.id;
     let (status_badge, status_label) = status_badge(&flow.status);
@@ -223,10 +249,20 @@ fn flow_row(
             td { class: "td text-gray-600", {device_cell} }
             td { class: "td text-gray-500 text-sm", {date_label(&flow.updated_at)} }
             td { class: "td",
-                button {
-                    class: "px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors",
-                    onclick: move |_| selected.set(Some(pk)),
-                    {t!("flows-open")}
+                div { class: "flex items-center gap-1.5",
+                    button {
+                        class: "px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors",
+                        onclick: move |_| selected.set(Some(pk)),
+                        {t!("flows-open")}
+                    }
+                    if can_write {
+                        button {
+                            class: "px-3 py-1 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors",
+                            onclick: move |_| delete_target.set(Some((pk, flow.name.clone()))),
+                            icons::Trash2 { class: "h-3.5 w-3.5 inline mr-0.5" }
+                            {t!("flows-delete")}
+                        }
+                    }
                 }
             }
         }

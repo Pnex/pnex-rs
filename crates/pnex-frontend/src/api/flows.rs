@@ -4,12 +4,6 @@
 //! docs/architecture/flow-engine.md). Les types viennent de `pnex-core`
 //! (source de vérité partagée, wasm32) ; `update` porte la concurrence
 //! optimiste (`expected_version_number`, 409 si périmé).
-//!
-//! ⚠️ `allow(dead_code)` TEMPORAIRE le temps que l'éditeur
-//! (`components/flow_editor/`) consomme les endpoints un par un — à retirer
-//! en fin de chantier (gate clippy -D warnings).
-
-#![allow(dead_code)]
 
 use pnex_core::{
     CreateFlow, DeployFlow, Flow, FlowRuntimeStatus, FlowSummary, FlowVersionDetail,
