@@ -365,6 +365,39 @@ déclenche le build — directive firmware-build.md §3).
       cache proxy/cancellation tokens différés ; e2e réelle (pio + flash
       ESP) à vivre avec l'utilisateur
 
+**ETL Phase 6 — Nœuds device → calc → métrique O2 : IMPLÉMENTÉ** (branche
+`flow-engine-phase6-nodes-device`, en attente de revue humaine). La
+« partie lecture » : n'importe quel device de l'org se choisit **dans le
+nœud** (rien d'imposé à la création du flow), lectures multi-devices des
+pins, calculs, écriture du résultat dans OpenObserve **comme une métrique
+au même titre que les capteurs** (série `etl_*`, device virtuel
+`flow_{id}`, `source_type=etl` — apparaît d'elle-même au catalogue
+Visualisation). Pipeline `inject → device → calc → metric` :
+- pnex-core : évaluateur d'expressions maison (`calc.rs` pratt parser pur
+  wasm-safe, la même fonction valide dans l'éditeur et exécute au runtime),
+  nommage centralisé (`naming.rs` — `normalize_measurement_name` déplacé du
+  backend pour garantir l'égalité ingestion/lecture), structs prompb en
+  feature, 3 kinds + configs + validation + projection estampillant
+  `pnex_org_id` dans l'artefact (le runtime déduit l'org O2 sans SQL).
+- crate `pnex-node-device` : pnex-device (PromQL `last_over_time`, fenêtre
+  de fraîcheur 1..=3600 s, clé omise si donnée absente — jamais de zéro
+  inventé), pnex-calc, pnex-metric (remote-write) ; mini-client reqwest ;
+  auth Basic racine via allowlist env (OPENOBSERVE_URL/ROOT_EMAIL/
+  ROOT_PASSWORD) ; **spike exécuté contre l'O2 réel : écriture racine +
+  relecture cohérente ✓**.
+- Dépendances pin↔flows : `set_mode` in↔out → scan des flows déployés
+  lisant ce pin → **dé-déploiement automatique** (reprojection + SIGUSR1)
+  + toast `flow_impacts` UI Pins ; éditeur : violations de **staleness**
+  client-only (pin en sortie, pin disparu, device introuvable) → nœud ET
+  **câble** en rouge.
+- Endpoint `GET /devices/{id}/pinout` (instances + fallback overlay —
+  pinout complet même pour un device jamais connecté) ; DeviceForm avec
+  selects device/pin filtrés en lecture ; calc avec validation live ;
+  metric avec preview `etl_*`.
+- Gates : check natif+wasm32, clippy -D warnings, tests (pnex-core 50,
+  node-device 7, front 31 + parité i18n). Docs : `docs/architecture/
+  flow-engine.md` § 0bis.
+
 **ETL Phase 5 — Éditeur de flows Dioxus : IMPLÉMENTÉ** (branche
 `flow-engine-phase5-editeur`, en attente de revue humaine). Canevas SVG
 pur Dioxus (aucune dépendance npm/Rust ajoutée, précédent chart
@@ -459,6 +492,36 @@ corrigé du bug de sujets Django).
   actuateur, fan-out Celery par user, contournements de bugs Argo).
 
 ## Journal
+- 2026-09-04 : **ETL Phase 6 — nœuds device → calc → métrique OpenObserve**
+  (branche `flow-engine-phase6-nodes-device`, sur la Phase 5). L'utilisateur
+  avait demandé la modélisation des devices en lecture : choisir n'importe
+  quel device **dans le nœud**, plusieurs devices, des calculs, et un
+  résultat enregistré « comme une métrique au même titre que les sensors » ;
+  il laissait l'architecture libre (« index dédié… je te laisse décider »).
+  Décisions structurantes :
+  - **Lecture** = PromQL `last_over_time` sur la même série que l'ingestion
+    (source de vérité unique O2 ; LAST_VALUES est mémoire-process Loco,
+    inaccessible au runtime) ;
+  - **« Index dédié »** = préfixe `etl_` + label `source_type=etl` (pas un
+    stream O2 séparé — le catalogue Visualisation est une découverte
+    dynamique : la série apparaît d'elle-même comme un capteur) ;
+  - **Creds** = auth Basic racine via allowlist env + `pnex_org_id`
+    estampillé dans l'artefact (zéro SQL/creds dans le runtime) — validé
+    par spike sur l'O2 réel (`examples/o2_spike.rs`) : le passcode d'org ne
+    couvre pas les lectures O2 v0.92.1, la racine couvre lecture+écriture ;
+  - **Évaluateur maison dans pnex-core** (zéro dep, wasm-safe) plutôt qu'une
+    crate externe : la même fonction valide (éditeur) et exécute (runtime) ;
+  - **`normalize_measurement_name` déplacé dans pnex-core** : si ingestion
+    et lecture normalisaient différemment, le PromQL chercherait une série
+    inexistante ;
+  - **Dépendances pin↔flows** (demande utilisateur en cours de chantier) :
+    un `set_mode` in↔out arrête automatiquement les flows déployés qui
+    lisent ce pin (dé-déploiement + reprojection + SIGUSR1, toast
+    `flow_impacts`) et l'éditeur marque le nœud **et le câble** en rouge
+    (staleness client-only : pin en sortie, pin disparu, device introuvable).
+  Gates verts à chaque commit ; failure `tenant_isolation::sso_register`
+  préexistante et environnement-dépendante (hors périmètre, vérifiée sur
+  main propre en Phase 5).
 - 2026-09-04 : **ETL Phase 5 — éditeur de flows drag & drop (Dioxus)**.
   Page `/flows` + `components/flow_editor/` (geometry/state/canvas/
   inspector/versions). Choix : canevas SVG pur sans `view_box` (1 unité =

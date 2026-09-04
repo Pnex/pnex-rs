@@ -2,8 +2,10 @@
 
 > **Statut : IMPLÉMENTÉ (Phase 0 + Phase 1, 2026-09-03 — branché
 > `worktree-etl-flow-engine` ; Phase 5 — éditeur Dioxus — IMPLÉMENTÉ
-> 2026-09-04, branche `flow-engine-phase5-editeur` ; les deux en attente de
-> revue humaine).** Ce document consigne (a) la décision d'intégration et de
+> 2026-09-04, branche `flow-engine-phase5-editeur` ; Phase 6 — nœuds
+> device/calc/metric + dépendances pin↔flows — IMPLÉMENTÉ 2026-09-04,
+> branche `flow-engine-phase6-nodes-device` ; en attente de revue
+> humaine).** Ce document consigne (a) la décision d'intégration et de
 > rechargement (spike PRD §5.1), (b) les faits **vérifiés** sur EdgeLinkd au
 > commit épinglé, (c) les écarts vs la conception initiale.
 >
@@ -56,6 +58,55 @@ Choix structurants :
   requête `pnex-core` (le front construit les requêtes typées) ; handlers
   sans capture de `String` (l'id du nœud ciblé est relu du signal
   sélection — piège FnMut).
+
+## 0bis. Phase 6 — nœuds device/calc/metric (2026-09-04)
+
+La « partie lecture » des devices dans les flows : choisir n'importe quel
+device **dans le nœud** (rien d'imposé à la création du flow), lire ses pins,
+combiner plusieurs devices, calculer, et écrire le résultat dans OpenObserve
+**comme une métrique au même titre que les capteurs**.
+
+Pipeline cible : `[inject] → [device] → [calc] → [metric]`
+
+- **pnex-device** (crate `pnex-node-device`) : dernières valeurs des pins de
+  N devices via PromQL `last_over_time(<pin>{device_id="…"}[window])` — la
+  **même série** que l'ingestion (`normalize_measurement_name` déplacé dans
+  pnex-core pour garantir l'égalité des noms ingestion/lecture). Payload =
+  objet `clé → valeur`, clés `sanitize(device) + "_" + sanitize(pin)`
+  (`device_payload_key`, prévisualisées à l'identique par l'éditeur) ; lecture
+  sans donnée dans la fenêtre = clé omise + warn — **jamais de zéro inventé**,
+  le calc aval échoue « variable inconnue » (fail-loud).
+- **pnex-calc** : évaluateur d'expressions **maison dans pnex-core**
+  (`calc.rs`, pratt parser pur, wasm-safe, zéro dep) — la MÊME fonction
+  valide l'expression dans l'éditeur (validation live) et l'exécute au
+  runtime. Langage : opérateurs, comparaisons → 1/0, ternaire, `^` droite-
+  associatif, 19 fonctions, constantes pi/e ; division par zéro / hors
+  domaine = erreur propre, jamais de panic.
+- **pnex-metric** : remote-write OpenObserve depuis le runtime — série
+  `etl_<nom>` avec `device_id="flow_{id}"` (device **virtuel**),
+  `pred_dev="virtual_device"`, `source_type="etl"`, `ts_source="server"`.
+  Le préfixe `etl_` est la **séparation d'index** demandée (pas un stream O2
+  séparé) : le catalogue Visualisation étant une découverte dynamique des
+  streams metrics, la série apparaît d'elle-même « comme un capteur »,
+  filtrable par source_type.
+- **Creds/org** : `pnex_org_id` estampillé dans l'artefact au deploy
+  (`FlowArtifactMeta.org_id` → tab + nœuds custom) — le runtime déduit
+  l'org O2 (`pnex_org_{id}`, convention provisioning) **sans accès SQL** ;
+  auth Basic racine via allowlist env. Spike exécuté contre l'O2 réel
+  (`examples/o2_spike.rs`) : remote-write racine accepté + relecture
+  `last_over_time` cohérente — le passcode d'org reste inutile aux lectures
+  (O2 v0.92.1), la racine couvre lecture **et** écriture.
+- **Évaluateur partagé** (`eval_calc`/`validate_calc`) + nommage centralisé
+  (`naming.rs`) + structs prompb en feature (`prompb`) dans pnex-core — le
+  front wasm ne compile aucune de ces parties natives.
+- **Dépendances pin↔flows** : un `set_mode` in↔out sur un pin scanne les
+  flows déployés de l'org dont un nœud device lit ce (device, pin) →
+  **dé-déploiement automatique** (status draft, reprojection + SIGUSR1 : le
+  flow s'arrête réellement ; la version publiée reste enregistrée), réponse
+  enrichie `flow_impacts` → toast UI Pins. Dans l'éditeur, violations de
+  **staleness** client-only (pin en sortie, pin disparu, device introuvable)
+  → nœud **et câble** en rouge ; re-scan au changement de configuration
+  uniquement (pas au drag).
 
 ## 1. Architecture cible
 
@@ -129,7 +180,7 @@ changerait.
 | Rechargement | SIGUSR1 → `Engine::redeploy_flows(json, reg, None)` (stop → re-parse → start) |
 | Acquittement | `<state_dir>/runtime.json` : `pid`, `running`, `flow_rev` (SHA-256), `redeploys`, `flow_id`, `version_number` |
 | Version incohérente | exit(1) → le superviseur relance avec le fichier courant |
-| Secrets | env enfant = `PATH`, `HOME`, `PNEX_FLOW_LOG` + allowlist (`DATABASE_URL`) — **jamais** dans flows.json |
+| Secrets | env enfant = `PATH`, `HOME`, `PNEX_FLOW_LOG` + allowlist (`DATABASE_URL`, `OPENOBSERVE_URL`, `OPENOBSERVE_ROOT_EMAIL`, `OPENOBSERVE_ROOT_PASSWORD`) — **jamais** dans flows.json |
 
 ## 4. Vérification d'acceptance (Phase 0 + 1)
 
