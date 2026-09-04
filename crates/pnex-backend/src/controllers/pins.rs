@@ -28,6 +28,7 @@ pub fn routes() -> Routes {
     Routes::new()
         .prefix("/api/v1/devices")
         .add("/{id}/pins", get(pins))
+        .add("/{id}/pinout", get(pinout))
         .add("/{id}/commands", post(commands))
 }
 
@@ -44,6 +45,66 @@ async fn device_of_org(
         .await
         .map_err(|_| Error::InternalServerError)?
         .ok_or_else(|| Error::NotFound)
+}
+
+// ─────────────── pinout (éditeur de flows, Phase 6) ───────────────
+
+/// Un pin du pinout : source `instance` (mode réel configuré) ou `overlay`
+/// (défaut de la carte, device jamais connecté).
+#[derive(Debug, serde::Serialize)]
+struct PinoutPin {
+    gpio: i32,
+    label: String,
+    mode: String,
+    source: &'static str,
+}
+
+/// `GET /api/v1/devices/{id}/pinout` — pinout **lisible** du device pour
+/// l'éditeur de flows (Phase 6) : les pins des devices génériques depuis les
+/// instances configurées, complétés par l'overlay board pour les gpio non
+/// encore configurés (device jamais connecté — `load_overlay` lit la base,
+/// aucune connexion requise). Lecture pour tout membre de l'org.
+async fn pinout(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let device = device_of_org(&ctx.db, &org, id).await?;
+    let rows = instances_of(&ctx.db, device.id).await?;
+
+    let mut pins: Vec<PinoutPin> = rows
+        .iter()
+        .map(|r| PinoutPin {
+            gpio: r.gpio,
+            label: r.label.clone(),
+            mode: r.mode.clone(),
+            source: "instance",
+        })
+        .collect();
+
+    // Complément overlay : les gpio sans instance prennent le défaut de la
+    // carte (digital_in / analog_in — même dérivation que l'admission).
+    if let Ok(overlay) = crate::services::provisioning::load_overlay(&ctx.db, &device).await {
+        for p in overlay.pins {
+            if !pins.iter().any(|x| x.gpio == p.gpio as i32) {
+                pins.push(PinoutPin {
+                    gpio: p.gpio as i32,
+                    label: p.label,
+                    mode: match p.kind {
+                        pnex_core::PinKind::Analog => "analog_in".to_string(),
+                        pnex_core::PinKind::Digital => "digital_in".to_string(),
+                    },
+                    source: "overlay",
+                });
+            }
+        }
+    }
+
+    pins.sort_by_key(|p| pin_sort_key(&p.label));
+    format::json(serde_json::json!({
+        "device_id": device.device_id,
+        "pins": pins,
+    }))
 }
 
 /// Instance par gpio pour un device (helper de lecture).

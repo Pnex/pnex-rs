@@ -389,6 +389,7 @@ flows-device-multi-help = Pour combiner plusieurs appareils dans un même calcul
 flows-device-device-none = Choisir un appareil…
 flows-device-pin-none = Choisir un pin…
 flows-device-add-read = Ajouter une lecture
+flows-device-pin-overlay = défaut carte
 flows-device-window = Fenêtre de fraîcheur (s)
 flows-calc-expression = Expression
 flows-calc-vars = Variables détectées :

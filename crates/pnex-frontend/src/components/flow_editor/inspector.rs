@@ -157,9 +157,9 @@ fn parse_secs(raw: &str) -> Option<f64> {
 /// le device est inconnu ou le pinout pas encore chargé.
 fn input_pins_of(
     devices: &Resource<Vec<pnex_core::Device>>,
-    cache: &Signal<std::collections::HashMap<i64, Vec<api::pins::PinInfo>>>,
+    cache: &Signal<std::collections::HashMap<i64, Vec<api::pins::PinoutPin>>>,
     device_slug: &str,
-) -> Vec<api::pins::PinInfo> {
+) -> Vec<api::pins::PinoutPin> {
     let list = devices.value().read().clone().unwrap_or_default();
     let Some(pk) = list.iter().find(|d| d.device_id == device_slug).map(|d| d.id) else {
         return Vec::new();
@@ -330,7 +330,7 @@ fn DeviceForm(mut cx: EditorCx, initial: DeviceConfig, can_write: bool) -> Eleme
         .map(|page| page.results)
         .unwrap_or_default()
     });
-    let mut pins_cache = use_signal(std::collections::HashMap::<i64, Vec<api::pins::PinInfo>>::new);
+    let mut pins_cache = use_signal(std::collections::HashMap::<i64, Vec<api::pins::PinoutPin>>::new);
     let mut pins_requested = use_signal(std::collections::HashSet::<i64>::new);
     // Précharge le pinout des devices déjà configurés + au changement de device.
     let reads_snapshot = initial.reads.clone();
@@ -344,8 +344,8 @@ fn DeviceForm(mut cx: EditorCx, initial: DeviceConfig, can_write: bool) -> Eleme
             if !pins_requested.cloned().contains(&pk) {
                 pins_requested.insert(pk);
                 spawn(async move {
-                    if let Ok(resp) = api::pins::pins(pk).await {
-                        pins_cache.insert(pk, resp.pins);
+                    if let Ok(pins) = api::pins::pinout(pk).await {
+                        pins_cache.insert(pk, pins);
                     }
                 });
             }
@@ -415,7 +415,11 @@ fn DeviceForm(mut cx: EditorCx, initial: DeviceConfig, can_write: bool) -> Eleme
                                 option {
                                     key: "{pin.gpio}",
                                     value: "{pin.label}",
-                                    {format!("{} ({})", pin.label, pin.mode)}
+                                    {if pin.source == "overlay" {
+                                        format!("{} ({} · {})", pin.label, pin.mode, t!("flows-device-pin-overlay"))
+                                    } else {
+                                        format!("{} ({})", pin.label, pin.mode)
+                                    }}
                                 }
                             }
                         }

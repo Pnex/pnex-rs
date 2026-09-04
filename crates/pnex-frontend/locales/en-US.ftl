@@ -389,6 +389,7 @@ flows-device-multi-help = To combine multiple devices in one calculation, group 
 flows-device-device-none = Pick a device…
 flows-device-pin-none = Pick a pin…
 flows-device-add-read = Add a reading
+flows-device-pin-overlay = board default
 flows-device-window = Freshness window (s)
 flows-calc-vars = Detected variables:
 flows-calc-expression = Expression
