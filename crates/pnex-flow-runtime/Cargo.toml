@@ -19,6 +19,11 @@ tokio = { version = "1", default-features = false, features = ["rt-multi-thread"
 tokio-util = "0.7"
 log = "0.4"
 
+# armv7 : rquickjs-sys ne shippe pas de bindings pré-générés (aarch64 oui) —
+# génération bindgen à la volée (libclang requis sur la machine de build).
+[target.'cfg(target_arch = "arm")'.dependencies]
+rquickjs-sys = { version = "0.9", features = ["bindgen"] }
+
 [dev-dependencies]
 # Envoi de SIGUSR1/SIGINT au process enfant dans les tests E2E
 libc = "0.2"

@@ -155,7 +155,10 @@ mod tests {
         assert_eq!(device_payload_key("capteur-1", "D1"), "capteur_1_D1");
         assert_eq!(device_payload_key("a", "b"), "a_b");
         // Unicité vérifiée en validation : deux lectures aux clés égales.
-        assert_eq!(device_payload_key("a-b", "c"), device_payload_key("a", "b-c"));
+        assert_eq!(
+            device_payload_key("a-b", "c"),
+            device_payload_key("a", "b-c")
+        );
     }
 
     #[test]
@@ -172,7 +175,16 @@ mod tests {
     fn normalisation_mesures() {
         assert_eq!(normalize_measurement_name("Soil-Moisture"), "soil_moisture");
         assert_eq!(normalize_measurement_name("soil moisture"), "soil_moisture");
-        assert_eq!(normalize_measurement_name("  Température °C "), "temp_rature_c");
+        // Pliage des accents (contrat D16 hérité de ws_ingest.rs) : é→e,
+        // °C→degc — pas un filtrage naïf des caractères non-ASCII.
+        assert_eq!(
+            normalize_measurement_name("Température Extérieure"),
+            "temperature_exterieure"
+        );
+        assert_eq!(
+            normalize_measurement_name("  Température °C "),
+            "temperature_degc"
+        );
         assert_eq!(normalize_measurement_name("---"), "");
     }
 }
