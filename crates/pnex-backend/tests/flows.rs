@@ -38,6 +38,11 @@ where
     };
     unsafe { std::env::set_var("PNEX_FLOW_STATE_DIR", flow_state_dir()) };
     unsafe { std::env::set_var("PNEX_FLOW_RELOAD_ACK_SECS", "5") };
+    // Outils de debug : ON quand le moteur tourne (tests feed/run-once),
+    // sinon OFF pour vérifier la garde 403 « mode run ».
+    unsafe {
+        std::env::set_var("PNEX_FLOW_DEBUG_TOOLS", if enabled { "true" } else { "false" })
+    };
     let config: RequestConfig = RequestConfigBuilder::new().build();
     let env = Env {
         alice: common::valid_token(
@@ -342,6 +347,22 @@ async fn deploy_sans_moteur_repond_503() {
         let created = create_flow(&server, &env.alice, org, "jamais déployé", 1.0).await;
         let flow_id = created["id"].as_i64().unwrap();
 
+        // Garde « mode run » : les outils de debug sont désactivés (env
+        // PNEX_FLOW_DEBUG_TOOLS=false de ce process) — 403 AVANT toute
+        // considération de moteur.
+        let dbg = server
+            .get(&format!("/api/v1/flows/{flow_id}/debug"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert_eq!(dbg.status_code(), 403, "{}", dbg.text());
+        let ro = server
+            .post(&format!("/api/v1/flows/{flow_id}/run-once"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert_eq!(ro.status_code(), 403, "{}", ro.text());
+
         let res = server
             .post(&format!("/api/v1/flows/{flow_id}/deploy"))
             .add_header("Authorization", bearer(&env.alice))
@@ -484,6 +505,56 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
             latest.json::<serde_json::Value>()["deployed_version_number"],
             2
         );
+
+        // ── Panneau debug (mode dev/debug actif : PNEX_FLOW_DEBUG_TOOLS=true)
+        // runtime porte l'activation — c'est ce que lit l'éditeur pour
+        // afficher/masquer les boutons.
+        let runtime = server
+            .get(&format!("/api/v1/flows/{flow_id}/runtime"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await
+            .json::<serde_json::Value>();
+        assert_eq!(runtime["debug_tools"], true, "{runtime}");
+
+        // Fixture émettant des lignes debug attribuées (flow dérivé de
+        // l'artefact) : le feed ne doit pas être vide et rester scoped.
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let feed = server
+            .get(&format!("/api/v1/flows/{flow_id}/debug"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert_eq!(feed.status_code(), 200, "{}", feed.text());
+        let feed = feed.json::<serde_json::Value>();
+        let entries = feed["entries"].as_array().expect("entries");
+        assert!(!entries.is_empty(), "feed vide : {feed}");
+        assert_eq!(entries[0]["flow_id"], flow_id);
+        assert_eq!(entries[0]["node_id"], "n2");
+        assert_eq!(entries[0]["source"], "debug");
+
+        // Run-once : acquittement du faux runtime (écho du seq), deux fois —
+        // la seq monotone du backend garantit que chaque requête est ackée.
+        for _ in 0..2 {
+            let ro = server
+                .post(&format!("/api/v1/flows/{flow_id}/run-once"))
+                .add_header("Authorization", bearer(&env.alice))
+                .add_header("X-Org-Id", org.to_string())
+                .await;
+            assert_eq!(ro.status_code(), 200, "{}", ro.text());
+            let body = ro.json::<serde_json::Value>();
+            assert_eq!(body["injected"], 1, "{body}");
+            assert_eq!(body["nodes"], 1, "{body}");
+        }
+
+        // Hors-org : 404 (le feed d'Alice n'est pas lisible par Bob).
+        let bob_org = personal_org(&server, &env.bob).await;
+        let cross = server
+            .get(&format!("/api/v1/flows/{flow_id}/debug"))
+            .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", bob_org.to_string())
+            .await;
+        assert_eq!(cross.status_code(), 404, "{}", cross.text());
     })
     .await;
 }

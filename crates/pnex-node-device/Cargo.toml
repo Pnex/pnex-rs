@@ -1,0 +1,34 @@
+[package]
+name = "pnex-node-device"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Nœuds de flow PNEX Phase 6 — lecture devices via OpenObserve, calcul, écriture métrique"
+
+[dependencies]
+pnex-core = { workspace = true, features = ["naming", "prompb"] }
+edgelink-core = { path = "../../vendor/edgelinkd/crates/core", default-features = false, features = ["core", "js"] }
+edgelink-macro = { path = "../../vendor/edgelinkd/crates/macro" }
+# Seulement pour le type Option<&config::Config> de la factory — mêmes features que edgelink-core
+config = { version = "0.15", default-features = false, features = ["convert-case", "toml"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Client HTTP vers OpenObserve (lecture PromQL + remote-write), aligné backend.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+# Remote-write : protobuf prompb + snappy (mêmes versions que le backend).
+prost = "0.13"
+snap = "1"
+base64 = "0.22"
+tokio = { version = "1", default-features = false, features = ["time", "sync"] }
+async-trait = "0.1"
+tokio-util = "0.7"
+log = "0.4"
+# La macro `#[flow_node]` émet `inventory::submit!` non qualifié — dépendance directe requise
+inventory = "0.3"
+chrono = { workspace = true }
+
+[dev-dependencies]
+tokio = { version = "1", default-features = false, features = ["rt", "macros", "time"] }
+# Mock serveur HTTP pour les tests du client O2 (pattern spawn_mock_rauthy du backend).
+axum = "0.8"
+base64 = "0.22"

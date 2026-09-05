@@ -79,31 +79,11 @@ pub(crate) fn encrypt_frame(plain: &str, key: &[u8; 32]) -> String {
 
 // ──────────────── Normalisation des noms de mesures ────────────────
 
-/// Harmonisation capability ↔ mesure (D16) : trim, pliage des accents
-/// (deunicode), minuscules, tout non `[a-z0-9_:]` → `_` (répétitions
-/// fondues, `_` de bord supprimés). `Soil-Moisture`, `soil moisture` et
-/// `soil_moisture` → `soil_moisture`. Vide si le nom n'est que des
-/// séparateurs (→ `error:invalid_format` côté appelant). Appliquée avant
-/// validation stricte, découverte dynamique ET stockage — la même mesure a
-/// le même nom partout (O2 compris, où promwrite n'a plus qu'un rôle de
-/// garde-fou).
-pub(crate) fn normalize_measurement_name(raw: &str) -> String {
-    let mut out = String::with_capacity(raw.len());
-    let mut pending_sep = false; // séparateur fondu, flushé devant du contenu
-    for c in deunicode::deunicode(raw.trim()).chars() {
-        let c = c.to_ascii_lowercase();
-        if c.is_ascii_lowercase() || c.is_ascii_digit() || c == ':' {
-            if pending_sep {
-                out.push('_');
-                pending_sep = false;
-            }
-            out.push(c);
-        } else {
-            pending_sep = !out.is_empty();
-        }
-    }
-    out
-}
+/// Harmonisation capability ↔ mesure (D16) — la fonction vit dans pnex-core
+/// (feature `naming`) : le nœud `device` du runtime de flows (Phase 6) doit
+/// lire les séries sous le MÊME nom normalisé que l'ingestion les écrit.
+/// Re-exportée ici pour ne pas déplacer les points d'appel.
+pub(crate) use pnex_core::normalize_measurement_name;
 
 // ───────────────────────── Sessions ouvertes ─────────────────────────
 

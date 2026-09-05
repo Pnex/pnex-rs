@@ -283,5 +283,128 @@ pins-subscribe-5s = Lire chaque 5 s
 pins-subscribe-15s = Lire chaque 15 s
 pins-subscribe-60s = Lire chaque 60 s
 pins-apply = Appliquer
+pins-flows-stopped = Flows arrêtés (pin changé de mode) : { $names }
 
 # ─────────────── Brick 0 — flash firmware générique (secteur PNEXCFG) ───────────────
+
+# ─────────────── Flux ETL (D18) — liste et éditeur ───────────────
+nav-flows = Flux
+flows-subtitle = Pipelines ETL : créez, éditez et déployez vos flows
+flows-new = Nouveau flow
+flows-empty = Aucun flow pour l'instant
+flows-search-placeholder = Rechercher un flow…
+flows-filter-status-all = Tous les statuts
+flows-status-draft = Brouillon
+flows-status-deployed = Déployé
+flows-status-error = Erreur
+flows-col-name = Nom
+flows-col-status = Statut
+flows-col-versions = Versions
+flows-col-device = Appareil
+flows-col-updated = Mise à jour
+flows-open = Ouvrir
+flows-delete = Supprimer
+flows-confirm-delete-title = Supprimer ce flow ?
+flows-confirm-delete-message = Action irréversible : le flow et toutes ses versions seront supprimés.
+flows-version-deployed-tag = déployée
+
+flows-create-title = Nouveau flow
+flows-field-name = Nom du flow
+flows-field-name-required = Le nom est obligatoire.
+flows-field-device = Appareil (optionnel)
+flows-field-device-none = Aucun appareil
+flows-field-note = Note (optionnelle)
+toast-flow-created = Flow créé
+toast-flow-saved = Version enregistrée
+toast-flow-deployed = Flow déployé
+toast-flow-deleted = Flow supprimé
+
+flows-back-list = Retour à la liste
+flows-dirty-unsaved = Modifications non enregistrées
+flows-deploy = Déployer
+flows-deploy-need-save = Enregistrez la version courante avant de déployer
+flows-run-once = Exécuter une fois
+flows-run-once-running = Exécution…
+flows-run-once-done = { $count } message(s) injecté(s)
+flows-versions = Versions
+flows-debug-panel = Debug
+flows-debug-title = Flux de débogage
+flows-debug-empty = Aucune sortie — déployez le flow puis déclenchez-le (ou bouton « Exécuter une fois »).
+flows-debug-display-tag = sonde
+flows-debug-hint = 100 dernières sorties, fenêtre de 5 min. Les rafales peuvent sauter des entrées.
+flows-violations-banner-title = Graphe invalide :
+flows-conflict-title = Version périmée
+flows-conflict-message = Quelqu'un a enregistré une nouvelle version entre-temps.
+flows-conflict-reload = Recharger depuis le serveur
+flows-conflict-overwrite = Écraser avec ma version
+flows-runtime-running = Moteur actif
+flows-runtime-stopped = Moteur arrêté
+
+flows-palette-title = Nœuds
+flows-palette-inject = Inject
+flows-palette-inject-help = Déclencheur : intervalle, cron ou unique
+flows-palette-pnex-sql = SQL PNEX
+flows-palette-pnex-sql-help = Requête Postgres en lecture seule
+flows-palette-display = Display
+flows-palette-display-help = Affiche le payload (panneau + badge live)
+flows-display-hint = Aucune configuration : cette sonde laisse passer les messages et affiche le dernier payload sous elle (badge live) et dans le panneau Debug.
+flows-palette-debug = Debug
+flows-palette-debug-help = Capture la sortie d'un pipeline
+flows-palette-red = Node-RED brut
+flows-palette-red-help = Type builtin non modélisé (config JSON)
+
+flows-inspector-empty = Sélectionnez un nœud pour éditer sa configuration
+flows-node-name = Nom du nœud
+flows-node-delete = Supprimer le nœud
+flows-inject-repeat = Intervalle (s)
+flows-inject-cron = Cron (5 ou 6 champs)
+flows-inject-once-delay = Délai initial (s)
+flows-inject-topic = Topic
+flows-inject-payload = Payload (JSON)
+flows-inject-payload-invalid = JSON invalide
+flows-sql-query = Requête SQL (lecture seule)
+flows-sql-params = Paramètres (clés du payload, séparées par des virgules)
+flows-debug-active = Capture activée
+flows-debug-complete = Propriété capturée (vide = payload)
+flows-debug-console = Recopie sur la console du runtime
+flows-red-type = Type Node-RED (ex. change, json)
+flows-red-config = Config (JSON)
+flows-red-config-invalid = JSON invalide
+
+flows-canvas-empty-hint = Ajoutez des nœuds depuis la palette pour construire votre pipeline
+flows-wire-remove-title = Couper ce câble ?
+flows-wire-remove-message = Le câblage entre les deux nœuds sera supprimé.
+flows-wire-remove = Couper
+
+flows-versions-title = Historique des versions
+flows-versions-col-author = Auteur
+flows-versions-col-note = Note
+flows-versions-col-date = Date
+flows-versions-empty = Aucune version
+flows-versions-load = Charger
+flows-versions-deploy = Déployer
+flows-versions-back-to-latest = Revenir à la dernière version
+flows-versions-load-dirty-title = Modifications non enregistrées
+flows-versions-load-dirty-message = Vos modifications locales seront perdues. Charger la version ?
+flows-versions-deploy-confirm-title = Déployer cette version ?
+flows-versions-deploy-confirm-message = Le runtime rechargera cette version antérieure (aucune nouvelle version n'est créée).
+
+# ─────────────── Flux ETL (D18) — nœuds device/calc/metric (Phase 6) ───────────────
+flows-palette-device = Appareil
+flows-palette-device-help = Lit les dernières valeurs des pins d'un ou plusieurs appareils
+flows-palette-calc = Calcul
+flows-palette-calc-help = Expression sur les lectures (variables = clés de payload)
+flows-palette-metric = Métrique
+flows-palette-metric-help = Écrit le résultat dans OpenObserve (série etl_*)
+flows-device-multi-help = Pour combiner plusieurs appareils dans un même calcul, regroupez les lectures dans le même nœud.
+flows-device-device-none = Choisir un appareil…
+flows-device-pin-none = Choisir un pin…
+flows-device-add-read = Ajouter une lecture
+flows-device-pin-overlay = défaut carte
+flows-device-window = Fenêtre de fraîcheur (s)
+flows-calc-expression = Expression
+flows-calc-vars = Variables détectées :
+flows-calc-functions-help = Fonctions : abs round floor ceil sqrt pow min max log log10 log2 exp sin cos tan asin acos atan atan2 — constantes pi, e.
+flows-metric-name = Nom de la métrique
+flows-metric-preview = Série écrite :
+flows-metric-labels-help = Écrite avec device_id=flow_{ $id } · source_type=etl — apparaît dans Visualisation comme un capteur.

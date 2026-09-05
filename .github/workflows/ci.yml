@@ -77,6 +77,8 @@ jobs:
       CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
       CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
       AR_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-ar
+      # bindgen (rquickjs armv7) : force l'en-tête cible avant /usr/include.
+      BINDGEN_EXTRA_CLANG_ARGS: -I/usr/arm-linux-gnueabihf/include
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,8 +86,18 @@ jobs:
       - name: Cross-compilateurs C (Raspberry Pi 64/32 bits)
         run: |
           sudo apt-get update
+          # gcc-* : compilateurs croisés ; libc6-dev-* + linux-libc-dev-* :
+          # en-têtes libc/kernel de la cible — les build scripts C (ring,
+          # rquickjs-sys) compilent pour la cible même en `check` et le gcc
+          # croisé ne les cherche pas dans /usr/include ; --no-install-recommends
+          # ne les tire pas avec gcc-*. libclang-dev : génération bindgen des
+          # bindings rquickjs armv7 (pas de bindings pré-générés armv7 chez
+          # rquickjs-sys — feature `bindgen` activée dans pnex-flow-runtime).
           sudo apt-get install -y --no-install-recommends \
-            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf \
+            libc6-dev-arm64-cross libc6-dev-armhf-cross \
+            linux-libc-dev-arm64-cross linux-libc-dev-armhf-cross \
+            libclang-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: |
@@ -101,6 +113,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Depuis D18 le workspace résout TOUT le graphe (pnex-flow-runtime
+          # → vendor/edgelinkd) : sans le submodule, dx build échoue au
+          # chargement des path deps. NON récursif — 3rd-party/node-red est
+          # inutile (même choix que le job check).
+          submodules: true
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown

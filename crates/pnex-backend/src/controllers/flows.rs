@@ -142,7 +142,7 @@ fn reject_invalid_graph(graph: &FlowGraph) -> Option<Response> {
 /// demande au superviseur le rechargement. Erreur si le moteur est coupé ou
 /// n'acquitte pas (l'état DB reste `deployed` — cohérent avec ce qui sera
 /// relancé au prochain deploy/boot).
-async fn reproject_and_signal(ctx: &AppContext) -> Result<()> {
+pub(crate) async fn reproject_and_signal(ctx: &AppContext) -> Result<()> {
     let deployed_flows = flows::Entity::find()
         .filter(flows::Column::Status.eq(pnex_core::FLOW_STATUS_DEPLOYED))
         .all(&ctx.db)
@@ -162,7 +162,7 @@ async fn reproject_and_signal(ctx: &AppContext) -> Result<()> {
         };
         let graph: FlowGraph =
             serde_json::from_value(version.graph.clone()).map_err(|_| Error::InternalServerError)?;
-        let m = FlowArtifactMeta { flow_id: f.id, version_number: version.version_number };
+        let m = FlowArtifactMeta { flow_id: f.id, version_number: version.version_number, org_id: f.org_id };
         if meta.is_none() {
             meta = Some(m);
         }
@@ -173,7 +173,7 @@ async fn reproject_and_signal(ctx: &AppContext) -> Result<()> {
 
     flow_supervisor::deploy(
         serde_json::Value::Array(entries),
-        meta.unwrap_or(FlowArtifactMeta { flow_id: 0, version_number: 0 }),
+        meta.unwrap_or(FlowArtifactMeta { flow_id: 0, version_number: 0, org_id: 0 }),
     )
     .await
     .map_err(|e| {
@@ -525,6 +525,77 @@ async fn version_detail(
     .into_response())
 }
 
+// ─────────────────────────── Stop automatique (dépendance pin ↔ flows) ───────────────────────────
+
+/// Dépendances pin ↔ flows (Phase 6) : un changement de mode d'un pin
+/// (in↔out) invalide les lectures device des flows déployés — la série O2
+/// n'est plus alimentée, le pipeline ETL tournerait à vide ou sur des
+/// valeurs figées. Pour chaque flow **déployé** de l'org dont un nœud
+/// `device` lit ce (device_id, pin) : dé-déploiement immédiat (status →
+/// draft, `deployed_version_id` → NULL — la version publiée reste
+/// enregistrée, un redéploiement manuel est possible une fois la
+/// configuration cohérente) puis reprojection unique de l'artefact.
+///
+/// Retourne les impacts `(flow_id, nom)` pour l'UI ; appelée par le
+/// contrôleur pins (`set_mode`) **avant** le push device (la base est la
+/// source de vérité, le stop doit refléter la base même si le device est
+/// hors ligne).
+pub(crate) async fn stop_flows_reading_pin(
+    ctx: &AppContext,
+    org_id: i64,
+    device_id: &str,
+    pin_label: &str,
+) -> Result<Vec<(i64, String)>> {
+    let deployed = flows::Entity::find()
+        .filter(flows::Column::OrgId.eq(org_id))
+        .filter(flows::Column::Status.eq(pnex_core::FLOW_STATUS_DEPLOYED))
+        .all(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+
+    let mut impacts: Vec<(i64, String)> = Vec::new();
+    for flow in deployed {
+        let Some(version_id) = flow.deployed_version_id else { continue };
+        let Some(version) = flow_versions::Entity::find_by_id(version_id)
+            .one(&ctx.db)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+        else {
+            continue;
+        };
+        let Ok(graph) = serde_json::from_value::<FlowGraph>(version.graph) else {
+            continue;
+        };
+        let touches = graph.nodes.iter().any(|n| matches!(
+            &n.kind,
+            pnex_core::FlowNodeKind::Device { config } if config.reads.iter().any(|r| {
+                r.device_id == device_id && pnex_core::normalize_measurement_name(&r.pin) == pnex_core::normalize_measurement_name(pin_label)
+            })
+        ));
+        if !touches {
+            continue;
+        }
+        let mut active: flows::ActiveModel = flow.into();
+        active.status = Set(pnex_core::FLOW_STATUS_DRAFT.to_string());
+        active.deployed_version_id = Set(None);
+        let stopped = active.update(&ctx.db).await.map_err(|_| Error::InternalServerError)?;
+        tracing::warn!(
+            flow_id = stopped.id,
+            device_id,
+            pin = pin_label,
+            "flow dé-déployé automatiquement : le pin vient de changer de mode (in↔out)"
+        );
+        impacts.push((stopped.id, stopped.name));
+    }
+
+    // Un seul rechargement du runtime même si plusieurs flows ont été
+    // arrêtés — l'artefact est reprojeté sans eux.
+    if !impacts.is_empty() {
+        reproject_and_signal(ctx).await?;
+    }
+    Ok(impacts)
+}
+
 // ─────────────────────────── POST /flows/{id}/deploy | /rollback ───────────────────────────
 
 /// `POST /flows/{id}/deploy` — publie une version (`version_number` absent =
@@ -617,7 +688,67 @@ async fn runtime(
     let mut status = flow_supervisor::runtime_status(&settings);
     // Point de vue du flow : ce que le runtime exécute pour lui.
     status.deployed_flow_id = Some(id);
+    // Porte l'activation des outils de debug (mode dev/debug uniquement) :
+    // l'éditeur masque panneau et run-once sans second endpoint.
+    status.debug_tools = settings.debug_tools;
     Ok(format::json(status).into_response())
+}
+
+// ─────────────────────────── Debug (panneau) + run-once ───────────────────────────
+
+/// `GET /flows/{id}/debug` — feed du panneau (100 dernières entrées du flow).
+/// Lecture seule (même niveau que `runtime`), 200 avec feed vide si le
+/// moteur est arrêté (un 503 rendrait le drawer inutilisable). Garde-fou :
+/// 403 hors mode dev/debug (`settings.flow.debug_tools`).
+async fn debug(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let settings = FlowSettings::from_config(&ctx.config);
+    if !settings.debug_tools {
+        return Err(forbidden("outils de debug désactivés (mode run)"));
+    }
+    let Some(_) = find_flow(&ctx.db, &org, id).await? else {
+        return Err(Error::NotFound);
+    };
+    Ok(format::json(pnex_core::FlowDebugFeed {
+        flow_id: id,
+        entries: flow_supervisor::debug_entries(id, 100),
+    })
+    .into_response())
+}
+
+/// `POST /flows/{id}/run-once` — exécute une fois le flow déployé :
+/// `cmd.json` + SIGUSR2 vers le runtime, acquittement stdout corrélé.
+/// Garde-fous : 403 hors mode dev/debug, `can_write`, 409 si non déployé,
+/// 503 `flow_runtime` si le runtime n'acquitte pas.
+async fn run_once(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let settings = FlowSettings::from_config(&ctx.config);
+    if !settings.debug_tools {
+        return Err(forbidden("outils de debug désactivés (mode run)"));
+    }
+    if !org.can_write() {
+        return Err(forbidden("owner ou admin requis pour exécuter les flows"));
+    }
+    let Some(flow) = find_flow(&ctx.db, &org, id).await? else {
+        return Err(Error::NotFound);
+    };
+    if flow.status != pnex_core::FLOW_STATUS_DEPLOYED {
+        return Err(conflict("le flow doit être déployé pour être exécuté"));
+    }
+    let result = flow_supervisor::run_once(id).await.map_err(|e| {
+        Error::CustomError(
+            StatusCode::SERVICE_UNAVAILABLE,
+            loco_rs::controller::ErrorDetail::new("flow_runtime", e),
+        )
+    })?;
+    tracing::info!(flow_id = id, injected = result.injected, "flow exécuté (run-once)");
+    Ok(format::json(result).into_response())
 }
 
 // ─────────────────────────── Routes ───────────────────────────
@@ -632,4 +763,6 @@ pub fn routes() -> Routes {
         .add("/{id}/deploy", post(deploy))
         .add("/{id}/rollback", post(rollback))
         .add("/{id}/runtime", get(runtime))
+        .add("/{id}/debug", get(debug))
+        .add("/{id}/run-once", post(run_once))
 }

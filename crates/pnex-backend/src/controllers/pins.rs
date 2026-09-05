@@ -28,6 +28,7 @@ pub fn routes() -> Routes {
     Routes::new()
         .prefix("/api/v1/devices")
         .add("/{id}/pins", get(pins))
+        .add("/{id}/pinout", get(pinout))
         .add("/{id}/commands", post(commands))
 }
 
@@ -44,6 +45,66 @@ async fn device_of_org(
         .await
         .map_err(|_| Error::InternalServerError)?
         .ok_or_else(|| Error::NotFound)
+}
+
+// ─────────────── pinout (éditeur de flows, Phase 6) ───────────────
+
+/// Un pin du pinout : source `instance` (mode réel configuré) ou `overlay`
+/// (défaut de la carte, device jamais connecté).
+#[derive(Debug, serde::Serialize)]
+struct PinoutPin {
+    gpio: i32,
+    label: String,
+    mode: String,
+    source: &'static str,
+}
+
+/// `GET /api/v1/devices/{id}/pinout` — pinout **lisible** du device pour
+/// l'éditeur de flows (Phase 6) : les pins des devices génériques depuis les
+/// instances configurées, complétés par l'overlay board pour les gpio non
+/// encore configurés (device jamais connecté — `load_overlay` lit la base,
+/// aucune connexion requise). Lecture pour tout membre de l'org.
+async fn pinout(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let device = device_of_org(&ctx.db, &org, id).await?;
+    let rows = instances_of(&ctx.db, device.id).await?;
+
+    let mut pins: Vec<PinoutPin> = rows
+        .iter()
+        .map(|r| PinoutPin {
+            gpio: r.gpio,
+            label: r.label.clone(),
+            mode: r.mode.clone(),
+            source: "instance",
+        })
+        .collect();
+
+    // Complément overlay : les gpio sans instance prennent le défaut de la
+    // carte (digital_in / analog_in — même dérivation que l'admission).
+    if let Ok(overlay) = crate::services::provisioning::load_overlay(&ctx.db, &device).await {
+        for p in overlay.pins {
+            if !pins.iter().any(|x| x.gpio == p.gpio as i32) {
+                pins.push(PinoutPin {
+                    gpio: p.gpio as i32,
+                    label: p.label,
+                    mode: match p.kind {
+                        pnex_core::PinKind::Analog => "analog_in".to_string(),
+                        pnex_core::PinKind::Digital => "digital_in".to_string(),
+                    },
+                    source: "overlay",
+                });
+            }
+        }
+    }
+
+    pins.sort_by_key(|p| pin_sort_key(&p.label));
+    format::json(serde_json::json!({
+        "device_id": device.device_id,
+        "pins": pins,
+    }))
 }
 
 /// Instance par gpio pour un device (helper de lecture).
@@ -196,6 +257,8 @@ async fn commands(
         .unwrap_or_default();
     let _ = &mut cfg;
 
+    // Impacts sur les flows déployés (rempli par set_mode — Phase 6).
+    let mut flow_impacts: Vec<(i64, String)> = Vec::new();
     let msg = match cmd.op.as_str() {
         "set_mode" => {
             let mode = str_to_mode_local(cmd.mode.as_deref().unwrap_or(""));
@@ -206,6 +269,13 @@ async fn commands(
             cfg.pullup = opts.pullup;
             cfg.safe_state = opts.safe_state;
             persist_instance(&ctx.db, row, mode, &cfg, None, Some(validated)).await?;
+            // Dépendances pin ↔ flows (Phase 6) : un pin qui passe in↔out
+            // invalide les lectures device des flows déployés — arrêt
+            // immédiat des flows impactés (base = source de vérité, avant
+            // même le push device).
+            flow_impacts =
+                super::flows::stop_flows_reading_pin(&ctx, org.org.id, &device.device_id, &row.label)
+                    .await?;
             ServerMsg::SetMode {
                 cmd_id: new_cmd_id(),
                 gpio: cmd.gpio,
@@ -255,7 +325,18 @@ async fn commands(
             loco_rs::controller::ErrorDetail::new("offline", "device non connecté".to_string()),
         ));
     }
-    format::json(serde_json::json!({ "sent": true }))
+    // Réponse enrichie : les flows arrêtés par le changement de mode
+    // (Phase 6) — l'UI les signale explicitement.
+    let mut body = serde_json::json!({ "sent": true });
+    if !flow_impacts.is_empty() {
+        body["flow_impacts"] = serde_json::json!(
+            flow_impacts
+                .iter()
+                .map(|(id, name)| serde_json::json!({"flow_id": id, "name": name}))
+                .collect::<Vec<_>>()
+        );
+    }
+    format::json(body)
 }
 
 /// Maj de l'instance (mode/config/snapshot) — la base est la source de

@@ -64,17 +64,50 @@ pub async fn pins(device_pk: i64) -> Result<PinsResponse, ApiError> {
     .await
 }
 
+/// Un pin du pinout (`source` = instance | overlay — le défaut de la carte
+/// quand le device n'a jamais été connecté).
+#[derive(Clone, Debug)]
+pub struct PinoutPin {
+    pub gpio: i32,
+    pub label: String,
+    pub mode: String,
+    /// `instance` (mode réel) ou `overlay` (défaut carte, device jamais
+    /// connecté) — consommé par l'inspecteur (suffixe du label du pin).
+    pub source: String,
+}
+
+/// `GET /devices/{id}/pinout` — pinout complet (instances + overlay).
+pub async fn pinout(device_pk: i64) -> Result<Vec<PinoutPin>, ApiError> {
+    let body = client::request::<serde_json::Value>(
+        reqwest::Method::GET,
+        &format!("/api/v1/devices/{device_pk}/pinout"),
+        None,
+    )
+    .await?;
+    let mut out = Vec::new();
+    if let Some(list) = body["pins"].as_array() {
+        for p in list {
+            out.push(PinoutPin {
+                gpio: p["gpio"].as_i64().unwrap_or_default() as i32,
+                label: p["label"].as_str().unwrap_or_default().to_string(),
+                mode: p["mode"].as_str().unwrap_or_default().to_string(),
+                source: p["source"].as_str().unwrap_or_default().to_string(),
+            });
+        }
+    }
+    Ok(out)
+}
+
 /// `POST /devices/{id}/commands` — 400 si illégal (raison chip-caps
-/// relayée telle quelle), 409 si le device est offline.
-pub async fn command(device_pk: i64, cmd: Command) -> Result<(), ApiError> {
+/// relayée telle quelle), 409 si le device est offline. Le corps de réponse
+/// est retourné tel quel (contient `flow_impacts` quand un set_mode a arrêté
+/// des flows déployés — Phase 6).
+pub async fn command(device_pk: i64, cmd: Command) -> Result<serde_json::Value, ApiError> {
     client::request_opt::<serde_json::Value>(
         reqwest::Method::POST,
         &format!("/api/v1/devices/{device_pk}/commands"),
         Some(cmd.to_json()),
     )
     .await?
-    .ok_or_else(|| ApiError {
-        message: "réponse vide inattendue".into(),
-    })
-    .map(|_| ())
+    .ok_or_else(|| ApiError::new("réponse vide inattendue"))
 }

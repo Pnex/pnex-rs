@@ -170,7 +170,7 @@ async fn sub_change_avec_meme_email_relie_le_meme_user() {
 #[tokio::test]
 #[serial]
 async fn sso_register_et_reset_pointent_vers_les_pages_rauthy() {
-    with_app(|server, _env| async move {
+    with_app(|server, env| async move {
         // register : page UI d'inscription Rauthy (pas un endpoint OIDC,
         // activation par mail — pas de params OAuth2).
         let res = server
@@ -185,20 +185,31 @@ async fn sso_register_et_reset_pointent_vers_les_pages_rauthy() {
             .to_string();
         assert!(location.contains("/auth/v1/users/register"), "{location}");
 
-        // logout : end-session Rauthy avec id_token_hint + retour.
+        // logout : formulaire HTML auto-soumis en POST vers l'end-session
+        // Rauthy (navigation top-level — la page logout SPA de Rauthy ne
+        // rend jamais la main à l'app, voir le doc-comment du handler).
         let res = server
             .get("/api/v1/oauth2/logout?id_token=jwt.jwt.jwt")
             .await;
-        assert_eq!(res.status_code(), 302);
-        let location = res
-            .headers()
-            .get("location")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or_default()
-            .to_string();
-        assert!(location.contains("/auth/v1/oidc/logout?"), "{location}");
-        assert!(location.contains("id_token_hint=jwt.jwt.jwt"), "{location}");
-        assert!(location.contains("post_logout_redirect_uri="), "{location}");
+        assert_eq!(res.status_code(), 200);
+        assert_eq!(
+            res.headers().get("content-type").unwrap(),
+            "text/html; charset=utf-8"
+        );
+        let html = res.text();
+        assert!(html.contains(r#"method="POST""#), "{html}");
+        assert!(
+            html.contains(&format!(r#"action="{}/auth/v1/oidc/logout""#, env.base)),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"name="id_token_hint" value="jwt.jwt.jwt""#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"name="post_logout_redirect_uri""#),
+            "{html}"
+        );
 
         // reset : page compte Rauthy (le changement de mot de passe vit dans
         // l'IdP — équivalent du kc_action=UPDATE_PASSWORD Keycloak).

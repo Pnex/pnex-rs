@@ -365,9 +365,74 @@ déclenche le build — directive firmware-build.md §3).
       cache proxy/cancellation tokens différés ; e2e réelle (pio + flash
       ESP) à vivre avec l'utilisateur
 
-**Prochaine : revue humaine Phase 6**, puis suite Phase 5 (lecture
-télémétrie/metrics live pour le front, `ws/metrics/live` corrigé du bug
-de sujets Django).
+**ETL Phase 6 — Nœuds device → calc → métrique O2 : IMPLÉMENTÉ** (branche
+`flow-engine-phase6-nodes-device`, en attente de revue humaine). La
+« partie lecture » : n'importe quel device de l'org se choisit **dans le
+nœud** (rien d'imposé à la création du flow), lectures multi-devices des
+pins, calculs, écriture du résultat dans OpenObserve **comme une métrique
+au même titre que les capteurs** (série `etl_*`, device virtuel
+`flow_{id}`, `source_type=etl` — apparaît d'elle-même au catalogue
+Visualisation). Pipeline `inject → device → calc → metric` :
+- pnex-core : évaluateur d'expressions maison (`calc.rs` pratt parser pur
+  wasm-safe, la même fonction valide dans l'éditeur et exécute au runtime),
+  nommage centralisé (`naming.rs` — `normalize_measurement_name` déplacé du
+  backend pour garantir l'égalité ingestion/lecture), structs prompb en
+  feature, 3 kinds + configs + validation + projection estampillant
+  `pnex_org_id` dans l'artefact (le runtime déduit l'org O2 sans SQL).
+- crate `pnex-node-device` : pnex-device (PromQL `last_over_time`, fenêtre
+  de fraîcheur 1..=3600 s, clé omise si donnée absente — jamais de zéro
+  inventé), pnex-calc, pnex-metric (remote-write) ; mini-client reqwest ;
+  auth Basic racine via allowlist env (OPENOBSERVE_URL/ROOT_EMAIL/
+  ROOT_PASSWORD) ; **spike exécuté contre l'O2 réel : écriture racine +
+  relecture cohérente ✓**.
+- Dépendances pin↔flows : `set_mode` in↔out → scan des flows déployés
+  lisant ce pin → **dé-déploiement automatique** (reprojection + SIGUSR1)
+  + toast `flow_impacts` UI Pins ; éditeur : violations de **staleness**
+  client-only (pin en sortie, pin disparu, device introuvable) → nœud ET
+  **câble** en rouge.
+- Endpoint `GET /devices/{id}/pinout` (instances + fallback overlay —
+  pinout complet même pour un device jamais connecté) ; DeviceForm avec
+  selects device/pin filtrés en lecture ; calc avec validation live ;
+  metric avec preview `etl_*`.
+- Gates : check natif+wasm32, clippy -D warnings, tests (pnex-core 50,
+  node-device 7, front 31 + parité i18n). Docs : `docs/architecture/
+  flow-engine.md` § 0bis.
+
+**ETL Phase 5 — Éditeur de flows Dioxus : IMPLÉMENTÉ** (branche
+`flow-engine-phase5-editeur`, en attente de revue humaine). Canevas SVG
+pur Dioxus (aucune dépendance npm/Rust ajoutée, précédent chart
+`visualisation.rs`) : palette 4 nœuds (inject, pnex_sql, debug, red),
+pan/zoom molette vers le curseur, drag snappé sur grille, câblage
+port→nœud, suppression câble/nœud confirmée ; inspecteur par kind (JSON
+validés localement, pattern `MetadataEditor`) ; validation locale
+`pnex_core::validate_graph` (wasm32) avant save — surlignage des nœuds +
+bandeau, 400 serveur traité à l'identique ; save = PATCH avec
+`expected_version_number` (409 → modal « Recharger / Écraser ») ;
+drawer d'historique (charger une ancienne version = édition → prochain
+save crée v(n+1) ; « Déployer cette version » = rollback) ; deploy
+gated `can_write && !dirty` avec chip runtime pollé (503 verbatim si
+moteur off). Gates : check natif+wasm32, clippy -D warnings, tests
+(géométrie/réducteurs purs testés). Docs : `docs/architecture/
+flow-engine.md` § Phase 5.
+
+- [x] API glue `src/api/flows.rs` (10 endpoints, types `pnex-core`) +
+      `ApiError{status, body}` (409 conflit / 400 violations
+      distinguables) ; `Serialize` ajouté sur les DTOs requête pnex-core
+- [x] Page `/flows` : liste (filtres search/statut, badges, colonne
+      versions « vN · déployée vM », Pager D14, création avec graphe de
+      départ inject — l'API refuse un graphe vide, suppression confirmée)
+- [x] Canevas + gestes : palette 4 kinds, pan/zoom, drag snappé, câblage
+      port→nœud, coupe de câble confirmée, Delete key
+- [x] Inspecteur par kind ; violations du nœud affichées (messages
+      pnex-core tels quels)
+- [x] Save/versioning : validate_graph locale → PATCH → 409 modal deux
+      branches ; drawer versions (charger / déployer cette version) ;
+      deploy + chip runtime
+- [x] i18n fr-FR/en-US (parité testée), clés `flows-*`
+
+**Prochaine : revue humaine Phase 6 + éditeur flows**, puis suite
+Phase 5 (lecture télémétrie/metrics live pour le front, `ws/metrics/live`
+corrigé du bug de sujets Django).
 
 ## Anciennes phases (détail)
 
@@ -427,6 +492,52 @@ de sujets Django).
   actuateur, fan-out Celery par user, contournements de bugs Argo).
 
 ## Journal
+- 2026-09-04 : **ETL Phase 6 — nœuds device → calc → métrique OpenObserve**
+  (branche `flow-engine-phase6-nodes-device`, sur la Phase 5). L'utilisateur
+  avait demandé la modélisation des devices en lecture : choisir n'importe
+  quel device **dans le nœud**, plusieurs devices, des calculs, et un
+  résultat enregistré « comme une métrique au même titre que les sensors » ;
+  il laissait l'architecture libre (« index dédié… je te laisse décider »).
+  Décisions structurantes :
+  - **Lecture** = PromQL `last_over_time` sur la même série que l'ingestion
+    (source de vérité unique O2 ; LAST_VALUES est mémoire-process Loco,
+    inaccessible au runtime) ;
+  - **« Index dédié »** = préfixe `etl_` + label `source_type=etl` (pas un
+    stream O2 séparé — le catalogue Visualisation est une découverte
+    dynamique : la série apparaît d'elle-même comme un capteur) ;
+  - **Creds** = auth Basic racine via allowlist env + `pnex_org_id`
+    estampillé dans l'artefact (zéro SQL/creds dans le runtime) — validé
+    par spike sur l'O2 réel (`examples/o2_spike.rs`) : le passcode d'org ne
+    couvre pas les lectures O2 v0.92.1, la racine couvre lecture+écriture ;
+  - **Évaluateur maison dans pnex-core** (zéro dep, wasm-safe) plutôt qu'une
+    crate externe : la même fonction valide (éditeur) et exécute (runtime) ;
+  - **`normalize_measurement_name` déplacé dans pnex-core** : si ingestion
+    et lecture normalisaient différemment, le PromQL chercherait une série
+    inexistante ;
+  - **Dépendances pin↔flows** (demande utilisateur en cours de chantier) :
+    un `set_mode` in↔out arrête automatiquement les flows déployés qui
+    lisent ce pin (dé-déploiement + reprojection + SIGUSR1, toast
+    `flow_impacts`) et l'éditeur marque le nœud **et le câble** en rouge
+    (staleness client-only : pin en sortie, pin disparu, device introuvable).
+  Gates verts à chaque commit ; failure `tenant_isolation::sso_register`
+  préexistante et environnement-dépendante (hors périmètre, vérifiée sur
+  main propre en Phase 5).
+- 2026-09-04 : **ETL Phase 5 — éditeur de flows drag & drop (Dioxus)**.
+  Page `/flows` + `components/flow_editor/` (geometry/state/canvas/
+  inspector/versions). Choix : canevas SVG pur sans `view_box` (1 unité =
+  1 px CSS — conversion `(client − origine − pan)/zoom`, origine mesurée
+  au début de chaque geste via `getBoundingClientRect`), zéro nouvelle
+  dépendance npm/Rust ; géométrie et réducteurs purs testés (13 tests) ;
+  handlers sans capture de `String` (l'id du nœud ciblé est relu du
+  signal sélection — piège FnMut/fncaptures) ; validation locale
+  `validate_graph` (wasm32) avant save, 409 → modal deux branches
+  (recharger/écraser), 400 violations → bandeau + surlignage des nœuds ;
+  « Déployer cette version » = rollback serveur (ne crée pas de version).
+  `ApiError` porte désormais `status`/`body` (409/400 distinguables) ;
+  `Serialize` ajouté sur les DTOs requête pnex-core (CreateFlow/
+  UpdateFlow/DeployFlow — le front construit les requêtes typées) ;
+  web-sys + features `Element/DomRect/DomRectReadOnly`. i18n fr/en
+  complétées (parité testée). En attente de revue humaine.
 - 2026-09-04 : **Branding PNeX — logo UI + thème IdP assorti**. Front : wordmark officiel sur la carte login (h-16), variante claire `logo-light.png` (lettres blanches, X rouge) en sidebar h-10 / callback h-12, navy h-8 en topbar mobile, mark X seul en favicon (`main.rs`) ; clés fluent mortes retirées (`login-welcome`, `app-name`, `app-tagline`). IdP : thème light/dark (navy `#151821`, bleu UI `accent/action`, rouge X `error`, cyan `theme_moon`) + logo/favicon X sur clients `pnex` **et** `rauthy` (fallback register/account/admin), via `deploy/rauthy/branding/theme.json` + `apply-branding.sh` (`task rauthy:branding`, clé API admin `pnex-branding` versionnée dans `bootstrap/api_keys.json` — API admin Rauthy 0.36 : header `API-Key`, ni Bearer ni password grant ; routes **sans** préfixe `/admin`) ; client renommé « PNEX UI » → « PNeX » (login page affiche « Login: PNeX »). **Logout** : la page logout Rauthy (0.36, upstream `main` identique) ne fait **jamais** naviguer vers `post_logout_redirect_uri` — son GET ne sert que la page de confirmation (le commentaire « skip the logout confirmation » du source est faux, check inversé) et après le POST elle rejoint toujours sa landing `/auth/v1/` hardcodée. Design retenu : `/api/v1/oauth2/logout` sert un **formulaire HTML auto-soumis** qui POSTe l'end-session Rauthy en TOP-LEVEL — le 302 final de Rauthy vers `post_logout_redirect_uri` (l'origine de l'app, validée par Rauthy) devient une vraie navigation : le navigateur **atterrit sur 5150** (boot déconnecté → écran de login). Seul chemin qui redirige réellement : le GET logout Rauthy ne sert que sa page de confirmation et sa page SPA POSTe en `fetch` pour finir sur sa landing hardcodée — jamais une navigation. Deux pièges corrigés au passage : l'`id_token` doit être capturé **avant** la purge locale (sans `id_token_hint`, Rauthy affiche sa confirmation yes/no au lieu de l'auto-logout — bug hérité du code d'origine) et l'URI de retour doit rester dans la liste autorisée du client (URI hors liste = POST en erreur = SSO non détruit). Wipe du volume Rauthy + re-bootstrap (api_keys.json lu à la 1re init) ; users recréés avec nouveaux `idp_sub` → reprovisionnement JIT pnex au 1er login (ou `db:reset`).
 - 2026-09-03 (soir) : **Migration Keycloak → Rauthy (D19) — IdP full-Rust, DB embarquée hiqlite**. compose.yaml : `rauthy` (ghcr.io/sebadob/rauthy:0.36.2, :8080, volume `pnex-rauthydata`, config `deploy/rauthy/config.toml`, bootstrap `clients.json`/`users.json` lu à la 1re init DB) + `mailcrab` (:1080, SMTP catcher pour l'inscription ouverte). Backend : `KeycloakSettings`→`RauthySettings` (issuer `{base}/auth/v1/` **avec slash final**, endpoints `/auth/v1/oidc/*`), `action=register`→ page Rauthy, `action=reset`→ page compte Rauthy ; **2 surprises Rauthy corrigées** : UA obligatoire sur /token (reqwest `.user_agent("pnex-server")`) et JWKS mixte RSA+OKP (parser ignore les entrées sans `n`/`e`) ; **access tokens lean** (pas de `preferred_username`) → `Claims` assoupli, `display_name` retombe sur l'email ; `users.keycloak_uuid` (UUID) → `users.idp_sub` (varchar) — Rauthy émet des `sub` 24 chars, reset DB assumé (app pas en prod) ; User-Agent requis ; tests : mock `/auth/v1/oidc/certs`, `RAUTHY_URL`, issuer `{base}/auth/v1/` — suite backend verte. Vérifié e2e contre Rauthy réel : password grant (email en username) → 200 user-info (JIT org Free) ; refresh immédiat rejeté **par design** (`nbf = exp_AT − 60` — l'UI rafraîchit sur 401, compatible). Front : profil « géré par Rauthy » (i18n). En attente de revue humaine.
 

@@ -50,13 +50,6 @@ impl OpenobserveSettings {
     }
 }
 
-/// Nom de métrique Prometheus valide (charset officiel) — sert de
-/// validation anti-injection avant toute interpolation dans une
-/// requête PromQL ; les streams au nom exotique sont ignorés plutôt
-/// que de casser la requête.
-pub(crate) fn valid_metric_name(name: &str) -> bool {
-    !name.is_empty()
-        && name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
-}
+/// Nom de métrique Prometheus valide (charset officiel) — la fonction vit
+/// dans pnex-core (`naming`) : source unique avec le runtime de flows.
+pub(crate) use pnex_core::valid_metric_name;

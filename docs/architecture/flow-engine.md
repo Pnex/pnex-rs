@@ -1,17 +1,158 @@
 # Moteur de flow ETL « Node-RED full-Rust » — EdgeLinkd vendored, mode B
 
 > **Statut : IMPLÉMENTÉ (Phase 0 + Phase 1, 2026-09-03 — branché
-> `worktree-etl-flow-engine`, en attente de revue humaine).** Ce document
-> consigne (a) la décision d'intégration et de rechargement (spike PRD §5.1),
-> (b) les faits **vérifiés** sur EdgeLinkd au commit épinglé, (c) les écarts
-> vs la conception initiale.
+> `worktree-etl-flow-engine` ; Phase 5 — éditeur Dioxus — IMPLÉMENTÉ
+> 2026-09-04, branche `flow-engine-phase5-editeur` ; Phase 6 — nœuds
+> device/calc/metric + dépendances pin↔flows — IMPLÉMENTÉ 2026-09-04,
+> branche `flow-engine-phase6-nodes-device` ; en attente de revue
+> humaine).** Ce document consigne (a) la décision d'intégration et de
+> rechargement (spike PRD §5.1), (b) les faits **vérifiés** sur EdgeLinkd au
+> commit épinglé, (c) les écarts vs la conception initiale.
 >
 > **Rappel PRD (§3, garde-fous)** : ingestion uniquement (pas de write-side
 > device, frontière D13/D17) ; cœur EdgeLinkd jamais patché ; pas de
 > type-check global du graphe (contrats typés aux frontières des nœuds
 > custom) ; les utilisateurs n'écrivent pas de Rust ; l'éditeur Node-RED
 > embarqué n'est **jamais exposé** (runtime headless) ; tranches fines —
-> l'éditeur Dioxus est une phase ultérieure.
+> l'éditeur Dioxus est la phase 5 de la piste.
+
+## 0. Phase 5 — Éditeur de flows (2026-09-04)
+
+Éditeur drag & drop complet dans `crates/pnex-frontend/src/components/
+flow_editor/`, page `/flows` (liste + éditeur en sous-vue — routes
+statiques, pattern `devices.rs`). L'éditeur ne parle **qu'à l'API Loco**
+(garde-fou PRD respecté — zéro contact avec le runtime).
+
+Choix structurants :
+
+- **Canevas SVG pur Dioxus** (aucune dépendance npm/Rust ajoutée) — l'SVG
+  n'a **pas** de `view_box` : 1 unité utilisateur = 1 px CSS, conversion
+  `(client − origine − pan)/zoom`, origine (`getBoundingClientRect`)
+  mesurée au début de chaque geste.
+- **Gestes** : handlers `move`/`up` sur le root SVG (fiables quand le
+  pointeur sort du nœud), `pointerleave` annule un geste orphelin, hit-test
+  bbox **mathématique** (pas d'`elementFromPoint`), zoom molette borné
+  0.4–2.0 vers le curseur, drag snappé sur grille 20 px.
+- **Validation partagée** : `pnex_core::validate_graph` exécutée **dans le
+  navigateur** (pnex-core est wasm32) AVANT chaque save — surlignage des
+  nœuds en cause + bandeau ; le 400 `{"violations": [...]}` serveur est
+  traité à l'identique. Pas de cycle-détection ni de type-check ajoutés
+  (garde-fou PRD).
+- **Versioning** : save = PATCH avec `expected_version_number` (409 →
+  modal « Recharger depuis le serveur / Écraser avec ma version », les deux
+  branches repartent d'un détail frais) ; drawer d'historique — « Charger »
+  une ancienne version = édition (le prochain save crée v(n+1) avec ce
+  graphe), « Déployer cette version » = rollback serveur (ne crée pas de
+  version) ; dirty dérivé au rendu (`graph != saved_graph`, jamais de
+  signal dirty à tenir à jour — leçon brick0 « zéro set en render »).
+- **Inspecteur par kind** : inject/pnex_sql/debug/red, JSON (payload
+  inject, config red) validés localement avec drapeau d'invalidité (pattern
+  `MetadataEditor` devices) ; les violations du nœud sélectionné sont
+  listées dans l'inspecteur (messages pnex-core affichés tels quels).
+- **Deploy/rollback** : bouton gated `can_write && !dirty` (deploy =
+  publier une version enregistrée) ; chip runtime pollé 5 s
+  (`GET /flows/{id}/runtime`) — moteur actif/arrêté, pid/version au
+  survol ; 503 `flow_runtime` toasté tel quel.
+- **Frontières** : `ApiError` porte désormais `status`/`body` (409/400
+  distinguables sans parser le message) ; `Serialize` ajouté sur les DTOs
+  requête `pnex-core` (le front construit les requêtes typées) ; handlers
+  sans capture de `String` (l'id du nœud ciblé est relu du signal
+  sélection — piège FnMut).
+
+## 0bis. Phase 6 — nœuds device/calc/metric (2026-09-04)
+
+La « partie lecture » des devices dans les flows : choisir n'importe quel
+device **dans le nœud** (rien d'imposé à la création du flow), lire ses pins,
+combiner plusieurs devices, calculer, et écrire le résultat dans OpenObserve
+**comme une métrique au même titre que les capteurs**.
+
+Pipeline cible : `[inject] → [device] → [calc] → [metric]`
+
+- **pnex-device** (crate `pnex-node-device`) : dernières valeurs des pins de
+  N devices via PromQL `last_over_time(<pin>{device_id="…"}[window])` — la
+  **même série** que l'ingestion (`normalize_measurement_name` déplacé dans
+  pnex-core pour garantir l'égalité des noms ingestion/lecture). Payload =
+  objet `clé → valeur`, clés `sanitize(device) + "_" + sanitize(pin)`
+  (`device_payload_key`, prévisualisées à l'identique par l'éditeur) ; lecture
+  sans donnée dans la fenêtre = clé omise + warn — **jamais de zéro inventé**,
+  le calc aval échoue « variable inconnue » (fail-loud).
+- **pnex-calc** : évaluateur d'expressions **maison dans pnex-core**
+  (`calc.rs`, pratt parser pur, wasm-safe, zéro dep) — la MÊME fonction
+  valide l'expression dans l'éditeur (validation live) et l'exécute au
+  runtime. Langage : opérateurs, comparaisons → 1/0, ternaire, `^` droite-
+  associatif, 19 fonctions, constantes pi/e ; division par zéro / hors
+  domaine = erreur propre, jamais de panic.
+- **pnex-metric** : remote-write OpenObserve depuis le runtime — série
+  `etl_<nom>` avec `device_id="flow_{id}"` (device **virtuel**),
+  `pred_dev="virtual_device"`, `source_type="etl"`, `ts_source="server"`.
+  Le préfixe `etl_` est la **séparation d'index** demandée (pas un stream O2
+  séparé) : le catalogue Visualisation étant une découverte dynamique des
+  streams metrics, la série apparaît d'elle-même « comme un capteur »,
+  filtrable par source_type.
+- **Creds/org** : `pnex_org_id` estampillé dans l'artefact au deploy
+  (`FlowArtifactMeta.org_id` → tab + nœuds custom) — le runtime déduit
+  l'org O2 (`pnex_org_{id}`, convention provisioning) **sans accès SQL** ;
+  auth Basic racine via allowlist env. Spike exécuté contre l'O2 réel
+  (`examples/o2_spike.rs`) : remote-write racine accepté + relecture
+  `last_over_time` cohérente — le passcode d'org reste inutile aux lectures
+  (O2 v0.92.1), la racine couvre lecture **et** écriture.
+- **Évaluateur partagé** (`eval_calc`/`validate_calc`) + nommage centralisé
+  (`naming.rs`) + structs prompb en feature (`prompb`) dans pnex-core — le
+  front wasm ne compile aucune de ces parties natives.
+- **Dépendances pin↔flows** : un `set_mode` in↔out sur un pin scanne les
+  flows déployés de l'org dont un nœud device lit ce (device, pin) →
+  **dé-déploiement automatique** (status draft, reprojection + SIGUSR1 : le
+  flow s'arrête réellement ; la version publiée reste enregistrée), réponse
+  enrichie `flow_impacts` → toast UI Pins. Dans l'éditeur, violations de
+  **staleness** client-only (pin en sortie, pin disparu, device introuvable)
+  → nœud **et câble** en rouge ; re-scan au changement de configuration
+  uniquement (pas au drag).
+
+## 0ter. Outils de debug du flow (2026-09-05) — panneau Debug, sonde
+`pnex-display`, run-once
+
+Boucle de mise au point dans l'éditeur : **voir** ce que le flow émet, et le
+**déclencher** sans attendre son déclencheur. Garde-fou transversal : ces
+outils sont **mode dev/debug uniquement** (`settings.flow.debug_tools`,
+défaut `false`, activé par `config/development.yaml` via
+`PNEX_FLOW_DEBUG_TOOLS`) — en mode run les endpoints répondent **403** et
+l'éditeur ne rend même pas les boutons (porté par le chip runtime
+`FlowRuntimeStatus.debug_tools`, pas d'endpoint dédié).
+
+- **Panneau Debug** : le nœud `debug` builtin publie sur le canal debug du
+  moteur **seulement si `tosidebar: true`** — la projection le positionne
+  déjà (flow.rs:632), gardé par un test de non-régression. Le runtime
+  enrichit chaque événement stdout avec l'attribution (`flow`, `node_red`)
+  : le `DebugMessage.id` du moteur est un hex (`ElementId`, hash du id RED
+  quand il n'est pas hex) et `path` l'hex du tab — non mappables côté
+  backend. L'attribution vit donc dans le runtime (`src/attrib.rs`, maps
+  hex→RED reconstruites au boot et **avant** l'acquittement de redeploy).
+  Le superviseur parse le stdout (INFO uniquement) dans un anneau mémoire
+  par flow (cap 200/flow, 64 flows, TTL 5 min, purge **avant** SIGUSR1 au
+  deploy — les entrées meurent avec l'artefact qu'elles reflètent) exposé
+  par `GET /flows/{id}/debug` (200 même moteur arrêté, 404 hors-org —
+  entrée sans attribution = jetée, les orgs partagent un flows.json).
+- **Sonde `pnex-display`** (crate `pnex-node-display`, pattern
+  `pnex-node-device`) : passthrough + publication au canal debug avec
+  l'id canvas **brut** (`pnex_node_id` estampillé par la projection) et la
+  valeur **non stringifiée** (le debug builtin pré-stringifie — le drawer
+  tente un re-parse pour pretty-printer). Badge live sous le nœud dans
+  l'éditeur, purgé si le moteur s'arrête.
+- **Run once** : `POST /flows/{id}/run-once` (409 si non déployé) →
+  superviseur écrit `<state_dir>/cmd.json` `{seq, flow}` atomiquement puis
+  **SIGUSR2** (nouveau contrat, même famille que SIGUSR1) ; le runtime lit,
+  ignore `seq <= last_seq` (idempotence), supprime le fichier, relit les
+  **wires du flows.json** (le nœud inject builtin ne peut pas être
+  déclenché de l'extérieur : `InjectNode` privé, son canal d'entrée n'est
+  jamais consommé), reconstruit le msg (normalisation legacy + la fonction
+  publique `evaluate_raw_node_property`) et injecte dans les cibles via
+  `Engine::inject_msg` (timeout 5 s par cible, `deep_clone` au-delà de la
+  première). Ack stdout corrélé par seq (`run_once_done`/`run_once_failed`)
+  → waiter **spawné** (jamais dans la boucle du superviseur — un run-once
+  ne doit pas bloquer un deploy). `cmd.json` est purgé au spawn de l'enfant
+  (jamais de rejeu d'avant-crash). Le nœud inject **sans déclencheur**
+  reste rejeté à la validation (`no_trigger`) : l'idiome manuel est
+  `once_delay_secs` — relaxation éventuelle plus tard.
 
 ## 1. Architecture cible
 
@@ -85,7 +226,7 @@ changerait.
 | Rechargement | SIGUSR1 → `Engine::redeploy_flows(json, reg, None)` (stop → re-parse → start) |
 | Acquittement | `<state_dir>/runtime.json` : `pid`, `running`, `flow_rev` (SHA-256), `redeploys`, `flow_id`, `version_number` |
 | Version incohérente | exit(1) → le superviseur relance avec le fichier courant |
-| Secrets | env enfant = `PATH`, `HOME`, `PNEX_FLOW_LOG` + allowlist (`DATABASE_URL`) — **jamais** dans flows.json |
+| Secrets | env enfant = `PATH`, `HOME`, `PNEX_FLOW_LOG` + allowlist (`DATABASE_URL`, `OPENOBSERVE_URL`, `OPENOBSERVE_ROOT_EMAIL`, `OPENOBSERVE_ROOT_PASSWORD`) — **jamais** dans flows.json |
 
 ## 4. Vérification d'acceptance (Phase 0 + 1)
 

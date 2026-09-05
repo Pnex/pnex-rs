@@ -8,7 +8,7 @@ publish = false
 default-run = "pnex-server"
 
 [dependencies]
-pnex-core = { workspace = true }
+pnex-core = { workspace = true, features = ["naming", "prompb"] }
 pnex-firmware-builder = { workspace = true }
 pnex-migration = { path = "migration" }
 loco-rs = { version = "1.0", default-features = false, features = [

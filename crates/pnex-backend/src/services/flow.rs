@@ -6,6 +6,7 @@
 //! alpha. `enabled` (défaut `false`) coupe tout : sans lui ni process ni
 //! déploiement (les flows restent éditables en base).
 
+use crate::services::openobserve::OpenobserveSettings;
 use loco_rs::config::Config;
 use serde::Deserialize;
 
@@ -33,6 +34,18 @@ pub struct FlowSettings {
     /// Variables d'environnement autorisées à franchir la frontière vers le
     /// runtime (noms seuls — ex. `DATABASE_URL` pour le nœud pnex-sql).
     pub env_allowlist: Vec<String>,
+    /// Outils de debug (panneau Debug + run-once) actifs — **mode dev/debug
+    /// uniquement** : défaut `false`, activé par la config de dev ; en mode
+    /// run les endpoints répondent 403 et l'éditeur masque les boutons.
+    pub debug_tools: bool,
+    /// Credentials OpenObserve résolus depuis `settings.openobserve` du yaml
+    /// — **injectés** dans l'env enfant (OPENOBSERVE_URL/_ROOT_EMAIL/
+    /// _ROOT_PASSWORD) au-delà de l'allowlist : le serveur tient ces creds du
+    /// yaml, pas de son env process (qui ne les a jamais — retour e2e
+    /// 2026-09-04 : le nœud device échouait au build et le moteur
+    /// crash-loopait sans acquittement). Même domaine de confiance que
+    /// `DATABASE_URL`. `None` = O2 non configuré (tests).
+    pub o2: Option<OpenobserveSettings>,
 }
 
 impl std::fmt::Debug for FlowSettings {
@@ -46,6 +59,8 @@ impl std::fmt::Debug for FlowSettings {
             .field("terminate_secs", &self.terminate_secs)
             .field("reload_ack_secs", &self.reload_ack_secs)
             .field("env_allowlist", &self.env_allowlist)
+            .field("debug_tools", &self.debug_tools)
+            .field("o2_configured", &self.o2.is_some())
             .finish()
     }
 }
@@ -60,7 +75,14 @@ impl Default for FlowSettings {
             restart_backoff_max_secs: 60,
             terminate_secs: 10,
             reload_ack_secs: 10,
-            env_allowlist: vec!["DATABASE_URL".into()],
+            env_allowlist: vec![
+                "DATABASE_URL".into(),
+                "OPENOBSERVE_URL".into(),
+                "OPENOBSERVE_ROOT_EMAIL".into(),
+                "OPENOBSERVE_ROOT_PASSWORD".into(),
+            ],
+            debug_tools: false,
+            o2: None,
         }
     }
 }
@@ -76,6 +98,7 @@ struct FlowPartial {
     terminate_secs: Option<u64>,
     reload_ack_secs: Option<u64>,
     env_allowlist: Option<Vec<String>>,
+    debug_tools: Option<bool>,
 }
 
 impl FlowSettings {
@@ -99,6 +122,8 @@ impl FlowSettings {
             terminate_secs: partial.terminate_secs.unwrap_or(d.terminate_secs),
             reload_ack_secs: partial.reload_ack_secs.unwrap_or(d.reload_ack_secs),
             env_allowlist: partial.env_allowlist.unwrap_or(d.env_allowlist),
+            debug_tools: partial.debug_tools.unwrap_or(d.debug_tools),
+            o2: OpenobserveSettings::from_config(config),
         }
     }
 }
@@ -112,7 +137,15 @@ mod tests {
         let d = FlowSettings::default();
         assert!(!d.enabled, "le moteur est coupé par défaut");
         assert_eq!(d.runtime_cmd, "pnex-flow-runtime");
-        assert_eq!(d.env_allowlist, vec!["DATABASE_URL".to_string()]);
+        assert_eq!(
+            d.env_allowlist,
+            vec![
+                "DATABASE_URL".to_string(),
+                "OPENOBSERVE_URL".to_string(),
+                "OPENOBSERVE_ROOT_EMAIL".to_string(),
+                "OPENOBSERVE_ROOT_PASSWORD".to_string(),
+            ]
+        );
 
         // Config sans section `flow` → défauts (logger seul champ requis).
         let minimal = serde_json::json!({
@@ -124,6 +157,7 @@ mod tests {
             .expect("config minimale désérialisable");
         let s = FlowSettings::from_config(&config);
         assert_eq!(s.state_dir, d.state_dir);
+        assert!(s.o2.is_none(), "sans section openobserve : pas de creds à injecter");
 
         // Section partielle : seuls les champs fournis surchargent.
         let config: Config = serde_json::from_value(serde_json::json!({
@@ -137,5 +171,24 @@ mod tests {
         assert!(s.enabled);
         assert_eq!(s.state_dir, "/tmp/flow-etat");
         assert_eq!(s.runtime_cmd, d.runtime_cmd, "champ absent → défaut");
+
+        // Section `openobserve` présente : les creds sont résolues pour
+        // injection dans l'env enfant (le Debug n'imprime jamais la valeur).
+        let config: Config = serde_json::from_value(serde_json::json!({
+            "logger": { "enable": false, "level": "info", "format": "compact" },
+            "server": { "port": 5150, "host": "http://localhost" },
+            "database": { "uri": "postgres://pnex:pnex@localhost:5432/pnex", "enable_logging": false, "auto_migrate": false, "connect_timeout": 500, "idle_timeout": 500, "min_connections": 1, "max_connections": 5 },
+            "settings": {
+                "openobserve": {
+                    "base_url": "http://localhost:5080",
+                    "root_email": "root@example.com",
+                    "root_password": "pass"
+                }
+            }
+        }))
+        .expect("config avec openobserve désérialisable");
+        let s = FlowSettings::from_config(&config);
+        assert!(s.o2.is_some(), "creds O2 résolues depuis le yaml");
+        assert!(!format!("{s:?}").contains("pass"), "le Debug ne fuite pas le secret");
     }
 }
