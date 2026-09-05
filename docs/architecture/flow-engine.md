@@ -108,6 +108,52 @@ Pipeline cible : `[inject] → [device] → [calc] → [metric]`
   → nœud **et câble** en rouge ; re-scan au changement de configuration
   uniquement (pas au drag).
 
+## 0ter. Outils de debug du flow (2026-09-05) — panneau Debug, sonde
+`pnex-display`, run-once
+
+Boucle de mise au point dans l'éditeur : **voir** ce que le flow émet, et le
+**déclencher** sans attendre son déclencheur. Garde-fou transversal : ces
+outils sont **mode dev/debug uniquement** (`settings.flow.debug_tools`,
+défaut `false`, activé par `config/development.yaml` via
+`PNEX_FLOW_DEBUG_TOOLS`) — en mode run les endpoints répondent **403** et
+l'éditeur ne rend même pas les boutons (porté par le chip runtime
+`FlowRuntimeStatus.debug_tools`, pas d'endpoint dédié).
+
+- **Panneau Debug** : le nœud `debug` builtin publie sur le canal debug du
+  moteur **seulement si `tosidebar: true`** — la projection le positionne
+  déjà (flow.rs:632), gardé par un test de non-régression. Le runtime
+  enrichit chaque événement stdout avec l'attribution (`flow`, `node_red`)
+  : le `DebugMessage.id` du moteur est un hex (`ElementId`, hash du id RED
+  quand il n'est pas hex) et `path` l'hex du tab — non mappables côté
+  backend. L'attribution vit donc dans le runtime (`src/attrib.rs`, maps
+  hex→RED reconstruites au boot et **avant** l'acquittement de redeploy).
+  Le superviseur parse le stdout (INFO uniquement) dans un anneau mémoire
+  par flow (cap 200/flow, 64 flows, TTL 5 min, purge **avant** SIGUSR1 au
+  deploy — les entrées meurent avec l'artefact qu'elles reflètent) exposé
+  par `GET /flows/{id}/debug` (200 même moteur arrêté, 404 hors-org —
+  entrée sans attribution = jetée, les orgs partagent un flows.json).
+- **Sonde `pnex-display`** (crate `pnex-node-display`, pattern
+  `pnex-node-device`) : passthrough + publication au canal debug avec
+  l'id canvas **brut** (`pnex_node_id` estampillé par la projection) et la
+  valeur **non stringifiée** (le debug builtin pré-stringifie — le drawer
+  tente un re-parse pour pretty-printer). Badge live sous le nœud dans
+  l'éditeur, purgé si le moteur s'arrête.
+- **Run once** : `POST /flows/{id}/run-once` (409 si non déployé) →
+  superviseur écrit `<state_dir>/cmd.json` `{seq, flow}` atomiquement puis
+  **SIGUSR2** (nouveau contrat, même famille que SIGUSR1) ; le runtime lit,
+  ignore `seq <= last_seq` (idempotence), supprime le fichier, relit les
+  **wires du flows.json** (le nœud inject builtin ne peut pas être
+  déclenché de l'extérieur : `InjectNode` privé, son canal d'entrée n'est
+  jamais consommé), reconstruit le msg (normalisation legacy + la fonction
+  publique `evaluate_raw_node_property`) et injecte dans les cibles via
+  `Engine::inject_msg` (timeout 5 s par cible, `deep_clone` au-delà de la
+  première). Ack stdout corrélé par seq (`run_once_done`/`run_once_failed`)
+  → waiter **spawné** (jamais dans la boucle du superviseur — un run-once
+  ne doit pas bloquer un deploy). `cmd.json` est purgé au spawn de l'enfant
+  (jamais de rejeu d'avant-crash). Le nœud inject **sans déclencheur**
+  reste rejeté à la validation (`no_trigger`) : l'idiome manuel est
+  `once_delay_secs` — relaxation éventuelle plus tard.
+
 ## 1. Architecture cible
 
 ```

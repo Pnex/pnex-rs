@@ -141,3 +141,6 @@ settings:
     terminate_secs: {{ get_env(name="PNEX_FLOW_TERMINATE_SECS", default="10") }}
     reload_ack_secs: {{ get_env(name="PNEX_FLOW_RELOAD_ACK_SECS", default="10") }}
     env_allowlist: ["DATABASE_URL", "OPENOBSERVE_URL", "OPENOBSERVE_ROOT_EMAIL", "OPENOBSERVE_ROOT_PASSWORD"]
+    # Outils de debug (panneau Debug + run-once) — mode dev/debug uniquement :
+    # absent de la config de run → 403 sur /debug et /run-once, boutons masqués.
+    debug_tools: {{ get_env(name="PNEX_FLOW_DEBUG_TOOLS", default="true") }}

@@ -5363,6 +5363,7 @@ dependencies = [
  "libc",
  "log 0.4.33",
  "pnex-node-device",
+ "pnex-node-display",
  "pnex-node-sql",
  "rquickjs-sys",
  "serde",
@@ -5424,6 +5425,22 @@ dependencies = [
  "serde",
  "serde_json",
  "snap",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "pnex-node-display"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "config",
+ "edgelink-core",
+ "edgelink-macro",
+ "inventory",
+ "log 0.4.33",
+ "serde",
+ "serde_json",
  "tokio",
  "tokio-util",
 ]

@@ -3,8 +3,8 @@
 //! RSX.
 
 use pnex_core::{
-    CalcConfig, DebugConfig, DeviceConfig, FlowGraph, FlowNode, FlowNodeKind, FlowWiring,
-    InjectConfig, MetricConfig, PnexSqlConfig, Position,
+    CalcConfig, DebugConfig, DeviceConfig, DisplayConfig, FlowGraph, FlowNode, FlowNodeKind,
+    FlowWiring, InjectConfig, MetricConfig, PnexSqlConfig, Position,
 };
 
 /// Entrée de palette : kind + libellés i18n + couleur d'icône.
@@ -15,6 +15,7 @@ pub enum PaletteKind {
     Device,
     Calc,
     Metric,
+    Display,
     Debug,
     Red,
 }
@@ -43,6 +44,7 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             },
             PaletteKind::Calc => FlowNodeKind::Calc { config: CalcConfig { expression: String::new() } },
             PaletteKind::Metric => FlowNodeKind::Metric { config: MetricConfig { metric_name: String::new() } },
+            PaletteKind::Display => FlowNodeKind::Display { config: DisplayConfig },
             PaletteKind::Debug => FlowNodeKind::Debug { config: DebugConfig::default() },
             PaletteKind::Red => FlowNodeKind::Red { type_name: String::new(), config: Default::default() },
         },
@@ -193,6 +195,14 @@ mod tests {
                 .map(|v| v.code.clone())
                 .collect();
         assert!(codes.contains(&"metric_name_missing".to_string()), "{codes:?}");
+    }
+
+    #[test]
+    fn make_node_display_est_valide() {
+        // La sonde n'a aucune config saisie : le défaut est directement vert.
+        let node = make_node("n1", PaletteKind::Display, Position { x: 0.0, y: 0.0 });
+        assert!(matches!(&node.kind, FlowNodeKind::Display { .. }));
+        assert!(pnex_core::validate_graph(&FlowGraph { nodes: vec![node] }).is_empty());
     }
 
     #[test]

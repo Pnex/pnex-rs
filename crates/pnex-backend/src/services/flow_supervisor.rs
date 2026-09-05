@@ -37,6 +37,13 @@ enum SupervisorCmd {
         meta: FlowArtifactMeta,
         reply: oneshot::Sender<Result<(), String>>,
     },
+    /// Exécuter une fois le flow déployé (cmd.json + SIGUSR2 + acquittement
+    /// stdout corrélé par seq).
+    RunOnce {
+        flow_id: i64,
+        seq: u64,
+        reply: oneshot::Sender<Result<pnex_core::RunOnceResult, String>>,
+    },
 }
 
 /// État partagé : l'émetteur vers la boucle (présent seulement si lancé).
@@ -44,6 +51,143 @@ static SUPERVISOR_TX: OnceLock<mpsc::Sender<SupervisorCmd>> = OnceLock::new();
 /// Garde anti double-spawn : `after_routes` tourne à chaque boot d'app, y
 /// compris dans les tests d'intégration (une app = au plus un superviseur).
 static SPAWNED: AtomicBool = AtomicBool::new(false);
+
+// ───────────────────────── Feed debug (panneau) ─────────────────────────
+
+/// Anneau du panneau de debug : dernières sorties `debug` du runtime,
+/// attribuées par flow (le runtime émet `flow`/`node_red` — une entrée sans
+/// attribution est **jetée** : les orgs partagent un seul `flows.json`,
+/// jamais de bucket « inconnu »).
+static DEBUG_FEED: OnceLock<std::sync::Mutex<DebugFeed>> = OnceLock::new();
+
+/// Caps bornés : un flow bavard ne peut ni exploser la mémoire ni évincer
+/// indéfiniment les autres flows.
+const DEBUG_CAP_PER_FLOW: usize = 200;
+const DEBUG_MAX_FLOWS: usize = 64;
+const DEBUG_TTL_SECS: i64 = 300;
+
+#[derive(Default)]
+struct DebugFeed {
+    per_flow: std::collections::HashMap<i64, std::collections::VecDeque<(std::time::Instant, pnex_core::FlowDebugEntry)>>,
+    next_seq: u64,
+    /// Dernier accès par flow (évcition LRU au-delà de `DEBUG_MAX_FLOWS`).
+    last_touch: std::collections::HashMap<i64, std::time::Instant>,
+}
+
+/// `DebugFeed` n'est lu que sous son mutex — horloge mono-thread efficace.
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Timestamp RFC 3339 sans dépendance chrono (le formatter de `time` n'est
+/// pas une dep du backend) : secondes depuis l'epoch → ISO-8601 UTC.
+fn rfc3339_now() -> String {
+    let secs = now_secs();
+    let days = secs.div_euclid(86_400);
+    let rem = secs.rem_euclid(86_400);
+    // Algorithme de conversion date civile (Howard Hinnant) — époque 1970-01-01.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    let (hh, mm, ss) = (rem / 3600, rem % 3600 / 60, rem % 60);
+    format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}Z")
+}
+
+fn feed() -> &'static std::sync::Mutex<DebugFeed> {
+    DEBUG_FEED.get_or_init(std::sync::Mutex::default)
+}
+
+/// Ingère une ligne stdout `{"event":"debug",...}` du runtime : exige
+/// l'attribution `flow` (sinon jetée) et estampille à la réception.
+pub fn push_debug(raw: &serde_json::Value) {
+    if raw.get("event").and_then(|e| e.as_str()) != Some("debug") {
+        return;
+    }
+    let Some(flow_id) = raw.get("flow").and_then(|f| f.as_i64()) else {
+        return;
+    };
+    let entry = pnex_core::FlowDebugEntry {
+        seq: 0, // assigné sous lock
+        ts: rfc3339_now(),
+        flow_id,
+        node_id: raw.get("node_red").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+        name: raw.get("name").and_then(|v| v.as_str()).map(str::to_string),
+        msg: raw.get("msg").cloned().unwrap_or(serde_json::Value::Null),
+        source: raw.get("source").and_then(|v| v.as_str()).unwrap_or("debug").to_string(),
+        topic: raw.get("topic").and_then(|v| v.as_str()).map(str::to_string),
+        msgid: raw.get("msgid").and_then(|v| v.as_str()).map(str::to_string),
+    };
+    let mut feed = feed().lock().expect("lock debug feed");
+    let now = std::time::Instant::now();
+    feed.next_seq += 1;
+    let mut entry = entry;
+    entry.seq = feed.next_seq;
+    let q = feed.per_flow.entry(flow_id).or_default();
+    q.push_back((now, entry));
+    while q.len() > DEBUG_CAP_PER_FLOW {
+        q.pop_front();
+    }
+    feed.last_touch.insert(flow_id, now);
+    // Éviction LRU des flows (au-delà du cap, le flow le plus ancien sort).
+    while feed.per_flow.len() > DEBUG_MAX_FLOWS {
+        let Some(victim) =
+            feed.last_touch.iter().min_by_key(|(_, t)| **t).map(|(fid, _)| *fid)
+        else {
+            break;
+        };
+        feed.per_flow.remove(&victim);
+        feed.last_touch.remove(&victim);
+    }
+}
+
+/// Snapshot du feed d'un flow (les plus anciennes d'abord), entrées TTL
+/// dépassées purgées.
+pub fn debug_entries(flow_id: i64, limit: usize) -> Vec<pnex_core::FlowDebugEntry> {
+    let mut feed = feed().lock().expect("lock debug feed");
+    let now = std::time::Instant::now();
+    if let Some(q) = feed.per_flow.get_mut(&flow_id) {
+        q.retain(|(t, _)| now.duration_since(*t).as_secs() as i64 <= DEBUG_TTL_SECS);
+        q.iter().map(|(_, e)| e.clone()).skip(q.len().saturating_sub(limit)).collect()
+    } else {
+        Vec::new()
+    }
+}
+
+/// Purge du feed d'un flow (au succès d'un deploy — les entrées d'une
+/// version antérieure ne doivent pas survivre à l'artefact frais).
+pub fn clear_debug_feed(flow_id: i64) {
+    let mut feed = feed().lock().expect("lock feed");
+    feed.per_flow.remove(&flow_id);
+}
+
+/// Parsing d'une ligne stdout JSON-lines du runtime. Retourne true si la
+/// ligne a été consommée par le feed/acks (reste rejouée en tracing).
+fn handle_runtime_line(line: &str) -> bool {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+        return false;
+    };
+    match v.get("event").and_then(|e| e.as_str()) {
+        Some("debug") => {
+            push_debug(&v);
+            true
+        }
+        Some("run_once_done" | "run_once_failed") => {
+            resolve_run_once(&v);
+            true
+        }
+        _ => false,
+    }
+}
 
 /// Lance le superviseur si `settings.flow.enabled` (sinon no-op — tests,
 /// déploiements sans moteur de flow). Idempotent par process.
@@ -108,6 +252,68 @@ fn state_dir_of(settings: &FlowSettings) -> PathBuf {
     PathBuf::from(&settings.state_dir)
 }
 
+// ─────────────────────────── Run once (SIGUSR2) ───────────────────────────
+
+/// Seq monotone des commandes run-once de ce process backend.
+static RUN_ONCE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Acks run-once en attente : seq → émetteur du oneshot du handler HTTP.
+/// Enregistré **avant** SIGUSR2 (course signal/ack), dépilé par
+/// [`resolve_run_once`] depuis `pump_lines`.
+static PENDING_RUN_ONCE: OnceLock<
+    std::sync::Mutex<std::collections::HashMap<u64, oneshot::Sender<Result<pnex_core::RunOnceResult, String>>>>,
+> = OnceLock::new();
+
+fn pending_run_once(
+) -> &'static std::sync::Mutex<std::collections::HashMap<u64, oneshot::Sender<Result<pnex_core::RunOnceResult, String>>>> {
+    PENDING_RUN_ONCE.get_or_init(std::sync::Mutex::default)
+}
+
+/// Exécution manuelle d'un flow déployé : écrit `cmd.json` + SIGUSR2, puis
+/// attend l'acquittement stdout corrélé par seq. L'attente a lieu dans une
+/// tâche spawnée par la boucle (jamais dans `run_supervisor` — sinon un
+/// run-once bloquerait les deploys jusqu'au timeout).
+pub async fn run_once(flow_id: i64) -> Result<pnex_core::RunOnceResult, String> {
+    use std::sync::atomic::Ordering;
+    let tx = SUPERVISOR_TX
+        .get()
+        .ok_or_else(|| "runtime de flow indisponible (settings.flow.enabled ?)".to_string())?;
+    let seq = RUN_ONCE_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
+    let (reply_tx, reply_rx) = oneshot::channel();
+    tx.clone()
+        .send(SupervisorCmd::RunOnce { flow_id, seq, reply: reply_tx })
+        .await
+        .map_err(|_| "superviseur de flow arrêté".to_string())?;
+    let result = reply_rx
+        .await
+        .map_err(|_| "superviseur de flow injoignable".to_string())??;
+    Ok(result)
+}
+
+/// Dépile un ack stdout `run_once_done`/`run_once_failed` corrélé par seq.
+fn resolve_run_once(v: &serde_json::Value) {
+    let Some(seq) = v.get("seq").and_then(|s| s.as_u64()) else { return };
+    let mut pending = pending_run_once().lock().expect("lock pending run_once");
+    if let Some(tx) = pending.remove(&seq) {
+        match v.get("event").and_then(|e| e.as_str()) {
+            Some("run_once_done") => {
+                let _ = tx.send(Ok(pnex_core::RunOnceResult {
+                    injected: v.get("injected").and_then(|i| i.as_u64()).unwrap_or(0) as u32,
+                    nodes: v.get("nodes").and_then(|n| n.as_u64()).map(|n| n as u32),
+                }));
+            }
+            _ => {
+                let err = v
+                    .get("error")
+                    .and_then(|e| e.as_str())
+                    .unwrap_or("run_once_failed")
+                    .to_string();
+                let _ = tx.send(Err(err));
+            }
+        }
+    }
+}
+
 // ───────────────────────────── Boucle interne ─────────────────────────────
 
 struct ChildProc {
@@ -170,6 +376,10 @@ async fn run_supervisor(settings: FlowSettings, mut rx: mpsc::Receiver<Superviso
 
         // 3) Commandes (non bloquant : on boucle à intervalle court).
         match rx.try_recv() {
+            Ok(SupervisorCmd::RunOnce { flow_id, seq, reply }) => {
+                // Ne bloque jamais la boucle : l'attente d'ack est spawnée.
+                handle_run_once(&settings, &child, flow_id, seq, reply);
+            }
             Ok(SupervisorCmd::Deploy { artifact, meta, reply }) => {
                 let outcome =
                     handle_deploy(&settings, &flows_path, &runtime_json, &mut child, &artifact, meta).await;
@@ -191,6 +401,72 @@ async fn run_supervisor(settings: FlowSettings, mut rx: mpsc::Receiver<Superviso
     }
 }
 
+/// Exécution d'une commande run-once : vivant ? → responder enregistré
+/// **avant** le signal (course signal/ack) → `cmd.json` atomique → SIGUSR2 →
+/// attente d'ack dans une tâche spawnée (timeout `reload_ack_secs`).
+fn handle_run_once(
+    settings: &FlowSettings,
+    child: &Option<ChildProc>,
+    flow_id: i64,
+    seq: u64,
+    reply: oneshot::Sender<Result<pnex_core::RunOnceResult, String>>,
+) {
+    let Some(c) = child.as_ref().filter(|c| pid_alive(c.pid)) else {
+        let _ = reply.send(Err("runtime de flow arrêté".into()));
+        return;
+    };
+    let (ack_tx, ack_rx) = oneshot::channel();
+    pending_run_once().lock().expect("lock pending run_once").insert(seq, ack_tx);
+
+    let dir = state_dir_of(settings);
+    let cmd_path = dir.join("cmd.json");
+    let tmp = dir.join("cmd.json.tmp");
+    let cmd = serde_json::json!({ "seq": seq, "flow": format!("pnexflow{flow_id}") });
+    let written = std::fs::write(&tmp, cmd.to_string()).and_then(|_| std::fs::rename(&tmp, &cmd_path));
+    if let Err(e) = written {
+        pending_run_once().lock().expect("lock pending run_once").remove(&seq);
+        let _ = reply.send(Err(format!("écriture de {} : {e}", cmd_path.display())));
+        return;
+    }
+    if let Err(e) = signal_usr2(c.pid) {
+        pending_run_once().lock().expect("lock pending run_once").remove(&seq);
+        let _ = reply.send(Err(format!("SIGUSR2 vers le pid {} : {e}", c.pid)));
+        return;
+    }
+    let ack_secs = settings.reload_ack_secs;
+    tokio::spawn(async move {
+        match tokio::time::timeout(Duration::from_secs(ack_secs), ack_rx).await {
+            Ok(Ok(outcome)) => {
+                let _ = reply.send(outcome);
+            }
+            Ok(Err(_)) => {
+                let _ = reply.send(Err("superviseur de flow injoignable".into()));
+            }
+            Err(_) => {
+                pending_run_once().lock().expect("lock pending run_once").remove(&seq);
+                let _ = reply.send(Err(format!("aucun acquittement de run-once après {ack_secs} s")));
+            }
+        }
+    });
+}
+
+/// SIGUSR2 : commande run-once (même contrat que SIGUSR1/rechargement).
+fn signal_usr2(pid: u32) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        let rc = unsafe { libc::kill(pid as libc::pid_t, libc::SIGUSR2) };
+        if rc != 0 {
+            return Err(std::io::Error::last_os_error().to_string());
+        }
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        Err("run-once par signal non supporté sur cette plateforme".into())
+    }
+}
+
 /// Déploiement d'un artefact. Retourne `Ok(true)` si un enfant a été
 /// (re)lancé par ce deploy, `Ok(false)` s'il tournait déjà.
 async fn handle_deploy(
@@ -206,6 +482,11 @@ async fn handle_deploy(
     std::fs::write(&tmp, serde_json::to_string_pretty(artifact).map_err(|e| e.to_string())?)
         .map_err(|e| format!("écriture de {} : {e}", tmp.display()))?;
     std::fs::rename(&tmp, flows_path).map_err(|e| format!("renommage de {} : {e}", flows_path.display()))?;
+
+    // Feed debug purgé AVANT le signal : les entrées de la version
+    // antérieure meurent avec l'artefact qu'elles reflètent, et les entrées
+    // fraîches (émises pendant le rechargement) survivent.
+    clear_debug_feed(meta.flow_id);
 
     // 2) Enfant vivant ? Sinon spawn (premier deploy ou reprise après crash).
     let alive = match child {
@@ -268,6 +549,9 @@ async fn handle_deploy(
 /// Spawn de l'enfant + pumps stdout/stderr → tracing. Retourne `None` si le
 /// lancement échoue (déjà logué).
 fn spawn_child(settings: &FlowSettings, flows_path: &std::path::Path) -> Option<ChildProc> {
+    // Purge d'une cmd.json périmée : un enfant relancé ne doit jamais rejouer
+    // une commande run-once d'avant-crash.
+    let _ = std::fs::remove_file(state_dir_of(settings).join("cmd.json"));
     let program = resolve_program(&settings.runtime_cmd);
     tracing::info!(cmd=%program, flows=%flows_path.display(), "démarrage du runtime de flow");
     let mut cmd = tokio::process::Command::new(&program);
@@ -329,6 +613,12 @@ async fn pump_lines(stream: impl tokio::io::AsyncRead + Unpin, level: tracing::L
     let reader = BufReader::new(stream);
     let mut lines = reader.lines();
     while let Ok(Some(line)) = lines.next_line().await {
+        // Seul le stdout (INFO) est parsé : les événements consommés par le
+        // feed/acks descendent en `debug` pour éviter le bruit INFO.
+        if level == tracing::Level::INFO && handle_runtime_line(&line) {
+            tracing::debug!(runtime=%line, "flow runtime");
+            continue;
+        }
         match level {
             tracing::Level::INFO => tracing::info!(runtime=%line, "flow runtime"),
             _ => tracing::warn!(runtime=%line, "flow runtime"),
@@ -415,5 +705,78 @@ mod tests {
         let st = runtime_status(&s);
         assert!(!st.running);
         assert_eq!(st.pid, None);
+    }
+
+    fn debug_line(flow: i64, msg: &str) -> serde_json::Value {
+        serde_json::json!({
+            "event": "debug", "node": "deadbeef", "node_red": "n2",
+            "flow": flow, "name": "n2", "msg": msg, "msgid": "m1"
+        })
+    }
+
+    #[test]
+    fn feed_cap_ttls_et_sans_attribution() {
+        // Sans attribution flow : l'entrée est JETÉE (multi-org — pas de
+        // bucket « inconnu »).
+        push_debug(&serde_json::json!({
+            "event": "debug", "node": "x", "node_red": "n1", "msg": "orpheline"
+        }));
+        assert!(debug_entries(999_901, 100).is_empty());
+
+        // Cap par flow : au-delà de DEBUG_CAP_PER_FLOW, les plus anciennes
+        // sortent.
+        for i in 0..(DEBUG_CAP_PER_FLOW + 10) {
+            push_debug(&debug_line(999_902, &format!("m{i}")));
+        }
+        let entries = debug_entries(999_902, 100);
+        assert_eq!(entries.len(), 100);
+        assert_eq!(entries.last().unwrap().msg, serde_json::json!("m209"));
+        assert!(entries.len() < DEBUG_CAP_PER_FLOW);
+        // Le feed complet garde le cap exact.
+        let all = debug_entries(999_902, DEBUG_CAP_PER_FLOW + 50);
+        assert_eq!(all.len(), DEBUG_CAP_PER_FLOW);
+
+        // Sources étanches : `pnex-display` passe tel quel, topic/msgid lus.
+        push_debug(&serde_json::json!({
+            "event": "debug", "node": "abab", "node_red": "n7", "flow": 999_903,
+            "name": "sonde", "msg": {"k": 1}, "source": "pnex-display",
+            "topic": "t", "msgid": "m9"
+        }));
+        let e = &debug_entries(999_903, 10)[0];
+        assert_eq!(e.source, "pnex-display");
+        assert_eq!(e.msg, serde_json::json!({"k": 1}));
+        assert_eq!(e.node_id, "n7");
+        assert_eq!(e.topic.as_deref(), Some("t"));
+        assert_eq!(e.msgid.as_deref(), Some("m9"));
+        // ts RFC 3339 bien formé.
+        assert!(e.ts.len() == 20 && e.ts.ends_with('Z'), "{}", e.ts);
+    }
+
+    #[test]
+    fn resolve_run_once_seq_inconnue_ignorer() {
+        // Aucun responder enregistré pour cette seq : ne doit pas paniquer.
+        resolve_run_once(&serde_json::json!({
+            "event": "run_once_done", "seq": 987_654_321, "injected": 3, "nodes": 1
+        }));
+        resolve_run_once(&serde_json::json!({
+            "event": "run_once_failed", "seq": 987_654_322, "error": "flow_absent"
+        }));
+        // Sans seq : ignoré.
+        resolve_run_once(&serde_json::json!({"event": "run_once_done", "injected": 1}));
+    }
+
+    #[test]
+    fn rfc3339_forme() {
+        let ts = rfc3339_now();
+        assert_eq!(ts.len(), 20, "{ts}");
+        assert!(ts.ends_with('Z'), "{ts}");
+        assert_eq!(&ts[4..5], "-");
+        assert_eq!(&ts[10..11], "T");
+    }
+
+    #[test]
+    fn settings_debug_tools_defaut_faux() {
+        let s = FlowSettings::default();
+        assert!(!s.debug_tools, "mode run par défaut");
     }
 }

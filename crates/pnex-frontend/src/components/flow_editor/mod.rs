@@ -7,6 +7,7 @@
 //! dans `inspector.rs`, l'historique dans `versions.rs`.
 
 pub(crate) mod canvas;
+pub(crate) mod debug;
 pub(crate) mod geometry;
 pub(crate) mod inspector;
 pub(crate) mod state;
@@ -61,6 +62,10 @@ pub(crate) struct EditorCx {
     /// passé en sortie, pin disparu du pinout, device inconnu — le graphe
     /// est structurellement valide mais sa lecture ne remontera rien.
     pub(crate) stale: Signal<Vec<FlowViolation>>,
+    /// Dernière valeur publiée par nœud Display (id canvas → raccourci
+    /// d'affichage) — le badge live sous le nœud. Vidé si le moteur est
+    /// arrêté (les valeurs d'un moteur stoppé ne sont plus des vérités).
+    pub(crate) display_values: Signal<std::collections::HashMap<String, String>>,
 }
 
 impl EditorCx {
@@ -108,6 +113,7 @@ pub fn FlowEditor(
     let mut violations = use_signal(Vec::<FlowViolation>::new);
     let mut stale = use_signal(Vec::<FlowViolation>::new);
     let mut loaded_from = use_signal(|| None::<i64>);
+    let mut display_values = use_signal(std::collections::HashMap::<String, String>::new);
 
     // Garde du chargement initial (jamais de `.set()` pendant le render).
     let mut loaded = use_signal(|| false);
@@ -138,6 +144,7 @@ pub fn FlowEditor(
         zoom,
         violations,
         stale,
+        display_values,
     };
 
     // Dirty dérivé — jamais de signal dédié à tenir à jour.
@@ -346,6 +353,8 @@ pub fn FlowEditor(
 
     // --- Drawer versions ---
     let mut versions_open = use_signal(|| false);
+    // Drawer de debug (même garde dev/debug que le bouton).
+    let mut debug_open = use_signal(|| false);
     // Câble à couper (from, port, to) — confirmation à la demande.
     let mut pending_wire = use_signal(|| None::<(String, usize, String)>);
 
@@ -365,12 +374,87 @@ pub fn FlowEditor(
         });
     }
 
+    // Outils de debug actifs ? Porté par le chip runtime (pas d'endpoint
+    // dédié) — mode run : boutons non rendus, pas de poll. Signal (pas un
+    // booléen dérivé) : la resource de feed doit le **suivre**.
+    let mut debug_tools = use_signal(|| false);
+    use_effect(move || {
+        let active = match &*runtime.value().read() {
+            Some(Ok(status)) => status.debug_tools,
+            _ => false,
+        };
+        if debug_tools() != active {
+            debug_tools.set(active);
+        }
+    });
+
+    // --- Feed debug (badges Display) — poll 5 s tant que debug_tools ---
+    let mut reload_debug = use_signal(|| 0u32);
+    let mut debug_polling = use_signal(|| false);
+    let debug_feed = use_resource(move || async move {
+        let _ = reload_debug();
+        if !debug_tools() {
+            return None;
+        }
+        api::flows::debug(flow_id).await.ok()
+    });
+    if debug_tools() && !debug_polling() {
+        debug_polling.set(true);
+        spawn(async move {
+            crate::util::sleep(std::time::Duration::from_secs(5)).await;
+            debug_polling.set(false);
+            reload_debug.with_mut(|r| *r += 1);
+        });
+    }
+    // Pliage : dernière valeur par nœud Display, purgées si le moteur est
+    // arrêté (les valeurs d'un moteur stoppé ne sont plus des vérités).
+    use_effect(move || {
+        let running = match &*runtime.value().read() {
+            Some(Ok(status)) => status.running,
+            // Statut inconnu : on ne purge pas par prudence.
+            _ => true,
+        };
+        let mut fresh: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        if running {
+            if let Some(Some(feed)) = &*debug_feed.value().read() {
+                for entry in feed.entries.iter().filter(|e| e.source == "pnex-display") {
+                    fresh.insert(entry.node_id.clone(), debug::display_value_label(&entry.msg));
+                }
+            }
+        }
+        display_values.set(fresh);
+    });
+
+    // --- Run once (mode dev/debug uniquement) ---
+    let mut running_once = use_signal(|| false);
+    let run_once = move |_| {
+        if running_once() || dirty {
+            return;
+        }
+        running_once.set(true);
+        spawn(async move {
+            match api::flows::run_once(flow_id).await {
+                Ok(res) => {
+                    toasts::success(t!("flows-run-once-done", count: res.injected).to_string());
+                    reload_debug.with_mut(|r| *r += 1);
+                }
+                Err(err) => toasts::error(err.message),
+            }
+            running_once.set(false);
+        });
+    };
+
     let (status_badge, status_label) = match &*detail.value().read() {
         Some(Ok(flow)) => {
             let (badge, label) = status_badge(&flow.status);
             (badge, label)
         }
         _ => ("bg-gray-100 text-gray-800", t!("common-loading")),
+    };
+    // Statut brut pour les gating d'actions runtime (deploy → run-once).
+    let status_deployed = match &*detail.value().read() {
+        Some(Ok(flow)) => flow.status.clone(),
+        _ => String::new(),
     };
 
     // Bandeau : violations de validation + staleness pin/device (Phase 6).
@@ -435,6 +519,20 @@ pub fn FlowEditor(
                         icons::Zap { class: "h-4 w-4 inline mr-1" }
                         {t!("flows-deploy")}
                     }
+                    if debug_tools() {
+                        // Run once : n'a de sens que sur la version déployée
+                        // (le runtime exécute l'artefact, pas le graphe sale).
+                        button {
+                            class: "px-3 py-1.5 text-sm text-cyan-700 bg-cyan-50 border border-cyan-300 rounded-lg hover:bg-cyan-100 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed",
+                            disabled: running_once() || dirty || status_deployed != "deployed",
+                            title: if dirty { t!("flows-deploy-need-save") } else { t!("flows-run-once") },
+                            onclick: run_once,
+                            if running_once() {
+                                span { class: "animate-spin rounded-full h-3 w-3 border-b-2 border-cyan-700 inline-block mr-1 align-middle" }
+                            }
+                            {if running_once() { t!("flows-run-once-running").to_string() } else { t!("flows-run-once").to_string() }}
+                        }
+                    }
                 }
                 // Chip runtime (superviseur backend, acquittement du moteur).
                 {match &*runtime.value().read() {
@@ -459,6 +557,17 @@ pub fn FlowEditor(
                     },
                     _ => rsx! {},
                 }}
+                if debug_tools() {
+                    button {
+                        class: if debug_open() {
+                            "px-3 py-1.5 text-sm text-cyan-700 bg-cyan-50 border border-cyan-400 rounded-lg transition-colors"
+                        } else {
+                            "px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                        },
+                        onclick: move |_| debug_open.set(!debug_open()),
+                        {t!("flows-debug-panel")}
+                    }
+                }
                 button {
                     class: "px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
                     onclick: move |_| versions_open.set(true),
@@ -498,6 +607,14 @@ pub fn FlowEditor(
                     key: "{selected_node.cloned():?}",
                     cx,
                     can_write,
+                }
+            }
+
+            // ─── Drawer debug (monté seulement si ouvert : le poll meurt avec) ───
+            if debug_open() {
+                debug::DebugDrawer {
+                    flow_id,
+                    on_close: move |_| debug_open.set(false),
                 }
             }
 

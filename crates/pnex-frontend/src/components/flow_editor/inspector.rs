@@ -113,6 +113,9 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool) -> Element {
         FlowNodeKind::Debug { config } => rsx! {
             DebugForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::Display { .. } => rsx! {
+            DisplayForm { can_write }
+        },
         FlowNodeKind::Red { type_name, config } => rsx! {
             RedForm {
                 cx,
@@ -618,6 +621,20 @@ fn DebugForm(mut cx: EditorCx, initial: DebugConfig, can_write: bool) -> Element
                 }
                 span { class: "text-xs font-medium text-gray-500", {t!("flows-debug-console")} }
             }
+        }
+    }
+}
+
+/// ─────────────── display (sonde) ───────────────
+
+#[component]
+fn DisplayForm(can_write: bool) -> Element {
+    // Aucune config saisie : l'identité est estampillée par la projection au
+    // deploy (pnex_node_id/flow/version) — le formulaire est informatif.
+    let _ = can_write;
+    rsx! {
+        div { class: "space-y-3",
+            p { class: "text-xs text-gray-500", {t!("flows-display-hint")} }
         }
     }
 }

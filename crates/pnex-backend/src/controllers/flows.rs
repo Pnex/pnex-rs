@@ -688,7 +688,67 @@ async fn runtime(
     let mut status = flow_supervisor::runtime_status(&settings);
     // Point de vue du flow : ce que le runtime exécute pour lui.
     status.deployed_flow_id = Some(id);
+    // Porte l'activation des outils de debug (mode dev/debug uniquement) :
+    // l'éditeur masque panneau et run-once sans second endpoint.
+    status.debug_tools = settings.debug_tools;
     Ok(format::json(status).into_response())
+}
+
+// ─────────────────────────── Debug (panneau) + run-once ───────────────────────────
+
+/// `GET /flows/{id}/debug` — feed du panneau (100 dernières entrées du flow).
+/// Lecture seule (même niveau que `runtime`), 200 avec feed vide si le
+/// moteur est arrêté (un 503 rendrait le drawer inutilisable). Garde-fou :
+/// 403 hors mode dev/debug (`settings.flow.debug_tools`).
+async fn debug(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let settings = FlowSettings::from_config(&ctx.config);
+    if !settings.debug_tools {
+        return Err(forbidden("outils de debug désactivés (mode run)"));
+    }
+    let Some(_) = find_flow(&ctx.db, &org, id).await? else {
+        return Err(Error::NotFound);
+    };
+    Ok(format::json(pnex_core::FlowDebugFeed {
+        flow_id: id,
+        entries: flow_supervisor::debug_entries(id, 100),
+    })
+    .into_response())
+}
+
+/// `POST /flows/{id}/run-once` — exécute une fois le flow déployé :
+/// `cmd.json` + SIGUSR2 vers le runtime, acquittement stdout corrélé.
+/// Garde-fous : 403 hors mode dev/debug, `can_write`, 409 si non déployé,
+/// 503 `flow_runtime` si le runtime n'acquitte pas.
+async fn run_once(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let settings = FlowSettings::from_config(&ctx.config);
+    if !settings.debug_tools {
+        return Err(forbidden("outils de debug désactivés (mode run)"));
+    }
+    if !org.can_write() {
+        return Err(forbidden("owner ou admin requis pour exécuter les flows"));
+    }
+    let Some(flow) = find_flow(&ctx.db, &org, id).await? else {
+        return Err(Error::NotFound);
+    };
+    if flow.status != pnex_core::FLOW_STATUS_DEPLOYED {
+        return Err(conflict("le flow doit être déployé pour être exécuté"));
+    }
+    let result = flow_supervisor::run_once(id).await.map_err(|e| {
+        Error::CustomError(
+            StatusCode::SERVICE_UNAVAILABLE,
+            loco_rs::controller::ErrorDetail::new("flow_runtime", e),
+        )
+    })?;
+    tracing::info!(flow_id = id, injected = result.injected, "flow exécuté (run-once)");
+    Ok(format::json(result).into_response())
 }
 
 // ─────────────────────────── Routes ───────────────────────────
@@ -703,4 +763,6 @@ pub fn routes() -> Routes {
         .add("/{id}/deploy", post(deploy))
         .add("/{id}/rollback", post(rollback))
         .add("/{id}/runtime", get(runtime))
+        .add("/{id}/debug", get(debug))
+        .add("/{id}/run-once", post(run_once))
 }

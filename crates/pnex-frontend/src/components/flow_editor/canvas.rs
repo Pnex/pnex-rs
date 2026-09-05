@@ -23,6 +23,7 @@ pub(crate) fn Palette(cx: EditorCx) -> Element {
         PaletteKind::Device,
         PaletteKind::Calc,
         PaletteKind::Metric,
+        PaletteKind::Display,
         PaletteKind::Debug,
         PaletteKind::Red,
     ];
@@ -58,6 +59,7 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::Device => (t!("flows-palette-device").to_string(), t!("flows-palette-device-help").to_string()),
         PaletteKind::Calc => (t!("flows-palette-calc").to_string(), t!("flows-palette-calc-help").to_string()),
         PaletteKind::Metric => (t!("flows-palette-metric").to_string(), t!("flows-palette-metric-help").to_string()),
+        PaletteKind::Display => (t!("flows-palette-display").to_string(), t!("flows-palette-display-help").to_string()),
         PaletteKind::Debug => (t!("flows-palette-debug").to_string(), t!("flows-palette-debug-help").to_string()),
         PaletteKind::Red => (t!("flows-palette-red").to_string(), t!("flows-palette-red-help").to_string()),
     }
@@ -358,6 +360,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::Device { .. } => kind_labels(PaletteKind::Device),
         pnex_core::FlowNodeKind::Calc { .. } => kind_labels(PaletteKind::Calc),
         pnex_core::FlowNodeKind::Metric { .. } => kind_labels(PaletteKind::Metric),
+        pnex_core::FlowNodeKind::Display { .. } => kind_labels(PaletteKind::Display),
         pnex_core::FlowNodeKind::Debug { .. } => kind_labels(PaletteKind::Debug),
         pnex_core::FlowNodeKind::Red { .. } => kind_labels(PaletteKind::Red),
     };
@@ -368,6 +371,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::Device { .. } => (geometry::DEVICE_FILL, geometry::DEVICE_STROKE),
         pnex_core::FlowNodeKind::Calc { .. } => (geometry::CALC_FILL, geometry::CALC_STROKE),
         pnex_core::FlowNodeKind::Metric { .. } => (geometry::METRIC_FILL, geometry::METRIC_STROKE),
+        pnex_core::FlowNodeKind::Display { .. } => (geometry::DISPLAY_FILL, geometry::DISPLAY_STROKE),
         pnex_core::FlowNodeKind::Debug { .. } => (geometry::DEBUG_FILL, geometry::DEBUG_STROKE),
         pnex_core::FlowNodeKind::Red { .. } => (geometry::RED_FILL, geometry::RED_STROKE),
     };
@@ -383,6 +387,14 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
     let title = node.name.clone().unwrap_or_else(|| kind_label.clone());
     // Sous-titre : résumé de config (donnée brute, pas d'i18n).
     let subtitle = node_subtitle(&node);
+    // Badge live de la sonde : dernière valeur publiée (source pnex-display
+    // uniquement), vidée au stop moteur / save / deploy par le parent.
+    let display_value = match &node.kind {
+        pnex_core::FlowNodeKind::Display { .. } => {
+            cx.display_values.read().get(&node.id).cloned()
+        }
+        _ => None,
+    };
     // Capturé par chaque closure (le composant capture `node` une seule fois).
     let node_id = node.id.clone();
     let node_id_port = node.id.clone();
@@ -456,6 +468,32 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                     });
                 },
             }
+            // Badge live de la sonde (pastille sous le nœud, non interactive).
+            if let Some(value) = display_value {
+                g {
+                    rect {
+                        x: "4",
+                        y: "{geometry::NODE_H + 4.0}",
+                        width: "{geometry::NODE_W - 8.0}",
+                        height: "16",
+                        rx: "4",
+                        fill: "#ecfeff",
+                        stroke: "#06b6d4",
+                        "stroke-width": "1",
+                        "pointer-events": "none",
+                    }
+                    text {
+                        x: "{geometry::NODE_W / 2.0}",
+                        y: "{geometry::NODE_H + 15.0}",
+                        "text-anchor": "middle",
+                        "font-size": "9",
+                        "font-family": "monospace",
+                        fill: "#0e7490",
+                        "pointer-events": "none",
+                        {value}
+                    }
+                }
+            }
         }
     }
 }
@@ -509,6 +547,7 @@ fn node_subtitle(node: &FlowNode) -> String {
                 pnex_core::etl_metric_name(&config.metric_name)
             }
         }
+        pnex_core::FlowNodeKind::Display { .. } => "display".into(),
         pnex_core::FlowNodeKind::Debug { .. } => "debug".into(),
         pnex_core::FlowNodeKind::Red { type_name, .. } => {
             if type_name.is_empty() {

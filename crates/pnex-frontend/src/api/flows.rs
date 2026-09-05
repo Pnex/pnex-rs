@@ -6,8 +6,8 @@
 //! optimiste (`expected_version_number`, 409 si périmé).
 
 use pnex_core::{
-    CreateFlow, DeployFlow, Flow, FlowRuntimeStatus, FlowSummary, FlowVersionDetail,
-    FlowVersionSummary, FlowViolation, Paginated, UpdateFlow,
+    CreateFlow, DeployFlow, Flow, FlowDebugFeed, FlowRuntimeStatus, FlowSummary,
+    FlowVersionDetail, FlowVersionSummary, FlowViolation, Paginated, RunOnceResult, UpdateFlow,
 };
 
 use crate::api::client;
@@ -158,6 +158,19 @@ pub async fn rollback(id: i64, version_number: i64) -> Result<Flow, ApiError> {
 /// `GET /api/v1/flows/{id}/runtime` — état du superviseur vu par le backend.
 pub async fn runtime(id: i64) -> Result<FlowRuntimeStatus, ApiError> {
     client::request(reqwest::Method::GET, &format!("/api/v1/flows/{id}/runtime"), None).await
+}
+
+/// `GET /api/v1/flows/{id}/debug` — feed du panneau de debug (anneau
+/// mémoire du superviseur). 403 hors mode dev/debug.
+pub async fn debug(id: i64) -> Result<FlowDebugFeed, ApiError> {
+    client::request(reqwest::Method::GET, &format!("/api/v1/flows/{id}/debug"), None).await
+}
+
+/// `POST /api/v1/flows/{id}/run-once` — exécute une fois le flow déployé
+/// (inject du payload de ses nœuds inject). 403 hors mode dev/debug, 409 si
+/// non déployé, 503 `flow_runtime` si le runtime n'acquitte pas.
+pub async fn run_once(id: i64) -> Result<RunOnceResult, ApiError> {
+    client::request(reqwest::Method::POST, &format!("/api/v1/flows/{id}/run-once"), None).await
 }
 
 /// Échec d'un enregistrement, trié pour l'UI : conflit de concurrence (409,

@@ -34,6 +34,10 @@ pub struct FlowSettings {
     /// Variables d'environnement autorisées à franchir la frontière vers le
     /// runtime (noms seuls — ex. `DATABASE_URL` pour le nœud pnex-sql).
     pub env_allowlist: Vec<String>,
+    /// Outils de debug (panneau Debug + run-once) actifs — **mode dev/debug
+    /// uniquement** : défaut `false`, activé par la config de dev ; en mode
+    /// run les endpoints répondent 403 et l'éditeur masque les boutons.
+    pub debug_tools: bool,
     /// Credentials OpenObserve résolus depuis `settings.openobserve` du yaml
     /// — **injectés** dans l'env enfant (OPENOBSERVE_URL/_ROOT_EMAIL/
     /// _ROOT_PASSWORD) au-delà de l'allowlist : le serveur tient ces creds du
@@ -55,6 +59,7 @@ impl std::fmt::Debug for FlowSettings {
             .field("terminate_secs", &self.terminate_secs)
             .field("reload_ack_secs", &self.reload_ack_secs)
             .field("env_allowlist", &self.env_allowlist)
+            .field("debug_tools", &self.debug_tools)
             .field("o2_configured", &self.o2.is_some())
             .finish()
     }
@@ -76,6 +81,7 @@ impl Default for FlowSettings {
                 "OPENOBSERVE_ROOT_EMAIL".into(),
                 "OPENOBSERVE_ROOT_PASSWORD".into(),
             ],
+            debug_tools: false,
             o2: None,
         }
     }
@@ -92,6 +98,7 @@ struct FlowPartial {
     terminate_secs: Option<u64>,
     reload_ack_secs: Option<u64>,
     env_allowlist: Option<Vec<String>>,
+    debug_tools: Option<bool>,
 }
 
 impl FlowSettings {
@@ -115,6 +122,7 @@ impl FlowSettings {
             terminate_secs: partial.terminate_secs.unwrap_or(d.terminate_secs),
             reload_ack_secs: partial.reload_ack_secs.unwrap_or(d.reload_ack_secs),
             env_allowlist: partial.env_allowlist.unwrap_or(d.env_allowlist),
+            debug_tools: partial.debug_tools.unwrap_or(d.debug_tools),
             o2: OpenobserveSettings::from_config(config),
         }
     }

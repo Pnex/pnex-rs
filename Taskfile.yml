@@ -38,6 +38,12 @@ tasks:
   build:frontend:
     desc: Build le front Dioxus (wasm, release) et le copie dans crates/pnex-frontend/dist
     deps: [css:build, js:build]
+    # method timestamp (mtime dist vs sources) et non le checksum par défaut :
+    # go-task écrit le checksum AVANT d'exécuter les cmds — un build wasm
+    # interrompu (Ctrl-C) enregistre un checksum « à jour » sans rien produire,
+    # et task dev saute ensuite le front pour toujours (vu le 2026-09-05 :
+    # dist d'hier servi alors que task dev tournait).
+    method: timestamp
     sources:
       - crates/pnex-frontend/src/**/*
       - crates/pnex-frontend/assets/**/*
@@ -57,6 +63,15 @@ tasks:
   css:build:
     desc: Génère crates/pnex-frontend/assets/tailwind.css (requis avant tout build dx)
     dir: crates/pnex-frontend
+    # Incrémental, sinon il re-toucherait assets/tailwind.css à chaque
+    # invocation et invaliderait le timestamp de dev:frontend/build:frontend.
+    # method checksum suffit ici : une interruption ne perd que quelques ms.
+    sources:
+      - src/**/*.rs
+      - style/*.css
+      - package.json
+    generates:
+      - assets/tailwind.css
     cmds:
       - npm run css:build
 
@@ -81,6 +96,12 @@ tasks:
   js:build:
     desc: Bundle assets/flasher.js (glue esptool-js, esbuild IIFE — requis avant tout build dx)
     dir: crates/pnex-frontend
+    # Incrémental, même raison que css:build.
+    sources:
+      - js/*.js
+      - package.json
+    generates:
+      - assets/flasher.js
     cmds:
       - npm run js:build
 
@@ -130,6 +151,9 @@ tasks:
   dev:frontend:
     desc: Build debug du front vers crates/pnex-frontend/dist (pour serving Loco)
     deps: [css:build, js:build]
+    # Même garde que build:frontend (checksum écrit avant exécution → un
+    # Ctrl-C pendant le wasm fige la tâche en « up to date »).
+    method: timestamp
     sources:
       - crates/pnex-frontend/src/**/*
       - crates/pnex-frontend/assets/**/*

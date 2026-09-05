@@ -30,6 +30,9 @@ pub const CALC_FILL: &str = "#f0fdf4";
 pub const CALC_STROKE: &str = "#22c55e";
 pub const METRIC_FILL: &str = "#fdf2f8";
 pub const METRIC_STROKE: &str = "#ec4899";
+/// Nœud display (cyan) — sonde du panneau de debug.
+pub const DISPLAY_FILL: &str = "#ecfeff";
+pub const DISPLAY_STROKE: &str = "#06b6d4";
 pub const DEBUG_FILL: &str = "#f5f3ff";
 pub const DEBUG_STROKE: &str = "#8b5cf6";
 pub const RED_FILL: &str = "#f9fafb";

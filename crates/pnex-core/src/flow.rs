@@ -139,6 +139,13 @@ fn default_true() -> bool {
     true
 }
 
+/// Configuration du nœud custom `pnex-display` (sonde) — passthrough +
+/// publication au panneau de debug. **Aucun champ saisi** : l'identité
+/// (`pnex_node_id`, flow, version) est estampillée par la projection au
+/// deploy — jamais lue d'une config client (anti-forgery d'attribution).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct DisplayConfig;
+
 /// Types de nœuds modélisés côté PNEX. Le tag serde est `"kind"` et la config
 /// de chaque variante est portée par un champ `config` (pas de `flatten`
 /// d'enum taggé, non supporté par serde) : `{"id": "n1", "kind": "inject",
@@ -173,6 +180,12 @@ pub enum FlowNodeKind {
     Debug {
         #[serde(default)]
         config: DebugConfig,
+    },
+    /// Nœud custom PNEX : sonde passthrough — publie la valeur au panneau de
+    /// debug et l'affiche en badge live sous le nœud (éditeur).
+    Display {
+        #[serde(default)]
+        config: DisplayConfig,
     },
     /// Échappement : nœud builtin EdgeLinkd non modélisé, config opaque.
     Red {
@@ -439,6 +452,7 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
                 }
             }
             FlowNodeKind::Debug { .. } => {}
+            FlowNodeKind::Display { .. } => {}
             FlowNodeKind::Red { type_name, config } => {
                 if type_name.trim().is_empty() {
                     v.push(FlowViolation::new(Some(&n.id), "bad_red_node", "type Node-RED manquant"));
@@ -633,6 +647,16 @@ pub fn to_red_flows_json(g: &FlowGraph, meta: &FlowArtifactMeta) -> serde_json::
                 "console": config.console,
                 "complete": config.complete.clone().unwrap_or_else(|| "payload".to_string()),
             }),
+            FlowNodeKind::Display { .. } => serde_json::json!({
+                "type": "pnex-display",
+                // Identité estampillée par la projection : l'id canvas brut
+                // ("n3") est la clé de rattachement panneau/badge, et la
+                // traçabilité estampille le nœud comme les autres customs.
+                "pnex_node_id": n.id,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+                "pnex_org_id": meta.org_id,
+            }),
             FlowNodeKind::Red { type_name, config } => {
                 let mut obj = config.as_object().cloned().unwrap_or_default();
                 obj.insert("type".into(), serde_json::Value::String(type_name.clone()));
@@ -812,6 +836,54 @@ pub struct FlowRuntimeStatus {
     pub restarts: u64,
     pub deployed_flow_id: Option<i64>,
     pub deployed_version_number: Option<i64>,
+    /// Outils de debug actifs (`settings.flow.debug_tools` — mode dev/debug
+    /// uniquement ; en mode run le panneau et le run-once sont refusés 403
+    /// et masqués dans l'éditeur).
+    #[serde(default)]
+    pub debug_tools: bool,
+}
+
+/// Une entrée du panneau de debug (anneau mémoire du superviseur, alimenté
+/// par le stdout du runtime — événements `debug` attribués à un flow).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowDebugEntry {
+    /// Ordre global croissant (horloge du process backend).
+    pub seq: u64,
+    /// Horodatage RFC 3339 (horloge backend à la réception).
+    pub ts: String,
+    pub flow_id: i64,
+    /// Id éditeur du nœud émetteur (`"n2"` — brut, jamais le hash moteur).
+    pub node_id: String,
+    /// Nom du nœud, s'il en porte un.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Valeur capturée — brute : objet pour `pnex-display`, chaîne
+    /// pré-stringifiée pour le `debug` builtin (le client tente un re-parse).
+    pub msg: serde_json::Value,
+    /// `"debug"` (builtin) ou `"pnex-display"` (sonde).
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub topic: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub msgid: Option<String>,
+}
+
+/// Réponse de `GET /flows/{id}/debug` — feed du panneau (les plus anciennes
+/// d'abord).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowDebugFeed {
+    pub flow_id: i64,
+    pub entries: Vec<FlowDebugEntry>,
+}
+
+/// Réponse de `POST /flows/{id}/run-once`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RunOnceResult {
+    /// Messages effectivement injectés dans les cibles (succès seulement).
+    pub injected: u32,
+    /// Nœuds inject trouvés dans le flow déployé.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nodes: Option<u32>,
 }
 
 #[cfg(test)]
@@ -828,6 +900,20 @@ mod tests {
             kind: FlowNodeKind::Inject {
                 config: InjectConfig { repeat_secs: Some(1.0), ..Default::default() },
             },
+        }
+    }
+
+    fn node_display(id: &str, targets: &[String]) -> FlowNode {
+        FlowNode {
+            id: id.into(),
+            name: None,
+            position: None,
+            outputs: if targets.is_empty() {
+                vec![]
+            } else {
+                vec![FlowWiring { port: 0, targets: targets.to_vec() }]
+            },
+            kind: FlowNodeKind::Display { config: DisplayConfig },
         }
     }
 
@@ -1114,6 +1200,68 @@ mod tests {
         assert_eq!(out[3]["type"], "pnex-metric");
         assert_eq!(out[3]["metric_name"], "moyenne");
         assert_eq!(out[3]["pnex_org_id"], 4);
+    }
+
+    #[test]
+    fn display_sans_config_est_valide() {
+        // La sonde n'a aucune config saisie : défaut → graphe vert.
+        let g = FlowGraph {
+            nodes: vec![node_inject("n1"), node_display("n2", &[])],
+        };
+        assert!(validate_graph(&g).is_empty(), "{:?}", validate_graph(&g));
+        // Forme minimale (config absente) acceptée par le désérialiseur.
+        let g: FlowGraph = serde_json::from_str(
+            r#"{"nodes":[{"id":"n1","kind":"display"}]}"#,
+        )
+        .unwrap();
+        assert!(matches!(g.nodes[0].kind, FlowNodeKind::Display { .. }));
+    }
+
+    #[test]
+    fn projection_noeud_display_estampille() {
+        let g = FlowGraph {
+            nodes: vec![
+                node_inject("n1"),
+                node_display("n3", &["n4".into()]),
+                FlowNode {
+                    id: "n4".into(),
+                    name: None,
+                    position: None,
+                    outputs: vec![],
+                    kind: FlowNodeKind::Debug { config: DebugConfig::default() },
+                },
+            ],
+        };
+        let out = to_red_flows_json(&g, &FlowArtifactMeta { flow_id: 12, version_number: 3, org_id: 7 });
+        assert_eq!(out[0]["id"], "pnexflow12");
+        assert_eq!(out[2]["type"], "pnex-display");
+        // L'id canvas brut est la clé de rattachement panneau/badge.
+        assert_eq!(out[2]["pnex_node_id"], "n3");
+        assert_eq!(out[2]["pnex_flow_id"], 12);
+        assert_eq!(out[2]["pnex_version"], 3);
+        assert_eq!(out[2]["pnex_org_id"], 7);
+        assert_eq!(out[2]["z"], "pnexflow12");
+        assert_eq!(out[2]["wires"], json!([["n4"]]));
+        // Le debug builtin reste un nœud builtin (pas de stamp custom requis).
+        assert_eq!(out[3]["type"], "debug");
+    }
+
+    #[test]
+    fn projection_debug_tosidebar_toujours_vrai() {
+        // Garde-fou panneau : sans `tosidebar`, le nœud debug builtin ne
+        // publie jamais sur le canal — l'éditeur en dépend.
+        let g = FlowGraph {
+            nodes: vec![FlowNode {
+                id: "n2".into(),
+                name: None,
+                position: None,
+                outputs: vec![],
+                kind: FlowNodeKind::Debug { config: DebugConfig::default() },
+            }],
+        };
+        let out = to_red_flows_json(&g, &FlowArtifactMeta { flow_id: 1, version_number: 1, org_id: 1 });
+        assert_eq!(out[1]["tosidebar"], true);
+        assert_eq!(out[1]["active"], true);
     }
 
     #[test]

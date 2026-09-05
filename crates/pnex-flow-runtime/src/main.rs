@@ -16,6 +16,8 @@
 //!
 //! Usage : `pnex-flow-runtime <flows.json> [--home <dir>]`
 
+mod attrib;
+mod cmd;
 mod logger;
 mod state;
 
@@ -66,6 +68,8 @@ async fn run() -> ExitCode {
     pnex_node_sql::registered();
     // Nœuds Phase 6 (device/calc/metric) — même garde-fou anti-élagage.
     pnex_node_device::registered();
+    // Sonde (panneau debug + badge éditeur) — même garde-fou.
+    pnex_node_display::registered();
 
     let reg = match RegistryBuilder::default().build() {
         Ok(r) => r,
@@ -90,6 +94,9 @@ async fn run() -> ExitCode {
     // Métadonnées de version lues depuis le tab du flows.json (auto-descriptif).
     let (mut flow_id, mut version_number) = meta_of_file(&flows_path).await;
     let mut redeploys: u64 = 0;
+    // Dernière seq run-once exécutée (idempotence : une rejeu de signal ne
+    // produit aucun ack).
+    let mut last_cmd_seq: u64 = 0;
     let mut st = state::RuntimeState {
         pid: std::process::id(),
         running: true,
@@ -107,13 +114,19 @@ async fn run() -> ExitCode {
         "version": version_number,
     }));
 
+    // Attribution debug : hex moteur ↔ ids éditeur, reconstruite au boot puis
+    // à chaque redéploiement (jamais périmée après acquittement).
+    let attrib = std::sync::Arc::new(std::sync::RwLock::new(attrib::Attribution::empty()));
+    *attrib.write().expect("lock attribution") = attrib::Attribution::load(&flows_path).await;
+
     // Pump debug + événements moteur → stdout (contrat superviseur).
     let debug_rx = engine.debug_channel().subscribe();
     let events_rx = engine.subscribe_events();
-    tokio::spawn(pump_debug(debug_rx));
+    tokio::spawn(pump_debug(debug_rx, attrib.clone()));
     tokio::spawn(pump_events(events_rx));
 
-    // SIGUSR1 = redeploy (unix). En l'absence (non-unix), seul ctrl_c arrête.
+    // SIGUSR1 = redeploy, SIGUSR2 = commande run-once (unix). En l'absence
+    // (non-unix), seul ctrl_c arrête.
     #[cfg(unix)]
     let mut sigusr1 = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::user_defined1()) {
         Ok(s) => s,
@@ -124,13 +137,52 @@ async fn run() -> ExitCode {
     };
     #[cfg(not(unix))]
     let mut sigusr1 = ();
+    #[cfg(unix)]
+    let mut sigusr2 = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::user_defined2()) {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Installation de SIGUSR2 impossible : {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    #[cfg(not(unix))]
+    let mut sigusr2 = ();
 
     loop {
-        match next_action(&mut sigusr1).await {
+        match next_action(&mut sigusr1, &mut sigusr2).await {
             Action::Stop => break,
+            Action::RunOnce => {
+                // Commande du superviseur : <home>/cmd.json est lu, exécuté,
+                // puis acquitté sur stdout (corrélé par seq). runtime.json
+                // n'est pas touché (l'état de version n'change pas).
+                if let Some(outcome) =
+                    cmd::handle_cmd(&engine, &home, &flows_path, &mut last_cmd_seq).await
+                {
+                    let mut fields = serde_json::json!({
+                        "seq": outcome.seq,
+                        "flow": outcome.flow,
+                    });
+                    match outcome.error {
+                        None => {
+                            fields["nodes"] = serde_json::json!(outcome.nodes);
+                            fields["injected"] = serde_json::json!(outcome.injected);
+                            emit("run_once_done", fields);
+                        }
+                        Some(e) => {
+                            fields["error"] = serde_json::json!(e);
+                            emit("run_once_failed", fields);
+                        }
+                    }
+                }
+            }
             Action::Reload => match reload(&engine, &reg, &flows_path).await {
                 Ok(rev) => {
                     redeploys += 1;
+                    // Attribution reconstruite AVANT l'acquittement : un
+                    // backend qui vient d'être acké ne doit jamais lire une
+                    // map périmée.
+                    *attrib.write().expect("lock attribution") =
+                        attrib::Attribution::load(&flows_path).await;
                     (flow_id, version_number) = meta_of_file(&flows_path).await;
                     st.redeploys = redeploys;
                     st.flow_rev = Some(rev.clone());
@@ -187,18 +239,23 @@ fn meta_of_json(json: &str) -> (Option<i64>, Option<i64>) {
 enum Action {
     Stop,
     Reload,
+    RunOnce,
 }
 
 #[cfg(unix)]
-async fn next_action(sigusr1: &mut tokio::signal::unix::Signal) -> Action {
+async fn next_action(
+    sigusr1: &mut tokio::signal::unix::Signal,
+    sigusr2: &mut tokio::signal::unix::Signal,
+) -> Action {
     tokio::select! {
         _ = tokio::signal::ctrl_c() => Action::Stop,
         _ = sigusr1.recv() => Action::Reload,
+        _ = sigusr2.recv() => Action::RunOnce,
     }
 }
 
 #[cfg(not(unix))]
-async fn next_action((): ()) -> Action {
+async fn next_action((): (), (): ()) -> Action {
     let _ = tokio::signal::ctrl_c().await;
     Action::Stop
 }
@@ -223,18 +280,33 @@ fn emit(event: &str, mut fields: serde_json::Value) {
     println!("{fields}");
 }
 
-async fn pump_debug(mut rx: tokio::sync::broadcast::Receiver<edgelink_core::runtime::debug_channel::DebugMessage>) {
+async fn pump_debug(
+    mut rx: tokio::sync::broadcast::Receiver<edgelink_core::runtime::debug_channel::DebugMessage>,
+    attrib: std::sync::Arc<std::sync::RwLock<attrib::Attribution>>,
+) {
     loop {
         match rx.recv().await {
-            Ok(m) => emit(
-                "debug",
-                serde_json::json!({
+            Ok(m) => {
+                let (flow, node_red) = {
+                    let a = attrib.read().expect("lock attribution");
+                    (a.flow_of_path(&m.path), a.node_red(&m.id))
+                };
+                let mut fields = serde_json::json!({
                     "node": m.id,
+                    // Id éditeur quand connu (le fallback = m.id brut couvre
+                    // les nœuds pnex-display, qui s'identifient eux-mêmes).
+                    "node_red": node_red,
                     "name": m.name,
                     "msg": m.msg,
                     "msgid": m.msgid,
-                }),
-            ),
+                });
+                // Sans attribution flow, l'entrée est émise sans clé : le
+                // backend la jette (multi-org — jamais de bucket « inconnu »).
+                if let Some(f) = flow {
+                    fields["flow"] = serde_json::json!(f);
+                }
+                emit("debug", fields);
+            }
             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                 log::warn!("canal debug saturé : {n} messages perdus");
             }

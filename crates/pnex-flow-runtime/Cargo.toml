@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 pnex-node-sql = { workspace = true }
 pnex-node-device = { workspace = true }
+pnex-node-display = { workspace = true }
 edgelink-core = { path = "../../vendor/edgelinkd/crates/core", default-features = false, features = ["core", "js"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
