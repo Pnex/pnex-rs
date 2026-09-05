@@ -299,6 +299,15 @@ async fn pump_debug(
                     "name": m.name,
                     "msg": m.msg,
                     "msgid": m.msgid,
+                    // Marqueur de source : la sonde pnex-display s'identifie
+                    // via `format` ; les nœuds debug builtin portent un format
+                    // d'affichage (« Number », « Object »…) → tout le reste
+                    // reste « debug » (badge + tag cyan du drawer).
+                    "source": if m.format.as_deref() == Some("pnex-display") {
+                        "pnex-display"
+                    } else {
+                        "debug"
+                    },
                 });
                 // Sans attribution flow, l'entrée est émise sans clé : le
                 // backend la jette (multi-org — jamais de bucket « inconnu »).
