@@ -1,5 +1,5 @@
+pub use super::_entities::flows::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
-pub use super::_entities::flows::{ActiveModel, Model, Entity};
 pub type Flows = Entity;
 
 #[async_trait::async_trait]

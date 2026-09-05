@@ -21,8 +21,8 @@ use std::time::{Duration, Instant};
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
-use base64::Engine as _;
 use axum::response::Response;
+use base64::Engine as _;
 use loco_rs::prelude::*;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::Deserialize;
@@ -30,9 +30,9 @@ use tokio::sync::mpsc;
 
 use super::ws_ingest::{decode_param, decrypt_frame, encrypt_frame, reject, Snapshot};
 use crate::models::_entities::{device_capability_instances, device_registries};
-use crate::services::{device_liveness, provisioning};
 use crate::services::settings::IngestSettings;
 use crate::services::telemetry::{self, TelemetryPoint};
+use crate::services::{device_liveness, provisioning};
 use pnex_core::{DeviceMsg, Mode, SafeState, ServerMsg};
 
 // ─────────────── Registres de session (downlink + last values) ───────────────
@@ -105,9 +105,7 @@ pub struct DeviceQuery {
 }
 
 pub fn routes() -> Routes {
-    Routes::new()
-        .prefix("/ws")
-        .add("/device", get(ws_device))
+    Routes::new().prefix("/ws").add("/device", get(ws_device))
 }
 
 async fn ws_device(
@@ -139,7 +137,11 @@ async fn ws_device(
     let Some(key) = tok
         .encryption_key
         .as_deref()
-        .and_then(|k| base64::engine::general_purpose::STANDARD.decode(k.trim()).ok())
+        .and_then(|k| {
+            base64::engine::general_purpose::STANDARD
+                .decode(k.trim())
+                .ok()
+        })
         .and_then(|k| <[u8; 32]>::try_from(k).ok())
     else {
         return reject(ws, 4008, "No encryption key");
@@ -189,7 +191,17 @@ async fn ws_device(
     let token_owned = token;
     let settings_owned = settings;
     ws.on_upgrade(move |socket| async move {
-        session_loop(socket, ctx, token_owned, key, snap, downlink_rx, guard, settings_owned).await;
+        session_loop(
+            socket,
+            ctx,
+            token_owned,
+            key,
+            snap,
+            downlink_rx,
+            guard,
+            settings_owned,
+        )
+        .await;
     })
     .into_response()
 }
@@ -306,7 +318,11 @@ async fn session_loop(
 }
 
 /// Revalidation périodique du token en session (4005 si invalidé).
-async fn revalidate(db: &DatabaseConnection, token: &str, snap: &DeviceSnapshot) -> Option<DeviceSnapshot> {
+async fn revalidate(
+    db: &DatabaseConnection,
+    token: &str,
+    snap: &DeviceSnapshot,
+) -> Option<DeviceSnapshot> {
     let (_, device) = Snapshot::load(db, token).await.ok()??;
     if device.device_id != snap.device_id {
         return None;
@@ -326,7 +342,14 @@ async fn handle_announce(
     fw: &str,
 ) {
     if chip != "esp8266" {
-        send_server_msg(socket, key, &ServerMsg::Reject { reason: "chip non supporté (P0 : esp8266)".into() }).await;
+        send_server_msg(
+            socket,
+            key,
+            &ServerMsg::Reject {
+                reason: "chip non supporté (P0 : esp8266)".into(),
+            },
+        )
+        .await;
         return;
     }
     tracing::info!(device = %snap.device_id, board, fw, "announce device générique");
@@ -336,7 +359,14 @@ async fn handle_announce(
     {
         Ok(Some(d)) => d,
         _ => {
-            send_server_msg(socket, key, &ServerMsg::Reject { reason: "device introuvable".into() }).await;
+            send_server_msg(
+                socket,
+                key,
+                &ServerMsg::Reject {
+                    reason: "device introuvable".into(),
+                },
+            )
+            .await;
             return;
         }
     };
@@ -350,38 +380,59 @@ async fn handle_announce(
             // la base reste la source de vérité (leçon 2026-09-03).
             for (&gpio, &ms) in &snap.intervals {
                 if ms > 0 {
-                    send_server_msg(socket, key, &ServerMsg::Subscribe {
-                        cmd_id: uuid::Uuid::new_v4().simple().to_string(),
-                        gpio: gpio as u16,
-                        interval_ms: ms,
-                    }).await;
+                    send_server_msg(
+                        socket,
+                        key,
+                        &ServerMsg::Subscribe {
+                            cmd_id: uuid::Uuid::new_v4().simple().to_string(),
+                            gpio: gpio as u16,
+                            interval_ms: ms,
+                        },
+                    )
+                    .await;
                 }
             }
         }
         Err(e) => {
             tracing::error!(device = %snap.device_id, "admission refusée : {e}");
-            send_server_msg(socket, key, &ServerMsg::Reject {
-                reason: "admission refusée : overlay board absent ou invalide".into(),
-            }).await;
+            send_server_msg(
+                socket,
+                key,
+                &ServerMsg::Reject {
+                    reason: "admission refusée : overlay board absent ou invalide".into(),
+                },
+            )
+            .await;
         }
     }
 }
 
 /// StateReport → mémoire last_values (GET /pins) + sortie metrics O2
 /// (série = label normalisé D16, même sortie que l'ingest).
-async fn handle_state_report(_ctx: &AppContext, snap: &DeviceSnapshot, gpio: u16, value: serde_json::Value) {
+async fn handle_state_report(
+    _ctx: &AppContext,
+    snap: &DeviceSnapshot,
+    gpio: u16,
+    value: serde_json::Value,
+) {
     let Some(pin) = snap.pins.get(&(gpio as i32)) else {
         tracing::debug!(device = %snap.device_id, gpio, "StateReport pour un pin inconnu — ignoré");
         return;
     };
-    let label = snap.labels.get(&(gpio as i32)).cloned().unwrap_or_else(|| gpio.to_string());
+    let label = snap
+        .labels
+        .get(&(gpio as i32))
+        .cloned()
+        .unwrap_or_else(|| gpio.to_string());
     let name = super::ws_ingest::normalize_measurement_name(&label);
     if name.is_empty() {
         return;
     }
     {
         let mut lv = LAST_VALUES.lock().expect("last_values");
-        lv.entry(snap.device_registry_id).or_default().insert(gpio as i32, value.clone());
+        lv.entry(snap.device_registry_id)
+            .or_default()
+            .insert(gpio as i32, value.clone());
     }
     // Prometheus n'a pas de booléens (remote-write = f64) : un pin digital
     // est stocké 1/0. La valeur brute reste dans LAST_VALUES pour l'UI
@@ -409,14 +460,21 @@ async fn handle_state_report(_ctx: &AppContext, snap: &DeviceSnapshot, gpio: u16
 
 /// Envoi serveur → device (chiffré).
 async fn send_server_msg(socket: &mut WebSocket, key: &[u8; 32], msg: &ServerMsg) {
-    let Ok(plain) = serde_json::to_string(msg) else { return };
-    let _ = socket.send(Message::Text(encrypt_frame(&plain, key).into())).await;
+    let Ok(plain) = serde_json::to_string(msg) else {
+        return;
+    };
+    let _ = socket
+        .send(Message::Text(encrypt_frame(&plain, key).into()))
+        .await;
 }
 
 /// Snapshot device complet : identité + carte gpio→label (overlay) +
 /// contraintes par pin (instances persistées). Le parse d'overlay échoue
 /// pour un device non générique → close 4007 au connect.
-async fn build_snapshot(db: &DatabaseConnection, device: &device_registries::Model) -> Result<DeviceSnapshot> {
+async fn build_snapshot(
+    db: &DatabaseConnection,
+    device: &device_registries::Model,
+) -> Result<DeviceSnapshot> {
     let overlay = provisioning::load_overlay(db, device).await?;
     let labels: HashMap<i32, String> = overlay
         .pins
@@ -491,7 +549,11 @@ fn str_to_mode(s: &str) -> Mode {
 /// Pousser une commande au device connecté (mpsc, consommée par la boucle
 /// de session qui chiffre et envoie). `false` = pas de session (offline).
 pub(crate) fn push_command(device_registry_id: i64, msg: ServerMsg) -> bool {
-    match DEVICE_SESSIONS.lock().expect("sessions").get(&device_registry_id) {
+    match DEVICE_SESSIONS
+        .lock()
+        .expect("sessions")
+        .get(&device_registry_id)
+    {
         Some(tx) => tx.send(msg).is_ok(),
         None => false,
     }
@@ -499,5 +561,8 @@ pub(crate) fn push_command(device_registry_id: i64, msg: ServerMsg) -> bool {
 
 /// Session vivante pour ce device ?
 pub(crate) fn is_connected(device_registry_id: i64) -> bool {
-    DEVICE_SESSIONS.lock().expect("sessions").contains_key(&device_registry_id)
+    DEVICE_SESSIONS
+        .lock()
+        .expect("sessions")
+        .contains_key(&device_registry_id)
 }

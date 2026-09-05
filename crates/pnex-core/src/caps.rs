@@ -66,9 +66,9 @@ impl Violation {
             }
             Violation::AnalogOnlyOnA0(g) => format!("gpio {g} : analog_in est réservé à A0"),
             Violation::AdcOnlyOnA0(g) => format!("gpio {g} : A0 ne supporte que analog_in"),
-            Violation::StrappingLow(g) => format!(
-                "gpio {g} : strapping pin boot-LOW, safe_state: high interdit (boot cassé)"
-            ),
+            Violation::StrappingLow(g) => {
+                format!("gpio {g} : strapping pin boot-LOW, safe_state: high interdit (boot cassé)")
+            }
             Violation::NoPullUp(g) => format!("gpio {g} : pas de pull-up interne (pulldown only)"),
         }
     }
@@ -108,7 +108,12 @@ pub fn validate(gpio: u16, mode: Mode, opts: &ModeOpts) -> Result<ValidatedPin, 
     if safe_state == SafeState::High && gpio == STRAPPING_LOW {
         return Err(Violation::StrappingLow(gpio));
     }
-    Ok(ValidatedPin { gpio, mode, pullup, safe_state })
+    Ok(ValidatedPin {
+        gpio,
+        mode,
+        pullup,
+        safe_state,
+    })
 }
 
 #[cfg(test)]
@@ -117,7 +122,10 @@ mod tests {
     use crate::proto::ModeOpts;
 
     fn opts(pullup: Option<bool>, ss: Option<SafeState>) -> ModeOpts {
-        ModeOpts { pullup, safe_state: ss }
+        ModeOpts {
+            pullup,
+            safe_state: ss,
+        }
     }
     #[test]
     fn regles_chip_caps_esp8266() {

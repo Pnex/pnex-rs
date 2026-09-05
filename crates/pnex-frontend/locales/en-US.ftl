@@ -339,6 +339,11 @@ flows-conflict-reload = Reload from server
 flows-conflict-overwrite = Overwrite with my version
 flows-runtime-running = Engine running
 flows-runtime-stopped = Engine stopped
+flows-runtime-outdated = to redeploy
+
+flows-deploy-propose-text = v{ $version } saved — the running version is still live. Deploy it now?
+flows-deploy-propose-go = Deploy v{ $version }
+flows-deploy-propose-later = Later
 
 flows-palette-title = Nodes
 flows-palette-inject = Inject

@@ -339,6 +339,11 @@ flows-conflict-reload = Recharger depuis le serveur
 flows-conflict-overwrite = Écraser avec ma version
 flows-runtime-running = Moteur actif
 flows-runtime-stopped = Moteur arrêté
+flows-runtime-outdated = à redéployer
+
+flows-deploy-propose-text = v{ $version } enregistrée — la version en exécution reste active. La déployer maintenant ?
+flows-deploy-propose-go = Déployer v{ $version }
+flows-deploy-propose-later = Plus tard
 
 flows-palette-title = Nœuds
 flows-palette-inject = Inject

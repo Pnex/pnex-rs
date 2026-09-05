@@ -41,7 +41,10 @@ where
     // Outils de debug : ON quand le moteur tourne (tests feed/run-once),
     // sinon OFF pour vérifier la garde 403 « mode run ».
     unsafe {
-        std::env::set_var("PNEX_FLOW_DEBUG_TOOLS", if enabled { "true" } else { "false" })
+        std::env::set_var(
+            "PNEX_FLOW_DEBUG_TOOLS",
+            if enabled { "true" } else { "false" },
+        )
     };
     let config: RequestConfig = RequestConfigBuilder::new().build();
     let env = Env {

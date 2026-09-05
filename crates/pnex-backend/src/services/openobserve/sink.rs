@@ -63,6 +63,17 @@ async fn credentials_for(
     match ensure_org_credentials(db, client, org_id).await {
         Ok(c) => {
             creds.insert(org_id, c.clone());
+            // Self-healing flows : si ce credential vient d'être provisionné
+            // (1ʳᵉ ingestion de l'org), les flows déployés avant portent une
+            // estampille `pnex_o2_org` vide — la reprojection la comble sans
+            // attendre un deploy manuel. Erreurs : log seulement (le flux de
+            // télémétrie ne doit jamais dépendre du reprojection flows).
+            let db = db.clone();
+            tokio::spawn(async move {
+                if let Err(e) = crate::controllers::flows::reproject_and_signal(&db).await {
+                    tracing::warn!(err = %e, "reprojection flows post-provisioning O2 : échec");
+                }
+            });
             Some(c)
         }
         Err(e) => {

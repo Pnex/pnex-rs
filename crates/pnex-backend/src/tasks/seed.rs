@@ -213,9 +213,7 @@ async fn seed_board_overlays(db: &Db, path: &std::path::Path) -> Result<usize> {
             .filter(mcu_boards::Column::Name.eq(&r.board_name))
             .one(db)
             .await?
-            .ok_or_else(|| {
-                Error::string(&format!("board {} absent du seed", r.board_name))
-            })?;
+            .ok_or_else(|| Error::string(&format!("board {} absent du seed", r.board_name)))?;
         let mut am: mcu_boards::ActiveModel = board.into();
         am.details = Set(Some(serde_json::to_value(&r.overlay)?));
         am.update(db).await?;
@@ -223,7 +221,8 @@ async fn seed_board_overlays(db: &Db, path: &std::path::Path) -> Result<usize> {
     Ok(rows.len())
 }
 
-async fn seed_predefined_devices(db: &Db, path: &std::path::Path) -> Result<usize> {    #[derive(serde::Deserialize)]
+async fn seed_predefined_devices(db: &Db, path: &std::path::Path) -> Result<usize> {
+    #[derive(serde::Deserialize)]
     struct Row {
         name: String,
         pretty_name: Option<String>,

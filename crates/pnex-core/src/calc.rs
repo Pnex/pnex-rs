@@ -55,7 +55,11 @@ impl fmt::Display for CalcError {
 
 impl CalcError {
     fn new(kind: CalcErrorKind, pos: usize, message: impl Into<String>) -> Self {
-        Self { kind, pos, message: message.into() }
+        Self {
+            kind,
+            pos,
+            message: message.into(),
+        }
     }
 }
 
@@ -132,9 +136,16 @@ fn lex(src: &str) -> Result<Vec<Token>, CalcError> {
             }
             let text: String = chars[start..i].iter().map(|(_, ch)| ch).collect();
             let value: f64 = text.parse().map_err(|_| {
-                CalcError::new(CalcErrorKind::Lexical, pos, format!("nombre invalide « {text} »"))
+                CalcError::new(
+                    CalcErrorKind::Lexical,
+                    pos,
+                    format!("nombre invalide « {text} »"),
+                )
             })?;
-            out.push(Token { tok: Tok::Num(value), pos: start });
+            out.push(Token {
+                tok: Tok::Num(value),
+                pos: start,
+            });
             continue;
         }
         // Identifiant.
@@ -149,7 +160,10 @@ fn lex(src: &str) -> Result<Vec<Token>, CalcError> {
                 }
             }
             let text: String = chars[start..i].iter().map(|(_, ch)| ch).collect();
-            out.push(Token { tok: Tok::Ident(text), pos: start });
+            out.push(Token {
+                tok: Tok::Ident(text),
+                pos: start,
+            });
             continue;
         }
         // Opérateurs multi-caractères puis single-caractère.
@@ -213,8 +227,17 @@ enum Expr {
     /// Variable + position (pour l'erreur « variable inconnue » localisée).
     Var(String, usize),
     Neg(Box<Expr>),
-    Binary { op: BinOp, left: Box<Expr>, right: Box<Expr>, pos: usize },
-    Call { name: String, args: Vec<Expr>, pos: usize },
+    Binary {
+        op: BinOp,
+        left: Box<Expr>,
+        right: Box<Expr>,
+        pos: usize,
+    },
+    Call {
+        name: String,
+        args: Vec<Expr>,
+        pos: usize,
+    },
     Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
 }
 
@@ -282,7 +305,12 @@ impl Parser {
             self.bump();
             let pos = self.toks[self.i - 1].pos;
             let right = self.parse_binary(prec + 1)?;
-            left = Expr::Binary { op, left: Box::new(left), right: Box::new(right), pos };
+            left = Expr::Binary {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+                pos,
+            };
         }
         Ok(left)
     }
@@ -309,7 +337,12 @@ impl Parser {
             self.bump();
             let pos = self.toks[self.i - 1].pos;
             let exp = self.parse_unary()?;
-            return Ok(Expr::Binary { op: BinOp::Pow, left: Box::new(base), right: Box::new(exp), pos });
+            return Ok(Expr::Binary {
+                op: BinOp::Pow,
+                left: Box::new(base),
+                right: Box::new(exp),
+                pos,
+            });
         }
         Ok(base)
     }
@@ -339,7 +372,11 @@ impl Parser {
                         }
                     }
                     self.expect(Tok::RParen, "parenthèse fermante")?;
-                    return Ok(Expr::Call { name, args, pos: t.pos });
+                    return Ok(Expr::Call {
+                        name,
+                        args,
+                        pos: t.pos,
+                    });
                 }
                 // Constantes connues → valeurs ; sinon variable.
                 match name.as_str() {
@@ -444,7 +481,9 @@ fn analyze(expr: &Expr, out: &mut Vec<CalcError>) {
             analyze(a, out);
             analyze(b, out);
         }
-        Expr::Binary { op: _, left, right, .. } => {
+        Expr::Binary {
+            op: _, left, right, ..
+        } => {
             analyze(left, out);
             analyze(right, out);
         }
@@ -503,7 +542,12 @@ fn eval(expr: &Expr, vars: &HashMap<String, f64>) -> Result<f64, CalcError> {
                 eval(b, vars)
             }
         }
-        Expr::Binary { op, left, right, pos } => {
+        Expr::Binary {
+            op,
+            left,
+            right,
+            pos,
+        } => {
             let l = eval(left, vars)?;
             let r = eval(right, vars)?;
             let v = match op {
@@ -512,13 +556,21 @@ fn eval(expr: &Expr, vars: &HashMap<String, f64>) -> Result<f64, CalcError> {
                 BinOp::Mul => l * r,
                 BinOp::Div => {
                     if r == 0.0 {
-                        return Err(CalcError::new(CalcErrorKind::DivisionByZero, *pos, "division par zéro"));
+                        return Err(CalcError::new(
+                            CalcErrorKind::DivisionByZero,
+                            *pos,
+                            "division par zéro",
+                        ));
                     }
                     l / r
                 }
                 BinOp::Rem => {
                     if r == 0.0 {
-                        return Err(CalcError::new(CalcErrorKind::DivisionByZero, *pos, "modulo par zéro"));
+                        return Err(CalcError::new(
+                            CalcErrorKind::DivisionByZero,
+                            *pos,
+                            "modulo par zéro",
+                        ));
                     }
                     l % r
                 }
@@ -598,7 +650,11 @@ fn call(name: &str, args: &[f64], pos: usize) -> Result<f64, CalcError> {
 pub fn eval_calc(expr: &str, vars: &HashMap<String, f64>) -> Result<f64, CalcError> {
     let toks = lex(expr)?;
     if toks.is_empty() {
-        return Err(CalcError::new(CalcErrorKind::Syntax, 0, "l'expression est vide"));
+        return Err(CalcError::new(
+            CalcErrorKind::Syntax,
+            0,
+            "l'expression est vide",
+        ));
     }
     let mut p = Parser { toks, i: 0 };
     let ast = p.parse_expr()?;
@@ -607,7 +663,10 @@ pub fn eval_calc(expr: &str, vars: &HashMap<String, f64>) -> Result<f64, CalcErr
         return Err(CalcError::new(
             CalcErrorKind::Syntax,
             t.pos,
-            format!("symbole inattendu « {} » après la fin de l'expression", describe(&t.tok)),
+            format!(
+                "symbole inattendu « {} » après la fin de l'expression",
+                describe(&t.tok)
+            ),
         ));
     }
     eval(&ast, vars)
@@ -623,7 +682,11 @@ pub fn validate_calc(expr: &str) -> Vec<CalcError> {
         Err(e) => return vec![e],
     };
     if toks.is_empty() {
-        errors.push(CalcError::new(CalcErrorKind::Syntax, 0, "l'expression est vide"));
+        errors.push(CalcError::new(
+            CalcErrorKind::Syntax,
+            0,
+            "l'expression est vide",
+        ));
         return errors;
     }
     let mut p = Parser { toks, i: 0 };
@@ -634,7 +697,10 @@ pub fn validate_calc(expr: &str) -> Vec<CalcError> {
                 errors.push(CalcError::new(
                     CalcErrorKind::Syntax,
                     t.pos,
-                    format!("symbole inattendu « {} » après la fin de l'expression", describe(&t.tok)),
+                    format!(
+                        "symbole inattendu « {} » après la fin de l'expression",
+                        describe(&t.tok)
+                    ),
                 ));
             }
             analyze(&ast, &mut errors);
@@ -652,7 +718,10 @@ pub fn calc_variables(expr: &str) -> Vec<String> {
         if let Tok::Ident(name) = &t.tok {
             let is_constant = matches!(name.as_str(), "pi" | "e");
             // Un identifiant suivi de « ( » est un appel de fonction.
-            let is_call = toks.get(i + 1).map(|n| n.tok == Tok::LParen).unwrap_or(false);
+            let is_call = toks
+                .get(i + 1)
+                .map(|n| n.tok == Tok::LParen)
+                .unwrap_or(false);
             if !is_constant && !is_call && !vars.contains(name) {
                 vars.push(name.clone());
             }
@@ -719,25 +788,58 @@ mod tests {
         let e = eval_calc("a + b", &v).unwrap_err();
         assert_eq!(e.kind, CalcErrorKind::UnknownVariable);
         // Division par zéro.
-        assert_eq!(eval_calc("1 / 0", &v).unwrap_err().kind, CalcErrorKind::DivisionByZero);
-        assert_eq!(eval_calc("1 % 0", &v).unwrap_err().kind, CalcErrorKind::DivisionByZero);
+        assert_eq!(
+            eval_calc("1 / 0", &v).unwrap_err().kind,
+            CalcErrorKind::DivisionByZero
+        );
+        assert_eq!(
+            eval_calc("1 % 0", &v).unwrap_err().kind,
+            CalcErrorKind::DivisionByZero
+        );
         // Hors domaine.
-        assert_eq!(eval_calc("sqrt(-1)", &v).unwrap_err().kind, CalcErrorKind::MathRange);
-        assert_eq!(eval_calc("log(0)", &v).unwrap_err().kind, CalcErrorKind::MathRange);
+        assert_eq!(
+            eval_calc("sqrt(-1)", &v).unwrap_err().kind,
+            CalcErrorKind::MathRange
+        );
+        assert_eq!(
+            eval_calc("log(0)", &v).unwrap_err().kind,
+            CalcErrorKind::MathRange
+        );
         // Overflow → MathRange.
-        assert_eq!(eval_calc("pow(10, 400)", &v).unwrap_err().kind, CalcErrorKind::MathRange);
+        assert_eq!(
+            eval_calc("pow(10, 400)", &v).unwrap_err().kind,
+            CalcErrorKind::MathRange
+        );
     }
 
     #[test]
     fn erreurs_lexicales_et_syntaxe() {
         let v = vars(&[]);
-        assert_eq!(eval_calc("1 € 2", &v).unwrap_err().kind, CalcErrorKind::Lexical);
-        assert_eq!(eval_calc("(1 + 2", &v).unwrap_err().kind, CalcErrorKind::Syntax);
-        assert_eq!(eval_calc("1 +", &v).unwrap_err().kind, CalcErrorKind::Syntax);
-        assert_eq!(eval_calc("f(1", &v).unwrap_err().kind, CalcErrorKind::Syntax);
-        assert_eq!(eval_calc("t ? 1", &v).unwrap_err().kind, CalcErrorKind::Syntax);
+        assert_eq!(
+            eval_calc("1 € 2", &v).unwrap_err().kind,
+            CalcErrorKind::Lexical
+        );
+        assert_eq!(
+            eval_calc("(1 + 2", &v).unwrap_err().kind,
+            CalcErrorKind::Syntax
+        );
+        assert_eq!(
+            eval_calc("1 +", &v).unwrap_err().kind,
+            CalcErrorKind::Syntax
+        );
+        assert_eq!(
+            eval_calc("f(1", &v).unwrap_err().kind,
+            CalcErrorKind::Syntax
+        );
+        assert_eq!(
+            eval_calc("t ? 1", &v).unwrap_err().kind,
+            CalcErrorKind::Syntax
+        );
         assert_eq!(eval_calc("", &v).unwrap_err().kind, CalcErrorKind::Syntax);
-        assert_eq!(eval_calc("   ", &v).unwrap_err().kind, CalcErrorKind::Syntax);
+        assert_eq!(
+            eval_calc("   ", &v).unwrap_err().kind,
+            CalcErrorKind::Syntax
+        );
     }
 
     #[test]

@@ -64,6 +64,10 @@ struct PinoutPin {
 /// instances configurées, complétés par l'overlay board pour les gpio non
 /// encore configurés (device jamais connecté — `load_overlay` lit la base,
 /// aucune connexion requise). Lecture pour tout membre de l'org.
+///
+/// `connected` = le device générique est-il connecté au serveur (WS) —
+/// l'éditeur de flows s'en sert pour distinguer « device hors ligne »
+/// (transient, reprend à la reconnexion) d'un pin réellement absent.
 async fn pinout(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -103,6 +107,7 @@ async fn pinout(
     pins.sort_by_key(|p| pin_sort_key(&p.label));
     format::json(serde_json::json!({
         "device_id": device.device_id,
+        "connected": ws_device::is_connected(device.id),
         "pins": pins,
     }))
 }
@@ -169,7 +174,8 @@ async fn pins(
             safe_state: match pin_cfg(r).safe_state.unwrap_or(SafeState::Low) {
                 SafeState::Low => "low",
                 SafeState::High => "high",
-            }.into(),
+            }
+            .into(),
             enabled: r.enabled,
             interval_ms: r
                 .config
@@ -185,20 +191,25 @@ async fn pins(
     // arbitraire et changeait d'un poll à l'autre — les cartes de l'UI
     // se mélangeaient (retour utilisateur 2026-09-03).
     dtos.sort_by_key(|p| pin_sort_key(&p.label));
-    format::json(serde_json::json!({ "pins": dtos, "connected": ws_device::is_connected(device.id) }))
+    format::json(
+        serde_json::json!({ "pins": dtos, "connected": ws_device::is_connected(device.id) }),
+    )
 }
 
 /// Clé de tri « naturel » d'un label de pin : préfixe alphabétique puis
 /// numéro (A0 < D0 < … < D8) — comparable aux tris de fichiers explorateur.
 fn pin_sort_key(label: &str) -> (String, u32) {
-    let split = label.find(|c: char| c.is_ascii_digit()).unwrap_or(label.len());
+    let split = label
+        .find(|c: char| c.is_ascii_digit())
+        .unwrap_or(label.len());
     let (alpha, num) = label.split_at(split);
     (alpha.to_ascii_lowercase(), num.parse().unwrap_or(u32::MAX))
 }
 
 /// Config jsonb → ModeOpts (défauts si absent/illisible).
 fn pin_cfg(r: &device_capability_instances::Model) -> ModeOpts {
-    r.config.as_ref()
+    r.config
+        .as_ref()
         .and_then(|c| serde_json::from_value(c.clone()).ok())
         .unwrap_or_default()
 }
@@ -244,11 +255,14 @@ async fn commands(
         return Err(forbidden());
     }
     let device = device_of_org(&ctx.db, &org, id).await?;
-    let cmd: CommandBody = serde_json::from_str(&body)
-        .map_err(|e| bad_request(&format!("corps invalide : {e}")))?;
+    let cmd: CommandBody =
+        serde_json::from_str(&body).map_err(|e| bad_request(&format!("corps invalide : {e}")))?;
     let rows = instances_of(&ctx.db, device.id).await?;
     let Some(row) = rows.iter().find(|r| r.gpio as u16 == cmd.gpio) else {
-        return Err(bad_request(&format!("gpio {} non admis pour ce device", cmd.gpio)));
+        return Err(bad_request(&format!(
+            "gpio {} non admis pour ce device",
+            cmd.gpio
+        )));
     };
     let mut cfg: ModeOpts = row
         .config
@@ -273,9 +287,13 @@ async fn commands(
             // invalide les lectures device des flows déployés — arrêt
             // immédiat des flows impactés (base = source de vérité, avant
             // même le push device).
-            flow_impacts =
-                super::flows::stop_flows_reading_pin(&ctx, org.org.id, &device.device_id, &row.label)
-                    .await?;
+            flow_impacts = super::flows::stop_flows_reading_pin(
+                &ctx,
+                org.org.id,
+                &device.device_id,
+                &row.label,
+            )
+            .await?;
             ServerMsg::SetMode {
                 cmd_id: new_cmd_id(),
                 gpio: cmd.gpio,
@@ -298,23 +316,45 @@ async fn commands(
             if !ok {
                 return Err(bad_request("write: value doit être true/false (ou 0/1)"));
             }
-            ServerMsg::Write { cmd_id: new_cmd_id(), gpio: cmd.gpio, value: v }
+            ServerMsg::Write {
+                cmd_id: new_cmd_id(),
+                gpio: cmd.gpio,
+                value: v,
+            }
         }
         "subscribe" => {
             let Some(interval_ms) = cmd.interval_ms else {
-                return Err(bad_request("subscribe: interval_ms requis (0 = désabonner)"));
+                return Err(bad_request(
+                    "subscribe: interval_ms requis (0 = désabonner)",
+                ));
             };
             if interval_ms > 0 && interval_ms < 100 {
-                return Err(bad_request("subscribe: interval_ms min 100 (0 = désabonner)"));
+                return Err(bad_request(
+                    "subscribe: interval_ms min 100 (0 = désabonner)",
+                ));
             }
             if interval_ms > 3_600_000 {
                 return Err(bad_request("subscribe: interval_ms max 3 600 000"));
             }
-            persist_instance(&ctx.db, row, str_to_mode_local(&row.mode), &cfg, Some(interval_ms), None).await?;
-            ServerMsg::Subscribe { cmd_id: new_cmd_id(), gpio: cmd.gpio, interval_ms }
+            persist_instance(
+                &ctx.db,
+                row,
+                str_to_mode_local(&row.mode),
+                &cfg,
+                Some(interval_ms),
+                None,
+            )
+            .await?;
+            ServerMsg::Subscribe {
+                cmd_id: new_cmd_id(),
+                gpio: cmd.gpio,
+                interval_ms,
+            }
         }
         other => {
-            return Err(bad_request(&format!("op inconnue : {other} (set_mode | write | subscribe)")));
+            return Err(bad_request(&format!(
+                "op inconnue : {other} (set_mode | write | subscribe)"
+            )));
         }
     };
     // Downlink : 409 si pas de session vivante (offline) — jamais d'attente
@@ -329,12 +369,10 @@ async fn commands(
     // (Phase 6) — l'UI les signale explicitement.
     let mut body = serde_json::json!({ "sent": true });
     if !flow_impacts.is_empty() {
-        body["flow_impacts"] = serde_json::json!(
-            flow_impacts
-                .iter()
-                .map(|(id, name)| serde_json::json!({"flow_id": id, "name": name}))
-                .collect::<Vec<_>>()
-        );
+        body["flow_impacts"] = serde_json::json!(flow_impacts
+            .iter()
+            .map(|(id, name)| serde_json::json!({"flow_id": id, "name": name}))
+            .collect::<Vec<_>>());
     }
     format::json(body)
 }
@@ -386,6 +424,9 @@ fn bad_request(msg: &str) -> Error {
 fn forbidden() -> Error {
     Error::CustomError(
         StatusCode::FORBIDDEN,
-        loco_rs::controller::ErrorDetail::new("forbidden", "écriture réservée owner/admin".to_string()),
+        loco_rs::controller::ErrorDetail::new(
+            "forbidden",
+            "écriture réservée owner/admin".to_string(),
+        ),
     )
 }

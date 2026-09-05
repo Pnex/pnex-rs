@@ -35,6 +35,7 @@ use crate::controllers::pagination;
 use crate::models::_entities::{flow_versions, flows};
 use crate::services::flow::FlowSettings;
 use crate::services::flow_supervisor;
+use crate::services::openobserve;
 use pnex_core::{FlowArtifactMeta, FlowGraph};
 
 // ─────────────────────────── Aides ───────────────────────────
@@ -55,11 +56,19 @@ fn forbidden(msg: &str) -> Error {
 
 /// Erreur 400 champ-par-champ, forme DRF `{"<champ>": "..."}`.
 fn field_status(field: &str, msg: &str) -> Response {
-    (StatusCode::BAD_REQUEST, format::json(serde_json::json!({ field: msg }))).into_response()
+    (
+        StatusCode::BAD_REQUEST,
+        format::json(serde_json::json!({ field: msg })),
+    )
+        .into_response()
 }
 
 /// Flow de l'org courante, sinon None (→ 404).
-async fn find_flow(db: &DatabaseConnection, org: &OrgContext, id: i64) -> Result<Option<flows::Model>> {
+async fn find_flow(
+    db: &DatabaseConnection,
+    org: &OrgContext,
+    id: i64,
+) -> Result<Option<flows::Model>> {
     flows::Entity::find_by_id(id)
         .filter(flows::Column::OrgId.eq(org.org.id))
         .one(db)
@@ -98,7 +107,12 @@ fn summary_dto(
     }
 }
 
-fn flow_dto(f: flows::Model, graph: FlowGraph, latest: i64, deployed_number: Option<i64>) -> pnex_core::Flow {
+fn flow_dto(
+    f: flows::Model,
+    graph: FlowGraph,
+    latest: i64,
+    deployed_number: Option<i64>,
+) -> pnex_core::Flow {
     pnex_core::Flow {
         id: f.id,
         org_id: f.org_id,
@@ -114,8 +128,13 @@ fn flow_dto(f: flows::Model, graph: FlowGraph, latest: i64, deployed_number: Opt
 }
 
 /// Numéro de version d'une ligne `flow_versions` (→ `deployed_version_id`).
-async fn deployed_number_of(db: &DatabaseConnection, deployed_version_id: Option<i64>) -> Result<Option<i64>> {
-    let Some(id) = deployed_version_id else { return Ok(None) };
+async fn deployed_number_of(
+    db: &DatabaseConnection,
+    deployed_version_id: Option<i64>,
+) -> Result<Option<i64>> {
+    let Some(id) = deployed_version_id else {
+        return Ok(None);
+    };
     Ok(flow_versions::Entity::find_by_id(id)
         .one(db)
         .await
@@ -142,29 +161,57 @@ fn reject_invalid_graph(graph: &FlowGraph) -> Option<Response> {
 /// demande au superviseur le rechargement. Erreur si le moteur est coupé ou
 /// n'acquitte pas (l'état DB reste `deployed` — cohérent avec ce qui sera
 /// relancé au prochain deploy/boot).
-pub(crate) async fn reproject_and_signal(ctx: &AppContext) -> Result<()> {
+///
+/// L'org O2 réelle (`openobserve_orgs.o2_org`) est résolue **en lecture
+/// seule** (`provisioned_credentials`) : pas de provisioning sur le chemin
+/// HTTP (doctrine du module O2). Une org sans O2 estampille `pnex_o2_org`
+/// vide — les nœuds device/metric dégradent (warn, lecture/écriture sautée)
+/// et la reprojection déclenchée par le sink après le provisioning comble
+/// le champ (self-healing).
+pub(crate) async fn reproject_and_signal(db: &DatabaseConnection) -> Result<()> {
     let deployed_flows = flows::Entity::find()
         .filter(flows::Column::Status.eq(pnex_core::FLOW_STATUS_DEPLOYED))
-        .all(&ctx.db)
+        .all(db)
         .await
         .map_err(|_| Error::InternalServerError)?;
 
     let mut entries: Vec<serde_json::Value> = Vec::new();
     let mut meta: Option<FlowArtifactMeta> = None;
+    let mut o2_org_cache: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
     for f in &deployed_flows {
-        let Some(deployed_id) = f.deployed_version_id else { continue };
+        let Some(deployed_id) = f.deployed_version_id else {
+            continue;
+        };
         let Some(version) = flow_versions::Entity::find_by_id(deployed_id)
-            .one(&ctx.db)
+            .one(db)
             .await
             .map_err(|_| Error::InternalServerError)?
         else {
             continue;
         };
-        let graph: FlowGraph =
-            serde_json::from_value(version.graph.clone()).map_err(|_| Error::InternalServerError)?;
-        let m = FlowArtifactMeta { flow_id: f.id, version_number: version.version_number, org_id: f.org_id };
+        let graph: FlowGraph = serde_json::from_value(version.graph.clone())
+            .map_err(|_| Error::InternalServerError)?;
+        // Résolution par org (une seule requête par org du lot).
+        let o2_org = match o2_org_cache.get(&f.org_id) {
+            Some(cached) => cached.clone(),
+            None => {
+                let resolved = openobserve::provisioned_credentials(db, f.org_id)
+                    .await
+                    .unwrap_or(None)
+                    .map(|c| c.o2_org)
+                    .unwrap_or_default();
+                o2_org_cache.insert(f.org_id, resolved.clone());
+                resolved
+            }
+        };
+        let m = FlowArtifactMeta {
+            flow_id: f.id,
+            version_number: version.version_number,
+            org_id: f.org_id,
+            o2_org,
+        };
         if meta.is_none() {
-            meta = Some(m);
+            meta = Some(m.clone());
         }
         if let serde_json::Value::Array(nodes) = pnex_core::to_red_flows_json(&graph, &m) {
             entries.extend(nodes);
@@ -173,7 +220,7 @@ pub(crate) async fn reproject_and_signal(ctx: &AppContext) -> Result<()> {
 
     flow_supervisor::deploy(
         serde_json::Value::Array(entries),
-        meta.unwrap_or(FlowArtifactMeta { flow_id: 0, version_number: 0, org_id: 0 }),
+        meta.unwrap_or_else(FlowArtifactMeta::empty),
     )
     .await
     .map_err(|e| {
@@ -201,7 +248,10 @@ async fn create(
         return Ok(field_status("name", "This field is required."));
     }
     if name.chars().count() > 200 {
-        return Ok(field_status("name", "Ensure this field has no more than 200 characters."));
+        return Ok(field_status(
+            "name",
+            "Ensure this field has no more than 200 characters.",
+        ));
     }
     if let Some(response) = reject_invalid_graph(&params.graph) {
         return Ok(response);
@@ -216,11 +266,18 @@ async fn create(
             .map_err(|_| Error::InternalServerError)?
             .is_some();
         if !known {
-            return Ok(field_status("device_id", "Device inconnu pour cette organisation."));
+            return Ok(field_status(
+                "device_id",
+                "Device inconnu pour cette organisation.",
+            ));
         }
     }
 
-    let txn = ctx.db.begin().await.map_err(|_| Error::InternalServerError)?;
+    let txn = ctx
+        .db
+        .begin()
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     let flow = flows::ActiveModel {
         name: Set(name.to_string()),
         status: Set(pnex_core::FLOW_STATUS_DRAFT.to_string()),
@@ -245,7 +302,11 @@ async fn create(
     txn.commit().await.map_err(|_| Error::InternalServerError)?;
 
     tracing::info!(flow_id = flow.id, org_id = org.org.id, "flow créé (v1)");
-    Ok((StatusCode::CREATED, format::json(flow_dto(flow, params.graph, 1, None))).into_response())
+    Ok((
+        StatusCode::CREATED,
+        format::json(flow_dto(flow, params.graph, 1, None)),
+    )
+        .into_response())
 }
 
 // ─────────────────────────── GET /flows ───────────────────────────
@@ -272,12 +333,13 @@ async fn list(
     if let Some(status) = q.status.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(flows::Column::Status.eq(status));
     }
-    let rows = query.all(&ctx.db).await.map_err(|_| Error::InternalServerError)?;
+    let rows = query
+        .all(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     let filtered: Vec<&flows::Model> = rows
         .iter()
-        .filter(|f| {
-            pagination::rust_search_match(&q.search, &[&f.name])
-        })
+        .filter(|f| pagination::rust_search_match(&q.search, &[&f.name]))
         .collect();
     let count = filtered.len() as i64;
     let (skip, take) = page.slice(filtered.len());
@@ -302,7 +364,10 @@ async fn list(
         .unwrap_or_default()
         .into_iter()
         .collect();
-    let deployed_ids: Vec<i64> = page_rows.iter().filter_map(|f| f.deployed_version_id).collect();
+    let deployed_ids: Vec<i64> = page_rows
+        .iter()
+        .filter_map(|f| f.deployed_version_id)
+        .collect();
     let deployed_numbers: std::collections::HashMap<i64, i64> = if deployed_ids.is_empty() {
         Default::default()
     } else {
@@ -319,7 +384,9 @@ async fn list(
         .into_iter()
         .map(|f| {
             let latest_n = latest.get(&f.id).copied().unwrap_or(0);
-            let deployed_n = f.deployed_version_id.and_then(|id| deployed_numbers.get(&id).copied());
+            let deployed_n = f
+                .deployed_version_id
+                .and_then(|id| deployed_numbers.get(&id).copied());
             summary_dto(f, latest_n, deployed_n)
         })
         .collect();
@@ -331,8 +398,14 @@ async fn list(
     if let Some(s) = q.status.as_deref().filter(|s| !s.is_empty()) {
         filters.push(("status".to_string(), s.to_string()));
     }
-    Ok(format::json(pagination::envelope("/api/v1/flows", &filters, page, count, results))
-        .into_response())
+    Ok(format::json(pagination::envelope(
+        "/api/v1/flows",
+        &filters,
+        page,
+        count,
+        results,
+    ))
+    .into_response())
 }
 
 // ─────────────────────────── GET /flows/{id} ───────────────────────────
@@ -386,12 +459,24 @@ async fn update(
         )));
     }
 
-    let txn = ctx.db.begin().await.map_err(|_| Error::InternalServerError)?;
+    let txn = ctx
+        .db
+        .begin()
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     let mut active: flows::ActiveModel = flow.clone().into();
-    if let Some(name) = params.name.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+    if let Some(name) = params
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+    {
         active.name = Set(name.to_string());
     }
-    let flow = active.update(&txn).await.map_err(|_| Error::InternalServerError)?;
+    let flow = active
+        .update(&txn)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     let new_version = flow_versions::ActiveModel {
         flow_id: Set(flow.id),
         version_number: Set(latest.version_number + 1),
@@ -405,8 +490,18 @@ async fn update(
     .map_err(|_| Error::InternalServerError)?;
     txn.commit().await.map_err(|_| Error::InternalServerError)?;
 
-    tracing::info!(flow_id = flow.id, version = new_version.version_number, "flow enregistré (nouvelle version)");
-    Ok(format::json(flow_dto(flow, params.graph, new_version.version_number, None)).into_response())
+    tracing::info!(
+        flow_id = flow.id,
+        version = new_version.version_number,
+        "flow enregistré (nouvelle version)"
+    );
+    Ok(format::json(flow_dto(
+        flow,
+        params.graph,
+        new_version.version_number,
+        None,
+    ))
+    .into_response())
 }
 
 // ─────────────────────────── DELETE /flows/{id} ───────────────────────────
@@ -430,7 +525,7 @@ async fn delete(
         .await
         .map_err(|_| Error::InternalServerError)?;
     if was_deployed {
-        reproject_and_signal(&ctx).await?;
+        reproject_and_signal(&ctx.db).await?;
     }
     tracing::info!(flow_id = flow.id, "flow supprimé");
     Ok(StatusCode::NO_CONTENT.into_response())
@@ -555,7 +650,9 @@ pub(crate) async fn stop_flows_reading_pin(
 
     let mut impacts: Vec<(i64, String)> = Vec::new();
     for flow in deployed {
-        let Some(version_id) = flow.deployed_version_id else { continue };
+        let Some(version_id) = flow.deployed_version_id else {
+            continue;
+        };
         let Some(version) = flow_versions::Entity::find_by_id(version_id)
             .one(&ctx.db)
             .await
@@ -578,7 +675,10 @@ pub(crate) async fn stop_flows_reading_pin(
         let mut active: flows::ActiveModel = flow.into();
         active.status = Set(pnex_core::FLOW_STATUS_DRAFT.to_string());
         active.deployed_version_id = Set(None);
-        let stopped = active.update(&ctx.db).await.map_err(|_| Error::InternalServerError)?;
+        let stopped = active
+            .update(&ctx.db)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
         tracing::warn!(
             flow_id = stopped.id,
             device_id,
@@ -591,7 +691,7 @@ pub(crate) async fn stop_flows_reading_pin(
     // Un seul rechargement du runtime même si plusieurs flows ont été
     // arrêtés — l'artefact est reprojeté sans eux.
     if !impacts.is_empty() {
-        reproject_and_signal(ctx).await?;
+        reproject_and_signal(&ctx.db).await?;
     }
     Ok(impacts)
 }
@@ -656,11 +756,14 @@ async fn deploy_version(
     let mut active: flows::ActiveModel = flow.clone().into();
     active.deployed_version_id = Set(Some(version.id));
     active.status = Set(pnex_core::FLOW_STATUS_DEPLOYED.to_string());
-    let flow = active.update(&ctx.db).await.map_err(|_| Error::InternalServerError)?;
+    let flow = active
+        .update(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
 
     // Reprojection de TOUS les flows déployés + rechargement (503 explicite
     // si settings.flow.enabled=false ou acquittement absent).
-    reproject_and_signal(&ctx).await?;
+    reproject_and_signal(&ctx.db).await?;
 
     let latest_number = latest_version(&ctx.db, flow.id)
         .await?
@@ -747,7 +850,11 @@ async fn run_once(
             loco_rs::controller::ErrorDetail::new("flow_runtime", e),
         )
     })?;
-    tracing::info!(flow_id = id, injected = result.injected, "flow exécuté (run-once)");
+    tracing::info!(
+        flow_id = id,
+        injected = result.injected,
+        "flow exécuté (run-once)"
+    );
     Ok(format::json(result).into_response())
 }
 

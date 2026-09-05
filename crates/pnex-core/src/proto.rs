@@ -50,8 +50,6 @@ pub struct ModeOpts {
     pub safe_state: Option<SafeState>,
 }
 
-
-
 /// Pin admis, poussé au device dans `ProvisionAck` (miroir firmware : la
 /// carte de pins vient du serveur, jamais du `.bin`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,7 +80,11 @@ pub enum DeviceMsg {
     /// Lecture périodique d'un pin input (ou réponse à un read).
     StateReport { gpio: u16, value: Value },
     /// Accusé d'un RPC serveur (`cmd_id` requis — sémantique ThingsBoard).
-    Ack { cmd_id: String, ok: bool, err: Option<String> },
+    Ack {
+        cmd_id: String,
+        ok: bool,
+        err: Option<String>,
+    },
 }
 
 /// Serveur → device.
@@ -93,11 +95,25 @@ pub enum ServerMsg {
     /// + safe-states). Remplace la déclaration statique du firmware.
     ProvisionAck { caps: Vec<PinSpec> },
     /// RPC : changer le mode d'un pin.
-    SetMode { cmd_id: String, gpio: u16, mode: Mode, #[serde(default)] opts: ModeOpts },
+    SetMode {
+        cmd_id: String,
+        gpio: u16,
+        mode: Mode,
+        #[serde(default)]
+        opts: ModeOpts,
+    },
     /// RPC : écrire sur une sortie (`value` = true/false en P0).
-    Write { cmd_id: String, gpio: u16, value: Value },
+    Write {
+        cmd_id: String,
+        gpio: u16,
+        value: Value,
+    },
     /// RPC : cadencer les lectures d'un pin input (0 = désabonner).
-    Subscribe { cmd_id: String, gpio: u16, interval_ms: u32 },
+    Subscribe {
+        cmd_id: String,
+        gpio: u16,
+        interval_ms: u32,
+    },
     /// Refus d'admission ou erreur fatale — suivi d'une close frame.
     Reject { reason: String },
 }
@@ -110,8 +126,6 @@ pub fn role_of(mode: Mode) -> &'static str {
         Mode::DigitalOut => "actuator",
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -128,10 +142,8 @@ mod tests {
     }
     #[test]
     fn state_report_et_ack_roundtrip() {
-        let m: DeviceMsg = serde_json::from_str(
-            r#"{"t":"state_report","gpio":5,"value":true}"#,
-        )
-        .unwrap();
+        let m: DeviceMsg =
+            serde_json::from_str(r#"{"t":"state_report","gpio":5,"value":true}"#).unwrap();
         assert!(matches!(m, DeviceMsg::StateReport { gpio: 5, value }
             if value == Value::Bool(true)));
 
@@ -145,17 +157,16 @@ mod tests {
 
     #[test]
     fn server_msgs_roundtrip() {
-        let m: ServerMsg = serde_json::from_str(
-            r#"{"t":"set_mode","cmd_id":"c1","gpio":5,"mode":"digital_out"}"#,
-        )
-        .unwrap();
-        assert!(matches!(m, ServerMsg::SetMode { cmd_id: _, gpio: 5, mode: Mode::DigitalOut, opts }
-            if opts == ModeOpts::default()));
+        let m: ServerMsg =
+            serde_json::from_str(r#"{"t":"set_mode","cmd_id":"c1","gpio":5,"mode":"digital_out"}"#)
+                .unwrap();
+        assert!(
+            matches!(m, ServerMsg::SetMode { cmd_id: _, gpio: 5, mode: Mode::DigitalOut, opts }
+            if opts == ModeOpts::default())
+        );
 
-        let m: ServerMsg = serde_json::from_str(
-            r#"{"t":"write","cmd_id":"c2","gpio":5,"value":true}"#,
-        )
-        .unwrap();
+        let m: ServerMsg =
+            serde_json::from_str(r#"{"t":"write","cmd_id":"c2","gpio":5,"value":true}"#).unwrap();
         assert!(matches!(m, ServerMsg::Write { cmd_id, gpio: 5, value }
             if cmd_id == "c2" && value == Value::Bool(true)));
     }
@@ -172,10 +183,8 @@ mod tests {
                 && caps[0].mode == Mode::DigitalOut
                 && caps[0].safe_state == Some(SafeState::Low)));
 
-        let m: ServerMsg = serde_json::from_str(
-            r#"{"t":"reject","reason":"device inconnu"}"#,
-        )
-        .unwrap();
+        let m: ServerMsg =
+            serde_json::from_str(r#"{"t":"reject","reason":"device inconnu"}"#).unwrap();
         assert!(matches!(m, ServerMsg::Reject { reason }
             if reason == "device inconnu"));
     }

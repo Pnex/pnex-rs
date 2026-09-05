@@ -47,7 +47,10 @@ impl PnexCalcNode {
         if let Some(e) = pnex_core::validate_calc(&cfg.expression).first() {
             return Err(EdgelinkError::BadFlowsJson(format!("pnex-calc : {e}")).into());
         }
-        Ok(Box::new(PnexCalcNode { base: base_node, config: cfg }))
+        Ok(Box::new(PnexCalcNode {
+            base: base_node,
+            config: cfg,
+        }))
     }
 
     async fn execute(&self, msg: MsgHandle, cancel: CancellationToken) -> Result<()> {
@@ -55,12 +58,18 @@ impl PnexCalcNode {
             let m = msg.read().await;
             let payload_json = match m.get("payload").cloned() {
                 Some(v) => Some(serde_json::to_value(&v).map_err(|e| {
-                    EdgelinkError::InvalidOperation(format!("pnex-calc : payload non sérialisable : {e}"))
+                    EdgelinkError::InvalidOperation(format!(
+                        "pnex-calc : payload non sérialisable : {e}"
+                    ))
                 })?),
                 None => None,
             };
             pnex_core::numeric_map_from_payload(payload_json.as_ref(), "calc").map_err(|v| {
-                EdgelinkError::InvalidOperation(format!("pnex-calc [{}] : {}", self.name(), v.message))
+                EdgelinkError::InvalidOperation(format!(
+                    "pnex-calc [{}] : {}",
+                    self.name(),
+                    v.message
+                ))
             })?
         };
 
@@ -68,7 +77,11 @@ impl PnexCalcNode {
             EdgelinkError::InvalidOperation(format!("pnex-calc [{}] : {e}", self.name()))
         })?;
 
-        log::debug!("pnex-calc [{}] : {expression} = {value}", self.name(), expression = self.config.expression);
+        log::debug!(
+            "pnex-calc [{}] : {expression} = {value}",
+            self.name(),
+            expression = self.config.expression
+        );
         let payload: Variant = serde_json::from_value(serde_json::json!(value)).map_err(|e| {
             EdgelinkError::InvalidOperation(format!("pnex-calc : résultat non convertible : {e}"))
         })?;
@@ -89,15 +102,19 @@ impl FlowNodeBehavior for PnexCalcNode {
     async fn run(self: Arc<Self>, stop_token: CancellationToken) {
         while !stop_token.is_cancelled() {
             let cancel = stop_token.child_token();
-            with_uow(self.as_ref(), cancel.child_token(), |node: &PnexCalcNode, msg: MsgHandle| async move {
-                match node.execute(msg.clone(), cancel.child_token()).await {
-                    Ok(()) => Ok(()),
-                    Err(e) => {
-                        log::warn!("pnex-calc [{}] : message rejeté : {e}", node.name());
-                        Err(e)
+            with_uow(
+                self.as_ref(),
+                cancel.child_token(),
+                |node: &PnexCalcNode, msg: MsgHandle| async move {
+                    match node.execute(msg.clone(), cancel.child_token()).await {
+                        Ok(()) => Ok(()),
+                        Err(e) => {
+                            log::warn!("pnex-calc [{}] : message rejeté : {e}", node.name());
+                            Err(e)
+                        }
                     }
-                }
-            })
+                },
+            )
             .await;
         }
     }

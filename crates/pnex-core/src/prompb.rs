@@ -58,10 +58,19 @@ mod tests {
         let req = WriteRequest {
             timeseries: vec![TimeSeries {
                 labels: vec![
-                    Label { name: "__name__".into(), value: "etl_moyenne".into() },
-                    Label { name: "device_id".into(), value: "flow_12".into() },
+                    Label {
+                        name: "__name__".into(),
+                        value: "etl_moyenne".into(),
+                    },
+                    Label {
+                        name: "device_id".into(),
+                        value: "flow_12".into(),
+                    },
                 ],
-                samples: vec![Sample { value: 21.5, timestamp: 1_786_890_000_000 }],
+                samples: vec![Sample {
+                    value: 21.5,
+                    timestamp: 1_786_890_000_000,
+                }],
             }],
         };
         let bytes = req.encode_to_vec();

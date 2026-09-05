@@ -102,14 +102,15 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
     }
 }
 
-/// Heure locale affichable `HH:MM:SS` depuis le RFC 3339 UTC du backend
-/// (`YYYY-MM-DDTHH:MM:SSZ`) — pas de dépendance time côté front.
+/// Heure locale affichable `HH:MM:SS` depuis le RFC 3339 (UTC) du backend —
+/// conversion vers le fuseau du navigateur : un découpage brutal de la
+/// chaîne affichait l'heure UTC (décalée de 2 h en CEST — retour du
+/// 05/09 : 21:53:54 affiché 19:53:54). Forme inattendue : rendue telle
+/// quelle (jamais de panic).
 fn heure_label(ts: &str) -> String {
-    if ts.len() >= 19 && ts.as_bytes().get(10) == Some(&b'T') {
-        ts[11..19].to_string()
-    } else {
-        ts.to_string()
-    }
+    chrono::DateTime::parse_from_rfc3339(ts)
+        .map(|ts| ts.with_timezone(&chrono::Local).format("%H:%M:%S").to_string())
+        .unwrap_or_else(|_| ts.to_string())
 }
 
 /// Formate la valeur capturée : chaîne du debug builtin → tentative de
@@ -154,8 +155,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn heure_extraite_du_rfc3339() {
-        assert_eq!(heure_label("2026-09-05T12:34:56Z"), "12:34:56");
+    fn heure_convertie_en_locale() {
+        // La valeur attendue dépend du fuseau de la machine : on la compare
+        // à la même conversion chrono (source de vérité identique). Un
+        // retour au découpage brutal UTC ferait échouer ce test sur toute
+        // machine hors UTC.
+        let expected = chrono::DateTime::parse_from_rfc3339("2026-09-05T12:34:56Z")
+            .unwrap()
+            .with_timezone(&chrono::Local)
+            .format("%H:%M:%S")
+            .to_string();
+        assert_eq!(heure_label("2026-09-05T12:34:56Z"), expected);
         // Forme inattendue : rendue telle quelle (jamais de panic).
         assert_eq!(heure_label("bizarre"), "bizarre");
     }

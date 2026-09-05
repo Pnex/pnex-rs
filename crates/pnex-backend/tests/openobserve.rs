@@ -201,15 +201,8 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                         let raw = snap::raw::Decoder::new()
                             .decompress_vec(&body)
                             .unwrap_or_default();
-                        let req =
-                            pnex_core::WriteRequest::decode(
-                                raw.as_slice(),
-                            )
-                            .unwrap_or_else(|_| {
-                                pnex_core::WriteRequest {
-                                    timeseries: vec![],
-                                }
-                            });
+                        let req = pnex_core::WriteRequest::decode(raw.as_slice())
+                            .unwrap_or_else(|_| pnex_core::WriteRequest { timeseries: vec![] });
                         let mut guard = s.lock().unwrap();
                         for ts in req.timeseries {
                             let metric = ts

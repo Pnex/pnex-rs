@@ -35,6 +35,12 @@ struct MetricNodeConfig {
     pnex_flow_id: i64,
     #[serde(default)]
     pnex_org_id: i64,
+    /// Identifiant O2 **réel** (openobserve_orgs.o2_org), estampillé par la
+    /// projection. Vide = org non provisionnée au deploy — l'écriture est
+    /// sautée (warn) sans casser le pipeline, et une reprojection (deploy
+    /// suivant ou auto après provisioning) comble le champ.
+    #[serde(default)]
+    pnex_o2_org: String,
 }
 
 #[flow_node("pnex-metric", red_name = "pnex-metric")]
@@ -72,8 +78,15 @@ impl PnexMetricNode {
             )
             .into());
         }
+        // org O2 vide : PAS de fail-loud au build — l'absence d'org O2 est un
+        // état transitoire (provisioning pas encore passé), pas une config
+        // invalide. L'exécution dégrade (écriture sautée, pipeline vivant).
         let o2 = O2Client::from_env()?;
-        Ok(Box::new(PnexMetricNode { base: base_node, config: cfg, o2 }))
+        Ok(Box::new(PnexMetricNode {
+            base: base_node,
+            config: cfg,
+            o2,
+        }))
     }
 
     async fn execute(&self, msg: MsgHandle, cancel: CancellationToken) -> Result<()> {
@@ -82,40 +95,57 @@ impl PnexMetricNode {
             let m = msg.read().await;
             let payload_json = match m.get("payload").cloned() {
                 Some(v) => Some(serde_json::to_value(&v).map_err(|e| {
-                    EdgelinkError::InvalidOperation(format!("pnex-metric : payload non sérialisable : {e}"))
+                    EdgelinkError::InvalidOperation(format!(
+                        "pnex-metric : payload non sérialisable : {e}"
+                    ))
                 })?),
                 None => None,
             };
             pnex_core::metric_value_from_payload(payload_json.as_ref()).map_err(|v| {
-                EdgelinkError::InvalidOperation(format!("pnex-metric [{}] : {}", self.name(), v.message))
+                EdgelinkError::InvalidOperation(format!(
+                    "pnex-metric [{}] : {}",
+                    self.name(),
+                    v.message
+                ))
             })?
         };
 
         // 2) Remote-write borné (timeout 10 s côté client) et annulable.
-        let org = format!("pnex_org_{}", self.config.pnex_org_id);
-        let metric = pnex_core::etl_metric_name(&self.config.metric_name);
-        let virtual_device = format!("flow_{}", self.config.pnex_flow_id);
-        let ts_ms = chrono::Utc::now().timestamp_millis();
-        let series = vec![crate::o2::etl_series(metric, virtual_device, value, ts_ms)];
-        tokio::select! {
-            res = self.o2.write(&org, series) => {
-                if let Err(e) = res {
-                    return Err(EdgelinkError::InvalidOperation(format!(
-                        "pnex-metric [{}] : écriture refusée : {e}", self.name()
-                    )).into());
+        // Org O2 vide (provisioning pas encore passé) : écriture sautée,
+        // pipeline vivant — la reprojection post-provisioning comblera.
+        if self.config.pnex_o2_org.trim().is_empty() {
+            log::warn!(
+                "pnex-metric [{}] : org O2 non provisionnée — {} = {value} NON écrit",
+                self.name(),
+                pnex_core::etl_metric_name(&self.config.metric_name)
+            );
+            self.fan_out_one(Envelope { port: 0, msg }, cancel).await
+        } else {
+            let org = self.config.pnex_o2_org.clone();
+            let metric = pnex_core::etl_metric_name(&self.config.metric_name);
+            let virtual_device = format!("flow_{}", self.config.pnex_flow_id);
+            let ts_ms = chrono::Utc::now().timestamp_millis();
+            let series = vec![crate::o2::etl_series(metric, virtual_device, value, ts_ms)];
+            tokio::select! {
+                res = self.o2.write(&org, series) => {
+                    if let Err(e) = res {
+                        return Err(EdgelinkError::InvalidOperation(format!(
+                            "pnex-metric [{}] : écriture refusée : {e}", self.name()
+                        )).into());
+                    }
                 }
+                _ = cancel.cancelled() => return Err(EdgelinkError::TaskCancelled.into()),
             }
-            _ = cancel.cancelled() => return Err(EdgelinkError::TaskCancelled.into()),
+
+            log::debug!(
+                "pnex-metric [{}] : {} = {value} écrit dans {org}",
+                self.name(),
+                pnex_core::etl_metric_name(&self.config.metric_name)
+            );
+
+            // 3) Passthrough : le payload sort inchangé (debug aval possible).
+            self.fan_out_one(Envelope { port: 0, msg }, cancel).await
         }
-
-        log::debug!(
-            "pnex-metric [{}] : {} = {value} écrit dans {org}",
-            self.name(),
-            pnex_core::etl_metric_name(&self.config.metric_name)
-        );
-
-        // 3) Passthrough : le payload sort inchangé (debug aval possible).
-        self.fan_out_one(Envelope { port: 0, msg }, cancel).await
     }
 }
 
@@ -128,17 +158,20 @@ impl FlowNodeBehavior for PnexMetricNode {
     async fn run(self: Arc<Self>, stop_token: CancellationToken) {
         while !stop_token.is_cancelled() {
             let cancel = stop_token.child_token();
-            with_uow(self.as_ref(), cancel.child_token(), |node: &PnexMetricNode, msg: MsgHandle| async move {
-                match node.execute(msg.clone(), cancel.child_token()).await {
-                    Ok(()) => Ok(()),
-                    Err(e) => {
-                        log::warn!("pnex-metric [{}] : message rejeté : {e}", node.name());
-                        Err(e)
+            with_uow(
+                self.as_ref(),
+                cancel.child_token(),
+                |node: &PnexMetricNode, msg: MsgHandle| async move {
+                    match node.execute(msg.clone(), cancel.child_token()).await {
+                        Ok(()) => Ok(()),
+                        Err(e) => {
+                            log::warn!("pnex-metric [{}] : message rejeté : {e}", node.name());
+                            Err(e)
+                        }
                     }
-                }
-            })
+                },
+            )
             .await;
         }
     }
 }
-

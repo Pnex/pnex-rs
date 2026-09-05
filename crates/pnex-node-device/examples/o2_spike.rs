@@ -53,7 +53,10 @@ async fn main() {
     tokio::time::sleep(Duration::from_secs(2)).await;
 
     // ── 2) Relecture PromQL en Basic racine. ──
-    match client.query_last(&org, "etl_spike", "flow_0_spike", 300.0).await {
+    match client
+        .query_last(&org, "etl_spike", "flow_0_spike", 300.0)
+        .await
+    {
         Ok(Some((v, _ts))) => {
             let ok = (v - value).abs() < 1e-9;
             println!(

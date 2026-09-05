@@ -52,6 +52,12 @@ struct DeviceNodeConfig {
     /// Estampillé par la projection au deploy (`FlowArtifactMeta.org_id`).
     #[serde(default)]
     pnex_org_id: i64,
+    /// Identifiant O2 **réel** (`openobserve_orgs.o2_org`), estampillé par la
+    /// projection. Vide = org pas encore provisionnée — les lectures sont
+    /// sautées (warn, clés omises) sans casser le pipeline ; la reprojection
+    /// qui suit le provisioning comble le champ.
+    #[serde(default)]
+    pnex_o2_org: String,
 }
 
 #[flow_node("pnex-device", red_name = "pnex-device")]
@@ -107,60 +113,73 @@ impl PnexDeviceNode {
             )
             .into());
         }
+        // org O2 vide : PAS de fail-loud au build — état transitoire (avant
+        // provisioning), pas une config invalide. Dégradation à l'exécution.
 
         let o2 = O2Client::from_env()?;
-        Ok(Box::new(PnexDeviceNode { base: base_node, config: cfg, o2 }))
+        Ok(Box::new(PnexDeviceNode {
+            base: base_node,
+            config: cfg,
+            o2,
+        }))
     }
 
-    /// Un message entrant (déclencheur) → lectures O2 en parallèle → payload
-    /// `clé → valeur`. Les lectures passent par la fenêtre de fraîcheur :
-    /// une donnée trop vieille est absente, pas zéro.
+    /// Un message entrant (déclencheur) → lectures O2 séquentielles →
+    /// payload `clé → valeur`. Les lectures passent par la fenêtre de
+    /// fraîcheur : une donnée trop vieille est absente, pas zéro.
     async fn execute(&self, msg: MsgHandle, cancel: CancellationToken) -> Result<()> {
-        let org = format!("pnex_org_{}", self.config.pnex_org_id);
         let window = Duration::from_secs_f64(self.config.window_secs);
         let deadline = Duration::from_secs_f64(self.config.window_secs + 5.0);
 
-        // Lectures séquentielles bornées globalement (N ≤ quelques dizaines ;
-        // la concurrence ferait exploser le budget requêtes O2 à chaque tick).
+        // Lectures séquentielles clés → valeur. Les lectures passent par la
+        // fenêtre de fraîcheur : une donnée trop vieille est absente, pas zéro.
+        // Org O2 vide (provisioning pas encore passé) : lectures sautées,
+        // payload objet vide — pipeline vivant, la reprojection comblera.
         let mut values: BTreeMap<String, f64> = BTreeMap::new();
-        for read in &self.config.reads {
-            let metric = pnex_core::normalize_measurement_name(&read.pin);
-            tokio::select! {
-                res = tokio::time::timeout(deadline, self.o2.query_last(
-                    &org,
-                    &metric,
-                    &read.device_id,
-                    self.config.window_secs,
-                )) => match res {
-                    Ok(Ok(Some((value, _ts)))) => {
-                        values.insert(
-                            pnex_core::device_payload_key(&read.device_id, &read.pin),
-                            value,
-                        );
-                    }
-                    Ok(Ok(None)) => {
-                        log::warn!(
-                            "pnex-device [{}] : aucune donnée dans la fenêtre {} s pour {}:{}",
-                            self.name(), window.as_secs(), read.device_id, read.pin
-                        );
-                    }
-                    Ok(Err(e)) => {
-                        log::warn!(
-                            "pnex-device [{}] : lecture {}:{} échouée : {e}",
-                            self.name(), read.device_id, read.pin
-                        );
-                    }
-                    Err(_) => {
-                        log::warn!(
-                            "pnex-device [{}] : lecture {}:{} interrompue (timeout)",
-                            self.name(), read.device_id, read.pin
-                        );
-                    }
-                },
-                _ = cancel.cancelled() => return Err(EdgelinkError::TaskCancelled.into()),
+        if self.config.pnex_o2_org.trim().is_empty() {
+            log::warn!(
+                "pnex-device [{}] : org O2 non provisionnée — lecture(s) sautée(s)",
+                self.name()
+            );
+        } else {
+            for read in &self.config.reads {
+                let metric = pnex_core::normalize_measurement_name(&read.pin);
+                tokio::select! {
+                    res = tokio::time::timeout(deadline, self.o2.query_last(
+                        &self.config.pnex_o2_org,
+                        &metric,
+                        &read.device_id,
+                        self.config.window_secs,
+                    )) => match res {
+                        Ok(Ok(Some((value, _ts)))) => {
+                            values.insert(
+                                pnex_core::device_payload_key(&read.device_id, &read.pin),
+                                value,
+                            );
+                        }
+                        Ok(Ok(None)) => {
+                            log::warn!(
+                                "pnex-device [{}] : aucune donnée dans la fenêtre {} s pour {}:{}",
+                                self.name(), window.as_secs(), read.device_id, read.pin
+                            );
+                        }
+                        Ok(Err(e)) => {
+                            log::warn!(
+                                "pnex-device [{}] : lecture {}:{} échouée : {e}",
+                                self.name(), read.device_id, read.pin
+                            );
+                        }
+                        Err(_) => {
+                            log::warn!(
+                                "pnex-device [{}] : lecture {}:{} interrompue (timeout)",
+                                self.name(), read.device_id, read.pin
+                            );
+                        }
+                    },
+                    _ = cancel.cancelled() => return Err(EdgelinkError::TaskCancelled.into()),
+                }
             }
         }
-
         log::debug!(
             "pnex-device [{}] : {} lecture(s) résolue(s)",
             self.name(),
@@ -186,15 +205,19 @@ impl FlowNodeBehavior for PnexDeviceNode {
     async fn run(self: Arc<Self>, stop_token: CancellationToken) {
         while !stop_token.is_cancelled() {
             let cancel = stop_token.child_token();
-            with_uow(self.as_ref(), cancel.child_token(), |node: &PnexDeviceNode, msg: MsgHandle| async move {
-                match node.execute(msg.clone(), cancel.child_token()).await {
-                    Ok(()) => Ok(()),
-                    Err(e) => {
-                        log::warn!("pnex-device [{}] : message rejeté : {e}", node.name());
-                        Err(e)
+            with_uow(
+                self.as_ref(),
+                cancel.child_token(),
+                |node: &PnexDeviceNode, msg: MsgHandle| async move {
+                    match node.execute(msg.clone(), cancel.child_token()).await {
+                        Ok(()) => Ok(()),
+                        Err(e) => {
+                            log::warn!("pnex-device [{}] : message rejeté : {e}", node.name());
+                            Err(e)
+                        }
                     }
-                }
-            })
+                },
+            )
             .await;
         }
     }

@@ -76,18 +76,27 @@ pub struct PinoutPin {
     pub source: String,
 }
 
+/// Réponse `GET /devices/{id}/pinout` — pins + connexion WS du device.
+#[derive(Debug, Clone)]
+pub struct Pinout {
+    /// Le device générique est-il connecté au serveur ? `false` = hors
+    /// ligne (pas encore reconnecté après un restart, par exemple).
+    pub connected: bool,
+    pub pins: Vec<PinoutPin>,
+}
+
 /// `GET /devices/{id}/pinout` — pinout complet (instances + overlay).
-pub async fn pinout(device_pk: i64) -> Result<Vec<PinoutPin>, ApiError> {
+pub async fn pinout(device_pk: i64) -> Result<Pinout, ApiError> {
     let body = client::request::<serde_json::Value>(
         reqwest::Method::GET,
         &format!("/api/v1/devices/{device_pk}/pinout"),
         None,
     )
     .await?;
-    let mut out = Vec::new();
+    let mut pins = Vec::new();
     if let Some(list) = body["pins"].as_array() {
         for p in list {
-            out.push(PinoutPin {
+            pins.push(PinoutPin {
                 gpio: p["gpio"].as_i64().unwrap_or_default() as i32,
                 label: p["label"].as_str().unwrap_or_default().to_string(),
                 mode: p["mode"].as_str().unwrap_or_default().to_string(),
@@ -95,7 +104,10 @@ pub async fn pinout(device_pk: i64) -> Result<Vec<PinoutPin>, ApiError> {
             });
         }
     }
-    Ok(out)
+    Ok(Pinout {
+        connected: body["connected"].as_bool().unwrap_or(false),
+        pins,
+    })
 }
 
 /// `POST /devices/{id}/commands` — 400 si illégal (raison chip-caps

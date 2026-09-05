@@ -365,7 +365,7 @@ fn DeviceForm(mut cx: EditorCx, initial: DeviceConfig, can_write: bool) -> Eleme
                 pins_requested.insert(pk);
                 spawn(async move {
                     if let Ok(pins) = api::pins::pinout(pk).await {
-                        pins_cache.insert(pk, pins);
+                        pins_cache.insert(pk, pins.pins);
                     }
                 });
             }

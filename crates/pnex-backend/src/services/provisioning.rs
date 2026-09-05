@@ -8,10 +8,12 @@
 //! `Profiled`/`Locked` (P5).
 
 use loco_rs::prelude::*;
-use std::collections::HashMap;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+use std::collections::HashMap;
 
-use crate::models::_entities::{device_capability_instances, device_registries, mcu_boards, predefined_devices};
+use crate::models::_entities::{
+    device_capability_instances, device_registries, mcu_boards, predefined_devices,
+};
 use pnex_core::{Mode, ModeOpts, PinSpec};
 /// Erreur d'admission — message en clair pour `Reject{reason}` / 400 REST.
 pub(crate) struct AdmissionError(pub String);
@@ -100,7 +102,9 @@ pub(crate) async fn admit(
         let validated = pnex_core::caps::validate(pin.gpio, mode, &cfg).map_err(|v| {
             Error::string(&format!(
                 "pin {} (gpio {}) : {}",
-                pin.label, pin.gpio, v.reason()
+                pin.label,
+                pin.gpio,
+                v.reason()
             ))
         })?;
         match row {

@@ -68,15 +68,17 @@ async fn spawn_mock_o2() -> (String, CapturedLabels) {
         )
         .route(
             "/api/{org}/prometheus/api/v1/write",
-            post(move |headers: axum::http::HeaderMap, body: axum::body::Bytes| {
-                let store = store.clone();
-                async move {
-                    write_handler(headers, body, &store).await
-                }
-            }),
+            post(
+                move |headers: axum::http::HeaderMap, body: axum::body::Bytes| {
+                    let store = store.clone();
+                    async move { write_handler(headers, body, &store).await }
+                },
+            ),
         );
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
     let addr = listener.local_addr().expect("addr");
     tokio::spawn(async move {
         axum::serve(listener, app).await.expect("serve");
@@ -150,5 +152,8 @@ fn noms_et_cles_phase6() {
     // Clés de payload device : identiques éditeur/runtime.
     assert_eq!(pnex_core::device_payload_key("cap-1", "D1"), "cap_1_D1");
     // Préfixe etl_ idempotent + normalisé.
-    assert_eq!(pnex_core::etl_metric_name("Moyenne Serre"), "etl_moyenne_serre");
+    assert_eq!(
+        pnex_core::etl_metric_name("Moyenne Serre"),
+        "etl_moyenne_serre"
+    );
 }

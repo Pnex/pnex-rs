@@ -59,8 +59,9 @@ pub(crate) struct EditorCx {
     /// Violations courantes (locales ou reçues en 400 du serveur).
     pub(crate) violations: Signal<Vec<FlowViolation>>,
     /// Violations de **staleness** (client-only, jamais persistées) : pin
-    /// passé en sortie, pin disparu du pinout, device inconnu — le graphe
-    /// est structurellement valide mais sa lecture ne remontera rien.
+    /// passé en sortie, pin disparu du pinout, device supprimé, inactif ou
+    /// hors ligne — le graphe est structurellement valide mais sa lecture
+    /// ne remontera rien (tant que le device n'est pas revenu).
     pub(crate) stale: Signal<Vec<FlowViolation>>,
     /// Dernière valeur publiée par nœud Display (id canvas → raccourci
     /// d'affichage) — le badge live sous le nœud. Vidé si le moteur est
@@ -152,10 +153,13 @@ pub fn FlowEditor(
 
     // ─── Staleness pin/device (Phase 6) ───
     // Un graphe structurellement valide peut ne plus rien remonter : le pin
-    // a basculé in↔out (set_mode), le pin a disparu du pinout, le device est
-    // inconnu. Violations client-only (jamais persistées) → nœud + câble en
-    // rouge. Re-fetch uniquement au changement de CONFIG de lecture (pas au
-    // drag — la signature exclut les positions).
+    // a basculé in↔out (set_mode), le pin a disparu du pinout, le device a
+    // été supprimé, désactivé, ou est simplement hors ligne. Chaque état a
+    // son message distinct — un device en attente de reconnexion (restart
+    // serveur, wifi…) ne doit jamais s'afficher « supprimé ou inactif ».
+    // Violations client-only (jamais persistées) → nœud + câble en rouge.
+    // Re-fetch uniquement au changement de CONFIG de lecture (pas au drag —
+    // la signature exclut les positions).
     let mut stale_signature = use_signal(String::new);
     use_effect(move || {
         let g = graph.cloned(); // lecture suivie : re-déclenche au changement
@@ -187,56 +191,147 @@ pub fn FlowEditor(
                 stale.set(Vec::new());
                 return;
             }
-            let devices = api::devices::list(&api::devices::DeviceFilters {
-                active: Some(true),
-                limit: Some(200),
-                ..Default::default()
-            })
-            .await
-            .map(|page| page.results)
-            .unwrap_or_default();
-            let mut pinouts: std::collections::HashMap<
-                String,
-                Result<Vec<api::pins::PinoutPin>, String>,
-            > = std::collections::HashMap::new();
-            for slug in reads.iter().map(|(_, d, _)| d.clone()).collect::<std::collections::HashSet<_>>() {
-                let Some(pk) = devices.iter().find(|d| d.device_id == slug).map(|d| d.id) else {
+            /// Code/message distinct par état de device, jamais dédupliqués
+            /// par erreur (clé = nœud + code + message).
+            fn push(
+                found: &mut Vec<FlowViolation>,
+                seen: &mut std::collections::HashSet<(String, String, String)>,
+                node_id: &str,
+                code: &str,
+                message: String,
+            ) {
+                if seen.insert((node_id.to_owned(), code.to_owned(), message.clone())) {
+                    found.push(FlowViolation::new(Some(node_id), code, message));
+                }
+            }
+            // ── 1. État de chaque device — une requête exacte par slug ──
+            // Le filtre `device_id` est exact et sans filtre `active` :
+            // insensible au troncage pagination, et un device actif mais
+            // hors ligne reste dans la réponse (`active` est un flag DB,
+            // pas un état de connexion).
+            enum DeviceState {
+                /// L'API devices/pinout est injoignable — on ne sait RIEN du
+                /// device, on ne doit pas dire « introuvable ».
+                ApiError(String),
+                /// Absent du registre (supprimé, ou jamais existé).
+                Deleted,
+                /// Présent mais désactivé (`active = false`).
+                Inactive,
+                /// Présent et actif — l'état de connexion vient du pinout.
+                Active { pk: i64 },
+            }
+            let mut states: std::collections::HashMap<String, DeviceState> =
+                std::collections::HashMap::new();
+            for slug in reads
+                .iter()
+                .map(|(_, d, _)| d.clone())
+                .collect::<std::collections::HashSet<_>>()
+            {
+                let state = match api::devices::list(&api::devices::DeviceFilters {
+                    device_id: Some(slug.clone()),
+                    limit: Some(1),
+                    ..Default::default()
+                })
+                .await
+                {
+                    Err(err) => DeviceState::ApiError(err.message),
+                    Ok(page) if page.results.is_empty() => DeviceState::Deleted,
+                    Ok(page) => match page.results[0].active {
+                        false => DeviceState::Inactive,
+                        true => DeviceState::Active {
+                            pk: page.results[0].id,
+                        },
+                    },
+                };
+                states.insert(slug, state);
+            }
+            // ── 2. Pinout des devices actifs (instances + overlay + connexion) ──
+            let mut pinouts: std::collections::HashMap<String, Result<api::pins::Pinout, String>> =
+                std::collections::HashMap::new();
+            for slug in reads
+                .iter()
+                .map(|(_, d, _)| d.clone())
+                .collect::<std::collections::HashSet<_>>()
+            {
+                if let Some(DeviceState::Active { pk }) = states.get(&slug) {
+                    // Même source que l'inspecteur (`/pinout` : instances +
+                    // overlay) — `/pins` (instances seules) déclarerait
+                    // « absent » un pin que l'éditeur propose via l'overlay
+                    // (défaut carte d'un device jamais configuré) : faux rouge.
+                    let result = api::pins::pinout(*pk).await.map_err(|e| e.message);
+                    pinouts.insert(slug, result);
+                }
+            }
+            // ── 3. Une violation par read, dédupliquée (nœud, code, message) ──
+            let mut found: Vec<FlowViolation> = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            for (node_id, device_slug, pin_label) in reads {
+                let Some(state) = states.get(&device_slug) else {
                     continue;
                 };
-                // Même source que l'inspecteur (`/pinout` : instances +
-                // overlay) — `/pins` (instances seules) déclarerait « absent »
-                // un pin que l'éditeur propose via l'overlay (défaut carte
-                // d'un device jamais configuré) : faux rouge.
-                let result = api::pins::pinout(pk).await.map_err(|e| e.message);
-                pinouts.insert(slug, result);
-            }
-            let mut found: Vec<FlowViolation> = Vec::new();
-            for (node_id, device_slug, pin_label) in reads {
-                match pinouts.get(&device_slug) {
-                    None => found.push(FlowViolation::new(
-                        Some(&node_id),
-                        "pin_unavailable",
-                        format!("device « {device_slug} » introuvable (supprimé ou inactif)"),
-                    )),
-                    Some(Err(err)) => found.push(FlowViolation::new(
-                        Some(&node_id),
-                        "pin_unavailable",
-                        format!("pinout de « {device_slug} » indisponible : {err}"),
-                    )),
-                    Some(Ok(pins)) => match pins.iter().find(|p| p.label == pin_label) {
-                        None => found.push(FlowViolation::new(
-                            Some(&node_id),
-                            "pin_unavailable",
-                            format!("pin « {pin_label} » absent du device « {device_slug} »"),
-                        )),
-                        Some(pin) if pin.mode == "digital_out" => found.push(FlowViolation::new(
-                            Some(&node_id),
-                            "pin_unavailable",
-                            format!(
-                                "pin « {pin_label} » est en sortie (digital_out) — la lecture ne remontera aucune donnée"
-                            ),
-                        )),
-                        _ => {}
+                match state {
+                    DeviceState::ApiError(err) => push(
+                        &mut found,
+                        &mut seen,
+                        &node_id,
+                        "pin_check_unavailable",
+                        format!("vérification de « {device_slug} » indisponible : {err}"),
+                    ),
+                    DeviceState::Deleted => push(
+                        &mut found,
+                        &mut seen,
+                        &node_id,
+                        "device_deleted",
+                        format!("device « {device_slug} » introuvable (supprimé)"),
+                    ),
+                    DeviceState::Inactive => push(
+                        &mut found,
+                        &mut seen,
+                        &node_id,
+                        "device_inactive",
+                        format!("device « {device_slug} » inactif — réactivez-le depuis la page Devices"),
+                    ),
+                    DeviceState::Active { .. } => match pinouts.get(&device_slug) {
+                        None => {} // slug actif non scruté : impossible ici
+                        Some(Err(err)) => push(
+                            &mut found,
+                            &mut seen,
+                            &node_id,
+                            "pin_check_unavailable",
+                            format!("pinout de « {device_slug} » indisponible : {err}"),
+                        ),
+                        Some(Ok(pinout)) => {
+                            if !pinout.connected {
+                                push(
+                                    &mut found,
+                                    &mut seen,
+                                    &node_id,
+                                    "device_offline",
+                                    format!(
+                                        "device « {device_slug} » hors ligne — les lectures reprendront à la reconnexion"
+                                    ),
+                                );
+                            }
+                            match pinout.pins.iter().find(|p| p.label == pin_label) {
+                                None => push(
+                                    &mut found,
+                                    &mut seen,
+                                    &node_id,
+                                    "pin_unavailable",
+                                    format!("pin « {pin_label} » absent du device « {device_slug} »"),
+                                ),
+                                Some(pin) if pin.mode == "digital_out" => push(
+                                    &mut found,
+                                    &mut seen,
+                                    &node_id,
+                                    "pin_unavailable",
+                                    format!(
+                                        "pin « {pin_label} » est en sortie (digital_out) — la lecture ne remontera aucune donnée"
+                                    ),
+                                ),
+                                _ => {}
+                            }
+                        }
                     },
                 }
             }
@@ -247,6 +342,11 @@ pub fn FlowEditor(
     // --- Save (validate → PATCH) ---
     let mut saving = use_signal(|| false);
     let mut conflict = use_signal(|| None::<String>);
+    // Proposition de deploy après save d'un flow déjà déployé : la version
+    // en exécution reste l'ancienne (une update ne recharge jamais le
+    // moteur) — petit encart « Déployer vN ? » plutôt qu'un auto-deploy
+    // qui purgerait le feed debug à chaque itération (choix utilisateur).
+    let mut propose_deploy = use_signal(|| None::<i64>);
     let save = move |_| {
         if saving() {
             return;
@@ -272,6 +372,12 @@ pub fn FlowEditor(
                     violations.set(Vec::new());
                     loaded_from.set(None);
                     toasts::success("toast-flow-saved");
+                    // Flow déjà déployé : la version en exécution reste
+                    // l'ancienne — proposer le deploy (l'édition ultérieure
+                    // masque l'encart, la condition de rendu porte sur dirty).
+                    if flow.status == "deployed" {
+                        propose_deploy.set(Some(flow.latest_version_number));
+                    }
                     on_changed.call(());
                 }
                 Err(err) => match api::flows::classify_save_error(&err) {
@@ -333,7 +439,7 @@ pub fn FlowEditor(
 
     // --- Deploy ---
     let mut deploying = use_signal(|| false);
-    let deploy = move |_| {
+    let mut deploy = move |_| {
         if deploying() {
             return;
         }
@@ -344,6 +450,7 @@ pub fn FlowEditor(
                     toasts::success("toast-flow-deployed");
                     on_changed.call(());
                     reload_meta.with_mut(|r| *r += 1);
+                    propose_deploy.set(None);
                 }
                 Err(err) => toasts::error(err.message),
             }
@@ -535,26 +642,44 @@ pub fn FlowEditor(
                     }
                 }
                 // Chip runtime (superviseur backend, acquittement du moteur).
+                // La version déployée est AFFICHÉE dans le chip (pas qu'au
+                // survol) et un écart avec la version sauvegardée passe en
+                // ambre « à redéployer » — v17 sauvegardée, v12 en exécution
+                // ne doit plus passer inaperçu (retour du 05/09 : nœud calc
+                // ajouté mais jamais déployé, feed debug muet).
                 {match &*runtime.value().read() {
-                    Some(Ok(status)) => rsx! {
-                        span {
-                            class: if status.running {
-                                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200"
-                            } else {
-                                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200"
-                            },
-                            title: match (status.pid, status.deployed_version_number) {
-                                (Some(pid), Some(version)) => format!("pid {pid} · v{version}"),
-                                (Some(pid), None) => format!("pid {pid}"),
-                                _ => String::new(),
-                            },
-                            if status.running {
-                                {t!("flows-runtime-running")}
-                            } else {
-                                {t!("flows-runtime-stopped")}
+                    Some(Ok(status)) => {
+                        let outdated = status.running
+                            && status.deployed_version_number.is_some()
+                            && status.deployed_version_number != Some(saved_version());
+                        rsx! {
+                            span {
+                                class: if outdated {
+                                    "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200"
+                                } else if status.running {
+                                    "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200"
+                                } else {
+                                    "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200"
+                                },
+                                title: match (status.pid, status.deployed_version_number) {
+                                    (Some(pid), Some(version)) => format!("pid {pid} · v{version}"),
+                                    (Some(pid), None) => format!("pid {pid}"),
+                                    _ => String::new(),
+                                },
+                                if status.running {
+                                    {match status.deployed_version_number {
+                                        Some(v) => format!("{} · v{v}", t!("flows-runtime-running")),
+                                        None => t!("flows-runtime-running").to_string(),
+                                    }}
+                                } else {
+                                    {t!("flows-runtime-stopped")}
+                                }
+                                if outdated {
+                                    span { class: "font-semibold", {t!("flows-runtime-outdated")} }
+                                }
                             }
                         }
-                    },
+                    }
                     _ => rsx! {},
                 }}
                 if debug_tools() {
@@ -581,7 +706,7 @@ pub fn FlowEditor(
                     span { class: "font-semibold mr-2", {t!("flows-violations-banner-title")} }
                     ul { class: "list-disc list-inside",
                         for violation in banner.clone() {
-                            li { key: "{violation.code}-{violation.node_id:?}",
+                            li { key: "{violation.code}-{violation.node_id:?}-{violation.message}",
                                 {match &violation.node_id {
                                     Some(node_id) => format!("#{node_id} : {}", violation.message),
                                     None => violation.message.clone(),
@@ -591,6 +716,35 @@ pub fn FlowEditor(
                     }
                 }
             }
+
+            // ─── Encart « Déployer la version enregistrée ? » ───
+            // Proposé après un save d'un flow déjà déployé ; masqué si
+            // l'utilisateur édite à nouveau (la version proposée ne serait
+            // plus celle du canvas) ou après un deploy réussi.
+            {match propose_deploy() {
+                Some(version) if !dirty => rsx! {
+                    div { class: "bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-800 flex items-center gap-3",
+                        span { class: "flex-1",
+                            {t!("flows-deploy-propose-text", version: version)}
+                        }
+                        button {
+                            class: "px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed",
+                            disabled: deploying(),
+                            onclick: move |evt| {
+                                propose_deploy.set(None);
+                                deploy(evt);
+                            },
+                            {t!("flows-deploy-propose-go", version: version)}
+                        }
+                        button {
+                            class: "px-3 py-1 text-xs text-blue-700 hover:bg-blue-100 rounded-lg transition-colors",
+                            onclick: move |_| propose_deploy.set(None),
+                            {t!("flows-deploy-propose-later")}
+                        }
+                    }
+                },
+                _ => rsx! {},
+            }}
 
             // ─── Corps : palette · canevas · inspecteur ───
             div { class: "flex gap-3 h-[calc(100vh-16rem)] min-h-96",

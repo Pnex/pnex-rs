@@ -68,7 +68,10 @@ const DEBUG_TTL_SECS: i64 = 300;
 
 #[derive(Default)]
 struct DebugFeed {
-    per_flow: std::collections::HashMap<i64, std::collections::VecDeque<(std::time::Instant, pnex_core::FlowDebugEntry)>>,
+    per_flow: std::collections::HashMap<
+        i64,
+        std::collections::VecDeque<(std::time::Instant, pnex_core::FlowDebugEntry)>,
+    >,
     next_seq: u64,
     /// Dernier accès par flow (évcition LRU au-delà de `DEBUG_MAX_FLOWS`).
     last_touch: std::collections::HashMap<i64, std::time::Instant>,
@@ -120,12 +123,26 @@ pub fn push_debug(raw: &serde_json::Value) {
         seq: 0, // assigné sous lock
         ts: rfc3339_now(),
         flow_id,
-        node_id: raw.get("node_red").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+        node_id: raw
+            .get("node_red")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string(),
         name: raw.get("name").and_then(|v| v.as_str()).map(str::to_string),
         msg: raw.get("msg").cloned().unwrap_or(serde_json::Value::Null),
-        source: raw.get("source").and_then(|v| v.as_str()).unwrap_or("debug").to_string(),
-        topic: raw.get("topic").and_then(|v| v.as_str()).map(str::to_string),
-        msgid: raw.get("msgid").and_then(|v| v.as_str()).map(str::to_string),
+        source: raw
+            .get("source")
+            .and_then(|v| v.as_str())
+            .unwrap_or("debug")
+            .to_string(),
+        topic: raw
+            .get("topic")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        msgid: raw
+            .get("msgid")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
     };
     let mut feed = feed().lock().expect("lock debug feed");
     let now = std::time::Instant::now();
@@ -140,8 +157,11 @@ pub fn push_debug(raw: &serde_json::Value) {
     feed.last_touch.insert(flow_id, now);
     // Éviction LRU des flows (au-delà du cap, le flow le plus ancien sort).
     while feed.per_flow.len() > DEBUG_MAX_FLOWS {
-        let Some(victim) =
-            feed.last_touch.iter().min_by_key(|(_, t)| **t).map(|(fid, _)| *fid)
+        let Some(victim) = feed
+            .last_touch
+            .iter()
+            .min_by_key(|(_, t)| **t)
+            .map(|(fid, _)| *fid)
         else {
             break;
         };
@@ -157,7 +177,10 @@ pub fn debug_entries(flow_id: i64, limit: usize) -> Vec<pnex_core::FlowDebugEntr
     let now = std::time::Instant::now();
     if let Some(q) = feed.per_flow.get_mut(&flow_id) {
         q.retain(|(t, _)| now.duration_since(*t).as_secs() as i64 <= DEBUG_TTL_SECS);
-        q.iter().map(|(_, e)| e.clone()).skip(q.len().saturating_sub(limit)).collect()
+        q.iter()
+            .map(|(_, e)| e.clone())
+            .skip(q.len().saturating_sub(limit))
+            .collect()
     } else {
         Vec::new()
     }
@@ -202,7 +225,10 @@ pub fn spawn_supervisor(ctx: &AppContext) {
 
 /// Variante testable : réglages explicites.
 pub fn spawn_supervisor_with(settings: FlowSettings) {
-    if SPAWNED.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+    if SPAWNED
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
         tracing::warn!("superviseur de flows déjà lancé dans ce process");
         return;
     }
@@ -221,17 +247,26 @@ pub async fn deploy(artifact: Value, meta: FlowArtifactMeta) -> Result<(), Strin
         .ok_or_else(|| "runtime de flow indisponible (settings.flow.enabled ?)".to_string())?;
     let (reply_tx, reply_rx) = oneshot::channel();
     tx.clone()
-        .send(SupervisorCmd::Deploy { artifact, meta, reply: reply_tx })
+        .send(SupervisorCmd::Deploy {
+            artifact,
+            meta,
+            reply: reply_tx,
+        })
         .await
         .map_err(|_| "superviseur de flow arrêté".to_string())?;
-    reply_rx.await.map_err(|_| "superviseur de flow injoignable".to_string())?
+    reply_rx
+        .await
+        .map_err(|_| "superviseur de flow injoignable".to_string())?
 }
 
 /// État du runtime lu depuis `<state_dir>/runtime.json` (+ test de vie du
 /// pid). Best-effort : état absent → `running=false`.
 pub fn runtime_status(settings: &FlowSettings) -> FlowRuntimeStatus {
     let path = state_dir_of(settings).join("runtime.json");
-    let mut status = FlowRuntimeStatus { running: false, ..Default::default() };
+    let mut status = FlowRuntimeStatus {
+        running: false,
+        ..Default::default()
+    };
     let Ok(raw) = std::fs::read_to_string(path) else {
         return status;
     };
@@ -261,11 +296,14 @@ static RUN_ONCE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64
 /// Enregistré **avant** SIGUSR2 (course signal/ack), dépilé par
 /// [`resolve_run_once`] depuis `pump_lines`.
 static PENDING_RUN_ONCE: OnceLock<
-    std::sync::Mutex<std::collections::HashMap<u64, oneshot::Sender<Result<pnex_core::RunOnceResult, String>>>>,
+    std::sync::Mutex<
+        std::collections::HashMap<u64, oneshot::Sender<Result<pnex_core::RunOnceResult, String>>>,
+    >,
 > = OnceLock::new();
 
-fn pending_run_once(
-) -> &'static std::sync::Mutex<std::collections::HashMap<u64, oneshot::Sender<Result<pnex_core::RunOnceResult, String>>>> {
+fn pending_run_once() -> &'static std::sync::Mutex<
+    std::collections::HashMap<u64, oneshot::Sender<Result<pnex_core::RunOnceResult, String>>>,
+> {
     PENDING_RUN_ONCE.get_or_init(std::sync::Mutex::default)
 }
 
@@ -281,7 +319,11 @@ pub async fn run_once(flow_id: i64) -> Result<pnex_core::RunOnceResult, String> 
     let seq = RUN_ONCE_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
     let (reply_tx, reply_rx) = oneshot::channel();
     tx.clone()
-        .send(SupervisorCmd::RunOnce { flow_id, seq, reply: reply_tx })
+        .send(SupervisorCmd::RunOnce {
+            flow_id,
+            seq,
+            reply: reply_tx,
+        })
         .await
         .map_err(|_| "superviseur de flow arrêté".to_string())?;
     let result = reply_rx
@@ -292,7 +334,9 @@ pub async fn run_once(flow_id: i64) -> Result<pnex_core::RunOnceResult, String> 
 
 /// Dépile un ack stdout `run_once_done`/`run_once_failed` corrélé par seq.
 fn resolve_run_once(v: &serde_json::Value) {
-    let Some(seq) = v.get("seq").and_then(|s| s.as_u64()) else { return };
+    let Some(seq) = v.get("seq").and_then(|s| s.as_u64()) else {
+        return;
+    };
     let mut pending = pending_run_once().lock().expect("lock pending run_once");
     if let Some(tx) = pending.remove(&seq) {
         match v.get("event").and_then(|e| e.as_str()) {
@@ -376,13 +420,28 @@ async fn run_supervisor(settings: FlowSettings, mut rx: mpsc::Receiver<Superviso
 
         // 3) Commandes (non bloquant : on boucle à intervalle court).
         match rx.try_recv() {
-            Ok(SupervisorCmd::RunOnce { flow_id, seq, reply }) => {
+            Ok(SupervisorCmd::RunOnce {
+                flow_id,
+                seq,
+                reply,
+            }) => {
                 // Ne bloque jamais la boucle : l'attente d'ack est spawnée.
                 handle_run_once(&settings, &child, flow_id, seq, reply);
             }
-            Ok(SupervisorCmd::Deploy { artifact, meta, reply }) => {
-                let outcome =
-                    handle_deploy(&settings, &flows_path, &runtime_json, &mut child, &artifact, meta).await;
+            Ok(SupervisorCmd::Deploy {
+                artifact,
+                meta,
+                reply,
+            }) => {
+                let outcome = handle_deploy(
+                    &settings,
+                    &flows_path,
+                    &runtime_json,
+                    &mut child,
+                    &artifact,
+                    meta,
+                )
+                .await;
                 if outcome.is_ok() {
                     runtime_wanted = true;
                     started_at = Some(tokio::time::Instant::now());
@@ -416,20 +475,30 @@ fn handle_run_once(
         return;
     };
     let (ack_tx, ack_rx) = oneshot::channel();
-    pending_run_once().lock().expect("lock pending run_once").insert(seq, ack_tx);
+    pending_run_once()
+        .lock()
+        .expect("lock pending run_once")
+        .insert(seq, ack_tx);
 
     let dir = state_dir_of(settings);
     let cmd_path = dir.join("cmd.json");
     let tmp = dir.join("cmd.json.tmp");
     let cmd = serde_json::json!({ "seq": seq, "flow": format!("pnexflow{flow_id}") });
-    let written = std::fs::write(&tmp, cmd.to_string()).and_then(|_| std::fs::rename(&tmp, &cmd_path));
+    let written =
+        std::fs::write(&tmp, cmd.to_string()).and_then(|_| std::fs::rename(&tmp, &cmd_path));
     if let Err(e) = written {
-        pending_run_once().lock().expect("lock pending run_once").remove(&seq);
+        pending_run_once()
+            .lock()
+            .expect("lock pending run_once")
+            .remove(&seq);
         let _ = reply.send(Err(format!("écriture de {} : {e}", cmd_path.display())));
         return;
     }
     if let Err(e) = signal_usr2(c.pid) {
-        pending_run_once().lock().expect("lock pending run_once").remove(&seq);
+        pending_run_once()
+            .lock()
+            .expect("lock pending run_once")
+            .remove(&seq);
         let _ = reply.send(Err(format!("SIGUSR2 vers le pid {} : {e}", c.pid)));
         return;
     }
@@ -443,8 +512,13 @@ fn handle_run_once(
                 let _ = reply.send(Err("superviseur de flow injoignable".into()));
             }
             Err(_) => {
-                pending_run_once().lock().expect("lock pending run_once").remove(&seq);
-                let _ = reply.send(Err(format!("aucun acquittement de run-once après {ack_secs} s")));
+                pending_run_once()
+                    .lock()
+                    .expect("lock pending run_once")
+                    .remove(&seq);
+                let _ = reply.send(Err(format!(
+                    "aucun acquittement de run-once après {ack_secs} s"
+                )));
             }
         }
     });
@@ -479,9 +553,13 @@ async fn handle_deploy(
 ) -> Result<bool, String> {
     // 1) Écriture atomique de l'artefact (tmp + rename).
     let tmp = flows_path.with_extension("json.tmp");
-    std::fs::write(&tmp, serde_json::to_string_pretty(artifact).map_err(|e| e.to_string())?)
-        .map_err(|e| format!("écriture de {} : {e}", tmp.display()))?;
-    std::fs::rename(&tmp, flows_path).map_err(|e| format!("renommage de {} : {e}", flows_path.display()))?;
+    std::fs::write(
+        &tmp,
+        serde_json::to_string_pretty(artifact).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("écriture de {} : {e}", tmp.display()))?;
+    std::fs::rename(&tmp, flows_path)
+        .map_err(|e| format!("renommage de {} : {e}", flows_path.display()))?;
 
     // Feed debug purgé AVANT le signal : les entrées de la version
     // antérieure meurent avec l'artefact qu'elles reflètent, et les entrées
@@ -524,7 +602,8 @@ async fn handle_deploy(
     while tokio::time::Instant::now() < deadline {
         if let Ok(raw) = std::fs::read_to_string(runtime_json) {
             if let Ok(v) = serde_json::from_str::<Value>(&raw) {
-                let version_ok = v.get("version_number").and_then(|n| n.as_i64()) == Some(meta.version_number)
+                let version_ok = v.get("version_number").and_then(|n| n.as_i64())
+                    == Some(meta.version_number)
                     && v.get("flow_id").and_then(|n| n.as_i64()) == Some(meta.flow_id);
                 let redeploys = v.get("redeploys").and_then(|r| r.as_u64()).unwrap_or(0);
                 if version_ok || redeploys >= expected_signals {
@@ -561,7 +640,10 @@ fn spawn_child(settings: &FlowSettings, flows_path: &std::path::Path) -> Option<
         .env_clear()
         .env("PATH", std::env::var("PATH").unwrap_or_default())
         .env("HOME", std::env::var("HOME").unwrap_or_default())
-        .env("PNEX_FLOW_LOG", std::env::var("PNEX_FLOW_LOG").unwrap_or_else(|_| "info".into()))
+        .env(
+            "PNEX_FLOW_LOG",
+            std::env::var("PNEX_FLOW_LOG").unwrap_or_else(|_| "info".into()),
+        )
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
@@ -605,7 +687,11 @@ fn spawn_child(settings: &FlowSettings, flows_path: &std::path::Path) -> Option<
         let status = child.wait().await;
         let _ = exit_tx.send(status.map_or_else(|e| e.to_string(), |s| s.to_string()));
     });
-    Some(ChildProc { pid, signals_sent: 0, exit_rx })
+    Some(ChildProc {
+        pid,
+        signals_sent: 0,
+        exit_rx,
+    })
 }
 
 async fn pump_lines(stream: impl tokio::io::AsyncRead + Unpin, level: tracing::Level) {
@@ -670,7 +756,11 @@ fn resolve_program(token: &str) -> String {
         return token.to_string();
     }
     let try_anchor = |anchor: &Path| -> Option<String> {
-        anchor.join(token).canonicalize().ok().map(|p| p.display().to_string())
+        anchor
+            .join(token)
+            .canonicalize()
+            .ok()
+            .map(|p| p.display().to_string())
     };
     if let Ok(cwd) = std::env::current_dir() {
         if let Some(abs) = try_anchor(&cwd) {
@@ -701,7 +791,10 @@ mod tests {
 
     #[test]
     fn runtime_status_sans_etat() {
-        let s = FlowSettings { state_dir: "/tmp/pnex-flow-status-absente".into(), ..Default::default() };
+        let s = FlowSettings {
+            state_dir: "/tmp/pnex-flow-status-absente".into(),
+            ..Default::default()
+        };
         let st = runtime_status(&s);
         assert!(!st.running);
         assert_eq!(st.pid, None);

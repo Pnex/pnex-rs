@@ -115,7 +115,9 @@ impl FlowSettings {
             enabled: partial.enabled.unwrap_or(d.enabled),
             runtime_cmd: partial.runtime_cmd.unwrap_or(d.runtime_cmd),
             state_dir: partial.state_dir.unwrap_or(d.state_dir),
-            restart_backoff_secs: partial.restart_backoff_secs.unwrap_or(d.restart_backoff_secs),
+            restart_backoff_secs: partial
+                .restart_backoff_secs
+                .unwrap_or(d.restart_backoff_secs),
             restart_backoff_max_secs: partial
                 .restart_backoff_max_secs
                 .unwrap_or(d.restart_backoff_max_secs),
@@ -153,11 +155,14 @@ mod tests {
             "server": { "port": 5150, "host": "http://localhost" },
             "database": { "uri": "postgres://pnex:pnex@localhost:5432/pnex", "enable_logging": false, "auto_migrate": false, "connect_timeout": 500, "idle_timeout": 500, "min_connections": 1, "max_connections": 5 }
         });
-        let config: Config = serde_json::from_value(minimal.clone())
-            .expect("config minimale désérialisable");
+        let config: Config =
+            serde_json::from_value(minimal.clone()).expect("config minimale désérialisable");
         let s = FlowSettings::from_config(&config);
         assert_eq!(s.state_dir, d.state_dir);
-        assert!(s.o2.is_none(), "sans section openobserve : pas de creds à injecter");
+        assert!(
+            s.o2.is_none(),
+            "sans section openobserve : pas de creds à injecter"
+        );
 
         // Section partielle : seuls les champs fournis surchargent.
         let config: Config = serde_json::from_value(serde_json::json!({
@@ -189,6 +194,9 @@ mod tests {
         .expect("config avec openobserve désérialisable");
         let s = FlowSettings::from_config(&config);
         assert!(s.o2.is_some(), "creds O2 résolues depuis le yaml");
-        assert!(!format!("{s:?}").contains("pass"), "le Debug ne fuite pas le secret");
+        assert!(
+            !format!("{s:?}").contains("pass"),
+            "le Debug ne fuite pas le secret"
+        );
     }
 }

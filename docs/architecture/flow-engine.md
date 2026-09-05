@@ -89,11 +89,17 @@ Pipeline cible : `[inject] → [device] → [calc] → [metric]`
   séparé) : le catalogue Visualisation étant une découverte dynamique des
   streams metrics, la série apparaît d'elle-même « comme un capteur »,
   filtrable par source_type.
-- **Creds/org** : `pnex_org_id` estampillé dans l'artefact au deploy
-  (`FlowArtifactMeta.org_id` → tab + nœuds custom) — le runtime déduit
-  l'org O2 (`pnex_org_{id}`, convention provisioning) **sans accès SQL** ;
-  auth Basic racine via allowlist env. Spike exécuté contre l'O2 réel
-  (`examples/o2_spike.rs`) : remote-write racine accepté + relecture
+- **Creds/org** : `pnex_org_id` **et `pnex_o2_org`** estampillés dans
+  l'artefact au deploy (`FlowArtifactMeta` → tab + nœuds device/metric) —
+  l'identifiant O2 **réel** (`openobserve_orgs.o2_org`, généré par le
+  provisioning) est résolu en lecture seule (`provisioned_credentials`) au
+  moment de la reprojection, **sans schéma déduit** (`pnex_org_{id}` était
+  faux : le provisioning génère un id O2 arbitraire). `pnex_o2_org` vide =
+  org pas encore provisionnée → nœuds device/metric dégradent (warn,
+  lecture/écriture sautée, pipeline vivant) ; le provisioning O2 (1ʳᵉ
+  ingestion) déclenche une reprojection qui comble le champ (self-healing,
+  sink.rs). Auth Basic racine via allowlist env. Spike exécuté contre l'O2
+  réel (`examples/o2_spike.rs`) : remote-write racine accepté + relecture
   `last_over_time` cohérente — le passcode d'org reste inutile aux lectures
   (O2 v0.92.1), la racine couvre lecture **et** écriture.
 - **Évaluateur partagé** (`eval_calc`/`validate_calc`) + nommage centralisé
@@ -104,9 +110,10 @@ Pipeline cible : `[inject] → [device] → [calc] → [metric]`
   **dé-déploiement automatique** (status draft, reprojection + SIGUSR1 : le
   flow s'arrête réellement ; la version publiée reste enregistrée), réponse
   enrichie `flow_impacts` → toast UI Pins. Dans l'éditeur, violations de
-  **staleness** client-only (pin en sortie, pin disparu, device introuvable)
-  → nœud **et câble** en rouge ; re-scan au changement de configuration
-  uniquement (pas au drag).
+  **staleness** client-only (pin en sortie, pin disparu, device supprimé,
+  inactif ou hors ligne — états distincts, `connected` exposé par
+  `/devices/{id}/pinout`) → nœud **et câble** en rouge ; re-scan au
+  changement de configuration uniquement (pas au drag).
 
 ## 0ter. Outils de debug du flow (2026-09-05) — panneau Debug, sonde
 `pnex-display`, run-once

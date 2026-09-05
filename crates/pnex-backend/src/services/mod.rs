@@ -8,7 +8,7 @@ pub mod firmware;
 pub mod flow;
 pub mod flow_supervisor;
 pub mod openobserve;
-pub mod settings;
 pub mod provisioning;
+pub mod settings;
 pub mod telemetry;
 pub mod visualization;

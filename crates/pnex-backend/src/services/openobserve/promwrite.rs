@@ -10,7 +10,7 @@
 
 use prost::Message;
 
-use pnex_core::{Label, Sample, TimeSeries, WriteRequest, sanitize_metric_name};
+use pnex_core::{sanitize_metric_name, Label, Sample, TimeSeries, WriteRequest};
 
 use crate::services::telemetry::TelemetryPoint;
 

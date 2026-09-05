@@ -812,3 +812,29 @@ async fn pagination_des_listes() {
     })
     .await;
 }
+
+/// `GET /devices/{id}/pinout` expose `connected` (état WS, pas DB) : un
+/// device jamais connecté répond `connected: false` avec ses pins overlay —
+/// l'éditeur de flows s'en sert pour dire « hors ligne » au lieu d'un faux
+/// « introuvable » quand le serveur a redémarré (retour utilisateur).
+#[tokio::test]
+#[serial]
+async fn pinout_exposes_connected_flag() {
+    with_app(|server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        create_device(&server, &env.alice, org, "esp-off", "soil_sensor").await;
+        let list = list_devices(&server, &env.alice, org, "?device_id=esp-off").await;
+        let pk = list["results"][0]["id"].as_i64().expect("device créé");
+
+        let body: serde_json::Value = server
+            .get(&format!("/api/v1/devices/{pk}/pinout"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await
+            .json();
+        assert_eq!(body["connected"], false, "jamais connecté → hors ligne");
+        assert_eq!(body["device_id"], "esp-off");
+        assert!(body["pins"].is_array());
+    })
+    .await;
+}

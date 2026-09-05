@@ -54,8 +54,7 @@ impl O2Client {
             .timeout(Duration::from_secs(10))
             .build()
             .map_err(|e| EdgelinkError::InvalidOperation(format!("client O2 : {e}")))?;
-        let basic = base64::engine::general_purpose::STANDARD
-            .encode(format!("{email}:{password}"));
+        let basic = base64::engine::general_purpose::STANDARD.encode(format!("{email}:{password}"));
         Ok(Self { base, basic, http })
     }
 
@@ -82,7 +81,10 @@ impl O2Client {
             .await
             .map_err(|e| format!("query O2 injoignable : {e}"))?;
         let status = resp.status();
-        let body = resp.text().await.map_err(|e| format!("query O2 : lecture du corps : {e}"))?;
+        let body = resp
+            .text()
+            .await
+            .map_err(|e| format!("query O2 : lecture du corps : {e}"))?;
         if !status.is_success() {
             return Err(format!("query O2 {status} : {body}"));
         }
@@ -99,7 +101,9 @@ impl O2Client {
         let req = pnex_core::WriteRequest { timeseries };
         let pb = req.encode_to_vec();
         let mut encoder = snap::raw::Encoder::new();
-        let compressed = encoder.compress_vec(&pb).map_err(|e| format!("snappy : {e}"))?;
+        let compressed = encoder
+            .compress_vec(&pb)
+            .map_err(|e| format!("snappy : {e}"))?;
         let resp = self
             .http
             .post(format!("{}/api/{org}/prometheus/api/v1/write", self.base))
@@ -130,13 +134,31 @@ pub fn etl_series(
     use pnex_core::{Label, Sample};
     pnex_core::TimeSeries {
         labels: vec![
-            Label { name: "__name__".into(), value: metric },
-            Label { name: "device_id".into(), value: virtual_device },
-            Label { name: "pred_dev".into(), value: "virtual_device".into() },
-            Label { name: "source_type".into(), value: "etl".into() },
-            Label { name: "ts_source".into(), value: "server".into() },
+            Label {
+                name: "__name__".into(),
+                value: metric,
+            },
+            Label {
+                name: "device_id".into(),
+                value: virtual_device,
+            },
+            Label {
+                name: "pred_dev".into(),
+                value: "virtual_device".into(),
+            },
+            Label {
+                name: "source_type".into(),
+                value: "etl".into(),
+            },
+            Label {
+                name: "ts_source".into(),
+                value: "server".into(),
+            },
         ],
-        samples: vec![Sample { value, timestamp: ts_ms }],
+        samples: vec![Sample {
+            value,
+            timestamp: ts_ms,
+        }],
     }
 }
 
@@ -146,9 +168,14 @@ pub fn parse_instant_response(body: &str) -> Result<Option<LastSample>, String> 
     let v: serde_json::Value =
         serde_json::from_str(body).map_err(|e| format!("réponse O2 non JSON : {e}"))?;
     if v["status"] != "success" {
-        return Err(format!("query O2 : {}", v["error"].as_str().unwrap_or("erreur inconnue")));
+        return Err(format!(
+            "query O2 : {}",
+            v["error"].as_str().unwrap_or("erreur inconnue")
+        ));
     }
-    let samples = v["data"]["result"].as_array().ok_or("réponse O2 : data.result absent")?;
+    let samples = v["data"]["result"]
+        .as_array()
+        .ok_or("réponse O2 : data.result absent")?;
     let Some(first) = samples.first() else {
         return Ok(None);
     };

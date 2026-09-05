@@ -1,5 +1,5 @@
+pub use super::_entities::device_capability_instances::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
-pub use super::_entities::device_capability_instances::{ActiveModel, Model, Entity};
 pub type DeviceCapabilityInstances = Entity;
 
 #[async_trait::async_trait]
