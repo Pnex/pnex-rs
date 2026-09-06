@@ -16,7 +16,7 @@ use crate::api;
 use crate::components::confirm::ConfirmDialog;
 
 #[component]
-pub(crate) fn Inspector(mut cx: EditorCx, can_write: bool) -> Element {
+pub(crate) fn Inspector(mut cx: EditorCx, can_write: bool, flow_id: i64) -> Element {
     let Some(node_id) = cx.selected_node.cloned() else {
         return empty_panel();
     };
@@ -56,7 +56,7 @@ pub(crate) fn Inspector(mut cx: EditorCx, can_write: bool) -> Element {
                     }),
                 }
             }
-            {kind_form(&node, cx, can_write)}
+            {kind_form(&node, cx, can_write, flow_id)}
 
             if !node_violations.is_empty() {
                 div { class: "rounded-lg bg-red-50 border border-red-200 p-2 space-y-1",
@@ -93,7 +93,7 @@ fn empty_panel() -> Element {
 }
 
 /// Formulaire propre au kind — un composant par variante (hooks isolés).
-fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool) -> Element {
+fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> Element {
     match &node.kind {
         FlowNodeKind::Inject { config } => rsx! {
             InjectForm { cx, initial: config.clone(), can_write }
@@ -108,7 +108,7 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool) -> Element {
             CalcForm { cx, initial: config.clone(), can_write }
         },
         FlowNodeKind::Metric { config } => rsx! {
-            MetricForm { cx, initial: config.clone(), can_write }
+            MetricForm { cx, initial: config.clone(), can_write, flow_id }
         },
         FlowNodeKind::Debug { config } => rsx! {
             DebugForm { cx, initial: config.clone(), can_write }
@@ -534,7 +534,7 @@ fn CalcForm(mut cx: EditorCx, initial: CalcConfig, can_write: bool) -> Element {
 /// ─────────────── metric ───────────────
 
 #[component]
-fn MetricForm(mut cx: EditorCx, initial: MetricConfig, can_write: bool) -> Element {
+fn MetricForm(mut cx: EditorCx, initial: MetricConfig, can_write: bool, flow_id: i64) -> Element {
     let mut name = use_signal(move || initial.metric_name.clone());
     let preview = use_memo(move || {
         let raw = name.cloned();
@@ -562,7 +562,7 @@ fn MetricForm(mut cx: EditorCx, initial: MetricConfig, can_write: bool) -> Eleme
                     code { class: "ml-1 px-1 rounded bg-gray-100", {preview.cloned()} }
                 }
             }
-            p { class: "text-xs text-gray-400", {t!("flows-metric-labels-help")} }
+            p { class: "text-xs text-gray-400", {t!("flows-metric-labels-help", id: flow_id)} }
         }
     }
 }

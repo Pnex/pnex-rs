@@ -92,6 +92,9 @@ pub fn set_locale(tag: &str) {
 
 #[cfg(test)]
 mod tests {
+    use dioxus_i18n::fluent::{FluentArgs, FluentBundle, FluentResource, FluentValue};
+    use dioxus_i18n::unic_langid::langid;
+
     /// `t!` panique sur une clé absente de la langue courante : les deux
     /// locales doivent définir exactement les mêmes clés.
     fn keys(source: &'static str) -> Vec<String> {
@@ -116,5 +119,37 @@ mod tests {
             en, fr,
             "fr-FR et en-US doivent définir exactement les mêmes clés"
         );
+    }
+
+    /// Un message Fluent à variable rendu **sans** son argument fait paniquer
+    /// `t!` (FluentErrorsDetected → unwrap_or_else(panic!) dans dioxus-i18n) :
+    /// crash réel 2026-09-06 — `flows-metric-labels-help` (variable `$id`)
+    /// rendu sans `id` à l'ajout d'un nœud Métrique dans l'éditeur de flows.
+    /// Le message du crash doit rester résoluble dans les deux locales avec
+    /// l'argument exact que passe désormais `MetricForm`.
+    #[test]
+    fn flows_metric_labels_help_resout_avec_son_argument_id() {
+        for (locale, source) in [
+            (langid!("en-US"), include_str!("../locales/en-US.ftl")),
+            (langid!("fr-FR"), include_str!("../locales/fr-FR.ftl")),
+        ] {
+            let resource =
+                FluentResource::try_new(source.to_string()).expect("fichier .ftl valide");
+            let mut bundle = FluentBundle::new(vec![locale.clone()]);
+            bundle
+                .add_resource(resource)
+                .expect("ressource isolée : aucune erreur de chevauchement");
+            bundle.set_use_isolating(false);
+            let message = bundle
+                .get_message("flows-metric-labels-help")
+                .expect("clé définie (cf. test parite_cles_fr_en)");
+            let pattern = message.value().expect("message sans attribut");
+            let mut args = FluentArgs::new();
+            args.set("id", FluentValue::from(7_i64));
+            let mut errors = vec![];
+            let rendered = bundle.format_pattern(pattern, Some(&args), &mut errors).to_string();
+            assert!(errors.is_empty(), "{locale} : {errors:?}");
+            assert!(rendered.contains("flow_7"), "{locale} : « {rendered} »");
+        }
     }
 }

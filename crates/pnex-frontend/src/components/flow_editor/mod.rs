@@ -761,6 +761,7 @@ pub fn FlowEditor(
                     key: "{selected_node.cloned():?}",
                     cx,
                     can_write,
+                    flow_id,
                 }
             }
 
