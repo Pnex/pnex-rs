@@ -199,10 +199,10 @@ impl S3Store {
         builder = builder.region(region);
         // Retry des erreurs transitives (5xx, timeout) — uploads d'artefacts
         // idempotents (même clé, même contenu), sans risque de doublon.
+        // opendal 0.58 : `.layer()` renvoie l'Operator directement (plus de `.finish()`)
         let operator = Operator::new(builder)
             .map_err(|e| format!("S3 : initialisation impossible : {e}"))?
-            .layer(RetryLayer::default())
-            .finish();
+            .layer(RetryLayer::default());
         Ok(Self { operator })
     }
 }

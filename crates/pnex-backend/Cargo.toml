@@ -49,9 +49,9 @@ sha2 = "0.10"
 # Backend S3 des artefacts firmware (D5 v2, tier industriel) — dépendance
 # directe plutôt que la feature loco `storage-aws-s3` : sa config Storage
 # n'expose pas l'adressage path-style, requis pour RustFS & co
-# (PNEX_S3_PATH_STYLE). Même version 0.57 que loco → un seul opendal-core
+# (PNEX_S3_PATH_STYLE). Même version 0.58 que loco → un seul opendal-core
 # dans l'arbre.
-opendal = { version = "0.57", default-features = false, features = [
+opendal = { version = "0.58", default-features = false, features = [
   "services-s3",
   "reqwest-rustls-tls",
   "layers-retry",
@@ -62,7 +62,8 @@ axum-extra = { version = "0.10", features = ["form"] }
 chrono = { workspace = true }
 uuid = { workspace = true, features = ["v5"] }
 serde_yaml = "0.9"
-jsonwebtoken = "9"
+# v10 : choix d'un backend crypto obligatoire (aws_lc_rs recommandé)
+jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
 thiserror = "2"
 reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
