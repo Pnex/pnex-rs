@@ -32,40 +32,40 @@ workers:
 # scalable = postgres (pods API stateless, artefacts servis par tout
 # réplica) ; tier hobbyist = sqlite (mono-pod uniquement). Jamais
 # `sqlite::memory:` en mode app.
-{% set db_url = get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") %}
+# <% set db_url = get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") %>
 queue:
-  kind: {% if db_url is starting_with(pat="sqlite") %}Sqlite{% else %}Postgres{% endif %}
-  uri: {{ db_url }}
-  num_workers: {{ get_env(name="PNEX_QUEUE_NUM_WORKERS", default="1") }}
+  kind: <% if db_url is starting_with(pat="sqlite") %>Sqlite<% else %>Postgres<% endif %>
+  uri: <%= db_url %>
+  num_workers: <%= get_env(name="PNEX_QUEUE_NUM_WORKERS", default="1") %>
   poll_interval_sec: 1
   reaper:
     age_minutes: 30
     interval_seconds: 120
 
 database:
-  uri: {{ get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") }}
+  uri: <%= get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") %>
   enable_logging: false
-  connect_timeout: {{ get_env(name="DB_CONNECT_TIMEOUT", default="500") }}
-  idle_timeout: {{ get_env(name="DB_IDLE_TIMEOUT", default="500") }}
-  min_connections: {{ get_env(name="DB_MIN_CONNECTIONS", default="1") }}
-  max_connections: {{ get_env(name="DB_MAX_CONNECTIONS", default="10") }}
+  connect_timeout: <%= get_env(name="DB_CONNECT_TIMEOUT", default="500") %>
+  idle_timeout: <%= get_env(name="DB_IDLE_TIMEOUT", default="500") %>
+  min_connections: <%= get_env(name="DB_MIN_CONNECTIONS", default="1") %>
+  max_connections: <%= get_env(name="DB_MAX_CONNECTIONS", default="10") %>
 
 # Auth Rauthy (Phase 3/D19) : validation JWKS locale + JIT provisioning.
 settings:
   openobserve:
-    base_url: {{ get_env(name="OPENOBSERVE_URL", default="http://localhost:5080") }}
-    root_email: {{ get_env(name="OPENOBSERVE_ROOT_EMAIL", default="root@pnex.local") }}
-    root_password: {{ get_env(name="OPENOBSERVE_ROOT_PASSWORD", default="") }}
+    base_url: <%= get_env(name="OPENOBSERVE_URL", default="http://localhost:5080") %>
+    root_email: <%= get_env(name="OPENOBSERVE_ROOT_EMAIL", default="root@pnex.local") %>
+    root_password: <%= get_env(name="OPENOBSERVE_ROOT_PASSWORD", default="") %>
   # Ingestion Phase 5 (valeurs par défaut si absent — cf. services/settings.rs)
   ingestion:
-    silence_ttl_secs: {{ get_env(name="PNEX_SILENCE_TTL_SECS", default="10") }}
-    reaper_interval_secs: {{ get_env(name="PNEX_REAPER_INTERVAL_SECS", default="5") }}
-    token_cache_secs: {{ get_env(name="PNEX_TOKEN_CACHE_SECS", default="10") }}
-    batch_max: {{ get_env(name="PNEX_BATCH_MAX", default="500") }}
-    batch_flush_secs: {{ get_env(name="PNEX_BATCH_FLUSH_SECS", default="10") }}
+    silence_ttl_secs: <%= get_env(name="PNEX_SILENCE_TTL_SECS", default="10") %>
+    reaper_interval_secs: <%= get_env(name="PNEX_REAPER_INTERVAL_SECS", default="5") %>
+    token_cache_secs: <%= get_env(name="PNEX_TOKEN_CACHE_SECS", default="10") %>
+    batch_max: <%= get_env(name="PNEX_BATCH_MAX", default="500") %>
+    batch_flush_secs: <%= get_env(name="PNEX_BATCH_FLUSH_SECS", default="10") %>
   rauthy:
-    base_url: {{ get_env(name="RAUTHY_URL", default="http://localhost:8080") }}
-    client_id: {{ get_env(name="RAUTHY_CLIENT_ID", default="pnex") }}
+    base_url: <%= get_env(name="RAUTHY_URL", default="http://localhost:8080") %>
+    client_id: <%= get_env(name="RAUTHY_CLIENT_ID", default="pnex") %>
   # Firmware Phase 6 — source embarquée dans le binaire (self-hosted/edge :
   # le serveur build sa propre version du firmware, zéro clone git ni
   # chemin local — aucune config de source). Artefacts en base par défaut
@@ -75,15 +75,15 @@ settings:
   # backends : on choisit son tier à l'installation.
   firmware:
     storage:
-      backend: {{ get_env(name="STORAGE_BACKEND", default="db") }}
-      s3_endpoint: {{ get_env(name="PNEX_S3_ENDPOINT", default="") }}
-      s3_bucket: {{ get_env(name="PNEX_S3_BUCKET", default="") }}
-      s3_region: {{ get_env(name="PNEX_S3_REGION", default="") }}
+      backend: <%= get_env(name="STORAGE_BACKEND", default="db") %>
+      s3_endpoint: <%= get_env(name="PNEX_S3_ENDPOINT", default="") %>
+      s3_bucket: <%= get_env(name="PNEX_S3_BUCKET", default="") %>
+      s3_region: <%= get_env(name="PNEX_S3_REGION", default="") %>
       # Credentials injectés par secrets manager (SOPS/age) — jamais dans
       # la config commitée (secret masqué dans les Debug/logs du serveur).
-      s3_access_key: {{ get_env(name="PNEX_S3_ACCESS_KEY", default="") }}
-      s3_secret_key: {{ get_env(name="PNEX_S3_SECRET_KEY", default="") }}
-      s3_path_style: {{ get_env(name="PNEX_S3_PATH_STYLE", default="false") }}
-    pio_cmd: {{ get_env(name="PNEX_PIO_CMD", default="pio") }}
-    esptool_cmd: {{ get_env(name="PNEX_ESPTOOL_CMD", default="esptool") }}
-    timeout_secs: {{ get_env(name="PNEX_BUILD_TIMEOUT_SECS", default="900") }}
+      s3_access_key: <%= get_env(name="PNEX_S3_ACCESS_KEY", default="") %>
+      s3_secret_key: <%= get_env(name="PNEX_S3_SECRET_KEY", default="") %>
+      s3_path_style: <%= get_env(name="PNEX_S3_PATH_STYLE", default="false") %>
+    pio_cmd: <%= get_env(name="PNEX_PIO_CMD", default="pio") %>
+    esptool_cmd: <%= get_env(name="PNEX_ESPTOOL_CMD", default="esptool") %>
+    timeout_secs: <%= get_env(name="PNEX_BUILD_TIMEOUT_SECS", default="900") %>

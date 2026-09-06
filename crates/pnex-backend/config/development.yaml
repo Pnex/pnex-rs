@@ -55,14 +55,14 @@ workers:
 # fichier sqlite (db + queue ensemble). ATTENTION : jamais `sqlite::memory:`
 # en mode app — les pools db et queue sont distincts et ne partageraient
 # pas une base mémoire.
-{% set db_url = get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") %}
+# <% set db_url = get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") %>
 queue:
-  kind: {% if db_url is starting_with(pat="sqlite") %}Sqlite{% else %}Postgres{% endif %}
-  uri: {{ db_url }}
+  kind: <% if db_url is starting_with(pat="sqlite") %>Sqlite<% else %>Postgres<% endif %>
+  uri: <%= db_url %>
   # 1 : contention du cache ~/.platformio ; scaling horizontal par réplicas
   # (PG). Côté sqlite, un seul dequeue à la fois (verrou applicatif loco) —
   # sans effet pour des builds de plusieurs minutes.
-  num_workers: {{ get_env(name="PNEX_QUEUE_NUM_WORKERS", default="1") }}
+  num_workers: <%= get_env(name="PNEX_QUEUE_NUM_WORKERS", default="1") %>
   poll_interval_sec: 1
   # Reprise des jobs orphelins (crash worker en cours de build) — âge >
   # timeout de build (15 min).
@@ -73,31 +73,31 @@ queue:
 database:
   # Migre au boot (dev/test) — en prod les migrations restent explicites.
   auto_migrate: true
-  uri: {{ get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") }}
+  uri: <%= get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") %>
   enable_logging: false
-  connect_timeout: {{ get_env(name="DB_CONNECT_TIMEOUT", default="500") }}
-  idle_timeout: {{ get_env(name="DB_IDLE_TIMEOUT", default="500") }}
-  min_connections: {{ get_env(name="DB_MIN_CONNECTIONS", default="1") }}
-  max_connections: {{ get_env(name="DB_MAX_CONNECTIONS", default="10") }}
+  connect_timeout: <%= get_env(name="DB_CONNECT_TIMEOUT", default="500") %>
+  idle_timeout: <%= get_env(name="DB_IDLE_TIMEOUT", default="500") %>
+  min_connections: <%= get_env(name="DB_MIN_CONNECTIONS", default="1") %>
+  max_connections: <%= get_env(name="DB_MAX_CONNECTIONS", default="10") %>
 
 # Auth Rauthy (Phase 3/D19) : validation JWKS locale + JIT provisioning.
 # Le front étant servi par le backend (same-origin), pas de CORS nécessaire.
 settings:
   # OpenObserve (D1/D2) — absent = télémétrie désactivée (sink noop)
   openobserve:
-    base_url: {{ get_env(name="OPENOBSERVE_URL", default="http://localhost:5080") }}
-    root_email: {{ get_env(name="OPENOBSERVE_ROOT_EMAIL", default="root@pnex.local") }}
-    root_password: {{ get_env(name="OPENOBSERVE_ROOT_PASSWORD", default="Pnex-dev-2026!") }}
+    base_url: <%= get_env(name="OPENOBSERVE_URL", default="http://localhost:5080") %>
+    root_email: <%= get_env(name="OPENOBSERVE_ROOT_EMAIL", default="root@pnex.local") %>
+    root_password: <%= get_env(name="OPENOBSERVE_ROOT_PASSWORD", default="Pnex-dev-2026!") %>
   # Ingestion Phase 5 (valeurs par défaut si absent — cf. services/settings.rs)
   ingestion:
-    silence_ttl_secs: {{ get_env(name="PNEX_SILENCE_TTL_SECS", default="10") }}
-    reaper_interval_secs: {{ get_env(name="PNEX_REAPER_INTERVAL_SECS", default="5") }}
-    token_cache_secs: {{ get_env(name="PNEX_TOKEN_CACHE_SECS", default="10") }}
-    batch_max: {{ get_env(name="PNEX_BATCH_MAX", default="500") }}
-    batch_flush_secs: {{ get_env(name="PNEX_BATCH_FLUSH_SECS", default="10") }}
+    silence_ttl_secs: <%= get_env(name="PNEX_SILENCE_TTL_SECS", default="10") %>
+    reaper_interval_secs: <%= get_env(name="PNEX_REAPER_INTERVAL_SECS", default="5") %>
+    token_cache_secs: <%= get_env(name="PNEX_TOKEN_CACHE_SECS", default="10") %>
+    batch_max: <%= get_env(name="PNEX_BATCH_MAX", default="500") %>
+    batch_flush_secs: <%= get_env(name="PNEX_BATCH_FLUSH_SECS", default="10") %>
   rauthy:
-    base_url: {{ get_env(name="RAUTHY_URL", default="http://localhost:8080") }}
-    client_id: {{ get_env(name="RAUTHY_CLIENT_ID", default="pnex") }}
+    base_url: <%= get_env(name="RAUTHY_URL", default="http://localhost:8080") %>
+    client_id: <%= get_env(name="RAUTHY_CLIENT_ID", default="pnex") %>
   # Firmware Phase 6 (défauts champ par champ — cf. services/firmware.rs).
   # Source du firmware : embarquée dans le binaire (firmware/ du monorepo,
   # compilée dedans — aucune config). Artefacts en base par défaut (D5 v2,
@@ -111,19 +111,19 @@ settings:
   #   DATABASE_URL="sqlite://./pnex.sqlite?mode=rwc"
   firmware:
     storage:
-      backend: {{ get_env(name="STORAGE_BACKEND", default="db") }}
-      s3_endpoint: {{ get_env(name="PNEX_S3_ENDPOINT", default="") }}
-      s3_bucket: {{ get_env(name="PNEX_S3_BUCKET", default="") }}
-      s3_region: {{ get_env(name="PNEX_S3_REGION", default="") }}
+      backend: <%= get_env(name="STORAGE_BACKEND", default="db") %>
+      s3_endpoint: <%= get_env(name="PNEX_S3_ENDPOINT", default="") %>
+      s3_bucket: <%= get_env(name="PNEX_S3_BUCKET", default="") %>
+      s3_region: <%= get_env(name="PNEX_S3_REGION", default="") %>
       # Credentials jamais commités — env/secrets manager uniquement
       # (le secret est masqué dans les Debug/logs du serveur).
-      s3_access_key: {{ get_env(name="PNEX_S3_ACCESS_KEY", default="") }}
-      s3_secret_key: {{ get_env(name="PNEX_S3_SECRET_KEY", default="") }}
-      s3_path_style: {{ get_env(name="PNEX_S3_PATH_STYLE", default="false") }}
+      s3_access_key: <%= get_env(name="PNEX_S3_ACCESS_KEY", default="") %>
+      s3_secret_key: <%= get_env(name="PNEX_S3_SECRET_KEY", default="") %>
+      s3_path_style: <%= get_env(name="PNEX_S3_PATH_STYLE", default="false") %>
     # Machine de dev : `uv run pio` dans le dépôt firmware (sinon `pio`).
-    pio_cmd: {{ get_env(name="PNEX_PIO_CMD", default="pio") }}
-    esptool_cmd: {{ get_env(name="PNEX_ESPTOOL_CMD", default="esptool") }}
-    timeout_secs: {{ get_env(name="PNEX_BUILD_TIMEOUT_SECS", default="900") }}
+    pio_cmd: <%= get_env(name="PNEX_PIO_CMD", default="pio") %>
+    esptool_cmd: <%= get_env(name="PNEX_ESPTOOL_CMD", default="esptool") %>
+    timeout_secs: <%= get_env(name="PNEX_BUILD_TIMEOUT_SECS", default="900") %>
   # Moteur de flow ETL (D18) — superviseur du runtime headless
   # `pnex-flow-runtime` (process enfant, mode B ; cf. services/flow_supervisor.rs).
   # enabled=false : flows éditables en base mais jamais exécutés (défaut) —
@@ -131,16 +131,16 @@ settings:
   # env_allowlist : seules ces variables franchissent la frontière process —
   # aucun secret dans flows.json (PRD §8).
   flow:
-    enabled: {{ get_env(name="PNEX_FLOW_ENABLED", default="false") }}
+    enabled: <%= get_env(name="PNEX_FLOW_ENABLED", default="false") %>
     # Défaut dev : binaire du workspace (résolu contre la racine monorepo,
     # quel que soit le cwd) — faire `cargo build -p pnex-flow-runtime` avant.
-    runtime_cmd: {{ get_env(name="PNEX_FLOW_RUNTIME_CMD", default="./target/debug/pnex-flow-runtime") }}
-    state_dir: {{ get_env(name="PNEX_FLOW_STATE_DIR", default="./flow-state") }}
-    restart_backoff_secs: {{ get_env(name="PNEX_FLOW_BACKOFF_SECS", default="5") }}
-    restart_backoff_max_secs: {{ get_env(name="PNEX_FLOW_BACKOFF_MAX_SECS", default="60") }}
-    terminate_secs: {{ get_env(name="PNEX_FLOW_TERMINATE_SECS", default="10") }}
-    reload_ack_secs: {{ get_env(name="PNEX_FLOW_RELOAD_ACK_SECS", default="10") }}
+    runtime_cmd: <%= get_env(name="PNEX_FLOW_RUNTIME_CMD", default="./target/debug/pnex-flow-runtime") %>
+    state_dir: <%= get_env(name="PNEX_FLOW_STATE_DIR", default="./flow-state") %>
+    restart_backoff_secs: <%= get_env(name="PNEX_FLOW_BACKOFF_SECS", default="5") %>
+    restart_backoff_max_secs: <%= get_env(name="PNEX_FLOW_BACKOFF_MAX_SECS", default="60") %>
+    terminate_secs: <%= get_env(name="PNEX_FLOW_TERMINATE_SECS", default="10") %>
+    reload_ack_secs: <%= get_env(name="PNEX_FLOW_RELOAD_ACK_SECS", default="10") %>
     env_allowlist: ["DATABASE_URL", "OPENOBSERVE_URL", "OPENOBSERVE_ROOT_EMAIL", "OPENOBSERVE_ROOT_PASSWORD"]
     # Outils de debug (panneau Debug + run-once) — mode dev/debug uniquement :
     # absent de la config de run → 403 sur /debug et /run-once, boutons masqués.
-    debug_tools: {{ get_env(name="PNEX_FLOW_DEBUG_TOOLS", default="true") }}
+    debug_tools: <%= get_env(name="PNEX_FLOW_DEBUG_TOOLS", default="true") %>

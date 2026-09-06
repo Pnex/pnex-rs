@@ -28,10 +28,10 @@ database:
   dangerously_truncate: true
   # Migre au boot (dev/test) — en prod les migrations restent explicites.
   auto_migrate: true
-  uri: {{ get_env(name="TEST_DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex_test") }}
+  uri: <%= get_env(name="TEST_DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex_test") %>
   enable_logging: false
-  connect_timeout: {{ get_env(name="DB_CONNECT_TIMEOUT", default="500") }}
-  idle_timeout: {{ get_env(name="DB_IDLE_TIMEOUT", default="500") }}
+  connect_timeout: <%= get_env(name="DB_CONNECT_TIMEOUT", default="500") %>
+  idle_timeout: <%= get_env(name="DB_IDLE_TIMEOUT", default="500") %>
   min_connections: 1
   max_connections: 5
 
@@ -44,21 +44,21 @@ settings:
     silence_ttl_secs: 2
     reaper_interval_secs: 1
     token_cache_secs: 0
-    batch_max: {{ get_env(name="PNEX_BATCH_MAX", default="500") }}
-    batch_flush_secs: {{ get_env(name="PNEX_BATCH_FLUSH_SECS", default="10") }}
+    batch_max: <%= get_env(name="PNEX_BATCH_MAX", default="500") %>
+    batch_flush_secs: <%= get_env(name="PNEX_BATCH_FLUSH_SECS", default="10") %>
   rauthy:
-    base_url: {{ get_env(name="RAUTHY_URL", default="http://localhost:8080") }}
-    client_id: {{ get_env(name="RAUTHY_CLIENT_ID", default="pnex") }}
+    base_url: <%= get_env(name="RAUTHY_URL", default="http://localhost:8080") %>
+    client_id: <%= get_env(name="RAUTHY_CLIENT_ID", default="pnex") %>
   # OpenObserve : ABSENTE par défaut (télémétrie dégradée
   # available:false — tests sans O2). Renseigner PNEX_O2_URL pour le test
   # dashboard complet contre le mock (tests/openobserve.rs) ; root
   # "whatever" = credentials acceptés par le mock.
-  {% if get_env(name="PNEX_O2_URL", default="") != "" %}
+  # <% if get_env(name="PNEX_O2_URL", default="") != "" %>
   openobserve:
-    base_url: {{ get_env(name="PNEX_O2_URL") }}
+    base_url: <%= get_env(name="PNEX_O2_URL") %>
     root_email: root@pnex.local
     root_password: whatever
-  {% endif %}
+  # <% endif %>
   # Firmware Phase 6 — toolchain remplacée par des scripts de fixture
   # (rapides, échec/timeout pilotés par des valeurs de wifi_ssid).
   # Firmware : source embarquée dans le binaire (aucune config de source —
@@ -75,15 +75,15 @@ settings:
   # Les tests de flows activent via env avant le boot (#[serial]) :
   #   PNEX_FLOW_ENABLED=true + PNEX_FLOW_RUNTIME_CMD=<runtime réel ou fake>.
   flow:
-    enabled: {{ get_env(name="PNEX_FLOW_ENABLED", default="false") }}
-    runtime_cmd: {{ get_env(name="PNEX_FLOW_RUNTIME_CMD", default="pnex-flow-runtime") }}
-    state_dir: {{ get_env(name="PNEX_FLOW_STATE_DIR", default="/tmp/pnex-flow-test-state") }}
+    enabled: <%= get_env(name="PNEX_FLOW_ENABLED", default="false") %>
+    runtime_cmd: <%= get_env(name="PNEX_FLOW_RUNTIME_CMD", default="pnex-flow-runtime") %>
+    state_dir: <%= get_env(name="PNEX_FLOW_STATE_DIR", default="/tmp/pnex-flow-test-state") %>
     restart_backoff_secs: 1
     restart_backoff_max_secs: 2
     terminate_secs: 2
-    reload_ack_secs: {{ get_env(name="PNEX_FLOW_RELOAD_ACK_SECS", default="5") }}
+    reload_ack_secs: <%= get_env(name="PNEX_FLOW_RELOAD_ACK_SECS", default="5") %>
     env_allowlist: ["DATABASE_URL", "OPENOBSERVE_URL", "OPENOBSERVE_ROOT_EMAIL", "OPENOBSERVE_ROOT_PASSWORD"]
     # Outils de debug : les tests de flows les activent par env
     # (PNEX_FLOW_DEBUG_TOOLS=true) — défaut test = off, comme en mode run.
-    debug_tools: {{ get_env(name="PNEX_FLOW_DEBUG_TOOLS", default="false") }}
+    debug_tools: <%= get_env(name="PNEX_FLOW_DEBUG_TOOLS", default="false") %>
 # En test : issuer redirigeable vers un JWKS mock (voir tests/auth_*).
