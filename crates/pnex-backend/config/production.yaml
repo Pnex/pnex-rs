@@ -34,7 +34,7 @@ workers:
 # `sqlite::memory:` en mode app.
 {% set db_url = get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") %}
 queue:
-  kind: {% if db_url is starting_with("sqlite") %}Sqlite{% else %}Postgres{% endif %}
+  kind: {% if db_url is starting_with(pat="sqlite") %}Sqlite{% else %}Postgres{% endif %}
   uri: {{ db_url }}
   num_workers: {{ get_env(name="PNEX_QUEUE_NUM_WORKERS", default="1") }}
   poll_interval_sec: 1

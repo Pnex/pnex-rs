@@ -57,7 +57,7 @@ workers:
 # pas une base mémoire.
 {% set db_url = get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") %}
 queue:
-  kind: {% if db_url is starting_with("sqlite") %}Sqlite{% else %}Postgres{% endif %}
+  kind: {% if db_url is starting_with(pat="sqlite") %}Sqlite{% else %}Postgres{% endif %}
   uri: {{ db_url }}
   # 1 : contention du cache ~/.platformio ; scaling horizontal par réplicas
   # (PG). Côté sqlite, un seul dequeue à la fois (verrou applicatif loco) —
