@@ -22,11 +22,11 @@
   <a href="https://hub.docker.com/r/shanisma/pnex-server-rs"><img alt="Docker pulls" src="https://img.shields.io/docker/pulls/shanisma/pnex-server-rs?logo=docker&label=pulls"></a>
 </p>
 <p align="center">
-  <img alt="Rust 1.88+" src="https://img.shields.io/badge/rust-1.88%2B-orange?logo=rust">
+  <a href="https://www.rust-lang.org"><img alt="Rust 1.88+" src="https://img.shields.io/badge/rust-1.88%2B-orange?logo=rust"></a>
   <a href="https://dioxuslabs.com"><img alt="Dioxus 0.7" src="https://img.shields.io/badge/dioxus-0.7-blue"></a>
   <a href="https://platformio.org"><img alt="PlatformIO 6.2" src="https://img.shields.io/badge/PlatformIO-6.2-f5822a?logo=platformio&logoColor=white"></a>
-  <img alt="ESP8266 · ESP32 · C3 · S3" src="https://img.shields.io/badge/boards-ESP8266%20%C2%B7%20ESP32%20%C2%B7%20C3%20%C2%B7%20S3-e7352c?logo=espressif&logoColor=white">
-  <img alt="Status: beta 0.1.0" src="https://img.shields.io/badge/status-beta%200.1.0-yellow">
+  <a href="firmware"><img alt="ESP8266 · ESP32 · C3 · S3" src="https://img.shields.io/badge/boards-ESP8266%20%C2%B7%20ESP32%20%C2%B7%20C3%20%C2%B7%20S3-e7352c?logo=espressif&logoColor=white"></a>
+  <a href="https://pnex.io/roadmap"><img alt="Status: beta 0.1.0" src="https://img.shields.io/badge/status-beta%200.1.0-yellow"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
 
@@ -63,8 +63,8 @@ integrated AI assistant.
   write functions — with the LLM you bring.
 
 <p align="center">
-  <img src="https://pnex.io/screenshots/en/flow-editor.webp" alt="Flow editor" width="49%">
-  <img src="https://pnex.io/screenshots/en/dashboard-live.webp" alt="Live SCADA dashboard" width="49%">
+  <a href="https://pnex.io/docs/flows"><img src="https://pnex.io/screenshots/en/flow-editor.webp" alt="Flow editor" width="49%"></a>
+  <a href="https://pnex.io/docs/dashboards"><img src="https://pnex.io/screenshots/en/dashboard-live.webp" alt="Live SCADA dashboard" width="49%"></a>
 </p>
 
 ## Features
