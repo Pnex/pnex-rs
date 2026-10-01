@@ -1,8 +1,10 @@
 # Publish the multi-arch (amd64 + arm64) Docker images on main — same
 # Dockerfile as `task docker:publish`, gated on a green CI run of that
-# commit. GitHub-hosted runners: each architecture builds natively on its
-# own runner (no QEMU), pushes by digest, then one job assembles the
-# multi-arch manifests.
+# commit. One GitHub-hosted amd64 runner: deploy/docker/Dockerfile assumes an
+# amd64 build host (arm64 binaries are cross-compiled, the edge agent
+# distribution needs x86_64 zig/mingw); QEMU only runs the arm64 PlatformIO
+# prewarm of the builder image. Both images share their build stages, so
+# they are built in the same job, server first.
 #
 # Tags pushed for each image (pnex-server-rs, pnex-builder-rs):
 #   main-<shortsha>  immutable, pin it in pnex-deploy (--tag / VERSION)
@@ -39,94 +41,72 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: build ${{ matrix.target }} (${{ matrix.arch }})
+  publish:
+    name: docker buildx (server + builder)
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push')
-    strategy:
-      fail-fast: true
-      matrix:
-        target: [server, builder]
-        arch: [amd64, arm64]
-        include:
-          - arch: amd64
-            runner: ubuntu-latest
-          - arch: arm64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
+    env:
+      PLATFORMS: linux/amd64,linux/arm64
     steps:
-      # Release Rust builds inside BuildKit need more than the ~14 GB free.
+      # Two release Rust builds + the wasm front + the agent distribution
+      # need more than the ~14 GB free on a hosted runner.
       - name: Free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          sudo docker image prune --all --force
           df -h /
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           # vendor/edgelinkd is part of the build context (COPY . .).
           submodules: true
+      - name: Tags
+        id: tags
+        run: echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
-      - name: Build + push by digest
-        id: build
+      - name: Build + push pnex-server-rs
         uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/docker/Dockerfile
-          target: ${{ matrix.target }}
-          platforms: linux/${{ matrix.arch }}
-          outputs: type=image,name=${{ env.REGISTRY }}/pnex-${{ matrix.target }}-rs,push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=${{ matrix.target }}-${{ matrix.arch }}
-          cache-to: type=gha,scope=${{ matrix.target }}-${{ matrix.arch }},mode=max
-      - name: Export digest
+          target: server
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/pnex-server-rs:main-${{ steps.tags.outputs.short }}
+            ${{ env.REGISTRY }}/pnex-server-rs:main
+            ${{ env.REGISTRY }}/pnex-server-rs:latest
+          cache-from: type=gha,scope=pnex-images
+          cache-to: type=gha,scope=pnex-images,mode=max
+      # Same BuildKit instance: the shared stages come from the server build.
+      - name: Build + push pnex-builder-rs
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          target: builder
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/pnex-builder-rs:main-${{ steps.tags.outputs.short }}
+            ${{ env.REGISTRY }}/pnex-builder-rs:main
+            ${{ env.REGISTRY }}/pnex-builder-rs:latest
+          cache-from: type=gha,scope=pnex-images
+      - name: Summary
         run: |
-          mkdir -p "$RUNNER_TEMP/digests"
-          digest="${{ steps.build.outputs.digest }}"
-          touch "$RUNNER_TEMP/digests/${digest#sha256:}"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: digest-${{ matrix.target }}-${{ matrix.arch }}
-          path: ${{ runner.temp }}/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-  publish:
-    name: multi-arch manifests (${{ matrix.target }})
-    needs: build
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target: [server, builder]
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: ${{ runner.temp }}/digests
-          pattern: digest-${{ matrix.target }}-*
-          merge-multiple: true
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_TOKEN }}
-      - name: Create manifest list and push
-        working-directory: ${{ runner.temp }}/digests
-        env:
-          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-        run: |
-          image="$REGISTRY/pnex-${{ matrix.target }}-rs"
-          short="${SHA::7}"
-          # One argument per digest file: word splitting is intended.
-          # shellcheck disable=SC2046
-          docker buildx imagetools create \
-            -t "$image:main-$short" -t "$image:main" -t "$image:latest" \
-            $(printf "$image@sha256:%s " *)
-          docker buildx imagetools inspect "$image:main-$short"
           {
-            echo "### Published \`$image\`"
-            echo "- \`$image:main-$short\` (also \`main\` and \`latest\`), linux/amd64 + linux/arm64"
+            echo "### Published (linux/amd64 + linux/arm64)"
+            echo "- \`$REGISTRY/pnex-server-rs:main-${{ steps.tags.outputs.short }}\`"
+            echo "- \`$REGISTRY/pnex-builder-rs:main-${{ steps.tags.outputs.short }}\`"
+            echo "(also tagged \`main\` and \`latest\`)"
           } >> "$GITHUB_STEP_SUMMARY"
