@@ -134,17 +134,24 @@ tasks:
   # Windows). The webviews have no Web Serial: firmware flashing runs the
   # esptool binary shipped in `<app>/esptool/` (cf. src/flash.rs `native`).
   # Linux prerequisites (apt): libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev.
+  # Native build for the host architecture (x86_64 or aarch64): webkit2gtk
+  # cross-compiling needs a full target sysroot, so CI builds aarch64 on an
+  # arm64 runner instead.
   build:frontend:linux:
-    desc: Build the native Linux desktop UI (x86_64) → target/dist/pnex-desktop-linux-x86_64.tar.gz
+    desc: Build the native Linux desktop UI for the host arch → target/dist/pnex-desktop-linux-<arch>.tar.gz
     deps: [css:build, js:build]
+    vars:
+      ARCH:
+        sh: uname -m
+      ESPTOOL_PLATFORM: '{{if eq .ARCH "aarch64"}}linux-aarch64{{else}}linux-amd64{{end}}'
     cmds:
       - task: esptool:fetch
-        vars: { ESPTOOL_PLATFORM: linux-amd64 }
+        vars: { ESPTOOL_PLATFORM: '{{.ESPTOOL_PLATFORM}}' }
       - cd crates/pnex-frontend && dx build --linux --release --no-default-features --features desktop
       - rm -rf {{.DX_OUT}}/release/linux/app/esptool
-      - cp -r target/esptool/linux-amd64 {{.DX_OUT}}/release/linux/app/esptool
+      - cp -r target/esptool/{{.ESPTOOL_PLATFORM}} {{.DX_OUT}}/release/linux/app/esptool
       - mkdir -p target/dist
-      - tar -C {{.DX_OUT}}/release/linux -czf target/dist/pnex-desktop-linux-x86_64.tar.gz --transform 's,^app,pnex,' app
+      - tar -C {{.DX_OUT}}/release/linux -czf target/dist/pnex-desktop-linux-{{.ARCH}}.tar.gz --transform 's,^app,pnex,' app
 
   # Windows cross-build from Linux (x86_64-pc-windows-gnu). Prerequisites:
   # `apt install mingw-w64` + `rustup target add x86_64-pc-windows-gnu`.
