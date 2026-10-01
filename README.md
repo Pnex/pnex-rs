@@ -104,37 +104,44 @@ Images are published on every green `main`: `shanisma/pnex-server-rs` and
 ## Architecture
 
 ```mermaid
-flowchart LR
-    subgraph field["Field"]
+flowchart TB
+    subgraph field["Devices &amp; edge"]
+        direction LR
         dev["ESP8266 / ESP32<br/>PNeX firmware"]
         agent["Edge agent<br/>Linux · Windows"]
     end
-    subgraph clients["Clients"]
-        ui["Dioxus app<br/>web · desktop · Android"]
+
+    subgraph clients["Apps"]
+        direction LR
+        ui["PNeX app<br/>web · desktop · Android"]
     end
-    subgraph core["PNeX server"]
+
+    subgraph pnex["PNeX server"]
+        direction LR
+        flows["Flow runtime"]
         server["pnex-server<br/>Loco · axum"]
-        flows["pnex-flow-runtime"]
-        builder["pnex-builder<br/>PlatformIO · vision · stitching"]
+        builder["Builder<br/>PlatformIO · vision"]
+        flows <--> server <--> builder
     end
-    subgraph data["Data"]
+
+    subgraph storage["Storage"]
+        direction LR
         db[("PostgreSQL<br/>or SQLite")]
         valkey[("Valkey<br/>live state")]
         o2[("OpenObserve<br/>telemetry")]
         s3[("RustFS / disk<br/>firmware · media")]
     end
-    idp["Rauthy<br/>OIDC"]
-    llm["Your LLM<br/>Anthropic · OpenAI-compatible"]
 
-    dev -- "wss · TLS + ChaCha20" --> server
-    agent -- "wss · TLS + ChaCha20" --> server
-    ui -- "HTTPS · WebSocket" --> server
-    ui -. "login" .-> idp
-    server --> flows
-    server -- "job queue" --> builder
-    server --> db & valkey & o2 & s3
-    builder --> s3
-    server -. "AI assistant" .-> llm
+    subgraph external["External services"]
+        direction LR
+        idp["Rauthy<br/>sign-in (OIDC)"]
+        llm["Your LLM<br/>AI assistant"]
+    end
+
+    field -- "TLS + ChaCha20" --> pnex
+    clients -- "HTTPS · WebSocket" --> pnex
+    pnex --> storage
+    pnex -.-> external
 ```
 
 Read more in the [architecture docs](https://pnex.io/docs/architecture) and in
