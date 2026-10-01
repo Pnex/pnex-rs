@@ -1,0 +1,68 @@
+# Global Area Conversions
+# These conversions are available for all users to import
+
+- global_id: "square_meter_to_square_foot_v1"
+  name: "Square Meter to Square Foot"
+  version: 1
+  category: "area"
+  tags: ["area", "real_estate", "construction", "imperial", "metric"]
+  description: "Convert area from Square Meter to Square Foot"
+  from_unit: "m²"
+  to_unit: "ft²"
+  conversion_type: "linear"
+  multiplier: 10.7639
+
+- global_id: "square_foot_to_square_meter_v1"
+  name: "Square Foot to Square Meter"
+  version: 1
+  category: "area"
+  tags: ["area", "real_estate", "construction", "imperial", "metric"]
+  description: "Convert area from Square Foot to Square Meter"
+  from_unit: "ft²"
+  to_unit: "m²"
+  conversion_type: "linear"
+  multiplier: 0.092903
+
+- global_id: "hectare_to_acre_v1"
+  name: "Hectare to Acre"
+  version: 1
+  category: "area"
+  tags: ["area", "land", "agriculture", "large"]
+  description: "Convert area from Hectare to Acre"
+  from_unit: "ha"
+  to_unit: "ac"
+  conversion_type: "linear"
+  multiplier: 2.47105
+
+- global_id: "acre_to_hectare_v1"
+  name: "Acre to Hectare"
+  version: 1
+  category: "area"
+  tags: ["area", "land", "agriculture", "large"]
+  description: "Convert area from Acre to Hectare"
+  from_unit: "ac"
+  to_unit: "ha"
+  conversion_type: "linear"
+  multiplier: 0.404686
+
+- global_id: "square_kilometer_to_square_mile_v1"
+  name: "Square Kilometer to Square Mile"
+  version: 1
+  category: "area"
+  tags: ["area", "geography", "large", "regional"]
+  description: "Convert area from Square Kilometer to Square Mile"
+  from_unit: "km²"
+  to_unit: "mi²"
+  conversion_type: "linear"
+  multiplier: 0.386102
+
+- global_id: "square_inch_to_square_centimeter_v1"
+  name: "Square Inch to Square Centimeter"
+  version: 1
+  category: "area"
+  tags: ["area", "small", "engineering", "machining"]
+  description: "Convert area from Square Inch to Square Centimeter"
+  from_unit: "in²"
+  to_unit: "cm²"
+  conversion_type: "linear"
+  multiplier: 6.4516

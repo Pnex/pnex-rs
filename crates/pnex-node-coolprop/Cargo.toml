@@ -1,0 +1,29 @@
+[package]
+name = "pnex-node-coolprop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Nœud de flow PNEX — propriétés thermophysiques in-process (pnex-coolprop / CoolProp v8)"
+
+[dependencies]
+pnex-core = { workspace = true }
+# CoolProp in-process : lié par ce crate de nœud → pnex-flow-runtime (mode B :
+# jamais dans pnex-backend... sauf usage « lib de calcul » hors moteur —
+# la règle porte sur edgelinkd et les crates de nœuds).
+pnex-coolprop = { workspace = true }
+edgelink-core = { path = "../../vendor/edgelinkd/crates/core", default-features = false, features = ["core", "js"] }
+edgelink-macro = { path = "../../vendor/edgelinkd/crates/macro" }
+# Seulement pour le type Option<&config::Config> de la factory — mêmes features que edgelink-core
+config = { version = "0.15", default-features = false, features = ["convert-case", "toml"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { version = "1", default-features = false, features = ["time"] }
+async-trait = "0.1"
+tokio-util = "0.7"
+log = "0.4"
+smallvec = "1"
+# La macro `#[flow_node]` émet `inventory::submit!` non qualifié — dépendance directe requise
+inventory = "0.3"
+
+[dev-dependencies]
+tokio = { version = "1", default-features = false, features = ["rt", "macros", "time"] }

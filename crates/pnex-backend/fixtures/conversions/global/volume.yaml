@@ -1,0 +1,68 @@
+# Global Volume Conversions
+# These conversions are available for all users to import
+
+- global_id: "liter_to_gallon_v1"
+  name: "Liter to Gallon"
+  version: 1
+  category: "volume"
+  tags: ["volume", "liquid", "imperial", "metric"]
+  description: "Convert volume from Liter to US Gallon"
+  from_unit: "L"
+  to_unit: "gal"
+  conversion_type: "linear"
+  multiplier: 0.264172
+
+- global_id: "gallon_to_liter_v1"
+  name: "Gallon to Liter"
+  version: 1
+  category: "volume"
+  tags: ["volume", "liquid", "imperial", "metric"]
+  description: "Convert volume from US Gallon to Liter"
+  from_unit: "gal"
+  to_unit: "L"
+  conversion_type: "linear"
+  multiplier: 3.78541
+
+- global_id: "cubic_meter_to_liter_v1"
+  name: "Cubic Meter to Liter"
+  version: 1
+  category: "volume"
+  tags: ["volume", "large", "metric", "scientific"]
+  description: "Convert volume from Cubic Meter to Liter"
+  from_unit: "m³"
+  to_unit: "L"
+  conversion_type: "linear"
+  multiplier: 1000
+
+- global_id: "milliliter_to_fluid_ounce_v1"
+  name: "Milliliter to Fluid Ounce"
+  version: 1
+  category: "volume"
+  tags: ["volume", "small", "cooking", "medical"]
+  description: "Convert volume from Milliliter to US Fluid Ounce"
+  from_unit: "mL"
+  to_unit: "fl oz"
+  conversion_type: "linear"
+  multiplier: 0.033814
+
+- global_id: "cubic_foot_to_liter_v1"
+  name: "Cubic Foot to Liter"
+  version: 1
+  category: "volume"
+  tags: ["volume", "imperial", "construction", "refrigeration"]
+  description: "Convert volume from Cubic Foot to Liter"
+  from_unit: "ft³"
+  to_unit: "L"
+  conversion_type: "linear"
+  multiplier: 28.3168
+
+- global_id: "barrel_to_liter_v1"
+  name: "Barrel to Liter"
+  version: 1
+  category: "volume"
+  tags: ["volume", "oil", "petroleum", "large"]
+  description: "Convert volume from Barrel (oil) to Liter"
+  from_unit: "bbl"
+  to_unit: "L"
+  conversion_type: "linear"
+  multiplier: 158.987

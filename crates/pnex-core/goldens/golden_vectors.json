@@ -1,0 +1,83 @@
+{
+  "reference": "pnex_core::control",
+  "tt": [
+    {"name": "chauffage_hysteresis", "heat": true, "setpoint": 19, "deadband": 0.5, "steps": [
+      {"measurement": 18.4, "current_on": false, "expected_on": true},
+      {"measurement": 18.6, "current_on": false, "expected_on": false},
+      {"measurement": 18.6, "current_on": true, "expected_on": true},
+      {"measurement": 18.99, "current_on": true, "expected_on": true},
+      {"measurement": 19, "current_on": true, "expected_on": false},
+      {"measurement": 18.5, "current_on": false, "expected_on": false},
+      {"measurement": 18.4999, "current_on": false, "expected_on": true}
+    ]},
+    {"name": "clim_inversee", "heat": false, "setpoint": 26, "deadband": 0.5, "steps": [
+      {"measurement": 26.6, "current_on": false, "expected_on": true},
+      {"measurement": 26.4, "current_on": false, "expected_on": false},
+      {"measurement": 26.1, "current_on": true, "expected_on": true},
+      {"measurement": 26, "current_on": true, "expected_on": false},
+      {"measurement": 26.5, "current_on": false, "expected_on": false}
+    ]},
+    {"name": "deadband_zero_ne_s_allume_jamais", "heat": true, "setpoint": 19, "deadband": 0, "steps": [
+      {"measurement": 10, "current_on": false, "expected_on": false},
+      {"measurement": 10, "current_on": true, "expected_on": false}
+    ]},
+    {"name": "deadband_negatif_ne_s_allume_jamais", "heat": true, "setpoint": 19, "deadband": -1, "steps": [
+      {"measurement": 10, "current_on": false, "expected_on": false}
+    ]}
+  ],
+  "pid": [
+    {"name": "convergence_overshoot_re_arme", "setpoint": 20, "kp": 2, "ki": 0.5, "kd": 0.1, "steps": [
+      {"dt_secs": 5, "measurement": 18, "expected_duty": 9.00000000000000000e0, "expected_integral": 5.00000000000000000e0},
+      {"dt_secs": 5, "measurement": 18.5, "expected_duty": 1.17400000000000002e1, "expected_integral": 8.75000000000000000e0},
+      {"dt_secs": 5, "measurement": 18.4, "expected_duty": 1.59520000000000071e1, "expected_integral": 1.27500000000000036e1},
+      {"dt_secs": 5, "measurement": 25, "expected_duty": 0.00000000000000000e0, "expected_integral": 1.01319999999999997e1},
+      {"dt_secs": 5, "measurement": 25, "expected_duty": 0.00000000000000000e0, "expected_integral": 1.00000000000000000e1}
+    ]},
+    {"name": "anti_windup_saturation_haute", "setpoint": 20, "kp": 1, "ki": 10, "kd": 0, "steps": [
+      {"dt_secs": 1, "measurement": 0, "expected_duty": 1.00000000000000000e2, "expected_integral": 8.00000000000000000e1},
+      {"dt_secs": 1, "measurement": 0, "expected_duty": 1.00000000000000000e2, "expected_integral": 8.00000000000000000e1},
+      {"dt_secs": 1, "measurement": 0, "expected_duty": 1.00000000000000000e2, "expected_integral": 8.00000000000000000e1},
+      {"dt_secs": 1, "measurement": 0, "expected_duty": 1.00000000000000000e2, "expected_integral": 8.00000000000000000e1},
+      {"dt_secs": 1, "measurement": 0, "expected_duty": 1.00000000000000000e2, "expected_integral": 8.00000000000000000e1},
+      {"dt_secs": 1, "measurement": 0, "expected_duty": 1.00000000000000000e2, "expected_integral": 8.00000000000000000e1},
+      {"dt_secs": 1, "measurement": 0, "expected_duty": 1.00000000000000000e2, "expected_integral": 8.00000000000000000e1},
+      {"dt_secs": 1, "measurement": 0, "expected_duty": 1.00000000000000000e2, "expected_integral": 8.00000000000000000e1}
+    ]},
+    {"name": "borne_basse_integrale", "setpoint": 20, "kp": 1, "ki": 10, "kd": 0, "steps": [
+      {"dt_secs": 1, "measurement": 100, "expected_duty": 0.00000000000000000e0, "expected_integral": 8.00000000000000000e1},
+      {"dt_secs": 1, "measurement": 100, "expected_duty": 0.00000000000000000e0, "expected_integral": 8.00000000000000000e1},
+      {"dt_secs": 1, "measurement": 100, "expected_duty": 0.00000000000000000e0, "expected_integral": 8.00000000000000000e1},
+      {"dt_secs": 1, "measurement": 100, "expected_duty": 0.00000000000000000e0, "expected_integral": 8.00000000000000000e1}
+    ]},
+    {"name": "kick_de_consigne_absent", "setpoint": 20, "kp": 1, "ki": 0, "kd": 5, "steps": [
+      {"dt_secs": 1, "measurement": 19, "expected_duty": 1.00000000000000000e0, "expected_integral": 0.00000000000000000e0},
+      {"dt_secs": 1, "measurement": 18, "expected_duty": 7.00000000000000000e0, "expected_integral": 0.00000000000000000e0}
+    ]},
+    {"name": "dt_nul_sans_derivee", "setpoint": 20, "kp": 1, "ki": 0, "kd": 5, "steps": [
+      {"dt_secs": 1, "measurement": 19, "expected_duty": 1.00000000000000000e0, "expected_integral": 0.00000000000000000e0},
+      {"dt_secs": 0, "measurement": 18, "expected_duty": 2.00000000000000000e0, "expected_integral": 0.00000000000000000e0}
+    ]}
+  ],
+  "relay": [
+    {"name": "duty_25_cycle_10", "duty_pct": 25, "cycle_time_secs": 10, "steps": [
+      {"elapsed_secs": 0, "expected_on": true},
+      {"elapsed_secs": 2.49, "expected_on": true},
+      {"elapsed_secs": 2.5, "expected_on": false},
+      {"elapsed_secs": 9.9, "expected_on": false}
+    ]},
+    {"name": "bords_duty", "duty_pct": 0, "cycle_time_secs": 10, "steps": [
+      {"elapsed_secs": 0, "expected_on": false}
+    ]},
+    {"name": "duty_100_toujours_on", "duty_pct": 100, "cycle_time_secs": 10, "steps": [
+      {"elapsed_secs": 0, "expected_on": true},
+      {"elapsed_secs": 5, "expected_on": true},
+      {"elapsed_secs": 9.99, "expected_on": true}
+    ]},
+    {"name": "cycle_nul_jamais_on", "duty_pct": 50, "cycle_time_secs": 0, "steps": [
+      {"elapsed_secs": 0, "expected_on": false}
+    ]},
+    {"name": "elapsed_negatif_jamais_on", "duty_pct": 50, "cycle_time_secs": 10, "steps": [
+      {"elapsed_secs": -0.1, "expected_on": false}
+    ]}
+  ]
+}

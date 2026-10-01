@@ -1,0 +1,64 @@
+# Config dev Rauthy (IdP OIDC, D10) — http sur localhost:8080, DB embarquée
+# hiqlite persistée dans le volume pnex-rauthydata (compose.yaml).
+# Monté sur /app/config.toml ; les env du compose.yaml surchargent ces valeurs.
+# Référence complète : https://sebadob.github.io/rauthy/config/config.html
+
+[server]
+port_http = 8080
+port_https = 8443
+# Dev local : http + https auto-signé en parallèle — http pour les appels
+# serveur-à-serveur du backend (token/JWKS, pas de certificat à valider),
+# https pour les navigateurs de devices (contexte sécurisé : `crypto.subtle`
+# requis par la page login Rauthy sur une IP LAN).
+# pub_url = issuer vu par les navigateurs (IP LAN du host). Si l'IP DHCP
+# change : `task rauthy:lan` (détecte l'IP, réécrit tout, redémarre et
+# étend le client OIDC en live — URIs cumulées, cf. apply-lan.sh)
+# (development.yaml) + la redirect_uri du client pnex (API admin, cf.
+# bootstrap/api_keys.json).
+scheme = "http_https"
+# (surchargé par PUB_URL du compose.yaml — valeur miroir pour un run hors compose)
+pub_url = '192.168.1.185:8443'
+
+[cluster]
+# Nœud hiqlite unique (single instance) — données sous /app/data (volume).
+node_id = 1
+data_dir = '/app/data'
+# Secrets raft/gossip hiqlite — obligatoires (≥ 16 chars, distincts).
+# Valeurs dev versionnées (parité admin/admin Keycloak) — NE PAS réutiliser.
+secret_raft = 'pnex-dev-raft-secret-1337'
+secret_api = 'pnex-dev-api-secret-7331'
+
+[encryption]
+# DEV_MODE=true → la migration dev insère un JWKS de dev chiffré avec la clé
+# DEV hardcodée de Rauthy (config-test.toml upstream) : le registre cryptr
+# DOIT la contenir, sinon l'émission de tokens échoue en
+# « CryptrError::Keys(EncKey ID does not exist) » (constat 2026-09-08 :
+# cause de la fin de journée de debug token — l'ancienne clé « adeeefd9 »
+# ne couvrait pas l'ID dev).
+key_active = 'bVCyTsGaggVy5yqQ'
+keys = ['bVCyTsGaggVy5yqQ/UzluN29DZW41M3hTSkx6Y3NtZmRuQkR2TnJxUTYzcjQ=']
+
+# Parité realm Keycloak (registrationAllowed) : inscription ouverte.
+# L'activation passe par un mail → catcher SMTP mailcrab (env compose).
+[user_registration]
+enable = true
+
+# NOTE blocage IP brute-force en dev : la section TOML `[login_delay]` fait
+# paniquer Rauthy 0.36.2 au boot (« Unknown data in section ») — le réglage
+# passe par d'autres canaux (env compose ou admin UI). En attendant, en cas
+# de blocage IP (172.18.0.1 = IP unique de toutes nos sources de dev) :
+# attendre l'expiration SANS requête, ou Admin UI → Security → Blocked.
+# Une requête pendant la fenêtre semble la prolonger (22 → 27 min, constat
+# 2026-09-08).
+
+[bootstrap]
+# Le mot de passe admin vient de BOOTSTRAP_ADMIN_PASSWORD_PLAIN (compose.yaml).
+admin_email = 'admin@localhost'
+
+[webauthn]
+# Requis en 0.36 (pas de défaut appliqué malgré la doc) — dev local.
+# DOIT rester sur un DOMAINE (pas d'IP) : webauthn-rs (WebauthnBuilder)
+# refuse un host IP dans rp_origin → panic au boot « Invalid rp_id ».
+# pub_url peut être une IP, webauthn reste fonctionnel via localhost.
+rp_id = 'localhost'
+rp_origin = 'http://localhost:8080'

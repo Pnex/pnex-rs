@@ -1,0 +1,31 @@
+[package]
+name = "pnex-firmware-builder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Orchestration des builds firmware (shell-out toolchain PlatformIO/esptool) — Phase 6"
+
+[dependencies]
+pnex-core = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+async-trait = "0.1"
+base64 = "0.22"
+include_dir = "0.7"
+tokio = { version = "1.45", default-features = false, features = [
+  "process",
+  "time",
+  "fs",
+  "macros",
+] }
+tracing = "0.1"
+tempfile = "3"
+# Empreinte de l'image app brute (payload OTA) — BuildArtifact.ota_sha256.
+sha2 = "0.10"
+
+[dev-dependencies]
+tokio = { version = "1.45", default-features = false, features = [
+  "rt",
+  "macros",
+] }

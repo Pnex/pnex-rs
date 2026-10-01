@@ -1,0 +1,97 @@
+# Containerised PNeX (D71) — overlay adding the application images to the
+# infra of compose.yaml:
+#   pnex-server   HTTP/websockets + flow runtime (Chainguard glibc-dynamic)
+#   pnex-builder  queue worker: firmware builds (PlatformIO) + stitching
+#                 (Chainguard Wolfi)
+#
+# Usage (`task app:up`, or with TLS `task app:up EDGE=1`):
+#   docker compose -f compose.yaml -f compose.app.yaml up -d
+#   docker compose -f compose.yaml -f compose.edge.yaml -f compose.app.yaml up -d
+# With the edge, nginx targets pnex-server:5150 instead of the host.
+#
+# Secrets below have DEV defaults — override them in the environment for
+# any real deployment.
+
+x-pnex-env: &pnex-env
+  DATABASE_URL: postgres://pnex:pnex@postgres:5432/pnex
+  RAUTHY_URL: http://rauthy:8080
+  RAUTHY_ISSUER_URL: ${RAUTHY_ISSUER_URL:-}
+  OPENOBSERVE_URL: http://openobserve:5080
+  OPENOBSERVE_ROOT_EMAIL: ${OPENOBSERVE_ROOT_EMAIL:-root@pnex.local}
+  OPENOBSERVE_ROOT_PASSWORD: ${OPENOBSERVE_ROOT_PASSWORD:-Pnex-dev-2026!}
+  VALKEY_URL: redis://valkey:6379
+  PNEX_NOTIFY_INTERNAL_TOKEN: ${PNEX_NOTIFY_INTERNAL_TOKEN:-pnex-dev-notify}
+  PNEX_FLOW_RUNTIME_TOKEN: ${PNEX_FLOW_RUNTIME_TOKEN:-pnex-dev-write}
+  # Secrets vault keyring (D112): fixed DEV key, override in production.
+  PNEX_SECRETS_KEYS: ${PNEX_SECRETS_KEYS:-dev:rJlgG51k+ePf2XrLPnEAXacoz7wUPHiYSxkGT2upQPQ=}
+  # Flow editor debug feed (Debug drawer); off in production by default.
+  PNEX_FLOW_DEBUG_TOOLS: ${PNEX_FLOW_DEBUG_TOOLS:-false}
+  STORAGE_BACKEND: ${STORAGE_BACKEND:-db}
+  # D72: platform admins (comma separated emails), deployment mode
+  # (self_hosted | saas) and fallback O2 retention in days. The default
+  # admin is the Rauthy bootstrap account (example.com is IANA-reserved:
+  # nobody else can register it) — override it for a real deployment.
+  PNEX_PLATFORM_ADMIN_EMAILS: ${PNEX_PLATFORM_ADMIN_EMAILS:-admin@example.com}
+  PNEX_DEPLOYMENT_MODE: ${PNEX_DEPLOYMENT_MODE:-self_hosted}
+  PNEX_DEFAULT_RETENTION_DAYS: ${PNEX_DEFAULT_RETENTION_DAYS:-30}
+  # D70 edge root CA (written by the edge's pki-init; absent without the
+  # edge): pinned by wss firmware builds, and served by pnex-server on
+  # /api/v1/meta/ca for apps/phones (local mode only — not in cloud mode).
+  PNEX_CA_CERT_FILE: /pki/device-ca.pem
+  PNEX_EDGE_MODE: ${PNEX_EDGE_MODE:-local}
+  # Production server host imposed on firmware builds; empty = users pick
+  # from the org's host referential (docs/architecture/firmware-build.md).
+  PNEX_PROD_HOST: ${PNEX_PROD_HOST:-}
+  # Custom firmware IDE (custom-firmware.md D91): compiling user C++ runs
+  # user code in pnex-builder. The image has no bubblewrap (and Docker's
+  # default seccomp blocks user namespaces), so this dev stack compiles
+  # unsandboxed: single-user dev only. Set PNEX_FIRMWARE_CUSTOM_ENABLED=false
+  # to turn the feature off.
+  PNEX_FIRMWARE_CUSTOM_ENABLED: ${PNEX_FIRMWARE_CUSTOM_ENABLED:-true}
+  PNEX_FIRMWARE_SANDBOX: ${PNEX_FIRMWARE_SANDBOX:-none}
+
+services:
+  pnex-server:
+    image: pnex-server:${PNEX_IMAGE_TAG:-dev}
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      target: server
+    container_name: pnex-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      rauthy:
+        condition: service_started
+    environment:
+      <<: *pnex-env
+    ports:
+      - "${PNEX_HTTP_PORT:-5150}:5150"
+    volumes:
+      - pnex-appdata:/data
+      - ./deploy/edge/pki-data:/pki:ro
+
+  pnex-builder:
+    image: pnex-builder:${PNEX_IMAGE_TAG:-dev}
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      target: builder
+    container_name: pnex-builder
+    restart: unless-stopped
+    depends_on:
+      pnex-server:
+        condition: service_started
+    environment:
+      <<: *pnex-env
+    volumes:
+      # Shared with pnex-server: stitching reads/writes media on the fs
+      # backend.
+      - pnex-appdata:/data
+      - ./deploy/edge/pki-data:/pki:ro
+
+volumes:
+  pnex-appdata:

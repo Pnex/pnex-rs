@@ -1,0 +1,62 @@
+# Board profile v2 — AI-Thinker ESP32-CAM (OV2640 + 4 MB PSRAM), generic
+# camera firmware (camera-video.md D77).
+#
+# Two 8-pin headers (2x8). Rendering convention (profiles stored "USB on
+# top"): the AI-Thinker has no USB — index 0 = the 5V / 3V3 end (the
+# programming end, where the ESP32-CAM-MB carrier plugs its USB bridge).
+# To be confirmed on a photo of a real board, like the 38p variant.
+#
+# Almost every GPIO is taken by the module itself, so only TWO pins are
+# admitted (gpio set): GPIO4 (flash LED, output) and GPIO33 (red LED,
+# output, ACTIVE LOW — safe_state high keeps it off). Both are provisioned
+# as outputs out of the box (`default_mode`, O15). Everything else is
+# listed WITHOUT a gpio (rendered, never provisioned):
+#   - camera bus: 0 (XCLK), 5, 18, 19, 21, 22, 23, 25, 26, 27, 32 (PWDN),
+#     34, 35, 36, 39 — not on the headers except GPIO0 (XCLK + boot strap);
+#   - PSRAM CS: GPIO16; flash SPI: 6-11 (internal);
+#   - console UART: GPIO1 / GPIO3 (flashing + monitor);
+#   - SD card bus: 2, 4, 12, 13, 14, 15 — free without a card but NOT
+#     exposed in V1 (GPIO12 = VDD_SDIO strapping); GPIO4 doubles as SD
+#     DATA1, exposed for the flash LED only.
+# GPIO33 is not on a header (onboard LED): it sits on a virtual row 8 at
+# the far end, hence per_side 9.
+- board_name: esp32cam-ai-thinker
+  profile:
+    board: esp32cam-ai-thinker
+    name: "AI-Thinker ESP32-CAM"
+    chip_label: "ESP32-S"
+    layout: { kind: dual_inline, per_side: 9, size_mm: { w: 27, l: 40.5 } }
+    pins:
+      # left header (5V end → antenna end)
+      - { label: "5V", gpio: null, kind: power, pos: { side: left, index: 0 } }
+      - { label: GND, gpio: null, kind: gnd, pos: { side: left, index: 1 } }
+      - { label: IO12, gpio: null, kind: gpio, pos: { side: left, index: 2 },
+          note: "SD DATA2 + VDD_SDIO strapping — reserved" }
+      - { label: IO13, gpio: null, kind: gpio, pos: { side: left, index: 3 },
+          note: "SD DATA3 — reserved" }
+      - { label: IO15, gpio: null, kind: gpio, pos: { side: left, index: 4 },
+          note: "SD CMD + strapping — reserved" }
+      - { label: IO14, gpio: null, kind: gpio, pos: { side: left, index: 5 },
+          note: "SD CLK — reserved" }
+      - { label: IO2, gpio: null, kind: gpio, pos: { side: left, index: 6 },
+          note: "SD DATA0 + strapping — reserved" }
+      - { label: "Flash LED", gpio: 4, kind: gpio, pos: { side: left, index: 7 },
+          default_mode: digital_out, safe_state: low,
+          note: "IO4 — onboard flash LED (bright) — output; also SD DATA1" }
+      - { label: "Red LED", gpio: 33, kind: gpio, pos: { side: left, index: 8 },
+          default_mode: digital_out, safe_state: high, active_low: true,
+          note: "GPIO33 — onboard red LED, not on a header — output, active LOW (safe_state high = off)" }
+      # right header (3V3 end → antenna end)
+      - { label: "3V3", gpio: null, kind: power, pos: { side: right, index: 0 } }
+      - { label: IO16, gpio: null, kind: gpio, pos: { side: right, index: 1 },
+          note: "PSRAM CS — reserved" }
+      - { label: IO0, gpio: null, kind: gpio, pos: { side: right, index: 2 },
+          note: "camera XCLK + boot strap (GND = flash mode) — reserved" }
+      - { label: GND, gpio: null, kind: gnd, pos: { side: right, index: 3 } }
+      - { label: VCC, gpio: null, kind: power, pos: { side: right, index: 4 },
+          note: "3.3 V / 5 V output (solder jumper)" }
+      - { label: U0R, gpio: null, kind: gpio, pos: { side: right, index: 5 },
+          note: "GPIO3 console UART RX — reserved" }
+      - { label: U0T, gpio: null, kind: gpio, pos: { side: right, index: 6 },
+          note: "GPIO1 console UART TX — reserved" }
+      - { label: GND, gpio: null, kind: gnd, pos: { side: right, index: 7 } }

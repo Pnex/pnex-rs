@@ -1,0 +1,12 @@
+[package]
+name = "pnex-api-contract"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Contrat d'interopérabilité app ↔ serveur PNEX — version de contrat + DTO ServerInfo (serde seul, wasm-safe)"
+
+[dependencies]
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

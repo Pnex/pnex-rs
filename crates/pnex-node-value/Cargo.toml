@@ -1,0 +1,27 @@
+[package]
+name = "pnex-node-value"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Flow node PNeX — fixed or uniform-random (min/max) payload"
+
+[dependencies]
+edgelink-core = { path = "../../vendor/edgelinkd/crates/core", default-features = false, features = ["core", "js"] }
+edgelink-macro = { path = "../../vendor/edgelinkd/crates/macro" }
+# Single source of truth for the config + range check (shared with the
+# editor-side save validation).
+pnex-core = { workspace = true }
+# Only for the Option<&config::Config> factory type — same features as edgelink-core
+config = { version = "0.15", default-features = false, features = ["convert-case", "toml"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { version = "1", default-features = false, features = ["time", "sync"] }
+async-trait = "0.1"
+tokio-util = "0.7"
+log = "0.4"
+rand = "0.10"
+# The `#[flow_node]` macro emits unqualified `inventory::submit!` — direct dep required
+inventory = "0.3"
+
+[dev-dependencies]
+tokio = { version = "1", default-features = false, features = ["rt", "macros", "time"] }

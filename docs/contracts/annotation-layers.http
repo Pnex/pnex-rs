@@ -1,0 +1,100 @@
+### Contrat API Annotations sur médias (D55–D60) — couches versionnées
+### ancrées sur media_asset_id. Cf. docs/architecture/annotations.md.
+###
+### Endpoints ADDITIFS : ne jamais bumper pnex_api_contract::CONTRACT
+### (règle documentée dans docs/architecture/media.md).
+###
+### Versioning école tours/flows : save = PATCH = nouvelle version
+### append-only, 409 optimiste (expected_version_number) ; publier = pointeur
+### published_version_id (FK circulaire). Share public exclu V1 (D58).
+###
+### Erreurs : 400 champ-par-champ {"<champ>": msg} ; 400 {"violations": [...]}
+### document invalide ; 403 écriture hors owner/admin ; 404 masqué cross-org ;
+### 409 save périmé.
+###
+### Migration 000026 (école tours 000017 — le numéro 000021 cité dans la
+### doctrine était périmé : pris par notify).
+
+### Variables (VS Code REST Client / IntelliJ HTTP) : {{token}} {{org_id}}
+### {{layer_id}} {{asset_id}} — asset = media_assets.id (panorama pour les
+### items equirect, photo/floorplan pour les items flat).
+
+### Créer une couche (couche + version 1, document vide) — 201
+POST http://localhost:5150/api/v1/annotation-layers
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{ "name": "Salle machine", "description": "Annotations du pano PAC" }
+
+### Lister (D14) — filtre search
+GET http://localhost:5150/api/v1/annotation-layers?search=salle&limit=20
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Détail (doc dernière version) ; ?version=n → doc d'une version
+GET http://localhost:5150/api/v1/annotation-layers/{{layer_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Save append-only (nouvelle version) — 200, ou 409 si périmé
+PATCH http://localhost:5150/api/v1/annotation-layers/{{layer_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{
+  "expected_version_number": 1,
+  "doc": {
+    "items": [
+      {
+        "id": "a1", "media_asset_id": "{{asset_id}}", "kind": "device",
+        "geometry": {"type": "equirect", "yaw": 45.0, "pitch": -10.0},
+        "color": "#2563eb", "label": "PAC-01 · circulateur",
+        "target": {"type": "device", "device_id": "pac-01"}
+      },
+      {
+        "id": "a2", "media_asset_id": "{{asset_id}}", "kind": "pin",
+        "geometry": {"type": "flat", "x": 0.32, "y": 0.48},
+        "label": "Circulateur · gpio 4",
+        "target": {"type": "pin", "device_id": "pac-01", "pin_gpio": 4}
+      },
+      {
+        "id": "a3", "media_asset_id": "{{asset_id}}", "kind": "note",
+        "geometry": {"type": "equirect", "yaw": 0.0, "pitch": 0.0},
+        "label": "Vanne CAU fermée l'été",
+        "target": {"type": "note", "text": "Vanne CAU fermée l'été"}
+      }
+    ]
+  },
+  "author": "alice"
+}
+
+### Historique (D14, desc) — {{layer_id}}/versions ; doc d'une version :
+GET http://localhost:5150/api/v1/annotation-layers/{{layer_id}}/versions
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Publier (version absente = dernière) — pointeur, 200
+POST http://localhost:5150/api/v1/annotation-layers/{{layer_id}}/publish
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{}
+
+### Dépublier (pointeur → NULL ; items absents de tous les viewers) — 200
+POST http://localhost:5150/api/v1/annotation-layers/{{layer_id}}/unpublish
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Read model viewers — items fusionnés des couches publiées de l'asset,
+### résolution device (device_pk/device_label, dead: true si disparu) — 200
+GET http://localhost:5150/api/v1/media/{{asset_id}}/annotations
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Supprimer — 204 (versions en cascade)
+DELETE http://localhost:5150/api/v1/annotation-layers/{{layer_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}

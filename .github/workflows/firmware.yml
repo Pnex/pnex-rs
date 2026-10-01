@@ -1,0 +1,78 @@
+# Garde-fou « une version pnex = un firmware qui compile » : le firmware
+# est convergé dans le monorepo (firmware/), ce workflow compile les projets
+# predefined devices à chaque changement — les secrets de build (${sysenv.*}
+# de platformio.ini) restent vides, comme le pré-build du Dockerfile
+# pio-builder (l'image mergée finale est produite par le worker avec la
+# config device).
+
+name: Firmware
+
+on:
+  push:
+    branches: ["*"]
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware.yml"
+  pull_request:
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware.yml"
+
+# Self-hosted runner (node-worker-2), same policy as ci.yml: serialize runs
+# and cancel superseded ones on the same ref.
+concurrency:
+  group: firmware-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile:
+    name: pio run (soil_sensor + generic_esp8266 + generic_esp32c3)
+    runs-on: [self-hosted, linux]
+    # The generic_* projects read their board and screen pins from the build
+    # env (injected per device by the builder). CI compiles a screenless
+    # reference board per SoC family.
+    env:
+      PNEX_SCREEN_SSD1306: "0"
+      PNEX_SCREEN_ST7735: "0"
+      PNEX_SCREEN_SDA: "-1"
+      PNEX_SCREEN_SCL: "-1"
+      PNEX_SCREEN_SCK: "-1"
+      PNEX_SCREEN_MOSI: "-1"
+      PNEX_SCREEN_CS: "-1"
+      PNEX_SCREEN_DC: "-1"
+      PNEX_SCREEN_RST: "-1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: firmware/uv.lock
+      # Cache des toolchains/platforms PlatformIO (téléchargées sinon à
+      # chaque run : ~100 Mo).
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/*/platformio.ini') }}
+      - name: Compile soil_sensor
+        working-directory: firmware
+        run: uv run pio run -d soil_sensor
+      # Brick 0 : le .bin générique (config device compilée dans le .bin,
+      # secrets vides en CI — même régime que le pre-build du Dockerfile).
+      - name: Compile generic_esp8266
+        working-directory: firmware
+        run: PNEX_PIO_BOARD=nodemcuv2 uv run pio run -d generic_esp8266
+      # Variante ESP32-C3 (Seeed XIAO ESP32C3) : même protocole, pio
+      # télécharge platform espressif32 + toolchain riscv au premier run.
+      - name: Compile generic_esp32c3
+        working-directory: firmware
+        run: PNEX_PIO_BOARD=seeed_xiao_esp32c3 uv run pio run -d generic_esp32c3
+      # Golden vectors Rust = C++ (D20 §6) : la référence pnex_core::control
+      # est rejouée côté C++ sur l'hôte (Unity) — le miroir ne peut pas
+      # dévier sans casser la CI.
+      - name: Test pnex-core-cpp (golden vectors)
+        working-directory: firmware
+        run: uv run pio test -d core-cpp-tests -e native
+      # Package publiable : library.json valide + exemples embarqués.
+      - name: Pack lib PneX (validation manifeste)
+        working-directory: firmware
+        run: uv run pio pkg pack lib/pnex -o "$RUNNER_TEMP/pnex.tar.gz"

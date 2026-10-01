@@ -1,0 +1,626 @@
+version: '3'
+
+env:
+  FRONT_DIST: crates/pnex-frontend/dist
+  DX_OUT: target/dx/pnex-frontend
+
+includes:
+  # Tâches propres au firmware (image Docker pio-builder, requirements) —
+  # `task firmware:build-docker`, `task firmware:gen-requirements`.
+  # dir explicite : docker build doit avoir firmware/ comme context.
+  firmware:
+    taskfile: ./firmware/Taskfile.yml
+    dir: ./firmware
+
+# Firmware convergé dans le monorepo (firmware/) + toolchain épinglée sur
+# son venv quand il existe (sinon `pio` du PATH — installation
+# potentiellement divergente : cf. docs/observations.md O7). Utilisée par
+# dev:backend et les tâches fw:*.
+vars:
+  FW_DIR: firmware
+  # Chemins ABSOLUS ({{.ROOT_DIR}} = racine du monorepo) : le worker de
+  # build tourne avec cwd = crates/pnex-backend — un chemin relatif résolu
+  # depuis lui pointe à côté (cause d'un fail instantané de TOUS les
+  # builds firmware, cf. journal 2026-09-02).
+  PIO_CMD:
+    sh: test -x "{{.ROOT_DIR}}/firmware/.venv/bin/pio" && echo "{{.ROOT_DIR}}/firmware/.venv/bin/pio" || echo pio
+  ESPTOOL_CMD:
+    sh: test -x "{{.ROOT_DIR}}/firmware/.venv/bin/esptool" && echo "{{.ROOT_DIR}}/firmware/.venv/bin/esptool" || echo esptool
+  # Outillage Android (build:frontend:android) — surcharges via l'env shell.
+  ANDROID_HOME:
+    sh: echo "${ANDROID_HOME:-$HOME/Android/Sdk}"
+  NDK_HOME:
+    sh: echo "${NDK_HOME:-$(ls -d "$HOME"/Android/Sdk/ndk/* 2>/dev/null | sort | tail -1)}"
+  JAVA_HOME:
+    sh: echo "${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk-amd64}"
+
+tasks:
+  default:
+    desc: Aperçu des tâches
+    cmds:
+      - task --list
+
+  # ---------- Build ----------
+
+  build:frontend:
+    desc: Build le front Dioxus (wasm, release) et le copie dans crates/pnex-frontend/dist
+    deps: [css:build, js:build]
+    # method timestamp (mtime dist vs sources) et non le checksum par défaut :
+    # go-task écrit le checksum AVANT d'exécuter les cmds — un build wasm
+    # interrompu (Ctrl-C) enregistre un checksum « à jour » sans rien produire,
+    # et task dev saute ensuite le front pour toujours (vu le 2026-09-05 :
+    # dist d'hier servi alors que task dev tournait).
+    method: timestamp
+    sources:
+      - crates/pnex-frontend/src/**/*
+      # Les libellés Fluent sont embarqués (include_str!) : une modif de
+      # locales doit déclencher la reconstruction (constat 2026-09-12 : fix
+      # .ftl servi périmé car dev:frontend « up to date »).
+      - crates/pnex-frontend/locales/**/*
+      - crates/pnex-frontend/assets/**/*
+      - crates/pnex-frontend/Dioxus.toml
+      - crates/pnex-core/src/**/*
+      # Le stitcher (assemblage 360°) est lié statiquement dans le binaire
+      # front : une modification doit déclencher la reconstruction (constat
+      # 2026-09-10 : fill_poles modifié, task resté « up to date »).
+      - crates/pnex-stitcher/src/**/*
+      # Le contrat d'API est embarqué par le front : une modification doit
+      # déclencher la reconstruction (sinon dist périmée après un bump).
+      - crates/pnex-api-contract/src/**/*
+    generates:
+      - "{{.FRONT_DIST}}/**/*"
+    cmds:
+      # Vide la sortie dx (les assets hashés des builds précédents s'y accumulent)
+      - rm -rf {{.DX_OUT}}/release/web/public
+      - cd crates/pnex-frontend && dx build --platform web --release
+      - rm -rf {{.FRONT_DIST}}
+      - cp -r {{.DX_OUT}}/release/web/public {{.FRONT_DIST}}
+
+  build:frontend:android:
+    desc: Build l'APK Android release arm64 (validation chaîne mobile — cf. docs/architecture/features.md)
+    deps: [css:build, js:build]
+    # method timestamp (même raison que build:frontend) : go-task écrit le
+    # checksum AVANT l'exécution — un build interrompu enregistrerait un
+    # checksum « à jour » sans APK produit.
+    method: timestamp
+    sources:
+      - crates/pnex-frontend/src/**/*
+      # Les libellés Fluent sont embarqués (include_str!) : une modif de
+      # locales doit déclencher la reconstruction (constat 2026-09-12 : fix
+      # .ftl servi périmé car dev:frontend « up to date »).
+      - crates/pnex-frontend/locales/**/*
+      - crates/pnex-frontend/assets/**/*
+      - crates/pnex-frontend/Dioxus.toml
+      - crates/pnex-frontend/patch-android-manifest.py
+      - Taskfile.yml
+      - crates/pnex-core/src/**/*
+      # Le stitcher (assemblage 360°) est lié statiquement dans le binaire
+      # front : une modification doit déclencher la reconstruction (constat
+      # 2026-09-10 : fill_poles modifié, task resté « up to date »).
+      - crates/pnex-stitcher/src/**/*
+      # Le contrat d'API est embarqué par le front : une modification doit
+      # déclencher la reconstruction (sinon dist périmée après un bump).
+      - crates/pnex-api-contract/src/**/*
+    generates:
+      # dx signe avec sa debug key et garde le nom app-debug.apk même en release.
+      - "{{.DX_OUT}}/release/android/app/app/build/outputs/apk/debug/app-debug.apk"
+    cmds:
+      # dx accumule les jniLibs des builds précédents dans le projet gradle
+      # généré (vu le 2026-09-08 : l'arm64 s'est AJOUTÉ aux x86_64 d'un build
+      # précédent → APK 192 Mo avec les deux ABI). Nettoyage avant build.
+      - rm -rf {{.DX_OUT}}/release/android
+      # Env machine-spécifique : SDK/NDK/JDK résolus par les vars globales
+      # ANDROID_HOME/NDK_HOME/JAVA_HOME (cf. bloc vars racine).
+      - cmd: |
+          export ANDROID_HOME="{{.ANDROID_HOME}}"
+          export NDK_HOME="{{.NDK_HOME}}"
+          export JAVA_HOME="{{.JAVA_HOME}}"
+          cd crates/pnex-frontend
+          # --release OBLIGATOIRE : le build debug embarque le client
+          # d'autoreload de Dioxus qui sonde /_dioxus vers localhost:8080 au
+          # lancement — Rauthy blackliste instantanément toute IP demandant
+          # un chemin /_* (« suspicious API scan ») → blocages de login en
+          # série (constat 2026-09-08, une demi-journée de debug).
+          dx build --platform android --release --target aarch64-linux-android --no-default-features --features mobile
+          # dx régénère le manifest à chaque build (impossible d'injecter un
+          # intent-filter via Dioxus.toml) : patch deep link `pnex` après coup
+          # puis ré-assemblage gradle (rapide à chaud). Chemins en
+          # {{.ROOT_DIR}} : le cd ci-dessus invalide le DX_OUT relatif.
+          python3 "{{.ROOT_DIR}}/crates/pnex-frontend/patch-android-manifest.py" \
+            "{{.ROOT_DIR}}/{{.DX_OUT}}/release/android/app/app/src/main/AndroidManifest.xml"
+          cd "{{.ROOT_DIR}}/{{.DX_OUT}}/release/android/app" && ./gradlew assembleDebug
+
+  # Native desktop UI (Dioxus desktop: webkit2gtk on Linux, WebView2 on
+  # Windows). The webviews have no Web Serial: firmware flashing runs the
+  # esptool binary shipped in `<app>/esptool/` (cf. src/flash.rs `native`).
+  # Linux prerequisites (apt): libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev.
+  build:frontend:linux:
+    desc: Build the native Linux desktop UI (x86_64) → target/dist/pnex-desktop-linux-x86_64.tar.gz
+    deps: [css:build, js:build]
+    cmds:
+      - task: esptool:fetch
+        vars: { ESPTOOL_PLATFORM: linux-amd64 }
+      - cd crates/pnex-frontend && dx build --linux --release --no-default-features --features desktop
+      - rm -rf {{.DX_OUT}}/release/linux/app/esptool
+      - cp -r target/esptool/linux-amd64 {{.DX_OUT}}/release/linux/app/esptool
+      - mkdir -p target/dist
+      - tar -C {{.DX_OUT}}/release/linux -czf target/dist/pnex-desktop-linux-x86_64.tar.gz --transform 's,^app,pnex,' app
+
+  # Windows cross-build from Linux (x86_64-pc-windows-gnu). Prerequisites:
+  # `apt install mingw-w64` + `rustup target add x86_64-pc-windows-gnu`.
+  # win-linker.sh strips the MSVC-only flags dx injects for Windows bundles.
+  # WebView2Loader.dll must ship next to the exe (gnu target; the msvc target
+  # links it statically). The WebView2 runtime itself ships with Windows 10/11.
+  build:frontend:windows:
+    desc: Cross-build the native Windows desktop UI (x86_64) → target/dist/pnex-desktop-windows-x86_64.zip
+    deps: [css:build, js:build]
+    cmds:
+      - task: esptool:fetch
+        vars: { ESPTOOL_PLATFORM: windows-amd64 }
+      - cmd: |
+          export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER="{{.ROOT_DIR}}/crates/pnex-frontend/win-linker.sh"
+          cd crates/pnex-frontend
+          dx build --windows --target x86_64-pc-windows-gnu --release --no-default-features --features desktop
+      - cmd: |
+          app={{.DX_OUT}}/release/windows/app
+          loader=$(ls -d "$HOME"/.cargo/registry/src/*/webview2-com-sys-*/x64/WebView2Loader.dll | sort -V | tail -1)
+          test -f "$loader" || { echo "WebView2Loader.dll not found in the cargo registry" >&2; exit 1; }
+          cp "$loader" "$app/"
+          rm -rf "$app/esptool" && cp -r target/esptool/windows-amd64 "$app/esptool"
+          mkdir -p target/dist && rm -f target/dist/pnex-desktop-windows-x86_64.zip
+          cd "$app/.." && rm -rf pnex && cp -r app pnex && zip -qr "{{.ROOT_DIR}}/target/dist/pnex-desktop-windows-x86_64.zip" pnex && rm -rf pnex
+
+  # Edge agent distribution (D95), served by pnex-server at
+  # /api/v1/agent/download/{target} (PNEX_AGENT_DIST_DIR, dev default
+  # target/agent-dist). Linux targets are static musl linked through zig
+  # (cargo-zigbuild, zig fetched pinned); Windows through mingw.
+  # Prerequisites: `cargo install --locked cargo-zigbuild`, `apt install mingw-w64`.
+  build:agent:
+    desc: Build pnex-agent for Linux x86_64/aarch64/armv7 (static) + Windows x86_64 → target/agent-dist (+ SHA256SUMS)
+    cmds:
+      - deploy/agent/build-dist.sh
+
+  # esptool standalone release binary (PyInstaller, GPL-2.0 — shipped as a
+  # separate program with its LICENSE), pinned by sha256. Only `esptool` is
+  # kept (espefuse/espsecure/rfc2217 are not used).
+  esptool:fetch:
+    desc: Download the pinned esptool binary for ESPTOOL_PLATFORM → target/esptool/<platform>/
+    vars:
+      ESPTOOL_VERSION: 5.4.0
+      ESPTOOL_PLATFORM: '{{.ESPTOOL_PLATFORM | default "linux-amd64"}}'
+    status:
+      - test -f target/esptool/{{.ESPTOOL_PLATFORM}}/.v{{.ESPTOOL_VERSION}}
+    cmds:
+      - cmd: |
+          set -eu
+          case "{{.ESPTOOL_PLATFORM}}" in
+            linux-amd64)   ext=tar.gz; sum=61648fbae20735cabb342f2fbe8fc89b3046e1ed6f9c3e09528d837dc9a9b152; bin=esptool ;;
+            linux-aarch64) ext=tar.gz; sum=2964fff085071c1403f2cf812a7a1d425f987f9992851a60236bbee17b6e7dcc; bin=esptool ;;
+            macos-arm64)   ext=tar.gz; sum=ba332671130939e2e6db90c2784488f7e62a1459b0fe3c5ec66e9a366821de7a; bin=esptool ;;
+            macos-amd64)   ext=tar.gz; sum=910bb64fe39a84c792752701293c8aa294faeef229fe8705ecd6955b01db3778; bin=esptool ;;
+            windows-amd64) ext=zip;    sum=b7f6b9dd301a210b31f4829118c909c84aae23107f9ca1fdc14ccf4d7384be2e; bin=esptool.exe ;;
+            *) echo "unknown ESPTOOL_PLATFORM {{.ESPTOOL_PLATFORM}}" >&2; exit 1 ;;
+          esac
+          dir=target/esptool/{{.ESPTOOL_PLATFORM}}
+          tmp=$(mktemp -d)
+          archive="$tmp/esptool.$ext"
+          curl -fsSL -o "$archive" "https://github.com/espressif/esptool/releases/download/v{{.ESPTOOL_VERSION}}/esptool-v{{.ESPTOOL_VERSION}}-{{.ESPTOOL_PLATFORM}}.$ext"
+          echo "$sum  $archive" | sha256sum -c --quiet
+          if [ "$ext" = zip ]; then unzip -q "$archive" -d "$tmp"; else tar -xzf "$archive" -C "$tmp"; fi
+          rm -rf "$dir" && mkdir -p "$dir"
+          cp "$tmp/esptool-{{.ESPTOOL_PLATFORM}}/$bin" "$tmp/esptool-{{.ESPTOOL_PLATFORM}}/LICENSE" "$dir/"
+          touch "$dir/.v{{.ESPTOOL_VERSION}}"
+          rm -rf "$tmp"
+
+  # ---------- CSS (Tailwind v4) ----------
+
+  css:build:
+    desc: Génère crates/pnex-frontend/assets/tailwind.css (requis avant tout build dx)
+    dir: crates/pnex-frontend
+    # Incrémental, sinon il re-toucherait assets/tailwind.css à chaque
+    # invocation et invaliderait le timestamp de dev:frontend/build:frontend.
+    # method checksum suffit ici : une interruption ne perd que quelques ms.
+    sources:
+      - src/**/*.rs
+      - style/*.css
+      - package.json
+    generates:
+      - assets/tailwind.css
+    cmds:
+      - bun run css:build
+
+  css:ensure:
+    desc: Garantit l'existence de assets/tailwind.css (stub) — la macro asset!() l'exige à la compilation
+    cmds:
+      # Le CSS réel est gitignoré (généré par css:build) : sans ce stub, tout
+      # fresh clone casse sur cargo check/test/clippy (asset! ne trouve pas le
+      # fichier). Le dossier assets/ n'existe pas non plus dans un clone frais
+      # (aucun fichier tracké). N'écrase jamais le CSS réel s'il existe.
+      - mkdir -p crates/pnex-frontend/assets
+      - test -f crates/pnex-frontend/assets/tailwind.css || printf '/* Stub — CSS reel genere par task css:build (bun) */\n' > crates/pnex-frontend/assets/tailwind.css
+
+  css:watch:
+    desc: Regénère le CSS Tailwind à la volée (à lancer à côté de dev:hot)
+    dir: crates/pnex-frontend
+    cmds:
+      - bun run css:watch
+
+  # ---------- JS (flash navigateur esptool-js) ----------
+
+  js:build:
+    desc: Bundle assets/flasher.js + assets/viewers.js (esbuild IIFE — requis avant tout build dx)
+    dir: crates/pnex-frontend
+    # Incrémental, même raison que css:build.
+    sources:
+      - js/*.js
+      - package.json
+    generates:
+      - assets/flasher.js
+      - assets/viewers.js
+      - assets/viewers.css
+      - assets/map.js
+      - assets/map.css
+    cmds:
+      - bun run js:build
+      - bun run js:viewers
+      - bun run js:map
+
+  js:ensure:
+    desc: Garantit l'existence des bundles JS/CSS (stubs) — la macro asset!() les exige à la compilation
+    cmds:
+      # Même garde que css:ensure : les bundles réels sont gitignorés (générés
+      # par js:build) et sans stub tout fresh clone casse sur cargo check/test.
+      # N'écrase jamais les bundles réels s'ils existent.
+      - mkdir -p crates/pnex-frontend/assets
+      - test -f crates/pnex-frontend/assets/flasher.js || printf '/* Stub — bundle reel genere par task js:build (bun) */\n' > crates/pnex-frontend/assets/flasher.js
+      - test -f crates/pnex-frontend/assets/viewers.js || printf '/* Stub — bundle reel genere par task js:build (bun) */\n' > crates/pnex-frontend/assets/viewers.js
+      - test -f crates/pnex-frontend/assets/viewers.css || printf '/* Stub — bundle reel genere par task js:build (bun) */\n' > crates/pnex-frontend/assets/viewers.css
+      - test -f crates/pnex-frontend/assets/map.js || printf '/* Stub — bundle reel genere par task js:build (bun) */\n' > crates/pnex-frontend/assets/map.js
+      - test -f crates/pnex-frontend/assets/map.css || printf '/* Stub — CSS maplibre genere par task js:build (bun) */\n' > crates/pnex-frontend/assets/map.css
+
+  # ---------- Rauthy (branding IdP) ----------
+
+  rauthy:branding:
+    desc: Applique thème + logo PNeX aux pages Rauthy (login/register/account) — nécessite RAUTHY_API_KEY='<nom>$<secret>'
+    cmds:
+      - bash deploy/rauthy/apply-branding.sh
+
+  rauthy:lan:
+    desc: Run canonique LAN — détecte l'IP active, réécrit les configs, redémarre Rauthy+backend, étend le client OIDC en live (URIs cumulées, spots précédents conservés)
+    cmds:
+      - bash deploy/rauthy/apply-lan.sh
+
+  # ---------- TLS edge (D70) ----------
+
+  edge:up:
+    desc: TLS everywhere — nginx + local CA (or Let's Encrypt with PNEX_EDGE_MODE=cloud) on https://<hostname>.local
+    cmds:
+      - bash deploy/edge/apply-edge.sh
+
+  edge:down:
+    desc: Remove the TLS edge and put Rauthy back on its dev ports (8080/8443)
+    cmds:
+      # Placeholders: the overlay refuses to parse without them.
+      - PNEX_DOMAIN=down PNEX_BACKEND_UPSTREAM=down docker compose -f compose.yaml -f compose.edge.yaml --profile cloud rm -sf edge-nginx edge-pki edge-certbot
+      - rm -f deploy/edge/edge.env
+      - docker compose up -d rauthy
+
+  edge:trust:
+    desc: Trust the local edge root CA on this machine (system store + Chrome/Firefox NSS)
+    cmds:
+      - bash deploy/edge/trust-ca.sh
+
+  # ---------- Container images (D71) ----------
+
+  docker:build:
+    desc: Build the pnex-server (Chainguard glibc-dynamic) and pnex-builder (Wolfi + PlatformIO) images — TAG=dev by default
+    vars:
+      TAG: '{{.TAG | default "dev"}}'
+    cmds:
+      - docker buildx build -f deploy/docker/Dockerfile --target server -t pnex-server:{{.TAG}} --load .
+      - docker buildx build -f deploy/docker/Dockerfile --target builder -t pnex-builder:{{.TAG}} --load .
+
+  docker:publish:
+    desc: Build + push multi-arch (amd64, arm64) images to Docker Hub — TAG=dirty-<githash> by default (needs `docker login` and arm64 binfmt)
+    vars:
+      REGISTRY: '{{.REGISTRY | default "docker.io/shanisma"}}'
+      PLATFORMS: '{{.PLATFORMS | default "linux/amd64,linux/arm64"}}'
+      TAG:
+        sh: '[ -n "{{.TAG}}" ] && echo "{{.TAG}}" || echo "dirty-$(git rev-parse --short HEAD)"'
+    cmds:
+      - |
+        # arm64 runs only the builder image's PlatformIO prewarm under QEMU
+        # (Rust is cross-compiled): register the emulator when missing.
+        [ -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ] || docker run --privileged --rm tonistiigi/binfmt --install arm64
+      - docker buildx build -f deploy/docker/Dockerfile --platform {{.PLATFORMS}} --target server -t {{.REGISTRY}}/pnex-server-rs:{{.TAG}} --push .
+      - docker buildx build -f deploy/docker/Dockerfile --platform {{.PLATFORMS}} --target builder -t {{.REGISTRY}}/pnex-builder-rs:{{.TAG}} --push .
+      - echo "Published {{.REGISTRY}}/pnex-server-rs:{{.TAG}} and {{.REGISTRY}}/pnex-builder-rs:{{.TAG}}"
+
+  app:up:
+    desc: Run PNeX itself in containers (server + builder) on top of the infra — EDGE=1 puts the TLS edge in front
+    cmds:
+      - |
+        # An active edge (edge.env present) must never be bypassed: a plain
+        # compose up would recreate rauthy/pnex-server without the TLS
+        # overrides (browser redirected to http://rauthy:8080).
+        if [ -n "{{.EDGE}}" ] || [ -f deploy/edge/edge.env ]; then
+          PNEX_EDGE_BACKEND=container bash deploy/edge/apply-edge.sh
+        else
+          docker compose -f compose.yaml -f compose.app.yaml up -d pnex-server pnex-builder
+        fi
+
+  app:down:
+    desc: Stop the containerised pnex-server + pnex-builder
+    cmds:
+      - docker compose -f compose.yaml -f compose.app.yaml rm -sf pnex-server pnex-builder
+
+  # ---------- Pi simulation VM (pnex-deploy installer tests) ----------
+  # ARCH=arm64 (default for vm:up, faithful Pi, TCG) | amd64 (KVM, fast).
+  # Extra script flags after `--`, e.g. `task vm:up ARCH=amd64 -- --usb 10c4:ea60`.
+
+  vm:up:
+    desc: Boot the Raspberry-Pi-like test VM (qemu + cloud-init) — ARCH=arm64|amd64
+    cmds:
+      - bash deploy/vm/up.sh --arch {{.ARCH | default "arm64"}} {{.CLI_ARGS}}
+
+  vm:down:
+    desc: Power the test VM off (disk kept) — ARCH to pick one when both run
+    cmds:
+      - bash deploy/vm/down.sh {{if .ARCH}}--arch {{.ARCH}}{{end}}
+
+  vm:destroy:
+    desc: Stop the test VM and delete its disk (downloaded base image kept)
+    cmds:
+      - bash deploy/vm/destroy.sh {{if .ARCH}}--arch {{.ARCH}}{{end}} {{.CLI_ARGS}}
+
+  vm:ssh:
+    desc: Shell into the test VM, or run a command after `--`
+    interactive: true
+    cmds:
+      - bash deploy/vm/ssh.sh {{if .ARCH}}--arch {{.ARCH}}{{end}} {{.CLI_ARGS}}
+
+  vm:install:
+    desc: Run the pnex-deploy installer in the VM — SOURCE=local (../pnex-deploy checkout, default) | remote (GitHub one-liner); installer flags after `--`
+    cmds:
+      - bash deploy/vm/install-in-vm.sh {{if .ARCH}}--arch {{.ARCH}}{{end}} --source={{.SOURCE | default "local"}} {{if .CLI_ARGS}}-- {{.CLI_ARGS}}{{end}}
+
+  build:
+    desc: Build complet (front + workspace natif)
+    deps: [build:frontend]
+    cmds:
+      - cargo build --workspace
+
+  check:
+    desc: cargo check natif + wasm32 (garde-fou « jamais de rouge »)
+    deps: [css:ensure, js:ensure]
+    cmds:
+      - cargo check --workspace
+      - cargo check -p pnex-core -p pnex-api-contract -p pnex-frontend --target wasm32-unknown-unknown
+
+  test:
+    desc: Tests du workspace
+    deps: [css:ensure, js:ensure]
+    cmds:
+      - cargo test --workspace
+
+  # ---------- Dev ----------
+
+  dev:
+    desc: Front debug + serveur Loco (worker de builds + moteur de flow ETL) — http://localhost:5150
+    # Séquence cmds (et non deps) : go-task exécute les cmds strictement
+    # dans l'ordre — dev:backend ne démarre que lorsque dev:frontend a
+    # terminé (dx build + copie vers dist). En deps, une fenêtre de course
+    # a fait mourir le serveur au boot (« dist not found ») quand le wasm
+    # recompilait plus lentement que le backend natif (constat 2026-09-12).
+    cmds:
+      - task: dev:frontend
+      - task: dev:backend
+
+  dev:frontend:
+    desc: Build debug du front vers crates/pnex-frontend/dist (pour serving Loco)
+    deps: [css:build, js:build]
+    # Même garde que build:frontend (checksum écrit avant exécution → un
+    # Ctrl-C pendant le wasm fige la tâche en « up to date »).
+    method: timestamp
+    sources:
+      - crates/pnex-frontend/src/**/*
+      # Les libellés Fluent sont embarqués (include_str!) : une modif de
+      # locales doit déclencher la reconstruction (constat 2026-09-12 : fix
+      # .ftl servi périmé car dev:frontend « up to date »).
+      - crates/pnex-frontend/locales/**/*
+      - crates/pnex-frontend/assets/**/*
+      - crates/pnex-frontend/Dioxus.toml
+      - crates/pnex-core/src/**/*
+      # Le stitcher (assemblage 360°) est lié statiquement dans le binaire
+      # front : une modification doit déclencher la reconstruction (constat
+      # 2026-09-10 : fill_poles modifié, task resté « up to date »).
+      - crates/pnex-stitcher/src/**/*
+      # Le contrat d'API est embarqué par le front : une modification doit
+      # déclencher la reconstruction (sinon dist périmée après un bump).
+      - crates/pnex-api-contract/src/**/*
+    generates:
+      - "{{.FRONT_DIST}}/**/*"
+    cmds:
+      - rm -rf {{.DX_OUT}}/debug/web/public
+      - cd crates/pnex-frontend && dx build --platform web
+      - rm -rf {{.FRONT_DIST}}
+      - cp -r {{.DX_OUT}}/debug/web/public {{.FRONT_DIST}}
+
+  dev:backend:
+    desc: Démarre le backend Loco (serveur + worker de builds + moteur de flow ETL — cible utilisée par task dev)
+    # TLS edge (D70): when `task edge:up` is active, edge.env provides
+    # RAUTHY_ISSUER_URL=https://<domain> (a missing file is ignored).
+    dotenv: ['deploy/edge/edge.env']
+    # Le binaire du moteur doit exister avant le boot (runtime_cmd par défaut
+    # = ./target/debug/pnex-flow-runtime, cf. config/development.yaml).
+    deps: [flow:build]
+    # Toolchain épinglée via les vars globales PIO_CMD/ESPTOOL_CMD (partagée
+    # avec les tâches fw:* de debug USB). PNEX_FLOW_ENABLED=true : le moteur
+    # de flow part avec le serveur — hors task dev, le défaut reste false
+    # (config/development.yaml).
+    env:
+      PNEX_PIO_CMD: "{{.PIO_CMD}}"
+      PNEX_ESPTOOL_CMD: "{{.ESPTOOL_CMD}}"
+      PNEX_FLOW_ENABLED: "true"
+      # Dev : orgs par défaut sur le tier Admin (illimité) — le compte de
+      # test n'est pas bridé par les quotas Free. Prod : variable absente →
+      # Free (comportement produit inchangé).
+      PNEX_DEFAULT_ORG_TIER: "Admin"
+      # Dev: the scripted login account is a platform admin (D72: system
+      # status + global O2 retention). Prod: unset → nobody is promoted.
+      PNEX_PLATFORM_ADMIN_EMAILS: "admin@example.com"
+      # Appels serveur-à-serveur vers Rauthy (token, JWKS) : HTTP local —
+      # pas de certificat auto-signé à valider, insensible au DHCP.
+      # L'issuer vu par les devices (HTTPS) est issuer_url de
+      # development.yaml (RAUTHY_ISSUER_URL), aligné sur PUB_URL du compose.
+      RAUTHY_URL: "http://localhost:8080"
+    cmds:
+      - cd crates/pnex-backend && cargo run --bin pnex-server -- start --server-and-worker
+
+  flow:build:
+    desc: Compile le runtime de flows ETL (pnex-flow-runtime) — lancé par dev:backend
+    cmds:
+      - cargo build -p pnex-flow-runtime
+
+  dev:backend:server-only:
+    desc: Backend Loco serveur seul (sans worker — la queue pg_loco_queue n'est pas drivée)
+    cmds:
+      - cd crates/pnex-backend && cargo run --bin pnex-server -- start
+
+  dev:hot:
+    desc: Dev front hot-reload (dx :5151 + Tailwind watch) — API Loco sur :5150 à part
+    deps: [css:watch]
+    cmds:
+      - task: dev:hot:dx
+
+  dev:hot:dx:
+    desc: dx serve avec hot-reload, API pointée sur le backend Loco (:5150)
+    env:
+      # En dev hot le front est servi par dx (:5151), pas par Loco : l'URL de
+      # base de l'API devient explicite (seam cf. api/config.rs). CORS dev
+      # côté Loco cf. config/development.yaml.
+      PNEX_API_BASE_URL: http://localhost:5150
+    cmds:
+      - cd crates/pnex-frontend && dx serve --platform web --port 5151
+
+  # ---------- Firmware IoT (debug USB) ----------
+  # Les identifiants WiFi/HOST/TOKEN/DEVICE_ID sont compilés dans le firmware
+  # (build_flags -D … de platformio.ini) : « les paramètres sont ok » côté
+  # serveur ne dit rien de l'image réellement flashée. Le monitor série le
+  # révèle au boot ([WiFi] Connecting to <ssid>) — cf.
+  # docs/architecture/firmware-build.md §2.1.
+
+  fw:ports:
+    desc: Liste les ports série USB (identifier l'ESP — /dev/ttyUSB0, /dev/ttyACM0…)
+    cmds:
+      - "{{.PIO_CMD}} device list"
+
+  fw:monitor:
+    desc: Monitor série de l'ESP branché en USB (115200 + filtres de platformio.ini) — ex. task fw:monitor FIRMWARE=generic_esp8266 PORT=/dev/ttyUSB0
+    dir: "{{.FW_DIR}}/{{.FIRMWARE}}"
+    vars:
+      FIRMWARE: soil_sensor
+    cmds:
+      - "{{.PIO_CMD}} device monitor{{if .PORT}} --port {{.PORT}}{{end}}"
+
+  fw:flash:
+    desc: Recompile + flash USB puis monitor — identifiants passés en env (WIFI_SSID, WIFI_PASSWORD, HOST, TOKEN, DEVICE_ID, ENCRYPTION_KEY — les 6 en base64, WS_SSL true/false)
+    dir: "{{.FW_DIR}}/{{.FIRMWARE}}"
+    vars:
+      FIRMWARE: soil_sensor
+    cmds:
+      - |
+        missing=0
+        for v in WIFI_SSID WIFI_PASSWORD HOST TOKEN DEVICE_ID ENCRYPTION_KEY; do
+          eval "val=\${$v}"
+          [ -n "$val" ] || { echo "MANQUANT : $v"; missing=1; }
+        done
+        if [ "$missing" -ne 0 ]; then
+          echo "Les identifiants sont compilés dans le firmware ; sans eux l'SSID est vide et le WiFi ne se connecte jamais."
+          echo "Les 6 variables sont en BASE64 (un SSID littéral avec espaces casserait le flag -D). Exemple :"
+          echo '  export WIFI_SSID=$(echo -n "Chez Shan" | base64) WIFI_PASSWORD=$(echo -n <mdp> | base64)'
+          echo '  export HOST=$(echo -n dev1.pnex.io | base64) TOKEN=$(echo -n <token> | base64) DEVICE_ID=$(echo -n <device_id> | base64)'
+          echo '  export ENCRYPTION_KEY=$(psql "postgres://pnex:pnex@localhost:5432/pnex" -t -A -c "SELECT encryption_key FROM device_tokens WHERE device_registry_id=(SELECT id FROM device_registries WHERE device_id='"'"'<device_id>'"'"') AND is_active")'
+          echo '  export WS_SSL=false  # ws:// en local, true pour wss://'
+          echo 'Sans ENCRYPTION_KEY, les frames partent en clair et le serveur les rejette (device jamais actif).'
+          exit 1
+        fi
+        {{.PIO_CMD}} run --target upload
+        {{.PIO_CMD}} device monitor
+  # ---------- Base de données ----------
+
+  db:up:
+    desc: Démarre PostgreSQL 18 + Rauthy (IdP) + mailcrab (docker compose)
+    cmds:
+      - docker compose up -d
+
+  db:down:
+    desc: Stoppe les conteneurs (données conservées dans le volume)
+    cmds:
+      - docker compose stop
+
+  db:migrate:
+    desc: Applique les migrations SeaORM (développement)
+    cmds:
+      - cd crates/pnex-backend && cargo loco db migrate
+
+  db:entities:
+    desc: Régénère les entities SeaORM depuis le schéma (après migration)
+    cmds:
+      - cd crates/pnex-backend && cargo loco db entities
+
+  db:seed:
+    desc: Idempotent seed of the global catalog (reuses the YAML fixtures)
+    cmds:
+      - cd crates/pnex-backend && cargo loco task seed
+
+  db:reset:
+    desc: "Recrée la base from scratch : drop, migrate, seed"
+    cmds:
+      - |
+        docker exec pnex-postgres psql -U pnex -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'pnex' AND pid <> pg_backend_pid()" || true
+        docker exec pnex-postgres psql -U pnex -d postgres -c "DROP DATABASE IF EXISTS pnex" -c "CREATE DATABASE pnex"
+      - task: db:migrate
+      - task: db:seed
+
+  # ---------- Qualité ----------
+
+  lint:
+    desc: Clippy sur tout le workspace
+    deps: [css:ensure]
+    cmds:
+      - cargo clippy --workspace -- -D warnings
+
+  # ---------- Local disk cleanup (dev only) ----------
+
+  tools:sweep:
+    desc: Install cargo-sweep (local dev tool, not a workspace dependency)
+    status:
+      - command -v cargo-sweep
+    cmds:
+      - cargo install cargo-sweep --locked
+
+  clean:
+    desc: Sweep target/ artifacts unused for DAYS days (default 3) + artifacts from uninstalled toolchains — DRY=1 to preview
+    deps: [tools:sweep]
+    vars:
+      DAYS: '{{.DAYS | default "3"}}'
+    cmds:
+      - df -h . | tail -1
+      - cargo sweep {{if .DRY}}--dry-run {{end}}--time {{.DAYS}}
+      - cargo sweep {{if .DRY}}--dry-run {{end}}--installed
+      - df -h . | tail -1
+
+  clean:incremental:
+    desc: Drop every incremental cache under target/ (biggest quick win, next build is a bit slower)
+    cmds:
+      - du -sh target/*/incremental target/*/*/incremental 2>/dev/null || true
+      - rm -rf target/*/incremental target/*/*/incremental
+      - df -h . | tail -1
+
+  clean:size:
+    desc: Remove the oldest target/ artifacts until it fits under MAX (default 60GB) — DRY=1 to preview
+    deps: [tools:sweep]
+    cmds:
+      - cargo sweep {{if .DRY}}--dry-run {{end}}--maxsize {{.MAX | default "60GB"}}
+      - du -sh target

@@ -1,0 +1,30 @@
+### Journal des notifications (D86) — logs O2 `notify_deliveries`, jamais en base.
+### Réponses : enveloppe D14 + "available" (false = org jamais journalisée) ;
+### 400 {"status"|"source"|"channel_id": "invalid"} ; 502 notify-journal-unavailable.
+### Entrée : {ts_us, created_at, channel_id, channel_kind, template_id?, source
+### (flow|test|ota), status (sent|failed|blocked), http_status?, error?, subject?,
+### flow_id?, node_id?, delivered?}.
+
+@token = <jwt>
+@org_id = 1
+@channel = <uuid>
+
+### Tous les envois de l'org (filtres optionnels, bornes RFC 3339, défaut 30 j)
+GET http://localhost:5150/api/v1/notify/deliveries?status=failed&source=flow&q=door&from=2026-09-29T00:00:00Z&limit=20
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Journal d'un canal (même enveloppe)
+GET http://localhost:5150/api/v1/notify/channels/{{channel}}/deliveries?limit=50
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Interne (runtime de flows, nœud pnex-notify) — jeton PNEX_NOTIFY_INTERNAL_TOKEN
+### en x-pnex-internal-token ou Authorization: Bearer ; 202 ; 404 si le canal
+### n'appartient pas à l'org ; 401 sans jeton.
+POST http://localhost:5150/internal/notify/journal
+Authorization: Bearer <internal-token>
+Content-Type: application/json
+
+{"org_id": 1, "channel_id": "{{channel}}", "source": "flow", "status": "failed",
+ "http_status": 502, "error": "HTTP 502", "subject": "Door open", "flow_id": 12, "node_id": "n1"}

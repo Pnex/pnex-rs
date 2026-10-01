@@ -1,0 +1,416 @@
+//! Isolation multi-tenant au niveau HTTP : deux utilisateurs (tokens mock
+//! signés par un faux Rauthy) ne doivent jamais voir ni modifier les
+//! organisations l'un de l'autre ; les règles de rôle s'appliquent.
+//!
+//! Nécessite PostgreSQL (DATABASE_URL / default pnex_test) — la base de test
+//! est créée/supprimée par le framework loco.
+
+mod common;
+
+use loco_rs::testing::request::{RequestConfig, RequestConfigBuilder};
+use pnex_backend::app::App;
+use serial_test::serial;
+
+struct Env {
+    base: String,
+    alice: String,
+    bob: String,
+}
+
+/// Boot l'app sur une base de test avec un faux Rauthy, exécute le callback.
+async fn with_app<F, Fut>(f: F)
+where
+    F: FnOnce(axum_test::TestServer, Env) -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
+    let base = common::spawn_mock_rauthy().await;
+    // Rend visibles les warnings de l'extracteur (rejet JWT, provisioning).
+    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+    // settings.rauthy.base_url lit RAUTHY_URL — fixé avant le boot.
+    unsafe { std::env::set_var("RAUTHY_URL", &base) };
+    let config: RequestConfig = RequestConfigBuilder::new().build();
+    let env = Env {
+        base: base.clone(),
+        alice: common::valid_token(
+            &base,
+            "00000000-0000-0000-0000-00000000000a",
+            "alice",
+            "alice@example.com",
+        ),
+        bob: common::valid_token(
+            &base,
+            "00000000-0000-0000-0000-00000000000b",
+            "bob",
+            "bob@example.com",
+        ),
+    };
+    loco_rs::testing::request::request_with_config::<App, _, _>(
+        config,
+        move |server, ctx| async move {
+            // La base de test est vierge : on y met le tier Free (le seed
+            // complet est une tâche, hors périmètre ici).
+            use pnex_backend::models::_entities::subscription_tiers as tiers;
+            use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+            if tiers::Entity::find()
+                .filter(tiers::Column::Name.eq("Free"))
+                .one(&ctx.db)
+                .await
+                .expect("lookup tier Free")
+                .is_none()
+            {
+                tiers::ActiveModel {
+                    name: Set("Free".into()),
+                    max_sensor_devices: Set(3),
+                    max_actuator_devices: Set(1),
+                    max_mixed_devices: Set(0),
+                    min_build_interval_secs: Set(300),
+                    data_retention_secs: Set(Some(86_400)),
+                    ..Default::default()
+                }
+                .insert(&ctx.db)
+                .await
+                .expect("insert tier Free");
+            }
+            f(server, env).await;
+        },
+    )
+    .await;
+}
+
+fn bearer(token: &str) -> String {
+    format!("Bearer {token}")
+}
+
+#[tokio::test]
+#[serial]
+async fn sans_token_toute_l_api_est_refusee() {
+    with_app(|server, _env| async move {
+        let res = server.get("/api/v1/user-info").await;
+        assert_eq!(res.status_code(), 401);
+        let res = server.get("/api/v1/orgs").await;
+        assert_eq!(res.status_code(), 401);
+        let res = server.post("/api/v1/orgs").await;
+        assert_eq!(res.status_code(), 401);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn jit_provisioning_cree_user_profil_et_org_owner() {
+    with_app(|server, env| async move {
+        let res = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", bearer(&env.alice))
+            .await;
+        assert_eq!(res.status_code(), 200);
+        let body: serde_json::Value = res.json();
+        let orgs = body["orgs"].as_array().expect("orgs");
+        assert_eq!(orgs.len(), 1, "org personnelle créée : {orgs:?}");
+        assert_eq!(orgs[0]["role"], "owner");
+        assert_eq!(
+            orgs[0]["subscription_tier"]["name"], "Free",
+            "org personnelle sur le tier Free"
+        );
+        let profile = body["profile"].as_object().expect("profil créé");
+        assert_eq!(profile["language"], "en");
+        assert_eq!(profile["timezone"], "UTC");
+
+        // Idempotent : deuxième appel = même user, pas de doublon d'org.
+        let res2 = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", bearer(&env.alice))
+            .await;
+        let body2: serde_json::Value = res2.json();
+        assert_eq!(body2["id"], body["id"]);
+        assert_eq!(body2["orgs"].as_array().unwrap().len(), 1);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn sub_change_avec_meme_email_relie_le_meme_user() {
+    with_app(|server, env| async move {
+        // alice se provisionne avec un premier sub.
+        let sub_a = "00000000-0000-0000-0000-0000000000aa";
+        let token_a = common::valid_token(&env.base, sub_a, "alice", "relink@example.com");
+        let first: serde_json::Value = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", bearer(&token_a))
+            .await
+            .json();
+        assert_eq!(first["username"], "alice");
+
+        // Le même email revient avec un sub inconnu (IdP migré — ex.
+        // réimporté, migration d'IdP) : la ligne users doit être RE-LIÉE,
+        // pas dupliquée (email unique) — même id, mêmes orgs.
+        let sub_b = "00000000-0000-0000-0000-0000000000ab";
+        let token_b = common::valid_token(&env.base, sub_b, "alice", "relink@example.com");
+        let second = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", bearer(&token_b))
+            .await;
+        assert_eq!(
+            second.status_code(),
+            200,
+            "re-liaison par email, pas de 500"
+        );
+        let second: serde_json::Value = second.json();
+        assert_eq!(second["id"], first["id"], "même utilisateur re-lie");
+        assert_eq!(
+            second["orgs"].as_array().unwrap().len(),
+            first["orgs"].as_array().unwrap().len(),
+            "aucune org personnelle dupliquée"
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn sso_register_et_reset_pointent_vers_les_pages_rauthy() {
+    with_app(|server, env| async move {
+        // register : page UI d'inscription Rauthy (pas un endpoint OIDC,
+        // activation par mail — pas de params OAuth2).
+        let res = server
+            .get("/api/v1/oauth2/sso?code_challenge=abc&code_challenge_method=S256&action=register")
+            .await;
+        assert_eq!(res.status_code(), 302);
+        let location = res
+            .headers()
+            .get("location")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert!(location.contains("/auth/v1/users/register"), "{location}");
+
+        // logout : formulaire HTML auto-soumis en POST vers l'end-session
+        // Rauthy (navigation top-level — la page logout SPA de Rauthy ne
+        // rend jamais la main à l'app, voir le doc-comment du handler).
+        let res = server
+            .get("/api/v1/oauth2/logout?id_token=jwt.jwt.jwt")
+            .await;
+        assert_eq!(res.status_code(), 200);
+        assert_eq!(
+            res.headers().get("content-type").unwrap(),
+            "text/html; charset=utf-8"
+        );
+        let html = res.text();
+        assert!(html.contains(r#"method="POST""#), "{html}");
+        assert!(
+            html.contains(&format!(r#"action="{}/auth/v1/oidc/logout""#, env.base)),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"name="id_token_hint" value="jwt.jwt.jwt""#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"name="post_logout_redirect_uri""#),
+            "{html}"
+        );
+
+        // reset : page compte Rauthy (le changement de mot de passe vit dans
+        // l'IdP — équivalent du kc_action=UPDATE_PASSWORD Keycloak).
+        let res = server
+            .get("/api/v1/oauth2/sso?code_challenge=abc&code_challenge_method=S256&action=reset")
+            .await;
+        let location = res
+            .headers()
+            .get("location")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert!(location.contains("/auth/v1/account"), "{location}");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn token_lean_rauthy_username_reprend_l_email() {
+    with_app(|server, env| async move {
+        // Géométrie réelle d'un access token Rauthy (D19) : sans
+        // preferred_username (le claim vit dans l'id_token). La réponse
+        // user-info ne doit JAMAIS sérialiser `username: null` — le contrat
+        // partagé UserInfo attend un string (le front plante sinon :
+        // « réponse illisible : invalid type: null »).
+        let token = common::lean_token(
+            &env.base,
+            "00000000-0000-0000-0000-00000000000c",
+            "lean@example.com",
+        );
+        let body: serde_json::Value = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", bearer(&token))
+            .await
+            .json();
+        assert_eq!(body["username"], "lean@example.com");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn un_tenant_ne_voit_pas_les_orgs_de_l_autre() {
+    with_app(|server, env| async move {
+        // Provisionne alice puis bob.
+        for token in [&env.alice, &env.bob] {
+            let res = server
+                .get("/api/v1/user-info")
+                .add_header("Authorization", bearer(token))
+                .await;
+            assert_eq!(res.status_code(), 200);
+        }
+
+        // Org perso d'alice.
+        let alice_orgs: serde_json::Value = server
+            .get("/api/v1/orgs")
+            .add_header("Authorization", bearer(&env.alice))
+            .await
+            .json();
+        let alice_org_id = alice_orgs["results"][0]["id"]
+            .as_i64()
+            .expect("id org alice");
+
+        // Bob ne voit pas l'org d'alice, ni en lecture ni en écriture.
+        let res = server
+            .get(&format!("/api/v1/orgs/{alice_org_id}"))
+            .add_header("Authorization", bearer(&env.bob))
+            .await;
+        assert_eq!(res.status_code(), 404, "org d'alice invisible pour bob");
+        let res = server
+            .patch(&format!("/api/v1/orgs/{alice_org_id}"))
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.bob))
+            .json(&serde_json::json!({ "name": "Hack" }))
+            .await;
+        assert_eq!(res.status_code(), 404, "org d'alice non modifiable par bob");
+        let res = server
+            .delete(&format!("/api/v1/orgs/{alice_org_id}"))
+            .add_header("Authorization", bearer(&env.bob))
+            .await;
+        assert_eq!(res.status_code(), 404);
+
+        // Bob ne peut pas non plus s'ajouter dans l'org d'alice.
+        let res = server
+            .post(&format!("/api/v1/orgs/{alice_org_id}/members"))
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.bob))
+            .json(&serde_json::json!({ "email": "bob@example.com" }))
+            .await;
+        assert_eq!(res.status_code(), 404);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn roles_viewer_owner_et_garde_fous() {
+    with_app(|server, env| async move {
+        for token in [&env.alice, &env.bob] {
+            server
+                .get("/api/v1/user-info")
+                .add_header("Authorization", bearer(token))
+                .await;
+        }
+
+        // Alice crée une org partagée et y ajoute bob viewer.
+        let created: serde_json::Value = server
+            .post("/api/v1/orgs")
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.alice))
+            .json(&serde_json::json!({ "name": "Atelier Co" }))
+            .await
+            .json();
+        let org_id = created["id"].as_i64().expect("id Atelier Co");
+
+        let added: serde_json::Value = server
+            .post(&format!("/api/v1/orgs/{org_id}/members"))
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.alice))
+            .json(&serde_json::json!({ "email": "bob@example.com", "role": "viewer" }))
+            .await
+            .json();
+        assert_eq!(added["role"], "viewer", "rôle lowercase en entrée/sortie");
+
+        // O1 : orgs de bob listées par id croissant (org personnelle JIT
+        // d'abord) — ordre déterministe pour le fallback d'org du front,
+        // qui sinon peut atterrir sur une org viewer.
+        let bob_info: serde_json::Value = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", bearer(&env.bob))
+            .await
+            .json();
+        let bob_orgs = bob_info["orgs"].as_array().expect("orgs bob");
+        assert!(
+            bob_orgs.len() >= 2,
+            "bob a son org personnelle + Atelier Co : {bob_orgs:?}"
+        );
+        let bob_org_ids: Vec<i64> = bob_orgs.iter().filter_map(|o| o["id"].as_i64()).collect();
+        let mut sorted_ids = bob_org_ids.clone();
+        sorted_ids.sort();
+        assert_eq!(bob_org_ids, sorted_ids, "orgs triées par id croissant");
+        assert_eq!(
+            bob_orgs[0]["role"], "owner",
+            "l'org personnelle (non viewer) sort en premier"
+        );
+
+        // Bob (viewer) lit, mais ne peut pas écrire.
+        let res = server
+            .get(&format!("/api/v1/orgs/{org_id}"))
+            .add_header("Authorization", bearer(&env.bob))
+            .await;
+        assert_eq!(res.status_code(), 200);
+        let detail: serde_json::Value = res.json();
+        assert_eq!(detail["role"], "viewer");
+        assert_eq!(detail["members"].as_array().unwrap().len(), 2);
+
+        let res = server
+            .patch(&format!("/api/v1/orgs/{org_id}"))
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.bob))
+            .json(&serde_json::json!({ "name": "Hack Co" }))
+            .await;
+        assert_eq!(res.status_code(), 403, "viewer ne renomme pas");
+        let res = server
+            .post(&format!("/api/v1/orgs/{org_id}/members"))
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.bob))
+            .json(&serde_json::json!({ "email": "alice@example.com" }))
+            .await;
+        assert_eq!(res.status_code(), 403, "viewer n'ajoute pas de membre");
+
+        // Alice ne peut pas quitter son rôle de dernier owner.
+        let alice_user_id: i64 = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", bearer(&env.alice))
+            .await
+            .json::<serde_json::Value>()["id"]
+            .as_i64()
+            .expect("id alice");
+        let res = server
+            .delete(&format!("/api/v1/orgs/{org_id}/members/{alice_user_id}"))
+            .add_header("Authorization", bearer(&env.alice))
+            .await;
+        assert_eq!(res.status_code(), 409, "dernier owner inamovible");
+
+        // Bob viewer tente de se promouvoir : refusé (owner requis).
+        let bob_user_id: i64 = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", bearer(&env.bob))
+            .await
+            .json::<serde_json::Value>()["id"]
+            .as_i64()
+            .expect("id bob");
+        let res = server
+            .patch(&format!("/api/v1/orgs/{org_id}/members/{bob_user_id}"))
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.bob))
+            .json(&serde_json::json!({ "role": "owner" }))
+            .await;
+        assert_eq!(res.status_code(), 403, "viewer ne se promeut pas");
+    })
+    .await;
+}

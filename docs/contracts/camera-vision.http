@@ -1,0 +1,80 @@
+### Contrat API caméra, vidéo, modèles et événements (camera-video.md
+### D73–D86). Endpoints ADDITIFS : ne jamais bumper pnex_api_contract::CONTRACT.
+###
+### WebSockets (hors fichier .http) :
+### - device : GET /ws/camera?token=<b64>&device_id=<b64> — frames binaires
+###   nonce(12) ‖ ChaCha20(clé device, "PXC1" seq u32 uptime u32 w u16 h u16
+###   (LE) ‖ JPEG) ; texte "PING" → "PONG" ; close 4001/4002/4003/4006/4008.
+### - navigateur : GET /ws/camera/live?token=<JWT>&org=<id>&device=<pk> —
+###   JPEG bruts en binaire, dernière frame d'abord ; close 4004 caméra inconnue.
+### Contrôle : ServerMsg::CameraConfig sur /ws/device
+###   {"t":"camera_config","cmd_id","enabled","framesize","quality","fps","vflip","hmirror"}.
+###
+### Erreurs : 400 champ-par-champ ({"fps": "range:1..25"}, "invalid",
+### "required", "unique") ; 403 camera-write-forbidden / ml-model-write-forbidden ;
+### 404 masqué cross-org ; 422 ml-model-missing-bytes | ml-model-load-failed |
+### ml-model-inference-failed ; 502 events-unavailable.
+
+### Caméras de l'org (réglages + état live)
+GET http://localhost:5150/api/v1/cameras
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Réglages (poussés live au device)
+PATCH http://localhost:5150/api/v1/cameras/{{device}}/settings
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{"framesize": "vga", "quality": 12, "fps": 5, "capture_mode": "continuous", "vflip": false, "hmirror": false}
+
+### Dernière frame reçue (image/jpeg) — 404 camera-no-frame
+GET http://localhost:5150/api/v1/cameras/{{device}}/snapshot
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Segments enregistrés (enveloppe D14)
+GET http://localhost:5150/api/v1/cameras/segments?device={{device}}&from=2026-09-29T00:00:00Z&limit=20
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Octets d'un segment (video/x-msvideo, MJPEG-AVI) — download=1 → attachment
+GET http://localhost:5150/api/v1/cameras/segments/{{segment}}/content?download=1
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Suppression (blob puis ligne) — 204
+DELETE http://localhost:5150/api/v1/cameras/segments/{{segment}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Registre de modèles — l'ONNX est un média kind=model (upload .onnx)
+POST http://localhost:5150/api/v1/ml/models
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{"name": "yolox-nano", "asset_id": "{{asset}}", "spec": {"family": "yolox", "input_width": 416, "input_height": 416, "labels": ["person", "bicycle"], "score_threshold": 0.35, "nms_iou": 0.45}}
+
+### Tester un modèle sur une image (octets JPEG/PNG) → DetectionResult
+POST http://localhost:5150/api/v1/ml/models/{{model}}/test
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/octet-stream
+
+< ./dog.jpg
+
+### Événements (logs O2 ev_*) — enveloppe D14 + "available"
+GET http://localhost:5150/api/v1/events?stream=events&level=warn&q=door&from=2026-09-29T00:00:00Z
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Flux d'événements de l'org
+GET http://localhost:5150/api/v1/events/streams
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Interne (runtime de flows, header x-pnex-flow-token) :
+### POST /internal/flow/video-segment?org_id&device_id&node_id&stream&started_ms&ended_ms&frames&width&height&retention_days[&flow_id] (corps AVI)
+### POST /internal/flow/event  (EventInput JSON) → 204
+### GET  /internal/flow/ml-model/{id}?org_id=  → {model, sha256} ; /content → ONNX

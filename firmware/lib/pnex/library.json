@@ -1,0 +1,22 @@
+{
+  "name": "PneX",
+  "version": "1.0.0",
+  "description": "PNeX generic ESP firmware library: WiFi + secure WebSocket (ChaCha20) pin_slave client for a PNeX server. Declare pins (inputs, outputs, analog) in your sketch; the server drives them.",
+  "keywords": ["pnex", "iot", "esp8266", "esp32", "esp32c3", "websocket", "chacha20", "pin-slave"],
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/Pnex/pnex-rs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Pnex/pnex-rs.git"
+  },
+  "frameworks": "arduino",
+  "headers": "Pnex.h",
+  "dependencies": [
+    {"owner": "bblanchon", "name": "ArduinoJson", "version": "^7.0.4"},
+    {"owner": "gilmaimon", "name": "ArduinoWebsockets", "version": "^0.5.4"},
+    {"owner": "densaugeo", "name": "base64", "version": "^1.4.0"},
+    {"owner": "olikraus", "name": "U8g2", "version": "^2.35.19"},
+    {"owner": "adafruit", "name": "Adafruit GFX Library", "version": "^1.12.2"},
+    {"owner": "adafruit", "name": "Adafruit ST7735 and ST7789 Library", "version": "^1.10.4"}
+  ]
+}

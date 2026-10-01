@@ -1,0 +1,38 @@
+[package]
+name = "pnex-notify"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Notifications PNEX — trait Channel, registre de canaux, rendu minijinja (D49-D54)"
+
+[dependencies]
+pnex-core = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = [
+  "rustls-tls",
+  "json",
+] }
+minijinja = "2"
+async-trait = { version = "0.1" }
+# Canal smtp — rustls only (jamais openssl) ; verification par les CA
+# système (rustls-native-certs) pour les relais auto-hébergés en CA privée.
+lettre = { version = "0.11", default-features = false, features = [
+  "builder",
+  "hostname",
+  "pool",
+  "smtp-transport",
+  "tokio1",
+  "tokio1-rustls",
+  "rustls",
+  "ring",
+  "rustls-native-certs",
+] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+tokio = { version = "1", default-features = false, features = ["time"] }
+
+[dev-dependencies]
+# Récepteur HTTP local (webhook / livraison websocket) — zéro réseau externe.
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }

@@ -1,0 +1,48 @@
+- name: "Free"
+  max_sensor_devices: 3
+  max_actuator_devices: 1
+  # Brick 0 : le prototypage générique est le cœur de l'offre — Free garde
+  # 1 device générique (type mixed) malgré le 0 mixed historique.
+  max_mixed_devices: 1
+  min_build_interval: "15 minutes"
+  data_retention: "1 day"
+  max_telemetry_mb: 100
+
+- name: "Basic"
+  max_sensor_devices: 5
+  max_actuator_devices: 2
+  max_mixed_devices: 2
+  min_build_interval: "5 minutes"
+  data_retention: "7 days"
+  max_telemetry_mb: 1024
+
+- name: "Pro"
+  max_sensor_devices: 10
+  max_actuator_devices: 5
+  max_mixed_devices: 5
+  min_build_interval: "3 minute"
+  data_retention: "6 months"
+  max_telemetry_mb: 10240
+
+- name: "Enterprise"
+  max_sensor_devices: 50
+  max_actuator_devices: 25
+  max_mixed_devices: 20
+  min_build_interval: "2 minutes"
+  data_retention: "1 years"
+  max_telemetry_mb: 102400
+
+- name: "Ultimate"
+  max_sensor_devices: 100
+  max_actuator_devices: 50
+  max_mixed_devices: 50
+  min_build_interval: "1 minute"
+  data_retention: "2 years"
+  max_telemetry_mb: 512000
+
+- name: "Admin"
+  max_sensor_devices: 1000
+  max_actuator_devices: 1000
+  max_mixed_devices: 1000
+  min_build_interval: "1 seconds"
+  data_retention: "5 minutes"

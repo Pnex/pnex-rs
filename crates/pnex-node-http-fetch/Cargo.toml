@@ -1,0 +1,26 @@
+[package]
+name = "pnex-node-http-fetch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Nœud de flow PNEX — requête HTTP client configurable (C1a) : GET/POST, headers, auth basic/bearer/clé, proxy direct ou provider de scraping"
+
+[dependencies]
+pnex-core = { workspace = true }
+edgelink-core = { path = "../../vendor/edgelinkd/crates/core", default-features = false, features = ["core", "js"] }
+edgelink-macro = { path = "../../vendor/edgelinkd/crates/macro" }
+# Seulement pour le type Option<&config::Config> de la factory — mêmes features que edgelink-core
+config = { version = "0.15", default-features = false, features = ["convert-case", "toml"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { version = "1", default-features = false, features = ["time", "sync"] }
+async-trait = "0.1"
+tokio-util = "0.7"
+log = "0.4"
+# La macro `#[flow_node]` émet `inventory::submit!` non qualifié — dépendance directe requise
+inventory = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio = { version = "1", default-features = false, features = ["rt", "macros", "time"] }

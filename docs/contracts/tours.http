@@ -1,0 +1,116 @@
+### Contrat API Studio — parcours de visite 3D versionnés (mode panorama).
+### Cf. docs/architecture/studio.md. Les assets (plans d'étage kind
+### `floorplan`, panoramas kind `panorama`) restent des media_assets
+### référencés par UUID — jamais dupliqués (D21).
+###
+### Endpoints ADDITIFS : ne jamais bumper pnex_api_contract::CONTRACT (les
+### ajouts sont rétro-compatibles ; un bump bloquerait la Gate sur les vieux
+### clients — règle documentée dans docs/architecture/media.md).
+###
+### Erreurs : 400 champ-par-champ {"<champ>": msg} ;
+### 400 {"violations": [...]} document invalide (école flows) ;
+### 403 {"error": "forbidden", ...} écriture hors owner/admin ;
+### 404 masqué cross-org ; 409 {"error": "conflict", "description": ...}
+### save périmé (expected_version_number) ou share avant publish
+### (description "not_published").
+###
+### Versioning école flows (D18) : save = PATCH = nouvelle version
+### append-only avec concurrence optimiste ; la version courante = la
+### dernière ; publier = pointeur published_version_id (FK circulaire).
+###
+### ⚠ Migration n° 000014 : collision assumée avec la branche non fusionnée
+### worktree-viz-concept (domaine sites) — à la convergence, l'une des deux
+### sera renumérotée (précédent : ai_connectors 000010).
+
+### Créer un tour (tour + version 1, document minimal : un étage « RDC ») — 201
+POST http://localhost:5150/api/v1/tours
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{ "name": "Visite atelier", "description": "Rez-de-chaussée + bureau" }
+
+### 201 →
+### {
+###   "id": "0197...", "mode": "panorama",
+###   "doc": {"floors": [{"id": "f1", "name": "RDC", ...}], "scenes": [], "links": []},
+###   "doc_version_number": 1, "latest_version_number": 1,
+###   "published_version_number": null, "share_enabled": false, ...
+### }
+
+### Lister (D14 : {count, next, previous, results}) — filtres search + mode
+GET http://localhost:5150/api/v1/tours?search=atelier&mode=panorama&limit=20
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Détail (doc de la dernière version) ; ?version=n → doc d'une version
+GET http://localhost:5150/api/v1/tours/{{tour_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Enregistrer une nouvelle version (append-only, 409 si périmé) — 200
+PATCH http://localhost:5150/api/v1/tours/{{tour_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{
+  "expected_version_number": 1,
+  "doc": {
+    "mode": "panorama",
+    "start_scene": "s1",
+    "floors": [
+      { "id": "f1", "name": "RDC", "level": 0,
+        "plan": { "media_asset_id": "0197…floorplan…", "width": 2048.0,
+                  "height": 1024.0, "scale_m_per_px": 0.05 },
+        "north_deg": 0.0 }
+    ],
+    "scenes": [
+      { "id": "s1", "floor_id": "f1", "label": "Salon",
+        "media_asset_id": "0197…panorama…",
+        "x": 512.0, "y": 300.0,
+        "initial_yaw": 0.0, "initial_pitch": 0.0, "initial_fov": 100.0 }
+    ],
+    "links": []
+  },
+  "author": "alice", "note": "première scène"
+}
+
+### Historique paginé / document d'une version précise
+GET http://localhost:5150/api/v1/tours/{{tour_id}}/versions
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+###
+GET http://localhost:5150/api/v1/tours/{{tour_id}}/versions/1
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Publier (version absente = dernière) — 200 ; le viewer in-app et le
+### lien public servent cette version.
+POST http://localhost:5150/api/v1/tours/{{tour_id}}/publish
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{ "version_number": 1 }
+
+### Générer / régénérer le lien public (409 "not_published" si non publié)
+POST http://localhost:5150/api/v1/tours/{{tour_id}}/share
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### 200 → {"share_token": "32 hex", "share_enabled": true}
+### Révoquer le lien (publication conservée) : DELETE /share — 204
+### Dépublier (publication ET lien) : POST /unpublish — 200
+
+### ─────────────── Public, SANS authentification ───────────────
+
+### Document publié (assets = versions courantes référencées) — no-store
+GET http://localhost:5150/api/v1/public/tours/{{share_token}}
+
+### Octets d'un asset référencé (?v=n = version précise) — cache immutable
+GET http://localhost:5150/api/v1/public/tours/{{share_token}}/assets/{{asset_id}}?v=1
+
+### 404 uniforme : token inconnu, tour dépublié, asset non référencé,
+### version inconnue — pas d'énumération possible.

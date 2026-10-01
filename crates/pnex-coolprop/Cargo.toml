@@ -1,0 +1,11 @@
+[package]
+name = "pnex-coolprop"
+description = "Wrapper safe autour de l'API C de CoolProp v8.0.0 (lié statiquement, in-process)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pnex-coolprop-sys = { path = "../pnex-coolprop-sys" }
+serde = { workspace = true }
+serde_json = { workspace = true }

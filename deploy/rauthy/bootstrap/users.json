@@ -1,0 +1,26 @@
+[
+  {
+    "email": "admin@example.com",
+    "preferred_username": "admin",
+    "given_name": "Admin",
+    "family_name": "Local",
+    "password": {
+      "Plain": "admin-pass"
+    },
+    "roles": ["user"],
+    "enabled": true,
+    "email_verified": true
+  },
+  {
+    "email": "bob@example.com",
+    "preferred_username": "bob",
+    "given_name": "Bob",
+    "family_name": "Dupont",
+    "password": {
+      "Plain": "bob-pass"
+    },
+    "roles": ["user"],
+    "enabled": true,
+    "email_verified": true
+  }
+]

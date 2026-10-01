@@ -1,0 +1,13 @@
+[package]
+name = "pnex-vision"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "PNeX vision inference — ONNX detectors (tract, pure Rust), YOLOX decoding"
+
+[dependencies]
+pnex-core = { workspace = true }
+# Pure-Rust ONNX inference (ml-vision.md: tract first, Burn challenger).
+tract-onnx = "0.23"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+thiserror = { workspace = true }

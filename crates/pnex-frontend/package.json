@@ -1,0 +1,24 @@
+{
+  "name": "pnex-frontend-css",
+  "version": "1.0.0",
+  "scripts": {
+    "css:build": "tailwindcss -i style/tailwind.css -o assets/tailwind.css",
+    "css:watch": "tailwindcss -i style/tailwind.css -o assets/tailwind.css --watch",
+    "js:build": "esbuild js/flasher.js --bundle --format=iife --outfile=assets/flasher.js",
+    "js:viewers": "esbuild js/viewers.js --bundle --format=iife --outfile=assets/viewers.js",
+    "js:map": "esbuild node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs --bundle --format=iife --outfile=assets/.map-worker.js && cp assets/.map-worker.js assets/.map-worker.txt && esbuild js/map.js --bundle --format=iife --loader:.txt=text --outfile=assets/map.js"
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "esptool-js": "0.6.1",
+    "pannellum": "2.5.7",
+    "gsplat": "^1.2.0",
+    "maplibre-gl": "^6.10.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.3",
+    "esbuild": "0.28.2",
+    "tailwindcss": "4.3.3"
+  },
+  "private": true
+}

@@ -1,0 +1,34 @@
+[
+  {
+    "name": "pnex-branding",
+    "secret": {
+      "Plain": "c1cb445debf753d916623fc2e0d996cef9a73f3b4664a9d3d29d16a5e5113e5c"
+    },
+    "access": [
+      {
+        "group": "Clients",
+        "access_rights": [
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "pnex-ops",
+    "secret": {
+      "Plain": "4fa719d35911cc819ed4b909ceeaa3c688ba8b64865be0d5c84d390c053b75a7"
+    },
+    "access": [
+      {
+        "group": "Blacklist",
+        "access_rights": [
+          "read",
+          "delete"
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,165 @@
+# Infra de développement PNEX — PostgreSQL 18 + Rauthy (IdP OIDC full-Rust)
+# + OpenObserve + RustFS (S3-compatible, tier industriel D5 v2).
+# Usage : docker compose up -d
+# Le backend lit DATABASE_URL (voir .env.example).
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: pnex-postgres
+    environment:
+      POSTGRES_USER: pnex
+      POSTGRES_PASSWORD: pnex
+      POSTGRES_DB: pnex
+    ports:
+      - "5432:5432"
+    volumes:
+      # PG 18+ : monter /var/lib/postgresql (pas .../data) — les données vont
+      # dans un sous-répertoire par version majeure (compat pg_upgrade).
+      - pnex-pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pnex -d pnex"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # IdP OIDC full-Rust (D10) — DB embarquée hiqlite (volume /app/data),
+  # l'équivalent Rust de Keycloak. Bootstrap au premier démarrage uniquement
+  # (DB vide) : deploy/rauthy/bootstrap/*.json — client public pnex (PKCE
+  # S256) + users de test admin/bob. Admin UI : /auth/v1/admin (admin/admin).
+  # Ports raft/gossip hiqlite (8100/8200) volontairement non publiés.
+  rauthy:
+    image: ghcr.io/sebadob/rauthy:0.36.2
+    container_name: pnex-rauthy
+    depends_on:
+      - mailcrab
+    environment:
+      # Issuer vu par les navigateurs : HTTPS auto-signé sur l'IP LAN —
+      # contexte sécurisé obligatoire (crypto.subtle pour la page login
+      # Rauthy depuis un device physique). Aligné avec issuer_url de
+      # development.yaml. Si l'IP DHCP change, mettre les deux à jour.
+      PUB_URL: 192.168.1.185:8443
+      # Certificat auto-signé généré au boot par Rauthy (dev uniquement) —
+      # le navigateur du device traverse l'avertissement de certificat une
+      # fois, le contexte reste « secure » (schéma https).
+      TLS_GENERATE_SELF_SIGNED: "true"
+      HQL_NODE_ID: 1
+      BOOTSTRAP_ADMIN_EMAIL: admin@localhost
+      BOOTSTRAP_ADMIN_PASSWORD_PLAIN: admin
+      # Dev local : par défaut Rauthy pose des cookies __Host- avec l'attribut
+      # Secure, que Chrome Android (émulateur) refuse sur http://localhost via
+      # adb reverse → la session d'authorize est perdue à chaque POST →
+      # « Invalid credentials » en boucle (constat 2026-09-08 : cause de la
+      # demi-journée de debug login). COOKIE_MODE=danger-insecure désactive le
+      # prefixe __Host- et Secure — option officielle Rauthy pour du HTTP
+      # non-chiffré (ne JAMAIS activer en prod). DEV_MODE reste actif (DPoP
+      # http), mais n'assouplit PAS les cookies.
+      DEV_MODE: "true"
+      COOKIE_MODE: "danger-insecure"
+      # NE PAS définir ENC_KEYS/ENC_KEY_ACTIVE ici : Rauthy génère ses clés
+      # de chiffrement au premier boot, les persiste en DB et les recharge
+      # ensuite — toute clé externe est écrasée par celle de la DB au boot
+      # suivant (détail dans deploy/rauthy/config.toml).
+      # Inscription ouverte : l'activation des comptes passe par un mail —
+      # catcher SMTP en dev (UI des mails : http://localhost:1080).
+      SMTP_URL: mailcrab
+      SMTP_PORT: "1025"
+      SMTP_DANGER_INSECURE: "true"
+    volumes:
+      - ./deploy/rauthy/config.toml:/app/config.toml:ro
+      - ./deploy/rauthy/bootstrap:/app/bootstrap:ro
+      - pnex-rauthydata:/app/data
+    ports:
+      - "8080:8080"
+      # HTTPS auto-signé : navigateurs de devices (login SSO Rauthy).
+      - "8443:8443"
+
+  # Catcher SMTP dev — Rauthy active les comptes par mail après inscription
+  # ouverte. UI : http://localhost:1080 (image sans shell → pas de healthcheck,
+  # même approche que rustfs).
+  mailcrab:
+    image: marlonb/mailcrab:latest
+    container_name: pnex-mailcrab
+    ports:
+      - "1080:1080"
+
+  # Stockage télémétrie (D1) : ingestion backend → org OpenObserve par org
+  # PNEX (D2) — le provisioning org + token d'ingestion est automatisé
+  # côté backend (services/openobserve).
+  openobserve:
+    image: openobserve/openobserve:v1.0.0
+    container_name: pnex-openobserve
+    environment:
+      ZO_ROOT_USER_EMAIL: ${OPENOBSERVE_ROOT_EMAIL:-root@pnex.local}
+      ZO_ROOT_USER_PASSWORD: ${OPENOBSERVE_ROOT_PASSWORD:-Pnex-dev-2026!}
+      ZO_DATA_DIR: /data
+      # Edge agent (D95): points buffered offline keep their capture time —
+      # accept up to 7 days old (agent queue max age), default is 5 h.
+      ZO_INGEST_ALLOWED_UPTO: "168"
+    ports:
+      - "5080:5080"
+    volumes:
+      - pnex-o2data:/data
+
+  # S3-compatible pour le tier industriel du stockage firmware (D5 v2) —
+  # tests e2e du S3Store (s3_cycle_reel, bucket pnex-test) et runs locaux
+  # STORAGE_BACKEND=s3 (bucket pnex). API :9000, console web :9001
+  # (rustfsadmin/rustfsadmin par défaut).
+  rustfs:
+    image: rustfs/rustfs:1.0.0-rc.2
+    container_name: pnex-rustfs
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - pnex-rustfsdata:/data
+
+  # One-shot : crée les buckets au premier démarrage (retente tant que
+  # rustfs n'écoute pas — pas de healthcheck sur l'image). AWS CLI plutôt
+  # que mc : aucun produit MinIO dans la stack (licence).
+  rustfs-init:
+    image: amazon/aws-cli:2.27.49
+    container_name: pnex-rustfs-init
+    depends_on:
+      - rustfs
+    restart: "no"
+    environment:
+      AWS_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      AWS_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: >
+      sh -c '
+      until aws --endpoint-url http://rustfs:9000 s3 ls >/dev/null 2>&1;
+      do echo "rustfs pas prêt, nouvelle tentative…"; sleep 1; done;
+      aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket pnex 2>/dev/null
+      || echo "pnex : existe déjà";
+      aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket pnex-test 2>/dev/null
+      || echo "pnex-test : existe déjà";
+      echo "buckets pnex + pnex-test prêts"
+      '
+
+  # Valkey (fork BSD de Redis, Linux Foundation) — cache live dernier-point
+  # pour le nœud flow pnex-device-read : fraîcheur ~ms au lieu de la latence
+  # du batcher d'ingestion OpenObserve. Persistence désactivée : cache pur,
+  # O2 reste le stockage de référence (cache perdu = dégradation en fraîcheur
+  # O2, jamais de perte de donnée) — zéro écriture disque (usure SD sur Pi).
+  valkey:
+    image: valkey/valkey:9-alpine
+    container_name: pnex-valkey
+    command: ["valkey-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pnex-pgdata:
+  pnex-rauthydata:
+  pnex-o2data:
+  pnex-rustfsdata:

@@ -1,0 +1,112 @@
+# Global Energy Conversions
+# These conversions are available for all users to import
+
+- global_id: "kwh_to_mj_v1"
+  name: "kWh to Megajoule"
+  version: 1
+  category: "energy"
+  tags: ["energy", "electricity", "utility", "physics"]
+  description: "Convert energy from Kilowatt-hour to Megajoule"
+  from_unit: "kWh"
+  to_unit: "MJ"
+  conversion_type: "linear"
+  multiplier: 3.6
+
+- global_id: "mj_to_kwh_v1"
+  name: "Megajoule to kWh"
+  version: 1
+  category: "energy"
+  tags: ["energy", "electricity", "utility", "physics"]
+  description: "Convert energy from Megajoule to Kilowatt-hour"
+  from_unit: "MJ"
+  to_unit: "kWh"
+  conversion_type: "linear"
+  multiplier: 0.277778
+
+- global_id: "btu_to_j_v1"
+  name: "BTU to Joule"
+  version: 1
+  category: "energy"
+  tags: ["energy", "thermal", "heating", "physics"]
+  description: "Convert energy from British Thermal Unit to Joule"
+  from_unit: "BTU"
+  to_unit: "J"
+  conversion_type: "linear"
+  multiplier: 1055.06
+
+- global_id: "cal_to_j_v1"
+  name: "Calorie to Joule"
+  version: 1
+  category: "energy"
+  tags: ["energy", "nutrition", "physics", "chemistry"]
+  description: "Convert energy from Calorie to Joule"
+  from_unit: "cal"
+  to_unit: "J"
+  conversion_type: "linear"
+  multiplier: 4.184
+
+- global_id: "ev_to_j_v1"
+  name: "Electronvolt to Joule"
+  version: 1
+  category: "energy"
+  tags: ["energy", "physics", "atomic", "scientific"]
+  description: "Convert energy from Electronvolt to Joule"
+  from_unit: "eV"
+  to_unit: "J"
+  conversion_type: "linear"
+  multiplier: 1.60218e-19
+
+- global_id: "j_to_ev_v1"
+  name: "Joule to Electronvolt"
+  version: 1
+  category: "energy"
+  tags: ["energy", "physics", "atomic", "scientific"]
+  description: "Convert energy from Joule to Electronvolt"
+  from_unit: "J"
+  to_unit: "eV"
+  conversion_type: "linear"
+  multiplier: 6.24151e18
+
+- global_id: "wh_to_j_v1"
+  name: "Watt-hour to Joule"
+  version: 1
+  category: "energy"
+  tags: ["energy", "electricity", "small", "physics"]
+  description: "Convert energy from Watt-hour to Joule"
+  from_unit: "Wh"
+  to_unit: "J"
+  conversion_type: "linear"
+  multiplier: 3600
+
+- global_id: "therm_to_j_v1"
+  name: "Therm to Joule"
+  version: 1
+  category: "energy"
+  tags: ["energy", "natural_gas", "utility", "large"]
+  description: "Convert energy from Therm to Joule"
+  from_unit: "therm"
+  to_unit: "J"
+  conversion_type: "linear"
+  multiplier: 1.05506e8
+
+- global_id: "erg_to_j_v1"
+  name: "Erg to Joule"
+  version: 1
+  category: "energy"
+  tags: ["energy", "cgs", "physics", "scientific"]
+  description: "Convert energy from Erg to Joule"
+  from_unit: "erg"
+  to_unit: "J"
+  conversion_type: "linear"
+  multiplier: 1e-7
+
+- global_id: "ftlb_to_j_v1"
+  name: "Foot-pound to Joule"
+  version: 1
+  category: "energy"
+  tags: ["energy", "mechanical", "imperial", "engineering"]
+  description: "Convert energy from Foot-pound to Joule"
+  from_unit: "ft·lb"
+  to_unit: "J"
+  conversion_type: "linear"
+  multiplier: 1.35582

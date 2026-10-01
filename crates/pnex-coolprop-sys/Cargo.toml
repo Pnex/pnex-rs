@@ -1,0 +1,11 @@
+[package]
+name = "pnex-coolprop-sys"
+description = "Liaisons FFI brutes à l'API C de CoolProp v8.0.0 (CoolPropLib.h)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+links = "CoolProp"
+build = "build.rs"
+
+[build-dependencies]
+cmake = "0.1"

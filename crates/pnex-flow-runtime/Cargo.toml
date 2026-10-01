@@ -1,0 +1,49 @@
+[package]
+name = "pnex-flow-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Runtime de flows ETL PNEX — edgelink-core + nœuds PNEX, headless, supervisé par pnex-server (D18)"
+
+[[bin]]
+name = "pnex-flow-runtime"
+path = "src/main.rs"
+
+[dependencies]
+pnex-core = { workspace = true }
+pnex-node-device = { workspace = true }
+pnex-node-display = { workspace = true }
+pnex-node-value = { workspace = true }
+pnex-node-control = { workspace = true }
+pnex-node-coolprop = { workspace = true }
+pnex-node-notify = { workspace = true }
+pnex-node-http-fetch = { workspace = true }
+pnex-node-camera = { workspace = true }
+pnex-node-events = { workspace = true }
+pnex-node-vision = { workspace = true }
+pnex-node-memory = { workspace = true }
+pnex-node-predict = { workspace = true }
+pnex-node-starlark = { workspace = true }
+edgelink-core = { path = "../../vendor/edgelinkd/crates/core", default-features = false, features = ["core", "js"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = "1"
+rquickjs = { version = "0.11", default-features = false, features = ["futures"] }
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "macros", "signal", "time", "fs", "sync"] }
+tokio-util = "0.7"
+log = "0.4"
+# Hash des tabs (diff de reload) et de l'artefact (flow_rev santé process).
+sha2 = "0.10"
+hex = "0.4"
+
+# armv7 : rquickjs-sys ne shippe pas de bindings pré-générés (aarch64 oui) —
+# génération bindgen à la volée (libclang requis sur la machine de build).
+[target.'cfg(target_arch = "arm")'.dependencies]
+rquickjs-sys = { version = "0.11", features = ["bindgen"] }
+
+[dev-dependencies]
+# Envoi de SIGUSR1/SIGINT au process enfant dans les tests E2E
+libc = "0.2"
+# Camera E2E: publishes frames on the Valkey frame bus.
+redis = { workspace = true }
+tokio = { version = "1", default-features = false, features = ["rt", "macros"] }

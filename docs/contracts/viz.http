@@ -1,0 +1,358 @@
+### Contrat API carte POI-first (D35–D39, D43) — POIs, clustering backend,
+### placements devices, liens typés, positions GPS devices. Cf.
+### docs/architecture/viz-bases.md §0 bis.
+###
+### D43 (2026-09-12) : POI multi-devices — table `device_placements`
+### (1 placement par device), `location_detail` par placement, PAS de
+### détachement (attacher ailleurs = déplacer confirmé). Rupture de forme
+### assumée (`Poi.device_id` → `Poi.devices`) : `CONTRACT` bumpé à 2 —
+### front et backend basculent ensemble (monorepo lockstep).
+###
+### Erreurs : 400 champ-par-champ {"<champ>": msg} ; 403
+### {"error": "forbidden"} écriture hors owner/admin ; 404 masqué cross-org ;
+### 409 {"error": "conflict", …} device déjà placé (D43).
+###
+### Listes : enveloppe D14 {count, next, previous, results} + limit/offset.
+### Liens typés : cible résolue dans l'org à la création (sinon 400
+### {"target": "introuvable"}) ; suppression du POI => ses liens sources
+### supprimés (cascade app-level) ; cible morte tolérée au rendu.
+### D43 : un device = UN SEUL placement (`device_placements.device_registry_id`
+### UNIQUE), mais un POI porte PLUSIEURS devices.
+###
+### Convention GPS (D38) : le device envoie les métriques télémétrie
+### `latitude` / `longitude` (WGS84 degrés décimaux, ex. trame WS
+### /ws/sensor/ingest : "latitude=45.7640" puis "longitude=4.8357") +
+### optionnels `gps_accuracy_m`, `gps_altitude_m`, `gps_speed_mps`,
+### `gps_heading_deg`. La dernière position par device est upsertée en
+### `device_positions` (source=telemetry) ; l'historique complet reste dans
+### OpenObserve (séries par org).
+
+@token = (jwt)
+@org_id = (uuid)
+@base = http://localhost:5150
+
+### ----------------------------------------------------------------- pois ---
+
+### Lister tous les POIs de l'org (D14) — 200
+GET {{base}}/api/v1/pois?search=serre&limit=50
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Créer un POI (label + lat/lon requis ; emoji défaut 📍) — 201
+### D43 : pas de device_id à la création — les devices s'attachent
+### délibérément via POST /pois/{id}/devices (voir plus bas).
+POST {{base}}/api/v1/pois
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{
+  "label": "Serre Nord",
+  "emoji": "🌱",
+  "location_detail": "Bât. A — Étage 2 — Salle 204",
+  "latitude": 45.764043,
+  "longitude": 4.835659
+}
+
+### Détail (liens sources + devices placés embarqués, D32 : zéro requête au
+### clic) — 200. D43 : `devices: [{id, device_id, location_detail}]` remplace
+### la colonne `device_id`.
+GET {{base}}/api/v1/pois/{{poi_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Déplacer / éditer (1 PATCH au pointer-up ; null efface emoji/location) — 200
+PATCH {{base}}/api/v1/pois/{{poi_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{
+  "latitude": 45.765,
+  "location_detail": "Bât. A — Étage 3"
+}
+
+### Attacher un device (D43 — délibéré : N devices par POI, 1 placement par
+### device) — 201 {"id": 7, "device_id": "soil-01", "location_detail": null}
+POST {{base}}/api/v1/pois/{{poi_id}}/devices
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{
+  "device_id": "soil-01",
+  "location_detail": "Rack 3 — Allée B"
+}
+
+### Device inconnu → 400 {"device_id": "Device inconnu pour cette organisation."}
+### Device déjà placé → 409 (le front propose le déplacement, jamais
+### silencieux) :
+# {
+#   "error": "conflict",
+#   "description": "Ce device est déjà placé sur un POI — l'attacher ici le déplace (confirmation requise).",
+#   "device_id": "soil-01",
+#   "current_placement_id": 7,
+#   "current_pin_id": "…uuid du POI courant…",
+#   "current_pin_label": "Serre Nord"
+# }
+
+### Éditer la localisation du placement et/ou déplacer (pin_id cible) — 200.
+PATCH {{base}}/api/v1/pois/placements/7
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{
+  "location_detail": "Rack 5 — Allée C",
+  "pin_id": "{{poi_id}}"
+}
+
+### Détacher un device (amendement D43) — 204 ; le device redevient libre,
+### plaçable n'importe où (l'UNIQUE garantit « au plus un POI à la fois ») ;
+### supprimer le POI cascade toujours les placements.
+DELETE {{base}}/api/v1/pois/placements/7
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Placement inconnu / cross-org → 404 masqué ; viewer → 403
+
+### Supprimer (204 ; liens sources en cascade)
+DELETE {{base}}/api/v1/pois/{{poi_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### ------------------------------------------------------------- cluster ---
+
+### Clustering (D37) : bbox west,south,east,north + zoom.
+### ≤ 200 POIs dans la bbox => items individuels (count=1, id renseigné) ;
+### au-delà => clusters numérotés (count, centroïde, cap 500 items).
+### Filtres de liste applicables (search, emoji, has_device, has_position).
+GET {{base}}/api/v1/pois/cluster?bbox=4.83,45.75,4.85,45.78&zoom=14&has_device=true
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+# 200
+# {
+#   "zoom": 14,
+#   "total": 312,
+#   "items": [
+#     {"lat": 45.7645, "lon": 4.8357, "count": 305, "id": null,
+#      "label": "Serre Nord", "emoji": "🌱"},
+#     {"lat": 45.7660, "lon": 4.8362, "count": 1, "id": "…uuid…",
+#      "label": "Capteur sol 1", "emoji": "📍"}
+#   ]
+# }
+
+### ------------------------------------------------------ liens (D39 → D42) ---
+
+### Voie moderne (D42) : POST /api/v1/resources/edges — cibles admises par
+### le registre pour `map_pin placed_on` : media_asset, dashboard, tour.
+### `placement` = sac de métadonnées (ex. label, hotspot coords) — 201 ou 409
+### (doublon de paire).
+POST {{base}}/api/v1/resources/edges
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{
+  "relation": "placed_on",
+  "source_kind": "map_pin",
+  "source_id": "{{poi_id}}",
+  "target_kind": "tour",
+  "target_id": "{{tour_id}}",
+  "placement": {"label": "Visite de la serre"}
+}
+
+### Arêtes sources d'un POI — 200 (enveloppe {count, results})
+GET {{base}}/api/v1/resources/edges?relation=placed_on&source_kind=map_pin&source_id={{poi_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Détacher (cascade symétrique purge_for) — 204 (404 masqué hors org)
+DELETE {{base}}/api/v1/resources/edges/{{edge_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Legacy thin-wrappers (D42 garde les endpoints /viz/links, mêmes
+### sémantiques — l'UI historique passe encore par là) — 201
+POST {{base}}/api/v1/viz/links
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{
+  "source_kind": "map_pin",
+  "source_id": "{{poi_id}}",
+  "target_kind": "media_asset",
+  "target_id": "{{media_asset_id}}",
+  "label": "Vue 360 de la serre"
+}
+
+### Liens sources d'un POI — 200 (les liens du POI embarquent
+### `target_label` (nom résolu batch) et `target_dead` — cible disparue)
+GET {{base}}/api/v1/viz/links?source_kind=map_pin&source_id={{poi_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Détacher — 204 (404 masqué si déjà supprimé / hors org)
+DELETE {{base}}/api/v1/viz/links/{{link_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### ------------------------------------------------- positions GPS (D38) ---
+
+### Couche live carte : dernière position par device — 200
+GET {{base}}/api/v1/device-positions
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+# 200
+# {
+#   "count": 1,
+#   "results": [
+#     {"device_id": "tracker-01", "latitude": 45.7640, "longitude": 4.8357,
+#      "altitude_m": null, "accuracy_m": 3.2, "speed_mps": null,
+#      "heading_deg": null, "source": "telemetry",
+#      "positioned_at": "2026-09-11T18:30:00+00:00"}
+#   ]
+# }
+
+### Position manuelle (POC/tests ; source=manual, dernier écrivain gagne) — 204
+PUT {{base}}/api/v1/device-positions/tracker-01
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{
+  "latitude": 45.77,
+  "longitude": 4.84
+}
+
+### ------------------------------------ studio SCADA : dashboards (D40) ---
+
+### ⚠ Décisions D40/D41 (studio SCADA, 2026-09-11) — D35–D39 sont les
+### décisions POI-first ; cf. viz-bases.md §0.
+
+### Lister (D14) — 200
+GET {{base}}/api/v1/dashboards?search=temp
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Créer — 201 (version 1 posée d'office, layout par défaut)
+POST {{base}}/api/v1/dashboards
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{"name": "Supervision atelier", "description": "Jauges du hall"}
+
+### Save = nouvelle version append-only qui devient live (D24, école flows).
+### expected_version_number vise la version COURANTE (le pointeur — un
+### restore le déplace et doit confliter) ; périmé => 409.
+PATCH {{base}}/api/v1/dashboards/{{dashboard_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{
+  "expected_version_number": 1,
+  "layout": {
+    "canvas": {"width": 1600, "height": 900, "background": "#f8fafc"},
+    "widgets": [
+      {
+        "id": "w-0001",
+        "type": "gauge",
+        "title": "Température serveur",
+        "x": 120, "y": 80, "w": 240, "h": 200,
+        "source": [
+          {"role": "primary", "metric": "temperature",
+           "device_id": "{{device_registry_id}}", "window": "1h"}
+        ],
+        "options": {"unit": "°C", "min": 0, "max": 50, "decimals": 1}
+      }
+    ],
+    "wires": [
+      {"id": "t-0001",
+       "from": {"widget_id": "w-0001", "side": "right"},
+       "to": {"widget_id": "w-0002", "side": "left"}}
+    ]
+  }
+}
+
+### Versions (append-only) + détail + restore (re-positionne la live,
+### école media, aucune version créée) — 200
+GET {{base}}/api/v1/dashboards/{{dashboard_id}}/versions
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+GET {{base}}/api/v1/dashboards/{{dashboard_id}}/versions/2
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+POST {{base}}/api/v1/dashboards/{{dashboard_id}}/versions/1/restore
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+DELETE {{base}}/api/v1/dashboards/{{dashboard_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### --------------------- studio SCADA : bibliothèque de widgets (D41) ---
+
+### Lister (D14) — 200 (filtres ?search=&kind=gauge|stat|line|indicator|text)
+GET {{base}}/api/v1/viz/widgets
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Ajouter un template — 201. `kind` doit correspondre à config.type ;
+### la config est un widget SANS position (le x/y/w/h est choisi à la pose).
+### (org_id, name) unique => 400 {"name": "Un template porte déjà ce nom."}
+POST {{base}}/api/v1/viz/widgets
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{
+  "name": "Jauge °C",
+  "kind": "gauge",
+  "config": {
+    "type": "gauge",
+    "title": "Température",
+    "source": [
+      {"role": "primary", "metric": "temperature",
+       "device_id": "{{device_registry_id}}", "window": "1h"}
+    ],
+    "options": {"unit": "°C", "min": 0, "max": 50}
+  }
+}
+
+### Renommer / remplacer la config — 200 (mutable, pas de versioning :
+### les dashboards existants gardent leur snapshot)
+PATCH {{base}}/api/v1/viz/widgets/{{widget_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{"name": "Jauge four"}
+
+DELETE {{base}}/api/v1/viz/widgets/{{widget_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### ------------------------------------------------ télémétrie (D31) ---
+
+### Batch de séries : UN timer par dashboard au lieu de N. Même forme de
+### réponse que /telemetry/series, dégradée PAR ITEM (available:false, jamais
+### 500) — anti-injection PromQL inchangée (charset + fenêtres preset par
+### spec : 5m/15m/30m/1h/6h/24h). Cap 24 specs => 400 au-delà.
+POST {{base}}/api/v1/telemetry/series-batch
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/json
+
+{
+  "specs": [
+    {"metric": "temperature", "device_id": "{{device_registry_id}}", "window": "1h"},
+    {"metric": "soil_moisture", "device_id": "{{device_registry_id}}", "window": "5m"}
+  ]
+}

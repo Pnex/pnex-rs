@@ -1,0 +1,63 @@
+# Rust
+/target
+**/*.rs.bk
+
+# Frontend (Dioxus / dx)
+crates/pnex-frontend/dist
+crates/pnex-frontend/.dx
+**/dist/
+
+# Front — Tailwind v4 (CSS généré), bundle esptool-js et node_modules
+crates/pnex-frontend/assets/tailwind.css
+crates/pnex-frontend/assets/flasher.js
+crates/pnex-frontend/node_modules/
+
+# Environnement & secrets
+.env
+.env.*
+!.env.example
+*.age
+secrets/
+# Source module of the org secrets vault (code, no secret material).
+!crates/pnex-backend/src/services/secrets/
+
+# Éditeurs
+.idea/
+.vscode/
+*.swp
+
+# Firmware PlatformIO (toolchain locale et caches de build pio)
+firmware/.venv/
+firmware/**/.pio/
+
+# Outillage local
+.task/
+.claude/settings.local.json*
+.claude/worktrees/
+
+# Graphe de connaissances graphify (généré, projet et sous-dossiers)
+graphify-out/
+
+# Moteur de flow ETL (D18) — état du runtime (flows.json + runtime.json)
+crates/pnex-backend/flow-state/
+flow-state/
+crates/pnex-frontend/assets/viewers.js
+crates/pnex-frontend/assets/viewers.css
+crates/pnex-frontend/assets/map.js
+crates/pnex-frontend/assets/.map-worker.js
+crates/pnex-frontend/assets/.map-worker.txt
+crates/pnex-frontend/assets/map.css
+
+# DB sqlite de dev créée par pnex-server (cwd backend)
+crates/pnex-backend/pnex.sqlite
+crates/pnex-backend/storage/
+# Clones de référence (licences incompatibles — concepts seulement, jamais compilés ni commités)
+/Panorama/
+
+# TLS edge (D70) — local CA/leaf material and the generated env file
+deploy/edge/pki-data/
+deploy/edge/edge.env
+
+# Pi simulation VM (deploy/vm): downloaded cloud images and VM disks
+deploy/vm/.cache/
+*.qcow2

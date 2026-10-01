@@ -1,0 +1,22 @@
+###
+# Example token authentication request
+# Replace with your actual credentials
+POST http://0.0.0.0:8000/api-token-auth/
+Content-Type: application/json
+
+{
+  "username": "admin@example.com",
+  "password": "your_password_here",
+  "client_id": "your_client_id_here"
+}
+
+###
+# use device token for that purpose
+POST http://0.0.0.0:8000/api/v1/devices/
+Authorization: Token dfgdfg546df4g
+Content-Type: application/json
+
+{
+  "device_id": "device123",
+  "predefined_device_name": "soil_sensor"
+}

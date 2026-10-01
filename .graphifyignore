@@ -1,0 +1,3 @@
+# Données runtime jamais extraites (parité .gitignore) :
+# le MediaStore fs du backend dev — frames de captures 360, blobs média.
+crates/pnex-backend/storage/
