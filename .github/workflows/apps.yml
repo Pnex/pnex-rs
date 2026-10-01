@@ -69,6 +69,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: desktop-linux-${{ matrix.arch }}
+          # Release artefacts are built from a clean target/: a restored
+          # incremental target made dx read the Windows asset symbols at
+          # wrong offsets (BundledAsset panic). Registry and git stay cached.
+          cache-targets: false
       - uses: oven-sh/setup-bun@v2
       - uses: arduino/setup-task@v2
         with:
@@ -108,6 +112,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: desktop-windows
+          # Release artefacts are built from a clean target/: a restored
+          # incremental target made dx read the Windows asset symbols at
+          # wrong offsets (BundledAsset panic). Registry and git stay cached.
+          cache-targets: false
       - uses: oven-sh/setup-bun@v2
       - uses: arduino/setup-task@v2
         with:
@@ -188,6 +196,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: android
+          # Release artefacts are built from a clean target/: a restored
+          # incremental target made dx read the Windows asset symbols at
+          # wrong offsets (BundledAsset panic). Registry and git stay cached.
+          cache-targets: false
       - uses: oven-sh/setup-bun@v2
       - uses: arduino/setup-task@v2
         with:
