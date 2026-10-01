@@ -103,13 +103,38 @@ Images are published on every green `main`: `shanisma/pnex-server-rs` and
 
 ## Architecture
 
-```
- ESP8266 / ESP32 ──wss (TLS + ChaCha20)──▶ pnex-server ──▶ OpenObserve   (telemetry)
- edge agent ──────────────────────────────▶ (Loco/axum) ──▶ PostgreSQL | SQLite
- browser / desktop / Android ── Dioxus UI ─▶      │      ──▶ Valkey        (live state, leases)
-                                                  │      ──▶ RustFS / fs   (firmware, media)
-                                   pnex-flow-runtime      Rauthy (OIDC identity)
-                                   pnex-builder (PlatformIO, stitching, vision)
+```mermaid
+flowchart LR
+    subgraph field["Field"]
+        dev["ESP8266 / ESP32<br/>PNeX firmware"]
+        agent["Edge agent<br/>Linux · Windows"]
+    end
+    subgraph clients["Clients"]
+        ui["Dioxus app<br/>web · desktop · Android"]
+    end
+    subgraph core["PNeX server"]
+        server["pnex-server<br/>Loco · axum"]
+        flows["pnex-flow-runtime"]
+        builder["pnex-builder<br/>PlatformIO · vision · stitching"]
+    end
+    subgraph data["Data"]
+        db[("PostgreSQL<br/>or SQLite")]
+        valkey[("Valkey<br/>live state")]
+        o2[("OpenObserve<br/>telemetry")]
+        s3[("RustFS / disk<br/>firmware · media")]
+    end
+    idp["Rauthy<br/>OIDC"]
+    llm["Your LLM<br/>Anthropic · OpenAI-compatible"]
+
+    dev -- "wss · TLS + ChaCha20" --> server
+    agent -- "wss · TLS + ChaCha20" --> server
+    ui -- "HTTPS · WebSocket" --> server
+    ui -. "login" .-> idp
+    server --> flows
+    server -- "job queue" --> builder
+    server --> db & valkey & o2 & s3
+    builder --> s3
+    server -. "AI assistant" .-> llm
 ```
 
 Read more in the [architecture docs](https://pnex.io/docs/architecture) and in
