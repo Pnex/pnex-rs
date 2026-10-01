@@ -21,6 +21,46 @@ pub const EDGE_AGENT_PREDEF: &str = "edge_agent";
 /// `Announce.chip` sent by the edge agent (never a real SoC).
 pub const EDGE_AGENT_CHIP: &str = "agent";
 
+/// Catalogue models of the generic PneX family: pins driven from the UI,
+/// and the only boards that may run a custom firmware project.
+pub const GENERIC_IO_PREDEFS: &[&str] = &[
+    "generic_esp8266",
+    "generic_esp32c3",
+    "generic_esp32",
+    "generic_esp32s3",
+];
+
+/// Product family of a catalogue model (edge-model.md §2 bis).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeviceFamily {
+    /// Generic PneX firmware (I/O from the UI), or a custom IDE project
+    /// compiled for the same board.
+    Generic,
+    /// Typed board whose firmware is fixed by the model and maintained by
+    /// PneX: no firmware choice.
+    Predefined,
+    /// Edge agent: software on a computer, not a board.
+    Agent,
+}
+
+impl DeviceFamily {
+    /// Family of a predefined device, by its catalogue name.
+    pub fn of(predefined_name: &str) -> Self {
+        if predefined_name == EDGE_AGENT_PREDEF {
+            Self::Agent
+        } else if GENERIC_IO_PREDEFS.contains(&predefined_name) {
+            Self::Generic
+        } else {
+            Self::Predefined
+        }
+    }
+
+    /// A custom firmware project may only replace the generic firmware.
+    pub fn accepts_custom_firmware(self) -> bool {
+        self == Self::Generic
+    }
+}
+
 // ─────────────────────── Catalogue global ───────────────────────
 
 /// `GET /api/v1/device-capabilities` — parité `DeviceCapabilitySerializer`.
@@ -213,6 +253,21 @@ pub struct UpdateDevice {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn device_family_by_catalogue_name() {
+        assert_eq!(DeviceFamily::of("generic_esp32"), DeviceFamily::Generic);
+        assert_eq!(DeviceFamily::of("soil_sensor"), DeviceFamily::Predefined);
+        assert_eq!(
+            DeviceFamily::of("generic_esp32cam"),
+            DeviceFamily::Predefined
+        );
+        assert_eq!(DeviceFamily::of(EDGE_AGENT_PREDEF), DeviceFamily::Agent);
+        assert!(DeviceFamily::of("generic_esp8266").accepts_custom_firmware());
+        assert!(!DeviceFamily::of("soil_sensor").accepts_custom_firmware());
+        assert!(!DeviceFamily::of(EDGE_AGENT_PREDEF).accepts_custom_firmware());
+    }
+
     use super::*;
 
     /// Forme de sortie exacte d'un device (parité DeviceRegistrySerializer,

@@ -32,9 +32,8 @@ use naming::*;
 use screen_pick::*;
 use templates::*;
 
-/// Types custom (mesures dynamiques + pins déclarées dans le sketch) —
-/// parité back `allow_dynamic`. Tier 2 = custom_device seul (le preset
-/// custom_sensor est retiré du catalogue).
+/// Retired Tier 2 model (custom_device), replaced by the custom firmware
+/// IDE: never offered, even if an old catalogue row still exists.
 fn is_custom(name: &str) -> bool {
     matches!(name, "custom_device")
 }
@@ -81,6 +80,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
     let mut firmware_pick = use_signal(|| None::<i64>);
     use_effect(move || {
         variant_board_id();
+        selected();
         screen_pick.set(None);
         firmware_pick.set(None);
     });
@@ -314,7 +314,35 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
         }
         _ => Vec::new(),
     };
-    let traditional_models: Vec<pnex_core::PredefinedDevice> = visible_models.clone();
+    // One section per product family (edge-model.md §2 bis).
+    let family_models = |family: pnex_core::DeviceFamily| -> Vec<pnex_core::PredefinedDevice> {
+        visible_models
+            .iter()
+            .filter(|pd| pnex_core::DeviceFamily::of(&pd.name) == family)
+            .cloned()
+            .collect()
+    };
+    let model_sections = [
+        (
+            t!("wizard-model-section-generic"),
+            t!("wizard-model-section-generic-help"),
+            family_models(pnex_core::DeviceFamily::Generic),
+        ),
+        (
+            t!("wizard-model-section-predefined"),
+            t!("wizard-model-section-predefined-help"),
+            family_models(pnex_core::DeviceFamily::Predefined),
+        ),
+        (
+            t!("wizard-model-section-agent"),
+            t!("wizard-model-section-agent-help"),
+            family_models(pnex_core::DeviceFamily::Agent),
+        ),
+    ];
+    // A custom firmware may only replace the generic firmware.
+    let custom_firmware_allowed = selected()
+        .as_ref()
+        .is_some_and(|p| pnex_core::DeviceFamily::of(&p.name).accepts_custom_firmware());
 
     let busy = creating();
 
@@ -420,14 +448,17 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                 }
                             }
 
-                            if !traditional_models.is_empty() {
-                                div {
-                                    h4 { class: "text-xs font-semibold text-blue-600 uppercase tracking-wider mb-2",
-                                        {t!("wizard-model-section-traditional")}
-                                    }
-                                    div { class: "grid gap-2",
-                                        for pd in traditional_models {
-                                            {model_card(pd, selected, variant_board_id)}
+                            for (title, help, models) in model_sections {
+                                if !models.is_empty() {
+                                    div {
+                                        h4 { class: "text-xs font-semibold text-blue-600 uppercase tracking-wider",
+                                            {title}
+                                        }
+                                        p { class: "text-xs text-gray-400 mb-2", {help} }
+                                        div { class: "grid gap-2",
+                                            for pd in models {
+                                                {model_card(pd, selected, variant_board_id)}
+                                            }
                                         }
                                     }
                                 }
@@ -487,7 +518,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                                     on_close: move |_| preview_board.set(None),
                                                 }
                                             }
-                                            if let Some(soc) = effective_soc {
+                                            if let Some(soc) = effective_soc.filter(|_| custom_firmware_allowed) {
                                                 FirmwarePickBlock { soc, firmware_pick }
                                             }
                                             // Debug screen = generic firmware only: a custom

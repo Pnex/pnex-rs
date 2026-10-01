@@ -241,6 +241,9 @@ pub const FIRMWARE_WRITE_FORBIDDEN: &str = "firmware-write-forbidden";
 pub const FIRMWARE_CUSTOM_DISABLED: &str = "firmware-custom-disabled";
 /// The device SoC differs from the project chip family.
 pub const FIRMWARE_CHIP_MISMATCH: &str = "firmware-chip-mismatch";
+/// A custom firmware project on a model outside the generic family: a
+/// predefined board keeps the firmware maintained by PneX.
+pub const FIRMWARE_FAMILY_LOCKED: &str = "firmware-family-locked";
 /// Library id outside the pinned catalog (`$value` = id).
 pub const FIRMWARE_LIB_UNKNOWN: &str = "firmware-lib-unknown";
 /// Catalog library not available for the project chip (`$value` = id).
@@ -450,6 +453,7 @@ pub const ALL: &[&str] = &[
     FIRMWARE_WRITE_FORBIDDEN,
     FIRMWARE_CUSTOM_DISABLED,
     FIRMWARE_CHIP_MISMATCH,
+    FIRMWARE_FAMILY_LOCKED,
     FIRMWARE_LIB_UNKNOWN,
     FIRMWARE_LIB_INCOMPATIBLE,
     FIRMWARE_SOURCE_REFUSED,

@@ -86,8 +86,11 @@ Points ouverts (constatés au 2026-10-01, à trancher) :
 1. **`custom_device` (Tier 2 local)** : retiré de l'assistant mais encore au
    catalogue et accepté par l'API ; un build serveur est accepté puis échoue
    dans le worker (pas de projet `custom_device` dans `firmware/`), et sa
-   page détail rend une carte vide. Aucune famille ne l'accueille →
-   retrait du catalogue et refus à la création.
+   page détail rend une carte vide. Aucune famille ne l'accueille.
+   **Fait (2026-10-01)** : retiré de la fixture du catalogue (plus seedé,
+   donc plus créable). **Reste** : purger le code Tier 2 (admission par
+   manifeste sans overlay, `allow_dynamic` de `custom_device`) et migrer
+   les tests backend qui le seedent encore (`tests/common`).
 2. **Carte `generic`** : absente de `mcu.yaml`, créée à la volée par le seed
    (`soc = generic`) pour `custom_device` et `edge_agent`. Un agent n'a pas
    de carte : `board_id` nullable pour la famille agents plutôt qu'une
@@ -98,12 +101,18 @@ Points ouverts (constatés au 2026-10-01, à trancher) :
    projet peut donc être attaché à `soil_sensor`, et l'assistant affiche le
    choix de firmware pour tout modèle dont la carte a un profil. Contraire
    à la règle ci-dessus : sélecteur et garde serveur à restreindre à la
-   famille générique.
+   famille générique. **Fait (2026-10-01)** : `pnex_core::DeviceFamily`
+   (source unique front/back), garde serveur 400
+   `firmware-family-locked`, sélecteur affiché pour la famille générique
+   seulement.
 6. **Liste des firmwares** : la page `/firmware` ne liste que les projets
    de l'IDE ; les firmwares prédéfinis (et le générique) y figureront en
    lecture seule avec leur carte compatible.
 5. **Assistant** : une seule section « Traditionnel (strict) » regroupe
-   tout le catalogue ; à remplacer par les familles ci-dessus.
+   tout le catalogue. **Fait (2026-10-01)** : une section par famille
+   (Générique PneX, Cartes prédéfinies, Agents). La famille d'un modèle
+   est une liste en dur (`GENERIC_IO_PREDEFS`) ; une colonne `family` au
+   catalogue la rendrait pilotée par les données.
 
 ## 3. Firmware en couches (toujours PIO)
 
