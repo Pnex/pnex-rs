@@ -78,7 +78,7 @@ integrated AI assistant.
 | **[SCADA dashboards](https://pnex.io/docs/dashboards)** | Free canvas, threshold gauges, sparklines, LEDs, SVG connectors, instant publishing. |
 | **[Map & POIs](https://pnex.io/docs/map)** | POI-first map on MapLibre, backend clustering, live GPS layer, attachments. |
 | **[Cameras & vision](https://pnex.io/docs/cameras)** | Live ESP32-CAM streams, recordings, on-server object detection (ONNX). |
-| **[Notifications](https://pnex.io/docs/notifications)** | Email, webhook, Slack, Discord, Telegram, ntfy and Gotify channels, templated, sent from flows. |
+| **[Notifications](https://pnex.io/docs/notifications)** | In-app, email (SMTP), webhook, Slack, Discord, Telegram and ntfy channels, templated, sent from flows. |
 | **[AI assistant](https://pnex.io/docs/ai-assistant)** | Multi-tool chat inside the app, on your own LLM provider (Anthropic or OpenAI-compatible). |
 | **[Thermodynamics](https://pnex.io/docs/thermo)** | CoolProp in-process, custom mixtures, p-h / T-s / psychrometric diagrams. |
 | **[Security](https://pnex.io/docs/security)** | TLS everywhere with an automatic local CA, encrypted secrets vault, least privilege, sandboxed user code. |
