@@ -5,20 +5,19 @@ on:
     branches: ["*"]
   pull_request:
 
+# GitHub-hosted runners only: the repository is public, so a fork pull
+# request must never run on a self-hosted machine.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
-  # Cap the self-hosted runner (node-worker-2): rustc jobs and test threads
-  # otherwise default to every core. The host also enforces a cgroup cap on
-  # the runner service (10 CPUs, 16G RAM, disk bandwidth) because the node is
-  # a microk8s dqlite voter: a starved node takes the control plane down.
-  CARGO_BUILD_JOBS: 8
-  RUST_TEST_THREADS: 8
+  CARGO_INCREMENTAL: "0"
   # Full debuginfo makes test binaries and links several times bigger (RAM +
-  # disk writes) for no CI benefit; line tables keep usable backtraces.
+  # disk) for no CI benefit; line tables keep usable backtraces.
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
-# Self-hosted runner (dev machine): serialize runs so parallel pushes do not
-# thrash CPU/disk, and cancel superseded runs on the same ref.
+# Cancel superseded runs on the same ref.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -26,8 +25,13 @@ concurrency:
 jobs:
   check:
     name: cargo check (natif + wasm32)
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     steps:
+      # Hosted runners ship ~14 GB free; a workspace test build needs more.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
       - uses: actions/checkout@v5
         with:
           # vendor/edgelinkd (D18): submodule required by the pnex-node-* crates and
@@ -37,6 +41,8 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # asset!() exige les bundles front à la compilation ; les fichiers
       # réels sont gitignorés (générés par bun dans le job dx build) —
       # stubs pour compiler.
@@ -54,7 +60,7 @@ jobs:
 
   test:
     name: cargo test
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:18-alpine
@@ -63,40 +69,38 @@ jobs:
           POSTGRES_PASSWORD: pnex
           POSTGRES_DB: pnex_test
         ports:
-          # Host port 5432 is taken by the dev pnex-postgres container on the
-          # self-hosted runner — bind the CI service on 5433 instead, and
-          # never let tests reach the dev instance (they wipe databases).
-          - 5433:5432
-        # Service containers run under dockerd, outside the runner's cgroup cap.
+          - 5432:5432
         options: >-
-          --cpus 2
-          --memory 2g
           --health-cmd "pg_isready -U pnex -d pnex_test"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
-      # Valkey is mandatory (device liveness, D108). Host port 6379 belongs
-      # to the dev pnex-valkey container of the self-hosted runner.
+      # Valkey is mandatory (device liveness, D108).
       valkey:
         image: valkey/valkey:9-alpine
         ports:
-          - 6380:6379
+          - 6379:6379
         options: >-
-          --cpus 1
-          --memory 256m
           --health-cmd "valkey-cli ping"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
     env:
-      TEST_DATABASE_URL: postgres://pnex:pnex@localhost:5433/pnex_test
-      PNEX_TEST_APP_VALKEY_URL: redis://localhost:6380/0
+      TEST_DATABASE_URL: postgres://pnex:pnex@localhost:5432/pnex_test
+      PNEX_TEST_APP_VALKEY_URL: redis://localhost:6379/0
     steps:
+      # Hosted runners ship ~14 GB free; a workspace test build needs more.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
       - uses: actions/checkout@v5
         with:
           submodules: true
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Stubs Tailwind + flasher.js (compilation)
         run: |
           mkdir -p crates/pnex-frontend/assets
@@ -110,63 +114,33 @@ jobs:
 
   arm-check:
     name: cargo check ARM (pnex-flow-runtime)
-    runs-on: [self-hosted, linux]
-    env:
-      # Build scripts C (ring, rquickjs-sys) compilent pour la cible même en
-      # `cargo check` — le cross-compilateur C est requis, pas le linker.
-      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-      CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
-      AR_aarch64_unknown_linux_gnu: aarch64-linux-gnu-ar
-      CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
-      CC_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
-      AR_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-ar
-      # bindgen (rquickjs armv7) : force l'en-tête cible avant /usr/include.
-      BINDGEN_EXTRA_CLANG_ARGS: -I/usr/arm-linux-gnueabihf/include
+    # Native arm64 runner (Raspberry Pi 64-bit class target): no cross
+    # toolchain needed.
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v5
         with:
           submodules: true
-      - name: Cross-compilateurs C (Raspberry Pi 64/32 bits)
-        run: |
-          # Skip the apt install when the toolchain is already provisioned —
-          # on a self-hosted runner sudo may require a password prompt.
-          if command -v aarch64-linux-gnu-gcc >/dev/null \
-            && command -v arm-linux-gnueabihf-gcc >/dev/null \
-            && command -v cmake >/dev/null \
-            && [ -d /usr/arm-linux-gnueabihf/include ]; then
-            echo "Cross-compilers already installed, skipping apt-get"
-            exit 0
-          fi
-          sudo apt-get update
-          # gcc-* : compilateurs croisés ; libc6-dev-* + linux-libc-dev-* :
-          # en-têtes libc/kernel de la cible — les build scripts C (ring,
-          # rquickjs-sys) compilent pour la cible même en `check` et le gcc
-          # croisé ne les cherche pas dans /usr/include ; --no-install-recommends
-          # ne les tire pas avec gcc-*. libclang-dev : génération bindgen des
-          # bindings rquickjs armv7 (pas de bindings pré-générés armv7 chez
-          # rquickjs-sys — feature `bindgen` activée dans pnex-flow-runtime).
-          sudo apt-get install -y --no-install-recommends \
-            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf \
-            g++-aarch64-linux-gnu g++-arm-linux-gnueabihf \
-            libc6-dev-arm64-cross libc6-dev-armhf-cross \
-            linux-libc-dev-arm64-cross linux-libc-dev-armhf-cross \
-            libclang-dev cmake
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-unknown-linux-gnu
       - uses: Swatinem/rust-cache@v2
-      # aarch64 (Raspberry Pi 64-bit — cible de premier rang chez EdgeLinkd).
-      - run: cargo check -p pnex-flow-runtime --target aarch64-unknown-linux-gnu
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo check -p pnex-flow-runtime
       # armv7 (RPi 32-bit) is currently UNBUILDABLE: the starlark stack pulls
       # pagable 0.4.2, whose 64-bit-only size assertions fail on any 32-bit
-      # target (E0512, usize 4 vs 8 bytes). Upstream limitation — restore
-      # this check when starlark/pagable ship a 32-bit compatible release.
-      # - run: cargo check -p pnex-flow-runtime --target armv7-unknown-linux-gnueabihf
+      # target (E0512, usize 4 vs 8 bytes). Upstream limitation — restore an
+      # armv7 cross check when starlark/pagable ship a 32-bit compatible
+      # release.
 
   frontend:
     name: dx build (web)
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     steps:
+      # Hosted runners ship ~14 GB free; a workspace test build needs more.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
       - uses: actions/checkout@v5
         with:
           # Depuis D18 le workspace résout TOUT le graphe (pnex-flow-runtime
@@ -178,6 +152,8 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: oven-sh/setup-bun@v2
       - name: CSS Tailwind v4 + bundles JS (flasher, viewers, map)
         working-directory: crates/pnex-frontend
@@ -187,9 +163,10 @@ jobs:
           bun run js:build
           bun run js:viewers
           bun run js:map
+      # Prebuilt dx, same version as deploy/docker/Dockerfile.
+      - uses: cargo-bins/cargo-binstall@main
       - name: Installer dx
-        # Persisted across runs on the self-hosted runner: only build once.
-        run: command -v dx >/dev/null || cargo install dioxus-cli --locked
+        run: cargo binstall -y --locked dioxus-cli@0.7.10
       - name: Build front (release)
         run: |
           cd crates/pnex-frontend

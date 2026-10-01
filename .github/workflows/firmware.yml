@@ -18,8 +18,11 @@ on:
       - "firmware/**"
       - ".github/workflows/firmware.yml"
 
-# Self-hosted runner (node-worker-2), same policy as ci.yml: serialize runs
-# and cancel superseded ones on the same ref.
+# GitHub-hosted runners only (public repository), same policy as ci.yml.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref.
 concurrency:
   group: firmware-${{ github.ref }}
   cancel-in-progress: true
@@ -27,7 +30,7 @@ concurrency:
 jobs:
   compile:
     name: pio run (soil_sensor + generic_esp8266 + generic_esp32c3)
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     # The generic_* projects read their board and screen pins from the build
     # env (injected per device by the builder). CI compiles a screenless
     # reference board per SoC family.
