@@ -46,13 +46,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # 22.04: older glibc, the binary runs on more distributions.
+          # 24.04: the prebuilt dx needs glibc >= 2.39 (the app then needs a
+          # recent distribution: Ubuntu 24.04+, Debian 13, Fedora 40+).
           - arch: x86_64
-            runner: ubuntu-22.04
+            runner: ubuntu-24.04
           # webkit2gtk cross-compiling needs a full target sysroot: native
           # arm64 runner instead.
           - arch: aarch64
-            runner: ubuntu-22.04-arm
+            runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v5
@@ -170,11 +171,17 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - uses: android-actions/setup-android@v3
+      # The hosted image ships an Android SDK (ANDROID_HOME); only the
+      # pinned NDK is added. (android-actions/setup-android installs the
+      # removed `tools` package by default and fails.)
       - name: Android NDK
         run: |
-          sdkmanager --install "ndk;${NDK_VERSION}"
+          sdkmanager=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
+          echo "sdkmanager: $sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" --install "ndk;${NDK_VERSION}" > /dev/null
           echo "NDK_HOME=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          ls "$ANDROID_HOME/ndk"
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
