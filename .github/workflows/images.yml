@@ -1,5 +1,8 @@
 # Publish the multi-arch (amd64 + arm64) Docker images on main — same
-# build as `task docker:publish`, gated on a green CI run of that commit.
+# Dockerfile as `task docker:publish`, gated on a green CI run of that
+# commit. GitHub-hosted runners: each architecture builds natively on its
+# own runner (no QEMU), pushes by digest, then one job assembles the
+# multi-arch manifests.
 #
 # Tags pushed for each image (pnex-server-rs, pnex-builder-rs):
 #   main-<shortsha>  immutable, pin it in pnex-deploy (--tag / VERSION)
@@ -20,7 +23,9 @@ on:
 
 env:
   REGISTRY: docker.io/shanisma
-  PLATFORMS: linux/amd64,linux/arm64
+
+permissions:
+  contents: read
 
 # One publish at a time; a newer main commit supersedes a queued one.
 # Runs that will be skipped (CI cancelled/failed) get their own throwaway
@@ -34,85 +39,94 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  publish:
-    name: docker buildx (server + builder)
+  build:
+    name: build ${{ matrix.target }} (${{ matrix.arch }})
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push')
-    runs-on: [self-hosted, linux]
+    strategy:
+      fail-fast: true
+      matrix:
+        target: [server, builder]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
-      # Isolated docker config: the CI login must not overwrite the runner
-      # user's ~/.docker/config.json. (`runner` context is not available in
-      # job-level env.) DOCKER_CONFIG also moves the CLI plugin lookup, so the
-      # user's ~/.docker/cli-plugins (buildx) is linked into it.
-      - name: Isolated docker config
+      # Release Rust builds inside BuildKit need more than the ~14 GB free.
+      - name: Free disk space
         run: |
-          cfg="$RUNNER_TEMP/docker-config"
-          rm -rf "$cfg" && mkdir -p "$cfg"
-          [ -d "$HOME/.docker/cli-plugins" ] && ln -s "$HOME/.docker/cli-plugins" "$cfg/cli-plugins"
-          echo "DOCKER_CONFIG=$cfg" >> "$GITHUB_ENV"
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           # vendor/edgelinkd is part of the build context (COPY . .).
           submodules: true
-      - name: Tags
-        id: tags
-        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-      - name: Docker Hub login
-        env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
-        run: |
-          mkdir -p "$DOCKER_CONFIG"
-          echo "$DOCKER_TOKEN" | docker login docker.io -u "$DOCKER_USERNAME" --password-stdin
-      - name: arm64 emulation (builder image PlatformIO prewarm)
-        run: |
-          [ -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ] \
-            || docker run --privileged --rm tonistiigi/binfmt --install arm64
-      # Pinned buildx (installed into $DOCKER_CONFIG/cli-plugins when the host
-      # has none) + a docker-container builder: multi-platform push works
-      # whatever the host's image store. Named + keep-state = warm layer cache
-      # across runs.
       - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
-          version: v0.37.1
-          name: pnex-images
-          driver: docker-container
-          # Hard cap the BuildKit container at 10 CPUs: web, amd64 and arm64
-          # stages build in parallel and would otherwise each take every core
-          # of node-worker-2 (cargo sizes its jobs from the cpuset). It runs
-          # under dockerd, outside the runner's cgroup, so cap memory too.
-          driver-opts: |
-            cpuset-cpus=0-9
-            memory=10g
-            memory-swap=10g
-          keep-state: true
-      - name: Build + push pnex-server-rs
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+      - name: Build + push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          target: ${{ matrix.target }}
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.REGISTRY }}/pnex-${{ matrix.target }}-rs,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.target }}-${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.target }}-${{ matrix.arch }},mode=max
+      - name: Export digest
         run: |
-          docker buildx build -f deploy/docker/Dockerfile \
-            --platform "$PLATFORMS" --target server \
-            -t "$REGISTRY/pnex-server-rs:main-${{ steps.tags.outputs.short }}" \
-            -t "$REGISTRY/pnex-server-rs:main" \
-            -t "$REGISTRY/pnex-server-rs:latest" \
-            --push .
-      - name: Build + push pnex-builder-rs
+          mkdir -p "$RUNNER_TEMP/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "$RUNNER_TEMP/digests/${digest#sha256:}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.target }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: multi-arch manifests (${{ matrix.target }})
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [server, builder]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digest-${{ matrix.target }}-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
-          docker buildx build -f deploy/docker/Dockerfile \
-            --platform "$PLATFORMS" --target builder \
-            -t "$REGISTRY/pnex-builder-rs:main-${{ steps.tags.outputs.short }}" \
-            -t "$REGISTRY/pnex-builder-rs:main" \
-            -t "$REGISTRY/pnex-builder-rs:latest" \
-            --push .
-      - name: Summary
-        run: |
+          image="$REGISTRY/pnex-${{ matrix.target }}-rs"
+          short="${SHA::7}"
+          # One argument per digest file: word splitting is intended.
+          # shellcheck disable=SC2046
+          docker buildx imagetools create \
+            -t "$image:main-$short" -t "$image:main" -t "$image:latest" \
+            $(printf "$image@sha256:%s " *)
+          docker buildx imagetools inspect "$image:main-$short"
           {
-            echo "### Published"
-            echo "- \`$REGISTRY/pnex-server-rs:main-${{ steps.tags.outputs.short }}\`"
-            echo "- \`$REGISTRY/pnex-builder-rs:main-${{ steps.tags.outputs.short }}\`"
-            echo "(also tagged \`main\` and \`latest\`)"
+            echo "### Published \`$image\`"
+            echo "- \`$image:main-$short\` (also \`main\` and \`latest\`), linux/amd64 + linux/arm64"
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Docker logout
-        if: always()
-        run: docker logout docker.io || true
