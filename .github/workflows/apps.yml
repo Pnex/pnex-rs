@@ -1,0 +1,239 @@
+# Native apps: Linux desktop (x86_64, aarch64), Windows desktop (x86_64,
+# cross-compiled from Linux through mingw) and the Android APK (arm64), built
+# with the same Taskfile tasks as a local build.
+#
+# Where to download them:
+#   - every run: the run's artifacts (Actions tab, kept 30 days);
+#   - every green main: the rolling `nightly` pre-release —
+#     https://github.com/Pnex/pnex-rs/releases/tag/nightly
+#   - every `v*` tag: a GitHub Release named after the tag.
+#
+# The Windows build is smoke-tested on a real Windows runner (the app must
+# start and stay up). The APK is signed with the dx debug key (sideload
+# only): Play Store signing needs a release keystore secret.
+
+name: Apps
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apps-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  DIOXUS_CLI_VERSION: 0.7.10
+
+jobs:
+  linux:
+    name: desktop linux-${{ matrix.arch }}
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 22.04: older glibc, the binary runs on more distributions.
+          - arch: x86_64
+            runner: ubuntu-22.04
+          # webkit2gtk cross-compiling needs a full target sysroot: native
+          # arm64 runner instead.
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          submodules: true
+      - name: System libraries (webkit2gtk, gtk, xdo)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev libssl-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: desktop-linux-${{ matrix.arch }}
+      - uses: oven-sh/setup-bun@v2
+      - uses: arduino/setup-task@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: cargo-bins/cargo-binstall@main
+      - run: cargo binstall -y --locked "dioxus-cli@${DIOXUS_CLI_VERSION}"
+      - name: Build
+        run: |
+          (cd crates/pnex-frontend && bun install --frozen-lockfile)
+          task build:frontend:linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pnex-desktop-linux-${{ matrix.arch }}
+          path: target/dist/pnex-desktop-linux-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  windows:
+    name: desktop windows-x86_64 (cross)
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          submodules: true
+      - name: mingw-w64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mingw-w64 zip
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: desktop-windows
+      - uses: oven-sh/setup-bun@v2
+      - uses: arduino/setup-task@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: cargo-bins/cargo-binstall@main
+      - run: cargo binstall -y --locked "dioxus-cli@${DIOXUS_CLI_VERSION}"
+      - name: Build
+        run: |
+          (cd crates/pnex-frontend && bun install --frozen-lockfile)
+          task build:frontend:windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pnex-desktop-windows-x86_64
+          path: target/dist/pnex-desktop-windows-x86_64.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  # The cross-built exe has never run on a real Windows before release:
+  # start it on windows-latest (WebView2 runtime preinstalled) and require
+  # it to stay up — catches missing DLLs, a bad subsystem or an early panic.
+  windows-smoke:
+    name: windows smoke test
+    needs: windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pnex-desktop-windows-x86_64
+      - name: Start the app and keep it up for 20 s
+        shell: pwsh
+        run: |
+          Expand-Archive pnex-desktop-windows-x86_64.zip -DestinationPath app
+          Get-ChildItem -Recurse app | Select-Object FullName, Length | Format-Table -AutoSize
+          $exe = Get-ChildItem -Recurse app -Filter *.exe |
+            Where-Object { $_.FullName -notmatch '\\esptool\\' } | Select-Object -First 1
+          if (-not $exe) { throw "no app exe in the archive" }
+          & "$($exe.DirectoryName)\esptool\esptool.exe" version
+          $p = Start-Process -FilePath $exe.FullName -WorkingDirectory $exe.DirectoryName -PassThru
+          Start-Sleep -Seconds 20
+          if ($p.HasExited) { throw "app exited early with code $($p.ExitCode)" }
+          Write-Host "app still running after 20 s (pid $($p.Id))"
+          Stop-Process -Id $p.Id -Force
+
+  android:
+    name: android apk (arm64)
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    env:
+      NDK_VERSION: 29.0.14206865
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          submodules: true
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+      - name: Android NDK
+        run: |
+          sdkmanager --install "ndk;${NDK_VERSION}"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android
+      - uses: oven-sh/setup-bun@v2
+      - uses: arduino/setup-task@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: cargo-bins/cargo-binstall@main
+      - run: cargo binstall -y --locked "dioxus-cli@${DIOXUS_CLI_VERSION}"
+      - name: Build
+        run: |
+          (cd crates/pnex-frontend && bun install --frozen-lockfile)
+          task build:frontend:android
+          mkdir -p target/dist
+          cp target/dx/pnex-frontend/release/android/app/app/build/outputs/apk/debug/app-debug.apk \
+            target/dist/pnex-android-arm64.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pnex-android-arm64
+          path: target/dist/pnex-android-arm64.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  # Stable download links: the rolling `nightly` pre-release on main, a
+  # versioned release on tags. Only runs from main or a tag (never a fork).
+  release:
+    name: publish release assets
+    needs: [linux, windows, windows-smoke, android]
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum -- * > SHA256SUMS && cat SHA256SUMS
+      - name: Versioned release (tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* -R "$GITHUB_REPOSITORY" \
+            --title "PNeX $GITHUB_REF_NAME" --generate-notes
+      - name: Rolling nightly pre-release (main)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        run: |
+          gh release delete nightly -R "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release create nightly dist/* -R "$GITHUB_REPOSITORY" \
+            --target "$SHA" --prerelease \
+            --title "Nightly (main ${SHA::7})" \
+            --notes "Latest green \`main\` build (${SHA}). Desktop apps for Linux x86_64 / aarch64 and Windows x86_64, Android APK (arm64, debug-signed). Not a stable release."
