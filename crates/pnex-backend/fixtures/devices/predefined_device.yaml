@@ -32,16 +32,17 @@
   description: "Generic mixed device (sensor + actuator) for publishing custom measurements and controlling outputs. Fully flexible - define your own capabilities at runtime. Ideal for complex custom IoT solutions."
   description_i18n: device-predef-custom-device-desc
 
-# Brick 0 — firmware générique : un seul .bin réutilisable, config injectée
-# au flash (B0.1). Le device s'annonce sur /ws/device, admission Validated
-# contre chip-caps + overlay (B0.2/B0.3 — pas d'auto-création à l'annonce).
+# Brick 0 — generic firmware, compiled per device (the reusable .bin of
+# B0.1 was dropped on 2026-09-02). The device announces itself on
+# /ws/device; admission is validated against chip-caps + overlay
+# (B0.2/B0.3 — no auto-creation at announce).
 - name: generic_esp8266
   pretty_name: Generic ESP8266 (NodeMCU / D1 mini)
   revision: 1.0.0
   device_type_name: mixed
   capabilities_names: []
   board_name: esp8266
-  description: "ESP8266 dev board on the generic firmware: pins driven from the UI (modes, write, subscribe), no per-device compilation."
+  description: "ESP8266 dev board on the generic firmware: pins driven from the UI (modes, write, subscribe), no code to write."
   description_i18n: device-predef-generic-esp8266-desc
 
 # Brick 0 — variante ESP32-C3 du générique (Seeed XIAO ESP32C3), même

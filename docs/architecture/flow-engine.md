@@ -14,7 +14,10 @@
 > conception initiale.
 >
 > **Rappel PRD (§3, garde-fous)** : ingestion uniquement (pas de write-side
-> device, frontière D13/D17) ; cœur EdgeLinkd jamais patché ; pas de
+> device, frontière D13/D17) — **dépassé** : le nœud `pnex-device-write`
+> écrit sur les pins depuis un flow déployé (mode « connecté », source
+> d'écriture exclusive par pin, 8d60950 ; D17 amendé dans `inventory.md`) ;
+> cœur EdgeLinkd jamais patché ; pas de
 > type-check global du graphe (contrats typés aux frontières des nœuds
 > custom) ; les utilisateurs n'écrivent pas de Rust ; l'éditeur Node-RED
 > embarqué n'est **jamais exposé** (runtime headless) ; tranches fines —

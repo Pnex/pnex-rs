@@ -1,5 +1,14 @@
 # Devices custom (Tier 2) — firmware générique en package PIO
 
+> **Retiré de l'UI — remplacé par l'IDE de firmware custom
+> (`docs/architecture/custom-firmware.md`).** L'assistant ne propose plus le
+> modèle « Custom Device (Dynamic) » : un code utilisateur passe désormais
+> par un projet firmware compilé côté serveur (familles de devices :
+> `docs/architecture/edge-model.md` §2 bis). Le modèle `custom_device` reste
+> dans le catalogue et l'API l'accepte encore (dette, cf. §2 bis) ; ce
+> document est conservé pour l'historique et pour un usage de la lib PneX
+> hors de PNeX.
+
 > Référence utilisateur pour les devices « custom » (type `mixed`) :
 > compilez le firmware générique **chez vous**, sur **n'importe quelle
 > carte** supportée par PlatformIO, avec vos pins déclarées dans votre

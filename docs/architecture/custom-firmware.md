@@ -21,6 +21,10 @@ Aujourd'hui un device PneX tourne l'un de deux firmwares :
   PneX** : l'utilisateur doit installer PlatformIO, récupérer la lib PneX
   (publiée sur le registre PIO), compiler et flasher lui-même.
 
+> **Mise à jour 2026-10-01** : le Tier 2 local est retiré de l'assistant ;
+> l'IDE le remplace. Les trois familles de devices (générique PneX, IDE
+> custom, cartes prêtes à l'emploi) sont posées dans `edge-model.md` §2 bis.
+
 Conséquences :
 
 1. Tout besoin « un peu custom » (lire un capteur I2C, calculer, publier une
