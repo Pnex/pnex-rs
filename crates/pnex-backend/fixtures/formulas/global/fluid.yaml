@@ -1,0 +1,109 @@
+# Global Fluid Formulas
+# These formulas are available for all users to import
+
+- global_id: "flow_rate_v1"
+  name: "Flow Rate"
+  version: 1
+  category: "fluid"
+  tags: ["flow", "rate", "volume"]
+  description: "Calculate volumetric flow rate: volume / time"
+  expression: "volume / time"
+  result_unit: "m³/s"
+  formula_type: "simple_math"
+  data_sources:
+    - variable_name: "volume"
+      measurement_name: "volume"
+      suggested_unit: "m³"
+      description: "Volume measurement"
+    - variable_name: "time"
+      measurement_name: "duration"
+      suggested_unit: "s"
+      description: "Time duration in seconds"
+
+- global_id: "pressure_drop_v1"
+  name: "Pressure Drop"
+  version: 1
+  category: "fluid"
+  tags: ["pressure", "drop", "loss"]
+  description: "Calculate pressure drop: pressure_inlet - pressure_outlet"
+  expression: "pressure_inlet - pressure_outlet"
+  result_unit: "Pa"
+  formula_type: "simple_math"
+  data_sources:
+    - variable_name: "pressure_inlet"
+      measurement_name: "pressure"
+      suggested_unit: "Pa"
+      description: "Inlet pressure"
+    - variable_name: "pressure_outlet"
+      measurement_name: "pressure"
+      suggested_unit: "Pa"
+      description: "Outlet pressure"
+
+- global_id: "pump_power_v1"
+  name: "Pump Power"
+  version: 1
+  category: "fluid"
+  tags: ["pump", "power", "hydraulic"]
+  description: "Calculate pump power: flow_rate * pressure_drop / efficiency"
+  expression: "flow_rate * pressure_drop / efficiency"
+  result_unit: "W"
+  formula_type: "simple_math"
+  data_sources:
+    - variable_name: "flow_rate"
+      measurement_name: "flow_rate"
+      suggested_unit: "m³/s"
+      description: "Volumetric flow rate"
+    - variable_name: "pressure_drop"
+      measurement_name: "pressure_difference"
+      suggested_unit: "Pa"
+      description: "Pressure drop across pump"
+    - variable_name: "efficiency"
+      measurement_name: "efficiency"
+      suggested_unit: ""
+      description: "Pump efficiency (0-1)"
+
+- global_id: "fluid_velocity_v1"
+  name: "Fluid Velocity"
+  version: 1
+  category: "fluid"
+  tags: ["velocity", "flow", "pipe"]
+  description: "Calculate fluid velocity: flow_rate / cross_section_area"
+  expression: "flow_rate / cross_section_area"
+  result_unit: "m/s"
+  formula_type: "simple_math"
+  data_sources:
+    - variable_name: "flow_rate"
+      measurement_name: "flow_rate"
+      suggested_unit: "m³/s"
+      description: "Volumetric flow rate"
+    - variable_name: "cross_section_area"
+      measurement_name: "area"
+      suggested_unit: "m²"
+      description: "Cross-sectional area of pipe"
+
+- global_id: "reynolds_number_v1"
+  name: "Reynolds Number"
+  version: 1
+  category: "fluid"
+  tags: ["reynolds", "flow", "regime"]
+  description: "Calculate Reynolds number: density * velocity * diameter / viscosity"
+  expression: "density * velocity * diameter / viscosity"
+  result_unit: ""
+  formula_type: "simple_math"
+  data_sources:
+    - variable_name: "density"
+      measurement_name: "density"
+      suggested_unit: "kg/m³"
+      description: "Fluid density"
+    - variable_name: "velocity"
+      measurement_name: "velocity"
+      suggested_unit: "m/s"
+      description: "Fluid velocity"
+    - variable_name: "diameter"
+      measurement_name: "diameter"
+      suggested_unit: "m"
+      description: "Pipe diameter"
+    - variable_name: "viscosity"
+      measurement_name: "viscosity"
+      suggested_unit: "Pa·s"
+      description: "Dynamic viscosity"

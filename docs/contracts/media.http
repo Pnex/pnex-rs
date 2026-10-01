@@ -1,0 +1,97 @@
+### Contrat API média (D21) — bibliothèque d'assets versionnée par org.
+### Les octets ne vivent jamais en base : chaque version référence une clé
+### dans le MediaStore (opendal fs/s3). Cf. docs/architecture/media.md.
+###
+### Endpoints ADDITIFS : ne jamais bumper pnex_api_contract::CONTRACT (les
+### ajouts sont rétro-compatibles ; un bump bloquerait la Gate sur les vieux
+### clients — règle documentée dans docs/architecture/media.md).
+###
+### Erreurs : 400 champ-par-champ {"<champ>": msg} ; 403
+### {"error": "forbidden", "description": ...} écriture hors owner/admin ;
+### 404 masqué cross-org (école device_of_org) ; 409 {"error": "last_version"}
+### suppression de la dernière version d'un asset ; 413
+### {"error": "too_large", "description": ...} au-delà de
+### settings.media.max_bytes (défaut 256 Mo, env PNEX_MEDIA_MAX_BYTES).
+###
+### Kinds : photo | panorama | splat — priorité détection : kind client >
+### sniff (GPano XMP / extensions .ply/.splat/.ksplat/.spz) > photo.
+### Versioning append-only : POST versions = n+1 et devient courante ;
+### DELETE version refuse la dernière (409) ; restore re-positionne la
+### version courante ; purge storage idempotente (école artifact_store).
+
+### Upload (asset + version 1) — 201. Corps = octets bruts octet-stream
+### (PAS de multipart). kind auto-détecté si absent (sniff GPano/extensions).
+POST http://localhost:5150/api/v1/media?name=Salon&filename=salon.jpg&content_type=image%2Fjpeg
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/octet-stream
+
+< ./salon.jpg
+
+### 201 →
+### {
+###   "id": "0197...", "kind": "photo", "name": "Salon",
+###   "latest_version_number": 1, "size_bytes": 12345,
+###   "current_version_number": 1, "versions_count": 1, ...
+### }
+
+### Upload panorama 360 (photo sphere GCam / Insta360 : XMP GPano sniffé)
+POST http://localhost:5150/api/v1/media?filename=sphere.jpg&content_type=image%2Fjpeg
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/octet-stream
+
+< ./sphere.jpg
+
+### Nouvelle version (append-only, devient courante) — 201
+POST http://localhost:5150/api/v1/media/{{asset_id}}/versions?filename=fix.jpg&content_type=image%2Fjpeg&note=reencodage
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+Content-Type: application/octet-stream
+
+< ./fix.jpg
+
+### Lister (D14 : {count, next, previous, results}) — filtres kind + search
+GET http://localhost:5150/api/v1/media?kind=panorama&search=salon&limit=20
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Détail (même forme que la réponse d'upload 201)
+GET http://localhost:5150/api/v1/media/{{asset_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Versions d'un asset : {count, results: [...]}
+GET http://localhost:5150/api/v1/media/{{asset_id}}/versions
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Détail d'une version
+GET http://localhost:5150/api/v1/media/{{asset_id}}/versions/2
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Restore v1 (re-positionne la version courante) — 200
+POST http://localhost:5150/api/v1/media/{{asset_id}}/versions/1/restore
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Supprimer la version 2 (purge du blob) — 204 ; 409 si dernière version
+DELETE http://localhost:5150/api/v1/media/{{asset_id}}/versions/2
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Supprimer l'asset entier (purge de tous les blobs) — 204
+DELETE http://localhost:5150/api/v1/media/{{asset_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Octets de la version courante — 200 inline
+GET http://localhost:5150/api/v1/media/{{asset_id}}/content
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Octets de la version n — 200 inline
+GET http://localhost:5150/api/v1/media/{{asset_id}}/versions/2/content
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}

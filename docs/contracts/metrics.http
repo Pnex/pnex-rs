@@ -1,0 +1,16 @@
+###
+#app  secret ysm0B7EFYL3c3dzOF5mwvXWbY8wBEJVo3dC5c1DtN0LcakYI4i4bvkUduRYv4QxZCdtyDKhLCTl2cIvGcKoeq2rSDTT5TacWj2AZNGe6qVbRS4kQrTiJSjRLj5zMx9rW
+POST https://api.yourdomain.com/api-token-auth/
+Content-Type: application/json
+
+{
+  "username": "admin@example.com",
+  "password": "6b65f8-2f1105-4fe2081-04509eb-8be7-f53b",
+  "client_id": "CRj3niLuAkLmF946hKDhTkCIEsa9vW5X0R0wTBJf"
+}
+
+###
+# use device token for that purpose
+GET http://0.0.0.0:8000/api/v1/metrics/?last_seconds=5&device_id=lab-1&measurement=soil_temperature
+Authorization: Bearer zijFJMPpCvZyTQstFdzomPPypcyvf0
+Content-Type: application/json

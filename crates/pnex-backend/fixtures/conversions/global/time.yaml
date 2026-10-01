@@ -1,0 +1,68 @@
+# Global Time Conversions
+# These conversions are available for all users to import
+
+- global_id: "hour_to_minute_v1"
+  name: "Hour to Minute"
+  version: 1
+  category: "time"
+  tags: ["time", "duration", "basic"]
+  description: "Convert time duration from Hour to Minute"
+  from_unit: "h"
+  to_unit: "min"
+  conversion_type: "linear"
+  multiplier: 60
+
+- global_id: "day_to_hour_v1"
+  name: "Day to Hour"
+  version: 1
+  category: "time"
+  tags: ["time", "duration", "calendar"]
+  description: "Convert time duration from Day to Hour"
+  from_unit: "d"
+  to_unit: "h"
+  conversion_type: "linear"
+  multiplier: 24
+
+- global_id: "week_to_day_v1"
+  name: "Week to Day"
+  version: 1
+  category: "time"
+  tags: ["time", "duration", "calendar"]
+  description: "Convert time duration from Week to Day"
+  from_unit: "wk"
+  to_unit: "d"
+  conversion_type: "linear"
+  multiplier: 7
+
+- global_id: "year_to_day_v1"
+  name: "Year to Day"
+  version: 1
+  category: "time"
+  tags: ["time", "duration", "calendar", "long_term"]
+  description: "Convert time duration from Year (calendar) to Day"
+  from_unit: "yr"
+  to_unit: "d"
+  conversion_type: "linear"
+  multiplier: 365.25
+
+- global_id: "minute_to_second_v1"
+  name: "Minute to Second"
+  version: 1
+  category: "time"
+  tags: ["time", "duration", "basic"]
+  description: "Convert time duration from Minute to Second"
+  from_unit: "min"
+  to_unit: "s"
+  conversion_type: "linear"
+  multiplier: 60
+
+- global_id: "millisecond_to_second_v1"
+  name: "Millisecond to Second"
+  version: 1
+  category: "time"
+  tags: ["time", "duration", "precision", "scientific"]
+  description: "Convert time duration from Millisecond to Second"
+  from_unit: "ms"
+  to_unit: "s"
+  conversion_type: "linear"
+  multiplier: 0.001

@@ -1,0 +1,91 @@
+# TLS edge (D70) — single origin https://${PNEX_DOMAIN}.
+# Rendered by the nginx image's envsubst step (only PNEX_* variables).
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# Upstreams are resolved per request through Docker's DNS (variables in
+# proxy_pass): nginx starts even while Rauthy / pnex-server are booting and
+# follows a recreated container's new IP. A host-run backend is given as
+# an IP literal (no DNS involved) by apply-edge.sh.
+# Alias names (mDNS `<hostname>.local`) are redirected to the canonical
+# origin: the OIDC client and session cookies only know PNEX_DOMAIN.
+map $host $pnex_alias {
+    default 0;
+    "${PNEX_DOMAIN_ALIAS}" 1;
+}
+
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+# Port 80: ACME HTTP-01 challenges (cloud mode), everything else → https.
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/acme;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    http2 on;
+    server_name _;
+
+    ssl_certificate     /pki/current/fullchain.pem;
+    ssl_certificate_key /pki/current/privkey.pem;
+    # TLS 1.2 stays mandatory: ESP8266 BearSSL has no TLS 1.3. OpenSSL
+    # honours the max_fragment_length extension the ESP8266 relies on.
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:pnex_tls:10m;
+    ssl_session_timeout 1d;
+
+    # Media uploads (360 captures, firmware artefacts) — the backend
+    # enforces its own limits.
+    client_max_body_size 1g;
+
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+
+    if ($pnex_alias) {
+        return 301 https://${PNEX_DOMAIN}$request_uri;
+    }
+
+    set $pnex_backend ${PNEX_BACKEND_UPSTREAM};
+
+    location /auth/v1/ {
+        set $rauthy_upstream rauthy:8080;
+        proxy_pass http://$rauthy_upstream;
+        # SSE (admin UI events) must not be buffered.
+        proxy_buffering off;
+        proxy_read_timeout 1h;
+    }
+
+    # Device + UI websockets: long-lived, idle between frames.
+    location /ws/ {
+        proxy_pass http://$pnex_backend;
+        proxy_buffering off;
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+    }
+
+    location / {
+        proxy_pass http://$pnex_backend;
+        proxy_read_timeout 300s;
+    }
+}

@@ -1,0 +1,62 @@
+diff --git a/src/CoolPropLib.cpp b/src/CoolPropLib.cpp
+index 3916b98..429290e 100644
+--- a/src/CoolPropLib.cpp
++++ b/src/CoolPropLib.cpp
+@@ -151,16 +151,33 @@ EXPORT_CODE int CONVENTION set_reference_stateD(const char* Ref, double T, doubl
+ // All the function interfaces that point to the single-input Props function
+ EXPORT_CODE double CONVENTION Props1(const char* FluidName, const char* Output) {
+     fpu_reset_guard guard;
+-    double val = Props1SI(Output, FluidName);
+-    if (!ValidNumber(val))
+-        // Error code was already set in Props1SI
+-        return val;
+-    // val is valid; so, Output is already checked in Props1SI -> get_parameter_index won't throw
+-    CoolProp::parameters iOutput = CoolProp::get_parameter_index(Output);
+-    return convert_from_SI_to_kSI(iOutput, val);
++    try {
++        double val = Props1SI(Output, FluidName);
++        if (!ValidNumber(val))
++            // Error code was already set in Props1SI
++            return val;
++        // val is valid, but the kSI unit conversion below can still throw for
++        // parameters without a kSI counterpart, so the body must be guarded
++        // like the other exports (an escaping exception is UB for FFI callers).
++        CoolProp::parameters iOutput = CoolProp::get_parameter_index(Output);
++        return convert_from_SI_to_kSI(iOutput, val);
++    } catch (std::exception& e) {
++        CoolProp::set_error_string(e.what());
++    } catch (...) {
++        CoolProp::set_error_string("Undefined error");
++    }
++    return _HUGE;
+ }
+ EXPORT_CODE double CONVENTION PropsS(const char* Output, const char* Name1, double Prop1, const char* Name2, double Prop2, const char* Ref) {
+-    return Props(Output, Name1[0], Prop1, Name2[0], Prop2, Ref);
++    fpu_reset_guard guard;
++    try {
++        return Props(Output, Name1[0], Prop1, Name2[0], Prop2, Ref);
++    } catch (std::exception& e) {
++        CoolProp::set_error_string(e.what());
++    } catch (...) {
++        CoolProp::set_error_string("Undefined error");
++    }
++    return _HUGE;
+ }
+ EXPORT_CODE double CONVENTION Props(const char* Output, const char Name1, double Prop1, const char Name2, double Prop2, const char* Ref) {
+     fpu_reset_guard guard;
+@@ -453,7 +470,14 @@ EXPORT_CODE double CONVENTION HAPropsSI(const char* Output, const char* Name1, d
+ }
+ EXPORT_CODE double CONVENTION cair_sat(double T) {
+     fpu_reset_guard guard;
+-    return HumidAir::cair_sat(T);
++    try {
++        return HumidAir::cair_sat(T);
++    } catch (std::exception& e) {
++        CoolProp::set_error_string(e.what());
++    } catch (...) {
++        CoolProp::set_error_string("Undefined error");
++    }
++    return _HUGE;
+ }
+ EXPORT_CODE void CONVENTION hapropssi_(const char* Output, const char* Name1, const double* Prop1, const char* Name2, const double* Prop2,
+                                        const char* Name3, const double* Prop3, double* output) {

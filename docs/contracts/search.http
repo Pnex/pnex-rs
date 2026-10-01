@@ -1,0 +1,46 @@
+### REST contract — Global search typeahead (D69)
+### GET /api/v1/search?q=...&limit=... — grouped typeahead across the org's
+### objects: devices, POIs, tours, media, annotation layers, functions,
+### flows, dashboards, edge refs (wifi + hosts merged).
+###
+### ADDITIVE endpoint: pnex_api_contract::CONTRACT is NOT bumped.
+### Deliberate D14 deviation: NO {count, next, previous, results} envelope —
+### typeahead shape {count, q, groups:[{entity_type, results:[...]}]}, empty
+### groups omitted, canonical group order (device, poi, tour, media, layer,
+### function, flow, dashboard, edge_ref).
+### Matching: case-insensitive containment, `lower(col) LIKE pattern
+### ESCAPE '\'` — portable PG/sqlite (never PgExpr::ilike, which panics on
+### sqlite). Wildcards `%`, `_`, `\` in the term are escaped (literal).
+### Tokenization: the term is split on whitespace; each token is stripped
+### of EDGE punctuation ("esp---" → "esp" — search noise, not literals) and
+### tokens are ANDed ("esp32 relay" matches "esp32-relay-1"). Internal
+### punctuation stays significant ("esp32-relay", "100%d" are literals).
+### If stripping empties every token, the raw term is one literal token.
+### Ranking: prefix matches before substring matches, recency first within
+### each class.
+### Auth: Bearer JWT + X-Org-Id; cross-org objects invisible (org_id filter,
+### masked — never 403).
+### limit = PER-GROUP cap (default PAGINATION_DEFAULT_LIMIT, max 100,
+### capped at 20); absent/empty q → 200 {count:0, q:"", groups:[]} (silent
+### default, never 400).
+
+### Variables (VS Code REST Client / IntelliJ HTTP): {{token}} {{org_id}}
+
+### Search — 200, grouped typeahead
+GET http://localhost:5150/api/v1/search?q=alpha&limit=5
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Empty q — 200, empty groups (never a 400)
+GET http://localhost:5150/api/v1/search
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### Escaped wildcards: q="%" matches titles holding a literal percent only
+### (unescaped, it would match everything)
+GET http://localhost:5150/api/v1/search?q=%25
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
+### No token — 401
+GET http://localhost:5150/api/v1/search?q=alpha

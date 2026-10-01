@@ -1,0 +1,119 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/pnex-core",
+    "crates/pnex-api-contract",
+    "crates/pnex-backend",
+    "crates/pnex-backend/migration",
+    "crates/pnex-frontend",
+    "crates/pnex-firmware-builder",
+    "crates/pnex-node-starlark",
+    "crates/pnex-node-device",
+    "crates/pnex-node-display",
+    "crates/pnex-node-value",
+    "crates/pnex-node-control",
+    # Propriétés thermophysiques in-process (CoolProp vendored) — cf.
+    # crates/pnex-coolprop[-sys] et vendor/README.md.
+    "crates/pnex-node-coolprop",
+    "crates/pnex-flow-runtime",
+    "crates/pnex-stitcher",
+    # Notifications (D49–D54) — abstraction multi-canaux partagée backend /
+    # runtime de flows, zéro dep loco.
+    "crates/pnex-notify",
+    "crates/pnex-node-notify",
+    # Requête HTTP client configurable (C1a) — la collecte web courante est
+    # un simple bloc de flow (amendement edge-model 2026-09-15).
+    "crates/pnex-node-http-fetch",
+    # Camera frame source + MJPEG-AVI recorder (camera-video.md D78).
+    "crates/pnex-node-camera",
+    # JSON event log → OpenObserve logs (camera-video.md D84).
+    "crates/pnex-node-events",
+    # Vision inference (tract ONNX, YOLOX) — backend test endpoint + flow node.
+    "crates/pnex-vision",
+    "crates/pnex-node-vision",
+    "crates/pnex-node-memory",
+    # Predictive telemetry (augurs): anomaly + forecast flow nodes.
+    "crates/pnex-node-predict",
+    # CoolProp in-process (propriétés thermophysiques) — C++ vendored dans
+    # vendor/CoolProp, patch exception-guards appliqué au build.
+    "crates/pnex-coolprop-sys",
+    "crates/pnex-coolprop",
+    # Edge agent (D95): local ingestion API + disk queue + /ws/device uplink.
+    "crates/pnex-edge-agent",
+]
+# EdgeLinkd vendored (submodule) reste un workspace séparé — sans exclude,
+# Cargo rattacherait ses crates au workspace PNEX et l'héritage
+# `workspace.dependencies` échouerait.
+exclude = ["vendor/edgelinkd"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+# 1.88 : edgelink-core (vendored, edition 2024) utilise les let-chains
+rust-version = "1.88"
+
+# Patches locaux — crashs SIGABRT Android (login SSO natif, constat
+# 2026-09-08) : ndk-context ré-initialisé au 2e onCreate (assert
+# previous.is_none() → abort) et webbrowser::open (appelé en dur par
+# dioxus-desktop pour toute navigation http de sa webview) qui passe par les
+# macros du crate jni assertant sur les exceptions Java. Détails et
+# contraintes de mise à jour : vendor/patches/README.md
+[patch.crates-io]
+ndk-context = { path = "vendor/patches/ndk-context" }
+webbrowser = { path = "vendor/patches/webbrowser" }
+# Fix #1551 porté sur 0.53.5 : pas de panic sur timeout du protocole custom
+# Android (retour caméra) — cf. vendor/patches/README.md
+wry = { path = "vendor/patches/wry" }
+
+[workspace.dependencies]
+pnex-core = { path = "crates/pnex-core" }
+pnex-api-contract = { path = "crates/pnex-api-contract" }
+pnex-firmware-builder = { path = "crates/pnex-firmware-builder" }
+pnex-node-starlark = { path = "crates/pnex-node-starlark" }
+pnex-node-device = { path = "crates/pnex-node-device" }
+pnex-node-display = { path = "crates/pnex-node-display" }
+pnex-node-value = { path = "crates/pnex-node-value" }
+pnex-node-control = { path = "crates/pnex-node-control" }
+pnex-node-coolprop = { path = "crates/pnex-node-coolprop" }
+pnex-coolprop = { path = "crates/pnex-coolprop" }
+pnex-notify = { path = "crates/pnex-notify" }
+pnex-node-notify = { path = "crates/pnex-node-notify" }
+pnex-node-http-fetch = { path = "crates/pnex-node-http-fetch" }
+pnex-node-camera = { path = "crates/pnex-node-camera" }
+pnex-node-events = { path = "crates/pnex-node-events" }
+pnex-vision = { path = "crates/pnex-vision" }
+pnex-node-vision = { path = "crates/pnex-node-vision" }
+pnex-node-memory = { path = "crates/pnex-node-memory" }
+pnex-node-predict = { path = "crates/pnex-node-predict" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+if-addrs = "0.13"
+loco-rs = { version = "1.0" }
+sea-orm = { version = "2.0", features = [
+  "sqlx-postgres",
+  "sqlx-sqlite", # tier hobbyist : tout-en-un sqlite (données + artefacts + queue)
+  "runtime-tokio-rustls",
+  "macros",
+] }
+chrono = { version = "0.4", features = ["serde"] }
+augurs = { version = "0.10.2", default-features = false, features = ["ets", "mstl"] }
+uuid = { version = "1.6", features = ["v4", "serde"] }
+# Valkey/Redis client (live last-value cache for pnex-device-read) — BSD,
+# RESP2/3 compatible with Valkey 8.
+redis = { version = "1", features = ["tokio-comp", "connection-manager"] }
+
+[profile.release]
+lto = "thin"
+strip = true
+
+# Web bundle profile used by `dx build --platform web --release`. dx strips
+# the module itself (llvm-objcopy) as the profile asks: since LLVM 23
+# `--strip-all` (strip = true) also drops the `__wasm_bindgen_unstable`
+# custom section wasm-bindgen needs, while no strip leaves std's DWARF that
+# wasm-opt cannot parse. Debug info only (`--strip-debug`) keeps both happy.
+[profile.wasm-release]
+inherits = "release"
+strip = "debuginfo"

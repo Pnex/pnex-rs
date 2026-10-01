@@ -1,0 +1,111 @@
+# Brick 0 — variante « ESP32 38 pins » clone type YD-ESP32 (vérifiée photo
+# en main 2026-09-21, USB en haut, face) : silkscreen G-labels, disposition
+# **symétrique 19 + 19 broches** :
+#   - header G (côté gauche UI, USB → antenne) : CLK, SD0, SD1, G15, G2, G0,
+#     G4, G16, G17, G5, G18, G19, GND, G21, RXD, TXD, G22, G23, GND
+#   - header alimentation (côté droit UI, USB → antenne) : 5V, CMD, SD3,
+#     SD2, G13, GND, G12, G14, G27, G26, G25, G33, G32, G35, G34, VN, VP,
+#     EN, 3V3
+# Points clés : les 6 pins flash (6-11) sont TOUTES au coin USB (CLK/SD0/SD1
+# en haut à gauche, CMD/SD3/SD2 en haut à droite) — le header G a son GND au
+# bout antenne. Les 6 flash pins sont AFFICHÉES mais EXCLUES à l'admission
+# (chip-caps) — ne jamais câbler (reboot loop). ⚠️ Des clones « 38 pins » au
+# silkscreen MIROIR circulent (header G à droite, GND côté USB) — variante
+# distincte si un jour un retour communauté les décrit. Silkscreen réel de
+# CETTE carte : RX0/TX0 (profil : RXD/TXD) et SVP/SVN (profil : VP/VN) —
+# noms normalisés conservés.
+# Écrans : mêmes externes OLED/TFT que les autres devkits (choix device) ;
+# câblage TFT = celui prouvé sur CETTE carte (18/23/5/2/4, fil TFT).
+# CONVENTION RENDU (2026-09-21) : profils stockés **USB en haut** —
+# pos.index 0 = coin USB, side = côté affiché ; le SVG dessine tel quel.
+- board_name: esp32-devkit-38p-txd
+  profile:
+    board: esp32-devkit-38p-txd
+    name: "ESP32 DevKit 38 pins (TXD/RXD)"
+    chip_label: "ESP-WROOM-32"
+    layout: { kind: dual_inline, per_side: 19, size_mm: { w: 28, l: 55 } }
+    peripherals:
+      screens:
+        - name: "OLED 0.96\""
+          kind: ssd1306
+          bus: i2c
+          pins: { sda: 21, scl: 22 }
+          addr: "0x3C"
+          size_px: [128, 64]
+        - name: "TFT 1.77\""
+          kind: st7735
+          bus: spi
+          pins: { sck: 18, mosi: 23, cs: 5, dc: 2, rst: 4 }
+          size_px: [160, 128]
+    pins:
+      # côté gauche (USB → antenne) — 19 broches, header G
+      - { label: CLK, gpio: 6, kind: gpio, pos: { side: left, index: 0 },
+          note: "flash SPI — excluded from admission, never wire it" }
+      - { label: SD0, gpio: 7, kind: gpio, pos: { side: left, index: 1 },
+          note: "flash SPI — excluded from admission, never wire it" }
+      - { label: SD1, gpio: 8, kind: gpio, pos: { side: left, index: 2 },
+          note: "flash SPI — excluded from admission, never wire it" }
+      - { label: G15, gpio: 15, kind: gpio, pos: { side: left, index: 3 },
+          note: "strapping boot-HIGH — output: safe_state high only" }
+      - { label: G2, gpio: 2, kind: gpio, pos: { side: left, index: 4 },
+          note: "strapping boot-LOW — onboard LED on some clones" }
+      - { label: G0, gpio: 0, kind: gpio, pos: { side: left, index: 5 },
+          note: "strapping — BOOT button on the board" }
+      - { label: G4, gpio: 4, kind: gpio, pos: { side: left, index: 6 },
+          note: "ADC2 (broken with WiFi)" }
+      - { label: G16, gpio: 16, kind: gpio, pos: { side: left, index: 7 },
+          note: "UART2 RX2" }
+      - { label: G17, gpio: 17, kind: gpio, pos: { side: left, index: 8 },
+          note: "UART2 TX2" }
+      - { label: G5, gpio: 5, kind: gpio, pos: { side: left, index: 9 },
+          note: "strapping boot-HIGH (VSPI CS)" }
+      - { label: G18, gpio: 18, kind: gpio, pos: { side: left, index: 10 },
+          note: "VSPI SCK" }
+      - { label: G19, gpio: 19, kind: gpio, pos: { side: left, index: 11 },
+          note: "VSPI MISO" }
+      - { label: GND, gpio: null, kind: gnd, pos: { side: left, index: 12 } }
+      - { label: G21, gpio: 21, kind: gpio, pos: { side: left, index: 13 },
+          note: "default I2C SDA" }
+      - { label: RXD, gpio: 3, kind: gpio, pos: { side: left, index: 14 },
+          note: "console UART" }
+      - { label: TXD, gpio: 1, kind: gpio, pos: { side: left, index: 15 },
+          note: "console UART" }
+      - { label: G22, gpio: 22, kind: gpio, pos: { side: left, index: 16 },
+          note: "default I2C SCL" }
+      - { label: G23, gpio: 23, kind: gpio, pos: { side: left, index: 17 },
+          note: "VSPI MOSI" }
+      - { label: GND, gpio: null, kind: gnd, pos: { side: left, index: 18 } }
+      # côté droit (USB → antenne) — 19 broches, header alimentation
+      - { label: "5V", gpio: null, kind: power, pos: { side: right, index: 0 } }
+      - { label: CMD, gpio: 11, kind: gpio, pos: { side: right, index: 1 },
+          note: "flash SPI — excluded from admission, never wire it" }
+      - { label: SD3, gpio: 10, kind: gpio, pos: { side: right, index: 2 },
+          note: "flash SPI — excluded from admission, never wire it" }
+      - { label: SD2, gpio: 9, kind: gpio, pos: { side: right, index: 3 },
+          note: "flash SPI — excluded from admission, never wire it" }
+      - { label: G13, gpio: 13, kind: gpio, pos: { side: right, index: 4 } }
+      - { label: GND, gpio: null, kind: gnd, pos: { side: right, index: 5 } }
+      - { label: G12, gpio: 12, kind: gpio, pos: { side: right, index: 6 },
+          note: "strapping boot-LOW — output: safe_state low only" }
+      - { label: G14, gpio: 14, kind: gpio, pos: { side: right, index: 7 },
+          note: "strapping (HSPI) — output: safe_state high only" }
+      - { label: G27, gpio: 27, kind: gpio, pos: { side: right, index: 8 },
+          note: "ADC2 (broken with WiFi)" }
+      - { label: G26, gpio: 26, kind: gpio, pos: { side: right, index: 9 },
+          note: "ADC2 (broken with WiFi) — DAC" }
+      - { label: G25, gpio: 25, kind: gpio, pos: { side: right, index: 10 },
+          note: "ADC2 (broken with WiFi) — DAC" }
+      - { label: G33, gpio: 33, kind: gpio, pos: { side: right, index: 11 },
+          note: "ADC1" }
+      - { label: G32, gpio: 32, kind: gpio, pos: { side: right, index: 12 },
+          note: "ADC1" }
+      - { label: G35, gpio: 35, kind: gpio, pos: { side: right, index: 13 },
+          note: "input-only — ADC1 (PSRAM on WROVER)" }
+      - { label: G34, gpio: 34, kind: gpio, pos: { side: right, index: 14 },
+          note: "input-only — ADC1" }
+      - { label: VN, gpio: 39, kind: gpio, pos: { side: right, index: 15 },
+          note: "input-only — ADC1 (silkscreen SVN)" }
+      - { label: VP, gpio: 36, kind: gpio, pos: { side: right, index: 16 },
+          note: "input-only — ADC1 (silkscreen SVP)" }
+      - { label: EN, gpio: null, kind: en, pos: { side: right, index: 17 } }
+      - { label: "3V3", gpio: null, kind: power, pos: { side: right, index: 18 } }

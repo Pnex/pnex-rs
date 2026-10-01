@@ -1,0 +1,29 @@
+[package]
+name = "pnex-node-memory"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Flow nodes PNeX — org shared memory (Valkey): memory-write / memory-read"
+
+[dependencies]
+edgelink-core = { path = "../../vendor/edgelinkd/crates/core", default-features = false, features = ["core", "js"] }
+edgelink-macro = { path = "../../vendor/edgelinkd/crates/macro" }
+# Single source of truth for configs, key builder and freshness resolver.
+pnex-core = { workspace = true }
+# Only for the Option<&config::Config> factory type — same features as edgelink-core
+config = { version = "0.15", default-features = false, features = ["convert-case", "toml"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Valkey client (VALKEY_URL injected by the supervisor)
+redis = { workspace = true }
+tokio = { version = "1", default-features = false, features = ["time", "sync"] }
+async-trait = "0.1"
+tokio-util = "0.7"
+log = "0.4"
+chrono = { workspace = true }
+# The `#[flow_node]` macro emits unqualified `inventory::submit!` — direct dep required
+inventory = "0.3"
+smallvec = "1"
+
+[dev-dependencies]
+tokio = { version = "1", default-features = false, features = ["rt", "macros", "time"] }

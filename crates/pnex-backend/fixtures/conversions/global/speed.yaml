@@ -1,0 +1,68 @@
+# Global Speed Conversions
+# These conversions are available for all users to import
+
+- global_id: "kmh_to_mph_v1"
+  name: "km/h to mph"
+  version: 1
+  category: "speed"
+  tags: ["speed", "velocity", "travel", "automotive"]
+  description: "Convert speed from Kilometers per Hour to Miles per Hour"
+  from_unit: "km/h"
+  to_unit: "mph"
+  conversion_type: "linear"
+  multiplier: 0.621371
+
+- global_id: "mph_to_kmh_v1"
+  name: "mph to km/h"
+  version: 1
+  category: "speed"
+  tags: ["speed", "velocity", "travel", "automotive"]
+  description: "Convert speed from Miles per Hour to Kilometers per Hour"
+  from_unit: "mph"
+  to_unit: "km/h"
+  conversion_type: "linear"
+  multiplier: 1.60934
+
+- global_id: "ms_to_kmh_v1"
+  name: "m/s to km/h"
+  version: 1
+  category: "speed"
+  tags: ["speed", "scientific", "physics", "metric"]
+  description: "Convert speed from Meters per Second to Kilometers per Hour"
+  from_unit: "m/s"
+  to_unit: "km/h"
+  conversion_type: "linear"
+  multiplier: 3.6
+
+- global_id: "knot_to_kmh_v1"
+  name: "Knot to km/h"
+  version: 1
+  category: "speed"
+  tags: ["speed", "nautical", "marine", "aviation"]
+  description: "Convert speed from Knot to Kilometers per Hour"
+  from_unit: "kn"
+  to_unit: "km/h"
+  conversion_type: "linear"
+  multiplier: 1.852
+
+- global_id: "mach_to_ms_v1"
+  name: "Mach to m/s"
+  version: 1
+  category: "speed"
+  tags: ["speed", "supersonic", "aviation", "physics"]
+  description: "Convert speed from Mach (at sea level) to Meters per Second"
+  from_unit: "Mach"
+  to_unit: "m/s"
+  conversion_type: "linear"
+  multiplier: 340.3
+
+- global_id: "ftps_to_kmh_v1"
+  name: "ft/s to km/h"
+  version: 1
+  category: "speed"
+  tags: ["speed", "imperial", "engineering", "physics"]
+  description: "Convert speed from Feet per Second to Kilometers per Hour"
+  from_unit: "ft/s"
+  to_unit: "km/h"
+  conversion_type: "linear"
+  multiplier: 1.09728

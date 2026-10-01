@@ -1,0 +1,6 @@
+[submodule "vendor/edgelinkd"]
+	path = vendor/edgelinkd
+	url = git@github.com:Pnex/edgelinkd.git
+[submodule "vendor/CoolProp"]
+	path = vendor/CoolProp
+	url = https://github.com/CoolProp/CoolProp.git

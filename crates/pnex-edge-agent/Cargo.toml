@@ -1,0 +1,47 @@
+[package]
+name = "pnex-edge-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "PNeX edge agent (D95): local HTTP ingestion API, durable disk queue, encrypted uplink over /ws/device"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "pnex-agent"
+path = "src/main.rs"
+
+[dependencies]
+pnex-core = { workspace = true, features = ["frame-crypto"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+tokio = { version = "1.45", features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal", "fs"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
+tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "__rustls-tls"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+# ring provider only: aws-lc-rs needs cmake/NASM in every cross toolchain.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-pki-types = { version = "1.10", features = ["std"] }
+webpki-roots = "0.26"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+redb = "2"
+clap = { version = "4", features = ["derive"] }
+toml = "0.8"
+ipnet = "2"
+sha2 = "0.10"
+base64 = "0.22"
+hostname = "0.4"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.8"
+
+[dev-dependencies]
+tempfile = "3"
+reqwest = { version = "0.12", default-features = false, features = ["json"] }

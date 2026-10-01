@@ -1,0 +1,78 @@
+# Global Energy Formulas
+# These formulas are available for all users to import
+
+- global_id: "energy_efficiency_v1"
+  name: "Energy Efficiency"
+  version: 1
+  category: "energy"
+  tags: ["efficiency", "power", "calculation"]
+  description: "Calculate energy efficiency percentage: (output_power / input_power) * 100"
+  expression: "(output_power / input_power) * 100"
+  result_unit: "%"
+  formula_type: "simple_math"
+  data_sources:
+    - variable_name: "output_power"
+      measurement_name: "power_output"
+      suggested_unit: "W"
+      description: "Output power measurement"
+    - variable_name: "input_power"
+      measurement_name: "power_input"
+      suggested_unit: "W"
+      description: "Input power measurement"
+
+- global_id: "power_consumption_v1"
+  name: "Power Consumption"
+  version: 1
+  category: "energy"
+  tags: ["consumption", "energy", "cost"]
+  description: "Calculate energy consumption from power: power * time_hours"
+  expression: "power * time_hours"
+  result_unit: "kWh"
+  formula_type: "simple_math"
+  data_sources:
+    - variable_name: "power"
+      measurement_name: "power"
+      suggested_unit: "kW"
+      description: "Power measurement"
+    - variable_name: "time_hours"
+      measurement_name: "duration"
+      suggested_unit: "h"
+      description: "Time duration in hours"
+
+- global_id: "energy_cost_v1"
+  name: "Energy Cost"
+  version: 1
+  category: "energy"
+  tags: ["cost", "calculation", "utility"]
+  description: "Calculate energy cost: energy_kwh * cost_per_kwh"
+  expression: "energy_kwh * cost_per_kwh"
+  result_unit: "$"
+  formula_type: "simple_math"
+  data_sources:
+    - variable_name: "energy_kwh"
+      measurement_name: "energy"
+      suggested_unit: "kWh"
+      description: "Energy consumption in kWh"
+    - variable_name: "cost_per_kwh"
+      measurement_name: "cost_rate"
+      suggested_unit: "$/kWh"
+      description: "Cost per kWh"
+
+- global_id: "power_factor_v1"
+  name: "Power Factor"
+  version: 1
+  category: "energy"
+  tags: ["electrical", "efficiency", "power"]
+  description: "Calculate power factor: real_power / apparent_power"
+  expression: "real_power / apparent_power"
+  result_unit: ""
+  formula_type: "simple_math"
+  data_sources:
+    - variable_name: "real_power"
+      measurement_name: "power_real"
+      suggested_unit: "W"
+      description: "Real power (active power)"
+    - variable_name: "apparent_power"
+      measurement_name: "power_apparent"
+      suggested_unit: "VA"
+      description: "Apparent power"

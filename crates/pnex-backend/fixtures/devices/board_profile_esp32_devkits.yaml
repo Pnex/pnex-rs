@@ -1,0 +1,274 @@
+# Brick 0 — profils board v2 ESP32 DevKit V1 (DOIT) : 30 pins (row
+# esp32-wroom-32), 36 pins (row esp32-devkit-v1-36p) et variante TFT
+# ST7735 (row esp32-devkit-tft-st7735 — câblage réel de
+# firmware/tft_st7735_demo : SCK 18, MOSI 23, CS 5, DC 2 (strapping,
+# Hi-Z au reset), RST 4, 160x128).
+# Flash 6-11 présentes sur le header du 36p : listées pour l'affichage,
+# EXCLUSES à l'admission par les chip-caps (admission_pins).
+- board_name: esp32-wroom-32
+  profile:
+    board: esp32-devkit-v1-30p
+    name: "ESP32 DevKit V1 (DOIT, 30 pins)"
+    chip_label: "ESP-WROOM-32"
+    layout: { kind: dual_inline, per_side: 15, size_mm: { w: 28, l: 55 } }
+    # Écrans EXTERNES au choix par device (un seul actif) : OLED I2C sur
+    # 21/22 (Wire par défaut), TFT SPI VSPI (18/23/5/2/4 — câblage prouvé
+    # de tft_st7735_demo, DC 2 = strapping Hi-Z au reset). Activé → pins
+    # réservées (serveur + éditeur).
+    peripherals:
+      screens:
+        - name: "OLED 0.96\""
+          kind: ssd1306
+          bus: i2c
+          pins: { sda: 21, scl: 22 }
+          addr: "0x3C"
+          size_px: [128, 64]
+        - name: "TFT 1.77\""
+          kind: st7735
+          bus: spi
+          pins: { sck: 18, mosi: 23, cs: 5, dc: 2, rst: 4 }
+          size_px: [160, 128]
+    pins:
+      # côté gauche (USB → antenne)
+      - { label: EN, gpio: null, kind: en, pos: { side: right, index: 14 } }
+      - { label: VP, gpio: 36, kind: gpio, pos: { side: right, index: 13 } }
+      - { label: VN, gpio: 39, kind: gpio, pos: { side: right, index: 12 } }
+      - { label: D34, gpio: 34, kind: gpio, pos: { side: right, index: 11 } }
+      - { label: D35, gpio: 35, kind: gpio, pos: { side: right, index: 10 } }
+      - { label: D32, gpio: 32, kind: gpio, pos: { side: right, index: 9 } }
+      - { label: D33, gpio: 33, kind: gpio, pos: { side: right, index: 8 } }
+      - { label: D25, gpio: 25, kind: gpio, pos: { side: right, index: 7 } }
+      - { label: D26, gpio: 26, kind: gpio, pos: { side: right, index: 6 } }
+      - { label: D27, gpio: 27, kind: gpio, pos: { side: right, index: 5 } }
+      - { label: D14, gpio: 14, kind: gpio, pos: { side: right, index: 4 } }
+      - { label: D12, gpio: 12, kind: gpio, pos: { side: right, index: 3 } }
+      - { label: D13, gpio: 13, kind: gpio, pos: { side: right, index: 2 } }
+      - { label: GND, gpio: null, kind: gnd, pos: { side: right, index: 1 } }
+      - { label: VIN, gpio: null, kind: power, pos: { side: right, index: 0 } }
+      # côté droit (USB → antenne)
+      - { label: D23, gpio: 23, kind: gpio, pos: { side: left, index: 14 } }
+      - { label: D22, gpio: 22, kind: gpio, pos: { side: left, index: 13 } }
+      - { label: TX0, gpio: 1, kind: gpio, pos: { side: left, index: 12 } }
+      - { label: RX0, gpio: 3, kind: gpio, pos: { side: left, index: 11 } }
+      - { label: D21, gpio: 21, kind: gpio, pos: { side: left, index: 10 } }
+      - { label: D19, gpio: 19, kind: gpio, pos: { side: left, index: 9 } }
+      - { label: D18, gpio: 18, kind: gpio, pos: { side: left, index: 8 } }
+      - { label: D5, gpio: 5, kind: gpio, pos: { side: left, index: 7 } }
+      - { label: TX2, gpio: 17, kind: gpio, pos: { side: left, index: 6 } }
+      - { label: RX2, gpio: 16, kind: gpio, pos: { side: left, index: 5 } }
+      - { label: D4, gpio: 4, kind: gpio, pos: { side: left, index: 4 } }
+      - { label: D2, gpio: 2, kind: gpio, pos: { side: left, index: 3 } }
+      - { label: D15, gpio: 15, kind: gpio, pos: { side: left, index: 2 } }
+      - { label: GND, gpio: null, kind: gnd, pos: { side: left, index: 1 } }
+      - { label: "3V3", gpio: null, kind: power, pos: { side: left, index: 0 } }
+
+- board_name: esp32-devkit-v1-36p
+  profile:
+    board: esp32-devkit-v1-36p
+    name: "ESP32 DevKit V1 (DOIT, 36 pins)"
+    chip_label: "ESP-WROOM-32"
+    layout: { kind: dual_inline, per_side: 18, size_mm: { w: 28, l: 57 } }
+    # Écrans EXTERNES au choix par device (un seul actif) : OLED I2C sur
+    # 21/22 (Wire par défaut), TFT SPI VSPI (18/23/5/2/4 — câblage prouvé
+    # de tft_st7735_demo, DC 2 = strapping Hi-Z au reset). Activé → pins
+    # réservées (serveur + éditeur).
+    peripherals:
+      screens:
+        - name: "OLED 0.96\""
+          kind: ssd1306
+          bus: i2c
+          pins: { sda: 21, scl: 22 }
+          addr: "0x3C"
+          size_px: [128, 64]
+        - name: "TFT 1.77\""
+          kind: st7735
+          bus: spi
+          pins: { sck: 18, mosi: 23, cs: 5, dc: 2, rst: 4 }
+          size_px: [160, 128]
+    pins:
+      # Les 30 pins du V1 + GPIO6-11 (flash) + GND/VIN supplémentaires.
+      # Flash 6-11 : affichées, EXCLUSES à l'admission (chip-caps).
+      - { label: G0, gpio: 0, kind: gpio, pos: { side: right, index: 17 } }
+      - { label: G1, gpio: 1, kind: gpio, pos: { side: right, index: 16 } }
+      - { label: G2, gpio: 2, kind: gpio, pos: { side: right, index: 15 } }
+      - { label: G3, gpio: 3, kind: gpio, pos: { side: right, index: 14 } }
+      - { label: G4, gpio: 4, kind: gpio, pos: { side: right, index: 13 } }
+      - { label: G5, gpio: 5, kind: gpio, pos: { side: right, index: 12 } }
+      - { label: G6, gpio: 6, kind: gpio, pos: { side: right, index: 11 } }
+      - { label: G7, gpio: 7, kind: gpio, pos: { side: right, index: 10 } }
+      - { label: G8, gpio: 8, kind: gpio, pos: { side: right, index: 9 } }
+      - { label: G9, gpio: 9, kind: gpio, pos: { side: right, index: 8 } }
+      - { label: G10, gpio: 10, kind: gpio, pos: { side: right, index: 7 } }
+      - { label: G11, gpio: 11, kind: gpio, pos: { side: right, index: 6 } }
+      - { label: G12, gpio: 12, kind: gpio, pos: { side: right, index: 5 } }
+      - { label: G13, gpio: 13, kind: gpio, pos: { side: right, index: 4 } }
+      - { label: G14, gpio: 14, kind: gpio, pos: { side: right, index: 3 } }
+      - { label: G15, gpio: 15, kind: gpio, pos: { side: right, index: 2 } }
+      - { label: G16, gpio: 16, kind: gpio, pos: { side: right, index: 1 } }
+      - { label: G17, gpio: 17, kind: gpio, pos: { side: right, index: 0 } }
+      - { label: G18, gpio: 18, kind: gpio, pos: { side: left, index: 17 } }
+      - { label: G19, gpio: 19, kind: gpio, pos: { side: left, index: 16 } }
+      - { label: G21, gpio: 21, kind: gpio, pos: { side: left, index: 15 } }
+      - { label: G22, gpio: 22, kind: gpio, pos: { side: left, index: 14 } }
+      - { label: G23, gpio: 23, kind: gpio, pos: { side: left, index: 13 } }
+      - { label: G25, gpio: 25, kind: gpio, pos: { side: left, index: 12 } }
+      - { label: G26, gpio: 26, kind: gpio, pos: { side: left, index: 11 } }
+      - { label: G27, gpio: 27, kind: gpio, pos: { side: left, index: 10 } }
+      - { label: G32, gpio: 32, kind: gpio, pos: { side: left, index: 9 } }
+      - { label: G33, gpio: 33, kind: gpio, pos: { side: left, index: 8 } }
+      - { label: G34, gpio: 34, kind: gpio, pos: { side: left, index: 7 } }
+      - { label: G35, gpio: 35, kind: gpio, pos: { side: left, index: 6 } }
+      - { label: G36, gpio: 36, kind: gpio, pos: { side: left, index: 5 } }
+      - { label: G39, gpio: 39, kind: gpio, pos: { side: left, index: 4 } }
+      - { label: EN, gpio: null, kind: en, pos: { side: left, index: 3 } }
+      - { label: GND, gpio: null, kind: gnd, pos: { side: left, index: 2 } }
+      - { label: "3V3", gpio: null, kind: power, pos: { side: left, index: 1 } }
+      - { label: VIN, gpio: null, kind: power, pos: { side: left, index: 0 } }
+
+- board_name: esp32-devkit-tft-st7735
+  profile:
+    board: esp32-devkit-tft-st7735
+    name: "ESP32 DevKit V1 + TFT 1.77\" (ST7735)"
+    chip_label: "ESP-WROOM-32"
+    layout: { kind: dual_inline, per_side: 15, size_mm: { w: 28, l: 55 } }
+    peripherals:
+      screens:
+        - name: "TFT 1.77\""
+          kind: st7735
+          bus: spi
+          pins: { sck: 18, mosi: 23, cs: 5, dc: 2, rst: 4 }
+          size_px: [160, 128]
+    pins:
+      # Pin map = DevKit V1 30 pins ; les pins écran (18/23/5/2/4) se
+      # réservent à l'activation de l'écran (option par device).
+      - { label: EN, gpio: null, kind: en, pos: { side: right, index: 14 } }
+      - { label: VP, gpio: 36, kind: gpio, pos: { side: right, index: 13 } }
+      - { label: VN, gpio: 39, kind: gpio, pos: { side: right, index: 12 } }
+      - { label: D34, gpio: 34, kind: gpio, pos: { side: right, index: 11 } }
+      - { label: D35, gpio: 35, kind: gpio, pos: { side: right, index: 10 } }
+      - { label: D32, gpio: 32, kind: gpio, pos: { side: right, index: 9 } }
+      - { label: D33, gpio: 33, kind: gpio, pos: { side: right, index: 8 } }
+      - { label: D25, gpio: 25, kind: gpio, pos: { side: right, index: 7 } }
+      - { label: D26, gpio: 26, kind: gpio, pos: { side: right, index: 6 } }
+      - { label: D27, gpio: 27, kind: gpio, pos: { side: right, index: 5 } }
+      - { label: D14, gpio: 14, kind: gpio, pos: { side: right, index: 4 } }
+      - { label: D12, gpio: 12, kind: gpio, pos: { side: right, index: 3 } }
+      - { label: D13, gpio: 13, kind: gpio, pos: { side: right, index: 2 } }
+      - { label: GND, gpio: null, kind: gnd, pos: { side: right, index: 1 } }
+      - { label: VIN, gpio: null, kind: power, pos: { side: right, index: 0 } }
+      - { label: D23, gpio: 23, kind: gpio, pos: { side: left, index: 14 },
+          note: "screen SDA/MOSI (SPI wiring)" }
+      - { label: D22, gpio: 22, kind: gpio, pos: { side: left, index: 13 } }
+      - { label: TX0, gpio: 1, kind: gpio, pos: { side: left, index: 12 } }
+      - { label: RX0, gpio: 3, kind: gpio, pos: { side: left, index: 11 } }
+      - { label: D21, gpio: 21, kind: gpio, pos: { side: left, index: 10 } }
+      - { label: D19, gpio: 19, kind: gpio, pos: { side: left, index: 9 } }
+      - { label: D18, gpio: 18, kind: gpio, pos: { side: left, index: 8 },
+          note: "screen SCK (SPI wiring)" }
+      - { label: D5, gpio: 5, kind: gpio, pos: { side: left, index: 7 },
+          note: "screen CS (SPI wiring)" }
+      - { label: TX2, gpio: 17, kind: gpio, pos: { side: left, index: 6 } }
+      - { label: RX2, gpio: 16, kind: gpio, pos: { side: left, index: 5 } }
+      - { label: D4, gpio: 4, kind: gpio, pos: { side: left, index: 4 },
+          note: "screen RST (SPI wiring)" }
+      - { label: D2, gpio: 2, kind: gpio, pos: { side: left, index: 3 },
+          note: "screen DC — strapping, Hi-Z at reset" }
+      - { label: D15, gpio: 15, kind: gpio, pos: { side: left, index: 2 } }
+      - { label: GND, gpio: null, kind: gnd, pos: { side: left, index: 1 } }
+      - { label: "3V3", gpio: null, kind: power, pos: { side: left, index: 0 } }
+
+# Brick 0 — variante ESP32 DevKitC V4 (clone « DevKit 38 pins », 19/côté) :
+# les 30 pins classiques + les broches de la flash SPI interne sorties en
+# header (CLK/SD0/SD1/SD2/SD3/CMD = GPIO6-11) + 5V/GND. Les flash pins sont
+# AFFICHÉES mais EXCLUSES à l'admission (chip-caps) — y toucher plante la
+# carte (reboot loop) ; en pratique pas plus de GPIO exploitables que la
+# 30 broches. VP/VN (36/39) = entrées ADC1 only (input-only).
+# Écrans : mêmes externes OLED/TFT que les autres devkits (choix device).
+- board_name: esp32-devkitc-v4-38p
+  profile:
+    board: esp32-devkitc-v4-38p
+    name: "ESP32 DevKitC V4 (38 pins)"
+    chip_label: "ESP-WROOM-32"
+    layout: { kind: dual_inline, per_side: 19, size_mm: { w: 28, l: 55 } }
+    peripherals:
+      screens:
+        - name: "OLED 0.96\""
+          kind: ssd1306
+          bus: i2c
+          pins: { sda: 21, scl: 22 }
+          addr: "0x3C"
+          size_px: [128, 64]
+        - name: "TFT 1.77\""
+          kind: st7735
+          bus: spi
+          pins: { sck: 18, mosi: 23, cs: 5, dc: 2, rst: 4 }
+          size_px: [160, 128]
+    pins:
+      # côté gauche (USB → antenne)
+      - { label: EN, gpio: null, kind: en, pos: { side: right, index: 18 } }
+      - { label: VP, gpio: 36, kind: gpio, pos: { side: right, index: 17 },
+          note: "input-only — ADC1" }
+      - { label: VN, gpio: 39, kind: gpio, pos: { side: right, index: 16 },
+          note: "input-only — ADC1" }
+      - { label: D34, gpio: 34, kind: gpio, pos: { side: right, index: 15 },
+          note: "input-only — ADC1" }
+      - { label: D35, gpio: 35, kind: gpio, pos: { side: right, index: 14 },
+          note: "input-only — ADC1 (PSRAM on WROVER)" }
+      - { label: D32, gpio: 32, kind: gpio, pos: { side: right, index: 13 },
+          note: "ADC1" }
+      - { label: D33, gpio: 33, kind: gpio, pos: { side: right, index: 12 },
+          note: "ADC1" }
+      - { label: D25, gpio: 25, kind: gpio, pos: { side: right, index: 11 },
+          note: "ADC2 (broken with WiFi) — DAC" }
+      - { label: D26, gpio: 26, kind: gpio, pos: { side: right, index: 10 },
+          note: "ADC2 (broken with WiFi) — DAC" }
+      - { label: D27, gpio: 27, kind: gpio, pos: { side: right, index: 9 },
+          note: "ADC2 (broken with WiFi)" }
+      - { label: D14, gpio: 14, kind: gpio, pos: { side: right, index: 8 },
+          note: "strapping (HSPI) — output: safe_state high only" }
+      - { label: D12, gpio: 12, kind: gpio, pos: { side: right, index: 7 },
+          note: "strapping boot-LOW — output: safe_state low only" }
+      - { label: D13, gpio: 13, kind: gpio, pos: { side: right, index: 6 } }
+      - { label: GND, gpio: null, kind: gnd, pos: { side: right, index: 5 } }
+      - { label: VIN, gpio: null, kind: power, pos: { side: right, index: 4 } }
+      - { label: CLK, gpio: 6, kind: gpio, pos: { side: right, index: 3 },
+          note: "flash SPI — excluded from admission, never wire it" }
+      - { label: SD0, gpio: 7, kind: gpio, pos: { side: right, index: 2 },
+          note: "flash SPI — excluded from admission, never wire it" }
+      - { label: SD1, gpio: 8, kind: gpio, pos: { side: right, index: 1 },
+          note: "flash SPI — excluded from admission, never wire it" }
+      - { label: SD2, gpio: 9, kind: gpio, pos: { side: right, index: 0 },
+          note: "flash SPI — excluded from admission, never wire it" }
+      # côté droit (USB → antenne)
+      - { label: SD3, gpio: 10, kind: gpio, pos: { side: left, index: 18 },
+          note: "flash SPI — excluded from admission, never wire it" }
+      - { label: CMD, gpio: 11, kind: gpio, pos: { side: left, index: 17 },
+          note: "flash SPI — excluded from admission, never wire it" }
+      - { label: D23, gpio: 23, kind: gpio, pos: { side: left, index: 16 },
+          note: "VSPI MOSI" }
+      - { label: D22, gpio: 22, kind: gpio, pos: { side: left, index: 15 },
+          note: "default I2C SCL" }
+      - { label: TX0, gpio: 1, kind: gpio, pos: { side: left, index: 14 },
+          note: "console UART" }
+      - { label: RX0, gpio: 3, kind: gpio, pos: { side: left, index: 13 },
+          note: "console UART" }
+      - { label: D21, gpio: 21, kind: gpio, pos: { side: left, index: 12 },
+          note: "default I2C SDA" }
+      - { label: D19, gpio: 19, kind: gpio, pos: { side: left, index: 11 },
+          note: "VSPI MISO" }
+      - { label: D18, gpio: 18, kind: gpio, pos: { side: left, index: 10 },
+          note: "VSPI SCK" }
+      - { label: D5, gpio: 5, kind: gpio, pos: { side: left, index: 9 },
+          note: "strapping boot-HIGH (VSPI CS)" }
+      - { label: TX2, gpio: 17, kind: gpio, pos: { side: left, index: 8 } }
+      - { label: RX2, gpio: 16, kind: gpio, pos: { side: left, index: 7 } }
+      - { label: D4, gpio: 4, kind: gpio, pos: { side: left, index: 6 },
+          note: "ADC2 (broken with WiFi)" }
+      - { label: D2, gpio: 2, kind: gpio, pos: { side: left, index: 5 },
+          note: "strapping boot-LOW — onboard LED on some clones" }
+      - { label: D15, gpio: 15, kind: gpio, pos: { side: left, index: 4 },
+          note: "strapping boot-HIGH — output: safe_state high only" }
+      - { label: GND, gpio: null, kind: gnd, pos: { side: left, index: 3 } }
+      - { label: "3V3", gpio: null, kind: power, pos: { side: left, index: 2 } }
+      - { label: "5V", gpio: null, kind: power, pos: { side: left, index: 1 } }
+      - { label: GND, gpio: null, kind: gnd, pos: { side: left, index: 0 } }

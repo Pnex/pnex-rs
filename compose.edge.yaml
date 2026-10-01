@@ -1,0 +1,115 @@
+# TLS edge overlay (D70) — nginx terminates ALL TLS (browsers, APK,
+# devices) on a single origin https://${PNEX_DOMAIN}:
+#   /auth/v1/*  → rauthy:8080 (plain HTTP, PROXY_MODE)
+#   /*          → pnex-server on the host (:5150, websockets included)
+#
+# Usage: `task edge:up` (deploy/edge/apply-edge.sh) — never raw compose:
+# the script derives PNEX_DOMAIN (default `<hostname>.local`, already
+# published by avahi), patches the OIDC client live and checks discovery.
+#
+# Modes (PNEX_EDGE_MODE):
+#   local (default) → pki-init issues the cert from a local CA generated
+#                     once (deploy/edge/pki-data/ca.pem — import it on
+#                     clients, pinned by firmware via PNEX_CA_CERT).
+#   cloud           → `--profile cloud`: certbot (Let's Encrypt, HTTP-01
+#                     webroot) replaces the bootstrap cert; ports 80/443
+#                     must be reachable from the internet.
+#
+# nginx (OpenSSL) rather than Traefik/Caddy: it honours the TLS
+# max_fragment_length extension, required by the ESP8266 (2 KB BearSSL rx
+# buffer) — Go stacks send 16 KB records (measured 2026-09-27).
+
+services:
+  # One-shot: local CA + leaf for PNEX_DOMAIN (idempotent — re-issues only
+  # when missing, expiring within 30 days, or when the SAN list changed).
+  # In cloud mode it only bootstraps a placeholder so nginx can start
+  # before certbot's first issuance.
+  edge-pki:
+    image: alpine:3.22
+    container_name: pnex-edge-pki
+    restart: "no"
+    environment:
+      PNEX_DOMAIN: ${PNEX_DOMAIN:?run task edge:up}
+      PNEX_EDGE_MODE: ${PNEX_EDGE_MODE:-local}
+      PNEX_EXTRA_SANS: ${PNEX_EXTRA_SANS:-}
+    volumes:
+      - ./deploy/edge/pki/pki-init.sh:/pki-init.sh:ro
+      - ./deploy/edge/pki-data:/pki
+    entrypoint: ["sh", "-c", "apk add --no-cache openssl >/dev/null && sh /pki-init.sh"]
+
+  edge-nginx:
+    image: nginx:1.29-alpine
+    container_name: pnex-edge-nginx
+    restart: unless-stopped
+    depends_on:
+      edge-pki:
+        condition: service_completed_successfully
+      rauthy:
+        condition: service_started
+    environment:
+      PNEX_DOMAIN: ${PNEX_DOMAIN:?run task edge:up}
+      # pnex-server:5150 (containerised app) or <gateway IP>:5150 (backend
+      # on the host) — chosen by apply-edge.sh.
+      PNEX_BACKEND_UPSTREAM: ${PNEX_BACKEND_UPSTREAM:?run task edge:up}
+      # `<hostname>.local` alias redirected to PNEX_DOMAIN (empty = none).
+      PNEX_DOMAIN_ALIAS: ${PNEX_DOMAIN_ALIAS:-}
+      # Only our variables are substituted (keeps $host, $http_upgrade…).
+      NGINX_ENVSUBST_FILTER: "^PNEX_"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/edge/nginx/templates:/etc/nginx/templates:ro
+      - ./deploy/edge/nginx/40-cert-watch.sh:/docker-entrypoint.d/40-cert-watch.sh:ro
+      - ./deploy/edge/pki-data:/pki:ro
+      - pnex-edge-acme:/var/www/acme:ro
+
+  # Cloud only: Let's Encrypt via HTTP-01 webroot served by edge-nginx.
+  edge-certbot:
+    image: certbot/certbot:v4.2.0
+    container_name: pnex-edge-certbot
+    restart: unless-stopped
+    profiles: ["cloud"]
+    depends_on:
+      - edge-nginx
+    environment:
+      PNEX_DOMAIN: ${PNEX_DOMAIN:?run task edge:up}
+      # Checked by run.sh (compose interpolates inactive profiles too).
+      ACME_EMAIL: ${ACME_EMAIL:-}
+      ACME_STAGING: ${ACME_STAGING:-}
+    volumes:
+      - ./deploy/edge/certbot/run.sh:/run.sh:ro
+      - ./deploy/edge/pki-data:/pki
+      - pnex-edge-acme:/var/www/acme
+      - pnex-edge-letsencrypt:/etc/letsencrypt
+    entrypoint: ["sh", "/run.sh"]
+
+  # Rauthy moves behind the proxy: plain HTTP inside, public HTTPS issuer
+  # https://${PNEX_DOMAIN}/auth/v1/. Overrides compose.yaml (self-signed
+  # :8443 + danger-insecure cookies are no longer needed).
+  rauthy:
+    environment:
+      PUB_URL: ${PNEX_DOMAIN:?run task edge:up}
+      # Production posture: DEV_MODE forces a port into PUB_URL (the issuer
+      # would become https://<domain>:443/auth/v1/) and seeds dev data.
+      DEV_MODE: "false"
+      LISTEN_SCHEME: http
+      PROXY_MODE: "true"
+      # Docker bridge range (nginx + the host port-forward used by the
+      # backend's server-to-server calls) and loopback.
+      TRUSTED_PROXIES: "127.0.0.1/32\n172.16.0.0/12"
+      TLS_GENERATE_SELF_SIGNED: "false"
+      COOKIE_MODE: host
+      # WebAuthn forbids IP rp ids: apply-edge.sh falls back to localhost
+      # when PNEX_DOMAIN is an IP (passkeys unavailable, passwords fine).
+      RP_ID: ${PNEX_RP_ID:-${PNEX_DOMAIN:?run task edge:up}}
+      # Rauthy requires an explicit port here.
+      RP_ORIGIN: https://${PNEX_RP_ID:-${PNEX_DOMAIN:?run task edge:up}}:443
+    # Plain HTTP stays loopback-only (backend server-to-server); the LAN
+    # only reaches Rauthy through nginx.
+    ports: !override
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  pnex-edge-acme:
+  pnex-edge-letsencrypt:

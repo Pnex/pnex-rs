@@ -1,0 +1,109 @@
+# Global Custom Formulas
+# Miscellaneous formulas available for all users to import
+
+- global_id: "average_v1"
+  name: "Average"
+  version: 1
+  category: "statistics"
+  tags: ["average", "mean", "statistics"]
+  description: "Calculate average of multiple values: (value1 + value2 + value3) / 3"
+  expression: "(value1 + value2 + value3) / 3"
+  result_unit: ""
+  formula_type: "simple_math"
+  data_sources:
+    - variable_name: "value1"
+      measurement_name: "value"
+      suggested_unit: ""
+      description: "First value"
+    - variable_name: "value2"
+      measurement_name: "value"
+      suggested_unit: ""
+      description: "Second value"
+    - variable_name: "value3"
+      measurement_name: "value"
+      suggested_unit: ""
+      description: "Third value"
+
+- global_id: "percentage_change_v1"
+  name: "Percentage Change"
+  version: 1
+  category: "statistics"
+  tags: ["percentage", "change", "growth"]
+  description: "Calculate percentage change: ((new_value - old_value) / old_value) * 100"
+  expression: "((new_value - old_value) / old_value) * 100"
+  result_unit: "%"
+  formula_type: "simple_math"
+  data_sources:
+    - variable_name: "new_value"
+      measurement_name: "value"
+      suggested_unit: ""
+      description: "New value"
+    - variable_name: "old_value"
+      measurement_name: "value"
+      suggested_unit: ""
+      description: "Old value"
+
+- global_id: "ratio_v1"
+  name: "Ratio"
+  version: 1
+  category: "mathematics"
+  tags: ["ratio", "proportion", "comparison"]
+  description: "Calculate ratio: numerator / denominator"
+  expression: "numerator / denominator"
+  result_unit: ""
+  formula_type: "simple_math"
+  data_sources:
+    - variable_name: "numerator"
+      measurement_name: "value"
+      suggested_unit: ""
+      description: "Numerator value"
+    - variable_name: "denominator"
+      measurement_name: "value"
+      suggested_unit: ""
+      description: "Denominator value"
+
+- global_id: "sum_v1"
+  name: "Sum"
+  version: 1
+  category: "mathematics"
+  tags: ["sum", "total", "addition"]
+  description: "Calculate sum of values: value1 + value2 + value3"
+  expression: "value1 + value2 + value3"
+  result_unit: ""
+  formula_type: "simple_math"
+  data_sources:
+    - variable_name: "value1"
+      measurement_name: "value"
+      suggested_unit: ""
+      description: "First value"
+    - variable_name: "value2"
+      measurement_name: "value"
+      suggested_unit: ""
+      description: "Second value"
+    - variable_name: "value3"
+      measurement_name: "value"
+      suggested_unit: ""
+      description: "Third value"
+
+- global_id: "product_v1"
+  name: "Product"
+  version: 1
+  category: "mathematics"
+  tags: ["product", "multiplication", "result"]
+  description: "Calculate product of values: value1 * value2 * value3"
+  expression: "value1 * value2 * value3"
+  result_unit: ""
+  formula_type: "simple_math"
+  data_sources:
+    - variable_name: "value1"
+      measurement_name: "value"
+      suggested_unit: ""
+      description: "First value"
+    - variable_name: "value2"
+      measurement_name: "value"
+      suggested_unit: ""
+      description: "Second value"
+    - variable_name: "value3"
+      measurement_name: "value"
+      suggested_unit: ""
+      description: "Third value"

@@ -1,0 +1,185 @@
+# pnex-server — configuration production (K8s/GitOps, secrets via SOPS/age)
+
+logger:
+  enable: true
+  pretty_backtrace: false
+  level: info
+  format: json
+
+server:
+  port: 5150
+  binding: 0.0.0.0
+  host: http://localhost
+  middlewares:
+    fallback:
+      enable: false
+    static:
+      enable: true
+      must_exist: true
+      precompressed: true
+      folder:
+        uri: "/"
+        path: "../pnex-frontend/dist"
+      fallback: "../pnex-frontend/dist/index.html"
+
+workers:
+  # Phase 6 : queue PostgreSQL. SaaS : deux déploiements du MÊME binaire —
+  # API (slim, `loco start`) et worker (fat, toolchain pio, `loco start
+  # --worker-only`).
+  mode: BackgroundQueue
+
+# Queue : le backend suit le schéma de DATABASE_URL (one-knob). Tier
+# scalable = postgres (pods API stateless, artefacts servis par tout
+# réplica) ; tier hobbyist = sqlite (mono-pod uniquement). Jamais
+# `sqlite::memory:` en mode app.
+# <% set db_url = get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") %>
+queue:
+  kind: <% if db_url is starting_with(pat="sqlite") %>Sqlite<% else %>Postgres<% endif %>
+  uri: <%= db_url %>
+  num_workers: <%= get_env(name="PNEX_QUEUE_NUM_WORKERS", default="1") %>
+  poll_interval_sec: 1
+  # Dedicated (small) pool of the job queue: it only polls/claims jobs.
+  max_connections: <%= get_env(name="PNEX_QUEUE_MAX_CONNECTIONS", default="2") %>
+  min_connections: 1
+  connect_timeout: <%= get_env(name="DB_CONNECT_TIMEOUT", default="5000") %>
+  idle_timeout: <%= get_env(name="DB_IDLE_TIMEOUT", default="300000") %>
+  reaper:
+    age_minutes: 30
+    interval_seconds: 120
+
+database:
+  uri: <%= get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") %>
+  enable_logging: false
+  # Container deployments (D71) migrate at boot; set PNEX_AUTO_MIGRATE=false
+  # to run `pnex-server db migrate` explicitly instead.
+  auto_migrate: <%= get_env(name="PNEX_AUTO_MIGRATE", default="true") %>
+  # Pool timeouts (ms). connect/acquire = max wait for a pool connection
+  # (500 ms made every load spike a 500); idle = how long an unused
+  # connection is kept (500 ms closed and reopened connections constantly).
+  # Sizing: pods x (max_connections + queue.max_connections) must stay
+  # below Postgres max_connections (docs/architecture/horizontal-scaling.md).
+  connect_timeout: <%= get_env(name="DB_CONNECT_TIMEOUT", default="5000") %>
+  acquire_timeout: <%= get_env(name="DB_ACQUIRE_TIMEOUT", default="5000") %>
+  idle_timeout: <%= get_env(name="DB_IDLE_TIMEOUT", default="300000") %>
+  min_connections: <%= get_env(name="DB_MIN_CONNECTIONS", default="1") %>
+  max_connections: <%= get_env(name="DB_MAX_CONNECTIONS", default="10") %>
+
+# Auth Rauthy (Phase 3/D19) : validation JWKS locale + JIT provisioning.
+settings:
+  # Org secrets vault keyring (secrets.md D112), mandatory: the server
+  # refuses to start without it. "k2:<b64>,k1:<b64>" — write key first,
+  # older keys only decrypt (rotation). Generate: `openssl rand -base64 32`.
+  secrets:
+    keys: "<%= get_env(name="PNEX_SECRETS_KEYS", default="") %>"
+  openobserve:
+    base_url: <%= get_env(name="OPENOBSERVE_URL", default="http://localhost:5080") %>
+    root_email: <%= get_env(name="OPENOBSERVE_ROOT_EMAIL", default="root@pnex.local") %>
+    root_password: <%= get_env(name="OPENOBSERVE_ROOT_PASSWORD", default="") %>
+  # Valkey — REQUIRED (D108): device liveness leases, last-value cache of
+  # the pnex-device-read flow node, cross-pod buses. Empty = boot failure.
+  valkey:
+    url: <%= get_env(name="VALKEY_URL", default="") %>
+  # Notifications (D49–D54) — jeton de service backend ↔ runtime. À poser
+  # impérativement en prod (secret d'instance) ; vide ⇒ canal websocket
+  # fail-closed (401 sur /internal/notify/deliver).
+  notifications:
+    internal_token: <%= get_env(name="PNEX_NOTIFY_INTERNAL_TOKEN", default="") %>
+    deliver_url: <%= get_env(name="PNEX_NOTIFY_DELIVER_URL", default="http://127.0.0.1:5150/internal/notify/deliver") %>
+  # Stitching serveur (Take 360 V2) — assemblage HD des prises 360° dans le
+  # worker `stitch_panorama`. Les frames transitent par le MediaStore
+  # (settings.media, aucune config de stockage propre). enabled=false :
+  # POST /stitch-jobs répond 503 (kill-switch).
+  stitch:
+    enabled: <%= get_env(name="PNEX_STITCH_ENABLED", default="true") %>
+    # Largeur du panorama HD (hauteur = /2) — CPU-bound minutes à 4096.
+    out_width: <%= get_env(name="PNEX_STITCH_OUT_WIDTH", default="4096") %>
+    # Modèles ONNX de pose (SuperPoint + LightGlue) — absents → repli NCC.
+    models_dir: <%= get_env(name="PNEX_STITCH_MODELS_DIR", default="deploy/models") %>
+    # Nombre de stitches simultanés (knob fixe, décision 2026-09-10) :
+    # RPi 8 Go → 2 (l'env surcharge ; les builds firmware partagent la queue).
+    max_concurrent: <%= get_env(name="PNEX_STITCH_MAX_CONCURRENT", default="2") %>
+  # Ingestion Phase 5 (valeurs par défaut si absent — cf. services/settings.rs)
+  ingestion:
+    silence_ttl_secs: <%= get_env(name="PNEX_SILENCE_TTL_SECS", default="10") %>
+    reaper_interval_secs: <%= get_env(name="PNEX_REAPER_INTERVAL_SECS", default="5") %>
+    token_cache_secs: <%= get_env(name="PNEX_TOKEN_CACHE_SECS", default="30") %>
+    admission_concurrency: <%= get_env(name="PNEX_DEVICE_ADMISSION_CONCURRENCY", default="32") %>
+    admission_wait_ms: <%= get_env(name="PNEX_DEVICE_ADMISSION_WAIT_MS", default="5000") %>
+    batch_max: <%= get_env(name="PNEX_BATCH_MAX", default="500") %>
+    batch_flush_secs: <%= get_env(name="PNEX_BATCH_FLUSH_SECS", default="10") %>
+  # AI assistant kill-switch. LLM providers are managed in the UI
+  # (secrets.md D116): no provider configuration in the environment.
+  ai:
+    enabled: <%= get_env(name="PNEX_AI_ENABLED", default="true") %>
+  rauthy:
+    base_url: <%= get_env(name="RAUTHY_URL", default="http://localhost:8080") %>
+    client_id: <%= get_env(name="RAUTHY_CLIENT_ID", default="pnex") %>
+    # Public issuer behind the TLS edge (D70), e.g. https://pnex.local —
+    # omitted when unset (issuer derived from base_url).
+    <% if get_env(name="RAUTHY_ISSUER_URL", default="") != "" %>
+    issuer_url: <%= get_env(name="RAUTHY_ISSUER_URL") %>
+    <% endif %>
+  # Firmware Phase 6 — source embarquée dans le binaire (self-hosted/edge :
+  # le serveur build sa propre version du firmware, zéro clone git ni
+  # chemin local — aucune config de source). Artefacts en base par défaut
+  # (D5 v2, table firmware_artifacts — pods API stateless) ;
+  # STORAGE_BACKEND=s3 = tier industriel (artefacts sur S3-compatible via
+  # opendal — données + queue restent en base). Aucune migration entre
+  # backends : on choisit son tier à l'installation.
+  firmware:
+    storage:
+      backend: <%= get_env(name="STORAGE_BACKEND", default="db") %>
+      s3_endpoint: <%= get_env(name="PNEX_S3_ENDPOINT", default="") %>
+      s3_bucket: <%= get_env(name="PNEX_S3_BUCKET", default="") %>
+      s3_region: <%= get_env(name="PNEX_S3_REGION", default="") %>
+      # Credentials injectés par secrets manager (SOPS/age) — jamais dans
+      # la config commitée (secret masqué dans les Debug/logs du serveur).
+      s3_access_key: <%= get_env(name="PNEX_S3_ACCESS_KEY", default="") %>
+      s3_secret_key: <%= get_env(name="PNEX_S3_SECRET_KEY", default="") %>
+      s3_path_style: <%= get_env(name="PNEX_S3_PATH_STYLE", default="false") %>
+    pio_cmd: <%= get_env(name="PNEX_PIO_CMD", default="pio") %>
+    esptool_cmd: <%= get_env(name="PNEX_ESPTOOL_CMD", default="esptool") %>
+    timeout_secs: <%= get_env(name="PNEX_BUILD_TIMEOUT_SECS", default="900") %>
+  # Média (D21) — bibliothèque d'assets versionnée par org ; les octets ne
+  # vivent jamais en base : magasin dédié opendal (fs défaut / s3 RustFS —
+  # réutilise les vars PNEX_S3_* du firmware).
+  media:
+    storage:
+      backend: <%= get_env(name="MEDIA_BACKEND", default="fs") %>
+      # Racine du magasin fs (volume persistant requis en prod).
+      dir: <%= get_env(name="PNEX_MEDIA_DIR", default="./storage/media") %>
+      # Multi-pod (flow cluster advertise_url/token or PNEX_CLUSTER_MODE=true)
+      # refuses to boot on fs unless this dir is ONE shared RWX volume
+      # mounted on every pod and worker; prefer MEDIA_BACKEND=s3.
+      fs_shared: <%= get_env(name="PNEX_MEDIA_FS_SHARED", default="false") %>
+      # Plafond d'un upload — 413 JSON propre au-delà ; la limite axum
+      # (max+1 Mo, vue routes()) reste le filet.
+      max_bytes: <%= get_env(name="PNEX_MEDIA_MAX_BYTES", default="268435456") %>
+      s3_endpoint: <%= get_env(name="PNEX_S3_ENDPOINT", default="") %>
+      s3_bucket: <%= get_env(name="PNEX_S3_BUCKET", default="") %>
+      s3_region: <%= get_env(name="PNEX_S3_REGION", default="") %>
+      # Credentials injectés par secrets manager (SOPS/age) — jamais dans
+      # la config commitée (secret masqué dans les Debug/logs du serveur).
+      s3_access_key: <%= get_env(name="PNEX_S3_ACCESS_KEY", default="") %>
+      s3_secret_key: <%= get_env(name="PNEX_S3_SECRET_KEY", default="") %>
+      s3_path_style: <%= get_env(name="PNEX_S3_PATH_STYLE", default="false") %>
+  # Flow engine (D18) — the supervisor spawns pnex-flow-runtime (found on
+  # PATH in the server image). Debug tools stay off in production.
+  flow:
+    enabled: <%= get_env(name="PNEX_FLOW_ENABLED", default="true") %>
+    runtime_cmd: <%= get_env(name="PNEX_FLOW_RUNTIME_CMD", default="pnex-flow-runtime") %>
+    state_dir: <%= get_env(name="PNEX_FLOW_STATE_DIR", default="./flow-state") %>
+    debug_tools: <%= get_env(name="PNEX_FLOW_DEBUG_TOOLS", default="false") %>
+    <% if get_env(name="PNEX_FLOW_RUNTIME_TOKEN", default="") != "" %>
+    runtime_token: <%= get_env(name="PNEX_FLOW_RUNTIME_TOKEN") %>
+    <% endif %>
+    # Flow execution cluster (D106, docs/architecture/flow-engine.md §12).
+    # Single node: nothing to set (a cluster of one). Several pods: give
+    # each one a reachable advertise_url (e.g. http://$(POD_IP):5150) and
+    # the same cluster token; PNEX_FLOW_RUN_WORKER=false makes an API-only pod.
+    cluster:
+      worker: <%= get_env(name="PNEX_FLOW_RUN_WORKER", default="true") %>
+      worker_id: <%= get_env(name="PNEX_FLOW_WORKER_ID", default="") %>
+      advertise_url: <%= get_env(name="PNEX_FLOW_ADVERTISE_URL", default="") %>
+      token: <%= get_env(name="PNEX_FLOW_CLUSTER_TOKEN", default="") %>
+      capacity: <%= get_env(name="PNEX_FLOW_WORKER_CAPACITY", default="0") %>

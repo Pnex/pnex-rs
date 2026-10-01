@@ -1,0 +1,112 @@
+# Global Length Conversions
+# These conversions are available for all users to import
+
+- global_id: "meter_to_feet_v1"
+  name: "Meter to Feet"
+  version: 1
+  category: "length"
+  tags: ["length", "distance", "imperial", "metric"]
+  description: "Convert length from Meter to Feet"
+  from_unit: "m"
+  to_unit: "ft"
+  conversion_type: "linear"
+  multiplier: 3.28084
+
+- global_id: "feet_to_meter_v1"
+  name: "Feet to Meter"
+  version: 1
+  category: "length"
+  tags: ["length", "distance", "imperial", "metric"]
+  description: "Convert length from Feet to Meter"
+  from_unit: "ft"
+  to_unit: "m"
+  conversion_type: "linear"
+  multiplier: 0.3048
+
+- global_id: "cm_to_inch_v1"
+  name: "Centimeter to Inch"
+  version: 1
+  category: "length"
+  tags: ["length", "small", "imperial", "metric"]
+  description: "Convert length from Centimeter to Inch"
+  from_unit: "cm"
+  to_unit: "in"
+  conversion_type: "linear"
+  multiplier: 0.393701
+
+- global_id: "km_to_mile_v1"
+  name: "Kilometer to Mile"
+  version: 1
+  category: "length"
+  tags: ["length", "distance", "travel", "imperial", "metric"]
+  description: "Convert distance from Kilometer to Mile"
+  from_unit: "km"
+  to_unit: "mi"
+  conversion_type: "linear"
+  multiplier: 0.621371
+
+- global_id: "mm_to_inch_v1"
+  name: "Millimeter to Inch"
+  version: 1
+  category: "length"
+  tags: ["length", "precision", "engineering", "machining"]
+  description: "Convert length from Millimeter to Inch"
+  from_unit: "mm"
+  to_unit: "in"
+  conversion_type: "linear"
+  multiplier: 0.0393701
+
+- global_id: "inch_to_cm_v1"
+  name: "Inch to Centimeter"
+  version: 1
+  category: "length"
+  tags: ["length", "small", "imperial", "metric"]
+  description: "Convert length from Inch to Centimeter"
+  from_unit: "in"
+  to_unit: "cm"
+  conversion_type: "linear"
+  multiplier: 2.54
+
+- global_id: "mile_to_km_v1"
+  name: "Mile to Kilometer"
+  version: 1
+  category: "length"
+  tags: ["length", "distance", "travel", "imperial", "metric"]
+  description: "Convert distance from Mile to Kilometer"
+  from_unit: "mi"
+  to_unit: "km"
+  conversion_type: "linear"
+  multiplier: 1.60934
+
+- global_id: "yard_to_meter_v1"
+  name: "Yard to Meter"
+  version: 1
+  category: "length"
+  tags: ["length", "sports", "fabric", "imperial"]
+  description: "Convert length from Yard to Meter"
+  from_unit: "yd"
+  to_unit: "m"
+  conversion_type: "linear"
+  multiplier: 0.9144
+
+- global_id: "nautical_mile_to_km_v1"
+  name: "Nautical Mile to Kilometer"
+  version: 1
+  category: "length"
+  tags: ["length", "navigation", "marine", "aviation"]
+  description: "Convert distance from Nautical Mile to Kilometer"
+  from_unit: "nmi"
+  to_unit: "km"
+  conversion_type: "linear"
+  multiplier: 1.852
+
+- global_id: "micron_to_mm_v1"
+  name: "Micron to Millimeter"
+  version: 1
+  category: "length"
+  tags: ["length", "micro", "precision", "scientific"]
+  description: "Convert length from Micron (Micrometer) to Millimeter"
+  from_unit: "µm"
+  to_unit: "mm"
+  conversion_type: "linear"
+  multiplier: 0.001

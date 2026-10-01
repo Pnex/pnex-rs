@@ -1,0 +1,29 @@
+[package]
+name = "pnex-node-vision"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Flow node PNeX — object detection on camera frames (registry models, tract)"
+
+[dependencies]
+edgelink-core = { path = "../../vendor/edgelinkd/crates/core", default-features = false, features = ["core", "js"] }
+edgelink-macro = { path = "../../vendor/edgelinkd/crates/macro" }
+pnex-core = { workspace = true }
+pnex-vision = { workspace = true }
+# Node status publication shared with the camera nodes (D103).
+pnex-node-camera = { workspace = true }
+# Only for the Option<&config::Config> factory type — same features as edgelink-core
+config = { version = "0.15", default-features = false, features = ["convert-case", "toml"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Frame bytes from the camera bus.
+redis = { workspace = true }
+# Model spec + ONNX bytes from the backend internal routes.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+tokio = { version = "1", default-features = false, features = ["time", "sync", "rt"] }
+async-trait = "0.1"
+tokio-util = "0.7"
+log = "0.4"
+chrono = { workspace = true }
+# The `#[flow_node]` macro emits unqualified `inventory::submit!` — direct dep required
+inventory = "0.3"

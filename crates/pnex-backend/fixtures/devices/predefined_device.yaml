@@ -1,0 +1,106 @@
+# Inputs devices
+- name: soil_sensor
+  pretty_name: Soil Sensor
+  revision: 0.1.12
+  device_type_name: sensor
+  capabilities_names:
+    - soil_moisture
+    - soil_temperature
+  board_name: esp8266
+  device_doc_url: "http://example.com/doc1"
+  prestashop_product_id: 101
+  prestashop_buy_url: "http://example.com/buy1"
+  byod_doc_url: "http://example.com/byod1"
+  image_source_url: "http://example.com/image1"
+  stl_files_url: "http://example.com/stl1"
+  description: "Read Soil moisture and temperature"
+  description_i18n: device-predef-soil-sensor-desc
+
+# Generic/Custom devices for dynamic data publication
+- name: custom_device
+  pretty_name: Custom Device (Dynamic)
+  revision: 1.0.0
+  device_type_name: mixed
+  capabilities_names: []  # No predefined capabilities - allows dynamic measurements
+  board_name: generic
+  device_doc_url: "/docs/DYNAMIC_DEVICES.md"
+  prestashop_product_id: 201
+  prestashop_buy_url: "http://example.com/custom"
+  byod_doc_url: "/docs/DYNAMIC_DEVICES.md"
+  image_source_url: "http://example.com/custom_device"
+  stl_files_url: "http://example.com/custom"
+  description: "Generic mixed device (sensor + actuator) for publishing custom measurements and controlling outputs. Fully flexible - define your own capabilities at runtime. Ideal for complex custom IoT solutions."
+  description_i18n: device-predef-custom-device-desc
+
+# Brick 0 — firmware générique : un seul .bin réutilisable, config injectée
+# au flash (B0.1). Le device s'annonce sur /ws/device, admission Validated
+# contre chip-caps + overlay (B0.2/B0.3 — pas d'auto-création à l'annonce).
+- name: generic_esp8266
+  pretty_name: Generic ESP8266 (NodeMCU / D1 mini)
+  revision: 1.0.0
+  device_type_name: mixed
+  capabilities_names: []
+  board_name: esp8266
+  description: "ESP8266 dev board on the generic firmware: pins driven from the UI (modes, write, subscribe), no per-device compilation."
+  description_i18n: device-predef-generic-esp8266-desc
+
+# Brick 0 — variante ESP32-C3 du générique (Seeed XIAO ESP32C3), même
+# protocole /ws/device que generic_esp8266 : admission overlay (D0–D10),
+# chip-caps esp32-c3 (flash 11–17, USB 18/19, strapping 2/8/9, ADC1 only).
+- name: generic_esp32c3
+  pretty_name: Generic ESP32-C3 (Seeed XIAO)
+  revision: 1.0.0
+  device_type_name: mixed
+  capabilities_names: []
+  board_name: esp32-c3
+  description: "ESP32-C3 (Seeed XIAO) dev board on the generic firmware: pins driven from the UI (modes, write, subscribe), D0–D10 overlay admission, ADC1 (D0–D2) and strapping-safe outputs."
+  description_i18n: device-predef-generic-esp32c3-desc
+
+# Brick 0 — variante ESP32 classique (DevKit WROOM DOIT) : mêmes règles
+# chip-caps que le C3 côté serveur (flash 6-11, strapping 0/2/12/15,
+# ADC1 32-39, input-only 34-39) ; variantes 30p / 36p / TFT au picker.
+- name: generic_esp32
+  pretty_name: Generic ESP32 (DevKit WROOM)
+  revision: 1.0.0
+  device_type_name: mixed
+  capabilities_names: []
+  board_name: esp32-wroom-32
+  description: "ESP32 (DevKit WROOM) dev board on the generic firmware: pins driven from the UI, ADC1 (GPIO32-39), GPIO34-39 input-only, strapping-safe outputs; DevKit V1 30p / 36p / TFT ST7735 variants."
+  description_i18n: device-predef-generic-esp32-desc
+
+# Variante ESP32-S3 (DevKitC-1) : chip-caps dédiées (flash 26-32, PSRAM
+# octal 33-37, USB 19/20, ADC1 1-10, GPIO46 input-only, strapping
+# 0/3/45/46) ; écrans OLED (8/9) / TFT (12/11/10/13/14) au choix device.
+- name: generic_esp32s3
+  pretty_name: Generic ESP32-S3 (DevKitC-1)
+  revision: 1.0.0
+  device_type_name: mixed
+  capabilities_names: []
+  board_name: esp32-s3
+  description: "ESP32-S3 (DevKitC-1) dev board on the generic firmware: pins driven from the UI, ADC1 (GPIO1-10), GPIO46 input-only, strapping-safe outputs; OLED 0.96\" / TFT 1.77\" screens optional."
+  description_i18n: device-predef-generic-esp32s3-desc
+
+# ESP32-CAM (AI-Thinker) on the generic camera firmware (camera-video.md
+# D77): same /ws/device pin_slave as generic_esp32 (only GPIO4 flash LED
+# and GPIO33 red LED admitted) plus the camera uplink /ws/camera.
+- name: generic_esp32cam
+  pretty_name: Generic ESP32-CAM (AI-Thinker)
+  revision: 1.0.0
+  device_type_name: mixed
+  capabilities_names: []
+  board_name: esp32cam-ai-thinker
+  description: "AI-Thinker ESP32-CAM (OV2640, PSRAM) on the generic firmware: live video to the server (resolution, quality, fps from the UI), flash LED (GPIO4) and red LED (GPIO33) driven from the UI. Flash with an ESP32-CAM-MB carrier or an FTDI adapter (GPIO0 to GND)."
+  description_i18n: device-predef-generic-esp32cam-desc
+
+# Edge agent (D95, edge-agent.md): a Rust daemon on a PC / server / Pi —
+# not a microcontroller. Free-form ingestion through a local HTTP API,
+# disk-buffered, pushed over the same /ws/device tunnel. No firmware, no
+# pins, no OTA: installed with `pnex-agent install --enroll <code>`.
+- name: edge_agent
+  pretty_name: Edge agent (PC / server / Raspberry Pi)
+  revision: 1.0.0
+  device_type_name: agent
+  capabilities_names: []
+  board_name: generic
+  description: "Rust agent running on a computer (Linux, Windows, Raspberry Pi): any script pushes free-form values to a local HTTP API; the agent buffers them on disk and forwards them securely to PNeX."
+  description_i18n: device-predef-edge-agent-desc

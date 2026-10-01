@@ -1,0 +1,72 @@
+### Firmware builds contract (Phase 6) — parity with the previous stack, adapted
+#
+# Adaptations vs the initial POC :
+# - chemins sans slash terminal (convention.md) ;
+# - org scoping (D2): X-Org-Id required, `org_id` in the records instead
+#   of the previous stack's `user` ;
+# - plus de champs k8s/Argo (`backend`, `job_name`, `argo_wf_job_name`) —
+#   la réponse de création expose `build_id` + `status` ;
+# - canonical lowercase phases: queued (new — the previous stack had no
+#   queued state, submit was synchronous) | running (Running) | succeeded
+#   (Succeeded) | failed (Failed) ; Deleted dropped (no more k8s job) ;
+# - build-records paginé (D14, enveloppe {count,next,previous,results}) ;
+# - `insecure`/`server_port`/`force_rebuild`/`metadata` acceptés, ignorés ;
+# - `ws_ssl` (bool, défaut true) : firmware en wss:// (TLS, industriel) ou
+#   ws:// (déploiement local / Raspberry Pi sans TLS) ;
+# - erreurs forme héritée {"error": "..."} ; validation champ {"<champ>": "..."}.
+#
+# Runtime secrets: WiFi + host go through the PG queue (visible to the
+# DB admin, like the previous stack's k8s spec — cf. firmware-build.md) ; the token and
+# the encryption key are read back from the database by the worker.
+
+@host = http://localhost:5150
+@token = $PNEX_ACCESS_TOKEN
+
+### Lancer un build — 201 ; erreurs : 400 validation/modèle, 404 device,
+### 403 quota devices, 429 intervalle min (dernier build RÉUSSI de l'org).
+# (ForegroundBlocking en test / BackgroundQueue via --server-and-worker.)
+POST {{host}}/api/v1/build-firmware
+Content-Type: application/json
+Authorization: Bearer {{token}}
+X-Org-Id: 4
+
+# WiFi : de préférence une entrée du référentiel de l'org
+# (`wifi_credential_id`) — le mot de passe reste dans le coffre et le worker
+# le déchiffre (secrets.md S6). `wifi_ssid` + `wifi_password` restent
+# acceptés : l'entrée est alors créée ou mise à jour dans le référentiel
+# (valeur saisie = owner/admin), rien n'entre en clair dans la file.
+{
+  "wifi_credential_id": 7,
+  "device_id": "capteur-jardin",
+  "predefined_device_name": "soil_sensor",
+  "pnex_host": "dev1.pnex.io",
+  "ws_ssl": true
+}
+
+# → 201
+# {
+#   "build_record_created": true,
+#   "build_id": 12,
+#   "status": "queued",
+#   "message": "Firmware build job created successfully"
+# }
+
+### Records de l'org — paginés D14, filtres device_id (exact) et
+### success=true|false ; tri id DESC (plus récent d'abord).
+GET {{host}}/api/v1/build-records?limit=10&offset=0
+Authorization: Bearer {{token}}
+X-Org-Id: 4
+
+### Supprimer un record — 400 si build réussi, 400 si le device existe
+### encore, 204 sinon (l'artefact n'est PAS supprimé — rétention D6) ;
+### 404 si le record a déjà été nettoyé avec son device.
+DELETE {{host}}/api/v1/build-records/12
+Authorization: Bearer {{token}}
+X-Org-Id: 4
+
+### Télécharger le binaire du dernier build réussi du device — proxy des
+### octets (pas d'URL présignée), attachment {device_id}-firmware.bin ;
+### 404 si aucun build réussi / artefact absent.
+GET {{host}}/api/v1/download/firmware/capteur-jardin
+Authorization: Bearer {{token}}
+X-Org-Id: 4

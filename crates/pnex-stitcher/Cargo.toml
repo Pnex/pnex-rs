@@ -1,0 +1,38 @@
+[package]
+name = "pnex-stitcher"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Assemblage d'un anneau de photos guidées en équirectangulaire 2:1 — pure Rust, sans OpenCV (Take 360 v1)"
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+# Pas de rayon : le pool global deadlock sur Android device (cf. render.rs)
+# et à 1024 px le rendu sérial passe en ~1-2 s.
+thiserror = { workspace = true }
+# Solve rotation 3×3 (Horn, Cholesky) du raffinement de pose par modèle.
+nalgebra = { version = "0.35", optional = true, default-features = false, features = ["std"] }
+# Inférence ONNX native (SuperPoint + LightGlue) — feature `pose-model`
+# SERVER ONLY : le device Android garde la crate sans dep native (le
+# frontend compile pnex-stitcher sans features, pipeline Legacy).
+ort = { version = "=2.0.0-rc.13", optional = true }
+
+[features]
+pose-model = ["dep:ort", "dep:nalgebra"]
+
+[dev-dependencies]
+# Re-stitch hôte d'une capture réelle (examples/restitch.rs).
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[[example]]
+name = "probe_model"
+required-features = ["pose-model"]
+
+[[example]]
+name = "probe_pair"
+required-features = ["pose-model"]
+
+[[example]]
+name = "audit_poses"
+required-features = ["pose-model"]

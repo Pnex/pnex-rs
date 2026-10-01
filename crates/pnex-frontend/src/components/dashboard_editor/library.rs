@@ -1,0 +1,205 @@
+//! Bibliothèque de widgets (palette à la demande, D41) — templates de
+//! l'org. **Armer-glisser** : pointerdown arme le modèle, le pointerup sur
+//! le canvas pose un **snapshot** (D41 : éditer le modèle n'affecte jamais
+//! les instances). Les « + Nouveau » du panneau historique sont devenus les
+//! items de la palette coquille (clic = widget vide du type, source à
+//! compléter dans l'inspecteur) ; ce fichier porte le pied de popover
+//! (modèles serveur) et le registre types↔icônes.
+
+use crate::api;
+use crate::components::confirm::ConfirmDialog;
+use crate::components::editor_shell::{PaletteIcon, PaletteItem};
+use crate::components::icons;
+use crate::state::toasts;
+use dioxus::prelude::*;
+use dioxus_i18n::t;
+
+use super::state;
+use super::EditorCx;
+
+/// Palette key opening the symbol library (not a widget kind: a symbol
+/// needs a shape, picked in the library panel).
+pub const SYMBOLS_KEY: &str = "symbol";
+
+const KIND_LABELS: [(&str, &str); 6] = [
+    ("gauge", "lib-kind-gauge"),
+    ("stat", "lib-kind-stat"),
+    ("line", "lib-kind-line"),
+    ("indicator", "lib-kind-indicator"),
+    ("text", "lib-kind-text"),
+    ("thermo_chart", "lib-kind-thermo_chart"),
+];
+
+pub fn kind_label(kind: &str) -> String {
+    // t! exige des littéraux : match explicite (la liste KIND_LABELS
+    // reste la source des boutons).
+    match kind {
+        "gauge" => t!("lib-kind-gauge").to_string(),
+        "stat" => t!("lib-kind-stat").to_string(),
+        "line" => t!("lib-kind-line").to_string(),
+        "indicator" => t!("lib-kind-indicator").to_string(),
+        "text" => t!("lib-kind-text").to_string(),
+        "thermo_chart" => t!("lib-kind-thermo_chart").to_string(),
+        "symbol" => t!("lib-kind-symbol").to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// Icône + tuile d'un type de widget (palette + en-tête d'inspecteur).
+pub fn kind_icon(kind: &str) -> (PaletteIcon, &'static str) {
+    match kind {
+        "gauge" => (PaletteIcon::Gauge, "bg-blue-50 text-blue-600"),
+        "stat" => (PaletteIcon::Hash, "bg-blue-50 text-blue-600"),
+        "line" => (PaletteIcon::LineChart, "bg-green-50 text-green-600"),
+        "indicator" => (PaletteIcon::CheckCircle, "bg-emerald-50 text-emerald-600"),
+        "text" => (PaletteIcon::Info, "bg-gray-100 text-gray-600"),
+        "thermo_chart" => (PaletteIcon::Thermometer, "bg-amber-50 text-amber-600"),
+        "symbol" => (PaletteIcon::Shapes, "bg-violet-50 text-violet-600"),
+        _ => (PaletteIcon::Puzzle, "bg-gray-100 text-gray-600"),
+    }
+}
+
+/// Items de la palette coquille — un par type de widget (clic = ajout).
+pub fn palette_items() -> Vec<PaletteItem> {
+    let mut items: Vec<PaletteItem> = KIND_LABELS
+        .iter()
+        .map(|(kind, _)| {
+            let (icon, tile) = kind_icon(kind);
+            PaletteItem::new((*kind).to_string(), kind_label(kind)).with_icon(icon, tile)
+        })
+        .collect();
+    let (icon, tile) = kind_icon(SYMBOLS_KEY);
+    items.push(
+        PaletteItem::new(SYMBOLS_KEY, t!("sym-library").to_string())
+            .with_description(t!("sym-library-desc").to_string())
+            .with_icon(icon, tile),
+    );
+    items
+}
+
+/// Ajout d'un widget vide du type — ex-boutons « + Nouveau » de la
+/// bibliothèque, désormais déclenchés par le pick de la palette.
+pub fn add_new_widget(mut cx: EditorCx, kind: &str) {
+    let current = cx.layout.read().clone();
+    cx.history.with_mut(|h| h.push(&current));
+    cx.counter.with_mut(|c| *c += 1);
+    let id = state::next_id("w", cx.counter.cloned());
+    let x = 80 + (cx.counter.cloned() % 8) as i64 * 24;
+    let y = 80 + (cx.counter.cloned() % 8) as i64 * 24;
+    cx.layout
+        .with_mut(|l| state::new_widget(l, id.clone(), kind, x, y));
+    cx.selected.set(Some(super::Selection::Widget(id)));
+}
+
+/// Adds a symbol widget of the catalog shape (library panel pick).
+pub fn add_symbol(mut cx: EditorCx, shape: &str) {
+    let current = cx.layout.read().clone();
+    cx.history.with_mut(|h| h.push(&current));
+    cx.counter.with_mut(|c| *c += 1);
+    let n = cx.counter.cloned() as i64;
+    let id = state::next_id("w", n as u32);
+    // Symbols are small: spread them on a 90 px grid instead of the
+    // 24 px cascade of the card widgets (which would stack them).
+    let x = 80 + (n % 8) * 90;
+    let y = 80 + (n / 8 % 6) * 90;
+    cx.layout
+        .with_mut(|l| state::new_symbol(l, id.clone(), shape, x, y));
+    cx.selected.set(Some(super::Selection::Widget(id)));
+}
+
+/// Une ligne de la bibliothèque : drag (armer le modèle) + suppression
+/// confirmée. Deux closures `move` par ligne → copie d'id par closure.
+fn library_rows(
+    loaded: &[pnex_core::VizWidget],
+    mut cx: EditorCx,
+    mut deleting: Signal<Option<String>>,
+) -> Vec<Element> {
+    loaded
+        .iter()
+        .map(|w| {
+            let widget = w.clone();
+            let wid_delete = w.id.clone();
+            let caption = kind_label(&w.kind);
+            rsx! {
+                div {
+                    key: "{widget.id}",
+                    class: "group flex items-center justify-between px-2 py-1.5 rounded border border-gray-100 hover:border-blue-200 hover:bg-blue-50 cursor-grab select-none",
+                    onpointerdown: move |_| {
+                        // Arme le drag : la pose se fait au pointerup
+                        // sur le canvas (snapshot au drop, D41).
+                        cx.drag_template.set(Some(widget.clone()));
+                    },
+                    div { class: "min-w-0",
+                        p { class: "truncate text-xs font-medium text-gray-800", "{widget.name}" }
+                        p { class: "text-[10px] text-gray-400", "{caption}" }
+                    }
+                    button {
+                        class: "shrink-0 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100",
+                        onclick: move |event| {
+                            event.stop_propagation();
+                            deleting.set(Some(wid_delete.clone()));
+                        },
+                        icons::Trash { class: "h-3.5 w-3.5" }
+                    }
+                }
+            }
+        })
+        .collect()
+}
+
+#[component]
+pub fn TemplateList(mut cx: EditorCx) -> Element {
+    let reload = cx.palette_reload;
+    let widgets = use_resource(move || async move {
+        let _ = reload();
+        api::dashboards::widgets(&crate::api::dashboards::WidgetLibraryFilters {
+            search: None,
+            kind: None,
+        })
+        .await
+        .ok()
+        .map(|p| p.results)
+    });
+    let loaded = widgets
+        .read()
+        .as_ref()
+        .cloned()
+        .flatten()
+        .unwrap_or_default();
+    let mut deleting: Signal<Option<String>> = use_signal(|| None);
+
+    rsx! {
+        div { class: "space-y-1",
+            if loaded.is_empty() {
+                p { class: "p-2 text-xs text-gray-400", {t!("lib-empty")} }
+            }
+            // Lignes précalculées en Vec<Element> : chaque ligne a DEUX
+            // closures `move` qui consomment des copies différentes de
+            // l'id — impossible dans une itération rsx directe.
+            for row in library_rows(&loaded, cx, deleting) {
+                {row}
+            }
+        }
+        if let Some(id) = deleting.cloned() {
+            ConfirmDialog {
+                title: t!("lib-title").to_string(),
+                message: t!("lib-delete-confirm").to_string(),
+                confirm_label: t!("common-delete").to_string(),
+                on_confirm: move |_| {
+                    let id = id.clone();
+                    spawn(async move {
+                        match api::dashboards::delete_widget(&id).await {
+                            Ok(()) => {
+                                toasts::success(t!("lib-deleted").to_string());
+                                cx.palette_reload.with_mut(|r| *r += 1);
+                            }
+                            Err(e) => toasts::error(e),
+                        }
+                        deleting.set(None);
+                    });
+                },
+                on_cancel: move |_| deleting.set(None),
+            }
+        }
+    }
+}

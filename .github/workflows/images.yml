@@ -1,0 +1,118 @@
+# Publish the multi-arch (amd64 + arm64) Docker images on main — same
+# build as `task docker:publish`, gated on a green CI run of that commit.
+#
+# Tags pushed for each image (pnex-server-rs, pnex-builder-rs):
+#   main-<shortsha>  immutable, pin it in pnex-deploy (--tag / VERSION)
+#   main, latest     moving tags, always the latest green main
+#
+# Required secrets: DOCKER_USERNAME, DOCKER_TOKEN (Docker Hub access
+# token with read/write scope on the shanisma namespace).
+
+name: Images
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  # Manual re-publish of the current main (e.g. after rotating the token).
+  workflow_dispatch:
+
+env:
+  REGISTRY: docker.io/shanisma
+  PLATFORMS: linux/amd64,linux/arm64
+
+# One publish at a time; a newer main commit supersedes a queued one.
+# Runs that will be skipped (CI cancelled/failed) get their own throwaway
+# group: concurrency applies before the job `if`, so in the shared group they
+# would cancel an in-progress publish (e.g. a manual dispatch) and then skip.
+concurrency:
+  group: >-
+    ${{ (github.event_name == 'workflow_dispatch' ||
+         github.event.workflow_run.conclusion == 'success')
+        && 'images-main' || format('images-skip-{0}', github.run_id) }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: docker buildx (server + builder)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: [self-hosted, linux]
+    steps:
+      # Isolated docker config: the CI login must not overwrite the runner
+      # user's ~/.docker/config.json. (`runner` context is not available in
+      # job-level env.) DOCKER_CONFIG also moves the CLI plugin lookup, so the
+      # user's ~/.docker/cli-plugins (buildx) is linked into it.
+      - name: Isolated docker config
+        run: |
+          cfg="$RUNNER_TEMP/docker-config"
+          rm -rf "$cfg" && mkdir -p "$cfg"
+          [ -d "$HOME/.docker/cli-plugins" ] && ln -s "$HOME/.docker/cli-plugins" "$cfg/cli-plugins"
+          echo "DOCKER_CONFIG=$cfg" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # vendor/edgelinkd is part of the build context (COPY . .).
+          submodules: true
+      - name: Tags
+        id: tags
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Docker Hub login
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
+        run: |
+          mkdir -p "$DOCKER_CONFIG"
+          echo "$DOCKER_TOKEN" | docker login docker.io -u "$DOCKER_USERNAME" --password-stdin
+      - name: arm64 emulation (builder image PlatformIO prewarm)
+        run: |
+          [ -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ] \
+            || docker run --privileged --rm tonistiigi/binfmt --install arm64
+      # Pinned buildx (installed into $DOCKER_CONFIG/cli-plugins when the host
+      # has none) + a docker-container builder: multi-platform push works
+      # whatever the host's image store. Named + keep-state = warm layer cache
+      # across runs.
+      - uses: docker/setup-buildx-action@v3
+        with:
+          version: v0.37.1
+          name: pnex-images
+          driver: docker-container
+          # Hard cap the BuildKit container at 10 CPUs: web, amd64 and arm64
+          # stages build in parallel and would otherwise each take every core
+          # of node-worker-2 (cargo sizes its jobs from the cpuset). It runs
+          # under dockerd, outside the runner's cgroup, so cap memory too.
+          driver-opts: |
+            cpuset-cpus=0-9
+            memory=10g
+            memory-swap=10g
+          keep-state: true
+      - name: Build + push pnex-server-rs
+        run: |
+          docker buildx build -f deploy/docker/Dockerfile \
+            --platform "$PLATFORMS" --target server \
+            -t "$REGISTRY/pnex-server-rs:main-${{ steps.tags.outputs.short }}" \
+            -t "$REGISTRY/pnex-server-rs:main" \
+            -t "$REGISTRY/pnex-server-rs:latest" \
+            --push .
+      - name: Build + push pnex-builder-rs
+        run: |
+          docker buildx build -f deploy/docker/Dockerfile \
+            --platform "$PLATFORMS" --target builder \
+            -t "$REGISTRY/pnex-builder-rs:main-${{ steps.tags.outputs.short }}" \
+            -t "$REGISTRY/pnex-builder-rs:main" \
+            -t "$REGISTRY/pnex-builder-rs:latest" \
+            --push .
+      - name: Summary
+        run: |
+          {
+            echo "### Published"
+            echo "- \`$REGISTRY/pnex-server-rs:main-${{ steps.tags.outputs.short }}\`"
+            echo "- \`$REGISTRY/pnex-builder-rs:main-${{ steps.tags.outputs.short }}\`"
+            echo "(also tagged \`main\` and \`latest\`)"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Docker logout
+        if: always()
+        run: docker logout docker.io || true

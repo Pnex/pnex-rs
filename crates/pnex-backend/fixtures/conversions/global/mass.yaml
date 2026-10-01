@@ -1,0 +1,68 @@
+# Global Mass Conversions
+# These conversions are available for all users to import
+
+- global_id: "kilogram_to_pound_v1"
+  name: "Kilogram to Pound"
+  version: 1
+  category: "mass"
+  tags: ["mass", "weight", "imperial", "metric"]
+  description: "Convert mass from Kilogram to Pound"
+  from_unit: "kg"
+  to_unit: "lb"
+  conversion_type: "linear"
+  multiplier: 2.20462
+
+- global_id: "pound_to_kilogram_v1"
+  name: "Pound to Kilogram"
+  version: 1
+  category: "mass"
+  tags: ["mass", "weight", "imperial", "metric"]
+  description: "Convert mass from Pound to Kilogram"
+  from_unit: "lb"
+  to_unit: "kg"
+  conversion_type: "linear"
+  multiplier: 0.453592
+
+- global_id: "gram_to_ounce_v1"
+  name: "Gram to Ounce"
+  version: 1
+  category: "mass"
+  tags: ["mass", "small", "cooking", "precious_metals"]
+  description: "Convert mass from Gram to Ounce"
+  from_unit: "g"
+  to_unit: "oz"
+  conversion_type: "linear"
+  multiplier: 0.035274
+
+- global_id: "tonne_to_ton_v1"
+  name: "Metric Ton to US Ton"
+  version: 1
+  category: "mass"
+  tags: ["mass", "large", "shipping", "industrial"]
+  description: "Convert mass from Metric Ton to US Ton"
+  from_unit: "t"
+  to_unit: "ton"
+  conversion_type: "linear"
+  multiplier: 1.10231
+
+- global_id: "milligram_to_grain_v1"
+  name: "Milligram to Grain"
+  version: 1
+  category: "mass"
+  tags: ["mass", "tiny", "pharmacy", "bullet_weight"]
+  description: "Convert mass from Milligram to Grain"
+  from_unit: "mg"
+  to_unit: "gr"
+  conversion_type: "linear"
+  multiplier: 0.0154324
+
+- global_id: "stone_to_kilogram_v1"
+  name: "Stone to Kilogram"
+  version: 1
+  category: "mass"
+  tags: ["mass", "body_weight", "uk", "imperial"]
+  description: "Convert mass from Stone to Kilogram"
+  from_unit: "st"
+  to_unit: "kg"
+  conversion_type: "linear"
+  multiplier: 6.35029
