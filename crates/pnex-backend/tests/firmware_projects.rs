@@ -223,6 +223,17 @@ async fn provisioning_picks_a_custom_firmware() {
         res.assert_status_bad_request();
         assert_eq!(res.json::<serde_json::Value>()["error"], "firmware-chip-mismatch");
 
+        // A predefined board keeps the firmware maintained by PneX.
+        let res = alice
+            .send(
+                "POST",
+                "/api/v1/devices",
+                json!({"device_id": "fw-soil", "predefined_device_name": "soil_sensor", "firmware_project_id": esp8266_id}),
+            )
+            .await;
+        res.assert_status_bad_request();
+        assert_eq!(res.json::<serde_json::Value>()["error"], "firmware-family-locked");
+
         // Another org's project is not usable.
         let bob = Client {
             org: personal_org(&server, &env.bob).await,

@@ -16,22 +16,6 @@
   description: "Read Soil moisture and temperature"
   description_i18n: device-predef-soil-sensor-desc
 
-# Generic/Custom devices for dynamic data publication
-- name: custom_device
-  pretty_name: Custom Device (Dynamic)
-  revision: 1.0.0
-  device_type_name: mixed
-  capabilities_names: []  # No predefined capabilities - allows dynamic measurements
-  board_name: generic
-  device_doc_url: "/docs/DYNAMIC_DEVICES.md"
-  prestashop_product_id: 201
-  prestashop_buy_url: "http://example.com/custom"
-  byod_doc_url: "/docs/DYNAMIC_DEVICES.md"
-  image_source_url: "http://example.com/custom_device"
-  stl_files_url: "http://example.com/custom"
-  description: "Generic mixed device (sensor + actuator) for publishing custom measurements and controlling outputs. Fully flexible - define your own capabilities at runtime. Ideal for complex custom IoT solutions."
-  description_i18n: device-predef-custom-device-desc
-
 # Brick 0 — generic firmware, compiled per device (the reusable .bin of
 # B0.1 was dropped on 2026-09-02). The device announces itself on
 # /ws/device; admission is validated against chip-caps + overlay

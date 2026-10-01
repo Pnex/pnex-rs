@@ -380,6 +380,16 @@ pub(super) async fn create(
     // Custom firmware chosen at provisioning (D94): project of the org whose
     // chip family matches the frozen board SoC.
     if let Some(pid) = params.firmware_project_id {
+        // Predefined boards and agents keep their firmware (edge-model.md §2 bis).
+        if !pnex_core::DeviceFamily::of(&predefined.name).accepts_custom_firmware() {
+            return Err(Error::CustomError(
+                StatusCode::BAD_REQUEST,
+                loco_rs::controller::ErrorDetail::new(
+                    err_codes::FIRMWARE_FAMILY_LOCKED,
+                    "This model runs a firmware maintained by PneX: only generic models accept a custom firmware.",
+                ),
+            ));
+        }
         let project = crate::models::_entities::firmware_projects::Entity::find_by_id(pid)
             .filter(crate::models::_entities::firmware_projects::Column::OrgId.eq(org.org.id))
             .one(&ctx.db)
