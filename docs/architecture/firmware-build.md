@@ -226,6 +226,12 @@ le modal affiche l'avertissement et renvoie vers le téléchargement + esptool).
 
 ## 5. Tier 2 — build local par l'utilisateur (package PIO, 2026-09-14)
 
+> **Retiré de l'UI depuis l'IDE de firmware custom (D87–D94,
+> `custom-firmware.md`)** : le wizard ne propose plus `custom_device` ni les
+> snippets à compiler en local. Ce qui reste valable : l'admission par
+> manifeste `Announce.pins` (utilisée par les firmwares de l'IDE) et la lib
+> PneX commune. Familles de devices : `edge-model.md` §2 bis.
+
 Depuis la lib `firmware/lib/pnex/` (`PneX`), le firmware générique est
 **publiable** (`pio pkg publish`) et compilable par l'utilisateur final :
 

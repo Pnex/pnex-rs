@@ -62,6 +62,49 @@ Les ids de capacités respectent le canon D16 (`[a-z0-9_:]`).
 - wizard et dashboards templates par capacité ; versioning **additif
   only** (école CONTRACT) : `capabilities.v1`, jamais de renommage.
 
+## 2 bis. Familles produit de devices (2026-10-01)
+
+La taxonomie D44 (capacité / driver / profil) décrit le **contenu** d'un
+firmware. Côté produit, l'utilisateur choisit d'abord une **famille** :
+
+| Famille | Ce que l'utilisateur fait | Code | Modèles du catalogue |
+|---|---|---|---|
+| **Générique PneX** (entrées/sorties) | Configure ses pins depuis l'UI (modes, write, subscribe, PWM) | Aucun — firmware générique compilé par device | `generic_esp8266`, `generic_esp32c3`, `generic_esp32`, `generic_esp32s3` |
+| **IDE custom** | Écrit son `main.cpp` (métriques, commandes) dans l'IDE | Projet firmware versionné, compilé par le serveur (D87–D94) | Un projet choisi à l'étape Modèle, sur la carte d'un générique |
+| **Prédéfinie** (prête à l'emploi) | Branche une carte typée et fonctionnelle dont PneX garantit la compatibilité ; les fonctions sont prédéfinies | Firmware dédié maintenu par PneX, **imposé par le modèle** : aucun choix firmware ↔ carte | `soil_sensor`, `generic_esp32cam` (vidéo) ; à venir : cartes de régulation (D20, F3 `regulator`) |
+| *Hors cartes* — **agents** | Installe un binaire sur un PC / Raspberry Pi | Agent edge (D95–D99) | `edge_agent` |
+
+Règle de la famille prédéfinie (décision utilisateur 2026-10-01) : le
+firmware d'une carte prédéfinie **n'est pas géré par l'utilisateur**. Il
+figure dans la liste des firmwares disponibles, rattaché à sa carte
+compatible, en lecture seule ; l'assistant n'offre **aucune sélection** de
+firmware pour ce modèle (le couple firmware ↔ carte est figé par le
+catalogue). Les mises à jour viennent des versions PneX (rebuild / OTA).
+
+Points ouverts (constatés au 2026-10-01, à trancher) :
+
+1. **`custom_device` (Tier 2 local)** : retiré de l'assistant mais encore au
+   catalogue et accepté par l'API ; un build serveur est accepté puis échoue
+   dans le worker (pas de projet `custom_device` dans `firmware/`), et sa
+   page détail rend une carte vide. Aucune famille ne l'accueille →
+   retrait du catalogue et refus à la création.
+2. **Carte `generic`** : absente de `mcu.yaml`, créée à la volée par le seed
+   (`soc = generic`) pour `custom_device` et `edge_agent`. Un agent n'a pas
+   de carte : `board_id` nullable pour la famille agents plutôt qu'une
+   carte fantôme.
+3. **Nommage** : `generic_esp32cam` porte « Generic » mais relève des
+   cartes prêtes à l'emploi (fonction vidéo prédéfinie).
+4. **IDE custom ↔ famille** : la garde actuelle ne vérifie que la puce ; un
+   projet peut donc être attaché à `soil_sensor`, et l'assistant affiche le
+   choix de firmware pour tout modèle dont la carte a un profil. Contraire
+   à la règle ci-dessus : sélecteur et garde serveur à restreindre à la
+   famille générique.
+6. **Liste des firmwares** : la page `/firmware` ne liste que les projets
+   de l'IDE ; les firmwares prédéfinis (et le générique) y figureront en
+   lecture seule avec leur carte compatible.
+5. **Assistant** : une seule section « Traditionnel (strict) » regroupe
+   tout le catalogue ; à remplacer par les familles ci-dessus.
+
 ## 3. Firmware en couches (toujours PIO)
 
 ```
