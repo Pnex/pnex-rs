@@ -10,7 +10,8 @@
 > **Revue du 2026-10-01** : resynchronisée avec l'historique (agent local,
 > caméra V+W, nœuds prédictifs, firmware custom, cluster D106–D108 livrés
 > depuis la création). Priorité recommandée : un **sprint de
-> consolidation court** (N5, E2E cluster, banc matériel) avant le
+> consolidation court** (E2E cluster, banc matériel — N5 fermé par le
+> coffre de secrets le même jour) avant le
 > prochain gros chantier (extension navigateur). Nouveau tronc : la
 > **palette de nœuds par catégories** (P1.7, D109) puis la **parité
 > n8n** (P2.11).
@@ -107,7 +108,7 @@ tâche).
 | **Firmware ESP générique** (F1/F2) | Consolidé — `common_libs/pnex-transport`, `Announce.caps`, StateReport par capacité ; flash F1/F2 validé réel (NodeMCU, ESP32-C3 0639ee4) | **F3 firmware `regulator`** (persist D45, buffer D46, boucle) — hardware requis ; e2e carte réelle Brick 0 jamais flashée ; OTA sur ESP32 réel (8266 OK) |
 | **Flow engine** | Consolidé — ETL full-Rust, device read/write (routage topic 90f23e0), calc, debug, http_fetch (C1a), nœud notify, cache live Valkey (b966c1a→e7257f8), **exclusivité write par pin** (8d60950), nœuds caméra/vision/mémoire/prédictifs, cluster D106 ; deploy de la version affichée + présence multi-utilisateurs dans l'éditeur (2578ffe) | Palette par catégories (P1.7) puis par capacité (ouverture §12), E2E matériel du write/PWM, ack des commandes non persisté (brick0 §10) |
 | **Fonctions custom** | Livré — JS (rquickjs) + Starlark (`_` privé, json en extension) | Limite acceptée : interrupt handler rquickjs ; payload remplacé (pas merge) — rien d'ouvert |
-| **Notifications** | N1–N4 livrées (7 canaux, templates, anti-spam, canaux dédiés D61–D65), D66–D68 (trigger booléen), journal O2 D86, fan-out `/ws/notify` multi-pods | **N5 chiffrement AEAD des secrets** (toujours en clair au 2026-10-01), N6 points d'extension, canal gotify en réserve |
+| **Notifications** | N1–N4 livrées (7 canaux, templates, anti-spam, canaux dédiés D61–D65), D66–D68 (trigger booléen), journal O2 D86, fan-out `/ws/notify` multi-pods | ~~N5 chiffrement AEAD des secrets~~ fermé par le coffre de secrets (2026-10-01) ; N6 points d'extension, canal gotify en réserve |
 | **OTA** | Livré + E2E réel 8266 (2 cycles ~23 s, boucle 4003 anti-clone) | ESP32 réel ; politique de re-flash quand v2 du `.bin` (brick0 §10) |
 | **Devices / pins** | Consolidé — CRUD, catalogue, quotas, pinout SVG v2, board variants, placements D43 | E2E matériel (write/PWM, fraîcheur read via Valkey) |
 | **TFT / écrans** | V2 livré — barre dès boot, timeline OTA, panneau 21 pins (8e69519) | E2E matériel (tft_dev) |
@@ -127,7 +128,9 @@ tâche).
 | **Caméra & vidéo** (D73–D86, D100–D104) | **Phases V et W implémentées** (2026-09-29/30) : `/ws/camera`, CameraHub, `camera-source`/`video-record`/`vision-detect`/`event-log`, registre `ml_models` (tract YOLOX), fiabilité W5 ; flash web ESP32-CAM-MB validé, stream 5 fps stable (XCLK 16 MHz) | E2E complet caméra → vision → événement → notification sur carte réelle |
 | **Workers / fabric** | 2 workers Loco CPU co-localisés sur le control plane (`build_firmware`, `stitch_panorama`) ; claim idempotent + timeout par job (stitch, 2026-10-01) ; **PRD fabric proposé** (`worker-fabric.md`, 2026-09-25) | Validation du PRD (P1.6) puis MVP (P2.7) — pré-requis de tout job GPU (Gaussian Splatting, axe C) |
 | **Prédictif** (anomaly/forecast) | **Livré** 2026-09-29 (`pnex-node-predict` : BOCPD maison + forecast) — étape 3 du pilier ML/Vision | Branchement documenté anomalie → notify (cas « anomalie persistante ») ; E2E sur séries réelles |
-| **Firmware custom** (D87–D94) | **En cours** — L1, L3, L5 livrés ; L2/L4 partiels ; provisioning 1→N devices, Verify en job de file | Sandbox du worker de build (D91) complète ; E2E BME280 → O2 → flow → notification |
+| **Firmware custom** (D87–D94) | **Livré, désactivé par défaut** — L1, L3, L4, L5 : API `addMetric`/`publish`/`onCommand`, projets + révisions, catalogue de libs, Verify en job de file, firmware choisi au provisioning (1→N devices, build de la dernière révision) ; L2 partiel (bwrap optionnel, pas actif en stack dev) | Sandbox D91 réelle, magasin de libs offline, nœud flow des commandes custom, révision déployée sur la page device (D94), E2E BME280 → O2 → flow → notification |
+| **Coffre de secrets** (D110–D119) | **Livré 2026-10-01** — S1–S8 (`secrets.md`) : XChaCha20-Poly1305, trousseau en env, références typées, runtime qui résout par id, rôle `member`, rotation + rechiffrement | Clés device et tokens agent hors coffre (chiffrement au repos possible plus tard) |
+| **API publique** | **Rien** — aucune API destinée aux programmes tiers en dehors de l'agent edge (push de valeurs) | Horizon P3 (abonnements live, jetons à portée, REST documentée) |
 | **Mémoire d'org** (Valkey) | Livré — `memory-write`/`memory-read` par org, source « Mémoire » des widgets | — |
 
 ## P0 — Consolidation : fermer le livré non validé
@@ -160,6 +163,9 @@ des docs est levée ou convertie en ticket précis. Mise à jour des docs de
 domaine + roadmap.
 
 ### P0.2 — N5 : chiffrement AEAD des secrets de notifications
+
+> **✅ Livré le 2026-10-01** par le coffre de secrets (S1–S8,
+> `secrets.md`). Section conservée pour l'historique.
 
 > **Élargi le 2026-10-01** en coffre de secrets par org
 > (`secrets.md`, D110–D118, tranché) : notifications, nœud HTTP, WiFi,
@@ -405,7 +411,8 @@ Pré-requis, dans l'ordre :
 4. **Déclencheurs** : webhook entrant, cron (aujourd'hui dans inject),
    événement plateforme (device en ligne/hors ligne, alerte, OTA).
 5. **Credentials** : coffre par org réutilisable par les nœuds
-   (s'appuie sur le chiffrement AEAD de N5 — P0.2 devient pré-requis).
+   (s'appuie sur le coffre de secrets livré, `secrets.md` — le nœud
+   http-fetch l'utilise déjà).
 6. **Intégrations** : HTTP générique d'abord (http-fetch enrichi :
    méthodes, auth, pagination), puis nœuds dédiés par service.
 
@@ -430,6 +437,16 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   managée par API job authentifiée, multi-tenant, compute managé (v3,
   lié au PRD monétisation). La fabric enregistre et route, elle ne
   provisionne jamais (pas de fleet manager).
+- **API publique pour programmes tiers** (ajout 2026-10-01) : n'importe
+  quel programme **s'abonne en live** aux valeurs d'un device ou aux
+  événements publiés par un flow, lit l'historique et écrit sur un pin
+  (pin libre uniquement — jamais un pin piloté par un flow, règle 8d60950).
+  Volet complet : **jetons à portée limitée** (lecture / écriture, par
+  device ou par flow, révocables, distincts des tokens device et du JWT
+  utilisateur), transport à trancher (WebSocket, SSE ou appels REST),
+  API REST documentée sur les mêmes jetons. Aujourd'hui seul le push de
+  valeurs existe, via l'agent edge (D95–D99). Hors 0.1.0 : la priorité
+  est le contenu pour faire adhérer une communauté. Décision #11.
 - **Ouvertures** : palette flow par capacité (au moment où l'éditeur
   touche aux formulaires D20), compression du fil MCU (jamais un
   prérequis), sous-titres/tours offline.
@@ -448,6 +465,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 | 8 | Fabric de workers : la queue Loco couvre-t-elle lease/heartbeat/reaper (sinon le coder) ; durée du lease sur jobs longs ; archetype distant du MVP | À la validation du PRD (P1.6) |
 | 9 | Firmware custom : nœud flow des commandes (D88), 1er lot du catalogue (D92), technique de sandbox V1 (D91, à aligner avec P1.6) | Au lancement de P2.10 |
 | 10 | Parité n8n : périmètre V1 (logique de flux, déclencheurs, credentials, quelles intégrations d'abord) et descripteur généré vs inspecteurs dédiés | Au PRD de P2.11 |
+| 11 | API publique : transport des abonnements live (WebSocket vs SSE vs REST), modèle de jetons (portée device/flow, lecture/écriture, rotation), lien avec les déclencheurs webhook de P2.11 | Au passage de P3 à P2 |
 
 ## Journal de la roadmap
 
@@ -520,3 +538,10 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   fournisseurs LLM en CRUD (retrait sec de `PNEX_AI_*`), pas de rebuild
   en cascade au changement d'un WiFi. Au passage : `PNEX_PROD_HOST` fige
   le serveur des firmwares et des apps natives en production.
+- **2026-10-01 (resynchronisation site)** — N5/P0.2 marqués livrés (coffre
+  de secrets) ; firmware custom passé à « livré, désactivé par défaut »
+  (L4 complet depuis le build au provisioning, reste la sandbox réelle et
+  l'offline). Ajout de l'**API publique** en P3 (abonnements live,
+  jetons à portée, REST documentée ; décision #11) : rien n'existe hors
+  du push via l'agent edge, et la 0.1.0 reste centrée sur le contenu
+  communautaire. Roadmap publique du site (`pnex-website`) alignée.

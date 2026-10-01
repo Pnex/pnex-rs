@@ -1,6 +1,6 @@
 # PRD — Firmware custom : IDE intégré, source versionnée en base (D87–D94)
 
-**Statut :** En cours — L1, L3, L5 livrés ; L2/L4 partiels (2026-09-29, cf. §14)
+**Statut :** Livré, désactivé par défaut — L1, L3, L4, L5 livrés ; L2 partiel (sandbox bwrap optionnelle) ; offline et nœud flow des commandes restent (2026-10-01, cf. §14)
 **Portée :** firmware ESP (lib PneX), build serveur, front (éditeur), protocole device
 **Renvois :** `firmware-build.md` (pipeline de build par device), `edge-model.md`
 (D44–D48 : manifeste de capacités, golden vectors), `ota.md`, `worker-fabric.md`
