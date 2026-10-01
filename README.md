@@ -19,6 +19,7 @@
   <a href="https://github.com/Pnex/pnex-rs/actions/workflows/ci.yml?query=branch%3Amain"><img alt="CI" src="https://github.com/Pnex/pnex-rs/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/Pnex/pnex-rs/actions/workflows/firmware.yml?query=branch%3Amain"><img alt="Firmware" src="https://github.com/Pnex/pnex-rs/actions/workflows/firmware.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/Pnex/pnex-rs/actions/workflows/images.yml"><img alt="Docker images" src="https://github.com/Pnex/pnex-rs/actions/workflows/images.yml/badge.svg"></a>
+  <a href="https://github.com/Pnex/pnex-rs/actions/workflows/apps.yml"><img alt="Apps (desktop + Android)" src="https://github.com/Pnex/pnex-rs/actions/workflows/apps.yml/badge.svg"></a>
   <a href="https://hub.docker.com/r/shanisma/pnex-server-rs"><img alt="Docker pulls" src="https://img.shields.io/docker/pulls/shanisma/pnex-server-rs?logo=docker&label=pulls"></a>
 </p>
 <p align="center">
@@ -28,6 +29,13 @@
   <a href="firmware"><img alt="ESP8266 · ESP32 · C3 · S3" src="https://img.shields.io/badge/boards-ESP8266%20%C2%B7%20ESP32%20%C2%B7%20C3%20%C2%B7%20S3-e7352c?logo=espressif&logoColor=white"></a>
   <a href="https://pnex.io/roadmap"><img alt="Status: beta 0.1.0" src="https://img.shields.io/badge/status-beta%200.1.0-yellow"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Pnex/pnex-rs/releases/tag/nightly"><img alt="Download Linux x86_64 · ARM64" src="https://img.shields.io/badge/Linux-x86__64%20%C2%B7%20ARM64-FCC624?logo=linux&logoColor=black"></a>
+  <a href="https://github.com/Pnex/pnex-rs/releases/download/nightly/pnex-desktop-windows-x86_64.zip"><img alt="Download Windows x86_64" src="https://img.shields.io/badge/Windows-x86__64-0078D6?logo=windows&logoColor=white"></a>
+  <a href="https://github.com/Pnex/pnex-rs/releases/download/nightly/pnex-android-arm64.apk"><img alt="Download Android APK" src="https://img.shields.io/badge/Android-APK%20arm64-3DDC84?logo=android&logoColor=white"></a>
+  <br><sub>Nightly builds of the native apps, from the latest green <code>main</code>.</sub>
 </p>
 
 <p align="center">
