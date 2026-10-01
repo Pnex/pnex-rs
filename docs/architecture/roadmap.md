@@ -113,15 +113,17 @@ tâche).
 | **Devices / pins** | Consolidé — CRUD, catalogue, quotas, pinout SVG v2, board variants, placements D43 | E2E matériel (write/PWM, fraîcheur read via Valkey) |
 | **TFT / écrans** | V2 livré — barre dès boot, timeline OTA, panneau 21 pins (8e69519) | E2E matériel (tft_dev) |
 | **Média (D21) + Take 360** | Couche 1 livrée ; Take 360 V2 serveur + V3 guidage device-validé + auto-cal focale | Capture portrait 2 anneaux, résolution 1080+, iOS/web, calibration par device |
-| **Viz** (carte POI-first D35–D39, dashboards D40/D41) | Mergés | Décisions §9 : sort des tables dormantes, style de tuiles configurable, widget psychrométrique/Mollier ; E2E interactif + Android |
+| **Viz** (carte POI-first D35–D39, dashboards D40/D41) | Mergés ; tables dormantes supprimées (migration de base D120, 2026-10-01) | Décisions §9 : style de tuiles configurable, widget psychrométrique/Mollier ; E2E interactif + Android |
 | **Studio** (tours + annotations) | Mergés (0aae2ad, 9e78241) | Maquette 3D, LRU panoramas, éditeur vue initiale, export offline ; annotations : reste couche ETL/device |
 | **Assistant IA v1** | Implémenté — 10 outils fermés, devices read-only (A4) | Tranches suivantes non spécifiées |
 | **Collection C1a** | http_fetch livré (2026-09-15) | — |
 | **Extension navigateur (C1b)** | **Spec écrite** (`extension-collector.md`, 10 décisions) — implémentation = jalon C3 | Implémentation après validation de la spec |
 | **Agent local (C2)** | **Livré** (2026-09-30) (`edge-agent.md`, D95–D99) : API locale libre, file disque, enrôlement une commande, Linux musl + Windows | Test Windows réel, macOS, pont WS devices LAN |
 | **M2M résilient (M1–M3)** | PRD posé (`m2m-resilient.md`) | M1 POC zenoh-pico WiFi (zéro achat), M2 6LoWPAN à prototyper avant engagement |
-| **Android** | Build + login PKCE E2E validé ; storage persistant ; scan LAN | **Branding APK** (`com.example` placeholder) + masquer le bouton Flash (stubs prêts) |
-| **Organisations (D42)** | Backend livré (000018) | **UI arbre** (couches org dans l'UI) |
+| **Android** | Build + login PKCE E2E validé ; storage persistant ; scan LAN ; APK arm64 publié à chaque `main` vert (CI Apps, pré-release `nightly`, signé debug → sideload) ; la fenêtre de flash indique « non disponible » (`flash::supported()` = false) | **Branding APK** (`com.example` placeholder) + masquer le bouton Flash + keystore de release (Play Store) |
+| **Desktop natif** | **Livré 2026-10-01** — Linux x86_64 / aarch64 et Windows x86_64 (cross mingw) : login, flash USB par esptool embarqué ; validé mainteneur sur Linux et Windows ; publié à chaque `main` vert (CI Apps, pré-release `nightly`), smoke test de démarrage sur un runner Windows | Paquets installables (.deb/.msi), signature de code, macOS |
+| **Schéma de base** (D120) | **Livré 2026-10-01** — une migration de base (SQL PG + SQLite), reliquats pré-coffre retirés, dérive SQLite corrigée (tables mortes, `map_pins`, FK manquantes), test de parité PG/SQLite bloquant (`migrations.md`) | Palier SQLite : E2E réel de bout en bout (jamais déroulé sur une install SQLite) |
+| **Organisations (D42)** | Backend livré (labels, containment, edges) | **UI arbre** (couches org dans l'UI) |
 | **Auth (D19)** | Rauthy livré, branding API, password grant, OIDC natif | — |
 | **CoolProp** | In-process mergé (d126225) | — |
 | **Brick 0** (prototypage rapide) | PRD (`brick0.md`) | e2e carte réelle, quota mixed 0→1 à valider, persistance ack |
@@ -193,7 +195,7 @@ manifests k8s dans `pnex-deploy` (flow-engine §7, point 6).
 
 ### P1.1 — Organisations : UI arbre (D42)
 
-Le backend (labels GIN, containment, edges, migration 000018) est livré ;
+Le backend (labels GIN, containment, edges) est livré ;
 il manque l'UI (arbre des couches org). Sans elle, la couche org n'existe
 pas pour l'utilisateur — c'est le plus grand trou user-facing du socle.
 
@@ -201,8 +203,9 @@ pas pour l'utilisateur — c'est le plus grand trou user-facing du socle.
 
 Ordre conseillé déjà écrit dans features.md :
 
-1. Masquer le bouton « Flasher » (Web Serial absent d'Android ; stubs
-   `flash.rs` déjà en place) ;
+1. Masquer le bouton « Flasher » (Web Serial absent d'Android ;
+   aujourd'hui la fenêtre de flash s'ouvre et indique « non disponible »
+   via `flash::supported()`) ;
 2. Branding APK via `[bundle]` Dioxus.toml (sortir du placeholder
    `com.example.PnexFrontend`) avant toute diffusion.
 
@@ -364,9 +367,8 @@ Portrait 2 anneaux (16 à plat + 12 incliné), montée en résolution
 
 ### P2.6 — Viz : trancher les décisions §9
 
-1. Sort des tables dormantes (`sites`/`svg_files`/`site_diagrams`/
-   `annotations`/`saved_views`) : `SELECT count(*)` sur les PG de dev puis
-   décision drop/keep (si drop : migration de nettoyage séparée).
+1. ~~Sort des tables dormantes~~ : **supprimées** le 2026-10-01 par la
+   migration de base (D120, `migrations.md`).
 2. Style de tuiles configurable (constante/env front, repli vieux
    webviews sans WebGL1 à mesurer).
 3. Widget psychrométrique/Mollier (+ CoolProp in-process déjà mergé —
@@ -431,7 +433,8 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 - **M1 — POC M2M zenoh-pico WiFi** (sans broker, parc ESP existant, zéro
   achat) : coupure hub → la boucle continue. M2 (6LoWPAN) nécessite un
   prototype MTU avant tout engagement. UI de gestion seulement à M3.
-- **iOS / desktop** : décision de phase explicite (features.md).
+- **iOS** : décision de phase explicite (features.md). Le desktop est
+  livré (2026-10-01, Linux + Windows).
 - **Fabric de workers v2/v3** (`worker-fabric.md` §12) : générateur de
   script d'install + UI de fleet + pools GitOps/HPA (v2) ; frontière
   managée par API job authentifiée, multi-tenant, compute managé (v3,
@@ -545,3 +548,11 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   jetons à portée, REST documentée ; décision #11) : rien n'existe hors
   du push via l'agent edge, et la 0.1.0 reste centrée sur le contenu
   communautaire. Roadmap publique du site (`pnex-website`) alignée.
+- **2026-10-01 (première release)** — Historique git ramené à un commit ;
+  50 migrations fondues en une migration de base (D120, `migrations.md`) :
+  tables dormantes et reliquats pré-coffre supprimés, dérive SQLite
+  corrigée, parité PG/SQLite bloquante en CI. Pas de LLM plateforme
+  (D119). CI sur runners GitHub (dépôt public) ; nouvelle CI **Apps** :
+  desktop Linux x86_64/aarch64 + Windows x86_64 (cross) + APK Android,
+  publiés en pré-release `nightly` à chaque `main` vert. Desktop livré
+  (Windows validé mainteneur).
