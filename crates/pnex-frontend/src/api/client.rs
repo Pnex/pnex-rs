@@ -100,7 +100,16 @@ pub async fn request<T: DeserializeOwned>(
     path: &str,
     body: Option<serde_json::Value>,
 ) -> Result<T, ApiError> {
-    request_opt(method, path, body).await?.ok_or_else(|| {
+    match request_opt(method, path, body).await? {
+        Some(value) => Ok(value),
+        None => from_empty_body(),
+    }
+}
+
+/// Value of an empty 2xx body: `()` (a 204 DELETE/PATCH) reads it as JSON
+/// `null`; any type that needs a real body keeps the empty-body error.
+fn from_empty_body<T: DeserializeOwned>() -> Result<T, ApiError> {
+    serde_json::from_value(serde_json::Value::Null).map_err(|_| {
         ApiError::local(
             err_codes::CLIENT_EMPTY_BODY,
             "unexpected empty response",
@@ -239,4 +248,23 @@ async fn ensure_refresh() -> Result<(), ApiError> {
     let outcome = future.await;
     REFRESH_SLOT.with(|slot| *slot.borrow_mut() = None);
     outcome
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A 204 answers a `request::<()>` (deletes); a body-carrying type still
+    /// reports the empty response.
+    #[test]
+    fn empty_body_is_unit_only() {
+        assert!(from_empty_body::<()>().is_ok());
+        #[derive(Debug, serde::Deserialize)]
+        struct Row {
+            #[allow(dead_code)]
+            id: i64,
+        }
+        assert!(from_empty_body::<Row>().is_err());
+        assert!(from_empty_body::<Vec<Row>>().is_err());
+    }
 }
