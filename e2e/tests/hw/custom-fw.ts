@@ -2,11 +2,11 @@
 // registration, built server-side, flashed, its own metric shows up. The
 // board goes back to its generic e2e-c3 firmware afterwards.
 import { writeFileSync } from 'node:fs';
-import { expect, test } from '../src/fixtures.ts';
-import type { Api } from '../src/api.ts';
-import { BOARDS, WIFI, flashMerged, missingHardware } from '../src/hardware.ts';
-import { DevicesPage } from '../src/pages/devices.ts';
-import { dialog } from '../src/pages/shell.ts';
+import { expect, test } from '../../src/fixtures.ts';
+import type { Api } from '../../src/api.ts';
+import { BOARDS, WIFI, flashMerged, missingHardware } from '../../src/hardware.ts';
+import { DevicesPage } from '../../src/pages/devices.ts';
+import { dialog } from '../../src/pages/shell.ts';
 
 const board = BOARDS.c3;
 const FW_DEVICE = 'e2e-c3-fw';
@@ -29,7 +29,7 @@ async function latestBuild(api: Api, id: string): Promise<string> {
   return rows[0]?.build_phase ?? 'none';
 }
 
-test.describe('hardware custom firmware', { tag: '@hardware' }, () => {
+export function customFirmwareTests(): void {
   test('c3: IDE firmware built, flashed, publishes its metric; generic restored', async ({ app, api, page, prefix, capture }, info) => {
     const missing = missingHardware(board);
     test.skip(!!missing, missing);
@@ -87,4 +87,4 @@ test.describe('hardware custom firmware', { tag: '@hardware' }, () => {
     }
     await expect.poll(async () => (await device(api, board.deviceId))?.connected ?? false, { timeout: 3 * 60_000, intervals: [5_000] }).toBe(true);
   });
-});
+}
