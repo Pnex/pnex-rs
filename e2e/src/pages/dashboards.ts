@@ -35,6 +35,12 @@ export class DashboardsPage {
     return editor;
   }
 
+  /** From the live view back to the list. */
+  async backToList(): Promise<void> {
+    await this.page.getByRole('main').getByRole('button', { name: this.app.t('db-back') }).click();
+    await expect(this.page.locator('main h1')).toHaveText(this.app.t('nav-dashboards'));
+  }
+
   /** Live (read-only) view. */
   async view(name: string): Promise<void> {
     await this.row(name).getByRole('button', { name: this.app.t('db-open') }).click();
@@ -99,7 +105,9 @@ export class DashboardEditor {
     await expect(this.saveButton).toBeDisabled();
   }
 
+  /** Leaves edit mode: lands on the live view of the same dashboard. */
   async back(): Promise<void> {
     await this.main.getByRole('button', { name: this.app.t('eshell-back') }).click();
+    await expect(this.main.getByRole('button', { name: this.app.t('db-back') })).toBeVisible();
   }
 }

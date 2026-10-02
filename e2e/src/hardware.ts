@@ -1,0 +1,72 @@
+// Boards on serial ports, for tests tagged @hardware.
+//
+// Flashing always names its port: esptool without --port writes to the
+// first board it finds (a bootloader was lost that way once).
+import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { promisify } from 'node:util';
+
+const run = promisify(execFile);
+
+export interface Board {
+  /** Serial port, from the environment. */
+  port: string;
+  /** Wizard model button label prefix ("Generic ESP32-C3"). */
+  model: RegExp;
+  /** device_id registered for this board in the test org (≤ 16 chars). */
+  deviceId: string;
+  chip: string;
+  /** Upload baud rate (CH340 carriers are flaky above 460800). */
+  baud: number;
+}
+
+export const BOARDS = {
+  c3: {
+    port: process.env.PNEX_E2E_C3_PORT ?? '',
+    model: /^Generic ESP32-C3/,
+    deviceId: process.env.PNEX_E2E_C3_ID ?? 'e2e-c3',
+    chip: 'esp32c3',
+    baud: 460800,
+  },
+  cam: {
+    port: process.env.PNEX_E2E_CAM_PORT ?? '',
+    model: /^Generic ESP32-CAM/,
+    deviceId: process.env.PNEX_E2E_CAM_ID ?? 'e2e-cam',
+    chip: 'esp32',
+    baud: 460800,
+  },
+} satisfies Record<string, Board>;
+
+export const WIFI = {
+  ssid: process.env.PNEX_E2E_WIFI_SSID ?? '',
+  password: process.env.PNEX_E2E_WIFI_PASSWORD ?? '',
+};
+
+/** Reason to skip, or undefined when the board and Wi-Fi are declared. */
+export function missingHardware(board: Board): string | undefined {
+  if (!board.port) return `no serial port declared for ${board.deviceId}`;
+  if (!existsSync(board.port)) return `${board.port} not present`;
+  if (!WIFI.ssid || !WIFI.password) return 'PNEX_E2E_WIFI_SSID / PNEX_E2E_WIFI_PASSWORD not set';
+  return undefined;
+}
+
+/** Writes a merged image at 0x0 with the web flasher's parameters. */
+export async function flashMerged(board: Board, image: string): Promise<string> {
+  const { stdout, stderr } = await run(
+    'esptool',
+    [
+      '--port', board.port,
+      '--chip', board.chip,
+      '--baud', String(board.baud),
+      'write-flash',
+      '--flash-mode', 'dio',
+      '--flash-freq', '40m',
+      '--flash-size', '4MB',
+      '0x0', image,
+    ],
+    { timeout: 240_000, maxBuffer: 16 << 20 },
+  );
+  const out = stdout + stderr;
+  if (!/Hash of data verified/.test(out)) throw new Error(`flash not verified on ${board.port}:\n${out}`);
+  return out;
+}

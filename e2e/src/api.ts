@@ -63,6 +63,11 @@ export class Api {
     return res.status() === 204 ? (undefined as T) : res.json();
   }
 
+  /** Raw body of a GET (binary downloads). */
+  async download(path: string): Promise<Buffer> {
+    return (await this.send('GET', path)).body();
+  }
+
   async delete(path: string): Promise<void> {
     await this.send('DELETE', path);
   }

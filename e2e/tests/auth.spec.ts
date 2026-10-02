@@ -13,7 +13,10 @@ test.describe('auth', { tag: ['@auth', '@i18n'] }, () => {
     await capture('login', { caption: 'Sign-in page' });
 
     await signIn.click();
-    // Rauthy login (Svelte page): e-mail first, then the password.
+    // Rauthy login (Svelte page): e-mail first, then the password. Typing
+    // before hydration submits the bare HTML form ("Content type error").
+    await page.waitForURL(/\/auth\/v1\//);
+    await page.waitForLoadState('networkidle');
     const email = page.locator('input[type=email]:visible, input[name=email]:visible').first();
     await email.fill(EMAIL);
     await email.press('Enter');
