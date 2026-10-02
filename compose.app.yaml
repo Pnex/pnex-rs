@@ -13,13 +13,15 @@
 # any real deployment.
 
 x-pnex-env: &pnex-env
-  DATABASE_URL: postgres://pnex:pnex@postgres:5432/pnex
+  # Another database / Valkey index on the same infra (e.g. an isolated
+  # end-to-end test stack): PNEX_DATABASE_URL / PNEX_VALKEY_URL.
+  DATABASE_URL: ${PNEX_DATABASE_URL:-postgres://pnex:pnex@postgres:5432/pnex}
   RAUTHY_URL: http://rauthy:8080
   RAUTHY_ISSUER_URL: ${RAUTHY_ISSUER_URL:-}
   OPENOBSERVE_URL: http://openobserve:5080
   OPENOBSERVE_ROOT_EMAIL: ${OPENOBSERVE_ROOT_EMAIL:-root@pnex.local}
   OPENOBSERVE_ROOT_PASSWORD: ${OPENOBSERVE_ROOT_PASSWORD:-Pnex-dev-2026!}
-  VALKEY_URL: redis://valkey:6379
+  VALKEY_URL: ${PNEX_VALKEY_URL:-redis://valkey:6379}
   PNEX_NOTIFY_INTERNAL_TOKEN: ${PNEX_NOTIFY_INTERNAL_TOKEN:-pnex-dev-notify}
   PNEX_FLOW_RUNTIME_TOKEN: ${PNEX_FLOW_RUNTIME_TOKEN:-pnex-dev-write}
   # Secrets vault keyring (D112): fixed DEV key, override in production.

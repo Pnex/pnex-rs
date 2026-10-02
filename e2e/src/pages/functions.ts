@@ -56,8 +56,11 @@ export class FunctionsPage {
 
 export interface TestRunResult {
   ok: boolean;
-  /** Port label → rendered JSON value (muted ports omitted). */
-  outputs: Record<string, string>;
+  /**
+   * Output name (port label before " · port N") → emitted value, parsed as
+   * JSON when possible (muted ports omitted).
+   */
+  outputs: Record<string, unknown>;
   error?: string;
 }
 
@@ -125,11 +128,17 @@ export class FunctionEditor {
       const error = await errBlock.locator('xpath=following-sibling::p[1]').textContent();
       return { ok: false, outputs: {}, error: error ?? '' };
     }
-    const outputs: Record<string, string> = {};
+    const outputs: Record<string, unknown> = {};
     for (const row of await dlg.locator('div.bg-gray-900:has(> span.font-mono)').all()) {
-      const label = (await row.locator('span').first().textContent())?.trim() ?? '';
+      const label = ((await row.locator('span').first().textContent()) ?? '').split(' · ')[0].trim();
       const pre = row.locator('pre');
-      if (await pre.count()) outputs[label] = (await pre.textContent())?.trim() ?? '';
+      if (!(await pre.count())) continue;
+      const text = ((await pre.textContent()) ?? '').trim();
+      try {
+        outputs[label] = JSON.parse(text);
+      } catch {
+        outputs[label] = text;
+      }
     }
     return { ok: true, outputs };
   }
