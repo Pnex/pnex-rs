@@ -289,21 +289,19 @@ fn MetricRow(metric: StatusMetric) -> Element {
         Some(r) if r > 0.75 => "bg-amber-500",
         _ => "bg-blue-500",
     };
+    // dt + dd (+ a gauge dd) in one group: the only children a <dl>
+    // group may hold.
     rsx! {
-        div {
-            div { class: "flex justify-between gap-3 text-sm",
-                dt { class: "text-gray-500",
-                    {label}
-                    if let Some(qualifier) = metric.label.clone() {
-                        span { class: "ml-1 text-gray-400 font-mono text-xs break-all",
-                            "({qualifier})"
-                        }
-                    }
+        div { class: "flex flex-wrap justify-between gap-x-3 text-sm",
+            dt { class: "text-gray-500",
+                {label}
+                if let Some(qualifier) = metric.label.clone() {
+                    span { class: "ml-1 text-gray-400 font-mono text-xs break-all", "({qualifier})" }
                 }
-                dd { class: "text-gray-900 font-medium text-right", {value} }
             }
+            dd { class: "text-gray-900 font-medium text-right", {value} }
             if let Some(r) = ratio {
-                div { class: "mt-1 h-1.5 w-full bg-gray-100 rounded",
+                dd { class: "basis-full mt-1 h-1.5 bg-gray-100 rounded",
                     div {
                         class: "h-1.5 rounded {bar_class}",
                         style: "width: {r * 100.0:.1}%",
