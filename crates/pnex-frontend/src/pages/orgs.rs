@@ -408,15 +408,22 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                         on_confirm: move |_| {
                             confirm_delete.set(false);
                             let org_id = org_id;
+                            // Leave the detail only once the delete is done:
+                            // unmounting first cancelled this task before
+                            // the request was sent.
                             spawn(async move {
                                 match api::orgs::delete(org_id).await {
-                                    Ok(()) => toasts::success("toast-saved"),
+                                    Ok(()) => {
+                                        toasts::success("toast-org-deleted");
+                                        if org::current() == Some(org_id) {
+                                            org::clear();
+                                        }
+                                        refresh(());
+                                        on_back.call(());
+                                    }
                                     Err(err) => toasts::error(err),
                                 }
-                                org::clear();
-                                refresh(());
                             });
-                            on_back.call(());
                         },
                         on_cancel: move |_| confirm_delete.set(false),
                     }
