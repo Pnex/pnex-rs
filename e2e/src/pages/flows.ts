@@ -192,8 +192,10 @@ export class FlowEditor {
     return this.page.getByRole('main').getByRole('button', { name: this.app.t('flows-deploy'), exact: true });
   }
 
+  /** Save and wait for the server's confirmation (the button is also disabled while saving). */
   async save(): Promise<void> {
     await this.saveButton.click();
+    await this.app.expectToast(this.app.t('toast-flow-saved'));
     await expect(this.saveButton).toBeDisabled();
   }
 
