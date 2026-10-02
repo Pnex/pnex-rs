@@ -215,6 +215,7 @@ pub fn Visualisation() -> Element {
                                 div {
                                     label { class: "block text-xs font-medium text-gray-500 uppercase mb-1", {t!("vis-metric")} }
                                     select {
+                                        aria_label: t!("vis-metric"),
                                         class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                                         onchange: move |event| {
                                             sel_metric.set(event.value());
@@ -227,6 +228,7 @@ pub fn Visualisation() -> Element {
                                 div {
                                     label { class: "block text-xs font-medium text-gray-500 uppercase mb-1", {t!("vis-device")} }
                                     select {
+                                        aria_label: t!("vis-device"),
                                         class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                                         onchange: move |event| sel_device.set(event.value()),
                                         for device in &devices {

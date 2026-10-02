@@ -221,6 +221,7 @@ pub fn Flows() -> Element {
                 } else {
                     FilterBar {
                         select {
+                            aria_label: t!("flows-col-status"),
                             class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                             onchange: move |event| {
                                 filter_status.set(event.value());

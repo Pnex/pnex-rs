@@ -405,6 +405,7 @@ pub fn Devices() -> Element {
                 // Filtres (type, statut, capacité, recherche, refresh).
                 FilterBar {
                     select {
+                        aria_label: t!("devices-col-type"),
                         class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                         onchange: move |event| {
                             filter_type.set(event.value());
@@ -436,6 +437,7 @@ pub fn Devices() -> Element {
                         }
                     }
                     select {
+                        aria_label: t!("devices-col-status"),
                         class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                         onchange: move |event| {
                             filter_status.set(event.value());
@@ -458,6 +460,7 @@ pub fn Devices() -> Element {
                     }
                     if !capability_names.is_empty() {
                         select {
+                            aria_label: t!("devices-capability-filter"),
                             class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                             onchange: move |event| {
                                 filter_capability.set(event.value());
