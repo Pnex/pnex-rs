@@ -103,6 +103,11 @@ export const SWEPT_COLLECTIONS = [
   '/notify/channels',
   '/notify/templates',
   '/secrets',
+  // Tours and annotation sets reference media: delete them first.
+  '/tours',
+  '/annotation-layers',
+  '/media',
+  '/firmware-projects',
 ] as const;
 
 /** Collections without a name field, emptied whole by the global setup. */
