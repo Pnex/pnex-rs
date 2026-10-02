@@ -15,14 +15,9 @@ export class NotificationsPage {
     await expect(this.page.locator('main h1')).toHaveText(this.app.t('nav-notifications'));
   }
 
-  /** Innermost block of the channel list holding `name` and its actions. */
+  /** Row of the channel list holding `name` and its actions. */
   channel(name: string): Locator {
-    return this.page
-      .getByRole('main')
-      .locator('div')
-      .filter({ has: this.page.getByText(name, { exact: true }) })
-      .filter({ has: this.page.getByRole('button', { name: this.app.t('notify-delete'), exact: true }) })
-      .last();
+    return this.page.locator('main tr').filter({ has: this.page.getByText(name, { exact: true }) });
   }
 
   /** Opens the channel form for a kind (`smtp`, `webhook`, `ntfy`…). */
