@@ -92,6 +92,7 @@ Rules:
 | `search` | `@search @i18n` | sidebar search finds a function and deep-links to its editor |
 | `map` | `@map` | POI placed by clicking the map, drawer, delete |
 | `media` | `@media` | photo upload (browser-rendered PNG), delete |
+| `studio` | `@studio` | virtual tour: floor plan + two labelled 360° scenes, start scene, stored doc, delete |
 | `profile-data` | `@profile @mixtures` | language preference switch, CoolProp mixture |
 | `firmware-ide` | `@firmware` | starter sketch compiles on the builder, a broken revision reports its error |
 | `flow-alert` | `@flows @notifications` | Starlark threshold function → Notification node → email in mailcrab |
