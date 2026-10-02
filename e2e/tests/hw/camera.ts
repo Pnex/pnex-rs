@@ -1,13 +1,13 @@
 // Live ESP32-CAM: the live dialog receives fresh frames, and the flash LED
 // is switched from the UI. Needs the camera registered and online
 // (hardware.spec.ts "cam"); skipped otherwise.
-import { expect, test } from '../src/fixtures.ts';
-import { BOARDS, missingHardware } from '../src/hardware.ts';
-import { dialog } from '../src/pages/shell.ts';
+import { expect, test } from '../../src/fixtures.ts';
+import { BOARDS, missingHardware } from '../../src/hardware.ts';
+import { dialog } from '../../src/pages/shell.ts';
 
 const board = BOARDS.cam;
 
-test.describe('hardware camera', { tag: '@hardware' }, () => {
+export function cameraTests(): void {
   test('cam: live frames and flash switch', async ({ app, api, page, capture }, info) => {
     const missing = missingHardware(board);
     test.skip(!!missing, missing);
@@ -43,4 +43,4 @@ test.describe('hardware camera', { tag: '@hardware' }, () => {
     await expect(live.getByRole('switch', { name: app.t('cameras-flash-turn-on') })).toBeVisible({ timeout: 15_000 });
     await live.getByRole('button', { name: app.t('common-close') }).click();
   });
-});
+}

@@ -1,11 +1,11 @@
 // Pins of a live ESP32-C3 driven from the device page: output mode + write,
 // analog input subscribed at 1 s. Needs the board registered and online
 // (hardware.spec.ts "c3"); skipped otherwise.
-import { expect, test } from '../src/fixtures.ts';
-import type { Api } from '../src/api.ts';
-import { BOARDS, missingHardware } from '../src/hardware.ts';
-import { DevicesPage } from '../src/pages/devices.ts';
-import { fieldAfterLabel } from '../src/pages/shell.ts';
+import { expect, test } from '../../src/fixtures.ts';
+import type { Api } from '../../src/api.ts';
+import { BOARDS, missingHardware } from '../../src/hardware.ts';
+import { DevicesPage } from '../../src/pages/devices.ts';
+import { fieldAfterLabel } from '../../src/pages/shell.ts';
 
 interface PinRow {
   gpio: number;
@@ -30,9 +30,7 @@ async function pin(api: Api, pk: number, gpio: number): Promise<PinRow | undefin
   return res.pins.find((p) => p.gpio === gpio);
 }
 
-test.describe('hardware pins', { tag: '@hardware' }, () => {
-  test.describe.configure({ mode: 'serial' });
-
+export function pinsTests(): void {
   test('c3: output mode, write HIGH/LOW, analog input subscribed', async ({ app, api, capture }) => {
     const missing = missingHardware(board);
     test.skip(!!missing, missing);
@@ -118,4 +116,4 @@ test.describe('hardware pins', { tag: '@hardware' }, () => {
     await reset.subscribe(0);
     await reset.setMode('digital_in');
   });
-});
+}
