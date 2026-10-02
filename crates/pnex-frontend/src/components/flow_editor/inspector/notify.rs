@@ -54,6 +54,15 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
     // Template pick: the effect below (stamped vars ≠ template vars) does
     // the stamping + pruning — one single path for a pick and a self-heal.
     let mut commit_template = move |id: String| {
+        // The id is written at once: the stamping effect returns early when
+        // the vars do not change, so a template without variables picked on
+        // a fresh node never reached the node config.
+        let parsed = id.parse().unwrap_or_default();
+        patch_selected(&mut cx, move |node: &mut FlowNode| {
+            if let FlowNodeKind::PnexNotify { config } = &mut node.kind {
+                config.template_id = parsed;
+            }
+        });
         template_id.set(id);
     };
 
