@@ -75,7 +75,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 
   tr: async ({ uiLocale }, use) => use((key, flags) => tRe(uiLocale, key, flags)),
 
-  prefix: async ({}, use, info) => use(`${PREFIX}-${info.testId.slice(0, 6)}`),
+  // testId is shared by the en and fr projects: the project keeps them apart.
+  prefix: async ({}, use, info) => use(`${PREFIX}-${info.project.name}-${info.testId.slice(0, 6)}`),
 
   pageErrors: async ({ page }, use) => {
     const errors: string[] = [];

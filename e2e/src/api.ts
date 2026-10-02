@@ -97,8 +97,8 @@ export class Api {
  */
 export const SWEPT_COLLECTIONS = ['/functions', '/flows', '/dashboards'] as const;
 
-/** Edge referentials, emptied whole by the global setup (no name field). */
-export const SWEPT_REFERENTIALS = ['/edge/wifi-credentials', '/edge/hosts'] as const;
+/** Collections without a name field, emptied whole by the global setup. */
+export const SWEPT_REFERENTIALS = ['/edge/wifi-credentials', '/edge/hosts', '/pois'] as const;
 
 export async function sweep(api: Api, prefix: string): Promise<void> {
   for (const path of SWEPT_COLLECTIONS) {
