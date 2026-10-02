@@ -773,7 +773,11 @@ fn OtaModal(
         // Modal sans backdrop (doctrine EditorShell : pas de backdrop plein
         // écran sous les popovers/modales simples).
         div { class: "fixed inset-0 z-50 flex items-center justify-center pointer-events-none",
-            div { class: "pointer-events-auto bg-white rounded-xl shadow-xl border border-gray-200 p-6 w-[26rem]",
+            div {
+                class: "pointer-events-auto bg-white rounded-xl shadow-xl border border-gray-200 p-6 w-[26rem]",
+                role: "dialog",
+                aria_modal: "true",
+                aria_label: t!("devices-ota-title"),
                 h3 { class: "text-lg font-semibold text-gray-900 mb-2", {t!("devices-ota-title")} }
                 if let Some((version, date)) = &target.latest_build {
                     p { class: "text-sm text-gray-600 mb-1",
