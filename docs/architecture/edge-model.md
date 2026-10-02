@@ -96,7 +96,8 @@ Points ouverts (constatés au 2026-10-01, à trancher) :
    pin map vide), jamais par l'overlay du modèle générique, qui remettait
    tous les pins en `digital_in` à chaque announce (I2C compris).
 2. **Carte `generic`** : absente de `mcu.yaml`, créée à la volée par le seed
-   (`soc = generic`) pour `custom_device` et `edge_agent`. Un agent n'a pas
+   (`soc = generic`) pour `edge_agent` (seul consommateur depuis le retrait
+   de `custom_device`). Un agent n'a pas
    de carte : `board_id` nullable pour la famille agents plutôt qu'une
    carte fantôme.
 3. **Nommage** : `generic_esp32cam` porte « Generic » mais relève des
@@ -109,14 +110,14 @@ Points ouverts (constatés au 2026-10-01, à trancher) :
    (source unique front/back), garde serveur 400
    `firmware-family-locked`, sélecteur affiché pour la famille générique
    seulement.
-6. **Liste des firmwares** : la page `/firmware` ne liste que les projets
-   de l'IDE ; les firmwares prédéfinis (et le générique) y figureront en
-   lecture seule avec leur carte compatible.
 5. **Assistant** : une seule section « Traditionnel (strict) » regroupe
    tout le catalogue. **Fait (2026-10-01)** : une section par famille
    (Générique PneX, Cartes prédéfinies, Agents). La famille d'un modèle
    est une liste en dur (`GENERIC_IO_PREDEFS`) ; une colonne `family` au
    catalogue la rendrait pilotée par les données.
+6. **Liste des firmwares** : la page `/firmware` ne liste que les projets
+   de l'IDE ; les firmwares prédéfinis (et le générique) y figureront en
+   lecture seule avec leur carte compatible.
 
 ## 3. Firmware en couches (toujours PIO)
 
@@ -129,6 +130,12 @@ firmware/
     pnex-hal/         ← divergences ONLY : ADC res, WDT, deep sleep, stockage, millis
   soil_sensor/ generic/ regulator/ …   ← un projet = plateforme × profil × config device
 ```
+
+> **État réel (2026-10-02)** : schéma cible. `pnex-transport` (avec
+> `crypto` et `config`) vit dans la lib `firmware/lib/pnex/` depuis le
+> 2026-09-14 (lib autonome, embarquée par le serveur) ; `common_libs/` ne
+> contient que `display` et `pnex-core-cpp` ; `pnex-caps` et `pnex-hal`
+> n'existent pas encore.
 
 Règles :
 
@@ -382,6 +389,7 @@ modèle eboot 8266, stratégie TLS/CA, checklists matérielles) :
 1. **F1** — facto transport commune (`pnex-transport`) : refactor pur,
    CI « une version pnex = un firmware qui compile » verte, zéro changement
    de comportement. **✅ Fait (2026-09-13)** : `common_libs/pnex-transport/`
+   (déplacé dans `firmware/lib/pnex/` le 2026-09-14)
    (config b64, WiFi, WS, framing ChaCha, bookkeeping PONG + timeout) ;
    `generic_esp8266` et `soil_sensor` réécrits dessus — policy (backoff,
    safe-states, retries, announce, affichage) restée dans chaque main ;
