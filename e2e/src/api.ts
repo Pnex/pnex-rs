@@ -97,6 +97,9 @@ export class Api {
  */
 export const SWEPT_COLLECTIONS = ['/functions', '/flows', '/dashboards'] as const;
 
+/** Edge referentials, emptied whole by the global setup (no name field). */
+export const SWEPT_REFERENTIALS = ['/edge/wifi-credentials', '/edge/hosts'] as const;
+
 export async function sweep(api: Api, prefix: string): Promise<void> {
   for (const path of SWEPT_COLLECTIONS) {
     let items: { id: number | string; name: string }[];
@@ -105,6 +108,11 @@ export async function sweep(api: Api, prefix: string): Promise<void> {
     } catch {
       continue;
     }
+    for (const it of items) await api.delete(`${path}/${it.id}`).catch(() => {});
+  }
+  if (prefix) return;
+  for (const path of SWEPT_REFERENTIALS) {
+    const items = await api.list<{ id: number }>(path).catch(() => []);
     for (const it of items) await api.delete(`${path}/${it.id}`).catch(() => {});
   }
 }
