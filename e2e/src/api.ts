@@ -95,12 +95,27 @@ export class Api {
  * the global setup sweeps it whole (`prefix = ''`); a test may sweep its own
  * prefix to stay independent of its neighbours.
  */
-export const SWEPT_COLLECTIONS = ['/functions', '/flows', '/dashboards'] as const;
+export const SWEPT_COLLECTIONS = [
+  '/functions',
+  '/flows',
+  '/dashboards',
+  '/fluid-mixtures',
+  '/notify/channels',
+  '/notify/templates',
+  '/secrets',
+] as const;
 
 /** Collections without a name field, emptied whole by the global setup. */
 export const SWEPT_REFERENTIALS = ['/edge/wifi-credentials', '/edge/hosts', '/pois'] as const;
 
 export async function sweep(api: Api, prefix: string): Promise<void> {
+  // Referentials first: Wi-Fi credentials hold vault secrets.
+  if (!prefix) {
+    for (const path of SWEPT_REFERENTIALS) {
+      const items = await api.list<{ id: number | string }>(path).catch(() => []);
+      for (const it of items) await api.delete(`${path}/${it.id}`).catch(() => {});
+    }
+  }
   for (const path of SWEPT_COLLECTIONS) {
     let items: { id: number | string; name: string }[];
     try {
@@ -108,11 +123,6 @@ export async function sweep(api: Api, prefix: string): Promise<void> {
     } catch {
       continue;
     }
-    for (const it of items) await api.delete(`${path}/${it.id}`).catch(() => {});
-  }
-  if (prefix) return;
-  for (const path of SWEPT_REFERENTIALS) {
-    const items = await api.list<{ id: number }>(path).catch(() => []);
     for (const it of items) await api.delete(`${path}/${it.id}`).catch(() => {});
   }
 }

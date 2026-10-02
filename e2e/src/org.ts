@@ -17,3 +17,13 @@ export async function ensureOrg(api: Api, name: string, fresh: boolean): Promise
   const created = await api.post<{ id: number }>('/orgs', { name });
   return created.id;
 }
+
+/**
+ * Deletes organizations created by tests (name starting with `prefix`,
+ * "e2e-" by convention) — never any other organization.
+ */
+export async function sweepTestOrgs(api: Api, prefix = 'e2e-'): Promise<void> {
+  for (const o of await api.list<OrgRow>('/orgs')) {
+    if (o.name.startsWith(prefix) && o.role === 'owner') await api.delete(`/orgs/${o.id}`).catch(() => {});
+  }
+}

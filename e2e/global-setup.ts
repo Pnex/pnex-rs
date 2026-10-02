@@ -6,7 +6,7 @@ import { request } from '@playwright/test';
 import { Api, SWEPT_COLLECTIONS, sweep } from './src/api.ts';
 import { passwordGrant } from './src/auth.ts';
 import { BASE_URL, FRESH_ORG, ORG_NAME, STATE_FILE } from './src/env.ts';
-import { ensureOrg } from './src/org.ts';
+import { ensureOrg, sweepTestOrgs } from './src/org.ts';
 
 export default async function globalSetup(): Promise<void> {
   const ctx = await request.newContext({ ignoreHTTPSErrors: true });
@@ -17,7 +17,10 @@ export default async function globalSetup(): Promise<void> {
     const tokens = await passwordGrant(ctx);
     const api = new Api(ctx, tokens.access);
     const orgId = await ensureOrg(api, ORG_NAME, FRESH_ORG);
-    if (process.env.PNEX_E2E_KEEP !== '1') await sweep(api.forOrg(orgId), '');
+    if (process.env.PNEX_E2E_KEEP !== '1') {
+      await sweep(api.forOrg(orgId), '');
+      await sweepTestOrgs(api);
+    }
 
     mkdirSync(path.dirname(STATE_FILE), { recursive: true });
     writeFileSync(STATE_FILE, JSON.stringify({ orgId, orgName: ORG_NAME }, null, 2));
