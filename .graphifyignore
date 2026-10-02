@@ -1,3 +1,12 @@
 # Données runtime jamais extraites (parité .gitignore) :
 # le MediaStore fs du backend dev — frames de captures 360, blobs média.
 crates/pnex-backend/storage/
+
+# Third-party code, never read when working on PneX: pure noise in the
+# graph (name-collision INFERRED edges, thousands of isolated nodes).
+# vendor/edgelinkd stays in: it is our fork and the flow engine core.
+vendor/CoolProp/
+vendor/patches/
+
+# Stray nested graphs from runs scoped to a sub-folder.
+**/graphify-out/

@@ -185,10 +185,9 @@ firmware:build-docker`).
   base64** — un SSID avec espaces casserait le flag `-D` ; `WS_SSL`
   forcé à `true` par le serveur depuis D70).
 - **UI (page Devices / wizard)** — livré : le wizard collecte WiFi, hôte
-  (toujours wss depuis D70) **+ la carte PIO** ; pour un **device custom** (`custom_device`
-  seul — custom_sensor retiré du catalogue), il génère **deux snippets
-  copiables** : `platformio.ini` (secrets b64 inline) et `src/main.cpp`
-  (sketch lib PneX, pins déclarées) — cf. §5 et `docs/DYNAMIC_DEVICES.md`.
+  (toujours wss depuis D70) **+ la carte PIO**. (Les snippets copiables du
+  device custom Tier 2 sont retirés — cf. §5 ; un code utilisateur passe
+  par l'IDE de firmware custom.)
 - Artefact `.bin` → `ArtifactStore` (D5 v2 : extraction de la source
   embarquée → `pio run` → `esptool merge-bin` → backend `db` par défaut,
   `s3` via opendal pour le tier industriel), timeout
@@ -231,6 +230,9 @@ le modal affiche l'avertissement et renvoie vers le téléchargement + esptool).
 > snippets à compiler en local. Ce qui reste valable : l'admission par
 > manifeste `Announce.pins` (utilisée par les firmwares de l'IDE) et la lib
 > PneX commune. Familles de devices : `edge-model.md` §2 bis.
+> **2026-10-02** : code Tier 2 purgé — l'admission par manifeste ne vaut
+> que pour un device à `firmware_project_id`, toujours en chip-caps strictes
+> (plus de mode permissif) ; la suite de cette section est historique.
 
 Depuis la lib `firmware/lib/pnex/` (`PneX`), le firmware générique est
 **publiable** (`pio pkg publish`) et compilable par l'utilisateur final :

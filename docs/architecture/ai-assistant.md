@@ -2,7 +2,7 @@
 
 > **Statut : IMPLÉMENTÉ (tranche v1)** — chat multi-tools, connecteur par
 > org, lecture OpenObserve, création/modification de **drafts** de flows.
-> Détail des décisions : `docs/inventory.md` D20 ; plan de conception
+> Détail des décisions : `docs/inventory.md` D20b ; plan de conception
 > validé en session (A1–A5).
 >
 > **2026-10-01 (secrets.md D116, lot S7)** : le connecteur par org et les

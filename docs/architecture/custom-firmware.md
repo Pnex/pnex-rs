@@ -15,7 +15,8 @@ Aujourd'hui un device PneX tourne l'un de deux firmwares :
 - **Tier 1 — générique preset** (`firmware/generic_*`) : `main.cpp` vide
   (`pnex.begin()` / `pnex.loop()`), 100 % piloté par le serveur via l'overlay
   board. Compilé **par device** côté serveur (secrets en `-D` défines).
-- **Tier 2 — sketch custom** (`firmware/lib/pnex/examples/CustomDevice`) :
+- **Tier 2 — sketch custom** (ex-`firmware/lib/pnex/examples/CustomDevice`,
+  supprimé le 2026-10-02) :
   l'utilisateur déclare ses pins dans le sketch (`addInput`, `addOutput`…),
   le serveur les admet via `Announce.pins`. Mais ce sketch vit **hors de
   PneX** : l'utilisateur doit installer PlatformIO, récupérer la lib PneX

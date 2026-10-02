@@ -4,10 +4,12 @@
 > (`docs/architecture/custom-firmware.md`).** L'assistant ne propose plus le
 > modèle « Custom Device (Dynamic) » : un code utilisateur passe désormais
 > par un projet firmware compilé côté serveur (familles de devices :
-> `docs/architecture/edge-model.md` §2 bis). Le modèle `custom_device` reste
-> dans le catalogue et l'API l'accepte encore (dette, cf. §2 bis) ; ce
-> document est conservé pour l'historique et pour un usage de la lib PneX
-> hors de PNeX.
+> `docs/architecture/edge-model.md` §2 bis). **2026-10-02 : Tier 2 purgé
+> du code** — `custom_device` n'est plus seedé, plus d'admission permissive
+> (chip inconnu) ni de device sans overlay, exemple `CustomDevice` supprimé.
+> L'admission par `Announce.pins` ne sert plus qu'aux devices à firmware
+> custom de l'IDE (chip-caps strictes du SoC de la carte). Ce document est
+> **historique** : rien de ce qui suit n'est plus un chemin supporté.
 
 > Référence utilisateur pour les devices « custom » (type `mixed`) :
 > compilez le firmware générique **chez vous**, sur **n'importe quelle
