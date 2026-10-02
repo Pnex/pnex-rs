@@ -106,8 +106,10 @@ export class FunctionEditor {
     await this.page.getByRole('button', { name: this.app.tr('functions-fix-all') }).first().click();
   }
 
+  /** Save and wait for the server's confirmation (the button is also disabled while saving). */
   async save(): Promise<void> {
     await this.saveButton.click();
+    await this.app.expectToast(this.app.t('toast-function-saved'));
     await expect(this.saveButton).toBeDisabled();
   }
 

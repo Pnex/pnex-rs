@@ -100,8 +100,10 @@ export class DashboardEditor {
     return this.main.getByRole('button', { name: this.app.t('db-save'), exact: true });
   }
 
+  /** Save and wait for the server's confirmation (the button is also disabled while saving). */
   async save(): Promise<void> {
     await this.saveButton.click();
+    await this.app.expectToast(this.app.tr('db-saved'));
     await expect(this.saveButton).toBeDisabled();
   }
 

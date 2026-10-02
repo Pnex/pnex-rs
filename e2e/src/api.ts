@@ -63,6 +63,17 @@ export class Api {
     return res.status() === 204 ? (undefined as T) : res.json();
   }
 
+  /** Raw upload (octet-stream body, metadata in the query string). */
+  async upload<T = any>(path: string, body: Buffer, contentType = 'application/octet-stream'): Promise<T> {
+    const res = await this.request.fetch(`${BASE_URL}/api/v1${path}`, {
+      method: 'POST',
+      headers: { ...this.headers(), 'Content-Type': contentType },
+      data: body,
+    });
+    if (!res.ok()) throw new ApiError('POST', path, res.status(), await res.text());
+    return res.json();
+  }
+
   /** Raw body of a GET (binary downloads). */
   async download(path: string): Promise<Buffer> {
     return (await this.send('GET', path)).body();
