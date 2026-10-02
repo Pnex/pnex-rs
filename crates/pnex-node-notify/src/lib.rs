@@ -18,7 +18,8 @@
 //! payload), **last value wins** so a waiting set always carries the most
 //! recent data; render + send only happen once the set is complete, then
 //! reset. Snapshot without vars ⇒ legacy semantics: render + send on every
-//! message. Anti-spam (fixed window "max N / D s"): the first send opens the
+//! message; with the trigger wired (always, see below) that template has no
+//! data anchor, so every armed `true` trigger renders + sends it. Anti-spam (fixed window "max N / D s"): the first send opens the
 //! window, the surplus is a warn — in anchor mode the send is deferred (set
 //! kept and kept up to date), never lost.
 //!
@@ -504,6 +505,12 @@ impl PnexNotifyNode {
                         None => "unrecognized (treated as false)",
                     },
                 );
+                // A template without variables has no data anchor: nothing
+                // can fill a set, so the armed trigger itself is the alert
+                // (otherwise such a node could never send).
+                if self.config.template.vars.is_empty() && armed {
+                    self.deliver(serde_json::json!({})).await?;
+                }
                 return Ok(());
             } else if self.config.template.vars.is_empty() {
                 // Legacy mode — gated by the armed flag when the trigger input
