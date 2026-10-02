@@ -441,6 +441,12 @@ sémantique, vécues en E2E réel (flow prédictif → ntfy) :
   précédent (vibration 2.06 au lieu du pic 10.71). Coût : ≤ 250 ms de
   latence sur ce chemin ; un set complet arrivant gate déjà armé part
   toujours immédiatement.
+- **Template sans variables (2026-10-02)** : aucune ancre de données, donc
+  aucun set à remplir — le `trigger = true` armé est lui-même l'alerte et
+  rend + envoie le template (soumis à l'anti-spam). Avant, un tel nœud ne
+  pouvait jamais rien envoyer (mode historique sans vars = envoi sur
+  message de données, qui n'arrive plus depuis le gate obligatoire), et
+  l'éditeur ne retenait même pas le choix du template.
 
 ## 15. Amendement D86 — journal des livraisons dans OpenObserve (2026-09-29)
 
