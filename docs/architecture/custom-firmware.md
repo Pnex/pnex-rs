@@ -59,7 +59,7 @@ de logique locale, publication de valeurs, commandes depuis un flow).
 | Build par device | `pnex-firmware-builder` + `BuildFirmwareWorker`, tmp par job, secrets en env de `pio run` | La source du `src/main.cpp` devient une révision en base au lieu de la source embarquée |
 | Lib PneX | `firmware/lib/pnex`, embarquée (`include_dir!`), `lib_extra_dirs` | Aucun — fournie par le serveur |
 | Board | Variante figée au register (`PNEX_PIO_BOARD`, `PNEX_BOARD_NAME`) | Aucun |
-| Admission des pins | `Announce.pins` (Tier 2) validé par les chip-caps | Aucun |
+| Admission des pins | `Announce.pins` validé par les chip-caps | **2026-10-02** : un device à `firmware_project_id` est admis par ses pins déclarées, jamais par l'overlay (zéro pin déclarée = pin map vide) ; avant, l'overlay du modèle générique reprenait la main à chaque announce et remettait tous les pins en `digital_in`, I2C compris |
 | Versioning binaire / OTA | version = id du build record ; `firmware_artifacts` | Le build record référence la révision source |
 | Éditeur | `code_highlight.rs` (overlay textarea) + `code_editing.rs` | Ajout du langage C++ (V1) |
 

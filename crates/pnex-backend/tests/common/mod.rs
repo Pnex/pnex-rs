@@ -217,7 +217,9 @@ pub async fn seed_catalogue(db: &sea_orm::DatabaseConnection) {
     for (name, type_name, caps) in [
         ("soil_sensor", "sensor", vec!["read_temperature"]),
         ("relay_1ch", "actuator", vec!["relay"]),
-        ("custom_device", "mixed", vec![]),
+        // Generic ESP32 on the overlay-less board: custom firmware
+        // admission (the sketch owns the pins).
+        ("generic_esp32", "mixed", vec![]),
         ("mixed_hub_v1", "mixed", vec!["read_temperature", "relay"]),
         // Brick 0 : device générique (board esp8266 + overlay).
         ("generic_esp8266", "mixed", vec![]),

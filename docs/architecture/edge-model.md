@@ -88,9 +88,13 @@ Points ouverts (constatés au 2026-10-01, à trancher) :
    dans le worker (pas de projet `custom_device` dans `firmware/`), et sa
    page détail rend une carte vide. Aucune famille ne l'accueille.
    **Fait (2026-10-01)** : retiré de la fixture du catalogue (plus seedé,
-   donc plus créable). **Reste** : purger le code Tier 2 (admission par
-   manifeste sans overlay, `allow_dynamic` de `custom_device`) et migrer
-   les tests backend qui le seedent encore (`tests/common`).
+   donc plus créable). **Fait (2026-10-02)** : code Tier 2 purgé — plus
+   de repli « pas d'overlay » à l'admission (4007 au connect sans overlay
+   ni firmware custom), mesures dynamiques réservées aux agents, exemple
+   `CustomDevice` supprimé, tests migrés. Corrigé au passage : un device
+   à firmware custom est admis par les pins de son sketch (zéro pin =
+   pin map vide), jamais par l'overlay du modèle générique, qui remettait
+   tous les pins en `digital_in` à chaque announce (I2C compris).
 2. **Carte `generic`** : absente de `mcu.yaml`, créée à la volée par le seed
    (`soc = generic`) pour `custom_device` et `edge_agent`. Un agent n'a pas
    de carte : `board_id` nullable pour la famille agents plutôt qu'une

@@ -1,5 +1,4 @@
-//! Generated Tier 2 snippets: platformio.ini (secrets b64 inline) + sketch
-//! (declared pins, zero secrets), plus the key/value rows to JSON helper.
+//! Key/value rows to JSON helper (wizard metadata).
 
 /// Lignes clé/valeur → objet JSON (lignes vides ignorées, `None` si vide).
 pub(super) fn rows_to_json(rows: &[(String, String)]) -> Option<serde_json::Value> {

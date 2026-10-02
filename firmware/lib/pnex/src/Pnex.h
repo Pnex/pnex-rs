@@ -6,12 +6,13 @@
 // (announces/proto : pin map poussée dans le ProvisionAck, RPCs
 // SetMode/Write/Subscribe + Ack, lectures cadencées en StateReport).
 //
-// POLICY Sketch (Tier 2, device custom) : les pins sont déclarées ICI
-// (`addInput`/`addOutput`/`addAnalogInput`) et voyagent dans
-// `Announce.pins` — le serveur les valide (chip-caps : flash/strapping/
-// ADC/input-only), les persiste et les pilote. Les presets Tier 1
-// (soil_sensor, generic_*) ne déclarent rien : l'overlay board du
-// serveur reste l'autorité et la pin map arrive dans le ProvisionAck.
+// Sketch policy (custom firmware, edge-model.md §2 bis): the sketch owns
+// its pins — the ones declared here (`addInput`/`addOutput`/
+// `addAnalogInput`) travel in `Announce.pins`, the server validates them
+// (chip-caps: flash/strapping/ADC/input-only), persists and drives them;
+// none declared = an empty pin map. Generic models declare nothing: the
+// server's board overlay is the authority and the pin map arrives in the
+// ProvisionAck.
 //
 // Contrat fil : crates/pnex-core/src/proto.rs (miroir ArduinoJson).
 // Toute perte (close, PONG timeout, WiFi) → sorties en safe-state puis
@@ -50,8 +51,8 @@
 #endif
 #endif
 
-// Board annoncé (informatif presets, fait foi Tier 2) — à surcharger en
-// -D dans le platformio.ini du projet.
+// Announced board (informative only) — overridden with -D in the
+// project's platformio.ini.
 #ifndef PNEX_BOARD_NAME
 #if defined(ESP8266)
 #define PNEX_BOARD_NAME "nodemcu"
@@ -68,7 +69,7 @@
 // OTA support gate (0/1): when 1, the announce carries the `ota` cap
 // (server-side admission signal) and the firmware accepts
 // ServerMsg::OtaAvailable. Only the server-built generic projects define it
-// (custom Tier 2 sketches stay implicit 0 — they answer "unknown message").
+// (sketches built elsewhere stay implicit 0 — they answer "unknown message").
 #ifndef PNEX_OTA_ENABLE
 #define PNEX_OTA_ENABLE 0
 #endif
@@ -125,7 +126,7 @@ struct PnexPin {
     bool safe_high = false;
     uint32_t interval_ms = 0;
     unsigned long last_read_ms = 0;
-    bool declared = false;  // déclarée dans le sketch (Tier 2) → Announce.pins
+    bool declared = false;  // declared by the sketch → Announce.pins
     String label;
     uint8_t duty_pct = 0;  // PWM : dernier duty % écrit (0..=100)
 };
@@ -134,9 +135,9 @@ struct PnexPin {
 // pointeurs nus → trampolines statiques vers l'instance courante).
 class PnexDevice {
 public:
-    // ── Déclaration Tier 2 (sketch = source des pins) ──
-    // Le serveur valide (chip-caps) puis pilote : sans serveur, la pin
-    // reste utilisable localement (appliquée au boot).
+    // ── Pin declarations (custom firmware: the sketch owns its pins) ──
+    // The server validates (chip-caps) then drives them; without a server
+    // the pin stays usable locally (applied at boot).
     bool addInput(uint8_t gpio, const char* label = nullptr, bool pullup = false);
     bool addOutput(uint8_t gpio, const char* label = nullptr, bool safe_high = false);
     /// PWM output — écritures en duty % (0..=100), fréquence par défaut du

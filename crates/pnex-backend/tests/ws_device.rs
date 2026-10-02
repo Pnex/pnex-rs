@@ -103,29 +103,66 @@ async fn create_generic(server: &axum_test::TestServer, auth: &str, device_id: &
     create_of(server, auth, device_id, "generic_esp8266").await
 }
 
-/// Création device sur un preset donné (custom_device = Tier 2).
+/// Creates a device on a given model.
 async fn create_of(
     server: &axum_test::TestServer,
     auth: &str,
     device_id: &str,
     predefined: &str,
 ) -> Dev {
+    create_with(
+        server,
+        auth,
+        serde_json::json!({
+            "device_id": device_id,
+            "predefined_device_name": predefined,
+        }),
+    )
+    .await
+}
+
+/// Creates a custom firmware device: an ESP32 firmware project attached to
+/// the seeded `generic_esp32` model (the sketch owns the pins).
+async fn create_custom(server: &axum_test::TestServer, auth: &str, device_id: &str) -> Dev {
     let org = personal_org(server, auth).await;
+    let res = server
+        .post("/api/v1/firmware-projects")
+        .add_header("Authorization", format!("Bearer {auth}"))
+        .add_header("X-Org-Id", org.to_string())
+        .add_header("Content-Type", "application/json")
+        .json(&serde_json::json!({"name": device_id, "chip_family": "esp32"}))
+        .await;
+    res.assert_status(axum_test::http::StatusCode::CREATED);
+    let project = res.json::<serde_json::Value>()["id"]
+        .as_i64()
+        .expect("project id");
+    create_with(
+        server,
+        auth,
+        serde_json::json!({
+            "device_id": device_id,
+            "predefined_device_name": "generic_esp32",
+            "firmware_project_id": project,
+        }),
+    )
+    .await
+}
+
+async fn create_with(server: &axum_test::TestServer, auth: &str, body: serde_json::Value) -> Dev {
+    let org = personal_org(server, auth).await;
+    let device_id = body["device_id"].as_str().expect("device_id").to_string();
     let res = server
         .post("/api/v1/devices")
         .add_header("Authorization", format!("Bearer {auth}"))
         .add_header("X-Org-Id", org.to_string())
         .add_header("Content-Type", "application/json")
-        .json(&serde_json::json!({
-            "device_id": device_id,
-            "predefined_device_name": predefined,
-        }))
+        .json(&body)
         .await;
     res.assert_status(axum_test::http::StatusCode::CREATED);
     let dto: serde_json::Value = res.json();
     Dev {
         id: dto["id"].as_i64().expect("id"),
-        device_id: device_id.into(),
+        device_id,
         token: dto["device_token"]["token"].as_str().expect("token").into(),
         key: key_bytes(dto["device_token"]["encryption_key"].as_str().expect("key")),
     }
@@ -849,18 +886,15 @@ async fn admission_et_chip_caps_esp32c3() {
     .await;
 }
 
-/// Tier 2 (device custom) : admission par les pins déclarées dans le
-/// sketch (`Announce.pins`). Chip connu → chip-caps strictes ; labels du
-/// sketch visibles dans GET /pins ; un device sans overlay qui annonce
-/// sans pins est rejeté.
+/// Custom firmware: admission by the pins declared in the sketch
+/// (`Announce.pins`), strict chip-caps on the board's SoC; the sketch's
+/// labels show in GET /pins; undeclared pins are pruned.
 #[tokio::test]
 #[serial]
-async fn admission_manifeste_custom_device() {
+async fn custom_firmware_admits_declared_pins() {
     with_app(|server, auth, _ctx| async move {
         let org = personal_org(&server, &auth).await;
-        // custom_device = board « esp32 » (sans overlay) dans le seed.
-        let dev = create_of(&server, &auth, "custom-1", "custom_device").await;
-        let _ = org;
+        let dev = create_custom(&server, &auth, "custom-1").await;
         let mut ws = connect(&server, &dev).await;
 
         // ── Announce avec pins déclarées (sketch = source) ──
@@ -912,7 +946,7 @@ async fn admission_manifeste_custom_device() {
             "labels du sketch attendus dans /pins : {labels:?}"
         );
 
-        // ── chip-caps strictes même en Tier 2 (SoC connu) : flash pin 6 ──
+        // ── Strict chip-caps: flash pin 6 refused ──
         let announce_flash = serde_json::json!({
             "t": "announce", "chip": "esp32", "board": "ma_carte_maison", "fw": "1.0.0",
             "pins": [{"gpio": 6, "label": "x", "mode": "digital_in"}]
@@ -959,7 +993,7 @@ async fn admission_manifeste_custom_device() {
 async fn admission_skips_uart_console_pins() {
     with_app(|server, auth, _ctx| async move {
         let org = personal_org(&server, &auth).await;
-        let dev = create_of(&server, &auth, "custom-console", "custom_device").await;
+        let dev = create_custom(&server, &auth, "custom-console").await;
         let mut ws = connect(&server, &dev).await;
 
         let announce = serde_json::json!({
@@ -1002,59 +1036,54 @@ async fn admission_skips_uart_console_pins() {
     .await;
 }
 
-/// Tier 2 : device custom (sans overlay) qui annonce SANS pins → Reject
-/// avec raison explicite (l'ancien close 4007 muet devient parlant).
+/// Custom firmware without declared pins (a sketch that only publishes
+/// metrics): admitted with an empty pin map, previously admitted pins
+/// pruned — the overlay never takes over the sketch's pins.
 #[tokio::test]
 #[serial]
-async fn admission_sans_pins_ni_overlay_rejete() {
+async fn custom_firmware_without_pins_gets_an_empty_pin_map() {
     with_app(|server, auth, _ctx| async move {
-        let org = personal_org(&server, &auth).await;
-        let _ = org;
-        let dev = create_of(&server, &auth, "custom-2", "custom_device").await;
+        let dev = create_custom(&server, &auth, "custom-2").await;
         let mut ws = connect(&server, &dev).await;
-        let announce = serde_json::json!({
-            "t": "announce", "chip": "esp32", "board": "quelconque", "fw": "1.0.0"
-        })
-        .to_string();
-        ws.send_text(encrypt(&announce, &dev.key)).await;
-        let raw = ws.receive_text().await;
-        let plain = decrypt(&raw, &dev.key);
-        assert!(
-            plain.contains("sans overlay board ni pins"),
-            "Reject attendu : {plain}"
-        );
+        for (pins, expected) in [
+            (
+                serde_json::json!([{"gpio": 5, "label": "pump", "mode": "digital_out"}]),
+                1,
+            ),
+            (serde_json::json!([]), 0),
+        ] {
+            let announce = serde_json::json!({
+                "t": "announce", "chip": "esp32", "board": "any", "fw": "1.0.0", "pins": pins
+            })
+            .to_string();
+            ws.send_text(encrypt(&announce, &dev.key)).await;
+            let raw = ws.receive_text().await;
+            match serde_json::from_str(&decrypt(&raw, &dev.key)).expect("ServerMsg") {
+                pnex_core::ServerMsg::ProvisionAck { caps, .. } => {
+                    assert_eq!(caps.len(), expected, "pins: {pins}")
+                }
+                other => panic!("expected ProvisionAck, got: {other:?}"),
+            }
+        }
         ws.close().await;
     })
     .await;
 }
 
-/// Tier 2 : chip inconnu (pas de chip-caps) — admission **permissive**
-/// (sketch = source, warn journalisé) au lieu du rejet historique.
+/// A generic model whose board has no overlay and no custom firmware has
+/// nothing to admit: refused at connect (4007).
 #[tokio::test]
 #[serial]
-async fn admission_permissive_chip_inconnu() {
+async fn generic_without_overlay_nor_custom_firmware_refused() {
     with_app(|server, auth, _ctx| async move {
-        let org = personal_org(&server, &auth).await;
-        let _ = org;
-        let dev = create_of(&server, &auth, "custom-3", "custom_device").await;
+        let dev = create_of(&server, &auth, "plain-esp32", "generic_esp32").await;
         let mut ws = connect(&server, &dev).await;
-        let announce = serde_json::json!({
-            "t": "announce", "chip": "magique-2000", "board": "ma_carte", "fw": "1.0.0",
-            "pins": [{"gpio": 99, "label": "led", "mode": "digital_out"}]
-        })
-        .to_string();
-        ws.send_text(encrypt(&announce, &dev.key)).await;
-        let raw = ws.receive_text().await;
-        let msg: pnex_core::ServerMsg =
-            serde_json::from_str(&decrypt(&raw, &dev.key)).expect("ServerMsg");
-        match msg {
-            pnex_core::ServerMsg::ProvisionAck { caps, .. } => {
-                assert_eq!(caps.len(), 1, "admis malgré le chip inconnu");
-                assert_eq!(caps[0].label, "led");
+        let code = loop {
+            if let Some(c) = close_code(ws.receive_message().await) {
+                break c;
             }
-            other => panic!("admission permissive attendue, reçu : {other:?}"),
-        }
-        ws.close().await;
+        };
+        assert_eq!(code, 4007);
     })
     .await;
 }

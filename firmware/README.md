@@ -9,9 +9,9 @@ Firmware ESP8266 et ESP32-C3 du projet pnex, convergé dans le monorepo —
 | Dossier | Rôle |
 |---|---|
 | `soil_sensor/` | Capteur d'humidité du sol (predefined device) |
-| `generic_esp8266/` | Générique pin_slave (Brick 0) — preset Tier 1, build serveur |
-| `generic_esp32c3/` | Générique ESP32-C3 (Seeed XIAO ESP32C3) — preset Tier 1, build serveur |
-| `lib/pnex/` | **Lib PIO `PneX`** — toute la mécanique (transport WiFi+WS+ChaCha, config -D b64, profil pin_slave, déclaration de pins sketch → `Announce.pins`, Tier 2). Autonome (`library.json`), publiable (`pio pkg publish`). Example : `examples/CustomDevice/` |
+| `generic_esp8266/` | Générique pin_slave (Brick 0) — modèle générique, build serveur |
+| `generic_esp32c3/` | Générique ESP32-C3 (Seeed XIAO ESP32C3) — modèle générique, build serveur |
+| `lib/pnex/` | **Lib PIO `PneX`** — toute la mécanique (transport WiFi+WS+ChaCha, config -D b64, profil pin_slave, déclaration de pins sketch → `Announce.pins` pour le firmware custom). Embarquée dans le serveur et compilée avec l'IDE firmware. Exemple : `examples/CustomMetrics/` |
 | `common_libs/` | Libs partagées — `lib_extra_dirs = ../common_libs` impose la structure frère : `display`, `pnex-core-cpp` (miroir de `pnex_core::control`, golden vectors Rust = C++) |
 | `core-cpp-tests/` | Rejoue les golden vectors de `pnex-core-cpp` sur l'hôte (Unity) — `uv run pio test -d core-cpp-tests -e native` ; regen des vecteurs : `PNEX_REGEN_GOLDENS=1 cargo test -p pnex-core --test golden_vectors` |
 | `ws-server/` | Mock Python du serveur WS (tests locaux de firmware) |
@@ -33,10 +33,10 @@ Firmware ESP8266 et ESP32-C3 du projet pnex, convergé dans le monorepo —
 > sinon.
 
 Le worker de build (`crates/pnex-firmware-builder`) compile les presets
-Tier 1 avec la config device en variables d'environnement (base64) —
-contrat détaillé dans `docs/architecture/firmware-build.md`. Les devices
-custom (Tier 2) compilent **chez l'utilisateur** avec les snippets
-générés par l'UI — voir `docs/DYNAMIC_DEVICES.md`.
+avec la config device en variables d'environnement (base64) — contrat
+détaillé dans `docs/architecture/firmware-build.md`. Le firmware custom
+(IDE, modèles génériques uniquement) passe par le même worker — voir
+`docs/architecture/custom-firmware.md`.
 
 ## Toolchain
 

@@ -353,8 +353,8 @@ pub(super) async fn create(
                     &format!("board par défaut du modèle {} introuvable", predefined.name),
                 ));
             };
-            // Compatible = mêmes SoC reconnus par les chip-caps, ou à défaut
-            // mêmes valeurs brutes (boards « generic » Tier 2).
+            // Compatible = same SoC known to the chip-caps, or else the same
+            // raw value (boards with an unknown SoC).
             let compatible = match (
                 pnex_core::Soc::from_board_soc(&board.soc),
                 pnex_core::Soc::from_board_soc(&default_board.soc),
@@ -468,7 +468,8 @@ pub(super) async fn create(
 
     // Création inactive + token (transaction : jamais de device sur token).
     let is_agent = predefined.name == pnex_core::EDGE_AGENT_PREDEF;
-    let allow_dynamic = matches!(predefined.name.as_str(), "custom_device") || is_agent;
+    // Only agents ingest free-form keys; boards announce their metrics.
+    let allow_dynamic = is_agent;
     // Edge agent (D95): free-form keys, bounded by a larger distinct keys
     // quota (editable from the UI).
     let max_unique = if is_agent {

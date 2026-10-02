@@ -190,10 +190,9 @@ async fn ws_device(
         return reject(ws, 4008, "No encryption key");
     };
 
-    // Snapshot au connect : les presets Tier 1 tirent leurs labels de
-    // l'overlay board ; un custom (Tier 2, sans overlay) démarre avec les
-    // instances persistées à l'admission — l'`Announce` décide (Reject
-    // parlant à l'announce si ni overlay ni pins, au lieu d'un 4007 muet).
+    // Snapshot at connect: a generic model takes its labels from the board
+    // overlay, a custom firmware device from the instances persisted at
+    // admission. Neither (no overlay, no custom firmware) → 4007.
     let snap = match build_snapshot(&ctx.db, &device).await {
         Ok(s) => s,
         Err(_) => return reject(ws, 4007, "No device snapshot"),
@@ -682,8 +681,8 @@ async fn revalidate(
 }
 
 /// Announce → admission (Validated) → refresh snapshot → ProvisionAck.
-/// Tier 1 (overlay) : admission historique ; Tier 2 (custom) : admission
-/// par les pins déclarées (`Announce.pins`).
+/// Generic model: overlay admission; custom firmware: admission by the
+/// declared pins (`Announce.pins`).
 #[allow(clippy::too_many_arguments)] // même école que session_loop
 async fn handle_announce(
     ctx: &AppContext,
@@ -696,11 +695,6 @@ async fn handle_announce(
     caps: Option<&[pnex_core::CapDesc]>,
     pins: Option<&[pnex_core::PinDecl]>,
 ) -> Option<String> {
-    // Point unique Soc (chip-caps) : la liste des chips supportés vit dans
-    // pnex_core (`Soc::from_board_soc` — esp8266, esp32-c3, esp32). Un chip
-    // inconnu n'est plus un rejet : admission permissive à l'admission par
-    // manifeste (Tier 2, sketch = source) ; strict dès que le SoC est connu.
-    let soc = pnex_core::Soc::from_board_soc(chip);
     // Manifeste de capacités (D47) : attestation pour un firmware compilé
     // par le serveur (l'overlay board reste l'autorité des pins — bascule
     // douce §7) ; « le serveur sait quelle version tourne où » (réservation
@@ -734,8 +728,8 @@ async fn handle_announce(
             return None;
         }
     };
-    // SoC observé : persisté au 1er announce (Tier 2 — soc du board
-    // « generic » inutilisable par les chip-caps). Best-effort.
+    // Observed SoC: recorded at the first announce, fallback of
+    // `device_soc` when the board's SoC is unknown. Best-effort.
     if device.soc.is_none() {
         provisioning::persist_observed_soc(&ctx.db, device.id, chip).await;
     }
@@ -763,7 +757,7 @@ async fn handle_announce(
     match provisioning::admit(
         &ctx.db,
         &device,
-        Some(provisioning::AdmissionManifest { soc, pins }),
+        Some(provisioning::AdmissionManifest { pins }),
     )
     .await
     {
@@ -1068,16 +1062,27 @@ async fn send_server_msg(socket: &mut WebSocket, key: &[u8; 32], msg: &ServerMsg
 /// Snapshot device complet : identité + carte gpio→label + contraintes
 /// par pin (instances persistées).
 ///
-/// Tier 1 : labels de l'overlay board (`pred_dev` = board de l'overlay).
-/// Tier 2 (custom, pas d'overlay) : labels des instances persistées à
-/// l'admission (announce pins — un device jamais connecté a une carte
-/// vide jusqu'au 1er announce), `pred_dev` = nom du preset.
+/// Generic model: labels from the board overlay (`pred_dev` = overlay
+/// board). Custom firmware: labels of the instances persisted at admission
+/// (the sketch's pins — empty until the first announce), `pred_dev` =
+/// model name. Edge agent: no pins, `pred_dev` = model name.
 async fn build_snapshot(
     db: &DatabaseConnection,
     device: &device_registries::Model,
 ) -> Result<DeviceSnapshot> {
-    let (labels, pred_dev) = match provisioning::load_overlay(db, device).await {
-        Ok((overlay, _soc)) => {
+    let pd = predefined_devices::Entity::find_by_id(device.predefined_device_id)
+        .one(db)
+        .await
+        .map_err(|_| Error::InternalServerError)?
+        .ok_or_else(|| Error::string("predefined device not found"))?;
+    let sketch_or_agent =
+        device.firmware_project_id.is_some() || pd.name == pnex_core::EDGE_AGENT_PREDEF;
+    let overlay = match sketch_or_agent {
+        true => None,
+        false => Some(provisioning::load_overlay(db, device).await?.0),
+    };
+    let (labels, pred_dev) = match overlay {
+        Some(overlay) => {
             let labels: HashMap<i32, String> = overlay
                 .pins
                 .iter()
@@ -1085,12 +1090,7 @@ async fn build_snapshot(
                 .collect();
             (labels, overlay.board.clone())
         }
-        Err(_) => {
-            let pd = predefined_devices::Entity::find_by_id(device.predefined_device_id)
-                .one(db)
-                .await
-                .map_err(|_| Error::InternalServerError)?
-                .ok_or_else(|| Error::string("predefined device introuvable"))?;
+        None => {
             let rows = device_capability_instances::Entity::find()
                 .filter(device_capability_instances::Column::DeviceRegistryId.eq(device.id))
                 .all(db)

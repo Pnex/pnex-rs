@@ -58,8 +58,8 @@ pub const C3_STRAPPING_HIGH: [u16; 3] = [2, 8, 9];
 pub const C3_ADC1_PINS: [u16; 5] = [0, 1, 2, 3, 4];
 
 // ─────────────────────── ESP32 (classique) ───────────────────────
-// Tier 2 (device custom, pio board `esp32dev`) — même grille de règles
-// que le C3 : strapping protégé, ADC1 only, input-only sans pull-up.
+// Custom firmware on a classic ESP32 (pio board `esp32dev`) — same rule
+// grid as the C3: protected strapping, ADC1 only, input-only without pull-up.
 
 /// Flash SPI (GPIO6–11) — interdits en capability (esp32 classique).
 pub const ESP32_FLASH_PINS: [u16; 6] = [6, 7, 8, 9, 10, 11];
@@ -111,10 +111,9 @@ pub enum Soc {
 
 impl Soc {
     /// Convention `mcu_boards.soc` / chip announce (« esp8266 »,
-    /// « esp32-c3 », « esp32 », « esp32-s3 ») → SoC. Inconnu → `None` — les
-    /// call-sites échouent closed (jamais de validation silencieuse contre
-    /// les règles d'un autre SoC) ; seule l'admission Tier 2 tolère un chip
-    /// inconnu (permissif + warn).
+    /// « esp32-c3 », « esp32 », « esp32-s3 ») → SoC. Unknown → `None`: the
+    /// call-sites fail closed (never a silent validation against another
+    /// SoC's rules).
     pub fn from_board_soc(s: &str) -> Option<Self> {
         match s.trim().to_ascii_lowercase().as_str() {
             "esp8266" => Some(Soc::Esp8266),
@@ -127,7 +126,7 @@ impl Soc {
 
     /// Nom fil canonique (« esp8266 », « esp32-c3 », « esp32 ») — chip
     /// annoncé par la lib PneX et valeur persistée dans
-    /// `device_registries.soc` (soc observé Tier 2).
+    /// `device_registries.soc` (SoC observed at the first announce).
     pub fn name(self) -> &'static str {
         match self {
             Soc::Esp8266 => "esp8266",
