@@ -16,7 +16,37 @@
 | B0.3 | **`device_profiles` différé à P5** (avec les policies `Profiled`/`Locked`). P0 = policy `Validated` uniquement : admission des caps validée contre chip-caps + overlay board | La table ne sert qu'à `Profiled` ; l'ajout ultérieur est trivial (table + check d'allowlist) |
 | B0.4 | **ChaCha20 nu dès P0** — framing `base64(nonce(12)‖ct)` identique à `/ws/sensor/ingest`, clé = `device_tokens.encryption_key`, code `common_libs/crypto` réutilisé tel quel | Déjà en place des deux côtés ; le stage « plaintext d'abord » du PRD n'économisait rien |
 | B0.5 | **Le `Write` reste en P0, borné au manuel** : action utilisateur depuis l'UI (toggle) + provisioning/config push. **Jamais de boucle de régulation serveur** → consigné D17 (frontière avec le chantier M2M, D13) | Must du prototypage rapide sur cartes de dev ; la régulation reste à l'edge |
-| B0.6 | **Extension du modèle existant, pas de registre parallèle** : `device_registry` / `device_tokens` / `device_states` réutilisés tels quels ; capabilities *instances* = nouvelle table ; overlay board = data (`mcu_boards.details`) ; chip-caps = code (`pnex-core`) | Modèle « sans copies » (directive user) ; les tables `devices`/`capabilities` proposées par le PRD doublaient l'existant |
+| B0.6 | **Extension du modèle existant, pas de registre parallèle** : `device_registry` / `device_tokens` / `device_states` réutilisés tels quels ; capabilities *instances* = nouvelle table ; overlay board = data (`mcu_boards.details`) ; chip-caps = code (`pnex-core`). **Amendé par D121** : le profil reste stocké en `mcu_boards.details` (figé par device), mais sa source est le registre typé `pnex_core::catalog`, plus une fixture YAML | Modèle « sans copies » (directive user) ; les tables `devices`/`capabilities` proposées par le PRD doublaient l'existant |
+
+### D121 — Catalogue devices en code (2026-10-02)
+
+Les fixtures YAML du catalogue devices (`fixtures/devices/` : types,
+capabilities, `mcu.yaml`, 8 `board_profile_*.yaml`, `predefined_device.yaml`)
+sont remplacées par un **registre typé** `pnex_core::catalog` :
+
+- `catalog/boards/<variante>.rs` : une carte = un fichier (nom, `Soc`,
+  `pio_board`, profil v2 construit par les helpers `catalog/pins.rs`) +
+  sa ligne dans `boards::ALL` ; la carte `generic` (agents) y est déclarée
+  explicitement (fin de la création à la volée au seed) ;
+- `catalog/products.rs` : modèles prédéfinis, référence **typée** vers la
+  carte, le type et les capabilities (plus de jointure par chaîne) ;
+- `catalog/types.rs` : enums `DeviceType`, `Capability` (+ mode).
+
+Le seed au boot (`tasks/seed.rs`) upserte les mêmes tables depuis le
+registre (par nom, sans purge, même verrou consultatif) ; le profil reste
+stocké en `mcu_boards.details` et figé par device. Invariants vérifiés en
+CI (`cargo test -p pnex-core catalog`) : noms uniques, un pin par slot
+`side-index`, index < `per_side`, GPIO connu du SoC, pins écran présents
+sur la carte, JSON relu en v2. Test d'intégration `tests/catalog_seed.rs`
+(tables = registre, idempotence).
+
+**Motif** : supporter une carte demande déjà une release (variante `Soc` +
+chip-caps, firmware, `pio_board`) ; la promesse « contribuable en data sans
+recompilation » de B0.6 ne tenait plus, et une carte était éclatée sur 3
+fichiers liés par chaînes (fautes détectées au boot seulement). Restent en
+YAML : conversions, formules, paliers d'abonnement (contenu métier/config,
+indépendant du firmware). Si un jour une org déclare ses propres cartes,
+ce sera une fonctionnalité UI en base, pas un fichier.
 
 ## 1. Modèle de données (extension de l'existant)
 
@@ -25,7 +55,7 @@ Trois niveaux — **channel → capability instance → (profile différé)** :
 | Niveau | Porte quoi | Où ça vit |
 |---|---|---|
 | **Chip-caps ESP8266** (silicium) | GPIO6–11 interdits (flash SPI), strapping GPIO0/2 = HIGH au boot, GPIO15 = LOW au boot, GPIO16 (pas d'interrupt/pwm, pulldown only), A0 canal unique 10-bit ; **console UART0 GPIO1/3 (TX/RX) interdite** (ESP8266 + ESP32 classique — le `Serial` du firmware générique s'y trouve ; C3/S3 = USB-CDC, UART0 libre) : rejet `caps-console-pins`, jamais provisionnée à l'admission, lignes antérieures désactivées et masquées de `/pins` (demande utilisateur 2026-09-27) | **Code** — `pnex-core` (~20 lignes de table de contraintes) |
-| **Overlay board** (câblage NodeMCU/D1 mini) | labels D0…D8/A0 → GPIO, LED onboard (GPIO2, active-LOW), pull par défaut, safe-states | **Data** — `mcu_boards.details` (JSONB déjà en schéma, jamais seedé) + fixture YAML seedée |
+| **Overlay board** (câblage NodeMCU/D1 mini) | labels D0…D8/A0 → GPIO, LED onboard (GPIO2, active-LOW), pull par défaut, safe-states | **Data** — `mcu_boards.details` (JSONB), seedé depuis le registre typé `pnex_core::catalog` (D121) |
 | **Capability instance** (état live d'un pin d'un device) | mode courant, config, snapshot des contraintes validées | **PG** — nouvelle table `device_capability_instances` |
 
 Migration 000008 (nom réel : `device_capability_instances`) :
@@ -150,9 +180,9 @@ consommées via `common_libs/config`. Conséquences :
 - `ensure_token` / `generate_token` / `generate_device_key`
   (`controllers/devices.rs:80-94,247`) passent `pub(crate)` — réutilisés
   tels quels (le wizard crée déjà le device + token).
-- Seed : predefined `generic_esp8266` (type **mixed**) + overlay NodeMCU en
-  YAML (`fixtures/devices/board_overlay_nodemcu.yaml` → `mcu_boards.details`)
-  — overlay **contribuable en data**, jamais en `.h` (§2.3 PRD). Écart vs
+- Seed : predefined `generic_esp8266` (type **mixed**) + profil NodeMCU
+  (`mcu_boards.details`, jamais en `.h` — §2.3 PRD). ~~Overlay YAML
+  contribuable en data~~ → registre typé `pnex_core::catalog` depuis D121. Écart vs
   PRD : **pas de caps catalogue `digital_in`/…** — les modes vivent dans
   l'enum `pnex-core::Mode`, des lignes catalogue auraient doublé la source
   de vérité (modèle sans copies).

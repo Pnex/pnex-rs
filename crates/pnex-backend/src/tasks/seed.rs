@@ -1,9 +1,11 @@
-//! Idempotent seed of the global catalog — reuses the YAML fixtures from
-//! the legacy bootstrap_db/data, copied as-is into `fixtures/`.
+//! Idempotent seed of the global catalog: the device catalog comes from the
+//! typed registry `pnex_core::catalog` (D121); tiers, conversions and
+//! formulas from the YAML fixtures under `fixtures/`.
 //!
 //! Usage : `cargo loco task seed` (depuis crates/pnex-backend).
 
 use loco_rs::prelude::*;
+use pnex_core::catalog;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
     DatabaseTransaction, EntityTrait, QueryFilter, Set, Statement, TransactionTrait,
@@ -22,7 +24,7 @@ impl Task for Seed {
     fn task(&self) -> TaskInfo {
         TaskInfo {
             name: "seed".to_string(),
-            detail: "Idempotent seed of the global catalog (reuses the YAML fixtures): device types, capabilities, MCU boards, predefined devices, tiers, global conversions, global formulas.\nUsage:\ncargo loco task seed".to_string(),
+            detail: "Idempotent seed of the global catalog (device catalog from code, the rest from the YAML fixtures): device types, capabilities, MCU boards, predefined devices, tiers, global conversions, global formulas.\nUsage:\ncargo loco task seed".to_string(),
         }
     }
 
@@ -34,8 +36,8 @@ impl Task for Seed {
     }
 }
 
-/// Idempotent upsert of the global catalog from the YAML fixtures under
-/// `base`. `with_tiers = false` skips subscription tiers: in self-hosted
+/// Idempotent upsert of the global catalog: the device catalog from
+/// `pnex_core::catalog`, the rest from the YAML fixtures under `base`. `with_tiers = false` skips subscription tiers: in self-hosted
 /// mode no tier exists, so new orgs get none and no quota applies.
 ///
 /// Runs in a single transaction guarded by a Postgres transaction-scoped
@@ -65,21 +67,13 @@ pub async fn seed_catalog(
 const SEED_LOCK_KEY: i64 = 0x504e_4558_5345_4544; // "PNEXSEED"
 
 async fn seed_catalog_in(db: &Db, base: &std::path::Path, with_tiers: bool) -> Result<()> {
-    let n = seed_device_types(db, &base.join("devices/device_type.yaml")).await?;
+    let n = seed_device_types(db).await?;
     tracing::info!(n, "seed: device types");
-    let n = seed_simple_capabilities(db, &base.join("devices/device_cap.yaml")).await?;
+    let n = seed_capabilities(db).await?;
     tracing::info!(n, "seed: capabilities");
-    let n = seed_mcu_boards(db, &base.join("devices/mcu.yaml")).await?;
+    let n = seed_mcu_boards(db).await?;
     tracing::info!(n, "seed: mcu boards");
-    let mut n = 0;
-    for file in yaml_files(&base.join("devices"))? {
-        let name = file.file_name().and_then(|f| f.to_str()).unwrap_or("");
-        if name.starts_with("board_profile_") {
-            n += seed_board_profiles(db, &file).await?;
-        }
-    }
-    tracing::info!(n, "seed: board profiles v2");
-    let n = seed_predefined_devices(db, &base.join("devices/predefined_device.yaml")).await?;
+    let n = seed_predefined_devices(db).await?;
     tracing::info!(n, "seed: predefined devices");
     if with_tiers {
         let n = seed_subscription_tiers(db, &base.join("subscriptions/subscription.yaml")).await?;
@@ -166,165 +160,87 @@ fn parse_duration_secs(s: &str) -> Result<i64> {
 }
 
 // ---------- device catalogue ----------
+//
+// Source of truth = the typed registry `pnex_core::catalog` (D121). Upsert
+// by name, never prune: a row removed from the registry stays in the base
+// (registered devices may still reference it).
 
-async fn seed_device_types(db: &Db, path: &std::path::Path) -> Result<usize> {
-    #[derive(serde::Deserialize)]
-    struct Row {
-        name: String,
-    }
-    let rows: Vec<Row> = read_yaml(path)?;
-    for r in &rows {
+async fn seed_device_types(db: &Db) -> Result<usize> {
+    for t in catalog::DeviceType::ALL {
         let existing = device_types::Entity::find()
-            .filter(device_types::Column::Name.eq(&r.name))
+            .filter(device_types::Column::Name.eq(t.name()))
             .one(db)
             .await?;
         let mut am = existing.map_or_else(<device_types::ActiveModel as Default>::default, |m| {
             m.into_active_model()
         });
-        am.name = Set(r.name.clone());
+        am.name = Set(t.name().to_string());
         am.save(db).await?;
     }
-    Ok(rows.len())
+    Ok(catalog::DeviceType::ALL.len())
 }
 
-async fn seed_simple_capabilities(db: &Db, path: &std::path::Path) -> Result<usize> {
-    #[derive(serde::Deserialize)]
-    struct Row {
-        name: String,
-        mode: Option<String>,
-    }
-    let rows: Vec<Row> = read_yaml(path)?;
-    for r in &rows {
-        let mode = match r.mode.as_deref() {
-            None | Some("input") => CapabilityMode::Input,
-            Some("output") => CapabilityMode::Output,
-            Some("input_output") => CapabilityMode::InputOutput,
-            Some(other) => {
-                return Err(Error::string(&format!(
-                    "mode capability inconnu : {other:?}"
-                )))
-            }
+async fn seed_capabilities(db: &Db) -> Result<usize> {
+    for c in catalog::Capability::ALL {
+        let mode = match c.mode() {
+            catalog::CapabilityMode::Input => CapabilityMode::Input,
+            catalog::CapabilityMode::Output => CapabilityMode::Output,
+            catalog::CapabilityMode::InputOutput => CapabilityMode::InputOutput,
         };
         let existing = device_capabilities::Entity::find()
-            .filter(device_capabilities::Column::Name.eq(&r.name))
+            .filter(device_capabilities::Column::Name.eq(c.name()))
             .one(db)
             .await?;
         let mut am = existing.map_or_else(
             <device_capabilities::ActiveModel as Default>::default,
             |m| m.into_active_model(),
         );
-        am.name = Set(r.name.clone());
+        am.name = Set(c.name().to_string());
         am.mode = Set(mode);
         am.save(db).await?;
     }
-    Ok(rows.len())
+    Ok(catalog::Capability::ALL.len())
 }
 
-async fn seed_mcu_boards(db: &Db, path: &std::path::Path) -> Result<usize> {
-    #[derive(serde::Deserialize)]
-    struct Row {
-        name: String,
-        soc: Option<String>,
-        pretty_name: Option<String>,
-        pio_board: Option<String>,
-    }
-    let rows: Vec<Row> = read_yaml(path)?;
-    for r in &rows {
+/// Board variants with their v2 profile (`mcu_boards.details`).
+async fn seed_mcu_boards(db: &Db) -> Result<usize> {
+    for b in catalog::boards() {
         let existing = mcu_boards::Entity::find()
-            .filter(mcu_boards::Column::Name.eq(&r.name))
+            .filter(mcu_boards::Column::Name.eq(b.name))
             .one(db)
             .await?;
         let mut am = existing.map_or_else(<mcu_boards::ActiveModel as Default>::default, |m| {
             m.into_active_model()
         });
-        am.name = Set(r.name.clone());
-        am.soc = Set(r.soc.clone().unwrap_or_else(|| "esp32".to_string()));
-        am.pretty_name = Set(r.pretty_name.clone());
-        am.pio_board = Set(r.pio_board.clone());
+        am.name = Set(b.name.to_string());
+        am.soc = Set(b.soc_str().to_string());
+        am.pretty_name = Set(b.pretty_name.map(str::to_string));
+        am.pio_board = Set(b.pio_board.map(str::to_string));
+        if let Some(profile) = b.profile {
+            am.details = Set(Some(serde_json::to_value(profile())?));
+        }
         am.save(db).await?;
     }
-    Ok(rows.len())
+    Ok(catalog::boards().len())
 }
 
-/// Brick 0 — écrit le profil board v2 (fixture YAML → JSON) dans
-/// `mcu_boards.details`. Le profil est du **data** : contribuable sans
-/// recompilation, jamais en `.h` (brick0.md §1, B0.6). Une fixture = une
-/// variante ; l'ajout d'une carte = un fichier `board_profile_*.yaml`.
-async fn seed_board_profiles(db: &Db, path: &std::path::Path) -> Result<usize> {
-    #[derive(serde::Deserialize)]
-    struct Row {
-        board_name: String,
-        profile: pnex_core::BoardProfileV2,
-    }
-    let rows: Vec<Row> = read_yaml(path)?;
-    for r in &rows {
-        let board = mcu_boards::Entity::find()
-            .filter(mcu_boards::Column::Name.eq(&r.board_name))
-            .one(db)
-            .await?
-            .ok_or_else(|| Error::string(&format!("board {} absent du seed", r.board_name)))?;
-        let mut am: mcu_boards::ActiveModel = board.into();
-        am.details = Set(Some(serde_json::to_value(&r.profile)?));
-        am.update(db).await?;
-    }
-    Ok(rows.len())
-}
-
-async fn seed_predefined_devices(db: &Db, path: &std::path::Path) -> Result<usize> {
-    #[derive(serde::Deserialize)]
-    struct Row {
-        name: String,
-        pretty_name: Option<String>,
-        revision: Option<String>,
-        device_type_name: String,
-        capabilities_names: Vec<String>,
-        board_name: String,
-        device_doc_url: Option<String>,
-        prestashop_product_id: Option<serde_json::Value>,
-        prestashop_buy_url: Option<String>,
-        byod_doc_url: Option<String>,
-        image_source_url: Option<String>,
-        stl_files_url: Option<String>,
-        description: Option<String>,
-        /// Fluent key resolved client-side (i18n chantier).
-        description_i18n: Option<String>,
-        /// Model that can host a screen (`{"screen": {"kind": "ssd1306"}}`).
-        peripherals: Option<serde_json::Value>,
-    }
-    let rows: Vec<Row> = read_yaml(path)?;
-    for r in &rows {
+async fn seed_predefined_devices(db: &Db) -> Result<usize> {
+    for p in catalog::products() {
         let device_type = device_types::Entity::find()
-            .filter(device_types::Column::Name.eq(&r.device_type_name))
+            .filter(device_types::Column::Name.eq(p.device_type.name()))
             .one(db)
             .await?
             .ok_or_else(|| {
-                Error::string(&format!(
-                    "device_type {} absent du seed",
-                    r.device_type_name
-                ))
+                Error::string(&format!("device_type {} not seeded", p.device_type.name()))
             })?;
-
-        // Legacy quirk kept: the "generic" board is not in mcu.yaml,
-        // it is created on the fly by get_or_create.
-        let board = match mcu_boards::Entity::find()
-            .filter(mcu_boards::Column::Name.eq(&r.board_name))
+        let board = mcu_boards::Entity::find()
+            .filter(mcu_boards::Column::Name.eq(p.board.name))
             .one(db)
             .await?
-        {
-            Some(b) => b,
-            None => {
-                mcu_boards::ActiveModel {
-                    name: Set(r.board_name.clone()),
-                    soc: Set("generic".to_string()),
-                    ..Default::default()
-                }
-                .insert(db)
-                .await?
-            }
-        };
+            .ok_or_else(|| Error::string(&format!("board {} not seeded", p.board.name)))?;
 
         let existing = predefined_devices::Entity::find()
-            .filter(predefined_devices::Column::Name.eq(&r.name))
+            .filter(predefined_devices::Column::Name.eq(p.name))
             .one(db)
             .await?;
         let is_update = existing.is_some();
@@ -332,40 +248,38 @@ async fn seed_predefined_devices(db: &Db, path: &std::path::Path) -> Result<usiz
             .map_or_else(<predefined_devices::ActiveModel as Default>::default, |m| {
                 m.into_active_model()
             });
-        am.name = Set(r.name.clone());
-        am.pretty_name = Set(r.pretty_name.clone());
-        am.revision = Set(r.revision.clone().unwrap_or_default());
+        let shop = p.shop;
+        am.name = Set(p.name.to_string());
+        am.pretty_name = Set(Some(p.pretty_name.to_string()));
+        am.revision = Set(p.revision.to_string());
         am.device_type_id = Set(device_type.id);
         am.board_id = Set(board.id);
-        am.device_doc_url = Set(r.device_doc_url.clone());
-        am.prestashop_product_id = Set(r.prestashop_product_id.as_ref().map(|v| match v {
-            serde_json::Value::String(s) => s.clone(),
-            other => other.to_string(),
-        }));
-        am.prestashop_buy_url = Set(r.prestashop_buy_url.clone());
-        am.byod_doc_url = Set(r.byod_doc_url.clone());
-        am.image_source_url = Set(r.image_source_url.clone());
-        am.stl_files_url = Set(r.stl_files_url.clone());
-        am.description = Set(r.description.clone());
-        am.description_i18n = Set(r.description_i18n.clone());
-        am.peripherals = Set(r.peripherals.clone());
+        am.device_doc_url = Set(shop.map(|s| s.device_doc_url.to_string()));
+        am.prestashop_product_id = Set(shop.map(|s| s.prestashop_product_id.to_string()));
+        am.prestashop_buy_url = Set(shop.map(|s| s.prestashop_buy_url.to_string()));
+        am.byod_doc_url = Set(shop.map(|s| s.byod_doc_url.to_string()));
+        am.image_source_url = Set(shop.map(|s| s.image_source_url.to_string()));
+        am.stl_files_url = Set(shop.map(|s| s.stl_files_url.to_string()));
+        am.description = Set(Some(p.description.to_string()));
+        am.description_i18n = Set(Some(p.description_i18n.to_string()));
+        am.peripherals = Set(None);
         let device = if is_update {
             am.update(db).await?
         } else {
             am.insert(db).await?
         };
 
-        // M2M : remplacement atomique des liens (idempotent).
+        // M2M: replace the capability links (idempotent).
         predefined_device_capabilities::Entity::delete_many()
             .filter(predefined_device_capabilities::Column::PredefinedDeviceId.eq(device.id))
             .exec(db)
             .await?;
-        for cap_name in &r.capabilities_names {
+        for c in p.capabilities {
             let cap = device_capabilities::Entity::find()
-                .filter(device_capabilities::Column::Name.eq(cap_name))
+                .filter(device_capabilities::Column::Name.eq(c.name()))
                 .one(db)
                 .await?
-                .ok_or_else(|| Error::string(&format!("capability {cap_name} absente du seed")))?;
+                .ok_or_else(|| Error::string(&format!("capability {} not seeded", c.name())))?;
             predefined_device_capabilities::ActiveModel {
                 predefined_device_id: Set(device.id),
                 device_capability_id: Set(cap.id),
@@ -376,7 +290,7 @@ async fn seed_predefined_devices(db: &Db, path: &std::path::Path) -> Result<usiz
             .await?;
         }
     }
-    Ok(rows.len())
+    Ok(catalog::products().len())
 }
 
 // ---------- subscription tiers ----------

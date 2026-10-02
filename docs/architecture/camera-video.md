@@ -494,7 +494,7 @@ rien de poussé. Le firmware compile, n'a jamais été flashé.
 | 6 | Fermer le live → arrêt après 30 s (`on_demand`) | badge | — |
 | 7 | Passer en `continuous`, flow `camera-source → video-record` (segment 30 s) → segments dans l'onglet Enregistrements, lisibles dans le lecteur et VLC | `/cameras` → Enregistrements | `PNEX_FLOW_VIDEO_URL` absent = token runtime manquant |
 | 8 | Flow `camera-source → vision-detect (person) → event-log` → événements dans `/events` | `/events` | modèle : uploader `~/.cache/pnex-vision-test/yolox_nano.onnx` dans `/models` |
-| 9 | Profil board : sens USB/connecteur, LED flash GPIO4 et LED rouge GPIO33 (active LOW) pilotables | éditeur pinout, write pin | corriger `fixtures/devices/board_profile_esp32cam.yaml` puis reseed |
+| 9 | Profil board : sens USB/connecteur, LED flash GPIO4 et LED rouge GPIO33 (active LOW) pilotables | éditeur pinout, write pin | corriger `pnex-core/src/catalog/boards/esp32cam_ai_thinker.rs` (D121) puis reseed |
 | 10 | OTA (min_spiffs, slots 1,9 Mo) | bouton OTA | — |
 
 Risques identifiés non mesurés : double copie de la frame dans

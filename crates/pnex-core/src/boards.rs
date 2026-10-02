@@ -1,9 +1,9 @@
-//! Overlays board — le niveau **data** du modèle 3 couches (Brick 0 §1).
+//! Board overlays — the board level of the 3-layer model (Brick 0 §1).
 //!
-//! Un overlay décrit le câblage d'une carte (labels D0…D8/A0 → GPIO). Il vit
-//! en `mcu_boards.details` (jsonb, jamais en `.h` — §2.3 du PRD) et se
-//! désérialise en `BoardOverlay` côté serveur pour dériver la carte de pins
-//! à l'admission. Contribuable en data (fixture YAML) sans recompilation.
+//! An overlay describes a board's wiring (labels D0…D8/A0 → GPIO). It lives
+//! in `mcu_boards.details` (jsonb, never in a `.h` — PRD §2.3) and is
+//! deserialized server-side to derive the pin map at admission. The source
+//! of the stored profiles is the typed registry `crate::catalog` (D121).
 
 use serde::{Deserialize, Serialize};
 

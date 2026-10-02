@@ -37,6 +37,10 @@ pub use thermo_quantities::*;
 pub mod devices;
 pub use devices::*;
 
+/// Device catalog as typed code (D121): boards, predefined devices,
+/// device types, capabilities.
+pub mod catalog;
+
 /// Référentiels Edge — credentials WiFi + hosts serveur PNeX org-scoped,
 /// piochés par l'étape Config du wizard device (payload `CreateBuild`
 /// inchangé). wasm-safe (serde seul).
