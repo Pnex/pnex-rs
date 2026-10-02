@@ -39,7 +39,7 @@ export class NotificationsPage {
     await this.channel(name).getByRole('button', { name: this.app.t('notify-delete'), exact: true }).click();
     const dlg = confirmDialog(this.page, this.app.t('notify-confirm-delete-title'));
     await dlg.getByRole('button', { name: this.app.t('notify-delete'), exact: true }).click();
-    await expect(this.page.getByRole('main').getByText(name, { exact: true })).toHaveCount(0);
+    await expect(this.channel(name)).toHaveCount(0);
   }
 }
 
