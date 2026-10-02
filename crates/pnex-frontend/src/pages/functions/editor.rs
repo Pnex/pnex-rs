@@ -7,9 +7,12 @@ use super::*;
 #[component]
 pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>) -> Element {
     let mut generation = use_signal(|| 0u32);
+    // Tagged with the generation it was fetched for: right after a bump the
+    // resource still holds the previous detail, which must not be taken
+    // for the reloaded one.
     let detail = use_resource(move || {
-        let _ = generation();
-        async move { api::functions::detail(fn_id).await }
+        let gen = generation();
+        async move { (gen, api::functions::detail(fn_id).await) }
     });
 
     // Champs édités localement, initialisés depuis le détail (une fois par
@@ -20,9 +23,11 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
     let mut loaded = use_signal(|| None::<FunctionDetail>);
     let mut init_done = use_signal(|| None::<u32>);
     use_effect(move || {
-        let Some(Ok(d)) = &*detail.read() else { return };
-        let gen = generation();
-        if init_done() == Some(gen) {
+        let Some((gen, Ok(d))) = &*detail.read() else {
+            return;
+        };
+        let gen = *gen;
+        if gen != generation() || init_done() == Some(gen) {
             return;
         }
         name.set(d.name.clone());
