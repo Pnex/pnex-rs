@@ -439,37 +439,60 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                 // SVG guidage : arc de dwell (remplissage DOM), réticule,
                 // point guideur, flèche, pastille stabilité — positions
                 // pilotées en DOM direct (push_overlay_dom, 15 Hz).
-                svg { class: "absolute inset-0 h-full w-full pointer-events-none",
+                svg {
+                    class: "absolute inset-0 h-full w-full pointer-events-none",
                     view_box: "0 0 400 400",
-                    circle { id: ID_ARC,
-                        cx: "200", cy: "200", r: "{RETICLE_R}",
-                        fill: "none", stroke: "#38bdf8", "stroke-width": "5",
+                    circle {
+                        id: ID_ARC,
+                        cx: "200",
+                        cy: "200",
+                        r: "{RETICLE_R}",
+                        fill: "none",
+                        stroke: "#38bdf8",
+                        "stroke-width": "5",
                         "stroke-linecap": "round",
                         "stroke-dasharray": "{ARC_LEN:.1}",
                         "stroke-dashoffset": "{ARC_LEN:.1}",
                         transform: "rotate(-90 200 200)",
                     }
-                    circle { cx: "200", cy: "200", r: "38",
-                        fill: "none", stroke: "white", "stroke-width": "2",
+                    circle {
+                        cx: "200",
+                        cy: "200",
+                        r: "38",
+                        fill: "none",
+                        stroke: "white",
+                        "stroke-width": "2",
                     }
                     // Point guideur : PRÉCÈDE — l'utilisateur va vers lui.
                     // (Signe vertical : SVG y descend, pitch monte → cy =
                     // 200 − dy, cf. push_overlay_dom.)
-                    circle { id: ID_DOT,
-                        cx: "200", cy: "200", r: "7",
-                        fill: "#38bdf8", "fill-opacity": "0.9",
-                        stroke: "white", "stroke-width": "1.5",
+                    circle {
+                        id: ID_DOT,
+                        cx: "200",
+                        cy: "200",
+                        r: "7",
+                        fill: "#38bdf8",
+                        "fill-opacity": "0.9",
+                        stroke: "white",
+                        "stroke-width": "1.5",
                     }
                     // Chevron directionnel (points DOM) — visible hors
                     // alignement yaw.
-                    polygon { id: ID_ARROW,
-                        points: "", fill: "#38bdf8", "fill-opacity": "0.95",
+                    polygon {
+                        id: ID_ARROW,
+                        points: "",
+                        fill: "#38bdf8",
+                        "fill-opacity": "0.95",
                         style: "display:none",
                     }
                     // Pastille stabilité : verte immobile, orange en
                     // mouvement (couleur DOM).
-                    circle { id: ID_STAB,
-                        cx: "200", cy: "252", r: "5", fill: "#22c55e",
+                    circle {
+                        id: ID_STAB,
+                        cx: "200",
+                        cy: "252",
+                        r: "5",
+                        fill: "#22c55e",
                     }
                 }
                 // Flash blanc de capture — opacité pilotée DOM (pas de
@@ -517,10 +540,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                     }
                     div { class: "text-2xl font-bold", "{ui().step} / {n_steps}" }
                     div { class: "mt-2 mx-auto h-1.5 w-48 bg-white/20 rounded-full overflow-hidden",
-                        div {
-                            class: "h-full bg-blue-500",
-                            width: "{ring_pct}%",
-                        }
+                        div { class: "h-full bg-blue-500", width: "{ring_pct}%" }
                     }
                     // Lecture continue : distance yaw + stabilité.
                     div { class: "mt-1.5 text-sm font-medium",
@@ -583,7 +603,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
             div {
                 id: "p360-debug",
                 class: "absolute bottom-4 left-4 text-green-400 text-xs font-mono bg-black/70 px-2 py-1 rounded",
-                "…",
+                "…"
             }
 
             // Boutons : « Reprendre » (retrait dernière frame), ancre

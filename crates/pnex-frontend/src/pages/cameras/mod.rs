@@ -182,7 +182,7 @@ pub fn Cameras() -> Element {
         }
         if let Some(cam) = live_for() {
             Modal {
-                title: t!("cameras-live-title", camera: cam.device_id.clone()).to_string(),
+                title: t!("cameras-live-title", camera : cam.device_id.clone()).to_string(),
                 max_width: "max-w-4xl".to_string(),
                 on_close: move |_| live_for.set(None),
                 LiveView { key: "live-{cam.device}", device: cam.device }

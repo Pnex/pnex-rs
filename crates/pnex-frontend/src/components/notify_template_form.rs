@@ -214,21 +214,27 @@ pub fn NotifyTemplateForm(
         crate::components::modal::Modal {
             title: if is_edit || saved { t!("notify-edit-template-title").to_string() } else { t!("notify-new-template-title").to_string() },
             max_width: "max-w-2xl".to_string(),
-            on_close: on_close,
+            on_close,
             div { class: "space-y-4",
                 div {
-                    label { class: "block text-sm font-medium text-gray-700 mb-1", {t!("notify-field-template-name")} }
+                    label { class: "block text-sm font-medium text-gray-700 mb-1",
+                        {t!("notify-field-template-name")}
+                    }
                     input {
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         value: "{name}",
                         oninput: move |e| name.set(e.value()),
                     }
                     if saved && !is_edit {
-                        p { class: "mt-1 text-xs text-amber-700", {t!("notify-template-autosaved-note")} }
+                        p { class: "mt-1 text-xs text-amber-700",
+                            {t!("notify-template-autosaved-note")}
+                        }
                     }
                 }
                 div {
-                    label { class: "block text-sm font-medium text-gray-700 mb-1", {t!("notify-template-subject")} }
+                    label { class: "block text-sm font-medium text-gray-700 mb-1",
+                        {t!("notify-template-subject")}
+                    }
                     crate::components::code_highlight::TemplateEditor {
                         multiline: false,
                         placeholder: t!("notify-template-subject-placeholder").to_string(),
@@ -262,7 +268,9 @@ pub fn NotifyTemplateForm(
                 // Vars déclarées (lignes {name, example}).
                 div { class: "space-y-2",
                     div { class: "flex items-center justify-between",
-                        label { class: "block text-sm font-medium text-gray-700", {t!("notify-template-vars")} }
+                        label { class: "block text-sm font-medium text-gray-700",
+                            {t!("notify-template-vars")}
+                        }
                         button {
                             class: "text-sm text-blue-600 hover:text-blue-700",
                             onclick: move |_| vars.with_mut(|rows| rows.push((String::new(), String::new()))),
@@ -286,7 +294,12 @@ pub fn NotifyTemplateForm(
                             }
                             button {
                                 class: "text-red-500 hover:text-red-700 text-sm",
-                                onclick: move |_| vars.with_mut(|rows| { rows.remove(i); }),
+                                onclick: move |_| {
+                                    vars
+                                        .with_mut(|rows| {
+                                        rows.remove(i);
+                                    })
+                                },
                                 "✕"
                             }
                         }
@@ -294,7 +307,9 @@ pub fn NotifyTemplateForm(
                 }
 
                 if let Some(err) = body_error() {
-                    div { class: "rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700", {api::error_i18n::localize(&err)} }
+                    div { class: "rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700",
+                        {api::error_i18n::localize(&err)}
+                    }
                 }
 
                 // Aperçu (rendu seul).
@@ -321,18 +336,24 @@ pub fn NotifyTemplateForm(
                 // Test d'envoi (canal choisi) — disponible aussi sur un
                 // brouillon (auto-sauvegardé au clic).
                 div { class: "border-t border-gray-200 pt-3 space-y-2",
-                    label { class: "block text-sm font-medium text-gray-700", {t!("notify-test-send-title")} }
+                    label { class: "block text-sm font-medium text-gray-700",
+                        {t!("notify-test-send-title")}
+                    }
                     match &*test_channels.value().read() {
                         Some(Ok(paged)) if !paged.results.is_empty() => rsx! {
                             div { class: "flex gap-2",
                                 select {
                                     class: "flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                                     onchange: move |e| test_target.set(Some(e.value())),
-                                    option { value: "", selected: test_target.cloned().map(|v| v.is_empty()).unwrap_or(true),
+                                    option {
+                                        value: "",
+                                        selected: test_target.cloned().map(|v| v.is_empty()).unwrap_or(true),
                                         {t!("notify-test-pick-channel")}
                                     }
                                     for ch in paged.results.clone() {
-                                        option { value: "{ch.id}", selected: test_target.cloned() == Some(ch.id.to_string()),
+                                        option {
+                                            value: "{ch.id}",
+                                            selected: test_target.cloned() == Some(ch.id.to_string()),
                                             "{ch.name} ({ch.kind})"
                                         }
                                     }
@@ -345,7 +366,9 @@ pub fn NotifyTemplateForm(
                                 }
                             }
                         },
-                        Some(Ok(_)) | Some(Err(_)) | None => rsx! { p { class: "text-sm text-gray-500", {t!("notify-test-no-channels")} } },
+                        Some(Ok(_)) | Some(Err(_)) | None => rsx! {
+                            p { class: "text-sm text-gray-500", {t!("notify-test-no-channels")} }
+                        },
                     }
                 }
 
@@ -354,7 +377,13 @@ pub fn NotifyTemplateForm(
                         class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium",
                         disabled: busy(),
                         onclick: do_save,
-                        {if saved { t!("common-save").to_string() } else { t!("common-create").to_string() }}
+                        {
+                            if saved {
+                                t!("common-save").to_string()
+                            } else {
+                                t!("common-create").to_string()
+                            }
+                        }
                     }
                 }
             }

@@ -186,10 +186,12 @@ pub fn NotifyChannelForm(
         crate::components::modal::Modal {
             title: if is_edit { t!("notify-edit-channel-title").to_string() } else { t!("notify-new-channel-title").to_string() },
             max_width: "max-w-lg".to_string(),
-            on_close: on_close,
+            on_close,
             div { class: "space-y-4",
                 div {
-                    label { class: "block text-sm font-medium text-gray-700 mb-1", {t!("notify-field-name")} }
+                    label { class: "block text-sm font-medium text-gray-700 mb-1",
+                        {t!("notify-field-name")}
+                    }
                     input {
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         value: "{name}",
@@ -207,11 +209,7 @@ pub fn NotifyChannelForm(
                             can_manage,
                         }
                     } else {
-                        FieldInput {
-                            key: "{f.id}",
-                            spec: f,
-                            values,
-                        }
+                        FieldInput { key: "{f.id}", spec: f, values }
                     }
                 }
 
@@ -232,7 +230,9 @@ pub fn NotifyChannelForm(
                 }
 
                 if let Some(msg) = test_error() {
-                    div { class: "rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700", {msg} }
+                    div { class: "rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700",
+                        {msg}
+                    }
                 }
 
                 div { class: "flex justify-between gap-2 pt-2",
@@ -240,13 +240,25 @@ pub fn NotifyChannelForm(
                         class: "px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50",
                         disabled: testing(),
                         onclick: do_test,
-                        {if testing() { t!("notify-testing").to_string() } else { t!("notify-test").to_string() }}
+                        {
+                            if testing() {
+                                t!("notify-testing").to_string()
+                            } else {
+                                t!("notify-test").to_string()
+                            }
+                        }
                     }
                     button {
                         class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium",
                         disabled: saving(),
                         onclick: do_save,
-                        {if is_edit { t!("common-save").to_string() } else { t!("common-create").to_string() }}
+                        {
+                            if is_edit {
+                                t!("common-save").to_string()
+                            } else {
+                                t!("common-create").to_string()
+                            }
+                        }
                     }
                 }
             }
@@ -317,20 +329,31 @@ fn FieldInput(spec: FieldSpec, mut values: Signal<FieldValues>) -> Element {
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         r#type: "number",
                         value: "{value}",
-                        oninput: move |e| { values.write().insert(id.clone(), e.value()); },
+                        oninput: move |e| {
+                            values.write().insert(id.clone(), e.value());
+                        },
                     }
                 },
                 FieldType::Bool => rsx! {
                     input {
                         r#type: "checkbox",
                         checked: value == "true",
-                        onchange: move |e| { values.write().insert(id.clone(), if e.checked() { "true".into() } else { "false".into() }); },
+                        onchange: move |e| {
+                            values
+                                .write()
+                                .insert(
+                                    id.clone(),
+                                    if e.checked() { "true".into() } else { "false".into() },
+                                );
+                        },
                     }
                 },
                 FieldType::Select if !spec.options.is_empty() => rsx! {
                     select {
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
-                        onchange: move |e| { values.write().insert(id.clone(), e.value()); },
+                        onchange: move |e| {
+                            values.write().insert(id.clone(), e.value());
+                        },
                         for (opt, is_selected) in options {
                             option { value: opt.clone(), selected: is_selected, {opt.clone()} }
                         }
@@ -341,7 +364,9 @@ fn FieldInput(spec: FieldSpec, mut values: Signal<FieldValues>) -> Element {
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         placeholder: spec.placeholder.clone().unwrap_or_default(),
                         value: "{value}",
-                        oninput: move |e| { values.write().insert(id.clone(), e.value()); },
+                        oninput: move |e| {
+                            values.write().insert(id.clone(), e.value());
+                        },
                     }
                 },
             }

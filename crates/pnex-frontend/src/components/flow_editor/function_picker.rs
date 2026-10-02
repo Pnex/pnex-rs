@@ -93,12 +93,13 @@ pub(crate) fn FunctionPicker(
                             pick(summary);
                         }
                     },
-                    option { value: "", selected: !has_selection,
-                        disabled: true,
+                    option { value: "", selected: !has_selection, disabled: true,
                         {placeholder.clone()}
                     }
                     for summary in rows_value.clone() {
-                        option { key: "{summary.id}", value: "{summary.id}",
+                        option {
+                            key: "{summary.id}",
+                            value: "{summary.id}",
                             selected: selected_id() == summary.id,
                             {format!("{} (v{})", summary.name, summary.current_version_number)}
                         }

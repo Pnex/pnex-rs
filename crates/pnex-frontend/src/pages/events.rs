@@ -166,7 +166,12 @@ pub fn Events() -> Element {
                         page.set(0);
                     },
                     for s in stream_options {
-                        option { key: "{s}", value: "{s}", selected: s == stream(), "{s}" }
+                        option {
+                            key: "{s}",
+                            value: "{s}",
+                            selected: s == stream(),
+                            "{s}"
+                        }
                     }
                 }
                 select {
@@ -177,7 +182,12 @@ pub fn Events() -> Element {
                     },
                     option { value: "", selected: level().is_empty(), {t!("events-level-all")} }
                     for l in EventLevel::ALL {
-                        option { key: "{l.wire()}", value: l.wire(), selected: level() == l.wire(), {level_label(l)} }
+                        option {
+                            key: "{l.wire()}",
+                            value: l.wire(),
+                            selected: level() == l.wire(),
+                            {level_label(l)}
+                        }
                     }
                 }
                 select {
@@ -186,14 +196,19 @@ pub fn Events() -> Element {
                         period.set(Period::from_wire(&e.value()));
                         page.set(0);
                     },
-                    for (p , label) in [
+                    for (p, label) in [
                         (Period::Hour, t!("events-period-1h")),
                         (Period::Day, t!("events-period-24h")),
                         (Period::Week, t!("events-period-7d")),
                         (Period::Custom, t!("events-period-custom")),
                     ]
                     {
-                        option { key: "{p.wire()}", value: p.wire(), selected: period() == p, {label} }
+                        option {
+                            key: "{p.wire()}",
+                            value: p.wire(),
+                            selected: period() == p,
+                            {label}
+                        }
                     }
                 }
                 if period() == Period::Custom {
@@ -229,7 +244,9 @@ pub fn Events() -> Element {
                 div { class: "text-center py-12 bg-white rounded-lg shadow border border-gray-200",
                     icons::History { class: "h-8 w-8 text-gray-400 mx-auto" }
                     p { class: "text-gray-900 font-medium mt-3", {t!("events-unavailable-title")} }
-                    p { class: "text-gray-600 mt-2 max-w-xl mx-auto text-sm", {t!("events-unavailable-message")} }
+                    p { class: "text-gray-600 mt-2 max-w-xl mx-auto text-sm",
+                        {t!("events-unavailable-message")}
+                    }
                 }
             } else {
                 ListStates {
@@ -247,16 +264,28 @@ pub fn Events() -> Element {
                             table { class: "min-w-full divide-y divide-gray-200 text-sm",
                                 thead { class: "bg-gray-50",
                                     tr {
-                                        th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("events-col-time")} }
-                                        th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("events-col-level")} }
-                                        th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("events-col-message")} }
-                                        th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("events-col-topic")} }
-                                        th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("events-col-flow")} }
-                                        th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("events-col-node")} }
+                                        th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                            {t!("events-col-time")}
+                                        }
+                                        th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                            {t!("events-col-level")}
+                                        }
+                                        th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                            {t!("events-col-message")}
+                                        }
+                                        th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                            {t!("events-col-topic")}
+                                        }
+                                        th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                            {t!("events-col-flow")}
+                                        }
+                                        th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                            {t!("events-col-node")}
+                                        }
                                     }
                                 }
                                 tbody { class: "divide-y divide-gray-100",
-                                    for (i , ev) in rows.into_iter().enumerate() {
+                                    for (i, ev) in rows.into_iter().enumerate() {
                                         EventRow { key: "{ev.ts_us}-{i}", ev }
                                     }
                                 }
@@ -295,7 +324,11 @@ fn EventRow(ev: EventRecord) -> Element {
             }
             td { class: "px-4 py-2",
                 span { class: "px-2 py-0.5 rounded-full text-xs {level_classes(&ev.level)}",
-                    {EventLevel::from_wire(&ev.level).map(level_label).unwrap_or_else(|| ev.level.clone())}
+                    {
+                        EventLevel::from_wire(&ev.level)
+                            .map(level_label)
+                            .unwrap_or_else(|| ev.level.clone())
+                    }
                 }
             }
             td { class: "px-4 py-2 text-gray-900", "{ev.message}" }

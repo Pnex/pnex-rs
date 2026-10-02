@@ -143,7 +143,7 @@ pub fn Firmware() -> Element {
             title: t!("nav-firmware").to_string(),
             subtitle: Some(t!("firmware-subtitle").to_string()),
             header: selected().is_none(),
-            can_write: can_write,
+            can_write,
             add_label: Some(t!("firmware-new").to_string()),
             on_add: move |_| create_open.set(true),
             if org::current().is_none() {
@@ -172,18 +172,21 @@ pub fn Firmware() -> Element {
                         }
                         ListStates {
                             state: list_state,
-                            is_empty: is_empty,
+                            is_empty,
                             empty_message: t!("firmware-empty").to_string(),
                             DataTable {
-                                columns: columns,
-                                rows: rows,
+                                columns,
+                                rows,
                                 row_key: RowKey::new(|p: &FirmwareProjectSummary| p.id.to_string()),
                             }
                         }
                         if let Some((project_id, project_name)) = delete_target() {
                             ConfirmDialog {
                                 title: t!("firmware-confirm-delete-title"),
-                                message: t!("common-quoted-message", name: project_name.clone(), message: t!("firmware-confirm-delete-message")),
+                                message: t!(
+                                    "common-quoted-message", name : project_name.clone(), message :
+                                    t!("firmware-confirm-delete-message")
+                                ),
                                 confirm_label: t!("firmware-delete"),
                                 on_confirm: move |_| {
                                     delete_target.set(None);
@@ -257,17 +260,15 @@ fn CreateProjectModal(on_close: Callback<()>, on_created: Callback<i64>) -> Elem
         FormDialog {
             title: t!("firmware-create-title").to_string(),
             submit_label: t!("firmware-new").to_string(),
-            on_close: on_close,
+            on_close,
             on_submit: submit,
             busy: creating(),
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("firmware-field-name")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("firmware-field-name")}
+                }
                 input {
-                    class: if name_error() {
-                        "w-full px-3 py-2 border border-red-400 bg-red-50 rounded-lg text-sm"
-                    } else {
-                        "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                    },
+                    class: if name_error() { "w-full px-3 py-2 border border-red-400 bg-red-50 rounded-lg text-sm" } else { "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" },
                     r#type: "text",
                     value: "{name}",
                     oninput: move |event| {
@@ -276,23 +277,31 @@ fn CreateProjectModal(on_close: Callback<()>, on_created: Callback<i64>) -> Elem
                     },
                 }
                 if name_error() {
-                    span { class: "text-xs text-red-600 mt-1 block", {t!("firmware-field-name-required")} }
+                    span { class: "text-xs text-red-600 mt-1 block",
+                        {t!("firmware-field-name-required")}
+                    }
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("firmware-field-chip")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("firmware-field-chip")}
+                }
                 select {
                     class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                     value: "{chip}",
                     onchange: move |event| chip.set(event.value()),
                     for soc in CHIP_FAMILIES {
-                        option { value: soc.name(), selected: chip() == soc.name(), {chip_label(soc.name())} }
+                        option { value: soc.name(), selected: chip() == soc.name(),
+                            {chip_label(soc.name())}
+                        }
                     }
                 }
                 span { class: "text-xs text-gray-500 mt-1 block", {t!("firmware-field-chip-hint")} }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("firmware-field-description")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("firmware-field-description")}
+                }
                 input {
                     class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                     r#type: "text",

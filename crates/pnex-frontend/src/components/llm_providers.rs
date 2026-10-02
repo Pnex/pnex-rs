@@ -150,7 +150,9 @@ fn ProviderRow(
             td { class: "py-2 pr-4 text-gray-900",
                 span { class: "font-medium", {provider.name.clone()} }
                 if provider.is_default {
-                    span { class: "ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-xs", {t!("llm-default")} }
+                    span { class: "ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-xs",
+                        {t!("llm-default")}
+                    }
                 }
             }
             td { class: "py-2 pr-4 text-gray-600", {provider.kind.clone()} }
@@ -166,14 +168,21 @@ fn ProviderRow(
                             testing.set(true);
                             spawn(async move {
                                 match api::ai::test_provider(id).await {
-                                    Ok(r) if r.ok => toasts::success(
-                                        t!("llm-test-ok", ms: r.latency_ms.unwrap_or_default()).to_string(),
-                                    ),
-                                    Ok(r) => toasts::error(format!(
-                                        "{} — {}",
-                                        t!("llm-test-fail"),
-                                        r.error.unwrap_or_default()
-                                    )),
+                                    Ok(r) if r.ok => {
+                                        toasts::success(
+                                            t!("llm-test-ok", ms : r.latency_ms.unwrap_or_default())
+                                                .to_string(),
+                                        )
+                                    }
+                                    Ok(r) => {
+                                        toasts::error(
+                                            format!(
+                                                "{} — {}",
+                                                t!("llm-test-fail"),
+                                                r.error.unwrap_or_default(),
+                                            ),
+                                        )
+                                    }
                                     Err(err) => toasts::error(err),
                                 }
                                 testing.set(false);
@@ -286,8 +295,16 @@ fn ProviderForm(
                         class: "{INPUT} bg-white",
                         value: "{kind}",
                         onchange: move |e| kind.set(e.value()),
-                        option { value: "anthropic", selected: kind() == "anthropic", "Anthropic" }
-                        option { value: "openai_compat", selected: kind() == "openai_compat", "OpenAI-compatible" }
+                        option {
+                            value: "anthropic",
+                            selected: kind() == "anthropic",
+                            "Anthropic"
+                        }
+                        option {
+                            value: "openai_compat",
+                            selected: kind() == "openai_compat",
+                            "OpenAI-compatible"
+                        }
                     }
                 }
                 div {

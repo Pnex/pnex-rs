@@ -294,76 +294,74 @@ pub fn Annotations() -> Element {
     ];
 
     rsx! {
-        {match view.cloned() {
-        View::List => rsx! {
-            ListLayout {
-                title: t!("annot-page-title").to_string(),
-                subtitle: Some(t!("annot-page-subtitle").to_string()),
-                can_write: can_write,
-                add_label: Some(t!("annot-page-new").to_string()),
-                on_add: move |_| new_open.set(true),
-                // Filtre : recherche + médias (recherche live, canon socle).
-                FilterBar {
-                    SearchInput {
-                        placeholder: search_placeholder,
-                        value: search,
-                        on_submit: move |_| {},
+        match view.cloned() {
+            View::List => rsx! {
+                ListLayout {
+                    title: t!("annot-page-title").to_string(),
+                    subtitle: Some(t!("annot-page-subtitle").to_string()),
+                    can_write,
+                    add_label: Some(t!("annot-page-new").to_string()),
+                    on_add: move |_| new_open.set(true),
+                    // Filtre : recherche + médias (recherche live, canon socle).
+                    FilterBar {
+                        SearchInput {
+                            placeholder: search_placeholder,
+                            value: search,
+                            on_submit: move |_| {},
+                        }
+                        RefreshButton { on_click: move |_| sets_reload.with_mut(|r| *r += 1) }
+                        select {
+                            class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                            value: "{media_filter_now}",
+                            onchange: move |e| selected_media_filter.set(e.value()),
+                            option { value: "", {t!("annot-page-all-medias")} }
+                            for (m_id, (m_name, _)) in media_map.clone() {
+                                option { key: "{m_id}", value: "{m_id}", {m_name} }
+                            }
+                        }
                     }
-                    RefreshButton {
-                        on_click: move |_| sets_reload.with_mut(|r| *r += 1),
-                    }
-                    select {
-                        class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
-                        value: "{media_filter_now}",
-                        onchange: move |e| selected_media_filter.set(e.value()),
-                        option { value: "", {t!("annot-page-all-medias")} }
-                        for (m_id, (m_name, _)) in media_map.clone() {
-                            option { key: "{m_id}", value: "{m_id}", {m_name} }
+                    ListStates {
+                        state: list_state,
+                        is_empty,
+                        empty_message: t!("annot-page-no-sets").to_string(),
+                        DataTable {
+                            columns,
+                            rows: sets_now,
+                            row_key: RowKey::new(|s: &pnex_core::AnnotationLayerSummary| s.id.clone()),
+                            on_row_click: Callback::new(move |id: String| view.set(View::Editor(id))),
                         }
                     }
                 }
-                ListStates {
-                    state: list_state,
-                    is_empty: is_empty,
-                    empty_message: t!("annot-page-no-sets").to_string(),
-                    DataTable {
-                        columns: columns,
-                        rows: sets_now,
-                        row_key: RowKey::new(|s: &pnex_core::AnnotationLayerSummary| s.id.clone()),
-                        on_row_click: Callback::new(move |id: String| view.set(View::Editor(id))),
+            },
+            View::Editor(_open_id) => rsx! {
+                div { class: "p-6 space-y-3",
+                    // Barre : retour + nom + autres ensembles du même média
+                    div { class: "flex items-center gap-3 flex-wrap",
+                        button {
+                            class: "px-3 py-1.5 text-xs text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50",
+                            onclick: move |_| view.set(View::List),
+                            {t!("annot-page-back")}
+                        }
+                        {open_set.as_ref().map(|s| rsx! {
+                            span { class: "text-lg font-semibold text-gray-900", {s.name.clone()} }
+                        })}
                     }
-                }
-            }
-        },
-        View::Editor(_open_id) => rsx! {
-            div { class: "p-6 space-y-3",
-                // Barre : retour + nom + autres ensembles du même média
-                div { class: "flex items-center gap-3 flex-wrap",
-                    button {
-                        class: "px-3 py-1.5 text-xs text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50",
-                        onclick: move |_| view.set(View::List),
-                        {t!("annot-page-back")}
-                    }
-                    {open_set.as_ref().map(|s| rsx! {
-                        span { class: "text-lg font-semibold text-gray-900", {s.name.clone()} }
-                    })}
-                }
-                // Other sets on the same media (avoid duplicates) — tour
-                // sets are edited in the Studio and are not listed here.
-                if let Some(cur) = open_set.clone() {
-                    {
-                        let others: Vec<pnex_core::AnnotationLayerSummary> = sets_other
-                            .iter()
-                            .filter(|s| {
-                                let same_media = cur
-                                    .media_asset_id
-                                    .as_deref()
-                                    .zip(s.media_asset_id.as_deref())
-                                    .is_some_and(|(a, b)| a == b);
-                                same_media && s.id != cur.id
-                            })
-                            .cloned()
-                            .collect();
+                    // Other sets on the same media (avoid duplicates) — tour
+                    // sets are edited in the Studio and are not listed here.
+                    if let Some(cur) = open_set.clone() {
+                        {
+                            let others: Vec<pnex_core::AnnotationLayerSummary> = sets_other
+                                .iter()
+                                .filter(|s| {
+                                    let same_media = cur
+                                        .media_asset_id
+                                        .as_deref()
+                                        .zip(s.media_asset_id.as_deref())
+                                        .is_some_and(|(a, b)| a == b);
+                                    same_media && s.id != cur.id
+                                })
+                                .cloned()
+                                .collect();
                             rsx! {
                                 if !others.is_empty() {
                                     div { class: "flex items-center gap-2 flex-wrap text-xs",
@@ -381,119 +379,115 @@ pub fn Annotations() -> Element {
                             }
                         }
                     }
-                match (
-                    open_set.clone(),
-                    open_set.clone().and_then(|s| s.media_asset_id),
-                    open_set.clone().and_then(|s| s.tour_id),
-                ) {
-                    (Some(set), Some(media), _) => {
-                        let kind = media_map
-                            .get(&media)
-                            .map(|(_, k)| k.clone())
-                            .unwrap_or_else(|| "panorama".to_string());
-                        let is_pano = kind == "panorama";
-                        rsx! {
-                        div { class: "flex gap-4 items-start",
-                            if is_pano {
-                                TourViewer {
-                                    key: "viewer-{set.id}",
-                                    doc: synthetic_doc(&media),
-                                    assets: Default::default(),
-                                    source: ViewerSource::Auth,
-                                    on_hotspot_move: move |_: (String, f64, f64)| {},
-                                    on_scene_change: move |_: String| {},
-                                    host_id: host_id.clone(),
-                                    compact: false,
-                                    show_side_panel: false,
-                                    annotations_enabled: false,
-                                    // Editor page: annotation markers go
-                                    // through the panel writer (editable host),
-                                    // nav arrows stay fixed anyway.
-                                    editable: false,
-                                }
-                            } else {
-                                FlatAnnotViewer {
-                                    key: "flat-{set.id}",
-                                    media_id: media.clone(),
-                                    cx,
-                                    set_name: set.name.clone(),
-                                }
-                            }
-                            AnnotationLayerPanel {
-                                key: "panel-{set.id}",
-                                layer_id: set.id.clone(),
-                                media_override: cur_media,
-                                host_id: host_id.clone(),
-                                can_write,
-                                cx,
-                                media_kind: kind.clone(),
-                            }
-                        }
-                        }
-                    },
-                    (Some(set), None, Some(tour_id)) => {
-                        // Tour-scoped set (000028): read-only inventory here —
-                        // editing lives in the tour editor (Studio). Orphaned
-                        // tours (FK SET NULL after tour deletion) never reach
-                        // this arm: tour_id would be None.
-                        let tour_label = tour_map
-                            .get(&tour_id)
-                            .map(|n| format!("{n} ({})", t!("annot-page-tour-badge")))
-                            .unwrap_or_else(|| t!("annot-page-missing-media").to_string());
-                        let set_for_delete = set.clone();
-                        let studio_tour = set.tour_id.clone().unwrap_or_default();
-                        let nav_open = navigator.clone();
-                        rsx! {
-                        div { class: "bg-white rounded-xl border border-gray-200 p-6 max-w-2xl space-y-3",
-                            div { class: "flex items-center gap-2 flex-wrap",
-                                span { class: "text-base font-semibold text-gray-900",
-                                    {set.name.clone()}
-                                }
-                                if set.published_version_number.is_some() {
-                                    span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-800",
-                                        {t!("annot-page-published")}
+                    match (
+                        open_set.clone(),
+                        open_set.clone().and_then(|s| s.media_asset_id),
+                        open_set.clone().and_then(|s| s.tour_id),
+                    ) {
+                        (Some(set), Some(media), _) => {
+                            let kind = media_map
+                                .get(&media)
+                                .map(|(_, k)| k.clone())
+                                .unwrap_or_else(|| "panorama".to_string());
+                            let is_pano = kind == "panorama";
+                            rsx! {
+                                div { class: "flex gap-4 items-start",
+                                    if is_pano {
+                                        TourViewer {
+                                            key: "viewer-{set.id}",
+                                            doc: synthetic_doc(&media),
+                                            assets: Default::default(),
+                                            source: ViewerSource::Auth,
+                                            on_hotspot_move: move |_: (String, f64, f64)| {},
+                                            on_scene_change: move |_: String| {},
+                                            host_id: host_id.clone(),
+                                            compact: false,
+                                            show_side_panel: false,
+                                            annotations_enabled: false,
+                                            editable: false,
+                                        }
+                                    } else {
+                                        FlatAnnotViewer {
+                                            key: "flat-{set.id}",
+                                            media_id: media.clone(),
+                                            cx,
+                                            set_name: set.name.clone(),
+                                        }
                                     }
-                                } else {
-                                    span { class: "text-gray-400 text-xs", {t!("annot-page-draft")} }
-                                }
-                            }
-                            p { class: "text-sm text-gray-600",
-                                {format!("{} : {tour_label}", t!("annot-page-col-media"))}
-                            }
-                            p { class: "text-sm text-gray-500", {t!("annot-tour-readonly-hint")} }
-                            div { class: "flex gap-2 pt-1",
-                                button {
-                                    class: "px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed",
-                                    disabled: studio_tour.is_empty(),
-                                    onclick: move |_| {
-                                        OPEN_TOUR.with_mut(|v| *v = Some(studio_tour.clone()));
-                                        nav_open.push(Route::Studio {});
-                                    },
-                                    {t!("annot-open-in-studio")}
-                                }
-                                button {
-                                    class: DANGER_BTN,
-                                    onclick: move |_| {
-                                        delete_target.set(Some(set_for_delete.clone()));
-                                    },
-                                    icons::Trash2 { class: "h-3.5 w-3.5 inline mr-0.5" }
-                                    {t!("annot-inspector-delete")}
+                                    AnnotationLayerPanel {
+                                        key: "panel-{set.id}",
+                                        layer_id: set.id.clone(),
+                                        media_override: cur_media,
+                                        host_id: host_id.clone(),
+                                        // Editor page: annotation markers go
+                                        // through the panel writer (editable host),
+                                        // nav arrows stay fixed anyway.
+                                        can_write,
+                                        cx,
+                                        media_kind: kind.clone(),
+                                    }
                                 }
                             }
                         }
+                        (Some(set), None, Some(tour_id)) => {
+                            // Tour-scoped set (000028): read-only inventory here —
+                            // editing lives in the tour editor (Studio). Orphaned
+                            // tours (FK SET NULL after tour deletion) never reach
+                            // this arm: tour_id would be None.
+                            let tour_label = tour_map
+                                .get(&tour_id)
+                                .map(|n| format!("{n} ({})", t!("annot-page-tour-badge")))
+                                .unwrap_or_else(|| t!("annot-page-missing-media").to_string());
+                            let set_for_delete = set.clone();
+                            let studio_tour = set.tour_id.clone().unwrap_or_default();
+                            let nav_open = navigator.clone();
+                            rsx! {
+                                div { class: "bg-white rounded-xl border border-gray-200 p-6 max-w-2xl space-y-3",
+                                    div { class: "flex items-center gap-2 flex-wrap",
+                                        span { class: "text-base font-semibold text-gray-900", {set.name.clone()} }
+                                        if set.published_version_number.is_some() {
+                                            span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-800",
+                                                {t!("annot-page-published")}
+                                            }
+                                        } else {
+                                            span { class: "text-gray-400 text-xs", {t!("annot-page-draft")} }
+                                        }
+                                    }
+                                    p { class: "text-sm text-gray-600", {format!("{} : {tour_label}", t!("annot-page-col-media"))} }
+                                    p { class: "text-sm text-gray-500", {t!("annot-tour-readonly-hint")} }
+                                    div { class: "flex gap-2 pt-1",
+                                        button {
+                                            class: "px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed",
+                                            disabled: studio_tour.is_empty(),
+                                            onclick: move |_| {
+                                                OPEN_TOUR.with_mut(|v| *v = Some(studio_tour.clone()));
+                                                nav_open.push(Route::Studio {});
+                                            },
+                                            {t!("annot-open-in-studio")}
+                                        }
+                                        button {
+                                            class: DANGER_BTN,
+                                            onclick: move |_| {
+                                                delete_target.set(Some(set_for_delete.clone()));
+                                            },
+                                            icons::Trash2 { class: "h-3.5 w-3.5 inline mr-0.5" }
+                                            {t!("annot-inspector-delete")}
+                                        }
+                                    }
+                                }
+                            }
                         }
-                    },
-                    (Some(set), None, None) => rsx! {
-                        div { class: "bg-white rounded-xl border border-gray-200 p-8 text-center",
-                            p { class: "text-sm text-gray-400", {t!("annot-page-missing-media-body")} }
-                            span { {set.name.clone()} }
-                        }
-                    },
-                    _ => rsx! {},
+                        (Some(set), None, None) => rsx! {
+                            div { class: "bg-white rounded-xl border border-gray-200 p-8 text-center",
+                                p { class: "text-sm text-gray-400", {t!("annot-page-missing-media-body")} }
+                                span { {set.name.clone()} }
+                            }
+                        },
+                        _ => rsx! {},
+                    }
                 }
-            }
-        },
-        }}
+            },
+        }
         // ─── Modal : nouvel ensemble (nom + média associé) ───
         if new_open() {
             NewSetModal {
@@ -564,6 +558,11 @@ fn NewSetModal(
         None
     };
 
+    // Computed outside rsx: a multi-line attribute expression is not
+    // idempotent under `dx fmt`.
+    let submit_disabled =
+        creating() || name.read().trim().is_empty() || choice.read().trim().is_empty();
+
     rsx! {
         Modal {
             title: t!("annot-page-new"),
@@ -581,9 +580,7 @@ fn NewSetModal(
                         value: "{name()}",
                         onchange: move |e| name.set(e.value()),
                     }
-                    p { class: "mt-1.5 text-xs text-gray-400",
-                        {t!("annot-page-new-name-hint")}
-                    }
+                    p { class: "mt-1.5 text-xs text-gray-400", {t!("annot-page-new-name-hint")} }
                 }
                 // Média associé
                 div {
@@ -597,9 +594,7 @@ fn NewSetModal(
                         option { value: "", {t!("annot-page-media-select")} }
                         optgroup { label: t!("annot-page-media-optgroup"),
                             for (m_id, (m_name, m_kind)) in media_map_render {
-                                option { key: "{m_id}", value: "media:{m_id}",
-                                    "{m_name} ({m_kind})"
-                                }
+                                option { key: "{m_id}", value: "media:{m_id}", "{m_name} ({m_kind})" }
                             }
                         }
                     }
@@ -621,8 +616,7 @@ fn NewSetModal(
                     }
                     button {
                         class: "px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed",
-                        disabled: creating() || name.read().trim().is_empty()
-                            || choice.read().trim().is_empty(),
+                        disabled: submit_disabled,
                         onclick: move |_| {
                             let name = name.read().trim().to_string();
                             let raw = choice.read().trim().to_string();
@@ -632,14 +626,14 @@ fn NewSetModal(
                             creating.set(true);
                             spawn(async move {
                                 match api::annotation_layers::create(pnex_core::CreateAnnotationLayer {
-                                    name,
-                                    media_asset_id: media,
-                                    tour_id: None,
-                                    description: None,
-                                    author: None,
-                                    note: None,
-                                })
-                                .await
+                                        name,
+                                        media_asset_id: media,
+                                        tour_id: None,
+                                        description: None,
+                                        author: None,
+                                        note: None,
+                                    })
+                                    .await
                                 {
                                     Ok(d) => {
                                         on_created.call(d.id);
@@ -649,7 +643,13 @@ fn NewSetModal(
                                 creating.set(false);
                             });
                         },
-                        {if creating() { t!("annot-page-creating").to_string() } else { t!("annot-layer-create").to_string() }}
+                        {
+                            if creating() {
+                                t!("annot-page-creating").to_string()
+                            } else {
+                                t!("annot-layer-create").to_string()
+                            }
+                        }
                     }
                 }
             }

@@ -63,11 +63,19 @@ pub(super) fn LibMenu(
                 {t!("firmware-menu-lib")}
             }
             if open() {
-                div { class: "fixed inset-0 z-20", onclick: move |_| open.set(false) }
+                div {
+                    class: "fixed inset-0 z-20",
+                    onclick: move |_| open.set(false),
+                }
                 div { class: MENU,
                     p { class: "px-3 py-1.5 text-xs text-gray-500", {t!("firmware-libs-hint")} }
                     for item in items {
-                        LibItem { item, selected, open, on_include }
+                        LibItem {
+                            item,
+                            selected,
+                            open,
+                            on_include,
+                        }
                     }
                 }
             }
@@ -111,7 +119,7 @@ fn LibItem(
                     icons::Check { class: "h-3.5 w-3.5 text-green-600" }
                 }
             }
-            span { class: "text-xs text-gray-500", {t!(&desc_key)} }
+            span { class: "text-xs text-gray-500", {t!(& desc_key)} }
         }
     }
 }
@@ -123,7 +131,9 @@ pub(super) fn LibChips(selected: Signal<Vec<String>>, readonly: bool) -> Element
     let ids = selected();
     rsx! {
         for id in ids {
-            span { key: "{id}", class: "inline-flex items-center gap-1 h-7 px-2 rounded-full bg-slate-100 text-slate-700 text-xs font-mono",
+            span {
+                key: "{id}",
+                class: "inline-flex items-center gap-1 h-7 px-2 rounded-full bg-slate-100 text-slate-700 text-xs font-mono",
                 {id.clone()}
                 if !readonly {
                     button {
@@ -155,7 +165,10 @@ pub(super) fn ApiMenu(readonly: bool, on_insert: EventHandler<String>) -> Elemen
                 {t!("firmware-menu-api")}
             }
             if open() {
-                div { class: "fixed inset-0 z-20", onclick: move |_| open.set(false) }
+                div {
+                    class: "fixed inset-0 z-20",
+                    onclick: move |_| open.set(false),
+                }
                 div { class: MENU,
                     for (key, snippet) in API_SNIPPETS.iter().copied() {
                         button {
@@ -192,8 +205,14 @@ pub(super) fn RevisionsDrawer(
             div { class: "absolute inset-0", onclick: close }
             aside { class: "absolute inset-y-0 right-0 w-96 max-w-full bg-white shadow-xl border-l border-gray-200 flex flex-col",
                 div { class: "flex items-center justify-between px-4 py-3 border-b border-gray-200",
-                    h3 { class: "text-sm font-semibold text-gray-900", {t!("firmware-revisions-title")} }
-                    button { class: "text-gray-400 hover:text-gray-600", onclick: close, icons::X { class: "h-4 w-4" } }
+                    h3 { class: "text-sm font-semibold text-gray-900",
+                        {t!("firmware-revisions-title")}
+                    }
+                    button {
+                        class: "text-gray-400 hover:text-gray-600",
+                        onclick: close,
+                        icons::X { class: "h-4 w-4" }
+                    }
                 }
                 match &*revisions.value().read() {
                     Some(Ok(rows)) => rsx! {
@@ -201,7 +220,9 @@ pub(super) fn RevisionsDrawer(
                             for rev in rows.clone() {
                                 li { key: "{rev.id}", class: "px-4 py-3 space-y-1.5",
                                     div { class: "flex items-center gap-2",
-                                        span { class: "text-sm font-semibold text-gray-900", {format!("r{}", rev.revision_number)} }
+                                        span { class: "text-sm font-semibold text-gray-900",
+                                            {format!("r{}", rev.revision_number)}
+                                        }
                                         if rev.revision_number == current_revision {
                                             span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-800",
                                                 {t!("firmware-revision-current")}

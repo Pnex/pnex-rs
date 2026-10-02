@@ -109,18 +109,50 @@ pub fn Dashboard() -> Element {
 
             // Cartes stats user (agrégats sur les orgs du user)
             div { class: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8",
-                {stat_card("border-blue-500", "bg-blue-100", t!("dash-total-devices"),
-                    user.device_count.total.to_string(),
-                    rsx! { icons::Cpu { class: "h-6 w-6 text-blue-600" } })}
-                {stat_card("border-green-500", "bg-green-100", t!("dash-active-devices"),
-                    user.device_count.active.to_string(),
-                    rsx! { icons::CheckCircle { class: "h-6 w-6 text-green-600" } })}
-                {stat_card("border-purple-500", "bg-purple-100", t!("dash-orgs"),
-                    user.orgs.len().to_string(),
-                    rsx! { icons::Building { class: "h-6 w-6 text-purple-600" } })}
-                {stat_card("border-orange-500", "bg-orange-100", t!("dash-tier"),
-                    tier_name,
-                    rsx! { icons::Zap { class: "h-6 w-6 text-orange-600" } })}
+                {
+                    stat_card(
+                        "border-blue-500",
+                        "bg-blue-100",
+                        t!("dash-total-devices"),
+                        user.device_count.total.to_string(),
+                        rsx! {
+                            icons::Cpu { class: "h-6 w-6 text-blue-600" }
+                        },
+                    )
+                }
+                {
+                    stat_card(
+                        "border-green-500",
+                        "bg-green-100",
+                        t!("dash-active-devices"),
+                        user.device_count.active.to_string(),
+                        rsx! {
+                            icons::CheckCircle { class: "h-6 w-6 text-green-600" }
+                        },
+                    )
+                }
+                {
+                    stat_card(
+                        "border-purple-500",
+                        "bg-purple-100",
+                        t!("dash-orgs"),
+                        user.orgs.len().to_string(),
+                        rsx! {
+                            icons::Building { class: "h-6 w-6 text-purple-600" }
+                        },
+                    )
+                }
+                {
+                    stat_card(
+                        "border-orange-500",
+                        "bg-orange-100",
+                        t!("dash-tier"),
+                        tier_name,
+                        rsx! {
+                            icons::Zap { class: "h-6 w-6 text-orange-600" }
+                        },
+                    )
+                }
             }
 
             // Cartes stats org (summary) — « en ligne » = frais au TTL de
@@ -129,7 +161,9 @@ pub fn Dashboard() -> Element {
                 div { class: "bg-white p-6 rounded-lg shadow-sm border-l-4 border-teal-500",
                     div { class: "flex items-center justify-between",
                         div {
-                            p { class: "text-sm font-medium text-gray-600", {t!("dash-live-sensors")} }
+                            p { class: "text-sm font-medium text-gray-600",
+                                {t!("dash-live-sensors")}
+                            }
                             p { class: "text-3xl font-bold text-gray-900", {live_label} }
                         }
                         div { class: "p-3 rounded-full bg-teal-100",
@@ -140,7 +174,9 @@ pub fn Dashboard() -> Element {
                 div { class: "bg-white p-6 rounded-lg shadow-sm border-l-4 border-indigo-500",
                     div { class: "flex items-center justify-between",
                         div {
-                            p { class: "text-sm font-medium text-gray-600", {t!("dash-build-success")} }
+                            p { class: "text-sm font-medium text-gray-600",
+                                {t!("dash-build-success")}
+                            }
                             if let Some(pct) = &build_label {
                                 p { class: "text-3xl font-bold text-gray-900", {pct.clone()} }
                             } else {
@@ -169,7 +205,9 @@ pub fn Dashboard() -> Element {
                             Some(list) => rsx! {
                                 div { class: "space-y-2",
                                     for device in list {
-                                        div { key: "{device.id}", class: "flex items-center justify-between p-3 bg-gray-50 rounded-lg",
+                                        div {
+                                            key: "{device.id}",
+                                            class: "flex items-center justify-between p-3 bg-gray-50 rounded-lg",
                                             div { class: "flex items-center space-x-3",
                                                 span { class: if device.live { "h-2.5 w-2.5 rounded-full bg-green-500" } else { "h-2.5 w-2.5 rounded-full bg-gray-300" } }
                                                 div {
@@ -195,7 +233,9 @@ pub fn Dashboard() -> Element {
 
                 div { class: "bg-white rounded-lg shadow-sm",
                     div { class: "p-6 border-b border-gray-200",
-                        h2 { class: "text-lg font-semibold text-gray-900", {t!("dash-last-measurements")} }
+                        h2 { class: "text-lg font-semibold text-gray-900",
+                            {t!("dash-last-measurements")}
+                        }
                     }
                     div { class: "p-6",
                         match telemetry {
@@ -211,7 +251,8 @@ pub fn Dashboard() -> Element {
                                     }
                                     tbody {
                                         for m in &t.latest {
-                                            tr { key: "{m.metric}-{m.device_id}-{m.timestamp.as_deref().unwrap_or_default()}",
+                                            tr {
+                                                key: "{m.metric}-{m.device_id}-{m.timestamp.as_deref().unwrap_or_default()}",
                                                 class: "border-b border-gray-100",
                                                 td { class: "py-2 pr-4 font-medium text-gray-900", {m.device_id.clone()} }
                                                 td { class: "py-2 pr-4 text-gray-700", {m.metric.clone()} }
@@ -247,19 +288,43 @@ pub fn Dashboard() -> Element {
                         if let Some(membership) = active_org {
                             div { class: "flex items-center justify-between p-4 bg-gray-50 rounded-lg",
                                 p { class: "font-medium text-gray-900", {membership.name.clone()} }
-                                {let (badge, label) = crate::pages::orgs::role_badge(&membership.role);
-                                rsx! {
-                                    span { class: "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {badge}", {label} }
-                                }}
+                                {
+                                    let (badge, label) = crate::pages::orgs::role_badge(&membership.role);
+                                    rsx! {
+                                        span { class: "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {badge}",
+                                            {label}
+                                        }
+                                    }
+                                }
                             }
                             if let Some(tier) = tier {
                                 // Quotas : usage réel / plafond du tier de
                                 // l'org active.
                                 div { class: "p-4 bg-gray-50 rounded-lg space-y-2",
-                                    p { class: "text-sm font-medium text-gray-700", {t!("dash-quotas")} }
-                                    {quota_row(t!("dash-quota-sensor"), used_sensor, tier.max_sensor_devices.max(0) as u64)}
-                                    {quota_row(t!("dash-quota-actuator"), used_actuator, tier.max_actuator_devices.max(0) as u64)}
-                                    {quota_row(t!("dash-quota-mixed"), used_mixed, tier.max_mixed_devices.max(0) as u64)}
+                                    p { class: "text-sm font-medium text-gray-700",
+                                        {t!("dash-quotas")}
+                                    }
+                                    {
+                                        quota_row(
+                                            t!("dash-quota-sensor"),
+                                            used_sensor,
+                                            tier.max_sensor_devices.max(0) as u64,
+                                        )
+                                    }
+                                    {
+                                        quota_row(
+                                            t!("dash-quota-actuator"),
+                                            used_actuator,
+                                            tier.max_actuator_devices.max(0) as u64,
+                                        )
+                                    }
+                                    {
+                                        quota_row(
+                                            t!("dash-quota-mixed"),
+                                            used_mixed,
+                                            tier.max_mixed_devices.max(0) as u64,
+                                        )
+                                    }
                                 }
                             }
                         } else {
@@ -279,9 +344,15 @@ pub fn Dashboard() -> Element {
                         } else {
                             div { class: "space-y-2",
                                 for (type_name, count) in by_type {
-                                    div { key: "{type_name}", class: "flex items-center justify-between p-3 bg-gray-50 rounded-lg",
-                                        span { class: "text-sm font-medium text-gray-900", {type_name} }
-                                        span { class: "text-sm font-bold text-gray-700", "{count}" }
+                                    div {
+                                        key: "{type_name}",
+                                        class: "flex items-center justify-between p-3 bg-gray-50 rounded-lg",
+                                        span { class: "text-sm font-medium text-gray-900",
+                                            {type_name}
+                                        }
+                                        span { class: "text-sm font-bold text-gray-700",
+                                            "{count}"
+                                        }
                                     }
                                 }
                             }

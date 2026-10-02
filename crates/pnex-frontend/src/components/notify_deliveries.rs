@@ -116,7 +116,9 @@ pub fn NotifyDeliveriesTab(
                     channel_filter.set(e.value());
                     page.set(0);
                 },
-                option { value: "", selected: channel_filter().is_empty(), {t!("notify-filter-channel-all")} }
+                option { value: "", selected: channel_filter().is_empty(),
+                    {t!("notify-filter-channel-all")}
+                }
                 for c in channels.clone() {
                     option {
                         key: "{c.id}",
@@ -154,7 +156,7 @@ pub fn NotifyDeliveriesTab(
                     hours.set(e.value().parse().unwrap_or(24));
                     page.set(0);
                 },
-                for (h , key) in PERIODS {
+                for (h, key) in PERIODS {
                     option { key: "{h}", value: "{h}", selected: hours() == h, {t!(key)} }
                 }
             }
@@ -167,8 +169,12 @@ pub fn NotifyDeliveriesTab(
         if !available {
             div { class: "text-center py-12 bg-white rounded-lg shadow border border-gray-200",
                 icons::History { class: "h-8 w-8 text-gray-400 mx-auto" }
-                p { class: "text-gray-900 font-medium mt-3", {t!("notify-deliveries-unavailable-title")} }
-                p { class: "text-gray-600 mt-2 max-w-xl mx-auto text-sm", {t!("notify-deliveries-unavailable-message")} }
+                p { class: "text-gray-900 font-medium mt-3",
+                    {t!("notify-deliveries-unavailable-title")}
+                }
+                p { class: "text-gray-600 mt-2 max-w-xl mx-auto text-sm",
+                    {t!("notify-deliveries-unavailable-message")}
+                }
             }
         } else {
             ListStates {
@@ -183,22 +189,32 @@ pub fn NotifyDeliveriesTab(
                         table { class: "min-w-full divide-y divide-gray-200 text-sm",
                             thead { class: "bg-gray-50",
                                 tr {
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("notify-col-date")} }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("notify-col-channel")} }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("notify-col-status")} }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("notify-col-source")} }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("notify-col-subject")} }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("notify-col-flow")} }
+                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                        {t!("notify-col-date")}
+                                    }
+                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                        {t!("notify-col-channel")}
+                                    }
+                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                        {t!("notify-col-status")}
+                                    }
+                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                        {t!("notify-col-source")}
+                                    }
+                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                        {t!("notify-col-subject")}
+                                    }
+                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                        {t!("notify-col-flow")}
+                                    }
                                 }
                             }
                             tbody { class: "divide-y divide-gray-100",
-                                for (i , d) in rows.into_iter().enumerate() {
+                                for (i, d) in rows.into_iter().enumerate() {
                                     DeliveryRow {
                                         key: "{d.ts_us}-{i}",
                                         channel_name: names.get(&d.channel_id.to_string()).cloned(),
-                                        template_name: d
-                                            .template_id
-                                            .and_then(|id| template_names.get(&id.to_string()).cloned()),
+                                        template_name: name_of(&template_names, d.template_id),
                                         d,
                                     }
                                 }
@@ -269,7 +285,9 @@ fn DeliveryRow(
         }
         if open() {
             tr {
-                td { class: "px-4 pb-3 bg-gray-50 text-xs text-gray-700", colspan: "6",
+                td {
+                    class: "px-4 pb-3 bg-gray-50 text-xs text-gray-700",
+                    colspan: "6",
                     dl { class: "grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 pt-2",
                         if let Some(err) = d.error.clone() {
                             dt { class: "text-gray-500", {t!("notify-detail-error")} }
@@ -294,4 +312,12 @@ fn DeliveryRow(
             }
         }
     }
+}
+
+/// Display name for an optional id, looked up in an id → name map.
+fn name_of(
+    names: &std::collections::HashMap<String, String>,
+    id: Option<impl ToString>,
+) -> Option<String> {
+    id.and_then(|id| names.get(&id.to_string()).cloned())
 }

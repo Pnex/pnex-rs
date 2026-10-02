@@ -141,11 +141,7 @@ fn field_input(
         label { class: "block",
             span { class: "text-xs font-medium text-gray-500 mb-1 block", {label} }
             input {
-                class: if invalid {
-                    "w-full px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm"
-                } else {
-                    "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
-                },
+                class: if invalid { "w-full px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm" } else { "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm" },
                 r#type: if numeric { "number" } else { "text" },
                 value: "{value}",
                 disabled,
@@ -259,50 +255,124 @@ pub(super) fn AnomalyForm(mut cx: EditorCx, initial: AnomalyConfig, can_write: b
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-anomaly-help")} }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-anomaly-method")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-anomaly-method")}
+                }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write,
                     onchange: move |event| {
                         if let Some(next) = AnomalyMethod::from_wire(&event.value()) {
-                            patch_selected(&mut cx, move |node: &mut FlowNode| {
-                                if let FlowNodeKind::Anomaly { config } = &mut node.kind {
-                                    config.method = next;
-                                }
-                            });
+                            patch_selected(
+                                &mut cx,
+                                move |node: &mut FlowNode| {
+                                    if let FlowNodeKind::Anomaly { config } = &mut node.kind {
+                                        config.method = next;
+                                    }
+                                },
+                            );
                         }
                     },
                     for m in AnomalyMethod::ALL {
-                        option { key: "{m.wire()}", value: m.wire(), selected: m == method, {method_label(m)} }
+                        option {
+                            key: "{m.wire()}",
+                            value: m.wire(),
+                            selected: m == method,
+                            {method_label(m)}
+                        }
                     }
                 }
                 span { class: "text-xs text-gray-400 mt-1 block", {method_help(method)} }
             }
-            {field_input(t!("flows-predict-key").to_string(), t!("flows-predict-key-hint").to_string(),
-                key, false, false, !can_write, on(F_KEY, key))}
+            {
+                field_input(
+                    t!("flows-predict-key").to_string(),
+                    t!("flows-predict-key-hint").to_string(),
+                    key,
+                    false,
+                    false,
+                    !can_write,
+                    on(F_KEY, key),
+                )
+            }
             div { class: "grid grid-cols-2 gap-2",
-                {field_input(t!("flows-predict-window").to_string(),
-                    t!("flows-predict-window-hint", min: PREDICT_WINDOW_MIN, max: PREDICT_WINDOW_MAX).to_string(),
-                    window, true, flagged(F_WINDOW), !can_write, on(F_WINDOW, window))}
-                {field_input(t!("flows-predict-min-samples").to_string(),
-                    t!("flows-predict-min-samples-hint", min: PREDICT_MIN_SAMPLES_FLOOR).to_string(),
-                    min_samples, true, flagged(F_MIN), !can_write, on(F_MIN, min_samples))}
+                {
+                    field_input(
+                        t!("flows-predict-window").to_string(),
+                        t!(
+                            "flows-predict-window-hint", min : PREDICT_WINDOW_MIN, max :
+                            PREDICT_WINDOW_MAX
+                        )
+                            .to_string(),
+                        window,
+                        true,
+                        flagged(F_WINDOW),
+                        !can_write,
+                        on(F_WINDOW, window),
+                    )
+                }
+                {
+                    field_input(
+                        t!("flows-predict-min-samples").to_string(),
+                        t!("flows-predict-min-samples-hint", min : PREDICT_MIN_SAMPLES_FLOOR)
+                            .to_string(),
+                        min_samples,
+                        true,
+                        flagged(F_MIN),
+                        !can_write,
+                        on(F_MIN, min_samples),
+                    )
+                }
             }
             match method {
-                AnomalyMethod::RobustZ => field_input(t!("flows-anomaly-threshold").to_string(),
-                    t!("flows-anomaly-threshold-hint").to_string(),
-                    threshold, true, flagged(F_THRESHOLD), !can_write, on(F_THRESHOLD, threshold)),
+                AnomalyMethod::RobustZ => {
+                    field_input(
+                        t!("flows-anomaly-threshold").to_string(),
+                        t!("flows-anomaly-threshold-hint").to_string(),
+                        threshold,
+                        true,
+                        flagged(F_THRESHOLD),
+                        !can_write,
+                        on(F_THRESHOLD, threshold),
+                    )
+                }
                 AnomalyMethod::ForecastBand => rsx! {
                     div { class: "grid grid-cols-2 gap-2",
-                        {field_input(t!("flows-predict-level").to_string(), t!("flows-predict-level-hint").to_string(),
-                            level, true, flagged(F_LEVEL), !can_write, on(F_LEVEL, level))}
-                        {field_input(t!("flows-predict-season").to_string(), t!("flows-predict-season-hint").to_string(),
-                            season, true, flagged(F_SEASON), !can_write, on(F_SEASON, season))}
+                        {
+                            field_input(
+                                t!("flows-predict-level").to_string(),
+                                t!("flows-predict-level-hint").to_string(),
+                                level,
+                                true,
+                                flagged(F_LEVEL),
+                                !can_write,
+                                on(F_LEVEL, level),
+                            )
+                        }
+                        {
+                            field_input(
+                                t!("flows-predict-season").to_string(),
+                                t!("flows-predict-season-hint").to_string(),
+                                season,
+                                true,
+                                flagged(F_SEASON),
+                                !can_write,
+                                on(F_SEASON, season),
+                            )
+                        }
                     }
                 },
-                AnomalyMethod::Changepoint => field_input(t!("flows-anomaly-hazard").to_string(),
-                    t!("flows-anomaly-hazard-hint").to_string(),
-                    hazard, true, flagged(F_HAZARD), !can_write, on(F_HAZARD, hazard)),
+                AnomalyMethod::Changepoint => {
+                    field_input(
+                        t!("flows-anomaly-hazard").to_string(),
+                        t!("flows-anomaly-hazard-hint").to_string(),
+                        hazard,
+                        true,
+                        flagged(F_HAZARD),
+                        !can_write,
+                        on(F_HAZARD, hazard),
+                    )
+                }
             }
             p { class: "text-xs text-gray-400", {t!("flows-anomaly-ports-help")} }
         }
@@ -356,69 +426,170 @@ pub(super) fn ForecastForm(mut cx: EditorCx, initial: ForecastConfig, can_write:
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-forecast-help")} }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-forecast-model")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-forecast-model")}
+                }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write,
                     onchange: move |event| {
                         if let Some(next) = ForecastModel::from_wire(&event.value()) {
-                            patch_selected(&mut cx, move |node: &mut FlowNode| {
-                                if let FlowNodeKind::Forecast { config } = &mut node.kind {
-                                    config.model = next;
-                                }
-                            });
+                            patch_selected(
+                                &mut cx,
+                                move |node: &mut FlowNode| {
+                                    if let FlowNodeKind::Forecast { config } = &mut node.kind {
+                                        config.model = next;
+                                    }
+                                },
+                            );
                         }
                     },
                     for m in ForecastModel::ALL {
-                        option { key: "{m.wire()}", value: m.wire(), selected: m == model, {model_label(m)} }
+                        option {
+                            key: "{m.wire()}",
+                            value: m.wire(),
+                            selected: m == model,
+                            {model_label(m)}
+                        }
                     }
                 }
             }
-            {field_input(t!("flows-predict-key").to_string(), t!("flows-predict-key-hint").to_string(),
-                key, false, false, !can_write, on(F_KEY, key))}
+            {
+                field_input(
+                    t!("flows-predict-key").to_string(),
+                    t!("flows-predict-key-hint").to_string(),
+                    key,
+                    false,
+                    false,
+                    !can_write,
+                    on(F_KEY, key),
+                )
+            }
             div { class: "grid grid-cols-2 gap-2",
-                {field_input(t!("flows-predict-window").to_string(),
-                    t!("flows-predict-window-hint", min: PREDICT_WINDOW_MIN, max: PREDICT_WINDOW_MAX).to_string(),
-                    window, true, flagged(F_WINDOW), !can_write, on(F_WINDOW, window))}
-                {field_input(t!("flows-predict-min-samples").to_string(),
-                    t!("flows-predict-min-samples-hint", min: PREDICT_MIN_SAMPLES_FLOOR).to_string(),
-                    min_samples, true, flagged(F_MIN), !can_write, on(F_MIN, min_samples))}
-                {field_input(t!("flows-forecast-horizon").to_string(),
-                    t!("flows-forecast-horizon-hint", max: FORECAST_HORIZON_MAX).to_string(),
-                    horizon, true, flagged(F_HORIZON), !can_write, on(F_HORIZON, horizon))}
-                {field_input(t!("flows-predict-level").to_string(), t!("flows-predict-level-hint").to_string(),
-                    level, true, flagged(F_LEVEL), !can_write, on(F_LEVEL, level))}
+                {
+                    field_input(
+                        t!("flows-predict-window").to_string(),
+                        t!(
+                            "flows-predict-window-hint", min : PREDICT_WINDOW_MIN, max :
+                            PREDICT_WINDOW_MAX
+                        )
+                            .to_string(),
+                        window,
+                        true,
+                        flagged(F_WINDOW),
+                        !can_write,
+                        on(F_WINDOW, window),
+                    )
+                }
+                {
+                    field_input(
+                        t!("flows-predict-min-samples").to_string(),
+                        t!("flows-predict-min-samples-hint", min : PREDICT_MIN_SAMPLES_FLOOR)
+                            .to_string(),
+                        min_samples,
+                        true,
+                        flagged(F_MIN),
+                        !can_write,
+                        on(F_MIN, min_samples),
+                    )
+                }
+                {
+                    field_input(
+                        t!("flows-forecast-horizon").to_string(),
+                        t!("flows-forecast-horizon-hint", max : FORECAST_HORIZON_MAX).to_string(),
+                        horizon,
+                        true,
+                        flagged(F_HORIZON),
+                        !can_write,
+                        on(F_HORIZON, horizon),
+                    )
+                }
+                {
+                    field_input(
+                        t!("flows-predict-level").to_string(),
+                        t!("flows-predict-level-hint").to_string(),
+                        level,
+                        true,
+                        flagged(F_LEVEL),
+                        !can_write,
+                        on(F_LEVEL, level),
+                    )
+                }
             }
             if let Some(span) = horizon_span_hint(&horizon.read()) {
                 p { class: "text-xs text-gray-400", {span} }
             }
             if model == ForecastModel::Ets {
-                {field_input(t!("flows-predict-season").to_string(), t!("flows-predict-season-hint").to_string(),
-                    season, true, flagged(F_SEASON), !can_write, on(F_SEASON, season))}
+                {
+                    field_input(
+                        t!("flows-predict-season").to_string(),
+                        t!("flows-predict-season-hint").to_string(),
+                        season,
+                        true,
+                        flagged(F_SEASON),
+                        !can_write,
+                        on(F_SEASON, season),
+                    )
+                }
             }
             div { class: "grid grid-cols-2 gap-2",
-                {field_input(t!("flows-forecast-threshold").to_string(), t!("flows-forecast-threshold-hint").to_string(),
-                    threshold, true, flagged(F_THRESHOLD), !can_write, on(F_THRESHOLD, threshold))}
+                {
+                    field_input(
+                        t!("flows-forecast-threshold").to_string(),
+                        t!("flows-forecast-threshold-hint").to_string(),
+                        threshold,
+                        true,
+                        flagged(F_THRESHOLD),
+                        !can_write,
+                        on(F_THRESHOLD, threshold),
+                    )
+                }
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-forecast-direction")} }
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                        {t!("flows-forecast-direction")}
+                    }
                     select {
                         class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                         disabled: !can_write,
                         onchange: move |event| {
-                            let next = if event.value() == "below" { BreachDirection::Below } else { BreachDirection::Above };
-                            patch_selected(&mut cx, move |node: &mut FlowNode| {
-                                if let FlowNodeKind::Forecast { config } = &mut node.kind {
-                                    config.direction = next;
-                                }
-                            });
+                            let next = if event.value() == "below" {
+                                BreachDirection::Below
+                            } else {
+                                BreachDirection::Above
+                            };
+                            patch_selected(
+                                &mut cx,
+                                move |node: &mut FlowNode| {
+                                    if let FlowNodeKind::Forecast { config } = &mut node.kind {
+                                        config.direction = next;
+                                    }
+                                },
+                            );
                         },
-                        option { value: "above", selected: direction == BreachDirection::Above, {t!("flows-forecast-direction-above")} }
-                        option { value: "below", selected: direction == BreachDirection::Below, {t!("flows-forecast-direction-below")} }
+                        option {
+                            value: "above",
+                            selected: direction == BreachDirection::Above,
+                            {t!("flows-forecast-direction-above")}
+                        }
+                        option {
+                            value: "below",
+                            selected: direction == BreachDirection::Below,
+                            {t!("flows-forecast-direction-below")}
+                        }
                     }
                 }
             }
-            {field_input(t!("flows-forecast-every").to_string(), t!("flows-forecast-every-hint").to_string(),
-                every, true, flagged(F_EVERY), !can_write, on(F_EVERY, every))}
+            {
+                field_input(
+                    t!("flows-forecast-every").to_string(),
+                    t!("flows-forecast-every-hint").to_string(),
+                    every,
+                    true,
+                    flagged(F_EVERY),
+                    !can_write,
+                    on(F_EVERY, every),
+                )
+            }
             p { class: "text-xs text-gray-400", {t!("flows-forecast-ports-help")} }
         }
     }

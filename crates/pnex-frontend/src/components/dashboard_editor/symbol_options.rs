@@ -71,7 +71,9 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
             }
             div { class: "grid grid-cols-2 gap-2",
                 div {
-                    label { class: "block text-[10px] font-medium uppercase text-gray-400", {t!("sym-stroke")} }
+                    label { class: "block text-[10px] font-medium uppercase text-gray-400",
+                        {t!("sym-stroke")}
+                    }
                     input {
                         class: "h-8 w-full cursor-pointer rounded border border-gray-300",
                         "type": "color",
@@ -84,7 +86,9 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                     }
                 }
                 div {
-                    label { class: "block text-[10px] font-medium uppercase text-gray-400", {t!("sym-fill")} }
+                    label { class: "block text-[10px] font-medium uppercase text-gray-400",
+                        {t!("sym-fill")}
+                    }
                     input {
                         class: "h-8 w-full cursor-pointer rounded border border-gray-300",
                         "type": "color",
@@ -97,7 +101,9 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                     }
                 }
                 div {
-                    label { class: "block text-[10px] font-medium uppercase text-gray-400", {t!("sym-rotation")} }
+                    label { class: "block text-[10px] font-medium uppercase text-gray-400",
+                        {t!("sym-rotation")}
+                    }
                     select {
                         class: "w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm",
                         disabled: !can_write,
@@ -106,7 +112,12 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                             edit_symbol(cx, |o| o.rotation = v);
                         },
                         for deg in [0_u16, 90, 180, 270] {
-                            option { key: "{deg}", value: "{deg}", selected: opts.rotation == deg, "{deg}°" }
+                            option {
+                                key: "{deg}",
+                                value: "{deg}",
+                                selected: opts.rotation == deg,
+                                "{deg}°"
+                            }
                         }
                     }
                 }
@@ -146,22 +157,26 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                         checked: live,
                         onchange: move |e| {
                             let on = e.checked();
-                            edit_widget(cx, |w| {
-                                if on && w.source.is_empty() {
-                                    w.source.push(SourceRef {
-                                        role: "primary".into(),
-                                        metric: String::new(),
-                                        device_id: String::new(),
-                                        window: "5m".into(),
-                                        memory: None,
-                                    });
-                                } else if !on {
-                                    w.source.clear();
-                                    if let Some(o) = w.options.symbol.as_mut() {
-                                        o.show_value = false;
+                            edit_widget(
+                                cx,
+                                |w| {
+                                    if on && w.source.is_empty() {
+                                        w.source
+                                            .push(SourceRef {
+                                                role: "primary".into(),
+                                                metric: String::new(),
+                                                device_id: String::new(),
+                                                window: "5m".into(),
+                                                memory: None,
+                                            });
+                                    } else if !on {
+                                        w.source.clear();
+                                        if let Some(o) = w.options.symbol.as_mut() {
+                                            o.show_value = false;
+                                        }
                                     }
-                                }
-                            });
+                                },
+                            );
                         },
                     }
                     {t!("sym-live")}
@@ -180,7 +195,9 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                         }
                         {t!("sym-show-value")}
                     }
-                    label { class: "block text-[10px] font-medium uppercase text-gray-400", {t!("sym-states")} }
+                    label { class: "block text-[10px] font-medium uppercase text-gray-400",
+                        {t!("sym-states")}
+                    }
                     for (i, th) in thresholds.iter().cloned().enumerate() {
                         div { key: "th-{i}", class: "flex items-center gap-2",
                             span { class: "text-xs text-gray-500", "≥" }
@@ -192,11 +209,14 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                                 value: "{th.value}",
                                 onchange: move |e| {
                                     let v = e.value().parse::<f64>().unwrap_or(0.0);
-                                    edit_widget(cx, |w| {
-                                        if let Some(t) = w.options.thresholds.get_mut(i) {
-                                            t.value = v;
-                                        }
-                                    });
+                                    edit_widget(
+                                        cx,
+                                        |w| {
+                                            if let Some(t) = w.options.thresholds.get_mut(i) {
+                                                t.value = v;
+                                            }
+                                        },
+                                    );
                                 },
                             }
                             input {
@@ -206,21 +226,27 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                                 value: "{th.color}",
                                 oninput: move |e| {
                                     let v = e.value();
-                                    edit_widget(cx, |w| {
-                                        if let Some(t) = w.options.thresholds.get_mut(i) {
-                                            t.color = v;
-                                        }
-                                    });
+                                    edit_widget(
+                                        cx,
+                                        |w| {
+                                            if let Some(t) = w.options.thresholds.get_mut(i) {
+                                                t.color = v;
+                                            }
+                                        },
+                                    );
                                 },
                             }
                             button {
                                 class: if can_write { "text-gray-300 hover:text-red-500" } else { "hidden" },
                                 onclick: move |_| {
-                                    edit_widget(cx, |w| {
-                                        if i < w.options.thresholds.len() {
-                                            w.options.thresholds.remove(i);
-                                        }
-                                    });
+                                    edit_widget(
+                                        cx,
+                                        |w| {
+                                            if i < w.options.thresholds.len() {
+                                                w.options.thresholds.remove(i);
+                                            }
+                                        },
+                                    );
                                 },
                                 icons::Trash { class: "h-3.5 w-3.5" }
                             }
@@ -229,13 +255,23 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                     button {
                         class: if can_write { "text-xs font-medium text-blue-600 hover:text-blue-800" } else { "hidden" },
                         onclick: move |_| {
-                            edit_widget(cx, |w| {
-                                let next = w.options.thresholds.last().map(|t| t.value + 1.0).unwrap_or(1.0);
-                                w.options.thresholds.push(Threshold {
-                                    value: next,
-                                    color: NEW_THRESHOLD_COLOR.into(),
-                                });
-                            });
+                            edit_widget(
+                                cx,
+                                |w| {
+                                    let next = w
+                                        .options
+                                        .thresholds
+                                        .last()
+                                        .map(|t| t.value + 1.0)
+                                        .unwrap_or(1.0);
+                                    w.options
+                                        .thresholds
+                                        .push(Threshold {
+                                            value: next,
+                                            color: NEW_THRESHOLD_COLOR.into(),
+                                        });
+                                },
+                            );
                         },
                         {t!("sym-add-state")}
                     }

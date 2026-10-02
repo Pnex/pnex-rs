@@ -6,8 +6,11 @@
 //! ⚠ dioxus #2784 : les props de route ne sont pas réactives — le token est
 //! lu **une fois** (cloné dans les closures/resource).
 
+use std::collections::HashMap;
+
 use dioxus::prelude::*;
 use dioxus_i18n::t;
+use pnex_core::PublicTour;
 
 use crate::components::tour_viewer::{AssetInfo, TourViewer, ViewerSource};
 
@@ -30,7 +33,7 @@ pub fn ShareTour(token: String) -> Element {
                     Some(Ok(tour)) => rsx! {
                         span { class: "text-sm text-gray-500", {tour.name.clone()} }
                         span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-50 text-green-700 border border-green-200",
-                            {t!("share-published-tag", version: tour.published_version_number)}
+                            {t!("share-published-tag", version : tour.published_version_number)}
                         }
                     },
                     _ => rsx! {},
@@ -43,20 +46,10 @@ pub fn ShareTour(token: String) -> Element {
                         // public (cache immutable côté octets).
                         TourViewer {
                             doc: tour.doc.clone(),
-                            assets: tour
-                                .assets
-                                .iter()
-                                .map(|(id, reference)| {
-                                    (
-                                        id.clone(),
-                                        AssetInfo {
-                                            version: Some(reference.version_number),
-                                            content_type: Some(reference.content_type.clone()),
-                                        },
-                                    )
-                                })
-                                .collect::<std::collections::HashMap<String, AssetInfo>>(),
-                            source: ViewerSource::Public { token: token.cloned() },
+                            assets: asset_infos(tour),
+                            source: ViewerSource::Public {
+                                token: token.cloned(),
+                            },
                             // Page publique en lecture seule : le drag d'une
                             // flèche reste visuel (rien à persister).
                             on_hotspot_move: move |_: (String, f64, f64)| {},
@@ -90,4 +83,18 @@ pub fn ShareTour(token: String) -> Element {
             }
         }
     }
+}
+
+/// Viewer asset map (version + mime) from the public tour document.
+fn asset_infos(tour: &PublicTour) -> HashMap<String, AssetInfo> {
+    tour.assets
+        .iter()
+        .map(|(id, reference)| {
+            let info = AssetInfo {
+                version: Some(reference.version_number),
+                content_type: Some(reference.content_type.clone()),
+            };
+            (id.clone(), info)
+        })
+        .collect()
 }

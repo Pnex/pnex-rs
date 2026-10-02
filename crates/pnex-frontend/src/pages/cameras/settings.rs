@@ -119,13 +119,15 @@ pub(super) fn SettingsDialog(
 
     rsx! {
         FormDialog {
-            title: t!("cameras-settings-title", camera: cam.device_id.clone()).to_string(),
+            title: t!("cameras-settings-title", camera : cam.device_id.clone()).to_string(),
             submit_label: t!("cameras-settings-save").to_string(),
             on_close,
             on_submit: save,
             busy: saving(),
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("cameras-framesize")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("cameras-framesize")}
+                }
                 select {
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white",
                     disabled,
@@ -135,7 +137,12 @@ pub(super) fn SettingsDialog(
                         }
                     },
                     for f in FrameSize::ALL {
-                        option { key: "{f.wire()}", value: f.wire(), selected: framesize() == f, {framesize_label(f)} }
+                        option {
+                            key: "{f.wire()}",
+                            value: f.wire(),
+                            selected: framesize() == f,
+                            {framesize_label(f)}
+                        }
                     }
                 }
                 if let Some(e) = framesize_err {
@@ -144,7 +151,9 @@ pub(super) fn SettingsDialog(
             }
             div { class: "grid grid-cols-2 gap-3",
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("cameras-quality")} }
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                        {t!("cameras-quality")}
+                    }
                     input {
                         class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
                         r#type: "number",
@@ -154,7 +163,9 @@ pub(super) fn SettingsDialog(
                         disabled,
                         oninput: move |event| quality.set(event.value()),
                     }
-                    span { class: "text-xs text-gray-400 block", {t!("cameras-quality-hint", min: QUALITY_MIN, max: QUALITY_MAX)} }
+                    span { class: "text-xs text-gray-400 block",
+                        {t!("cameras-quality-hint", min : QUALITY_MIN, max : QUALITY_MAX)}
+                    }
                     if let Some(e) = quality_err {
                         span { class: "text-xs text-red-600 block", {e} }
                     }
@@ -170,14 +181,18 @@ pub(super) fn SettingsDialog(
                         disabled,
                         oninput: move |event| fps.set(event.value()),
                     }
-                    span { class: "text-xs text-gray-400 block", {t!("cameras-fps-hint", min: FPS_MIN, max: FPS_MAX)} }
+                    span { class: "text-xs text-gray-400 block",
+                        {t!("cameras-fps-hint", min : FPS_MIN, max : FPS_MAX)}
+                    }
                     if let Some(e) = fps_err {
                         span { class: "text-xs text-red-600 block", {e} }
                     }
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("cameras-capture-mode")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("cameras-capture-mode")}
+                }
                 select {
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white",
                     disabled,
@@ -186,8 +201,16 @@ pub(super) fn SettingsDialog(
                             mode.set(m);
                         }
                     },
-                    option { value: "on_demand", selected: mode() == CaptureMode::OnDemand, {t!("cameras-mode-on-demand")} }
-                    option { value: "continuous", selected: mode() == CaptureMode::Continuous, {t!("cameras-mode-continuous")} }
+                    option {
+                        value: "on_demand",
+                        selected: mode() == CaptureMode::OnDemand,
+                        {t!("cameras-mode-on-demand")}
+                    }
+                    option {
+                        value: "continuous",
+                        selected: mode() == CaptureMode::Continuous,
+                        {t!("cameras-mode-continuous")}
+                    }
                 }
                 span { class: "text-xs text-gray-500 mt-1 block",
                     if mode() == CaptureMode::Continuous {

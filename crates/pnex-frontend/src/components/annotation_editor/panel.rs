@@ -208,11 +208,7 @@ pub fn AnnotationLayerPanel(
             if can_write && cx.layer_id.cloned().is_some() {
                 div { class: "px-3 py-2 border-b border-gray-200 flex items-center gap-2",
                     button {
-                        class: if placing_now {
-                            "px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg font-medium"
-                        } else {
-                            "px-3 py-1.5 text-xs bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-                        },
+                        class: if placing_now { "px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg font-medium" } else { "px-3 py-1.5 text-xs bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50" },
                         onclick: move |_| cx.placing.toggle(),
                         {t!("annot-place-toggle")}
                     }
@@ -230,33 +226,35 @@ pub fn AnnotationLayerPanel(
                             let expected = cx.saved_version.cloned();
                             spawn(async move {
                                 let res = api::annotation_layers::update(
-                                    &layer,
-                                    UpdateAnnotationLayer {
-                                        expected_version_number: expected,
-                                        doc,
-                                        name: None,
-                                        author: None,
-                                        note: None,
-                                    },
-                                )
-                                .await;
+                                        &layer,
+                                        UpdateAnnotationLayer {
+                                            expected_version_number: expected,
+                                            doc,
+                                            name: None,
+                                            author: None,
+                                            note: None,
+                                        },
+                                    )
+                                    .await;
                                 match res {
                                     Ok(d) => {
                                         cx.saved_doc.set(d.doc.clone());
                                         cx.saved_version.set(d.doc_version_number);
                                         crate::state::toasts::success(t!("toast-annot-saved"));
                                     }
-                                    Err(err) => match classify_save_error(&err) {
-                                        SaveError::Conflict { description } => {
-                                            cx.conflict.set(Some(description));
+                                    Err(err) => {
+                                        match classify_save_error(&err) {
+                                            SaveError::Conflict { description } => {
+                                                cx.conflict.set(Some(description));
+                                            }
+                                            SaveError::Invalid(vs) => {
+                                                cx.violations.set(vs);
+                                            }
+                                            SaveError::Other(msg) => {
+                                                crate::state::toasts::error(msg);
+                                            }
                                         }
-                                        SaveError::Invalid(vs) => {
-                                            cx.violations.set(vs);
-                                        }
-                                        SaveError::Other(msg) => {
-                                            crate::state::toasts::error(msg);
-                                        }
-                                    },
+                                    }
                                 }
                                 cx.saving.set(false);
                             });
@@ -275,7 +273,9 @@ pub fn AnnotationLayerPanel(
                 div { class: "px-3 py-2 bg-red-50 border-b border-red-200 text-xs text-red-700 space-y-1",
                     p { class: "font-semibold", {t!("annot-violations")} }
                     for v in violations_now {
-                        p { key: "{v.code}-{v.subject.clone().unwrap_or_default()}", {v.message} }
+                        p { key: "{v.code}-{v.subject.clone().unwrap_or_default()}",
+                            {v.message}
+                        }
                     }
                 }
             }
@@ -294,25 +294,29 @@ pub fn AnnotationLayerPanel(
                     for r in rows_now.clone() {
                         li { key: "row-{r.id}",
                             button {
-                                class: if cx.selected.cloned().as_deref() == Some(r.id.as_str()) {
-                                    "w-full text-left px-3 py-2 hover:bg-gray-50 bg-blue-50"
-                                } else {
-                                    "w-full text-left px-3 py-2 hover:bg-gray-50"
-                                },
+                                class: if cx.selected.cloned().as_deref() == Some(r.id.as_str()) { "w-full text-left px-3 py-2 hover:bg-gray-50 bg-blue-50" } else { "w-full text-left px-3 py-2 hover:bg-gray-50" },
                                 onclick: move |_| cx.selected.set(Some(r.id.clone())),
                                 div { class: "flex items-center gap-2",
                                     span { class: "inline-block h-2.5 w-2.5 rounded-full {crate::components::annotation_editor::popover::annot_dot_color(&r.kind)}" }
                                     span { class: "text-sm text-gray-900 truncate",
-                                        {if r.label.is_empty() { t!("annot-kind-device").to_string() } else { r.label.clone() }}
+                                        {
+                                            if r.label.is_empty() {
+                                                t!("annot-kind-device").to_string()
+                                            } else {
+                                                r.label.clone()
+                                            }
+                                        }
                                     }
                                     span { class: "text-[11px] text-gray-400 ml-auto font-mono",
                                         // Pano : degrés ; plat : pourcentages
                                         // (x/y ∈ [0,1] mappés ×100 dans rows_now).
-                                        {if is_pano {
-                                            format!("{:.0}°/{:.0}°", r.yaw, r.pitch)
-                                        } else {
-                                            format!("{:.0}%/{:.0}%", r.yaw, r.pitch)
-                                        }}
+                                        {
+                                            if is_pano {
+                                                format!("{:.0}°/{:.0}°", r.yaw, r.pitch)
+                                            } else {
+                                                format!("{:.0}%/{:.0}%", r.yaw, r.pitch)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -321,12 +325,8 @@ pub fn AnnotationLayerPanel(
                 }
                 // Inspecteur (item sélectionné).
                 if let Some(id) = cx.selected.cloned() {
-                    {
-                        if has_item(&doc_now, &id) {
-                            rsx! { AnnotationInspector { cx, can_write } }
-                        } else {
-                            rsx! {}
-                        }
+                    if has_item(&doc_now, &id) {
+                        AnnotationInspector { cx, can_write }
                     }
                 }
             }
@@ -396,16 +396,16 @@ pub fn AnnotationLayerPanel(
                                         let expected = d.doc_version_number;
                                         let doc = cx.doc.cloned();
                                         match api::annotation_layers::update(
-                                            &id,
-                                            UpdateAnnotationLayer {
-                                                expected_version_number: expected,
-                                                doc,
-                                                name: None,
-                                                author: None,
-                                                note: None,
-                                            },
-                                        )
-                                        .await
+                                                &id,
+                                                UpdateAnnotationLayer {
+                                                    expected_version_number: expected,
+                                                    doc,
+                                                    name: None,
+                                                    author: None,
+                                                    note: None,
+                                                },
+                                            )
+                                            .await
                                         {
                                             Ok(d) => {
                                                 cx.saved_doc.set(d.doc.clone());

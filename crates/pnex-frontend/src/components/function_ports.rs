@@ -144,10 +144,22 @@ pub fn FunctionPortsPanel(
             div { class: "text-sm text-gray-400 italic", {t!("functions-ports-none")} }
         }
         if !sig.inputs.is_empty() {
-            InputsSection { code: code.clone(), spans: spans.clone(), sig: sig.clone(), readonly, onedit }
+            InputsSection {
+                code: code.clone(),
+                spans: spans.clone(),
+                sig: sig.clone(),
+                readonly,
+                onedit,
+            }
         }
         if !sig.outputs.is_empty() {
-            OutputsSection { code: code.clone(), spans, sig, readonly, onedit }
+            OutputsSection {
+                code: code.clone(),
+                spans,
+                sig,
+                readonly,
+                onedit,
+            }
         }
     }
 }
@@ -172,7 +184,9 @@ fn InputsSection(
             div { class: "flex items-center gap-2",
                 span { class: "w-2.5 h-2.5 rounded-full border-2 border-teal-700" }
                 h3 { class: "text-base font-semibold", {t!("functions-ports-in-title")} }
-                span { class: "text-xs text-gray-600 bg-gray-100 rounded-full px-2", "{rows.len()}" }
+                span { class: "text-xs text-gray-600 bg-gray-100 rounded-full px-2",
+                    "{rows.len()}"
+                }
             }
             div { class: "grid grid-cols-[112px_84px_64px_minmax(0,1fr)_28px] gap-1.5 items-center text-xs text-gray-600",
                 span { {t!("functions-ports-name")} }
@@ -182,10 +196,22 @@ fn InputsSection(
                 span {}
             }
             for (line, input) in rows {
-                PortRow { code: code.clone(), line, is_input: true, fields: fields_of_input(&input), readonly, onedit }
+                PortRow {
+                    code: code.clone(),
+                    line,
+                    is_input: true,
+                    fields: fields_of_input(&input),
+                    readonly,
+                    onedit,
+                }
             }
             if !readonly {
-                AddPortButton { code, sig, is_input: true, onedit }
+                AddPortButton {
+                    code,
+                    sig,
+                    is_input: true,
+                    onedit,
+                }
             }
         }
     }
@@ -211,7 +237,9 @@ fn OutputsSection(
             div { class: "flex items-center gap-2",
                 span { class: "w-2.5 h-2.5 rounded-full border-2 border-amber-600" }
                 h3 { class: "text-base font-semibold", {t!("functions-ports-out-title")} }
-                span { class: "text-xs text-gray-600 bg-gray-100 rounded-full px-2", "{rows.len()}" }
+                span { class: "text-xs text-gray-600 bg-gray-100 rounded-full px-2",
+                    "{rows.len()}"
+                }
             }
             div { class: "grid grid-cols-[112px_84px_minmax(0,1fr)_28px] gap-1.5 items-center text-xs text-gray-600",
                 span { {t!("functions-ports-name")} }
@@ -220,10 +248,22 @@ fn OutputsSection(
                 span {}
             }
             for (line, output) in rows {
-                PortRow { code: code.clone(), line, is_input: false, fields: fields_of_output(&output), readonly, onedit }
+                PortRow {
+                    code: code.clone(),
+                    line,
+                    is_input: false,
+                    fields: fields_of_output(&output),
+                    readonly,
+                    onedit,
+                }
             }
             if !readonly {
-                AddPortButton { code, sig, is_input: false, onedit }
+                AddPortButton {
+                    code,
+                    sig,
+                    is_input: false,
+                    onedit,
+                }
             }
         }
     }
@@ -311,11 +351,7 @@ fn PortRow(
     });
 
     rsx! {
-        div { class: if is_input {
-                "grid grid-cols-[112px_84px_64px_minmax(0,1fr)_28px] gap-1.5 items-center"
-            } else {
-                "grid grid-cols-[112px_84px_minmax(0,1fr)_28px] gap-1.5 items-center"
-            },
+        div { class: if is_input { "grid grid-cols-[112px_84px_64px_minmax(0,1fr)_28px] gap-1.5 items-center" } else { "grid grid-cols-[112px_84px_minmax(0,1fr)_28px] gap-1.5 items-center" },
             input {
                 class: if name_valid { cell } else { cell_bad },
                 value: "{fields.name}",
@@ -410,12 +446,16 @@ fn AddPortButton(
                     }
                     n += 1;
                 }
-                let next = insert_directive(&code, is_input, &DirectiveFields {
-                    name: format!("{base}_{n}"),
-                    ty: FunctionType::Number,
-                    default: None,
-                    desc: None,
-                });
+                let next = insert_directive(
+                    &code,
+                    is_input,
+                    &DirectiveFields {
+                        name: format!("{base}_{n}"),
+                        ty: FunctionType::Number,
+                        default: None,
+                        desc: None,
+                    },
+                );
                 onedit.call(next);
             },
             {add_label}

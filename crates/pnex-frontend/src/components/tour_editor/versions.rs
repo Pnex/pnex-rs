@@ -54,7 +54,7 @@ pub(crate) fn VersionsDrawer(
                     button {
                         class: "text-gray-400 hover:text-gray-600",
                         onclick: close,
-                        { "✕" }
+                        {"✕"}
                     }
                 }
 
@@ -64,7 +64,7 @@ pub(crate) fn VersionsDrawer(
                         div { class: "flex items-center gap-2 text-xs",
                             if let Some(version) = published_version {
                                 span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-800",
-                                    {t!("studio-published-tag", version: version)}
+                                    {t!("studio-published-tag", version : version)}
                                 }
                             } else {
                                 span { class: "text-gray-500", {t!("studio-publish-none")} }
@@ -113,99 +113,103 @@ pub(crate) fn VersionsDrawer(
                                     {t!("studio-unpublish")}
                                 }
                             }
-                            {match share_token.clone() {
-                                Some(token) => rsx! {
-                                    button {
-                                        class: "px-3 py-1.5 text-xs text-blue-700 bg-white border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors",
-                                        onclick: move |_| {
-                                            let url = api::tours::share_url(&token);
-                                            crate::util::copy_text(&url);
-                                            toasts::success("toast-tour-share-copied");
-                                        },
-                                        {t!("studio-share-copy")}
-                                    }
-                                    button {
-                                        class: "px-3 py-1.5 text-xs text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors",
-                                        onclick: move |_| {
-                                            busy.set(true);
-                                            let id = tour_id_revoke.clone();
-                                            spawn(async move {
-                                                match api::tours::revoke_share(&id).await {
-                                                    Ok(_) => {
-                                                        toasts::success("toast-tour-share-revoked");
-                                                        on_changed.call(());
-                                                        reload.with_mut(|r| *r += 1);
+                            {
+                                match share_token.clone() {
+                                    Some(token) => rsx! {
+                                        button {
+                                            class: "px-3 py-1.5 text-xs text-blue-700 bg-white border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors",
+                                            onclick: move |_| {
+                                                let url = api::tours::share_url(&token);
+                                                crate::util::copy_text(&url);
+                                                toasts::success("toast-tour-share-copied");
+                                            },
+                                            {t!("studio-share-copy")}
+                                        }
+                                        button {
+                                            class: "px-3 py-1.5 text-xs text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors",
+                                            onclick: move |_| {
+                                                busy.set(true);
+                                                let id = tour_id_revoke.clone();
+                                                spawn(async move {
+                                                    match api::tours::revoke_share(&id).await {
+                                                        Ok(_) => {
+                                                            toasts::success("toast-tour-share-revoked");
+                                                            on_changed.call(());
+                                                            reload.with_mut(|r| *r += 1);
+                                                        }
+                                                        Err(err) => toasts::error(err),
                                                     }
-                                                    Err(err) => toasts::error(err),
-                                                }
-                                                busy.set(false);
-                                            });
-                                        },
-                                        {t!("studio-share-revoke")}
-                                    }
-                                },
-                                None => rsx! {
-                                    button {
-                                        class: "px-3 py-1.5 text-xs text-blue-700 bg-white border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-40",
-                                        disabled: busy() || published_version.is_none(),
-                                        title: if published_version.is_none() { t!("studio-share-needs-publish") } else { "".to_string() },
-                                        onclick: move |_| {
-                                            busy.set(true);
-                                            let id = tour_id_share.clone();
-                                            spawn(async move {
-                                                match api::tours::share(&id).await {
-                                                    Ok(_) => {
-                                                        toasts::success("toast-tour-shared");
-                                                        on_changed.call(());
-                                                        reload.with_mut(|r| *r += 1);
+                                                    busy.set(false);
+                                                });
+                                            },
+                                            {t!("studio-share-revoke")}
+                                        }
+                                    },
+                                    None => rsx! {
+                                        button {
+                                            class: "px-3 py-1.5 text-xs text-blue-700 bg-white border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-40",
+                                            disabled: busy() || published_version.is_none(),
+                                            title: if published_version.is_none() { t!("studio-share-needs-publish") } else { "".to_string() },
+                                            onclick: move |_| {
+                                                busy.set(true);
+                                                let id = tour_id_share.clone();
+                                                spawn(async move {
+                                                    match api::tours::share(&id).await {
+                                                        Ok(_) => {
+                                                            toasts::success("toast-tour-shared");
+                                                            on_changed.call(());
+                                                            reload.with_mut(|r| *r += 1);
+                                                        }
+                                                        Err(err) => toasts::error(err),
                                                     }
-                                                    Err(err) => toasts::error(err),
-                                                }
-                                                busy.set(false);
-                                            });
-                                        },
-                                        {t!("studio-share")}
-                                    }
-                                },
-                            }}
+                                                    busy.set(false);
+                                                });
+                                            },
+                                            {t!("studio-share")}
+                                        }
+                                    },
+                                }
+                            }
                         }
                     }
                 }
 
                 // ─── Historique ───
-                {match &*versions.value().read() {
-                    Some(Ok(paged)) if paged.results.is_empty() => rsx! {
-                        p { class: "p-4 text-sm text-gray-400", {t!("studio-versions-empty")} }
-                    },
-                    Some(Ok(paged)) => rsx! {
-                        ul { class: "flex-1 overflow-y-auto divide-y divide-gray-100",
-                            // Ligne dédiée (école `flow_row`) : valeurs
-                            // possédées par ligne → closures sans conflit.
-                            for version in paged.results.clone() {
-                                {
-                                    version_row(
-                                        version,
-                                        tour_id.clone(),
-                                        can_write,
-                                        published_version,
-                                        confirm_publish,
-                                        on_loaded,
-                                    )
+                // Ligne dédiée (école `flow_row`) : valeurs
+                // possédées par ligne → closures sans conflit.
+                {
+                    match &*versions.value().read() {
+                        Some(Ok(paged)) if paged.results.is_empty() => rsx! {
+                            p { class: "p-4 text-sm text-gray-400", {t!("studio-versions-empty")} }
+                        },
+                        Some(Ok(paged)) => rsx! {
+                            ul { class: "flex-1 overflow-y-auto divide-y divide-gray-100",
+                                for version in paged.results.clone() {
+                                    {
+                                        version_row(
+                                            version,
+                                            tour_id.clone(),
+                                            can_write,
+                                            published_version,
+                                            confirm_publish,
+                                            on_loaded,
+                                        )
+                                    }
                                 }
                             }
-                        }
-                    },
-                    Some(Err(err)) => rsx! {
-                        div { class: "m-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700",
-                            {err.message.clone()}
-                        }
-                    },
-                    None => rsx! {
-                        div { class: "flex-1 flex items-center justify-center",
-                            span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" }
-                        }
-                    },
-                }}
+                        },
+                        Some(Err(err)) => rsx! {
+                            div { class: "m-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700",
+                                {err.message.clone()}
+                            }
+                        },
+                        None => rsx! {
+                            div { class: "flex-1 flex items-center justify-center",
+                                span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" }
+                            }
+                        },
+                    }
+                }
             }
         }
 
@@ -264,9 +268,7 @@ fn version_row(
                         {t!("studio-version-published-tag")}
                     }
                 }
-                span { class: "text-xs text-gray-400 ml-auto",
-                    {date_label(&version.created_at)}
-                }
+                span { class: "text-xs text-gray-400 ml-auto", {date_label(&version.created_at)} }
             }
             div { class: "text-xs text-gray-500",
                 if let Some(author) = &version.author {

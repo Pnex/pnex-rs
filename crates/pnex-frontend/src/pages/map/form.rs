@@ -57,7 +57,9 @@ pub(super) fn PoiFormModal(
             on_close: move |_| on_close.call(()),
             div { class: "space-y-4",
                 div {
-                    label { class: "block text-sm font-medium text-gray-700 mb-1", {t!("poi-field-label")} }
+                    label { class: "block text-sm font-medium text-gray-700 mb-1",
+                        {t!("poi-field-label")}
+                    }
                     input {
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         value: "{label}",
@@ -65,7 +67,9 @@ pub(super) fn PoiFormModal(
                     }
                 }
                 div {
-                    label { class: "block text-sm font-medium text-gray-700 mb-1", {t!("poi-field-emoji")} }
+                    label { class: "block text-sm font-medium text-gray-700 mb-1",
+                        {t!("poi-field-emoji")}
+                    }
                     div { class: "flex flex-wrap gap-1 mb-1.5",
                         for e in PALETTE {
                             button {
@@ -83,7 +87,9 @@ pub(super) fn PoiFormModal(
                     }
                 }
                 div {
-                    label { class: "block text-sm font-medium text-gray-700 mb-1", {t!("poi-field-location")} }
+                    label { class: "block text-sm font-medium text-gray-700 mb-1",
+                        {t!("poi-field-location")}
+                    }
                     input {
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         placeholder: t!("poi-field-location-hint"),
@@ -93,7 +99,9 @@ pub(super) fn PoiFormModal(
                 }
                 div { class: "grid grid-cols-2 gap-3",
                     div {
-                        label { class: "block text-sm font-medium text-gray-700 mb-1", {t!("poi-field-lat")} }
+                        label { class: "block text-sm font-medium text-gray-700 mb-1",
+                            {t!("poi-field-lat")}
+                        }
                         input {
                             class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                             value: "{lat}",
@@ -101,7 +109,9 @@ pub(super) fn PoiFormModal(
                         }
                     }
                     div {
-                        label { class: "block text-sm font-medium text-gray-700 mb-1", {t!("poi-field-lon")} }
+                        label { class: "block text-sm font-medium text-gray-700 mb-1",
+                            {t!("poi-field-lon")}
+                        }
                         input {
                             class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                             value: "{lon}",
@@ -120,19 +130,17 @@ pub(super) fn PoiFormModal(
                         disabled: saving(),
                         onclick: move |_| {
                             // Garde client : coords numériques obligatoires.
-                            let (Some(lat_v), Some(lon_v)) =
-                                (lat().trim().parse::<f64>().ok(), lon().trim().parse::<f64>().ok())
-                            else {
+                            let (Some(lat_v), Some(lon_v)) = (
+                                lat().trim().parse::<f64>().ok(),
+                                lon().trim().parse::<f64>().ok(),
+                            ) else {
                                 toasts::error(t!("poi-coords-invalid").to_string());
                                 return;
                             };
-                            let body = serde_json::json!({
-                                "label": label(),
-                                "emoji": emoji(),
-                                "location_detail": detail(),
-                                "latitude": lat_v,
-                                "longitude": lon_v,
-                            });
+                            let body = serde_json::json!(
+                                { "label" : label(), "emoji" : emoji(), "location_detail" : detail(),
+                                "latitude" : lat_v, "longitude" : lon_v, }
+                            );
                             saving.set(true);
                             let edit_id = edit_id.clone();
                             spawn(async move {
@@ -144,18 +152,24 @@ pub(super) fn PoiFormModal(
                                 saving.set(false);
                                 match result {
                                     Ok(_) => {
-                                        toasts::success(if is_edit {
-                                            t!("poi-updated").to_string()
-                                        } else {
-                                            t!("poi-created").to_string()
-                                        });
+                                        toasts::success(
+                                            if is_edit {
+                                                t!("poi-updated").to_string()
+                                            } else {
+                                                t!("poi-created").to_string()
+                                            },
+                                        );
                                         on_saved.call(());
                                     }
                                     Err(err) => toasts::error(format!("{err}")),
                                 }
                             });
                         },
-                        if saving() { {t!("viz-saving")} } else { {t!("viz-save")} }
+                        if saving() {
+                            {t!("viz-saving")}
+                        } else {
+                            {t!("viz-save")}
+                        }
                     }
                 }
             }

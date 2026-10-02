@@ -51,10 +51,10 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
                     button {
                         class: "text-gray-400 hover:text-gray-600",
                         onclick: close,
-                        { "✕" }
+                        {"✕"}
                     }
                 }
-                {match &*entries.value().read() {
+                match &*entries.value().read() {
                     Some(Ok(feed)) if feed.entries.is_empty() => rsx! {
                         p { class: "p-4 text-sm text-gray-400", {t!("flows-debug-empty")} }
                     },
@@ -63,9 +63,7 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
                             for entry in feed.entries.clone() {
                                 li { key: "{entry.seq}", class: "px-4 py-2.5 space-y-1",
                                     div { class: "flex items-center gap-2",
-                                        span { class: "text-[11px] font-mono text-gray-400",
-                                            {heure_label(&entry.ts)}
-                                        }
+                                        span { class: "text-[11px] font-mono text-gray-400", {heure_label(&entry.ts)} }
                                         span { class: "text-xs font-semibold text-gray-700",
                                             {entry.name.clone().unwrap_or_else(|| entry.node_id.clone())}
                                         }
@@ -80,55 +78,42 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
                                             }
                                         }
                                         if let Some(topic) = &entry.topic {
-                                            span { class: "text-[11px] text-gray-400 truncate",
-                                                {topic.clone()}
-                                            }
+                                            span { class: "text-[11px] text-gray-400 truncate", {topic.clone()} }
                                         }
                                     }
-                                    {match serde_json::from_value::<pnex_core::vision::NodeStatus>(entry.msg.clone()).ok().filter(|_| entry.source == "pnex-status") {
-                                        Some(st) => rsx! {
-                                            pre { class: "text-[11px] font-mono whitespace-pre-wrap break-all text-gray-700 m-0",
-                                                {status_pretty(&st)}
-                                            }
-                                        },
-                                        None => rsx! {
-                                    {match display_value_pretty(&entry.msg) {
-                                        Some(pretty) => rsx! {
-                                            div { class: "space-y-1",
-                                                button {
-                                                    class: "w-full text-left flex items-center gap-1.5 text-[11px] font-mono text-gray-500 hover:text-gray-800 transition-colors",
-                                                    onclick: move |_| {
-                                                        expanded.with_mut(|set| {
-                                                            if !set.remove(&entry.seq) {
-                                                                set.insert(entry.seq);
-                                                            }
-                                                        });
-                                                    },
-                                                    span { class: "select-none shrink-0",
-                                                        {if expanded.read().contains(&entry.seq) { "▾" } else { "▸" }}
+                                    if let Some(st) = node_status(&entry.source, &entry.msg) {
+                                        pre { class: "text-[11px] font-mono whitespace-pre-wrap break-all text-gray-700 m-0",
+                                            {status_pretty(&st)}
+                                        }
+                                    } else if let Some(pretty) = display_value_pretty(&entry.msg) {
+                                        div { class: "space-y-1",
+                                            button {
+                                                class: "w-full text-left flex items-center gap-1.5 text-[11px] font-mono text-gray-500 hover:text-gray-800 transition-colors",
+                                                onclick: move |_| {
+                                                    let mut set = expanded.write();
+                                                    if !set.remove(&entry.seq) {
+                                                        set.insert(entry.seq);
                                                     }
-                                                    span { class: "truncate",
-                                                        {display_value_compact(&entry.msg)}
-                                                    }
-                                                    span { class: "shrink-0 font-sans text-gray-400",
-                                                        {t!("flows-debug-json-lines", count: pretty.lines().count())}
-                                                    }
+                                                },
+                                                span { class: "select-none shrink-0",
+                                                    {if expanded.read().contains(&entry.seq) { "▾" } else { "▸" }}
                                                 }
-                                                if expanded.read().contains(&entry.seq) {
-                                                    pre { class: "text-[11px] font-mono whitespace-pre-wrap break-all text-gray-600 m-0",
-                                                        {pretty}
-                                                    }
+                                                span { class: "truncate", {display_value_compact(&entry.msg)} }
+                                                span { class: "shrink-0 font-sans text-gray-400",
+                                                    {t!("flows-debug-json-lines", count : pretty.lines().count())}
                                                 }
                                             }
-                                        },
-                                        None => rsx! {
-                                            pre { class: "text-[11px] font-mono whitespace-pre-wrap break-all text-gray-600 m-0",
-                                                {format_msg(&entry.msg)}
+                                            if expanded.read().contains(&entry.seq) {
+                                                pre { class: "text-[11px] font-mono whitespace-pre-wrap break-all text-gray-600 m-0",
+                                                    {pretty}
+                                                }
                                             }
-                                        },
-                                    }}
-                                        },
-                                    }}
+                                        }
+                                    } else {
+                                        pre { class: "text-[11px] font-mono whitespace-pre-wrap break-all text-gray-600 m-0",
+                                            {format_msg(&entry.msg)}
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -143,7 +128,7 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
                             span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" }
                         }
                     },
-                }}
+                }
                 div { class: "px-4 py-2 border-t border-gray-200 text-[11px] text-gray-400",
                     {t!("flows-debug-hint")}
                 }
@@ -157,6 +142,13 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
 /// chaîne affichait l'heure UTC (décalée de 2 h en CEST — retour du
 /// 05/09 : 21:53:54 affiché 19:53:54). Forme inattendue : rendue telle
 /// quelle (jamais de panic).
+/// Node status carried by a `pnex-status` debug entry, if any.
+fn node_status(source: &str, msg: &serde_json::Value) -> Option<pnex_core::vision::NodeStatus> {
+    serde_json::from_value(msg.clone())
+        .ok()
+        .filter(|_| source == "pnex-status")
+}
+
 fn heure_label(ts: &str) -> String {
     chrono::DateTime::parse_from_rfc3339(ts)
         .map(|ts| {

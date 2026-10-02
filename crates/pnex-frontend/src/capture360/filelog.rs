@@ -3,7 +3,7 @@
 //! réinitialise le textContent toutes les 33 ms).
 //!
 //! Écrit en append dans `files/take360.log` — lisible via
-//! `adb shell run-as com.example.PnexFrontend cat files/take360.log`
+//! `adb shell run-as io.pnex.app cat files/take360.log`
 //! (APK debug-signé). Jamais de panic : tout échec dégrade en no-op.
 
 use std::io::Write;

@@ -54,7 +54,7 @@ pub(super) fn FunctionTestModal(
         FormDialog {
             title: t!("functions-test-title").to_string(),
             submit_label: t!("functions-test-execute").to_string(),
-            on_close: on_close,
+            on_close,
             on_submit: move |_| run_test.call(()),
             busy: running,
             max_width: "max-w-2xl".to_string(),
@@ -70,7 +70,9 @@ pub(super) fn FunctionTestModal(
                     }
                 }
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("functions-test-msg-field")} }
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                        {t!("functions-test-msg-field")}
+                    }
                     textarea {
                         class: "w-full h-16 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono",
                         value: "{msg_value}",
@@ -87,23 +89,33 @@ pub(super) fn FunctionTestModal(
                             }
                             if !resp.logs.is_empty() {
                                 div { class: "rounded-lg bg-gray-50 border border-gray-200 p-2",
-                                    p { class: "text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1", {t!("functions-test-logs")} }
+                                    p { class: "text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1",
+                                        {t!("functions-test-logs")}
+                                    }
                                     for line in resp.logs.clone() {
                                         p { class: "text-xs text-gray-600 font-mono", {line} }
                                     }
                                 }
                             }
                             div {
-                                p { class: "text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1", {t!("functions-test-outputs")} }
+                                p { class: "text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1",
+                                    {t!("functions-test-outputs")}
+                                }
                                 if has_port_rows {
                                     div { class: "space-y-1.5",
                                         for (label, muted, pretty) in port_rows {
                                             div { class: "flex items-start gap-2 rounded-lg bg-gray-900 p-2",
-                                                span { class: "shrink-0 w-40 text-[11px] text-cyan-300 font-mono pt-0.5 truncate", {label} }
+                                                span { class: "shrink-0 w-40 text-[11px] text-cyan-300 font-mono pt-0.5 truncate",
+                                                    {label}
+                                                }
                                                 if muted {
-                                                    span { class: "text-[11px] text-gray-500 italic", {t!("functions-test-port-muted")} }
+                                                    span { class: "text-[11px] text-gray-500 italic",
+                                                        {t!("functions-test-port-muted")}
+                                                    }
                                                 } else {
-                                                    pre { class: "flex-1 text-xs text-gray-100 font-mono whitespace-pre-wrap break-all m-0", {pretty} }
+                                                    pre { class: "flex-1 text-xs text-gray-100 font-mono whitespace-pre-wrap break-all m-0",
+                                                        {pretty}
+                                                    }
                                                 }
                                             }
                                         }
@@ -120,7 +132,9 @@ pub(super) fn FunctionTestModal(
                     Some(resp) => rsx! {
                         div { class: "rounded-lg bg-red-50 border border-red-200 p-3",
                             p { class: "text-xs font-semibold text-red-700 mb-1", {t!("functions-test-error")} }
-                            p { class: "text-xs text-red-700 font-mono whitespace-pre-wrap", {resp.error.clone().unwrap_or_default()} }
+                            p { class: "text-xs text-red-700 font-mono whitespace-pre-wrap",
+                                {resp.error.clone().unwrap_or_default()}
+                            }
                             if !resp.logs.is_empty() {
                                 for line in resp.logs.clone() {
                                     p { class: "text-xs text-red-600 font-mono", {line} }
@@ -186,7 +200,7 @@ fn test_field(
                     input {
                         class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono",
                         r#type: "text",
-                        placeholder: { "{}" },
+                        placeholder: {"{}"},
                         value: "{raw}",
                         oninput: move |event| setter(event.value()),
                     }

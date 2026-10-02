@@ -46,7 +46,9 @@ pub fn ListStates(
             }
         },
         Some(Err(err)) => rsx! {
-            div { class: "bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700", {err.message.clone()} }
+            div { class: "bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700",
+                {err.message.clone()}
+            }
         },
         Some(Ok(())) if is_empty => rsx! {
             div { class: "text-center py-12",
@@ -61,6 +63,8 @@ pub fn ListStates(
                 }
             }
         },
-        Some(Ok(())) => rsx! { {children} },
+        Some(Ok(())) => rsx! {
+            {children}
+        },
     }
 }

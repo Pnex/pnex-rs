@@ -136,81 +136,80 @@ pub fn FlashModal(device_id: String, on_close: Callback<()>) -> Element {
                                 p { class: "mt-1 font-medium", {err.message.clone()} }
                             }
                         },
-                        Some(Ok(_)) => match state() {
-                            None => rsx! {
-                                p { class: "text-sm text-gray-600", {t!("flash-instructions")} }
-                                button {
-                                    class: "w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-semibold",
-                                    r#type: "button",
-                                    onclick: start,
-                                    icons::Zap { class: "h-4 w-4 inline mr-1" }
-                                    {t!("flash-start")}
-                                }
-                            },
-                            Some(FlashState::Flashing { stage, percent }) => rsx! {
-                                div { class: "space-y-2",
-                                    div { class: "flex items-center justify-between text-sm",
-                                        span { class: "text-gray-600", {stage_label(&stage)} }
-                                        if !chip().is_empty() {
-                                            span { class: "text-xs text-gray-400", {chip()} }
-                                        }
-                                    }
-                                    div { class: "w-full bg-gray-200 rounded-full h-2.5",
-                                        div {
-                                            class: "bg-blue-600 h-2.5 rounded-full transition-all duration-300",
-                                            style: "width: {percent}%",
-                                        }
-                                    }
-                                    p { class: "text-xs text-gray-400 text-right", "{percent} %" }
-                                }
-                            },
-                            Some(FlashState::Done) => rsx! {
-                                div { class: "text-center space-y-4",
-                                    icons::CheckCircle { class: "h-10 w-10 text-green-500 mx-auto" }
-                                    p { class: "text-sm text-gray-700", {t!("flash-done")} }
+                        Some(Ok(_)) => {
+                            match state() {
+                                None => rsx! {
+                                    p { class: "text-sm text-gray-600", {t!("flash-instructions")} }
                                     button {
-                                        class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium",
+                                        class: "w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-semibold",
                                         r#type: "button",
-                                        onclick: move |_| on_close.call(()),
-                                        {t!("common-close")}
+                                        onclick: start,
+                                        icons::Zap { class: "h-4 w-4 inline mr-1" }
+                                        {t!("flash-start")}
                                     }
-                                }
-                            },
-                            Some(FlashState::Failed { error }) => rsx! {
-                                div { class: "space-y-3 text-center",
-                                    p { class: "text-sm font-medium text-red-700", {t!("flash-error")} }
-                                    // After a failed flash the board's serial port
-                                    // usually stays busy: only a physical
-                                    // unplug/replug lets esptool reopen it.
-                                    ReplugAnimation {}
-                                    p { class: "text-sm text-gray-700", {t!("flash-replug-prompt")} }
-                                    p { class: "text-xs text-gray-500", {t!("flash-replug-hint")} }
-                                    p { class: "text-xs text-gray-400 break-words",
-                                        {crate::api::error_i18n::resolve(
-                                            &err_codes::fluent_key(error.code),
-                                            None,
-                                        )}
-                                    }
-                                    if let Some(detail) = &error.detail {
-                                        p { class: "text-xs text-gray-400 break-words", {detail.clone()} }
-                                    }
-                                    div { class: "flex gap-2",
-                                        button {
-                                            class: "flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-semibold",
-                                            r#type: "button",
-                                            onclick: move |_| state.set(None),
-                                            {t!("flash-retry")}
+                                },
+                                Some(FlashState::Flashing { stage, percent }) => rsx! {
+                                    div { class: "space-y-2",
+                                        div { class: "flex items-center justify-between text-sm",
+                                            span { class: "text-gray-600", {stage_label(&stage)} }
+                                            if !chip().is_empty() {
+                                                span { class: "text-xs text-gray-400", {chip()} }
+                                            }
                                         }
+                                        div { class: "w-full bg-gray-200 rounded-full h-2.5",
+                                            div {
+                                                class: "bg-blue-600 h-2.5 rounded-full transition-all duration-300",
+                                                style: "width: {percent}%",
+                                            }
+                                        }
+                                        p { class: "text-xs text-gray-400 text-right", "{percent} %" }
+                                    }
+                                },
+                                Some(FlashState::Done) => rsx! {
+                                    div { class: "text-center space-y-4",
+                                        icons::CheckCircle { class: "h-10 w-10 text-green-500 mx-auto" }
+                                        p { class: "text-sm text-gray-700", {t!("flash-done")} }
                                         button {
-                                            class: "flex-1 px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                                            class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium",
                                             r#type: "button",
                                             onclick: move |_| on_close.call(()),
                                             {t!("common-close")}
                                         }
                                     }
-                                }
-                            },
-                        },
+                                },
+                                Some(FlashState::Failed { error }) => rsx! {
+                                    div { class: "space-y-3 text-center",
+                                        p { class: "text-sm font-medium text-red-700", {t!("flash-error")} }
+                                        // After a failed flash the board's serial port
+                                        // usually stays busy: only a physical
+                                        // unplug/replug lets esptool reopen it.
+                                        ReplugAnimation {}
+                                        p { class: "text-sm text-gray-700", {t!("flash-replug-prompt")} }
+                                        p { class: "text-xs text-gray-500", {t!("flash-replug-hint")} }
+                                        p { class: "text-xs text-gray-400 break-words",
+                                            {crate::api::error_i18n::resolve(&err_codes::fluent_key(error.code), None)}
+                                        }
+                                        if let Some(detail) = &error.detail {
+                                            p { class: "text-xs text-gray-400 break-words", {detail.clone()} }
+                                        }
+                                        div { class: "flex gap-2",
+                                            button {
+                                                class: "flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-semibold",
+                                                r#type: "button",
+                                                onclick: move |_| state.set(None),
+                                                {t!("flash-retry")}
+                                            }
+                                            button {
+                                                class: "flex-1 px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                                                r#type: "button",
+                                                onclick: move |_| on_close.call(()),
+                                                {t!("common-close")}
+                                            }
+                                        }
+                                    }
+                                },
+                            }
+                        }
                     }
                 }
             }
@@ -238,9 +237,28 @@ fn ReplugAnimation() -> Element {
                 "stroke-linecap": "round",
                 "stroke-linejoin": "round",
                 // Board (static, left): outline, chip, status LED.
-                rect { x: "4", y: "8", width: "20", height: "24", rx: "2" }
-                rect { x: "9", y: "15", width: "8", height: "8", rx: "1", "stroke-width": "1.5" }
-                circle { class: "pnex-replug-led", cx: "9", cy: "28", r: "1.6", "stroke-width": "1" }
+                rect {
+                    x: "4",
+                    y: "8",
+                    width: "20",
+                    height: "24",
+                    rx: "2",
+                }
+                rect {
+                    x: "9",
+                    y: "15",
+                    width: "8",
+                    height: "8",
+                    rx: "1",
+                    "stroke-width": "1.5",
+                }
+                circle {
+                    class: "pnex-replug-led",
+                    cx: "9",
+                    cy: "28",
+                    r: "1.6",
+                    "stroke-width": "1",
+                }
                 // USB port mouth.
                 path { d: "M24 15h3v10h-3" }
                 // Direction arrows above the cable (out → / in ←).
@@ -253,7 +271,13 @@ fn ReplugAnimation() -> Element {
                 // Cable + plug (animated group).
                 g { class: "pnex-replug-cable",
                     path { d: "M28 17.5h3M28 22.5h3" }
-                    rect { x: "31", y: "14", width: "9", height: "12", rx: "1.5" }
+                    rect {
+                        x: "31",
+                        y: "14",
+                        width: "9",
+                        height: "12",
+                        rx: "1.5",
+                    }
                     path { d: "M40 20c8 0 8 9 16 9h40" }
                 }
             }

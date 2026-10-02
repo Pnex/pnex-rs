@@ -188,7 +188,9 @@ pub(super) fn CoolPropForm(mut cx: EditorCx, initial: CoolPropConfig, can_write:
         div { class: "space-y-4",
             // Fluid / mixture picker.
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-coolprop-fluid")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-coolprop-fluid")}
+                }
                 select {
                     class: SELECT_CLASS,
                     disabled: !can_write,
@@ -201,7 +203,12 @@ pub(super) fn CoolPropForm(mut cx: EditorCx, initial: CoolPropConfig, can_write:
                         commit(&mut cx, cfg, next);
                     },
                     if !in_list {
-                        option { key: "current-{fluid_value}", value: "{fluid_value}", selected: true, "{fluid_value}" }
+                        option {
+                            key: "current-{fluid_value}",
+                            value: "{fluid_value}",
+                            selected: true,
+                            "{fluid_value}"
+                        }
                     }
                     if !mixtures.is_empty() {
                         optgroup { label: t!("insp-thermo-fluid-org").to_string(),
@@ -222,7 +229,12 @@ pub(super) fn CoolPropForm(mut cx: EditorCx, initial: CoolPropConfig, can_write:
                     }
                     optgroup { label: t!("insp-thermo-fluid-coolprop").to_string(),
                         for f in choices.fluids.iter() {
-                            option { key: "fluid-{f}", value: "{f}", selected: fluid_value == *f, "{f}" }
+                            option {
+                                key: "fluid-{f}",
+                                value: "{f}",
+                                selected: fluid_value == *f,
+                                "{f}"
+                            }
                         }
                     }
                 }
@@ -237,7 +249,9 @@ pub(super) fn CoolPropForm(mut cx: EditorCx, initial: CoolPropConfig, can_write:
                     value: "{pair_value}",
                     onchange: move |e| {
                         let v = e.value();
-                        let Some((a, b)) = v.split_once('|') else { return; };
+                        let Some((a, b)) = v.split_once('|') else {
+                            return;
+                        };
                         let mut next = cfg.peek().clone();
                         next.input1 = a.to_string();
                         next.input2 = b.to_string();
@@ -246,16 +260,26 @@ pub(super) fn CoolPropForm(mut cx: EditorCx, initial: CoolPropConfig, can_write:
                         commit(&mut cx, cfg, next);
                     },
                     if !pair_known {
-                        option { key: "current-{pair_value}", value: "{pair_value}", selected: true,
+                        option {
+                            key: "current-{pair_value}",
+                            value: "{pair_value}",
+                            selected: true,
                             "{c.input1} + {c.input2}"
                         }
                     }
                     for (value, label) in pairs.iter() {
-                        option { key: "{value}", value: "{value}", selected: pair_value == *value, "{label}" }
+                        option {
+                            key: "{value}",
+                            value: "{value}",
+                            selected: pair_value == *value,
+                            "{label}"
+                        }
                     }
                 }
                 for (idx, qid, unit) in inputs.into_iter() {
-                    div { key: "in-{idx}-{qid}", class: "flex items-center gap-2",
+                    div {
+                        key: "in-{idx}-{qid}",
+                        class: "flex items-center gap-2",
                         span { class: "flex-1 text-sm text-gray-700 truncate", {quantity_name(&qid)} }
                         div { class: "w-28 shrink-0",
                             UnitSelect {
@@ -280,9 +304,13 @@ pub(super) fn CoolPropForm(mut cx: EditorCx, initial: CoolPropConfig, can_write:
 
             // Outputs, grouped; a checked row shows its unit picker.
             div { class: "space-y-2",
-                span { class: "text-xs font-medium text-gray-500 block", {t!("flows-coolprop-outputs")} }
+                span { class: "text-xs font-medium text-gray-500 block",
+                    {t!("flows-coolprop-outputs")}
+                }
                 for id in custom_outputs.into_iter() {
-                    label { key: "custom-{id}", class: "flex items-center gap-2 text-sm text-gray-700",
+                    label {
+                        key: "custom-{id}",
+                        class: "flex items-center gap-2 text-sm text-gray-700",
                         input {
                             r#type: "checkbox",
                             checked: true,
@@ -299,9 +327,13 @@ pub(super) fn CoolPropForm(mut cx: EditorCx, initial: CoolPropConfig, can_write:
                 }
                 for (group, rows) in groups.into_iter() {
                     div { key: "group-{group}", class: "space-y-1",
-                        span { class: "text-[11px] uppercase tracking-wide text-gray-400 block pt-1", "{group}" }
+                        span { class: "text-[11px] uppercase tracking-wide text-gray-400 block pt-1",
+                            "{group}"
+                        }
                         for (id, label, checked, unit) in rows.into_iter() {
-                            div { key: "out-{id}", class: "flex items-center gap-2 min-h-[32px]",
+                            div {
+                                key: "out-{id}",
+                                class: "flex items-center gap-2 min-h-[32px]",
                                 label { class: "flex-1 flex items-center gap-2 text-sm text-gray-700 min-w-0",
                                     input {
                                         r#type: "checkbox",

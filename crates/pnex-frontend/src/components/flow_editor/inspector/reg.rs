@@ -108,15 +108,20 @@ pub(super) fn RegTtForm(
                         // Nouveau device : pins résolus invalidés.
                         sensor_pin.set(String::new());
                         actuator_pin.set(String::new());
-                        patch_selected(&mut cx, move |node: &mut FlowNode| {
-                            if let Some(config) = reg_tt_config_mut(node) {
-                                config.device_id = slug;
-                                config.sensor_pin.clear();
-                                config.actuator_pin.clear();
-                            }
-                        });
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let Some(config) = reg_tt_config_mut(node) {
+                                    config.device_id = slug;
+                                    config.sensor_pin.clear();
+                                    config.actuator_pin.clear();
+                                }
+                            },
+                        );
                     },
-                    option { value: "", selected: device_id.cloned().is_empty(), {t!("flows-device-device-none")} }
+                    option { value: "", selected: device_id.cloned().is_empty(),
+                        {t!("flows-device-device-none")}
+                    }
                     for device in devices.value().read().clone().unwrap_or_default() {
                         option {
                             key: "{device.id}",
@@ -128,20 +133,27 @@ pub(super) fn RegTtForm(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-reg-sensor-pin")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-reg-sensor-pin")}
+                }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write || device_id.cloned().is_empty(),
                     onchange: move |event| {
                         let pin = event.value();
                         sensor_pin.set(pin.clone());
-                        patch_selected(&mut cx, move |node: &mut FlowNode| {
-                            if let Some(config) = reg_tt_config_mut(node) {
-                                config.sensor_pin = pin;
-                            }
-                        });
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let Some(config) = reg_tt_config_mut(node) {
+                                    config.sensor_pin = pin;
+                                }
+                            },
+                        );
                     },
-                    option { value: "", selected: sensor_pin.cloned().is_empty(), {t!("flows-device-pin-none")} }
+                    option { value: "", selected: sensor_pin.cloned().is_empty(),
+                        {t!("flows-device-pin-none")}
+                    }
                     for pin in input_pins_of(&devices, &pins_cache, &device_id.cloned()) {
                         option {
                             key: "{pin.gpio.unwrap_or(-1)}-{pin.label}",
@@ -153,102 +165,198 @@ pub(super) fn RegTtForm(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-reg-actuator-pin")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-reg-actuator-pin")}
+                }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write || device_id.cloned().is_empty(),
                     onchange: move |event| {
                         let pin = event.value();
                         actuator_pin.set(pin.clone());
-                        patch_selected(&mut cx, move |node: &mut FlowNode| {
-                            if let Some(config) = reg_tt_config_mut(node) {
-                                config.actuator_pin = pin;
-                            }
-                        });
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let Some(config) = reg_tt_config_mut(node) {
+                                    config.actuator_pin = pin;
+                                }
+                            },
+                        );
                     },
-                    option { value: "", selected: actuator_pin.cloned().is_empty(), {t!("flows-device-pin-none")} }
+                    option { value: "", selected: actuator_pin.cloned().is_empty(),
+                        {t!("flows-device-pin-none")}
+                    }
                     for (pin, reserved_elsewhere, hint) in actuator_options {
                         option {
                             key: "{pin.gpio.unwrap_or(-1)}-{pin.label}",
                             value: "{pin.label}",
                             disabled: reserved_elsewhere,
                             selected: actuator_pin.cloned() == pin.label,
-                            {if let Some(h) = hint {
-                                format!("{} ({}) — {}", pin.label, pin.mode.as_deref().unwrap_or("?"), h)
-                            } else {
-                                format!("{} ({})", pin.label, pin.mode.as_deref().unwrap_or("?"))
-                            }}
+                            {
+                                if let Some(h) = hint {
+                                    format!("{} ({}) — {}", pin.label, pin.mode.as_deref().unwrap_or("?"), h)
+                                } else {
+                                    format!("{} ({})", pin.label, pin.mode.as_deref().unwrap_or("?"))
+                                }
+                            }
                         }
                     }
                 }
             }
-            {text_field(t!("flows-reg-setpoint"), setpoint, !can_write, move |event| {
-                let raw = event.value();
-                setpoint.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let (Some(config), Some(v)) = (reg_tt_config_mut(node), parse_secs(&raw)) {
-                        config.setpoint = v;
-                    }
-                });
-            })}
-            {text_field(t!("flows-reg-deadband"), deadband, !can_write, move |event| {
-                let raw = event.value();
-                deadband.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let (Some(config), Some(v)) = (reg_tt_config_mut(node), parse_secs(&raw)) {
-                        config.deadband = v;
-                    }
-                });
-            })}
-            {text_field(t!("flows-reg-min-on"), min_on, !can_write, move |event| {
-                let raw = event.value();
-                min_on.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let (Some(config), Some(v)) = (reg_tt_config_mut(node), parse_u32(&raw)) {
-                        config.min_on_secs = v;
-                    }
-                });
-            })}
-            {text_field(t!("flows-reg-min-off"), min_off, !can_write, move |event| {
-                let raw = event.value();
-                min_off.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let (Some(config), Some(v)) = (reg_tt_config_mut(node), parse_u32(&raw)) {
-                        config.min_off_secs = v;
-                    }
-                });
-            })}
-            {text_field(t!("flows-reg-sample"), sample, !can_write, move |event| {
-                let raw = event.value();
-                sample.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let (Some(config), Some(v)) = (reg_tt_config_mut(node), parse_u32(&raw)) {
-                        config.sample_ms = v;
-                    }
-                });
-            })}
-            {text_field(t!("flows-reg-data-timeout"), timeout, !can_write, move |event| {
-                let raw = event.value();
-                timeout.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let (Some(config), Some(v)) = (reg_tt_config_mut(node), parse_u32(&raw)) {
-                        config.data_timeout_secs = v;
-                    }
-                });
-            })}
+            {
+                text_field(
+                    t!("flows-reg-setpoint"),
+                    setpoint,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        setpoint.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let (Some(config), Some(v)) = (
+                                    reg_tt_config_mut(node),
+                                    parse_secs(&raw),
+                                ) {
+                                    config.setpoint = v;
+                                }
+                            },
+                        );
+                    },
+                )
+            }
+            {
+                text_field(
+                    t!("flows-reg-deadband"),
+                    deadband,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        deadband.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let (Some(config), Some(v)) = (
+                                    reg_tt_config_mut(node),
+                                    parse_secs(&raw),
+                                ) {
+                                    config.deadband = v;
+                                }
+                            },
+                        );
+                    },
+                )
+            }
+            {
+                text_field(
+                    t!("flows-reg-min-on"),
+                    min_on,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        min_on.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let (Some(config), Some(v)) = (
+                                    reg_tt_config_mut(node),
+                                    parse_u32(&raw),
+                                ) {
+                                    config.min_on_secs = v;
+                                }
+                            },
+                        );
+                    },
+                )
+            }
+            {
+                text_field(
+                    t!("flows-reg-min-off"),
+                    min_off,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        min_off.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let (Some(config), Some(v)) = (
+                                    reg_tt_config_mut(node),
+                                    parse_u32(&raw),
+                                ) {
+                                    config.min_off_secs = v;
+                                }
+                            },
+                        );
+                    },
+                )
+            }
+            {
+                text_field(
+                    t!("flows-reg-sample"),
+                    sample,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        sample.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let (Some(config), Some(v)) = (
+                                    reg_tt_config_mut(node),
+                                    parse_u32(&raw),
+                                ) {
+                                    config.sample_ms = v;
+                                }
+                            },
+                        );
+                    },
+                )
+            }
+            {
+                text_field(
+                    t!("flows-reg-data-timeout"),
+                    timeout,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        timeout.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let (Some(config), Some(v)) = (
+                                    reg_tt_config_mut(node),
+                                    parse_u32(&raw),
+                                ) {
+                                    config.data_timeout_secs = v;
+                                }
+                            },
+                        );
+                    },
+                )
+            }
             SafeStateSelect {
                 current: safe_state,
                 disabled: !can_write,
                 on_change: move |v| {
-                    patch_selected(&mut cx, move |node: &mut FlowNode| {
-                        if let Some(config) = reg_tt_config_mut(node) {
-                            config.safe_state = v;
-                        }
-                    });
+                    patch_selected(
+                        &mut cx,
+                        move |node: &mut FlowNode| {
+                            if let Some(config) = reg_tt_config_mut(node) {
+                                config.safe_state = v;
+                            }
+                        },
+                    );
                 },
             }
             p { class: "text-xs text-gray-400",
-                {if heat { t!("flows-reg-tt-heat-hint").to_string() } else { t!("flows-reg-tt-cool-hint").to_string() }}
+                {
+                    if heat {
+                        t!("flows-reg-tt-heat-hint").to_string()
+                    } else {
+                        t!("flows-reg-tt-cool-hint").to_string()
+                    }
+                }
             }
         }
     }
@@ -354,15 +462,20 @@ pub(super) fn RegPidForm(
                         device_id.set(slug.clone());
                         sensor_pin.set(String::new());
                         actuator_pin.set(String::new());
-                        patch_selected(&mut cx, move |node: &mut FlowNode| {
-                            if let Some(config) = reg_pid_config_mut(node) {
-                                config.device_id = slug;
-                                config.sensor_pin.clear();
-                                config.actuator_pin.clear();
-                            }
-                        });
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let Some(config) = reg_pid_config_mut(node) {
+                                    config.device_id = slug;
+                                    config.sensor_pin.clear();
+                                    config.actuator_pin.clear();
+                                }
+                            },
+                        );
                     },
-                    option { value: "", selected: device_id.cloned().is_empty(), {t!("flows-device-device-none")} }
+                    option { value: "", selected: device_id.cloned().is_empty(),
+                        {t!("flows-device-device-none")}
+                    }
                     for device in devices.value().read().clone().unwrap_or_default() {
                         option {
                             key: "{device.id}",
@@ -374,20 +487,27 @@ pub(super) fn RegPidForm(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-reg-sensor-pin")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-reg-sensor-pin")}
+                }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write || device_id.cloned().is_empty(),
                     onchange: move |event| {
                         let pin = event.value();
                         sensor_pin.set(pin.clone());
-                        patch_selected(&mut cx, move |node: &mut FlowNode| {
-                            if let Some(config) = reg_pid_config_mut(node) {
-                                config.sensor_pin = pin;
-                            }
-                        });
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let Some(config) = reg_pid_config_mut(node) {
+                                    config.sensor_pin = pin;
+                                }
+                            },
+                        );
                     },
-                    option { value: "", selected: sensor_pin.cloned().is_empty(), {t!("flows-device-pin-none")} }
+                    option { value: "", selected: sensor_pin.cloned().is_empty(),
+                        {t!("flows-device-pin-none")}
+                    }
                     for pin in input_pins_of(&devices, &pins_cache, &device_id.cloned()) {
                         option {
                             key: "{pin.gpio.unwrap_or(-1)}-{pin.label}",
@@ -399,107 +519,210 @@ pub(super) fn RegPidForm(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-reg-actuator-pin")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-reg-actuator-pin")}
+                }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write || device_id.cloned().is_empty(),
                     onchange: move |event| {
                         let pin = event.value();
                         actuator_pin.set(pin.clone());
-                        patch_selected(&mut cx, move |node: &mut FlowNode| {
-                            if let Some(config) = reg_pid_config_mut(node) {
-                                config.actuator_pin = pin;
-                            }
-                        });
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let Some(config) = reg_pid_config_mut(node) {
+                                    config.actuator_pin = pin;
+                                }
+                            },
+                        );
                     },
-                    option { value: "", selected: actuator_pin.cloned().is_empty(), {t!("flows-device-pin-none")} }
+                    option { value: "", selected: actuator_pin.cloned().is_empty(),
+                        {t!("flows-device-pin-none")}
+                    }
                     for (pin, reserved_elsewhere, hint) in actuator_options {
                         option {
                             key: "{pin.gpio.unwrap_or(-1)}-{pin.label}",
                             value: "{pin.label}",
                             disabled: reserved_elsewhere,
                             selected: actuator_pin.cloned() == pin.label,
-                            {if let Some(h) = hint {
-                                format!("{} ({}) — {}", pin.label, pin.mode.as_deref().unwrap_or("?"), h)
-                            } else {
-                                format!("{} ({})", pin.label, pin.mode.as_deref().unwrap_or("?"))
-                            }}
+                            {
+                                if let Some(h) = hint {
+                                    format!("{} ({}) — {}", pin.label, pin.mode.as_deref().unwrap_or("?"), h)
+                                } else {
+                                    format!("{} ({})", pin.label, pin.mode.as_deref().unwrap_or("?"))
+                                }
+                            }
                         }
                     }
                 }
             }
-            {text_field(t!("flows-reg-setpoint"), setpoint, !can_write, move |event| {
-                let raw = event.value();
-                setpoint.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let (Some(config), Some(v)) = (reg_pid_config_mut(node), parse_secs(&raw)) {
-                        config.setpoint = v;
-                    }
-                });
-            })}
-            {text_field(t!("flows-reg-kp"), kp, !can_write, move |event| {
-                let raw = event.value();
-                kp.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let (Some(config), Some(v)) = (reg_pid_config_mut(node), parse_secs(&raw)) {
-                        config.kp = v;
-                    }
-                });
-            })}
-            {text_field(t!("flows-reg-ki"), ki, !can_write, move |event| {
-                let raw = event.value();
-                ki.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let (Some(config), Some(v)) = (reg_pid_config_mut(node), parse_secs(&raw)) {
-                        config.ki = v;
-                    }
-                });
-            })}
-            {text_field(t!("flows-reg-kd"), kd, !can_write, move |event| {
-                let raw = event.value();
-                kd.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let (Some(config), Some(v)) = (reg_pid_config_mut(node), parse_secs(&raw)) {
-                        config.kd = v;
-                    }
-                });
-            })}
-            {text_field(t!("flows-reg-cycle"), cycle, !can_write, move |event| {
-                let raw = event.value();
-                cycle.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let (Some(config), Some(v)) = (reg_pid_config_mut(node), parse_u32(&raw)) {
-                        config.cycle_time_secs = v;
-                    }
-                });
-            })}
-            {text_field(t!("flows-reg-sample"), sample, !can_write, move |event| {
-                let raw = event.value();
-                sample.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let (Some(config), Some(v)) = (reg_pid_config_mut(node), parse_u32(&raw)) {
-                        config.sample_ms = v;
-                    }
-                });
-            })}
-            {text_field(t!("flows-reg-data-timeout"), timeout, !can_write, move |event| {
-                let raw = event.value();
-                timeout.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let (Some(config), Some(v)) = (reg_pid_config_mut(node), parse_u32(&raw)) {
-                        config.data_timeout_secs = v;
-                    }
-                });
-            })}
+            {
+                text_field(
+                    t!("flows-reg-setpoint"),
+                    setpoint,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        setpoint.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let (Some(config), Some(v)) = (
+                                    reg_pid_config_mut(node),
+                                    parse_secs(&raw),
+                                ) {
+                                    config.setpoint = v;
+                                }
+                            },
+                        );
+                    },
+                )
+            }
+            {
+                text_field(
+                    t!("flows-reg-kp"),
+                    kp,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        kp.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let (Some(config), Some(v)) = (
+                                    reg_pid_config_mut(node),
+                                    parse_secs(&raw),
+                                ) {
+                                    config.kp = v;
+                                }
+                            },
+                        );
+                    },
+                )
+            }
+            {
+                text_field(
+                    t!("flows-reg-ki"),
+                    ki,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        ki.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let (Some(config), Some(v)) = (
+                                    reg_pid_config_mut(node),
+                                    parse_secs(&raw),
+                                ) {
+                                    config.ki = v;
+                                }
+                            },
+                        );
+                    },
+                )
+            }
+            {
+                text_field(
+                    t!("flows-reg-kd"),
+                    kd,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        kd.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let (Some(config), Some(v)) = (
+                                    reg_pid_config_mut(node),
+                                    parse_secs(&raw),
+                                ) {
+                                    config.kd = v;
+                                }
+                            },
+                        );
+                    },
+                )
+            }
+            {
+                text_field(
+                    t!("flows-reg-cycle"),
+                    cycle,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        cycle.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let (Some(config), Some(v)) = (
+                                    reg_pid_config_mut(node),
+                                    parse_u32(&raw),
+                                ) {
+                                    config.cycle_time_secs = v;
+                                }
+                            },
+                        );
+                    },
+                )
+            }
+            {
+                text_field(
+                    t!("flows-reg-sample"),
+                    sample,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        sample.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let (Some(config), Some(v)) = (
+                                    reg_pid_config_mut(node),
+                                    parse_u32(&raw),
+                                ) {
+                                    config.sample_ms = v;
+                                }
+                            },
+                        );
+                    },
+                )
+            }
+            {
+                text_field(
+                    t!("flows-reg-data-timeout"),
+                    timeout,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        timeout.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let (Some(config), Some(v)) = (
+                                    reg_pid_config_mut(node),
+                                    parse_u32(&raw),
+                                ) {
+                                    config.data_timeout_secs = v;
+                                }
+                            },
+                        );
+                    },
+                )
+            }
             SafeStateSelect {
                 current: safe_state,
                 disabled: !can_write,
                 on_change: move |v| {
-                    patch_selected(&mut cx, move |node: &mut FlowNode| {
-                        if let Some(config) = reg_pid_config_mut(node) {
-                            config.safe_state = v;
-                        }
-                    });
+                    patch_selected(
+                        &mut cx,
+                        move |node: &mut FlowNode| {
+                            if let Some(config) = reg_pid_config_mut(node) {
+                                config.safe_state = v;
+                            }
+                        },
+                    );
                 },
             }
             p { class: "text-xs text-gray-400", {t!("flows-reg-pid-hint")} }
@@ -538,7 +761,11 @@ fn SafeStateSelect(
                 class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                 disabled,
                 onchange: move |event| {
-                    let safe = if event.value() == "high" { SafeState::High } else { SafeState::Low };
+                    let safe = if event.value() == "high" {
+                        SafeState::High
+                    } else {
+                        SafeState::Low
+                    };
                     on_change.call(safe);
                 },
                 option { value: "low", selected: !is_high, {t!("flows-reg-safe-low")} }

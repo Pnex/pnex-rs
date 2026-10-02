@@ -241,14 +241,18 @@ pub(crate) fn SelfHostedSection() -> Element {
                         p { class: "text-xs text-gray-500 text-center", {t!("server-url-testing")} }
                     }
                     if saved() {
-                        p { class: "text-xs text-green-600 text-center", {t!("login-selfhosted-saved")} }
+                        p { class: "text-xs text-green-600 text-center",
+                            {t!("login-selfhosted-saved")}
+                        }
                     }
                     if matches!(error.read().as_ref(), Some(SetupError::Format)) {
-                        p { class: "text-xs text-red-600 text-center", {t!("server-url-error-format")} }
+                        p { class: "text-xs text-red-600 text-center",
+                            {t!("server-url-error-format")}
+                        }
                     }
                     if let Some(SetupError::Probe(msg)) = error.read().as_ref() {
                         p { class: "text-xs text-red-600 text-center",
-                            {t!("server-url-error-network", msg: msg)}
+                            {t!("server-url-error-network", msg : msg)}
                         }
                     }
                     button {
@@ -309,7 +313,9 @@ pub fn ServerUrl() -> Element {
                                 alt: "PNeX",
                                 class: "mx-auto h-16 w-auto mb-5",
                             }
-                            h1 { class: "text-lg font-semibold text-gray-900", {t!("server-url-title")} }
+                            h1 { class: "text-lg font-semibold text-gray-900",
+                                {t!("server-url-title")}
+                            }
                             p { class: "text-xs text-gray-500 mt-1", {t!("server-url-description")} }
                         }
 
@@ -323,7 +329,9 @@ pub fn ServerUrl() -> Element {
                                 oninput: move |e| url.set(e.value()),
                             }
                             if busy() {
-                                p { class: "text-sm text-gray-500 text-center", {t!("server-url-testing")} }
+                                p { class: "text-sm text-gray-500 text-center",
+                                    {t!("server-url-testing")}
+                                }
                             }
                             if matches!(error.read().as_ref(), Some(SetupError::Format)) {
                                 p { class: "text-sm text-red-600 text-center",
@@ -332,7 +340,7 @@ pub fn ServerUrl() -> Element {
                             }
                             if let Some(SetupError::Probe(msg)) = error.read().as_ref() {
                                 p { class: "text-sm text-red-600 text-center",
-                                    {t!("server-url-error-network", msg: msg)}
+                                    {t!("server-url-error-network", msg : msg)}
                                 }
                             }
                             button {

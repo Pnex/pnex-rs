@@ -270,8 +270,7 @@ pub fn DashboardEditor(
         Selection::Widget(id) => {
             let w = state::find_widget(&cx.layout.read(), &id);
             let kind = w.as_ref().map(|w| w.widget_type.clone());
-            let name: Option<String> =
-                w.map(|w| w.title).filter(|title| !title.is_empty());
+            let name: Option<String> = w.map(|w| w.title).filter(|title| !title.is_empty());
             let (icon, _) = match &kind {
                 Some(k) => library::kind_icon(k),
                 None => (PaletteIcon::Puzzle, ""),
@@ -283,12 +282,17 @@ pub fn DashboardEditor(
             rsx! {
                 InspectorPanel {
                     key: "{id}",
-                    icon: icon,
-                    title: title,
+                    icon,
+                    title,
                     subtitle: Some(format!("#{id}")),
                     on_close: move |_| cx.selected.set(None),
                     body: rsx! {
-                        inspector::InspectorBody { cx, can_write, metrics: metrics, catalog: sources_catalog }
+                        inspector::InspectorBody {
+                            cx,
+                            can_write,
+                            metrics,
+                            catalog: sources_catalog,
+                        }
                     },
                 }
             }
@@ -301,21 +305,22 @@ pub fn DashboardEditor(
                 subtitle: Some(format!("#{id}")),
                 on_close: move |_| cx.selected.set(None),
                 body: rsx! {
-                    inspector::InspectorBody { cx, can_write, metrics: metrics, catalog: sources_catalog }
+                    inspector::InspectorBody {
+                        cx,
+                        can_write,
+                        metrics,
+                        catalog: sources_catalog,
+                    }
                 },
             }
-        }
+        },
     });
 
     rsx! {
         EditorShell {
             on_back: move |_| on_back.call(()),
             title: detail.name.clone(),
-            on_rename: if can_write {
-                Some(Callback::new(move |name: String| save(cx, Some(name))))
-            } else {
-                None
-            },
+            on_rename: if can_write { Some(Callback::new(move |name: String| save(cx, Some(name)))) } else { None },
             status: EditorStatus::new(StatusTone::Green, t!("eshell-status-live")),
             version: Some(cx.saved_version.cloned()),
             extra_chips: rsx! {
@@ -325,11 +330,7 @@ pub fn DashboardEditor(
             },
             actions: rsx! {
                 button {
-                    class: if save_disabled {
-                        "inline-flex items-center px-4 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg opacity-40 cursor-not-allowed"
-                    } else {
-                        "inline-flex items-center px-4 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-                    },
+                    class: if save_disabled { "inline-flex items-center px-4 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg opacity-40 cursor-not-allowed" } else { "inline-flex items-center px-4 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700" },
                     disabled: save_disabled,
                     onclick: move |_| save(cx, None),
                     icons::Save { class: "h-4 w-4 mr-1" }
@@ -352,10 +353,13 @@ pub fn DashboardEditor(
                 }
                 if !can_write {
                     p { class: "rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800",
-                        {t!("db-frozen")} }
+                        {t!("db-frozen")}
+                    }
                 }
             },
-            canvas: rsx! { CanvasView { cx } },
+            canvas: rsx! {
+                CanvasView { cx }
+            },
             palette: rsx! {
                 PalettePopover {
                     add_title: t!("eshell-add-widget").to_string(),
@@ -369,7 +373,9 @@ pub fn DashboardEditor(
                             library::add_new_widget(cx, &kind);
                         }
                     },
-                    footer: rsx! { TemplateList { cx } },
+                    footer: rsx! {
+                        TemplateList { cx }
+                    },
                 }
             },
             tools: rsx! {
@@ -379,24 +385,20 @@ pub fn DashboardEditor(
                 }
             },
             inspector: inspector_slot,
-            empty_hint: if cx.layout.cloned().widgets.is_empty() {
-                Some(t!("eshell-empty-hint").to_string())
-            } else {
-                None
-            },
+            empty_hint: if cx.layout.cloned().widgets.is_empty() { Some(t!("eshell-empty-hint").to_string()) } else { None },
         }
         // ── Modales / tiroir versions
         if conflict() {
-            ConflictModal { cx: cx, on_changed: on_changed }
+            ConflictModal { cx, on_changed }
         }
         if let Some(widget_id) = save_as() {
-            SaveAsTemplate { key: "{widget_id}", cx: cx, widget_id: widget_id }
+            SaveAsTemplate { key: "{widget_id}", cx, widget_id }
         }
         if versions_open() {
             VersionsDrawer {
-                cx: cx,
+                cx,
                 on_close: move |_| versions_open.set(false),
-                on_changed: on_changed,
+                on_changed,
             }
         }
     }
@@ -416,11 +418,7 @@ fn ToolsPill(mut cx: EditorCx) -> Element {
     rsx! {
         div { class: "flex items-center gap-1 rounded-full border border-gray-200 bg-white p-1 shadow-lg",
             button {
-                class: if cx.tool.cloned() == Tool::Select {
-                    "flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-white"
-                } else {
-                    "flex h-8 w-8 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100"
-                },
+                class: if cx.tool.cloned() == Tool::Select { "flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-white" } else { "flex h-8 w-8 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100" },
                 title: "{select_title}",
                 onclick: move |_| {
                     cx.tool.set(Tool::Select);
@@ -429,11 +427,7 @@ fn ToolsPill(mut cx: EditorCx) -> Element {
                 icons::MousePointer { class: "h-4 w-4" }
             }
             button {
-                class: if cx.tool.cloned() == Tool::Wire {
-                    "flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-white"
-                } else {
-                    "flex h-8 w-8 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100"
-                },
+                class: if cx.tool.cloned() == Tool::Wire { "flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-white" } else { "flex h-8 w-8 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100" },
                 title: "{wire_title}",
                 onclick: move |_| {
                     cx.tool.set(Tool::Wire);
@@ -443,11 +437,7 @@ fn ToolsPill(mut cx: EditorCx) -> Element {
                 icons::Spline { class: "h-4 w-4" }
             }
             button {
-                class: if cx.symbols_open.cloned() {
-                    "flex h-8 w-8 items-center justify-center rounded-full bg-violet-600 text-white"
-                } else {
-                    "flex h-8 w-8 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100"
-                },
+                class: if cx.symbols_open.cloned() { "flex h-8 w-8 items-center justify-center rounded-full bg-violet-600 text-white" } else { "flex h-8 w-8 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100" },
                 title: "{symbols_title}",
                 onclick: move |_| cx.symbols_open.toggle(),
                 icons::Shapes { class: "h-4 w-4" }

@@ -28,7 +28,8 @@ pub fn ServerCaCard() -> Element {
             div { class: "p-6 space-y-4 text-sm",
                 p { class: "text-gray-600", {t!("about-ca-description")} }
                 if let Some(svg) = qr_svg {
-                    div { class: "mx-auto w-40 h-40 bg-white p-2 rounded-lg border border-gray-200",
+                    div {
+                        class: "mx-auto w-40 h-40 bg-white p-2 rounded-lg border border-gray-200",
                         dangerous_inner_html: svg,
                     }
                 }

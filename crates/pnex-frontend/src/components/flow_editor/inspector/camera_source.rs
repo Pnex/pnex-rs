@@ -41,21 +41,33 @@ pub(super) fn CameraSourceForm(
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-camera-source-help")} }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-camera-source-camera")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-camera-source-camera")}
+                }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write,
                     onchange: move |event| {
                         let slug = event.value();
-                        patch_selected(&mut cx, move |node: &mut FlowNode| {
-                            if let FlowNodeKind::CameraSource { config } = &mut node.kind {
-                                config.device_id = slug;
-                            }
-                        });
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::CameraSource { config } = &mut node.kind {
+                                    config.device_id = slug;
+                                }
+                            },
+                        );
                     },
-                    option { value: "", selected: device_slug.is_empty(), {t!("flows-camera-source-none")} }
+                    option { value: "", selected: device_slug.is_empty(),
+                        {t!("flows-camera-source-none")}
+                    }
                     for slug in slugs {
-                        option { key: "{slug}", value: "{slug}", selected: slug == device_slug, "{slug}" }
+                        option {
+                            key: "{slug}",
+                            value: "{slug}",
+                            selected: slug == device_slug,
+                            "{slug}"
+                        }
                     }
                 }
             }
@@ -63,13 +75,11 @@ pub(super) fn CameraSourceForm(
                 p { class: "text-xs text-amber-700", {t!("flows-camera-source-no-camera")} }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-camera-max-fps")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-camera-max-fps")}
+                }
                 input {
-                    class: if fps_invalid() {
-                        "w-full px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm"
-                    } else {
-                        "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
-                    },
+                    class: if fps_invalid() { "w-full px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm" } else { "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm" },
                     r#type: "number",
                     min: "0",
                     max: "25",
@@ -84,11 +94,14 @@ pub(super) fn CameraSourceForm(
                             .filter(|v| (0.0..=pnex_core::CAMERA_NODE_MAX_FPS).contains(v));
                         fps_invalid.set(valid.is_none());
                         if let Some(v) = valid {
-                            patch_selected(&mut cx, move |node: &mut FlowNode| {
-                                if let FlowNodeKind::CameraSource { config } = &mut node.kind {
-                                    config.max_fps = v;
-                                }
-                            });
+                            patch_selected(
+                                &mut cx,
+                                move |node: &mut FlowNode| {
+                                    if let FlowNodeKind::CameraSource { config } = &mut node.kind {
+                                        config.max_fps = v;
+                                    }
+                                },
+                            );
                         }
                     },
                 }

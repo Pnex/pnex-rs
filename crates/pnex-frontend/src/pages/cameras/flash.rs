@@ -91,11 +91,7 @@ pub(super) fn FlashToggle(device: i64) -> Element {
                     role: "switch",
                     "aria-checked": if is_on { "true" } else { "false" },
                     title: if is_on { t!("cameras-flash-turn-off") } else { t!("cameras-flash-turn-on") },
-                    class: if is_on {
-                        "relative inline-flex h-6 w-11 items-center rounded-full bg-amber-500 transition-colors disabled:opacity-40"
-                    } else {
-                        "relative inline-flex h-6 w-11 items-center rounded-full bg-gray-300 transition-colors disabled:opacity-40"
-                    },
+                    class: if is_on { "relative inline-flex h-6 w-11 items-center rounded-full bg-amber-500 transition-colors disabled:opacity-40" } else { "relative inline-flex h-6 w-11 items-center rounded-full bg-gray-300 transition-colors disabled:opacity-40" },
                     disabled,
                     onclick: move |_| {
                         let next = !is_on;
@@ -110,16 +106,14 @@ pub(super) fn FlashToggle(device: i64) -> Element {
                         };
                         send(cmd, Some(next));
                     },
-                    span {
-                        class: if is_on {
-                            "inline-block h-5 w-5 translate-x-5 rounded-full bg-white shadow transition-transform"
-                        } else {
-                            "inline-block h-5 w-5 translate-x-0.5 rounded-full bg-white shadow transition-transform"
-                        },
-                    }
+                    span { class: if is_on { "inline-block h-5 w-5 translate-x-5 rounded-full bg-white shadow transition-transform" } else { "inline-block h-5 w-5 translate-x-0.5 rounded-full bg-white shadow transition-transform" } }
                 }
                 span { class: "text-xs text-gray-500",
-                    if is_on { {t!("cameras-flash-on")} } else { {t!("cameras-flash-off")} }
+                    if is_on {
+                        {t!("cameras-flash-on")}
+                    } else {
+                        {t!("cameras-flash-off")}
+                    }
                 }
             } else {
                 // Pin still configured as an input (provisioned before the
@@ -148,12 +142,12 @@ pub(super) fn FlashToggle(device: i64) -> Element {
             }
             if is_reserved {
                 span { class: "basis-full text-xs text-amber-600",
-                    {t!("cameras-flash-reserved", flow: reserved_names.clone())}
+                    {t!("cameras-flash-reserved", flow : reserved_names.clone())}
                 }
             }
             if !conflict_names.is_empty() {
                 span { class: "basis-full text-xs text-amber-600",
-                    {t!("cameras-flash-mode-conflict", flows: conflict_names.clone())}
+                    {t!("cameras-flash-mode-conflict", flows : conflict_names.clone())}
                 }
             }
         }

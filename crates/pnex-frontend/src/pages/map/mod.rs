@@ -198,7 +198,8 @@ pub fn Map() -> Element {
     let add_active = add_mode();
 
     rsx! {
-        div { class: "flex h-[calc(100vh-4rem)] lg:h-screen overflow-hidden bg-gray-100",
+        div {
+            class: "flex h-[calc(100vh-4rem)] lg:h-screen overflow-hidden bg-gray-100",
             // ── Sidebar gauche repliable ──────────────────────────
             if sidebar_open() {
                 aside { class: "w-80 shrink-0 bg-white border-r border-gray-200 flex flex-col",
@@ -222,7 +223,7 @@ pub fn Map() -> Element {
                             oninput: move |e| {
                                 search.set(e.value());
                                 filters_rev += 1;
-                            }
+                            },
                         }
                     }
                     // Filtres.
@@ -234,7 +235,7 @@ pub fn Map() -> Element {
                                 onchange: move |_| {
                                     filter_device.toggle();
                                     filters_rev += 1;
-                                }
+                                },
                             }
                             {t!("poi-filter-device")}
                         }
@@ -245,7 +246,7 @@ pub fn Map() -> Element {
                                 onchange: move |_| {
                                     filter_position.toggle();
                                     filters_rev += 1;
-                                }
+                                },
                             }
                             {t!("poi-filter-gps")}
                         }
@@ -279,9 +280,7 @@ pub fn Map() -> Element {
                     // Liste des POI.
                     div { class: "flex-1 overflow-y-auto",
                         if pois.is_empty() {
-                            div { class: "p-6 text-center text-sm text-gray-500",
-                                {t!("poi-empty")}
-                            }
+                            div { class: "p-6 text-center text-sm text-gray-500", {t!("poi-empty")} }
                         } else {
                             for poi in pois.iter() {
                                 PoiRow {
@@ -294,13 +293,15 @@ pub fn Map() -> Element {
                         }
                     }
                     div { class: "px-4 py-2 border-t border-gray-100 text-xs text-gray-500",
-                        {t!("poi-count", count: total)}
+                        {t!("poi-count", count : total)}
                     }
                 }
             }
             // ── Carte plein écran ─────────────────────────────────
             div { class: "relative flex-1",
-                div { id: MAP_HOST, class: "absolute inset-0",
+                div {
+                    id: MAP_HOST,
+                    class: "absolute inset-0",
                     style: "width: 100%; height: 100%;",
                 }
                 if map_failed() {
@@ -319,7 +320,11 @@ pub fn Map() -> Element {
                     button {
                         class: if add_active { "px-3 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg shadow border border-blue-700 transition-colors" } else { "px-3 py-2.5 text-sm font-semibold text-blue-700 bg-white rounded-lg shadow border border-blue-200 hover:bg-blue-50 transition-colors" },
                         onclick: move |_| add_mode.toggle(),
-                        if add_active { {t!("poi-add-cancel")} } else { {t!("poi-add")} }
+                        if add_active {
+                            {t!("poi-add-cancel")}
+                        } else {
+                            {t!("poi-add")}
+                        }
                     }
                 }
                 if add_active {
@@ -333,9 +338,9 @@ pub fn Map() -> Element {
                 PoiDetail {
                     key: "{id}",
                     poi_id: id,
-                    preview: preview,
-                    preview_hidden: preview_hidden,
-                    pinned: pinned,
+                    preview,
+                    preview_hidden,
+                    pinned,
                     on_close: move |_| {
                         selected.set(None);
                         // Aperçu + épingle appartiennent au POI ouvert.

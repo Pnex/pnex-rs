@@ -513,7 +513,7 @@ pub fn PoiTreeSection(
             },
             // Actions : compteur + ＋ dossier + ＋ objet
             div { class: "flex items-center justify-between gap-2",
-                span { class: "text-xs text-gray-400", {t!("poi-tree-count", count: total)} }
+                span { class: "text-xs text-gray-400", {t!("poi-tree-count", count : total)} }
                 div { class: "flex gap-1",
                     button {
                         class: "px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded transition-colors",
@@ -571,13 +571,10 @@ pub fn PoiTreeSection(
                                     on_save_location: move |(placement_id, value): (i64, String)| {
                                         spawn(async move {
                                             // Chaîne vide = effacement (null).
-                                            let body = serde_json::json!({
-                                                "location_detail": if value.trim().is_empty() {
-                                                    serde_json::Value::Null
-                                                } else {
-                                                    serde_json::json!(value.trim())
-                                                },
-                                            });
+                                            let body = serde_json::json!(
+                                                { "location_detail" : if value.trim().is_empty() {
+                                                serde_json::Value::Null } else { serde_json::json!(value.trim()) }, }
+                                            );
                                             if let Err(err) =
                                                 viz::update_poi_placement(placement_id, body).await
                                             {
@@ -598,11 +595,7 @@ pub fn PoiTreeSection(
                                 onclick: move |e| {
                                     e.stop_propagation();
                                     if let Some(detach) = row.detach.clone() {
-                                        perform_detach.call((
-                                            detach,
-                                            row.clear_target.clone(),
-                                            row.name.clone(),
-                                        ));
+                                        perform_detach.call((detach, row.clear_target.clone(), row.name.clone()));
                                     }
                                 },
                                 {t!("poi-attachment-detach")}
@@ -627,11 +620,10 @@ pub fn PoiTreeSection(
                             // Dossier : (dé)pliage ; objet aperçuable : bascule
                             // du panneau d'aperçu (jamais de popup ni route).
                             if let Some(fid) = row.toggle.clone() {
-                                expanded.with_mut(|set| {
-                                    if !set.remove(&fid) {
-                                        set.insert(fid);
-                                    }
-                                });
+                                let mut set = expanded.write();
+                                if !set.remove(&fid) {
+                                    set.insert(fid);
+                                }
                             } else if let Some(target) = row.preview.clone() {
                                 on_preview.call(target);
                             }
@@ -658,8 +650,7 @@ pub fn PoiTreeSection(
                         } else {
                             KindIcon { kind: row.icon_kind.clone().unwrap_or_default() }
                         }
-                        span {
-                            class: if row.is_dead { "truncate text-xs text-gray-400 line-through flex-1" } else if row.is_folder { "truncate text-sm font-medium text-gray-900 flex-1" } else { "truncate text-sm text-gray-700 flex-1" },
+                        span { class: if row.is_dead { "truncate text-xs text-gray-400 line-through flex-1" } else if row.is_folder { "truncate text-sm font-medium text-gray-900 flex-1" } else { "truncate text-sm text-gray-700 flex-1" },
                             {row.name.clone()}
                         }
                         if let Some(sub) = &row.subtitle {
@@ -670,16 +661,8 @@ pub fn PoiTreeSection(
                         // épinglé par le drawer).
                         if let Some(pin_target) = row.pin_target.clone() {
                             span {
-                                class: if row.is_pinned {
-                                    "shrink-0 text-yellow-500 cursor-pointer hover:text-yellow-600 text-sm leading-none"
-                                } else {
-                                    "shrink-0 text-gray-300 hover:text-yellow-500 cursor-pointer text-sm leading-none"
-                                },
-                                title: if row.is_pinned {
-                                    t!("poi-unpin").to_string()
-                                } else {
-                                    t!("poi-pin").to_string()
-                                },
+                                class: if row.is_pinned { "shrink-0 text-yellow-500 cursor-pointer hover:text-yellow-600 text-sm leading-none" } else { "shrink-0 text-gray-300 hover:text-yellow-500 cursor-pointer text-sm leading-none" },
+                                title: if row.is_pinned { t!("poi-unpin").to_string() } else { t!("poi-pin").to_string() },
                                 onclick: move |e| {
                                     e.stop_propagation();
                                     on_pin.call(pin_target.clone());
@@ -694,11 +677,7 @@ pub fn PoiTreeSection(
                                 onclick: move |e| {
                                     e.stop_propagation();
                                     if let Some(detach) = row.detach.clone() {
-                                        perform_detach.call((
-                                            detach,
-                                            row.clear_target.clone(),
-                                            row.name.clone(),
-                                        ));
+                                        perform_detach.call((detach, row.clear_target.clone(), row.name.clone()));
                                     }
                                 },
                                 {t!("poi-attachment-detach")}
@@ -738,7 +717,7 @@ pub fn PoiTreeSection(
                 ConfirmDialog {
                     key: "del-{fid}",
                     title: t!("poi-tree-delete-title").to_string(),
-                    message: t!("poi-tree-delete-message", name: name.clone()).to_string(),
+                    message: t!("poi-tree-delete-message", name : name.clone()).to_string(),
                     confirm_label: t!("common-delete").to_string(),
                     on_confirm: move |_| {
                         perform_delete((fid, name.clone()));
@@ -756,13 +735,27 @@ pub fn PoiTreeSection(
 pub fn KindIcon(kind: String) -> Element {
     rsx! {
         match kind.as_str() {
-            "device" => rsx! { icons::Cpu { class: "w-3.5 h-3.5 shrink-0 text-gray-400" } },
-            "media_asset" => rsx! { icons::Image { class: "w-3.5 h-3.5 shrink-0 text-gray-400" } },
-            "tour" => rsx! { icons::Cube { class: "w-3.5 h-3.5 shrink-0 text-gray-400" } },
-            "dashboard" => rsx! { icons::Gauge { class: "w-3.5 h-3.5 shrink-0 text-gray-400" } },
-            "flow" => rsx! { icons::Workflow { class: "w-3.5 h-3.5 shrink-0 text-gray-400" } },
-            "map_pin" => rsx! { icons::MapPin { class: "w-3.5 h-3.5 shrink-0 text-gray-400" } },
-            _ => rsx! { icons::Package { class: "w-3.5 h-3.5 shrink-0 text-gray-400" } },
+            "device" => rsx! {
+                icons::Cpu { class: "w-3.5 h-3.5 shrink-0 text-gray-400" }
+            },
+            "media_asset" => rsx! {
+                icons::Image { class: "w-3.5 h-3.5 shrink-0 text-gray-400" }
+            },
+            "tour" => rsx! {
+                icons::Cube { class: "w-3.5 h-3.5 shrink-0 text-gray-400" }
+            },
+            "dashboard" => rsx! {
+                icons::Gauge { class: "w-3.5 h-3.5 shrink-0 text-gray-400" }
+            },
+            "flow" => rsx! {
+                icons::Workflow { class: "w-3.5 h-3.5 shrink-0 text-gray-400" }
+            },
+            "map_pin" => rsx! {
+                icons::MapPin { class: "w-3.5 h-3.5 shrink-0 text-gray-400" }
+            },
+            _ => rsx! {
+                icons::Package { class: "w-3.5 h-3.5 shrink-0 text-gray-400" }
+            },
         }
     }
 }

@@ -205,14 +205,17 @@ pub(crate) fn Canvas(
                         }
                     }
                 }
-                rect { x: "0", y: "0", width: "100%", height: "100%", fill: "url(#flow-grid)" }
-                g {
-                    transform: "translate({pan.0} {pan.1}) scale({zoom})",
-                    // Câbles — d'abord la couche de hit (transparente, large),
-                    // puis la couche visible.
-                    for (wire_index, (source_id, port, target_id, a, b, pin)) in
-                        wires.clone().into_iter().enumerate()
-                    {
+                // Câbles — d'abord la couche de hit (transparente, large),
+                // puis la couche visible.
+                rect {
+                    x: "0",
+                    y: "0",
+                    width: "100%",
+                    height: "100%",
+                    fill: "url(#flow-grid)",
+                }
+                g { transform: "translate({pan.0} {pan.1}) scale({zoom})",
+                    for (wire_index, (source_id, port, target_id, a, b, pin)) in wires.clone().into_iter().enumerate() {
                         path {
                             // Index dans la clé : des annotations dupliquées
                             // (renommage en doublon, graphe transitoirement
@@ -226,18 +229,11 @@ pub(crate) fn Canvas(
                             "pointer-events": "stroke",
                             onpointerdown: move |event| {
                                 event.stop_propagation();
-                                on_cut_wire.call((
-                                    source_id.clone(),
-                                    port,
-                                    target_id.clone(),
-                                    pin.clone(),
-                                ));
+                                on_cut_wire.call((source_id.clone(), port, target_id.clone(), pin.clone()));
                             },
                         }
                     }
-                    for (wire_index, (source_id, port, target_id, a, b, pin)) in
-                        wires.into_iter().enumerate()
-                    {
+                    for (wire_index, (source_id, port, target_id, a, b, pin)) in wires.into_iter().enumerate() {
                         path {
                             key: "wire-{wire_index}-{source_id}-{port}-{target_id}-{pin}",
                             d: geometry::wire_path(a, b),
@@ -245,13 +241,7 @@ pub(crate) fn Canvas(
                             // Câble rouge quand une extrémité porte une
                             // violation (graphe invalide ou staleness
                             // pin/device — le lien cassé saute aux yeux).
-                            stroke: if violation_nodes.contains(&source_id)
-                                || violation_nodes.contains(&target_id)
-                            {
-                                geometry::VIOLATION_STROKE
-                            } else {
-                                geometry::WIRE_STROKE
-                            },
+                            stroke: if violation_nodes.contains(&source_id) || violation_nodes.contains(&target_id) { geometry::VIOLATION_STROKE } else { geometry::WIRE_STROKE },
                             "stroke-width": "2",
                             "pointer-events": "none",
                         }
@@ -270,11 +260,7 @@ pub(crate) fn Canvas(
                         }
                     }
                     for node in &graph.nodes {
-                        CanvasNode {
-                            key: "{node.id}",
-                            node: node.clone(),
-                            cx,
-                        }
+                        CanvasNode { key: "{node.id}", node: node.clone(), cx }
                     }
                 }
             }
@@ -634,12 +620,19 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
             transform: "translate({pos.x} {pos.y})",
             onpointerdown: move |event| {
                 event.stop_propagation();
-                let Some(rect) = geometry::canvas_rect() else { return; };
+                let Some(rect) = geometry::canvas_rect() else {
+                    return;
+                };
                 let client = client_of(&event);
                 let point = geometry::to_graph(client, rect, cx.pan.cloned(), cx.zoom.cloned());
                 let grab = (point.0 - pos.x, point.1 - pos.y);
                 cx.selected_node.set(Some(node_id.clone()));
-                cx.interaction.set(Interaction::Dragging { id: node_id.clone(), grab, rect });
+                cx.interaction
+                    .set(Interaction::Dragging {
+                        id: node_id.clone(),
+                        grab,
+                        rect,
+                    });
             },
             rect {
                 width: "{geometry::NODE_W}",
@@ -740,18 +733,21 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                         style: "cursor: crosshair",
                         onpointerdown: move |event| {
                             event.stop_propagation();
-                            let Some(rect) = geometry::canvas_rect() else { return; };
+                            let Some(rect) = geometry::canvas_rect() else {
+                                return;
+                            };
                             let client = client_of(&event);
                             let cursor = geometry::to_graph(client, rect, cx.pan.cloned(), cx.zoom.cloned());
                             cx.selected_node.set(Some(port_node_id.clone()));
-                            cx.interaction.set(Interaction::Wiring {
-                                from_id: port_node_id.clone(),
-                                port: port_index,
-                                cursor,
-                                hover_target: None,
-                                reverse: false,
-                                pin: None,
-                            });
+                            cx.interaction
+                                .set(Interaction::Wiring {
+                                    from_id: port_node_id.clone(),
+                                    port: port_index,
+                                    cursor,
+                                    hover_target: None,
+                                    reverse: false,
+                                    pin: None,
+                                });
                         },
                     }
                     if !port_label.is_empty() && show_port_labels {

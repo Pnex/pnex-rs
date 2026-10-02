@@ -184,12 +184,15 @@ pub(super) fn DeviceReadForm(
                 disabled: !can_write,
                 onchange: move |event| {
                     let slug = event.value();
-                    patch_selected_and_prune(&mut cx, move |node| {
-                        if let FlowNodeKind::DeviceRead { config } = &mut node.kind {
-                            config.device_id = slug;
-                            config.pins.clear();
-                        }
-                    });
+                    patch_selected_and_prune(
+                        &mut cx,
+                        move |node| {
+                            if let FlowNodeKind::DeviceRead { config } = &mut node.kind {
+                                config.device_id = slug;
+                                config.pins.clear();
+                            }
+                        },
+                    );
                 },
                 option { value: "", selected: device_slug.is_empty(), {t!("flows-device-device-none")} }
                 for device in devices.value().read().clone().unwrap_or_default() {
@@ -203,52 +206,69 @@ pub(super) fn DeviceReadForm(
             }
             div { class: "space-y-1",
                 for (pin, checked, is_output_pin) in pin_rows.clone() {
-                    label { key: "{pin.gpio.unwrap_or(-1)}-{pin.label}",
-                        class: if is_output_pin && !checked {
-                            "flex items-center gap-2 text-sm opacity-40"
-                        } else {
-                            "flex items-center gap-2 text-sm"
-                        },
+                    label {
+                        key: "{pin.gpio.unwrap_or(-1)}-{pin.label}",
+                        class: if is_output_pin && !checked { "flex items-center gap-2 text-sm opacity-40" } else { "flex items-center gap-2 text-sm" },
                         input {
                             r#type: "checkbox",
                             disabled: !can_write || (is_output_pin && !checked),
-                            checked: checked,
+                            checked,
                             onchange: move |event| {
                                 let label = pin.label.clone();
                                 let checked = event.checked();
-                                patch_selected_and_prune(&mut cx, move |node| {
-                                    if let FlowNodeKind::DeviceRead { config } = &mut node.kind {
-                                        if checked && !config.pins.contains(&label) {
-                                            config.pins.push(label.clone());
-                                        } else if !checked {
-                                            config.pins.retain(|p| p != &label);
+                                patch_selected_and_prune(
+                                    &mut cx,
+                                    move |node| {
+                                        if let FlowNodeKind::DeviceRead { config } = &mut node.kind {
+                                            if checked && !config.pins.contains(&label) {
+                                                config.pins.push(label.clone());
+                                            } else if !checked {
+                                                config.pins.retain(|p| p != &label);
+                                            }
+                                            config.pins = geometry::sorted_pins(&config.pins);
                                         }
-                                        config.pins = geometry::sorted_pins(&config.pins);
-                                    }
-                                });
+                                    },
+                                );
                             },
                         }
                         span { class: "font-mono text-xs",
-                            {if pin.source == "overlay" {
-                                format!("{} ({} \u{00b7} {})", pin.label, pin.mode.as_deref().unwrap_or("?"), t!("flows-device-pin-overlay"))
-                            } else {
-                                format!("{} ({})", pin.label, pin.mode.as_deref().unwrap_or("?"))
-                            }}
+                            {
+                                if pin.source == "overlay" {
+                                    format!(
+                                        "{} ({} \u{00b7} {})",
+                                        pin.label,
+                                        pin.mode.as_deref().unwrap_or("?"),
+                                        t!("flows-device-pin-overlay"),
+                                    )
+                                } else {
+                                    format!("{} ({})", pin.label, pin.mode.as_deref().unwrap_or("?"))
+                                }
+                            }
                         }
                     }
                 }
             }
-            {text_field(t!("flows-device-window"), window, !can_write, move |event| {
-                let raw = event.value();
-                window.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let FlowNodeKind::DeviceRead { config } = &mut node.kind {
-                        if let Some(w) = parse_secs(&raw) {
-                            config.window_secs = w;
-                        }
-                    }
-                });
-            })}
+            {
+                text_field(
+                    t!("flows-device-window"),
+                    window,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        window.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::DeviceRead { config } = &mut node.kind {
+                                    if let Some(w) = parse_secs(&raw) {
+                                        config.window_secs = w;
+                                    }
+                                }
+                            },
+                        );
+                    },
+                )
+            }
         }
     }
 }
@@ -334,14 +354,16 @@ pub(super) fn DeviceWriteForm(
                 disabled: !can_write,
                 onchange: move |event| {
                     let slug = event.value();
-                    patch_selected(&mut cx, move |node: &mut FlowNode| {
-                        if let FlowNodeKind::DeviceWrite { config } = &mut node.kind {
-                            config.device_id = slug;
-                            config.pins.clear();
-                            // Unusable annotations (pins gone) must not linger.
-                            node.inputs.clear();
-                        }
-                    });
+                    patch_selected(
+                        &mut cx,
+                        move |node: &mut FlowNode| { // Unusable annotations (pins gone) must not linger.
+                            if let FlowNodeKind::DeviceWrite { config } = &mut node.kind {
+                                config.device_id = slug;
+                                config.pins.clear();
+                                node.inputs.clear();
+                            }
+                        },
+                    );
                 },
                 option { value: "", selected: device_slug.is_empty(), {t!("flows-device-device-none")} }
                 for device in devices.value().read().clone().unwrap_or_default() {
@@ -355,27 +377,31 @@ pub(super) fn DeviceWriteForm(
             }
             div { class: "space-y-1.5",
                 for (pin, checked, reserved_elsewhere, hint) in pin_rows {
-                    label { key: "{pin.gpio.unwrap_or(-1)}-{pin.label}", class: "flex items-start gap-2 text-sm",
+                    label {
+                        key: "{pin.gpio.unwrap_or(-1)}-{pin.label}",
+                        class: "flex items-start gap-2 text-sm",
                         input {
                             r#type: "checkbox",
                             class: "mt-0.5 shrink-0",
                             disabled: !can_write || reserved_elsewhere,
-                            checked: checked,
+                            checked,
                             onchange: move |event| {
                                 let label = pin.label.clone();
                                 let checked = event.checked();
-                                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                                    if let FlowNodeKind::DeviceWrite { config } = &mut node.kind {
-                                        if checked && !config.pins.contains(&label) {
-                                            config.pins.push(label.clone());
-                                        } else if !checked {
-                                            config.pins.retain(|p| p != &label);
+                                patch_selected(
+                                    &mut cx,
+                                    move |node: &mut FlowNode| {
+                                        if let FlowNodeKind::DeviceWrite { config } = &mut node.kind {
+                                            if checked && !config.pins.contains(&label) { // Uncheck a pin = its input wiring goes.
+                                                config.pins.push(label.clone());
+                                            } else if !checked {
+                                                config.pins.retain(|p| p != &label);
+                                            }
+                                            config.pins = geometry::sorted_pins(&config.pins);
+                                            node.inputs.retain(|w| config.pins.contains(&w.pin));
                                         }
-                                        config.pins = geometry::sorted_pins(&config.pins);
-                                        // Uncheck a pin = its input wiring goes.
-                                        node.inputs.retain(|w| config.pins.contains(&w.pin));
-                                    }
-                                });
+                                    },
+                                );
                             },
                         }
                         // Column layout: pin line on top, reservation hint on
@@ -383,22 +409,29 @@ pub(super) fn DeviceWriteForm(
                         // badly in the narrow inspector panel).
                         div { class: "min-w-0 flex-1 leading-tight",
                             span { class: if reserved_elsewhere { "font-mono text-xs opacity-40" } else { "font-mono text-xs" },
-                                {if pin.source == "overlay" {
-                                    format!("{} ({} \u{00b7} {})", pin.label, pin.mode.as_deref().unwrap_or("?"), t!("flows-device-pin-overlay"))
-                                } else {
-                                    format!("{} ({})", pin.label, pin.mode.as_deref().unwrap_or("?"))
-                                }}
+                                {
+                                    if pin.source == "overlay" {
+                                        format!(
+                                            "{} ({} \u{00b7} {})",
+                                            pin.label,
+                                            pin.mode.as_deref().unwrap_or("?"),
+                                            t!("flows-device-pin-overlay"),
+                                        )
+                                    } else {
+                                        format!("{} ({})", pin.label, pin.mode.as_deref().unwrap_or("?"))
+                                    }
+                                }
                             }
                             if let Some(h) = hint {
-                                span { class: "block text-[11px] leading-snug text-amber-600 mt-0.5", {h} }
+                                span { class: "block text-[11px] leading-snug text-amber-600 mt-0.5",
+                                    {h}
+                                }
                             }
                         }
                     }
                 }
             }
-            p { class: "text-xs text-gray-400 font-mono",
-                {t!("flows-device-write-payload")}
-            }
+            p { class: "text-xs text-gray-400 font-mono", {t!("flows-device-write-payload")} }
         }
     }
 }

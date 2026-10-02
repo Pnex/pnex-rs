@@ -49,13 +49,23 @@ pub fn InspectorBody(
 ) -> Element {
     let selected = cx.selected.cloned();
     rsx! {
-        {match selected {
-            None => rsx! {},
-            Some(Selection::Wire(id)) => rsx! { wire_panel { cx: cx, wire_id: id } },
-            Some(Selection::Widget(id)) => rsx! {
-                widget_panel { cx: cx, widget_id: id, can_write: can_write, metrics: metrics, catalog: catalog }
-            },
-        }}
+        {
+            match selected {
+                None => rsx! {},
+                Some(Selection::Wire(id)) => rsx! {
+                    wire_panel { cx, wire_id: id }
+                },
+                Some(Selection::Widget(id)) => rsx! {
+                    widget_panel {
+                        cx,
+                        widget_id: id,
+                        can_write,
+                        metrics,
+                        catalog,
+                    }
+                },
+            }
+        }
     }
 }
 
@@ -90,7 +100,9 @@ fn widget_panel(
 ) -> Element {
     let w = state::find_widget(&cx.layout.read(), &widget_id);
     let Some(w) = w else {
-        return rsx! { p { class: "text-xs text-gray-400", {t!("insp-no-selection")} } };
+        return rsx! {
+            p { class: "text-xs text-gray-400", {t!("insp-no-selection")} }
+        };
     };
 
     let primary = w.source.first().cloned().unwrap_or(SourceRef {
@@ -128,6 +140,8 @@ fn widget_panel(
         .cloned()
         .unwrap_or_default();
     let metric_in_catalog = source_metrics.contains(&primary.metric);
+    // Metric select is inert without write access, a device or a catalog.
+    let metric_locked = !can_write || primary.device_id.is_empty() || source_metrics.is_empty();
     // Copie pour la closure du select source (piège FnMut/Fn captures :
     // `catalog` sert aussi au rendu, jamais de move partagé).
     let cat_for_source = catalog.clone();
@@ -135,7 +149,10 @@ fn widget_panel(
     rsx! {
         div { class: "space-y-3",
             // Titre
-            field_label { label_key: "title", label: t!("insp-widget-title").to_string() }
+            field_label {
+                label_key: "title",
+                label: t!("insp-widget-title").to_string(),
+            }
             input {
                 class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm",
                 disabled: !can_write,
@@ -143,11 +160,12 @@ fn widget_panel(
                 oninput: move |e| {
                     let v = e.value();
                     let Some(widget_id) = selected_widget_id(&cx) else { return };
-                    cx.layout.with_mut(|l| {
-                        if let Some(w) = l.widgets.iter_mut().find(|w| w.id == widget_id) {
-                            w.title = v.clone();
-                        }
-                    });
+                    cx.layout
+                        .with_mut(|l| {
+                            if let Some(w) = l.widgets.iter_mut().find(|w| w.id == widget_id) {
+                                w.title = v.clone();
+                            }
+                        });
                 },
             }
             if w.widget_type == "symbol" {
@@ -155,7 +173,13 @@ fn widget_panel(
             }
             // thermo_chart : panneau dédié, pas de binding générique.
             if w.widget_type == "thermo_chart" {
-                ThermoPanel { cx, widget_id: widget_id.clone(), can_write: can_write, metrics: metrics.clone(), memory: catalog.memory.clone() }
+                ThermoPanel {
+                    cx,
+                    widget_id: widget_id.clone(),
+                    can_write,
+                    metrics: metrics.clone(),
+                    memory: catalog.memory.clone(),
+                }
             }
             // Binding (sauf widget texte et thermo_chart) — la source
             // (device ou flow) se choisit d'abord ; la métrique est
@@ -165,8 +189,7 @@ fn widget_panel(
             // l'état (l'ancien fallback `eff_*` produisait des saves
             // en « device_id invalide : « » »).
             // A static symbol (no source) has no binding either.
-            if w.widget_type != "text"
-                && w.widget_type != "thermo_chart"
+            if w.widget_type != "text" && w.widget_type != "thermo_chart"
                 && !(w.widget_type == "symbol" && w.source.is_empty())
             {
                 field_label { label_key: "source", label: t!("insp-source").to_string() }
@@ -183,11 +206,19 @@ fn widget_panel(
                                 .and_then(|fs| fs.first().cloned())
                                 .unwrap_or_default();
                             let key = key.to_string();
-                            cx.layout.with_mut(|l| set_source(l, &widget_id, |s| {
-                                s.memory = Some(pnex_core::memory::MemoryRef { key, field });
-                                s.device_id.clear();
-                                s.metric.clear();
-                            }));
+                            cx.layout
+                                .with_mut(|l| set_source(
+                                    l,
+                                    &widget_id,
+                                    |s| {
+                                        s.memory = Some(pnex_core::memory::MemoryRef {
+                                            key,
+                                            field,
+                                        });
+                                        s.device_id.clear();
+                                        s.metric.clear();
+                                    },
+                                ));
                             return;
                         }
                         let first_metric = cat_for_source
@@ -195,109 +226,156 @@ fn widget_panel(
                             .get(&v)
                             .and_then(|ms| ms.first().cloned())
                             .unwrap_or_default();
-                        cx.layout.with_mut(|l| set_source(l, &widget_id, |s| {
-                            s.memory = None;
-                            s.device_id = v.clone();
-                            s.metric = first_metric.clone();
-                        }));
+                        cx.layout
+                            .with_mut(|l| set_source(
+                                l,
+                                &widget_id,
+                                |s| {
+                                    s.memory = None;
+                                    s.device_id = v.clone();
+                                    s.metric = first_metric.clone();
+                                },
+                            ));
                     },
                     if primary.device_id.is_empty() && memory_key.is_none() {
-                        option { value: "", selected: true, disabled: true,
-                            {t!("insp-pick-source")} }
+                        option { value: "", selected: true, disabled: true, {t!("insp-pick-source")} }
                     }
                     if !devices_of(&catalog).is_empty() {
                         optgroup { label: t!("insp-devices").to_string(),
                             for d in devices_of(&catalog) {
-                                option { key: "{d}", value: "{d}",
-                                    selected: primary.device_id == d, "{d}" }
+                                option {
+                                    key: "{d}",
+                                    value: "{d}",
+                                    selected: primary.device_id == d,
+                                    "{d}"
+                                }
                             }
                         }
                     }
                     if !flows_of(&catalog).is_empty() {
                         optgroup { label: t!("insp-flows").to_string(),
                             for d in flows_of(&catalog) {
-                                option { key: "flow-{d}", value: "{d}",
-                                    selected: primary.device_id == d, "{d}" }
+                                option {
+                                    key: "flow-{d}",
+                                    value: "{d}",
+                                    selected: primary.device_id == d,
+                                    "{d}"
+                                }
                             }
                         }
                     }
                     if !catalog.memory.is_empty() || memory_key.is_some() {
                         optgroup { label: t!("insp-memory").to_string(),
                             for k in memory_keys_of(&catalog, memory_key.as_deref()) {
-                                option { key: "mem-{k}", value: "mem:{k}",
-                                    selected: memory_key.as_deref() == Some(k.as_str()), "{k}" }
+                                option {
+                                    key: "mem-{k}",
+                                    value: "mem:{k}",
+                                    selected: memory_key.as_deref() == Some(k.as_str()),
+                                    "{k}"
+                                }
                             }
                         }
                     }
                 }
                 if memory_key.is_some() {
-                    field_label { label_key: "field", label: t!("insp-memory-field").to_string() }
+                    field_label {
+                        label_key: "field",
+                        label: t!("insp-memory-field").to_string(),
+                    }
                     select {
                         class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",
                         disabled: !can_write,
                         onchange: move |e| {
                             let v = e.value();
                             let Some(widget_id) = selected_widget_id(&cx) else { return };
-                            cx.layout.with_mut(|l| set_source(l, &widget_id, |s| {
-                                if let Some(m) = s.memory.as_mut() {
-                                    m.field = v.clone();
-                                }
-                            }));
+                            cx.layout
+                                .with_mut(|l| set_source(
+                                    l,
+                                    &widget_id,
+                                    |s| {
+                                        if let Some(m) = s.memory.as_mut() {
+                                            m.field = v.clone();
+                                        }
+                                    },
+                                ));
                         },
                         for f in memory_fields.clone() {
-                            option { key: "{f}", value: "{f}", selected: memory_field == f,
-                                if f.is_empty() { {t!("insp-memory-whole-value")} } else { "{f}" }
+                            option {
+                                key: "{f}",
+                                value: "{f}",
+                                selected: memory_field == f,
+                                if f.is_empty() {
+                                    {t!("insp-memory-whole-value")}
+                                } else {
+                                    "{f}"
+                                }
                             }
                         }
                     }
                     p { class: "text-[10px] text-gray-400 mt-1", {t!("insp-memory-help")} }
                 } else {
-                field_label { label_key: "metric", label: t!("insp-metric").to_string() }
-                select {
-                    class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",
-                    disabled: !can_write
-                        || primary.device_id.is_empty()
-                        || source_metrics.is_empty(),
-                    onchange: move |e| {
-                        let v = e.value();
-                        let Some(widget_id) = selected_widget_id(&cx) else { return };
-                        cx.layout.with_mut(|l| set_source(l, &widget_id, |s| s.metric = v.clone()));
-                    },
-                    if primary.device_id.is_empty() {
-                        option { value: "", selected: true, disabled: true,
-                            {t!("insp-pick-source-metric")} }
+                    field_label {
+                        label_key: "metric",
+                        label: t!("insp-metric").to_string(),
                     }
-                    for m in &source_metrics {
-                        option { key: "{m}", value: "{m}",
-                            selected: metric_in_catalog && primary.metric == *m, "{m}" }
+                    select {
+                        class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",
+                        disabled: metric_locked,
+                        onchange: move |e| {
+                            let v = e.value();
+                            let Some(widget_id) = selected_widget_id(&cx) else { return };
+                            cx.layout.with_mut(|l| set_source(l, &widget_id, |s| s.metric = v.clone()));
+                        },
+                        if primary.device_id.is_empty() {
+                            option { value: "", selected: true, disabled: true,
+                                {t!("insp-pick-source-metric")}
+                            }
+                        }
+                        for m in &source_metrics {
+                            option {
+                                key: "{m}",
+                                value: "{m}",
+                                selected: metric_in_catalog && primary.metric == *m,
+                                "{m}"
+                            }
+                        }
+                        if !primary.metric.is_empty() && !metric_in_catalog {
+                            option {
+                                key: "stale-{primary.metric}",
+                                value: "{primary.metric}",
+                                selected: true,
+                                "{primary.metric}"
+                            }
+                        }
                     }
-                    if !primary.metric.is_empty() && !metric_in_catalog {
-                        // Série enregistrée absente du catalogue (source
-                        // disparue depuis le save) : affichée telle quelle.
-                        option { key: "stale-{primary.metric}", value: "{primary.metric}",
-                            selected: true, "{primary.metric}" }
+                    // Série enregistrée absente du catalogue (source
+                    // disparue depuis le save) : affichée telle quelle.
+                    if catalog.ready && catalog.by_source.is_empty() {
+                        p { class: "text-[10px] text-gray-400 mt-1", {t!("insp-no-series")} }
                     }
-                }
-                if catalog.ready && catalog.by_source.is_empty() {
-                    p { class: "text-[10px] text-gray-400 mt-1", {t!("insp-no-series")} }
-                }
-                field_label { label_key: "window", label: t!("insp-window").to_string() }
-                select {
-                    class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",
-                    disabled: !can_write,
-                    value: "{primary.window}",
-                    onchange: move |e| {
-                        let v = e.value();
-                        let Some(widget_id) = selected_widget_id(&cx) else { return };
-                        cx.layout.with_mut(|l| set_source(l, &widget_id, |s| s.window = v.clone()));
-                    },
-                    for (key, _) in VIZ_WINDOW_PRESETS {
-                        option { key: "{key}", value: "{key}", "{key}" }
+                    field_label {
+                        label_key: "window",
+                        label: t!("insp-window").to_string(),
+                    }
+                    select {
+                        class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",
+                        disabled: !can_write,
+                        value: "{primary.window}",
+                        onchange: move |e| {
+                            let v = e.value();
+                            let Some(widget_id) = selected_widget_id(&cx) else { return };
+                            cx.layout.with_mut(|l| set_source(l, &widget_id, |s| s.window = v.clone()));
+                        },
+                        for (key, _) in VIZ_WINDOW_PRESETS {
+                            option { key: "{key}", value: "{key}", "{key}" }
+                        }
                     }
                 }
             }
-                }
             // Options par type
+            // Empty branches below: thermo_chart options live in ThermoPanel
+            // (above), a static symbol's in SymbolOptionsPanel. Comments stay
+            // out of empty rsx branches: dx fmt drops them.
             if w.widget_type == "text" {
                 field_label { label_key: "text", label: t!("insp-text").to_string() }
                 textarea {
@@ -307,22 +385,26 @@ fn widget_panel(
                     oninput: move |e| {
                         let v = e.value();
                         let Some(widget_id) = selected_widget_id(&cx) else { return };
-                        cx.layout.with_mut(|l| {
-                            if let Some(w) = l.widgets.iter_mut().find(|w| w.id == widget_id) {
-                                w.options.text = Some(v.clone());
-                            }
-                        });
+                        cx.layout
+                            .with_mut(|l| {
+                                if let Some(w) = l.widgets.iter_mut().find(|w| w.id == widget_id) {
+                                    w.options.text = Some(v.clone());
+                                }
+                            });
                     },
                     "{w.options.text.clone().unwrap_or_default()}"
                 }
             } else if w.widget_type == "thermo_chart" {
-                // Options portées par ThermoPanel (au-dessus).
+
             } else if w.widget_type == "symbol" && w.source.is_empty() {
-                // Static symbol: options carried by SymbolOptionsPanel.
+
             } else {
                 div { class: "grid grid-cols-2 gap-2",
                     div {
-                        field_label { label_key: "unit", label: t!("insp-unit").to_string() }
+                        field_label {
+                            label_key: "unit",
+                            label: t!("insp-unit").to_string(),
+                        }
                         input {
                             class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm",
                             disabled: !can_write,
@@ -330,65 +412,82 @@ fn widget_panel(
                             oninput: move |e| {
                                 let v = e.value();
                                 let Some(widget_id) = selected_widget_id(&cx) else { return };
-                                cx.layout.with_mut(|l| {
-                                    if let Some(w) = l.widgets.iter_mut().find(|w| w.id == widget_id) {
-                                        w.options.unit = Some(v.clone());
-                                    }
-                                });
+                                cx.layout
+                                    .with_mut(|l| {
+                                        if let Some(w) = l.widgets.iter_mut().find(|w| w.id == widget_id) {
+                                            w.options.unit = Some(v.clone());
+                                        }
+                                    });
                             },
                         }
                     }
                     div {
-                        field_label { label_key: "decimals", label: t!("insp-decimals").to_string() }
+                        field_label {
+                            label_key: "decimals",
+                            label: t!("insp-decimals").to_string(),
+                        }
                         input {
                             class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm",
                             disabled: !can_write,
-                            "type": "number", min: "0", max: "6",
+                            "type": "number",
+                            min: "0",
+                            max: "6",
                             value: "{w.options.decimals.unwrap_or(1)}",
                             onchange: move |e| {
                                 let v = e.value().parse::<u8>().unwrap_or(1).min(6);
                                 let Some(widget_id) = selected_widget_id(&cx) else { return };
-                                cx.layout.with_mut(|l| {
-                                    if let Some(w) = l.widgets.iter_mut().find(|w| w.id == widget_id) {
-                                        w.options.decimals = Some(v);
-                                    }
-                                });
+                                cx.layout
+                                    .with_mut(|l| {
+                                        if let Some(w) = l.widgets.iter_mut().find(|w| w.id == widget_id) {
+                                            w.options.decimals = Some(v);
+                                        }
+                                    });
                             },
                         }
                     }
                     div {
-                        field_label { label_key: "min", label: t!("insp-min").to_string() }
+                        field_label {
+                            label_key: "min",
+                            label: t!("insp-min").to_string(),
+                        }
                         input {
                             class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm",
                             disabled: !can_write,
-                            "type": "number", step: "any",
+                            "type": "number",
+                            step: "any",
                             value: "{w.options.min.map(|v| v.to_string()).unwrap_or_default()}",
                             onchange: move |e| {
                                 let v = e.value().parse::<f64>().ok();
                                 let Some(widget_id) = selected_widget_id(&cx) else { return };
-                                cx.layout.with_mut(|l| {
-                                    if let Some(w) = l.widgets.iter_mut().find(|w| w.id == widget_id) {
-                                        w.options.min = v;
-                                    }
-                                });
+                                cx.layout
+                                    .with_mut(|l| {
+                                        if let Some(w) = l.widgets.iter_mut().find(|w| w.id == widget_id) {
+                                            w.options.min = v;
+                                        }
+                                    });
                             },
                         }
                     }
                     div {
-                        field_label { label_key: "max", label: t!("insp-max").to_string() }
+                        field_label {
+                            label_key: "max",
+                            label: t!("insp-max").to_string(),
+                        }
                         input {
                             class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm",
                             disabled: !can_write,
-                            "type": "number", step: "any",
+                            "type": "number",
+                            step: "any",
                             value: "{w.options.max.map(|v| v.to_string()).unwrap_or_default()}",
                             onchange: move |e| {
                                 let v = e.value().parse::<f64>().ok();
                                 let Some(widget_id) = selected_widget_id(&cx) else { return };
-                                cx.layout.with_mut(|l| {
-                                    if let Some(w) = l.widgets.iter_mut().find(|w| w.id == widget_id) {
-                                        w.options.max = v;
-                                    }
-                                });
+                                cx.layout
+                                    .with_mut(|l| {
+                                        if let Some(w) = l.widgets.iter_mut().find(|w| w.id == widget_id) {
+                                            w.options.max = v;
+                                        }
+                                    });
                             },
                         }
                     }
@@ -426,7 +525,11 @@ fn widget_panel(
 #[component]
 fn field_label(label_key: String, label: String) -> Element {
     rsx! {
-        label { key: "{label_key}", class: "block text-[10px] font-medium text-gray-400 uppercase mt-1", "{label}" }
+        label {
+            key: "{label_key}",
+            class: "block text-[10px] font-medium text-gray-400 uppercase mt-1",
+            "{label}"
+        }
     }
 }
 

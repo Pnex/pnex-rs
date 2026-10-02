@@ -14,50 +14,88 @@ pub(super) fn InjectForm(mut cx: EditorCx, initial: InjectConfig, can_write: boo
 
     rsx! {
         div { class: "space-y-3",
-            {text_field(t!("flows-inject-repeat"), repeat, !can_write, move |event| {
-                let raw = event.value();
-                repeat.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let FlowNodeKind::Inject { config } = &mut node.kind {
-                        config.repeat_secs = parse_secs(&raw);
-                    }
-                });
-            })}
-            {text_field(t!("flows-inject-cron"), cron, !can_write, move |event| {
-                let raw = event.value();
-                cron.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let FlowNodeKind::Inject { config } = &mut node.kind {
-                        config.cron = raw;
-                    }
-                });
-            })}
-            {text_field(t!("flows-inject-once-delay"), once, !can_write, move |event| {
-                let raw = event.value();
-                once.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let FlowNodeKind::Inject { config } = &mut node.kind {
-                        config.once_delay_secs = parse_secs(&raw);
-                    }
-                });
-            })}
-            {text_field(t!("flows-inject-topic"), topic, !can_write, move |event| {
-                let raw = event.value();
-                topic.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let FlowNodeKind::Inject { config } = &mut node.kind {
-                        config.topic = Some(raw).filter(|t| !t.is_empty());
-                    }
-                });
-            })}
-            label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-inject-payload")} }
-                textarea {
-                    class: if payload_invalid() {
-                        "w-full h-20 px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm font-mono"
-                    } else {
-                        "w-full h-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono"
+            {
+                text_field(
+                    t!("flows-inject-repeat"),
+                    repeat,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        repeat.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::Inject { config } = &mut node.kind {
+                                    config.repeat_secs = parse_secs(&raw);
+                                }
+                            },
+                        );
                     },
+                )
+            }
+            {
+                text_field(
+                    t!("flows-inject-cron"),
+                    cron,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        cron.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::Inject { config } = &mut node.kind {
+                                    config.cron = raw;
+                                }
+                            },
+                        );
+                    },
+                )
+            }
+            {
+                text_field(
+                    t!("flows-inject-once-delay"),
+                    once,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        once.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::Inject { config } = &mut node.kind {
+                                    config.once_delay_secs = parse_secs(&raw);
+                                }
+                            },
+                        );
+                    },
+                )
+            }
+            {
+                text_field(
+                    t!("flows-inject-topic"),
+                    topic,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        topic.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::Inject { config } = &mut node.kind {
+                                    config.topic = Some(raw).filter(|t| !t.is_empty());
+                                }
+                            },
+                        );
+                    },
+                )
+            }
+            label { class: "block",
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-inject-payload")}
+                }
+                textarea {
+                    class: if payload_invalid() { "w-full h-20 px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm font-mono" } else { "w-full h-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono" },
                     value: "{payload}",
                     disabled: !can_write,
                     oninput: move |event| {
@@ -66,11 +104,14 @@ pub(super) fn InjectForm(mut cx: EditorCx, initial: InjectConfig, can_write: boo
                             Ok(value) => {
                                 payload_invalid.set(false);
                                 payload.set(raw.clone());
-                                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                                    if let FlowNodeKind::Inject { config } = &mut node.kind {
-                                        config.payload = value;
-                                    }
-                                });
+                                patch_selected(
+                                    &mut cx,
+                                    move |node: &mut FlowNode| {
+                                        if let FlowNodeKind::Inject { config } = &mut node.kind {
+                                            config.payload = value;
+                                        }
+                                    },
+                                );
                             }
                             Err(_) => {
                                 // Saisie intermédiaire invalide : texte conservé,

@@ -295,19 +295,30 @@ pub(super) fn ModelFormModal(
     };
 
     rsx! {
-        Modal { title, max_width: "max-w-2xl".to_string(), on_close: move |_| on_close.call(()),
+        Modal {
+            title,
+            max_width: "max-w-2xl".to_string(),
+            on_close: move |_| on_close.call(()),
             div { class: "space-y-4",
                 div { class: "grid gap-4 md:grid-cols-2",
                     div {
                         label { class: LABEL_CLASS, {t!("models-name")} }
-                        input { class: INPUT_CLASS, value: "{name}", oninput: move |e| name.set(e.value()) }
+                        input {
+                            class: INPUT_CLASS,
+                            value: "{name}",
+                            oninput: move |e| name.set(e.value()),
+                        }
                         if let Some(e) = name_err {
                             span { class: "text-xs text-red-600", {e} }
                         }
                     }
                     div {
                         label { class: LABEL_CLASS, {t!("models-description")} }
-                        input { class: INPUT_CLASS, value: "{description}", oninput: move |e| description.set(e.value()) }
+                        input {
+                            class: INPUT_CLASS,
+                            value: "{description}",
+                            oninput: move |e| description.set(e.value()),
+                        }
                     }
                 }
                 if !is_edit {
@@ -351,9 +362,18 @@ pub(super) fn ModelFormModal(
                             select {
                                 class: "{INPUT_CLASS} bg-white",
                                 onchange: move |e| asset_id.set(e.value()),
-                                option { value: "", selected: asset_id().is_empty(), {t!("models-source-pick")} }
-                                for (id , label) in asset_options {
-                                    option { key: "{id}", value: "{id}", selected: id == asset_id(), "{label}" }
+                                option {
+                                    value: "",
+                                    selected: asset_id().is_empty(),
+                                    {t!("models-source-pick")}
+                                }
+                                for (id, label) in asset_options {
+                                    option {
+                                        key: "{id}",
+                                        value: "{id}",
+                                        selected: id == asset_id(),
+                                        "{label}"
+                                    }
                                 }
                             }
                         }
@@ -374,24 +394,40 @@ pub(super) fn ModelFormModal(
                                 }
                             },
                             for f in VisionFamily::ALL {
-                                option { key: "{f.wire()}", value: f.wire(), selected: family() == f, {f.wire().to_uppercase()} }
+                                option {
+                                    key: "{f.wire()}",
+                                    value: f.wire(),
+                                    selected: family() == f,
+                                    {f.wire().to_uppercase()}
+                                }
                             }
                         }
                     }
                     {number_field(t!("models-input-width"), width, width_err, fixed_input.is_some())}
-                    {number_field(t!("models-input-height"), height, height_err, fixed_input.is_some())}
+                    {
+                        number_field(
+                            t!("models-input-height"),
+                            height,
+                            height_err,
+                            fixed_input.is_some(),
+                        )
+                    }
                     {number_field(t!("models-score-threshold"), score, score_err, false)}
                     {number_field(t!("models-nms-iou"), nms, nms_err, false)}
                 }
                 if let Some((w, h)) = fixed_input {
-                    p { class: "text-xs text-emerald-700", {t!("models-input-from-file", width: w, height: h)} }
+                    p { class: "text-xs text-emerald-700",
+                        {t!("models-input-from-file", width : w, height : h)}
+                    }
                 } else if !is_edit && source() == Source::Upload {
                     p { class: "text-xs text-gray-500", {t!("models-input-auto-hint")} }
                 }
                 p { class: "text-xs text-gray-500", {t!("models-spec-hint")} }
                 div {
                     div { class: "flex items-center justify-between mb-1",
-                        label { class: "text-sm font-medium text-gray-700", {t!("models-labels", count: label_count)} }
+                        label { class: "text-sm font-medium text-gray-700",
+                            {t!("models-labels", count : label_count)}
+                        }
                         button {
                             class: "text-xs text-blue-600 hover:underline",
                             r#type: "button",
@@ -407,7 +443,9 @@ pub(super) fn ModelFormModal(
                     if let Some(e) = labels_err {
                         span { class: "text-xs text-red-600", {e} }
                     } else if let Some(classes) = file_classes.filter(|c| *c as usize != label_count) {
-                        span { class: "text-xs text-amber-700", {t!("models-labels-mismatch", classes: classes, count: label_count)} }
+                        span { class: "text-xs text-amber-700",
+                            {t!("models-labels-mismatch", classes : classes, count : label_count)}
+                        }
                     }
                 }
                 if let Some(e) = save_error() {
@@ -416,7 +454,12 @@ pub(super) fn ModelFormModal(
                     }
                 }
                 div { class: "flex justify-end gap-2",
-                    button { class: GHOST_BTN, r#type: "button", onclick: move |_| on_close.call(()), {t!("common-cancel")} }
+                    button {
+                        class: GHOST_BTN,
+                        r#type: "button",
+                        onclick: move |_| on_close.call(()),
+                        {t!("common-cancel")}
+                    }
                     button {
                         class: PRIMARY_BTN,
                         r#type: "button",

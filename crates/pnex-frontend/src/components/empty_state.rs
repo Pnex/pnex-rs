@@ -14,7 +14,7 @@ pub fn EmptyState(icon: Element, title: String, message: String, phase: String) 
                 h3 { class: "text-xl font-semibold text-gray-900 mb-2", {title} }
                 p { class: "text-gray-600", {message} }
                 span { class: "inline-flex items-center mt-4 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200",
-                    {t!("empty-phase", phase: phase)}
+                    {t!("empty-phase", phase : phase)}
                 }
             }
         }

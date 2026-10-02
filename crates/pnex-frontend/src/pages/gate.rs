@@ -45,11 +45,9 @@ pub fn GateScreen() -> Element {
                 accent_class: "text-red-600",
                 title: t!("gate-incompatible-title"),
                 message: t!(
-                    "gate-incompatible-message",
-                    app_version: crate::version::APP_VERSION,
-                    app_contract: app_contract.to_string(),
-                    server_version: server.version.clone(),
-                    server_contract: server.contract.to_string()
+                    "gate-incompatible-message", app_version : crate ::version::APP_VERSION,
+                    app_contract : app_contract.to_string(), server_version : server.version.clone(),
+                    server_contract : server.contract.to_string()
                 ),
                 hint: None,
             }

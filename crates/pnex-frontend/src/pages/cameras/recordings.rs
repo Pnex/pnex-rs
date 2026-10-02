@@ -189,7 +189,7 @@ pub(super) fn RecordingsDialog(
 
     rsx! {
         Modal {
-            title: t!("cameras-recordings-title", camera: cam.device_id.clone()).to_string(),
+            title: t!("cameras-recordings-title", camera : cam.device_id.clone()).to_string(),
             max_width: "max-w-5xl".to_string(),
             on_close,
             div { class: "space-y-4",
@@ -234,7 +234,12 @@ pub(super) fn RecordingsDialog(
                     }
                     if !is_empty {
                         span { class: "text-sm text-gray-500",
-                            {t!("cameras-recorded-summary", duration: format_recorded(recorded_secs), size: format_size(total_bytes))}
+                            {
+                                t!(
+                                    "cameras-recorded-summary", duration : format_recorded(recorded_secs), size :
+                                    format_size(total_bytes)
+                                )
+                            }
                         }
                     }
                     div { class: "ml-auto flex gap-2",
@@ -251,21 +256,31 @@ pub(super) fn RecordingsDialog(
                                 let failed = t!("cameras-download-failed").to_string();
                                 spawn(async move {
                                     exporting.set(true);
-                                    match api::cameras::export_recording(device, &rfc3339(from), &rfc3339(to)).await {
+                                    match api::cameras::export_recording(device, &rfc3339(from), &rfc3339(to))
+                                        .await
+                                    {
                                         Ok(bytes) => {
                                             if !trigger_download(&name, "video/x-msvideo", &bytes) {
                                                 toasts::error(failed);
                                             }
                                         }
-                                        Err(err) => toasts::error(format!("{failed} : {}", crate::api::error_i18n::localize(&err))),
+                                        Err(err) => {
+                                            toasts::error(
+                                                format!("{failed} : {}", crate::api::error_i18n::localize(&err)),
+                                            )
+                                        }
                                     }
                                     exporting.set(false);
                                 });
                             },
                             icons::Download { class: "h-4 w-4 mr-1" }
                             match export_window {
-                                Some((from, to)) => rsx! { {t!("cameras-export-hour", from: hhmm(from), to: hhmm(to))} },
-                                None => rsx! { {t!("cameras-download")} },
+                                Some((from, to)) => rsx! {
+                                    {t!("cameras-export-hour", from : hhmm(from), to : hhmm(to))}
+                                },
+                                None => rsx! {
+                                    {t!("cameras-download")}
+                                },
                             }
                         }
                         if can_write && !is_empty {
@@ -293,9 +308,13 @@ pub(super) fn RecordingsDialog(
                             p { class: "text-xs text-gray-400", {t!("cameras-layers-none")} }
                         } else {
                             div { class: "flex flex-wrap items-center gap-x-4 gap-y-1",
-                                span { class: "text-xs font-medium text-gray-500", {t!("cameras-layers")} }
+                                span { class: "text-xs font-medium text-gray-500",
+                                    {t!("cameras-layers")}
+                                }
                                 for layer in layer_rows.iter().cloned() {
-                                    label { key: "{layer.id}", class: "flex items-center gap-1.5 text-sm text-gray-700 select-none",
+                                    label {
+                                        key: "{layer.id}",
+                                        class: "flex items-center gap-1.5 text-sm text-gray-700 select-none",
                                         input {
                                             class: "h-4 w-4 accent-blue-600",
                                             r#type: "checkbox",
@@ -314,7 +333,10 @@ pub(super) fn RecordingsDialog(
                                             },
                                         }
                                         if let Some(rank) = layers.read().iter().position(|l| *l == layer.id) {
-                                            span { class: "inline-block h-2.5 w-2.5 rounded-full", style: "background: {layer_color(rank)};" }
+                                            span {
+                                                class: "inline-block h-2.5 w-2.5 rounded-full",
+                                                style: "background: {layer_color(rank)};",
+                                            }
                                         }
                                         "{layer.name}"
                                         span { class: "text-xs text-gray-400", "({layer.count})" }
@@ -324,9 +346,18 @@ pub(super) fn RecordingsDialog(
                         }
                         // Own block: rsx only honours a key on a block's first node, and the
                         // remount on day/reload change drops the per-index segment cache.
-                        {rsx! {
-                            RecordingPlayer { key: "{player_key}", device, segments: chain.clone(), layers, seek, position }
-                        }}
+                        {
+                            rsx! {
+                                RecordingPlayer {
+                                    key: "{player_key}",
+                                    device,
+                                    segments: chain.clone(),
+                                    layers,
+                                    seek,
+                                    position,
+                                }
+                            }
+                        }
                         // Timeline: covered blocks behind a seek slider.
                         div { class: "space-y-1",
                             div { class: "relative h-3 rounded bg-gray-100 overflow-hidden",
@@ -362,7 +393,9 @@ pub(super) fn RecordingsDialog(
                                 }
                             }
                             if truncated {
-                                p { class: "text-xs text-amber-700", {t!("cameras-timeline-truncated")} }
+                                p { class: "text-xs text-amber-700",
+                                    {t!("cameras-timeline-truncated")}
+                                }
                             }
                         }
                     }
@@ -372,20 +405,33 @@ pub(super) fn RecordingsDialog(
         if confirm_delete() {
             ConfirmDialog {
                 title: t!("cameras-delete-day-title"),
-                message: t!("cameras-delete-day-message", camera: cam.device_id.clone(), day: day().format("%Y-%m-%d").to_string()),
+                message: t!(
+                    "cameras-delete-day-message", camera : cam.device_id.clone(), day : day()
+                    .format("%Y-%m-%d").to_string()
+                ),
                 confirm_label: t!("cameras-delete-confirm"),
                 on_confirm: move |_| {
                     confirm_delete.set(false);
                     let done = t!("cameras-deleted").to_string();
                     let failed = t!("cameras-delete-failed").to_string();
                     spawn(async move {
-                        match api::cameras::delete_recordings(device, &rfc3339(day_start), &rfc3339(day_end)).await {
+                        match api::cameras::delete_recordings(
+                                device,
+                                &rfc3339(day_start),
+                                &rfc3339(day_end),
+                            )
+                            .await
+                        {
                             Ok(_) => {
                                 toasts::success(done);
                                 position.set(None);
                                 reload.with_mut(|r| *r += 1);
                             }
-                            Err(err) => toasts::error(format!("{failed} : {}", crate::api::error_i18n::localize(&err))),
+                            Err(err) => {
+                                toasts::error(
+                                    format!("{failed} : {}", crate::api::error_i18n::localize(&err)),
+                                )
+                            }
                         }
                     });
                 },

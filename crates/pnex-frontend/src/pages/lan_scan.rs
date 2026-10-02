@@ -116,7 +116,7 @@ pub(crate) fn LanScanSection() -> Element {
                         }
                     }
                     p { class: "text-xs text-gray-500 text-center",
-                        {t!("scan-progress", done: scanned.to_string(), total: targets.to_string())}
+                        {t!("scan-progress", done : scanned.to_string(), total : targets.to_string())}
                     }
                 }
             }
@@ -155,9 +155,12 @@ fn ScanRow(hit: ScanHit) -> Element {
                     span { class: "text-xs text-green-600", {t!("scan-compatible")} }
                 } else {
                     span { class: "text-xs text-red-500",
-                        {t!("scan-incompatible",
-                            app: CONTRACT.to_string(),
-                            server: info.contract.to_string())}
+                        {
+                            t!(
+                                "scan-incompatible", app : CONTRACT.to_string(), server : info.contract
+                                .to_string()
+                            )
+                        }
                     }
                 }
                 button {

@@ -217,28 +217,31 @@ pub fn FluidMixtures() -> Element {
             can_write: true,
             add_label: Some(t!("mixtures-new").to_string()),
             on_add: move |_| {
-                open_form(&mut editing_id, &mut name, &mut description, &mut basis, &mut rows, &mut error)
+                open_form(
+                    &mut editing_id,
+                    &mut name,
+                    &mut description,
+                    &mut basis,
+                    &mut rows,
+                    &mut error,
+                )
             },
             if editing {
                 // Formulaire création/édition — FormDialog du socle (le
                 // pied cancel/save est le pied standard ; la validation
                 // somme=fractions verrouille le submit via `valid`).
                 FormDialog {
-                    title: if is_edit {
-                        t!("mixtures-edit-title").to_string()
-                    } else {
-                        t!("mixtures-new-title").to_string()
-                    },
+                    title: if is_edit { t!("mixtures-edit-title").to_string() } else { t!("mixtures-new-title").to_string() },
                     submit_label: t!("mixtures-save").to_string(),
                     on_close: move |_| editing_id.set(None),
-                    on_submit: move |_| {
-                        save_mixture(editing_id, name, description, basis, rows, error, reload)
-                    },
+                    on_submit: move |_| { save_mixture(editing_id, name, description, basis, rows, error, reload) },
                     busy: false,
                     valid: sum_ok && !name().trim().is_empty(),
                     div { class: "grid grid-cols-1 md:grid-cols-2 gap-4",
                         div {
-                            label { class: "block text-sm font-medium text-gray-700 mb-1", {t!("mixtures-name")} }
+                            label { class: "block text-sm font-medium text-gray-700 mb-1",
+                                {t!("mixtures-name")}
+                            }
                             input {
                                 class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                                 placeholder: t!("mixtures-name-placeholder"),
@@ -247,7 +250,9 @@ pub fn FluidMixtures() -> Element {
                             }
                         }
                         div {
-                            label { class: "block text-sm font-medium text-gray-700 mb-1", {t!("mixtures-description")} }
+                            label { class: "block text-sm font-medium text-gray-700 mb-1",
+                                {t!("mixtures-description")}
+                            }
                             input {
                                 class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                                 value: "{description}",
@@ -255,28 +260,45 @@ pub fn FluidMixtures() -> Element {
                             }
                         }
                         div {
-                            label { class: "block text-sm font-medium text-gray-700 mb-1", {t!("mixtures-basis")} }
+                            label { class: "block text-sm font-medium text-gray-700 mb-1",
+                                {t!("mixtures-basis")}
+                            }
                             select {
                                 class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
-                                onchange: move |e| basis.set(match e.value().as_str() {
-                                    "mass" => MixtureBasis::Mass,
-                                    _ => MixtureBasis::Mole,
-                                }),
-                                option { value: "mole", selected: basis() == MixtureBasis::Mole, {t!("mixtures-basis-mole")} }
-                                option { value: "mass", selected: basis() == MixtureBasis::Mass, {t!("mixtures-basis-mass")} }
+                                onchange: move |e| {
+                                    basis
+                                        .set(
+                                            match e.value().as_str() {
+                                                "mass" => MixtureBasis::Mass,
+                                                _ => MixtureBasis::Mole,
+                                            },
+                                        )
+                                },
+                                option {
+                                    value: "mole",
+                                    selected: basis() == MixtureBasis::Mole,
+                                    {t!("mixtures-basis-mole")}
+                                }
+                                option {
+                                    value: "mass",
+                                    selected: basis() == MixtureBasis::Mass,
+                                    {t!("mixtures-basis-mass")}
+                                }
                             }
                         }
                         div { class: "flex items-end",
-                            div { class: "text-sm {sum_class}",
-                                "{t!(\"mixtures-sum\")} : {sum:.4}"
-                            }
+                            div { class: "text-sm {sum_class}", "{t!(\"mixtures-sum\")} : {sum:.4}" }
                         }
-                        div { class: "text-sm text-gray-500 md:col-span-2", {t!("mixtures-basis-hint")} }
+                        div { class: "text-sm text-gray-500 md:col-span-2",
+                            {t!("mixtures-basis-hint")}
+                        }
                     }
 
                     div {
                         div { class: "flex items-center justify-between mb-2",
-                            label { class: "block text-sm font-medium text-gray-700", {t!("mixtures-components")} }
+                            label { class: "block text-sm font-medium text-gray-700",
+                                {t!("mixtures-components")}
+                            }
                             button {
                                 class: "px-2 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded",
                                 onclick: move |_| rows.push(("".into(), "".into())),
@@ -289,9 +311,7 @@ pub fn FluidMixtures() -> Element {
                                     rows().into_iter().enumerate().collect();
                                 rsx! {
                                     for item in indexed {
-                                        div {
-                                            key: "{item.0}",
-                                            class: "flex gap-2 items-center",
+                                        div { key: "{item.0}", class: "flex gap-2 items-center",
                                             input {
                                                 class: "flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono",
                                                 placeholder: t!("mixtures-fluid-placeholder"),
@@ -324,7 +344,9 @@ pub fn FluidMixtures() -> Element {
                     }
 
                     if let Some(err) = error() {
-                        div { class: "bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700", {fluid_error_text(&err)} }
+                        div { class: "bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700",
+                            {fluid_error_text(&err)}
+                        }
                     }
                 }
             } else {
@@ -336,29 +358,29 @@ pub fn FluidMixtures() -> Element {
                         value: search,
                         on_submit: move |_| reload.with_mut(|r| *r += 1),
                     }
-                    RefreshButton {
-                        on_click: move |_| reload.with_mut(|r| *r += 1),
-                    }
+                    RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
                 }
 
                 if let Some(err) = error() {
-                    div { class: "bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700 mb-6", {fluid_error_text(&err)} }
+                    div { class: "bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700 mb-6",
+                        {fluid_error_text(&err)}
+                    }
                 }
 
                 ListStates {
                     state: list_state,
-                    is_empty: is_empty,
+                    is_empty,
                     empty_message: t!("mixtures-empty").to_string(),
                     empty_detail: rsx! {
                         p { class: "text-sm text-gray-400 mt-2", {t!("mixtures-empty-hint")} }
                     },
                     div { class: "space-y-4",
                         DataTable {
-                            columns: columns,
+                            columns,
                             rows: mixtures,
                             row_key: RowKey::new(|m: &pnex_core::FluidMixture| m.id.clone()),
                         }
-                        ListPager { count: count, page: page }
+                        ListPager { count, page }
                     }
                 }
             }

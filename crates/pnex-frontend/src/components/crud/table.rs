@@ -106,11 +106,7 @@ pub fn DataTable<T: Clone + PartialEq + 'static>(
                     for (key, row) in keyed_rows.iter().map(|(k, r)| (k.clone(), *r)) {
                         tr {
                             key: "{key}",
-                            class: if row_click.is_some() {
-                                "hover:bg-gray-50 cursor-pointer"
-                            } else {
-                                "hover:bg-gray-50"
-                            },
+                            class: if row_click.is_some() { "hover:bg-gray-50 cursor-pointer" } else { "hover:bg-gray-50" },
                             onclick: move |_| {
                                 if let Some(cb) = row_click.as_ref() {
                                     cb.call(key.clone());

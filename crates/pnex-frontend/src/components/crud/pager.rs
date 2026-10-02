@@ -25,9 +25,9 @@ pub fn ListPager(
 ) -> Element {
     rsx! {
         Pager {
-            count: count,
-            page_size: page_size,
-            page: page,
+            count,
+            page_size,
+            page,
             on_navigate: move |new_page| page.set(new_page),
         }
     }

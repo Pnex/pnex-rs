@@ -129,7 +129,7 @@ fn SecretsRekey(stale: Option<u64>, on_done: EventHandler<()>) -> Element {
             h3 { class: "text-sm font-semibold text-gray-900", {t!("admin-rekey-title")} }
             p { class: "text-xs text-gray-500", {t!("admin-rekey-help")} }
             if let Some(n) = stale {
-                p { class: "text-sm text-gray-700", {t!("admin-rekey-stale", count: n)} }
+                p { class: "text-sm text-gray-700", {t!("admin-rekey-stale", count : n)} }
             }
             div { class: "flex gap-2",
                 if confirming() {
@@ -141,15 +141,15 @@ fn SecretsRekey(stale: Option<u64>, on_done: EventHandler<()>) -> Element {
                             busy.set(true);
                             spawn(async move {
                                 match api::system::rekey_secrets().await {
-                                    Ok(r) => toasts::success(
-                                        t!(
-                                            "admin-rekey-done",
-                                            rewritten: r.rewritten,
-                                            unreadable: r.unreadable,
-                                            remaining: r.remaining
+                                    Ok(r) => {
+                                        toasts::success(
+                                            t!(
+                                                "admin-rekey-done", rewritten : r.rewritten, unreadable : r
+                                                .unreadable, remaining : r.remaining
+                                            )
+                                                .to_string(),
                                         )
-                                        .to_string(),
-                                    ),
+                                    }
                                     Err(err) => toasts::error(err),
                                 }
                                 busy.set(false);
@@ -256,10 +256,12 @@ fn ComponentCard(comp: ComponentStatus) -> Element {
                 }
             }
             if let Some(ms) = comp.latency_ms {
-                p { class: "text-xs text-gray-500", {t!("admin-status-latency", ms: ms)} }
+                p { class: "text-xs text-gray-500", {t!("admin-status-latency", ms : ms)} }
             }
             if let Some(detail) = comp.detail.clone() {
-                p { class: "text-xs text-gray-600 bg-gray-50 rounded p-2 font-mono break-all", {detail} }
+                p { class: "text-xs text-gray-600 bg-gray-50 rounded p-2 font-mono break-all",
+                    {detail}
+                }
             }
             dl { class: "space-y-2",
                 for (i, m) in comp.metrics.iter().cloned().enumerate() {
@@ -293,7 +295,9 @@ fn MetricRow(metric: StatusMetric) -> Element {
                 dt { class: "text-gray-500",
                     {label}
                     if let Some(qualifier) = metric.label.clone() {
-                        span { class: "ml-1 text-gray-400 font-mono text-xs break-all", "({qualifier})" }
+                        span { class: "ml-1 text-gray-400 font-mono text-xs break-all",
+                            "({qualifier})"
+                        }
                     }
                 }
                 dd { class: "text-gray-900 font-medium text-right", {value} }
@@ -479,9 +483,11 @@ fn OrgRow(row: OrgSystemRow, on_saved: Callback<()>) -> Element {
     rsx! {
         tr { class: "border-b last:border-0",
             td { class: "py-2 pr-4 font-medium text-gray-900", {row.name.clone()} }
-            td { class: "py-2 pr-4 text-gray-600", {row.tier_name.clone().unwrap_or_else(|| "—".into())} }
+            td { class: "py-2 pr-4 text-gray-600",
+                {row.tier_name.clone().unwrap_or_else(|| "—".into())}
+            }
             td { class: "py-2 pr-4 text-gray-900",
-                {t!("system-days-short", count: row.retention_days)}
+                {t!("system-days-short", count : row.retention_days)}
                 span { class: "ml-2 text-xs text-gray-500", "({source})" }
             }
             td { class: "py-2 pr-4",
@@ -515,7 +521,7 @@ fn OrgRow(row: OrgSystemRow, on_saved: Callback<()>) -> Element {
             td { class: if over { "py-2 pr-4 text-red-700 font-medium" } else { "py-2 pr-4 text-gray-600" },
                 {usage}
                 if let Some(n) = row.stream_count {
-                    span { class: "ml-2 text-xs text-gray-400", {t!("admin-orgs-streams", count: n)} }
+                    span { class: "ml-2 text-xs text-gray-400", {t!("admin-orgs-streams", count : n)} }
                 }
             }
         }

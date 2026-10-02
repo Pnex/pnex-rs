@@ -92,7 +92,7 @@ pub fn Login() -> Element {
                         // le refus propre (porte de compatibilité) s'appuie
                         // sur une identification claire des deux côtés.
                         p { class: "pt-3 text-center text-xs text-gray-400",
-                            {t!("login-app-version", version: crate::version::APP_VERSION)}
+                            {t!("login-app-version", version : crate ::version::APP_VERSION)}
                         }
                     }
                 }

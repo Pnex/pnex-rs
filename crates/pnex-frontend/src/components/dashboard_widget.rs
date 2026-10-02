@@ -45,7 +45,9 @@ pub fn WidgetBody(
 
     // Symbols draw their own caption (under the drawing, not a card header).
     if w.widget_type == "symbol" {
-        return rsx! { symbol_body { widget: widget.clone(), last: last, decimals: decimals } };
+        return rsx! {
+            symbol_body { widget: widget.clone(), last, decimals }
+        };
     }
 
     rsx! {
@@ -61,13 +63,27 @@ pub fn WidgetBody(
             }
             // Corps par type.
             match w.widget_type.as_str() {
-                "gauge" => rsx! { gauge_body { widget: widget.clone(), last: last, decimals: decimals } },
-                "stat" => rsx! { stat_body { widget: widget.clone(), last: last, decimals: decimals } },
-                "line" => rsx! { line_body { widget: widget.clone(), points: points } },
-                "indicator" => rsx! { indicator_body { widget: widget.clone(), last: last, decimals: decimals } },
-                "text" => rsx! { text_body { widget: widget.clone() } },
-                "thermo_chart" => rsx! { ThermoChart { widget: widget.clone(), values: values } },
-                _ => rsx! { p { class: "p-2 text-xs text-gray-400", "{w.widget_type}" } },
+                "gauge" => rsx! {
+                    gauge_body { widget: widget.clone(), last, decimals }
+                },
+                "stat" => rsx! {
+                    stat_body { widget: widget.clone(), last, decimals }
+                },
+                "line" => rsx! {
+                    line_body { widget: widget.clone(), points }
+                },
+                "indicator" => rsx! {
+                    indicator_body { widget: widget.clone(), last, decimals }
+                },
+                "text" => rsx! {
+                    text_body { widget: widget.clone() }
+                },
+                "thermo_chart" => rsx! {
+                    ThermoChart { widget: widget.clone(), values }
+                },
+                _ => rsx! {
+                    p { class: "p-2 text-xs text-gray-400", "{w.widget_type}" }
+                },
             }
         }
     }
@@ -108,25 +124,53 @@ fn gauge_body(widget: Widget, last: Option<TelemetryPoint>, decimals: u8) -> Ele
                 view_box: "0 0 200 140",
                 class: "h-full w-full",
                 xmlns: "http://www.w3.org/2000/svg",
-                path { d: "{background}", fill: "none", stroke: "{GRAY}", "stroke-width": "10",
-                    "stroke-linecap": "round" }
+                path {
+                    d: "{background}",
+                    fill: "none",
+                    stroke: "{GRAY}",
+                    "stroke-width": "10",
+                    "stroke-linecap": "round",
+                }
                 if !arc.is_empty() {
-                    path { d: "{arc}", fill: "none", stroke: "{value_color}", "stroke-width": "10",
-                        "stroke-linecap": "round" }
+                    path {
+                        d: "{arc}",
+                        fill: "none",
+                        stroke: "{value_color}",
+                        "stroke-width": "10",
+                        "stroke-linecap": "round",
+                    }
                 }
                 if let Some((nx, ny)) = needle {
-                    line { x1: "{cx}", y1: "{cy}", x2: "{nx}", y2: "{ny}",
-                        stroke: "{TEXT_MUTED}", "stroke-width": "2" }
-                    circle { cx: "{cx}", cy: "{cy}", r: "3", fill: "{TEXT_MUTED}" }
+                    line {
+                        x1: "{cx}",
+                        y1: "{cy}",
+                        x2: "{nx}",
+                        y2: "{ny}",
+                        stroke: "{TEXT_MUTED}",
+                        "stroke-width": "2",
+                    }
+                    circle {
+                        cx: "{cx}",
+                        cy: "{cy}",
+                        r: "3",
+                        fill: "{TEXT_MUTED}",
+                    }
                 }
-                text { x: "100", y: "128", "text-anchor": "middle",
-                    style: "font-size: 20px; font-weight: 600", fill: "#111827",
+                text {
+                    x: "100",
+                    y: "128",
+                    "text-anchor": "middle",
+                    style: "font-size: 20px; font-weight: 600",
+                    fill: "#111827",
                     "{label}"
                     // Unité portée par la valeur (le corps, pas seulement
                     // l'en-tête : sans titre, l'en-tête n'existe pas).
                     if let Some(unit) = &w.options.unit {
-                        tspan { style: "font-size: 11px; font-weight: 400",
-                            fill: "{TEXT_MUTED}", " {unit}" }
+                        tspan {
+                            style: "font-size: 11px; font-weight: 400",
+                            fill: "{TEXT_MUTED}",
+                            " {unit}"
+                        }
                     }
                 }
             }
@@ -147,7 +191,11 @@ fn stat_body(widget: Widget, last: Option<TelemetryPoint>, decimals: u8) -> Elem
         .unwrap_or_else(|| "—".into());
     rsx! {
         div { class: "flex flex-1 flex-col items-center justify-center gap-1 px-2",
-            span { class: "text-3xl font-semibold leading-none", style: "color: {value_color}", "{label}" }
+            span {
+                class: "text-3xl font-semibold leading-none",
+                style: "color: {value_color}",
+                "{label}"
+            }
             if let Some(unit) = &w.options.unit {
                 span { class: "text-xs text-gray-400", "{unit}" }
             }
@@ -203,8 +251,14 @@ fn line_body(widget: Widget, points: Option<Vec<TelemetryPoint>>) -> Element {
                 view_box: "0 0 {w} {h}",
                 class: "h-full w-full",
                 xmlns: "http://www.w3.org/2000/svg",
-                polyline { points: "{path}", fill: "none", stroke: "{ACCENT}",
-                    "stroke-width": "2", "stroke-linejoin": "round", "stroke-linecap": "round" }
+                polyline {
+                    points: "{path}",
+                    fill: "none",
+                    stroke: "{ACCENT}",
+                    "stroke-width": "2",
+                    "stroke-linejoin": "round",
+                    "stroke-linecap": "round",
+                }
             }
         }
     }
@@ -234,7 +288,10 @@ fn indicator_body(widget: Widget, last: Option<TelemetryPoint>, decimals: u8) ->
     };
     rsx! {
         div { class: "flex flex-1 items-center justify-center gap-3 px-2",
-            span { class: "h-5 w-5 rounded-full", style: "background-color: {color}; box-shadow: 0 0 8px {color}" }
+            span {
+                class: "h-5 w-5 rounded-full",
+                style: "background-color: {color}; box-shadow: 0 0 8px {color}",
+            }
             span { class: "text-lg font-medium text-gray-800", "{state_label}" }
             if let Some(unit) = &w.options.unit {
                 span { class: "text-xs text-gray-400", "{unit}" }
@@ -285,10 +342,14 @@ fn symbol_body(widget: Widget, last: Option<TelemetryPoint>, decimals: u8) -> El
             if has_title || value.is_some() {
                 div { class: "flex max-w-full items-baseline gap-1 px-1 leading-tight",
                     if has_title {
-                        span { class: "truncate text-[11px] font-medium text-gray-700", "{w.title}" }
+                        span { class: "truncate text-[11px] font-medium text-gray-700",
+                            "{w.title}"
+                        }
                     }
                     if let Some(v) = value {
-                        span { class: "shrink-0 text-[11px] font-semibold text-teal-700", "{v}" }
+                        span { class: "shrink-0 text-[11px] font-semibold text-teal-700",
+                            "{v}"
+                        }
                     }
                 }
             }
@@ -302,7 +363,11 @@ fn text_body(widget: Widget) -> Element {
     let content = w.options.text.clone().unwrap_or_default();
     rsx! {
         div { class: "flex flex-1 items-center justify-center px-3 py-2",
-            p { class: "w-full text-center text-sm text-gray-700", style: "white-space: pre-wrap", "{content}" }
+            p {
+                class: "w-full text-center text-sm text-gray-700",
+                style: "white-space: pre-wrap",
+                "{content}"
+            }
         }
     }
 }

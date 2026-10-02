@@ -55,10 +55,14 @@ pub(super) fn save(mut cx: EditorCx, name: Option<String>) {
 #[component]
 pub(super) fn ConflictModal(mut cx: EditorCx, on_changed: EventHandler<()>) -> Element {
     rsx! {
-        Modal { title: t!("db-conflict-title").to_string(), max_width: "max-w-lg".to_string(),
+        Modal {
+            title: t!("db-conflict-title").to_string(),
+            max_width: "max-w-lg".to_string(),
             on_close: move |_| cx.conflict.set(false),
             div { class: "space-y-4",
-                p { class: "text-sm text-gray-600", {t!("db-conflict-body", server: cx.saved_version.cloned())} }
+                p { class: "text-sm text-gray-600",
+                    {t!("db-conflict-body", server : cx.saved_version.cloned())}
+                }
                 div { class: "flex justify-end gap-2",
                     button {
                         class: "px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
@@ -102,7 +106,10 @@ pub(super) fn ConflictModal(mut cx: EditorCx, on_changed: EventHandler<()>) -> E
                                                 cx.saved_layout.set(saved.layout.clone());
                                                 cx.layout.set(saved.layout);
                                                 cx.saved_version.set(saved.current_version_number);
-                                                toasts::success(t!("db-saved", version: saved.current_version_number).to_string());
+                                                toasts::success(
+                                                    t!("db-saved", version : saved.current_version_number)
+                                                        .to_string(),
+                                                );
                                             }
                                             Err(e) => toasts::error(e),
                                         }
@@ -128,11 +135,15 @@ pub(super) fn SaveAsTemplate(mut cx: EditorCx, widget_id: String) -> Element {
     let mut name = use_signal(String::new);
     let mut busy = use_signal(|| false);
     rsx! {
-        Modal { title: t!("lib-save-as").to_string(), max_width: "max-w-md".to_string(),
+        Modal {
+            title: t!("lib-save-as").to_string(),
+            max_width: "max-w-md".to_string(),
             on_close: move |_| cx.save_as.set(None),
             div { class: "space-y-4",
                 div {
-                    label { class: "block text-xs font-medium text-gray-500 uppercase mb-1", {t!("lib-template-name")} }
+                    label { class: "block text-xs font-medium text-gray-500 uppercase mb-1",
+                        {t!("lib-template-name")}
+                    }
                     input {
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         value: "{name}",

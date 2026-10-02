@@ -175,7 +175,8 @@ pub fn ResourcePicker(
                         (PickerTab::Tour, "poi-picker-tab-tour"),
                         (PickerTab::Dashboard, "poi-picker-tab-dashboard"),
                         (PickerTab::Device, "poi-picker-tab-device"),
-                    ] {
+                    ]
+                    {
                         button {
                             key: "{tab_def.1}",
                             class: if tab() == tab_def.0 { "px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 rounded-full" } else { "px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-full transition-colors" },
@@ -206,9 +207,7 @@ pub fn ResourcePicker(
                 }
                 match &*list.value().read() {
                     Some(Ok(result)) if result.rows.is_empty() => rsx! {
-                        p { class: "text-sm text-gray-400 text-center py-6",
-                            {t!("poi-picker-empty")}
-                        }
+                        p { class: "text-sm text-gray-400 text-center py-6", {t!("poi-picker-empty")} }
                     },
                     Some(Ok(result)) => rsx! {
                         ul { class: "divide-y divide-gray-100 max-h-80 overflow-y-auto",
@@ -221,21 +220,29 @@ pub fn ResourcePicker(
                                             // (la ligne est rendue sous
                                             // l'onglet actif).
                                             let pick = match tab() {
-                                                PickerTab::Media => ResourcePick::MediaAsset {
-                                                    id: row.id.clone(),
-                                                    name: row.name.clone(),
-                                                },
-                                                PickerTab::Tour => ResourcePick::Tour {
-                                                    id: row.id.clone(),
-                                                    name: row.name.clone(),
-                                                },
-                                                PickerTab::Dashboard => ResourcePick::Dashboard {
-                                                    id: row.id.clone(),
-                                                    name: row.name.clone(),
-                                                },
-                                                PickerTab::Device => ResourcePick::Device {
-                                                    slug: row.id.clone(),
-                                                },
+                                                PickerTab::Media => {
+                                                    ResourcePick::MediaAsset {
+                                                        id: row.id.clone(),
+                                                        name: row.name.clone(),
+                                                    }
+                                                }
+                                                PickerTab::Tour => {
+                                                    ResourcePick::Tour {
+                                                        id: row.id.clone(),
+                                                        name: row.name.clone(),
+                                                    }
+                                                }
+                                                PickerTab::Dashboard => {
+                                                    ResourcePick::Dashboard {
+                                                        id: row.id.clone(),
+                                                        name: row.name.clone(),
+                                                    }
+                                                }
+                                                PickerTab::Device => {
+                                                    ResourcePick::Device {
+                                                        slug: row.id.clone(),
+                                                    }
+                                                }
                                             };
                                             on_picked.call(pick);
                                         },
@@ -248,7 +255,7 @@ pub fn ResourcePicker(
                         Pager {
                             count: result.count,
                             page_size: PAGE_SIZE,
-                            page: page,
+                            page,
                             on_navigate: move |new_page| page.set(new_page),
                         }
                     },

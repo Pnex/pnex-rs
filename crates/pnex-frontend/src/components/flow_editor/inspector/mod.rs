@@ -43,10 +43,13 @@ pub(crate) fn InspectorBody(mut cx: EditorCx, can_write: bool, flow_id: i64) -> 
                     r#type: "text",
                     value: "{node.name.clone().unwrap_or_default()}",
                     disabled: !can_write,
-                    oninput: move |event| patch_selected(&mut cx, move |node: &mut FlowNode| {
-                        let value = event.value();
-                        node.name = if value.trim().is_empty() { None } else { Some(value) };
-                    }),
+                    oninput: move |event| patch_selected(
+                        &mut cx,
+                        move |node: &mut FlowNode| {
+                            let value = event.value();
+                            node.name = if value.trim().is_empty() { None } else { Some(value) };
+                        },
+                    ),
                 }
             }
             {kind_form(&node, cx, can_write, flow_id)}
@@ -96,7 +99,12 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
             DeviceReadForm { cx, initial: config.clone(), can_write }
         },
         FlowNodeKind::DeviceWrite { config } => rsx! {
-            DeviceWriteForm { cx, initial: config.clone(), can_write, flow_id }
+            DeviceWriteForm {
+                cx,
+                initial: config.clone(),
+                can_write,
+                flow_id,
+            }
         },
         FlowNodeKind::Calc { config } => rsx! {
             CalcForm { cx, initial: config.clone(), can_write }
@@ -105,7 +113,12 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
             ValueForm { cx, initial: config.clone(), can_write }
         },
         FlowNodeKind::Metric { config } => rsx! {
-            MetricForm { cx, initial: config.clone(), can_write, flow_id }
+            MetricForm {
+                cx,
+                initial: config.clone(),
+                can_write,
+                flow_id,
+            }
         },
         FlowNodeKind::CoolProp { config } => rsx! {
             CoolPropForm { cx, initial: config.clone(), can_write }
@@ -163,13 +176,30 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
             DisplayForm { can_write }
         },
         FlowNodeKind::RegTtHeat { config } => rsx! {
-            RegTtForm { cx, initial: config.clone(), can_write, heat: true, flow_id }
+            RegTtForm {
+                cx,
+                initial: config.clone(),
+                can_write,
+                heat: true,
+                flow_id,
+            }
         },
         FlowNodeKind::RegTtCool { config } => rsx! {
-            RegTtForm { cx, initial: config.clone(), can_write, heat: false, flow_id }
+            RegTtForm {
+                cx,
+                initial: config.clone(),
+                can_write,
+                heat: false,
+                flow_id,
+            }
         },
         FlowNodeKind::RegPid { config } => rsx! {
-            RegPidForm { cx, initial: config.clone(), can_write, flow_id }
+            RegPidForm {
+                cx,
+                initial: config.clone(),
+                can_write,
+                flow_id,
+            }
         },
         FlowNodeKind::Red { type_name, config } => rsx! {
             RedForm {
