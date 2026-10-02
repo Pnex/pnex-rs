@@ -66,9 +66,12 @@ RUN cd firmware && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256su
 FROM toolchain AS web
 # One cargo registry/git cache per stage: web and every TARGETARCH build run
 # in parallel, and a shared mount races on crate unpacking ("File exists").
+# dx downloads its tools (wasm-opt…) from GitHub into its data dir on first
+# use: cached, so a flaky download cannot fail every image build.
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pnex-cargo-registry-web \
     --mount=type=cache,target=/usr/local/cargo/git,id=pnex-cargo-git-web \
     --mount=type=cache,target=/src/target,id=pnex-target-web \
+    --mount=type=cache,target=/root/.local/share/dioxus,id=pnex-dx-tools \
     set -eux; \
     rm -rf target/dx/pnex-frontend/release/web/public; \
     (cd crates/pnex-frontend && dx build --platform web --release); \
