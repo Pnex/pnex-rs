@@ -169,7 +169,7 @@ fn js_infra_diag(e: impl std::fmt::Display) -> FunctionDiagnostic {
     FunctionDiagnostic {
         line: None,
         col: None,
-        message: format!("exécution JS : {e}"),
+        message: format!("JS execution: {e}"),
     }
 }
 
