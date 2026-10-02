@@ -94,7 +94,10 @@ Rules:
 | `media` | `@media` | photo upload (browser-rendered PNG), delete |
 | `profile-data` | `@profile @mixtures` | language preference switch, CoolProp mixture |
 | `firmware-ide` | `@firmware` | starter sketch compiles on the builder, a broken revision reports its error |
-| `hardware` | `@hardware` | real boards, in order: C3 register/build/flash/online, pins, telemetry + quick charts, custom firmware (then generic restored), ESP32-CAM register + live view + flash LED |
+| `flow-alert` | `@flows @notifications` | Starlark threshold function → Notification node → email in mailcrab |
+| `edge-refs` | `@edge` | Wi-Fi referential, its password stored as a vault secret |
+| `a11y` (own project) | `@a11y` | axe-core report per route — `task e2e -- --project=a11y` (`PNEX_E2E_A11Y_STRICT=1` to fail) |
+| `hardware` | `@hardware` | real boards, in order: C3 register/build/flash/online, pins, telemetry + quick charts, rebuild + OTA, custom firmware (then generic restored), ESP32-CAM register + live view + flash LED |
 
 ## Captures
 
