@@ -27,6 +27,7 @@ pub(super) fn FirmwarePickBlock(soc: String, mut firmware_pick: Signal<Option<i6
             p { class: "text-xs text-gray-400 mb-2", {t!("wizard-firmware-help")} }
             select {
                 class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                aria_label: t!("wizard-firmware"),
                 value: "{current}",
                 onchange: move |event| firmware_pick.set(event.value().parse::<i64>().ok()),
                 option { value: "", selected: current.is_empty(), {t!("wizard-firmware-generic")} }
