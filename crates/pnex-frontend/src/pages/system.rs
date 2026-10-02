@@ -643,6 +643,9 @@ fn DeleteRangeDialog(name: String, on_done: Callback<()>, on_cancel: Callback<()
             onclick: move |_| on_cancel.call(()),
             div {
                 class: "bg-white rounded-lg shadow-xl max-w-md w-full p-6 space-y-4",
+                role: "dialog",
+                aria_modal: "true",
+                aria_label: t!("system-delete-range-title", name : name.clone()),
                 onclick: move |e| e.stop_propagation(),
                 h3 { class: "text-lg font-semibold text-gray-900",
                     {t!("system-delete-range-title", name : name.clone())}
@@ -706,6 +709,9 @@ fn PurgeDialog(on_done: Callback<()>, on_cancel: Callback<()>) -> Element {
             onclick: move |_| on_cancel.call(()),
             div {
                 class: "bg-white rounded-lg shadow-xl max-w-md w-full p-6 space-y-4",
+                role: "alertdialog",
+                aria_modal: "true",
+                aria_label: t!("system-purge-title"),
                 onclick: move |e| e.stop_propagation(),
                 h3 { class: "text-lg font-semibold text-red-700", {t!("system-purge-title")} }
                 p { class: "text-sm text-gray-600",
