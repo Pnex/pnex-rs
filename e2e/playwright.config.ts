@@ -38,6 +38,7 @@ export default defineConfig({
   projects: [
     {
       name: 'en',
+      grepInvert: /@a11y/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1600, height: 1000 }, locale: 'en-US' },
     },
     {
@@ -45,6 +46,12 @@ export default defineConfig({
       name: 'fr',
       grep: /@i18n/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1600, height: 1000 }, locale: 'fr-FR' },
+    },
+    {
+      // Accessibility report, only when asked: `task e2e -- --project=a11y`.
+      name: 'a11y',
+      grep: /@a11y/,
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1600, height: 1000 }, locale: 'en-US' },
     },
   ],
 });
