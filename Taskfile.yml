@@ -613,6 +613,35 @@ tasks:
       - graphify cluster-only . --no-viz
       - rm graphify-out/graph.prev.json
 
+  # ---------- End-to-end UI tests (e2e/, Playwright) ----------
+  # Run against a live stack (task app:up, or task dev). Extra Playwright
+  # flags after `--`, e.g. `task e2e -- --grep @flows --headed`.
+
+  e2e:install:
+    desc: Install the e2e suite dependencies and its Chromium build
+    dir: e2e
+    cmds:
+      - bun install --frozen-lockfile
+      - bunx playwright install chromium
+
+  e2e:
+    desc: Run the end-to-end UI suite against the running stack (e2e/README.md)
+    dir: e2e
+    cmds:
+      - bunx playwright test {{.CLI_ARGS}}
+
+  e2e:smoke:
+    desc: Every route renders, both locales (fast sanity pass)
+    dir: e2e
+    cmds:
+      - bunx playwright test --grep @smoke {{.CLI_ARGS}}
+
+  e2e:hardware:
+    desc: Tests needing boards on serial ports (PNEX_E2E_C3_PORT / PNEX_E2E_CAM_PORT, see e2e/README.md)
+    dir: e2e
+    cmds:
+      - bunx playwright test --grep @hardware --workers=1 {{.CLI_ARGS}}
+
   lint:
     desc: Clippy sur tout le workspace
     deps: [css:ensure]

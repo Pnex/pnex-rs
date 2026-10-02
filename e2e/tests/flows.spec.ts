@@ -29,7 +29,7 @@ test.describe('flows', { tag: '@flows' }, () => {
     await editor.move(app.t('flows-palette-value'), 320, 120);
 
     await editor.addNode('flows-palette-memory-write');
-    await editor.inspector.getByRole('textbox', { name: new RegExp(`^${app.t('flows-memory-key')}\b`) }).fill(key);
+    await editor.inspector.getByRole('textbox', { name: new RegExp(`^${app.t('flows-memory-key')}\\b`) }).fill(key);
     await editor.move(app.t('flows-palette-memory-write'), 600, 120);
     await editor.closeInspector();
 

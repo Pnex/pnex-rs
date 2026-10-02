@@ -26,12 +26,12 @@ test.describe('functions', { tag: '@functions' }, () => {
     expect(created).toMatchObject({ language: 'starlark', current_version_number: 1 });
 
     const high = await editor.testRun({ value: 25, threshold: 20 });
-    expect(high).toEqual({ ok: true, outputs: { alarm: 'true' } });
+    expect(high).toEqual({ ok: true, outputs: { alarm: { payload: true } } });
     await capture('function-test-run', { caption: 'Live test: 25 above the threshold raises the alarm' });
     await editor.closeTest();
 
     const low = await editor.testRun({ value: 5, threshold: 20 });
-    expect(low.outputs.alarm).toBe('false');
+    expect(low.outputs.alarm).toEqual({ payload: false });
     await editor.closeTest();
 
     // New version: inclusive comparison.
@@ -41,7 +41,7 @@ test.describe('functions', { tag: '@functions' }, () => {
     await expect.poll(async () => (await api.get<FunctionRow>(`/functions/${created.id}`)).current_version_number).toBe(2);
 
     const edge = await editor.testRun({ value: 20, threshold: 20 });
-    expect(edge.outputs.alarm).toBe('true');
+    expect(edge.outputs.alarm).toEqual({ payload: true });
     await editor.closeTest();
 
     await fns.open();
@@ -58,6 +58,6 @@ test.describe('functions', { tag: '@functions' }, () => {
     );
     const res = await editor.testRun({ value: 1 });
     expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/undefined|TypeError|cannot read/i);
+    expect(res.error).toMatch(/^JS execution: TypeError/);
   });
 });
