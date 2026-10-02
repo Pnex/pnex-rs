@@ -385,6 +385,7 @@ pins-apply-mode = Apply mode
 pins-write-high = Write HIGH
 pins-write-low = Write LOW
 pins-reserved-by-flow = Write reserved by flow “{ $flow }” (deployed)
+pins-read-interval = Read interval
 pins-subscribe-off = Manual read
 pins-subscribe-1s = Read every 1 s
 pins-subscribe-5s = Read every 5 s

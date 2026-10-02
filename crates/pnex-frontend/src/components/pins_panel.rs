@@ -183,6 +183,7 @@ pub(crate) fn PinCard(
                         label { class: "text-xs font-medium text-gray-500", {t!("pins-mode")} }
                         select {
                             class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
+                            aria_label: t!("pins-mode"),
                             value: "{mode_sel}",
                             disabled: busy() || !connected,
                             onchange: move |e| mode_sel.set(e.value()),
@@ -200,6 +201,7 @@ pub(crate) fn PinCard(
                         label { class: "text-xs font-medium text-gray-500", {t!("pins-safe-state")} }
                         select {
                             class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
+                            aria_label: t!("pins-safe-state"),
                             value: "{safe_sel}",
                             disabled: busy() || !connected,
                             onchange: move |e| safe_sel.set(e.value()),
@@ -299,6 +301,7 @@ pub(crate) fn PinCard(
                 if !is_output && can_write {
                     select {
                         class: "px-2 py-1.5 border border-gray-300 rounded-lg text-xs",
+                        aria_label: t!("pins-read-interval"),
                         value: "{interval_sel}",
                         disabled: busy() || !connected,
                         onchange: move |e| interval_sel.set(e.value()),
