@@ -5,6 +5,7 @@ import { expect, test } from '../src/fixtures.ts';
 import type { Api } from '../src/api.ts';
 import { BOARDS, missingHardware } from '../src/hardware.ts';
 import { DevicesPage } from '../src/pages/devices.ts';
+import { fieldAfterLabel } from '../src/pages/shell.ts';
 
 interface PinRow {
   gpio: number;
@@ -69,5 +70,52 @@ test.describe('hardware pins', { tag: '@hardware' }, () => {
     const reset = await devices.openPin(OUT_GPIO);
     await reset.setMode('digital_in');
     await expect.poll(async () => (await pin(api, pk!, OUT_GPIO))?.mode, { timeout: 30_000 }).toBe('digital_in');
+  });
+
+  test('c3: subscribed analog input reaches the telemetry store and quick charts', async ({ app, api, page, capture }) => {
+    const missing = missingHardware(board);
+    test.skip(!!missing, missing);
+    const pk = await devicePk(api);
+    test.skip(pk == null, `${board.deviceId} not online (run the hardware registration first)`);
+    test.setTimeout(5 * 60_000);
+
+    const devices = new DevicesPage(app);
+    await devices.open();
+    await devices.openDetail(board.deviceId);
+    const adc = await devices.openPin(ADC_GPIO);
+    await adc.setMode('analog_in');
+    await expect.poll(async () => (await pin(api, pk!, ADC_GPIO))?.mode, { timeout: 30_000 }).toBe('analog_in');
+    await adc.subscribe(1000);
+    const since = Date.now() / 1000;
+
+    // Telemetry is batched to the store: wait for a point newer than the
+    // subscription (5 min window, buckets of a few seconds).
+    const metric = 'd0';
+    await expect
+      .poll(
+        async () => {
+          const res = await api.get<{ points: { ts: number }[] }>(`/telemetry/series?metric=${metric}&device_id=${board.deviceId}&window=5m`);
+          return res.points.filter((p) => p.ts >= since - 10).length;
+        },
+        { timeout: 3 * 60_000, intervals: [10_000], message: `${metric} points since the subscription` },
+      )
+      .toBeGreaterThan(0);
+
+    // Quick charts: pick the series, add it, a curve is drawn.
+    await app.goto('/visualisation');
+    const main = page.getByRole('main');
+    await fieldAfterLabel(main, app.t('vis-metric')).selectOption(metric);
+    await fieldAfterLabel(main, app.t('vis-device')).selectOption(board.deviceId);
+    await main.getByRole('button', { name: app.t('vis-add'), exact: true }).click();
+    await expect(main.getByText(app.t('vis-empty'))).toHaveCount(0);
+    await expect(main.getByText(app.t('vis-no-points'))).toHaveCount(0);
+    await expect(main.locator('svg path, canvas').first()).toBeVisible();
+    await capture('quick-charts', { caption: 'Live analog input in quick charts' });
+
+    await adc.root.page().goto('/devices');
+    await devices.openDetail(board.deviceId);
+    const reset = await devices.openPin(ADC_GPIO);
+    await reset.subscribe(0);
+    await reset.setMode('digital_in');
   });
 });
