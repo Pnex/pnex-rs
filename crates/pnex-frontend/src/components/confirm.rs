@@ -18,8 +18,11 @@ pub fn ConfirmDialog(
             onclick: move |_| on_cancel.call(()),
             div {
                 class: "bg-white rounded-lg shadow-xl max-w-md w-full p-6 space-y-4",
+                role: "alertdialog",
+                aria_modal: "true",
+                aria_label: "{title}",
                 onclick: move |event| event.stop_propagation(),
-                h3 { class: "text-lg font-semibold text-gray-900", {title} }
+                h3 { class: "text-lg font-semibold text-gray-900", "{title}" }
                 p { class: "text-sm text-gray-600", {message} }
                 div { class: "flex justify-end space-x-3 pt-2",
                     button {
