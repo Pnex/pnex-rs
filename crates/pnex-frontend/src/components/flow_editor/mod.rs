@@ -382,6 +382,7 @@ pub fn FlowEditor(
             return;
         }
         saving.set(true);
+        let renamed = name.is_some();
         let params = UpdateFlow {
             expected_version_number: saved_version(),
             graph: graph(),
@@ -403,6 +404,10 @@ pub fn FlowEditor(
                     // masque l'encart, la condition de rendu porte sur dirty).
                     if flow.status == "deployed" {
                         propose_deploy.set(Some(flow.latest_version_number));
+                    }
+                    // The header title comes from the detail resource.
+                    if renamed {
+                        reload_meta.with_mut(|r| *r += 1);
                     }
                     on_changed.call(());
                 }
