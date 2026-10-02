@@ -108,6 +108,10 @@ With `PNEX_E2E_CAPTURE_DIR=<dir>`, every `capture()` call writes
  "tags":["@functions"],"at":"…"}
 ```
 
+For publishable shots, name things nicely and keep one worker:
+`PNEX_E2E_PREFIX=Demo PNEX_E2E_ORG=Demo PNEX_E2E_WORKERS=1` (resources become
+"Demo threshold", "Demo tank"…).
+
 Captures hide the AI assistant button and toasts, and blur anything marked
 `data-doc-mask` / `.doc-mask` (`maskText(page, secrets)` marks elements by
 content). Run with `PNEX_E2E_DPR=2` for crisp images.
