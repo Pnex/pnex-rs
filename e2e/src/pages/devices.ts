@@ -72,4 +72,40 @@ export class DevicesPage {
   async openDetail(deviceId: string): Promise<void> {
     await this.row(deviceId).getByRole('button', { name: this.app.t('devices-detail') }).click();
   }
+
+  /** Pin drawer of the detail page, opened by clicking the GPIO chip. */
+  async openPin(gpio: number): Promise<PinDrawer> {
+    const chip = this.page.getByText(`GPIO${gpio}`, { exact: true }).first();
+    await chip.waitFor();
+    await chip.click();
+    const drawer = this.page.getByRole('complementary').filter({ hasText: `GPIO${gpio}` }).last();
+    await expect(drawer.getByRole('combobox', { name: this.app.t('pins-mode') }).or(drawer.getByRole('combobox', { name: this.app.t('pins-read-interval') })).first()).toBeVisible();
+    return new PinDrawer(this.app, drawer);
+  }
+}
+
+export class PinDrawer {
+  constructor(
+    readonly app: AppShell,
+    readonly root: Locator,
+  ) {}
+
+  async setMode(mode: 'digital_in' | 'digital_out' | 'pwm_out' | 'analog_in'): Promise<void> {
+    await this.root.getByRole('combobox', { name: this.app.t('pins-mode') }).selectOption(mode);
+    await this.root.getByRole('button', { name: this.app.t('pins-apply-mode'), exact: true }).click();
+  }
+
+  async write(level: 'high' | 'low'): Promise<void> {
+    await this.root.getByRole('button', { name: this.app.t(`pins-write-${level}`), exact: true }).click();
+  }
+
+  /** Periodic read: 0 (manual), 1000, 5000, 15000 or 60000 ms. */
+  async subscribe(intervalMs: 0 | 1000 | 5000 | 15000 | 60000): Promise<void> {
+    await this.root.getByRole('combobox', { name: this.app.t('pins-read-interval') }).selectOption(String(intervalMs));
+    await this.root.getByRole('button', { name: this.app.t('pins-apply'), exact: true }).click();
+  }
+
+  async close(): Promise<void> {
+    await this.root.getByRole('button', { name: this.app.t('board-drawer-close') }).first().click();
+  }
 }
