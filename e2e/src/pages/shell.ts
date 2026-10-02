@@ -66,3 +66,15 @@ export function dialog(page: Page, title: string | RegExp): Locator {
 export function confirmDialog(page: Page, title: string | RegExp): Locator {
   return page.getByRole('alertdialog', { name: title });
 }
+
+/**
+ * Control introduced by a visible label text, for forms whose <label> is
+ * not tied to its input (no `for`/nesting): the first input, select or
+ * textarea inside or after that label. Prefer getByLabel when it works.
+ */
+export function fieldAfterLabel(scope: Locator, label: string | RegExp): Locator {
+  const ctl =
+    'xpath=(descendant::*[self::input or self::select or self::textarea]' +
+    ' | following::*[self::input or self::select or self::textarea])[1]';
+  return scope.locator('label').filter({ hasText: label }).first().locator(ctl);
+}
