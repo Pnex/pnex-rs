@@ -742,8 +742,8 @@ async fn reg_state_route_vers_o2() {
 #[serial]
 async fn admission_et_chip_caps_esp32c3() {
     with_app(|server, auth, ctx| async move {
-        // Board C3 + overlay D0–D10 + predefined device (miroir du seed
-        // fixtures/devices/board_overlay_xiao_esp32c3.yaml).
+        // C3 board + D0–D10 overlay + predefined device (v1 overlay mirror of
+        // the catalog board `xiao_esp32c3`).
         use pnex_backend::models::_entities::{device_types, mcu_boards, predefined_devices};
         use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
         let overlay: pnex_core::BoardOverlay = serde_json::from_value(serde_json::json!({

@@ -23,7 +23,7 @@
 using namespace websockets;
 
 // ───────────────────── AI-Thinker ESP32-CAM pin map ─────────────────────
-// Reserved in the server board profile (board_profile_esp32cam.yaml): the
+// Reserved in the server board profile (pnex-core catalog/boards/esp32cam_ai_thinker.rs): the
 // provisioning never exposes them.
 namespace {
 

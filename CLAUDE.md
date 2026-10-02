@@ -26,7 +26,7 @@
 
 This project has a graphify knowledge graph at `graphify-out/` (~12,7k nodes · ~22k edges au 2026-10-02 · EXTRACTED/INFERRED audit trail ; `vendor/CoolProp` et `vendor/patches` exclus via `.graphifyignore`, `vendor/edgelinkd` inclus). Use it by default for understanding the codebase:
 
-- Before answering architecture or codebase questions, read `graphify-out/GRAPH_REPORT.md` for god nodes and community structure (decision register: `docs/inventory.md` §0 for D1–D72, then the domain docs in `docs/architecture/*.md` for D73–D120)
+- Before answering architecture or codebase questions, read `graphify-out/GRAPH_REPORT.md` for god nodes and community structure (decision register: `docs/inventory.md` §0 for D1–D72, then the domain docs in `docs/architecture/*.md` for D73–D121)
 - For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's edges instead of scanning files
 - Raw grep is still fine for exact-string lookups (rename, TODO sweep); the graph wins for relationships, flows, and rationale
 - After modifying **code** files, run `task graph:update` (AST-only, no LLM cost): rebuilds the code layer from scratch, keeps the semantic layer, drops name-guessed calls (`scripts/graphify_clean.py`). Never bare `graphify update .`: it merges and never deletes (ghost nodes of deleted files and renamed symbols). If **docs/fixtures** changed too, run `/graphify --update` then `task graph:update` (semantic re-extraction, then cleanup)

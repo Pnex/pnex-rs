@@ -90,7 +90,7 @@
 | (nouveau) `organizations`, `organizations_members` | SeaORM — **D2** | 2 |
 | User (ancienne stack) | users SeaORM (JIT provisioning Keycloak) ; plus orgs | 2/3 |
 | SubscriptionTier / UserProfile | SeaORM — rétention par org/tier appliquée à O2 (D72) | 2/3 |
-| DeviceType, DeviceCapability, MCUBoard, PredefinedDevice | SeaORM (catalogue global + fixtures YAML) | 2 |
+| DeviceType, DeviceCapability, MCUBoard, PredefinedDevice | SeaORM (catalogue global seedé depuis le registre typé `pnex_core::catalog`, D121) | 2 |
 | DeviceRegistry (+ discovered_measurements) | SeaORM ; scoping **org_id** (D2) | 2/4 |
 | DeviceToken (token + encryption_key) | SeaORM ; hook génération (token_urlsafe(32) + clé ChaCha20) | 2/4 |
 | ActuatorChannelConfig | SeaORM — stockage/édition du **schéma de config** (API + UI). La distribution aux devices et la logique de contrôle = **chantier M2M différé (D13)** — pas de broadcast à concevoir maintenant | 2/4 |

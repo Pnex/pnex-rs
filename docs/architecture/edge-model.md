@@ -95,8 +95,8 @@ Points ouverts (constatés au 2026-10-01, à trancher) :
    à firmware custom est admis par les pins de son sketch (zéro pin =
    pin map vide), jamais par l'overlay du modèle générique, qui remettait
    tous les pins en `digital_in` à chaque announce (I2C compris).
-2. **Carte `generic`** : absente de `mcu.yaml`, créée à la volée par le seed
-   (`soc = generic`) pour `edge_agent` (seul consommateur depuis le retrait
+2. **Carte `generic`** : déclarée dans le registre typé
+   (`pnex_core::catalog::boards::GENERIC`, D121, `soc = generic`, sans profil) pour `edge_agent` (seul consommateur depuis le retrait
    de `custom_device`). Un agent n'a pas
    de carte : `board_id` nullable pour la famille agents plutôt qu'une
    carte fantôme.
