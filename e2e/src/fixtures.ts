@@ -6,7 +6,7 @@ import { test as base, expect } from '@playwright/test';
 import { Api } from './api.ts';
 import { passwordGrant, storageEntries, type Tokens } from './auth.ts';
 import { Capturer, type CaptureOptions } from './capture.ts';
-import { PREFIX, STATE_FILE } from './env.ts';
+import { FIXED_PREFIX, PREFIX, STATE_FILE } from './env.ts';
 import { t as tr, tRe } from './i18n.ts';
 import { AppShell } from './pages/shell.ts';
 
@@ -76,7 +76,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   tr: async ({ uiLocale }, use) => use((key, flags) => tRe(uiLocale, key, flags)),
 
   // testId is shared by the en and fr projects: the project keeps them apart.
-  prefix: async ({}, use, info) => use(`${PREFIX}-${info.project.name}-${info.testId.slice(0, 6)}`),
+  prefix: async ({}, use, info) => use(FIXED_PREFIX ?? `${PREFIX}-${info.project.name}-${info.testId.slice(0, 6)}`),
 
   pageErrors: async ({ page }, use) => {
     const errors: string[] = [];

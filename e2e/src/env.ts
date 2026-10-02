@@ -48,6 +48,13 @@ export const FRESH_ORG = process.env.PNEX_E2E_FRESH_ORG === '1';
 export const RUN_ID = process.env.PNEX_E2E_RUN_ID ?? new Date().toISOString().slice(5, 16).replace(/[-:T]/g, '');
 export const PREFIX = `e2e-${RUN_ID}`;
 
+/**
+ * Fixed, human-friendly prefix instead of the unique per-test one (content
+ * runs: "Demo" gives "Demo threshold"). Run with one worker: two tests
+ * sharing a prefix could collide.
+ */
+export const FIXED_PREFIX = process.env.PNEX_E2E_PREFIX;
+
 /** When set, `capture()` writes annotated screenshots + a manifest there. */
 export const CAPTURE_DIR = process.env.PNEX_E2E_CAPTURE_DIR;
 
