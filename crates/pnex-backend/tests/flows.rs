@@ -760,6 +760,49 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
     .await;
 }
 
+// ─────────────────────────── Delete of a stopped flow ───────────────────────────
+
+/// A stopped flow keeps its deployed version but is not running: deleting
+/// it must not wait for a `flow_stopped` ack the runtime never sends (the
+/// delete used to take the whole reload-ack timeout).
+#[tokio::test]
+#[serial]
+async fn delete_stopped_flow_does_not_wait_for_runtime_ack() {
+    with_app_flow_engine(true, |server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let created = create_flow(&server, &env.alice, org, "stopped then deleted", 1.0).await;
+        let flow_id = created["id"].as_i64().unwrap();
+        let deployed = server
+            .post(&format!("/api/v1/flows/{flow_id}/deploy"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .add_header("Content-Type", "application/json")
+            .json(&serde_json::json!({ "version_number": 1 }))
+            .await;
+        assert_eq!(deployed.status_code(), 200, "{}", deployed.text());
+        let stop = server
+            .post(&format!("/api/v1/flows/{flow_id}/stop"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert_eq!(stop.status_code(), 200, "{}", stop.text());
+
+        let started = std::time::Instant::now();
+        let deleted = server
+            .delete(&format!("/api/v1/flows/{flow_id}"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert_eq!(deleted.status_code(), 204, "{}", deleted.text());
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(3),
+            "delete of a stopped flow took {:?}",
+            started.elapsed()
+        );
+    })
+    .await;
+}
+
 // ─────────────────────────── Stop/Start : gardes sans moteur ───────────────────────────
 
 #[tokio::test]

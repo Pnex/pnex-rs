@@ -261,7 +261,11 @@ async fn delete_locked(ctx: &AppContext, org: &OrgContext, id: i64) -> Result<Re
     // Clé d'ack du retrait : méta du flow supprimé (le runtime émettra
     // `flow_stopped` sur lui) — capturée AVANT la cascade qui efface sa
     // version déployée (piège de la meta vide, même école que stop).
-    let ack_meta = if was_deployed {
+    // A stopped flow keeps its deployed version but is not running: the
+    // runtime never emits `flow_stopped` for it, so waiting for that ack
+    // only burned the reload timeout on every delete.
+    let running = flow.status == pnex_core::FLOW_STATUS_DEPLOYED;
+    let ack_meta = if was_deployed && running {
         deployed_meta(&ctx.db, &flow).await?
     } else {
         None
