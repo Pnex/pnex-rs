@@ -73,6 +73,7 @@ function handle(inputs, msg) {
         }
         (TemplateKind::ThresholdAlarm, FunctionLanguage::Starlark) => {
             r#"# @input value number "Measured value"
+# @input threshold number=20 "Alarm threshold"
 # @output alarm bool "True when value exceeds the threshold"
 def handle(inputs, msg):
     return {"alarm": inputs["value"] > inputs["threshold"]}"#
@@ -118,6 +119,25 @@ def handle(inputs, msg):
     data = json.decode(msg["payload"])
     return {"temperature": data.get("t"), "humidity": data.get("h")}"#
                 .to_string()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A fresh function must open without the "used but not declared"
+    /// banner: every template declares the ports its code reads and returns.
+    #[test]
+    fn every_template_declares_its_ports() {
+        for kind in TemplateKind::all() {
+            for lang in [FunctionLanguage::Js, FunctionLanguage::Starlark] {
+                let code = template_code(kind, lang);
+                let undeclared = crate::components::function_analysis::analyze(&code, lang)
+                    .unwrap_or_else(|| panic!("{kind:?}/{lang:?}: invalid directives"));
+                assert!(undeclared.is_empty(), "{kind:?}/{lang:?}: {undeclared:?}");
+            }
         }
     }
 }
