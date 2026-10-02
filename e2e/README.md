@@ -77,8 +77,24 @@ Rules:
 - Writing a new step: `ROUTE=/flows ACTIONS="await page.getByRole('button',{name:'New flow'}).click()" bun run explore`
   prints the aria snapshot of the page (and keeps the org untouched).
 
-Tags: `@smoke`, `@i18n`, `@functions`, `@flows`, `@hardware` (needs boards,
-see below).
+## Coverage
+
+| Spec | Tag | What it proves |
+|---|---|---|
+| `smoke` | `@smoke @i18n` | every route renders its title, session kept, no wasm panic — en + fr |
+| `auth` | `@auth @i18n` | real Rauthy sign-in (2 steps) and sign-out |
+| `functions` | `@functions` | Starlark template, live test, new version, JS runtime error, delete |
+| `flows` | `@flows` | canvas build (inject → values → memory write), save, deploy, value in the memory store |
+| `dashboards` | `@dashboards` | Value widget bound to a memory key fed by a deployed flow, live view |
+| `events` | `@events` | Event log node → OpenObserve → Events page |
+| `notifications` | `@notifications` | SMTP channel tested from its form: the mail lands in mailcrab |
+| `settings` | `@settings` | secrets (value never shown back), organizations create/delete |
+| `search` | `@search @i18n` | sidebar search finds a function and deep-links to its editor |
+| `map` | `@map` | POI placed by clicking the map, drawer, delete |
+| `media` | `@media` | photo upload (browser-rendered PNG), delete |
+| `profile-data` | `@profile @mixtures` | language preference switch, CoolProp mixture |
+| `firmware-ide` | `@firmware` | starter sketch compiles on the builder, a broken revision reports its error |
+| `hardware` | `@hardware` | real boards, in order: C3 register/build/flash/online, pins, telemetry + quick charts, custom firmware (then generic restored), ESP32-CAM register + live view + flash LED |
 
 ## Captures
 
@@ -106,11 +122,25 @@ Skipped unless the boards are declared:
 
 | Variable | What |
 |---|---|
-| `PNEX_E2E_C3_PORT` | serial port of an ESP32-C3 (e.g. `/dev/ttyACM0`) |
+| `PNEX_E2E_C3_PORT` | serial port of an ESP32-C3 (Seeed XIAO profile, e.g. `/dev/ttyACM0`) |
 | `PNEX_E2E_CAM_PORT` | serial port of an ESP32-CAM on its MB carrier (e.g. `/dev/ttyUSB0`) |
 | `PNEX_E2E_WIFI_SSID` / `PNEX_E2E_WIFI_PASSWORD` | network the boards join (stored as an Edge referential of the test org) |
+| `PNEX_E2E_C3_ID` / `PNEX_E2E_CAM_ID` | device ids in the test org (`e2e-c3` / `e2e-cam`) |
+| `PNEX_E2E_MAILCRAB_URL` | mailcrab API (`http://localhost:1080`) |
 
-The device is registered and built through the UI; flashing uses `esptool`
-on the declared port (Web Serial cannot be driven headless). **Always an
-explicit port** — `esptool` without `--port` writes to whatever board it
-finds first.
+```bash
+export PNEX_E2E_C3_PORT=/dev/ttyACM0 PNEX_E2E_CAM_PORT=/dev/ttyUSB0
+export PNEX_E2E_WIFI_SSID="<ssid>"
+export PNEX_E2E_WIFI_PASSWORD="$(nmcli -s -g 802-11-wireless-security.psk connection show '<ssid>')"
+task e2e:hardware
+```
+
+Each run registers the boards again through the wizard (the device rows are
+deleted first), builds on the server and flashes with `esptool` on the
+declared port (Web Serial cannot be driven headless). **Always an explicit
+port** — `esptool` without `--port` writes to whatever board it finds
+first. The custom-firmware test flashes the C3 with an IDE project, then
+puts the generic `e2e-c3` image back.
+
+A live camera films the room it sits in: never publish its captures as
+content without checking what they show.
