@@ -228,19 +228,30 @@ pub fn SecretField(
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                         onchange: move |e| {
                             let id = e.value().parse::<Uuid>().ok();
-                            let found = id.and_then(|id| {
-                                options
-                                    .value()
-                                    .read()
-                                    .as_ref()
-                                    .and_then(|list| list.iter().find(|s| s.id == id).cloned())
-                            });
-                            draft.set(match found {
-                                Some(s) => SecretDraft::Pick(SecretFieldView { secret_id: s.id, name: s.name }),
-                                None => SecretDraft::Empty,
-                            });
+                            let found = id
+                                .and_then(|id| {
+                                    options
+                                        .value()
+                                        .read()
+                                        .as_ref()
+                                        .and_then(|list| list.iter().find(|s| s.id == id).cloned())
+                                });
+                            draft
+                                .set(
+                                    match found {
+                                        Some(s) => {
+                                            SecretDraft::Pick(SecretFieldView {
+                                                secret_id: s.id,
+                                                name: s.name,
+                                            })
+                                        }
+                                        None => SecretDraft::Empty,
+                                    },
+                                );
                         },
-                        option { value: "", selected: picked.is_none(), {t!("secret-field-pick-placeholder")} }
+                        option { value: "", selected: picked.is_none(),
+                            {t!("secret-field-pick-placeholder")}
+                        }
                         for (id, name) in choices {
                             option { value: "{id}", selected: picked == Some(id), {name} }
                         }
@@ -279,6 +290,11 @@ pub fn SecretSlotField(
         }
     });
     rsx! {
-        SecretField { label, draft, can_manage, read_only }
+        SecretField {
+            label,
+            draft,
+            can_manage,
+            read_only,
+        }
     }
 }

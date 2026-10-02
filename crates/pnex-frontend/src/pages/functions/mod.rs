@@ -178,7 +178,7 @@ pub fn Functions() -> Element {
             // "New function" button entirely (we are in the editor, not in
             // the list).
             header: selected().is_none(),
-            can_write: can_write,
+            can_write,
             add_label: Some(t!("functions-new").to_string()),
             on_add: move |_| create_open.set(true),
             if org::current().is_none() {
@@ -209,30 +209,29 @@ pub fn Functions() -> Element {
                                 value: search,
                                 on_submit: move |_| {},
                             }
-                            RefreshButton {
-                                on_click: move |_| reload.with_mut(|r| *r += 1),
-                            }
+                            RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
                         }
 
                         ListStates {
                             state: list_state,
-                            is_empty: is_empty,
+                            is_empty,
                             empty_message: t!("functions-empty").to_string(),
                             DataTable {
-                                columns: columns,
-                                rows: rows,
-                                row_key: RowKey::new(|summary: &FunctionSummary| {
-                                    summary.id.to_string()
-                                }),
+                                columns,
+                                rows,
+                                row_key: RowKey::new(|summary: &FunctionSummary| { summary.id.to_string() }),
                             }
-                            ListPager { count: filtered_count, page: page }
+                            ListPager { count: filtered_count, page }
                         }
 
                         // Suppression confirmée d'une ligne.
                         if let Some((fn_id, fn_name)) = delete_target() {
                             ConfirmDialog {
                                 title: t!("functions-confirm-delete-title"),
-                                message: t!("common-quoted-message", name: fn_name.clone(), message: t!("functions-confirm-delete-message")),
+                                message: t!(
+                                    "common-quoted-message", name : fn_name.clone(), message :
+                                    t!("functions-confirm-delete-message")
+                                ),
                                 confirm_label: t!("functions-delete"),
                                 on_confirm: move |_| {
                                     delete_target.set(None);
@@ -240,17 +239,21 @@ pub fn Functions() -> Element {
                                     spawn(async move {
                                         match api::functions::delete(target).await {
                                             Ok(()) => toasts::success("toast-function-deleted"),
-                                            Err(err) => match api::functions::referencing_flows(&err) {
-                                                Some(flows) => {
-                                                    let list = flows
-                                                        .iter()
-                                                        .map(|(id, name, v)| format!("#{} {name} v{v}", id))
-                                                        .collect::<Vec<_>>()
-                                                        .join(", ");
-                                                    toasts::error(format!("{} {list}", t!("toast-function-in-use")));
+                                            Err(err) => {
+                                                match api::functions::referencing_flows(&err) {
+                                                    Some(flows) => {
+                                                        let list = flows
+                                                            .iter()
+                                                            .map(|(id, name, v)| format!("#{} {name} v{v}", id))
+                                                            .collect::<Vec<_>>()
+                                                            .join(", ");
+                                                        toasts::error(
+                                                            format!("{} {list}", t!("toast-function-in-use")),
+                                                        );
+                                                    }
+                                                    None => toasts::error(err),
                                                 }
-                                                None => toasts::error(err),
-                                            },
+                                            }
                                         }
                                         reload.with_mut(|r| *r += 1);
                                     });

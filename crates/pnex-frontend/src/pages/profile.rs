@@ -56,7 +56,9 @@ pub fn Profile() -> Element {
                     // Identité — gérée par l'IdP Rauthy, lecture seule.
                     div { class: "bg-white rounded-lg shadow-sm",
                         div { class: "p-6 border-b border-gray-200",
-                            h2 { class: "text-lg font-semibold text-gray-900", {t!("profile-identity")} }
+                            h2 { class: "text-lg font-semibold text-gray-900",
+                                {t!("profile-identity")}
+                            }
                         }
                         div { class: "p-6",
                             div { class: "flex items-center space-x-6 mb-8",
@@ -67,12 +69,16 @@ pub fn Profile() -> Element {
                                     h3 { class: "text-xl font-semibold text-gray-900",
                                         {user.full_name.clone().unwrap_or_else(|| user.username.clone())}
                                     }
-                                    p { class: "text-gray-600", {user.email.clone().unwrap_or_else(|| "—".into())} }
+                                    p { class: "text-gray-600",
+                                        {user.email.clone().unwrap_or_else(|| "—".into())}
+                                    }
                                 }
                             }
                             div { class: "grid grid-cols-1 md:grid-cols-2 gap-6",
                                 label { class: "block",
-                                    span { class: "block text-sm font-medium text-gray-700 mb-2", {t!("profile-username")} }
+                                    span { class: "block text-sm font-medium text-gray-700 mb-2",
+                                        {t!("profile-username")}
+                                    }
                                     input {
                                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-900",
                                         r#type: "text",
@@ -81,7 +87,9 @@ pub fn Profile() -> Element {
                                     }
                                 }
                                 label { class: "block",
-                                    span { class: "block text-sm font-medium text-gray-700 mb-2", {t!("profile-email")} }
+                                    span { class: "block text-sm font-medium text-gray-700 mb-2",
+                                        {t!("profile-email")}
+                                    }
                                     input {
                                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-900",
                                         r#type: "email",
@@ -89,7 +97,9 @@ pub fn Profile() -> Element {
                                         value: "{user.email.clone().unwrap_or_default()}",
                                     }
                                 }
-                                p { class: "md:col-span-2 text-xs text-gray-500", {t!("profile-idp-managed")} }
+                                p { class: "md:col-span-2 text-xs text-gray-500",
+                                    {t!("profile-idp-managed")}
+                                }
                             }
                         }
                     }
@@ -123,11 +133,15 @@ pub fn Profile() -> Element {
                             });
                         },
                         div { class: "p-6 border-b border-gray-200",
-                            h2 { class: "text-lg font-semibold text-gray-900", {t!("profile-preferences")} }
+                            h2 { class: "text-lg font-semibold text-gray-900",
+                                {t!("profile-preferences")}
+                            }
                         }
                         div { class: "p-6 grid grid-cols-1 md:grid-cols-2 gap-6",
                             label { class: "block",
-                                span { class: "block text-sm font-medium text-gray-700 mb-2", {t!("profile-language")} }
+                                span { class: "block text-sm font-medium text-gray-700 mb-2",
+                                    {t!("profile-language")}
+                                }
                                 select {
                                     class: "w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900",
                                     onchange: move |event| {
@@ -137,12 +151,22 @@ pub fn Profile() -> Element {
                                         // le PATCH enregistre côté serveur).
                                         i18n::set_locale(&tag);
                                     },
-                                    option { value: "en", selected: language() == "en", "English" }
-                                    option { value: "fr", selected: language() == "fr", "Français" }
+                                    option {
+                                        value: "en",
+                                        selected: language() == "en",
+                                        "English"
+                                    }
+                                    option {
+                                        value: "fr",
+                                        selected: language() == "fr",
+                                        "Français"
+                                    }
                                 }
                             }
                             label { class: "block",
-                                span { class: "block text-sm font-medium text-gray-700 mb-2", {t!("profile-timezone")} }
+                                span { class: "block text-sm font-medium text-gray-700 mb-2",
+                                    {t!("profile-timezone")}
+                                }
                                 input {
                                     class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900",
                                     r#type: "text",
@@ -151,7 +175,9 @@ pub fn Profile() -> Element {
                                 }
                             }
                             label { class: "block",
-                                span { class: "block text-sm font-medium text-gray-700 mb-2", {t!("profile-date-format")} }
+                                span { class: "block text-sm font-medium text-gray-700 mb-2",
+                                    {t!("profile-date-format")}
+                                }
                                 input {
                                     class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900",
                                     r#type: "text",
@@ -161,13 +187,27 @@ pub fn Profile() -> Element {
                                 }
                             }
                             label { class: "block",
-                                span { class: "block text-sm font-medium text-gray-700 mb-2", {t!("profile-theme")} }
+                                span { class: "block text-sm font-medium text-gray-700 mb-2",
+                                    {t!("profile-theme")}
+                                }
                                 select {
                                     class: "w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900",
                                     onchange: move |event| theme.set(event.value()),
-                                    option { value: "light", selected: theme() == "light", {t!("profile-theme-light")} }
-                                    option { value: "dark", selected: theme() == "dark", {t!("profile-theme-dark")} }
-                                    option { value: "auto", selected: theme() == "auto", {t!("profile-theme-auto")} }
+                                    option {
+                                        value: "light",
+                                        selected: theme() == "light",
+                                        {t!("profile-theme-light")}
+                                    }
+                                    option {
+                                        value: "dark",
+                                        selected: theme() == "dark",
+                                        {t!("profile-theme-dark")}
+                                    }
+                                    option {
+                                        value: "auto",
+                                        selected: theme() == "auto",
+                                        {t!("profile-theme-auto")}
+                                    }
                                 }
                             }
                         }
@@ -185,7 +225,9 @@ pub fn Profile() -> Element {
                 div { class: "space-y-6",
                     div { class: "bg-white rounded-lg shadow-sm",
                         div { class: "p-6 border-b border-gray-200",
-                            h3 { class: "text-lg font-semibold text-gray-900", {t!("profile-account")} }
+                            h3 { class: "text-lg font-semibold text-gray-900",
+                                {t!("profile-account")}
+                            }
                         }
                         div { class: "p-6 space-y-3",
                             button {
@@ -222,7 +264,9 @@ pub fn Profile() -> Element {
                             }
                             div { class: "flex items-center justify-between",
                                 span { class: "text-gray-500", {t!("about-server")} }
-                                span { class: "text-gray-900 font-medium text-right", {server_value} }
+                                span { class: "text-gray-900 font-medium text-right",
+                                    {server_value}
+                                }
                             }
                         }
                     }

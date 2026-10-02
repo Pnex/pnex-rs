@@ -32,7 +32,7 @@ pub fn FormDialog(
     children: Element,
 ) -> Element {
     rsx! {
-        Modal { title: title, max_width: max_width, on_close: on_close,
+        Modal { title, max_width, on_close,
             div { class: "space-y-4",
                 {children}
                 div { class: "flex justify-end gap-2 pt-2",

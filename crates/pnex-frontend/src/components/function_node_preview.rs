@@ -40,7 +40,9 @@ pub fn FunctionNodePreview(
                     }
                 }
                 div { class: "w-38 h-24 min-w-36 rounded-xl bg-sky-50 border border-sky-300 shadow-sm flex flex-col justify-center items-center gap-1 px-3",
-                    span { class: "font-mono text-sm font-medium text-gray-900 truncate max-w-full", "{name}" }
+                    span { class: "font-mono text-sm font-medium text-gray-900 truncate max-w-full",
+                        "{name}"
+                    }
                     span { class: "text-xs text-gray-500", "{lang_label} v{version}" }
                 }
                 div { class: "flex flex-col gap-3",

@@ -169,138 +169,152 @@ pub fn Flows() -> Element {
     ];
 
     rsx! {
-        {match selected() {
-            Some(flow_id) => rsx! {
-                // Éditeur plein écran, HORS ListLayout — plus de bouton
-                // « + Nouveau flow » en contexte d'édition (principe 1 de la
-                // coquille d'éditeur : l'ajout vit dans le canvas).
-                crate::components::flow_editor::FlowEditor {
-                    key: "{flow_id}",
-                    flow_id,
-                    can_write,
-                    on_back: move |_| {
-                        selected.set(None);
-                        // Retour à la liste : refetch systématique —
-                        // la vérité serveur (flow créé, renommage,
-                        // deploy faits dans l'éditeur) s'affiche sans
-                        // passer par le bouton refresh.
-                        reload.with_mut(|r| *r += 1);
-                    },
-                    on_changed: move |_| reload.with_mut(|r| *r += 1),
-                }
-            },
-            None => rsx! {
-                ListLayout {
-                    title: t!("nav-flows").to_string(),
-                    subtitle: Some(t!("flows-subtitle").to_string()),
-                    can_write: can_write,
-                    add_label: Some(t!("flows-new").to_string()),
-                    on_add: move |_| {
-                        // Création immédiate, sans modale : nom daté + graphe
-                        // de départ, puis ouverture directe de l'éditeur
-                        // (fluidité — retour user 2026-09-18). Le renommage
-                        // reste possible après coup.
-                        let params = pnex_core::CreateFlow {
-                            name: t!(
-                                "flows-default-name",
-                                date: crate::util::now_label()
-                            )
-                            .to_string(),
-                            device_id: None,
-                            graph: starter_graph(),
-                            author: session::user().map(|user| user.username),
-                            note: None,
-                        };
-                        spawn(async move {
-                            match api::flows::create(params).await {
-                                Ok(flow) => {
-                                    toasts::success("toast-flow-created");
-                                    selected.set(Some(flow.id));
-                                    reload.with_mut(|r| *r += 1);
-                                }
-                                Err(err) => toasts::error(err),
+        if let Some(flow_id) = selected() {
+            // Éditeur plein écran, HORS ListLayout — plus de bouton
+            // « + Nouveau flow » en contexte d'édition (principe 1 de la
+            // coquille d'éditeur : l'ajout vit dans le canvas).
+            crate::components::flow_editor::FlowEditor {
+                key: "{flow_id}",
+                flow_id,
+                can_write,
+                on_back: move |_| {
+                    selected.set(None);
+                    // Retour à la liste : refetch systématique —
+                    // la vérité serveur (flow créé, renommage,
+                    // deploy faits dans l'éditeur) s'affiche sans
+                    // passer par le bouton refresh.
+                    reload.with_mut(|r| *r += 1);
+                },
+                on_changed: move |_| reload.with_mut(|r| *r += 1),
+            }
+        } else {
+            ListLayout {
+                title: t!("nav-flows").to_string(),
+                subtitle: Some(t!("flows-subtitle").to_string()),
+                can_write,
+                add_label: Some(t!("flows-new").to_string()),
+                on_add: move |_| {
+                    // Création immédiate, sans modale : nom daté + graphe
+                    // de départ, puis ouverture directe de l'éditeur
+                    // (fluidité — retour user 2026-09-18). Le renommage
+                    // reste possible après coup.
+                    let params = pnex_core::CreateFlow {
+                        name: t!("flows-default-name", date : crate ::util::now_label()).to_string(),
+                        device_id: None,
+                        graph: starter_graph(),
+                        author: session::user().map(|user| user.username),
+                        note: None,
+                    };
+                    spawn(async move {
+                        match api::flows::create(params).await {
+                            Ok(flow) => {
+                                toasts::success("toast-flow-created");
+                                selected.set(Some(flow.id));
+                                reload.with_mut(|r| *r += 1);
                             }
-                        });
-                    },
-                    if org::current().is_none() {
-                        p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
-                    } else {
-                        FilterBar {
-                            select {
-                                class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
-                                onchange: move |event| {
-                                    filter_status.set(event.value());
-                                    page.set(0);
-                                    reload.with_mut(|r| *r += 1);
-                                },
-                                option { value: "all", selected: filter_status() == "all", {t!("flows-filter-status-all")} }
-                                option { value: "draft", selected: filter_status() == "draft", {t!("flows-status-draft")} }
-                                option { value: "deployed", selected: filter_status() == "deployed", {t!("flows-status-deployed")} }
-                                option { value: "stopped", selected: filter_status() == "stopped", {t!("flows-status-stopped")} }
-                                option { value: "error", selected: filter_status() == "error", {t!("flows-status-error")} }
-                            }
-                            SearchInput {
-                                placeholder: t!("flows-search-placeholder").to_string(),
-                                value: search,
-                                on_submit: move |_| {
-                                    page.set(0);
-                                    reload.with_mut(|r| *r += 1);
-                                },
-                            }
-                            RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
+                            Err(err) => toasts::error(err),
                         }
-
-                        ListStates {
-                            state: list_state,
-                            is_empty: is_empty,
-                            empty_message: t!("flows-empty").to_string(),
-                            div { class: "relative",
-                                DataTable {
-                                    columns: columns,
-                                    rows: rows,
-                                    row_key: RowKey::new(|flow: &FlowSummary| flow.id.to_string()),
-                                }
-                                // Opération serveur en cours (delete attend
-                                // l'acquittement runtime) — feedback global.
-                                if deleting().is_some() {
-                                    LoadingOverlay { message: t!("flows-deleting").to_string() }
-                                }
+                    });
+                },
+                if org::current().is_none() {
+                    p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
+                } else {
+                    FilterBar {
+                        select {
+                            class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                            onchange: move |event| {
+                                filter_status.set(event.value());
+                                page.set(0);
+                                reload.with_mut(|r| *r += 1);
+                            },
+                            option {
+                                value: "all",
+                                selected: filter_status() == "all",
+                                {t!("flows-filter-status-all")}
                             }
-                            ListPager { count: count, page: page }
-                        }
-
-                        // Suppression confirmée d'une ligne.
-                        if let Some((flow_id, flow_name)) = delete_target() {
-                            ConfirmDialog {
-                                title: t!("flows-confirm-delete-title"),
-                                message: t!("common-quoted-message", name: flow_name.clone(), message: t!("flows-confirm-delete-message")),
-                                confirm_label: t!("flows-delete"),
-                                on_confirm: move |_| {
-                                    delete_target.set(None);
-                                    deleting.set(Some(flow_id));
-                                    spawn(async move {
-                                        // La liste est rafraîchie dans les deux
-                                        // cas : elle reflète la vérité serveur
-                                        // (un échec = le flow existe encore).
-                                        let outcome = api::flows::delete(flow_id).await;
-                                        deleting.set(None);
-                                        match outcome {
-                                            Ok(()) => toasts::success("toast-flow-deleted"),
-                                            Err(err) => toasts::error(err),
-                                        }
-                                        reload.with_mut(|r| *r += 1);
-                                    });
-                                },
-                                on_cancel: move |_| delete_target.set(None),
+                            option {
+                                value: "draft",
+                                selected: filter_status() == "draft",
+                                {t!("flows-status-draft")}
+                            }
+                            option {
+                                value: "deployed",
+                                selected: filter_status() == "deployed",
+                                {t!("flows-status-deployed")}
+                            }
+                            option {
+                                value: "stopped",
+                                selected: filter_status() == "stopped",
+                                {t!("flows-status-stopped")}
+                            }
+                            option {
+                                value: "error",
+                                selected: filter_status() == "error",
+                                {t!("flows-status-error")}
                             }
                         }
+                        SearchInput {
+                            placeholder: t!("flows-search-placeholder").to_string(),
+                            value: search,
+                            on_submit: move |_| {
+                                page.set(0);
+                                reload.with_mut(|r| *r += 1);
+                            },
+                        }
+                        RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
+                    }
 
-                        // Modal de création supprimée : « + Nouveau » crée
-                        // directement (nom daté) et ouvre l'éditeur.
-                    },
+                    ListStates {
+                        state: list_state,
+                        is_empty,
+                        empty_message: t!("flows-empty").to_string(),
+                        div { class: "relative",
+                            DataTable {
+                                columns,
+                                rows,
+                                row_key: RowKey::new(|flow: &FlowSummary| flow.id.to_string()),
+                            }
+                            // Opération serveur en cours (delete attend
+                            // l'acquittement runtime) — feedback global.
+                            if deleting().is_some() {
+                                LoadingOverlay { message: t!("flows-deleting").to_string() }
+                            }
+                        }
+                        ListPager { count, page }
+                    }
+                    // Modal de création supprimée : « + Nouveau » crée
+                    // directement (nom daté) et ouvre l'éditeur.
+
+                    // Suppression confirmée d'une ligne.
+                    if let Some((flow_id, flow_name)) = delete_target() {
+                        ConfirmDialog {
+                            title: t!("flows-confirm-delete-title"),
+                            message: t!(
+                                "common-quoted-message", name : flow_name.clone(), message :
+                                t!("flows-confirm-delete-message")
+                            ),
+                            confirm_label: t!("flows-delete"),
+                            on_confirm: move |_| {
+                                delete_target.set(None);
+                                deleting.set(Some(flow_id));
+                                spawn(async move {
+                                    // La liste est rafraîchie dans les deux
+                                    // cas : elle reflète la vérité serveur
+                                    // (un échec = le flow existe encore).
+                                    let outcome = api::flows::delete(flow_id).await;
+                                    deleting.set(None);
+                                    match outcome {
+                                        Ok(()) => toasts::success("toast-flow-deleted"),
+                                        Err(err) => toasts::error(err),
+                                    }
+                                    reload.with_mut(|r| *r += 1);
+                                });
+                            },
+                            on_cancel: move |_| delete_target.set(None),
+                        }
+                    }
                 }
             }
-        }
         }
     }
 }

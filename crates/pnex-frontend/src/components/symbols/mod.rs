@@ -139,8 +139,16 @@ pub fn SymbolView(
                 class: "pnex-sym {class}",
                 view_box: "0 0 100 100",
                 "preserveAspectRatio": "{aspect}",
-                rect { x: "2", y: "2", width: "96", height: "96", fill: "none",
-                    stroke: "{stroke}", "stroke-dasharray": "6 4", "stroke-width": "{stroke_width}" }
+                rect {
+                    x: "2",
+                    y: "2",
+                    width: "96",
+                    height: "96",
+                    fill: "none",
+                    stroke: "{stroke}",
+                    "stroke-dasharray": "6 4",
+                    "stroke-width": "{stroke_width}",
+                }
             }
         };
     };

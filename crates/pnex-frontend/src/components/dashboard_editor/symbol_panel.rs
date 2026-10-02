@@ -86,15 +86,18 @@ pub fn SymbolPanel(cx: EditorCx) -> Element {
             }
             div { class: "min-h-0 flex-1 overflow-y-auto px-2 pb-2",
                 for (cat, label, entries) in groups {
-                    div { key: "{cat}", class: "border-b border-gray-100 last:border-b-0",
+                    div {
+                        key: "{cat}",
+                        class: "border-b border-gray-100 last:border-b-0",
                         button {
                             class: "flex w-full items-center gap-1 px-1 py-1.5 text-left text-xs font-semibold text-gray-600 hover:text-gray-900",
                             onclick: move |_| {
-                                open_cats.with_mut(|set| {
-                                    if !set.remove(cat) {
-                                        set.insert(cat);
-                                    }
-                                });
+                                open_cats
+                                    .with_mut(|set| {
+                                        if !set.remove(cat) {
+                                            set.insert(cat);
+                                        }
+                                    });
                             },
                             if searching || open_cats.read().contains(cat) {
                                 icons::ChevronDown { class: "h-3.5 w-3.5" }
@@ -102,19 +105,27 @@ pub fn SymbolPanel(cx: EditorCx) -> Element {
                                 icons::ChevronRight { class: "h-3.5 w-3.5" }
                             }
                             span { class: "truncate", "{label}" }
-                            span { class: "ml-auto text-[10px] font-normal text-gray-400", "{entries.len()}" }
+                            span { class: "ml-auto text-[10px] font-normal text-gray-400",
+                                "{entries.len()}"
+                            }
                         }
                         if searching || open_cats.read().contains(cat) {
                             div { class: "grid grid-cols-5 gap-1 pb-2",
                                 for entry in entries {
-                                    SymbolTile { key: "{entry.id}", cx, entry }
+                                    SymbolTile {
+                                        key: "{entry.id}",
+                                        cx,
+                                        entry,
+                                    }
                                 }
                             }
                         }
                     }
                 }
                 if no_result {
-                    p { class: "px-2 py-4 text-center text-sm text-gray-400", {t!("eshell-no-result")} }
+                    p { class: "px-2 py-4 text-center text-sm text-gray-400",
+                        {t!("eshell-no-result")}
+                    }
                 }
             }
         }

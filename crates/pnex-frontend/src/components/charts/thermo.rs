@@ -204,9 +204,13 @@ pub fn ThermoChart(
                 class: "h-full w-full",
                 xmlns: "http://www.w3.org/2000/svg",
                 rect {
-                    x: "{pad}", y: "{pad}",
-                    width: "{inner_w}", height: "{inner_h}",
-                    fill: "#ffffff", stroke: "{FRAME}", "stroke-width": "1",
+                    x: "{pad}",
+                    y: "{pad}",
+                    width: "{inner_w}",
+                    height: "{inner_h}",
+                    fill: "#ffffff",
+                    stroke: "{FRAME}",
+                    "stroke-width": "1",
                 }
                 for c in dia.polylines.clone() {
                     polyline {
@@ -230,32 +234,48 @@ pub fn ThermoChart(
                 }
                 for (x, y, lx, ly, label) in projected.clone() {
                     g { key: "{label}-{x}",
-                        circle { cx: "{x}", cy: "{y}", r: "4", fill: "{CYCLE}" }
+                        circle {
+                            cx: "{x}",
+                            cy: "{y}",
+                            r: "4",
+                            fill: "{CYCLE}",
+                        }
                         text {
-                            x: "{lx}", y: "{ly}",
-                            style: "font-size: 9px", fill: "{TEXT_MUTED}",
+                            x: "{lx}",
+                            y: "{ly}",
+                            style: "font-size: 9px",
+                            fill: "{TEXT_MUTED}",
                             "{label}"
                         }
                     }
                 }
                 // Labels d'axes (dans le cadre : jamais tronqués).
                 text {
-                    x: "{lbl_x_in}", y: "{lbl_y_below}", style: "font-size: 9px",
+                    x: "{lbl_x_in}",
+                    y: "{lbl_y_below}",
+                    style: "font-size: 9px",
                     fill: "{TEXT_MUTED}",
                     "{x_min_lbl} {xm.unit}"
                 }
                 text {
-                    x: "{w_pad_lbl}", y: "{lbl_y_below}", "text-anchor": "end",
-                    style: "font-size: 9px", fill: "{TEXT_MUTED}",
+                    x: "{w_pad_lbl}",
+                    y: "{lbl_y_below}",
+                    "text-anchor": "end",
+                    style: "font-size: 9px",
+                    fill: "{TEXT_MUTED}",
                     "{x_max_lbl}"
                 }
                 text {
-                    x: "{lbl_x_in}", y: "{lbl_y_in}", style: "font-size: 9px",
+                    x: "{lbl_x_in}",
+                    y: "{lbl_y_in}",
+                    style: "font-size: 9px",
                     fill: "{TEXT_MUTED}",
                     "{y_max_lbl} {y_unit}"
                 }
                 text {
-                    x: "{lbl_x_in}", y: "{y_min_y}", style: "font-size: 9px",
+                    x: "{lbl_x_in}",
+                    y: "{y_min_y}",
+                    style: "font-size: 9px",
                     fill: "{TEXT_MUTED}",
                     "{y_min_lbl}"
                 }

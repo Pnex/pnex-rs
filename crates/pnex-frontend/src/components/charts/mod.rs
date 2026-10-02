@@ -135,8 +135,13 @@ pub fn TimeSeriesChart(series: Vec<ChartSeries>) -> Element {
         // Légende (couleurs de la palette, même ordre que les courbes)
         div { class: "flex flex-wrap gap-4 mb-4",
             for s in &series {
-                div { key: "{s.label}", class: "flex items-center gap-2 text-sm text-gray-700",
-                    span { class: "h-2.5 w-2.5 rounded-full", style: "background-color: {PALETTE[s.color_index % PALETTE.len()]}" }
+                div {
+                    key: "{s.label}",
+                    class: "flex items-center gap-2 text-sm text-gray-700",
+                    span {
+                        class: "h-2.5 w-2.5 rounded-full",
+                        style: "background-color: {PALETTE[s.color_index % PALETTE.len()]}",
+                    }
                     "{s.label}"
                 }
             }
@@ -146,17 +151,46 @@ pub fn TimeSeriesChart(series: Vec<ChartSeries>) -> Element {
             class: "w-full h-auto",
             xmlns: "http://www.w3.org/2000/svg",
             for gy in &grid_ys {
-                line { x1: "{PAD_L}", y1: "{gy}", x2: "{CHART_W - PAD_R}", y2: "{gy}",
-                    stroke: "#e5e7eb", "stroke-width": "1" }
+                line {
+                    x1: "{PAD_L}",
+                    y1: "{gy}",
+                    x2: "{CHART_W - PAD_R}",
+                    y2: "{gy}",
+                    stroke: "#e5e7eb",
+                    "stroke-width": "1",
+                }
             }
-            text { x: "{PAD_L - 6.0}", y: "{PAD_T + 4.0}", "text-anchor": "end",
-                class: "fill-gray-400", style: "font-size: 11px", {y_max_label} }
-            text { x: "{PAD_L - 6.0}", y: "{CHART_H - PAD_B}", "text-anchor": "end",
-                class: "fill-gray-400", style: "font-size: 11px", {y_min_label} }
-            text { x: "{PAD_L}", y: "{CHART_H - 6.0}",
-                class: "fill-gray-400", style: "font-size: 11px", {t_start_label} }
-            text { x: "{CHART_W - PAD_R}", y: "{CHART_H - 6.0}", "text-anchor": "end",
-                class: "fill-gray-400", style: "font-size: 11px", {t_end_label} }
+            text {
+                x: "{PAD_L - 6.0}",
+                y: "{PAD_T + 4.0}",
+                "text-anchor": "end",
+                class: "fill-gray-400",
+                style: "font-size: 11px",
+                {y_max_label}
+            }
+            text {
+                x: "{PAD_L - 6.0}",
+                y: "{CHART_H - PAD_B}",
+                "text-anchor": "end",
+                class: "fill-gray-400",
+                style: "font-size: 11px",
+                {y_min_label}
+            }
+            text {
+                x: "{PAD_L}",
+                y: "{CHART_H - 6.0}",
+                class: "fill-gray-400",
+                style: "font-size: 11px",
+                {t_start_label}
+            }
+            text {
+                x: "{CHART_W - PAD_R}",
+                y: "{CHART_H - 6.0}",
+                "text-anchor": "end",
+                class: "fill-gray-400",
+                style: "font-size: 11px",
+                {t_end_label}
+            }
             for (index, path, coords) in &paths {
                 polyline {
                     points: "{path}",
@@ -164,11 +198,15 @@ pub fn TimeSeriesChart(series: Vec<ChartSeries>) -> Element {
                     stroke: "{PALETTE[*index % PALETTE.len()]}",
                     "stroke-width": "2",
                     "stroke-linejoin": "round",
-                    "stroke-linecap": "round"
+                    "stroke-linecap": "round",
                 }
                 for (px, py) in coords {
-                    circle { cx: "{px}", cy: "{py}", r: "2.5",
-                        fill: "{PALETTE[*index % PALETTE.len()]}" }
+                    circle {
+                        cx: "{px}",
+                        cy: "{py}",
+                        r: "2.5",
+                        fill: "{PALETTE[*index % PALETTE.len()]}",
+                    }
                 }
             }
         }

@@ -86,15 +86,13 @@ pub fn KvPillsEditor(
         div { class: "space-y-3",
             // Header: title + Fields/JSON (expert) toggle.
             div { class: "flex items-center gap-3",
-                h3 { class: "text-sm font-semibold text-gray-500 uppercase tracking-wider", "{title}" }
+                h3 { class: "text-sm font-semibold text-gray-500 uppercase tracking-wider",
+                    "{title}"
+                }
                 if can_write && !forced_json {
                     div { class: "ml-auto flex overflow-hidden rounded-lg border border-gray-300 text-xs font-medium",
                         button {
-                            class: if view() == View::Fields {
-                                "bg-blue-50 px-3 py-1.5 text-blue-700"
-                            } else {
-                                "bg-white px-3 py-1.5 text-gray-500 hover:bg-gray-50"
-                            },
+                            class: if view() == View::Fields { "bg-blue-50 px-3 py-1.5 text-blue-700" } else { "bg-white px-3 py-1.5 text-gray-500 hover:bg-gray-50" },
                             onclick: move |_| {
                                 // Back to fields: the JSON textarea must be
                                 // valid to leave (otherwise stay on it).
@@ -119,11 +117,7 @@ pub fn KvPillsEditor(
                             {t!("devices-labels-fields-tab")}
                         }
                         button {
-                            class: if view() == View::Json {
-                                "bg-blue-50 px-3 py-1.5 text-blue-700"
-                            } else {
-                                "bg-white px-3 py-1.5 text-gray-500 hover:bg-gray-50"
-                            },
+                            class: if view() == View::Json { "bg-blue-50 px-3 py-1.5 text-blue-700" } else { "bg-white px-3 py-1.5 text-gray-500 hover:bg-gray-50" },
                             onclick: move |_| {
                                 // Switch to JSON: current state (pills) is
                                 // serialized as-is into the textarea.
@@ -161,8 +155,7 @@ pub fn KvPillsEditor(
                         span {
                             key: "{k}",
                             class: "inline-flex items-stretch overflow-hidden rounded-full border border-gray-200 text-sm",
-                            span {
-                                class: "border-r border-gray-200 bg-gray-50 px-3 py-1.5 font-mono text-xs text-gray-600",
+                            span { class: "border-r border-gray-200 bg-gray-50 px-3 py-1.5 font-mono text-xs text-gray-600",
                                 {k.clone()}
                             }
                             span { class: "break-all px-3 py-1.5 text-gray-800", {v.clone()} }
@@ -213,11 +206,7 @@ pub fn KvPillsEditor(
             } else {
                 // JSON view (expert) — pretty-printed, red border when invalid.
                 textarea {
-                    class: if invalid() {
-                        "h-40 w-full rounded-lg border border-red-400 bg-red-50 px-3 py-2 font-mono text-sm"
-                    } else {
-                        "h-40 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm"
-                    },
+                    class: if invalid() { "h-40 w-full rounded-lg border border-red-400 bg-red-50 px-3 py-2 font-mono text-sm" } else { "h-40 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm" },
                     value: "{raw}",
                     spellcheck: false,
                     oninput: move |evt| {

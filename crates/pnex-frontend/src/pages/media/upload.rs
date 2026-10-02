@@ -13,11 +13,15 @@ pub(super) fn UploadModal(on_close: Callback<()>, on_uploaded: Callback<()>) -> 
     let mut submitting = use_signal(|| false);
 
     rsx! {
-        Modal { title: t!("media-upload-title"), max_width: "max-w-md",
+        Modal {
+            title: t!("media-upload-title"),
+            max_width: "max-w-md",
             on_close: move |_| on_close.call(()),
             div { class: "space-y-4",
                 div {
-                    label { class: "block text-sm font-medium text-gray-700 mb-1", {t!("media-upload-file")} }
+                    label { class: "block text-sm font-medium text-gray-700 mb-1",
+                        {t!("media-upload-file")}
+                    }
                     input {
                         class: "w-full text-sm border border-gray-300 rounded-lg px-3 py-2",
                         r#type: "file",
@@ -43,7 +47,9 @@ pub(super) fn UploadModal(on_close: Callback<()>, on_uploaded: Callback<()>) -> 
                     }
                 }
                 div {
-                    label { class: "block text-sm font-medium text-gray-700 mb-1", {t!("media-upload-name")} }
+                    label { class: "block text-sm font-medium text-gray-700 mb-1",
+                        {t!("media-upload-name")}
+                    }
                     input {
                         class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm",
                         placeholder: t!("media-upload-name-placeholder"),
@@ -52,7 +58,9 @@ pub(super) fn UploadModal(on_close: Callback<()>, on_uploaded: Callback<()>) -> 
                     }
                 }
                 div {
-                    label { class: "block text-sm font-medium text-gray-700 mb-1", {t!("media-upload-kind")} }
+                    label { class: "block text-sm font-medium text-gray-700 mb-1",
+                        {t!("media-upload-kind")}
+                    }
                     select {
                         class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white",
                         value: "{kind}",
@@ -97,15 +105,17 @@ pub(super) fn UploadModal(on_close: Callback<()>, on_uploaded: Callback<()>) -> 
                                 // Bytes stored by the `onchange` (immediate
                                 // read), consumed here.
                                 match take_file_bytes() {
-                                    Some(bytes) => match api::media::upload(&params, bytes).await {
-                                        Ok(_) => {
-                                            toasts::success(t!("media-upload-added"));
-                                            on_uploaded.call(());
+                                    Some(bytes) => {
+                                        match api::media::upload(&params, bytes).await {
+                                            Ok(_) => {
+                                                toasts::success(t!("media-upload-added"));
+                                                on_uploaded.call(());
+                                            }
+                                            Err(err) => {
+                                                toasts::error(err);
+                                            }
                                         }
-                                        Err(err) => {
-                                            toasts::error(err);
-                                        }
-                                    },
+                                    }
                                     None => toasts::error("media-upload-no-file"),
                                 }
                                 submitting.set(false);

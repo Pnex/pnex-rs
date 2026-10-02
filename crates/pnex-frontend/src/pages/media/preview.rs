@@ -131,25 +131,37 @@ pub(super) fn MediaPreview(
     rsx! {
         // `relative`: the container anchors the HD overlay (absolute
         // inset-0).
-        div { class: "relative bg-gray-900 rounded-lg overflow-hidden flex items-center justify-center min-h-[300px]",
+        div {
+            class: "relative bg-gray-900 rounded-lg overflow-hidden flex items-center justify-center min-h-[300px]",
             // Kind + version pills (top-RIGHT overlay, non-interactive —
             // never above the 360 drags; top-left is owned by pannellum's
             // native zoom/fullscreen controls, seen overlapping on screen).
             // Dark backdrop + white text ONLY: mixing the soft info-card
             // classes here produced light-text-on-light-bg (unreadable).
             div { class: "pointer-events-none absolute top-3 right-3 z-10 flex flex-wrap items-center gap-1.5",
-                span {
-                    class: "inline-flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-xs font-medium text-white",
+                span { class: "inline-flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-xs font-medium text-white",
                     match asset.media_kind() {
-                        MediaKind::Panorama => rsx! { icons::Image { class: "h-3 w-3" } },
-                        MediaKind::Splat => rsx! { icons::Cube { class: "h-3 w-3" } },
-                        MediaKind::Floorplan => rsx! { icons::Map { class: "h-3 w-3" } },
-                        MediaKind::Photo => rsx! { icons::Image { class: "h-3 w-3" } },
-                        MediaKind::Model => rsx! { icons::Eye { class: "h-3 w-3" } },
+                        MediaKind::Panorama => rsx! {
+                            icons::Image { class: "h-3 w-3" }
+                        },
+                        MediaKind::Splat => rsx! {
+                            icons::Cube { class: "h-3 w-3" }
+                        },
+                        MediaKind::Floorplan => rsx! {
+                            icons::Map { class: "h-3 w-3" }
+                        },
+                        MediaKind::Photo => rsx! {
+                            icons::Image { class: "h-3 w-3" }
+                        },
+                        MediaKind::Model => rsx! {
+                            icons::Eye { class: "h-3 w-3" }
+                        },
                     }
                     {kind_label(&asset)}
                 }
-                span { class: "rounded-full px-2.5 py-1 text-xs font-medium text-white {version_pill_classes}", "{version_pill_text}" }
+                span { class: "rounded-full px-2.5 py-1 text-xs font-medium text-white {version_pill_classes}",
+                    "{version_pill_text}"
+                }
             }
             if is_photo {
                 match blob_url() {
@@ -163,7 +175,11 @@ pub(super) fn MediaPreview(
                         // image (tour_viewer mini-map school); `max-h` only
                         // clamps unusually tall images.
                         div { class: "relative w-full",
-                            img { src: "{url}", class: "mx-auto h-auto w-full max-h-[560px] object-contain", alt: "{asset.name}" }
+                            img {
+                                src: "{url}",
+                                class: "mx-auto h-auto w-full max-h-[560px] object-contain",
+                                alt: "{asset.name}",
+                            }
                             for (m_id, m_x, m_y, m_kind, m_item) in flat_markers {
                                 button {
                                     key: "annot-{m_id}",
@@ -189,7 +205,9 @@ pub(super) fn MediaPreview(
                             span { class: "text-sm text-gray-300", {t!("media-preview-unavailable")} }
                         }
                     },
-                    None => rsx! { span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-white" } },
+                    None => rsx! {
+                        span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-white" }
+                    },
                 }
             } else if is_panorama || is_splat_viewable {
                 // Height in INLINE style: pannellum sets `.pnlm-container`
@@ -197,7 +215,11 @@ pub(super) fn MediaPreview(
                 // → height:100% of an unsized parent = 0 px (invisible
                 // canvas, black box — seen 2026-09-10). Inline keeps
                 // precedence whatever the stylesheet order.
-                div { id: "{host_id}", class: "w-full h-[420px]", style: "height: 420px" }
+                div {
+                    id: "{host_id}",
+                    class: "w-full h-[420px]",
+                    style: "height: 420px",
+                }
                 if is_panorama && show_hd_overlay {
                     // Take 360 V2: the displayed preview is the phone's
                     // fast render (v1) — the real 360° HD (v2) is being
@@ -209,7 +231,9 @@ pub(super) fn MediaPreview(
                     div { class: "absolute inset-x-0 bottom-0 z-10 pointer-events-none flex flex-col items-center gap-1 p-3",
                         div { class: "flex items-center gap-2 bg-black/70 rounded-full px-4 py-2",
                             span { class: "animate-spin inline-block rounded-full h-3.5 w-3.5 border-b-2 border-white flex-shrink-0" }
-                            span { class: "text-xs font-semibold text-white", {t!("media-stitch-hd-title")} }
+                            span { class: "text-xs font-semibold text-white",
+                                {t!("media-stitch-hd-title")}
+                            }
                         }
                         div { class: "text-[11px] text-gray-300 bg-black/50 rounded-lg px-3 py-1 max-w-[92%] text-center",
                             {t!("media-stitch-hd-text")}
@@ -224,7 +248,11 @@ pub(super) fn MediaPreview(
                         match blob_url() {
                             Some(url) => rsx! {
                                 div { class: "absolute inset-0 flex flex-col items-center justify-center p-2",
-                                    img { src: "{url}", class: "max-h-[360px] w-auto object-contain", alt: "{asset.name}" }
+                                    img {
+                                        src: "{url}",
+                                        class: "max-h-[360px] w-auto object-contain",
+                                        alt: "{asset.name}",
+                                    }
                                     span { class: "text-xs text-gray-400 mt-1", {t!("media-preview-pano-flat")} }
                                 }
                             },

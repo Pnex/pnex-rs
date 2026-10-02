@@ -147,9 +147,7 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
         div { class: "space-y-3",
             // ── Canaux (rows répétables, école DeviceForm) ──
             div { class: "space-y-1",
-                span { class: "text-xs font-medium text-gray-500 block",
-                    {t!("flows-notify-channels")}
-                }
+                span { class: "text-xs font-medium text-gray-500 block", {t!("flows-notify-channels")} }
                 for (i, cid) in channel_rows.iter().enumerate() {
                     NotifyChannelRow {
                         key: "{i}-{cid}",
@@ -163,12 +161,17 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
                                 ids[idx] = id;
                             }
                             channel_ids.set(ids.clone());
-                            patch_selected(&mut cx, move |node: &mut FlowNode| {
-                                if let FlowNodeKind::PnexNotify { config } = &mut node.kind {
-                                    config.channel_ids =
-                                        ids.iter().filter_map(|s| s.parse().ok()).collect();
-                                }
-                            });
+                            patch_selected(
+                                &mut cx,
+                                move |node: &mut FlowNode| {
+                                    if let FlowNodeKind::PnexNotify { config } = &mut node.kind {
+                                        config.channel_ids = ids
+                                            .iter()
+                                            .filter_map(|s| s.parse().ok())
+                                            .collect();
+                                    }
+                                },
+                            );
                         },
                     }
                 }
@@ -180,31 +183,33 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
                             let mut ids = channel_ids.read().clone();
                             ids.push(String::new());
                             channel_ids.set(ids.clone());
-                            patch_selected(&mut cx, move |node: &mut FlowNode| {
-                                if let FlowNodeKind::PnexNotify { config } = &mut node.kind {
-                                    config.channel_ids =
-                                        ids.iter().filter_map(|s| s.parse().ok()).collect();
-                                }
-                            });
+                            patch_selected(
+                                &mut cx,
+                                move |node: &mut FlowNode| {
+                                    if let FlowNodeKind::PnexNotify { config } = &mut node.kind {
+                                        config.channel_ids = ids
+                                            .iter()
+                                            .filter_map(|s| s.parse().ok())
+                                            .collect();
+                                    }
+                                },
+                            );
                         },
-                        "+ " {t!("flows-notify-add-channel")}
+                        "+ "
+                        {t!("flows-notify-add-channel")}
                     }
                 }
             }
 
             // ── Template ──
             div { class: "space-y-1",
-                span { class: "text-xs font-medium text-gray-500 block",
-                    {t!("flows-notify-template")}
-                }
+                span { class: "text-xs font-medium text-gray-500 block", {t!("flows-notify-template")} }
                 select {
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white disabled:bg-gray-50",
                     disabled: !can_write,
                     value: "{selected_template}",
                     onchange: move |event| commit_template(event.value()),
-                    option { value: NIL_UUID, selected: template_nil,
-                        {t!("flows-notify-no-template")}
-                    }
+                    option { value: NIL_UUID, selected: template_nil, {t!("flows-notify-no-template")} }
                     for (tpl_id, tpl_label, tpl_selected) in template_options {
                         option { value: tpl_id.clone(), selected: tpl_selected, {tpl_label} }
                     }
@@ -230,9 +235,7 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
                 // The permanent `trigger` gate row: wire a logic function's
                 // boolean output to decide whether the notification is sent.
                 div { class: "space-y-1",
-                    span { class: "text-xs text-gray-500 block",
-                        {t!("flows-notify-trigger-hint")}
-                    }
+                    span { class: "text-xs text-gray-500 block", {t!("flows-notify-trigger-hint")} }
                 }
             }
 
@@ -246,30 +249,12 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
                         NotifyVarRow {
                             key: "{var_name}",
                             name: var_name.clone(),
-                            value: vars
-                                .read()
-                                .iter()
-                                .find(|(k, _)| k == var_name)
-                                .map(|(_, v)| v.clone())
-                                .unwrap_or_default(),
+                            value: var_value(&vars.read(), var_name),
                             can_write,
                             on_change: move |(name, value): (String, String)| {
-                                vars.with_mut(|rows| {
-                                    if let Some(row) =
-                                        rows.iter_mut().find(|(k, _)| *k == name)
-                                    {
-                                        row.1 = value;
-                                    } else {
-                                        rows.push((name.clone(), value));
-                                    }
-                                });
-                                let map: std::collections::BTreeMap<String, String> =
-                                    vars.read().clone().into_iter().collect();
-                                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                                    if let FlowNodeKind::PnexNotify { config } = &mut node.kind {
-                                        config.vars = map;
-                                    }
-                                });
+                                upsert_var(&mut vars.write(), name, value);
+                                let rows = vars.read().clone();
+                                store_vars(&mut cx, &rows);
                             },
                         }
                     }
@@ -286,11 +271,14 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
                         disabled: !can_write,
                         onchange: move |event| {
                             let checked = event.checked();
-                            patch_selected(&mut cx, move |node: &mut FlowNode| {
-                                if let FlowNodeKind::PnexNotify { config } = &mut node.kind {
-                                    config.strict = checked;
-                                }
-                            });
+                            patch_selected(
+                                &mut cx,
+                                move |node: &mut FlowNode| {
+                                    if let FlowNodeKind::PnexNotify { config } = &mut node.kind {
+                                        config.strict = checked;
+                                    }
+                                },
+                            );
                         },
                     }
                     span { class: "text-xs font-medium text-gray-500", {t!("flows-notify-strict")} }
@@ -313,9 +301,7 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
                             commit_anti_spam(checked);
                         },
                     }
-                    span { class: "text-xs font-medium text-gray-500",
-                        {t!("flows-notify-antispam")}
-                    }
+                    span { class: "text-xs font-medium text-gray-500", {t!("flows-notify-antispam")} }
                 }
                 if anti_enabled() {
                     div { class: "grid grid-cols-2 gap-2 pl-6",
@@ -349,11 +335,13 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
                         }
                     }
                     p { class: "text-xs text-gray-400 pl-6",
-                        {t!(
-                            "flows-notify-antispam-hint",
-                            max: anti_max.read().parse::<u32>().unwrap_or(0).clamp(1, 1000) as i64,
-                            window: anti_window_min.read().parse::<u64>().unwrap_or(0).clamp(1, 525_600) as i64
-                        )}
+                        {
+                            t!(
+                                "flows-notify-antispam-hint", max : anti_max.read().parse::< u32 > ()
+                                .unwrap_or(0).clamp(1, 1000) as i64, window : anti_window_min.read().parse::<
+                                u64 > ().unwrap_or(0).clamp(1, 525_600) as i64
+                            )
+                        }
                     }
                 }
             }
@@ -388,9 +376,7 @@ fn NotifyChannelRow(
                 disabled: !can_write,
                 value: "{channel_id}",
                 onchange: move |event| on_pick.call((index, event.value())),
-                option { value: "", selected: channel_id.is_empty(),
-                    {t!("flows-notify-pick-channel")}
-                }
+                option { value: "", selected: channel_id.is_empty(), {t!("flows-notify-pick-channel")} }
                 for (opt_id, opt_label, opt_selected) in options {
                     option { value: opt_id.clone(), selected: opt_selected, {opt_label} }
                 }
@@ -411,9 +397,7 @@ fn NotifyVarRow(
 ) -> Element {
     rsx! {
         div { class: "flex gap-1 items-center",
-            span { class: "w-28 shrink-0 truncate text-xs font-mono text-gray-600",
-                "{name}"
-            }
+            span { class: "w-28 shrink-0 truncate text-xs font-mono text-gray-600", "{name}" }
             input {
                 class: "flex-1 px-2 py-1 border border-gray-300 rounded text-xs font-mono",
                 placeholder: t!("flows-inspector-var-value-placeholder"),
@@ -427,4 +411,31 @@ fn NotifyVarRow(
             }
         }
     }
+}
+
+/// Current value of a template variable (empty when unset).
+fn var_value(rows: &[(String, String)], name: &str) -> String {
+    rows.iter()
+        .find(|(k, _)| k == name)
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default()
+}
+
+/// Sets a template variable, appending it when absent.
+fn upsert_var(rows: &mut NotifyVarRows, name: String, value: String) {
+    if let Some(row) = rows.iter_mut().find(|(k, _)| *k == name) {
+        row.1 = value;
+    } else {
+        rows.push((name, value));
+    }
+}
+
+/// Writes the variable rows into the selected notify node.
+fn store_vars(cx: &mut EditorCx, rows: &NotifyVarRows) {
+    let map: std::collections::BTreeMap<String, String> = rows.iter().cloned().collect();
+    patch_selected(cx, move |node: &mut FlowNode| {
+        if let FlowNodeKind::PnexNotify { config } = &mut node.kind {
+            config.vars = map;
+        }
+    });
 }

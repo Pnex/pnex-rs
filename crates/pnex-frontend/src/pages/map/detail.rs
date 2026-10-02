@@ -236,7 +236,7 @@ pub(super) fn PoiDetail(
                         class: "absolute bottom-4 left-4 z-10 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white rounded-full shadow-lg border border-gray-200 hover:bg-gray-50 transition-colors",
                         onclick: move |_| preview_hidden.set(false),
                         icons::Map { class: "h-3.5 w-3.5 text-gray-400" }
-                        {t!("poi-preview-recall", name: target.name.clone())}
+                        {t!("poi-preview-recall", name : target.name.clone())}
                     }
                 }
             }
@@ -257,7 +257,9 @@ pub(super) fn PoiDetail(
                 }
                 div { class: "flex-1 overflow-y-auto p-4 space-y-4",
                     match poi.as_ref() {
-                        None => rsx! { div { class: "text-sm text-gray-500", {t!("poi-loading")} } },
+                        None => rsx! {
+                            div { class: "text-sm text-gray-500", {t!("poi-loading")} }
+                        },
                         Some(p) => rsx! {
                             // Localisation libre (remplace la hiérarchie).
                             if let Some(detail) = p.location_detail.clone() {
@@ -278,8 +280,8 @@ pub(super) fn PoiDetail(
                                     placements: attached_devices.clone(),
                                     devices: device_index.clone(),
                                     version: detail_version,
-                                    preview: preview,
-                                    pinned: pinned,
+                                    preview,
+                                    pinned,
                                     on_preview: move |t: PreviewTarget| {
                                         preview.set(Some(t));
                                         preview_hidden.set(false);
@@ -372,33 +374,33 @@ pub(super) fn PoiDetail(
                         let result = match pick {
                             ResourcePick::MediaAsset { id: target, name } => {
                                 api::resources::create_edge(
-                                    "placed_on",
-                                    ("map_pin", &id),
-                                    ("media_asset", &target),
-                                    Some(serde_json::json!({ "label": name })),
-                                )
-                                .await
-                                .map(|_| ())
+                                        "placed_on",
+                                        ("map_pin", &id),
+                                        ("media_asset", &target),
+                                        Some(serde_json::json!({ "label" : name })),
+                                    )
+                                    .await
+                                    .map(|_| ())
                             }
                             ResourcePick::Tour { id: target, name } => {
                                 api::resources::create_edge(
-                                    "placed_on",
-                                    ("map_pin", &id),
-                                    ("tour", &target),
-                                    Some(serde_json::json!({ "label": name })),
-                                )
-                                .await
-                                .map(|_| ())
+                                        "placed_on",
+                                        ("map_pin", &id),
+                                        ("tour", &target),
+                                        Some(serde_json::json!({ "label" : name })),
+                                    )
+                                    .await
+                                    .map(|_| ())
                             }
                             ResourcePick::Dashboard { id: target, name } => {
                                 api::resources::create_edge(
-                                    "placed_on",
-                                    ("map_pin", &id),
-                                    ("dashboard", &target),
-                                    Some(serde_json::json!({ "label": name })),
-                                )
-                                .await
-                                .map(|_| ())
+                                        "placed_on",
+                                        ("map_pin", &id),
+                                        ("dashboard", &target),
+                                        Some(serde_json::json!({ "label" : name })),
+                                    )
+                                    .await
+                                    .map(|_| ())
                             }
                             ResourcePick::Device { slug } => {
                                 // D43 : attache délibérée (plus jamais un
@@ -423,18 +425,20 @@ pub(super) fn PoiDetail(
                                         .map(|p| p.preview_kind.is_some())
                                         .unwrap_or(false);
                                     if !already {
-                                        let body = serde_json::json!({
-                                            "preview_kind": kind.clone(),
-                                            "preview_id": target,
-                                        });
+                                        let body = serde_json::json!(
+                                            { "preview_kind" : kind.clone(), "preview_id" : target, }
+                                        );
                                         if let Err(err) = viz::update_poi(&id, body).await {
                                             toasts::error(format!("{err}"));
                                         } else {
-                                            pinned.set(Some(PreviewTarget {
-                                                kind,
-                                                id: target,
-                                                name,
-                                            }));
+                                            pinned
+                                                .set(
+                                                    Some(PreviewTarget {
+                                                        kind,
+                                                        id: target,
+                                                        name,
+                                                    }),
+                                                );
                                         }
                                     }
                                 }
@@ -489,22 +493,18 @@ pub(super) fn PoiDetail(
         if let Some((slug, label, placement_id)) = move_conflict_data {
             ConfirmDialog {
                 title: t!("poi-device-move-title").to_string(),
-                message: t!(
-                    "poi-device-move-confirm",
-                    slug: slug.clone(),
-                    label: label.clone()
-                )
-                .to_string(),
+                message: t!("poi-device-move-confirm", slug : slug.clone(), label : label.clone())
+                    .to_string(),
                 confirm_label: t!("poi-device-move-here").to_string(),
                 on_confirm: move |_| {
                     move_conflict.set(None);
                     let target = poi_id_move.clone();
                     spawn(async move {
                         match viz::update_poi_placement(
-                            placement_id,
-                            serde_json::json!({ "pin_id": target }),
-                        )
-                        .await
+                                placement_id,
+                                serde_json::json!({ "pin_id" : target }),
+                            )
+                            .await
                         {
                             Ok(_) => {
                                 toasts::success(t!("poi-device-moved").to_string());

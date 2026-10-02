@@ -103,13 +103,27 @@ pub fn Models() -> Element {
                         table { class: "min-w-full divide-y divide-gray-200 text-sm",
                             thead { class: "bg-gray-50",
                                 tr {
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("models-col-name")} }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("models-col-family")} }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("models-col-input")} }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("models-col-labels")} }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("models-col-threshold")} }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("models-col-check")} }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600", {t!("models-col-updated")} }
+                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                        {t!("models-col-name")}
+                                    }
+                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                        {t!("models-col-family")}
+                                    }
+                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                        {t!("models-col-input")}
+                                    }
+                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                        {t!("models-col-labels")}
+                                    }
+                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                        {t!("models-col-threshold")}
+                                    }
+                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                        {t!("models-col-check")}
+                                    }
+                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                        {t!("models-col-updated")}
+                                    }
                                     th { class: "px-4 py-2" }
                                 }
                             }
@@ -153,7 +167,11 @@ pub fn Models() -> Element {
                 }
             },
             Some(Dialog::Test(m)) => rsx! {
-                TestImageModal { key: "test-{m.id}", model: m.clone(), on_close: move |_| dialog.set(None) }
+                TestImageModal {
+                    key: "test-{m.id}",
+                    model: m.clone(),
+                    on_close: move |_| dialog.set(None),
+                }
             },
             Some(Dialog::Live(m)) => rsx! {
                 TestLiveModal {
@@ -167,7 +185,7 @@ pub fn Models() -> Element {
             Some(Dialog::Delete(m)) => rsx! {
                 ConfirmDialog {
                     title: t!("models-delete-title"),
-                    message: t!("models-delete-message", name: m.name.clone()),
+                    message: t!("models-delete-message", name : m.name.clone()),
                     confirm_label: t!("models-delete-confirm"),
                     on_confirm: {
                         let id = m.id.clone();
@@ -227,16 +245,24 @@ fn ModelRow(
                 }
             }
             td { class: "px-4 py-2 text-gray-600", {model.spec.family.wire().to_uppercase()} }
-            td { class: "px-4 py-2 text-gray-600", "{model.spec.input_width}×{model.spec.input_height}" }
+            td { class: "px-4 py-2 text-gray-600",
+                "{model.spec.input_width}×{model.spec.input_height}"
+            }
             td { class: "px-4 py-2 text-gray-600", "{model.spec.labels.len()}" }
             td { class: "px-4 py-2 text-gray-600", "{model.spec.score_threshold:.2}" }
             td { class: "px-4 py-2 max-w-xs",
-                span { class: "inline-flex px-2 py-0.5 rounded text-xs font-medium {badge_class}", {badge_label} }
+                span { class: "inline-flex px-2 py-0.5 rounded text-xs font-medium {badge_class}",
+                    {badge_label}
+                }
                 if let Some(speed) = speed {
                     p { class: "text-xs text-gray-500 mt-0.5", {speed} }
                 }
                 if let Some(err) = check.error.clone() {
-                    p { class: "text-xs text-red-700 mt-0.5 break-words", title: "{err}", "{err}" }
+                    p {
+                        class: "text-xs text-red-700 mt-0.5 break-words",
+                        title: "{err}",
+                        "{err}"
+                    }
                 }
             }
             td { class: "px-4 py-2 text-gray-500", {date_label(&model.updated_at)} }

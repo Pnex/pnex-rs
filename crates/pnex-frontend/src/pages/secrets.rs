@@ -210,7 +210,8 @@ pub fn Secrets() -> Element {
                         let target = editing().flatten();
                         let input = OrgSecretInput {
                             name: name().trim().to_string(),
-                            description: Some(description().trim().to_string()).filter(|d| !d.is_empty()),
+                            description: Some(description().trim().to_string())
+                                .filter(|d| !d.is_empty()),
                             value: Some(value()).filter(|v| !v.is_empty()),
                         };
                         busy.set(true);
@@ -234,7 +235,9 @@ pub fn Secrets() -> Element {
                     valid: form_valid,
                     div { class: "space-y-4",
                         div {
-                            label { class: "block text-sm font-medium text-gray-700 mb-1", {t!("secrets-name")} }
+                            label { class: "block text-sm font-medium text-gray-700 mb-1",
+                                {t!("secrets-name")}
+                            }
                             input {
                                 class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono",
                                 placeholder: t!("secrets-name-placeholder"),
@@ -243,7 +246,9 @@ pub fn Secrets() -> Element {
                             }
                         }
                         div {
-                            label { class: "block text-sm font-medium text-gray-700 mb-1", {t!("secrets-description")} }
+                            label { class: "block text-sm font-medium text-gray-700 mb-1",
+                                {t!("secrets-description")}
+                            }
                             input {
                                 class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                                 value: "{description}",
@@ -252,7 +257,11 @@ pub fn Secrets() -> Element {
                         }
                         div {
                             label { class: "block text-sm font-medium text-gray-700 mb-1",
-                                if is_edit { {t!("secrets-new-value")} } else { {t!("secrets-value")} }
+                                if is_edit {
+                                    {t!("secrets-new-value")}
+                                } else {
+                                    {t!("secrets-value")}
+                                }
                             }
                             input {
                                 class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono",
@@ -286,19 +295,19 @@ pub fn Secrets() -> Element {
                 }
             }
             ListStates {
-                state: state,
-                is_empty: is_empty,
+                state,
+                is_empty,
                 empty_message: t!("secrets-empty").to_string(),
                 empty_detail: rsx! {
                     p { class: "text-sm text-gray-400 mt-2", {t!("secrets-empty-hint")} }
                 },
                 div { class: "space-y-4",
                     DataTable {
-                        columns: columns,
-                        rows: rows,
+                        columns,
+                        rows,
                         row_key: RowKey::new(|s: &OrgSecret| s.id.to_string()),
                     }
-                    ListPager { count: count, page: page }
+                    ListPager { count, page }
                 }
             }
         }

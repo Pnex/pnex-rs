@@ -109,7 +109,7 @@ pub fn Dashboards(id: String, mode: String) -> Element {
                     LiveSubView {
                         key: "{dashboard_id}",
                         dashboard_id: dashboard_id.clone(),
-                        can_write: can_write,
+                        can_write,
                         on_edit: move |_| editing.set(true),
                         on_back: move |_| {
                             selected.set(None);
@@ -120,10 +120,14 @@ pub fn Dashboards(id: String, mode: String) -> Element {
             }
         }
         None => rsx! {
-            ListView { reload: reload, can_write: can_write, on_open: move |open: (String, bool)| {
-                selected.set(Some(open.0));
-                editing.set(open.1);
-            } }
+            ListView {
+                reload,
+                can_write,
+                on_open: move |open: (String, bool)| {
+                    selected.set(Some(open.0));
+                    editing.set(open.1);
+                },
+            }
         },
     }
 }
@@ -235,7 +239,7 @@ fn ListView(
         ListLayout {
             title: t!("nav-dashboards").to_string(),
             subtitle: Some(t!("db-subtitle").to_string()),
-            can_write: can_write,
+            can_write,
             // Harmonisation socle : rafraîchissement manuel dans l'en-tête
             // (la page n'a pas de barre de filtres).
             actions: rsx! {
@@ -246,7 +250,7 @@ fn ListView(
                 // Création immédiate, sans modale : nom daté puis ouverture
                 // directe en édition (fluidité — retour user 2026-09-18).
                 let params = pnex_core::CreateDashboard {
-                    name: t!("db-default-name", date: crate::util::now_label()).to_string(),
+                    name: t!("db-default-name", date : crate ::util::now_label()).to_string(),
                     description: None,
                     layout: None,
                 };
@@ -266,15 +270,15 @@ fn ListView(
             } else {
                 ListStates {
                     state: list_state,
-                    is_empty: is_empty,
+                    is_empty,
                     empty_message: t!("db-list-empty").to_string(),
                     div { class: "relative",
                         DataTable {
-                            columns: columns,
-                            rows: rows,
+                            columns,
+                            rows,
                             row_key: RowKey::new(|d: &VizDashboardSummary| d.id.clone()),
                         }
-                        ListPager { count: count, page: page }
+                        ListPager { count, page }
                     }
                 }
             }
@@ -405,10 +409,16 @@ fn LiveSubView(
                 }
             }
 
-            {match detail_loaded {
-                Some(d) => rsx! { {live_canvas(&d.layout, &values)} },
-                None => rsx! { p { class: "text-gray-500 text-center py-12", "…" } },
-            }}
+            {
+                match detail_loaded {
+                    Some(d) => rsx! {
+                        {live_canvas(&d.layout, &values)}
+                    },
+                    None => rsx! {
+                        p { class: "text-gray-500 text-center py-12", "…" }
+                    },
+                }
+            }
         }
     }
 }
@@ -435,7 +445,7 @@ fn EditorSubView(dashboard_id: String, on_back: EventHandler<()>) -> Element {
                 key: "{d.id}-{d.current_version_number}",
                 detail: d.clone(),
                 can_write: true,
-                on_back: on_back,
+                on_back,
                 on_changed: move |_| reload.with_mut(|r| *r += 1),
             }
         },
@@ -448,9 +458,13 @@ fn EditorSubView(dashboard_id: String, on_back: EventHandler<()>) -> Element {
                     icons::ArrowLeft { class: "h-4 w-4 mr-2" }
                     {t!("db-back")}
                 }
-                div { class: "bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700", "—" }
+                div { class: "bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700",
+                    "—"
+                }
             }
         },
-        None => rsx! { p { class: "text-gray-500 text-center py-12", "…" } },
+        None => rsx! {
+            p { class: "text-gray-500 text-center py-12", "…" }
+        },
     }
 }

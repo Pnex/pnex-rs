@@ -85,10 +85,7 @@ pub fn BoardPreviewModal(board: api::boards::Board, on_close: Callback<()>) -> E
         .unwrap_or_default();
     let legend_items = legend_of(&views);
     rsx! {
-        Modal {
-            title,
-            max_width: "max-w-xl".to_string(),
-            on_close: on_close,
+        Modal { title, max_width: "max-w-xl".to_string(), on_close,
             div { class: "space-y-3",
                 svg {
                     class: "mx-auto block w-full",
@@ -96,7 +93,13 @@ pub fn BoardPreviewModal(board: api::boards::Board, on_close: Callback<()>) -> E
                     xmlns: "http://www.w3.org/2000/svg",
                     view_box: "0 0 {svg_w} {svg_h}",
                     role: "group",
-                    BoardSvg { views, per_side, ratio, selected_label: selected, chip_label }
+                    BoardSvg {
+                        views,
+                        per_side,
+                        ratio,
+                        selected_label: selected,
+                        chip_label,
+                    }
                 }
                 Legend { items: legend_items }
             }

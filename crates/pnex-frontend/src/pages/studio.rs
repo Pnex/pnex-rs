@@ -156,106 +156,101 @@ pub fn Studio() -> Element {
     ];
 
     rsx! {
-        {match selected() {
-            Some(tour_id) => rsx! {
-                // Éditeur plein écran, HORS ListLayout (principe 1 de la
-                // coquille : plus d'« + Nouveau tour » en contexte d'édition).
-                crate::components::tour_editor::TourEditor {
-                    key: "{tour_id}",
-                    tour_id,
-                    can_write,
-                    on_back: move |_| selected.set(None),
-                    on_changed: move |_| reload.with_mut(|r| *r += 1),
-                }
-            },
-            None => rsx! {
-                ListLayout {
-                    title: t!("nav-studio").to_string(),
-                    subtitle: Some(t!("studio-subtitle").to_string()),
-                    can_write: can_write,
-                    add_label: Some(t!("studio-new").to_string()),
-                    on_add: move |_| {
-                        // Création immédiate, sans modale : nom daté,
-                        // document minimal posé par le backend (un étage
-                        // « RDC »), ouverture directe de l'éditeur.
-                        let params = pnex_core::CreateTour {
-                            name: t!(
-                                "studio-default-name",
-                                date: crate::util::now_label()
-                            )
+        if let Some(tour_id) = selected() {
+            // Éditeur plein écran, HORS ListLayout (principe 1 de la
+            // coquille : plus d'« + Nouveau tour » en contexte d'édition).
+            crate::components::tour_editor::TourEditor {
+                key: "{tour_id}",
+                tour_id,
+                can_write,
+                on_back: move |_| selected.set(None),
+                on_changed: move |_| reload.with_mut(|r| *r += 1),
+            }
+        } else {
+            ListLayout {
+                title: t!("nav-studio").to_string(),
+                subtitle: Some(t!("studio-subtitle").to_string()),
+                can_write,
+                add_label: Some(t!("studio-new").to_string()),
+                on_add: move |_| {
+                    // Création immédiate, sans modale : nom daté,
+                    // document minimal posé par le backend (un étage
+                    // « RDC »), ouverture directe de l'éditeur.
+                    let params = pnex_core::CreateTour {
+                        name: t!("studio-default-name", date : crate ::util::now_label())
                             .to_string(),
-                            description: None,
-                            author: session::user().map(|user| user.username),
-                            note: None,
-                        };
-                        spawn(async move {
-                            match api::tours::create(params).await {
-                                Ok(tour) => {
-                                    toasts::success("toast-tour-created");
-                                    selected.set(Some(tour.id));
-                                    reload.with_mut(|r| *r += 1);
-                                }
-                                Err(err) => toasts::error(err),
+                        description: None,
+                        author: session::user().map(|user| user.username),
+                        note: None,
+                    };
+                    spawn(async move {
+                        match api::tours::create(params).await {
+                            Ok(tour) => {
+                                toasts::success("toast-tour-created");
+                                selected.set(Some(tour.id));
+                                reload.with_mut(|r| *r += 1);
                             }
-                        });
-                    },
-                    if org::current().is_none() {
-                        p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
-                    } else {
-                        // Recherche + refresh.
-                        FilterBar {
-                            SearchInput {
-                                placeholder: t!("studio-search-placeholder").to_string(),
-                                value: search,
-                                on_submit: move |_| {
-                                    page.set(0);
-                                    reload.with_mut(|r| *r += 1);
-                                },
-                            }
-                            RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
+                            Err(err) => toasts::error(err),
                         }
-
-                        ListStates {
-                            state: list_state,
-                            is_empty: is_empty,
-                            empty_message: t!("studio-empty").to_string(),
-                            DataTable {
-                                columns: columns,
-                                rows: rows,
-                                row_key: RowKey::new(|tour: &TourSummary| tour.id.clone()),
-                            }
-                            ListPager { count: count, page: page }
+                    });
+                },
+                if org::current().is_none() {
+                    p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
+                } else {
+                    // Recherche + refresh.
+                    FilterBar {
+                        SearchInput {
+                            placeholder: t!("studio-search-placeholder").to_string(),
+                            value: search,
+                            on_submit: move |_| {
+                                page.set(0);
+                                reload.with_mut(|r| *r += 1);
+                            },
                         }
+                        RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
+                    }
 
-                        // Suppression confirmée d'une ligne.
-                        if let Some((tour_id, tour_name)) = delete_target() {
-                            ConfirmDialog {
-                                title: t!("studio-confirm-delete-title"),
-                                message: t!("common-quoted-message", name: tour_name.clone(), message: t!("studio-confirm-delete-message")),
-                                confirm_label: t!("studio-delete"),
-                                on_confirm: move |_| {
-                                    delete_target.set(None);
-                                    let id = tour_id.clone();
-                                    spawn(async move {
-                                        match api::tours::delete(&id).await {
-                                            Ok(()) => {
-                                                toasts::success("toast-tour-deleted");
-                                                reload.with_mut(|r| *r += 1);
-                                            }
-                                            Err(err) => toasts::error(err),
+                    ListStates {
+                        state: list_state,
+                        is_empty,
+                        empty_message: t!("studio-empty").to_string(),
+                        DataTable {
+                            columns,
+                            rows,
+                            row_key: RowKey::new(|tour: &TourSummary| tour.id.clone()),
+                        }
+                        ListPager { count, page }
+                    }
+                    // Modal de création supprimée : « + Nouveau » crée
+                    // directement (nom daté) et ouvre l'éditeur.
+
+                    // Suppression confirmée d'une ligne.
+                    if let Some((tour_id, tour_name)) = delete_target() {
+                        ConfirmDialog {
+                            title: t!("studio-confirm-delete-title"),
+                            message: t!(
+                                "common-quoted-message", name : tour_name.clone(), message :
+                                t!("studio-confirm-delete-message")
+                            ),
+                            confirm_label: t!("studio-delete"),
+                            on_confirm: move |_| {
+                                delete_target.set(None);
+                                let id = tour_id.clone();
+                                spawn(async move {
+                                    match api::tours::delete(&id).await {
+                                        Ok(()) => {
+                                            toasts::success("toast-tour-deleted");
+                                            reload.with_mut(|r| *r += 1);
                                         }
-                                    });
-                                },
-                                on_cancel: move |_| delete_target.set(None),
-                            }
+                                        Err(err) => toasts::error(err),
+                                    }
+                                });
+                            },
+                            on_cancel: move |_| delete_target.set(None),
                         }
-
-                        // Modal de création supprimée : « + Nouveau » crée
-                        // directement (nom daté) et ouvre l'éditeur.
-                    },
+                    }
                 }
             }
-        }
         }
     }
 }

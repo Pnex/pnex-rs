@@ -66,17 +66,22 @@ pub(super) fn JsonSplitForm(
                         // Bascule auto↔manuel : le funnel update_graph
                         // relance la synchro — repasser en auto régénère les
                         // clés à la volée.
-                        patch_selected(&mut cx, |node| {
-                            if let FlowNodeKind::JsonSplit { config } = &mut node.kind {
-                                config.auto = !config.auto;
-                            }
-                        });
+                        patch_selected(
+                            &mut cx,
+                            |node| {
+                                if let FlowNodeKind::JsonSplit { config } = &mut node.kind {
+                                    config.auto = !config.auto;
+                                }
+                            },
+                        );
                     },
                 }
                 {t!("flows-json-split-auto")}
             }
             div { class: "space-y-1",
-                span { class: "text-xs font-medium text-gray-500 block", {t!("flows-json-split-keys-label")} }
+                span { class: "text-xs font-medium text-gray-500 block",
+                    {t!("flows-json-split-keys-label")}
+                }
                 if auto {
                     // Ports suivis automatiquement : liste en lecture seule.
                     for k in key_rows.iter() {
@@ -87,93 +92,105 @@ pub(super) fn JsonSplitForm(
                     }
                 }
                 if !auto {
-                for (index, key) in key_rows.iter().enumerate() {
-                    JsonNameRow {
-                        key: "{index}",
-                        index,
-                        value: key.clone(),
-                        placeholder: t!("flows-json-split-key-placeholder"),
-                        can_write,
-                        on_change: move |(i, new_key)| {
-                            // Renommer une clé ne re-câble rien : le port i
-                            // = keys[i], l'index ne bouge pas (seules les
-                            // suppressions/import décalent les ports).
-                            let old = keys.read().clone();
-                            let mut new = old.clone();
-                            if let Some(row) = new.get_mut(i) {
-                                *row = new_key;
-                            }
-                            keys.set(new.clone());
-                            patch_selected(&mut cx, move |node| {
-                                if let FlowNodeKind::JsonSplit { config } = &mut node.kind {
-                                    config.keys = new;
+                    // Renommer une clé ne re-câble rien : le port i
+                    // = keys[i], l'index ne bouge pas (seules les
+                    // suppressions/import décalent les ports).
+                    for (index, key) in key_rows.iter().enumerate() {
+                        JsonNameRow {
+                            key: "{index}",
+                            index,
+                            value: key.clone(),
+                            placeholder: t!("flows-json-split-key-placeholder"),
+                            can_write,
+                            on_change: move |(i, new_key)| {
+                                let old = keys.read().clone();
+                                let mut new = old.clone();
+                                if let Some(row) = new.get_mut(i) {
+                                    *row = new_key;
                                 }
-                            });
-                        },
-                        on_remove: move |i| {
-                            let old = keys.read().clone();
-                            let mut new = old.clone();
-                            if i < new.len() {
-                                new.remove(i);
-                            }
-                            keys.set(new.clone());
-                            let Some(id) = cx.selected_node.peek().clone() else { return; };
-                            cx.update_graph(move |graph| {
-                                state::rewire_split_keys(graph, &id, &old, &new);
-                                if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == id) {
-                                    if let FlowNodeKind::JsonSplit { config } = &mut node.kind {
-                                        config.keys = new;
+                                keys.set(new.clone());
+                                patch_selected(
+                                    &mut cx,
+                                    move |node| {
+                                        if let FlowNodeKind::JsonSplit { config } = &mut node.kind {
+                                            config.keys = new;
+                                        }
+                                    },
+                                );
+                            },
+                            on_remove: move |i| {
+                                let old = keys.read().clone();
+                                let mut new = old.clone();
+                                if i < new.len() {
+                                    new.remove(i);
+                                }
+                                keys.set(new.clone());
+                                let Some(id) = cx.selected_node.peek().clone() else {
+                                    return;
+                                };
+                                cx.update_graph(move |graph| {
+                                    state::rewire_split_keys(graph, &id, &old, &new);
+                                    if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == id) {
+                                        if let FlowNodeKind::JsonSplit { config } = &mut node.kind {
+                                            config.keys = new;
+                                        }
                                     }
-                                }
-                            });
-                        },
+                                });
+                            },
+                        }
                     }
-                }
-                if can_write {
-                    button {
-                        class: "text-xs text-blue-600 hover:text-blue-700",
-                        onclick: move |_| {
-                            // Nom auto : key1, key2… unique parmi les clés —
-                            // une clé vide n'est jamais un port utilisable,
-                            // elle n'a pas de raison d'exister.
-                            let mut new = keys.read().clone();
-                            let mut i = new.len() + 1;
-                            let mut name = format!("key{i}");
-                            while new.iter().any(|c| *c == name) {
-                                i += 1;
-                                name = format!("key{i}");
-                            }
-                            new.push(name);
-                            keys.set(new.clone());
-                            patch_selected(&mut cx, move |node| {
-                                if let FlowNodeKind::JsonSplit { config } = &mut node.kind {
-                                    config.keys = new;
+                    if can_write {
+                        button {
+                            class: "text-xs text-blue-600 hover:text-blue-700",
+                            onclick: move |_| {
+                                let mut new = keys.read().clone();
+                                let mut i = new.len() + 1;
+                                let mut name = format!("key{i}");
+                                while new.iter().any(|c| *c == name) {
+                                    i += 1;
+                                    name = format!("key{i}");
                                 }
-                            });
-                        },
-                        {t!("flows-json-split-add-key")}
+                                new.push(name);
+                                keys.set(new.clone());
+                                patch_selected(
+                                    &mut cx,
+                                    move |node| {
+                                        if let FlowNodeKind::JsonSplit { config } = &mut node.kind {
+                                            config.keys = new;
+                                        }
+                                    },
+                                );
+                            },
+                            {t!("flows-json-split-add-key")}
+                        }
                     }
-                }
-                if importable {
-                    button {
-                        class: "text-xs text-blue-600 hover:text-blue-700 ml-2",
-                        onclick: move |_| {
-                            let Some(imported) = import_for_click.clone() else { return; };
-                            let old = keys.read().clone();
-                            keys.set(imported.clone());
-                            let Some(id) = cx.selected_node.peek().clone() else { return; };
-                            cx.update_graph(move |graph| {
-                                state::rewire_split_keys(graph, &id, &old, &imported);
-                                if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == id) {
-                                    if let FlowNodeKind::JsonSplit { config } = &mut node.kind {
-                                        config.keys = imported;
+                    // Nom auto : key1, key2… unique parmi les clés —
+                    // une clé vide n'est jamais un port utilisable,
+                    // elle n'a pas de raison d'exister.
+                    if importable {
+                        button {
+                            class: "text-xs text-blue-600 hover:text-blue-700 ml-2",
+                            onclick: move |_| {
+                                let Some(imported) = import_for_click.clone() else {
+                                    return;
+                                };
+                                let old = keys.read().clone();
+                                keys.set(imported.clone());
+                                let Some(id) = cx.selected_node.peek().clone() else {
+                                    return;
+                                };
+                                cx.update_graph(move |graph| {
+                                    state::rewire_split_keys(graph, &id, &old, &imported);
+                                    if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == id) {
+                                        if let FlowNodeKind::JsonSplit { config } = &mut node.kind {
+                                            config.keys = imported;
+                                        }
                                     }
-                                }
-                            });
-                        },
-                        {t!("flows-json-split-import-keys")}
+                                });
+                            },
+                            {t!("flows-json-split-import-keys")}
+                        }
                     }
-                }
                 }
             }
         }
@@ -203,18 +220,30 @@ pub(super) fn JsonMergeForm(
     rsx! {
         div { class: "space-y-3",
             if legacy_mode {
-                {text_field(t!("flows-json-merge-key"), default_key, !can_write, move |event| {
-                    let raw = event.value();
-                    default_key.set(raw.clone());
-                    patch_selected(&mut cx, move |node: &mut FlowNode| {
-                        if let FlowNodeKind::JsonMerge { config } = &mut node.kind {
-                            config.default_key = raw;
-                        }
-                    });
-                })}
+                {
+                    text_field(
+                        t!("flows-json-merge-key"),
+                        default_key,
+                        !can_write,
+                        move |event| {
+                            let raw = event.value();
+                            default_key.set(raw.clone());
+                            patch_selected(
+                                &mut cx,
+                                move |node: &mut FlowNode| {
+                                    if let FlowNodeKind::JsonMerge { config } = &mut node.kind {
+                                        config.default_key = raw;
+                                    }
+                                },
+                            );
+                        },
+                    )
+                }
             }
             div { class: "space-y-1",
-                span { class: "text-xs font-medium text-gray-500 block", {t!("flows-json-merge-inputs-label")} }
+                span { class: "text-xs font-medium text-gray-500 block",
+                    {t!("flows-json-merge-inputs-label")}
+                }
                 for (index, name) in input_rows.iter().enumerate() {
                     JsonNameRow {
                         key: "{index}",
@@ -231,7 +260,9 @@ pub(super) fn JsonMergeForm(
                             let old_name: String = old.get(i).cloned().unwrap_or_default();
                             let renamed: String = new.get(i).cloned().unwrap_or_default();
                             inputs.set(new.clone());
-                            let Some(id) = cx.selected_node.peek().clone() else { return; };
+                            let Some(id) = cx.selected_node.peek().clone() else {
+                                return;
+                            };
                             cx.update_graph(move |graph| {
                                 state::rename_merge_input(graph, &id, &old_name, &renamed);
                                 if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == id) {
@@ -248,7 +279,9 @@ pub(super) fn JsonMergeForm(
                                 new.remove(i);
                             }
                             inputs.set(new.clone());
-                            let Some(id) = cx.selected_node.peek().clone() else { return; };
+                            let Some(id) = cx.selected_node.peek().clone() else {
+                                return;
+                            };
                             cx.update_graph(move |graph| {
                                 state::prune_merge_inputs(graph, &id, &new);
                                 if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == id) {
@@ -276,11 +309,14 @@ pub(super) fn JsonMergeForm(
                             }
                             new.push(name);
                             inputs.set(new.clone());
-                            patch_selected(&mut cx, move |node| {
-                                if let FlowNodeKind::JsonMerge { config } = &mut node.kind {
-                                    config.inputs = new;
-                                }
-                            });
+                            patch_selected(
+                                &mut cx,
+                                move |node| {
+                                    if let FlowNodeKind::JsonMerge { config } = &mut node.kind {
+                                        config.inputs = new;
+                                    }
+                                },
+                            );
                         },
                         {t!("flows-json-merge-add-input")}
                     }

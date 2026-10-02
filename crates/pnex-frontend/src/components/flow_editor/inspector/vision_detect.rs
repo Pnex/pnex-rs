@@ -64,7 +64,9 @@ pub(super) fn VisionDetectForm(
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-vision-help")} }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-vision-model")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-vision-model")}
+                }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write,
@@ -73,16 +75,24 @@ pub(super) fn VisionDetectForm(
                         model_id.set(id.clone());
                         // Labels belong to a model: a new pick resets the filter.
                         labels.set(Vec::new());
-                        patch_selected(&mut cx, move |node: &mut FlowNode| {
-                            if let FlowNodeKind::VisionDetect { config } = &mut node.kind {
-                                config.model_id = id;
-                                config.labels.clear();
-                            }
-                        });
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::VisionDetect { config } = &mut node.kind {
+                                    config.model_id = id;
+                                    config.labels.clear();
+                                }
+                            },
+                        );
                     },
                     option { value: "", selected: current.is_empty(), {t!("flows-vision-model-none")} }
-                    for (id , name) in options {
-                        option { key: "{id}", value: "{id}", selected: id == current, "{name}" }
+                    for (id, name) in options {
+                        option {
+                            key: "{id}",
+                            value: "{id}",
+                            selected: id == current,
+                            "{name}"
+                        }
                     }
                     if unknown_current {
                         option { value: "{current}", selected: true, "{current}" }
@@ -95,10 +105,10 @@ pub(super) fn VisionDetectForm(
             if !model_labels.is_empty() {
                 div {
                     span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                        {t!("flows-vision-labels", count: picked_count)}
+                        {t!("flows-vision-labels", count : picked_count)}
                     }
                     div { class: "flex flex-wrap gap-1 max-h-40 overflow-y-auto",
-                        for (label , on) in model_labels {
+                        for (label, on) in model_labels {
                             button {
                                 key: "{label}",
                                 r#type: "button",
@@ -110,11 +120,14 @@ pub(super) fn VisionDetectForm(
                                         let label = label.clone();
                                         labels.with_mut(|l| toggle_label(l, &label));
                                         let next = labels.peek().clone();
-                                        patch_selected(&mut cx, move |node: &mut FlowNode| {
-                                            if let FlowNodeKind::VisionDetect { config } = &mut node.kind {
-                                                config.labels = next;
-                                            }
-                                        });
+                                        patch_selected(
+                                            &mut cx,
+                                            move |node: &mut FlowNode| {
+                                                if let FlowNodeKind::VisionDetect { config } = &mut node.kind {
+                                                    config.labels = next;
+                                                }
+                                            },
+                                        );
                                     }
                                 },
                                 "{label}"
@@ -125,7 +138,9 @@ pub(super) fn VisionDetectForm(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-vision-min-score")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-vision-min-score")}
+                }
                 input {
                     class: if score_invalid() { "w-full px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm" } else { "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm" },
                     r#type: "number",
@@ -141,39 +156,55 @@ pub(super) fn VisionDetectForm(
                         let valid = parsed.filter(|v| (0.0..=1.0).contains(v));
                         score_invalid.set(valid.is_none());
                         if let Some(v) = valid {
-                            patch_selected(&mut cx, move |node: &mut FlowNode| {
-                                if let FlowNodeKind::VisionDetect { config } = &mut node.kind {
-                                    config.min_score = v as f32;
-                                }
-                            });
+                            patch_selected(
+                                &mut cx,
+                                move |node: &mut FlowNode| {
+                                    if let FlowNodeKind::VisionDetect { config } = &mut node.kind {
+                                        config.min_score = v as f32;
+                                    }
+                                },
+                            );
                         }
                     },
                 }
                 span { class: "text-xs text-gray-400 mt-1 block", {t!("flows-vision-min-score-hint")} }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-vision-emit")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-vision-emit")}
+                }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write,
                     onchange: move |event| {
-                        let next = if event.value() == "always" { VisionEmit::Always } else { VisionEmit::OnDetection };
-                        patch_selected(&mut cx, move |node: &mut FlowNode| {
-                            if let FlowNodeKind::VisionDetect { config } = &mut node.kind {
-                                config.emit = next;
-                            }
-                        });
+                        let next = if event.value() == "always" {
+                            VisionEmit::Always
+                        } else {
+                            VisionEmit::OnDetection
+                        };
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::VisionDetect { config } = &mut node.kind {
+                                    config.emit = next;
+                                }
+                            },
+                        );
                     },
                     option {
                         value: "on_detection",
                         selected: emit == VisionEmit::OnDetection,
                         {t!("flows-vision-emit-on-detection")}
                     }
-                    option { value: "always", selected: emit == VisionEmit::Always, {t!("flows-vision-emit-always")} }
+                    option { value: "always", selected: emit == VisionEmit::Always,
+                        {t!("flows-vision-emit-always")}
+                    }
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-camera-max-fps")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-camera-max-fps")}
+                }
                 input {
                     class: if fps_invalid() { "w-full px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm" } else { "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm" },
                     r#type: "number",
@@ -186,14 +217,18 @@ pub(super) fn VisionDetectForm(
                         let raw = event.value();
                         fps_raw.set(raw.clone());
                         let parsed = if raw.trim().is_empty() { Some(0.0) } else { parse_secs(&raw) };
-                        let valid = parsed.filter(|v| (0.0..=pnex_core::CAMERA_NODE_MAX_FPS).contains(v));
+                        let valid = parsed
+                            .filter(|v| (0.0..=pnex_core::CAMERA_NODE_MAX_FPS).contains(v));
                         fps_invalid.set(valid.is_none());
                         if let Some(v) = valid {
-                            patch_selected(&mut cx, move |node: &mut FlowNode| {
-                                if let FlowNodeKind::VisionDetect { config } = &mut node.kind {
-                                    config.max_fps = v;
-                                }
-                            });
+                            patch_selected(
+                                &mut cx,
+                                move |node: &mut FlowNode| {
+                                    if let FlowNodeKind::VisionDetect { config } = &mut node.kind {
+                                        config.max_fps = v;
+                                    }
+                                },
+                            );
                         }
                     },
                 }
@@ -207,16 +242,21 @@ pub(super) fn VisionDetectForm(
                     disabled: !can_write,
                     onchange: move |event| {
                         let next = event.checked();
-                        patch_selected(&mut cx, move |node: &mut FlowNode| {
-                            if let FlowNodeKind::VisionDetect { config } = &mut node.kind {
-                                config.record_layer = next;
-                            }
-                        });
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::VisionDetect { config } = &mut node.kind {
+                                    config.record_layer = next;
+                                }
+                            },
+                        );
                     },
                 }
                 span {
                     span { class: "block", {t!("flows-vision-record-layer")} }
-                    span { class: "text-xs text-gray-400 block", {t!("flows-vision-record-layer-hint")} }
+                    span { class: "text-xs text-gray-400 block",
+                        {t!("flows-vision-record-layer-hint")}
+                    }
                 }
             }
         }

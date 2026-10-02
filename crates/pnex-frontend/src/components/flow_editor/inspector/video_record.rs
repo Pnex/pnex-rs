@@ -83,11 +83,7 @@ fn field_input(
         label { class: "block",
             span { class: "text-xs font-medium text-gray-500 mb-1 block", {label} }
             input {
-                class: if invalid {
-                    "w-full px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm"
-                } else {
-                    "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
-                },
+                class: if invalid { "w-full px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm" } else { "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm" },
                 r#type: if numeric { "number" } else { "text" },
                 value: "{value}",
                 disabled,
@@ -143,42 +139,96 @@ pub(super) fn VideoRecordForm(
     rsx! {
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-video-record-help")} }
-            {field_input(t!("flows-video-segment-secs"), t!("flows-video-segment-secs-hint", min: s_lo, max: s_hi),
-                segment_secs, true, flagged(F_SEGMENT_SECS), !can_write, move |event| {
-                    let mut sig = segment_secs;
-                    sig.set(event.value());
-                    apply_field(&mut cx, F_SEGMENT_SECS, event.value(), parse_errors);
-                })}
-            {field_input(t!("flows-video-segment-mb"), t!("flows-video-segment-mb-hint", min: m_lo, max: m_hi),
-                segment_mb, true, flagged(F_SEGMENT_MB), !can_write, move |event| {
-                    let mut sig = segment_mb;
-                    sig.set(event.value());
-                    apply_field(&mut cx, F_SEGMENT_MB, event.value(), parse_errors);
-                })}
-            {field_input(t!("flows-video-gap-secs"), t!("flows-video-gap-secs-hint", min: g_lo, max: g_hi),
-                gap_secs, true, flagged(F_GAP_SECS), !can_write, move |event| {
-                    let mut sig = gap_secs;
-                    sig.set(event.value());
-                    apply_field(&mut cx, F_GAP_SECS, event.value(), parse_errors);
-                })}
-            {field_input(t!("flows-camera-max-fps"), t!("flows-camera-max-fps-hint"),
-                max_fps, true, flagged(F_MAX_FPS), !can_write, move |event| {
-                    let mut sig = max_fps;
-                    sig.set(event.value());
-                    apply_field(&mut cx, F_MAX_FPS, event.value(), parse_errors);
-                })}
-            {field_input(t!("flows-video-retention"), t!("flows-video-retention-hint", max: r_max),
-                retention, true, flagged(F_RETENTION), !can_write, move |event| {
-                    let mut sig = retention;
-                    sig.set(event.value());
-                    apply_field(&mut cx, F_RETENTION, event.value(), parse_errors);
-                })}
-            {field_input(t!("flows-video-stream"), t!("flows-video-stream-hint"),
-                stream, false, flagged(F_STREAM), !can_write, move |event| {
-                    let mut sig = stream;
-                    sig.set(event.value());
-                    apply_field(&mut cx, F_STREAM, event.value(), parse_errors);
-                })}
+            {
+                field_input(
+                    t!("flows-video-segment-secs"),
+                    t!("flows-video-segment-secs-hint", min : s_lo, max : s_hi),
+                    segment_secs,
+                    true,
+                    flagged(F_SEGMENT_SECS),
+                    !can_write,
+                    move |event| {
+                        let mut sig = segment_secs;
+                        sig.set(event.value());
+                        apply_field(&mut cx, F_SEGMENT_SECS, event.value(), parse_errors);
+                    },
+                )
+            }
+            {
+                field_input(
+                    t!("flows-video-segment-mb"),
+                    t!("flows-video-segment-mb-hint", min : m_lo, max : m_hi),
+                    segment_mb,
+                    true,
+                    flagged(F_SEGMENT_MB),
+                    !can_write,
+                    move |event| {
+                        let mut sig = segment_mb;
+                        sig.set(event.value());
+                        apply_field(&mut cx, F_SEGMENT_MB, event.value(), parse_errors);
+                    },
+                )
+            }
+            {
+                field_input(
+                    t!("flows-video-gap-secs"),
+                    t!("flows-video-gap-secs-hint", min : g_lo, max : g_hi),
+                    gap_secs,
+                    true,
+                    flagged(F_GAP_SECS),
+                    !can_write,
+                    move |event| {
+                        let mut sig = gap_secs;
+                        sig.set(event.value());
+                        apply_field(&mut cx, F_GAP_SECS, event.value(), parse_errors);
+                    },
+                )
+            }
+            {
+                field_input(
+                    t!("flows-camera-max-fps"),
+                    t!("flows-camera-max-fps-hint"),
+                    max_fps,
+                    true,
+                    flagged(F_MAX_FPS),
+                    !can_write,
+                    move |event| {
+                        let mut sig = max_fps;
+                        sig.set(event.value());
+                        apply_field(&mut cx, F_MAX_FPS, event.value(), parse_errors);
+                    },
+                )
+            }
+            {
+                field_input(
+                    t!("flows-video-retention"),
+                    t!("flows-video-retention-hint", max : r_max),
+                    retention,
+                    true,
+                    flagged(F_RETENTION),
+                    !can_write,
+                    move |event| {
+                        let mut sig = retention;
+                        sig.set(event.value());
+                        apply_field(&mut cx, F_RETENTION, event.value(), parse_errors);
+                    },
+                )
+            }
+            {
+                field_input(
+                    t!("flows-video-stream"),
+                    t!("flows-video-stream-hint"),
+                    stream,
+                    false,
+                    flagged(F_STREAM),
+                    !can_write,
+                    move |event| {
+                        let mut sig = stream;
+                        sig.set(event.value());
+                        apply_field(&mut cx, F_STREAM, event.value(), parse_errors);
+                    },
+                )
+            }
         }
     }
 }

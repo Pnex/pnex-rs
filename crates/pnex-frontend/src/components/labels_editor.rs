@@ -63,12 +63,12 @@ pub fn LabelsEditor(
                     span {
                         key: "{name}",
                         class: "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800",
-                        "{display}",
+                        "{display}"
                         if can_write {
                             button {
                                 class: "text-blue-500 hover:text-red-600 font-bold ml-1",
                                 onclick: move |_| {
-                                    labels.with_mut(|m| { m.remove(&name); });
+                                    labels.write().remove(&name);
                                     dirty.set(true);
                                 },
                                 {"×"}
@@ -89,7 +89,7 @@ pub fn LabelsEditor(
                                 let raw = input.take();
                                 match parse_entry(&raw) {
                                     Ok((name, value)) => {
-                                        labels.with_mut(|m| { m.insert(name, value); });
+                                        labels.write().insert(name, value);
                                         dirty.set(true);
                                         error.set(String::new());
                                     }
@@ -111,7 +111,9 @@ pub fn LabelsEditor(
                                         dirty.set(false);
                                         error.set(String::new());
                                         toasts::success(t!("resources-label-saved"));
-                                        if let Some(cb) = on_changed { cb.call(()); }
+                                        if let Some(cb) = on_changed {
+                                            cb.call(());
+                                        }
                                     }
                                     Err(err) => toasts::error(format!("{err}")),
                                 }

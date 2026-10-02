@@ -59,7 +59,7 @@ pub(crate) fn MediaPicker(
 
     rsx! {
         Modal {
-            title: t!("studio-picker-title", kind: kind_label),
+            title: t!("studio-picker-title", kind : kind_label),
             max_width: "max-w-lg".to_string(),
             on_close,
             div { class: "space-y-3",
@@ -75,9 +75,7 @@ pub(crate) fn MediaPicker(
                 }
                 match &*list.value().read() {
                     Some(Ok(items)) if items.is_empty() => rsx! {
-                        p { class: "text-sm text-gray-400 text-center py-6",
-                            {t!("studio-picker-empty")}
-                        }
+                        p { class: "text-sm text-gray-400 text-center py-6", {t!("studio-picker-empty")} }
                     },
                     Some(Ok(items)) => rsx! {
                         ul { class: "divide-y divide-gray-100 max-h-80 overflow-y-auto",
@@ -101,7 +99,7 @@ pub(crate) fn MediaPicker(
                         Pager {
                             count: items.len() as i64,
                             page_size: PAGE_SIZE,
-                            page: page,
+                            page,
                             on_navigate: move |new_page| page.set(new_page),
                         }
                     },
@@ -116,9 +114,7 @@ pub(crate) fn MediaPicker(
                         }
                     },
                 }
-                p { class: "text-xs text-gray-400",
-                    {t!("studio-picker-hint")}
-                }
+                p { class: "text-xs text-gray-400", {t!("studio-picker-hint")} }
             }
         }
     }

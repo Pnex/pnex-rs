@@ -34,62 +34,114 @@ fn BoardSvgBase(views: Vec<PinView>, per_side: f64, ratio: f64, chip_label: Stri
         g {
             // PCB
             rect {
-                x: "{BOARD_X}", y: "14", width: "{bw}", height: "{board_h}",
-                rx: "14", fill: "#10203a", stroke: "#1e3a5f", stroke_width: "1.5",
+                x: "{BOARD_X}",
+                y: "14",
+                width: "{bw}",
+                height: "{board_h}",
+                rx: "14",
+                fill: "#10203a",
+                stroke: "#1e3a5f",
+                stroke_width: "1.5",
             }
             // Inner copper border (mockup style)
             rect {
-                x: "{BOARD_X + 7.0}", y: "21", width: "{bw - 14.0}", height: "{board_h - 14.0}",
-                rx: "11", fill: "none", stroke: "#3a4a5a", stroke_width: "1",
-                stroke_dasharray: "2 4", opacity: "0.5",
+                x: "{BOARD_X + 7.0}",
+                y: "21",
+                width: "{bw - 14.0}",
+                height: "{board_h - 14.0}",
+                rx: "11",
+                fill: "none",
+                stroke: "#3a4a5a",
+                stroke_width: "1",
+                stroke_dasharray: "2 4",
+                opacity: "0.5",
             }
             // Chip: pin-1 marker + label + legs
             rect {
-                x: "{chip_x}", y: "{chip_y}", width: "64", height: "64",
-                rx: "6", fill: "#16212e", stroke: "#25333f", stroke_width: "1.5",
+                x: "{chip_x}",
+                y: "{chip_y}",
+                width: "64",
+                height: "64",
+                rx: "6",
+                fill: "#16212e",
+                stroke: "#25333f",
+                stroke_width: "1.5",
             }
             circle {
-                cx: "{chip_x + 11.0}", cy: "{chip_y + 11.0}", r: "3",
+                cx: "{chip_x + 11.0}",
+                cy: "{chip_y + 11.0}",
+                r: "3",
                 fill: "#3a4a5a",
             }
             text {
-                x: "{cx}", y: "{chip_y + 38.0}",
-                text_anchor: "middle", fill: "#7d8b99",
-                font_size: "{font}", font_family: "ui-monospace, monospace",
+                x: "{cx}",
+                y: "{chip_y + 38.0}",
+                text_anchor: "middle",
+                fill: "#7d8b99",
+                font_size: "{font}",
+                font_family: "ui-monospace, monospace",
                 {label}
             }
             for i in 0..5u32 {
                 rect {
                     key: "{i}",
-                    x: "{chip_x - 6.0}", y: "{chip_y + 12.0 + i as f64 * 11.0}",
-                    width: "6", height: "4", rx: "1", fill: "#3a4a5a",
+                    x: "{chip_x - 6.0}",
+                    y: "{chip_y + 12.0 + i as f64 * 11.0}",
+                    width: "6",
+                    height: "4",
+                    rx: "1",
+                    fill: "#3a4a5a",
                 }
                 rect {
-                    x: "{chip_x + 64.0}", y: "{chip_y + 12.0 + i as f64 * 11.0}",
-                    width: "6", height: "4", rx: "1", fill: "#3a4a5a",
+                    x: "{chip_x + 64.0}",
+                    y: "{chip_y + 12.0 + i as f64 * 11.0}",
+                    width: "6",
+                    height: "4",
+                    rx: "1",
+                    fill: "#3a4a5a",
                 }
             }
             // Copper traces above/below the chip
             for i in 0..5u32 {
                 line {
                     key: "{i}",
-                    x1: "{cx - 20.0 + i as f64 * 10.0}", y1: "{chip_y - 26.0}", x2: "{cx - 20.0 + i as f64 * 10.0}", y2: "{chip_y}",
-                    stroke: "#3a4a5a", stroke_width: "1", opacity: "0.5",
+                    x1: "{cx - 20.0 + i as f64 * 10.0}",
+                    y1: "{chip_y - 26.0}",
+                    x2: "{cx - 20.0 + i as f64 * 10.0}",
+                    y2: "{chip_y}",
+                    stroke: "#3a4a5a",
+                    stroke_width: "1",
+                    opacity: "0.5",
                 }
                 line {
-                    x1: "{cx - 20.0 + i as f64 * 10.0}", y1: "{chip_y + 64.0}", x2: "{cx - 20.0 + i as f64 * 10.0}", y2: "{chip_y + 90.0}",
-                    stroke: "#3a4a5a", stroke_width: "1", opacity: "0.5",
+                    x1: "{cx - 20.0 + i as f64 * 10.0}",
+                    y1: "{chip_y + 64.0}",
+                    x2: "{cx - 20.0 + i as f64 * 10.0}",
+                    y2: "{chip_y + 90.0}",
+                    stroke: "#3a4a5a",
+                    stroke_width: "1",
+                    opacity: "0.5",
                 }
             }
             // USB connector (top, centered) — no label, the drawing speaks
             // for itself. Convention USB en haut : jamais de rotation ici.
             rect {
-                x: "{cx - 26.0}", y: "18", width: "52", height: "22",
-                rx: "8", fill: "#8b97a4", stroke: "#1e3a5f", stroke_width: "1.2",
+                x: "{cx - 26.0}",
+                y: "18",
+                width: "52",
+                height: "22",
+                rx: "8",
+                fill: "#8b97a4",
+                stroke: "#1e3a5f",
+                stroke_width: "1.2",
             }
             rect {
-                x: "{cx - 20.0}", y: "24", width: "40", height: "10",
-                rx: "5", fill: "#5b6572",
+                x: "{cx - 20.0}",
+                y: "24",
+                width: "40",
+                height: "10",
+                rx: "5",
+                fill: "#5b6572",
             }
         }
     }
@@ -107,13 +159,14 @@ pub(super) fn BoardSvg(
     chip_label: String,
 ) -> Element {
     rsx! {
-        BoardSvgBase { views: views.clone(), per_side, ratio, chip_label }
+        BoardSvgBase {
+            views: views.clone(),
+            per_side,
+            ratio,
+            chip_label,
+        }
         for v in views {
-            PinChip {
-                key: "{v.side}-{v.index}",
-                view: v,
-                selected_label,
-            }
+            PinChip { key: "{v.side}-{v.index}", view: v, selected_label }
         }
     }
 }
@@ -147,45 +200,70 @@ fn PinChip(view: PinView, mut selected_label: Signal<Option<String>>) -> Element
             opacity: "{opacity}",
             onclick: move |_| selected_label.set(Some(view.label.clone())),
             circle {
-                cx: "{view.x}", cy: "{view.y}", r: "5",
-                fill: "#1e3a5f", stroke: "#cfe0f2", stroke_width: "1.2",
+                cx: "{view.x}",
+                cy: "{view.y}",
+                r: "5",
+                fill: "#1e3a5f",
+                stroke: "#cfe0f2",
+                stroke_width: "1.2",
             }
             if view.configured {
                 circle {
-                    cx: "{ring_x}", cy: "{view.y}", r: "8",
-                    fill: "none", stroke: "#2563eb", stroke_width: "2",
+                    cx: "{ring_x}",
+                    cy: "{view.y}",
+                    r: "8",
+                    fill: "none",
+                    stroke: "#2563eb",
+                    stroke_width: "2",
                 }
             }
             rect {
-                x: "{view.chip_x}", y: "{view.y - CHIP_H / 2.0}",
-                width: "{CHIP_W}", height: "{CHIP_H}", rx: "7",
-                fill: "#ffffff", stroke: "{stroke}", stroke_width: "{stroke_w}",
+                x: "{view.chip_x}",
+                y: "{view.y - CHIP_H / 2.0}",
+                width: "{CHIP_W}",
+                height: "{CHIP_H}",
+                rx: "7",
+                fill: "#ffffff",
+                stroke: "{stroke}",
+                stroke_width: "{stroke_w}",
             }
             rect {
-                x: "{band_x}", y: "{view.y - CHIP_H / 2.0}",
-                width: "5", height: "{CHIP_H}",
+                x: "{band_x}",
+                y: "{view.y - CHIP_H / 2.0}",
+                width: "5",
+                height: "{CHIP_H}",
                 fill: "{view.color}",
             }
             text {
-                x: "{view.chip_x + 12.0}", y: "{view.y - 1.0}",
-                fill: "#0f172a", font_size: "12.5", font_weight: "700",
+                x: "{view.chip_x + 12.0}",
+                y: "{view.y - 1.0}",
+                fill: "#0f172a",
+                font_size: "12.5",
+                font_weight: "700",
                 font_family: "ui-monospace, monospace",
                 {view.label.clone()}
             }
             text {
-                x: "{view.chip_x + 12.0}", y: "{view.y + 10.0}",
-                fill: "#94a3b8", font_size: "8.5",
+                x: "{view.chip_x + 12.0}",
+                y: "{view.y + 10.0}",
+                fill: "#94a3b8",
+                font_size: "8.5",
                 font_family: "ui-monospace, monospace",
                 {sub}
             }
             if let Some(lv) = view.last_value_label {
                 circle {
-                    cx: "{view.chip_x + CHIP_W - 12.0}", cy: "{view.y + 4.0}",
-                    r: "3.5", fill: "#22c55e",
+                    cx: "{view.chip_x + CHIP_W - 12.0}",
+                    cy: "{view.y + 4.0}",
+                    r: "3.5",
+                    fill: "#22c55e",
                 }
                 text {
-                    x: "{view.chip_x + CHIP_W - 20.0}", y: "{view.y + 7.0}",
-                    fill: "#16a34a", font_size: "8", text_anchor: "end",
+                    x: "{view.chip_x + CHIP_W - 20.0}",
+                    y: "{view.y + 7.0}",
+                    fill: "#16a34a",
+                    font_size: "8",
+                    text_anchor: "end",
                     font_family: "ui-monospace, monospace",
                     {lv}
                 }
@@ -209,7 +287,9 @@ fn badge_circle(y: f64, badge: &str, bx: &mut f64) -> Element {
     };
     rsx! {
         circle {
-            cx: "{cx}", cy: "{y - CHIP_H / 2.0 + 6.0}", r: "3.5",
+            cx: "{cx}",
+            cy: "{y - CHIP_H / 2.0 + 6.0}",
+            r: "3.5",
             fill: "{fill}",
         }
     }
@@ -239,8 +319,13 @@ pub(super) fn Legend(items: Vec<(&'static str, &'static str)>) -> Element {
     rsx! {
         div { class: "flex flex-wrap gap-x-4 gap-y-2 mt-3 pt-3 border-t border-dashed border-gray-200",
             for (key, color) in items {
-                span { key: "{key}", class: "inline-flex items-center gap-1.5 text-xs text-gray-500",
-                    span { class: "inline-block w-3 h-3 rounded", style: "background:{color}" }
+                span {
+                    key: "{key}",
+                    class: "inline-flex items-center gap-1.5 text-xs text-gray-500",
+                    span {
+                        class: "inline-block w-3 h-3 rounded",
+                        style: "background:{color}",
+                    }
                     {legend_label(key)}
                 }
             }

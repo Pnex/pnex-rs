@@ -112,7 +112,10 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
                     class: "text-xs text-red-600 hover:text-red-700 font-medium",
                     onclick: move |_| {
                         let id = id_del.clone();
-                        cx.update_doc(move |doc| crate::components::annotation_editor::state::remove_item(doc, &id));
+                        cx.update_doc(move |doc| crate::components::annotation_editor::state::remove_item(
+                            doc,
+                            &id,
+                        ));
                         cx.selected.set(None);
                     },
                     {t!("annot-inspector-delete")}
@@ -238,17 +241,28 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
                         cx.update_doc(move |doc| {
                             if let Some(it) = doc.items.iter_mut().find(|it| it.id == id) {
                                 let new_target = match &it.target {
-                                    AnnotationTarget::Pin { pin_gpio, .. } => AnnotationTarget::Pin {
-                                        device_id: slug.clone(),
-                                        pin_gpio: *pin_gpio,
-                                    },
-                                    AnnotationTarget::Status { .. } => {
-                                        AnnotationTarget::Status { device_id: slug.clone() }
+                                    AnnotationTarget::Pin { pin_gpio, .. } => {
+                                        AnnotationTarget::Pin {
+                                            device_id: slug.clone(),
+                                            pin_gpio: *pin_gpio,
+                                        }
                                     }
-                                    _ => AnnotationTarget::Device { device_id: slug.clone() },
+                                    AnnotationTarget::Status { .. } => {
+                                        AnnotationTarget::Status {
+                                            device_id: slug.clone(),
+                                        }
+                                    }
+                                    _ => {
+                                        AnnotationTarget::Device {
+                                            device_id: slug.clone(),
+                                        }
+                                    }
                                 };
                                 it.target = new_target.clone();
-                                it.kind = crate::components::annotation_editor::state::target_kind(&new_target).to_string();
+                                it.kind = crate::components::annotation_editor::state::target_kind(
+                                        &new_target,
+                                    )
+                                    .to_string();
                             }
                         });
                     }

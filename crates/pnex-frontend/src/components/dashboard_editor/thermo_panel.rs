@@ -131,7 +131,9 @@ pub fn ThermoPanel(
                 },
                 option { value: "ph", selected: thermo.diagram == "ph", {t!("insp-thermo-diagram-ph")} }
                 option { value: "ts", selected: thermo.diagram == "ts", {t!("insp-thermo-diagram-ts")} }
-                option { value: "psychro", selected: thermo.diagram == "psychro", {t!("insp-thermo-diagram-psychro")} }
+                option { value: "psychro", selected: thermo.diagram == "psychro",
+                    {t!("insp-thermo-diagram-psychro")}
+                }
             }
             // Fluide / mélange : picker (psychro = air humide figé, pas de
             // fluide à choisir — HAPropsSI n'a pas de paramètre fluide).
@@ -148,7 +150,10 @@ pub fn ThermoPanel(
                         patch_thermo(&mut cx, &wid_fluid, move |t| t.fluid = v);
                     },
                     if thermo.fluid.is_empty() {
-                        option { key: "{thermo.fluid}", value: "", disabled: true,
+                        option {
+                            key: "{thermo.fluid}",
+                            value: "",
+                            disabled: true,
                             {t!("insp-thermo-fluid-pick")}
                         }
                     }
@@ -160,13 +165,23 @@ pub fn ThermoPanel(
                     if !choices.mixtures.is_empty() {
                         optgroup { label: t!("insp-thermo-fluid-org").to_string(),
                             for m in &choices.mixtures {
-                                option { key: "{m}", value: "{m}", selected: thermo.fluid == *m, "{m}" }
+                                option {
+                                    key: "{m}",
+                                    value: "{m}",
+                                    selected: thermo.fluid == *m,
+                                    "{m}"
+                                }
                             }
                         }
                     }
                     optgroup { label: t!("insp-thermo-fluid-coolprop").to_string(),
                         for f in &choices.fluids {
-                            option { key: "{f}", value: "{f}", selected: thermo.fluid == *f, "{f}" }
+                            option {
+                                key: "{f}",
+                                value: "{f}",
+                                selected: thermo.fluid == *f,
+                                "{f}"
+                            }
                         }
                     }
                 }
@@ -180,42 +195,63 @@ pub fn ThermoPanel(
                 value: "{round_value}",
                 onchange: move |e| {
                     let v = e.value();
-                    patch_thermo(&mut cx, &wid_round, move |t| {
-                        t.axis_decimals = if v == "auto" { None } else { v.parse::<u8>().ok() };
-                    });
+                    patch_thermo(
+                        &mut cx,
+                        &wid_round,
+                        move |t| {
+                            t.axis_decimals = if v == "auto" { None } else { v.parse::<u8>().ok() };
+                        },
+                    );
                 },
-                option { key: "auto {round_value}", value: "auto",
+                option {
+                    key: "auto {round_value}",
+                    value: "auto",
                     selected: thermo.axis_decimals.is_none(),
                     {t!("insp-thermo-rounding-auto")}
                 }
                 for n in 0u8..4 {
-                    option { key: "{n}", value: "{n}", selected: thermo.axis_decimals == Some(n), "{n}" }
+                    option {
+                        key: "{n}",
+                        value: "{n}",
+                        selected: thermo.axis_decimals == Some(n),
+                        "{n}"
+                    }
                 }
             }
             // Unité d'affichage de la pression (p-h seulement) — absolu
             // toujours : CoolProp calcule en Pa absolus, la conversion est
             // cosmétique (÷1e5).
             if thermo.diagram == "ph" {
-                span { class: "block text-xs font-medium text-gray-500", {t!("insp-thermo-pressure-unit")} }
+                span { class: "block text-xs font-medium text-gray-500",
+                    {t!("insp-thermo-pressure-unit")}
+                }
                 select {
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",
                     disabled: !can_write,
                     value: "{unit_value}",
                     onchange: move |e| {
                         let v = e.value();
-                        patch_thermo(&mut cx, &wid_unit, move |t| {
-                            t.pressure_unit = if v == "bar" {
-                                ThermoPressureUnit::Bar
-                            } else {
-                                ThermoPressureUnit::Pa
-                            };
-                        });
+                        patch_thermo(
+                            &mut cx,
+                            &wid_unit,
+                            move |t| {
+                                t.pressure_unit = if v == "bar" {
+                                    ThermoPressureUnit::Bar
+                                } else {
+                                    ThermoPressureUnit::Pa
+                                };
+                            },
+                        );
                     },
-                    option { key: "pa {unit_value}", value: "pa",
+                    option {
+                        key: "pa {unit_value}",
+                        value: "pa",
                         selected: thermo.pressure_unit == ThermoPressureUnit::Pa,
                         {t!("insp-thermo-unit-pa")}
                     }
-                    option { key: "bar {unit_value}", value: "bar",
+                    option {
+                        key: "bar {unit_value}",
+                        value: "bar",
                         selected: thermo.pressure_unit == ThermoPressureUnit::Bar,
                         {t!("insp-thermo-unit-bar")}
                     }
@@ -241,36 +277,54 @@ pub fn ThermoPanel(
                                     oninput: move |e| {
                                         let v = e.value();
                                         let wid = wid_label.clone();
-                                        patch_thermo(&mut cx, &wid, move |t| {
-                                            if let Some(p) = t.points.get_mut(pi) {
-                                                p.label = v;
-                                            }
-                                        });
+                                        patch_thermo(
+                                            &mut cx,
+                                            &wid,
+                                            move |t| {
+                                                if let Some(p) = t.points.get_mut(pi) {
+                                                    p.label = v;
+                                                }
+                                            },
+                                        );
                                     },
                                 }
                                 button {
                                     class: "px-1 text-xs text-red-600 hover:bg-red-50 rounded",
                                     onclick: move |_| {
                                         let wid = wid_del.clone();
-                                        patch_thermo(&mut cx, &wid, move |t| {
-                                            if pi < t.points.len() {
-                                                t.points.remove(pi);
-                                            }
-                                        });
+                                        patch_thermo(
+                                            &mut cx,
+                                            &wid,
+                                            move |t| {
+                                                if pi < t.points.len() {
+                                                    t.points.remove(pi);
+                                                }
+                                            },
+                                        );
                                     },
                                     "×"
                                 }
                             }
                             div { class: "grid grid-cols-2 gap-1",
                                 ThermoSlotPicker {
-                                    cx, widget_id: widget_id.clone(), point: pi, slot: 1,
-                                    src: pt.v1.clone(), metrics: metrics.clone(),
-                                    memory: memory.clone(), can_write,
+                                    cx,
+                                    widget_id: widget_id.clone(),
+                                    point: pi,
+                                    slot: 1,
+                                    src: pt.v1.clone(),
+                                    metrics: metrics.clone(),
+                                    memory: memory.clone(),
+                                    can_write,
                                 }
                                 ThermoSlotPicker {
-                                    cx, widget_id: widget_id.clone(), point: pi, slot: 2,
-                                    src: pt.v2.clone(), metrics: metrics.clone(),
-                                    memory: memory.clone(), can_write,
+                                    cx,
+                                    widget_id: widget_id.clone(),
+                                    point: pi,
+                                    slot: 2,
+                                    src: pt.v2.clone(),
+                                    metrics: metrics.clone(),
+                                    memory: memory.clone(),
+                                    can_write,
                                 }
                             }
                         }
@@ -283,27 +337,32 @@ pub fn ThermoPanel(
                 onclick: move |_| {
                     let add_names = add_names.clone();
                     let add_metrics = add_metrics.clone();
-                    patch_thermo(&mut cx, &wid_add, move |t| {
-                        let default_metric = add_names.first().cloned().unwrap_or_default();
-                        let default_device = add_metrics
-                            .get(&default_metric)
-                            .and_then(|d| d.first().cloned())
-                            .unwrap_or_default();
-                        t.points.push(ThermoCyclePoint {
-                            label: format!("P{}", t.points.len() + 1),
-                            input_pair: "PT_INPUTS".into(),
-                            v1: ThermoSource {
-                                metric: default_metric.clone(),
-                                device_id: default_device.clone(),
-                                memory: None,
-                            },
-                            v2: ThermoSource {
-                                metric: add_names.get(1).cloned().unwrap_or(default_metric),
-                                device_id: default_device,
-                                memory: None,
-                            },
-                        });
-                    });
+                    patch_thermo(
+                        &mut cx,
+                        &wid_add,
+                        move |t| {
+                            let default_metric = add_names.first().cloned().unwrap_or_default();
+                            let default_device = add_metrics
+                                .get(&default_metric)
+                                .and_then(|d| d.first().cloned())
+                                .unwrap_or_default();
+                            t.points
+                                .push(ThermoCyclePoint {
+                                    label: format!("P{}", t.points.len() + 1),
+                                    input_pair: "PT_INPUTS".into(),
+                                    v1: ThermoSource {
+                                        metric: default_metric.clone(),
+                                        device_id: default_device.clone(),
+                                        memory: None,
+                                    },
+                                    v2: ThermoSource {
+                                        metric: add_names.get(1).cloned().unwrap_or(default_metric),
+                                        device_id: default_device,
+                                        memory: None,
+                                    },
+                                });
+                        },
+                    );
                 },
                 {t!("insp-thermo-add-point")}
             }
@@ -374,30 +433,52 @@ fn ThermoSlotPicker(
             disabled: !can_write,
             onchange: move |e| {
                 let v = e.value();
-                patch_thermo(&mut cx, &wid_m, move |t| {
-                    patch_slot(t, &|s: &mut ThermoSource| match parse_memory_option(&v) {
-                        Some(r) => {
-                            s.memory = Some(r.clone());
-                            s.metric.clear();
-                            s.device_id.clear();
-                        }
-                        None => {
-                            s.memory = None;
-                            s.metric = v.clone();
-                        }
-                    });
-                });
+                patch_thermo(
+                    &mut cx,
+                    &wid_m,
+                    move |t| {
+                        patch_slot(
+                            t,
+                            &|s: &mut ThermoSource| match parse_memory_option(&v) {
+                                Some(r) => {
+                                    s.memory = Some(r.clone());
+                                    s.metric.clear();
+                                    s.device_id.clear();
+                                }
+                                None => {
+                                    s.memory = None;
+                                    s.metric = v.clone();
+                                }
+                            },
+                        );
+                    },
+                );
             },
             for m in &metric_names {
-                option { key: "{m}", value: "{m}", selected: src.memory.is_none() && src.metric == *m, "{m}" }
+                option {
+                    key: "{m}",
+                    value: "{m}",
+                    selected: src.memory.is_none() && src.metric == *m,
+                    "{m}"
+                }
             }
             if !mem_options.is_empty() || stale_memory {
                 optgroup { label: t!("insp-memory").to_string(),
                     for (value, label) in mem_options.clone() {
-                        option { key: "{value}", value: "{value}", selected: current == value, "{label}" }
+                        option {
+                            key: "{value}",
+                            value: "{value}",
+                            selected: current == value,
+                            "{label}"
+                        }
                     }
                     if stale_memory {
-                        option { key: "{current}", value: "{current}", selected: true, "{current}" }
+                        option {
+                            key: "{current}",
+                            value: "{current}",
+                            selected: true,
+                            "{current}"
+                        }
                     }
                 }
             }
@@ -412,12 +493,21 @@ fn ThermoSlotPicker(
                 disabled: !can_write,
                 onchange: move |e| {
                     let v = e.value();
-                    patch_thermo(&mut cx, &wid_d, move |t| {
-                        patch_slot(t, &|s: &mut ThermoSource| s.device_id = v.clone());
-                    });
+                    patch_thermo(
+                        &mut cx,
+                        &wid_d,
+                        move |t| {
+                            patch_slot(t, &|s: &mut ThermoSource| s.device_id = v.clone());
+                        },
+                    );
                 },
                 for d in &devices {
-                    option { key: "{d}", value: "{d}", selected: src.device_id == *d, "{d}" }
+                    option {
+                        key: "{d}",
+                        value: "{d}",
+                        selected: src.device_id == *d,
+                        "{d}"
+                    }
                 }
             }
         }

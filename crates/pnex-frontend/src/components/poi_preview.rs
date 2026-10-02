@@ -49,7 +49,9 @@ pub fn PoiPreviewPanel(
             div { class: "flex items-center gap-2 px-4 py-2 border-b border-gray-200 shrink-0",
                 KindIcon { kind: target.kind.clone() }
                 span { class: "text-sm font-semibold text-gray-900 truncate", "{target.name}" }
-                span { class: "text-xs uppercase tracking-wide text-gray-400 shrink-0", "{kind_label}" }
+                span { class: "text-xs uppercase tracking-wide text-gray-400 shrink-0",
+                    "{kind_label}"
+                }
                 div { class: "flex-1" }
                 button {
                     class: "inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 shrink-0",
@@ -72,15 +74,30 @@ pub fn PoiPreviewPanel(
             }
             // Corps : dispatch par kind (read-only, aucun handler d'écriture).
             div { class: "flex-1 min-h-0 flex flex-col overflow-hidden",
-                {match target.kind.as_str() {
-                    "media_asset" => rsx! { MediaPreviewBody { key: "{target.id}", asset_id: target.id.clone(), asset_name: target.name.clone() } },
-                    "tour" => rsx! { TourPreviewBody { key: "{target.id}", tour_id: target.id.clone() } },
-                    "dashboard" => rsx! {
-                        div { class: "flex-1 min-h-0 overflow-auto p-4 bg-gray-50", DashboardLive { dashboard_id: target.id.clone() } },
-                    },
-                    _ => rsx! { div { class: "flex-1 flex items-center justify-center",
-                        p { class: "text-sm text-gray-400", "…" } } },
-                }}
+                {
+                    match target.kind.as_str() {
+                        "media_asset" => rsx! {
+                            MediaPreviewBody {
+                                key: "{target.id}",
+                                asset_id: target.id.clone(),
+                                asset_name: target.name.clone(),
+                            }
+                        },
+                        "tour" => rsx! {
+                            TourPreviewBody { key: "{target.id}", tour_id: target.id.clone() }
+                        },
+                        "dashboard" => rsx! {
+                            div { class: "flex-1 min-h-0 overflow-auto p-4 bg-gray-50",
+                                DashboardLive { dashboard_id: target.id.clone() }
+                            }
+                        },
+                        _ => rsx! {
+                            div { class: "flex-1 flex items-center justify-center",
+                                p { class: "text-sm text-gray-400", "…" }
+                            }
+                        },
+                    }
+                }
             }
         }
     }
@@ -102,7 +119,7 @@ fn MediaPreviewBody(asset_id: String, asset_name: String) -> Element {
             }
         },
         Some(asset) => rsx! {
-            MediaAssetView { key: "{asset.id}", asset: asset }
+            MediaAssetView { key: "{asset.id}", asset }
         },
     }
 }
@@ -186,36 +203,38 @@ fn TourPreviewBody(tour_id: String) -> Element {
 
     rsx! {
         div { class: "flex-1 min-h-0 flex flex-col p-3 overflow-hidden",
-            {match &*detail.value().read() {
-                Some(Ok(d)) => rsx! {
-                    TourViewer {
-                        key: "tour-preview-{tour_id_for_view}",
-                        doc: d.doc.clone(),
-                        assets: Default::default(),
-                        source: ViewerSource::Auth,
-                        on_hotspot_move: move |_| {},
-                        on_scene_change: move |_: String| {},
-                        host_id: format!("pnex-preview-tour-{}", tour_id_for_view.replace('-', "")),
-                        compact: true,
-                        annotations_enabled: true,
-                        show_side_panel: true,
-                        // Read-only map preview: markers never draggable.
-                        editable: false,
-                    }
-                },
-                Some(Err(err)) => rsx! {
-                    div { class: "flex-1 flex items-center justify-center",
-                        div { class: "bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700",
-                            {err.message.clone()}
+            // Read-only map preview: markers never draggable.
+            {
+                match &*detail.value().read() {
+                    Some(Ok(d)) => rsx! {
+                        TourViewer {
+                            key: "tour-preview-{tour_id_for_view}",
+                            doc: d.doc.clone(),
+                            assets: Default::default(),
+                            source: ViewerSource::Auth,
+                            on_hotspot_move: move |_| {},
+                            on_scene_change: move |_: String| {},
+                            host_id: format!("pnex-preview-tour-{}", tour_id_for_view.replace('-', "")),
+                            compact: true,
+                            annotations_enabled: true,
+                            show_side_panel: true,
+                            editable: false,
                         }
-                    }
-                },
-                None => rsx! {
-                    div { class: "flex-1 flex items-center justify-center",
-                        span { class: "animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" }
-                    }
-                },
-            }}
+                    },
+                    Some(Err(err)) => rsx! {
+                        div { class: "flex-1 flex items-center justify-center",
+                            div { class: "bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700",
+                                {err.message.clone()}
+                            }
+                        }
+                    },
+                    None => rsx! {
+                        div { class: "flex-1 flex items-center justify-center",
+                            span { class: "animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" }
+                        }
+                    },
+                }
+            }
         }
     }
 }

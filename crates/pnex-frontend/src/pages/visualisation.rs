@@ -191,9 +191,7 @@ pub fn Visualisation() -> Element {
                 }
                 div { class: "flex items-center gap-3",
                     span { class: "text-xs text-gray-400", {t!("dash-auto-refresh")} }
-                    RefreshButton {
-                        on_click: move |_| reload.with_mut(|r| *r += 1),
-                    }
+                    RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
                 }
             }
 
@@ -242,11 +240,7 @@ pub fn Visualisation() -> Element {
                                         for (key, label, secs) in WINDOWS {
                                             button {
                                                 key: "{key}",
-                                                class: if window() == *secs {
-                                                    "px-3 py-2 text-sm bg-blue-600 text-white"
-                                                } else {
-                                                    "px-3 py-2 text-sm bg-white text-gray-700 hover:bg-gray-50"
-                                                },
+                                                class: if window() == *secs { "px-3 py-2 text-sm bg-blue-600 text-white" } else { "px-3 py-2 text-sm bg-white text-gray-700 hover:bg-gray-50" },
                                                 onclick: move |_| window.set(*secs),
                                                 {t!(label)}
                                             }
@@ -254,11 +248,7 @@ pub fn Visualisation() -> Element {
                                     }
                                 }
                                 button {
-                                    class: if can_add {
-                                        "inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-                                    } else {
-                                        "inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg opacity-40 cursor-not-allowed"
-                                    },
+                                    class: if can_add { "inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors" } else { "inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg opacity-40 cursor-not-allowed" },
                                     disabled: !can_add,
                                     onclick: move |_| {
                                         if can_add {
@@ -274,13 +264,22 @@ pub fn Visualisation() -> Element {
                             if !active.read().is_empty() {
                                 div { class: "flex flex-wrap gap-2 mt-4",
                                     for (index, (metric, device)) in active.read().iter().enumerate() {
-                                        div { key: "{metric}-{device}",
+                                        div {
+                                            key: "{metric}-{device}",
                                             class: "inline-flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-full text-sm",
-                                            span { class: "h-2.5 w-2.5 rounded-full", style: "background-color: {PALETTE[index % MAX_SERIES]}" }
+                                            span {
+                                                class: "h-2.5 w-2.5 rounded-full",
+                                                style: "background-color: {PALETTE[index % MAX_SERIES]}",
+                                            }
                                             span { class: "text-gray-700", "{metric} · {device}" }
                                             button {
                                                 class: "text-gray-400 hover:text-red-500",
-                                                onclick: move |_| active.with_mut(|list| { list.remove(index); }),
+                                                onclick: move |_| {
+                                                    active
+                                                        .with_mut(|list| {
+                                                            list.remove(index);
+                                                        })
+                                                },
                                                 icons::X { class: "h-3.5 w-3.5" }
                                             }
                                         }

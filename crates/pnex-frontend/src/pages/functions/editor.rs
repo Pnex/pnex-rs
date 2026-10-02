@@ -326,7 +326,13 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                     div { class: "flex items-center gap-2 px-3.5 py-2 rounded-t-xl border border-b-0 border-gray-200 bg-white",
                         span { class: "text-[13px] font-semibold font-mono", "handle(inputs, msg)" }
                         span { class: "text-[11px] text-gray-500 truncate hidden sm:inline",
-                            {t!("functions-signature-pill", inputs: signature_inputs.len(), outputs: signature_outputs.len()).to_string()}
+                            {
+                                t!(
+                                    "functions-signature-pill", inputs : signature_inputs.len(), outputs :
+                                    signature_outputs.len()
+                                )
+                                    .to_string()
+                            }
                         }
                         span { class: "flex-grow" }
                         if can_write {
@@ -385,7 +391,7 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                                         undeclared.iter().map(|u| (u.name.clone(), u.kind == PortKind::Input)).collect(),
                                         code_value.clone(),
                                     ),
-                                    {t!("functions-fix-all", count: undeclared.len())}
+                                    {t!("functions-fix-all", count : undeclared.len())}
                                 }
                             }
                         }
@@ -402,7 +408,9 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                     if !undeclared.is_empty() && signature_error.is_none() {
                         div { class: "rounded-xl border border-amber-200 bg-amber-50 p-3",
                             div { class: "flex items-center gap-2",
-                                span { class: "text-sm text-amber-900 flex-grow", {t!("functions-detected-title")} }
+                                span { class: "text-sm text-amber-900 flex-grow",
+                                    {t!("functions-detected-title")}
+                                }
                                 if can_write {
                                     button {
                                         class: "text-sm font-semibold text-blue-700 hover:underline",
@@ -417,15 +425,8 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                             div { class: "flex flex-wrap gap-2 mt-2",
                                 for u in undeclared.clone() {
                                     button {
-                                        class: if u.kind == PortKind::Input {
-                                            "h-8 px-3 rounded-full border border-teal-700 bg-teal-50 text-teal-800 font-mono text-[13px]"
-                                        } else {
-                                            "h-8 px-3 rounded-full border border-amber-600 bg-amber-100 text-amber-900 font-mono text-[13px]"
-                                        },
-                                        onclick: declare_ports(
-                                            vec![(u.name.clone(), u.kind == PortKind::Input)],
-                                            code_value.clone(),
-                                        ),
+                                        class: if u.kind == PortKind::Input { "h-8 px-3 rounded-full border border-teal-700 bg-teal-50 text-teal-800 font-mono text-[13px]" } else { "h-8 px-3 rounded-full border border-amber-600 bg-amber-100 text-amber-900 font-mono text-[13px]" },
+                                        onclick: declare_ports(vec![(u.name.clone(), u.kind == PortKind::Input)], code_value.clone()),
                                         "+ {u.name}"
                                     }
                                 }

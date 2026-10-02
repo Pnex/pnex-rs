@@ -28,6 +28,7 @@ use crate::components::editor_shell::{
 };
 use crate::components::icons;
 use crate::components::modal::Modal;
+use crate::components::tour_viewer;
 use crate::state::session;
 use crate::state::toasts;
 
@@ -380,8 +381,8 @@ pub fn TourEditor(
         rsx! {
             InspectorPanel {
                 key: "{sel:?}",
-                icon: icon,
-                title: title,
+                icon,
+                title,
                 subtitle: Some(format!("#{subtitle}")),
                 on_close: move |_| cx.selected.set(None),
                 body: rsx! {
@@ -399,17 +400,9 @@ pub fn TourEditor(
         EditorShell {
             on_back,
             title: tour_name,
-            on_rename: if can_write {
-                Some(Callback::new(move |name: String| save.call(Some(name))))
-            } else {
-                None
-            },
+            on_rename: if can_write { Some(Callback::new(move |name: String| save.call(Some(name)))) } else { None },
             status: editor_status,
-            version: if saved_version() > 0 {
-                Some(saved_version())
-            } else {
-                None
-            },
+            version: if saved_version() > 0 { Some(saved_version()) } else { None },
             extra_chips: rsx! {
                 if dirty {
                     Chip {
@@ -450,24 +443,28 @@ pub fn TourEditor(
                 }
             },
             banner: rsx! {
-            // ─── Bandeau de violations ───
-            if !banner.is_empty() {
-                div { class: "bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-sm text-red-700",
-                    span { class: "font-semibold mr-2", {t!("studio-violations-banner-title")} }
-                    ul { class: "list-disc list-inside",
-                        for violation in banner.clone() {
-                            li { key: "{violation.code}-{violation.subject:?}-{violation.message}",
-                                {match &violation.subject {
-                                    Some(subject) => format!("{subject} : {}", violation.message),
-                                    None => violation.message.clone(),
-                                }}
+                // ─── Bandeau de violations ───
+                if !banner.is_empty() {
+                    div { class: "bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-sm text-red-700",
+                        span { class: "font-semibold mr-2", {t!("studio-violations-banner-title")} }
+                        ul { class: "list-disc list-inside",
+                            for violation in banner.clone() {
+                                li { key: "{violation.code}-{violation.subject:?}-{violation.message}",
+                                    {
+                                        match &violation.subject {
+                                            Some(subject) => format!("{subject} : {}", violation.message),
+                                            None => violation.message.clone(),
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
-                }
             },
-            canvas: rsx! { canvas::Canvas { cx } },
+            canvas: rsx! {
+                canvas::Canvas { cx }
+            },
             palette: rsx! {
                 PalettePopover {
                     add_title: t!("eshell-add").to_string(),
@@ -523,7 +520,11 @@ pub fn TourEditor(
                                         },
                                         div { class: "flex items-center justify-between gap-1",
                                             span { class: "truncate",
-                                                {if floor.name.is_empty() { floor.id.clone() } else { floor.name.clone() }}
+                                                if floor.name.is_empty() {
+                                                    {floor.id.clone()}
+                                                } else {
+                                                    {floor.name.clone()}
+                                                }
                                             }
                                             span { class: "text-[11px] text-gray-400", "{count}" }
                                         }
@@ -546,115 +547,105 @@ pub fn TourEditor(
                             }
                             if link_mode() {
                                 p { class: "text-[11px] text-gray-400",
-                                    {if link_from().is_some() { t!("studio-link-hint-target") } else { t!("studio-link-hint-source") }}
+                                    if link_from().is_some() {
+                                        {t!("studio-link-hint-target")}
+                                    } else {
+                                        {t!("studio-link-hint-source")}
+                                    }
                                 }
                             }
-                            span { class: "text-[11px] text-gray-400",
-                                {t!("studio-scene-count", count: scene_count)}
-                            }
+                            span { class: "text-[11px] text-gray-400", {t!("studio-scene-count", count : scene_count)} }
                         }
                     }
                 }
             },
             inspector: inspector_slot,
-            empty_hint: if scene_count == 0 {
-                Some(t!("eshell-empty-hint").to_string())
-            } else {
-                None
-            },
+            empty_hint: if scene_count == 0 { Some(t!("eshell-empty-hint").to_string()) } else { None },
         }
 
-            // ─── Drawer versions ───
-            if versions_open() {
-                versions::VersionsDrawer {
-                    tour_id: tour_id.clone(),
-                    can_write,
-                    share_token: share_token.clone(),
-                    published_version,
-                    on_close: move |_| versions_open.set(false),
-                    on_loaded: move |version: pnex_core::TourVersionDetail| {
-                        // Chargement d'une version : si c'est la dernière,
-                        // pas de dirty ; sinon save créera v(n+1) avec ce doc
-                        // (restauration par édition, école flows).
-                        let fresh = version.doc.clone();
-                        doc.set(fresh.clone());
-                        if version.version_number == saved_version() {
-                            saved_doc.set(fresh);
-                            loaded_from.set(None);
-                        } else {
-                            saved_doc.set(TourDoc::default());
-                            loaded_from.set(Some(version.version_number));
-                        }
-                        selected.set(None);
-                        violations.set(Vec::new());
-                        versions_open.set(false);
-                    },
-                    on_changed: move |_| {
-                        reload_meta.with_mut(|r| *r += 1);
-                        on_changed.call(());
-                    },
-                }
-            }
-
-            // ─── Aperçu (viewer in-app) ───
-            if preview_open() {
-                Modal {
-                    title: t!("studio-preview-title"),
-                    max_width: if annot_edit() {
-                        "max-w-7xl".to_string()
+        // ─── Drawer versions ───
+        if versions_open() {
+            versions::VersionsDrawer {
+                tour_id: tour_id.clone(),
+                can_write,
+                share_token: share_token.clone(),
+                published_version,
+                on_close: move |_| versions_open.set(false),
+                on_loaded: move |version: pnex_core::TourVersionDetail| {
+                    // Chargement d'une version : si c'est la dernière,
+                    // pas de dirty ; sinon save créera v(n+1) avec ce doc
+                    // (restauration par édition, école flows).
+                    let fresh = version.doc.clone();
+                    doc.set(fresh.clone());
+                    if version.version_number == saved_version() {
+                        saved_doc.set(fresh);
+                        loaded_from.set(None);
                     } else {
-                        "max-w-5xl".to_string()
-                    },
-                    on_close: move |_| {
-                        preview_open.set(false);
-                        preview_doc.set(None);
-                        // Plain reset (no dirty guard, pre-V4 school): unsaved
-                        // panel edits are discarded on close. `annot_layer` is
-                        // re-resolved on next open (list-first find-or-create,
-                        // idempotent). Clearing cx.doc avoids flashing the
-                        // previous session's rows while the panel boot
-                        // re-fetches (booted_for is fresh on each remount).
-                        annot_edit.set(false);
-                        annot_layer.set(None);
-                        annot_layer_loading.set(false);
-                        annot_asset.set(None);
-                        annot_cx.layer_id.set(None);
-                        annot_cx.doc.set(pnex_core::AnnotationDoc::default());
-                        annot_cx
-                            .saved_doc
-                            .set(pnex_core::AnnotationDoc::default());
-                        annot_cx.saved_version.set(0);
-                        annot_cx.selected.set(None);
-                        annot_cx.placing.set(false);
-                        annot_cx.violations.set(Vec::new());
-                        annot_cx.conflict.set(None);
-                    },
-                    if let Some(preview) = preview_doc.cloned() {
-                        div { class: "space-y-3",
-                            // Edit toggle (can_write): enters the annotation
-                            // edit mode — the panel becomes the single writer
-                            // of the viewer host. Find-or-create of the
-                            // tour-scoped layer runs once per open, in a
-                            // spawned task (never at render).
-                            if can_write {
-                                div { class: "flex justify-end",
-                                    button {
-                                        class: if annot_edit() {
-                                            "px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg font-medium"
-                                        } else {
-                                            "px-3 py-1.5 text-xs bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-                                        },
-                                        onclick: move |_| {
-                                            annot_edit.toggle();
-                                            if annot_edit()
-                                                && annot_layer.cloned().is_none()
-                                                && !annot_layer_loading()
-                                            {
-                                                annot_layer_loading.set(true);
-                                                let id = tour_id_annot.clone();
-                                                let name = tour_name_seed.clone();
-                                                spawn(async move {
-                                                    let found = api::annotation_layers::list(
+                        saved_doc.set(TourDoc::default());
+                        loaded_from.set(Some(version.version_number));
+                    }
+                    selected.set(None);
+                    violations.set(Vec::new());
+                    versions_open.set(false);
+                },
+                on_changed: move |_| {
+                    reload_meta.with_mut(|r| *r += 1);
+                    on_changed.call(());
+                },
+            }
+        }
+
+        // ─── Aperçu (viewer in-app) ───
+        if preview_open() {
+            Modal {
+                title: t!("studio-preview-title"),
+                max_width: if annot_edit() { "max-w-7xl".to_string() } else { "max-w-5xl".to_string() },
+                on_close: move |_| {
+                    preview_open.set(false);
+                    preview_doc.set(None);
+                    // Plain reset (no dirty guard, pre-V4 school): unsaved
+                    // panel edits are discarded on close. `annot_layer` is
+                    // re-resolved on next open (list-first find-or-create,
+                    // idempotent). Clearing cx.doc avoids flashing the
+                    // previous session's rows while the panel boot
+                    // re-fetches (booted_for is fresh on each remount).
+                    annot_edit.set(false);
+                    annot_layer.set(None);
+                    annot_layer_loading.set(false);
+                    annot_asset.set(None);
+                    annot_cx.layer_id.set(None);
+                    annot_cx.doc.set(pnex_core::AnnotationDoc::default());
+                    annot_cx
+                        .saved_doc
+                        .set(pnex_core::AnnotationDoc::default());
+                    annot_cx.saved_version.set(0);
+                    annot_cx.selected.set(None);
+                    annot_cx.placing.set(false);
+                    annot_cx.violations.set(Vec::new());
+                    annot_cx.conflict.set(None);
+                },
+                if let Some(preview) = preview_doc.cloned() {
+                    div { class: "space-y-3",
+                        // Edit toggle (can_write): enters the annotation
+                        // edit mode — the panel becomes the single writer
+                        // of the viewer host. Find-or-create of the
+                        // tour-scoped layer runs once per open, in a
+                        // spawned task (never at render).
+                        if can_write {
+                            div { class: "flex justify-end",
+                                button {
+                                    class: if annot_edit() { "px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg font-medium" } else { "px-3 py-1.5 text-xs bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50" },
+                                    onclick: move |_| {
+                                        annot_edit.toggle();
+                                        if annot_edit()
+                                            && annot_layer.cloned().is_none()
+                                            && !annot_layer_loading()
+                                        {
+                                            annot_layer_loading.set(true);
+                                            let id = tour_id_annot.clone();
+                                            let name = tour_name_seed.clone();
+                                            spawn(async move {
+                                                let found = api::annotation_layers::list(
                                                         &api::annotation_layers::LayerFilters {
                                                             tour: Some(id.clone()),
                                                             limit: Some(1),
@@ -663,117 +654,108 @@ pub fn TourEditor(
                                                     )
                                                     .await
                                                     .ok()
-                                                    .and_then(|p| {
-                                                        p.results.first().map(|s| s.id.clone())
-                                                    });
-                                                    let layer = match found {
-                                                        Some(found_id) => Some(found_id),
-                                                        None => {
-                                                            match api::annotation_layers::create(
-                                                                pnex_core::CreateAnnotationLayer {
-                                                                    name,
-                                                                    media_asset_id: None,
-                                                                    tour_id: Some(id),
-                                                                    description: None,
-                                                                    author: None,
-                                                                    note: None,
-                                                                },
-                                                            )
+                                                    .and_then(|p| { p.results.first().map(|s| s.id.clone()) });
+                                                let layer = match found {
+                                                    Some(found_id) => Some(found_id),
+                                                    None => {
+                                                        match api::annotation_layers::create(pnex_core::CreateAnnotationLayer {
+                                                                name,
+                                                                media_asset_id: None,
+                                                                tour_id: Some(id),
+                                                                description: None,
+                                                                author: None,
+                                                                note: None,
+                                                            })
                                                             .await
-                                                            {
-                                                                Ok(d) => Some(d.id),
-                                                                Err(err) => {
-                                                                    crate::state::toasts::error(
-                                                                        err,
-                                                                    );
-                                                                    None
-                                                                }
+                                                        {
+                                                            Ok(d) => Some(d.id),
+                                                            Err(err) => {
+                                                                crate::state::toasts::error(err);
+                                                                None
                                                             }
                                                         }
-                                                    };
-                                                    annot_layer.set(layer);
-                                                    annot_layer_loading.set(false);
-                                                });
-                                            }
-                                        },
-                                        {t!("annot-edit-toggle")}
-                                    }
+                                                    }
+                                                };
+                                                annot_layer.set(layer);
+                                                annot_layer_loading.set(false);
+                                            });
+                                        }
+                                    },
+                                    {t!("annot-edit-toggle")}
                                 }
                             }
-                            div { class: "flex gap-3",
-                                crate::components::tour_viewer::TourViewer {
-                                    key: "preview-{tour_id}",
-                                    doc: preview,
-                                    assets: Default::default(),
-                                    source: crate::components::tour_viewer::ViewerSource::Auth,
-                                    // Drag d'une flèche : patcher le doc éditeur (la
-                                    // modification survit à la fermeture de la
-                                    // preview) ET le doc affiché (les hotspots des
-                                    // prochains switches lisent les angles à jour).
-                                    on_hotspot_move: move |(link_id, yaw, pitch): (String, f64, f64)| {
-                                        let id = link_id.clone();
-                                        cx.update_doc(move |doc| {
-                                            state::set_link_angles(doc, &id, yaw, pitch);
-                                        });
-                                        if let Some(mut preview) = preview_doc.cloned() {
-                                            if let Some(link) =
-                                                preview.links.iter_mut().find(|l| l.id == link_id)
-                                            {
-                                                link.yaw = yaw.clamp(-180.0, 180.0);
-                                                link.pitch = pitch.clamp(-90.0, 90.0);
-                                            }
-                                            preview_doc.set(Some(preview));
+                        }
+                        div { class: "flex gap-3",
+                            crate::components::tour_viewer::TourViewer {
+                                key: "preview-{tour_id}",
+                                doc: preview,
+                                assets: Default::default(),
+                                source: crate::components::tour_viewer::ViewerSource::Auth,
+                                // Drag d'une flèche : patcher le doc éditeur (la
+                                // modification survit à la fermeture de la
+                                // preview) ET le doc affiché (les hotspots des
+                                // prochains switches lisent les angles à jour).
+                                on_hotspot_move: move |(link_id, yaw, pitch): (String, f64, f64)| {
+                                    let id = link_id.clone();
+                                    cx.update_doc(move |doc| {
+                                        state::set_link_angles(doc, &id, yaw, pitch);
+                                    });
+                                    if let Some(mut preview) = preview_doc.cloned() {
+                                        if let Some(link) =
+                                            preview.links.iter_mut().find(|l| l.id == link_id)
+                                        {
+                                            link.yaw = yaw.clamp(-180.0, 180.0);
+                                            link.pitch = pitch.clamp(-90.0, 90.0);
                                         }
-                                    },
-                                    host_id: crate::components::tour_viewer::HOST_ID.to_string(),
-                                    compact: false,
-                                    show_side_panel: true,
-                                    // Read overlay of published annotations when
-                                    // NOT editing; in edit mode the PANEL is the
-                                    // single writer of this host (the viewer's
-                                    // own writer is disabled).
-                                    annotations_enabled: !annot_edit(),
-                                    // Track the displayed scene's media
-                                    // continuously (not gated by annot_edit):
-                                    // the viewer fires the initial scene at
-                                    // mount, so the panel has a correct anchor
-                                    // as soon as the toggle happens.
-                                    on_scene_change: move |scene_id: String| {
-                                        if let Some(p) = preview_doc.cloned() {
-                                            if let Some(scene) =
-                                                p.scenes.iter().find(|s| s.id == scene_id)
-                                            {
-                                                annot_asset.set(Some(scene.media_asset_id.clone()));
-                                            }
+                                        preview_doc.set(Some(preview));
+                                    }
+                                },
+                                host_id: tour_viewer::HOST_ID.to_string(),
+                                compact: false,
+                                show_side_panel: true,
+                                // Read overlay of published annotations when
+                                // NOT editing; in edit mode the PANEL is the
+                                // single writer of this host (the viewer's
+                                // own writer is disabled).
+                                annotations_enabled: !annot_edit(),
+                                // Track the displayed scene's media
+                                // continuously (not gated by annot_edit):
+                                // the viewer fires the initial scene at
+                                // mount, so the panel has a correct anchor
+                                // as soon as the toggle happens.
+                                on_scene_change: move |scene_id: String| {
+                                    if let Some(p) = preview_doc.cloned() {
+                                        if let Some(scene) =
+                                            p.scenes.iter().find(|s| s.id == scene_id)
+                                        {
+                                            annot_asset.set(Some(scene.media_asset_id.clone()));
                                         }
-                                    },
-                                    // Tour editor preview: arrow drag is
-                                    // allowed here and nowhere else (read-only
-                                    // viewers keep markers fixed).
-                                    editable: true,
-                                }
-                                // Annotation edit mode: the panel is the single
-                                // writer of the viewer host. Gated on the
-                                // resolved layer id — never mounts with an empty
-                                // id (the boot would fetch detail("")), spinner
-                                // while find-or-create resolves.
-                                if annot_edit() {
-                                    if let Some(layer_id) = annot_layer.cloned() {
-                                        crate::components::annotation_editor::panel::AnnotationLayerPanel {
-                                            key: "annot-panel-{tour_id}",
-                                            layer_id,
-                                            media_override: annot_asset,
-                                            host_id:
-                                                crate::components::tour_viewer::HOST_ID
-                                                    .to_string(),
-                                            can_write,
-                                            cx: annot_cx,
-                                            media_kind: "panorama".to_string(),
-                                        }
-                                    } else {
-                                        div { class: "w-96 shrink-0 h-[70vh] flex items-center justify-center border-l border-gray-200 bg-white",
-                                            span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400" }
-                                        }
+                                    }
+                                },
+                                // Tour editor preview: arrow drag is
+                                // allowed here and nowhere else (read-only
+                                // viewers keep markers fixed).
+                                editable: true,
+                            }
+                            // Annotation edit mode: the panel is the single
+                            // writer of the viewer host. Gated on the
+                            // resolved layer id — never mounts with an empty
+                            // id (the boot would fetch detail("")), spinner
+                            // while find-or-create resolves.
+                            if annot_edit() {
+                                if let Some(layer_id) = annot_layer.cloned() {
+                                    crate::components::annotation_editor::panel::AnnotationLayerPanel {
+                                        key: "annot-panel-{tour_id}",
+                                        layer_id,
+                                        media_override: annot_asset,
+                                        host_id: tour_viewer::HOST_ID.to_string(),
+                                        can_write,
+                                        cx: annot_cx,
+                                        media_kind: "panorama".to_string(),
+                                    }
+                                } else {
+                                    div { class: "w-96 shrink-0 h-[70vh] flex items-center justify-center border-l border-gray-200 bg-white",
+                                        span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400" }
                                     }
                                 }
                             }
@@ -781,74 +763,72 @@ pub fn TourEditor(
                     }
                 }
             }
+        }
 
-            // ─── Modal nouvel étage ───
-            if add_floor_open() {
-                AddFloorModal {
-                    on_close: move |_| add_floor_open.set(false),
-                    on_created: move |(name, level)| {
-                        add_floor_open.set(false);
-                        // Le réducteur choisit l'id libre ; on affiche et
-                        // sélectionne l'étage créé.
-                        let mut new_id = String::new();
-                        cx.update_doc(|doc| {
-                            new_id = state::add_floor(doc, name, level);
-                        });
-                        active_floor.set(new_id);
-                    },
-                }
+        // ─── Modal nouvel étage ───
+        if add_floor_open() {
+            AddFloorModal {
+                on_close: move |_| add_floor_open.set(false),
+                on_created: move |(name, level)| {
+                    add_floor_open.set(false);
+                    // Le réducteur choisit l'id libre ; on affiche et
+                    // sélectionne l'étage créé.
+                    let mut new_id = String::new();
+                    cx.update_doc(|doc| {
+                        new_id = state::add_floor(doc, name, level);
+                    });
+                    active_floor.set(new_id);
+                },
             }
+        }
 
-            // ─── Modal ajout de scène (picker panorama) ───
-            if add_scene_open() {
-                MediaPicker {
-                    kind: MediaKind::Panorama,
-                    on_picked: move |picked: (String, String)| {
-                        let (asset_id, _name) = picked;
-                        add_scene_open.set(false);
-                        // Pose sur l'étage actif, au centre de la vue avec un
-                        // léger décalage en cascade (jamais empilées).
-                        let floor = active_floor.cloned();
-                        let mut new_id = String::new();
-                        cx.update_doc(|doc| {
-                            let (w, h) = geometry::plan_size(None, None);
-                            let step = doc.scenes.len() as f64;
-                            let pos = (
-                                w / 2.0 + (step % 6.0) * 24.0,
-                                h / 2.0 + (step % 6.0) * 24.0,
-                            );
-                            new_id = state::add_scene(doc, &floor, asset_id.clone(), pos);
-                        });
-                        selected.set(Some(Select::Scene(new_id)));
-                    },
-                    on_close: move |_| add_scene_open.set(false),
-                }
+        // ─── Modal ajout de scène (picker panorama) ───
+        if add_scene_open() {
+            MediaPicker {
+                kind: MediaKind::Panorama,
+                on_picked: move |picked: (String, String)| {
+                    let (asset_id, _name) = picked;
+                    add_scene_open.set(false);
+                    // Pose sur l'étage actif, au centre de la vue avec un
+                    // léger décalage en cascade (jamais empilées).
+                    let floor = active_floor.cloned();
+                    let mut new_id = String::new();
+                    cx.update_doc(|doc| {
+                        let (w, h) = geometry::plan_size(None, None);
+                        let step = doc.scenes.len() as f64;
+                        let pos = (w / 2.0 + (step % 6.0) * 24.0, h / 2.0 + (step % 6.0) * 24.0);
+                        new_id = state::add_scene(doc, &floor, asset_id.clone(), pos);
+                    });
+                    selected.set(Some(Select::Scene(new_id)));
+                },
+                on_close: move |_| add_scene_open.set(false),
             }
+        }
 
-            // ─── Modale de conflit 409 (école flow_editor) ───
-            if let Some(description) = conflict() {
-                Modal {
-                    title: t!("studio-conflict-title"),
-                    max_width: "max-w-md".to_string(),
-                    on_close: move |_| conflict.set(None),
-                    div { class: "space-y-4",
-                        p { class: "text-sm text-gray-600", {description.clone()} }
-                        p { class: "text-sm text-gray-600", {t!("studio-conflict-message")} }
-                        div { class: "flex flex-col gap-2 pt-2",
-                            button {
-                                class: "px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
-                                onclick: move |_| conflict_reload(()),
-                                {t!("studio-conflict-reload")}
-                            }
-                            button {
-                                class: "px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors",
-                                onclick: conflict_overwrite,
-                                {t!("studio-conflict-overwrite")}
-                            }
+        // ─── Modale de conflit 409 (école flow_editor) ───
+        if let Some(description) = conflict() {
+            Modal {
+                title: t!("studio-conflict-title"),
+                max_width: "max-w-md".to_string(),
+                on_close: move |_| conflict.set(None),
+                div { class: "space-y-4",
+                    p { class: "text-sm text-gray-600", {description.clone()} }
+                    p { class: "text-sm text-gray-600", {t!("studio-conflict-message")} }
+                    div { class: "flex flex-col gap-2 pt-2",
+                        button {
+                            class: "px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                            onclick: move |_| conflict_reload(()),
+                            {t!("studio-conflict-reload")}
+                        }
+                        button {
+                            class: "px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors",
+                            onclick: conflict_overwrite,
+                            {t!("studio-conflict-overwrite")}
                         }
                     }
                 }
             }
+        }
     }
 }
 
@@ -865,7 +845,9 @@ fn AddFloorModal(on_close: Callback<()>, on_created: Callback<(String, i32)>) ->
             on_close,
             div { class: "space-y-4",
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("studio-floor-name")} }
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                        {t!("studio-floor-name")}
+                    }
                     input {
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         r#type: "text",
@@ -874,10 +856,13 @@ fn AddFloorModal(on_close: Callback<()>, on_created: Callback<(String, i32)>) ->
                     }
                 }
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("studio-floor-level")} }
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                        {t!("studio-floor-level")}
+                    }
                     input {
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
-                        r#type: "number", step: "1",
+                        r#type: "number",
+                        step: "1",
                         value: "{level}",
                         oninput: move |event| level.set(event.value()),
                     }

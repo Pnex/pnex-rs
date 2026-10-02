@@ -54,7 +54,7 @@ pub(super) fn TestImageModal(model: MlModel, on_close: Callback<()>) -> Element 
 
     rsx! {
         Modal {
-            title: t!("models-test-title", name: model.name.clone()),
+            title: t!("models-test-title", name : model.name.clone()),
             max_width: "max-w-4xl".to_string(),
             on_close: move |_| on_close.call(()),
             div { class: "space-y-4",
@@ -102,13 +102,17 @@ pub(super) fn TestImageModal(model: MlModel, on_close: Callback<()>) -> Element 
                 }
                 if let Some(url) = image_url() {
                     div { class: "relative w-full bg-gray-900 rounded-lg overflow-hidden",
-                        img { class: "block w-full h-auto", src: "{url}", alt: "" }
+                        img {
+                            class: "block w-full h-auto",
+                            src: "{url}",
+                            alt: "",
+                        }
                         if let Some(r) = res.clone() {
                             svg {
                                 class: "absolute inset-0 w-full h-full pointer-events-none",
                                 view_box: "0 0 {r.width} {r.height}",
                                 preserve_aspect_ratio: "none",
-                                for (i , d) in r.detections.iter().enumerate() {
+                                for (i, d) in r.detections.iter().enumerate() {
                                     g { key: "{i}",
                                         rect {
                                             x: "{d.bbox[0]}",
@@ -143,13 +147,18 @@ pub(super) fn TestImageModal(model: MlModel, on_close: Callback<()>) -> Element 
                 if let Some(r) = res {
                     div { class: "space-y-2",
                         p { class: "text-sm text-gray-700",
-                            {t!("models-test-summary", count: r.detections.len(), ms: r.took_ms, width: r.width, height: r.height)}
+                            {
+                                t!(
+                                    "models-test-summary", count : r.detections.len(), ms : r.took_ms, width : r
+                                    .width, height : r.height
+                                )
+                            }
                         }
                         if r.detections.is_empty() {
                             p { class: "text-sm text-gray-500", {t!("models-test-none")} }
                         } else {
                             div { class: "flex flex-wrap gap-2",
-                                for (i , d) in r.detections.iter().enumerate() {
+                                for (i, d) in r.detections.iter().enumerate() {
                                     span {
                                         key: "{i}",
                                         class: "px-2 py-0.5 rounded-full text-xs text-white",

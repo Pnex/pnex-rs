@@ -103,7 +103,11 @@ fn App() -> Element {
     // Sur web (same-origin) SERVER_READY est toujours vrai — cf. api::config.
     rsx! {
         // Favicon : mark X seul — lisible en 32 px, contrairement au wordmark.
-        link { rel: "icon", type: "image/png", href: asset!("/assets/logo-mark.png") }
+        link {
+            rel: "icon",
+            r#type: "image/png",
+            href: asset!("/assets/logo-mark.png"),
+        }
         // CSS : sur web le <link> est déjà dans index.html (dx build, manganis)
         // et bloque le rendu. Sur natif l'APK n'embarque pas de shell avec
         // <link> — sans style inline, le premier patch DOM peint une frame non

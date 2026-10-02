@@ -40,19 +40,40 @@ pub(crate) fn InspectorBody(cx: TourEditorCx, can_write: bool) -> Element {
             let Some(scene) = doc.scenes.iter().find(|s| s.id == id).cloned() else {
                 return rsx! {};
             };
-            rsx! { SceneForm { key: "{id}", cx, can_write, scene } }
+            rsx! {
+                SceneForm {
+                    key: "{id}",
+                    cx,
+                    can_write,
+                    scene,
+                }
+            }
         }
         Some(Select::Floor(id)) => {
             let Some(floor) = doc.floors.iter().find(|f| f.id == id).cloned() else {
                 return rsx! {};
             };
-            rsx! { FloorForm { key: "{id}", cx, can_write, floor } }
+            rsx! {
+                FloorForm {
+                    key: "{id}",
+                    cx,
+                    can_write,
+                    floor,
+                }
+            }
         }
         Some(Select::Link(id)) => {
             let Some(link) = doc.links.iter().find(|l| l.id == id).cloned() else {
                 return rsx! {};
             };
-            rsx! { LinkForm { key: "{id}", cx, can_write, link } }
+            rsx! {
+                LinkForm {
+                    key: "{id}",
+                    cx,
+                    can_write,
+                    link,
+                }
+            }
         }
         None => rsx! {},
     }
@@ -72,7 +93,9 @@ fn SceneForm(cx: TourEditorCx, can_write: bool, scene: pnex_core::TourScene) -> 
         div { class: "space-y-3",
             // Asset panorama référencé.
             div {
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("studio-scene-media")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("studio-scene-media")}
+                }
                 if can_write {
                     button {
                         class: "w-full px-3 py-2 text-left text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors truncate",
@@ -85,7 +108,9 @@ fn SceneForm(cx: TourEditorCx, can_write: bool, scene: pnex_core::TourScene) -> 
             }
 
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("studio-scene-label")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("studio-scene-label")}
+                }
                 input {
                     class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                     r#type: "text",
@@ -101,45 +126,66 @@ fn SceneForm(cx: TourEditorCx, can_write: bool, scene: pnex_core::TourScene) -> 
 
             div { class: "grid grid-cols-3 gap-2",
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("studio-scene-yaw")} }
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                        {t!("studio-scene-yaw")}
+                    }
                     input {
                         class: "w-full px-2 py-2 border border-gray-300 rounded-lg text-sm",
-                        r#type: "number", step: "1",
+                        r#type: "number",
+                        step: "1",
                         value: "{yaw}",
                         disabled: !can_write,
                         oninput: move |event| {
                             yaw.set(event.value());
-                            if let (Ok(y), Ok(p), Ok(f)) = (yaw().parse::<f64>(), pitch().parse::<f64>(), fov().parse::<f64>()) {
+                            if let (Ok(y), Ok(p), Ok(f)) = (
+                                yaw().parse::<f64>(),
+                                pitch().parse::<f64>(),
+                                fov().parse::<f64>(),
+                            ) {
                                 patch_scene(&cx, move |doc, id| state::set_scene_view(doc, id, y, p, f));
                             }
                         },
                     }
                 }
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("studio-scene-pitch")} }
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                        {t!("studio-scene-pitch")}
+                    }
                     input {
                         class: "w-full px-2 py-2 border border-gray-300 rounded-lg text-sm",
-                        r#type: "number", step: "1",
+                        r#type: "number",
+                        step: "1",
                         value: "{pitch}",
                         disabled: !can_write,
                         oninput: move |event| {
                             pitch.set(event.value());
-                            if let (Ok(y), Ok(p), Ok(f)) = (yaw().parse::<f64>(), pitch().parse::<f64>(), fov().parse::<f64>()) {
+                            if let (Ok(y), Ok(p), Ok(f)) = (
+                                yaw().parse::<f64>(),
+                                pitch().parse::<f64>(),
+                                fov().parse::<f64>(),
+                            ) {
                                 patch_scene(&cx, move |doc, id| state::set_scene_view(doc, id, y, p, f));
                             }
                         },
                     }
                 }
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("studio-scene-fov")} }
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                        {t!("studio-scene-fov")}
+                    }
                     input {
                         class: "w-full px-2 py-2 border border-gray-300 rounded-lg text-sm",
-                        r#type: "number", step: "1",
+                        r#type: "number",
+                        step: "1",
                         value: "{fov}",
                         disabled: !can_write,
                         oninput: move |event| {
                             fov.set(event.value());
-                            if let (Ok(y), Ok(p), Ok(f)) = (yaw().parse::<f64>(), pitch().parse::<f64>(), fov().parse::<f64>()) {
+                            if let (Ok(y), Ok(p), Ok(f)) = (
+                                yaw().parse::<f64>(),
+                                pitch().parse::<f64>(),
+                                fov().parse::<f64>(),
+                            ) {
                                 patch_scene(&cx, move |doc, id| state::set_scene_view(doc, id, y, p, f));
                             }
                         },
@@ -153,14 +199,12 @@ fn SceneForm(cx: TourEditorCx, can_write: bool, scene: pnex_core::TourScene) -> 
 
             if can_write {
                 button {
-                    class: if is_start {
-                        "w-full px-3 py-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-300 rounded-lg"
-                    } else {
-                        "w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                    },
+                    class: if is_start { "w-full px-3 py-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-300 rounded-lg" } else { "w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors" },
                     disabled: is_start,
                     onclick: move |_| {
-                        let Some(Select::Scene(id)) = cx.selected.cloned() else { return; };
+                        let Some(Select::Scene(id)) = cx.selected.cloned() else {
+                            return;
+                        };
                         cx.update_doc(move |doc| state::set_start_scene(doc, Some(id)));
                     },
                     {t!("studio-scene-start")}
@@ -168,7 +212,9 @@ fn SceneForm(cx: TourEditorCx, can_write: bool, scene: pnex_core::TourScene) -> 
                 button {
                     class: "w-full px-3 py-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors",
                     onclick: move |_| {
-                        let Some(Select::Scene(id)) = cx.selected.cloned() else { return; };
+                        let Some(Select::Scene(id)) = cx.selected.cloned() else {
+                            return;
+                        };
                         cx.update_doc(move |doc| state::remove_scene(doc, &id));
                         cx.selected.set(None);
                     },
@@ -258,15 +304,13 @@ fn SceneLinks(cx: TourEditorCx, can_write: bool, scene_id: String) -> Element {
                 p { class: "text-xs text-gray-400", {t!("studio-scene-links-none")} }
             }
             for (link_id, is_stair, label) in rows {
-                div { key: "{link_id}",
+                div {
+                    key: "{link_id}",
                     class: "flex items-center gap-2 rounded-lg border border-gray-200 px-2 py-1.5",
-                    span {
-                        class: if is_stair {
-                            "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-violet-50 text-violet-700 border border-violet-200"
-                        } else {
-                            "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200"
-                        },
-                        {if is_stair { t!("studio-link-kind-stair") } else { t!("studio-link-kind-walk") }}
+                    span { class: if is_stair { "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-violet-50 text-violet-700 border border-violet-200" } else { "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200" },
+                        {
+                            if is_stair { t!("studio-link-kind-stair") } else { t!("studio-link-kind-walk") }
+                        }
                     }
                     span { class: "text-xs text-gray-700 truncate flex-1", {label} }
                     if can_write {
@@ -322,7 +366,9 @@ fn FloorForm(cx: TourEditorCx, can_write: bool, floor: pnex_core::TourFloor) -> 
     rsx! {
         div { class: "space-y-3",
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("studio-floor-name")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("studio-floor-name")}
+                }
                 input {
                     class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                     r#type: "text",
@@ -331,48 +377,63 @@ fn FloorForm(cx: TourEditorCx, can_write: bool, floor: pnex_core::TourFloor) -> 
                     oninput: move |event| {
                         name.set(event.value());
                         let value = event.value();
-                        patch_floor(&cx, move |doc, id| {
-                            if let Some(f) = doc.floors.iter_mut().find(|f| f.id == id) {
-                                f.name = value;
-                            }
-                        });
+                        patch_floor(
+                            &cx,
+                            move |doc, id| {
+                                if let Some(f) = doc.floors.iter_mut().find(|f| f.id == id) {
+                                    f.name = value;
+                                }
+                            },
+                        );
                     },
                 }
             }
             div { class: "grid grid-cols-2 gap-2",
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("studio-floor-level")} }
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                        {t!("studio-floor-level")}
+                    }
                     input {
                         class: "w-full px-2 py-2 border border-gray-300 rounded-lg text-sm",
-                        r#type: "number", step: "1",
+                        r#type: "number",
+                        step: "1",
                         value: "{level}",
                         disabled: !can_write,
                         oninput: move |event| {
                             level.set(event.value());
                             let value = event.value().parse::<i32>().unwrap_or(0);
-                            patch_floor(&cx, move |doc, id| {
-                            if let Some(f) = doc.floors.iter_mut().find(|f| f.id == id) {
-                                f.level = value;
-                            }
-                        });
+                            patch_floor(
+                                &cx,
+                                move |doc, id| {
+                                    if let Some(f) = doc.floors.iter_mut().find(|f| f.id == id) {
+                                        f.level = value;
+                                    }
+                                },
+                            );
                         },
                     }
                 }
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("studio-floor-north")} }
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                        {t!("studio-floor-north")}
+                    }
                     input {
                         class: "w-full px-2 py-2 border border-gray-300 rounded-lg text-sm",
-                        r#type: "number", step: "1",
+                        r#type: "number",
+                        step: "1",
                         value: "{north}",
                         disabled: !can_write,
                         oninput: move |event| {
                             north.set(event.value());
                             let value = event.value().parse::<f64>().unwrap_or(0.0);
-                            patch_floor(&cx, move |doc, id| {
-                            if let Some(f) = doc.floors.iter_mut().find(|f| f.id == id) {
-                                f.north_deg = value;
-                            }
-                        });
+                            patch_floor(
+                                &cx,
+                                move |doc, id| {
+                                    if let Some(f) = doc.floors.iter_mut().find(|f| f.id == id) {
+                                        f.north_deg = value;
+                                    }
+                                },
+                            );
                         },
                     }
                 }
@@ -397,9 +458,12 @@ fn FloorForm(cx: TourEditorCx, can_write: bool, floor: pnex_core::TourFloor) -> 
                                             disabled: !can_write,
                                             oninput: move |event| {
                                                 let value = event.value().parse::<f64>().ok().filter(|v| *v > 0.0);
-                                                patch_floor(&cx, move |doc, id| {
-                                                    state::patch_plan(doc, id, |plan| plan.width = value);
-                                                });
+                                                patch_floor(
+                                                    &cx,
+                                                    move |doc, id| {
+                                                        state::patch_plan(doc, id, |plan| plan.width = value);
+                                                    },
+                                                );
                                             },
                                         }
                                     }
@@ -412,9 +476,12 @@ fn FloorForm(cx: TourEditorCx, can_write: bool, floor: pnex_core::TourFloor) -> 
                                             disabled: !can_write,
                                             oninput: move |event| {
                                                 let value = event.value().parse::<f64>().ok().filter(|v| *v > 0.0);
-                                                patch_floor(&cx, move |doc, id| {
-                                                    state::patch_plan(doc, id, |plan| plan.height = value);
-                                                });
+                                                patch_floor(
+                                                    &cx,
+                                                    move |doc, id| {
+                                                        state::patch_plan(doc, id, |plan| plan.height = value);
+                                                    },
+                                                );
                                             },
                                         }
                                     }
@@ -423,14 +490,18 @@ fn FloorForm(cx: TourEditorCx, can_write: bool, floor: pnex_core::TourFloor) -> 
                                     span { class: "text-xs text-gray-500 block", {t!("studio-plan-scale")} }
                                     input {
                                         class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
-                                        r#type: "number", step: "0.01",
+                                        r#type: "number",
+                                        step: "0.01",
                                         value: "{plan.scale_m_per_px.unwrap_or(0.0)}",
                                         disabled: !can_write,
                                         oninput: move |event| {
                                             let value = event.value().parse::<f64>().ok().filter(|v| *v > 0.0);
-                                            patch_floor(&cx, move |doc, id| {
-                                                state::patch_plan(doc, id, |plan| plan.scale_m_per_px = value);
-                                            });
+                                            patch_floor(
+                                                &cx,
+                                                move |doc, id| {
+                                                    state::patch_plan(doc, id, |plan| plan.scale_m_per_px = value);
+                                                },
+                                            );
                                         },
                                     }
                                 }
@@ -461,19 +532,21 @@ fn FloorForm(cx: TourEditorCx, can_write: bool, floor: pnex_core::TourFloor) -> 
                 button {
                     class: "w-full px-3 py-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors",
                     onclick: move |_| {
-                        let Some(Select::Floor(id)) = cx.selected.cloned() else { return; };
-        let occupied = {
-            let doc = cx.doc.peek();
-            doc.scenes.iter().any(|s| s.floor_id == id)
-        };
-        if occupied {
-            crate::state::toasts::info(t!("studio-floor-refused").to_string());
-        } else {
-            cx.update_doc(move |doc| {
-                state::remove_floor(doc, &id);
-            });
-            cx.selected.set(None);
-        }
+                        let Some(Select::Floor(id)) = cx.selected.cloned() else {
+                            return;
+                        };
+                        let occupied = {
+                            let doc = cx.doc.peek();
+                            doc.scenes.iter().any(|s| s.floor_id == id)
+                        };
+                        if occupied {
+                            crate::state::toasts::info(t!("studio-floor-refused").to_string());
+                        } else {
+                            cx.update_doc(move |doc| {
+                                state::remove_floor(doc, &id);
+                            });
+                            cx.selected.set(None);
+                        }
                     },
                     {t!("common-delete")}
                 }
@@ -485,18 +558,21 @@ fn FloorForm(cx: TourEditorCx, can_write: bool, floor: pnex_core::TourFloor) -> 
                     on_picked: move |picked: (String, String)| {
                         let (asset_id, _name) = picked;
                         picker_open.set(false);
-                        patch_floor(&cx, move |doc, id| {
-                            state::set_floor_plan(
-                                doc,
-                                id,
-                                Some(pnex_core::FloorPlan {
-                                    media_asset_id: asset_id,
-                                    width: None,
-                                    height: None,
-                                    scale_m_per_px: None,
-                                }),
-                            );
-                        });
+                        patch_floor(
+                            &cx,
+                            move |doc, id| {
+                                state::set_floor_plan(
+                                    doc,
+                                    id,
+                                    Some(pnex_core::FloorPlan {
+                                        media_asset_id: asset_id,
+                                        width: None,
+                                        height: None,
+                                        scale_m_per_px: None,
+                                    }),
+                                );
+                            },
+                        );
                     },
                     on_close: move |_| picker_open.set(false),
                 }
@@ -513,16 +589,24 @@ fn LinkForm(cx: TourEditorCx, can_write: bool, link: pnex_core::TourLink) -> Ele
     rsx! {
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500",
-                {t!("studio-link-endpoints", from: link.from.clone(), to: link.to.clone())}
+                {t!("studio-link-endpoints", from : link.from.clone(), to : link.to.clone())}
             }
             p { class: "text-xs",
                 span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-violet-50 text-violet-700 border border-violet-200",
-                    {if link.kind == pnex_core::TOUR_LINK_STAIR { t!("studio-link-kind-stair") } else { t!("studio-link-kind-walk") }}
+                    {
+                        if link.kind == pnex_core::TOUR_LINK_STAIR {
+                            t!("studio-link-kind-stair")
+                        } else {
+                            t!("studio-link-kind-walk")
+                        }
+                    }
                 }
                 span { class: "ml-2 text-gray-400", {t!("studio-link-kind-derived")} }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("studio-link-label")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("studio-link-label")}
+                }
                 input {
                     class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                     r#type: "text",
@@ -531,7 +615,9 @@ fn LinkForm(cx: TourEditorCx, can_write: bool, link: pnex_core::TourLink) -> Ele
                     oninput: move |event| {
                         label.set(event.value());
                         let value = event.value();
-                        let Some(Select::Link(id)) = cx.selected.cloned() else { return; };
+                        let Some(Select::Link(id)) = cx.selected.cloned() else {
+                            return;
+                        };
                         cx.update_doc(move |doc| state::set_link_label(doc, &id, Some(value)));
                     },
                 }
@@ -540,7 +626,9 @@ fn LinkForm(cx: TourEditorCx, can_write: bool, link: pnex_core::TourLink) -> Ele
                 button {
                     class: "w-full px-3 py-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors",
                     onclick: move |_| {
-                        let Some(Select::Link(id)) = cx.selected.cloned() else { return; };
+                        let Some(Select::Link(id)) = cx.selected.cloned() else {
+                            return;
+                        };
                         cx.update_doc(move |doc| state::remove_link(doc, &id));
                         cx.selected.set(None);
                     },

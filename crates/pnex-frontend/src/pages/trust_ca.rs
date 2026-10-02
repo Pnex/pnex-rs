@@ -24,7 +24,7 @@ pub(crate) fn TrustCaDialog() -> Element {
             div { class: "max-w-md w-full bg-white rounded-2xl shadow-2xl p-6 space-y-4",
                 h2 { class: "text-lg font-semibold text-gray-900", {t!("trust-ca-title")} }
                 p { class: "text-sm text-gray-700",
-                    {t!("trust-ca-message", base: pending.base.clone())}
+                    {t!("trust-ca-message", base : pending.base.clone())}
                 }
                 div { class: "space-y-1",
                     p { class: "text-xs font-medium text-gray-500", {t!("trust-ca-fingerprint")} }

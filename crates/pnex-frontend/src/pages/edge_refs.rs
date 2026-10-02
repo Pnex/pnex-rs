@@ -81,11 +81,13 @@ pub fn EdgeRefs() -> Element {
             subtitle: Some(t!("edgerefs-subtitle").to_string()),
             can_write: can_write && !(tab() == Tab::Hosts && hosts_locked),
             // Le libellé « ajouter » suit l'onglet actif (WiFi vs serveurs).
-            add_label: Some(if tab() == Tab::Wifi {
-                t!("edgerefs-new-wifi").to_string()
-            } else {
-                t!("edgerefs-new-host").to_string()
-            }),
+            add_label: Some(
+                if tab() == Tab::Wifi {
+                    t!("edgerefs-new-wifi").to_string()
+                } else {
+                    t!("edgerefs-new-host").to_string()
+                },
+            ),
             on_add: move |_| match tab() {
                 Tab::Wifi => edit_wifi.set(Some(None)),
                 Tab::Hosts => edit_host.set(Some(None)),
@@ -97,16 +99,16 @@ pub fn EdgeRefs() -> Element {
                     for tab_def in [(Tab::Wifi, "edgerefs-tab-wifi"), (Tab::Hosts, "edgerefs-tab-hosts")] {
                         button {
                             key: "{tab_def.1}",
-                            class: if tab() == tab_def.0 {
-                                "px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white"
-                            } else {
-                                "px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
-                            },
+                            class: if tab() == tab_def.0 { "px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white" } else { "px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100" },
                             onclick: move |_| tab.set(tab_def.0),
                             span { class: "inline-flex items-center gap-1.5",
                                 match tab_def.0 {
-                                    Tab::Wifi => rsx! { icons::Wifi { class: "h-4 w-4" } },
-                                    Tab::Hosts => rsx! { icons::Server { class: "h-4 w-4" } },
+                                    Tab::Wifi => rsx! {
+                                        icons::Wifi { class: "h-4 w-4" }
+                                    },
+                                    Tab::Hosts => rsx! {
+                                        icons::Server { class: "h-4 w-4" }
+                                    },
                                 }
                                 {t!(tab_def.1)}
                             }
@@ -118,26 +120,32 @@ pub fn EdgeRefs() -> Element {
                 }
 
                 match tab() {
-                    Tab::Wifi => rsx! { WifiTab {
-                        wifis,
-                        can_write,
-                        edit_wifi,
-                        delete_target,
-                    } },
-                    Tab::Hosts => match locked_host.clone() {
-                        Some(host) => rsx! {
-                            div { class: "rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700 space-y-1",
-                                p { class: "font-mono", "wss://{host}" }
-                                p { class: "text-xs text-gray-500", {t!("wizard-host-locked-hint")} }
-                            }
-                        },
-                        None => rsx! { HostsTab {
-                            hosts,
+                    Tab::Wifi => rsx! {
+                        WifiTab {
+                            wifis,
                             can_write,
-                            edit_host,
+                            edit_wifi,
                             delete_target,
-                        } },
+                        }
                     },
+                    Tab::Hosts => {
+                        match locked_host.clone() {
+                            Some(host) => rsx! {
+                                div { class: "rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700 space-y-1",
+                                    p { class: "font-mono", "wss://{host}" }
+                                    p { class: "text-xs text-gray-500", {t!("wizard-host-locked-hint")} }
+                                }
+                            },
+                            None => rsx! {
+                                HostsTab {
+                                    hosts,
+                                    can_write,
+                                    edit_host,
+                                    delete_target,
+                                }
+                            },
+                        }
+                    }
                 }
             }
 
@@ -167,7 +175,10 @@ pub fn EdgeRefs() -> Element {
             if let Some((what, id, name)) = delete_modal {
                 ConfirmDialog {
                     title: t!("edgerefs-confirm-delete-title"),
-                    message: t!("common-quoted-message", name: name.clone(), message: t!("edgerefs-confirm-delete-message")),
+                    message: t!(
+                        "common-quoted-message", name : name.clone(), message :
+                        t!("edgerefs-confirm-delete-message")
+                    ),
                     confirm_label: t!("common-delete"),
                     on_confirm: move |_| {
                         let (what, id, _) = (what, id, name.clone());
@@ -258,11 +269,11 @@ fn WifiTab(
     rsx! {
         ListStates {
             state: list_state,
-            is_empty: is_empty,
+            is_empty,
             empty_message: t!("edgerefs-empty-wifi").to_string(),
             DataTable {
-                columns: columns,
-                rows: rows,
+                columns,
+                rows,
                 row_key: RowKey::new(|wifi: &WifiCredential| wifi.id.to_string()),
             }
         }
@@ -319,11 +330,11 @@ fn HostsTab(
     rsx! {
         ListStates {
             state: list_state,
-            is_empty: is_empty,
+            is_empty,
             empty_message: t!("edgerefs-empty-hosts").to_string(),
             DataTable {
-                columns: columns,
-                rows: rows,
+                columns,
+                rows,
                 row_key: RowKey::new(|host: &PnexHost| host.id.to_string()),
             }
         }
@@ -392,10 +403,12 @@ fn WifiForm(
         crate::components::modal::Modal {
             title: if is_edit { t!("edgerefs-edit-wifi") } else { t!("edgerefs-new-wifi") },
             max_width: "max-w-lg".to_string(),
-            on_close: on_close,
+            on_close,
             div { class: "space-y-4",
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("builds-field-ssid")} }
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                        {t!("builds-field-ssid")}
+                    }
                     input {
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         r#type: "text",
@@ -428,7 +441,11 @@ fn WifiForm(
                         r#type: "button",
                         disabled: busy,
                         onclick: submit,
-                        if busy() { {t!("common-loading")} } else { {t!("common-save")} }
+                        if busy() {
+                            {t!("common-loading")}
+                        } else {
+                            {t!("common-save")}
+                        }
                     }
                 }
             }
@@ -489,10 +506,12 @@ fn HostForm(existing: Option<PnexHost>, on_close: Callback<()>, on_saved: Callba
         crate::components::modal::Modal {
             title: if is_edit { t!("edgerefs-edit-host") } else { t!("edgerefs-new-host") },
             max_width: "max-w-lg".to_string(),
-            on_close: on_close,
+            on_close,
             div { class: "space-y-4",
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("builds-field-server")} }
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                        {t!("builds-field-server")}
+                    }
                     input {
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         r#type: "text",
@@ -508,9 +527,7 @@ fn HostForm(existing: Option<PnexHost>, on_close: Callback<()>, on_saved: Callba
                 }
                 // Détection LAN côté serveur : préremplit l'hôte (la
                 // sauvegarde reste un clic « Save » plus bas).
-                crate::components::lan_detect::LanDetect {
-                    on_pick: move |picked| host.set(picked),
-                }
+                crate::components::lan_detect::LanDetect { on_pick: move |picked| host.set(picked) }
                 div { class: "flex justify-end gap-2 pt-2",
                     button {
                         class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
@@ -523,7 +540,11 @@ fn HostForm(existing: Option<PnexHost>, on_close: Callback<()>, on_saved: Callba
                         r#type: "button",
                         disabled: busy,
                         onclick: submit,
-                        if busy() { {t!("common-loading")} } else { {t!("common-save")} }
+                        if busy() {
+                            {t!("common-loading")}
+                        } else {
+                            {t!("common-save")}
+                        }
                     }
                 }
             }

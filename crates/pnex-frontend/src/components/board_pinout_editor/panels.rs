@@ -47,7 +47,9 @@ fn PinConfigPanel(
                         {t!("board-pin-reserved-screen")}
                     }
                     for w in pin.warnings {
-                        p { class: "text-xs text-teal-700", {crate::api::error_i18n::localize_field("", &w)} }
+                        p { class: "text-xs text-teal-700",
+                            {crate::api::error_i18n::localize_field("", &w)}
+                        }
                     }
                 } else {
                     p { class: "text-sm text-gray-500", {t!("board-non-configurable")} }
@@ -79,9 +81,14 @@ fn PinConfigPanel(
                 span { class: "font-semibold text-gray-900", {pin.label.clone()} }
                 span { class: "text-xs text-gray-400", {gpio_label(pin.gpio)} }
             }
-            span { class: "inline-block w-3 h-3 rounded", style: "background:{color}" }
+            span {
+                class: "inline-block w-3 h-3 rounded",
+                style: "background:{color}",
+            }
             for w in pin.warnings {
-                p { class: "text-xs text-amber-700", {crate::api::error_i18n::localize_field("", &w)} }
+                p { class: "text-xs text-amber-700",
+                    {crate::api::error_i18n::localize_field("", &w)}
+                }
             }
             p { class: "text-sm text-gray-500", {t!("pins-not-provisioned")} }
         }
@@ -128,8 +135,13 @@ pub(super) fn PinDrawer(
                 }
             },
             div { class: "flex items-center gap-2.5 border-b border-gray-200 px-4 py-3",
-                span { class: "inline-block h-2.5 w-2.5 shrink-0 rounded", style: "background:{dot}" }
-                span { class: "min-w-0 truncate font-mono text-sm font-semibold text-gray-900", {label.clone()} }
+                span {
+                    class: "inline-block h-2.5 w-2.5 shrink-0 rounded",
+                    style: "background:{dot}",
+                }
+                span { class: "min-w-0 truncate font-mono text-sm font-semibold text-gray-900",
+                    {label.clone()}
+                }
                 if !gpio_text.is_empty() {
                     span { class: "font-mono text-xs text-gray-400", {gpio_text} }
                 }

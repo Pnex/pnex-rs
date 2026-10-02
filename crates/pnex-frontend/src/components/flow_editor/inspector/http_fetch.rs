@@ -68,7 +68,9 @@ pub(super) fn HttpFetchForm(
     rsx! {
         div { class: "space-y-3",
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-http-fetch-url")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-http-fetch-url")}
+                }
                 input {
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono",
                     r#type: "text",
@@ -84,22 +86,35 @@ pub(super) fn HttpFetchForm(
             }
             div { class: "grid grid-cols-2 gap-2",
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-http-fetch-method")} }
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                        {t!("flows-http-fetch-method")}
+                    }
                     select {
                         class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white disabled:bg-gray-50",
                         disabled: !can_write,
                         onchange: move |event| {
                             let raw = event.value();
-                            patch_http_fetch(&mut cx, move |cfg| {
-                                cfg.method = if raw == "post" { HttpFetchMethod::Post } else { HttpFetchMethod::Get };
-                            });
+                            patch_http_fetch(
+                                &mut cx,
+                                move |cfg| {
+                                    cfg.method = if raw == "post" {
+                                        HttpFetchMethod::Post
+                                    } else {
+                                        HttpFetchMethod::Get
+                                    };
+                                },
+                            );
                         },
                         option { value: "get", selected: !is_post, {t!("flows-http-fetch-method-get")} }
-                        option { value: "post", selected: is_post, {t!("flows-http-fetch-method-post")} }
+                        option { value: "post", selected: is_post,
+                            {t!("flows-http-fetch-method-post")}
+                        }
                     }
                 }
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-http-fetch-timeout")} }
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                        {t!("flows-http-fetch-timeout")}
+                    }
                     input {
                         class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
                         r#type: "text",
@@ -108,33 +123,71 @@ pub(super) fn HttpFetchForm(
                         oninput: move |event| {
                             let raw = event.value();
                             timeout_raw.set(raw.clone());
-                            patch_http_fetch(&mut cx, move |cfg| {
-                                cfg.timeout_secs = raw.trim().parse::<u64>().unwrap_or(30);
-                            });
+                            patch_http_fetch(
+                                &mut cx,
+                                move |cfg| {
+                                    cfg.timeout_secs = raw.trim().parse::<u64>().unwrap_or(30);
+                                },
+                            );
                         },
                     }
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-http-fetch-auth")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-http-fetch-auth")}
+                }
                 select {
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white disabled:bg-gray-50",
                     disabled: !can_write,
                     onchange: move |event| {
                         let raw = event.value();
-                        patch_http_fetch(&mut cx, move |cfg| {
-                            cfg.auth = match raw.as_str() {
-                                "basic" => HttpFetchAuth::Basic { username: String::new(), password: SecretSlot::Unset },
-                                "bearer" => HttpFetchAuth::Bearer { token: SecretSlot::Unset },
-                                "header" => HttpFetchAuth::Header { name: String::new(), value: SecretSlot::Unset },
-                                _ => HttpFetchAuth::None,
-                            };
-                        });
+                        patch_http_fetch(
+                            &mut cx,
+                            move |cfg| {
+                                cfg.auth = match raw.as_str() {
+                                    "basic" => {
+                                        HttpFetchAuth::Basic {
+                                            username: String::new(),
+                                            password: SecretSlot::Unset,
+                                        }
+                                    }
+                                    "bearer" => {
+                                        HttpFetchAuth::Bearer {
+                                            token: SecretSlot::Unset,
+                                        }
+                                    }
+                                    "header" => {
+                                        HttpFetchAuth::Header {
+                                            name: String::new(),
+                                            value: SecretSlot::Unset,
+                                        }
+                                    }
+                                    _ => HttpFetchAuth::None,
+                                };
+                            },
+                        );
                     },
-                    option { value: "none", selected: matches!(initial.auth, HttpFetchAuth::None), {t!("flows-http-fetch-auth-none")} }
-                    option { value: "basic", selected: matches!(initial.auth, HttpFetchAuth::Basic { .. }), {t!("flows-http-fetch-auth-basic")} }
-                    option { value: "bearer", selected: matches!(initial.auth, HttpFetchAuth::Bearer { .. }), {t!("flows-http-fetch-auth-bearer")} }
-                    option { value: "header", selected: matches!(initial.auth, HttpFetchAuth::Header { .. }), {t!("flows-http-fetch-auth-header")} }
+                    option {
+                        value: "none",
+                        selected: matches!(initial.auth, HttpFetchAuth::None),
+                        {t!("flows-http-fetch-auth-none")}
+                    }
+                    option {
+                        value: "basic",
+                        selected: matches!(initial.auth, HttpFetchAuth::Basic { .. }),
+                        {t!("flows-http-fetch-auth-basic")}
+                    }
+                    option {
+                        value: "bearer",
+                        selected: matches!(initial.auth, HttpFetchAuth::Bearer { .. }),
+                        {t!("flows-http-fetch-auth-bearer")}
+                    }
+                    option {
+                        value: "header",
+                        selected: matches!(initial.auth, HttpFetchAuth::Header { .. }),
+                        {t!("flows-http-fetch-auth-header")}
+                    }
                 }
             }
             match &initial.auth {
@@ -147,11 +200,14 @@ pub(super) fn HttpFetchForm(
                             disabled: !can_write,
                             oninput: move |event| {
                                 let raw = event.value();
-                                patch_http_fetch(&mut cx, move |cfg| {
-                                    if let HttpFetchAuth::Basic { username, .. } = &mut cfg.auth {
-                                        *username = raw;
-                                    }
-                                });
+                                patch_http_fetch(
+                                    &mut cx,
+                                    move |cfg| {
+                                        if let HttpFetchAuth::Basic { username, .. } = &mut cfg.auth {
+                                            *username = raw;
+                                        }
+                                    },
+                                );
                             },
                         }
                     }
@@ -161,11 +217,14 @@ pub(super) fn HttpFetchForm(
                         can_manage,
                         read_only: !can_write,
                         on_change: move |next: SecretSlot| {
-                            patch_http_fetch(&mut cx, move |cfg| {
-                                if let HttpFetchAuth::Basic { password, .. } = &mut cfg.auth {
-                                    *password = next;
-                                }
-                            });
+                            patch_http_fetch(
+                                &mut cx,
+                                move |cfg| {
+                                    if let HttpFetchAuth::Basic { password, .. } = &mut cfg.auth {
+                                        *password = next;
+                                    }
+                                },
+                            );
                         },
                     }
                 },
@@ -176,11 +235,14 @@ pub(super) fn HttpFetchForm(
                         can_manage,
                         read_only: !can_write,
                         on_change: move |next: SecretSlot| {
-                            patch_http_fetch(&mut cx, move |cfg| {
-                                if let HttpFetchAuth::Bearer { token } = &mut cfg.auth {
-                                    *token = next;
-                                }
-                            });
+                            patch_http_fetch(
+                                &mut cx,
+                                move |cfg| {
+                                    if let HttpFetchAuth::Bearer { token } = &mut cfg.auth {
+                                        *token = next;
+                                    }
+                                },
+                            );
                         },
                     }
                 },
@@ -193,11 +255,14 @@ pub(super) fn HttpFetchForm(
                             disabled: !can_write,
                             oninput: move |event| {
                                 let raw = event.value();
-                                patch_http_fetch(&mut cx, move |cfg| {
-                                    if let HttpFetchAuth::Header { name, .. } = &mut cfg.auth {
-                                        *name = raw;
-                                    }
-                                });
+                                patch_http_fetch(
+                                    &mut cx,
+                                    move |cfg| {
+                                        if let HttpFetchAuth::Header { name, .. } = &mut cfg.auth {
+                                            *name = raw;
+                                        }
+                                    },
+                                );
                             },
                         }
                     }
@@ -207,18 +272,23 @@ pub(super) fn HttpFetchForm(
                         can_manage,
                         read_only: !can_write,
                         on_change: move |next: SecretSlot| {
-                            patch_http_fetch(&mut cx, move |cfg| {
-                                if let HttpFetchAuth::Header { value, .. } = &mut cfg.auth {
-                                    *value = next;
-                                }
-                            });
+                            patch_http_fetch(
+                                &mut cx,
+                                move |cfg| {
+                                    if let HttpFetchAuth::Header { value, .. } = &mut cfg.auth {
+                                        *value = next;
+                                    }
+                                },
+                            );
                         },
                     }
                 },
                 HttpFetchAuth::None => rsx! {},
             }
             div { class: "space-y-1",
-                span { class: "text-xs font-medium text-gray-500 block", {t!("flows-http-fetch-headers")} }
+                span { class: "text-xs font-medium text-gray-500 block",
+                    {t!("flows-http-fetch-headers")}
+                }
                 for (index, (name, value)) in headers.read().iter().enumerate() {
                     HttpFetchHeaderRow {
                         key: "{index}-{name}",
@@ -232,9 +302,18 @@ pub(super) fn HttpFetchForm(
                                 *row = (new_name, new_value);
                             }
                             let synced = rows.clone();
-                            patch_http_fetch(&mut cx, move |cfg| {
-                                cfg.headers = synced.iter().map(|(n, v)| HttpFetchHeader { name: n.clone(), value: v.clone() }).collect();
-                            });
+                            patch_http_fetch(
+                                &mut cx,
+                                move |cfg| {
+                                    cfg.headers = synced
+                                        .iter()
+                                        .map(|(n, v)| HttpFetchHeader {
+                                            name: n.clone(),
+                                            value: v.clone(),
+                                        })
+                                        .collect();
+                                },
+                            );
                         },
                         on_remove: move |i| {
                             let mut rows = headers.read().clone();
@@ -243,9 +322,18 @@ pub(super) fn HttpFetchForm(
                             }
                             let synced = rows.clone();
                             headers.set(rows);
-                            patch_http_fetch(&mut cx, move |cfg| {
-                                cfg.headers = synced.iter().map(|(n, v)| HttpFetchHeader { name: n.clone(), value: v.clone() }).collect();
-                            });
+                            patch_http_fetch(
+                                &mut cx,
+                                move |cfg| {
+                                    cfg.headers = synced
+                                        .iter()
+                                        .map(|(n, v)| HttpFetchHeader {
+                                            name: n.clone(),
+                                            value: v.clone(),
+                                        })
+                                        .collect();
+                                },
+                            );
                         },
                     }
                 }
@@ -256,29 +344,56 @@ pub(super) fn HttpFetchForm(
                             let mut rows = headers.read().clone();
                             rows.push((String::new(), String::new()));
                             headers.set(rows);
-                            patch_http_fetch(&mut cx, |cfg| cfg.headers.push(HttpFetchHeader { name: String::new(), value: String::new() }));
+                            patch_http_fetch(
+                                &mut cx,
+                                |cfg| {
+                                    cfg
+                                        .headers
+                                        .push(HttpFetchHeader {
+                                            name: String::new(),
+                                            value: String::new(),
+                                        })
+                                },
+                            );
                         },
                         {t!("flows-http-fetch-add-header")}
                     }
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-http-fetch-proxy")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-http-fetch-proxy")}
+                }
                 select {
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white disabled:bg-gray-50",
                     disabled: !can_write,
                     onchange: move |event| {
                         let raw = event.value();
-                        patch_http_fetch(&mut cx, move |cfg| {
-                            cfg.proxy = if raw == "custom" {
-                                HttpFetchProxy::Custom { url: String::new(), username: None, password: SecretSlot::Unset }
-                            } else {
-                                HttpFetchProxy::None
-                            };
-                        });
+                        patch_http_fetch(
+                            &mut cx,
+                            move |cfg| {
+                                cfg.proxy = if raw == "custom" {
+                                    HttpFetchProxy::Custom {
+                                        url: String::new(),
+                                        username: None,
+                                        password: SecretSlot::Unset,
+                                    }
+                                } else {
+                                    HttpFetchProxy::None
+                                };
+                            },
+                        );
                     },
-                    option { value: "none", selected: matches!(initial.proxy, HttpFetchProxy::None), {t!("flows-http-fetch-proxy-none")} }
-                    option { value: "custom", selected: matches!(initial.proxy, HttpFetchProxy::Custom { .. }), {t!("flows-http-fetch-proxy-custom")} }
+                    option {
+                        value: "none",
+                        selected: matches!(initial.proxy, HttpFetchProxy::None),
+                        {t!("flows-http-fetch-proxy-none")}
+                    }
+                    option {
+                        value: "custom",
+                        selected: matches!(initial.proxy, HttpFetchProxy::Custom { .. }),
+                        {t!("flows-http-fetch-proxy-custom")}
+                    }
                 }
             }
             if matches!(initial.proxy, HttpFetchProxy::Custom { .. }) {
@@ -291,47 +406,58 @@ pub(super) fn HttpFetchForm(
                             disabled: !can_write,
                             oninput: move |event| {
                                 let raw = event.value();
-                                patch_http_fetch(&mut cx, move |cfg| {
-                                    if let HttpFetchProxy::Custom { url, .. } = &mut cfg.proxy {
-                                        *url = raw;
-                                    }
-                                });
+                                patch_http_fetch(
+                                    &mut cx,
+                                    move |cfg| {
+                                        if let HttpFetchProxy::Custom { url, .. } = &mut cfg.proxy {
+                                            *url = raw;
+                                        }
+                                    },
+                                );
                             },
                         }
-                            input {
-                                class: "px-2 py-1 border border-gray-300 rounded text-xs",
-                                placeholder: t!("flows-http-fetch-proxy-username"),
-                                value: "{proxy_username}",
-                                disabled: !can_write,
-                                oninput: move |event| {
-                                    let raw = event.value();
-                                    patch_http_fetch(&mut cx, move |cfg| {
+                        input {
+                            class: "px-2 py-1 border border-gray-300 rounded text-xs",
+                            placeholder: t!("flows-http-fetch-proxy-username"),
+                            value: "{proxy_username}",
+                            disabled: !can_write,
+                            oninput: move |event| {
+                                let raw = event.value();
+                                patch_http_fetch(
+                                    &mut cx,
+                                    move |cfg| {
                                         if let HttpFetchProxy::Custom { username, .. } = &mut cfg.proxy {
                                             *username = if raw.is_empty() { None } else { Some(raw) };
                                         }
-                                    });
-                                },
-                            }
+                                    },
+                                );
+                            },
                         }
-                        SecretSlotField {
-                            label: t!("flows-http-fetch-proxy-password").to_string(),
-                            slot: proxy_password.clone(),
-                            can_manage,
-                            read_only: !can_write,
-                            on_change: move |next: SecretSlot| {
-                                patch_http_fetch(&mut cx, move |cfg| {
+                    }
+                    SecretSlotField {
+                        label: t!("flows-http-fetch-proxy-password").to_string(),
+                        slot: proxy_password.clone(),
+                        can_manage,
+                        read_only: !can_write,
+                        on_change: move |next: SecretSlot| {
+                            patch_http_fetch(
+                                &mut cx,
+                                move |cfg| {
                                     if let HttpFetchProxy::Custom { password, .. } = &mut cfg.proxy {
                                         *password = next;
                                     }
-                                });
-                            },
-                        }
-                        p { class: "text-xs text-gray-400", {t!("flows-http-fetch-proxy-hint")} }
+                                },
+                            );
+                        },
                     }
+                    p { class: "text-xs text-gray-400", {t!("flows-http-fetch-proxy-hint")} }
+                }
             }
             if is_post {
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-http-fetch-body")} }
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                        {t!("flows-http-fetch-body")}
+                    }
                     textarea {
                         class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs font-mono",
                         rows: "4",
@@ -341,30 +467,46 @@ pub(super) fn HttpFetchForm(
                         oninput: move |event| {
                             let raw = event.value();
                             body_raw.set(raw.clone());
-                            patch_http_fetch(&mut cx, move |cfg| {
-                                cfg.body = if raw.is_empty() { None } else { Some(raw) };
-                            });
+                            patch_http_fetch(
+                                &mut cx,
+                                move |cfg| {
+                                    cfg.body = if raw.is_empty() { None } else { Some(raw) };
+                                },
+                            );
                         },
                     }
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-http-fetch-on-error")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-http-fetch-on-error")}
+                }
                 select {
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white disabled:bg-gray-50",
                     disabled: !can_write,
                     onchange: move |event| {
                         let raw = event.value();
-                        patch_http_fetch(&mut cx, move |cfg| {
-                            cfg.on_error = if raw == "passthrough" {
-                                HttpFetchOnError::Passthrough
-                            } else {
-                                HttpFetchOnError::Reject
-                            };
-                        });
+                        patch_http_fetch(
+                            &mut cx,
+                            move |cfg| {
+                                cfg.on_error = if raw == "passthrough" {
+                                    HttpFetchOnError::Passthrough
+                                } else {
+                                    HttpFetchOnError::Reject
+                                };
+                            },
+                        );
                     },
-                    option { value: "reject", selected: matches!(initial.on_error, HttpFetchOnError::Reject), {t!("flows-http-fetch-on-error-reject")} }
-                    option { value: "passthrough", selected: matches!(initial.on_error, HttpFetchOnError::Passthrough), {t!("flows-http-fetch-on-error-passthrough")} }
+                    option {
+                        value: "reject",
+                        selected: matches!(initial.on_error, HttpFetchOnError::Reject),
+                        {t!("flows-http-fetch-on-error-reject")}
+                    }
+                    option {
+                        value: "passthrough",
+                        selected: matches!(initial.on_error, HttpFetchOnError::Passthrough),
+                        {t!("flows-http-fetch-on-error-passthrough")}
+                    }
                 }
             }
         }

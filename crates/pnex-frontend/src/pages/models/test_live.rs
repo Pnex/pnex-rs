@@ -149,7 +149,7 @@ pub(super) fn TestLiveModal(
 
     rsx! {
         Modal {
-            title: t!("models-live-title", name: model.name.clone()),
+            title: t!("models-live-title", name : model.name.clone()),
             max_width: "max-w-4xl".to_string(),
             on_close: move |_| on_close.call(()),
             div { class: "space-y-4",
@@ -158,7 +158,9 @@ pub(super) fn TestLiveModal(
                 } else {
                     div { class: "flex flex-wrap items-end gap-3",
                         div { class: "flex-1 min-w-48",
-                            label { class: "block text-sm font-medium text-gray-700 mb-1", {t!("models-live-camera")} }
+                            label { class: "block text-sm font-medium text-gray-700 mb-1",
+                                {t!("models-live-camera")}
+                            }
                             select {
                                 class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                                 disabled: running(),
@@ -174,7 +176,12 @@ pub(super) fn TestLiveModal(
                             }
                         }
                         if running() {
-                            button { class: GHOST_BTN, r#type: "button", onclick: stop, {t!("models-live-stop")} }
+                            button {
+                                class: GHOST_BTN,
+                                r#type: "button",
+                                onclick: stop,
+                                {t!("models-live-stop")}
+                            }
                         } else {
                             button {
                                 class: PRIMARY_BTN,
@@ -187,7 +194,13 @@ pub(super) fn TestLiveModal(
                     }
                 }
                 p { class: "text-xs text-gray-500", {t!("models-live-hint")} }
-                LiveThreshold { threshold, model_threshold: model.spec.score_threshold, can_write, saving: saving(), on_apply: apply_threshold }
+                LiveThreshold {
+                    threshold,
+                    model_threshold: model.spec.score_threshold,
+                    can_write,
+                    saving: saving(),
+                    on_apply: apply_threshold,
+                }
                 if let Some(e) = error() {
                     div { class: "rounded-lg bg-red-50 border border-red-200 p-2 text-sm text-red-700",
                         {crate::api::error_i18n::localize(&e)}
@@ -198,13 +211,17 @@ pub(super) fn TestLiveModal(
                 }
                 if let Some(url) = image_url() {
                     div { class: "relative w-full bg-gray-900 rounded-lg overflow-hidden",
-                        img { class: "block w-full h-auto", src: "{url}", alt: "" }
+                        img {
+                            class: "block w-full h-auto",
+                            src: "{url}",
+                            alt: "",
+                        }
                         if let Some(r) = res.clone() {
                             svg {
                                 class: "absolute inset-0 w-full h-full pointer-events-none",
                                 view_box: "0 0 {r.result.width} {r.result.height}",
                                 preserve_aspect_ratio: "none",
-                                for (i , d) in dets.iter().enumerate() {
+                                for (i, d) in dets.iter().enumerate() {
                                     g { key: "{i}",
                                         rect {
                                             x: "{d.bbox[0]}",
@@ -235,7 +252,7 @@ pub(super) fn TestLiveModal(
                         p { class: "text-sm text-gray-500", {t!("models-live-none")} }
                     } else {
                         div { class: "flex flex-wrap gap-2",
-                            for (i , d) in dets.iter().enumerate() {
+                            for (i, d) in dets.iter().enumerate() {
                                 if d.score >= thr {
                                     span {
                                         key: "{i}",
@@ -274,7 +291,7 @@ fn LiveThreshold(
     rsx! {
         div { class: "flex flex-wrap items-center gap-3",
             label { class: "text-sm text-gray-700 whitespace-nowrap",
-                {t!("models-live-threshold", value: format!("{value:.2}"))}
+                {t!("models-live-threshold", value : format!("{value:.2}"))}
             }
             input {
                 class: "flex-1 min-w-40",
@@ -309,12 +326,24 @@ fn LiveInfo(result: LiveTestResult) -> Element {
     rsx! {
         div { class: "space-y-1",
             p { class: "text-xs text-gray-600",
-                {t!("models-live-stats", seq: r.frame_seq, age: r.frame_age_ms, ms: r.result.took_ms, width: r.result.width, height: r.result.height)}
+                {
+                    t!(
+                        "models-live-stats", seq : r.frame_seq, age : r.frame_age_ms, ms : r.result
+                        .took_ms, width : r.result.width, height : r.result.height
+                    )
+                }
                 " · "
-                {t!("models-live-camera-state", mode: r.camera.capture_mode.clone(), framesize: r.camera.framesize.clone(), fps: r.camera.fps)}
+                {
+                    t!(
+                        "models-live-camera-state", mode : r.camera.capture_mode.clone(), framesize :
+                        r.camera.framesize.clone(), fps : r.camera.fps
+                    )
+                }
             }
             for w in r.warnings.iter() {
-                p { key: "{w}", class: "text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1",
+                p {
+                    key: "{w}",
+                    class: "text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1",
                     {warning_text(w)}
                 }
             }

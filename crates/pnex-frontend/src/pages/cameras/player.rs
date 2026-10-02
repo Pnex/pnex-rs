@@ -369,7 +369,11 @@ pub(super) fn RecordingPlayer(
         div { class: "space-y-3",
             div { class: "relative aspect-video bg-gray-900 rounded-lg overflow-hidden flex items-center justify-center",
                 if let Some(src) = url() {
-                    img { class: "w-full h-full object-contain", src: "{src}", alt: "" }
+                    img {
+                        class: "w-full h-full object-contain",
+                        src: "{src}",
+                        alt: "",
+                    }
                 }
                 for (id, color, ann) in overlays {
                     svg {
@@ -468,10 +472,10 @@ pub(super) fn RecordingPlayer(
                     }
                 }
                 span { class: "ml-auto text-xs text-gray-500 tabular-nums",
-                    {t!("cameras-player-segment", index: c + 1, total: count)}
+                    {t!("cameras-player-segment", index : c + 1, total : count)}
                     if let Some((w, h, fps)) = dims {
                         " · "
-                        {t!("cameras-player-info", width: w, height: h, fps: format!("{fps:.1}"))}
+                        {t!("cameras-player-info", width : w, height : h, fps : format!("{fps:.1}"))}
                     }
                 }
             }

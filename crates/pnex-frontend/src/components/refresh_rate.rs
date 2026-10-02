@@ -79,8 +79,11 @@ pub fn RefreshRateControl(auto: AutoRefresh, on_refresh: Option<Callback<()>>) -
                         }
                     },
                     for r in RATES_SECS {
-                        option { key: "{r}", value: "{r}", selected: r == current,
-                            {t!("refresh-rate-option", secs: r)}
+                        option {
+                            key: "{r}",
+                            value: "{r}",
+                            selected: r == current,
+                            {t!("refresh-rate-option", secs : r)}
                         }
                     }
                 }

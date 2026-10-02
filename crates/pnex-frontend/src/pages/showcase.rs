@@ -126,7 +126,9 @@ pub fn Showcase() -> Element {
 
             // 3 — FilterBar (search + refresh).
             div {
-                h2 { class: "text-lg font-semibold text-gray-900", "FilterBar / SearchInput / RefreshButton" }
+                h2 { class: "text-lg font-semibold text-gray-900",
+                    "FilterBar / SearchInput / RefreshButton"
+                }
                 FilterBar {
                     SearchInput {
                         placeholder: "Rechercher…".to_string(),
@@ -174,8 +176,12 @@ pub fn Showcase() -> Element {
                         is_empty: false,
                         empty_message: "…".to_string(),
                         div { class: "relative",
-                            DataTable { columns: columns, rows: rows.clone(), row_key: RowKey::new(|flow: &FlowSummary| flow.id.to_string()) }
-                            ListPager { count: 3, page: page }
+                            DataTable {
+                                columns,
+                                rows: rows.clone(),
+                                row_key: RowKey::new(|flow: &FlowSummary| flow.id.to_string()),
+                            }
+                            ListPager { count: 3, page }
                         }
                         p { class: "text-gray-400 mt-2", "Pager masqué (3 éléments, 1 page)." }
                     }
@@ -196,7 +202,9 @@ pub fn Showcase() -> Element {
             // 5 — EditorShell : la coquille des trois éditeurs (statique,
             // pleine hauteur en fin de page).
             div {
-                h2 { class: "text-lg font-semibold text-gray-900", "EditorShell — coquille d'éditeur" }
+                h2 { class: "text-lg font-semibold text-gray-900",
+                    "EditorShell — coquille d'éditeur"
+                }
                 p { class: "text-gray-600 mt-1 text-sm",
                     "Barre 3 zones (retour · nom · statut | version | actions), palette à la demande, inspecteur au clic, Échap pour fermer."
                 }
@@ -208,15 +216,28 @@ pub fn Showcase() -> Element {
                 status: EditorStatus::new(StatusTone::Green, "Déployé"),
                 version: Some(22),
                 extra_chips: rsx! {
-                    Chip { tone: StatusTone::Amber, label: "Modifications non enregistrées".to_string() }
-                    Chip { tone: StatusTone::Purple, label: "v12".to_string(), on_remove: move |_| {} }
+                    Chip {
+                        tone: StatusTone::Amber,
+                        label: "Modifications non enregistrées".to_string(),
+                    }
+                    Chip {
+                        tone: StatusTone::Purple,
+                        label: "v12".to_string(),
+                        on_remove: move |_| {},
+                    }
                 },
                 actions: rsx! {
-                    button { class: "px-3 py-1.5 text-sm text-gray-700 bg-gray-50 border border-gray-300 rounded-lg font-medium", "Versions" }
+                    button { class: "px-3 py-1.5 text-sm text-gray-700 bg-gray-50 border border-gray-300 rounded-lg font-medium",
+                        "Versions"
+                    }
                     button { class: "px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg font-medium", "Enregistrer" }
-                    button { class: "px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg font-medium", "Déployer" }
+                    button { class: "px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg font-medium",
+                        "Déployer"
+                    }
                 },
-                canvas: rsx! { div { class: "h-full w-full bg-slate-50" } },
+                canvas: rsx! {
+                    div { class: "h-full w-full bg-slate-50" }
+                },
                 palette: rsx! {
                     PalettePopover {
                         add_title: "Ajouter un nœud".to_string(),
@@ -245,9 +266,14 @@ pub fn Showcase() -> Element {
                         body: rsx! {
                             div {
                                 label { class: "block text-sm font-medium text-gray-700 mb-1", "Nom du nœud" }
-                                input { class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm", placeholder: "Nom du nœud" }
+                                input {
+                                    class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                                    placeholder: "Nom du nœud",
+                                }
                             }
-                            p { class: "text-sm text-gray-500", "Formulaire de démonstration — le corps appartient à l'éditeur." }
+                            p { class: "text-sm text-gray-500",
+                                "Formulaire de démonstration — le corps appartient à l'éditeur."
+                            }
                         },
                     }
                 },

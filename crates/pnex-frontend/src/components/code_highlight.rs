@@ -414,9 +414,13 @@ fn push_plain(out: &mut Vec<Tok>, text: &str) {
 /// sinon `<span>` coloré.
 fn tok_text(tok: Tok) -> Element {
     if tok.class.is_empty() {
-        rsx! { { tok.text } }
+        rsx! {
+            {tok.text}
+        }
     } else {
-        rsx! { span { class: tok.class, { tok.text } } }
+        rsx! {
+            span { class: tok.class, {tok.text} }
+        }
     }
 }
 
@@ -485,7 +489,7 @@ pub fn TemplateEditor(
                     "\n"
                 }
                 textarea {
-                    id: id,
+                    id,
                     class: "absolute inset-0 w-full h-full {field_metrics} bg-transparent text-transparent caret-gray-900 resize-none outline-none",
                     value: "{value}",
                     placeholder: "{placeholder}",
@@ -510,7 +514,7 @@ pub fn TemplateEditor(
                     }
                 }
                 input {
-                    id: id,
+                    id,
                     class: "relative w-full {field_metrics} bg-transparent text-transparent caret-gray-900 outline-none",
                     value: "{value}",
                     placeholder: "{placeholder}",
@@ -974,16 +978,24 @@ pub fn FunctionCodeEditor(
                         let to_byte = |p: Option<u32>| {
                             code_editing::utf16_to_byte(&value, p.unwrap_or(0))
                         };
-                        let (sel_start, sel_end) = area.read().as_ref()
+                        let (sel_start, sel_end) = area
+                            .read()
+                            .as_ref()
                             .map(dom::selection)
                             .unwrap_or((0, 0));
-                        let (sel_start, sel_end) =
-                            (to_byte(Some(sel_start)), to_byte(Some(sel_end)));
+                        let (sel_start, sel_end) = (to_byte(Some(sel_start)), to_byte(Some(sel_end)));
                         let edit = match key {
-                            Key::Tab => Some(code_editing::tab_indent(
-                                &value, sel_start, sel_end, language,
-                                event.modifiers().shift(),
-                            )),
+                            Key::Tab => {
+                                Some(
+                                    code_editing::tab_indent(
+                                        &value,
+                                        sel_start,
+                                        sel_end,
+                                        language,
+                                        event.modifiers().shift(),
+                                    ),
+                                )
+                            }
                             Key::Enter if !readonly => {
                                 Some(code_editing::enter_smart(&value, sel_start, language))
                             }

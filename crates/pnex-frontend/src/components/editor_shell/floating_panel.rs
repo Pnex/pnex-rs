@@ -22,7 +22,9 @@ pub fn FloatingPanel(
     rsx! {
         div { class: "absolute left-0 top-12 z-30 w-44 rounded-lg border border-gray-200 bg-white p-3 shadow-xl",
             div { class: "flex items-center justify-between",
-                span { class: "text-xs font-semibold uppercase tracking-wide text-gray-500", {title} }
+                span { class: "text-xs font-semibold uppercase tracking-wide text-gray-500",
+                    {title}
+                }
                 button {
                     class: "text-gray-400 hover:text-gray-600",
                     title: "{close_label}",

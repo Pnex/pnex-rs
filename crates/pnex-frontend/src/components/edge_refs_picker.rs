@@ -86,9 +86,7 @@ pub fn WifiCredentialPicker(mut selected: Signal<Option<pnex_core::WifiCredentia
 
     rsx! {
         div { class: "sm:col-span-2 space-y-2",
-            label { class: "text-xs font-medium text-gray-500 mb-1 block",
-                {t!("wizard-wifi-select")}
-            }
+            label { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("wizard-wifi-select")} }
             match rows.cloned() {
                 Some(Ok(rows)) => {
                     let expanded = show_add().unwrap_or(rows.is_empty());
@@ -205,9 +203,13 @@ pub fn PnexHostPicker(selected: Signal<Option<pnex_core::PnexHost>>) -> Element 
         None => rsx! {
             div { class: "sm:col-span-2 text-xs text-gray-400", {t!("wizard-host-loading")} }
         },
-        Some(Ok(Some(host))) => rsx! { LockedHostView { host, selected } },
         // No imposed host, or an older server without the endpoint.
-        Some(_) => rsx! { FreeHostPicker { selected } },
+        Some(Ok(Some(host))) => rsx! {
+            LockedHostView { host, selected }
+        },
+        Some(_) => rsx! {
+            FreeHostPicker { selected }
+        },
     }
 }
 
@@ -231,9 +233,7 @@ fn LockedHostView(host: String, mut selected: Signal<Option<pnex_core::PnexHost>
     });
     rsx! {
         div { class: "sm:col-span-2 space-y-1",
-            label { class: "text-xs font-medium text-gray-500 mb-1 block",
-                {t!("wizard-host-select")}
-            }
+            label { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("wizard-host-select")} }
             div { class: "flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700",
                 icons::Server { class: "h-4 w-4 text-gray-400" }
                 span { class: "font-mono", "wss://{host}" }
@@ -302,9 +302,7 @@ fn FreeHostPicker(mut selected: Signal<Option<pnex_core::PnexHost>>) -> Element 
 
     rsx! {
         div { class: "sm:col-span-2 space-y-2",
-            label { class: "text-xs font-medium text-gray-500 mb-1 block",
-                {t!("wizard-host-select")}
-            }
+            label { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("wizard-host-select")} }
             match rows.cloned() {
                 Some(Ok(rows)) => {
                     let expanded = show_add().unwrap_or(rows.is_empty());
@@ -319,9 +317,7 @@ fn FreeHostPicker(mut selected: Signal<Option<pnex_core::PnexHost>>) -> Element 
                                         oninput: move |e| new_host.set(e.value()),
                                     }
                                     if crate::util::is_loopback_host(&new_host()) {
-                                        p { class: "mt-1 text-xs text-amber-600",
-                                            {t!("devices-host-loopback-hint")}
-                                        }
+                                        p { class: "mt-1 text-xs text-amber-600", {t!("devices-host-loopback-hint")} }
                                     }
                                 }
                                 div { class: "sm:col-span-2 flex items-center gap-2",

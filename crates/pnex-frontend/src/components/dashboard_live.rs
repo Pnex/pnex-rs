@@ -83,10 +83,16 @@ pub fn DashboardLive(dashboard_id: String) -> Element {
     }
 
     rsx! {
-        {match detail_loaded {
-            Some(d) => rsx! { {live_canvas(&d.layout, &values)} },
-            None => rsx! { p { class: "text-gray-500 text-center py-12", "…" } },
-        }}
+        {
+            match detail_loaded {
+                Some(d) => rsx! {
+                    {live_canvas(&d.layout, &values)}
+                },
+                None => rsx! {
+                    p { class: "text-gray-500 text-center py-12", "…" }
+                },
+            }
+        }
     }
 }
 
@@ -148,7 +154,12 @@ pub fn live_canvas(
             class: "relative w-full rounded-lg border border-gray-200 overflow-hidden",
             style: "aspect-ratio: {cw} / {ch}; background-color: {bg};",
             for w in &layout.widgets {
-                LiveWidget { key: "{w.id}", w: w.clone(), canvas: (cw, ch), values: values.clone() }
+                LiveWidget {
+                    key: "{w.id}",
+                    w: w.clone(),
+                    canvas: (cw, ch),
+                    values: values.clone(),
+                }
             }
             svg {
                 xmlns: "http://www.w3.org/2000/svg",
@@ -173,8 +184,14 @@ fn live_wire(layout: &DashboardLayout, wire: &pnex_core::Wire) -> Element {
         return rsx! {};
     };
     rsx! {
-        path { d: "{path}", fill: "none", stroke: "#94a3b8", "stroke-width": "2",
-            "stroke-dasharray": "6 4", "stroke-linecap": "round" }
+        path {
+            d: "{path}",
+            fill: "none",
+            stroke: "#94a3b8",
+            "stroke-width": "2",
+            "stroke-dasharray": "6 4",
+            "stroke-linecap": "round",
+        }
     }
 }
 
@@ -214,7 +231,11 @@ pub fn LiveWidget(
             style: "left: {left}%; top: {top}%; width: {width}%; height: {height}%;",
             title: "{tooltip}",
             div { class: if degraded { "w-full h-full opacity-50" } else { "w-full h-full" },
-                WidgetBody { widget: w.clone(), points: points, values: Some(values.clone()) }
+                WidgetBody {
+                    widget: w.clone(),
+                    points,
+                    values: Some(values.clone()),
+                }
             }
         }
     }

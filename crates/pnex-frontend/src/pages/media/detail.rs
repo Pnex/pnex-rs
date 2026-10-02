@@ -156,7 +156,9 @@ pub(super) fn MediaDetail(
                         {t!("media-title")}
                     }
                     span { class: "text-gray-300", "›" }
-                    span { class: "min-w-0 truncate text-sm font-medium text-gray-900", "{crumb_name}" }
+                    span { class: "min-w-0 truncate text-sm font-medium text-gray-900",
+                        "{crumb_name}"
+                    }
                 }
                 if can_write {
                     button {
@@ -169,7 +171,9 @@ pub(super) fn MediaDetail(
                 }
             }
             if !error().is_empty() {
-                div { class: "bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700", "{error}" }
+                div { class: "bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700",
+                    "{error}"
+                }
             }
             match detail() {
                 Some(asset) => rsx! {
@@ -191,7 +195,7 @@ pub(super) fn MediaDetail(
                             // on the preview itself).
                             if let Some(n) = viewing_version() {
                                 div { class: "flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800",
-                                    span { {t!("media-version-viewing", n: n)} }
+                                    span { {t!("media-version-viewing", n : n)} }
                                     button {
                                         class: "font-medium underline hover:no-underline",
                                         onclick: move |_| viewing_version.set(None),
@@ -227,13 +231,26 @@ pub(super) fn MediaDetail(
                             div { class: "rounded-xl border border-gray-200 bg-white p-4",
                                 div { class: "flex flex-wrap items-center gap-2",
                                     span {
-                                        class: format!("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium {}", kind_pill_classes(&asset)),
+                                        class: format!(
+                                            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium {}",
+                                            kind_pill_classes(&asset),
+                                        ),
                                         match asset.media_kind() {
-                                            MediaKind::Panorama => rsx! { icons::Image { class: "h-3 w-3" } },
-                                            MediaKind::Splat => rsx! { icons::Cube { class: "h-3 w-3" } },
-                                            MediaKind::Floorplan => rsx! { icons::Map { class: "h-3 w-3" } },
-                                            MediaKind::Photo => rsx! { icons::Image { class: "h-3 w-3" } },
-                                            MediaKind::Model => rsx! { icons::Eye { class: "h-3 w-3" } },
+                                            MediaKind::Panorama => rsx! {
+                                                icons::Image { class: "h-3 w-3" }
+                                            },
+                                            MediaKind::Splat => rsx! {
+                                                icons::Cube { class: "h-3 w-3" }
+                                            },
+                                            MediaKind::Floorplan => rsx! {
+                                                icons::Map { class: "h-3 w-3" }
+                                            },
+                                            MediaKind::Photo => rsx! {
+                                                icons::Image { class: "h-3 w-3" }
+                                            },
+                                            MediaKind::Model => rsx! {
+                                                icons::Eye { class: "h-3 w-3" }
+                                            },
                                         }
                                         {kind_label(&asset)}
                                     }
@@ -252,7 +269,12 @@ pub(super) fn MediaDetail(
                             }
                             // Labels card (D42 transverse editor).
                             div { class: "rounded-xl border border-gray-200 bg-white p-4",
-                                LabelsEditor { kind: "media_asset".to_string(), id: asset_id.clone(), can_write, on_changed: on_changed }
+                                LabelsEditor {
+                                    kind: "media_asset".to_string(),
+                                    id: asset_id.clone(),
+                                    can_write,
+                                    on_changed,
+                                }
                             }
                             // Versions card — inline list (the drawer is
                             // gone): "Voir" previews a non-current version,
@@ -261,11 +283,13 @@ pub(super) fn MediaDetail(
                                 div { class: "flex items-center justify-between gap-2",
                                     div { class: "flex items-center gap-2",
                                         h3 { class: "text-sm font-semibold text-gray-700", {t!("media-versions")} }
-                                        span { class: "text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600", "{asset.versions_count}" }
+                                        span { class: "text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600",
+                                            "{asset.versions_count}"
+                                        }
                                     }
                                     if can_write {
                                         label {
-                                            class: "inline-flex cursor-pointer items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-xs text-blue-700 hover:bg-blue-100",
+                                        class: "inline-flex cursor-pointer items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-xs text-blue-700 hover:bg-blue-100",
                                             if uploading() {
                                                 span { class: "animate-spin inline-block rounded-full h-3 w-3 border-b-2 border-blue-600" }
                                             } else {
@@ -276,7 +300,9 @@ pub(super) fn MediaDetail(
                                                 r#type: "file",
                                                 onchange: move |evt| {
                                                     let files = evt.files();
-                                                    let Some(file) = files.first().cloned() else { return; };
+                                                    let Some(file) = files.first().cloned() else {
+                                                        return;
+                                                    };
                                                     let asset_id = asset_id_for_add.clone();
                                                     spawn(async move {
                                                         uploading.set(true);
@@ -290,7 +316,9 @@ pub(super) fn MediaDetail(
                                                                     },
                                                                     ..Default::default()
                                                                 };
-                                                                match api::media::add_version(&asset_id, &params, bytes.to_vec()).await {
+                                                                match api::media::add_version(&asset_id, &params, bytes.to_vec())
+                                                                    .await
+                                                                {
                                                                     Ok(_) => {
                                                                         toasts::success(t!("media-upload-added"));
                                                                         viewing_version.set(None);
@@ -337,7 +365,10 @@ pub(super) fn MediaDetail(
                                     let asset = asset.clone();
                                     spawn(async move {
                                         downloading.set(true);
-                                        let mime = asset.content_type.clone().unwrap_or_else(|| "application/octet-stream".to_string());
+                                        let mime = asset
+                                            .content_type
+                                            .clone()
+                                            .unwrap_or_else(|| "application/octet-stream".to_string());
                                         match api::media::content_bytes(&asset.id).await {
                                             Ok(bytes) => {
                                                 let filename = download_filename(&asset);
@@ -348,7 +379,11 @@ pub(super) fn MediaDetail(
                                                 }
                                             }
                                             Err(err) => {
-                                                let msg = format!("{} : {}", t!("media-download-failed"), err.message);
+                                                let msg = format!(
+                                                    "{} : {}",
+                                                    t!("media-download-failed"),
+                                                    err.message,
+                                                );
                                                 toasts::error(msg);
                                             }
                                         }
@@ -472,22 +507,39 @@ fn VersionRow(
         div { class: "rounded-lg border p-2.5 {row_classes}",
             div { class: "flex items-center gap-3",
                 // Thumbnail placeholder — gradient by kind, no fetch.
-                div { class: format!("flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-gradient-to-br {thumb_gradient}"),
+                div {
+                    class: format!(
+                        "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-gradient-to-br {thumb_gradient}",
+                    ),
                     match asset.media_kind() {
-                        MediaKind::Panorama => rsx! { icons::Image { class: "h-4 w-4 text-white/90" } },
-                        MediaKind::Splat => rsx! { icons::Cube { class: "h-4 w-4 text-white/90" } },
-                        MediaKind::Floorplan => rsx! { icons::Map { class: "h-4 w-4 text-white/90" } },
-                        MediaKind::Photo => rsx! { icons::Image { class: "h-4 w-4 text-white/90" } },
-                        MediaKind::Model => rsx! { icons::Eye { class: "h-4 w-4 text-white/90" } },
+                        MediaKind::Panorama => rsx! {
+                            icons::Image { class: "h-4 w-4 text-white/90" }
+                        },
+                        MediaKind::Splat => rsx! {
+                            icons::Cube { class: "h-4 w-4 text-white/90" }
+                        },
+                        MediaKind::Floorplan => rsx! {
+                            icons::Map { class: "h-4 w-4 text-white/90" }
+                        },
+                        MediaKind::Photo => rsx! {
+                            icons::Image { class: "h-4 w-4 text-white/90" }
+                        },
+                        MediaKind::Model => rsx! {
+                            icons::Eye { class: "h-4 w-4 text-white/90" }
+                        },
                     }
                 }
                 div { class: "min-w-0 flex-1",
                     div { class: "flex flex-wrap items-center gap-1.5",
                         span { class: "text-sm font-semibold text-gray-900", "v{v}" }
                         if is_current {
-                            span { class: "text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700", {t!("media-version-current")} }
+                            span { class: "text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700",
+                                {t!("media-version-current")}
+                            }
                         } else if is_viewed {
-                            span { class: "text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700", {t!("media-version-view-pill")} }
+                            span { class: "text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700",
+                                {t!("media-version-view-pill")}
+                            }
                         }
                     }
                     p { class: "truncate text-xs text-gray-500",
@@ -504,7 +556,11 @@ fn VersionRow(
                         button {
                             class: if is_viewed { "text-xs font-medium text-amber-600 hover:underline" } else { "text-xs text-blue-600 hover:underline" },
                             onclick: move |_| {
-                                if is_viewed { viewing_version.set(None); } else { viewing_version.set(Some(v)); }
+                                if is_viewed {
+                                    viewing_version.set(None);
+                                } else {
+                                    viewing_version.set(Some(v));
+                                }
                             },
                             {t!("media-version-view")}
                         }
@@ -555,7 +611,11 @@ fn VersionRow(
                                         }
                                     }
                                     Err(err) => {
-                                        let msg = format!("{} : {}", t!("media-download-failed"), err.message);
+                                        let msg = format!(
+                                            "{} : {}",
+                                            t!("media-download-failed"),
+                                            err.message,
+                                        );
                                         toasts::error(msg);
                                     }
                                 }

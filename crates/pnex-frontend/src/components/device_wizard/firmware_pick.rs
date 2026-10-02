@@ -31,7 +31,9 @@ pub(super) fn FirmwarePickBlock(soc: String, mut firmware_pick: Signal<Option<i6
                 onchange: move |event| firmware_pick.set(event.value().parse::<i64>().ok()),
                 option { value: "", selected: current.is_empty(), {t!("wizard-firmware-generic")} }
                 for (id, name, rev) in compatible {
-                    option { value: "{id}", selected: current == id.to_string(), {format!("{name} (r{rev})")} }
+                    option { value: "{id}", selected: current == id.to_string(),
+                        {format!("{name} (r{rev})")}
+                    }
                 }
             }
         }

@@ -22,22 +22,32 @@ pub(super) fn MetricForm(
 
     rsx! {
         div { class: "space-y-3",
-            {text_field(t!("flows-metric-name"), name, !can_write, move |event| {
-                let raw = event.value();
-                name.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let FlowNodeKind::Metric { config } = &mut node.kind {
-                        config.metric_name = raw;
-                    }
-                });
-            })}
+            {
+                text_field(
+                    t!("flows-metric-name"),
+                    name,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        name.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::Metric { config } = &mut node.kind {
+                                    config.metric_name = raw;
+                                }
+                            },
+                        );
+                    },
+                )
+            }
             if !preview.cloned().is_empty() {
                 p { class: "text-xs text-gray-500",
                     span { class: "font-medium", {t!("flows-metric-preview")} }
                     code { class: "ml-1 px-1 rounded bg-gray-100", {preview.cloned()} }
                 }
             }
-            p { class: "text-xs text-gray-400", {t!("flows-metric-labels-help", id: flow_id)} }
+            p { class: "text-xs text-gray-400", {t!("flows-metric-labels-help", id : flow_id)} }
         }
     }
 }
@@ -61,24 +71,37 @@ pub(super) fn DebugForm(mut cx: EditorCx, initial: DebugConfig, can_write: bool)
                     disabled: !can_write,
                     onchange: move |event| {
                         let checked = event.checked();
-                        patch_selected(&mut cx, move |node: &mut FlowNode| {
-                            if let FlowNodeKind::Debug { config } = &mut node.kind {
-                                config.active = checked;
-                            }
-                        });
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::Debug { config } = &mut node.kind {
+                                    config.active = checked;
+                                }
+                            },
+                        );
                     },
                 }
                 span { class: "text-xs font-medium text-gray-500", {t!("flows-debug-active")} }
             }
-            {text_field(t!("flows-debug-complete"), complete, !can_write, move |event| {
-                let raw = event.value();
-                complete.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let FlowNodeKind::Debug { config } = &mut node.kind {
-                        config.complete = Some(raw).filter(|c| !c.is_empty());
-                    }
-                });
-            })}
+            {
+                text_field(
+                    t!("flows-debug-complete"),
+                    complete,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        complete.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::Debug { config } = &mut node.kind {
+                                    config.complete = Some(raw).filter(|c| !c.is_empty());
+                                }
+                            },
+                        );
+                    },
+                )
+            }
             label { class: "flex items-center gap-2 select-none",
                 input {
                     class: "h-4 w-4 accent-blue-600",
@@ -87,11 +110,14 @@ pub(super) fn DebugForm(mut cx: EditorCx, initial: DebugConfig, can_write: bool)
                     disabled: !can_write,
                     onchange: move |event| {
                         let checked = event.checked();
-                        patch_selected(&mut cx, move |node: &mut FlowNode| {
-                            if let FlowNodeKind::Debug { config } = &mut node.kind {
-                                config.console = checked;
-                            }
-                        });
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::Debug { config } = &mut node.kind {
+                                    config.console = checked;
+                                }
+                            },
+                        );
                     },
                 }
                 span { class: "text-xs font-medium text-gray-500", {t!("flows-debug-console")} }

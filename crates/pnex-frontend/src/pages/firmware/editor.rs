@@ -220,7 +220,11 @@ pub(super) fn FirmwareEditor(project_id: i64, can_write: bool, on_back: Callback
                         disabled: checking() || saving() || (dirty && !can_write),
                         onclick: move |_| save(true),
                         icons::CheckCircle { class: "h-4 w-4 inline mr-1" }
-                        if dirty { {t!("firmware-save-and-verify")} } else { {t!("firmware-verify")} }
+                        if dirty {
+                            {t!("firmware-save-and-verify")}
+                        } else {
+                            {t!("firmware-verify")}
+                        }
                     }
                     if can_write {
                         button {
@@ -266,7 +270,11 @@ pub(super) fn FirmwareEditor(project_id: i64, can_write: bool, on_back: Callback
                     insert_request: insert_req,
                     area: editor_area,
                 }
-                CheckReport { violations: violations(), check: check(), checking: checking() }
+                CheckReport {
+                    violations: violations(),
+                    check: check(),
+                    checking: checking(),
+                }
             }
 
             if history_open() {
@@ -300,7 +308,11 @@ fn CheckReport(
                 for v in violations {
                     div { class: "flex gap-2",
                         b { class: "font-mono", {v.line.to_string()} }
-                        span { {crate::api::error_i18n::resolve(&pnex_core::err_codes::fluent_key(&v.code), None)} }
+                        span {
+                            {
+                                crate::api::error_i18n::resolve(&pnex_core::err_codes::fluent_key(&v.code), None)
+                            }
+                        }
                     }
                 }
             }
@@ -340,15 +352,19 @@ fn CheckReport(
         (_, Some(status)) if status.status == "succeeded" => rsx! {
             div { class: "{box_class} border-green-200 bg-green-50 text-green-800 flex items-center gap-2",
                 icons::CheckCircle { class: "h-4 w-4" }
-                {t!("firmware-check-ok", revision: status.revision_number)}
+                {t!("firmware-check-ok", revision : status.revision_number)}
                 if !relevant(&status).is_empty() {
-                    span { class: "text-amber-700", {t!("firmware-check-warnings", count: relevant(&status).len())} }
+                    span { class: "text-amber-700",
+                        {t!("firmware-check-warnings", count : relevant(& status).len())}
+                    }
                 }
             }
         },
         (_, Some(status)) if status.status == "failed" => rsx! {
             div { class: "{box_class} border-red-200 bg-red-50 text-red-800 space-y-1",
-                div { class: "font-semibold", {t!("firmware-check-failed", revision: status.revision_number)} }
+                div { class: "font-semibold",
+                    {t!("firmware-check-failed", revision : status.revision_number)}
+                }
                 if relevant(&status).is_empty() {
                     pre { class: "font-mono text-xs whitespace-pre-wrap", {status.log_tail.clone()} }
                 }
@@ -369,7 +385,9 @@ fn CheckReport(
             }
         },
         (false, None) => rsx! {
-            div { class: "{box_class} border-gray-200 bg-white text-gray-500", {t!("firmware-check-hint")} }
+            div { class: "{box_class} border-gray-200 bg-white text-gray-500",
+                {t!("firmware-check-hint")}
+            }
         },
     }
 }

@@ -73,17 +73,9 @@ pub(super) fn ScreenPickBlock(
                 for opt in options {
                     button {
                         key: "{opt.label}",
-                        class: if opt.active {
-                            "inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
-                        } else {
-                            "inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-teal-300 text-teal-700 hover:bg-teal-50 disabled:opacity-50"
-                        },
+                        class: if opt.active { "inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50" } else { "inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-teal-300 text-teal-700 hover:bg-teal-50 disabled:opacity-50" },
                         disabled: opt.locked,
-                        title: if opt.locked {
-                            t!("board-screen-locked").to_string()
-                        } else {
-                            String::new()
-                        },
+                        title: if opt.locked { t!("board-screen-locked").to_string() } else { String::new() },
                         onclick: move |_| screen_pick.set(Some(opt.kind.clone())),
                         {opt.label.clone()}
                     }

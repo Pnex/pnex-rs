@@ -225,98 +225,96 @@ pub fn Media() -> Element {
             }
         } else {
             ListLayout {
-            title: t!("media-title").to_string(),
-            subtitle: Some(t!("media-subtitle").to_string()),
-            can_write: can_write,
-            add_label: Some(t!("media-upload").to_string()),
-            on_add: move |_| upload_open.set(true),
-            // Multi-button header (camera capture, take360) — socle actions
-            // slot; upload stays the primary "add" button.
-            actions: rsx! {
-                // Camera upload in flight: waiting indicator (the detached
-                // watcher cannot touch the UI itself).
-                if capture_running() {
-                    div { class: "flex items-center gap-2 text-sm text-gray-600",
-                        span { class: "animate-spin inline-block rounded-full h-4 w-4 border-b-2 border-blue-600" }
-                        {t!("media-upload-progress")}
+                title: t!("media-title").to_string(),
+                subtitle: Some(t!("media-subtitle").to_string()),
+                can_write,
+                add_label: Some(t!("media-upload").to_string()),
+                on_add: move |_| upload_open.set(true),
+                // Multi-button header (camera capture, take360) — socle actions
+                // slot; upload stays the primary "add" button.
+                actions: rsx! {
+                    // Camera upload in flight: waiting indicator (the detached
+                    // watcher cannot touch the UI itself).
+                    if capture_running() {
+                        div { class: "flex items-center gap-2 text-sm text-gray-600",
+                            span { class: "animate-spin inline-block rounded-full h-4 w-4 border-b-2 border-blue-600" }
+                            {t!("media-upload-progress")}
+                        }
                     }
-                }
-                // Native Android capture (system camera intent) — button
-                // rendered outside wasm only.
-                if !cfg!(target_arch = "wasm32") {
-                    button {
-                        class: "px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium",
-                        onclick: move |_| {
-                            let msgs = crate::capture::CaptureMessages {
-                                launched: t!("media-camera-launched"),
-                                captured: t!("media-camera-captured"),
-                                failed: t!("media-camera-failed"),
-                                permission_denied: t!("media-camera-permission-denied"),
-                            };
-                            if crate::capture::capture_and_upload(msgs) {
-                                capture_running.set(true);
-                            } else {
-                                toasts::error(t!("media-camera-failed"));
-                            }
+                    // Native Android capture (system camera intent) — button
+                    // rendered outside wasm only.
+                    if !cfg!(target_arch = "wasm32") {
+                        button {
+                            class: "px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium",
+                            onclick: move |_| {
+                                let msgs = crate::capture::CaptureMessages {
+                                    launched: t!("media-camera-launched"),
+                                    captured: t!("media-camera-captured"),
+                                    failed: t!("media-camera-failed"),
+                                    permission_denied: t!("media-camera-permission-denied"),
+                                };
+                                if crate::capture::capture_and_upload(msgs) {
+                                    capture_running.set(true);
+                                } else {
+                                    toasts::error(t!("media-camera-failed"));
+                                }
+                            },
+                            icons::Camera { class: "h-4 w-4 inline mr-1" }
+                            {t!("media-camera")}
+                        }
+                    }
+                    // Take 360: guided panorama capture, Android + owner/admin
+                    // (getUserMedia preview + on-device stitching — cf.
+                    // capture360/).
+                    if cfg!(target_os = "android") && can_write {
+                        button {
+                            class: "px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium",
+                            disabled: capture_running(),
+                            onclick: move |_| take360_open.set(true),
+                            icons::RefreshCw { class: "h-4 w-4 inline mr-1" }
+                            {t!("media-take360")}
+                        }
+                    }
+                },
+                // Filters: kind + search + label (D42). The SearchInput switch
+                // makes filtering live as you type (canonical socle behavior —
+                // the old onchange only filtered on blur/Enter).
+                FilterBar {
+                    select {
+                        class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                        value: "{filter_kind}",
+                        onchange: move |evt| {
+                            filter_kind.set(evt.value());
+                            page.set(0);
                         },
-                        icons::Camera { class: "h-4 w-4 inline mr-1" }
-                        {t!("media-camera")}
+                        option { value: "all", {t!("media-filter-all")} }
+                        option { value: "photo", {t!("media-kind-photo")} }
+                        option { value: "panorama", {t!("media-kind-panorama")} }
+                        option { value: "splat", {t!("media-kind-splat")} }
+                        option { value: "floorplan", {t!("media-kind-floorplan")} }
+                        option { value: "model", {t!("media-kind-model")} }
                     }
-                }
-                // Take 360: guided panorama capture, Android + owner/admin
-                // (getUserMedia preview + on-device stitching — cf.
-                // capture360/).
-                if cfg!(target_os = "android") && can_write {
-                    button {
-                        class: "px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium",
-                        disabled: capture_running(),
-                        onclick: move |_| take360_open.set(true),
-                        icons::RefreshCw { class: "h-4 w-4 inline mr-1" }
-                        {t!("media-take360")}
+                    SearchInput {
+                        placeholder: t!("media-search-placeholder").to_string(),
+                        value: search,
+                        on_submit: move |_| {
+                            page.set(0);
+                        },
                     }
+                    // D42: effective label filter (inheritance included).
+                    SearchInput {
+                        placeholder: t!("resources-label-filter-placeholder").to_string(),
+                        value: filter_label,
+                        on_submit: move |_| {
+                            page.set(0);
+                        },
+                    }
+                    RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
                 }
-            },
-            // Filters: kind + search + label (D42). The SearchInput switch
-            // makes filtering live as you type (canonical socle behavior —
-            // the old onchange only filtered on blur/Enter).
-            FilterBar {
-                select {
-                    class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
-                    value: "{filter_kind}",
-                    onchange: move |evt| {
-                        filter_kind.set(evt.value());
-                        page.set(0);
-                    },
-                    option { value: "all", {t!("media-filter-all")} }
-                    option { value: "photo", {t!("media-kind-photo")} }
-                    option { value: "panorama", {t!("media-kind-panorama")} }
-                    option { value: "splat", {t!("media-kind-splat")} }
-                    option { value: "floorplan", {t!("media-kind-floorplan")} }
-                    option { value: "model", {t!("media-kind-model")} }
-                }
-                SearchInput {
-                    placeholder: t!("media-search-placeholder").to_string(),
-                    value: search,
-                    on_submit: move |_| {
-                        page.set(0);
-                    },
-                }
-                // D42: effective label filter (inheritance included).
-                SearchInput {
-                    placeholder: t!("resources-label-filter-placeholder").to_string(),
-                    value: filter_label,
-                    on_submit: move |_| {
-                        page.set(0);
-                    },
-                }
-                RefreshButton {
-                    on_click: move |_| reload.with_mut(|r| *r += 1),
-                }
-            }
 
                 ListStates {
                     state: list_state,
-                    is_empty: is_empty,
+                    is_empty,
                     empty_message: t!("media-empty-title").to_string(),
                     empty_icon: rsx! {
                         icons::Image { class: "h-8 w-8 text-gray-400" }
@@ -326,42 +324,42 @@ pub fn Media() -> Element {
                     },
                     div { class: "space-y-4",
                         DataTable {
-                            columns: columns,
-                            rows: rows,
+                            columns,
+                            rows,
                             row_key: RowKey::new(|asset: &MediaAsset| asset.id.clone()),
                             on_row_click: Callback::new(move |id: String| selected.set(Some(id))),
                         }
-                        ListPager { count: count, page: page }
+                        ListPager { count, page }
                     }
                 }
             }
         }
 
-            // Upload modal (mounted on demand: fresh state on every open —
-            // device_wizard school).
-            if upload_open() {
-                UploadModal {
-                    key: "upload-{upload_open()}",
-                    on_close: move |_| upload_open.set(false),
-                    on_uploaded: move |_| {
-                        upload_open.set(false);
-                        reload.with_mut(|r| *r += 1);
-                    },
-                }
+        // Upload modal (mounted on demand: fresh state on every open —
+        // device_wizard school).
+        if upload_open() {
+            UploadModal {
+                key: "upload-{upload_open()}",
+                on_close: move |_| upload_open.set(false),
+                on_uploaded: move |_| {
+                    upload_open.set(false);
+                    reload.with_mut(|r| *r += 1);
+                },
             }
+        }
 
-            // Take 360 overlay (mounted on demand: fresh state on every
-            // open — device_wizard school; desktop stub is a no-op).
-            if take360_open() {
-                crate::capture360::overlay::Take360Overlay {
-                    key: "take360-{take360_open()}",
-                    on_close: move |_| take360_open.set(false),
-                    on_uploaded: move |_| {
-                        take360_open.set(false);
-                        reload.with_mut(|r| *r += 1);
-                    },
-                }
+        // Take 360 overlay (mounted on demand: fresh state on every
+        // open — device_wizard school; desktop stub is a no-op).
+        if take360_open() {
+            crate::capture360::overlay::Take360Overlay {
+                key: "take360-{take360_open()}",
+                on_close: move |_| take360_open.set(false),
+                on_uploaded: move |_| {
+                    take360_open.set(false);
+                    reload.with_mut(|r| *r += 1);
+                },
             }
+        }
     }
 }
 

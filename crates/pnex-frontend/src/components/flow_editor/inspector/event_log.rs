@@ -25,7 +25,9 @@ pub(super) fn EventLogForm(mut cx: EditorCx, initial: EventLogConfig, can_write:
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-event-log-help")} }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-event-log-stream")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-event-log-stream")}
+                }
                 input {
                     class: if stream_bad { "w-full px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm" } else { "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm" },
                     r#type: "text",
@@ -35,11 +37,14 @@ pub(super) fn EventLogForm(mut cx: EditorCx, initial: EventLogConfig, can_write:
                     oninput: move |event| {
                         let raw = event.value();
                         stream.set(raw.clone());
-                        patch_selected(&mut cx, move |node: &mut FlowNode| {
-                            if let FlowNodeKind::EventLog { config } = &mut node.kind {
-                                config.stream = raw;
-                            }
-                        });
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::EventLog { config } = &mut node.kind {
+                                    config.stream = raw;
+                                }
+                            },
+                        );
                     },
                 }
                 match normalized {
@@ -51,32 +56,44 @@ pub(super) fn EventLogForm(mut cx: EditorCx, initial: EventLogConfig, can_write:
                     },
                     None => rsx! {
                         span { class: "text-xs text-red-600 mt-1 block",
-                            {t!("flows-event-log-stream-invalid", max: EVENT_STREAM_MAX_LEN)}
+                            {t!("flows-event-log-stream-invalid", max : EVENT_STREAM_MAX_LEN)}
                         }
                     },
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-event-log-level")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-event-log-level")}
+                }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write,
                     onchange: move |event| {
                         if let Some(next) = EventLevel::from_wire(&event.value()) {
-                            patch_selected(&mut cx, move |node: &mut FlowNode| {
-                                if let FlowNodeKind::EventLog { config } = &mut node.kind {
-                                    config.level = next;
-                                }
-                            });
+                            patch_selected(
+                                &mut cx,
+                                move |node: &mut FlowNode| {
+                                    if let FlowNodeKind::EventLog { config } = &mut node.kind {
+                                        config.level = next;
+                                    }
+                                },
+                            );
                         }
                     },
                     for l in EventLevel::ALL {
-                        option { key: "{l.wire()}", value: l.wire(), selected: l == level, {level_label(l)} }
+                        option {
+                            key: "{l.wire()}",
+                            value: l.wire(),
+                            selected: l == level,
+                            {level_label(l)}
+                        }
                     }
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-event-log-message")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-event-log-message")}
+                }
                 textarea {
                     class: if message_len > MESSAGE_MAX { "w-full h-16 px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm" } else { "w-full h-16 px-2 py-1.5 border border-gray-300 rounded-lg text-sm" },
                     value: "{message}",
@@ -84,15 +101,18 @@ pub(super) fn EventLogForm(mut cx: EditorCx, initial: EventLogConfig, can_write:
                     oninput: move |event| {
                         let raw = event.value();
                         message.set(raw.clone());
-                        patch_selected(&mut cx, move |node: &mut FlowNode| {
-                            if let FlowNodeKind::EventLog { config } = &mut node.kind {
-                                config.message = raw;
-                            }
-                        });
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::EventLog { config } = &mut node.kind {
+                                    config.message = raw;
+                                }
+                            },
+                        );
                     },
                 }
                 span { class: "text-xs text-gray-400 mt-1 block",
-                    {t!("flows-event-log-message-hint", count: message_len, max: MESSAGE_MAX)}
+                    {t!("flows-event-log-message-hint", count : message_len, max : MESSAGE_MAX)}
                 }
             }
         }

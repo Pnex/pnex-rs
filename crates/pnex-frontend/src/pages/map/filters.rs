@@ -125,13 +125,19 @@ pub(super) fn PoiRow(
                 span { class: "text-xl leading-none", {poi.emoji.clone()} }
                 span { class: "text-sm font-medium text-gray-900 truncate flex-1", {poi.label.clone()} }
                 if device_count == 1 {
-                    span { class: "px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 bg-blue-50 rounded", {t!("poi-device-attached-badge")} }
+                    span { class: "px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 bg-blue-50 rounded",
+                        {t!("poi-device-attached-badge")}
+                    }
                 }
                 if device_count > 1 {
-                    span { class: "px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 bg-blue-50 rounded", {t!("poi-device-count", count: device_count)} }
+                    span { class: "px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 bg-blue-50 rounded",
+                        {t!("poi-device-count", count : device_count)}
+                    }
                 }
                 if has_gps {
-                    span { class: "px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 bg-emerald-50 rounded", {t!("poi-gps-badge")} }
+                    span { class: "px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 bg-emerald-50 rounded",
+                        {t!("poi-gps-badge")}
+                    }
                 }
             }
             if let Some(device) = device_line {

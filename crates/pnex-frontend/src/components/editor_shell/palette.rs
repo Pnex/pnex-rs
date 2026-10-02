@@ -46,32 +46,82 @@ pub enum PaletteIcon {
 pub fn IconView(icon: PaletteIcon, class: Option<String>) -> Element {
     let class = class.unwrap_or_else(|| "h-4 w-4".to_string());
     rsx! {
-        {match icon {
-            PaletteIcon::Calculator => rsx! { icons::Calculator { class } },
-            PaletteIcon::Thermometer => rsx! { icons::Thermometer { class } },
-            PaletteIcon::Snowflake => rsx! { icons::Snowflake { class } },
-            PaletteIcon::Eye => rsx! { icons::Eye { class } },
-            PaletteIcon::Braces => rsx! { icons::Braces { class } },
-            PaletteIcon::Bug => rsx! { icons::Bug { class } },
-            PaletteIcon::Puzzle => rsx! { icons::Puzzle { class } },
-            PaletteIcon::Database => rsx! { icons::Database { class } },
-            PaletteIcon::Cpu => rsx! { icons::Cpu { class } },
-            PaletteIcon::Activity => rsx! { icons::Activity { class } },
-            PaletteIcon::Bell => rsx! { icons::Bell { class } },
-            PaletteIcon::Globe => rsx! { icons::Globe { class } },
-            PaletteIcon::Spline => rsx! { icons::Spline { class } },
-            PaletteIcon::Gauge => rsx! { icons::Gauge { class } },
-            PaletteIcon::Hash => rsx! { icons::Hash { class } },
-            PaletteIcon::LineChart => rsx! { icons::LineChart { class } },
-            PaletteIcon::CheckCircle => rsx! { icons::CheckCircle { class } },
-            PaletteIcon::Info => rsx! { icons::Info { class } },
-            PaletteIcon::Layers => rsx! { icons::Layers { class } },
-            PaletteIcon::Image => rsx! { icons::Image { class } },
-            PaletteIcon::Camera => rsx! { icons::Camera { class } },
-            PaletteIcon::Video => rsx! { icons::Video { class } },
-            PaletteIcon::History => rsx! { icons::History { class } },
-            PaletteIcon::Shapes => rsx! { icons::Shapes { class } },
-        }}
+        {
+            match icon {
+                PaletteIcon::Calculator => rsx! {
+                    icons::Calculator { class }
+                },
+                PaletteIcon::Thermometer => rsx! {
+                    icons::Thermometer { class }
+                },
+                PaletteIcon::Snowflake => rsx! {
+                    icons::Snowflake { class }
+                },
+                PaletteIcon::Eye => rsx! {
+                    icons::Eye { class }
+                },
+                PaletteIcon::Braces => rsx! {
+                    icons::Braces { class }
+                },
+                PaletteIcon::Bug => rsx! {
+                    icons::Bug { class }
+                },
+                PaletteIcon::Puzzle => rsx! {
+                    icons::Puzzle { class }
+                },
+                PaletteIcon::Database => rsx! {
+                    icons::Database { class }
+                },
+                PaletteIcon::Cpu => rsx! {
+                    icons::Cpu { class }
+                },
+                PaletteIcon::Activity => rsx! {
+                    icons::Activity { class }
+                },
+                PaletteIcon::Bell => rsx! {
+                    icons::Bell { class }
+                },
+                PaletteIcon::Globe => rsx! {
+                    icons::Globe { class }
+                },
+                PaletteIcon::Spline => rsx! {
+                    icons::Spline { class }
+                },
+                PaletteIcon::Gauge => rsx! {
+                    icons::Gauge { class }
+                },
+                PaletteIcon::Hash => rsx! {
+                    icons::Hash { class }
+                },
+                PaletteIcon::LineChart => rsx! {
+                    icons::LineChart { class }
+                },
+                PaletteIcon::CheckCircle => rsx! {
+                    icons::CheckCircle { class }
+                },
+                PaletteIcon::Info => rsx! {
+                    icons::Info { class }
+                },
+                PaletteIcon::Layers => rsx! {
+                    icons::Layers { class }
+                },
+                PaletteIcon::Image => rsx! {
+                    icons::Image { class }
+                },
+                PaletteIcon::Camera => rsx! {
+                    icons::Camera { class }
+                },
+                PaletteIcon::Video => rsx! {
+                    icons::Video { class }
+                },
+                PaletteIcon::History => rsx! {
+                    icons::History { class }
+                },
+                PaletteIcon::Shapes => rsx! {
+                    icons::Shapes { class }
+                },
+            }
+        }
     }
 }
 
@@ -184,6 +234,8 @@ pub fn PalettePopover(
 
     rsx! {
         div { // wrapper ancré par le slot parent
+
+
             button {
                 class: "flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg transition-colors hover:bg-blue-700",
                 title: "{add_title}",
@@ -227,8 +279,7 @@ pub fn PalettePopover(
                         for (header, item) in rows.into_iter() {
                             div { key: "{item.key}",
                                 if let Some(header) = header {
-                                    div {
-                                        class: "px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400",
+                                    div { class: "px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400",
                                         {header}
                                     }
                                 }
@@ -238,34 +289,44 @@ pub fn PalettePopover(
                                         on_pick.call(item.key.clone());
                                         open.set(false);
                                     },
-                                    {match (item.icon, item.tile_class.as_deref()) {
-                                        (Some(icon), Some(tile)) => rsx! {
-                                            span { class: "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg {tile}",
-                                                IconView { icon: icon }
-                                            }
-                                        },
-                                        (Some(icon), None) => rsx! {
-                                            span { class: "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600",
-                                                IconView { icon: icon }
-                                            }
-                                        },
-                                        (None, _) => rsx! {},
-                                    }}
+                                    {
+                                        match (item.icon, item.tile_class.as_deref()) {
+                                            (Some(icon), Some(tile)) => rsx! {
+                                                span { class: "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg {tile}",
+                                                    IconView { icon }
+                                                }
+                                            },
+                                            (Some(icon), None) => rsx! {
+                                                span { class: "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600",
+                                                    IconView { icon }
+                                                }
+                                            },
+                                            (None, _) => rsx! {},
+                                        }
+                                    }
                                     div { class: "min-w-0",
-                                        div { class: "truncate text-sm font-medium text-gray-900", {item.label.clone()} }
+                                        div { class: "truncate text-sm font-medium text-gray-900",
+                                            {item.label.clone()}
+                                        }
                                         if let Some(description) = &item.description {
-                                            div { class: "truncate text-xs text-gray-500", {description.clone()} }
+                                            div { class: "truncate text-xs text-gray-500",
+                                                {description.clone()}
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                         if filtered.is_empty() {
-                            p { class: "px-2 py-4 text-center text-sm text-gray-400", {t!("eshell-no-result")} }
+                            p { class: "px-2 py-4 text-center text-sm text-gray-400",
+                                {t!("eshell-no-result")}
+                            }
                         }
                     }
                     if let Some(f) = footer {
-                        div { class: "max-h-56 overflow-y-auto border-t border-gray-200 px-3 py-2", {f} }
+                        div { class: "max-h-56 overflow-y-auto border-t border-gray-200 px-3 py-2",
+                            {f}
+                        }
                     }
                 }
             }

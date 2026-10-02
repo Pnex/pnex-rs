@@ -820,8 +820,8 @@ pub fn FlowEditor(
         rsx! {
             InspectorPanel {
                 key: "{node_id}",
-                icon: icon,
-                title: title,
+                icon,
+                title,
                 subtitle: Some(format!("#{}", node_id)),
                 on_close: move |_| cx.selected_node.set(None),
                 body: rsx! {
@@ -900,23 +900,12 @@ pub fn FlowEditor(
             on_back,
             title: flow_name,
             subtitle: flow_subtitle,
-            on_rename: if can_write {
-                Some(Callback::new(move |name: String| save.call(Some(name))))
-            } else {
-                None
-            },
+            on_rename: if can_write { Some(Callback::new(move |name: String| save.call(Some(name)))) } else { None },
             status: editor_status,
-            version: if saved_version() > 0 {
-                Some(saved_version())
-            } else {
-                None
-            },
+            version: if saved_version() > 0 { Some(saved_version()) } else { None },
             extra_chips: rsx! {
                 if dirty {
-                    Chip {
-                        tone: StatusTone::Amber,
-                        label: t!("flows-dirty-unsaved").to_string(),
-                    }
+                    Chip { tone: StatusTone::Amber, label: t!("flows-dirty-unsaved").to_string() }
                 }
                 if let Some(version) = loaded_from() {
                     Chip {
@@ -1001,76 +990,80 @@ pub fn FlowEditor(
                 }
             },
             banner: rsx! {
-            // ─── Bandeau de violations (locales, serveur) + staleness ───
-            if !banner.is_empty() {
-                div { class: "bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-sm text-red-700",
-                    span { class: "font-semibold mr-2", {t!("flows-violations-banner-title")} }
-                    ul { class: "list-disc list-inside",
-                        for violation in banner.clone() {
-                            li { key: "{violation.code}-{violation.node_id:?}-{violation.message}",
-                                {match &violation.node_id {
-                                    Some(node_id) => format!("#{node_id} : {}", violation.message),
-                                    None => violation.message.clone(),
-                                }}
+                // ─── Bandeau de violations (locales, serveur) + staleness ───
+                if !banner.is_empty() {
+                    div { class: "bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-sm text-red-700",
+                        span { class: "font-semibold mr-2", {t!("flows-violations-banner-title")} }
+                        ul { class: "list-disc list-inside",
+                            for violation in banner.clone() {
+                                li { key: "{violation.code}-{violation.node_id:?}-{violation.message}",
+                                    {
+                                        match &violation.node_id {
+                                            Some(node_id) => format!("#{node_id} : {}", violation.message),
+                                            None => violation.message.clone(),
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            // ─── Newer version saved by another user ───
-            {match remote_version() {
-                Some(version) if version > saved_version() => rsx! {
-                    div { class: "bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 text-sm text-amber-800 flex items-center gap-3",
-                        span { class: "flex-1",
-                            if dirty {
-                                {t!("flows-remote-version-dirty", version: version)}
-                            } else {
-                                {t!("flows-remote-version", version: version)}
+                // ─── Newer version saved by another user ───
+                {
+                    match remote_version() {
+                        Some(version) if version > saved_version() => rsx! {
+                            div { class: "bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 text-sm text-amber-800 flex items-center gap-3",
+                                span { class: "flex-1",
+                                    if dirty {
+                                        {t!("flows-remote-version-dirty", version : version)}
+                                    } else {
+                                        {t!("flows-remote-version", version : version)}
+                                    }
+                                }
+                                button {
+                                    class: "px-3 py-1 text-xs bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors font-medium",
+                                    onclick: move |_| {
+                                        remote_version.set(None);
+                                        propose_deploy.set(None);
+                                        conflict_reload(());
+                                    },
+                                    {t!("flows-remote-version-reload")}
+                                }
                             }
-                        }
-                        button {
-                            class: "px-3 py-1 text-xs bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors font-medium",
-                            onclick: move |_| {
-                                remote_version.set(None);
-                                propose_deploy.set(None);
-                                conflict_reload(());
-                            },
-                            {t!("flows-remote-version-reload")}
-                        }
+                        },
+                        _ => rsx! {},
                     }
-                },
-                _ => rsx! {},
-            }}
+                }
 
-            // ─── Encart « Déployer la version enregistrée ? » ───
-            // Proposé après un save d'un flow déjà déployé ; masqué si
-            // l'utilisateur édite à nouveau (la version proposée ne serait
-            // plus celle du canvas) ou après un deploy réussi.
-            {match propose_deploy() {
-                Some(version) if !dirty => rsx! {
-                    div { class: "bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-800 flex items-center gap-3",
-                        span { class: "flex-1",
-                            {t!("flows-deploy-propose-text", version: version)}
-                        }
-                        button {
-                            class: "px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed",
-                            disabled: deploying(),
-                            onclick: move |evt| {
-                                propose_deploy.set(None);
-                                deploy(evt);
-                            },
-                            {t!("flows-deploy-propose-go", version: version)}
-                        }
-                        button {
-                            class: "px-3 py-1 text-xs text-blue-700 hover:bg-blue-100 rounded-lg transition-colors",
-                            onclick: move |_| propose_deploy.set(None),
-                            {t!("flows-deploy-propose-later")}
-                        }
+                // ─── Encart « Déployer la version enregistrée ? » ───
+                // Proposé après un save d'un flow déjà déployé ; masqué si
+                // l'utilisateur édite à nouveau (la version proposée ne serait
+                // plus celle du canvas) ou après un deploy réussi.
+                {
+                    match propose_deploy() {
+                        Some(version) if !dirty => rsx! {
+                            div { class: "bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-800 flex items-center gap-3",
+                                span { class: "flex-1", {t!("flows-deploy-propose-text", version : version)} }
+                                button {
+                                    class: "px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed",
+                                    disabled: deploying(),
+                                    onclick: move |evt| {
+                                        propose_deploy.set(None);
+                                        deploy(evt);
+                                    },
+                                    {t!("flows-deploy-propose-go", version : version)}
+                                }
+                                button {
+                                    class: "px-3 py-1 text-xs text-blue-700 hover:bg-blue-100 rounded-lg transition-colors",
+                                    onclick: move |_| propose_deploy.set(None),
+                                    {t!("flows-deploy-propose-later")}
+                                }
+                            }
+                        },
+                        _ => rsx! {},
                     }
-                },
-                _ => rsx! {},
-                }}
+                }
             },
             canvas: rsx! {
                 canvas::Canvas {
@@ -1094,109 +1087,101 @@ pub fn FlowEditor(
                 }
             },
             inspector: inspector_slot,
-            empty_hint: if cx.graph.cloned().nodes.is_empty() {
-                Some(t!("eshell-empty-hint").to_string())
-            } else {
-                None
-            },
+            empty_hint: if cx.graph.cloned().nodes.is_empty() { Some(t!("eshell-empty-hint").to_string()) } else { None },
         }
 
-            // ─── Drawer debug (monté seulement si ouvert : le poll meurt avec) ───
-            if debug_open() {
-                debug::DebugDrawer {
-                    flow_id,
-                    on_close: move |_| debug_open.set(false),
+        // ─── Drawer debug (monté seulement si ouvert : le poll meurt avec) ───
+        if debug_open() {
+            debug::DebugDrawer { flow_id, on_close: move |_| debug_open.set(false) }
+        }
+
+        // ─── Drawer versions ───
+        if versions_open() {
+            versions::VersionsDrawer {
+                flow_id,
+                can_write,
+                on_close: move |_| versions_open.set(false),
+                on_loaded: move |version: FlowVersionDetail| {
+                    // Chargement d'une version dans l'éditeur : si c'est
+                    // la dernière, pas de dirty ; sinon save créera
+                    // v(n+1) avec ce graphe (restauration par édition).
+                    let mut fresh = version.graph;
+                    geometry::ensure_positions(&mut fresh);
+                    graph.set(fresh.clone());
+                    if version.version_number == saved_version() {
+                        saved_graph.set(fresh);
+                        loaded_from.set(None);
+                    } else {
+                        saved_graph.set(FlowGraph::default());
+                        loaded_from.set(Some(version.version_number));
+                    }
+                    selected_node.set(None);
+                    violations.set(Vec::new());
+                    versions_open.set(false);
+                },
+                on_deployed: move |_| {
+                    reload_meta.with_mut(|r| *r += 1);
+                    on_changed.call(());
+                },
+            }
+        }
+
+        // ─── Modales ───
+        if let Some(description) = conflict() {
+            Modal {
+                title: t!("flows-conflict-title"),
+                max_width: "max-w-md".to_string(),
+                on_close: move |_| conflict.set(None),
+                div { class: "space-y-4",
+                    p { class: "text-sm text-gray-600", {description.clone()} }
+                    p { class: "text-sm text-gray-600", {t!("flows-conflict-message")} }
+                    div { class: "flex flex-col gap-2 pt-2",
+                        button {
+                            class: "px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                            onclick: move |_| conflict_reload(()),
+                            {t!("flows-conflict-reload")}
+                        }
+                        button {
+                            class: "px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors",
+                            onclick: conflict_overwrite,
+                            {t!("flows-conflict-overwrite")}
+                        }
+                    }
                 }
             }
-
-            // ─── Drawer versions ───
-            if versions_open() {
-                versions::VersionsDrawer {
-                    flow_id,
-                    can_write,
-                    on_close: move |_| versions_open.set(false),
-                    on_loaded: move |version: FlowVersionDetail| {
-                        // Chargement d'une version dans l'éditeur : si c'est
-                        // la dernière, pas de dirty ; sinon save créera
-                        // v(n+1) avec ce graphe (restauration par édition).
-                        let mut fresh = version.graph;
-                        geometry::ensure_positions(&mut fresh);
-                        graph.set(fresh.clone());
-                        if version.version_number == saved_version() {
-                            saved_graph.set(fresh);
-                            loaded_from.set(None);
+        }
+        if let Some((from, port, to, pin)) = pending_wire() {
+            ConfirmDialog {
+                title: t!("flows-wire-remove-title"),
+                message: t!("flows-wire-remove-message"),
+                confirm_label: t!("flows-wire-remove"),
+                on_confirm: move |_| {
+                    cx.update_graph(|g| {
+                        if pin.is_empty() {
+                            // Plain source-side wire.
+                            state::remove_target(g, &from, port, &to);
                         } else {
-                            saved_graph.set(FlowGraph::default());
-                            loaded_from.set(Some(version.version_number));
+                            // Annotated pin row: the runtime wire only
+                            // goes if the source feeds no other pin.
+                            state::cut_input_wire(g, &from, port, &to, &pin);
                         }
-                        selected_node.set(None);
-                        violations.set(Vec::new());
-                        versions_open.set(false);
-                    },
-                    on_deployed: move |_| {
-                        reload_meta.with_mut(|r| *r += 1);
-                        on_changed.call(());
-                    },
-                }
+                    });
+                    pending_wire.set(None);
+                },
+                on_cancel: move |_| pending_wire.set(None),
             }
+        }
 
-            // ─── Modales ───
-            if let Some(description) = conflict() {
-                Modal {
-                    title: t!("flows-conflict-title"),
-                    max_width: "max-w-md".to_string(),
-                    on_close: move |_| conflict.set(None),
-                    div { class: "space-y-4",
-                        p { class: "text-sm text-gray-600", {description.clone()} }
-                        p { class: "text-sm text-gray-600", {t!("flows-conflict-message")} }
-                        div { class: "flex flex-col gap-2 pt-2",
-                            button {
-                                class: "px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
-                                onclick: move |_| conflict_reload(()),
-                                {t!("flows-conflict-reload")}
-                            }
-                            button {
-                                class: "px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors",
-                                onclick: conflict_overwrite,
-                                {t!("flows-conflict-overwrite")}
-                            }
-                        }
-                    }
+        // ─── Vue pretty d'une sonde Display (clic sur le badge live) ───
+        if let Some((name, pretty)) = display_modal {
+            Modal {
+                title: t!("flows-display-value-title", name : name),
+                max_width: "max-w-2xl".to_string(),
+                on_close: move |_| expanded_display.set(None),
+                pre { class: "text-xs font-mono whitespace-pre-wrap break-all bg-gray-50 border border-gray-200 rounded-lg p-4 text-gray-800 m-0",
+                    {pretty}
                 }
             }
-            if let Some((from, port, to, pin)) = pending_wire() {
-                ConfirmDialog {
-                    title: t!("flows-wire-remove-title"),
-                    message: t!("flows-wire-remove-message"),
-                    confirm_label: t!("flows-wire-remove"),
-                    on_confirm: move |_| {
-                        cx.update_graph(|g| {
-                            if pin.is_empty() {
-                                // Plain source-side wire.
-                                state::remove_target(g, &from, port, &to);
-                            } else {
-                                // Annotated pin row: the runtime wire only
-                                // goes if the source feeds no other pin.
-                                state::cut_input_wire(g, &from, port, &to, &pin);
-                            }
-                        });
-                        pending_wire.set(None);
-                    },
-                    on_cancel: move |_| pending_wire.set(None),
-                }
-            }
-
-            // ─── Vue pretty d'une sonde Display (clic sur le badge live) ───
-            if let Some((name, pretty)) = display_modal {
-                Modal {
-                    title: t!("flows-display-value-title", name: name),
-                    max_width: "max-w-2xl".to_string(),
-                    on_close: move |_| expanded_display.set(None),
-                    pre {
-                        class: "text-xs font-mono whitespace-pre-wrap break-all bg-gray-50 border border-gray-200 rounded-lg p-4 text-gray-800 m-0",
-                        {pretty}
-                    }
-                }
-            }
+        }
     }
 }

@@ -31,14 +31,18 @@ pub fn field(event: &dioxus::events::FormEvent, name: &str) -> String {
 
 #[component]
 pub fn Orgs() -> Element {
-    rsx! { OrgsPage { initial: None } }
+    rsx! {
+        OrgsPage { initial: None }
+    }
 }
 
 /// `/orgs/current`: opens straight on the current org's detail (members,
 /// LLM providers) — deep-link target of the secrets "used by" chips.
 #[component]
 pub fn OrgsCurrent() -> Element {
-    rsx! { OrgsPage { initial: org::current() } }
+    rsx! {
+        OrgsPage { initial: org::current() }
+    }
 }
 
 #[component]
@@ -134,7 +138,9 @@ fn OrgsPage(initial: Option<i64>) -> Element {
                     event.prevent_default();
                     let name = field(&event, "name");
                     let name = name.trim().to_string();
-                    if name.is_empty() { return; }
+                    if name.is_empty() {
+                        return;
+                    }
                     new_name.set(String::new());
                     spawn(async move {
                         match api::orgs::create(&name).await {
@@ -176,11 +182,11 @@ fn OrgsPage(initial: Option<i64>) -> Element {
                 None => rsx! {
                     ListStates {
                         state: list_state,
-                        is_empty: is_empty,
+                        is_empty,
                         empty_message: t!("orgs-empty").to_string(),
                         DataTable {
-                            columns: columns,
-                            rows: rows,
+                            columns,
+                            rows,
                             row_key: RowKey::new(|summary: &pnex_core::OrgSummary| summary.id.to_string()),
                         }
                     }
@@ -239,7 +245,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                             button {
                                 class: "text-sm text-blue-600 hover:text-blue-700 mb-1",
                                 onclick: move |_| on_back.call(()),
-                                { "← " }
+                                {"← "}
                                 {t!("orgs-back")}
                             }
                             h2 { class: "text-xl font-semibold text-gray-900", {name} }
@@ -263,7 +269,9 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                                 event.prevent_default();
                                 let value = field(&event, "name");
                                 let value = value.trim().to_string();
-                                if value.is_empty() { return; }
+                                if value.is_empty() {
+                                    return;
+                                }
                                 rename.set(String::new());
                                 let org_id = org_id;
                                 spawn(async move {
@@ -291,9 +299,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
 
                     // LLM providers of the org (managed by owner/admin)
                     div { class: "p-6 border-b border-gray-200",
-                        crate::components::llm_providers::LlmProviders {
-                            can_manage: can_write,
-                        }
+                        crate::components::llm_providers::LlmProviders { can_manage: can_write }
                     }
 
                     // Ajout de membre (owner/admin)
@@ -305,7 +311,9 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                                 event.prevent_default();
                                 let email = field(&event, "email");
                                 let email = email.trim().to_string();
-                                if email.is_empty() { return; }
+                                if email.is_empty() {
+                                    return;
+                                }
                                 member_email.set(String::new());
                                 let role = member_role.cloned();
                                 let org_id = org_id;
@@ -327,10 +335,26 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                             select {
                                 class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                                 onchange: move |event| member_role.set(event.value()),
-                                option { value: "viewer", selected: member_role() == "viewer", {t!("role-viewer")} }
-                                option { value: "member", selected: member_role() == "member", {t!("role-member")} }
-                                option { value: "admin", selected: member_role() == "admin", {t!("role-admin")} }
-                                option { value: "owner", selected: member_role() == "owner", {t!("role-owner")} }
+                                option {
+                                    value: "viewer",
+                                    selected: member_role() == "viewer",
+                                    {t!("role-viewer")}
+                                }
+                                option {
+                                    value: "member",
+                                    selected: member_role() == "member",
+                                    {t!("role-member")}
+                                }
+                                option {
+                                    value: "admin",
+                                    selected: member_role() == "admin",
+                                    {t!("role-admin")}
+                                }
+                                option {
+                                    value: "owner",
+                                    selected: member_role() == "owner",
+                                    {t!("role-owner")}
+                                }
                             }
                             button {
                                 class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm",
@@ -343,12 +367,30 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
 
                     // Membres
                     div { class: "p-6",
-                        h3 { class: "text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4", {t!("orgs-members")} }
+                        h3 { class: "text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4",
+                            {t!("orgs-members")}
+                        }
                         ul { class: "mb-4 space-y-1 text-xs text-gray-500",
-                            li { span { class: "font-medium text-gray-700", {t!("role-owner")} } " — " {t!("orgs-role-help-owner")} }
-                            li { span { class: "font-medium text-gray-700", {t!("role-admin")} } " — " {t!("orgs-role-help-admin")} }
-                            li { span { class: "font-medium text-gray-700", {t!("role-member")} } " — " {t!("orgs-role-help-member")} }
-                            li { span { class: "font-medium text-gray-700", {t!("role-viewer")} } " — " {t!("orgs-role-help-viewer")} }
+                            li {
+                                span { class: "font-medium text-gray-700", {t!("role-owner")} }
+                                " — "
+                                {t!("orgs-role-help-owner")}
+                            }
+                            li {
+                                span { class: "font-medium text-gray-700", {t!("role-admin")} }
+                                " — "
+                                {t!("orgs-role-help-admin")}
+                            }
+                            li {
+                                span { class: "font-medium text-gray-700", {t!("role-member")} }
+                                " — "
+                                {t!("orgs-role-help-member")}
+                            }
+                            li {
+                                span { class: "font-medium text-gray-700", {t!("role-viewer")} }
+                                " — "
+                                {t!("orgs-role-help-viewer")}
+                            }
                         }
                         div { class: "space-y-2",
                             for member in members {
@@ -382,7 +424,9 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
             }
         }
         Some(Err(err)) => rsx! {
-            div { class: "bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700", {err.message.clone()} }
+            div { class: "bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700",
+                {err.message.clone()}
+            }
         },
         None => rsx! {
             div { class: "text-center py-12",
@@ -410,7 +454,9 @@ fn member_row(
     let email = member.email.clone().unwrap_or_default();
 
     rsx! {
-        div { key: "{user_id}", class: "flex items-center justify-between p-3 bg-gray-50 rounded-lg",
+        div {
+            key: "{user_id}",
+            class: "flex items-center justify-between p-3 bg-gray-50 rounded-lg",
             div {
                 p { class: "text-sm font-medium text-gray-900", {display} }
                 p { class: "text-xs text-gray-500", {email} }
@@ -451,10 +497,14 @@ fn member_row(
                         icons::Trash2 { class: "h-4 w-4" }
                     }
                 } else {
-                    {let (badge, label) = role_badge(&role);
-                    rsx! {
-                        span { class: "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {badge}", {label} }
-                    }}
+                    {
+                        let (badge, label) = role_badge(&role);
+                        rsx! {
+                            span { class: "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {badge}",
+                                {label}
+                            }
+                        }
+                    }
                 }
             }
         }

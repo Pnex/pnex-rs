@@ -16,23 +16,29 @@ pub(super) fn RedForm(
 
     rsx! {
         div { class: "space-y-3",
-            {text_field(t!("flows-red-type"), type_name, !can_write, move |event| {
-                let raw = event.value();
-                type_name.set(raw.clone());
-                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                    if let FlowNodeKind::Red { type_name, .. } = &mut node.kind {
-                        *type_name = raw;
-                    }
-                });
-            })}
+            {
+                text_field(
+                    t!("flows-red-type"),
+                    type_name,
+                    !can_write,
+                    move |event| {
+                        let raw = event.value();
+                        type_name.set(raw.clone());
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::Red { type_name, .. } = &mut node.kind {
+                                    *type_name = raw;
+                                }
+                            },
+                        );
+                    },
+                )
+            }
             label { class: "block",
                 span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-red-config")} }
                 textarea {
-                    class: if config_invalid() {
-                        "w-full h-28 px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm font-mono"
-                    } else {
-                        "w-full h-28 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono"
-                    },
+                    class: if config_invalid() { "w-full h-28 px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm font-mono" } else { "w-full h-28 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono" },
                     value: "{config}",
                     disabled: !can_write,
                     oninput: move |event| {
@@ -41,11 +47,14 @@ pub(super) fn RedForm(
                             Ok(value) => {
                                 config_invalid.set(false);
                                 config.set(raw.clone());
-                                patch_selected(&mut cx, move |node: &mut FlowNode| {
-                                    if let FlowNodeKind::Red { config, .. } = &mut node.kind {
-                                        *config = value;
-                                    }
-                                });
+                                patch_selected(
+                                    &mut cx,
+                                    move |node: &mut FlowNode| {
+                                        if let FlowNodeKind::Red { config, .. } = &mut node.kind {
+                                            *config = value;
+                                        }
+                                    },
+                                );
                             }
                             Err(_) => {
                                 config_invalid.set(true);

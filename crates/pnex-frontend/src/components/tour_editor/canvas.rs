@@ -153,10 +153,11 @@ pub(crate) fn Canvas(cx: TourEditorCx) -> Element {
                     // Fond : désélection + pan (jamais en mode lien).
                     cx.selected.set(None);
                     let point = event.client_coordinates();
-                    cx.interaction.set(Interaction::Panning {
-                        start_client: (point.x, point.y),
-                        start_pan: cx.pan.cloned(),
-                    });
+                    cx.interaction
+                        .set(Interaction::Panning {
+                            start_client: (point.x, point.y),
+                            start_pan: cx.pan.cloned(),
+                        });
                 },
                 onpointermove: move |event| canvas_pointer_move(event, cx),
                 onpointerup: move |_| canvas_pointer_up(cx),
@@ -168,16 +169,17 @@ pub(crate) fn Canvas(cx: TourEditorCx) -> Element {
                         cx.selected.set(None);
                     }
                 },
-                g {
-                    transform: "translate({pan.0} {pan.1}) scale({zoom})",
+                g { transform: "translate({pan.0} {pan.1}) scale({zoom})",
                     // Plan (image étirée aux dimensions déclarées — repli
                     // 2000×1000 si inconnues ; doc studio.md « reste ouvert »).
                     if let Some(Some(Some(url))) = plan_url.value().read().as_ref().map(Some) {
                         image {
                             key: "plan-{plan_asset:?}",
                             href: "{url}",
-                            x: "0", y: "0",
-                            width: "{plan_w}", height: "{plan_h}",
+                            x: "0",
+                            y: "0",
+                            width: "{plan_w}",
+                            height: "{plan_h}",
                             preserve_aspect_ratio: "none",
                             "pointer-events": "none",
                         }
@@ -186,22 +188,28 @@ pub(crate) fn Canvas(cx: TourEditorCx) -> Element {
                     for (link_id, a, b, is_stair) in visible_links.clone() {
                         line {
                             key: "link-{link_id}",
-                            x1: "{a.0}", y1: "{a.1}",
-                            x2: "{b.0}", y2: "{b.1}",
+                            x1: "{a.0}",
+                            y1: "{a.1}",
+                            x2: "{b.0}",
+                            y2: "{b.1}",
                             stroke: if is_stair { STAIR_STROKE } else { LINK_STROKE },
                             "stroke-width": "3",
                             "stroke-dasharray": if is_stair { "8 4" } else { "none" },
                             "pointer-events": "none",
                         }
                         circle {
-                            cx: "{b.0}", cy: "{b.1}", r: "5",
+                            cx: "{b.0}",
+                            cy: "{b.1}",
+                            r: "5",
                             fill: if is_stair { STAIR_STROKE } else { LINK_STROKE },
                             "pointer-events": "none",
                         }
                         // Hit transparent plus large pour la sélection du lien.
                         line {
-                            x1: "{a.0}", y1: "{a.1}",
-                            x2: "{b.0}", y2: "{b.1}",
+                            x1: "{a.0}",
+                            y1: "{a.1}",
+                            x2: "{b.0}",
+                            y2: "{b.1}",
                             stroke: "transparent",
                             "stroke-width": "12",
                             "pointer-events": "stroke",
@@ -216,8 +224,10 @@ pub(crate) fn Canvas(cx: TourEditorCx) -> Element {
                     if let Some(from_id) = link_from {
                         if let Some(from) = scenes.iter().find(|s| s.id == from_id) {
                             line {
-                                x1: "{from.x}", y1: "{from.y}",
-                                x2: "{plan_w / 2.0}", y2: "{plan_h / 2.0}",
+                                x1: "{from.x}",
+                                y1: "{from.y}",
+                                x2: "{plan_w / 2.0}",
+                                y2: "{plan_h / 2.0}",
                                 stroke: LINK_PENDING_STROKE,
                                 "stroke-width": "3",
                                 "stroke-dasharray": "6 4",
@@ -276,17 +286,23 @@ fn ScenePin(
             cursor: if link_mode { "crosshair" } else { "grab" },
             onpointerdown: move |event| {
                 event.stop_propagation();
-                scene_pointer_down(&scene_for_down, cx, (event.client_coordinates().x, event.client_coordinates().y));
+                scene_pointer_down(
+                    &scene_for_down,
+                    cx,
+                    (event.client_coordinates().x, event.client_coordinates().y),
+                );
             },
             circle {
-                cx: "{scene.x}", cy: "{scene.y}",
+                cx: "{scene.x}",
+                cy: "{scene.y}",
                 r: "{geometry::SCENE_RADIUS}",
                 fill: "{fill}",
                 stroke: "{stroke}",
                 "stroke-width": if highlighted { "4" } else { "2" },
             }
             text {
-                x: "{scene.x}", y: "{scene.y + geometry::SCENE_RADIUS + 14.0}",
+                x: "{scene.x}",
+                y: "{scene.y + geometry::SCENE_RADIUS + 14.0}",
                 "text-anchor": "middle",
                 "font-size": "13",
                 fill: "#374151",
@@ -295,7 +311,8 @@ fn ScenePin(
             }
             if is_start {
                 text {
-                    x: "{scene.x}", y: "{scene.y - geometry::SCENE_RADIUS - 6.0}",
+                    x: "{scene.x}",
+                    y: "{scene.y - geometry::SCENE_RADIUS - 6.0}",
                     "text-anchor": "middle",
                     "font-size": "12",
                     fill: "#10b981",

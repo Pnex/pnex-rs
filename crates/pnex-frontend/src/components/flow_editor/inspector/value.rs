@@ -9,23 +9,24 @@ pub(super) fn CalcForm(mut cx: EditorCx, initial: CalcConfig, can_write: bool) -
     rsx! {
         div { class: "space-y-3",
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-calc-expression")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-calc-expression")}
+                }
                 textarea {
-                    class: if !errors.cloned().is_empty() {
-                        "w-full h-20 px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm font-mono"
-                    } else {
-                        "w-full h-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono"
-                    },
+                    class: if !errors.cloned().is_empty() { "w-full h-20 px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm font-mono" } else { "w-full h-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono" },
                     value: "{expression}",
                     disabled: !can_write,
                     oninput: move |event| {
                         let raw = event.value();
                         expression.set(raw.clone());
-                        patch_selected(&mut cx, move |node: &mut FlowNode| {
-                            if let FlowNodeKind::Calc { config } = &mut node.kind {
-                                config.expression = raw;
-                            }
-                        });
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::Calc { config } = &mut node.kind {
+                                    config.expression = raw;
+                                }
+                            },
+                        );
                     },
                 }
             }
@@ -38,7 +39,13 @@ pub(super) fn CalcForm(mut cx: EditorCx, initial: CalcConfig, can_write: bool) -
             }
             if !expression.cloned().trim().is_empty() && errors.cloned().is_empty() {
                 p { class: "text-xs text-gray-500",
-                    {format!("{} : {}", t!("flows-calc-vars"), pnex_core::calc_variables(&expression.cloned()).join(", "))}
+                    {
+                        format!(
+                            "{} : {}",
+                            t!("flows-calc-vars"),
+                            pnex_core::calc_variables(&expression.cloned()).join(", "),
+                        )
+                    }
                 }
             }
             p { class: "text-xs text-gray-400", {t!("flows-calc-functions-help")} }
@@ -104,11 +111,7 @@ pub(super) fn ValueForm(mut cx: EditorCx, initial: ValueConfig, can_write: bool)
             // ── Pane toggle: key/value (non-developers) vs raw JSON ──
             div { class: "flex gap-1",
                 button {
-                    class: if pane() == ValuePane::Kv {
-                        "px-2 py-0.5 rounded-full text-xs bg-blue-600 text-white"
-                    } else {
-                        "px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 hover:bg-gray-200"
-                    },
+                    class: if pane() == ValuePane::Kv { "px-2 py-0.5 rounded-full text-xs bg-blue-600 text-white" } else { "px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 hover:bg-gray-200" },
                     disabled: !can_write,
                     onclick: move |_| {
                         pane.set(ValuePane::Kv);
@@ -116,11 +119,7 @@ pub(super) fn ValueForm(mut cx: EditorCx, initial: ValueConfig, can_write: bool)
                     {t!("flows-value-pane-kv")}
                 }
                 button {
-                    class: if pane() == ValuePane::Json {
-                        "px-2 py-0.5 rounded-full text-xs bg-blue-600 text-white"
-                    } else {
-                        "px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 hover:bg-gray-200"
-                    },
+                    class: if pane() == ValuePane::Json { "px-2 py-0.5 rounded-full text-xs bg-blue-600 text-white" } else { "px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 hover:bg-gray-200" },
                     disabled: !can_write,
                     onclick: move |_| {
                         raw.set(value_json_to_raw(&value.read().clone()));

@@ -178,46 +178,56 @@ pub fn Catalog() -> Element {
                         reload.with_mut(|r| *r += 1);
                     },
                     option { value: "all", selected: filter_type() == "all", {t!("catalog-type-all")} }
-                    option { value: "sensor", selected: filter_type() == "sensor", {t!("devices-type-sensor")} }
-                    option { value: "actuator", selected: filter_type() == "actuator", {t!("devices-type-actuator")} }
-                    option { value: "mixed", selected: filter_type() == "mixed", {t!("devices-type-mixed")} }
+                    option { value: "sensor", selected: filter_type() == "sensor",
+                        {t!("devices-type-sensor")}
+                    }
+                    option {
+                        value: "actuator",
+                        selected: filter_type() == "actuator",
+                        {t!("devices-type-actuator")}
+                    }
+                    option { value: "mixed", selected: filter_type() == "mixed",
+                        {t!("devices-type-mixed")}
+                    }
                 }
-                {match &*options.read() {
-                    Some(Ok(models)) => {
-                        let mut boards: Vec<String> =
-                            models.iter().map(|pd| pd.board.clone()).collect();
-                        boards.sort();
-                        boards.dedup();
-                        rsx! {
-                            select {
-                                class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
-                                onchange: move |event| {
-                                    filter_board.set(event.value());
-                                    page.set(0);
-                                    reload.with_mut(|r| *r += 1);
-                                },
-                                option { value: "all", selected: filter_board() == "all", {t!("catalog-board-all")} }
-                                for board in boards {
-                                    option {
-                                        key: "{board}",
-                                        value: "{board}",
-                                        selected: filter_board() == board,
-                                        {board.clone()}
+                {
+                    match &*options.read() {
+                        Some(Ok(models)) => {
+                            let mut boards: Vec<String> = models
+                                .iter()
+                                .map(|pd| pd.board.clone())
+                                .collect();
+                            boards.sort();
+                            boards.dedup();
+                            rsx! {
+                                select {
+                                    class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                                    onchange: move |event| {
+                                        filter_board.set(event.value());
+                                        page.set(0);
+                                        reload.with_mut(|r| *r += 1);
+                                    },
+                                    option { value: "all", selected: filter_board() == "all", {t!("catalog-board-all")} }
+                                    for board in boards {
+                                        option {
+                                            key: "{board}",
+                                            value: "{board}",
+                                            selected: filter_board() == board,
+                                            {board.clone()}
+                                        }
                                     }
                                 }
                             }
                         }
+                        _ => rsx! {},
                     }
-                    _ => rsx! {},
-                }}
-                RefreshButton {
-                    on_click: move |_| reload.with_mut(|r| *r += 1),
                 }
+                RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
             }
 
             ListStates {
                 state: list_state,
-                is_empty: is_empty,
+                is_empty,
                 empty_message: t!("catalog-empty").to_string(),
                 empty_icon: rsx! {
                     icons::Package { class: "h-8 w-8 text-gray-400" }
@@ -227,19 +237,16 @@ pub fn Catalog() -> Element {
                 },
                 div { class: "space-y-4",
                     DataTable {
-                        columns: columns,
-                        rows: rows,
+                        columns,
+                        rows,
                         row_key: RowKey::new(|pd: &PredefinedDevice| pd.name.clone()),
                     }
-                    ListPager { count: count, page_size: PAGE_SIZE, page: page }
+                    ListPager { count, page_size: PAGE_SIZE, page }
                 }
             }
 
             if let Some(board) = preview_board() {
-                BoardPreviewModal {
-                    board,
-                    on_close: move |_| preview_board.set(None),
-                }
+                BoardPreviewModal { board, on_close: move |_| preview_board.set(None) }
             }
         }
     }

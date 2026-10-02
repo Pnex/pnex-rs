@@ -151,17 +151,13 @@ pub(crate) fn PinCard(
     };
 
     rsx! {
-        div { class: if connected {
-                "rounded-lg border border-gray-200 p-4 space-y-3"
-            } else {
-                "rounded-lg border border-gray-200 p-4 space-y-3 opacity-90"
-            },
+        div { class: if connected { "rounded-lg border border-gray-200 p-4 space-y-3" } else { "rounded-lg border border-gray-200 p-4 space-y-3 opacity-90" },
             // Lecture seule explicite quand le device est offline : les
             // contrôles sont déjà désactivés (`disabled: busy() || !connected`),
             // le bandeau dit pourquoi.
             if !connected {
                 div { class: "flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800",
-                    span { class: "mt-0.5 shrink-0", { "ℹ" } }
+                    span { class: "mt-0.5 shrink-0", {"ℹ"} }
                     p { {t!("pins-offline-readonly")} }
                 }
             }
@@ -207,8 +203,12 @@ pub(crate) fn PinCard(
                             value: "{safe_sel}",
                             disabled: busy() || !connected,
                             onchange: move |e| safe_sel.set(e.value()),
-                            option { value: "low", selected: safe_sel() == "low", {t!("pins-safe-low")} }
-                            option { value: "high", selected: safe_sel() == "high", {t!("pins-safe-high")} }
+                            option { value: "low", selected: safe_sel() == "low",
+                                {t!("pins-safe-low")}
+                            }
+                            option { value: "high", selected: safe_sel() == "high",
+                                {t!("pins-safe-high")}
+                            }
                         }
                     }
                 }
@@ -260,11 +260,7 @@ pub(crate) fn PinCard(
                         };
                         rsx! {
                             button {
-                                class: if is_reserved {
-                                    "px-3 py-1.5 text-xs font-semibold text-white rounded-lg transition-colors opacity-40 {toggle_class}"
-                                } else {
-                                    "px-3 py-1.5 text-xs font-semibold text-white rounded-lg transition-colors {toggle_class}"
-                                },
+                                class: if is_reserved { "px-3 py-1.5 text-xs font-semibold text-white rounded-lg transition-colors opacity-40 {toggle_class}" } else { "px-3 py-1.5 text-xs font-semibold text-white rounded-lg transition-colors {toggle_class}" },
                                 disabled: busy() || !connected || is_reserved,
                                 onclick: move |_| send(cmd.clone()),
                                 {toggle_label}
@@ -282,7 +278,13 @@ pub(crate) fn PinCard(
                             _ => 0,
                         };
                         rsx! {
-                            DutyControl { device_pk, gpio: pin.gpio, initial: duty_init, connected, disabled: is_reserved }
+                            DutyControl {
+                                device_pk,
+                                gpio: pin.gpio,
+                                initial: duty_init,
+                                connected,
+                                disabled: is_reserved,
+                            }
                         }
                     }
                 }
@@ -290,7 +292,7 @@ pub(crate) fn PinCard(
                 // source per output) — the server enforces the same rule.
                 if is_output && can_write && is_reserved {
                     span { class: "basis-full text-xs text-amber-600",
-                        {t!("pins-reserved-by-flow", flow: reserved_names)}
+                        {t!("pins-reserved-by-flow", flow : reserved_names)}
                     }
                 }
                 // Input (digital_in/analog_in) : cadence de lecture.
@@ -300,11 +302,25 @@ pub(crate) fn PinCard(
                         value: "{interval_sel}",
                         disabled: busy() || !connected,
                         onchange: move |e| interval_sel.set(e.value()),
-                        option { value: "0", selected: interval_sel() == "0", {t!("pins-subscribe-off")} }
-                        option { value: "1000", selected: interval_sel() == "1000", {t!("pins-subscribe-1s")} }
-                        option { value: "5000", selected: interval_sel() == "5000", {t!("pins-subscribe-5s")} }
-                        option { value: "15000", selected: interval_sel() == "15000", {t!("pins-subscribe-15s")} }
-                        option { value: "60000", selected: interval_sel() == "60000", {t!("pins-subscribe-60s")} }
+                        option { value: "0", selected: interval_sel() == "0",
+                            {t!("pins-subscribe-off")}
+                        }
+                        option { value: "1000", selected: interval_sel() == "1000",
+                            {t!("pins-subscribe-1s")}
+                        }
+                        option { value: "5000", selected: interval_sel() == "5000",
+                            {t!("pins-subscribe-5s")}
+                        }
+                        option {
+                            value: "15000",
+                            selected: interval_sel() == "15000",
+                            {t!("pins-subscribe-15s")}
+                        }
+                        option {
+                            value: "60000",
+                            selected: interval_sel() == "60000",
+                            {t!("pins-subscribe-60s")}
+                        }
                     }
                     button {
                         class: "px-3 py-1.5 text-xs font-medium text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors",
@@ -504,7 +520,9 @@ pub fn PinsPanel(device_pk: i64, can_write: bool) -> Element {
     rsx! {
         div { class: "p-6 border-t border-gray-200",
             div { class: "flex items-center justify-between mb-3",
-                h3 { class: "text-sm font-semibold text-gray-500 uppercase tracking-wider", {t!("pins-title")} }
+                h3 { class: "text-sm font-semibold text-gray-500 uppercase tracking-wider",
+                    {t!("pins-title")}
+                }
                 div { class: "flex items-center gap-3",
                     if connected {
                         span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800",
@@ -520,14 +538,12 @@ pub fn PinsPanel(device_pk: i64, can_write: bool) -> Element {
             }
             if silent_device {
                 div { class: "mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800",
-                    span { class: "mt-0.5 shrink-0", { "⚠" } }
+                    span { class: "mt-0.5 shrink-0", {"⚠"} }
                     p { {t!("pins-none-subscribed")} }
                 }
             }
             if list.is_empty() {
-                p { class: "text-sm text-gray-500",
-                    {t!("pins-not-provisioned")}
-                }
+                p { class: "text-sm text-gray-500", {t!("pins-not-provisioned")} }
             } else {
                 div { class: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3",
                     for pin in list {

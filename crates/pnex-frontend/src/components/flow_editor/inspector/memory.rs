@@ -109,15 +109,18 @@ pub(super) fn MemoryWriteForm(
                     oninput: move |event| {
                         let raw = event.value().trim().to_string();
                         key.set(raw.clone());
-                        patch_selected(&mut cx, move |node: &mut FlowNode| {
-                            if let FlowNodeKind::MemoryWrite { config } = &mut node.kind {
-                                config.key = raw;
-                            }
-                        });
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::MemoryWrite { config } = &mut node.kind {
+                                    config.key = raw;
+                                }
+                            },
+                        );
                     },
                 }
                 span { class: if key_bad { "text-xs text-red-600 mt-1 block" } else { "text-xs text-gray-400 mt-1 block" },
-                    {t!("flows-memory-key-rule", max: MEMORY_KEY_MAX_LEN)}
+                    {t!("flows-memory-key-rule", max : MEMORY_KEY_MAX_LEN)}
                 }
             }
             div {
@@ -127,11 +130,14 @@ pub(super) fn MemoryWriteForm(
                     disabled: !can_write,
                     onchange: move |secs: u32| {
                         ttl.set(secs);
-                        patch_selected(&mut cx, move |node: &mut FlowNode| {
-                            if let FlowNodeKind::MemoryWrite { config } = &mut node.kind {
-                                config.ttl_secs = secs;
-                            }
-                        });
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::MemoryWrite { config } = &mut node.kind {
+                                    config.ttl_secs = secs;
+                                }
+                            },
+                        );
                     },
                 }
                 span { class: if ttl_bad { "text-xs text-red-600 mt-1 block" } else { "text-xs text-gray-400 mt-1 block" },
@@ -197,13 +203,17 @@ pub(super) fn MemoryReadForm(
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-memory-read-help")} }
             div {
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-memory-keys")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-memory-keys")}
+                }
                 if current.keys.is_empty() {
                     p { class: "text-xs text-amber-600 mb-1", {t!("flows-memory-keys-empty")} }
                 }
                 ul { class: "space-y-1 mb-2",
                     for (i, k) in current.keys.iter().cloned().enumerate() {
-                        li { key: "{k}", class: "flex items-center justify-between gap-2 px-2 py-1 rounded bg-gray-50 border border-gray-200",
+                        li {
+                            key: "{k}",
+                            class: "flex items-center justify-between gap-2 px-2 py-1 rounded bg-gray-50 border border-gray-200",
                             code { class: "text-xs", "{k}" }
                             if can_write {
                                 button {
@@ -250,12 +260,14 @@ pub(super) fn MemoryReadForm(
                         }
                     }
                     span { class: "text-xs text-gray-400 mt-1 block",
-                        {t!("flows-memory-key-rule", max: MEMORY_KEY_MAX_LEN)}
+                        {t!("flows-memory-key-rule", max : MEMORY_KEY_MAX_LEN)}
                     }
                 }
             }
             div {
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-memory-max-age")} }
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-memory-max-age")}
+                }
                 DurationInput {
                     secs: max_age,
                     disabled: !can_write,

@@ -40,14 +40,16 @@ pub fn InspectorPanel(
                 }
             },
             div { class: "flex items-center gap-2.5 border-b border-gray-200 px-4 py-3",
-                {match icon {
-                    Some(icon) => rsx! {
-                        span { class: "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600",
-                            IconView { icon: icon, class: "h-4 w-4" }
-                        }
-                    },
-                    None => rsx! {},
-                }}
+                {
+                    match icon {
+                        Some(icon) => rsx! {
+                            span { class: "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600",
+                                IconView { icon, class: "h-4 w-4" }
+                            }
+                        },
+                        None => rsx! {},
+                    }
+                }
                 div { class: "min-w-0",
                     div { class: "truncate text-sm font-semibold text-gray-900", {title} }
                     if let Some(sub) = subtitle {

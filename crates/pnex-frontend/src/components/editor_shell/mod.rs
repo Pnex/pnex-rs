@@ -93,9 +93,7 @@ pub fn StatusChip(status: EditorStatus) -> Element {
     );
     let dot = format!("h-2 w-2 rounded-full {}", status.tone.dot());
     rsx! {
-        span {
-            class: "{pill}",
-            title: status.tooltip.unwrap_or_default(),
+        span { class: "{pill}", title: status.tooltip.unwrap_or_default(),
             span { class: "{dot}" }
             {status.label}
         }
@@ -196,53 +194,57 @@ pub fn EditorShell(
                 div { class: "h-5 w-px shrink-0 bg-gray-200" }
                 // Titre : plain quand pas de renommage ; sinon clic → input
                 // inline (Entrée/blur valident, Échap annule, vide ignoré).
-                {match on_rename {
-                    Some(cb) if renaming() => rsx! {
-                        input {
-                            class: "w-56 shrink-0 rounded-lg border border-blue-400 px-2 py-1 text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500",
-                            value: "{draft}",
-                            autofocus: true,
-                            oninput: move |e: Event<FormData>| draft.set(e.value()),
-                            onkeydown: move |e: KeyboardEvent| {
-                                if e.key() == Key::Escape {
-                                    renaming.set(false);
-                                } else if e.key() == Key::Enter {
+                {
+                    match on_rename {
+                        Some(cb) if renaming() => rsx! {
+                            input {
+                                class: "w-56 shrink-0 rounded-lg border border-blue-400 px-2 py-1 text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500",
+                                value: "{draft}",
+                                autofocus: true,
+                                oninput: move |e: Event<FormData>| draft.set(e.value()),
+                                onkeydown: move |e: KeyboardEvent| {
+                                    if e.key() == Key::Escape {
+                                        renaming.set(false);
+                                    } else if e.key() == Key::Enter {
+                                        renaming.set(false);
+                                        let value = draft().trim().to_string();
+                                        if !value.is_empty() && value != title_enter {
+                                            cb.call(value);
+                                        }
+                                    }
+                                },
+                                onblur: move |_| {
                                     renaming.set(false);
                                     let value = draft().trim().to_string();
-                                    if !value.is_empty() && value != title_enter {
+                                    if !value.is_empty() && value != title_blur {
                                         cb.call(value);
                                     }
-                                }
-                            },
-                            onblur: move |_| {
-                                renaming.set(false);
-                                let value = draft().trim().to_string();
-                                if !value.is_empty() && value != title_blur {
-                                    cb.call(value);
-                                }
-                            },
-                        }
-                    },
-                    Some(_) => rsx! {
-                        button {
-                            class: "group -ml-1 flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-0.5 hover:bg-gray-100",
-                            title: "{rename_title}",
-                            onclick: move |_| {
-                                draft.set(title.clone());
-                                renaming.set(true);
-                            },
-                            span { class: "max-w-[15rem] truncate text-base font-semibold text-gray-900", {title.clone()} }
-                            icons::Pencil { class: "h-3.5 w-3.5 shrink-0 text-gray-400 group-hover:text-gray-600" }
-                        }
-                    },
-                    None => rsx! {
-                        h2 { class: "max-w-[16rem] shrink-0 truncate text-base font-semibold text-gray-900", {title} }
-                    },
-                }}
+                                },
+                            }
+                        },
+                        Some(_) => rsx! {
+                            button {
+                                class: "group -ml-1 flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-0.5 hover:bg-gray-100",
+                                title: "{rename_title}",
+                                onclick: move |_| {
+                                    draft.set(title.clone());
+                                    renaming.set(true);
+                                },
+                                span { class: "max-w-[15rem] truncate text-base font-semibold text-gray-900", {title.clone()} }
+                                icons::Pencil { class: "h-3.5 w-3.5 shrink-0 text-gray-400 group-hover:text-gray-600" }
+                            }
+                        },
+                        None => rsx! {
+                            h2 { class: "max-w-[16rem] shrink-0 truncate text-base font-semibold text-gray-900",
+                                {title}
+                            }
+                        },
+                    }
+                }
                 if let Some(sub) = subtitle {
                     span { class: "shrink-0 text-xs text-gray-400", {sub} }
                 }
-                StatusChip { status: status }
+                StatusChip { status }
                 // Chips annexes (dirty, version ancienne…)
                 {extra_chips}
                 div { class: "min-w-4 flex-1" }
@@ -263,7 +265,9 @@ pub fn EditorShell(
                 div { class: "absolute inset-0", {canvas} }
                 if let Some(hint) = empty_hint {
                     div { class: "pointer-events-none absolute inset-0 z-10 flex items-center justify-center",
-                        p { class: "rounded-lg bg-white/80 px-4 py-2 text-sm text-gray-400", {hint} }
+                        p { class: "rounded-lg bg-white/80 px-4 py-2 text-sm text-gray-400",
+                            {hint}
+                        }
                     }
                 }
                 if let Some(p) = palette {

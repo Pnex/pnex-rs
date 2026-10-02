@@ -96,8 +96,12 @@ pub fn System() -> Element {
             },
             div { class: "space-y-6",
                 match &*retention.value().read() {
-                    None => rsx! { LoadingCard {} },
-                    Some(Err(err)) => rsx! { ErrorCard { message: api::error_i18n::localize(err) } },
+                    None => rsx! {
+                        LoadingCard {}
+                    },
+                    Some(Err(err)) => rsx! {
+                        ErrorCard { message: api::error_i18n::localize(err) }
+                    },
                     Some(Ok(info)) => rsx! {
                         RetentionCard { info: info.clone() }
                     },
@@ -113,27 +117,39 @@ pub fn System() -> Element {
             Some(Pending::DeleteStream(name)) => rsx! {
                 DeleteStreamDialog {
                     name,
-                    on_done: move |_| { pending.set(None); bump(); },
+                    on_done: move |_| {
+                        pending.set(None);
+                        bump();
+                    },
                     on_cancel: move |_| pending.set(None),
                 }
             },
             Some(Pending::DeleteStreams(names)) => rsx! {
                 DeleteStreamsDialog {
                     names,
-                    on_done: move |_| { pending.set(None); bump(); },
+                    on_done: move |_| {
+                        pending.set(None);
+                        bump();
+                    },
                     on_cancel: move |_| pending.set(None),
                 }
             },
             Some(Pending::DeleteRange(name)) => rsx! {
                 DeleteRangeDialog {
                     name,
-                    on_done: move |_| { pending.set(None); bump(); },
+                    on_done: move |_| {
+                        pending.set(None);
+                        bump();
+                    },
                     on_cancel: move |_| pending.set(None),
                 }
             },
             Some(Pending::Purge) => rsx! {
                 PurgeDialog {
-                    on_done: move |_| { pending.set(None); bump(); },
+                    on_done: move |_| {
+                        pending.set(None);
+                        bump();
+                    },
                     on_cancel: move |_| pending.set(None),
                 }
             },
@@ -154,7 +170,9 @@ fn LoadingCard() -> Element {
 #[component]
 fn ErrorCard(message: String) -> Element {
     rsx! {
-        div { class: "bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 text-sm", {message} }
+        div { class: "bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 text-sm",
+            {message}
+        }
     }
 }
 
@@ -202,7 +220,9 @@ fn RetentionCard(info: RetentionInfo) -> Element {
         section { class: "bg-white rounded-lg shadow p-6 space-y-4",
             div { class: "flex items-start justify-between gap-4 flex-wrap",
                 div {
-                    h2 { class: "text-lg font-semibold text-gray-900", {t!("system-retention-title")} }
+                    h2 { class: "text-lg font-semibold text-gray-900",
+                        {t!("system-retention-title")}
+                    }
                     p { class: "text-sm text-gray-600", {t!("system-retention-help")} }
                 }
                 span { class: "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {badge_class}",
@@ -211,7 +231,7 @@ fn RetentionCard(info: RetentionInfo) -> Element {
             }
             div { class: "flex items-baseline gap-2",
                 span { class: "text-4xl font-bold text-gray-900", "{info.days}" }
-                span { class: "text-gray-600", {t!("system-days", count: info.days)} }
+                span { class: "text-gray-600", {t!("system-days", count : info.days)} }
             }
             if info.clamped {
                 p { class: "text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2",
@@ -222,7 +242,12 @@ fn RetentionCard(info: RetentionInfo) -> Element {
             if saas {
                 if let Some(tier) = info.tier_name.clone() {
                     p { class: "text-sm text-gray-600",
-                        {t!("system-retention-tier", tier: tier, days: info.tier_days.map(|d| d.to_string()).unwrap_or_else(|| "—".into()))}
+                        {
+                            t!(
+                                "system-retention-tier", tier : tier, days : info.tier_days.map(| d | d
+                                .to_string()).unwrap_or_else(|| "—".into())
+                            )
+                        }
                     }
                 }
             }
@@ -337,13 +362,16 @@ fn DataCard(
         );
     }
     columns.extend([
-        Column::new(
-            t!("system-col-stream").to_string(),
-            |s: &O2StreamInfo| rsx! { {s.name.clone()} },
-        )
+        Column::new(t!("system-col-stream").to_string(), |s: &O2StreamInfo| {
+            rsx! {
+                {s.name.clone()}
+            }
+        })
         .with_td_class("font-mono text-sm text-gray-900"),
         Column::new(t!("system-col-docs").to_string(), |s: &O2StreamInfo| {
-            rsx! { {s.doc_num.map(|n| n.to_string()).unwrap_or_else(|| "—".into())} }
+            rsx! {
+                {s.doc_num.map(|n| n.to_string()).unwrap_or_else(|| "—".into())}
+            }
         })
         .with_td_class("text-gray-600"),
         Column::new(t!("system-col-size").to_string(), |s: &O2StreamInfo| {
@@ -355,20 +383,28 @@ fn DataCard(
                 .storage_bytes
                 .map(|b| t!("system-size-raw", size: format_bytes(b as f64)).to_string())
                 .unwrap_or_default();
-            rsx! { span { title: "{raw}", {disk} } }
+            rsx! {
+                span { title: "{raw}", {disk} }
+            }
         })
         .with_td_class("text-gray-600"),
         Column::new(t!("system-col-period").to_string(), |s: &O2StreamInfo| {
-            rsx! { {format!("{} → {}", short_utc(&s.time_min), short_utc(&s.time_max))} }
+            rsx! {
+                {format!("{} → {}", short_utc(&s.time_min), short_utc(&s.time_max))}
+            }
         })
         .with_td_class("text-gray-600 text-sm"),
         Column::new(
             t!("system-col-retention").to_string(),
             |s: &O2StreamInfo| {
                 if s.retention_days > 0 {
-                    rsx! { {t!("system-days-short", count: s.retention_days)} }
+                    rsx! {
+                        {t!("system-days-short", count : s.retention_days)}
+                    }
                 } else {
-                    rsx! { {t!("system-retention-o2-default")} }
+                    rsx! {
+                        {t!("system-retention-o2-default")}
+                    }
                 }
             },
         )
@@ -402,7 +438,7 @@ fn DataCard(
                 div {
                     h2 { class: "text-lg font-semibold text-gray-900", {t!("system-data-title")} }
                     p { class: "text-sm text-gray-600",
-                        {t!("system-data-summary", count: rows.len(), size: format_bytes(total))}
+                        {t!("system-data-summary", count : rows.len(), size : format_bytes(total))}
                     }
                 }
                 if can_write && !rows.is_empty() {
@@ -417,10 +453,7 @@ fn DataCard(
             if let Some((used, quota, over)) = quota {
                 QuotaGauge { used, quota, over }
             }
-            ListStates {
-                state,
-                is_empty: rows.is_empty(),
-                empty_message,
+            ListStates { state, is_empty: rows.is_empty(), empty_message,
                 div { class: "flex flex-wrap items-center gap-3 mb-3",
                     input {
                         class: "flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm",
@@ -452,7 +485,7 @@ fn DataCard(
                                     }
                                 },
                             }
-                            {t!("system-select-all", count: filtered_names.len())}
+                            {t!("system-select-all", count : filtered_names.len())}
                         }
                         if selection_count > 0 {
                             button {
@@ -462,7 +495,7 @@ fn DataCard(
                                     move |_| on_action.call(Pending::DeleteStreams(names.clone()))
                                 },
                                 icons::Trash2 { class: "h-4 w-4 inline mr-1" }
-                                {t!("system-delete-selected", count: selection_count)}
+                                {t!("system-delete-selected", count : selection_count)}
                             }
                         }
                     }
@@ -497,10 +530,15 @@ fn QuotaGauge(used: f64, quota: f64, over: bool) -> Element {
         div { class: "space-y-1",
             div { class: "flex justify-between text-sm",
                 span { class: "text-gray-600", {t!("system-quota-label")} }
-                span { class: "font-medium text-gray-900", {format!("{} / {}", format_bytes(used), format_bytes(quota))} }
+                span { class: "font-medium text-gray-900",
+                    {format!("{} / {}", format_bytes(used), format_bytes(quota))}
+                }
             }
             div { class: "h-2 w-full bg-gray-100 rounded",
-                div { class: "h-2 rounded {bar_class}", style: "width: {ratio * 100.0:.1}%" }
+                div {
+                    class: "h-2 rounded {bar_class}",
+                    style: "width: {ratio * 100.0:.1}%",
+                }
             }
             if over {
                 p { class: "text-sm text-red-700", {t!("system-quota-over")} }
@@ -515,7 +553,7 @@ fn DeleteStreamDialog(name: String, on_done: Callback<()>, on_cancel: Callback<(
     rsx! {
         ConfirmDialog {
             title: t!("system-delete-stream-title").to_string(),
-            message: t!("system-delete-stream-message", name: name.clone()).to_string(),
+            message: t!("system-delete-stream-message", name : name.clone()).to_string(),
             confirm_label: t!("common-delete").to_string(),
             on_confirm: move |_| {
                 let stream = stream.clone();
@@ -542,7 +580,7 @@ fn DeleteStreamsDialog(
     rsx! {
         ConfirmDialog {
             title: t!("system-delete-streams-title").to_string(),
-            message: t!("system-delete-streams-message", count: count).to_string(),
+            message: t!("system-delete-streams-message", count : count).to_string(),
             confirm_label: t!("common-delete").to_string(),
             on_confirm: move |_| {
                 let names = names.clone();
@@ -606,7 +644,9 @@ fn DeleteRangeDialog(name: String, on_done: Callback<()>, on_cancel: Callback<()
             div {
                 class: "bg-white rounded-lg shadow-xl max-w-md w-full p-6 space-y-4",
                 onclick: move |e| e.stop_propagation(),
-                h3 { class: "text-lg font-semibold text-gray-900", {t!("system-delete-range-title", name: name.clone())} }
+                h3 { class: "text-lg font-semibold text-gray-900",
+                    {t!("system-delete-range-title", name : name.clone())}
+                }
                 p { class: "text-sm text-gray-600", {t!("system-delete-range-help")} }
                 label { class: "block text-sm font-medium text-gray-700", {t!("system-range-start")} }
                 input {
@@ -668,7 +708,9 @@ fn PurgeDialog(on_done: Callback<()>, on_cancel: Callback<()>) -> Element {
                 class: "bg-white rounded-lg shadow-xl max-w-md w-full p-6 space-y-4",
                 onclick: move |e| e.stop_propagation(),
                 h3 { class: "text-lg font-semibold text-red-700", {t!("system-purge-title")} }
-                p { class: "text-sm text-gray-600", {t!("system-purge-message", name: org_name.clone())} }
+                p { class: "text-sm text-gray-600",
+                    {t!("system-purge-message", name : org_name.clone())}
+                }
                 input {
                     class: "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500",
                     r#type: "text",

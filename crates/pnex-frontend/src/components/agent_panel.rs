@@ -42,7 +42,11 @@ fn CommandBlock(command: String) -> Element {
                         copied.set(false);
                     });
                 },
-                if copied() { {t!("agent-install-copied")} } else { {t!("agent-install-copy")} }
+                if copied() {
+                    {t!("agent-install-copied")}
+                } else {
+                    {t!("agent-install-copy")}
+                }
             }
         }
     }
@@ -94,7 +98,7 @@ pub fn AgentInstall(device_pk: i64) -> Element {
 
     rsx! {
         div { class: "space-y-4",
-            p { class: "text-sm text-gray-600", {t!("agent-install-help", time: expires)} }
+            p { class: "text-sm text-gray-600", {t!("agent-install-help", time : expires)} }
             div { class: "flex flex-wrap items-center gap-3",
                 span { class: "rounded-lg bg-blue-50 px-3 py-2 font-mono text-lg font-semibold tracking-widest text-blue-800",
                     "{created.code}"
@@ -122,13 +126,10 @@ pub fn AgentInstall(device_pk: i64) -> Element {
                     (InstallTab::Linux, t!("agent-install-tab-linux")),
                     (InstallTab::Windows, t!("agent-install-tab-windows")),
                     (InstallTab::Manual, t!("agent-install-tab-manual")),
-                ] {
+                ]
+                {
                     button {
-                        class: if tab() == t_id {
-                            "border-b-2 border-blue-600 px-3 py-2 text-sm font-medium text-blue-700"
-                        } else {
-                            "px-3 py-2 text-sm text-gray-500 hover:text-gray-800"
-                        },
+                        class: if tab() == t_id { "border-b-2 border-blue-600 px-3 py-2 text-sm font-medium text-blue-700" } else { "px-3 py-2 text-sm text-gray-500 hover:text-gray-800" },
                         r#type: "button",
                         onclick: move |_| tab.set(t_id),
                         "{label}"
@@ -136,8 +137,12 @@ pub fn AgentInstall(device_pk: i64) -> Element {
                 }
             }
             match tab() {
-                InstallTab::Linux => rsx! { CommandBlock { command: commands.linux.clone() } },
-                InstallTab::Windows => rsx! { CommandBlock { command: commands.windows.clone() } },
+                InstallTab::Linux => rsx! {
+                    CommandBlock { command: commands.linux.clone() }
+                },
+                InstallTab::Windows => rsx! {
+                    CommandBlock { command: commands.windows.clone() }
+                },
                 InstallTab::Manual => rsx! {
                     div { class: "space-y-2",
                         p { class: "text-xs text-gray-500", {t!("agent-install-manual-help")} }
@@ -285,14 +290,21 @@ pub fn AgentPanel(device_pk: i64, can_write: bool) -> Element {
                 }
             }
             div { class: "space-y-2",
-                h3 { class: "text-sm font-semibold uppercase tracking-wider text-gray-500", {t!("agent-keys-title")} }
+                h3 { class: "text-sm font-semibold uppercase tracking-wider text-gray-500",
+                    {t!("agent-keys-title")}
+                }
                 p { class: "text-xs text-gray-500", {t!("agent-keys-help")} }
                 match &*keys.read() {
                     Some(Ok(list)) if list.is_empty() => rsx! {
                         p { class: "py-4 text-center text-sm text-gray-400", {t!("agent-keys-empty")} }
                     },
                     Some(Ok(list)) => rsx! {
-                        KeysTable { device_pk, keys: list.clone(), can_write, on_changed: move |_| reload.with_mut(|r| *r += 1) }
+                        KeysTable {
+                            device_pk,
+                            keys: list.clone(),
+                            can_write,
+                            on_changed: move |_| reload.with_mut(|r| *r += 1),
+                        }
                     },
                     Some(Err(err)) => rsx! {
                         p { class: "text-sm text-red-600", {err.message.clone()} }
@@ -301,17 +313,15 @@ pub fn AgentPanel(device_pk: i64, can_write: bool) -> Element {
                 }
             }
             div { class: "space-y-2",
-                h3 { class: "text-sm font-semibold uppercase tracking-wider text-gray-500", {t!("agent-examples-title")} }
+                h3 { class: "text-sm font-semibold uppercase tracking-wider text-gray-500",
+                    {t!("agent-examples-title")}
+                }
                 p { class: "text-xs text-gray-500", {t!("agent-examples-help")} }
                 div { class: "flex gap-1",
                     for (i, (name, _)) in examples.iter().enumerate() {
                         button {
                             key: "{name}",
-                            class: if example() == i {
-                                "rounded-full bg-blue-600 px-3 py-1 text-xs text-white"
-                            } else {
-                                "rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 hover:bg-gray-200"
-                            },
+                            class: if example() == i { "rounded-full bg-blue-600 px-3 py-1 text-xs text-white" } else { "rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 hover:bg-gray-200" },
                             r#type: "button",
                             onclick: move |_| example.set(i),
                             "{name}"
@@ -347,7 +357,8 @@ fn agent_facts(
                 (t!("agent-panel-host"), host),
                 (t!("agent-panel-version"), version),
                 (t!("agent-panel-enrolled"), enrolled),
-            ] {
+            ]
+            {
                 div { key: "{label}",
                     div { class: "text-xs uppercase tracking-wider text-gray-400", "{label}" }
                     div { class: "font-mono text-sm text-gray-800", "{value}" }
@@ -379,7 +390,13 @@ fn KeysTable(
                 }
                 tbody {
                     for k in keys {
-                        KeyRow { key: "{k.id}", device_pk, row: k, can_write, on_changed }
+                        KeyRow {
+                            key: "{k.id}",
+                            device_pk,
+                            row: k,
+                            can_write,
+                            on_changed,
+                        }
                     }
                 }
             }

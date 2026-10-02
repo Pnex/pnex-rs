@@ -592,6 +592,18 @@ tasks:
 
   # ---------- Qualité ----------
 
+  fmt:
+    desc: Format the workspace — rsx through the guarded dx fmt, then cargo fmt (docs/architecture/rsx-fmt.md)
+    cmds:
+      - python3 crates/pnex-frontend/scripts/rsx_fmt.py write
+      - cargo fmt --all
+
+  fmt:check:
+    desc: Check formatting without touching any file (same gate as CI)
+    cmds:
+      - cargo fmt --all -- --check
+      - python3 crates/pnex-frontend/scripts/rsx_fmt.py check
+
   lint:
     desc: Clippy sur tout le workspace
     deps: [css:ensure]

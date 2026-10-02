@@ -51,7 +51,7 @@ pub fn AssistantPanel() -> Element {
                 class: "fixed bottom-6 right-6 z-30 rounded-full h-12 w-12 bg-blue-600 text-white shadow-lg hover:bg-blue-700 text-xl leading-none",
                 onclick: move |_| open.set(true),
                 aria_label: t!("ai-title"),
-                { "💬" }
+                {"💬"}
             }
             if open() {
                 AssistantDrawer { on_close: move |_| open.set(false) }
@@ -125,7 +125,7 @@ fn AssistantDrawer(on_close: Callback) -> Element {
                     button {
                         class: "text-gray-400 hover:text-gray-600",
                         onclick: close,
-                        { "✕" }
+                        {"✕"}
                     }
                 }
                 div { class: "flex-1 overflow-y-auto px-4 py-3 space-y-3",
@@ -184,7 +184,7 @@ fn Bubble(bubble: ChatBubble) -> Element {
         ChatBubble::User(text) => rsx! {
             div { class: "flex justify-end",
                 div { class: "max-w-[80%] rounded-lg bg-blue-600 text-white px-3 py-2 text-sm whitespace-pre-wrap",
-                    { text }
+                    {text}
                 }
             }
         },
@@ -196,52 +196,54 @@ fn Bubble(bubble: ChatBubble) -> Element {
                 .cloned()
                 .collect();
             rsx! {
-            div { class: "flex justify-start",
-                div { class: "max-w-[90%] space-y-2",
-                    if !trace.is_empty() {
-                        details { class: "text-xs text-gray-600 border border-gray-200 rounded-md",
-                            summary { class: "px-2 py-1 cursor-pointer select-none", {t!("ai-tool-trace")} }
-                            ul { class: "px-2 py-1 space-y-0.5",
-                                for entry in trace.iter() {
-                                    li { class: "flex items-start gap-1",
-                                        span {
-                                            class: if entry.ok { "text-green-600" } else { "text-red-600" },
-                                            { if entry.ok { "✓" } else { "✗" } }
+                div { class: "flex justify-start",
+                    div { class: "max-w-[90%] space-y-2",
+                        if !trace.is_empty() {
+                            details { class: "text-xs text-gray-600 border border-gray-200 rounded-md",
+                                summary { class: "px-2 py-1 cursor-pointer select-none",
+                                    {t!("ai-tool-trace")}
+                                }
+                                ul { class: "px-2 py-1 space-y-0.5",
+                                    for entry in trace.iter() {
+                                        li { class: "flex items-start gap-1",
+                                            span { class: if entry.ok { "text-green-600" } else { "text-red-600" },
+                                                {if entry.ok { "✓" } else { "✗" }}
+                                            }
+                                            span { class: "font-mono", {entry.name.clone()} }
+                                            span { class: "text-gray-500", {entry.summary.clone()} }
                                         }
-                                        span { class: "font-mono", { entry.name.clone() } }
-                                        span { class: "text-gray-500", { entry.summary.clone() } }
                                     }
                                 }
                             }
                         }
-                    }
-                    if !text.is_empty() {
-                        if super::markdown::looks_like_markdown(&text) {
-                            div { class: "ai-md rounded-lg bg-gray-100 text-gray-900 px-3 py-2 text-sm",
-                                dangerous_inner_html: super::markdown::to_html(&text),
-                            }
-                        } else {
-                            div { class: "rounded-lg bg-gray-100 text-gray-900 px-3 py-2 text-sm whitespace-pre-wrap",
-                                { text }
+                        if !text.is_empty() {
+                            if super::markdown::looks_like_markdown(&text) {
+                                div {
+                                    class: "ai-md rounded-lg bg-gray-100 text-gray-900 px-3 py-2 text-sm",
+                                    dangerous_inner_html: super::markdown::to_html(&text),
+                                }
+                            } else {
+                                div { class: "rounded-lg bg-gray-100 text-gray-900 px-3 py-2 text-sm whitespace-pre-wrap",
+                                    {text}
+                                }
                             }
                         }
-                    }
-                    // Carte flow : l'outil a touché un flow → deep link.
-                    for entry in flow_entries {
-                        button {
-                            key: "{entry.flow_id:?}",
-                            class: "px-3 py-1.5 rounded-md border border-blue-600 text-blue-600 text-sm hover:bg-blue-50",
-                            onclick: move |_| {
-                                if let Some(flow_id) = entry.flow_id {
-                                    OPEN_FLOW.with_mut(|f| *f = Some(flow_id));
-                                    navigator.push(crate::app::Route::Flows {});
-                                }
-                            },
-                            {t!("ai-open-in-editor")}
+                        // Carte flow : l'outil a touché un flow → deep link.
+                        for entry in flow_entries {
+                            button {
+                                key: "{entry.flow_id:?}",
+                                class: "px-3 py-1.5 rounded-md border border-blue-600 text-blue-600 text-sm hover:bg-blue-50",
+                                onclick: move |_| {
+                                    if let Some(flow_id) = entry.flow_id {
+                                        OPEN_FLOW.with_mut(|f| *f = Some(flow_id));
+                                        navigator.push(crate::app::Route::Flows {});
+                                    }
+                                },
+                                {t!("ai-open-in-editor")}
+                            }
                         }
                     }
                 }
-            }
             }
         }
     }

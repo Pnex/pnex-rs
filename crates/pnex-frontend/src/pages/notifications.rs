@@ -44,14 +44,30 @@ enum Tab {
 fn kind_icon(kind: &str) -> dioxus::prelude::Element {
     rsx! {
         match kind {
-            "websocket" => rsx! { icons::Bell { class: "h-5 w-5" } },
-            "webhook" => rsx! { icons::Zap { class: "h-5 w-5" } },
-            "ntfy" => rsx! { icons::BellRing { class: "h-5 w-5" } },
-            "telegram" => rsx! { icons::Send { class: "h-5 w-5" } },
-            "slack" => rsx! { icons::Hash { class: "h-5 w-5" } },
-            "discord" => rsx! { icons::MessageCircle { class: "h-5 w-5" } },
-            "smtp" => rsx! { icons::Mail { class: "h-5 w-5" } },
-            _ => rsx! { icons::Package { class: "h-5 w-5" } },
+            "websocket" => rsx! {
+                icons::Bell { class: "h-5 w-5" }
+            },
+            "webhook" => rsx! {
+                icons::Zap { class: "h-5 w-5" }
+            },
+            "ntfy" => rsx! {
+                icons::BellRing { class: "h-5 w-5" }
+            },
+            "telegram" => rsx! {
+                icons::Send { class: "h-5 w-5" }
+            },
+            "slack" => rsx! {
+                icons::Hash { class: "h-5 w-5" }
+            },
+            "discord" => rsx! {
+                icons::MessageCircle { class: "h-5 w-5" }
+            },
+            "smtp" => rsx! {
+                icons::Mail { class: "h-5 w-5" }
+            },
+            _ => rsx! {
+                icons::Package { class: "h-5 w-5" }
+            },
         }
     }
 }
@@ -107,7 +123,7 @@ pub fn Notifications() -> Element {
         ListLayout {
             title: t!("nav-notifications").to_string(),
             subtitle: Some(t!("notify-subtitle").to_string()),
-            can_write: can_write,
+            can_write,
             // Header "add" action, like the whole CRUD socle — the label
             // follows the active tab (channels vs templates).
             add_label: match tab() {
@@ -134,11 +150,7 @@ pub fn Notifications() -> Element {
                     ]
                     {
                         button {
-                            class: if tab() == tab_def.0 {
-                                "px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white"
-                            } else {
-                                "px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
-                            },
+                            class: if tab() == tab_def.0 { "px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white" } else { "px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100" },
                             onclick: move |_| tab.set(tab_def.0),
                             {t!(tab_def.1)}
                         }
@@ -149,43 +161,49 @@ pub fn Notifications() -> Element {
                 }
 
                 match tab() {
-                    Tab::Channels => rsx! { ChannelsTab {
-                        channels,
-                        kinds,
-                        channel_page,
-                        can_write,
-                        reload,
-                        edit_channel,
-                        delete_target,
-                        journal_channel,
-                        tab,
-                    } },
-                    Tab::Templates => rsx! { TemplatesTab {
-                        templates,
-                        template_page,
-                        can_write,
-                        reload,
-                        edit_template,
-                        delete_target,
-                    } },
-                    Tab::Events => rsx! { crate::components::notify_deliveries::NotifyDeliveriesTab {
-                        channels: channels
-                            .value()
-                            .read()
-                            .as_ref()
-                            .and_then(|r| r.as_ref().ok())
-                            .map(|p| p.results.clone())
-                            .unwrap_or_default(),
-                        templates: templates
-                            .value()
-                            .read()
-                            .as_ref()
-                            .and_then(|r| r.as_ref().ok())
-                            .map(|p| p.results.clone())
-                            .unwrap_or_default(),
-                        channel_filter: journal_channel,
-                        reload,
-                    } },
+                    Tab::Channels => rsx! {
+                        ChannelsTab {
+                            channels,
+                            kinds,
+                            channel_page,
+                            can_write,
+                            reload,
+                            edit_channel,
+                            delete_target,
+                            journal_channel,
+                            tab,
+                        }
+                    },
+                    Tab::Templates => rsx! {
+                        TemplatesTab {
+                            templates,
+                            template_page,
+                            can_write,
+                            reload,
+                            edit_template,
+                            delete_target,
+                        }
+                    },
+                    Tab::Events => rsx! {
+                        crate::components::notify_deliveries::NotifyDeliveriesTab {
+                            channels: channels
+                                .value()
+                                .read()
+                                .as_ref()
+                                .and_then(|r| r.as_ref().ok())
+                                .map(|p| p.results.clone())
+                                .unwrap_or_default(),
+                            templates: templates
+                                .value()
+                                .read()
+                                .as_ref()
+                                .and_then(|r| r.as_ref().ok())
+                                .map(|p| p.results.clone())
+                                .unwrap_or_default(),
+                            channel_filter: journal_channel,
+                            reload,
+                        }
+                    },
                 }
             }
 
@@ -227,7 +245,10 @@ pub fn Notifications() -> Element {
             if let Some((what, id, name)) = delete_modal {
                 crate::components::confirm::ConfirmDialog {
                     title: t!("notify-confirm-delete-title"),
-                    message: t!("common-quoted-message", name: name.clone(), message: t!("notify-confirm-delete-message")),
+                    message: t!(
+                        "common-quoted-message", name : name.clone(), message :
+                        t!("notify-confirm-delete-message")
+                    ),
                     confirm_label: t!("notify-delete"),
                     on_confirm: move |_| {
                         let (what, id, _) = (what, id.clone(), name.clone());
@@ -437,15 +458,15 @@ fn ChannelsTab(
     rsx! {
         ListStates {
             state: list_state,
-            is_empty: is_empty,
+            is_empty,
             empty_message: t!("notify-empty-channels").to_string(),
             div { class: "space-y-4",
                 DataTable {
-                    columns: columns,
-                    rows: rows,
+                    columns,
+                    rows,
                     row_key: RowKey::new(|ch: &NotifyChannel| ch.id.to_string()),
                 }
-                ListPager { count: count, page: channel_page }
+                ListPager { count, page: channel_page }
             }
         }
     }
@@ -525,11 +546,15 @@ fn KindPickerModal(
                                         {kind_icon(&info.kind)}
                                     }
                                     span { class: "min-w-0",
-                                        span { class: "block font-medium text-gray-900", {t!(kind_label(&info.kind))} }
-                                        {match kind_desc(&info.kind) {
-                                            "" => rsx! {},
-                                            desc => rsx! { span { class: "block text-xs text-gray-500", {t!(desc)} } },
-                                        }}
+                                        span { class: "block font-medium text-gray-900", {t!(kind_label(& info.kind))} }
+                                        {
+                                            match kind_desc(&info.kind) {
+                                                "" => rsx! {},
+                                                desc => rsx! {
+                                                    span { class: "block text-xs text-gray-500", {t!(desc)} }
+                                                },
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -627,15 +652,15 @@ fn TemplatesTab(
     rsx! {
         ListStates {
             state: list_state,
-            is_empty: is_empty,
+            is_empty,
             empty_message: t!("notify-empty-templates").to_string(),
             div { class: "space-y-4",
                 DataTable {
-                    columns: columns,
-                    rows: rows,
+                    columns,
+                    rows,
                     row_key: RowKey::new(|tpl: &NotifyTemplate| tpl.id.to_string()),
                 }
-                ListPager { count: count, page: template_page }
+                ListPager { count, page: template_page }
             }
         }
     }

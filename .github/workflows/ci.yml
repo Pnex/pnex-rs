@@ -132,6 +132,28 @@ jobs:
       # armv7 cross check when starlark/pagable ship a 32-bit compatible
       # release.
 
+  fmt:
+    name: fmt (cargo fmt + rsx)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # cargo fmt --all loads the workspace, whose path deps live in the
+          # vendor/edgelinkd submodule.
+          submodules: true
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+      # rsx bodies are invisible to rustfmt: dx fmt owns them. The wrapper
+      # runs dx on stdin only (`dx fmt --check` rewrites files).
+      - uses: cargo-bins/cargo-binstall@main
+      - name: Install dx
+        run: cargo binstall -y --locked dioxus-cli@0.7.10
+      - name: rsx fmt
+        run: python3 crates/pnex-frontend/scripts/rsx_fmt.py check
+
   frontend:
     name: dx build (web)
     runs-on: ubuntu-latest

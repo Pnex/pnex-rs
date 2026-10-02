@@ -76,7 +76,9 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
                         div { class: "flex items-center gap-2",
                             span { class: "inline-block h-3 w-3 rounded-full {annot_dot_color(&item.kind)}" }
                             span { class: "text-sm font-semibold text-gray-900 truncate",
-                                {if item.label.is_empty() { t!(kind_key).to_string() } else { item.label.clone() }}
+                                {
+                                    if item.label.is_empty() { t!(kind_key).to_string() } else { item.label.clone() }
+                                }
                             }
                             span { class: "text-[11px] uppercase tracking-wide text-gray-400",
                                 {t!(kind_key)}
@@ -97,11 +99,7 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
                 }
 
                 // Cible : résolue ou morte (grisée — référence tolérée, S7).
-                div { class: if is_dead {
-                        "mt-3 text-xs rounded-lg px-3 py-2 bg-gray-50 text-gray-400 border border-gray-100"
-                    } else {
-                        "mt-3 text-xs rounded-lg px-3 py-2 bg-blue-50 text-blue-800 border border-blue-100"
-                    },
+                div { class: if is_dead { "mt-3 text-xs rounded-lg px-3 py-2 bg-gray-50 text-gray-400 border border-gray-100" } else { "mt-3 text-xs rounded-lg px-3 py-2 bg-blue-50 text-blue-800 border border-blue-100" },
                     {target_block}
                 }
 
@@ -116,17 +114,15 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
                                         {value.unwrap_or_else(|| t!("annot-popover-none").to_string())}
                                     }
                                 }
-                                span { class: if connected {
-                                        "ml-auto inline-flex items-center gap-1 text-emerald-600"
-                                    } else {
-                                        "ml-auto inline-flex items-center gap-1 text-gray-400"
-                                    },
-                                    span { class: if connected {
-                                            "h-2 w-2 rounded-full bg-emerald-500"
+                                span { class: if connected { "ml-auto inline-flex items-center gap-1 text-emerald-600" } else { "ml-auto inline-flex items-center gap-1 text-gray-400" },
+                                    span { class: if connected { "h-2 w-2 rounded-full bg-emerald-500" } else { "h-2 w-2 rounded-full bg-gray-300" } }
+                                    {
+                                        if connected {
+                                            t!("annot-popover-connected").to_string()
                                         } else {
-                                            "h-2 w-2 rounded-full bg-gray-300"
-                                        } }
-                                    {if connected { t!("annot-popover-connected").to_string() } else { t!("annot-popover-offline").to_string() }}
+                                            t!("annot-popover-offline").to_string()
+                                        }
+                                    }
                                 }
                             },
                             None => rsx! {

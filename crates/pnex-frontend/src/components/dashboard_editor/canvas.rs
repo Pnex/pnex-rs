@@ -45,23 +45,47 @@ pub(super) fn CanvasView(cx: EditorCx) -> Element {
             onwheel: move |event| canvas_wheel(event, cx),
             onkeydown: move |event| key_handler(event, cx),
 
-            div {
-                style: "transform: translate({pan_x}px, {pan_y}px) scale({zoom}); transform-origin: 0 0; width: {canvas.width}px; height: {canvas.height}px; background-color: {bg}; position: absolute;",
+            div { style: "transform: translate({pan_x}px, {pan_y}px) scale({zoom}); transform-origin: 0 0; width: {canvas.width}px; height: {canvas.height}px; background-color: {bg}; position: absolute;",
                 // ── Widgets (divs absolus, sous les accroches)
                 for w in &widgets {
-                    WidgetElement { key: "{w.id}", w: w.clone(), selected: selected.clone(), live: live.clone(), interaction: interaction.clone(), cx: cx }
+                    WidgetElement {
+                        key: "{w.id}",
+                        w: w.clone(),
+                        selected: selected.clone(),
+                        live: live.clone(),
+                        interaction: interaction.clone(),
+                        cx,
+                    }
                 }
                 // ── Traits + accroches (surcouche SVG)
                 svg {
                     xmlns: "http://www.w3.org/2000/svg",
                     style: "position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible;",
                     for wire in &wires {
-                        WireElement { key: "{wire.id}", layout: layout_snapshot.clone(), wire: wire.clone(), selected: selected.clone(), cx: cx }
+                        WireElement {
+                            key: "{wire.id}",
+                            layout: layout_snapshot.clone(),
+                            wire: wire.clone(),
+                            selected: selected.clone(),
+                            cx,
+                        }
                     }
                     if tool == Tool::Wire {
                         for w in &widgets {
-                            for side in [pnex_core::WireSide::Top, pnex_core::WireSide::Bottom, pnex_core::WireSide::Left, pnex_core::WireSide::Right] {
-                                AnchorElement { key: "{w.id}-{side:?}", w: w.clone(), side: side, wire_draft: wire_draft.clone(), cx: cx }
+                            for side in [
+                                pnex_core::WireSide::Top,
+                                pnex_core::WireSide::Bottom,
+                                pnex_core::WireSide::Left,
+                                pnex_core::WireSide::Right,
+                            ]
+                            {
+                                AnchorElement {
+                                    key: "{w.id}-{side:?}",
+                                    w: w.clone(),
+                                    side,
+                                    wire_draft: wire_draft.clone(),
+                                    cx,
+                                }
                             }
                         }
                     }
@@ -231,30 +255,43 @@ fn WidgetElement(
         .and_then(|s| live.get(&s.series_key()))
         .cloned()
         .flatten();
+    // Handler kept out of rsx!: dx fmt mis-splices long handler bodies.
+    let w_down = w.clone();
+    let on_pointer_down = {
+        let id = id.clone();
+        move |event: PointerEvent| {
+            event.stop_propagation();
+            if cx.tool.cloned() != Tool::Select {
+                return;
+            }
+            let Some(rect) = geometry::canvas_rect() else {
+                return;
+            };
+            let point = client_of(&event);
+            let (gx, gy) = geometry::to_canvas(point, rect, cx.pan.cloned(), cx.zoom.cloned());
+            cx.selected.set(Some(Selection::Widget(id.clone())));
+            if !is_selected {
+                let current = cx.layout.read().clone();
+                cx.history.with_mut(|h| h.push(&current));
+            }
+            if geometry::resize_handle_at(&w_down, (gx, gy), 8.0) {
+                cx.interaction.set(Interaction::Resizing { id: id.clone() });
+            } else {
+                let grab = (gx - w_down.x as f64, gy - w_down.y as f64);
+                cx.interaction.set(Interaction::Dragging {
+                    id: id.clone(),
+                    grab,
+                });
+            }
+        }
+    };
 
     rsx! {
         div {
             style: "position: absolute; left: {w.x}px; top: {w.y}px; width: {w.w}px; height: {w.h}px;",
             class: "{frame} select-none",
-            onpointerdown: move |event| {
-                event.stop_propagation();
-                if cx.tool.cloned() != Tool::Select { return; }
-                let Some(rect) = geometry::canvas_rect() else { return; };
-                let point = client_of(&event);
-                let (gx, gy) = geometry::to_canvas(point, rect, cx.pan.cloned(), cx.zoom.cloned());
-                cx.selected.set(Some(Selection::Widget(id.clone())));
-                if !is_selected {
-                    let current = cx.layout.read().clone();
-                    cx.history.with_mut(|h| h.push(&current));
-                }
-                if geometry::resize_handle_at(&w, (gx, gy), 8.0) {
-                    cx.interaction.set(Interaction::Resizing { id: id.clone() });
-                } else {
-                    let grab = (gx - w.x as f64, gy - w.y as f64);
-                    cx.interaction.set(Interaction::Dragging { id: id.clone(), grab });
-                }
-            },
-            WidgetBody { widget: w.clone(), points: points, values: Some(live.clone()) }
+            onpointerdown: on_pointer_down,
+            WidgetBody { widget: w.clone(), points, values: Some(live.clone()) }
             if is_selected && !busy {
                 div { class: "absolute -bottom-1 -right-1 h-3 w-3 rounded-sm bg-blue-500 cursor-se-resize" }
             }
@@ -290,10 +327,22 @@ fn WireElement(
                     cx.selected.set(Some(Selection::Wire(id.clone())));
                 }
             },
-            path { d: "{path}", fill: "none", stroke: "{stroke}", "stroke-width": "6",
-                "stroke-opacity": "0", "stroke-linecap": "round" }
-            path { d: "{path}", fill: "none", stroke: "{stroke}", "stroke-width": "2",
-                "stroke-dasharray": "6 4", "stroke-linecap": "round" }
+            path {
+                d: "{path}",
+                fill: "none",
+                stroke: "{stroke}",
+                "stroke-width": "6",
+                "stroke-opacity": "0",
+                "stroke-linecap": "round",
+            }
+            path {
+                d: "{path}",
+                fill: "none",
+                stroke: "{stroke}",
+                "stroke-width": "2",
+                "stroke-dasharray": "6 4",
+                "stroke-linecap": "round",
+            }
         }
     }
 }
@@ -314,8 +363,12 @@ fn AnchorElement(
     let fill = if armed { "#2563eb" } else { "#94a3b8" };
     rsx! {
         circle {
-            cx: "{ax}", cy: "{ay}", r: "6",
-            fill: "{fill}", stroke: "#ffffff", "stroke-width": "2",
+            cx: "{ax}",
+            cy: "{ay}",
+            r: "6",
+            fill: "{fill}",
+            stroke: "#ffffff",
+            "stroke-width": "2",
             style: "pointer-events: all; cursor: crosshair;",
             onpointerdown: move |event| {
                 event.stop_propagation();
@@ -332,9 +385,17 @@ fn AnchorElement(
                 cx.history.with_mut(|h| h.push(&current));
                 cx.counter.with_mut(|c| *c += 1);
                 let id = state::next_id("t", cx.counter.cloned());
-                cx.layout.with_mut(|l| {
-                    state::add_wire(l, pnex_core::Wire { id, from: first, to: endpoint.clone() })
-                });
+                cx.layout
+                    .with_mut(|l| {
+                        state::add_wire(
+                            l,
+                            pnex_core::Wire {
+                                id,
+                                from: first,
+                                to: endpoint.clone(),
+                            },
+                        )
+                    });
                 cx.wire_draft.set(None);
             },
         }

@@ -481,86 +481,77 @@ pub fn TourViewer(
             // Side panel: floors + mini-plan + scenes (driven by
             // show_side_panel, including in compact mode).
             if show_side_panel {
-            div { class: "w-60 shrink-0 flex flex-col gap-2 overflow-y-auto",
-                div {
-                    span { class: "text-xs font-semibold text-gray-500 uppercase tracking-wide",
-                        {t!("tour-viewer-floors")}
+                div { class: "w-60 shrink-0 flex flex-col gap-2 overflow-y-auto",
+                    div {
+                        span { class: "text-xs font-semibold text-gray-500 uppercase tracking-wide",
+                            {t!("tour-viewer-floors")}
+                        }
+                        div { class: "flex flex-col gap-1 mt-1",
+                            for (floor, is_active, target) in floor_buttons.clone() {
+                                button {
+                                    key: "{floor.id}",
+                                    class: if target.is_none() { "w-full text-left px-2 py-1.5 text-sm rounded-lg bg-gray-50 text-gray-400 border border-transparent cursor-not-allowed" } else if is_active { "w-full text-left px-2 py-1.5 text-sm rounded-lg bg-blue-50 text-blue-700 border border-blue-200" } else { "w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-gray-50 text-gray-700 border border-transparent" },
+                                    // Un étage sans scène n'a rien à montrer : no-op
+                                    // silencieux = confusion (constat 2026-09-16) —
+                                    // visuellement désactivé.
+                                    disabled: target.is_none(),
+                                    onclick: move |_| {
+                                        if let Some((scene_id, floor_id)) = target.clone() {
+                                            current.set(scene_id);
+                                            active_floor.set(floor_id);
+                                        }
+                                    },
+                                    {if floor.name.is_empty() { floor.id.clone() } else { floor.name.clone() }}
+                                }
+                            }
+                        }
                     }
-                    div { class: "flex flex-col gap-1 mt-1",
-                        for (floor, is_active, target) in floor_buttons.clone() {
-                            button {
-                                key: "{floor.id}",
-                                class: if target.is_none() {
-                                    "w-full text-left px-2 py-1.5 text-sm rounded-lg bg-gray-50 text-gray-400 border border-transparent cursor-not-allowed"
-                                } else if is_active {
-                                    "w-full text-left px-2 py-1.5 text-sm rounded-lg bg-blue-50 text-blue-700 border border-blue-200"
-                                } else {
-                                    "w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-gray-50 text-gray-700 border border-transparent"
-                                },
-                                // Un étage sans scène n'a rien à montrer : no-op
-                                // silencieux = confusion (constat 2026-09-16) —
-                                // visuellement désactivé.
-                                disabled: target.is_none(),
-                                onclick: move |_| {
-                                    if let Some((scene_id, floor_id)) = target.clone() {
-                                        current.set(scene_id);
-                                        active_floor.set(floor_id);
+                    // Mini-plan : image du plan + positions des scènes (les dots
+                    // partagent le mapping x/plan_w*200, y/plan_h*100 du viewBox).
+                    if !mini_dots.is_empty() {
+                        div { class: "bg-white border border-gray-200 rounded-lg p-1",
+                            svg { view_box: "0 0 200 100", class: "w-full",
+                                if let Some(url) = mini_plan_url {
+                                    image {
+                                        href: "{url}",
+                                        x: "0",
+                                        y: "0",
+                                        width: "200",
+                                        height: "100",
+                                        preserve_aspect_ratio: "none",
+                                        "pointer-events": "none",
                                     }
-                                },
-                                {if floor.name.is_empty() { floor.id.clone() } else { floor.name.clone() }}
+                                }
+                                for (id, dot_x, dot_y, is_current) in mini_dots.clone() {
+                                    circle {
+                                        key: "mini-{id}",
+                                        cx: "{dot_x}",
+                                        cy: "{dot_y}",
+                                        r: if is_current { "5" } else { "3" },
+                                        fill: if is_current { "#2563eb" } else { "#94a3b8" },
+                                        "pointer-events": "none",
+                                    }
+                                }
                             }
                         }
                     }
-                }
-                // Mini-plan : image du plan + positions des scènes (les dots
-                // partagent le mapping x/plan_w*200, y/plan_h*100 du viewBox).
-                if !mini_dots.is_empty() {
-                    div { class: "bg-white border border-gray-200 rounded-lg p-1",
-                        svg {
-                            view_box: "0 0 200 100",
-                            class: "w-full",
-                            if let Some(url) = mini_plan_url {
-                                image {
-                                    href: "{url}",
-                                    x: "0", y: "0",
-                                    width: "200", height: "100",
-                                    preserve_aspect_ratio: "none",
-                                    "pointer-events": "none",
-                                }
-                            }
-                            for (id, dot_x, dot_y, is_current) in mini_dots.clone() {
-                                circle {
-                                    key: "mini-{id}",
-                                    cx: "{dot_x}",
-                                    cy: "{dot_y}",
-                                    r: if is_current { "5" } else { "3" },
-                                    fill: if is_current { "#2563eb" } else { "#94a3b8" },
-                                    "pointer-events": "none",
+                    // Liste des scènes cliquables de l'étage.
+                    ul { class: "divide-y divide-gray-100",
+                        for (scene, is_current) in scene_buttons.clone() {
+                            li { key: "list-{scene.id}",
+                                button {
+                                    class: if is_current { "w-full text-left px-2 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-lg" } else { "w-full text-left px-2 py-1.5 text-sm hover:bg-gray-50 text-gray-700 rounded-lg" },
+                                    onclick: move |_| {
+                                        current.set(scene.id.clone());
+                                        active_floor.set(scene.floor_id.clone());
+                                    },
+                                    {if scene.label.is_empty() { scene.id.clone() } else { scene.label.clone() }}
                                 }
                             }
                         }
                     }
                 }
-                // Liste des scènes cliquables de l'étage.
-                ul { class: "divide-y divide-gray-100",
-                    for (scene, is_current) in scene_buttons.clone() {
-                        li { key: "list-{scene.id}",
-                            button {
-                                class: if is_current {
-                                    "w-full text-left px-2 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-lg"
-                                } else {
-                                    "w-full text-left px-2 py-1.5 text-sm hover:bg-gray-50 text-gray-700 rounded-lg"
-                                },
-                                onclick: move |_| {
-                                    current.set(scene.id.clone());
-                                    active_floor.set(scene.floor_id.clone());
-                                },
-                                {if scene.label.is_empty() { scene.id.clone() } else { scene.label.clone() }}
-                            }
-                        }
-                    }
-                }
-            }}
+            }
 
             // Viewer host: relative wrapper + absolutely positioned host
             // (pannellum trap — MediaPreview school: .pnlm-container sets
@@ -579,7 +570,8 @@ pub fn TourViewer(
                     }
                 }
                 if load_failed() {
-                    div { class: "flex items-center justify-center bg-gray-100 rounded-lg",
+                    div {
+                        class: "flex items-center justify-center bg-gray-100 rounded-lg",
                         style: "height: 320px;",
                         p { class: "text-sm text-gray-400", {t!("tour-viewer-unavailable")} }
                     }
@@ -591,9 +583,11 @@ pub fn TourViewer(
                 // Popover live (D58) : item cliqué, hors canvas (panneau
                 // dioxus), jamais bloquante.
                 if let Some(item) = annot_selected_now {
-                    div {
-                        key: "annot-pop-{item.id}",
-                        AnnotationPopover { item, on_close: move |_| annot_selected.set(None) }
+                    div { key: "annot-pop-{item.id}",
+                        AnnotationPopover {
+                            item,
+                            on_close: move |_| annot_selected.set(None),
+                        }
                     }
                 }
             }

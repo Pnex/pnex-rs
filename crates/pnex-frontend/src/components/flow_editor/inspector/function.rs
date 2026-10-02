@@ -89,18 +89,25 @@ pub(super) fn FunctionForm(
 
     rsx! {
         div { class: "space-y-3",
-            crate::components::flow_editor::function_picker::FunctionPicker { can_write, current_id: pinned_id, on_pick: move |pick: crate::components::flow_editor::function_picker::FunctionPick| {
-                patch_selected_function_and_rewire(&mut cx, move |node: &mut FlowNode| {
-                    if let FlowNodeKind::PnexFunction { config } = &mut node.kind {
-                        config.function_id = pick.id;
-                        config.function_name = pick.name;
-                        config.version_number = pick.version_number;
-                        config.language = pick.language;
-                        config.inputs = pick.inputs;
-                        config.outputs = pick.outputs;
-                    }
-                });
-            } }
+            crate::components::flow_editor::function_picker::FunctionPicker {
+                can_write,
+                current_id: pinned_id,
+                on_pick: move |pick: crate::components::flow_editor::function_picker::FunctionPick| {
+                    patch_selected_function_and_rewire(
+                        &mut cx,
+                        move |node: &mut FlowNode| {
+                            if let FlowNodeKind::PnexFunction { config } = &mut node.kind {
+                                config.function_id = pick.id;
+                                config.function_name = pick.name;
+                                config.version_number = pick.version_number;
+                                config.language = pick.language;
+                                config.inputs = pick.inputs;
+                                config.outputs = pick.outputs;
+                            }
+                        },
+                    );
+                },
+            }
 
             if pinned_id != 0 {
                 div { class: "flex items-center gap-2 text-xs flex-wrap",
@@ -136,7 +143,11 @@ pub(super) fn FunctionForm(
                             disabled: !can_write,
                             onchange: move |event| {
                                 let picked: i64 = event.value().parse().unwrap_or(pinned_version);
-                                if let Some(summary) = versions_value.iter().find(|v| v.version_number == picked).cloned() {
+                                if let Some(summary) = versions_value
+                                    .iter()
+                                    .find(|v| v.version_number == picked)
+                                    .cloned()
+                                {
                                     pin_version(summary);
                                 }
                             },
@@ -145,11 +156,16 @@ pub(super) fn FunctionForm(
                                     key: "{summary.version_number}",
                                     value: "{summary.version_number}",
                                     selected: summary.version_number == pinned_version,
-                                    {format!(
-                                        "v{} — {}",
-                                        summary.version_number,
-                                        summary.note.clone().unwrap_or_else(|| summary.created_at.chars().take(10).collect())
-                                    )}
+                                    {
+                                        format!(
+                                            "v{} — {}",
+                                            summary.version_number,
+                                            summary
+                                                .note
+                                                .clone()
+                                                .unwrap_or_else(|| summary.created_at.chars().take(10).collect()),
+                                        )
+                                    }
                                 }
                             }
                         }

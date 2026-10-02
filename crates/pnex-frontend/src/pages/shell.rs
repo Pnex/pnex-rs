@@ -23,7 +23,9 @@ pub fn Shell() -> Element {
                 span { class: "animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" }
             }
         },
-        SessionState::LoggedOut => rsx! { crate::pages::login::Login {} },
+        SessionState::LoggedOut => rsx! {
+            crate::pages::login::Login {}
+        },
         SessionState::Authenticated { .. } => rsx! {
             ShellContent {}
             AssistantPanel {}
@@ -52,7 +54,7 @@ fn ShellContent() -> Element {
                 div { class: "fixed inset-0 z-50 lg:hidden",
                     div {
                         class: "fixed inset-0 bg-gray-600/75",
-                        onclick: move |_| sidebar_open.set(false)
+                        onclick: move |_| sidebar_open.set(false),
                     }
                     div { class: "fixed inset-y-0 left-0 flex w-64 flex-col bg-gray-900",
                         div { class: "flex h-16 items-center justify-between px-4",
@@ -64,7 +66,10 @@ fn ShellContent() -> Element {
                             }
                         }
                         div { class: "flex-1 min-h-0 overflow-y-auto sidebar-scroll px-4 py-6",
-                            Nav { on_navigate: Some(Callback::new(move |()| sidebar_open.set(false))), rail: false }
+                            Nav {
+                                on_navigate: Some(Callback::new(move |()| sidebar_open.set(false))),
+                                rail: false,
+                            }
                         }
                         SidebarFooter { rail: false }
                     }
@@ -73,11 +78,7 @@ fn ShellContent() -> Element {
 
             // Sidebar desktop — dépliée w-64 ou rail d'icônes w-16 (classes
             // littérales complètes via match, exigence du scan Tailwind).
-            div { class: if rail {
-                    "hidden lg:fixed lg:inset-y-0 lg:flex lg:w-16 lg:flex-col lg:bg-gray-900"
-                } else {
-                    "hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col lg:bg-gray-900"
-                },
+            div { class: if rail { "hidden lg:fixed lg:inset-y-0 lg:flex lg:w-16 lg:flex-col lg:bg-gray-900" } else { "hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col lg:bg-gray-900" },
                 div { class: "flex h-16 items-center justify-center px-3",
                     if rail {
                         crate::components::icons::Zap { class: "h-7 w-7 text-white" }
@@ -87,13 +88,13 @@ fn ShellContent() -> Element {
                 }
                 // Global search (D69) — right below the logo; rail mode gets
                 // an icon button that re-expands the sidebar.
-                SidebarSearch { rail: rail }
+                SidebarSearch { rail }
                 // Défilement quand tous les groupes sont dépliés (le menu
                 // dépasse l'écran sur web — constat user 2026-09-18).
                 div { class: "flex-1 min-h-0 overflow-y-auto sidebar-scroll px-3 py-6",
-                    Nav { rail: rail }
+                    Nav { rail }
                 }
-                SidebarFooter { rail: rail }
+                SidebarFooter { rail }
             }
 
             div { class: if rail { "lg:pl-16" } else { "lg:pl-64" },
@@ -106,7 +107,11 @@ fn ShellContent() -> Element {
                             crate::components::icons::Menu { class: "h-6 w-6" }
                         }
                         div { class: "flex items-center",
-                            img { src: asset!("/assets/logo.png"), alt: "PNeX", class: "h-8 w-auto" }
+                            img {
+                                src: asset!("/assets/logo.png"),
+                                alt: "PNeX",
+                                class: "h-8 w-auto",
+                            }
                         }
                         div {}
                     }
@@ -163,7 +168,11 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
     // Libellé conditionnel — dans le rail, l'item ne garde que son icône.
     rsx! {
         nav { class: "flex-1 space-y-2",
-            Link { to: Route::Dashboard {}, class: nav_class(route == Route::Dashboard {}, rail), title: t!("nav-dashboard"), onclick: close_drawer,
+            Link {
+                to: Route::Dashboard {},
+                class: nav_class(route == Route::Dashboard {}, rail),
+                title: t!("nav-dashboard"),
+                onclick: close_drawer,
                 crate::components::icons::Home { class: "h-5 w-5" }
                 if !rail {
                     span { {t!("nav-dashboard")} }
@@ -171,44 +180,64 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
             }
             // Groupe « Visualisation » : Quick charts + Tableaux de bord +
             // Carte (les trois vues de télémétrie).
-            NavVizGroup { on_navigate, rail: rail }
+            NavVizGroup { on_navigate, rail }
             // Groupe « Data » : Library (médias + futurs documents / base de
             // connaissances agent) + Tour studio + futur Plan (placeholder
             // « bientôt », aucune route).
-            NavDataGroup { on_navigate, rail: rail }
+            NavDataGroup { on_navigate, rail }
             // Groupe « Edges » : Devices + Catalogue + futurs collecteurs
             // (doc docs/architecture/edge-model.md — D44-D48).
-            NavEdges { on_navigate, rail: rail }
+            NavEdges { on_navigate, rail }
             // Groupe « Automation » : fonctions + flux ETL + notifications +
             // mélanges de fluides.
-            NavAutomationGroup { on_navigate, rail: rail }
-            Link { to: Route::Orgs {}, class: nav_class(matches!(route, Route::Orgs {} | Route::OrgsCurrent {}), rail), title: t!("nav-orgs"), onclick: close_drawer,
+            NavAutomationGroup { on_navigate, rail }
+            Link {
+                to: Route::Orgs {},
+                class: nav_class(matches!(route, Route::Orgs {} | Route::OrgsCurrent {}), rail),
+                title: t!("nav-orgs"),
+                onclick: close_drawer,
                 crate::components::icons::Building { class: "h-5 w-5" }
                 if !rail {
                     span { {t!("nav-orgs")} }
                 }
             }
-            Link { to: Route::Secrets {}, class: nav_class(route == Route::Secrets {}, rail), title: t!("nav-secrets"), onclick: close_drawer,
+            Link {
+                to: Route::Secrets {},
+                class: nav_class(route == Route::Secrets {}, rail),
+                title: t!("nav-secrets"),
+                onclick: close_drawer,
                 crate::components::icons::Key { class: "h-5 w-5" }
                 if !rail {
                     span { {t!("nav-secrets")} }
                 }
             }
-            Link { to: Route::System {}, class: nav_class(route == Route::System {}, rail), title: t!("nav-system"), onclick: close_drawer,
+            Link {
+                to: Route::System {},
+                class: nav_class(route == Route::System {}, rail),
+                title: t!("nav-system"),
+                onclick: close_drawer,
                 crate::components::icons::Wrench { class: "h-5 w-5" }
                 if !rail {
                     span { {t!("nav-system")} }
                 }
             }
             if is_platform_admin {
-                Link { to: Route::AdminStatus {}, class: nav_class(route == Route::AdminStatus {}, rail), title: t!("nav-admin-status"), onclick: close_drawer,
+                Link {
+                    to: Route::AdminStatus {},
+                    class: nav_class(route == Route::AdminStatus {}, rail),
+                    title: t!("nav-admin-status"),
+                    onclick: close_drawer,
                     crate::components::icons::Activity { class: "h-5 w-5" }
                     if !rail {
                         span { {t!("nav-admin-status")} }
                     }
                 }
             }
-            Link { to: Route::Profile {}, class: nav_class(route == Route::Profile {}, rail), title: t!("nav-profile"), onclick: close_drawer,
+            Link {
+                to: Route::Profile {},
+                class: nav_class(route == Route::Profile {}, rail),
+                title: t!("nav-profile"),
+                onclick: close_drawer,
                 crate::components::icons::User { class: "h-5 w-5" }
                 if !rail {
                     span { {t!("nav-profile")} }
@@ -348,19 +377,31 @@ fn NavEdges(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
             // sidebar entière).
             if open() && !rail {
                 div { class: "space-y-1 pl-6",
-                    Link { to: Route::Devices {}, class: nav_class(route == Route::Devices {}, false), onclick: close_drawer,
+                    Link {
+                        to: Route::Devices {},
+                        class: nav_class(route == Route::Devices {}, false),
+                        onclick: close_drawer,
                         crate::components::icons::Cpu { class: "h-5 w-5" }
                         span { {t!("nav-devices")} }
                     }
-                    Link { to: Route::Catalog {}, class: nav_class(route == Route::Catalog {}, false), onclick: close_drawer,
+                    Link {
+                        to: Route::Catalog {},
+                        class: nav_class(route == Route::Catalog {}, false),
+                        onclick: close_drawer,
                         crate::components::icons::Package { class: "h-5 w-5" }
                         span { {t!("nav-catalog")} }
                     }
-                    Link { to: Route::EdgeRefs {}, class: nav_class(route == Route::EdgeRefs {}, false), onclick: close_drawer,
+                    Link {
+                        to: Route::EdgeRefs {},
+                        class: nav_class(route == Route::EdgeRefs {}, false),
+                        onclick: close_drawer,
                         crate::components::icons::Database { class: "h-5 w-5" }
                         span { {t!("nav-edge-refs")} }
                     }
-                    Link { to: Route::Firmware {}, class: nav_class(route == Route::Firmware {}, false), onclick: close_drawer,
+                    Link {
+                        to: Route::Firmware {},
+                        class: nav_class(route == Route::Firmware {}, false),
+                        onclick: close_drawer,
                         crate::components::icons::Braces { class: "h-5 w-5" }
                         span { {t!("nav-firmware")} }
                     }
@@ -430,23 +471,38 @@ fn NavDataGroup(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
             // sidebar entière).
             if open() && !rail {
                 div { class: "space-y-1 pl-6",
-                    Link { to: Route::Media {}, class: nav_class(route == Route::Media {}, false), onclick: close_drawer,
+                    Link {
+                        to: Route::Media {},
+                        class: nav_class(route == Route::Media {}, false),
+                        onclick: close_drawer,
                         crate::components::icons::Image { class: "h-5 w-5" }
                         span { {t!("nav-library")} }
                     }
-                    Link { to: Route::Cameras {}, class: nav_class(route == Route::Cameras {}, false), onclick: close_drawer,
+                    Link {
+                        to: Route::Cameras {},
+                        class: nav_class(route == Route::Cameras {}, false),
+                        onclick: close_drawer,
                         crate::components::icons::Video { class: "h-5 w-5" }
                         span { {t!("nav-cameras")} }
                     }
-                    Link { to: Route::Models {}, class: nav_class(route == Route::Models {}, false), onclick: close_drawer,
+                    Link {
+                        to: Route::Models {},
+                        class: nav_class(route == Route::Models {}, false),
+                        onclick: close_drawer,
                         crate::components::icons::Eye { class: "h-5 w-5" }
                         span { {t!("nav-models")} }
                     }
-                    Link { to: Route::Studio {}, class: nav_class(route == Route::Studio {}, false), onclick: close_drawer,
+                    Link {
+                        to: Route::Studio {},
+                        class: nav_class(route == Route::Studio {}, false),
+                        onclick: close_drawer,
                         crate::components::icons::Map { class: "h-5 w-5" }
                         span { {t!("nav-studio")} }
                     }
-                    Link { to: Route::Annotations {}, class: nav_class(route == Route::Annotations {}, false), onclick: close_drawer,
+                    Link {
+                        to: Route::Annotations {},
+                        class: nav_class(route == Route::Annotations {}, false),
+                        onclick: close_drawer,
                         crate::components::icons::MapPin { class: "h-5 w-5" }
                         span { {t!("nav-annotations")} }
                     }
@@ -514,15 +570,27 @@ fn NavVizGroup(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
             }
             if open() && !rail {
                 div { class: "space-y-1 pl-6",
-                    Link { to: Route::Visualisation {}, class: nav_class(route == Route::Visualisation {}, false), onclick: close_drawer,
+                    Link {
+                        to: Route::Visualisation {},
+                        class: nav_class(route == Route::Visualisation {}, false),
+                        onclick: close_drawer,
                         crate::components::icons::TrendingUp { class: "h-5 w-5" }
                         span { {t!("nav-quick-charts")} }
                     }
-                    Link { to: Route::Dashboards { id: String::new(), mode: String::new() }, class: nav_class(matches!(route, Route::Dashboards { .. }), false), onclick: close_drawer,
+                    Link {
+                        to: Route::Dashboards {
+                            id: String::new(),
+                            mode: String::new(),
+                        },
+                        class: nav_class(matches!(route, Route::Dashboards { .. }), false),
+                        onclick: close_drawer,
                         crate::components::icons::Gauge { class: "h-5 w-5" }
                         span { {t!("nav-dashboards")} }
                     }
-                    Link { to: Route::Map {}, class: nav_class(route == Route::Map {}, false), onclick: close_drawer,
+                    Link {
+                        to: Route::Map {},
+                        class: nav_class(route == Route::Map {}, false),
+                        onclick: close_drawer,
                         crate::components::icons::Map { class: "h-5 w-5" }
                         span { {t!("nav-map")} }
                     }
@@ -582,23 +650,38 @@ fn NavAutomationGroup(on_navigate: Option<Callback<()>>, rail: bool) -> Element 
                 div { class: "space-y-1 pl-6",
                     // Les fonctions alimentent les flows : premier item du
                     // groupe « Automation ».
-                    Link { to: Route::Functions {}, class: nav_class(route == Route::Functions {}, false), onclick: close_drawer,
+                    Link {
+                        to: Route::Functions {},
+                        class: nav_class(route == Route::Functions {}, false),
+                        onclick: close_drawer,
                         crate::components::icons::Wrench { class: "h-5 w-5" }
                         span { {t!("nav-functions")} }
                     }
-                    Link { to: Route::Flows {}, class: nav_class(route == Route::Flows {}, false), onclick: close_drawer,
+                    Link {
+                        to: Route::Flows {},
+                        class: nav_class(route == Route::Flows {}, false),
+                        onclick: close_drawer,
                         crate::components::icons::Activity { class: "h-5 w-5" }
                         span { {t!("nav-flows")} }
                     }
-                    Link { to: Route::Notifications {}, class: nav_class(route == Route::Notifications {}, false), onclick: close_drawer,
+                    Link {
+                        to: Route::Notifications {},
+                        class: nav_class(route == Route::Notifications {}, false),
+                        onclick: close_drawer,
                         crate::components::icons::Bell { class: "h-5 w-5" }
                         span { {t!("nav-notifications")} }
                     }
-                    Link { to: Route::Events {}, class: nav_class(route == Route::Events {}, false), onclick: close_drawer,
+                    Link {
+                        to: Route::Events {},
+                        class: nav_class(route == Route::Events {}, false),
+                        onclick: close_drawer,
                         crate::components::icons::History { class: "h-5 w-5" }
                         span { {t!("nav-events")} }
                     }
-                    Link { to: Route::FluidMixtures {}, class: nav_class(route == Route::FluidMixtures {}, false), onclick: close_drawer,
+                    Link {
+                        to: Route::FluidMixtures {},
+                        class: nav_class(route == Route::FluidMixtures {}, false),
+                        onclick: close_drawer,
                         crate::components::icons::Layers { class: "h-5 w-5" }
                         span { {t!("nav-mixtures")} }
                     }
@@ -695,7 +778,10 @@ fn SidebarSearch(rail: bool) -> Element {
             // Transparent click-outside backdrop, same z-sandwich as the
             // mobile drawer; the dropdown sits above it.
             if open {
-                div { class: "fixed inset-0 z-20", onclick: move |_| q.set(String::new()) }
+                div {
+                    class: "fixed inset-0 z-20",
+                    onclick: move |_| q.set(String::new()),
+                }
             }
             div { class: "relative",
                 div { class: "pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3",
@@ -750,11 +836,12 @@ fn SidebarSearch(rail: bool) -> Element {
                             }
                             _ => {}
                         }
-                    }
+                    },
                 }
             }
             if open {
-                div { class: "absolute left-3 right-3 top-full mt-1 z-30 max-h-96 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl",
+                div {
+                    class: "absolute left-3 right-3 top-full mt-1 z-30 max-h-96 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl",
                     if has_error {
                         p { class: "px-3 py-4 text-sm text-gray-500 text-center",
                             {t!("search-error")}
@@ -778,8 +865,7 @@ fn SidebarSearch(rail: bool) -> Element {
                                 entity_type: entity_type.clone(),
                                 hit: hit.clone(),
                                 active: idx == active(),
-                                is_group_start: idx == 0
-                                    || flat.get(idx - 1).is_some_and(|r| r.0 != *entity_type),
+                                is_group_start: is_group_start(&flat, idx),
                             }
                         }
                     }
@@ -872,17 +958,12 @@ fn SearchHitRow(
     let navigator = use_navigator();
     rsx! {
         if is_group_start {
-            div {
-                class: "px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 bg-gray-50",
-                {t!(search_group_key(&entity_type))}
+            div { class: "px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 bg-gray-50",
+                {t!(search_group_key(& entity_type))}
             }
         }
         button {
-            class: if active {
-                "flex w-full items-center gap-3 px-3 py-2 text-left bg-blue-600/10"
-            } else {
-                "flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-gray-100"
-            },
+            class: if active { "flex w-full items-center gap-3 px-3 py-2 text-left bg-blue-600/10" } else { "flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-gray-100" },
             onclick: move |_| open_hit(&navigator, &entity_type, &hit),
             HitIcon { entity_type: entity_type.clone() }
             span { class: "flex-1 min-w-0",
@@ -901,16 +982,40 @@ fn HitIcon(entity_type: String) -> Element {
     rsx! {
         span { class: "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500",
             match entity_type.as_str() {
-                "poi" => rsx! { crate::components::icons::MapPin { class: "h-4 w-4" } },
-                "tour" => rsx! { crate::components::icons::Map { class: "h-4 w-4" } },
-                "media" => rsx! { crate::components::icons::Image { class: "h-4 w-4" } },
-                "layer" => rsx! { crate::components::icons::Layers { class: "h-4 w-4" } },
-                "function" => rsx! { crate::components::icons::Wrench { class: "h-4 w-4" } },
-                "flow" => rsx! { crate::components::icons::Activity { class: "h-4 w-4" } },
-                "dashboard" => rsx! { crate::components::icons::Gauge { class: "h-4 w-4" } },
-                "edge_ref" => rsx! { crate::components::icons::Database { class: "h-4 w-4" } },
-                _ => rsx! { crate::components::icons::Cpu { class: "h-4 w-4" } },
+                "poi" => rsx! {
+                    crate::components::icons::MapPin { class: "h-4 w-4" }
+                },
+                "tour" => rsx! {
+                    crate::components::icons::Map { class: "h-4 w-4" }
+                },
+                "media" => rsx! {
+                    crate::components::icons::Image { class: "h-4 w-4" }
+                },
+                "layer" => rsx! {
+                    crate::components::icons::Layers { class: "h-4 w-4" }
+                },
+                "function" => rsx! {
+                    crate::components::icons::Wrench { class: "h-4 w-4" }
+                },
+                "flow" => rsx! {
+                    crate::components::icons::Activity { class: "h-4 w-4" }
+                },
+                "dashboard" => rsx! {
+                    crate::components::icons::Gauge { class: "h-4 w-4" }
+                },
+                "edge_ref" => rsx! {
+                    crate::components::icons::Database { class: "h-4 w-4" }
+                },
+                _ => rsx! {
+                    crate::components::icons::Cpu { class: "h-4 w-4" }
+                },
             }
         }
     }
+}
+
+/// True when row `idx` opens a new entity-type group (first row, or the
+/// previous row has another type).
+fn is_group_start(flat: &[(String, crate::api::search::SearchHit)], idx: usize) -> bool {
+    idx == 0 || flat.get(idx - 1).is_some_and(|r| r.0 != flat[idx].0)
 }
