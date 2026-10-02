@@ -189,10 +189,13 @@ pub fn NotifyChannelForm(
             on_close,
             div { class: "space-y-4",
                 div {
-                    label { class: "block text-sm font-medium text-gray-700 mb-1",
+                    label {
+                        class: "block text-sm font-medium text-gray-700 mb-1",
+                        r#for: "notify-field-channel-name",
                         {t!("notify-field-name")}
                     }
                     input {
+                        id: "notify-field-channel-name",
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         value: "{name}",
                         oninput: move |e| name.set(e.value()),
@@ -315,9 +318,13 @@ fn FieldInput(spec: FieldSpec, mut values: Signal<FieldValues>) -> Element {
         let leaked: &'static str = Box::leak(h.clone().into_boxed_str());
         leaked
     });
+    // Pairs the label with its control (accessible name).
+    let control_id = format!("notify-field-{id}");
     rsx! {
         div {
-            label { class: "block text-sm font-medium text-gray-700 mb-1",
+            label {
+                class: "block text-sm font-medium text-gray-700 mb-1",
+                r#for: "{control_id}",
                 {t!(label_key)}
                 if spec.required {
                     span { class: "text-red-500 ml-1", "*" }
@@ -326,6 +333,7 @@ fn FieldInput(spec: FieldSpec, mut values: Signal<FieldValues>) -> Element {
             match spec.r#type {
                 FieldType::Number => rsx! {
                     input {
+                        id: "{control_id}",
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         r#type: "number",
                         value: "{value}",
@@ -336,6 +344,7 @@ fn FieldInput(spec: FieldSpec, mut values: Signal<FieldValues>) -> Element {
                 },
                 FieldType::Bool => rsx! {
                     input {
+                        id: "{control_id}",
                         r#type: "checkbox",
                         checked: value == "true",
                         onchange: move |e| {
@@ -350,6 +359,7 @@ fn FieldInput(spec: FieldSpec, mut values: Signal<FieldValues>) -> Element {
                 },
                 FieldType::Select if !spec.options.is_empty() => rsx! {
                     select {
+                        id: "{control_id}",
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                         onchange: move |e| {
                             values.write().insert(id.clone(), e.value());
@@ -361,6 +371,7 @@ fn FieldInput(spec: FieldSpec, mut values: Signal<FieldValues>) -> Element {
                 },
                 _ => rsx! {
                     input {
+                        id: "{control_id}",
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         placeholder: spec.placeholder.clone().unwrap_or_default(),
                         value: "{value}",
