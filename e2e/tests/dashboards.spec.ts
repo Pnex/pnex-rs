@@ -21,12 +21,15 @@ test.describe('dashboards', { tag: '@dashboards' }, () => {
     await editor.save();
     await capture('dashboard-value-widget', { caption: 'Value widget bound to a memory key' });
 
+    // Leaving edit mode lands on the live view.
     await editor.back();
-    await dashboards.view(name);
     await expect(app.page.getByRole('main').getByText('73.4')).toBeVisible({ timeout: 20_000 });
     await capture('dashboard-live', { caption: 'Live dashboard' });
 
-    await dashboards.open();
+    await dashboards.backToList();
+    await dashboards.view(name);
+    await expect(app.page.getByRole('main').getByText('73.4')).toBeVisible({ timeout: 20_000 });
+    await dashboards.backToList();
     await dashboards.delete(name);
     await flow.app.goto('/flows');
     const flows = new FlowsPage(app);
