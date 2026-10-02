@@ -435,6 +435,14 @@ explicite ultérieure (dépendance ffmpeg, `ml-vision.md`).
   cache last-value et les configs de nœuds.
 - **Frames au format fil** : le serveur jette une frame si le déchiffrement
   donne un header invalide (mauvaise clé) — compteur, log en puissance de 2.
+- **Frames > 8 Ko fragmentées (2026-10-03)** : en wss une écriture = un
+  record TLS (16 Ko max) et ArduinoWebsockets ignore les écritures
+  partielles — une frame VGA (15–25 Ko) partait tronquée et tuait l'uplink
+  après 2–3 frames. Le firmware envoie désormais toute frame > 8 Ko en
+  **un message WS fragmenté** (premier fragment vide, continuations, fin
+  vide) ; le serveur reçoit toujours un seul message binaire. Une session
+  qui a livré des frames se reconnecte au délai minimal ; seule une session
+  coupée avant sa première frame (rejet serveur) double le backoff.
 - **Profil board AI-Thinker** : seuls GPIO4 (LED flash) et GPIO33 (LED
   rouge, ligne virtuelle) sont admis ; **orientation USB non confirmée**
   sur carte réelle (index 0 = extrémité 5V/3V3).
