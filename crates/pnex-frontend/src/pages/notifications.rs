@@ -525,11 +525,17 @@ fn KindPickerModal(
 ) -> Element {
     rsx! {
         div { class: "fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4",
-            div { class: "bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col",
+            div {
+                class: "bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col",
+                role: "dialog",
+                aria_modal: "true",
+                aria_label: t!("notify-pick-title"),
                 div { class: "flex items-center justify-between border-b border-gray-200 px-4 py-3",
                     h2 { class: "text-lg font-semibold text-gray-900", {t!("notify-pick-title")} }
                     button {
                         class: "text-gray-400 hover:text-gray-600",
+                        title: t!("common-close"),
+                        aria_label: t!("common-close"),
                         onclick: move |_| on_close.call(()),
                         icons::X { class: "h-5 w-5" }
                     }
