@@ -7,6 +7,8 @@ export interface RegisterOptions {
   /** Model button label (accessible name prefix). */
   model: RegExp;
   wifi: { ssid: string; password: string };
+  /** Custom firmware project name (generic firmware when absent). */
+  firmware?: string;
 }
 
 export class DevicesPage {
@@ -44,6 +46,12 @@ export class DevicesPage {
     await this.next();
 
     await w.getByRole('button', { name: opts.model }).click();
+    if (opts.firmware) {
+      // Options read "<project> (r<rev>)"; the generic firmware is the empty value.
+      const pick = w.getByRole('combobox').filter({ has: this.page.locator('option', { hasText: this.app.t('wizard-firmware-generic') }) });
+      const option = pick.locator('option').filter({ hasText: opts.firmware });
+      await pick.selectOption((await option.getAttribute('value'))!);
+    }
     await this.next();
 
     // Wi-Fi: inline form when no credential exists yet, else a select
