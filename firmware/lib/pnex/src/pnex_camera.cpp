@@ -89,6 +89,11 @@ uint32_t s_backoff_ms = BACKOFF_MIN_MS;
 // closing right after the upgrade (4003 anti-clone, 4002 auth) must not
 // turn into a 1 s reconnect loop.
 constexpr uint32_t STABLE_MS = 10000;
+// Frames delivered by the current session. A session that carried frames
+// was accepted by the server: losing it is a transport drop (weak radio),
+// not a rejection, so the next attempt comes back after the minimum delay
+// instead of a doubled one (30 s gaps in a live view otherwise).
+uint32_t s_session_frames = 0;
 unsigned long s_connected_since_ms = 0;
 unsigned long s_next_connect_ms = 0;
 unsigned long s_last_frame_ms = 0;
@@ -189,6 +194,7 @@ void try_connect(unsigned long now) {
     WiFi.setSleep(false);
     if (s_ws.connect(s_url)) {
         s_ws_up = true;
+        s_session_frames = 0;
         s_connected_since_ms = millis();
         s_last_keepalive_ms = now;
         s_last_frame_ms = 0;
@@ -199,6 +205,30 @@ void try_connect(unsigned long now) {
     s_next_connect_ms = millis() + s_backoff_ms;
     Serial.printf("[CAM] camera WS connect failed, retry in %u ms\n", (unsigned)s_backoff_ms);
     s_backoff_ms = s_backoff_ms * 2 > BACKOFF_MAX_MS ? BACKOFF_MAX_MS : s_backoff_ms * 2;
+}
+
+// Largest WS frame written in one go. Over wss a write is one TLS record
+// (16 KB max) and the WS library ignores partial writes: a bigger frame
+// went out truncated and the session died after a couple of frames (VGA
+// JPEGs are 15-25 KB). Bigger payloads go out as one fragmented message
+// (empty first fragment, continuations, empty final one), which the
+// server reassembles into a single binary message.
+constexpr size_t WS_CHUNK = 8192;
+
+bool send_binary_chunked(const uint8_t* data, size_t len) {
+    if (len <= WS_CHUNK) {
+        return s_ws.sendBinary((const char*)data, len);
+    }
+    if (!s_ws.streamBinary("")) {
+        return false;
+    }
+    for (size_t off = 0; off < len; off += WS_CHUNK) {
+        const size_t n = len - off < WS_CHUNK ? len - off : WS_CHUNK;
+        if (!s_ws.sendBinary((const char*)data + off, n)) {
+            return false;
+        }
+    }
+    return s_ws.end("");
 }
 
 void send_frame() {
@@ -225,7 +255,7 @@ void send_frame() {
     // frame to s_buf (mock local server).
     const unsigned long t0 = millis();
     const size_t wire_len = cryptoEncryptBinary(plain, plain_len, s_buf);
-    if (wire_len == 0 || !s_ws.sendBinary((const char*)s_buf, wire_len)) {
+    if (wire_len == 0 || !send_binary_chunked(s_buf, wire_len)) {
         ++s_dropped;
         return;
     }
@@ -237,6 +267,7 @@ void send_frame() {
         s_send_ms_max = took;
     }
     ++s_sent;
+    ++s_session_frames;
 }
 
 // ───────────────────── Server message hook ─────────────────────
@@ -423,8 +454,12 @@ void pnex_camera_loop() {
     s_ws.poll();
     if (!s_ws_up || !s_ws.available()) {
         s_ws_up = false;
+        if (s_session_frames > 0) {
+            s_backoff_ms = BACKOFF_MIN_MS;
+        }
         s_next_connect_ms = millis() + s_backoff_ms;
-        Serial.printf("[CAM] camera WS lost, retry in %u ms\n", (unsigned)s_backoff_ms);
+        Serial.printf("[CAM] camera WS lost after %u frames, retry in %u ms\n",
+                      (unsigned)s_session_frames, (unsigned)s_backoff_ms);
         s_backoff_ms = s_backoff_ms * 2 > BACKOFF_MAX_MS ? BACKOFF_MAX_MS : s_backoff_ms * 2;
         return;
     }
