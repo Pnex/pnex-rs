@@ -25,6 +25,7 @@ use crate::components::edge_refs_picker::{PnexHostPicker, WifiCredentialPicker};
 use crate::components::flash_modal::FlashModal;
 use crate::components::icons;
 use crate::components::modal::Modal;
+use crate::flash;
 use crate::state::devices::OPEN_DEVICE;
 use crate::state::{org, session, toasts};
 use crate::util::{save_blob, sleep};
@@ -295,15 +296,18 @@ pub fn Devices() -> Element {
                                 // Flash navigateur (Web Serial — Chromium
                                 // uniquement, le modal affiche l'avertissement
                                 // sinon).
-                                button {
-                                    class: "w-fit px-2 py-0.5 text-xs text-emerald-600 hover:text-emerald-700 transition-colors",
-                                    r#type: "button",
-                                    title: t!("devices-flash-title"),
-                                    onclick: move |_| {
-                                        flash_target.set(Some((flash_pk, flash_id.clone(), flash_generic)));
-                                    },
-                                    icons::Zap { class: "h-3.5 w-3.5 inline mr-0.5" }
-                                    {t!("devices-flash")}
+                                // Hidden on Android: no flashing path there.
+                                if flash::offered() {
+                                    button {
+                                        class: "w-fit px-2 py-0.5 text-xs text-emerald-600 hover:text-emerald-700 transition-colors",
+                                        r#type: "button",
+                                        title: t!("devices-flash-title"),
+                                        onclick: move |_| {
+                                            flash_target.set(Some((flash_pk, flash_id.clone(), flash_generic)));
+                                        },
+                                        icons::Zap { class: "h-3.5 w-3.5 inline mr-0.5" }
+                                        {t!("devices-flash")}
+                                    }
                                 }
                             }
                         }
@@ -371,163 +375,187 @@ pub fn Devices() -> Element {
         }),
     ];
 
+    // Capability filter options, read outside rsx: a `{match ..}` block with
+    // nested `rsx!` arms in the markup breaks `dx fmt` (unparseable output).
+    let capability_names: Vec<String> = match &*capabilities.read() {
+        Some(Ok(caps)) => caps.iter().map(|cap| cap.name.clone()).collect(),
+        _ => Vec::new(),
+    };
+
     rsx! {
         ListLayout {
             title: t!("nav-devices").to_string(),
             subtitle: Some(t!("devices-subtitle").to_string()),
-            can_write: can_write,
             // Détail device ouvert → pas de « + Register » (on n'enregistre
             // pas un device depuis la fiche d'un autre).
-            add_label: if selected().is_none() {
-                Some(t!("devices-register").to_string())
-            } else {
-                None
-            },
+            can_write,
+            add_label: if selected().is_none() { Some(t!("devices-register").to_string()) } else { None },
             on_add: move |_| wizard_open.set(true),
             if org::current().is_none() {
                 p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
+            } else if let Some(device_pk) = selected() {
+                DeviceDetail {
+                    key: "{device_pk}",
+                    device_pk,
+                    can_write,
+                    on_back: move |_| selected.set(None),
+                    on_changed: move |_| reload.with_mut(|r| *r += 1),
+                }
             } else {
-                match selected() {
-                    Some(device_pk) => rsx! {
-                        DeviceDetail {
-                            key: "{device_pk}",
-                            device_pk,
-                            can_write,
-                            on_back: move |_| selected.set(None),
-                            on_changed: move |_| reload.with_mut(|r| *r += 1),
+                // Filtres (type, statut, capacité, recherche, refresh).
+                FilterBar {
+                    select {
+                        class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                        onchange: move |event| {
+                            filter_type.set(event.value());
+                            page.set(0);
+                            reload.with_mut(|r| *r += 1);
+                        },
+                        option { value: "all", selected: filter_type() == "all",
+                            {t!("devices-type-all")}
                         }
-                    },
-                    None => rsx! {
-                        // Filtres (type, statut, capacité, recherche, refresh).
-                        FilterBar {
-                            select {
-                                class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
-                                onchange: move |event| {
-                                    filter_type.set(event.value());
-                                    page.set(0);
-                                    reload.with_mut(|r| *r += 1);
-                                },
-                                option { value: "all", selected: filter_type() == "all", {t!("devices-type-all")} }
-                                option { value: "sensor", selected: filter_type() == "sensor", {t!("devices-type-sensor")} }
-                                option { value: "actuator", selected: filter_type() == "actuator", {t!("devices-type-actuator")} }
-                                option { value: "mixed", selected: filter_type() == "mixed", {t!("devices-type-mixed")} }
-                                option { value: "agent", selected: filter_type() == "agent", {t!("agent-badge")} }
-                            }
-                            select {
-                                class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
-                                onchange: move |event| {
-                                    filter_status.set(event.value());
-                                    page.set(0);
-                                    reload.with_mut(|r| *r += 1);
-                                },
-                                option { value: "all", selected: filter_status() == "all", {t!("devices-status-all")} }
-                                option { value: "true", selected: filter_status() == "true", {t!("devices-status-active")} }
-                                option { value: "false", selected: filter_status() == "false", {t!("devices-status-inactive")} }
-                            }
-                            {match &*capabilities.read() {
-                                Some(Ok(caps)) if !caps.is_empty() => rsx! {
-                                    select {
-                                        class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
-                                        onchange: move |event| {
-                                            filter_capability.set(event.value());
-                                            page.set(0);
-                                            reload.with_mut(|r| *r += 1);
-                                        },
-                                        option { value: "", selected: filter_capability().is_empty(), {t!("devices-capability-all")} }
-                                        for cap in caps {
-                                            option {
-                                                value: "{cap.name}",
-                                                selected: filter_capability() == cap.name,
-                                                {cap.name.clone()}
-                                            }
-                                        }
-                                    }
-                                },
-                                _ => rsx! {},
-                            }}
-                            SearchInput {
-                                placeholder: t!("devices-search-placeholder").to_string(),
-                                value: search,
-                                on_submit: move |_| {
-                                    page.set(0);
-                                    reload.with_mut(|r| *r += 1);
-                                },
-                            }
-                            RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
+                        option {
+                            value: "sensor",
+                            selected: filter_type() == "sensor",
+                            {t!("devices-type-sensor")}
                         }
+                        option {
+                            value: "actuator",
+                            selected: filter_type() == "actuator",
+                            {t!("devices-type-actuator")}
+                        }
+                        option {
+                            value: "mixed",
+                            selected: filter_type() == "mixed",
+                            {t!("devices-type-mixed")}
+                        }
+                        option {
+                            value: "agent",
+                            selected: filter_type() == "agent",
+                            {t!("agent-badge")}
+                        }
+                    }
+                    select {
+                        class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                        onchange: move |event| {
+                            filter_status.set(event.value());
+                            page.set(0);
+                            reload.with_mut(|r| *r += 1);
+                        },
+                        option { value: "all", selected: filter_status() == "all",
+                            {t!("devices-status-all")}
+                        }
+                        option {
+                            value: "true",
+                            selected: filter_status() == "true",
+                            {t!("devices-status-active")}
+                        }
+                        option {
+                            value: "false",
+                            selected: filter_status() == "false",
+                            {t!("devices-status-inactive")}
+                        }
+                    }
+                    if !capability_names.is_empty() {
+                        select {
+                            class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                            onchange: move |event| {
+                                filter_capability.set(event.value());
+                                page.set(0);
+                                reload.with_mut(|r| *r += 1);
+                            },
+                            option {
+                                value: "",
+                                selected: filter_capability().is_empty(),
+                                {t!("devices-capability-all")}
+                            }
+                            for name in capability_names.iter() {
+                                option {
+                                    value: "{name}",
+                                    selected: filter_capability() == *name,
+                                    {name.clone()}
+                                }
+                            }
+                        }
+                    }
+                    SearchInput {
+                        placeholder: t!("devices-search-placeholder").to_string(),
+                        value: search,
+                        on_submit: move |_| {
+                            page.set(0);
+                            reload.with_mut(|r| *r += 1);
+                        },
+                    }
+                    RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
+                }
 
-                        ListStates {
-                            state: list_state,
-                            is_empty: is_empty,
-                            empty_message: t!("devices-empty").to_string(),
-                            DataTable {
-                                columns: columns,
-                                rows: rows,
-                                row_key: RowKey::new(|device: &Device| device.id.to_string()),
-                            }
-                            ListPager { count: count, page: page }
-                        }
+                ListStates {
+                    state: list_state,
+                    is_empty,
+                    empty_message: t!("devices-empty").to_string(),
+                    DataTable {
+                        columns,
+                        rows,
+                        row_key: RowKey::new(|device: &Device| device.id.to_string()),
+                    }
+                    ListPager { count, page }
+                }
 
-                        // Assistant d'enregistrement (monté à la demande :
-                        // l'état interne se réinitialise à chaque ouverture).
-                        if wizard_open() {
-                            crate::components::device_wizard::DeviceWizard {
-                                on_close: move |_| wizard_open.set(false),
-                                on_changed: move |_| reload.with_mut(|r| *r += 1),
-                            }
-                        }
+                // Assistant d'enregistrement (monté à la demande :
+                // l'état interne se réinitialise à chaque ouverture).
+                if wizard_open() {
+                    crate::components::device_wizard::DeviceWizard {
+                        on_close: move |_| wizard_open.set(false),
+                        on_changed: move |_| reload.with_mut(|r| *r += 1),
+                    }
+                }
 
-                        // Recompilation d'un device de la liste.
-                        if let Some((rebuild_pk, rebuild_id, rebuild_model)) = rebuild_target() {
-                            RebuildModal {
-                                key: "{rebuild_id}",
-                                device_pk: rebuild_pk,
-                                device_id: rebuild_id,
-                                model: rebuild_model,
-                                on_close: move |_| rebuild_target.set(None),
-                                on_launched: move |_| {
-                                    rebuild_target.set(None);
-                                    reload.with_mut(|r| *r += 1);
-                                },
-                            }
-                        }
+                // Recompilation d'un device de la liste.
+                if let Some((rebuild_pk, rebuild_id, rebuild_model)) = rebuild_target() {
+                    RebuildModal {
+                        key: "{rebuild_id}",
+                        device_pk: rebuild_pk,
+                        device_id: rebuild_id,
+                        model: rebuild_model,
+                        on_close: move |_| rebuild_target.set(None),
+                        on_launched: move |_| {
+                            rebuild_target.set(None);
+                            reload.with_mut(|r| *r += 1);
+                        },
+                    }
+                }
 
-                        // Flash navigateur d'un device de la liste (Web Serial,
-                        // Chromium — l'état interne se réinitialise à chaque
-                        // ouverture).
-                        // Flash navigateur d'un device de la liste (Web Serial,
-                        // Chromium — l'état interne se réinitialise à chaque
-                        // ouverture).
-                        if let Some((_, flash_id, _)) = flash_target() {
-                            FlashModal {
-                                key: "{flash_id}",
-                                device_id: flash_id,
-                                on_close: move |_| flash_target.set(None),
-                            }
-                        }
+                // Flash navigateur d'un device de la liste (Web Serial,
+                // Chromium — l'état interne se réinitialise à chaque
+                // ouverture).
+                if let Some((_, flash_id, _)) = flash_target() {
+                    FlashModal {
+                        key: "{flash_id}",
+                        device_id: flash_id,
+                        on_close: move |_| flash_target.set(None),
+                    }
+                }
 
-                        // Déploiement OTA d'un device de la liste.
-                        if let Some(t) = ota_target() {
-                            OtaModal {
-                                key: "{t.device_id}",
-                                target: t,
-                                on_close: move |_| ota_target.set(None),
-                                // Raccourci rebuild : ferme le modal OTA et
-                                // ouvre le RebuildModal sur le même device.
-                                on_rebuild: move |_| {
-                                    if let Some(t) = ota_target() {
-                                        ota_target.set(None);
-                                        rebuild_target
-                                            .set(Some((t.device_pk, t.device_id, t.model)));
-                                    }
-                                },
-                                on_launched: move |_| {
-                                    ota_target.set(None);
-                                    reload.with_mut(|r| *r += 1);
-                                },
+                // Déploiement OTA d'un device de la liste.
+                if let Some(t) = ota_target() {
+                    OtaModal {
+                        key: "{t.device_id}",
+                        target: t,
+                        on_close: move |_| ota_target.set(None),
+                        // Raccourci rebuild : ferme le modal OTA et
+                        // ouvre le RebuildModal sur le même device.
+                        on_rebuild: move |_| {
+                            if let Some(t) = ota_target() {
+                                ota_target.set(None);
+                                rebuild_target
+                                    .set(Some((t.device_pk, t.device_id, t.model)));
                             }
-                        }
-                    },
+                        },
+                        on_launched: move |_| {
+                            ota_target.set(None);
+                            reload.with_mut(|r| *r += 1);
+                        },
+                    }
                 }
             }
         }
@@ -680,25 +708,18 @@ fn RebuildModal(
                             for opt in options {
                                 button {
                                     key: "{opt.label}",
-                                    class: if opt.active {
-                                        "inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
-                                    } else {
-                                        "inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-teal-300 text-teal-700 hover:bg-teal-50 disabled:opacity-50"
-                                    },
+                                    class: if opt.active { "inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50" } else { "inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-teal-300 text-teal-700 hover:bg-teal-50 disabled:opacity-50" },
                                     disabled: launching() || opt.locked,
-                                    title: if opt.locked {
-                                        t!("board-screen-locked").to_string()
-                                    } else {
-                                        String::new()
-                                    },
+                                    title: if opt.locked { t!("board-screen-locked").to_string() } else { String::new() },
                                     onclick: move |_| screen_pick.set(Some(opt.kind.clone())),
                                     {opt.label.clone()}
                                 }
                             }
                         }
-                        if let Some((name, rows)) = board.as_ref().and_then(|b| {
-                            board_pinout::screen_wiring(b, &pins, effective.as_deref())
-                        }) {
+                        if let Some((name, rows)) = board
+                            .as_ref()
+                            .and_then(|b| { board_pinout::screen_wiring(b, &pins, effective.as_deref()) })
+                        {
                             board_pinout::ScreenWiring { name, rows }
                         }
                     }
@@ -756,10 +777,15 @@ fn OtaModal(
                 h3 { class: "text-lg font-semibold text-gray-900 mb-2", {t!("devices-ota-title")} }
                 if let Some((version, date)) = &target.latest_build {
                     p { class: "text-sm text-gray-600 mb-1",
-                        {t!("devices-ota-target-line", device: device_id.clone(), version: version.clone())}
+                        {
+                            t!(
+                                "devices-ota-target-line", device : device_id.clone(), version : version
+                                .clone()
+                            )
+                        }
                     }
                     p { class: "text-xs text-gray-500 mb-1",
-                        {t!("devices-ota-built", date: date.clone())}
+                        {t!("devices-ota-built", date : date.clone())}
                     }
                     if same_version {
                         p { class: "text-xs font-medium text-indigo-600 mb-1",
@@ -771,7 +797,9 @@ fn OtaModal(
                         }
                     }
                 } else {
-                    p { class: "text-sm text-gray-600 mb-1", {t!("devices-ota-unknown-target", device: device_id.clone())} }
+                    p { class: "text-sm text-gray-600 mb-1",
+                        {t!("devices-ota-unknown-target", device : device_id.clone())}
+                    }
                     p { class: "text-xs text-amber-600 mb-1", {t!("devices-ota-none")} }
                 }
                 if target.stale && has_build {
@@ -802,7 +830,7 @@ fn OtaModal(
                                 // reuses the record id = same version) needs
                                 // the force flag, else the API 409s.
                                 let body = if same_version {
-                                    serde_json::json!({ "force": true })
+                                    serde_json::json!({ "force" : true })
                                 } else {
                                     serde_json::json!({})
                                 };
@@ -822,7 +850,13 @@ fn OtaModal(
                                 }
                             });
                         },
-                        {if launching() { t!("common-loading").to_string() } else { t!("devices-ota-confirm").to_string() }}
+                        {
+                            if launching() {
+                                t!("common-loading").to_string()
+                            } else {
+                                t!("devices-ota-confirm").to_string()
+                            }
+                        }
                     }
                 }
             }
@@ -966,15 +1000,14 @@ fn DeviceDetail(
                         if is_agent {
                             crate::components::agent_panel::AgentPanel { device_pk, can_write }
                         } else if device.predefined_device_name.starts_with("generic") {
-                            crate::components::board_pinout_editor::BoardPinoutEditor {
-                                device_pk,
-                                can_write,
-                            }
+                            crate::components::board_pinout_editor::BoardPinoutEditor { device_pk, can_write }
                         } else {
                             div { class: "p-6",
                                 if !capabilities.is_empty() {
                                     div { class: "mb-4",
-                                        h3 { class: "mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500", {t!("devices-capabilities")} }
+                                        h3 { class: "mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500",
+                                            {t!("devices-capabilities")}
+                                        }
                                         div { class: "flex flex-wrap gap-2",
                                             for cap in capabilities {
                                                 span {
@@ -998,9 +1031,7 @@ fn DeviceDetail(
                             title: t!("devices-token"),
                             hint: t!("devices-token-hint"),
                             value: token_info.token.clone(),
-                            active_badge: token_info
-                                .is_active
-                                .then(|| t!("devices-token-active")),
+                            active_badge: token_info.is_active.then(|| t!("devices-token-active")),
                             created: token_info.created.as_deref().map(date_label),
                             created_label: t!("devices-token-created"),
                         }
@@ -1075,7 +1106,9 @@ fn DeviceDetail(
             }
         }
         Some(Err(err)) => rsx! {
-            div { class: "bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700", {err.message.clone()} }
+            div { class: "bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700",
+                {err.message.clone()}
+            }
         },
         None => rsx! {
             div { class: "text-center py-12",
@@ -1105,7 +1138,9 @@ fn SecretCard(
         div { class: "bg-white rounded-lg shadow-sm",
             div { class: "space-y-3 p-5 sm:p-6",
                 div { class: "flex flex-wrap items-center gap-2",
-                    h3 { class: "text-sm font-semibold uppercase tracking-wider text-gray-500", "{title}" }
+                    h3 { class: "text-sm font-semibold uppercase tracking-wider text-gray-500",
+                        "{title}"
+                    }
                     div { class: "ml-auto flex items-center gap-2",
                         span { class: "inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-500",
                             {t!("devices-readonly-badge")}
@@ -1125,7 +1160,13 @@ fn SecretCard(
                     button {
                         class: "rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50",
                         onclick: move |_| revealed.toggle(),
-                        {if revealed() { t!("devices-token-hide-btn") } else { t!("devices-token-reveal") }}
+                        {
+                            if revealed() {
+                                t!("devices-token-hide-btn")
+                            } else {
+                                t!("devices-token-reveal")
+                            }
+                        }
                     }
                     button {
                         class: "rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50",
@@ -1138,7 +1179,9 @@ fn SecretCard(
                 }
                 if let Some(created) = created {
                     div { class: "flex items-center gap-3 border-t border-gray-100 pt-3",
-                        span { class: "w-40 shrink-0 text-xs font-semibold text-gray-500", {created_label} }
+                        span { class: "w-40 shrink-0 text-xs font-semibold text-gray-500",
+                            {created_label}
+                        }
                         span { class: "font-mono text-sm text-gray-700", {created} }
                     }
                 }
@@ -1177,9 +1220,7 @@ fn black_box_outputs(device: &pnex_core::Device) -> Element {
             div { class: "rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2",
                 div { class: "flex items-center gap-2",
                     span { class: "inline-block h-2.5 w-2.5 rounded-full bg-green-500" }
-                    span { class: "font-mono text-xs text-gray-400",
-                        {device.device_id.clone()}
-                    }
+                    span { class: "font-mono text-xs text-gray-400", {device.device_id.clone()} }
                 }
                 div { class: "flex flex-wrap gap-2",
                     for cap in &device.capabilities {

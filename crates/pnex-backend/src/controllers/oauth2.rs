@@ -552,8 +552,8 @@ fn native_bridge_page(lang: &'static str) -> String {
     <button id="back" onclick="toApp();window.close()" style="display:none;margin-top:1.5rem;padding:.6rem 1.2rem;border:0;border-radius:8px;background:#2563eb;color:#fff;font-size:14px;cursor:pointer">{back}</button>
   </div>
   <script>
-    // Package de l'app (placeholder com.example.* — cf. branding APK dans
-    // docs/architecture/features.md).
+    // Deep link of the app (`pnex` scheme registered by
+    // patch-android-manifest.py, independent of the package name).
     var APP = 'pnex://return';
     function toApp() {{ window.location = APP; }}
     setTimeout(toApp, 1000);

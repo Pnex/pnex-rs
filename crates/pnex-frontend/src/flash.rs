@@ -146,6 +146,15 @@ fn js_error_message(value: &JsValue) -> String {
         .unwrap_or_else(|| "unknown flasher error".to_string())
 }
 
+/// Whether the UI offers the flash action at all. False only on Android,
+/// where no flashing path can ever exist (no USB serial in the webview, no
+/// esptool): the buttons are hidden instead of opening a dead-end modal.
+/// Elsewhere the button stays and the modal explains a missing
+/// prerequisite (Firefox/Safari, esptool absent next to the desktop app).
+pub fn offered() -> bool {
+    !cfg!(target_os = "android")
+}
+
 /// Android: no serial flashing (no esptool, no Web Serial in the webview).
 #[cfg(target_os = "android")]
 pub fn supported() -> bool {

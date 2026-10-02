@@ -313,6 +313,7 @@ wizard-ref-delete = Delete
 wizard-ref-cancel = Cancel
 wizard-build-pending = Firmware build in progress…
 wizard-build-failed = Firmware build failed. Retry with “Rebuild” on the device row.
+wizard-flash-from-computer = Flash this firmware from a computer: the PNeX desktop app or Chrome/Edge (Web Serial).
 wizard-build-launch-failed = The device was created but the build could not be launched:
 wizard-reactivated = This device already existed in this organization — it has been reactivated, no new token was issued.
 wizard-build-close-hint = You can close this window at any time: the build runs server-side and the firmware stays available. You can flash later from the device list; the token and encryption key remain available (masked) on the device page.

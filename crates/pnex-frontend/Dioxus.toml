@@ -4,6 +4,13 @@ default_platform = "web"
 out_dir = "dist"
 asset_dir = "assets"
 
+# App identity for native bundles (Android package = identifier; dx falls
+# back to the com.example.<Name> placeholder without it). Changing it later
+# makes the APK a different app: installs do not upgrade across it.
+[bundle]
+identifier = "io.pnex.app"
+publisher = "PNeX"
+
 [web.app]
 title = "PNEX"
 

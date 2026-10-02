@@ -19,6 +19,7 @@ use super::icons;
 use super::modal::Modal;
 use crate::api;
 use crate::components::board_pinout_editor as board_pinout;
+use crate::flash;
 use crate::state::toasts;
 use crate::util::sleep;
 
@@ -416,7 +417,12 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                         button {
                                             class: "px-2 text-gray-400 hover:text-red-600 transition-colors",
                                             r#type: "button",
-                                            onclick: move |_| meta_rows.with_mut(|rows| { rows.remove(index); }),
+                                            onclick: move |_| {
+                                                meta_rows
+                                                    .with_mut(|rows| {
+                                                        rows.remove(index);
+                                                    })
+                                            },
                                             icons::Trash2 { class: "h-4 w-4" }
                                         }
                                     }
@@ -488,11 +494,11 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                             variants.iter().find(|b| b.id == id)
                                         })
                                         .or_else(|| {
-                                            variants.iter().find(|b| {
-                                                selected()
-                                                    .as_ref()
-                                                    .is_some_and(|p| p.board == b.name)
-                                            })
+                                            variants
+                                                .iter()
+                                                .find(|b| {
+                                                    selected().as_ref().is_some_and(|p| p.board == b.name)
+                                                })
                                         })
                                         .cloned();
                                     let effective_soc = effective_board.as_ref().map(|b| b.soc.clone());
@@ -609,28 +615,40 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                             _ => (None, None),
                         };
                         rsx! {
-                        {review_panel(&device_id(), &selected(), &meta_rows(), rev_ssid.as_deref(), rev_host.as_deref(), true)}
-                        p { class: "text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg p-3",
-                            {t!("wizard-review-build-note")}
-                        }
-                        div { class: "flex justify-between pt-2",
-                            button {
-                                class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
-                                r#type: "button",
-                                onclick: move |_| step.set(Step::Config),
-                                {t!("wizard-back")}
+                            {
+                                review_panel(
+                                    &device_id(),
+                                    &selected(),
+                                    &meta_rows(),
+                                    rev_ssid.as_deref(),
+                                    rev_host.as_deref(),
+                                    true,
+                                )
                             }
-                            button {
-                                class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed",
-                                r#type: "button",
-                                disabled: busy,
-                                onclick: submit,
-                                if busy { {t!("common-loading")} } else { {t!("wizard-create-build")} }
+                            p { class: "text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg p-3",
+                                {t!("wizard-review-build-note")}
+                            }
+                            div { class: "flex justify-between pt-2",
+                                button {
+                                    class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
+                                    r#type: "button",
+                                    onclick: move |_| step.set(Step::Config),
+                                    {t!("wizard-back")}
+                                }
+                                button {
+                                    class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed",
+                                    r#type: "button",
+                                    disabled: busy,
+                                    onclick: submit,
+                                    if busy {
+                                        {t!("common-loading")}
+                                    } else {
+                                        {t!("wizard-create-build")}
+                                    }
+                                }
                             }
                         }
-                        }
-                    },
-
+                    }
                     Step::BuildProgress => rsx! {
                         div { class: "space-y-4",
                             if let Some(message) = build_launch_error() {
@@ -659,12 +677,17 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                                     // Flash direct en Web Serial (Chromium —
                                                     // le modal avertit sinon). Le binaire reste
                                                     // téléchargeable depuis la liste des devices.
-                                                    button {
-                                                        class: "w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium",
-                                                        r#type: "button",
-                                                        onclick: move |_| flash_open.set(true),
-                                                        icons::Zap { class: "h-4 w-4 inline mr-1" }
-                                                        {t!("devices-flash")}
+                                                    // Android: no flashing path, point to a computer instead.
+                                                    if flash::offered() {
+                                                        button {
+                                                            class: "w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium",
+                                                            r#type: "button",
+                                                            onclick: move |_| flash_open.set(true),
+                                                            icons::Zap { class: "h-4 w-4 inline mr-1" }
+                                                            {t!("devices-flash")}
+                                                        }
+                                                    } else {
+                                                        p { class: "text-sm text-gray-600", {t!("wizard-flash-from-computer")} }
                                                     }
                                                 }
                                             } else if record.build_phase.as_deref() == Some("failed") {
@@ -756,21 +779,11 @@ fn stepper(current: Step) -> Element {
                     if index > 0 {
                         span { class: "text-gray-300 mx-0.5", "→" }
                     }
-                    span {
-                        class: if index <= current_index {
-                            "flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold bg-blue-600 text-white"
-                        } else {
-                            "flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold bg-gray-200 text-gray-500"
-                        },
+                    span { class: if index <= current_index { "flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold bg-blue-600 text-white" } else { "flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold bg-gray-200 text-gray-500" },
                         "{index + 1}"
                     }
-                    span {
-                        class: if index <= current_index {
-                            "text-xs font-medium text-blue-700"
-                        } else {
-                            "text-xs text-gray-400"
-                        },
-                        {t!(*key)}
+                    span { class: if index <= current_index { "text-xs font-medium text-blue-700" } else { "text-xs text-gray-400" },
+                        {t!(* key)}
                     }
                 }
             }
@@ -814,18 +827,28 @@ fn model_card(
             // present; description stays the English fallback + search
             // field.
             if let Some(key) = pd.description_i18n.as_deref().filter(|d| !d.is_empty()) {
-                p { class: "text-xs text-gray-500 mt-1", {crate::api::error_i18n::resolve(key, None)} }
+                p { class: "text-xs text-gray-500 mt-1",
+                    {crate::api::error_i18n::resolve(key, None)}
+                }
             } else if let Some(description) = pd.description.as_deref().filter(|d| !d.is_empty()) {
                 p { class: "text-xs text-gray-500 mt-1", {description} }
             }
             div { class: "flex flex-wrap gap-1 mt-2",
-                span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium {chip}", {pd.board.clone()} }
-                span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-700", {pd.device_type.clone()} }
+                span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium {chip}",
+                    {pd.board.clone()}
+                }
+                span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-700",
+                    {pd.device_type.clone()}
+                }
                 for cap in shown_caps {
-                    span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-600", {cap} }
+                    span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-600",
+                        {cap}
+                    }
                 }
                 if hidden_caps > 0 {
-                    span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-400", "+{hidden_caps}" }
+                    span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-400",
+                        "+{hidden_caps}"
+                    }
                 }
             }
         }
@@ -890,9 +913,9 @@ fn VariantChip(
             tabindex: "0",
             aria_pressed: selected_now,
             onclick: move |_| selected_id.set(Some(id)),
-            span { class: "text-sm font-semibold text-gray-900 pr-6", {
-                board.pretty_name.clone().unwrap_or_else(|| board.name.clone())
-            } }
+            span { class: "text-sm font-semibold text-gray-900 pr-6",
+                {board.pretty_name.clone().unwrap_or_else(|| board.name.clone())}
+            }
             span { class: "text-[11px] font-mono text-gray-400", "{meta}" }
             if builtin_screen {
                 span { class: "inline-flex items-center gap-1 text-[10px] text-teal-700 bg-teal-50 rounded-full px-1.5 py-0.5",
@@ -939,9 +962,7 @@ fn review_panel(
             }
             div { class: "flex justify-between border-b border-gray-100 pb-2",
                 span { class: "text-gray-500", {t!("devices-col-model")} }
-                span { class: "font-medium text-gray-900",
-                    {model}
-                }
+                span { class: "font-medium text-gray-900", {model} }
             }
             div { class: "flex justify-between gap-4 border-b border-gray-100 pb-2",
                 span { class: "text-gray-500 shrink-0", {t!("devices-metadata")} }
