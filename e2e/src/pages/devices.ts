@@ -46,12 +46,23 @@ export class DevicesPage {
     await w.getByRole('button', { name: opts.model }).click();
     await this.next();
 
-    // Wi-Fi: inline form when no credential exists yet, else a select.
+    // Wi-Fi: inline form when no credential exists yet, else a select
+    // (rendered once the referentials are loaded).
     const ssid = w.getByRole('textbox', { name: this.app.t('builds-field-ssid') });
+    await expect(ssid.or(w.getByRole('combobox').first())).toBeVisible();
     if (await ssid.isVisible()) {
       await ssid.fill(opts.wifi.ssid);
       await w.getByRole('textbox', { name: this.app.t('builds-field-wifi-password') }).fill(opts.wifi.password);
       await w.getByRole('button', { name: this.app.t('wizard-ref-add'), exact: true }).first().click();
+      await expect(ssid).toBeHidden();
+    }
+    // PNeX server: the add form comes pre-filled with this deployment's
+    // address when the org has no host yet — confirm it.
+    const host = w.getByPlaceholder(this.app.t('builds-field-server'));
+    if (await host.isVisible()) {
+      await expect(host).not.toHaveValue('');
+      await w.getByRole('button', { name: this.app.t('wizard-ref-add'), exact: true }).last().click();
+      await expect(host).toBeHidden();
     }
     await this.next();
     await expect(w.getByText(this.app.t('wizard-review-build-note'))).toBeVisible();
