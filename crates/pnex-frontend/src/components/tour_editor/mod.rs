@@ -183,6 +183,7 @@ pub fn TourEditor(
             return;
         }
         saving.set(true);
+        let renamed = name.is_some();
         let params = UpdateTour {
             expected_version_number: saved_version(),
             doc: doc(),
@@ -199,6 +200,10 @@ pub fn TourEditor(
                     violations.set(Vec::new());
                     loaded_from.set(None);
                     toasts::success("toast-tour-saved");
+                    // The header title comes from the detail resource.
+                    if renamed {
+                        reload_meta.with_mut(|r| *r += 1);
+                    }
                     on_changed.call(());
                 }
                 Err(err) => match classify_save_error(&err) {

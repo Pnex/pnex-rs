@@ -30,6 +30,7 @@ pub(super) fn save(mut cx: EditorCx, name: Option<String>) {
     spawn(async move {
         match api::dashboards::update(&dashboard_id, params).await {
             Ok(d) => {
+                cx.name.set(d.name.clone());
                 cx.saved_layout.set(cx.layout.read().clone());
                 cx.saved_version.set(d.current_version_number);
                 toasts::success(t!("db-saved", version: d.current_version_number).to_string());

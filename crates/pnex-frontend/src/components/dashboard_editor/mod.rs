@@ -83,6 +83,8 @@ pub enum Interaction {
 #[derive(Clone, Copy, PartialEq)]
 pub struct EditorCx {
     pub dashboard_id: Signal<String>,
+    /// Name shown in the shell title, updated by a successful rename.
+    pub name: Signal<String>,
     pub layout: Signal<DashboardLayout>,
     pub saved_layout: Signal<DashboardLayout>,
     /// Version **courante côté serveur** (le pointeur live visé par le
@@ -120,6 +122,7 @@ pub fn DashboardEditor(
     on_changed: EventHandler<()>,
 ) -> Element {
     let dashboard_id = use_signal(move || detail.id.clone());
+    let name = use_signal(move || detail.name.clone());
     let initial_layout = detail.layout.clone();
     // Amorce AVANT que le closure de `layout` ne consomme `initial_layout`.
     let counter_seed = state::seed_counter(&initial_layout);
@@ -149,6 +152,7 @@ pub fn DashboardEditor(
 
     let mut cx = EditorCx {
         dashboard_id,
+        name,
         layout,
         saved_layout,
         saved_version,
@@ -319,7 +323,7 @@ pub fn DashboardEditor(
     rsx! {
         EditorShell {
             on_back: move |_| on_back.call(()),
-            title: detail.name.clone(),
+            title: cx.name.cloned(),
             on_rename: if can_write { Some(Callback::new(move |name: String| save(cx, Some(name)))) } else { None },
             status: EditorStatus::new(StatusTone::Green, t!("eshell-status-live")),
             version: Some(cx.saved_version.cloned()),
