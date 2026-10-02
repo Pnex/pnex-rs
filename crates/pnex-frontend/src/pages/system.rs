@@ -340,11 +340,13 @@ fn DataCard(
         columns.push(
             Column::new(String::new(), move |s: &O2StreamInfo| {
                 let name = s.name.clone();
+                let stream_label = s.name.clone();
                 let checked = selected.read().contains(&name);
                 rsx! {
                     input {
                         class: "h-4 w-4 accent-blue-600",
                         r#type: "checkbox",
+                        aria_label: "{stream_label}",
                         checked,
                         onchange: move |event: FormEvent| {
                             let on = event.checked();
@@ -458,6 +460,7 @@ fn DataCard(
                     input {
                         class: "flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         r#type: "search",
+                        aria_label: t!("system-search-placeholder"),
                         placeholder: t!("system-search-placeholder"),
                         value: "{search}",
                         oninput: move |event| {
