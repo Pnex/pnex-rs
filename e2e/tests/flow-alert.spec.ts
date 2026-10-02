@@ -64,7 +64,6 @@ test.describe('flow alerting', { tag: ['@flows', '@notifications'] }, () => {
     };
     await pickBy('flows-notify-pick-channel', channel.name);
     await pickBy('flows-notify-no-template', template.name);
-    console.log('NOTIFY-INSPECTOR', await editor.inspector.ariaSnapshot());
     await editor.move(notify, 940, 100);
     await editor.closeInspector();
 
@@ -80,5 +79,7 @@ test.describe('flow alerting', { tag: ['@flows', '@notifications'] }, () => {
     expect((await mailsTo(rcpt))[0].subject).toBe('Pressure alarm');
 
     await editor.stop();
+    await editor.back();
+    await flows.delete(`${prefix} pressure alert`);
   });
 });
