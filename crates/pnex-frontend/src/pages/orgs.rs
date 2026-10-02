@@ -333,6 +333,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                                 value: "{member_email}",
                             }
                             select {
+                                aria_label: t!("orgs-member-role"),
                                 class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                                 onchange: move |event| member_role.set(event.value()),
                                 option {
@@ -471,6 +472,7 @@ fn member_row(
             div { class: "flex items-center gap-2",
                 if can_write {
                     select {
+                        aria_label: t!("orgs-member-role"),
                         class: "px-2 py-1 border border-gray-300 rounded-lg text-sm bg-white",
                         onchange: move |event| {
                             let new_role = event.value();

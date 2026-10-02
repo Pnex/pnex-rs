@@ -160,6 +160,7 @@ pub fn Events() -> Element {
             can_write: false,
             FilterBar {
                 select {
+                    aria_label: t!("events-stream"),
                     class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                     onchange: move |e| {
                         stream.set(e.value());
@@ -175,6 +176,7 @@ pub fn Events() -> Element {
                     }
                 }
                 select {
+                    aria_label: t!("events-col-level"),
                     class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                     onchange: move |e| {
                         level.set(e.value());
@@ -191,6 +193,7 @@ pub fn Events() -> Element {
                     }
                 }
                 select {
+                    aria_label: t!("events-period"),
                     class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                     onchange: move |e| {
                         period.set(Period::from_wire(&e.value()));

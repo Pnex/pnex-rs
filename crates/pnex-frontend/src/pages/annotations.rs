@@ -311,6 +311,7 @@ pub fn Annotations() -> Element {
                         }
                         RefreshButton { on_click: move |_| sets_reload.with_mut(|r| *r += 1) }
                         select {
+                            aria_label: t!("annot-page-media-filter"),
                             class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                             value: "{media_filter_now}",
                             onchange: move |e| selected_media_filter.set(e.value()),
@@ -588,6 +589,7 @@ fn NewSetModal(
                         {t!("annot-page-col-media")}
                     }
                     select {
+                        aria_label: t!("annot-page-media-select"),
                         class: "w-full rounded-lg border-gray-300 text-sm px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500",
                         value: "{choice()}",
                         onchange: move |e| choice.set(e.value()),

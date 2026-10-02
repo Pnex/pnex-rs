@@ -253,6 +253,7 @@ pub fn Map() -> Element {
                         div { class: "flex items-center gap-2",
                             span { class: "text-sm text-gray-700 shrink-0", {t!("poi-filter-emoji")} }
                             select {
+                                aria_label: t!("poi-filter-emoji"),
                                 class: "flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white",
                                 value: "{filter_emoji}",
                                 onchange: move |e| {

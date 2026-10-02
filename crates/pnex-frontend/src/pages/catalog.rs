@@ -171,6 +171,7 @@ pub fn Catalog() -> Element {
                     },
                 }
                 select {
+                    aria_label: t!("devices-col-type"),
                     class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                     onchange: move |event| {
                         filter_type.set(event.value());
@@ -201,6 +202,7 @@ pub fn Catalog() -> Element {
                             boards.dedup();
                             rsx! {
                                 select {
+                                    aria_label: t!("catalog-board-filter"),
                                     class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                                     onchange: move |event| {
                                         filter_board.set(event.value());

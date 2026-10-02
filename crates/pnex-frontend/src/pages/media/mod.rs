@@ -281,6 +281,7 @@ pub fn Media() -> Element {
                 // the old onchange only filtered on blur/Enter).
                 FilterBar {
                     select {
+                        aria_label: t!("media-col-type"),
                         class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                         value: "{filter_kind}",
                         onchange: move |evt| {
