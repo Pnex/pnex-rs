@@ -54,13 +54,25 @@ export class DevicesPage {
     }
     await this.next();
 
+    await this.fillReferentials(w, opts.wifi);
+    await this.next();
+    await expect(w.getByText(this.app.t('wizard-review-build-note'))).toBeVisible();
+    await w.getByRole('button', { name: this.app.t('wizard-create-build'), exact: true }).click();
+  }
+
+  /**
+   * Wi-Fi credential + PNeX server of a wizard or rebuild dialog: adds them
+   * inline when the org has none yet (the add forms show), else keeps the
+   * selected ones.
+   */
+  async fillReferentials(w: Locator, wifi: { ssid: string; password: string }): Promise<void> {
     // Wi-Fi: inline form when no credential exists yet, else a select
     // (rendered once the referentials are loaded).
     const ssid = w.getByRole('textbox', { name: this.app.t('builds-field-ssid') });
     await expect(ssid.or(w.getByRole('combobox').first())).toBeVisible();
     if (await ssid.isVisible()) {
-      await ssid.fill(opts.wifi.ssid);
-      await w.getByRole('textbox', { name: this.app.t('builds-field-wifi-password') }).fill(opts.wifi.password);
+      await ssid.fill(wifi.ssid);
+      await w.getByRole('textbox', { name: this.app.t('builds-field-wifi-password') }).fill(wifi.password);
       await w.getByRole('button', { name: this.app.t('wizard-ref-add'), exact: true }).first().click();
       await expect(ssid).toBeHidden();
     }
@@ -72,9 +84,23 @@ export class DevicesPage {
       await w.getByRole('button', { name: this.app.t('wizard-ref-add'), exact: true }).last().click();
       await expect(host).toBeHidden();
     }
-    await this.next();
-    await expect(w.getByText(this.app.t('wizard-review-build-note'))).toBeVisible();
-    await w.getByRole('button', { name: this.app.t('wizard-create-build'), exact: true }).click();
+  }
+
+  /** Rebuild dialog of a device row → "Build firmware". */
+  async rebuild(deviceId: string, wifi: { ssid: string; password: string }): Promise<void> {
+    await this.row(deviceId).getByRole('button', { name: this.app.t('devices-rebuild'), exact: true }).click();
+    const dlg = dialog(this.page, this.app.t('devices-rebuild-title'));
+    await this.fillReferentials(dlg, wifi);
+    await dlg.getByRole('button', { name: this.app.t('builds-submit'), exact: true }).click();
+    await expect(dlg).toBeHidden({ timeout: 30_000 });
+  }
+
+  /** "Update over the air" → Deploy. */
+  async deployOta(deviceId: string): Promise<void> {
+    await this.row(deviceId).getByRole('button', { name: this.app.t('devices-ota-deploy'), exact: true }).click();
+    const dlg = dialog(this.page, this.app.t('devices-ota-title'));
+    await dlg.getByRole('button', { name: this.app.t('devices-ota-confirm'), exact: true }).click();
+    await expect(dlg).toBeHidden({ timeout: 30_000 });
   }
 
   async openDetail(deviceId: string): Promise<void> {

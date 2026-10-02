@@ -21,6 +21,8 @@ export default defineConfig({
     : [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: BASE_URL,
+    // A missing element fails fast instead of eating a long test timeout.
+    actionTimeout: 15_000,
     ignoreHTTPSErrors: true,
     viewport: { width: 1600, height: 1000 },
     // Crisp captures; PNEX_E2E_DPR=1 for faster plain test runs.
