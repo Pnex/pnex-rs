@@ -1,0 +1,22 @@
+{
+  "name": "pnex-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end UI tests of PNeX (Playwright) — page objects reusable by external scenario runners",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "playwright test",
+    "test:smoke": "playwright test --grep @smoke",
+    "report": "playwright show-report",
+    "explore": "PNEX_E2E_KEEP=1 PNEX_E2E_EXPLORE=1 PNEX_E2E_DPR=1 playwright test tests/_explore.spec.ts --project=en --workers=1",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.4",
+    "typescript": "^7.0.2"
+  }
+}

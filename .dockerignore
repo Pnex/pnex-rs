@@ -38,3 +38,6 @@ deploy/edge/pki-data/
 deploy/edge/edge.env
 secrets/
 *.age
+
+# End-to-end suite (Playwright): never part of an image
+e2e/
