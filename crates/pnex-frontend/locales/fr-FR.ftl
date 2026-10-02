@@ -125,6 +125,7 @@ orgs-role-help-admin = gère les membres, les secrets, les fournisseurs LLM et l
 orgs-role-help-member = édite flows, devices, tableaux de bord et canaux ; choisit des secrets existants sans les voir.
 orgs-role-help-viewer = lecture seule.
 toast-saved = Modifications enregistrées
+toast-org-deleted = Organisation supprimée
 toast-copied = Copié dans le presse-papiers
 
 # Tableau de bord
