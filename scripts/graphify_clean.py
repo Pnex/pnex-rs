@@ -90,6 +90,24 @@ def crate_of(path, dirs):
     return dirs[best] if best else None
 
 
+def hyperedges(g):
+    """Hyperedges live in `graph.hyperedges` (what graphify reads), with a
+    legacy top-level copy; union of both, deduplicated by id."""
+    out, seen = [], set()
+    for h in (g.get("graph") or {}).get("hyperedges", []) + g.get("hyperedges", []):
+        if h.get("id") not in seen:
+            seen.add(h.get("id"))
+            out.append(h)
+    return out
+
+
+def set_hyperedges(g, hyper):
+    if not isinstance(g.get("graph"), dict):
+        g["graph"] = {}
+    g["graph"]["hyperedges"] = hyper
+    g["hyperedges"] = hyper
+
+
 def carry_semantic(g, prev_path):
     """Add the previous graph's semantic nodes/edges to the fresh code graph.
 
@@ -118,10 +136,9 @@ def carry_semantic(g, prev_path):
         ):
             g["links"].append(e)
             seen.add(key)
-    have = {h.get("id") for h in g.get("hyperedges", [])}
-    g.setdefault("hyperedges", []).extend(
-        h for h in prev.get("hyperedges", []) if h.get("id") not in have
-    )
+    current = hyperedges(g)
+    have = {h.get("id") for h in current}
+    set_hyperedges(g, current + [h for h in hyperedges(prev) if h.get("id") not in have])
     print(f"carried {len(semantic)} semantic nodes from {prev_path}", file=sys.stderr)
 
 
@@ -158,12 +175,12 @@ def main():
 
     g["links"] = [e for e in g["links"] if plausible(e)]
     hyper = []
-    for h in g.get("hyperedges", []):
+    for h in hyperedges(g):
         members = [x for x in h.get("nodes", []) if x in nodes]
         if len(members) >= 2:
             h["nodes"] = members
             hyper.append(h)
-    g["hyperedges"] = hyper
+    set_hyperedges(g, hyper)
 
     json.dump(g, open(GRAPH, "w", encoding="utf-8"))
     print(
