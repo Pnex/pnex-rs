@@ -604,6 +604,15 @@ tasks:
       - cargo fmt --all -- --check
       - python3 crates/pnex-frontend/scripts/rsx_fmt.py check
 
+  graph:update:
+    desc: Rebuild the graphify code graph from scratch, keep the semantic layer, drop name-guessed calls (scripts/graphify_clean.py)
+    cmds:
+      - mv graphify-out/graph.json graphify-out/graph.prev.json
+      - graphify update . --force
+      - python3 scripts/graphify_clean.py graphify-out/graph.prev.json
+      - graphify cluster-only . --no-viz
+      - rm graphify-out/graph.prev.json
+
   lint:
     desc: Clippy sur tout le workspace
     deps: [css:ensure]

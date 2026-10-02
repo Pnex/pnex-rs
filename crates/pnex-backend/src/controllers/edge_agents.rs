@@ -42,7 +42,7 @@ const MAX_KEYS_RANGE: std::ops::RangeInclusive<i32> = 1..=100_000;
 const INSTALL_SH: &str = include_str!("../../../../deploy/agent/install.sh");
 const INSTALL_PS1: &str = include_str!("../../../../deploy/agent/install.ps1");
 
-fn err(status: StatusCode, code: &str, msg: &str) -> Error {
+fn agent_error(status: StatusCode, code: &str, msg: &str) -> Error {
     Error::CustomError(
         status,
         loco_rs::controller::ErrorDetail::new(code, msg.to_string()),
@@ -50,7 +50,7 @@ fn err(status: StatusCode, code: &str, msg: &str) -> Error {
 }
 
 fn forbidden() -> Error {
-    err(
+    agent_error(
         StatusCode::FORBIDDEN,
         "agent-write-forbidden",
         "Owner, admin or member role required to manage edge agents.",
@@ -82,7 +82,7 @@ async fn find_agent(
         return Err(Error::NotFound);
     };
     if pd.name != pnex_core::EDGE_AGENT_PREDEF {
-        return Err(err(
+        return Err(agent_error(
             StatusCode::BAD_REQUEST,
             "agent-not-an-agent",
             "This device is not an edge agent.",
@@ -103,7 +103,7 @@ pub(crate) async fn is_agent(db: &DatabaseConnection, device: &device_registries
 
 /// 400 `agent-unsupported-action` (firmware build, OTA, pins on an agent).
 pub(crate) fn unsupported_action() -> Error {
-    err(
+    agent_error(
         StatusCode::BAD_REQUEST,
         "agent-unsupported-action",
         "This action does not apply to an edge agent.",
@@ -163,7 +163,7 @@ async fn update_settings(
         return Err(forbidden());
     }
     if !MAX_KEYS_RANGE.contains(&body.max_keys) {
-        return Err(err(
+        return Err(agent_error(
             StatusCode::BAD_REQUEST,
             "agent-quota-invalid",
             "The key quota must be between 1 and 100000.",
@@ -322,7 +322,7 @@ async fn enroll(
     // Per-client attempts are bounded cross-pod by the rate-limit layer
     // (`services::rate_limit`, rule `agent-enroll`).
     let invalid = || {
-        err(
+        agent_error(
             StatusCode::BAD_REQUEST,
             "agent-enroll-code-invalid",
             "Invalid, used or expired enrollment code.",
@@ -440,7 +440,7 @@ fn attachment(bytes: Vec<u8>, content_type: &str, filename: &str) -> Response {
 
 async fn download(Path(target): Path<String>) -> Result<Response> {
     let not_found = || {
-        err(
+        agent_error(
             StatusCode::NOT_FOUND,
             "agent-binary-not-found",
             "This server does not ship the agent for this platform.",

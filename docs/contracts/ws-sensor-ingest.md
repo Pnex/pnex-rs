@@ -54,7 +54,7 @@ base64( nonce(12 octets) ‖ ChaCha20(ciphertext) )
   la même mesure — la comparaison aux capacités, la découverte dynamique
   et le nom de série O2 utilisent toutes le nom canonique. Un nom qui
   normalise à vide (`---`) → `error:invalid_format`.
-- Devices **stricts** (modèle `custom_device` exclus) : le
+- Devices **stricts** (tous sauf les agents edge, D95) : le
   nom (normalisé) doit être une capacité du predefined device. Devices
   **dynamiques** : découverte automatique plafonnée à
   `max_unique_measurements` (100).
