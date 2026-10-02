@@ -68,10 +68,10 @@ export class Capturer {
     const file = path.join(CAPTURE_DIR, rel);
     mkdirSync(path.dirname(file), { recursive: true });
 
-    await this.page.addStyleTag({ content: CAPTURE_CSS });
     // Lets layout, fonts and fade-ins settle.
     await this.page.waitForTimeout(400);
-    const shotOpts = { path: file, mask: opts.mask, animations: 'disabled' as const };
+    // `style` applies only while shooting: toasts stay assertable afterwards.
+    const shotOpts = { path: file, mask: opts.mask, animations: 'disabled' as const, style: CAPTURE_CSS };
     if (opts.target) await opts.target.first().screenshot(shotOpts);
     else await this.page.screenshot({ ...shotOpts, fullPage: opts.fullPage });
 
