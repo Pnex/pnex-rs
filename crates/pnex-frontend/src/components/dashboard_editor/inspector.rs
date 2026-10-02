@@ -154,6 +154,7 @@ fn widget_panel(
                 label: t!("insp-widget-title").to_string(),
             }
             input {
+                id: "insp-title",
                 class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm",
                 disabled: !can_write,
                 value: "{w.title}",
@@ -194,6 +195,7 @@ fn widget_panel(
             {
                 field_label { label_key: "source", label: t!("insp-source").to_string() }
                 select {
+                    id: "insp-source",
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",
                     disabled: !can_write,
                     onchange: move |e| {
@@ -283,6 +285,7 @@ fn widget_panel(
                         label: t!("insp-memory-field").to_string(),
                     }
                     select {
+                        id: "insp-field",
                         class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",
                         disabled: !can_write,
                         onchange: move |e| {
@@ -319,6 +322,7 @@ fn widget_panel(
                         label: t!("insp-metric").to_string(),
                     }
                     select {
+                        id: "insp-metric",
                         class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",
                         disabled: metric_locked,
                         onchange: move |e| {
@@ -358,6 +362,7 @@ fn widget_panel(
                         label: t!("insp-window").to_string(),
                     }
                     select {
+                        id: "insp-window",
                         class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",
                         disabled: !can_write,
                         value: "{primary.window}",
@@ -379,6 +384,7 @@ fn widget_panel(
             if w.widget_type == "text" {
                 field_label { label_key: "text", label: t!("insp-text").to_string() }
                 textarea {
+                    id: "insp-text",
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm",
                     rows: "3",
                     disabled: !can_write,
@@ -406,6 +412,7 @@ fn widget_panel(
                             label: t!("insp-unit").to_string(),
                         }
                         input {
+                            id: "insp-unit",
                             class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm",
                             disabled: !can_write,
                             value: "{w.options.unit.clone().unwrap_or_default()}",
@@ -427,6 +434,7 @@ fn widget_panel(
                             label: t!("insp-decimals").to_string(),
                         }
                         input {
+                            id: "insp-decimals",
                             class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm",
                             disabled: !can_write,
                             "type": "number",
@@ -451,6 +459,7 @@ fn widget_panel(
                             label: t!("insp-min").to_string(),
                         }
                         input {
+                            id: "insp-min",
                             class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm",
                             disabled: !can_write,
                             "type": "number",
@@ -474,6 +483,7 @@ fn widget_panel(
                             label: t!("insp-max").to_string(),
                         }
                         input {
+                            id: "insp-max",
                             class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm",
                             disabled: !can_write,
                             "type": "number",
@@ -527,6 +537,8 @@ fn field_label(label_key: String, label: String) -> Element {
     rsx! {
         label {
             key: "{label_key}",
+            // Pairs with the control's `insp-<key>` id (accessible name).
+            r#for: "insp-{label_key}",
             class: "block text-[10px] font-medium text-gray-400 uppercase mt-1",
             "{label}"
         }
