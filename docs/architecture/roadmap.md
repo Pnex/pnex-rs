@@ -104,9 +104,9 @@ tâche).
 | Domaine | État | Reste principal |
 |---|---|---|
 | **Scale horizontal** (D106–D108) | **Livré 2026-10-01** — flows shardés par org (contrôleur élu, fencing), bus device Valkey par pod, présence device en baux Valkey (Valkey obligatoire), audit multi-pods scale-a→e (quotas atomiques, versions optimistes, listes paginées SQL, single-flight) ; E2E 2 processus | **E2E multi-réplicas réel** (k8s : bascule contrôleur, perte de pod, rolling update) ; manifests k8s dans `pnex-deploy` ; `LAST_VALUES` encore local au pod (flow-engine §7) |
-| **Palette de nœuds** | 26 nœuds en **liste plate** dans le popover `+` — on ne distingue plus devices, régulation, fonctions, IA… | **P1.7** catégories (D109), puis **P2.11** catalogue piloté par descripteurs (parité n8n) |
+| **Palette de nœuds** | **Sections par catégorie livrées** (D109, P1.7) : 9 catégories en ordre fixe, recherche transverse | **P2.11** catalogue piloté par descripteurs (parité n8n) |
 | **Firmware ESP générique** (F1/F2) | Consolidé — `common_libs/pnex-transport`, `Announce.caps`, StateReport par capacité ; flash F1/F2 validé réel (NodeMCU, ESP32-C3 0639ee4) | **F3 firmware `regulator`** (persist D45, buffer D46, boucle) — hardware requis ; e2e carte réelle Brick 0 jamais flashée ; OTA sur ESP32 réel (8266 OK) |
-| **Flow engine** | Consolidé — ETL full-Rust, device read/write (routage topic 90f23e0), calc, debug, http_fetch (C1a), nœud notify, cache live Valkey (b966c1a→e7257f8), **exclusivité write par pin** (8d60950), nœuds caméra/vision/mémoire/prédictifs, cluster D106 ; deploy de la version affichée + présence multi-utilisateurs dans l'éditeur (2578ffe) | Palette par catégories (P1.7) puis par capacité (ouverture §12), E2E matériel du write/PWM, ack des commandes non persisté (brick0 §10) |
+| **Flow engine** | Consolidé — ETL full-Rust, device read/write (routage topic 90f23e0), calc, debug, http_fetch (C1a), nœud notify, cache live Valkey (b966c1a→e7257f8), **exclusivité write par pin** (8d60950), nœuds caméra/vision/mémoire/prédictifs, cluster D106 ; deploy de la version affichée + présence multi-utilisateurs dans l'éditeur (2578ffe) | Palette par capacité (ouverture §12, après P1.7 livré), E2E matériel du write/PWM, ack des commandes non persisté (brick0 §10) |
 | **Fonctions custom** | Livré — JS (rquickjs) + Starlark (`_` privé, json en extension) | Limite acceptée : interrupt handler rquickjs ; payload remplacé (pas merge) — rien d'ouvert |
 | **Notifications** | N1–N4 livrées (7 canaux, templates, anti-spam, canaux dédiés D61–D65), D66–D68 (trigger booléen), journal O2 D86, fan-out `/ws/notify` multi-pods | ~~N5 chiffrement AEAD des secrets~~ fermé par le coffre de secrets (2026-10-01) ; N6 points d'extension, canal gotify en réserve |
 | **OTA** | Livré + E2E réel 8266 (2 cycles ~23 s, boucle 4003 anti-clone) | ESP32 réel ; politique de re-flash quand v2 du `.bin` (brick0 §10) |
@@ -120,7 +120,7 @@ tâche).
 | **Extension navigateur (C1b)** | **Spec écrite** (`extension-collector.md`, 10 décisions) — implémentation = jalon C3 | Implémentation après validation de la spec |
 | **Agent local (C2)** | **Livré** (2026-09-30) (`edge-agent.md`, D95–D99) : API locale libre, file disque, enrôlement une commande, Linux musl + Windows | Test Windows réel, macOS, pont WS devices LAN |
 | **M2M résilient (M1–M3)** | PRD posé (`m2m-resilient.md`) | M1 POC zenoh-pico WiFi (zéro achat), M2 6LoWPAN à prototyper avant engagement |
-| **Android** | Build + login PKCE E2E validé ; storage persistant ; scan LAN ; APK arm64 publié à chaque `main` vert (CI Apps, pré-release `nightly`, signé debug → sideload) ; la fenêtre de flash indique « non disponible » (`flash::supported()` = false) | **Branding APK** (`com.example` placeholder) + masquer le bouton Flash + keystore de release (Play Store) |
+| **Android** | Build + login PKCE E2E validé ; storage persistant ; scan LAN ; APK arm64 publié à chaque `main` vert (CI Apps, pré-release `nightly`, signé debug → sideload) ; bouton Flash masqué (`flash::offered()`), package `io.pnex.app` (`[bundle]` Dioxus.toml) | Keystore de release (Play Store) ; libellé de l'app encore dérivé du nom du crate |
 | **Desktop natif** | **Livré 2026-10-01** — Linux x86_64 / aarch64 et Windows x86_64 (cross mingw) : login, flash USB par esptool embarqué ; validé mainteneur sur Linux et Windows ; publié à chaque `main` vert (CI Apps, pré-release `nightly`), smoke test de démarrage sur un runner Windows | Paquets installables (.deb/.msi), signature de code, macOS |
 | **Schéma de base** (D120) | **Livré 2026-10-01** — une migration de base (SQL PG + SQLite), reliquats pré-coffre retirés, dérive SQLite corrigée (tables mortes, `map_pins`, FK manquantes), test de parité PG/SQLite bloquant (`migrations.md`) | Palier SQLite : E2E réel de bout en bout (jamais déroulé sur une install SQLite) |
 | **Organisations (D42)** | Backend livré (labels, containment, edges) | **UI arbre** (couches org dans l'UI) |
@@ -201,13 +201,18 @@ pas pour l'utilisateur — c'est le plus grand trou user-facing du socle.
 
 ### P1.2 — Android « distribuable »
 
-Ordre conseillé déjà écrit dans features.md :
+> **Étapes 1–2 livrées le 2026-10-02** (branche
+> `feat/roadmap-android-distrib`) — APK à valider sur téléphone.
 
-1. Masquer le bouton « Flasher » (Web Serial absent d'Android ;
-   aujourd'hui la fenêtre de flash s'ouvre et indique « non disponible »
-   via `flash::supported()`) ;
-2. Branding APK via `[bundle]` Dioxus.toml (sortir du placeholder
-   `com.example.PnexFrontend`) avant toute diffusion.
+1. ~~Masquer le bouton « Flasher »~~ — `flash::offered()` (faux sur
+   Android uniquement) masque le bouton de la liste des devices ;
+   l'assistant affiche à la place « flashez depuis un ordinateur ».
+   Firefox/Safari et le desktop sans esptool gardent le bouton et
+   l'explication du modal ;
+2. ~~Branding APK~~ — `[bundle] identifier = "io.pnex.app"` dans
+   Dioxus.toml (sortie du placeholder `com.example.PnexFrontend`). Une
+   APK installée avant ce changement est une autre app : la désinstaller.
+3. Reste : keystore de release (Play Store), libellé de l'app.
 
 ### P1.3 — F3 : firmware `regulator` (D20)
 
@@ -248,6 +253,9 @@ gracieux, secrets du join token) et **vérification que la queue Loco
 couvre claim atomique + lease/heartbeat/reaper** (sinon : le coder).
 
 ### P1.7 — Palette de nœuds par catégories (D109, ajout 2026-10-01)
+
+> **✅ Livré** (`PALETTE_CATEGORIES` dans `flow_editor/canvas/palette.rs`,
+> constaté le 2026-10-02). Section conservée pour l'historique.
 
 Le popover `+` de l'éditeur de flows liste 26 nœuds à plat : on ne
 distingue plus ce qui relève des devices, de la régulation, du code, de
@@ -556,3 +564,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   desktop Linux x86_64/aarch64 + Windows x86_64 (cross) + APK Android,
   publiés en pré-release `nightly` à chaque `main` vert. Desktop livré
   (Windows validé mainteneur).
+- **2026-10-02 (resynchronisation)** — P1.7 (palette par catégories,
+  D109) constaté livré dans le code. P1.2 étapes 1–2 : bouton Flash
+  masqué sur Android (`flash::offered()`), package APK `io.pnex.app`
+  (`[bundle]` Dioxus.toml) ; reste le keystore de release.

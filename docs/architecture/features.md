@@ -160,10 +160,12 @@ Pièges corrigés en cours de route (tous documentés là où ils se corrigent) 
 
 Reste à faire pour une cible Android utilisable (ordre conseillé) :
 
-1. **Flash** — Web Serial absent d'Android (Chrome comme WebView) : masquer
-   le bouton « Flasher » (stubs `flash.rs` déjà en place).
-2. **Branding APK** — identifier `com.example.PnexFrontend` placeholder ; à
-   fixer via `[bundle]` Dioxus.toml avant toute diffusion.
+1. ~~**Flash**~~ — fait (2026-10-02) : `flash::offered()` (faux sur Android)
+   masque le bouton « Flasher » ; l'assistant renvoie vers un ordinateur.
+2. ~~**Branding APK**~~ — fait (2026-10-02) : `[bundle] identifier =
+   "io.pnex.app"` dans Dioxus.toml (ex-placeholder `com.example.PnexFrontend`).
+   `adb shell run-as io.pnex.app …` ; une APK antérieure est une autre app.
+3. **Keystore de release** (Play Store) — l'APK `nightly` reste signée debug.
 
 ### Persistance du storage natif (2026-09-09)
 
