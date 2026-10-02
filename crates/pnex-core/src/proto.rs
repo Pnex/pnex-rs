@@ -61,8 +61,8 @@ pub struct ModeOpts {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PinSpec {
     pub gpio: u16,
-    /// Label overlay (« D1 », « A0 ») — dénormalisé pour l'affichage. Pour
-    /// un device Tier 2 (custom), label déclaré dans le sketch.
+    /// Label overlay (« D1 », « A0 ») — dénormalisé pour l'affichage. For a
+    /// custom firmware device, the label declared in the sketch.
     pub label: String,
     pub mode: Mode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -75,11 +75,11 @@ pub struct PinSpec {
     pub opts: Option<ModeOpts>,
 }
 
-/// Pin **déclaré par le sketch** (Tier 2, devices custom) dans
-/// `Announce::pins` — le client compile chez lui, il est la source des pins
-/// (gpio/mode/label). Le serveur valide (chip-caps si SoC connu, permissif
-/// sinon) puis persiste → `ProvisionAck` en écho. Les presets Tier 1
-/// (overlay board) n'envoient jamais `pins` : l'overlay reste l'autorité.
+/// Pin **declared by the sketch** (custom firmware) in `Announce::pins` —
+/// the sketch is the source of its pins (gpio/mode/label). The server
+/// validates them (chip-caps of the board's SoC) then persists them →
+/// echoed in the `ProvisionAck`. Generic models never send `pins`: the
+/// board overlay stays the authority.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PinDecl {
     pub gpio: u16,
@@ -158,12 +158,12 @@ pub enum DeviceMsg {
     /// Premier message après connexion : admission policy `Validated`
     /// (dérive overlay → `caps::validate` → persiste → `ProvisionAck`).
     Announce {
-        /// « esp8266 » | « esp32-c3 » | « esp32 » | libre (Tier 2) — connu →
-        /// chip-caps strictes, inconnu → admission permissive (warn).
+        /// « esp8266 » | « esp32-c3 » | « esp32 » — informative: admission
+        /// validates against the SoC of the device's board.
         chip: String,
         /// Board déclaré par le device (« nodemcu », « d1_mini »…) —
-        /// informatif pour les presets (la carte réelle = overlay du
-        /// device en base) ; fait foi pour un device Tier 2 sans overlay.
+        /// informative only (the real board is the device's board in
+        /// database).
         board: String,
         /// Version du firmware générique (politique de re-flash, §10).
         fw: String,
@@ -174,9 +174,10 @@ pub enum DeviceMsg {
         /// journalise qui tourne avec quoi (réservation OTA, §9).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         caps: Option<Vec<CapDesc>>,
-        /// Pins déclarées par le sketch (Tier 2, devices custom — additif).
-        /// `None`/absent pour les presets overlay : l'overlay reste
-        /// l'autorité. Présent sans overlay → source de la pin map.
+        /// Pins declared by the sketch (custom firmware — additive).
+        /// `None`/absent for generic models: the board overlay stays the
+        /// authority. For a custom firmware device, the source of the pin
+        /// map (absent = no pin).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pins: Option<Vec<PinDecl>>,
     },
@@ -727,8 +728,8 @@ mod tests {
         );
     }
 
-    /// Tier 2 (device custom) : pins déclarées par le sketch — `pins` est
-    /// additif (un fil historique sans ce champ reste valide).
+    /// Custom firmware: pins declared by the sketch — `pins` is additive
+    /// (a legacy wire without this field stays valid).
     #[test]
     fn announce_avec_pins_declarees_roundtrip() {
         let m: DeviceMsg = serde_json::from_str(

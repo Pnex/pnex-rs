@@ -5,8 +5,8 @@
 //! positionnées, enrichissement chip-caps calculé serveur) ; la sélection
 //! d'un pin affiche la `PinCard` existante comme panneau de configuration
 //! (toute la mécanique set_mode/write/subscribe/409 est réutilisée telle
-//! quelle — un nouveau visage, pas une nouvelle mécanique). Hors profil v2
-//! (`board: null`), on retombe sur `PinsPanel` (custom Tier 2).
+//! quelle — un nouveau visage, pas une nouvelle mécanique). Without a v2
+//! profile (`board: null`), falls back to `PinsPanel`.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -164,7 +164,7 @@ pub fn BoardPinoutEditor(device_pk: i64, can_write: bool) -> Element {
         Some(Ok(response)) => Some(response.clone()),
     };
 
-    // Hors profil v2 → ancienne grille de cartes (custom Tier 2, v1).
+    // No v2 profile → legacy card grid (v1 boards).
     if pinout.as_ref().is_some_and(|p| p.board.is_none()) {
         return rsx! {
             crate::components::pins_panel::PinsPanel { device_pk, can_write }

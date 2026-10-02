@@ -159,10 +159,10 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
         assert_eq!(token["encryption_key"].as_str().unwrap().len(), 44);
         assert_eq!(token["is_active"], true);
 
-        // Custom sensor : dynamic measurements autorisées.
-        let res = create_device(&server, &env.alice, org, "esp-custom", "custom_device").await;
-        let custom: serde_json::Value = res.json();
-        assert_eq!(custom["allow_dynamic_measurements"], true);
+        // Edge agent: the only family with free-form measurements.
+        let res = create_device(&server, &env.alice, org, "agent-1", "edge_agent").await;
+        let agent: serde_json::Value = res.json();
+        assert_eq!(agent["allow_dynamic_measurements"], true);
 
         // Device inactif connu → réactivation 200 (pas de nouvelle création).
         let res = create_device(&server, &env.alice, org, "esp-001", "soil_sensor").await;
@@ -650,8 +650,7 @@ async fn catalogue_global_partage() {
             .add_header("Authorization", bearer(&env.alice))
             .await
             .json();
-        // custom_sensor retiré du catalogue (Tier 2 = custom_device mixte
-        // only) : le seul preset sensor restant est soil_sensor.
+        // soil_sensor is the only sensor model of the test catalogue.
         assert_eq!(sensors["results"].as_array().unwrap().len(), 1);
 
         let by_caps: serde_json::Value = server

@@ -136,7 +136,7 @@ static uint32_t report_seq = 0;
 
 const unsigned long PING_INTERVAL_MS = 5000;
 
-// ───────────────────────── Déclaration Tier 2 ─────────────────────────
+// ───────────────────────── Pin declarations ─────────────────────────
 
 bool PnexDevice::declare(PnexPin p) {
     if (pins_.size() >= PNEX_MAX_PINS) {
@@ -560,8 +560,8 @@ void PnexDevice::sendAnnounce() {
         cap["family"] = "command";
     }
 
-    // Tier 2 : les pins déclarées dans le sketch voyagent dans `pins` —
-    // le serveur les valide (chip-caps) puis les persiste. Forme fil =
+    // Pins declared by the sketch travel in `pins` — the server validates
+    // them (chip-caps) then persists them. Forme fil =
     // PinDecl (proto.rs) : pullup/safe_state absents = défauts (false/low),
     // comme skip_serializing_if côté serde.
     if (!declared_.empty()) {
@@ -593,8 +593,8 @@ void PnexDevice::sendAnnounce() {
         }
     }
 
-    // Buffer statique : l'announce Tier 2 (pins déclarées) dépasse le 384 o
-    // des autres messages (≈ 90 o/pin, jusqu'à PNEX_MAX_PINS pins).
+    // Static buffer: an announce with declared pins exceeds the 384 B of
+    // the other messages (≈ 90 B per pin, up to PNEX_MAX_PINS pins).
     static char ann_buf[3584];
     size_t n = serializeJson(doc, ann_buf, sizeof(ann_buf));
     if (n >= sizeof(ann_buf)) {

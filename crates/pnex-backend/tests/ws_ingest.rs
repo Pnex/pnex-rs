@@ -327,12 +327,12 @@ async fn anti_clone_bail() {
     .await;
 }
 
-/// Device dynamique : découverte des mesures, plafond max_unique.
+/// Dynamic device (edge agent): measurement discovery, max_unique cap.
 #[tokio::test]
 #[serial]
 async fn dynamique_decouverte_et_plafond() {
     with_app(|server, auth, ctx| async move {
-        let dev = create_device(&server, &auth, "custom-1", "custom_device").await;
+        let dev = create_device(&server, &auth, "custom-1", "edge_agent").await;
 
         // Plafond à 2 mesures distinctes pour tester vite.
         use pnex_backend::models::_entities::device_registries;

@@ -22,7 +22,7 @@ pub struct Model {
     #[sea_orm(unique_key = "uniq_device_registries_org_device_id")]
     pub org_id: i64,
     pub predefined_device_id: i64,
-    /// SoC observed at admission (Tier 2 custom, no overlay).
+    /// SoC observed at the first announce (fallback of an unknown board SoC).
     #[sea_orm(nullable)]
     pub soc: Option<String>,
     /// Board variant frozen at registration.

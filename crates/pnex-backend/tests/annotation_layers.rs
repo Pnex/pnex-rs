@@ -196,7 +196,7 @@ async fn read_annotations(
         .await
 }
 
-/// Crée un device (`custom_device` seedé) — retourne la PK.
+/// Creates a device (seeded `generic_esp8266`) — returns the PK.
 async fn create_device(
     server: &axum_test::TestServer,
     token: &str,
@@ -210,7 +210,7 @@ async fn create_device(
         .add_header("Content-Type", "application/json")
         .json(&serde_json::json!({
             "device_id": device_id,
-            "predefined_device_name": "custom_device",
+            "predefined_device_name": "generic_esp8266",
         }))
         .await;
     assert_eq!(res.status_code(), 201, "device créé : {}", res.text());

@@ -187,8 +187,11 @@ async fn pinout(
 
     // 2) Pins du profil sans instance (jamais configurés + écran réservé) —
     //    défaut de la carte dérivé des chip-caps, même logique que l'admission.
+    //    Skipped for a custom firmware: its sketch owns the pins, only the
+    //    declared ones (instances) exist.
+    let sketch_owned = device.firmware_project_id.is_some();
     for (gpio, (label, pos, kind)) in &profile_pins {
-        if rows.iter().any(|r| r.gpio == *gpio) {
+        if sketch_owned || rows.iter().any(|r| r.gpio == *gpio) {
             continue;
         }
         let reserved = reserved_set.contains(gpio);
@@ -280,8 +283,8 @@ async fn pinout(
     }
 
     pins.sort_by_key(|(label, _)| pin_sort_key(label));
-    // Section board (profil v2) — `null` si pas de profil (v1, custom
-    // Tier 2) : le front bascule alors sur l'ancienne grille de cartes.
+    // Board section (v2 profile) — `null` without a profile (v1): the
+    // front then falls back to the legacy card grid.
     let board_json = match v2 {
         Some(p) => {
             let board = provisioning::device_board(&ctx.db, &device).await.ok();

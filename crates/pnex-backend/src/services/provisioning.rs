@@ -124,7 +124,7 @@ pub(crate) fn screen_for_build(
 /// Détails board du device (device → variante figée ou défaut modèle →
 /// `mcu_boards.details`), parse tolérant v1/v2. `Ok(None)` si détails
 /// absents ou illisibles (warn) — jamais d'erreur : l'appelant décide
-/// (admission Tier 1 vs Tier 2, pinout, éditeur).
+/// (admission, pinout, editor).
 pub(crate) async fn load_board_details(
     db: &DatabaseConnection,
     device: &device_registries::Model,
@@ -165,7 +165,7 @@ pub(crate) async fn load_overlay(
     })?;
     let Some(details) = board.details.as_ref() else {
         return Err(Error::string(
-            "pas d'overlay board (mcu_boards.details) pour ce device — /ws/device est réservé aux devices génériques",
+            "no board overlay (mcu_boards.details) for this device: /ws/device admits generic models and custom firmware devices",
         ));
     };
     let details: pnex_core::BoardDetails = serde_json::from_value(details.clone())
@@ -186,11 +186,10 @@ pub(crate) async fn load_overlay(
     Ok((overlay, soc))
 }
 
-/// SoC du board d'un device (device → predefined → board) — pour les
-/// validations `caps::validate` hors admission (push de commandes, cast
-/// régulation). Fallback Tier 2 : le soc **observé** à l'admission
-/// (persisté sur le device) quand le soc du board est
-/// inconnu des chip-caps (« generic »).
+/// SoC of a device's board (device → predefined → board), for the
+/// `caps::validate` checks (custom firmware admission, command push,
+/// regulation cast). Falls back to the SoC **observed** at the first
+/// announce when the board's SoC is unknown to the chip-caps.
 pub(crate) async fn device_soc(
     db: &DatabaseConnection,
     device: &device_registries::Model,
@@ -227,46 +226,46 @@ pub(crate) async fn persist_observed_soc(db: &DatabaseConnection, device_id: i64
     }
 }
 
-/// Manifeste d'admission : pins déclarées par le sketch + SoC déduit du
-/// chip annoncé (`None` = chip inconnu → admission permissive, warn).
+/// Admission manifest: the pins declared by the sketch (`Announce.pins`).
 pub(crate) struct AdmissionManifest<'a> {
-    pub soc: Option<pnex_core::Soc>,
     pub pins: Option<&'a [PinDecl]>,
 }
 
-/// Admission à l'`Announce` (policy Validated, B0.3) : dérive → valide →
-/// persiste → renvoie la pin map du `ProvisionAck`.
+/// Admission at `Announce` (policy Validated, B0.3): derive → validate →
+/// persist → return the `ProvisionAck` pin map. The device family decides
+/// who owns the pins (edge-model.md §2 bis):
 ///
-/// - **Tier 1 (overlay board)** : l'overlay reste l'autorité — upsert
-///   inchangé ; un manifeste annoncé divergent est journalisé (warn).
-/// - **Tier 2 (custom, sans overlay)** : les pins déclarées dans le
-///   sketch font foi — mode/label/opts du sketch appliqués à CHAQUE
-///   announce (un changement de sketch s'applique au re-announce), les
-///   gpio non déclarés sont purgés, `interval_ms` préservé (leçon
-///   2026-09-03).
-/// - Ni overlay ni pins → erreur d'admission (Reject à l'announce).
+/// - **Custom firmware** (`firmware_project_id` set): the sketch is the
+///   source — the declared pins are validated against the board's
+///   chip-caps, reapplied on every announce, undeclared gpios pruned. No
+///   declared pin is valid (a sketch that only publishes metrics) and
+///   yields an empty pin map, so the overlay never reconfigures pins the
+///   sketch drives itself (I2C, SPI…).
+/// - **Generic model**: the board overlay is the authority; pins announced
+///   by the firmware are ignored (warn).
+/// - No overlay and no custom firmware → admission error (Reject).
 pub(crate) async fn admit(
     db: &DatabaseConnection,
     device: &device_registries::Model,
     manifest: Option<AdmissionManifest<'_>>,
 ) -> Result<Vec<PinSpec>> {
-    match load_overlay(db, device).await {
-        Ok((overlay, soc)) => {
-            if let Some(pins) = manifest.as_ref().and_then(|m| m.pins) {
-                tracing::warn!(
-                    device_id = %device.device_id,
-                    n = pins.len(),
-                    "pins déclarées par un device overlay — ignorées (overlay board = autorité)"
-                );
-            }
-            admit_overlay(db, device, overlay, soc).await
-        }
-        // Pas d'overlay (custom) : le manifeste sketch fait foi.
-        Err(_) => admit_manifest(db, device, manifest).await,
+    let declared = manifest.and_then(|m| m.pins).unwrap_or_default();
+    if device.firmware_project_id.is_some() {
+        let soc = device_soc(db, device).await?;
+        return admit_sketch(db, device, declared, soc).await;
     }
+    let (overlay, soc) = load_overlay(db, device).await?;
+    if !declared.is_empty() {
+        tracing::warn!(
+            device_id = %device.device_id,
+            n = declared.len(),
+            "pins declared by a generic device ignored (board overlay is the authority)"
+        );
+    }
+    admit_overlay(db, device, overlay, soc).await
 }
 
-/// Tier 1 — admission par overlay board (comportement historique).
+/// Generic model — admission by the board overlay.
 async fn admit_overlay(
     db: &DatabaseConnection,
     device: &device_registries::Model,
@@ -394,32 +393,15 @@ async fn admit_overlay(
     Ok(specs)
 }
 
-/// Tier 2 — admission par les pins déclarées dans le sketch (custom,
-/// sans overlay). Validation chip-caps stricte si le SoC est connu,
-/// permissive sinon (chip inconnu, warn). Upsert : le sketch est la
-/// source (mode/label/opts réappliqués), `interval_ms` conservé, gpio
-/// non déclarés purgés.
-async fn admit_manifest(
+/// Custom firmware — admission by the pins declared in the sketch, strict
+/// chip-caps on the board's SoC. Upsert: the sketch is the source
+/// (mode/label/opts reapplied), `interval_ms` kept, undeclared gpios pruned.
+async fn admit_sketch(
     db: &DatabaseConnection,
     device: &device_registries::Model,
-    manifest: Option<AdmissionManifest<'_>>,
+    declared_pins: &[PinDecl],
+    soc: pnex_core::Soc,
 ) -> Result<Vec<PinSpec>> {
-    let declared_pins: &[PinDecl] = match manifest.as_ref().and_then(|m| m.pins) {
-        Some(pins) if !pins.is_empty() => pins,
-        _ => {
-            return Err(Error::from(AdmissionError(
-                "device sans overlay board ni pins déclarées dans l'announce — /ws/device requiert des pins (sketch) ou un overlay"
-                    .into(),
-            )));
-        }
-    };
-    let soc = manifest.and_then(|m| m.soc);
-    if soc.is_none() {
-        tracing::warn!(
-            device_id = %device.device_id,
-            "chip non reconnu — admission permissive (pas de validation chip-caps)"
-        );
-    }
     let existing: HashMap<i32, device_capability_instances::Model> =
         device_capability_instances::Entity::find()
             .filter(device_capability_instances::Column::DeviceRegistryId.eq(device.id))
@@ -433,7 +415,7 @@ async fn admit_manifest(
     for decl in declared_pins {
         // Same console rule as the overlay path: skipped (then pruned), the
         // rest of the sketch is still admitted.
-        if soc.is_some_and(|s| pnex_core::caps::is_console_pin(s, decl.gpio)) {
+        if pnex_core::caps::is_console_pin(soc, decl.gpio) {
             tracing::warn!(
                 device_id = %device.device_id,
                 gpio = decl.gpio,
@@ -454,22 +436,13 @@ async fn admit_manifest(
             pullup: decl.pullup,
             safe_state: decl.safe_state,
         };
-        // SoC connu → chip-caps strictes ; inconnu → permissif (défauts).
-        let validated = match soc {
-            Some(s) => pnex_core::caps::validate(s, decl.gpio, mode, &cfg).map_err(|v| {
-                Error::string(&format!(
-                    "pin {label} (gpio {}) : {}",
-                    decl.gpio,
-                    v.reason()
-                ))
-            })?,
-            None => pnex_core::ValidatedPin {
-                gpio: decl.gpio,
-                mode,
-                pullup: cfg.pullup.unwrap_or(false),
-                safe_state: cfg.safe_state.unwrap_or(pnex_core::SafeState::Low),
-            },
-        };
+        let validated = pnex_core::caps::validate(soc, decl.gpio, mode, &cfg).map_err(|v| {
+            Error::string(&format!(
+                "pin {label} (gpio {}) : {}",
+                decl.gpio,
+                v.reason()
+            ))
+        })?;
         let row = existing.get(&(decl.gpio as i32));
         // interval_ms conservé en vif dans le jsonb (ne JAMAIS réécrire la
         // config entière — leçon 2026-09-03 : cadence effacée sinon).
