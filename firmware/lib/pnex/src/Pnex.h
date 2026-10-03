@@ -224,7 +224,7 @@ private:
 
     bool declare(PnexPin p);
     PnexPin* pin_by_gpio(uint8_t gpio);
-    static void apply_pin(PnexPin& p);
+    static bool apply_pin(PnexPin& p);
     void forceAllOff();
     void sendAnnounce();
     void sendStateReport(const PnexPin& p);

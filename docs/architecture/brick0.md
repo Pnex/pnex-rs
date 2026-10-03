@@ -229,6 +229,10 @@ statique-only), visible pour les devices `generic_esp8266` :
 7. Coupure WS → sorties en safe-state.
 8. Les devices compilés existants (`soil_sensor`, `4_chan_relay`) ne
    changent pas de workflow.
+9. **(D122, 2026-10-02 — obligatoire pour toute nouvelle carte)** rapport
+   de banc HIL vert produit par le mode test firmware (valeurs réelles
+   relues sur chaque pin × mode), garde CI bloquante :
+   `pin-selftest.md`.
 
 ## 10. Reste ouvert (à trancher à l'implémentation)
 

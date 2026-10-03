@@ -1,0 +1,109 @@
+>>> info
+ESP-ROM:esp32c3-api1-20210207
+Build:Feb  7 2021
+rst:0x15 (USB_UART_CHIP_RESET),boot:0xe (SPI_FAST_FLASH_BOOT)
+Saved PC:0x420135a4
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fcd5810,len:0x438
+load:0x403cc710,len:0x90c
+load:0x403ce710,len:0x2624
+entry 0x403cc710
+
+[selftest] PneX pin self-test console — type `info`
+PNEXT {"op":"ready","chip":"esp32-c3","board":"esp32-c3","fw":"selftest","adc_max":4095}
+>>> test 2 digital_in
+PNEXT {"op":"info","chip":"esp32-c3","board":"esp32-c3","fw":"selftest","adc_max":4095}
+PNEXT {"op":"test","gpio":2,"mode":"digital_in","samples":[0,0,0,0,0]}
+>>> test 2 digital_in_pullup
+PNEXT {"op":"test","gpio":2,"mode":"digital_in_pullup","samples":[1,1,1,1,1]}
+>>> test 2 adc_in
+PNEXT {"op":"test","gpio":2,"mode":"adc_in","samples":[4095,3723,3419,3165,2952,2749,2557,2384,2231,2088]}
+>>> test 2 digital_out safe_high
+PNEXT {"op":"test","gpio":2,"mode":"digital_out","w0":0,"w1":1}
+>>> test 2 pwm_out safe_high
+PNEXT {"op":"test","gpio":2,"mode":"pwm_out","measured":{"0":0,"50":51,"100":100}}
+>>> test 3 digital_in
+PNEXT {"op":"test","gpio":3,"mode":"digital_in","samples":[0,0,0,0,0]}
+>>> test 3 digital_in_pullup
+PNEXT {"op":"test","gpio":3,"mode":"digital_in_pullup","samples":[1,1,1,1,1]}
+>>> test 3 adc_in
+PNEXT {"op":"test","gpio":3,"mode":"adc_in","samples":[2238,1899,1678,1545,1440,1359,1276,1191,1084,983]}
+>>> test 3 digital_out
+PNEXT {"op":"test","gpio":3,"mode":"digital_out","w0":0,"w1":1}
+>>> test 3 pwm_out
+PNEXT {"op":"test","gpio":3,"mode":"pwm_out","measured":{"0":0,"50":50,"100":100}}
+>>> test 4 digital_in
+PNEXT {"op":"test","gpio":4,"mode":"digital_in","samples":[0,0,0,0,0]}
+>>> test 4 digital_in_pullup
+PNEXT {"op":"test","gpio":4,"mode":"digital_in_pullup","samples":[1,1,1,1,1]}
+>>> test 4 adc_in
+PNEXT {"op":"test","gpio":4,"mode":"adc_in","samples":[3769,3344,3020,2761,2538,2362,2220,2102,1983,1880]}
+>>> test 4 digital_out
+PNEXT {"op":"test","gpio":4,"mode":"digital_out","w0":0,"w1":1}
+>>> test 4 pwm_out
+PNEXT {"op":"test","gpio":4,"mode":"pwm_out","measured":{"0":0,"50":50,"100":100}}
+>>> test 5 digital_in
+PNEXT {"op":"test","gpio":5,"mode":"digital_in","samples":[0,0,0,0,0]}
+>>> test 5 digital_in_pullup
+PNEXT {"op":"test","gpio":5,"mode":"digital_in_pullup","samples":[1,1,1,1,1]}
+>>> test 5 digital_out
+PNEXT {"op":"test","gpio":5,"mode":"digital_out","w0":0,"w1":1}
+>>> test 5 pwm_out
+PNEXT {"op":"test","gpio":5,"mode":"pwm_out","measured":{"0":0,"50":50,"100":100}}
+>>> test 6 digital_in
+PNEXT {"op":"test","gpio":6,"mode":"digital_in","samples":[1,1,1,0,0]}
+>>> test 6 digital_in_pullup
+PNEXT {"op":"test","gpio":6,"mode":"digital_in_pullup","samples":[1,1,1,1,1]}
+>>> test 6 digital_out
+PNEXT {"op":"test","gpio":6,"mode":"digital_out","w0":0,"w1":1}
+>>> test 6 pwm_out
+PNEXT {"op":"test","gpio":6,"mode":"pwm_out","measured":{"0":0,"50":50,"100":100}}
+>>> test 7 digital_in
+PNEXT {"op":"test","gpio":7,"mode":"digital_in","samples":[0,0,0,0,0]}
+>>> test 7 digital_in_pullup
+PNEXT {"op":"test","gpio":7,"mode":"digital_in_pullup","samples":[1,1,1,1,1]}
+>>> test 7 digital_out
+PNEXT {"op":"test","gpio":7,"mode":"digital_out","w0":0,"w1":1}
+>>> test 7 pwm_out
+PNEXT {"op":"test","gpio":7,"mode":"pwm_out","measured":{"0":0,"50":50,"100":100}}
+>>> test 21 digital_in
+PNEXT {"op":"test","gpio":21,"mode":"digital_in","samples":[0,0,0,0,0]}
+>>> test 21 digital_in_pullup
+PNEXT {"op":"test","gpio":21,"mode":"digital_in_pullup","samples":[1,1,1,1,1]}
+>>> test 21 digital_out
+PNEXT {"op":"test","gpio":21,"mode":"digital_out","w0":0,"w1":1}
+>>> test 21 pwm_out
+PNEXT {"op":"test","gpio":21,"mode":"pwm_out","measured":{"0":0,"50":50,"100":100}}
+>>> test 10 digital_in
+PNEXT {"op":"test","gpio":10,"mode":"digital_in","samples":[0,0,0,0,0]}
+>>> test 10 digital_in_pullup
+PNEXT {"op":"test","gpio":10,"mode":"digital_in_pullup","samples":[1,1,1,1,1]}
+>>> test 10 digital_out
+PNEXT {"op":"test","gpio":10,"mode":"digital_out","w0":0,"w1":1}
+>>> test 10 pwm_out
+PNEXT {"op":"test","gpio":10,"mode":"pwm_out","measured":{"0":0,"50":50,"100":100}}
+>>> test 9 digital_in
+PNEXT {"op":"test","gpio":9,"mode":"digital_in","samples":[1,1,1,1,1]}
+>>> test 9 digital_in_pullup
+PNEXT {"op":"test","gpio":9,"mode":"digital_in_pullup","samples":[1,1,1,1,1]}
+>>> test 9 digital_out safe_high
+PNEXT {"op":"test","gpio":9,"mode":"digital_out","w0":0,"w1":1}
+>>> test 9 pwm_out safe_high
+PNEXT {"op":"test","gpio":9,"mode":"pwm_out","measured":{"0":0,"50":50,"100":100}}
+>>> test 8 digital_in
+PNEXT {"op":"test","gpio":8,"mode":"digital_in","samples":[0,0,0,0,0]}
+>>> test 8 digital_in_pullup
+PNEXT {"op":"test","gpio":8,"mode":"digital_in_pullup","samples":[1,1,1,1,1]}
+>>> test 8 digital_out safe_high
+PNEXT {"op":"test","gpio":8,"mode":"digital_out","w0":0,"w1":1}
+>>> test 8 pwm_out safe_high
+PNEXT {"op":"test","gpio":8,"mode":"pwm_out","measured":{"0":0,"50":50,"100":100}}
+>>> test 20 digital_in
+PNEXT {"op":"test","gpio":20,"mode":"digital_in","samples":[1,1,1,1,1]}
+>>> test 20 digital_in_pullup
+PNEXT {"op":"test","gpio":20,"mode":"digital_in_pullup","samples":[1,1,1,1,1]}
+>>> test 20 digital_out
+PNEXT {"op":"test","gpio":20,"mode":"digital_out","w0":0,"w1":1}
+>>> test 20 pwm_out
+PNEXT {"op":"test","gpio":20,"mode":"pwm_out","measured":{"0":0,"50":50,"100":100}}

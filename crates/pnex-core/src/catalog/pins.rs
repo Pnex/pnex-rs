@@ -82,6 +82,7 @@ fn pin(
         default_mode: None,
         safe_state: None,
         active_low: false,
+        pull_down: false,
     }
 }
 
@@ -125,6 +126,11 @@ impl BoardProfilePin {
 
     pub(crate) fn active_low(mut self) -> Self {
         self.active_low = true;
+        self
+    }
+
+    pub(crate) fn pull_down(mut self) -> Self {
+        self.pull_down = true;
         self
     }
 }
