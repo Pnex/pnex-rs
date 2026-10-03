@@ -70,3 +70,42 @@ export async function flashMerged(board: Board, image: string): Promise<string> 
   if (!/Hash of data verified/.test(out)) throw new Error(`flash not verified on ${board.port}:\n${out}`);
   return out;
 }
+
+/** Running capture of a board's serial log (firmware/hil/serial_tail.py). */
+export interface SerialCapture {
+  /** Everything received so far. */
+  text(): string;
+  /** Resolves with the full log once the capture window ends. */
+  done: Promise<string>;
+  /** Ends the capture early and frees the port (flashing needs it). */
+  stop(): Promise<string>;
+}
+
+/**
+ * Tails the board's serial port for `seconds` without resetting it, so a
+ * test can assert the real pin values the firmware logs (`[IO] ...`,
+ * `readback=`). Released DTR/RTS keep the running firmware alive.
+ */
+export function serialCapture(board: Board, seconds: number): SerialCapture {
+  let log = '';
+  const child = execFile(
+    'uv',
+    ['run', '--project', '../firmware', 'python', '../firmware/hil/serial_tail.py', '--port', board.port, '--seconds', String(seconds)],
+    { timeout: (seconds + 60) * 1000, maxBuffer: 16 << 20 },
+  );
+  child.stdout?.on('data', (chunk: Buffer | string) => {
+    log += chunk.toString();
+  });
+  const done = new Promise<string>((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', () => resolve(log));
+  });
+  return {
+    text: () => log,
+    done,
+    stop: () => {
+      child.kill('SIGINT');
+      return done;
+    },
+  };
+}
