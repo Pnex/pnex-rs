@@ -35,7 +35,7 @@ COPY crates/pnex-frontend/ ./
 RUN bun run css:build && bun run js:build && bun run js:viewers && bun run js:map
 
 # ── Rust toolchain on the build host, with aarch64 cross compilers ────────
-FROM --platform=$BUILDPLATFORM rust:${RUST_VERSION}-trixie AS toolchain
+FROM --platform=$BUILDPLATFORM rust:${RUST_VERSION}-trixie AS toolchain-base
 ARG DIOXUS_CLI_VERSION
 RUN apt-get update \
  && apt-get install -y --no-install-recommends cmake clang libclang-dev \
@@ -54,6 +54,10 @@ ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
     CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++ \
     AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar
 WORKDIR /src
+
+# Sources on top of the tool layers: everything above stays cached across
+# source changes (shared with agent-dist).
+FROM toolchain-base AS toolchain
 COPY . .
 COPY --from=assets /src/crates/pnex-frontend/assets/ crates/pnex-frontend/assets/
 # Content hash of firmware/: pnex-firmware-builder's build.rs reruns on it
@@ -103,11 +107,14 @@ COPY --from=web /dist /out/dist
 # Static musl Linux (x86_64/aarch64/armv7, linked through zig) + Windows
 # x86_64 (mingw) + SHA256SUMS, served by pnex-server at
 # /api/v1/agent/download/{target}.
-FROM toolchain AS agent-dist
+# Its tools are installed before the sources are copied, so a source change
+# no longer re-runs the mingw apt-get (≈ 10 GB of build cache per rebuild).
+FROM toolchain-base AS agent-dist
 RUN apt-get update \
  && apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 xz-utils \
  && rm -rf /var/lib/apt/lists/*
 RUN cargo binstall -y --locked cargo-zigbuild
+COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pnex-cargo-registry-agent \
     --mount=type=cache,target=/usr/local/cargo/git,id=pnex-cargo-git-agent \
     --mount=type=cache,target=/src/target,id=pnex-target-agent \
