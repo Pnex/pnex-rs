@@ -477,6 +477,9 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 | 9 | Firmware custom : nœud flow des commandes (D88), 1er lot du catalogue (D92), technique de sandbox V1 (D91, à aligner avec P1.6) | Au lancement de P2.10 |
 | 10 | Parité n8n : périmètre V1 (logique de flux, déclencheurs, credentials, quelles intégrations d'abord) et descripteur généré vs inspecteurs dédiés | Au PRD de P2.11 |
 | 11 | API publique : transport des abonnements live (WebSocket vs SSE vs REST), modèle de jetons (portée device/flow, lecture/écriture, rotation), lien avec les déclencheurs webhook de P2.11 | Au passage de P3 à P2 |
+| 12 | Base de dev antérieure à D120 : `db:reset` de `pnex` ou adoption de `pnex_e2e` (observations O18) | Avant la prochaine session dev |
+| 13 | Jetons device dans l'URL des WebSockets (logs nginx) : masquage des logs vs auth par en-tête / premier message (O19) | Avant tout déploiement exposé |
+| 14 | Version firmware par rebuild (id + compteur ou hash) pour distinguer les builds en OTA (O22) | Au prochain chantier OTA |
 
 ## Journal de la roadmap
 
@@ -568,3 +571,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   D109) constaté livré dans le code. P1.2 étapes 1–2 : bouton Flash
   masqué sur Android (`flash::offered()`), package APK `io.pnex.app`
   (`[bundle]` Dioxus.toml) ; reste le keystore de release.
+- **2026-10-03 (harnais e2e)** — Suite Playwright `e2e/` (web en/fr +
+  banc matériel C3 / ESP32-CAM) ; 23 correctifs produit issus des tests.
+  Zones ouvertes consignées dans `docs/observations.md` O18–O25 ; décisions
+  #12–#14 ajoutées.
