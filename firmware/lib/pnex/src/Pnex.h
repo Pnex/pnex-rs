@@ -44,6 +44,8 @@
 #define PNEX_CHIP "esp8266"
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
 #define PNEX_CHIP "esp32-c3"
+#elif defined(CONFIG_IDF_TARGET_ESP32C6)
+#define PNEX_CHIP "esp32-c6"
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
 #define PNEX_CHIP "esp32-s3"
 #else

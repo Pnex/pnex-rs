@@ -32,6 +32,20 @@ static const uint8_t NO_GPIO = 0xFF;
 static uint8_t s_channel_gpio[PNEX_LEDC_CHANNELS];
 static bool s_channels_init = false;
 
+// Arduino core 3.x (C6) addresses LEDC by pin; 2.x by channel.
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+static void ledc_bind(uint8_t gpio, int ch) { ledcAttachChannel(gpio, PWM_FREQ_HZ, PWM_BITS, ch); }
+static void ledc_duty(uint8_t gpio, int, uint32_t duty) { ledcWrite(gpio, duty); }
+static void ledc_unbind(uint8_t gpio) { ledcDetach(gpio); }
+#else
+static void ledc_bind(uint8_t gpio, int ch) {
+    ledcSetup(ch, PWM_FREQ_HZ, PWM_BITS);
+    ledcAttachPin(gpio, ch);
+}
+static void ledc_duty(uint8_t, int ch, uint32_t duty) { ledcWrite(ch, duty); }
+static void ledc_unbind(uint8_t gpio) { ledcDetachPin(gpio); }
+#endif
+
 static int channel_of(uint8_t gpio) {
     if (!s_channels_init) {
         memset(s_channel_gpio, NO_GPIO, sizeof(s_channel_gpio));
@@ -52,8 +66,7 @@ static int attach_pwm(uint8_t gpio) {
     }
     for (ch = PNEX_LEDC_CHANNELS - 1; ch >= 0; --ch) {
         if (s_channel_gpio[ch] == NO_GPIO) {
-            ledcSetup(ch, PWM_FREQ_HZ, PWM_BITS);
-            ledcAttachPin(gpio, ch);
+            ledc_bind(gpio, ch);
             s_channel_gpio[ch] = gpio;
             return ch;
         }
@@ -66,8 +79,8 @@ static int attach_pwm(uint8_t gpio) {
 static void detach_pwm(uint8_t gpio) {
     const int ch = channel_of(gpio);
     if (ch >= 0) {
-        ledcWrite(ch, 0);
-        ledcDetachPin(gpio);
+        ledc_duty(gpio, ch, 0);
+        ledc_unbind(gpio);
         s_channel_gpio[ch] = NO_GPIO;
     }
 }
@@ -96,7 +109,7 @@ bool pnex_io_apply(PnexPin& p) {
                               PNEX_LEDC_CHANNELS);
                 return false;
             }
-            ledcWrite(channel_of(p.gpio), 0);  // boot at duty 0 (safe)
+            ledc_duty(p.gpio, channel_of(p.gpio), 0);  // boot at duty 0 (safe)
 #else
             // Explicit OUTPUT: the core's analogWrite() only calls pinMode
             // when its per-pin `analogMap` bit is clear, and that bit
@@ -139,7 +152,7 @@ void pnex_io_write_pwm(PnexPin& p, int duty_pct) {
 #if defined(ESP32)
     const int ch = attach_pwm(p.gpio);
     if (ch >= 0) {
-        ledcWrite(ch, duty_pct * 255 / 100);
+        ledc_duty(p.gpio, ch, duty_pct * 255 / 100);
     }
 #else
     analogWrite(p.gpio, duty_pct * 255 / 100);

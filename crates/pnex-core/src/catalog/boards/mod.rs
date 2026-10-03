@@ -14,6 +14,7 @@ mod esp8266_nodemcu;
 mod generic;
 mod nodemcu_oled;
 mod nodemcu_v3_oled;
+mod waveshare_esp32c6_zero;
 mod xiao_esp32c3;
 
 use super::CatalogBoard;
@@ -29,6 +30,7 @@ pub const ESP32_DEVKITC_V4_38P: CatalogBoard = esp32_devkitc_v4_38p::BOARD;
 pub const ESP32_DEVKIT_38P_TXD: CatalogBoard = esp32_devkit_38p_txd::BOARD;
 pub const NODEMCU_V3_OLED: CatalogBoard = nodemcu_v3_oled::BOARD;
 pub const ESP32CAM_AI_THINKER: CatalogBoard = esp32cam_ai_thinker::BOARD;
+pub const WAVESHARE_ESP32C6_ZERO: CatalogBoard = waveshare_esp32c6_zero::BOARD;
 pub const GENERIC: CatalogBoard = generic::BOARD;
 
 /// Every board, in seed order (stable ids on a fresh database).
@@ -44,5 +46,6 @@ pub static ALL: &[CatalogBoard] = &[
     ESP32_DEVKIT_38P_TXD,
     NODEMCU_V3_OLED,
     ESP32CAM_AI_THINKER,
+    WAVESHARE_ESP32C6_ZERO,
     GENERIC,
 ];

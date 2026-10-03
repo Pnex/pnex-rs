@@ -28,12 +28,19 @@ pub fn generic_project(soc: Soc) -> &'static str {
         Soc::Esp8266 => "generic_esp8266",
         Soc::Esp32 => "generic_esp32",
         Soc::Esp32C3 => "generic_esp32c3",
+        Soc::Esp32C6 => "generic_esp32c6",
         Soc::Esp32S3 => "generic_esp32s3",
     }
 }
 
 /// Every chip family a project can target (wire ids = [`Soc::name`]).
-pub const CHIP_FAMILIES: [Soc; 4] = [Soc::Esp32, Soc::Esp32C3, Soc::Esp32S3, Soc::Esp8266];
+pub const CHIP_FAMILIES: [Soc; 5] = [
+    Soc::Esp32,
+    Soc::Esp32C3,
+    Soc::Esp32C6,
+    Soc::Esp32S3,
+    Soc::Esp8266,
+];
 
 // ───────────────────────────── Library catalog ─────────────────────────────
 

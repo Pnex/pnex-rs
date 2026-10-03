@@ -25,9 +25,9 @@ pub fn chip_name(soc: &str) -> String {
 pub fn merge_offsets(soc: &str) -> Option<&'static [(&'static str, &'static str)]> {
     if soc.eq_ignore_ascii_case("esp8266") {
         None
-    } else if soc.replace('-', "").eq_ignore_ascii_case("esp32c3") {
-        // ESP32-C3 : le ROM boote depuis 0x0 — le bootloader DOIT y être
-        // (layout 0x1000 = image non bootable, « invalid header » au boot).
+    } else if matches!(chip_name(soc).as_str(), "esp32c3" | "esp32c6") {
+        // ESP32-C3/C6: the ROM boots from 0x0 — the bootloader MUST sit
+        // there (0x1000 layout = unbootable image, "invalid header").
         Some(&[
             ("0x0", "bootloader.bin"),
             ("0x8000", "partitions.bin"),
@@ -99,6 +99,7 @@ mod tests {
             ]
         );
         assert!(merge_offsets("esp32c3").is_some());
+        assert_eq!(merge_offsets("esp32-c6"), merge_offsets("esp32-c3"));
     }
 
     /// Le soc de `mcu_boards.soc` (« esp32-c3 », hyphénée) → le nom de chip

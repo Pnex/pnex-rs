@@ -97,7 +97,8 @@
 
 Le firmware est un workspace **PlatformIO** (ESP8266 + ESP32-C3, framework
 Arduino) : projets `soil_sensor`, `generic_esp8266`, `generic_esp32c3`
-(Seeed XIAO), `tft_dev` + lib PneX `lib/pnex` (transport, crypto, config)
+(Seeed XIAO), `generic_esp32`, `generic_esp32s3`, `generic_esp32c6`
+(Waveshare C6-Zero), `tft_dev` + lib PneX `lib/pnex` (transport, crypto, config)
 + libs partagées `common_libs` (display, pnex-core-cpp) + outils dev
 `ws-server` (Python).
 `4_chan_relay` (nanopb, D20) supprimé le 2026-09-13.

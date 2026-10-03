@@ -1632,6 +1632,7 @@ device-predef-generic-esp8266-desc = Carte de dev ESP8266 en firmware génériqu
 device-predef-generic-esp32c3-desc = Carte de dev ESP32-C3 (Seeed XIAO) en firmware générique : pins pilotés depuis l'UI (modes, write, subscribe), admission overlay D0–D10, ADC1 (D0–D2) et sorties sécurisées strapping.
 device-predef-generic-esp32-desc = Carte de dev ESP32 (DevKit WROOM) en firmware générique : pins pilotés depuis l'UI, ADC1 (GPIO32-39), GPIO34-39 input-only, sorties sécurisées strapping ; variantes DevKit V1 30p / 36p / TFT ST7735.
 device-predef-generic-esp32s3-desc = Carte de dev ESP32-S3 (DevKitC-1) en firmware générique : pins pilotés depuis l'UI, ADC1 (GPIO1-10), GPIO46 input-only, sorties sécurisées strapping ; écrans OLED 0.96" / TFT 1.77" au choix.
+device-predef-generic-esp32c6-desc = Carte de dev ESP32-C6 (Waveshare C6-Zero) en firmware générique : pins pilotés depuis l'UI, ADC1 (GPIO0-6), sorties sécurisées strapping ; écrans OLED 0.96" / TFT 1.77" au choix.
 device-predef-generic-esp32cam-desc = ESP32-CAM AI-Thinker (OV2640, PSRAM) en firmware générique : vidéo en direct vers le serveur (résolution, qualité, fps réglés depuis l'UI), LED flash (GPIO4) et LED rouge (GPIO33) pilotées depuis l'UI. La carte n'a pas de port USB : flashez-la via un support ESP32-CAM-MB ou un adaptateur FTDI, GPIO0 relié à GND pendant le téléversement.
 common-quoted-message = « { $name } » — { $message }
 devices-ota-target-line = « { $device } » → build #{ $version }
