@@ -306,6 +306,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::EventLog { .. } => kind_labels(PaletteKind::EventLog),
         pnex_core::FlowNodeKind::MemoryWrite { .. } => kind_labels(PaletteKind::MemoryWrite),
         pnex_core::FlowNodeKind::MemoryRead { .. } => kind_labels(PaletteKind::MemoryRead),
+        pnex_core::FlowNodeKind::ControlSource { .. } => kind_labels(PaletteKind::ControlSource),
         pnex_core::FlowNodeKind::Anomaly { .. } => kind_labels(PaletteKind::Anomaly),
         pnex_core::FlowNodeKind::Forecast { .. } => kind_labels(PaletteKind::Forecast),
         pnex_core::FlowNodeKind::Debug { .. } => kind_labels(PaletteKind::Debug),
@@ -379,6 +380,10 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::MemoryRead { .. } => {
             (geometry::MEMORY_READ_FILL, geometry::MEMORY_READ_STROKE)
         }
+        pnex_core::FlowNodeKind::ControlSource { .. } => (
+            geometry::CONTROL_SOURCE_FILL,
+            geometry::CONTROL_SOURCE_STROKE,
+        ),
         pnex_core::FlowNodeKind::Debug { .. } => (geometry::DEBUG_FILL, geometry::DEBUG_STROKE),
         pnex_core::FlowNodeKind::Red { .. } => (geometry::RED_FILL, geometry::RED_STROKE),
     };
@@ -401,6 +406,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::Display { .. }
         | pnex_core::FlowNodeKind::Debug { .. }
         | pnex_core::FlowNodeKind::CameraSource { .. }
+        | pnex_core::FlowNodeKind::ControlSource { .. }
         | pnex_core::FlowNodeKind::VisionDetect { .. } => {
             cx.display_values.read().get(&node.id).cloned()
         }
@@ -478,6 +484,17 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
             let rel_y = |port: usize| node_h * (port + 1) as f64 / (out_count + 1) as f64;
             geometry::split_output_labels(&config.keys)
                 .into_iter()
+                .enumerate()
+                .map(|(i, label)| (i, rel_y(i), label, node.id.clone()))
+                .collect()
+        }
+        pnex_core::FlowNodeKind::ControlSource { config } => {
+            // One port per listened control, labelled by its key.
+            let rel_y = |port: usize| node_h * (port + 1) as f64 / (out_count + 1) as f64;
+            config
+                .controls
+                .iter()
+                .map(crate::api::controls::key_of)
                 .enumerate()
                 .map(|(i, label)| (i, rel_y(i), label, node.id.clone()))
                 .collect()
@@ -1016,6 +1033,13 @@ fn node_subtitle(node: &FlowNode) -> String {
                 pnex_core::memory::format_duration_secs(config.ttl_secs)
             )
         }
+        pnex_core::FlowNodeKind::ControlSource { config } => match config.controls.as_slice() {
+            [] => "—".into(),
+            [one] => crate::api::controls::key_of(one),
+            [first, rest @ ..] => {
+                format!("{} +{}", crate::api::controls::key_of(first), rest.len())
+            }
+        },
         pnex_core::FlowNodeKind::MemoryRead { config } => match config.keys.as_slice() {
             [] => "—".into(),
             [one] => one.clone(),

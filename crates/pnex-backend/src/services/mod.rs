@@ -10,6 +10,7 @@ pub mod build_retention;
 pub mod camera;
 /// Per-pod concurrency caps (CoolProp, vision, runtime checks, uploads).
 pub mod compute_limits;
+pub mod controls;
 pub mod dashboard;
 pub mod dashboards;
 /// Cross-pod serialization helpers (advisory locks, unique violations).

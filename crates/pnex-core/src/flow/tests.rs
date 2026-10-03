@@ -3023,3 +3023,58 @@ fn removed_pnex_sql_kind_fails_to_parse_cleanly() {
     let err = serde_json::from_value::<FlowGraph>(raw).expect_err("removed kind");
     assert!(err.to_string().contains("pnex_sql"), "{err}");
 }
+
+#[test]
+fn control_source_validates_projects_and_lists_refs() {
+    let a = uuid::Uuid::from_u128(11);
+    let b = uuid::Uuid::from_u128(12);
+    let g: FlowGraph = serde_json::from_value(serde_json::json!({
+        "nodes": [
+            {"id": "cs", "kind": "control_source",
+             "config": {"controls": [b.to_string(), a.to_string()], "emit_on_start": true},
+             "outputs": [{"port": 1, "targets": ["dbg"]}]},
+            {"id": "cs2", "kind": "control_source",
+             "config": {"controls": [a.to_string()]}},
+            {"id": "dbg", "kind": "debug"}
+        ]
+    }))
+    .unwrap();
+    assert!(validate_graph(&g).is_empty(), "{:?}", validate_graph(&g));
+    assert_eq!(control_refs_of(&g), vec![a, b]);
+
+    let json = serde_json::to_value(&g).unwrap();
+    assert_eq!(json["nodes"][0]["kind"], "control_source");
+    let back: FlowGraph = serde_json::from_value(json).unwrap();
+    assert_eq!(back, g);
+
+    let meta = FlowArtifactMeta {
+        flow_id: 7,
+        version_number: 2,
+        org_id: 42,
+        o2_org: "o2-x".into(),
+    };
+    let red = to_red_flows_json(&g, &meta);
+    let cs = red
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["pnex_node_id"] == "cs")
+        .unwrap();
+    assert_eq!(cs["type"], "pnex-control-source");
+    assert_eq!(cs["emit_on_start"], true);
+    assert_eq!(cs["controls"][0], b.to_string());
+    // One port per control, padded even when only port 1 is wired.
+    assert_eq!(cs["wires"].as_array().unwrap().len(), 2, "{cs}");
+    assert_eq!(cs["pnex_org_id"], 42);
+
+    // A palette drop (empty config) is flagged until a control is picked.
+    let empty: FlowGraph = serde_json::from_value(serde_json::json!({
+        "nodes": [{"id": "cs", "kind": "control_source"}]
+    }))
+    .unwrap();
+    let codes: Vec<String> = validate_graph(&empty)
+        .iter()
+        .map(|x| x.code.clone())
+        .collect();
+    assert_eq!(codes, ["control_source_empty"], "{codes:?}");
+}

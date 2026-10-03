@@ -35,6 +35,7 @@ pub enum PaletteKind {
     EventLog,
     MemoryWrite,
     MemoryRead,
+    ControlSource,
     Anomaly,
     Forecast,
     Debug,
@@ -197,6 +198,10 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             },
             PaletteKind::MemoryRead => FlowNodeKind::MemoryRead {
                 config: pnex_core::memory::MemoryReadConfig::default(),
+            },
+            // No control picked yet: the violation banner guides the user.
+            PaletteKind::ControlSource => FlowNodeKind::ControlSource {
+                config: pnex_core::ui_control::ControlSourceConfig::default(),
             },
             // Usable as dropped: robust z-score, 200-sample window.
             PaletteKind::Anomaly => FlowNodeKind::Anomaly {
@@ -422,6 +427,18 @@ pub fn rewire_coolprop(
             }
         }
     }
+}
+
+/// Rewires the output ports of a `control-source` after its control list
+/// changed: a wire follows its control id, never its index.
+pub fn rewire_control_source(
+    graph: &mut FlowGraph,
+    id: &str,
+    old: &[uuid::Uuid],
+    new: &[uuid::Uuid],
+) {
+    let labels = |ids: &[uuid::Uuid]| ids.iter().map(|u| u.to_string()).collect::<Vec<_>>();
+    rewire_by_label(graph, id, &labels(old), &labels(new));
 }
 
 /// Rewires the output ports of a memory-read node after its key list

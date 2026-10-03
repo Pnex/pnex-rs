@@ -163,6 +163,9 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::MemoryRead { config } => rsx! {
             MemoryReadForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::ControlSource { config } => rsx! {
+            ControlSourceForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::Anomaly { config } => rsx! {
             AnomalyForm { cx, initial: config.clone(), can_write }
         },
@@ -213,6 +216,7 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
 }
 
 mod camera_source;
+mod control_source;
 mod coolprop;
 mod device;
 mod event_log;
@@ -232,6 +236,7 @@ mod video_record;
 mod vision_detect;
 
 use camera_source::CameraSourceForm;
+use control_source::ControlSourceForm;
 use coolprop::CoolPropForm;
 use device::{DeviceReadForm, DeviceWriteForm};
 use event_log::EventLogForm;

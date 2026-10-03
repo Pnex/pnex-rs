@@ -309,9 +309,8 @@ pub fn check_control_label(label: &str) -> Option<(&'static str, String)> {
     None
 }
 
-/// Last commanded value, stored as a JSON string under
-/// [`control_value_key`] and published (wrapped in [`ControlEvent`]) on
-/// [`control_channel`].
+/// Last commanded value. Stored and published wrapped in a
+/// [`ControlEvent`] (under [`control_value_key`], on [`control_channel`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ControlValue {
     pub v: f64,

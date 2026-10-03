@@ -691,6 +691,23 @@ pub fn device_write_pin_refs_of(g: &FlowGraph) -> Vec<DeviceWritePinRef> {
     refs
 }
 
+/// Org controls listened to by a graph (`control-source` nodes), deduplicated
+/// and sorted: "no effect" badge, deploy existence check, delete guard.
+pub fn control_refs_of(g: &FlowGraph) -> Vec<Uuid> {
+    let mut ids: Vec<Uuid> = g
+        .nodes
+        .iter()
+        .filter_map(|n| match &n.kind {
+            FlowNodeKind::ControlSource { config } => Some(config.controls.iter().copied()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
 /// Reserved name of the notify node's permanent boolean gate input: a wire
 /// annotated with this pin feeds the trigger gate (`topic = "trigger"` at
 /// runtime), never a template var.

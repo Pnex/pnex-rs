@@ -1,0 +1,30 @@
+[package]
+name = "pnex-node-ui-control"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Flow node PNeX — control-source: org controls written from the surfaces (Valkey pub/sub)"
+
+[dependencies]
+edgelink-core = { path = "../../vendor/edgelinkd/crates/core", default-features = false, features = ["core", "js"] }
+edgelink-macro = { path = "../../vendor/edgelinkd/crates/macro" }
+# Config + check (single source of truth with the editor), key/channel builders.
+pnex-core = { workspace = true }
+# Only for the Option<&config::Config> factory type — same features as edgelink-core
+config = { version = "0.15", default-features = false, features = ["convert-case", "toml"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Control bus: SUBSCRIBE (pub/sub) + MGET of the last values (emit_on_start).
+redis = { workspace = true }
+tokio = { version = "1", default-features = false, features = ["time", "sync", "macros"] }
+futures-util = { version = "0.3", default-features = false }
+async-trait = "0.1"
+tokio-util = "0.7"
+log = "0.4"
+chrono = { workspace = true }
+uuid = { workspace = true }
+# The `#[flow_node]` macro emits unqualified `inventory::submit!` — direct dep required
+inventory = "0.3"
+
+[dev-dependencies]
+tokio = { version = "1", default-features = false, features = ["rt", "macros", "time"] }

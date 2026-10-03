@@ -15,6 +15,7 @@ pnex-node-device = { workspace = true }
 pnex-node-display = { workspace = true }
 pnex-node-value = { workspace = true }
 pnex-node-control = { workspace = true }
+pnex-node-ui-control = { workspace = true }
 pnex-node-coolprop = { workspace = true }
 pnex-node-notify = { workspace = true }
 pnex-node-http-fetch = { workspace = true }
@@ -46,4 +47,7 @@ rquickjs-sys = { version = "0.11", features = ["bindgen"] }
 libc = "0.2"
 # Camera E2E: publishes frames on the Valkey frame bus.
 redis = { workspace = true }
+# Control-source E2E: random control ids.
+uuid = { workspace = true }
+chrono = { workspace = true }
 tokio = { version = "1", default-features = false, features = ["rt", "macros"] }

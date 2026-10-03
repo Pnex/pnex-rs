@@ -149,6 +149,19 @@ pub fn to_red_flows_json_with(
                     "pnex_org_id": meta.org_id,
                 })
             }
+            FlowNodeKind::ControlSource { config } => {
+                // One port per listened control, in config order.
+                padded_ports = Some(config.port_count());
+                serde_json::json!({
+                    "type": "pnex-control-source",
+                    "controls": config.controls,
+                    "emit_on_start": config.emit_on_start,
+                    "pnex_node_id": n.id,
+                    "pnex_flow_id": meta.flow_id,
+                    "pnex_version": meta.version_number,
+                    "pnex_org_id": meta.org_id,
+                })
+            }
             FlowNodeKind::Anomaly { config } => {
                 padded_ports = Some(crate::predictive::ANOMALY_PORT_COUNT);
                 serde_json::json!({

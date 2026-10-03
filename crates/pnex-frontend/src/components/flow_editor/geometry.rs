@@ -72,6 +72,8 @@ pub const EVENT_LOG_STROKE: &str = "#64748b";
 // Shared memory nodes (Valkey): lime writer, green reader.
 pub const MEMORY_WRITE_FILL: &str = "#f7fee7";
 pub const MEMORY_WRITE_STROKE: &str = "#65a30d";
+pub const CONTROL_SOURCE_FILL: &str = "#eff6ff";
+pub const CONTROL_SOURCE_STROKE: &str = "#2563eb";
 pub const MEMORY_READ_FILL: &str = "#f0fdf4";
 pub const MEMORY_READ_STROKE: &str = "#16a34a";
 // Predictive nodes: red anomaly, violet forecast.
@@ -116,6 +118,8 @@ pub fn port_counts_of(node: &FlowNode) -> (usize, usize) {
         FlowNodeKind::CoolProp { config } => (config.port_count(), 2),
         // Memory read: object port + one port per key; write: passthrough.
         FlowNodeKind::MemoryRead { config } => (config.port_count(), 0),
+        // Control source: event-driven, one port per listened control.
+        FlowNodeKind::ControlSource { config } => (config.port_count().max(1), 0),
         // Anomaly: detail + boolean state; forecast: detail + breach + ETA.
         FlowNodeKind::Anomaly { .. } => (pnex_core::predictive::ANOMALY_PORT_COUNT, 0),
         FlowNodeKind::Forecast { .. } => (pnex_core::predictive::FORECAST_PORT_COUNT, 0),

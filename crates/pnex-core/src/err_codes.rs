@@ -297,6 +297,25 @@ pub const SERVER_BUSY: &str = "server-busy";
 /// (`Retry-After` header carries the wait in seconds).
 pub const RATE_LIMITED: &str = "rate-limited";
 
+// ── Org controls (D125–D127, surfaces-controls.md) ──────────────────────
+
+/// Viewer trying to create/edit/delete a control or to operate one.
+pub const CONTROL_WRITE_FORBIDDEN: &str = "control-write-forbidden";
+/// Another control of the org already uses this key.
+pub const CONTROL_KEY_TAKEN: &str = "control-key-taken";
+/// Value refused by the control spec; `args.reason` = machine token of
+/// `ControlValueError::code` (`out_of_range`, `off_step`…).
+pub const CONTROL_VALUE_INVALID: &str = "control-value-invalid";
+/// Two writes of one control closer than `CONTROL_WRITE_MIN_INTERVAL_MS`.
+pub const CONTROL_RATE_LIMITED: &str = "control-rate-limited";
+/// Delete refused: deployed flows listen to it; `args.flow` = their names.
+pub const CONTROL_IN_USE: &str = "control-in-use";
+/// Deploy refused: a `control-source` lists a control absent from the org;
+/// `args.control` = its id.
+pub const CONTROL_UNKNOWN: &str = "control-unknown";
+/// Valkey not configured or unreachable: controls cannot be written.
+pub const CONTROL_STORE_UNAVAILABLE: &str = "control-store-unavailable";
+
 // ── Registered codes ─────────────────────────────────────────────────────
 
 /// All registered codes. A code not listed here falls back to the verbatim
@@ -469,6 +488,13 @@ pub const ALL: &[&str] = &[
     FIRMWARE_SOURCE_TOO_LARGE,
     DEVICE_COMMAND_UNKNOWN,
     FIRMWARE_VERSION_CONFLICT,
+    CONTROL_WRITE_FORBIDDEN,
+    CONTROL_KEY_TAKEN,
+    CONTROL_VALUE_INVALID,
+    CONTROL_RATE_LIMITED,
+    CONTROL_IN_USE,
+    CONTROL_UNKNOWN,
+    CONTROL_STORE_UNAVAILABLE,
 ];
 
 /// True when the code is registered (translatable through `err-<kebab>`).

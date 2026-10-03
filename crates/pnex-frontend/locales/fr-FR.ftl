@@ -2787,3 +2787,38 @@ secret-field-pick = Choisir un secret existant
 secret-field-type-placeholder = Valeur (stockée chiffrée)
 secret-field-pick-placeholder = — Choisir un secret —
 secret-field-unset = Non défini
+
+## Org controls (D125–D127)
+err-control-write-forbidden = Rôle owner, admin ou membre requis pour gérer ou actionner les contrôles.
+err-control-key-taken = Un autre contrôle de l'organisation utilise déjà cette clé.
+err-control-value-invalid = Valeur refusée par le contrôle ({ $reason }).
+err-control-rate-limited = Trop rapide : attendez un instant avant de renvoyer une valeur.
+err-control-in-use = Ce contrôle est écouté par des flows déployés ({ $flow }) : arrêtez-les ou retirez le contrôle de leurs nœuds avant de le supprimer.
+err-control-unknown = Le contrôle { $control } n'existe pas (ou plus) dans l'organisation : choisissez-en un autre dans le nœud.
+err-control-store-unavailable = Le stockage des contrôles (Valkey) est indisponible : la valeur n'a pas été envoyée.
+
+## Control source node (D127)
+flows-palette-control-source = Source contrôle
+flows-palette-control-source-help = Reçoit les valeurs envoyées depuis les dashboards et annotations (un port par contrôle)
+flows-control-source-help = Émet un message à chaque fois qu'un contrôle coché est actionné depuis un dashboard ou une annotation : payload = valeur, topic = clé du contrôle. Un port de sortie par contrôle, dans l'ordre de sélection.
+flows-control-source-empty = Cochez au moins un contrôle à écouter
+flows-control-source-none-in-org = Aucun contrôle dans l'organisation pour l'instant : créez-en un ci-dessous ou depuis un dashboard.
+flows-control-source-missing = Contrôle supprimé : retirez-le de ce nœud
+flows-control-source-port = port { $port }
+flows-control-source-emit-on-start = Renvoyer la dernière valeur au démarrage
+flows-control-source-emit-on-start-hint = Après un redémarrage ou un redéploiement, chaque contrôle renvoie sa dernière valeur : les sorties retrouvent leur état.
+flows-control-source-create = Nouveau contrôle
+flows-control-source-create-submit = Créer et écouter
+controls-kind-switch = Interrupteur
+controls-kind-slider = Curseur
+controls-kind-button = Bouton
+controls-kind-number = Valeur numérique
+controls-label-placeholder = Libellé (ex. Éclairage salle machine)
+flow-status-control-listening = À l'écoute
+flow-status-control-bus-unavailable = Bus des contrôles indisponible
+flow-status-count-commands = { $commands } commandes
+flow-status-stat-commands = Commandes reçues
+err-control-source-empty = Cochez au moins un contrôle à écouter
+err-control-source-too-many = 32 contrôles au plus par nœud
+err-control-source-unset = Choisissez un contrôle
+err-control-source-duplicate = Un contrôle est listé deux fois
