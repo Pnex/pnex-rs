@@ -89,6 +89,9 @@ static bool lean_wss_connect(bool& ok) {
     snprintf(path, sizeof(path), "%s?token=%s&device_id=%s", s_init.ws_path,
              token, device_id);
     ok = s_client.connect(tcp, host, (uint16_t)port, path);
+    if (!ok) {
+        pnex_tls_log_error(*tcp);
+    }
     if (s_mfln == 0 && ok) {
         s_mfln = tcp->getMFLNStatus() ? 1 : 2;
         Serial.printf("[TLS] MFLN %d on %s:%d: %s\n", LEAN_TLS_RX, host, port,

@@ -39,4 +39,9 @@ bool pnex_tls_pinned();
 // Used by both the WS client (pnex_ws) and the OTA download.
 void pnex_tls_apply(WiFiClientSecure& client);
 
+#if !defined(ESP32)
+// Logs BearSSL's last error after a failed TLS connect (no-op when none).
+void pnex_tls_log_error(WiFiClientSecure& client);
+#endif
+
 #endif  // PNEX_TLS_H

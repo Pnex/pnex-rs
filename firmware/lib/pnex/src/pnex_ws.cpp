@@ -518,5 +518,11 @@ bool pnex_ws_open(PnexWsClient& client, const char* url) {
     } else {
         tcp = new WiFiClient();
     }
-    return client.connect(tcp, host, (uint16_t)port, path);
+    const bool ok = client.connect(tcp, host, (uint16_t)port, path);
+#if !defined(ESP32)
+    if (!ok && tls) {
+        pnex_tls_log_error(*static_cast<WiFiClientSecure*>(tcp));
+    }
+#endif
+    return ok;
 }
