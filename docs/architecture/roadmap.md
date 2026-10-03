@@ -477,9 +477,9 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 | 9 | Firmware custom : nœud flow des commandes (D88), 1er lot du catalogue (D92), technique de sandbox V1 (D91, à aligner avec P1.6) | Au lancement de P2.10 |
 | 10 | Parité n8n : périmètre V1 (logique de flux, déclencheurs, credentials, quelles intégrations d'abord) et descripteur généré vs inspecteurs dédiés | Au PRD de P2.11 |
 | 11 | API publique : transport des abonnements live (WebSocket vs SSE vs REST), modèle de jetons (portée device/flow, lecture/écriture, rotation), lien avec les déclencheurs webhook de P2.11 | Au passage de P3 à P2 |
-| 12 | Base de dev antérieure à D120 : `db:reset` de `pnex` ou adoption de `pnex_e2e` (observations O18) | Avant la prochaine session dev |
-| 13 | Jetons device dans l'URL des WebSockets (logs nginx) : masquage des logs vs auth par en-tête / premier message (O19) | Avant tout déploiement exposé |
-| 14 | Version firmware par rebuild (id + compteur ou hash) pour distinguer les builds en OTA (O22) | Au prochain chantier OTA |
+| 12 | ~~Base de dev antérieure à D120~~ — tranché 2026-10-03 : tout détruit, `pnex` recréée (O18) | ✅ |
+| 13 | Jetons device dans l'URL des WebSockets : logs masqués 2026-10-03 (edge, compose, Helm) ; reste auth par en-tête / premier message (O19) | Backlog |
+| 14 | ~~Version firmware par rebuild~~ — tranché 2026-10-03 : 1 build = 1 enregistrement = 1 version, OTA en lot manuelle (O22) | ✅ |
 
 ## Journal de la roadmap
 
@@ -575,3 +575,8 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   banc matériel C3 / ESP32-CAM) ; 23 correctifs produit issus des tests.
   Zones ouvertes consignées dans `docs/observations.md` O18–O25 ; décisions
   #12–#14 ajoutées.
+- **2026-10-03 (suites e2e)** — O18–O24 traités (base recréée, logs sans
+  jetons edge/compose/Helm, handshake WS 5 s, notification sur front
+  montant, 1 build = 1 version + OTA en lot manuelle, mineurs UI/Docker).
+  Ouvert : licence GPL d'ArduinoWebsockets vs cible MIT (O20), dette a11y
+  (O21), suite e2e en CI (O25).

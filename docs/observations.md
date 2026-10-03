@@ -393,7 +393,9 @@ Tous trouvés par la suite e2e, chacun couvert par un test (unitaire ou e2e) :
   (doctrine D120) ou adopter `pnex_e2e` comme base de dev. Les devices de
   l'ancienne org (quiet-puffin, proud-robin) n'existent que dans `pnex` ;
   leurs flashs d'origine sont dans `~/.cache/pnex-e2e/flash-backups/`.
-- **Statut** : ouvert (décision).
+- **Décision (2026-10-03)** : rien en prod avant la 1re release — `pnex`
+  et `pnex_e2e` détruites, `pnex` recréée (doctrine D120), Valkey vidée.
+- **Statut** : ✅ résolu.
 
 ### O19 — Jetons device en clair dans l'URL des WebSockets (logs nginx)
 
@@ -403,7 +405,16 @@ Tous trouvés par la suite e2e, chacun couvert par un test (unitaire ou e2e) :
 - **Pistes** : masquer la query string dans le `log_format` de l'edge
   (rapide) ; à terme, authentifier par en-tête ou premier message chiffré
   (impact firmware + contrat, à concevoir).
-- **Statut** : ouvert (décision roadmap #13).
+- **Fait (2026-10-03)** : edge nginx (`2a80844`) — access log sans query
+  string (`pnex_noqs`, posé par bloc `server` : au niveau http il
+  s'ajouterait au `main` de l'image), error log de `/ws/` en `crit` (les
+  lignes d'erreur nginx citent la requête complète). pnex-deploy : même
+  traitement en compose ; chart Helm = Ingress `/ws/` dédié sans access log
+  (ingress-nginx, Traefik ≥ 3.1), HAProxy documenté (`%HPO`). Vérifié sur
+  nginx 1.29 : `?token=` absent des deux logs.
+- **Reste (à concevoir)** : auth par en-tête / premier message, le jeton ne
+  passerait plus du tout par l'URL.
+- **Statut** : ✅ résolu (fuite des logs) ; refonte d'auth = backlog.
 
 ### O20 — Firmware : handshake WebSocket limité à 1 s (ArduinoWebsockets)
 
@@ -416,7 +427,19 @@ Tous trouvés par la suite e2e, chacun couvert par un test (unitaire ou e2e) :
 - **À auditer avec** : toute écriture > 16 Ko sur `/ws/device` (même cause
   que la caméra, O17 `e811fbf`) — aujourd'hui les messages de contrôle sont
   petits, mais rien ne le garantit (gros announce, futures commandes).
-- **Statut** : ouvert.
+- **Fait (2026-10-03, `6a0a929`)** : tous les clients WS PneX (transport,
+  caméra, TLS « lean » 8266) passent par notre propre client TCP
+  (`firmware/lib/pnex/src/pnex_ws_tcp.h`) dont `readLine()` attend
+  `PNEX_WS_HANDSHAKE_TIMEOUT_MS` (5000, surchargeable `-D`) en rendant la
+  main (`delay(1)` : une boucle active de 5 s déclencherait le WDT 8266).
+  La lib n'est ni vendue ni patchée : elle est **GPL-3.0** (et non MIT).
+- **Licence (décision ouverte)** : ArduinoWebsockets GPL-3 ⇒ chaque binaire
+  firmware compilé est GPL, alors que la lib PneX est Apache-2.0. Cible
+  souhaitée : licences permissives (MIT) ⇒ remplacer par un client WS
+  permissif (ex. client WebSocket d'ESP-IDF) — à arbitrer.
+- **Reste** : validation sur carte réelle (WiFi dégradé) ; audit des
+  écritures > 16 Ko sur `/ws/device`.
+- **Statut** : ✅ résolu (timeout) ; licence = décision ouverte.
 
 ### O21 — Dette d'accessibilité restante
 
@@ -437,17 +460,27 @@ Tous trouvés par la suite e2e, chacun couvert par un test (unitaire ou e2e) :
   la version firmware étant cet id, deux builds différents ont la même
   version → l'OTA d'après rebuild est toujours un « redeploy forcé », et
   l'UI ne peut pas dire si le device tourne le dernier binaire.
-- **Piste** : version = id + compteur de rebuild (ou hash du binaire).
-- **Statut** : ouvert (décision roadmap #14).
+- **Fait (2026-10-03, `a239c87`)** : chaque build = un nouvel enregistrement
+  (nouvel id = nouvelle version numérique croissante, compatible garde
+  anti-downgrade 8266) ; 409 `build-in-progress` si un build du device est
+  en cours ; rétention 5 builds/device (jamais la version en service ni une
+  cible OTA active). Page Devices : version en service vs dernier build +
+  badge (à jour / mise à jour dispo / build en cours / échec / hors ligne),
+  sélection multiple, « Builder la sélection » / « OTA de la sélection »
+  avec plan par device confirmé par l'opérateur — rien d'automatique, un
+  build ne déclenche jamais d'OTA. Le device annonçait déjà sa version
+  (`Announce.fw` → `device_registries.fw_version`).
+- **Statut** : ✅ résolu.
 
 ### O23 — Notification sans variables : envoi à chaque `trigger = true`
 
 - **Constat** : depuis `f3cf0c9`, un template sans variables part à chaque
   trigger armé — un Inject à 5 s qui maintient l'alarme vraie envoie un mail
   toutes les 5 s (cohérent avec le mode à variables, mais bruyant).
-- **Piste** : envoi sur front montant (false→true) pour ce cas, ou anti-spam
-  activé par défaut à la création du nœud. Choix produit.
-- **Statut** : ouvert (décision).
+- **Décision + fait (2026-10-03)** : envoi sur **front montant** uniquement
+  (false/non reconnu → true), un `false` réarme ; l'anti-spam reste
+  optionnel (alarme qui oscille). Cf. notifications.md.
+- **Statut** : ✅ résolu.
 
 ### O24 — Mineurs constatés
 
@@ -469,7 +502,15 @@ Tous trouvés par la suite e2e, chacun couvert par un test (unitaire ou e2e) :
 - **Build Docker** : l'étage `agent-dist` (apt-get mingw) est invalidé à
   chaque changement de source (≈ +10 Go de cache par série de rebuilds,
   50 Go consommés sur la session) — sortir l'apt-get avant `COPY . .`.
-- **Statut** : backlog.
+- **Fait (2026-10-03, `f0d3bf3`, `e814f1d`)** : tous les points ci-dessus —
+  `PNEX_FLOW_LOG` relayé (compose) et niveaux du runtime respectés ;
+  `last_seen` = vrai dernier point (SQL O2, le PromQL instantané renvoyait
+  l'heure d'évaluation — même bug corrigé sur les dernières mesures de
+  l'accueil) ; caméras « connecté, en attente d'images » ; plan Studio
+  mesuré depuis l'image, scènes réparties sur l'étage actif ; accueil
+  « Self-hosted » + compteurs depuis le résumé d'org ; unité unique ;
+  Dockerfile `toolchain-base`.
+- **Statut** : ✅ résolu.
 
 ### O25 — Suite e2e : ce qui reste à faire
 
