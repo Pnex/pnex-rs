@@ -24,10 +24,6 @@
 #include <ESP8266WiFi.h>  // brings the WiFiClientSecure (BearSSL) typedef
 #endif
 
-namespace websockets {
-class WebsocketsClient;
-}
-
 // Decode the CA once (call from pnex_transport_setup, before any
 // pnex_tls_apply). `ca_pem_b64` = PNEX_CA_CERT macro value ("" = none).
 void pnex_tls_init(const char* ca_pem_b64);
@@ -37,16 +33,10 @@ bool pnex_tls_pinned();
 
 // Apply the shared trust posture to a client.
 // - unpinned  → setInsecure() (both cores).
-// - ESP32 pinned → setCACert / ws lib CA hook.
+// - ESP32 pinned → setCACert.
 // - ESP8266 pinned → BearSSL X509List trust anchor + MFLN buffers
 //   (setBufferSizes 2048/512 — the ~40 KB heap budget), plus a heap log.
-//   If the WS library cannot take a CA on this core, falls back to
-//   setInsecure with a loud Serial warning (documented limitation).
-void pnex_tls_apply(websockets::WebsocketsClient& client);
+// Used by both the WS client (pnex_ws) and the OTA download.
 void pnex_tls_apply(WiFiClientSecure& client);
-
-// Decoded CA PEM when pinned, nullptr otherwise (pnex_ws_tcp applies it to
-// its own TLS client).
-const char* pnex_tls_ca_pem();
 
 #endif  // PNEX_TLS_H

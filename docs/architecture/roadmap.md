@@ -578,5 +578,6 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 - **2026-10-03 (suites e2e)** — O18–O24 traités (base recréée, logs sans
   jetons edge/compose/Helm, handshake WS 5 s, notification sur front
   montant, 1 build = 1 version + OTA en lot manuelle, mineurs UI/Docker).
-  Ouvert : licence GPL d'ArduinoWebsockets vs cible MIT (O20), dette a11y
-  (O21), suite e2e en CI (O25).
+  Ouvert : dette a11y (O21), suite e2e en CI (O25). Licence O20 tranchée le
+  jour même : ArduinoWebsockets (GPL-3) remplacée par le client WS maison
+  `pnex_ws` (Apache-2.0).

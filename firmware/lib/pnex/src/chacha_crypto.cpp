@@ -150,3 +150,7 @@ String cryptoDecryptFrame(const char* wire) {
 unsigned int cryptoB64Decode(const char* b64, unsigned char* out) {
     return decode_base64((const unsigned char*)b64, out);
 }
+
+unsigned int cryptoB64Encode(const unsigned char* in, unsigned int n, char* out) {
+    return encode_base64(in, n, (unsigned char*)out);
+}

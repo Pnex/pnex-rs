@@ -13,7 +13,6 @@
   "headers": "Pnex.h",
   "dependencies": [
     {"owner": "bblanchon", "name": "ArduinoJson", "version": "^7.0.4"},
-    {"owner": "gilmaimon", "name": "ArduinoWebsockets", "version": "^0.5.4"},
     {"owner": "densaugeo", "name": "base64", "version": "^1.4.0"},
     {"owner": "olikraus", "name": "U8g2", "version": "^2.35.19"},
     {"owner": "adafruit", "name": "Adafruit GFX Library", "version": "^1.12.2"},

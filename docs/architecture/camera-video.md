@@ -440,7 +440,10 @@ explicite ultérieure (dépendance ffmpeg, `ml-vision.md`).
   partielles — une frame VGA (15–25 Ko) partait tronquée et tuait l'uplink
   après 2–3 frames. Le firmware envoie désormais toute frame > 8 Ko en
   **un message WS fragmenté** (premier fragment vide, continuations, fin
-  vide) ; le serveur reçoit toujours un seul message binaire. Une session
+  vide) ; le serveur reçoit toujours un seul message binaire. **Depuis le
+  client WS maison `pnex_ws` (2026-10-03, O20)** : écritures découpées et
+  écritures partielles reprises → une frame = un seul message binaire non
+  fragmenté, quelle que soit sa taille. Une session
   qui a livré des frames se reconnecte au délai minimal ; seule une session
   coupée avant sa première frame (rejet serveur) double le backoff.
 - **Profil board AI-Thinker** : seuls GPIO4 (LED flash) et GPIO33 (LED
@@ -506,7 +509,8 @@ rien de poussé. Le firmware compile, n'a jamais été flashé.
 | 10 | OTA (min_spiffs, slots 1,9 Mo) | bouton OTA | — |
 
 Risques identifiés non mesurés : double copie de la frame dans
-`sendBinary` (ArduinoWebsockets → `std::string`, en PSRAM), marge mémoire
+`sendBinary` (levée : `pnex_ws` masque à la volée par blocs de 4 Ko, sans
+copie), marge mémoire
 en UXGA, chemin wss/CA sur la WS caméra.
 
 ### 9.4 Tests automatisés à relancer

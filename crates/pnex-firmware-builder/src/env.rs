@@ -31,7 +31,7 @@ pub struct BuildSecrets {
     pub encryption_key: Option<String>,
     /// Root CA (PEM) the firmware pins for wss + OTA https (`pnex_tls`) —
     /// the TLS edge's device root (D70). `None` = no pinning (setInsecure,
-    /// which ArduinoWebsockets cannot apply on ESP32).
+    /// on both cores).
     pub ca_cert_pem: Option<String>,
 }
 

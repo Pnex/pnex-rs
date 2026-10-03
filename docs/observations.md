@@ -433,13 +433,24 @@ Tous trouvés par la suite e2e, chacun couvert par un test (unitaire ou e2e) :
   `PNEX_WS_HANDSHAKE_TIMEOUT_MS` (5000, surchargeable `-D`) en rendant la
   main (`delay(1)` : une boucle active de 5 s déclencherait le WDT 8266).
   La lib n'est ni vendue ni patchée : elle est **GPL-3.0** (et non MIT).
-- **Licence (décision ouverte)** : ArduinoWebsockets GPL-3 ⇒ chaque binaire
-  firmware compilé est GPL, alors que la lib PneX est Apache-2.0. Cible
-  souhaitée : licences permissives (MIT) ⇒ remplacer par un client WS
-  permissif (ex. client WebSocket d'ESP-IDF) — à arbitrer.
-- **Reste** : validation sur carte réelle (WiFi dégradé) ; audit des
-  écritures > 16 Ko sur `/ws/device`.
-- **Statut** : ✅ résolu (timeout) ; licence = décision ouverte.
+- **Licence (tranché 2026-10-03)** : ArduinoWebsockets GPL-3 ⇒ chaque binaire
+  firmware compilé était GPL. **Remplacée** par un client RFC 6455 maison,
+  `firmware/lib/pnex/src/pnex_ws.{h,cpp}` (Apache-2.0 comme la lib) ;
+  `pnex_ws_tcp.*` supprimé, dépendance retirée de tous les `platformio.ini`
+  et de `library.json`. Alternatives écartées après lecture des LICENSE :
+  Links2004/arduinoWebSockets (LGPL-2.1), PicoWebsocket (LGPL-3.0),
+  Arduino-Websocket-Fast (MIT mais texte seul, non maintenue),
+  ArduinoHttpClient (Apache-2.0 mais messages tronqués à 128 o et écriture
+  en un bloc), esp_websocket_client / courier (ESP32 seulement).
+  Le client : handshake patient 5 s + contrôle `Sec-WebSocket-Accept`,
+  pong automatique, fragments serveur réassemblés, envoi par blocs masqués
+  avec reprise des écritures partielles (fin de la troncature 16 Ko pour
+  **toute** écriture, `/ws/device` compris), CA appliquée aussi sur la WS
+  ESP8266. Firmwares plus légers (−17 Ko 8266, −22 Ko ESP32).
+- **Règle** : toute brique tierce ajoutée doit avoir une licence compatible,
+  la plus permissive possible (MIT / BSD / Apache-2.0) — LICENSE lu, pas
+  un résumé.
+- **Statut** : ✅ résolu.
 
 ### O21 — Dette d'accessibilité restante
 

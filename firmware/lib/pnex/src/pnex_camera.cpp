@@ -8,7 +8,6 @@
 #if PNEX_CAMERA_ACTIVE
 
 #include <ArduinoJson.h>
-#include <ArduinoWebsockets.h>
 #include <WiFi.h>
 #include <esp_camera.h>
 #include <esp_heap_caps.h>
@@ -17,11 +16,10 @@
 #include "Pnex.h"
 #include "chacha_crypto.h"
 #include "pnex_camera_frame.h"
-#include "pnex_ws_tcp.h"
 #include "pnex_tls.h"
 #include "pnex_transport.h"
+#include "pnex_ws.h"
 
-using namespace websockets;
 
 // ───────────────────── AI-Thinker ESP32-CAM pin map ─────────────────────
 // Reserved in the server board profile (pnex-core catalog/boards/esp32cam_ai_thinker.rs): the
@@ -81,7 +79,7 @@ bool s_cam_ok = false;
 bool s_enabled = false;
 uint8_t s_fps = 5;
 
-WebsocketsClient s_ws;
+PnexWsClient s_ws;
 bool s_ws_up = false;  // tracked from the events (available() lags on close)
 char s_url[256];
 
@@ -166,17 +164,16 @@ void ws_close() {
     s_ws_up = false;
 }
 
-void on_ws_event(WebsocketsEvent event, String data) {
-    if (event == WebsocketsEvent::ConnectionOpened) {
+void on_ws_event(PnexWsEvent event) {
+    // Pings are answered by the client itself.
+    if (event == PnexWsEvent::Opened) {
         s_ws_up = true;
-    } else if (event == WebsocketsEvent::ConnectionClosed) {
+    } else if (event == PnexWsEvent::Closed) {
         s_ws_up = false;
-    } else if (event == WebsocketsEvent::GotPing) {
-        s_ws.pong(data);
     }
 }
 
-void on_ws_message(WebsocketsMessage) {
+void on_ws_message(const char*, size_t, bool) {
     // Uplink only: the server just answers "PONG" to the keepalive.
 }
 
@@ -194,7 +191,7 @@ void try_connect(unsigned long now) {
     // Idempotent; re-applied on each connect in case the lib reset it.
     WiFi.setSleep(false);
     // Patient handshake + TLS posture: pnex_ws_open (O20).
-    if (pnex_ws_open(s_ws, s_url, on_ws_message, on_ws_event)) {
+    if (pnex_ws_open(s_ws, s_url)) {
         s_ws_up = true;
         s_session_frames = 0;
         s_connected_since_ms = millis();
@@ -209,28 +206,11 @@ void try_connect(unsigned long now) {
     s_backoff_ms = s_backoff_ms * 2 > BACKOFF_MAX_MS ? BACKOFF_MAX_MS : s_backoff_ms * 2;
 }
 
-// Largest WS frame written in one go. Over wss a write is one TLS record
-// (16 KB max) and the WS library ignores partial writes: a bigger frame
-// went out truncated and the session died after a couple of frames (VGA
-// JPEGs are 15-25 KB). Bigger payloads go out as one fragmented message
-// (empty first fragment, continuations, empty final one), which the
-// server reassembles into a single binary message.
-constexpr size_t WS_CHUNK = 8192;
-
+// One binary message per frame, any size: pnex_ws writes it in chunks and
+// retries partial writes (the old library truncated frames over one 16 KB
+// TLS record, hence the former manual fragmentation — e811fbf).
 bool send_binary_chunked(const uint8_t* data, size_t len) {
-    if (len <= WS_CHUNK) {
-        return s_ws.sendBinary((const char*)data, len);
-    }
-    if (!s_ws.streamBinary("")) {
-        return false;
-    }
-    for (size_t off = 0; off < len; off += WS_CHUNK) {
-        const size_t n = len - off < WS_CHUNK ? len - off : WS_CHUNK;
-        if (!s_ws.sendBinary((const char*)data + off, n)) {
-            return false;
-        }
-    }
-    return s_ws.end("");
+    return s_ws.sendBinary(data, len);
 }
 
 void send_frame() {
