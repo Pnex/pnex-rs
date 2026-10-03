@@ -40,7 +40,7 @@ fn profile() -> BoardProfileV2 {
             unwired("IO15", L, 4).note("SD CMD + strapping — reserved"),
             unwired("IO14", L, 5).note("SD CLK — reserved"),
             unwired("IO2", L, 6).note("SD DATA0 + strapping — reserved"),
-            io("Flash LED", 4, L, 7).default_mode(Mode::DigitalOut).safe_state(SafeState::Low).note("IO4 — onboard flash LED (bright) — output; also SD DATA1"),
+            io("Flash LED", 4, L, 7).default_mode(Mode::DigitalOut).safe_state(SafeState::Low).pull_down().note("IO4 — onboard flash LED (bright) — output; also SD DATA1"),
             io("Red LED", 33, L, 8).default_mode(Mode::DigitalOut).safe_state(SafeState::High).active_low().note("GPIO33 — onboard red LED, not on a header — output, active LOW (safe_state high = off)"),
             power("3V3", R, 0),
             unwired("IO16", R, 1).note("PSRAM CS — reserved"),

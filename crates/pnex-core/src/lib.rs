@@ -150,6 +150,9 @@ pub use caps::*;
 pub mod boards;
 pub use boards::*;
 
+/// Pin self-test bench (D122): plan, verdict rules and report check.
+pub mod selftest;
+
 pub mod telemetry;
 pub use telemetry::*;
 

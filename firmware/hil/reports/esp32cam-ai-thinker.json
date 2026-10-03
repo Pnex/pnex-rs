@@ -1,0 +1,117 @@
+{
+  "board": "esp32cam-ai-thinker",
+  "soc": "esp32",
+  "level": "L1",
+  "date": "2026-10-03T18:33:59+02:00",
+  "chip": "esp32",
+  "results": [
+    {
+      "gpio": 4,
+      "mode": "digital_in",
+      "raw": {
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "gpio": 4,
+      "mode": "digital_in_pullup",
+      "raw": {
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "gpio": 4,
+      "mode": "digital_out",
+      "raw": {
+        "w0": 0,
+        "w1": 1
+      }
+    },
+    {
+      "gpio": 4,
+      "mode": "pwm_out",
+      "raw": {
+        "measured": {
+          "0": 0,
+          "50": 49,
+          "100": 100
+        }
+      }
+    },
+    {
+      "gpio": 33,
+      "mode": "digital_in",
+      "raw": {
+        "samples": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "gpio": 33,
+      "mode": "digital_in_pullup",
+      "raw": {
+        "samples": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "gpio": 33,
+      "mode": "adc_in",
+      "raw": {
+        "samples": [
+          2406,
+          2380,
+          2379,
+          2381,
+          2380,
+          2382,
+          2379,
+          2378,
+          2382,
+          2379
+        ]
+      }
+    },
+    {
+      "gpio": 33,
+      "mode": "digital_out",
+      "raw": {
+        "w0": 0,
+        "w1": 1
+      }
+    },
+    {
+      "gpio": 33,
+      "mode": "pwm_out",
+      "raw": {
+        "measured": {
+          "0": 0,
+          "50": 48,
+          "100": 100
+        }
+      }
+    }
+  ]
+}

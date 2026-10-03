@@ -174,6 +174,10 @@ pub struct BoardProfilePin {
     /// metadata only: the write path never inverts values.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub active_low: bool,
+    /// The board wires an external pull-down (e.g. a MOSFET gate): the chip's
+    /// internal pull-up cannot raise the pad. Measured by the D122 bench.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pull_down: bool,
 }
 
 /// Board-level pin kind (header role) — silicon capabilities live in caps.

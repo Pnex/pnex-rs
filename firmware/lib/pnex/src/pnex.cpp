@@ -11,6 +11,7 @@
 
 #include "Pnex.h"
 
+#include "pnex_io.h"
 #include "pnex_screen.h"
 #include "pnex_status.h"
 
@@ -20,6 +21,9 @@
 #include <esp8266_peri.h>  // RANDOM_REG32
 #else
 #include <esp_system.h>    // esp_random()
+// Rollback guard in begin() runs whatever PNEX_OTA_ENABLE says (a USB
+// flash also boots PENDING_VERIFY).
+#include <esp_ota_ops.h>
 #endif
 
 #if PNEX_OTA_ENABLE == 1
@@ -625,19 +629,15 @@ void PnexDevice::sendStateReport(const PnexPin& p) {
     JsonDocument doc;
     doc["t"] = "state_report";
     doc["gpio"] = p.gpio;
-    // La branche est PAR MODE (analog vs digital), pas par SoC : sur
-    // l'ESP8266 le canal ADC est A0, sur ESP32 il est sur le GPIO du pin.
-    if (p.mode == PNEX_ADC_IN) {
-#if defined(ESP8266)
-        doc["value"] = analogRead(A0);
-#else
-        doc["value"] = analogRead(p.gpio);
-#endif
-    } else if (p.mode == PNEX_PWM_OUT) {
-        doc["value"] = p.duty_pct;  // duty % rapporté tel quel
+    // Real pad/ADC value (programmed duty for pwm_out), also logged so the
+    // serial monitor shows what the server receives.
+    const int value = pnex_io_read(p);
+    if (p.mode == PNEX_ADC_IN || p.mode == PNEX_PWM_OUT) {
+        doc["value"] = value;
     } else {
-        doc["value"] = digitalRead(p.gpio) == HIGH;
+        doc["value"] = value == 1;
     }
+    Serial.printf("[IO] GPIO%u mode=%s value=%d\n", p.gpio, pnex_io_mode_name(p.mode), value);
     // F2 (D46) : horloge device — clé de dédup/reconstruction côté serveur.
     doc["uptime_ms"] = (uint32_t)millis();
     doc["boot_id"] = boot_id;
@@ -787,6 +787,13 @@ void PnexDevice::applyProvisionAck(JsonDocument& doc) {
     // Enregistré côté serveur : l'écran tient la timeline pleine ~1 s puis
     // bascule sur MAIN (hold géré côté écran, au tick).
     pnex_status::set_step(pnex_status::Step::Registered);
+    // Free the PWM channels of the previous table (a re-provision would
+    // otherwise leak them on pins that leave it).
+    for (const auto& old : pins_) {
+        if (old.mode == PNEX_PWM_OUT) {
+            pnex_io_release(old.gpio);
+        }
+    }
     pins_.clear();  // ordre conservé du main historique (reset AVANT tout)
     JsonArrayConst caps = doc["caps"];
     for (JsonObjectConst cap : caps) {
@@ -844,7 +851,16 @@ void PnexDevice::handleSetMode(JsonDocument& doc) {
     }
     p->pullup = doc["opts"]["pullup"] | false;
     p->safe_high = strcmp(doc["opts"]["safe_state"] | "low", "high") == 0;
-    apply_pin(*p);
+    if (!apply_pin(*p)) {
+        // No PWM channel left: the pin is NOT driven — never ack a mode
+        // the hardware does not apply.
+        p->mode = PNEX_DIGITAL_IN;
+        p->pullup = false;
+        apply_pin(*p);
+        publish_pins_to_status(pins_);
+        sendAck(cmd_id, false, "pwm_channels_exhausted");
+        return;
+    }
     Serial.printf("[CMD] set_mode GPIO%u -> %s (safe=%s)\n",
                   gpio, mode, p->safe_high ? "high" : "low");
     publish_pins_to_status(pins_);
@@ -863,16 +879,19 @@ void PnexDevice::handleWrite(JsonDocument& doc) {
     // l'échelle 8-bit locale — abstraction matérielle côté serveur).
     JsonVariant v = doc["value"];
     if (p->mode == PNEX_PWM_OUT) {
-        int duty = v.as<int>();
-        if (duty < 0) duty = 0;
-        if (duty > 100) duty = 100;
-        p->duty_pct = (uint8_t)duty;
-        analogWrite(gpio, (int)(duty * 255 / 100));
-        Serial.printf("[CMD] write GPIO%u -> duty %d%%\n", gpio, duty);
+        pnex_io_write_pwm(*p, v.as<int>());
+        Serial.printf("[CMD] write GPIO%u -> duty %u%%\n", gpio, (unsigned)p->duty_pct);
     } else if (p->mode == PNEX_DIGITAL_OUT) {
         bool high = v.is<bool>() ? v.as<bool>() : (v.as<int>() != 0);
-        digitalWrite(gpio, high ? HIGH : LOW);
-        Serial.printf("[CMD] write GPIO%u -> %s\n", gpio, high ? "HIGH" : "LOW");
+        const int readback = pnex_io_write_digital(gpio, high);
+        Serial.printf("[CMD] write GPIO%u -> %s (readback=%s)\n", gpio, high ? "HIGH" : "LOW",
+                      readback ? "HIGH" : "LOW");
+        if (readback != (high ? 1 : 0)) {
+            // Shorted/loaded output or a pad that cannot drive: the
+            // StateReport below carries the real level to the server.
+            Serial.printf("[IO] MISMATCH GPIO%u commanded=%d pad=%d\n", gpio, high ? 1 : 0,
+                          readback);
+        }
     } else {
         sendAck(cmd_id, false, "pin pas en sortie (digital_out/pwm_out)");
         return;
@@ -908,27 +927,10 @@ PnexPin* PnexDevice::pin_by_gpio(uint8_t gpio) {
     return nullptr;
 }
 
-/// Applique pinMode + niveau initial (safe-state) d'un pin.
-void PnexDevice::apply_pin(PnexPin& p) {
-#if defined(ESP8266)
-    if (p.gpio == 17) {
-        return;  // A0 : canal ADC, pas de pinMode
-    }
-#endif
-    switch (p.mode) {
-        case PNEX_DIGITAL_OUT:
-            digitalWrite(p.gpio, p.safe_high ? HIGH : LOW);  // état safe AVANT la sortie
-            pinMode(p.gpio, OUTPUT);
-            break;
-        case PNEX_PWM_OUT:
-            analogWrite(p.gpio, 0);  // boot en duty 0 (safe)
-            break;
-        case PNEX_DIGITAL_IN:
-            pinMode(p.gpio, p.pullup ? INPUT_PULLUP : INPUT);
-            break;
-        default:
-            break;  // ADC : rien
-    }
+/// Applies pinMode + initial level (safe state) of a pin; false when a PWM
+/// pin gets no hardware channel.
+bool PnexDevice::apply_pin(PnexPin& p) {
+    return pnex_io_apply(p);
 }
 
 /// Toutes les sorties vers leur safe-state — appelé sur CHAQUE perte
@@ -936,7 +938,7 @@ void PnexDevice::apply_pin(PnexPin& p) {
 void PnexDevice::forceAllOff() {
     for (auto& p : pins_) {
         if (p.mode == PNEX_PWM_OUT) {
-            analogWrite(p.gpio, 0);
+            pnex_io_write_pwm(p, 0);
         } else if (p.mode == PNEX_DIGITAL_OUT) {
             digitalWrite(p.gpio, p.safe_high ? HIGH : LOW);
         }
