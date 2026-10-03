@@ -91,9 +91,101 @@ pub fn canvas_rect() -> Option<(f64, f64, f64, f64)> {
     None
 }
 
+/// Spacing between two candidate spots of a new scene (px plan).
+const SCENE_SPACING: f64 = 3.0 * SCENE_RADIUS;
+
+/// Position of a new scene on a floor: the plan centre, else the first free
+/// spot of square rings around it (grid of [`SCENE_SPACING`]), clamped to
+/// the plan — new scenes never stack on `taken` ones (same floor only).
+pub fn new_scene_position(plan: (f64, f64), taken: &[(f64, f64)]) -> (f64, f64) {
+    let (w, h) = plan;
+    let centre = (w / 2.0, h / 2.0);
+    let margin = SCENE_RADIUS.min(w / 2.0).min(h / 2.0);
+    let clamp = |(x, y): (f64, f64)| (x.clamp(margin, w - margin), y.clamp(margin, h - margin));
+    let free = |p: (f64, f64)| {
+        taken
+            .iter()
+            .all(|t| (t.0 - p.0).hypot(t.1 - p.1) >= 2.0 * SCENE_RADIUS)
+    };
+    for ring in 0..64_i32 {
+        for dy in -ring..=ring {
+            for dx in -ring..=ring {
+                if dx.abs() != ring && dy.abs() != ring {
+                    continue;
+                }
+                let candidate = clamp((
+                    centre.0 + f64::from(dx) * SCENE_SPACING,
+                    centre.1 + f64::from(dy) * SCENE_SPACING,
+                ));
+                if free(candidate) {
+                    return candidate;
+                }
+            }
+        }
+    }
+    centre
+}
+
+/// Natural size (px) of an image (blob URL of a floor plan) once loaded;
+/// `None` when it fails to load or has no intrinsic size.
+#[cfg(target_arch = "wasm32")]
+pub async fn image_natural_size(url: &str) -> Option<(f64, f64)> {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    use wasm_bindgen::{closure::Closure, JsCast};
+
+    let img = web_sys::HtmlImageElement::new().ok()?;
+    let (tx, rx) = futures::channel::oneshot::channel::<bool>();
+    let tx = Rc::new(RefCell::new(Some(tx)));
+    let tx_err = tx.clone();
+    let on_load: Closure<dyn FnMut()> = Closure::once(move || {
+        if let Some(tx) = tx.borrow_mut().take() {
+            let _ = tx.send(true);
+        }
+    });
+    let on_error: Closure<dyn FnMut()> = Closure::once(move || {
+        if let Some(tx) = tx_err.borrow_mut().take() {
+            let _ = tx.send(false);
+        }
+    });
+    img.set_onload(Some(on_load.as_ref().unchecked_ref()));
+    img.set_onerror(Some(on_error.as_ref().unchecked_ref()));
+    img.set_src(url);
+    let loaded = rx.await.unwrap_or(false);
+    img.set_onload(None);
+    img.set_onerror(None);
+    drop((on_load, on_error));
+    let (w, h) = (img.natural_width(), img.natural_height());
+    (loaded && w > 0 && h > 0).then(|| (f64::from(w), f64::from(h)))
+}
+
+/// Native target: the editor only runs in web CSR, nothing to measure.
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn image_natural_size(_url: &str) -> Option<(f64, f64)> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_scene_starts_at_plan_centre() {
+        assert_eq!(new_scene_position((1000.0, 500.0), &[]), (500.0, 250.0));
+    }
+
+    #[test]
+    fn new_scenes_never_stack() {
+        let mut taken = Vec::new();
+        for _ in 0..30 {
+            let p = new_scene_position((800.0, 600.0), &taken);
+            assert!(p.0 >= 0.0 && p.0 <= 800.0 && p.1 >= 0.0 && p.1 <= 600.0);
+            assert!(taken
+                .iter()
+                .all(|t: &(f64, f64)| (t.0 - p.0).hypot(t.1 - p.1) >= 2.0 * SCENE_RADIUS));
+            taken.push(p);
+        }
+    }
 
     #[test]
     fn fit_centre_le_plan() {

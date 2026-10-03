@@ -415,6 +415,49 @@ impl Client {
         size: i64,
         email_passcode: &str,
     ) -> Result<LogSearchResponse, String> {
+        self.search(
+            org_identifier,
+            "logs",
+            sql,
+            (start_us, end_us),
+            (from, size),
+            email_passcode,
+        )
+        .await
+    }
+
+    /// SQL search over a metrics stream (`POST /api/{org}/_search?type=metrics`)
+    /// — the only way to read a sample's own `_timestamp` (O2 PromQL has no
+    /// subqueries and `timestamp()` returns the evaluation time).
+    pub async fn search_metrics(
+        &self,
+        org_identifier: &str,
+        sql: &str,
+        start_us: i64,
+        end_us: i64,
+        size: i64,
+        email_passcode: &str,
+    ) -> Result<LogSearchResponse, String> {
+        self.search(
+            org_identifier,
+            "metrics",
+            sql,
+            (start_us, end_us),
+            (0, size),
+            email_passcode,
+        )
+        .await
+    }
+
+    async fn search(
+        &self,
+        org_identifier: &str,
+        stream_type: &str,
+        sql: &str,
+        (start_us, end_us): (i64, i64),
+        (from, size): (i64, i64),
+        email_passcode: &str,
+    ) -> Result<LogSearchResponse, String> {
         let body = serde_json::json!({
             "query": {
                 "sql": sql,
@@ -424,7 +467,10 @@ impl Client {
                 "size": size,
             }
         });
-        let url = format!("{}/api/{org_identifier}/_search", self.base);
+        let url = format!(
+            "{}/api/{org_identifier}/_search?type={stream_type}",
+            self.base
+        );
         let passcode_basic = format!("Basic {}", STANDARD.encode(email_passcode));
         let mut last_denial = String::new();
         for auth in [passcode_basic.as_str(), self.root_basic.as_str()] {

@@ -196,10 +196,107 @@ async fn pump_lines(
                 continue;
             }
         }
-        match level {
-            tracing::Level::INFO => tracing::info!(runtime=%line, "flow runtime"),
-            _ => tracing::warn!(runtime=%line, "flow runtime"),
+        if level == tracing::Level::INFO {
+            tracing::info!(runtime=%line, "flow runtime");
+            continue;
         }
+        // stderr carries the runtime's JSON log lines: re-emit each one at
+        // its own level instead of flagging everything as a warning.
+        match parse_runtime_log(&line) {
+            Some(log) => emit_runtime_log(&log),
+            None => tracing::warn!(runtime=%line, "flow runtime"),
+        }
+    }
+}
+
+/// One JSON log line of the runtime logger (`pnex-flow-runtime` `logger.rs`:
+/// `{"ts","level","target","message"}`).
+#[derive(Debug, PartialEq)]
+pub(super) struct RuntimeLog {
+    pub level: tracing::Level,
+    pub target: String,
+    pub message: String,
+}
+
+/// Parses a runtime stderr line; `None` when it is not a JSON log line
+/// (panic output, raw prints…) — the caller falls back to `warn`.
+pub(super) fn parse_runtime_log(line: &str) -> Option<RuntimeLog> {
+    let value: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
+    let level = match value.get("level")?.as_str()?.to_ascii_uppercase().as_str() {
+        "ERROR" => tracing::Level::ERROR,
+        "WARN" | "WARNING" => tracing::Level::WARN,
+        "INFO" => tracing::Level::INFO,
+        "DEBUG" => tracing::Level::DEBUG,
+        "TRACE" => tracing::Level::TRACE,
+        _ => return None,
+    };
+    let text = |key: &str| {
+        value
+            .get(key)
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string()
+    };
+    Some(RuntimeLog {
+        level,
+        target: text("target"),
+        message: text("message"),
+    })
+}
+
+/// Re-emits a runtime log line. The runtime already filters on
+/// `PNEX_FLOW_LOG`, so info/debug/trace all surface as `info!` (the server
+/// itself runs at info: a `debug!` here would be dropped silently); the
+/// original level stays visible in the `level` field.
+fn emit_runtime_log(log: &RuntimeLog) {
+    let (level, target, message) = (log.level.as_str(), &log.target, &log.message);
+    match log.level {
+        tracing::Level::ERROR => {
+            tracing::error!(runtime_level = level, runtime_target=%target, "flow runtime: {message}")
+        }
+        tracing::Level::WARN => {
+            tracing::warn!(runtime_level = level, runtime_target=%target, "flow runtime: {message}")
+        }
+        _ => {
+            tracing::info!(runtime_level = level, runtime_target=%target, "flow runtime: {message}")
+        }
+    }
+}
+
+#[cfg(test)]
+mod runtime_log_tests {
+    use super::*;
+
+    #[test]
+    fn json_log_line_keeps_its_level() {
+        let line = r#"{"ts":1,"level":"INFO","target":"edgelink_core","message":"flow started"}"#;
+        assert_eq!(
+            parse_runtime_log(line),
+            Some(RuntimeLog {
+                level: tracing::Level::INFO,
+                target: "edgelink_core".into(),
+                message: "flow started".into(),
+            })
+        );
+        for (raw, level) in [
+            ("ERROR", tracing::Level::ERROR),
+            ("WARN", tracing::Level::WARN),
+            ("DEBUG", tracing::Level::DEBUG),
+            ("TRACE", tracing::Level::TRACE),
+        ] {
+            let line = format!(r#"{{"ts":1,"level":"{raw}","target":"t","message":"m"}}"#);
+            assert_eq!(parse_runtime_log(&line).map(|l| l.level), Some(level));
+        }
+    }
+
+    #[test]
+    fn non_json_or_unknown_level_falls_back() {
+        assert_eq!(
+            parse_runtime_log("thread 'main' panicked at src/main.rs"),
+            None
+        );
+        assert_eq!(parse_runtime_log(r#"{"message":"no level"}"#), None);
+        assert_eq!(parse_runtime_log(r#"{"level":"LOUD","message":"x"}"#), None);
     }
 }
 

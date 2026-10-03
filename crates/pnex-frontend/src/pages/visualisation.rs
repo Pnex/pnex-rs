@@ -167,13 +167,38 @@ pub fn Visualisation() -> Element {
         Some(list) => list.clone(),
         None => Vec::new(),
     };
+    // Age of each series' last sample (catalog `last_seen`, real sample
+    // time), shown next to its label: a flat line may just be stale data.
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let age_of = |metric: &str, device: &str| -> Option<String> {
+        let seen = cat
+            .as_ref()?
+            .series
+            .iter()
+            .find(|s| s.metric == metric && s.device_id == device)?
+            .last_seen
+            .as_deref()?;
+        let ms = chrono::DateTime::parse_from_rfc3339(seen)
+            .ok()?
+            .timestamp_millis();
+        Some(t!("vis-series-age", age: crate::pages::cameras::age_label(ms, now_ms)).to_string())
+    };
+    let series_label = |metric: &str, device: &str| match age_of(metric, device) {
+        Some(age) => format!("{metric} · {device} · {age}"),
+        None => format!("{metric} · {device}"),
+    };
+    let chips: Vec<(String, String, String)> = active
+        .read()
+        .iter()
+        .map(|(m, d)| (m.clone(), d.clone(), series_label(m, d)))
+        .collect();
     let any_failed = !loaded.is_empty() && loaded.iter().any(|s| s.points.is_none());
     let chart_input: Vec<ChartSeries> = loaded
         .iter()
         .enumerate()
         .map(|(index, s)| ChartSeries {
             color_index: index,
-            label: format!("{} · {}", s.metric, s.device_id),
+            label: series_label(&s.metric, &s.device_id),
             points: s.points.clone(),
         })
         .collect();
@@ -265,7 +290,7 @@ pub fn Visualisation() -> Element {
                             // Séries actives (chips)
                             if !active.read().is_empty() {
                                 div { class: "flex flex-wrap gap-2 mt-4",
-                                    for (index, (metric, device)) in active.read().iter().enumerate() {
+                                    for (index, (metric, device, label)) in chips.iter().enumerate() {
                                         div {
                                             key: "{metric}-{device}",
                                             class: "inline-flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-full text-sm",
@@ -273,7 +298,7 @@ pub fn Visualisation() -> Element {
                                                 class: "h-2.5 w-2.5 rounded-full",
                                                 style: "background-color: {PALETTE[index % MAX_SERIES]}",
                                             }
-                                            span { class: "text-gray-700", "{metric} · {device}" }
+                                            span { class: "text-gray-700", "{label}" }
                                             button {
                                                 class: "text-gray-400 hover:text-red-500",
                                                 onclick: move |_| {

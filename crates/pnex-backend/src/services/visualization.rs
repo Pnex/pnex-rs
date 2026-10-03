@@ -121,6 +121,78 @@ impl<T> TtlCache<T> {
 
 static INSTANT_CACHE: LazyLock<TtlCache<Vec<PromQuerySample>>> = LazyLock::new(TtlCache::default);
 static RANGE_CACHE: LazyLock<TtlCache<Vec<PromRangeSample>>> = LazyLock::new(TtlCache::default);
+static LAST_SEEN_CACHE: LazyLock<TtlCache<HashMap<String, i64>>> = LazyLock::new(TtlCache::default);
+
+/// SQL giving the newest sample time of each device of one metric stream.
+/// O2 PromQL cannot: an instant query stamps its result with the evaluation
+/// time, `timestamp()` too, and subqueries are not implemented.
+fn last_seen_sql(metric: &str) -> String {
+    format!("SELECT device_id, max(_timestamp) AS last_ts FROM \"{metric}\" GROUP BY device_id")
+}
+
+/// `device_id → last sample time (µs)` from the [`last_seen_sql`] hits.
+fn last_seen_of(hits: &[serde_json::Value]) -> HashMap<String, i64> {
+    hits.iter()
+        .filter_map(|hit| {
+            let device = hit.get("device_id")?.as_str()?.to_string();
+            let ts = hit.get("last_ts")?.as_i64()?;
+            Some((device, ts))
+        })
+        .collect()
+}
+
+/// Cached last-sample times (`device_id → µs`) of one metric over the last
+/// `window_secs` — shared by the catalog and the home "latest measurements".
+pub(crate) async fn cached_last_seen(
+    client: &Client,
+    o2_org: &str,
+    metric: &str,
+    window_secs: i64,
+    passcode: &str,
+) -> Result<Arc<HashMap<String, i64>>, String> {
+    let key = format!(
+        "{}|{o2_org}|last_seen|{metric}|{window_secs}",
+        client.base_url()
+    );
+    LAST_SEEN_CACHE
+        .get_or_fetch(key, cache_ttl(), || async {
+            let end_us = Utc::now().timestamp_micros();
+            let start_us = end_us - window_secs * 1_000_000;
+            client
+                .search_metrics(
+                    o2_org,
+                    &last_seen_sql(metric),
+                    start_us,
+                    end_us,
+                    1_000,
+                    passcode,
+                )
+                .await
+                .map(|r| last_seen_of(&r.hits))
+        })
+        .await
+}
+
+/// Catalog entry of one instant sample; `last_seen` is the real time of the
+/// newest sample (µs map from [`cached_last_seen`]), never the evaluation
+/// time carried by `sample.value.0` — unknown stays `None`.
+fn series_info(
+    sample: &PromQuerySample,
+    last_seen: &HashMap<String, i64>,
+) -> Option<TelemetrySeriesInfo> {
+    let metric = sample.metric.get("__name__")?.clone();
+    let device_id = sample.metric.get("device_id")?.clone();
+    Some(TelemetrySeriesInfo {
+        last_seen: last_seen
+            .get(&device_id)
+            .and_then(|us| chrono::DateTime::from_timestamp_micros(*us))
+            .map(|t| t.to_rfc3339()),
+        metric,
+        pred_dev: sample.metric.get("pred_dev").cloned(),
+        last_value: sample.value.1.parse().ok()?,
+        device_id,
+    })
+}
 
 /// Cached instant query (`last_over_time` of the catalog).
 async fn cached_prom_query(
@@ -188,6 +260,8 @@ fn points_of(samples: &[PromRangeSample]) -> Vec<TelemetryPoint> {
 /// Fenêtre du catalogue (dernière valeur par série pour montrer que la
 /// donnée est vivante).
 const CATALOG_WINDOW: &str = "24h";
+/// [`CATALOG_WINDOW`] in seconds (SQL last-seen lookup).
+const CATALOG_WINDOW_SECS: i64 = 86_400;
 
 /// Timeout de TOUT le chemin O2 (catalogue ou une série) — dégradé
 /// silencieux au-delà, jamais de page qui traîne.
@@ -259,15 +333,23 @@ pub async fn series_catalog(
             let query = format!("last_over_time({name}[{CATALOG_WINDOW}])");
             let (o2_org, passcode) = (creds.o2_org.clone(), creds.email_passcode.clone());
             jobs.push(async move {
-                let res = cached_prom_query(client, &o2_org, &query, &passcode).await;
-                (name, res)
+                let (res, seen) = tokio::join!(
+                    cached_prom_query(client, &o2_org, &query, &passcode),
+                    cached_last_seen(client, &o2_org, &name, CATALOG_WINDOW_SECS, &passcode),
+                );
+                (name, res, seen)
             });
         }
         let mut results = futures_util::stream::iter(jobs).buffer_unordered(O2_CONCURRENCY);
-        while let Some((name, res)) = results.next().await {
+        while let Some((name, res, seen)) = results.next().await {
+            // A failed last-seen lookup only blanks the age, not the series.
+            let seen = seen.unwrap_or_else(|e| {
+                tracing::debug!(org_id, metric = %name, error = %e, "last seen not queried");
+                Arc::default()
+            });
             // Une métrique injoignable n'emporte pas les autres.
             match res {
-                Ok(samples) => series.extend(samples.iter().cloned()),
+                Ok(samples) => series.extend(samples.iter().filter_map(|s| series_info(s, &seen))),
                 Err(e) => {
                     tracing::debug!(org_id, metric = %name, error = %e, "metric not queried")
                 }
@@ -276,8 +358,8 @@ pub async fn series_catalog(
         Ok::<_, String>(series)
     })
     .await;
-    let samples = match fetch {
-        Ok(Ok(samples)) => samples,
+    let mut catalog = match fetch {
+        Ok(Ok(series)) => series,
         Ok(Err(e)) => {
             tracing::warn!(org_id, erreur = %e, "catalogue : O2 en échec, télémétrie dégradée");
             return degraded;
@@ -291,21 +373,6 @@ pub async fn series_catalog(
         }
     };
 
-    let mut catalog: Vec<TelemetrySeriesInfo> = samples
-        .into_iter()
-        .filter_map(|s| {
-            let metric = s.metric.get("__name__")?.clone();
-            let device_id = s.metric.get("device_id")?.clone();
-            Some(TelemetrySeriesInfo {
-                metric,
-                device_id,
-                pred_dev: s.metric.get("pred_dev").cloned(),
-                last_value: s.value.1.parse().ok()?,
-                last_seen: chrono::DateTime::from_timestamp(s.value.0 as i64, 0)
-                    .map(|t| t.to_rfc3339()),
-            })
-        })
-        .collect();
     catalog.sort_by(|a, b| {
         a.metric
             .cmp(&b.metric)
@@ -567,5 +634,50 @@ mod cache_tests {
                 .await;
         }
         assert_eq!(calls.load(Ordering::SeqCst), 3);
+    }
+}
+
+#[cfg(test)]
+mod last_seen_tests {
+    use super::*;
+
+    fn sample(device: &str, eval_ts: f64, value: &str) -> PromQuerySample {
+        PromQuerySample {
+            metric: HashMap::from([
+                ("__name__".to_string(), "a0".to_string()),
+                ("device_id".to_string(), device.to_string()),
+            ]),
+            value: (eval_ts, value.to_string()),
+        }
+    }
+
+    #[test]
+    fn last_seen_uses_sample_time_not_evaluation_time() {
+        let hits = vec![
+            serde_json::json!({"device_id": "dev-1", "last_ts": 1_790_758_222_537_000_i64}),
+            serde_json::json!({"device_id": 42, "last_ts": 1}),
+        ];
+        let seen = last_seen_of(&hits);
+        assert_eq!(seen.len(), 1);
+        let info = series_info(&sample("dev-1", 1_791_054_742.0, "86"), &seen).unwrap();
+        assert_eq!(info.last_value, 86.0);
+        assert_eq!(
+            info.last_seen.as_deref(),
+            Some("2026-09-30T08:50:22.537+00:00")
+        );
+    }
+
+    #[test]
+    fn unknown_last_seen_stays_none() {
+        let info = series_info(&sample("dev-2", 1_791_054_742.0, "1"), &HashMap::new()).unwrap();
+        assert_eq!(info.last_seen, None);
+    }
+
+    #[test]
+    fn last_seen_sql_quotes_the_stream() {
+        assert_eq!(
+            last_seen_sql("soil_moisture"),
+            r#"SELECT device_id, max(_timestamp) AS last_ts FROM "soil_moisture" GROUP BY device_id"#
+        );
     }
 }
