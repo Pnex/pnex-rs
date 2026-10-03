@@ -5,7 +5,7 @@ import { test } from '../src/fixtures.ts';
 import { cameraTests } from './hw/camera.ts';
 import { customFirmwareTests } from './hw/custom-fw.ts';
 import { otaTests } from './hw/ota.ts';
-import { pinsTests } from './hw/pins.ts';
+import { pinIoTest, pinsTests } from './hw/pins.ts';
 import { registerAndFlash } from './hw/register.ts';
 
 test.describe('hardware', { tag: '@hardware' }, () => {
@@ -16,4 +16,7 @@ test.describe('hardware', { tag: '@hardware' }, () => {
   customFirmwareTests();
   registerAndFlash('cam');
   cameraTests();
+  // ESP32 DevKit 38 pins + TFT: G25 output, G34 (ADC1, input-only) analog.
+  registerAndFlash('esp32');
+  pinIoTest('esp32', 25, 34);
 });

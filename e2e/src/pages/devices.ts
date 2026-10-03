@@ -9,6 +9,10 @@ export interface RegisterOptions {
   wifi: { ssid: string; password: string };
   /** Custom firmware project name (generic firmware when absent). */
   firmware?: string;
+  /** Board variant chip (pretty name); the model default when absent. */
+  variant?: string;
+  /** Debug screen button label; none when absent. */
+  screen?: string;
 }
 
 export class DevicesPage {
@@ -46,6 +50,14 @@ export class DevicesPage {
     await this.next();
 
     await w.getByRole('button', { name: opts.model }).click();
+    if (opts.variant) {
+      const chip = w.getByRole('button').filter({ hasText: opts.variant });
+      await chip.click();
+      await expect(chip).toHaveAttribute('aria-pressed', 'true');
+    }
+    if (opts.screen) {
+      await w.getByRole('button', { name: opts.screen, exact: true }).click();
+    }
     if (opts.firmware) {
       // Options read "<project> (r<rev>)"; the generic firmware is the empty value.
       const pick = w.getByRole('combobox').filter({ has: this.page.locator('option', { hasText: this.app.t('wizard-firmware-generic') }) });

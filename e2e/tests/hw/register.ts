@@ -53,7 +53,13 @@ export function registerAndFlash(key: keyof typeof BOARDS) {
 
     const devices = new DevicesPage(app);
     await devices.open();
-    await devices.register({ deviceId: board.deviceId, model: board.model, wifi: WIFI });
+    await devices.register({
+      deviceId: board.deviceId,
+      model: board.model,
+      wifi: WIFI,
+      variant: board.variant,
+      screen: board.screen,
+    });
     await capture('register-review', { caption: 'Registration: firmware build started' });
 
     await waitBuild(api, board.deviceId);

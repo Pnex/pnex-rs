@@ -18,6 +18,12 @@ export interface Board {
   chip: string;
   /** Upload baud rate (CH340 carriers are flaky above 460800). */
   baud: number;
+  /** Wizard board variant chip (pretty name); the model default when absent. */
+  variant?: string;
+  /** Wizard debug screen button label (e.g. `TFT 1.77"`); none when absent. */
+  screen?: string;
+  /** GPIOs the picked screen reserves (never provisioned as pins). */
+  screenGpios?: number[];
 }
 
 export const BOARDS = {
@@ -34,6 +40,17 @@ export const BOARDS = {
     deviceId: process.env.PNEX_E2E_CAM_ID ?? 'e2e-cam',
     chip: 'esp32',
     baud: 460800,
+  },
+  esp32: {
+    port: process.env.PNEX_E2E_ESP32_PORT ?? '',
+    model: /^Generic ESP32 \(DevKit/,
+    deviceId: process.env.PNEX_E2E_ESP32_ID ?? 'e2e-esp32',
+    chip: 'esp32',
+    baud: 460800,
+    variant: 'ESP32 DevKit 38 pins (TXD/RXD)',
+    screen: 'TFT 1.77"',
+    // ST7735 on VSPI: SCK 18, MOSI 23, CS 5, DC 2, RST 4.
+    screenGpios: [18, 23, 5, 2, 4],
   },
 } satisfies Record<string, Board>;
 
