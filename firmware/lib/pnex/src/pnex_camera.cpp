@@ -17,6 +17,7 @@
 #include "Pnex.h"
 #include "chacha_crypto.h"
 #include "pnex_camera_frame.h"
+#include "pnex_ws_tcp.h"
 #include "pnex_tls.h"
 #include "pnex_transport.h"
 
@@ -192,7 +193,8 @@ void try_connect(unsigned long now) {
     // avg 650 ms on an AI-Thinker) — the stream crawls below 1 fps.
     // Idempotent; re-applied on each connect in case the lib reset it.
     WiFi.setSleep(false);
-    if (s_ws.connect(s_url)) {
+    // Patient handshake + TLS posture: pnex_ws_open (O20).
+    if (pnex_ws_open(s_ws, s_url, on_ws_message, on_ws_event)) {
         s_ws_up = true;
         s_session_frames = 0;
         s_connected_since_ms = millis();
@@ -423,9 +425,6 @@ void pnex_camera_loop() {
         snprintf(s_url, sizeof(s_url), "%s://%s/ws/camera?token=%s&device_id=%s",
                  pnex_use_tls() ? "wss" : "ws", pnex_host(), pnex_token_b64(),
                  pnex_device_id_b64());
-        if (pnex_use_tls()) {
-            pnex_tls_apply(s_ws);
-        }
         url_ready = true;
     }
 

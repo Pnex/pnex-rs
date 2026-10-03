@@ -44,6 +44,10 @@ bool pnex_tls_pinned() {
     return s_ca_len > 0;
 }
 
+const char* pnex_tls_ca_pem() {
+    return (pnex_tls_pinned() && s_ca_pem[0] != '\0') ? s_ca_pem : nullptr;
+}
+
 // ───────────────────────── apply — WS client ─────────────────────────
 
 void pnex_tls_apply(websockets::WebsocketsClient& client) {
