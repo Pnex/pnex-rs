@@ -24,25 +24,8 @@ const POLL_SECS: u64 = 15;
 
 #[component]
 pub fn Dashboard() -> Element {
-    let user = session::user();
-
-    let Some(user) = user else {
-        return rsx! {};
-    };
-    let org_id = org::current();
-    let active_org = user.orgs.iter().find(|m| Some(m.id) == org_id);
-    let tier_name = active_org
-        .and_then(|m| m.subscription_tier.as_ref())
-        .map(|tier| tier.name.clone())
-        .unwrap_or_else(|| "—".into());
-    let tier = active_org.and_then(|m| m.subscription_tier.as_ref());
-    let mut by_type: Vec<(String, u64)> = user.device_count.by_type.clone().into_iter().collect();
-    by_type.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-    // Usage réel par type (comptage devices agrégé sur les orgs de l'user).
-    let used_of = |name: &str| user.device_count.by_type.get(name).copied().unwrap_or(0);
-    let (used_sensor, used_actuator, used_mixed) =
-        (used_of("sensor"), used_of("actuator"), used_of("mixed"));
-
+    // All hooks run before the session early return: the hook order must
+    // stay stable across renders.
     // Summary org-scope : re-run quand l'org change ou au compteur reload
     // (bouton + polling). Erreurs avalées → None (dégradé silencieux).
     let reload = use_signal(|| 0u32);
@@ -53,6 +36,34 @@ pub fn Dashboard() -> Element {
         org::current()?;
         api::dashboard::summary().await.ok()
     });
+    // User-selectable auto-refresh (default 15 s) + "refresh now".
+    let auto = use_auto_refresh(reload, POLL_SECS);
+
+    let user = session::user();
+    let Some(user) = user else {
+        return rsx! {};
+    };
+    let org_id = org::current();
+    let active_org = user.orgs.iter().find(|m| Some(m.id) == org_id);
+    let tier_name = active_org
+        .and_then(|m| m.subscription_tier.as_ref())
+        .map(|tier| tier.name.clone())
+        // No subscription tier on a self-hosted deployment: say so instead of a dash.
+        .unwrap_or_else(|| {
+            if user.deployment_mode == "saas" {
+                "—".into()
+            } else {
+                t!("dash-tier-self-hosted").to_string()
+            }
+        });
+    let tier = active_org.and_then(|m| m.subscription_tier.as_ref());
+    let mut by_type: Vec<(String, u64)> = user.device_count.by_type.clone().into_iter().collect();
+    by_type.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    // Usage réel par type (comptage devices agrégé sur les orgs de l'user).
+    let used_of = |name: &str| user.device_count.by_type.get(name).copied().unwrap_or(0);
+    let (used_sensor, used_actuator, used_mixed) =
+        (used_of("sensor"), used_of("actuator"), used_of("mixed"));
+
     // Ressource : Option<Option<T>> (pending | dégradé) ; None tant que
     // pending ou en erreur (dégradé silencieux).
     let s = match summary.read().as_ref() {
@@ -65,6 +76,13 @@ pub fn Dashboard() -> Element {
     let live_label = match &s {
         Some(x) => format!("{}/{}", x.liveness.live, x.liveness.total),
         None => "—".into(),
+    };
+    // Device counters come from the org summary (same source as the
+    // liveness list); the session aggregate is only a fallback while the
+    // summary loads.
+    let total_label = match &s {
+        Some(x) => x.liveness.total.to_string(),
+        None => user.device_count.total.to_string(),
     };
     let build_label = s
         .as_ref()
@@ -81,9 +99,6 @@ pub fn Dashboard() -> Element {
         _ => None,
     };
     let telemetry = s.as_ref().map(|x| &x.telemetry);
-
-    // User-selectable auto-refresh (default 15 s) + "refresh now".
-    let auto = use_auto_refresh(reload, POLL_SECS);
 
     rsx! {
         div { class: "p-6",
@@ -114,7 +129,7 @@ pub fn Dashboard() -> Element {
                         "border-blue-500",
                         "bg-blue-100",
                         t!("dash-total-devices"),
-                        user.device_count.total.to_string(),
+                        total_label,
                         rsx! {
                             icons::Cpu { class: "h-6 w-6 text-blue-600" }
                         },
@@ -124,10 +139,10 @@ pub fn Dashboard() -> Element {
                     stat_card(
                         "border-green-500",
                         "bg-green-100",
-                        t!("dash-active-devices"),
-                        user.device_count.active.to_string(),
+                        t!("dash-live-sensors"),
+                        live_label,
                         rsx! {
-                            icons::CheckCircle { class: "h-6 w-6 text-green-600" }
+                            icons::Wifi { class: "h-6 w-6 text-green-600" }
                         },
                     )
                 }
@@ -155,22 +170,8 @@ pub fn Dashboard() -> Element {
                 }
             }
 
-            // Cartes stats org (summary) — « en ligne » = frais au TTL de
-            // silence, ≠ « actifs » ci-dessus (booléen reaper).
+            // Org summary card (devices online now live in the first row).
             div { class: "grid grid-cols-1 md:grid-cols-2 gap-6 mb-8",
-                div { class: "bg-white p-6 rounded-lg shadow-sm border-l-4 border-teal-500",
-                    div { class: "flex items-center justify-between",
-                        div {
-                            p { class: "text-sm font-medium text-gray-600",
-                                {t!("dash-live-sensors")}
-                            }
-                            p { class: "text-3xl font-bold text-gray-900", {live_label} }
-                        }
-                        div { class: "p-3 rounded-full bg-teal-100",
-                            icons::Wifi { class: "h-6 w-6 text-teal-600" }
-                        }
-                    }
-                }
                 div { class: "bg-white p-6 rounded-lg shadow-sm border-l-4 border-indigo-500",
                     div { class: "flex items-center justify-between",
                         div {

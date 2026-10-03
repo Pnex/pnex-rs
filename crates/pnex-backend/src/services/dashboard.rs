@@ -21,9 +21,12 @@ use crate::models::_entities::{
 };
 use crate::services::device_liveness;
 use crate::services::openobserve::{self, client::Client};
+use crate::services::visualization;
 
 /// Fenêtre de recherche du dernier échantillon de chaque série.
 const LATEST_WINDOW: &str = "1h";
+/// [`LATEST_WINDOW`] in seconds (SQL last-sample lookup).
+const LATEST_WINDOW_SECS: i64 = 3_600;
 
 /// Timeout de TOUT le chemin O2 du summary (découverte des streams +
 /// queries) — le dashboard répond quoi qu'il arrive, une page ne doit pas
@@ -199,16 +202,26 @@ pub async fn latest_measurements(
             .filter(|n| openobserve::valid_metric_name(n))
             .take(STREAMS_CAP)
         {
-            // Une métrique injoignable n'emporte pas les autres.
-            match client
-                .prom_query(
+            // The instant query stamps samples with the evaluation time: the
+            // real last-sample time comes from the SQL lookup (cached).
+            let query = format!("last_over_time({name}[{LATEST_WINDOW}])");
+            let (res, seen) = tokio::join!(
+                client.prom_query(&creds.o2_org, &query, &creds.email_passcode),
+                visualization::cached_last_seen(
+                    client,
                     &creds.o2_org,
-                    &format!("last_over_time({name}[{LATEST_WINDOW}])"),
+                    name,
+                    LATEST_WINDOW_SECS,
                     &creds.email_passcode,
-                )
-                .await
-            {
-                Ok(resp) => samples.extend(resp.data.result),
+                ),
+            );
+            let seen = seen.unwrap_or_else(|e| {
+                tracing::debug!(org_id, metric = %name, error = %e, "last seen not queried");
+                Default::default()
+            });
+            // Une métrique injoignable n'emporte pas les autres.
+            match res {
+                Ok(resp) => samples.extend(resp.data.result.into_iter().map(|s| (s, seen.clone()))),
                 Err(e) => {
                     tracing::debug!(org_id, metric = %name, erreur = %e, "stream non interrogé")
                 }
@@ -236,11 +249,16 @@ pub async fn latest_measurements(
     // (défensif — les valeurs sont déjà filtrées à l'ingest).
     let mut latest: Vec<LatestMeasurement> = samples
         .into_iter()
-        .filter_map(|s| {
+        .filter_map(|(s, seen)| {
             let metric = s.metric.get("__name__")?.clone();
             let device_id = s.metric.get("device_id")?.clone();
             let value: f64 = s.value.1.parse().ok()?;
-            let timestamp = DateTime::from_timestamp(s.value.0 as i64, 0).map(|t| t.to_rfc3339());
+            // Unknown last-sample time stays `None` (sorted last), never the
+            // evaluation time.
+            let timestamp = seen
+                .get(&device_id)
+                .and_then(|us| DateTime::from_timestamp_micros(*us))
+                .map(|t| t.to_rfc3339());
             Some(LatestMeasurement {
                 metric,
                 device_id,

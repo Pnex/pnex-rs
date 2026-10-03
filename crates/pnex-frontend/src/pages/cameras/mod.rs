@@ -29,7 +29,8 @@ mod settings;
 use flash::FlashToggle;
 use live::LiveView;
 use recordings::RecordingsDialog;
-use settings::{age_label, framesize_label, SettingsDialog};
+pub(crate) use settings::age_label;
+use settings::{framesize_label, SettingsDialog};
 
 /// User role in the current org (media/devices school).
 fn current_role() -> Option<String> {
@@ -112,6 +113,8 @@ pub fn Cameras() -> Element {
             move |c: &CameraView| {
                 let label = match c.last_frame_ms {
                     Some(ms) => t!("cameras-last-frame", age: age_label(ms, now_ms)).to_string(),
+                    // Uplink open but nothing decoded yet: not the same as an idle camera.
+                    None if c.streaming => t!("cameras-waiting-frames").to_string(),
                     None => t!("cameras-no-frame-yet").to_string(),
                 };
                 let viewers = t!("cameras-viewers", count: c.viewers).to_string();

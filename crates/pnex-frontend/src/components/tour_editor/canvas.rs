@@ -22,9 +22,31 @@ const STAIR_STROKE: &str = "#8b5cf6";
 /// Lien dessinable : (id, source, cible, stair ?).
 type DrawLink = (String, (f64, f64), (f64, f64), bool);
 
+/// Render size of a floor plan: declared dimensions, else the size measured
+/// from its image (same asset only), else the fallback.
+fn plan_dims(
+    plan: Option<&pnex_core::FloorPlan>,
+    measured: Option<&(String, (f64, f64))>,
+) -> (f64, f64) {
+    let Some(plan) = plan else {
+        return geometry::PLAN_FALLBACK;
+    };
+    let fallback = measured
+        .filter(|(asset, _)| *asset == plan.media_asset_id)
+        .map(|(_, size)| *size);
+    geometry::plan_size(
+        plan.width.or(fallback.map(|s| s.0)),
+        plan.height.or(fallback.map(|s| s.1)),
+    )
+}
+
 /// Canevas : fond + plan de l'étage actif + scènes + liens intra-étage.
 #[component]
-pub(crate) fn Canvas(cx: TourEditorCx) -> Element {
+pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
+    // Native size measured from the loaded plan image `(asset, (w, h))`:
+    // written into the doc only when editable, kept here for display when
+    // read-only (a viewer must never dirty the doc).
+    let mut measured: Signal<Option<(String, (f64, f64))>> = use_signal(|| None);
     let doc = cx.doc.cloned();
     let floor_id = cx.active_floor.cloned();
     let pan = cx.pan.cloned();
@@ -39,10 +61,10 @@ pub(crate) fn Canvas(cx: TourEditorCx) -> Element {
         .as_ref()
         .and_then(|f| f.plan.as_ref())
         .map(|p| p.media_asset_id.clone());
-    let (plan_w, plan_h) = match active_floor.as_ref().and_then(|f| f.plan.as_ref()) {
-        Some(plan) => geometry::plan_size(plan.width, plan.height),
-        None => geometry::PLAN_FALLBACK,
-    };
+    let (plan_w, plan_h) = plan_dims(
+        active_floor.as_ref().and_then(|f| f.plan.as_ref()),
+        measured.read().as_ref(),
+    );
 
     // Blob URL authentifié du plan — la resource relit un **Memo** (asset du
     // plan de l'étage actif) : une capture en valeur ne redémarre jamais la
@@ -75,6 +97,18 @@ pub(crate) fn Canvas(cx: TourEditorCx) -> Element {
         let Some(rect) = geometry::canvas_rect() else {
             return;
         };
+        // Current plan size read here (not the first render's capture): the
+        // measured native size may land after the image.
+        let (plan_w, plan_h) = {
+            let doc = cx.doc.peek();
+            let floor_id = cx.active_floor.peek();
+            let plan = doc
+                .floors
+                .iter()
+                .find(|f| f.id == *floor_id)
+                .and_then(|f| f.plan.as_ref());
+            plan_dims(plan, measured.peek().as_ref())
+        };
         let ((pan_x, pan_y), zoom_value) =
             geometry::fit_transform(plan_w, plan_h, rect.2, rect.3, geometry::FIT_PADDING);
         cx.pan.set((pan_x, pan_y));
@@ -88,6 +122,52 @@ pub(crate) fn Canvas(cx: TourEditorCx) -> Element {
     use_effect(move || {
         plan_asset_memo.read();
         fitted.set(false);
+    });
+    // Plan without native size (picked before measurement, or legacy doc):
+    // measure the loaded image and store its real width/height, then refit.
+    use_effect(move || {
+        let Some(Some(url)) = plan_url.value().read().clone() else {
+            return;
+        };
+        let floor_id = cx.active_floor.cloned();
+        let missing = cx
+            .doc
+            .read()
+            .floors
+            .iter()
+            .find(|f| f.id == floor_id)
+            .and_then(|f| f.plan.as_ref())
+            .filter(|p| p.width.is_none() || p.height.is_none())
+            .map(|p| p.media_asset_id.clone());
+        let Some(asset) = missing else {
+            return;
+        };
+        // Already measured for this asset (read-only path: the doc stays
+        // without size, do not measure again on every doc change).
+        if measured.peek().as_ref().is_some_and(|(a, _)| *a == asset) {
+            return;
+        }
+        spawn(async move {
+            let Some((w, h)) = geometry::image_natural_size(&url).await else {
+                return;
+            };
+            measured.set(Some((asset.clone(), (w, h))));
+            if !can_write {
+                fitted.set(false);
+                return;
+            }
+            cx.update_doc(|doc| {
+                state::patch_plan(doc, &floor_id, |plan| {
+                    if plan.media_asset_id == asset
+                        && (plan.width.is_none() || plan.height.is_none())
+                    {
+                        plan.width = Some(w);
+                        plan.height = Some(h);
+                    }
+                });
+            });
+            fitted.set(false);
+        });
     });
 
     // Liens dont les deux extrémités sont sur l'étage actif (rendu + hit).

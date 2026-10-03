@@ -37,11 +37,13 @@ pub fn WidgetBody(
     let last = points.as_ref().and_then(|p| p.last().cloned());
     // Le mini chart `line` ne porte l'unité nulle part ailleurs :
     // l'en-tête existe dès que le titre OU l'unité est renseigné.
-    let has_unit = w
+    // Only `line` shows the unit in the header: stat, gauge and indicator
+    // already render it next to the value (no duplicate).
+    let header_unit = w
         .options
         .unit
-        .as_ref()
-        .is_some_and(|u| !u.trim().is_empty());
+        .clone()
+        .filter(|u| w.widget_type == "line" && !u.trim().is_empty());
 
     // Symbols draw their own caption (under the drawing, not a card header).
     if w.widget_type == "symbol" {
@@ -53,10 +55,10 @@ pub fn WidgetBody(
     rsx! {
         div { class: "flex h-full w-full flex-col overflow-hidden rounded-lg",
             // En-tête : titre + unité.
-            if !w.title.trim().is_empty() || has_unit {
+            if !w.title.trim().is_empty() || header_unit.is_some() {
                 div { class: "flex items-baseline justify-between px-3 pt-2",
                     span { class: "truncate text-xs font-medium text-gray-500", "{w.title}" }
-                    if let Some(unit) = &w.options.unit {
+                    if let Some(unit) = &header_unit {
                         span { class: "ml-2 shrink-0 text-[10px] text-gray-400", "{unit}" }
                     }
                 }

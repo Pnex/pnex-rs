@@ -14,7 +14,7 @@ use crate::state::toasts;
 
 /// Age of the last frame, compact (`3 s`, `4 min`, `2 h`, `5 d`) — data,
 /// no i18n (units are international symbols).
-pub(super) fn age_label(last_frame_ms: i64, now_ms: i64) -> String {
+pub(crate) fn age_label(last_frame_ms: i64, now_ms: i64) -> String {
     let secs = ((now_ms - last_frame_ms).max(0)) / 1000;
     if secs < 60 {
         format!("{secs} s")

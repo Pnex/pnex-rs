@@ -468,7 +468,7 @@ pub fn TourEditor(
                 }
             },
             canvas: rsx! {
-                canvas::Canvas { cx }
+                canvas::Canvas { cx, can_write }
             },
             palette: rsx! {
                 PalettePopover {
@@ -794,14 +794,29 @@ pub fn TourEditor(
                 on_picked: move |picked: (String, String)| {
                     let (asset_id, _name) = picked;
                     add_scene_open.set(false);
-                    // Pose sur l'étage actif, au centre de la vue avec un
-                    // léger décalage en cascade (jamais empilées).
+                    // Placed on the active floor, first free spot around the
+                    // plan centre (never stacked).
                     let floor = active_floor.cloned();
                     let mut new_id = String::new();
                     cx.update_doc(|doc| {
-                        let (w, h) = geometry::plan_size(None, None);
-                        let step = doc.scenes.len() as f64;
-                        let pos = (w / 2.0 + (step % 6.0) * 24.0, h / 2.0 + (step % 6.0) * 24.0);
+                        // Active floor's own plan size and scenes only: other
+                        // floors never push a new pin aside.
+                        let plan = doc
+                            .floors
+                            .iter()
+                            .find(|f| f.id == floor)
+                            .and_then(|f| f.plan.as_ref());
+                        let size = geometry::plan_size(
+                            plan.and_then(|p| p.width),
+                            plan.and_then(|p| p.height),
+                        );
+                        let taken: Vec<(f64, f64)> = doc
+                            .scenes
+                            .iter()
+                            .filter(|s| s.floor_id == floor)
+                            .map(|s| (s.x, s.y))
+                            .collect();
+                        let pos = geometry::new_scene_position(size, &taken);
                         new_id = state::add_scene(doc, &floor, asset_id.clone(), pos);
                     });
                     selected.set(Some(Select::Scene(new_id)));
