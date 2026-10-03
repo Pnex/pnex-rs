@@ -119,6 +119,18 @@ Au passage : la lib ne compilait pas sur ESP32 sans OTA
 (`esp_ota_ops.h` inclus seulement sous `PNEX_OTA_ENABLE`) — sketches
 Tier 2 concernés, corrigé.
 
+**E2E matériel (`task e2e:hardware`, image serveur reconstruite, 2026-10-03)** :
+register/build/flash C3 + CAM, pins (readback API + série), télémétrie,
+OTA, firmware custom : verts. Piège trouvé : pyserial relâche DTR avant
+RTS → l'état DTR=0/RTS=1 **reset le C3** (USB-JTAG natif) et met EN à 0
+sur les ponts auto-reset ; l'appareil repart, le test d'écriture voit
+`last_value` absent (offline) et l'OTA suivante trouve l'appareil hors
+ligne. Ouverture corrigée (RTS d'abord) dans `serial_tail.py` et le
+harnais. La carte ESP32-CAM-MB se reset à l'ouverture quel que soit
+l'ordre. Le test caméra (≥ 50 images / 20 s) a passé au 1ᵉʳ run puis
+échoué aux suivants (6–15 images, RSSI −67 dBm) avec le même firmware :
+liaison radio, pas ce chantier.
+
 ## 7. Definition of Done d'une nouvelle carte (complète brick0 §9)
 
 1. Fichier `catalog/boards/<variante>.rs` + ligne `ALL` (D121).

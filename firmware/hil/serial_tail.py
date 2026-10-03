@@ -3,8 +3,10 @@
 
     uv run python hil/serial_tail.py --port /dev/ttyACM0 --seconds 20
 
-DTR/RTS are released before the port opens (an asserted line resets
-auto-reset bridges or holds IO0 low), so a running firmware keeps running.
+DTR/RTS are released RTS first (the other order resets the native USB-JTAG
+port and auto-reset bridges), so a running firmware keeps running. The
+ESP32-CAM-MB carrier resets on open whatever the order: never tail it in
+the middle of a test.
 Used by the hardware e2e tests to assert the real pin values the firmware
 logs (`[IO] ...`, `readback=`).
 """
@@ -26,16 +28,22 @@ def main() -> int:
     s.port = args.port
     s.baudrate = 115200
     s.timeout = 0.2
-    s.dtr = False
-    s.rts = False
     s.open()
+    # Linux raises DTR+RTS on open; release RTS FIRST. DTR low while RTS is
+    # still high is the reset sequence of the native USB-JTAG port (C3/S3)
+    # and pulls EN low on auto-reset bridges (pyserial's preset order).
+    s.rts = False
+    s.dtr = False
     deadline = time.monotonic() + args.seconds
     try:
         while time.monotonic() < deadline:
             line = s.readline()
             if line:
-                sys.stdout.write(line.decode("utf-8", "replace"))
-                sys.stdout.flush()
+                try:
+                    sys.stdout.write(line.decode("utf-8", "replace"))
+                    sys.stdout.flush()
+                except BrokenPipeError:
+                    return 0
     finally:
         s.close()
     return 0

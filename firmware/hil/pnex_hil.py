@@ -68,11 +68,12 @@ class Console:
         s.port = port
         s.baudrate = 115200
         s.timeout = 0.2
-        # DTR/RTS released BEFORE open: on auto-reset bridges (NodeMCU,
-        # ESP32-CAM-MB) an asserted line holds EN low or IO0 low (boot mode).
-        s.dtr = False
-        s.rts = False
         s.open()
+        # Linux raises DTR+RTS on open; release RTS first (DTR low with RTS
+        # high = EN low on auto-reset bridges, chip reset on native USB-JTAG).
+        # The bench then resets on purpose (`reset`).
+        s.rts = False
+        s.dtr = False
         self.ser = s
 
     def reset(self) -> None:
