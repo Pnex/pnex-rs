@@ -351,3 +351,136 @@ ETA forecast 791 s prédit pour 800 s réels) ; les défauts sont autour.
   recrée pas l'état des nœuds (anti-spam, set en attente) — attendu ou non,
   à documenter.
 - **Statut** : backlog.
+
+## 2026-10-02/03 — harnais E2E Playwright (`e2e/`) + banc matériel C3 / ESP32-CAM
+
+> Session autonome : suite Playwright sur la stack conteneurisée (edge TLS),
+> org de test dédiée « E2E », cartes réelles (`/dev/ttyACM0` ESP32-C3,
+> `/dev/ttyUSB0` ESP32-CAM-MB). Mode d'emploi : `e2e/README.md`.
+
+### O17 — Corrigés pendant la session (traçabilité)
+
+Tous trouvés par la suite e2e, chacun couvert par un test (unitaire ou e2e) :
+
+- `0305f4a` template Starlark « seuil » sans `@input threshold` ;
+  `08895d6` test live JS : exception QuickJS générique, message FR ;
+  `fb07c41` éditeur de fonctions : le code **sauvé** était remplacé par
+  l'ancien après save (le save suivant écrasait la nouvelle version) ;
+- `f1369de`, `003ab0c` titre d'éditeur (flow, dashboard, tour) figé après
+  renommage ; `5e0893e` suppression d'un flow **arrêté** = attente d'ack 10 s ;
+- `e243f7d` client API : `request::<()>` rejetait les 204 (suppression de
+  canal/template, renommage d'org, membre : action faite, UI en erreur) ;
+  `f4f33db` suppression d'org depuis l'UI jamais envoyée ;
+- `3d7dcad` + `f3cf0c9` notification : template **sans variables**
+  impossible à choisir, puis jamais envoyé (aucune ancre de données) ;
+- `e811fbf` firmware caméra : trames > 16 Ko tronquées en wss → uplink mort
+  après 2–3 trames (~0,3 fps) — fragmentation WS, 4,8 fps mesurés ;
+- `82ad947` build Docker : wasm-opt retéléchargé à chaque build ;
+- accessibilité (rôles dialog, labels, selects nommés) : `8aa7d3b`,
+  `f8a41e0`, `aaab578`, `bb674cc`, `a407320`, `c9410b1`, `e6d39d9`,
+  `025b2c1`, `58a2d2b`, `81deb4b` ; `2b98f37` « (Phase 4) » dans l'UI.
+- **Statut** : ✅ résolu.
+
+### O18 — Base de dev `pnex` antérieure à D120 : la stack HEAD tourne sur `pnex_e2e`
+
+- **Symptôme** : l'image HEAD refuse de démarrer sur `pnex` (« Migration
+  file … is missing ») — base créée avant le squash des migrations (D120).
+- **État laissé** : `pnex` intacte (+ dump `~/.cache/pnex-e2e/db-backups/`),
+  HEAD sur la base `pnex_e2e` via `PNEX_DATABASE_URL` / `PNEX_VALKEY_URL`
+  (surcharge ajoutée dans `compose.app.yaml`), Valkey db 1, ids d'org ≥ 1000.
+  Un `task app:up` **sans** ces variables repart sur `pnex` et plante.
+- **À faire** : trancher (décision roadmap #12) — `db:reset` de `pnex`
+  (doctrine D120) ou adopter `pnex_e2e` comme base de dev. Les devices de
+  l'ancienne org (quiet-puffin, proud-robin) n'existent que dans `pnex` ;
+  leurs flashs d'origine sont dans `~/.cache/pnex-e2e/flash-backups/`.
+- **Statut** : ouvert (décision).
+
+### O19 — Jetons device en clair dans l'URL des WebSockets (logs nginx)
+
+- **Constat** : `/ws/device?token=…` et `/ws/camera?token=…` (base64 du
+  jeton de provisioning) apparaissent tels quels dans les access logs de
+  l'edge nginx — toute personne qui lit les logs peut rejouer un device.
+- **Pistes** : masquer la query string dans le `log_format` de l'edge
+  (rapide) ; à terme, authentifier par en-tête ou premier message chiffré
+  (impact firmware + contrat, à concevoir).
+- **Statut** : ouvert (décision roadmap #13).
+
+### O20 — Firmware : handshake WebSocket limité à 1 s (ArduinoWebsockets)
+
+- **Constat** : `_CONNECTION_TIMEOUT` = 1000 ms en dur (`ws_config_defs.hpp`,
+  non surchargeable par `-D`) pour lire la réponse 101. Sur un WiFi à RTT
+  élevé (100–500 ms mesurés à −70 dBm), l'ESP abandonne avant la réponse →
+  `499` côté nginx, reconnexions en boucle.
+- **Pistes** : patch de la lib (extra_script PlatformIO ou fork vendu dans
+  `firmware/common_libs`), ou lib WS alternative.
+- **À auditer avec** : toute écriture > 16 Ko sur `/ws/device` (même cause
+  que la caméra, O17 `e811fbf`) — aujourd'hui les messages de contrôle sont
+  petits, mais rien ne le garantit (gros announce, futures commandes).
+- **Statut** : ouvert.
+
+### O21 — Dette d'accessibilité restante
+
+- **Constat** : ~149 `<label>` non rattachés à leur contrôle sur 44 fichiers
+  (formulaires de pages et de modales) ; les tests contournent avec
+  `fieldAfterLabel`. Rapport axe (`task e2e -- --project=a11y`, état initial
+  des routes seulement) : `color-contrast` sur 7 routes, `empty-table-header`
+  (cameras, system), `link-in-text-block` (system).
+- **Piste** : un composant `FormField` du socle CRUD (label + contrôle liés
+  par id) puis migration page par page ; passer le projet a11y en strict
+  (`PNEX_E2E_A11Y_STRICT=1`) une fois la dette résorbée ; auditer aussi les
+  modales ouvertes.
+- **Statut** : ouvert (partiellement corrigé, cf. O17).
+
+### O22 — Rebuild = même build record = même version firmware
+
+- **Constat** : « Rebuild » réutilise l'enregistrement de build (même id) ;
+  la version firmware étant cet id, deux builds différents ont la même
+  version → l'OTA d'après rebuild est toujours un « redeploy forcé », et
+  l'UI ne peut pas dire si le device tourne le dernier binaire.
+- **Piste** : version = id + compteur de rebuild (ou hash du binaire).
+- **Statut** : ouvert (décision roadmap #14).
+
+### O23 — Notification sans variables : envoi à chaque `trigger = true`
+
+- **Constat** : depuis `f3cf0c9`, un template sans variables part à chaque
+  trigger armé — un Inject à 5 s qui maintient l'alarme vraie envoie un mail
+  toutes les 5 s (cohérent avec le mode à variables, mais bruyant).
+- **Piste** : envoi sur front montant (false→true) pour ce cas, ou anti-spam
+  activé par défaut à la création du nœud. Choix produit.
+- **Statut** : ouvert (décision).
+
+### O24 — Mineurs constatés
+
+- **Diagnostic du runtime de flows en conteneur** : aucun log exploitable
+  (logger `info`, rien sur la livraison des notifications) ; le diagnostic a
+  dû passer par `flows.json` et des nœuds Debug ajoutés via l'API. Prévoir
+  un niveau/flux de logs runtime activable.
+- **Catalogue télémétrie** : `last_seen` d'une série reste « frais » sans
+  nouveau point (présence du device ≠ dernière mesure) — libellé trompeur
+  dans Quick charts.
+- **Cameras** : colonne « Last frame » reste « No frame received yet »
+  pendant le streaming (pas de rafraîchissement).
+- **Studio** : plan importé sans dimensions (`width`/`height` null,
+  l'inspecteur affiche 0) ; les scènes ajoutées s'empilent au centre du plan
+  (1000,500 puis 1024,524) — à placer à la main ou mieux répartir.
+- **Accueil** : « Current tier — » en self-hosted (aucun tier seedé) et
+  « Active devices 1 » à côté de « Devices online 2/2 ».
+- **Dashboard Value** : l'unité apparaît deux fois (en-tête et sous la valeur).
+- **Build Docker** : l'étage `agent-dist` (apt-get mingw) est invalidé à
+  chaque changement de source (≈ +10 Go de cache par série de rebuilds,
+  50 Go consommés sur la session) — sortir l'apt-get avant `COPY . .`.
+- **Statut** : backlog.
+
+### O25 — Suite e2e : ce qui reste à faire
+
+- **CI** : la suite n'est pas branchée (il faut la stack complète : Rauthy,
+  Postgres, Valkey, O2, Mailcrab, builder PlatformIO). À concevoir : job
+  manuel/nightly sur une machine qui a Docker, ou runner auto-hébergé
+  (attention : dépôt public, jamais de fork PR sur self-hosted).
+- **Non couvert** : annotations, registre de modèles + détection vision,
+  enregistrements caméra, assistant IA (fournisseur LLM requis), agents
+  edge, OTA de l'ESP32-CAM, apps Android/desktop, membres d'org multi-
+  utilisateurs (un seul compte Rauthy de test).
+- **Matériel** : séquence manuelle (`task e2e:hardware`, ports + WiFi en
+  variables) ; chaque run réenregistre les cartes (nouveau jeton, ~4 min).
+- **Statut** : ouvert.
