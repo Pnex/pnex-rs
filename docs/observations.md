@@ -447,6 +447,17 @@ Tous trouvés par la suite e2e, chacun couvert par un test (unitaire ou e2e) :
   avec reprise des écritures partielles (fin de la troncature 16 Ko pour
   **toute** écriture, `/ws/device` compris), CA appliquée aussi sur la WS
   ESP8266. Firmwares plus légers (−17 Ko 8266, −22 Ko ESP32).
+- **Bug latent révélé** : la CA désormais appliquée sur la WS 8266 échouait
+  (`TCP connect failed`) — BearSSL vérifie les dates du certificat et le
+  8266 n'a pas d'horloge (`BR_ERR_X509_TIME_UNKNOWN`) ; l'OTA https épinglée
+  8266 avait le même défaut, jamais exercé (OTA 8266 validée en http LAN).
+  Corrigé dans `pnex_tls` : SNTP démarré dès qu'une CA est épinglée,
+  `setX509Time` = heure NTP sinon date de build (suffit tant que le leaf
+  edge n'est pas renouvelé après le build sur un réseau sans NTP — 397 j,
+  renouvelé à J−30) ; erreur BearSSL loguée en clair.
+- **Validé sur carte (2026-10-03, e2e `@hardware`, edge wss + CA)** :
+  ESP32-C6-Zero 4/4 (enregistrement, pins, OTA non forcée, firmware
+  custom) ; NodeMCU ESP8266 2/2 (enregistrement, pins).
 - **Règle** : toute brique tierce ajoutée doit avoir une licence compatible,
   la plus permissive possible (MIT / BSD / Apache-2.0) — LICENSE lu, pas
   un résumé.

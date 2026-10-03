@@ -189,7 +189,9 @@ poser `PNEX_TRUSTED_PROXIES=none` (sinon un hôte du LAN peut forger
    `pnex-builder`). Historiquement obligatoire sur ESP32 (ArduinoWebsockets
    ne passait jamais le client en insecure) ; depuis le client maison
    `pnex_ws` (2026-10-03), sans CA = `setInsecure` sur les deux cœurs, et la
-   CA est aussi appliquée sur la WS ESP8266 (avant : insecure forcé). Pas de NTP requis sur
+   CA est aussi appliquée sur la WS ESP8266 (avant : insecure forcé). Sur
+   ESP8266, BearSSL vérifie les dates : `pnex_tls` lance SNTP et passe
+   `setX509Time` (heure NTP, sinon date de build du firmware). Pas de NTP requis sur
    ESP32 (mbedTLS sans `HAVE_TIME_DATE` : dates non vérifiées).
    Bascule ws → wss par OTA : le téléchargement suit l'ancien transport
    (http :5150, toujours publié) — un device dont le firmware wss n'a pas
