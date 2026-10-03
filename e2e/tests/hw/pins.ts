@@ -80,8 +80,10 @@ export function pinIoTest(key: keyof typeof BOARDS, outGpio: number, adcGpio: nu
     expect(serial.text()).not.toContain('[IO] MISMATCH');
 
     // Analog input read every second: values show up in the pin state.
+    // An ADC-only pin (ESP8266 A0) is already analog_in, its mode locked.
+    const adcFixed = (await pin(api, pk!, adcGpio))?.mode === 'analog_in';
     const adc = await devices.openPin(adcGpio);
-    await adc.setMode('analog_in');
+    if (!adcFixed) await adc.setMode('analog_in');
     await expect.poll(async () => (await pin(api, pk!, adcGpio))?.mode, { timeout: 30_000 }).toBe('analog_in');
     await adc.subscribe(1000);
     await expect
@@ -97,7 +99,7 @@ export function pinIoTest(key: keyof typeof BOARDS, outGpio: number, adcGpio: nu
 
     // Back to the defaults so the next run starts from the same state.
     await adc.subscribe(0);
-    await adc.setMode('digital_in');
+    if (!adcFixed) await adc.setMode('digital_in');
     await adc.close();
     const reset = await devices.openPin(outGpio);
     await reset.setMode('digital_in');

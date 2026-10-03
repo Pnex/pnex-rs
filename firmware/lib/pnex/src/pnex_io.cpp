@@ -98,7 +98,12 @@ bool pnex_io_apply(PnexPin& p) {
             }
             ledcWrite(channel_of(p.gpio), 0);  // boot at duty 0 (safe)
 #else
-            analogWrite(p.gpio, 0);  // boot at duty 0 (safe)
+            // Explicit OUTPUT: the core's analogWrite() only calls pinMode
+            // when its per-pin `analogMap` bit is clear, and that bit
+            // survives pinMode(INPUT) — a pin that had been released went
+            // back to pwm_out still an input (found by the D122 bench).
+            digitalWrite(p.gpio, LOW);  // boot at duty 0 (safe)
+            pinMode(p.gpio, OUTPUT);
 #endif
             break;
         case PNEX_DIGITAL_IN:
@@ -178,7 +183,9 @@ void pnex_io_release(uint8_t gpio) {
     if (gpio == ESP8266_A0_WIRE_ID) {
         return;
     }
-    analogWrite(gpio, 0);  // stops the waveform
+    // digitalWrite stops any PWM/waveform; analogWrite(0) would drive the
+    // pad LOW (pinMode OUTPUT) on a pin that never was PWM.
+    digitalWrite(gpio, LOW);
 #else
     detach_pwm(gpio);
 #endif
