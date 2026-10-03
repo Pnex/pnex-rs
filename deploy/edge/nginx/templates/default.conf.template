@@ -17,6 +17,15 @@ map $host $pnex_alias {
     "${PNEX_DOMAIN_ALIAS}" 1;
 }
 
+# Access log without query strings: devices authenticate their websockets
+# with `?token=` (/ws/device, /ws/camera) and OAuth callbacks carry
+# `?code=`; the default `combined` format would write them in clear.
+log_format pnex_noqs '$remote_addr - $remote_user [$time_local] '
+                     '"$request_method $uri $server_protocol" $status '
+                     '$body_bytes_sent "$http_user_agent"';
+# Set per server block: an http-level access_log would ADD to the image's
+# `access_log ... main` instead of replacing it.
+
 resolver 127.0.0.11 valid=10s ipv6=off;
 
 # Port 80: ACME HTTP-01 challenges (cloud mode), everything else → https.
@@ -24,6 +33,7 @@ server {
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name _;
+    access_log /var/log/nginx/access.log pnex_noqs;
 
     location /.well-known/acme-challenge/ {
         root /var/www/acme;
@@ -39,6 +49,7 @@ server {
     listen [::]:443 ssl default_server;
     http2 on;
     server_name _;
+    access_log /var/log/nginx/access.log pnex_noqs;
 
     ssl_certificate     /pki/current/fullchain.pem;
     ssl_certificate_key /pki/current/privkey.pem;
@@ -78,6 +89,9 @@ server {
 
     # Device + UI websockets: long-lived, idle between frames.
     location /ws/ {
+        # nginx error lines quote the full request (`?token=`): keep only
+        # crit here; upstream failures still show as 502 in the access log.
+        error_log /dev/stderr crit;
         proxy_pass http://$pnex_backend;
         proxy_buffering off;
         proxy_read_timeout 1h;
