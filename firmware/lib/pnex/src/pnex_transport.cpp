@@ -21,6 +21,7 @@
 #include "pnex_config.h"
 #include "chacha_crypto.h"
 #include "pnex_tls.h"
+#include "pnex_ws_tcp.h"
 
 using namespace websockets;
 
@@ -59,7 +60,8 @@ static void on_event(WebsocketsEvent event, String data);
 constexpr int LEAN_TLS_RX = 2048;
 constexpr int LEAN_TLS_TX = 512;
 
-class LeanTlsTcpClient : public network::SecuredEsp8266TcpClient {
+// Patient handshake reads as every PneX WS client (pnex_ws_tcp.h, O20).
+class LeanTlsTcpClient : public PnexPatientTcp<network::SecuredEsp8266TcpClient> {
 public:
     LeanTlsTcpClient() {
         this->client.setInsecure();
@@ -158,9 +160,7 @@ void pnex_transport_setup(const PnexTransportInit& init) {
     snprintf(s_conn, sizeof(s_conn), "%s://%s%s?token=%s&device_id=%s",
              pnex_use_tls() ? "wss" : "ws", s_host, init.ws_path, token, device_id);
 
-    if (pnex_use_tls()) {
-        pnex_tls_apply(s_client);
-    }
+    // TLS posture is applied per connect (pnex_ws_open builds the client).
     s_client.onMessage(on_frame);
     s_client.onEvent(on_event);
 }
@@ -219,10 +219,10 @@ bool pnex_ws_connect() {
     bool ok = false;
 #if defined(ESP8266)
     if (!(pnex_use_tls() && lean_wss_connect(ok))) {
-        ok = s_client.connect(s_conn);
+        ok = pnex_ws_open(s_client, s_conn, on_frame, on_event);
     }
 #else
-    ok = s_client.connect(s_conn);
+    ok = pnex_ws_open(s_client, s_conn, on_frame, on_event);
 #endif
     if (ok) {
 #if defined(ESP8266)

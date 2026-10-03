@@ -45,4 +45,8 @@ bool pnex_tls_pinned();
 void pnex_tls_apply(websockets::WebsocketsClient& client);
 void pnex_tls_apply(WiFiClientSecure& client);
 
+// Decoded CA PEM when pinned, nullptr otherwise (pnex_ws_tcp applies it to
+// its own TLS client).
+const char* pnex_tls_ca_pem();
+
 #endif  // PNEX_TLS_H
