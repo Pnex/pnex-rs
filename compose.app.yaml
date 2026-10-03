@@ -28,6 +28,9 @@ x-pnex-env: &pnex-env
   PNEX_SECRETS_KEYS: ${PNEX_SECRETS_KEYS:-dev:rJlgG51k+ePf2XrLPnEAXacoz7wUPHiYSxkGT2upQPQ=}
   # Flow editor debug feed (Debug drawer); off in production by default.
   PNEX_FLOW_DEBUG_TOOLS: ${PNEX_FLOW_DEBUG_TOOLS:-false}
+  # Flow runtime log level (error|warn|info|debug|trace), relayed into the
+  # server logs; debug shows notification deliveries.
+  PNEX_FLOW_LOG: ${PNEX_FLOW_LOG:-info}
   STORAGE_BACKEND: ${STORAGE_BACKEND:-db}
   # D72: platform admins (comma separated emails), deployment mode
   # (self_hosted | saas) and fallback O2 retention in days. The default
