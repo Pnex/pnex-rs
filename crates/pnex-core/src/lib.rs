@@ -97,6 +97,10 @@ pub mod events;
 // Shared flow memory (Valkey) contract: memory-write / memory-read nodes.
 pub mod memory;
 
+/// Org controls (D125–D127): surfaces write a control value, flows listen
+/// through the `control-source` node.
+pub mod ui_control;
+
 /// Vision contract (D81–D83): model spec, detections, registry DTOs,
 /// `vision-detect` node config.
 pub mod vision;

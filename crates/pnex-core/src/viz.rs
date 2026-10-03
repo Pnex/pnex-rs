@@ -32,7 +32,18 @@ pub const VIZ_WIDGET_TYPES: &[&str] = &[
     "text",
     "thermo_chart",
     "symbol",
+    "switch",
+    "slider",
+    "button",
+    "number",
 ];
+
+/// Control widget types (D125): each drives one org control
+/// (`WidgetOptions.control`) and may show one optional state source.
+pub const CONTROL_WIDGET_TYPES: &[&str] = &["switch", "slider", "button", "number"];
+
+/// Max number of sections of a mobile dashboard (D124).
+pub const MOBILE_SECTIONS_MAX: usize = 32;
 
 /// Fenêtres proposées par widget (clé → secondes). Source de vérité
 /// partagée front/back — `services/visualization.rs::WINDOWS` s'aligne
@@ -177,6 +188,14 @@ pub struct WidgetOptions {
     /// `symbol` widget options (present iff type is symbol).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub symbol: Option<SymbolOptions>,
+    /// Org control driven by a control widget (present iff the type is one
+    /// of [`CONTROL_WIDGET_TYPES`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control: Option<crate::ui_control::ControlRef>,
+    /// Mobile card width: 1 = half, 2 = full row (default 2). Ignored on
+    /// desktop dashboards.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span: Option<u8>,
 }
 
 /// Options of the `symbol` widget — a shape of the front-end symbol
@@ -369,15 +388,43 @@ pub struct Widget {
     pub options: WidgetOptions,
 }
 
+/// Dashboard format, chosen at creation and never changed (D123).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DashboardFormat {
+    /// Free-hand canvas in absolute px (D40).
+    #[default]
+    Desktop,
+    /// Stack of cards grouped in sections, no px positioning (D124).
+    Mobile,
+}
+
+/// A section of a mobile dashboard: ordered widget ids.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct MobileSection {
+    pub id: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub items: Vec<String>,
+}
+
 /// Layout d'un dashboard — stocké en JSONB dans `dashboard_versions`.
 /// Les points télémétrie ne sont **jamais** stockés (D31).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct DashboardLayout {
+    /// Existing layouts deserialize as desktop.
+    #[serde(default)]
+    pub format: DashboardFormat,
     pub canvas: CanvasSpec,
     #[serde(default)]
     pub widgets: Vec<Widget>,
     #[serde(default)]
     pub wires: Vec<Wire>,
+    /// Mobile only: widget order and grouping (every widget in exactly one
+    /// section).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sections: Vec<MobileSection>,
 }
 
 // ─────────────────────────────── Validation ───────────────────────────────
@@ -461,8 +508,11 @@ fn validate_thermo(
 /// (l'API les renvoie en 400, le front les affiche avant save).
 pub fn validate_layout(l: &DashboardLayout) -> Vec<VizViolation> {
     let mut v = Vec::new();
-    if !(CANVAS_MIN..=CANVAS_MAX).contains(&l.canvas.width)
-        || !(CANVAS_MIN..=CANVAS_MAX).contains(&l.canvas.height)
+    let desktop = l.format == DashboardFormat::Desktop;
+    // The canvas only exists on desktop: a mobile layout is a card stack.
+    if desktop
+        && (!(CANVAS_MIN..=CANVAS_MAX).contains(&l.canvas.width)
+            || !(CANVAS_MIN..=CANVAS_MAX).contains(&l.canvas.height))
     {
         v.push(VizViolation::new(
             None,
@@ -514,7 +564,15 @@ pub fn validate_layout(l: &DashboardLayout) -> Vec<VizViolation> {
                 "titre absent de borne ou porteur de caractères de contrôle",
             ));
         }
-        if w.x < 0 || w.y < 0 || w.w < WIDGET_MIN || w.h < WIDGET_MIN {
+        if !desktop {
+            if !matches!(w.options.span, None | Some(1) | Some(2)) {
+                v.push(VizViolation::new(
+                    Some(&w.id),
+                    "widget_span",
+                    "card span must be 1 (half) or 2 (full row)",
+                ));
+            }
+        } else if w.x < 0 || w.y < 0 || w.w < WIDGET_MIN || w.h < WIDGET_MIN {
             v.push(VizViolation::new(
                 Some(&w.id),
                 "widget_geometry",
@@ -528,6 +586,25 @@ pub fn validate_layout(l: &DashboardLayout) -> Vec<VizViolation> {
             ));
         }
         validate_widget(&w.id, &w.widget_type, &w.source, &w.options, &mut v);
+    }
+
+    if desktop {
+        if !l.sections.is_empty() {
+            v.push(VizViolation::new(
+                None,
+                "desktop_sections",
+                "sections only exist on mobile dashboards",
+            ));
+        }
+    } else {
+        if !l.wires.is_empty() {
+            v.push(VizViolation::new(
+                None,
+                "mobile_wires_forbidden",
+                "wires only exist on desktop dashboards",
+            ));
+        }
+        validate_sections(l, &seen, &mut v);
     }
 
     // Traits : extrémités accrochées à des widgets existants, jamais à
@@ -561,6 +638,65 @@ pub fn validate_layout(l: &DashboardLayout) -> Vec<VizViolation> {
     v
 }
 
+/// Mobile rules (D124): unique non-empty section ids, bounded count and
+/// titles, every widget placed in exactly one section, no unknown item.
+fn validate_sections(
+    l: &DashboardLayout,
+    widget_ids: &std::collections::HashSet<String>,
+    v: &mut Vec<VizViolation>,
+) {
+    if l.sections.len() > MOBILE_SECTIONS_MAX {
+        v.push(VizViolation::new(
+            None,
+            "sections_too_many",
+            format!("at most {MOBILE_SECTIONS_MAX} sections"),
+        ));
+    }
+    let mut section_ids = std::collections::HashSet::new();
+    let mut placed: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for sec in &l.sections {
+        if sec.id.trim().is_empty() || sec.id.len() > 128 || !section_ids.insert(sec.id.as_str()) {
+            v.push(VizViolation::new(
+                None,
+                "section_id",
+                "section id missing, too long or duplicated",
+            ));
+        }
+        if sec.title.len() > TITLE_MAX || sec.title.chars().any(char::is_control) {
+            v.push(VizViolation::new(
+                None,
+                "section_title",
+                "section title too long or carrying control characters",
+            ));
+        }
+        for item in &sec.items {
+            if !widget_ids.contains(item) {
+                v.push(VizViolation::new(
+                    Some(item),
+                    "section_unknown_widget",
+                    format!("section \"{}\" references an unknown widget", sec.id),
+                ));
+            }
+            *placed.entry(item.as_str()).or_default() += 1;
+        }
+    }
+    for w in &l.widgets {
+        match placed.get(w.id.as_str()).copied().unwrap_or(0) {
+            1 => {}
+            0 => v.push(VizViolation::new(
+                Some(&w.id),
+                "widget_unplaced",
+                "the card is in no section",
+            )),
+            _ => v.push(VizViolation::new(
+                Some(&w.id),
+                "widget_placed_twice",
+                "the card is in several sections",
+            )),
+        }
+    }
+}
+
 /// Valide type + sources + options d'un widget (réutilisé par la
 /// bibliothèque : `viz_widget_library.config` est la même forme sans
 /// position).
@@ -582,7 +718,29 @@ pub fn validate_widget(
         );
         return;
     }
-    if widget_type == "text" {
+    let is_control = CONTROL_WIDGET_TYPES.contains(&widget_type);
+    if is_control && options.control.is_none() {
+        push(
+            "control_missing",
+            "pick the control driven by this widget".into(),
+        );
+    }
+    if !is_control && options.control.is_some() {
+        push(
+            "control_unexpected",
+            "only control widgets drive a control".into(),
+        );
+    }
+    if is_control {
+        // The state source is optional (fallback: last commanded value).
+        if source.len() > 1 {
+            push(
+                "control_state_sources",
+                "a control widget shows at most one state source".into(),
+            );
+        }
+        check_sources(widget_type, source, &mut push);
+    } else if widget_type == "text" {
         // Le widget texte n'affiche pas de série.
         if !source.is_empty() {
             push(
@@ -610,50 +768,7 @@ pub fn validate_widget(
                 "une source (métrique × device × fenêtre) est requise".into(),
             );
         }
-        for s in source {
-            if let Some(m) = &s.memory {
-                // A memory value is a single live number: no history.
-                if !m.is_valid() {
-                    push(
-                        "bad_memory_key",
-                        format!("invalid memory key \"{}\"", m.key),
-                    );
-                }
-                if widget_type == "line" {
-                    push(
-                        "memory_line_unsupported",
-                        "a memory value has no history: use a gauge, stat or indicator".into(),
-                    );
-                }
-                continue;
-            }
-            if !naming::valid_metric_name(&s.metric) {
-                push(
-                    "bad_metric",
-                    format!("nom de métrique invalide : « {} »", s.metric),
-                );
-            }
-            if !naming::valid_device_label(&s.device_id) {
-                push(
-                    "bad_device",
-                    format!("device_id invalide : « {} »", s.device_id),
-                );
-            }
-            if !valid_window(&s.window) {
-                push(
-                    "bad_window",
-                    format!(
-                        "fenêtre inconnue : « {} » (presets : {})",
-                        s.window,
-                        VIZ_WINDOW_PRESETS
-                            .iter()
-                            .map(|(k, _)| *k)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                );
-            }
-        }
+        check_sources(widget_type, source, &mut push);
     }
     if let (Some(min), Some(max)) = (options.min, options.max) {
         if min >= max {
@@ -678,6 +793,54 @@ pub fn validate_widget(
         }
     }
     v.append(&mut extra_violations);
+}
+
+/// Per-source rules shared by instruments and control state sources.
+fn check_sources<F: FnMut(&str, String)>(widget_type: &str, source: &[SourceRef], push: &mut F) {
+    for s in source {
+        if let Some(m) = &s.memory {
+            // A memory value is a single live number: no history.
+            if !m.is_valid() {
+                push(
+                    "bad_memory_key",
+                    format!("invalid memory key \"{}\"", m.key),
+                );
+            }
+            if widget_type == "line" {
+                push(
+                    "memory_line_unsupported",
+                    "a memory value has no history: use a gauge, stat or indicator".into(),
+                );
+            }
+            continue;
+        }
+        if !naming::valid_metric_name(&s.metric) {
+            push(
+                "bad_metric",
+                format!("nom de métrique invalide : « {} »", s.metric),
+            );
+        }
+        if !naming::valid_device_label(&s.device_id) {
+            push(
+                "bad_device",
+                format!("device_id invalide : « {} »", s.device_id),
+            );
+        }
+        if !valid_window(&s.window) {
+            push(
+                "bad_window",
+                format!(
+                    "fenêtre inconnue : « {} » (presets : {})",
+                    s.window,
+                    VIZ_WINDOW_PRESETS
+                        .iter()
+                        .map(|(k, _)| *k)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            );
+        }
+    }
 }
 
 /// `#rrggbb` strict.
@@ -865,6 +1028,35 @@ mod tests {
             },
             widgets,
             wires: vec![],
+            ..Default::default()
+        }
+    }
+
+    fn control_widget(id: &str, widget_type: &str) -> Widget {
+        let mut w = widget(id, widget_type);
+        w.source.clear();
+        w.options.control = Some(crate::ui_control::ControlRef {
+            control_id: uuid::Uuid::from_u128(9),
+        });
+        w
+    }
+
+    fn mobile(widgets: Vec<Widget>, sections: Vec<MobileSection>) -> DashboardLayout {
+        DashboardLayout {
+            format: DashboardFormat::Mobile,
+            // A mobile layout carries no meaningful canvas.
+            canvas: CanvasSpec::default(),
+            widgets,
+            wires: vec![],
+            sections,
+        }
+    }
+
+    fn section(id: &str, items: &[&str]) -> MobileSection {
+        MobileSection {
+            id: id.into(),
+            title: "General".into(),
+            items: items.iter().map(|s| (*s).to_owned()).collect(),
         }
     }
 
@@ -1103,5 +1295,108 @@ mod tests {
         assert!(json.contains("\"type\":\"gauge\""));
         let back: DashboardLayout = serde_json::from_str(&json).unwrap();
         assert_eq!(back, l);
+    }
+
+    #[test]
+    fn legacy_layout_deserializes_as_desktop() {
+        let l: DashboardLayout =
+            serde_json::from_str(r#"{"canvas":{"width":1600,"height":900},"widgets":[]}"#).unwrap();
+        assert_eq!(l.format, DashboardFormat::Desktop);
+        assert!(l.sections.is_empty());
+        let json = serde_json::to_value(&l).unwrap();
+        assert!(json.get("sections").is_none());
+    }
+
+    #[test]
+    fn control_widgets_need_a_control_and_accept_one_state_source() {
+        let ok = control_widget("sw", "switch");
+        assert!(validate_layout(&layout(vec![ok.clone()])).is_empty());
+
+        let mut with_state = control_widget("sl", "slider");
+        with_state.source = widget("x", "stat").source;
+        assert!(validate_layout(&layout(vec![with_state.clone()])).is_empty());
+
+        let mut two = with_state.clone();
+        two.source.push(two.source[0].clone());
+        let v = validate_layout(&layout(vec![two]));
+        assert!(v.iter().any(|x| x.code == "control_state_sources"));
+
+        let mut missing = ok.clone();
+        missing.options.control = None;
+        let v = validate_layout(&layout(vec![missing]));
+        assert!(v.iter().any(|x| x.code == "control_missing"));
+
+        let mut gauge = widget("g", "gauge");
+        gauge.options.control = ok.options.control.clone();
+        let v = validate_layout(&layout(vec![gauge]));
+        assert!(v.iter().any(|x| x.code == "control_unexpected"));
+    }
+
+    #[test]
+    fn mobile_layout_rules() {
+        let a = control_widget("a", "switch");
+        let b = widget("b", "gauge");
+        let good = mobile(
+            vec![a.clone(), b.clone()],
+            vec![section("s1", &["a"]), section("s2", &["b"])],
+        );
+        assert!(
+            validate_layout(&good).is_empty(),
+            "{:?}",
+            validate_layout(&good)
+        );
+
+        let unplaced = mobile(vec![a.clone(), b.clone()], vec![section("s1", &["a"])]);
+        assert!(validate_layout(&unplaced)
+            .iter()
+            .any(|x| x.code == "widget_unplaced"));
+
+        let twice = mobile(
+            vec![a.clone()],
+            vec![section("s1", &["a"]), section("s2", &["a"])],
+        );
+        assert!(validate_layout(&twice)
+            .iter()
+            .any(|x| x.code == "widget_placed_twice"));
+
+        let unknown = mobile(vec![a.clone()], vec![section("s1", &["a", "ghost"])]);
+        assert!(validate_layout(&unknown)
+            .iter()
+            .any(|x| x.code == "section_unknown_widget"));
+
+        let dup = mobile(
+            vec![a.clone()],
+            vec![section("s", &["a"]), section("s", &[])],
+        );
+        assert!(validate_layout(&dup).iter().any(|x| x.code == "section_id"));
+
+        let mut wide = a.clone();
+        wide.options.span = Some(3);
+        let bad_span = mobile(vec![wide], vec![section("s1", &["a"])]);
+        assert!(validate_layout(&bad_span)
+            .iter()
+            .any(|x| x.code == "widget_span"));
+
+        let mut wired = good.clone();
+        wired.wires.push(Wire {
+            id: "w".into(),
+            from: WireEndpoint {
+                widget_id: "a".into(),
+                side: WireSide::Right,
+            },
+            to: WireEndpoint {
+                widget_id: "b".into(),
+                side: WireSide::Left,
+            },
+        });
+        assert!(validate_layout(&wired)
+            .iter()
+            .any(|x| x.code == "mobile_wires_forbidden"));
+
+        let mut desktop_with_sections = layout(vec![b]);
+        desktop_with_sections.sections = vec![section("s1", &["b"])];
+        assert!(validate_layout(&desktop_with_sections)
+            .iter()
+            .any(|x| x.code == "desktop_sections"));
     }
 }
