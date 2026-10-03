@@ -114,7 +114,7 @@ plus, `PNEX_TEST_MODE=1` + `PNEX_OTA_ENABLE=1` = `#error`.
 |---|---|---|
 | `esp32-c3` (XIAO) | 47/47 | **Bug prod corrigé** : `analogWrite` du core prend un canal LEDC par pin et ne le rend jamais — le C3 (6 canaux) ne pilotait plus en PWM le 7ᵉ pin utilisé (5 étapes rouges au 1ᵉʳ passage). |
 | `esp32cam-ai-thinker` | 9/9 | GPIO4 (LED flash) : pull-down de carte (grille du MOSFET), le pull-up interne lit 0 → flag profil `pull_down` (stocké en `mcu_boards.details`, omis si faux). |
-| `esp32-devkit-38p-txd` | 90/90 | Rien : passe au 1ᵉʳ passage (TFT câblé). E2E `e2e:hardware` ajouté : wizard variante + écran TFT 1.77", build, flash, pins écran absents des pins pilotables, readback G25 + ADC G34. |
+| `esp32-devkit-38p-txd` | 90/90 | Rien : passe au 1ᵉʳ passage (TFT câblé). E2E `e2e:hardware` ajouté : wizard variante + écran TFT 1.77", build, flash, pins écran absents des pins pilotables, readback G25 + ADC G34. TFT validé à l'œil par l'utilisateur : panneau des pins live, G0 = 1 au repos (pull-up du bouton BOOT), 0 bouton appuyé ; entrées flottantes à 0. |
 
 Au passage : la lib ne compilait pas sur ESP32 sans OTA
 (`esp_ota_ops.h` inclus seulement sous `PNEX_OTA_ENABLE`) — sketches
