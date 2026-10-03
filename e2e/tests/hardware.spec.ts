@@ -19,4 +19,7 @@ test.describe('hardware', { tag: '@hardware' }, () => {
   // ESP32 DevKit 38 pins + TFT: G25 output, G34 (ADC1, input-only) analog.
   registerAndFlash('esp32');
   pinIoTest('esp32', 25, 34);
+  // NodeMCU V3 + soldered OLED (ESP8266): D7 = GPIO13 output, A0 (wire id 17).
+  registerAndFlash('nodemcu');
+  pinIoTest('nodemcu', 13, 17);
 });

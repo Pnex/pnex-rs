@@ -32,12 +32,11 @@ pub const HIL_PENDING: &[&str] = &[
     "esp32-devkit-tft-st7735",
     "esp32-s3",
     "esp32-devkitc-v4-38p",
-    "nodemcu_v3_oled",
 ];
 
 /// Ratchet on [`HIL_PENDING`]: lower it each time a board leaves the list,
 /// never raise it.
-pub const HIL_PENDING_MAX: usize = 8;
+pub const HIL_PENDING_MAX: usize = 7;
 
 /// Self-test mode: the wire modes plus the pull-up variant of the input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

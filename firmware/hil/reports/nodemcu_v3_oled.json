@@ -1,0 +1,318 @@
+{
+  "board": "nodemcu_v3_oled",
+  "soc": "esp8266",
+  "level": "L1",
+  "date": "2026-10-03T20:04:18+02:00",
+  "chip": "esp8266",
+  "results": [
+    {
+      "gpio": 15,
+      "mode": "digital_in",
+      "raw": {
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "gpio": 15,
+      "mode": "digital_in_pullup",
+      "raw": {
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "gpio": 15,
+      "mode": "digital_out",
+      "raw": {
+        "w0": 0,
+        "w1": 1
+      }
+    },
+    {
+      "gpio": 15,
+      "mode": "pwm_out",
+      "raw": {
+        "measured": {
+          "0": 0,
+          "50": 50,
+          "100": 100
+        }
+      }
+    },
+    {
+      "gpio": 13,
+      "mode": "digital_in",
+      "raw": {
+        "samples": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "gpio": 13,
+      "mode": "digital_in_pullup",
+      "raw": {
+        "samples": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "gpio": 13,
+      "mode": "digital_out",
+      "raw": {
+        "w0": 0,
+        "w1": 1
+      }
+    },
+    {
+      "gpio": 13,
+      "mode": "pwm_out",
+      "raw": {
+        "measured": {
+          "0": 0,
+          "50": 50,
+          "100": 100
+        }
+      }
+    },
+    {
+      "gpio": 2,
+      "mode": "digital_in",
+      "raw": {
+        "samples": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "gpio": 2,
+      "mode": "digital_in_pullup",
+      "raw": {
+        "samples": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "gpio": 2,
+      "mode": "digital_out",
+      "raw": {
+        "w0": 0,
+        "w1": 1
+      }
+    },
+    {
+      "gpio": 2,
+      "mode": "pwm_out",
+      "raw": {
+        "measured": {
+          "0": 0,
+          "50": 50,
+          "100": 100
+        }
+      }
+    },
+    {
+      "gpio": 0,
+      "mode": "digital_in",
+      "raw": {
+        "samples": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "gpio": 0,
+      "mode": "digital_in_pullup",
+      "raw": {
+        "samples": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "gpio": 0,
+      "mode": "digital_out",
+      "raw": {
+        "w0": 0,
+        "w1": 1
+      }
+    },
+    {
+      "gpio": 0,
+      "mode": "pwm_out",
+      "raw": {
+        "measured": {
+          "0": 0,
+          "50": 50,
+          "100": 100
+        }
+      }
+    },
+    {
+      "gpio": 4,
+      "mode": "digital_in",
+      "raw": {
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "gpio": 4,
+      "mode": "digital_in_pullup",
+      "raw": {
+        "samples": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "gpio": 4,
+      "mode": "digital_out",
+      "raw": {
+        "w0": 0,
+        "w1": 1
+      }
+    },
+    {
+      "gpio": 4,
+      "mode": "pwm_out",
+      "raw": {
+        "measured": {
+          "0": 0,
+          "50": 50,
+          "100": 100
+        }
+      }
+    },
+    {
+      "gpio": 5,
+      "mode": "digital_in",
+      "raw": {
+        "samples": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "gpio": 5,
+      "mode": "digital_in_pullup",
+      "raw": {
+        "samples": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "gpio": 5,
+      "mode": "digital_out",
+      "raw": {
+        "w0": 0,
+        "w1": 1
+      }
+    },
+    {
+      "gpio": 5,
+      "mode": "pwm_out",
+      "raw": {
+        "measured": {
+          "0": 0,
+          "50": 50,
+          "100": 100
+        }
+      }
+    },
+    {
+      "gpio": 16,
+      "mode": "digital_in",
+      "raw": {
+        "samples": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "gpio": 16,
+      "mode": "digital_out",
+      "raw": {
+        "w0": 0,
+        "w1": 1
+      }
+    },
+    {
+      "gpio": 17,
+      "mode": "adc_in",
+      "raw": {
+        "samples": [
+          17,
+          18,
+          18,
+          19,
+          18,
+          18,
+          18,
+          19,
+          18,
+          18
+        ]
+      }
+    }
+  ]
+}

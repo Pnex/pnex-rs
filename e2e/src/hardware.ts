@@ -52,6 +52,16 @@ export const BOARDS = {
     // ST7735 on VSPI: SCK 18, MOSI 23, CS 5, DC 2, RST 4.
     screenGpios: [18, 23, 5, 2, 4],
   },
+  nodemcu: {
+    port: process.env.PNEX_E2E_NODEMCU_PORT ?? '',
+    model: /^Generic ESP8266/,
+    deviceId: process.env.PNEX_E2E_NODEMCU_ID ?? 'e2e-nodemcu',
+    chip: 'esp8266',
+    baud: 460800,
+    variant: 'NodeMCU V3 + OLED 0.96" (soldered, CH340G)',
+    // Soldered OLED (builtin, forced): SDA D6 = GPIO12, SCL D5 = GPIO14.
+    screenGpios: [12, 14],
+  },
 } satisfies Record<string, Board>;
 
 export const WIFI = {
