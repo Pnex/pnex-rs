@@ -225,16 +225,15 @@ pub(super) async fn list(
     }
     let page_device_ids: Vec<String> = page_devices.iter().map(|d| d.device_id.clone()).collect();
     if !page_device_ids.is_empty() {
-        let mut builds: HashMap<String, pnex_core::LatestBuild> = build_records::Entity::find()
-            .filter(build_records::Column::OrgId.eq(org.org.id))
-            .filter(build_records::Column::DeviceId.is_in(page_device_ids))
-            .order_by_desc(build_records::Column::Id)
-            .all(&ctx.db)
-            .await
-            .map_err(|_| Error::InternalServerError)?
-            .into_iter()
-            .filter_map(|r| r.device_id.clone().map(|k| (k, latest_build_dto(r))))
-            .collect();
+        let mut builds: HashMap<String, pnex_core::LatestBuild> = latest_builds_by_device(
+            build_records::Entity::find()
+                .filter(build_records::Column::OrgId.eq(org.org.id))
+                .filter(build_records::Column::DeviceId.is_in(page_device_ids))
+                .order_by_desc(build_records::Column::Id)
+                .all(&ctx.db)
+                .await
+                .map_err(|_| Error::InternalServerError)?,
+        );
         for device in &mut page_devices {
             device.latest_build = builds.remove(&device.device_id);
         }

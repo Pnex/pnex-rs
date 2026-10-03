@@ -107,8 +107,8 @@ async fn count_devices_of_type(db: &DatabaseConnection, org_id: i64, type_id: i6
 
 // ─────────────────────────── POST /build-firmware ───────────────────────────
 
-/// `POST /api/v1/build-firmware` — crée (ou réarme) le record et enfile le
-/// job de build.
+/// `POST /api/v1/build-firmware` — inserts a new build record (new
+/// firmware version) and enqueues the build job.
 async fn create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -383,43 +383,52 @@ async fn create(
         }
     }
 
-    // One record per (org, device_id): rebuild = re-arm (parity with the
-    // legacy update_or_create; the old artifact becomes orphaned — D6).
-    let existing = build_records::Entity::find()
+    // One active build per device: a second request while a build of the
+    // device is queued/running is refused (double click, bulk action).
+    // Records untouched for longer than twice the build budget are
+    // considered stale (crashed worker) and do not block.
+    let stale_after = FirmwareSettings::from_config(&ctx.config)
+        .timeout_secs
+        .saturating_mul(2)
+        .max(600) as i64;
+    let fresh_since: sea_orm::prelude::DateTimeWithTimeZone =
+        (chrono::Utc::now() - chrono::Duration::seconds(stale_after)).into();
+    let device_in_flight = build_records::Entity::find()
         .filter(build_records::Column::OrgId.eq(org.org.id))
         .filter(build_records::Column::DeviceId.eq(&device_id))
+        .filter(
+            build_records::Column::BuildPhase
+                .is_in([PHASE_QUEUED, crate::services::firmware::PHASE_RUNNING]),
+        )
+        .filter(build_records::Column::UpdatedAt.gte(fresh_since))
         .one(&txn)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    let (record, created) = match existing {
-        Some(model) => {
-            let mut record: build_records::ActiveModel = model.into();
-            record.success = Set(false);
-            record.build_phase = Set(Some(PHASE_QUEUED.to_string()));
-            record.firmware_bin_s3_key = Set(None);
-            (
-                record
-                    .update(&txn)
-                    .await
-                    .map_err(|_| Error::InternalServerError)?,
-                false,
-            )
-        }
-        None => (
-            build_records::ActiveModel {
-                device_id: Set(Some(device_id.clone())),
-                success: Set(false),
-                build_phase: Set(Some(PHASE_QUEUED.to_string())),
-                firmware_bin_s3_key: Set(None),
-                org_id: Set(org.org.id),
-                ..Default::default()
-            }
-            .insert(&txn)
-            .await
-            .map_err(|_| Error::InternalServerError)?,
-            true,
-        ),
-    };
+    if device_in_flight.is_some() {
+        return Err(Error::CustomError(
+            StatusCode::CONFLICT,
+            loco_rs::controller::ErrorDetail::new(
+                err_codes::BUILD_IN_PROGRESS,
+                "A build of this device is already queued or running.".to_string(),
+            ),
+        ));
+    }
+
+    // Every build is a NEW record: its id is the firmware version baked
+    // into the binary, so two binaries never share a version (OTA compares
+    // versions numerically, the firmware refuses downgrades). Old records
+    // are pruned by the worker after a successful build (build_retention).
+    let record = build_records::ActiveModel {
+        device_id: Set(Some(device_id.clone())),
+        success: Set(false),
+        build_phase: Set(Some(PHASE_QUEUED.to_string())),
+        firmware_bin_s3_key: Set(None),
+        org_id: Set(org.org.id),
+        ..Default::default()
+    }
+    .insert(&txn)
+    .await
+    .map_err(|_| Error::InternalServerError)?;
     // Committed before the enqueue: the worker (possibly inline) reads it.
     txn.commit().await.map_err(|_| Error::InternalServerError)?;
 
@@ -452,7 +461,7 @@ async fn create(
     Ok((
         StatusCode::CREATED,
         format::json(pnex_core::CreateBuildResponse {
-            build_record_created: created,
+            build_record_created: true,
             build_id: record.id,
             status: PHASE_QUEUED.to_string(),
             message: "Firmware build job created successfully".to_string(),

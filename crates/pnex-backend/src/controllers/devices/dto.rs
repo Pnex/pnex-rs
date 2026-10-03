@@ -42,11 +42,42 @@ pub(crate) async fn capabilities_of(
     Ok(map)
 }
 
-/// Dernier build du device pour le DTO (colonne Firmware de l'UI). Un record
-/// par (org, device_id) en base — `order_by_desc(Id)` défensif si ce n'était
-/// plus le cas.
+/// Latest build of each device for the DTO, from records sorted by id
+/// DESCENDING (several records per device: every build is a new row). The
+/// newest record gives the phase; the newest successful OTA-stamped one
+/// gives `deployable_version`.
+pub(super) fn latest_builds_by_device(
+    records: Vec<build_records::Model>,
+) -> HashMap<String, pnex_core::LatestBuild> {
+    let mut out: HashMap<String, pnex_core::LatestBuild> = HashMap::new();
+    for record in records {
+        let Some(device_id) = record.device_id.clone() else {
+            continue;
+        };
+        let deployable = (record.success && record.ota_sha256.is_some())
+            .then(|| record.fw_version.clone())
+            .flatten();
+        match out.get_mut(&device_id) {
+            Some(latest) => {
+                if latest.deployable_version.is_none() {
+                    latest.deployable_version = deployable;
+                }
+            }
+            None => {
+                let mut latest = latest_build_dto(record);
+                latest.deployable_version = deployable;
+                out.insert(device_id, latest);
+            }
+        }
+    }
+    out
+}
+
+/// Newest build record → DTO (phase + stamps); `deployable_version` is
+/// filled by [`latest_builds_by_device`].
 pub(super) fn latest_build_dto(record: build_records::Model) -> pnex_core::LatestBuild {
     pnex_core::LatestBuild {
+        deployable_version: None,
         success: record.success,
         build_phase: record.build_phase,
         fw_version: record.fw_version,
@@ -161,14 +192,16 @@ pub(super) async fn device_full(
     let seen = crate::services::device_liveness::seen_of(db, device.id).await?;
     let last_seen = seen.last_seen.map(|t| t.to_rfc3339());
     let connected = seen.connected;
-    let latest_build = build_records::Entity::find()
-        .filter(build_records::Column::OrgId.eq(device.org_id))
-        .filter(build_records::Column::DeviceId.eq(&device.device_id))
-        .order_by_desc(build_records::Column::Id)
-        .one(db)
-        .await
-        .map_err(|_| Error::InternalServerError)?
-        .map(latest_build_dto);
+    let latest_build = latest_builds_by_device(
+        build_records::Entity::find()
+            .filter(build_records::Column::OrgId.eq(device.org_id))
+            .filter(build_records::Column::DeviceId.eq(&device.device_id))
+            .order_by_desc(build_records::Column::Id)
+            .all(db)
+            .await
+            .map_err(|_| Error::InternalServerError)?,
+    )
+    .remove(&device.device_id);
     let ota_state = active_ota_for(db, device.id).await?;
     Ok(device_dto(
         device,
