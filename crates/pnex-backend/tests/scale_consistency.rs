@@ -341,6 +341,7 @@ async fn dashboard_save_never_overwrites_a_concurrent_restore() {
             },
             widgets: vec![],
             wires: vec![],
+            ..Default::default()
         };
         let (d2, v2) = dashboards::append_version(&ctx.db, &d1, 1, &layout, None, None)
             .await

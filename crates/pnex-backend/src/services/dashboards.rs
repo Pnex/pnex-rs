@@ -75,6 +75,7 @@ pub async fn create_dashboard(
         },
         widgets: vec![],
         wires: vec![],
+        ..Default::default()
     };
     let layout = layout.unwrap_or(&default_layout);
     validate_dashboard_write(name, layout)?;

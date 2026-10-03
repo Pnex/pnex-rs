@@ -172,6 +172,7 @@ mod tests {
             },
             widgets,
             wires: vec![],
+            ..Default::default()
         }
     }
 
