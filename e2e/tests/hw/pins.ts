@@ -1,9 +1,11 @@
 // Pins of a live ESP32-C3 driven from the device page: output mode + write,
 // analog input subscribed at 1 s. Needs the board registered and online
-// (hardware.spec.ts "c3"); skipped otherwise.
+// (hardware.spec.ts "c3"); skipped otherwise. Values are checked as the
+// board measured them (D122): pad read back after each write, in the API
+// and in the firmware serial log.
 import { expect, test } from '../../src/fixtures.ts';
 import type { Api } from '../../src/api.ts';
-import { BOARDS, missingHardware } from '../../src/hardware.ts';
+import { BOARDS, missingHardware, serialCapture } from '../../src/hardware.ts';
 import { DevicesPage } from '../../src/pages/devices.ts';
 import { fieldAfterLabel } from '../../src/pages/shell.ts';
 
@@ -42,14 +44,24 @@ export function pinsTests(): void {
     await devices.open();
     await devices.openDetail(board.deviceId);
 
-    // Output: mode applied on the board, then manual writes.
+    const serial = serialCapture(board, 90);
+
+    // Output: mode applied on the board, then manual writes; the value the
+    // server stores is the level read back on the pad.
     const out = await devices.openPin(OUT_GPIO);
     await out.setMode('digital_out');
     await expect.poll(async () => (await pin(api, pk!, OUT_GPIO))?.mode, { timeout: 30_000 }).toBe('digital_out');
     await out.write('high');
+    await expect.poll(async () => (await pin(api, pk!, OUT_GPIO))?.last_value, { timeout: 30_000 }).toBe(true);
     await capture('pin-output-high', { caption: 'D2 switched to output and written HIGH' });
     await out.write('low');
+    await expect.poll(async () => (await pin(api, pk!, OUT_GPIO))?.last_value, { timeout: 30_000 }).toBe(false);
     await out.close();
+    await expect
+      .poll(() => serial.text(), { timeout: 15_000, message: 'serial readback after the HIGH write' })
+      .toContain(`write GPIO${OUT_GPIO} -> HIGH (readback=HIGH)`);
+    await expect.poll(() => serial.text(), { timeout: 15_000 }).toContain(`write GPIO${OUT_GPIO} -> LOW (readback=LOW)`);
+    expect(serial.text()).not.toContain('[IO] MISMATCH');
 
     // Analog input read every second: values show up in the pin state.
     const adc = await devices.openPin(ADC_GPIO);
@@ -59,7 +71,13 @@ export function pinsTests(): void {
     await expect
       .poll(async () => typeof (await pin(api, pk!, ADC_GPIO))?.last_value, { timeout: 30_000, message: 'ADC value reported' })
       .toBe('number');
+    // The raw count the server received is also on the serial log.
+    await expect
+      .poll(() => serial.text(), { timeout: 15_000, message: 'ADC value in the serial log' })
+      .toMatch(new RegExp(`\\[IO\\] GPIO${ADC_GPIO} mode=adc_in value=\\d+`));
     await capture('pin-analog-subscribed', { caption: 'D0 read every second' });
+
+    await serial.stop();
 
     // Back to the defaults so the next run starts from the same state.
     await adc.subscribe(0);

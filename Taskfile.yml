@@ -522,6 +522,14 @@ tasks:
     cmds:
       - "{{.PIO_CMD}} device list"
 
+  fw:hil:
+    desc: Pin self-test bench (D122) — flashes the bench firmware on the board, runs every pin × mode, writes firmware/hil/reports/<BOARD>.json — ex. task fw:hil BOARD=esp32-c3 PORT=/dev/ttyACM0 (NO_FLASH=1 to reuse the flashed bench)
+    dir: "{{.FW_DIR}}"
+    requires:
+      vars: [BOARD, PORT]
+    cmds:
+      - uv run python hil/pnex_hil.py --board {{.BOARD}} --port {{.PORT}}{{if .NO_FLASH}} --no-flash{{end}}
+
   fw:monitor:
     desc: Monitor série de l'ESP branché en USB (115200 + filtres de platformio.ini) — ex. task fw:monitor FIRMWARE=generic_esp8266 PORT=/dev/ttyUSB0
     dir: "{{.FW_DIR}}/{{.FIRMWARE}}"
