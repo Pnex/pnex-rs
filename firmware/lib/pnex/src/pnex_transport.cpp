@@ -7,27 +7,24 @@
 #include "pnex_status.h"  // publication TX (compteur data, no-op sans écran)
 
 // ESP8266 et ESP32 (C3…) — le reste de la lib est de l'Arduino neutre
-// (WiFi.begin/status, ArduinoWebsockets, ChaCha) : seul l'en-tête WiFi
+// (WiFi.begin/status, pnex_ws, ChaCha) : seul l'en-tête WiFi
 // diverge, et le watchdog du connect bloquant.
 #if defined(ESP32)
 #include <WiFi.h>
 #else
 #include <ESP8266WiFi.h>
 #endif
-#include <ArduinoWebsockets.h>
 
 // SEULE unité de traduction incluant config.h à côté des projets qui
 // n'utilisent PAS pnex-transport (tft_dev).
 #include "pnex_config.h"
 #include "chacha_crypto.h"
 #include "pnex_tls.h"
-#include "pnex_ws_tcp.h"
-
-using namespace websockets;
+#include "pnex_ws.h"
 
 // ───────────────────────── État interne ─────────────────────────
 
-static WebsocketsClient s_client;
+static PnexWsClient s_client;
 
 // Buffers de la config décodée (bornes = validation API : 100 caractères
 // SSID/pass, hôte et device_id 64 — parité avec les buffers des mains
@@ -45,31 +42,18 @@ static PnexTransportInit s_init;
 static unsigned long s_last_pong_ms = 0;
 
 // Prototypes
-static void on_frame(WebsocketsMessage message);
-static void on_event(WebsocketsEvent event, String data);
+static void on_frame(const char* data, size_t len, bool binary);
+static void on_event(PnexWsEvent event);
 
 #if defined(ESP8266)
 // ── ESP8266 wss: lean BearSSL buffers ──
-// ArduinoWebsockets builds its own WiFiClientSecure for "wss://" URLs with
-// the BearSSL default buffers (~16 KB RX): with the screen + app state the
-// heap then OOMs on the first ~1 KB server frame (std::string copy in
-// WebsocketsMessage). When the server supports MFLN (nginx/OpenSSL does on
-// TLS 1.2), we hand the WS client our own secured TCP client with
-// 2048/512 buffers instead (same budget as the OTA HTTPS client). CA
-// pinning is unsupported on the 8266 WS path anyway → insecure, as before.
+// A default WiFiClientSecure takes the BearSSL default buffers (~16 KB
+// RX): with the screen + app state the heap then OOMs on the first ~1 KB
+// server frame. When the server supports MFLN (nginx/OpenSSL does on
+// TLS 1.2), the WS link runs over 2048/512 buffers instead (same budget as
+// the OTA HTTPS client).
 constexpr int LEAN_TLS_RX = 2048;
 constexpr int LEAN_TLS_TX = 512;
-
-// Patient handshake reads as every PneX WS client (pnex_ws_tcp.h, O20).
-class LeanTlsTcpClient : public PnexPatientTcp<network::SecuredEsp8266TcpClient> {
-public:
-    LeanTlsTcpClient() {
-        this->client.setInsecure();
-        this->client.setBufferSizes(LEAN_TLS_RX, LEAN_TLS_TX);
-    }
-    // Whether the server accepted the reduced fragment length.
-    bool mfln() { return this->client.getMFLNStatus() != 0; }
-};
 
 // MFLN result, cached for the boot: 0 = unknown, 1 = yes, 2 = no.
 static uint8_t s_mfln = 0;
@@ -86,10 +70,10 @@ static void split_host_port(const char* hostport, char* host, size_t n,
     }
 }
 
-// wss connect through the lean client; false = caller falls back to the
-// library path (server without MFLN — the core has no probe API, so the
-// first lean handshake is the probe: not negotiated → close, remember,
-// fall back).
+// wss connect over lean buffers; false = caller falls back to the default
+// buffers (server without MFLN — the core has no probe API, so the first
+// lean handshake is the probe: not negotiated → close, remember, fall
+// back).
 static bool lean_wss_connect(bool& ok) {
     if (s_mfln == 2) {
         return false;
@@ -97,26 +81,21 @@ static bool lean_wss_connect(bool& ok) {
     char host[65];
     int port = 443;
     split_host_port(s_host, host, sizeof(host), port);
-    // Fresh TCP client per attempt (the library does the same for URLs);
-    // the callbacks are re-bound on the new WebsocketsClient.
-    auto tcp = std::make_shared<LeanTlsTcpClient>();
-    s_client = WebsocketsClient(tcp);
-    s_client.onMessage(on_frame);
-    s_client.onEvent(on_event);
+    // Fresh TCP client per attempt, owned by s_client from here on.
+    auto* tcp = new WiFiClientSecure();
+    pnex_tls_apply(*tcp);  // CA pin when provided, insecure otherwise
+    tcp->setBufferSizes(LEAN_TLS_RX, LEAN_TLS_TX);
     char path[224];
     snprintf(path, sizeof(path), "%s?token=%s&device_id=%s", s_init.ws_path,
              token, device_id);
-    ok = s_client.connect(host, port, path);
+    ok = s_client.connect(tcp, host, (uint16_t)port, path);
     if (s_mfln == 0 && ok) {
-        s_mfln = tcp->mfln() ? 1 : 2;
+        s_mfln = tcp->getMFLNStatus() ? 1 : 2;
         Serial.printf("[TLS] MFLN %d on %s:%d: %s\n", LEAN_TLS_RX, host, port,
                       s_mfln == 1 ? "negotiated (lean buffers)"
                                   : "refused (16 KB buffers)");
         if (s_mfln == 2) {
             s_client.close();
-            s_client = WebsocketsClient();
-            s_client.onMessage(on_frame);
-            s_client.onEvent(on_event);
             ok = false;
             return false;
         }
@@ -219,10 +198,10 @@ bool pnex_ws_connect() {
     bool ok = false;
 #if defined(ESP8266)
     if (!(pnex_use_tls() && lean_wss_connect(ok))) {
-        ok = pnex_ws_open(s_client, s_conn, on_frame, on_event);
+        ok = pnex_ws_open(s_client, s_conn);
     }
 #else
-    ok = pnex_ws_open(s_client, s_conn, on_frame, on_event);
+    ok = pnex_ws_open(s_client, s_conn);
 #endif
     if (ok) {
 #if defined(ESP8266)
@@ -284,10 +263,10 @@ void pnex_ws_close() {
 
 // ─────────────────────── Callbacks internes ───────────────────────
 
-static void on_frame(WebsocketsMessage message) {
+static void on_frame(const char* data, size_t, bool) {
     // Frame serveur chiffrée base64(nonce‖ct) → plaintext ; sans clé
     // chargée (mock local), la passe-passe est transparente.
-    String msg = cryptoDecryptFrame(message.data().c_str());
+    String msg = cryptoDecryptFrame(data);
     msg.trim();
     if (msg == "PONG") {
         // Signe de vie : bookkeeping interne + hook (le générique n'a rien
@@ -306,22 +285,22 @@ static void on_frame(WebsocketsMessage message) {
     }
 }
 
-static void on_event(WebsocketsEvent event, String) {
-    if (event == WebsocketsEvent::ConnectionOpened) {
+static void on_event(PnexWsEvent event) {
+    if (event == PnexWsEvent::Opened) {
         if (s_init.on_connected) {
             s_init.on_connected();
         }
-    } else if (event == WebsocketsEvent::ConnectionClosed) {
+    } else if (event == PnexWsEvent::Closed) {
         if (s_init.on_closed) {
             s_init.on_closed();
         }
-    } else if (event == WebsocketsEvent::GotPing) {
+    } else if (event == PnexWsEvent::GotPing) {
         // Le générique répond au ping WS ; soil_sensor ne le fait pas
         // (comportements d'origine préservés — knob reply_ws_ping).
         if (s_init.reply_ws_ping) {
             s_client.ping();
         }
-    } else if (event == WebsocketsEvent::GotPong) {
+    } else if (event == PnexWsEvent::GotPong) {
         s_last_pong_ms = millis();
     }
 }

@@ -5,8 +5,6 @@
 //
 #include "pnex_tls.h"
 
-#include <ArduinoWebsockets.h>
-
 #if defined(ESP32)
 #include <WiFiClientSecure.h>
 #else
@@ -44,28 +42,7 @@ bool pnex_tls_pinned() {
     return s_ca_len > 0;
 }
 
-const char* pnex_tls_ca_pem() {
-    return (pnex_tls_pinned() && s_ca_pem[0] != '\0') ? s_ca_pem : nullptr;
-}
-
-// ───────────────────────── apply — WS client ─────────────────────────
-
-void pnex_tls_apply(websockets::WebsocketsClient& client) {
-    if (!pnex_tls_pinned() || s_ca_pem[0] == '\0') {
-        client.setInsecure();
-        return;
-    }
-#if defined(ESP32)
-    client.setCACert(s_ca_pem);
-#else
-    // ArduinoWebsockets on ESP8266 cannot take a CA → loud fallback (the
-    // deployment TLS terminates in front; LAN installs use plain http).
-    Serial.println("[TLS] WS CA pinning unsupported on ESP8266 — insecure WS");
-    client.setInsecure();
-#endif
-}
-
-// ─────────────────────── apply — direct HTTPS client ─────────────────
+// ───────────────────────── apply ─────────────────────────
 
 void pnex_tls_apply(WiFiClientSecure& client) {
     if (!pnex_tls_pinned() || s_ca_pem[0] == '\0') {

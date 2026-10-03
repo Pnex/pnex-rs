@@ -186,8 +186,10 @@ poser `PNEX_TRUSTED_PROXIES=none` (sinon un hôte du LAN peut forger
    automatiquement (2026-09-27)** : pki-init écrit `device-ca.pem` (CA
    locale ; ISRG Root X1 téléchargée en cloud), le worker la lit via
    `PNEX_CA_CERT_FILE` (edge.env en mode hôte, montage `/pki` du
-   `pnex-builder`). Obligatoire sur ESP32 : sans CA, ArduinoWebsockets ne
-   passe jamais le client en insecure → échec muet. Pas de NTP requis sur
+   `pnex-builder`). Historiquement obligatoire sur ESP32 (ArduinoWebsockets
+   ne passait jamais le client en insecure) ; depuis le client maison
+   `pnex_ws` (2026-10-03), sans CA = `setInsecure` sur les deux cœurs, et la
+   CA est aussi appliquée sur la WS ESP8266 (avant : insecure forcé). Pas de NTP requis sur
    ESP32 (mbedTLS sans `HAVE_TIME_DATE` : dates non vérifiées).
    Bascule ws → wss par OTA : le téléchargement suit l'ancien transport
    (http :5150, toujours publié) — un device dont le firmware wss n'a pas
