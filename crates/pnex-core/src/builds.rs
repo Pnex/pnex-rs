@@ -55,8 +55,8 @@ fn default_ws_ssl() -> bool {
 /// Réponse 201 du `POST /api/v1/build-firmware`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateBuildResponse {
-    /// Vrai si un nouveau record a été inséré (faux = rebuild du même
-    /// device → record reused, legacy `update_or_create` parity).
+    /// Always true: every build request inserts a new record (its id is
+    /// the new firmware version). Kept for API compatibility.
     pub build_record_created: bool,
     /// Id du `build_records`.
     pub build_id: i64,

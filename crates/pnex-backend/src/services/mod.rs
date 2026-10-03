@@ -5,6 +5,8 @@ pub mod ai;
 /// Annotations sur médias (D55–D60) — écriture des couches versionnées.
 pub mod annotation_layer;
 pub mod artifact_store;
+/// Per-device build history retention (keeps the newest records).
+pub mod build_retention;
 pub mod camera;
 /// Per-pod concurrency caps (CoolProp, vision, runtime checks, uploads).
 pub mod compute_limits;

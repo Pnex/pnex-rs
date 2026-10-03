@@ -7,6 +7,7 @@
 //!
 //! Le détail est piloté par un signal local `selected` + `key` (cf. orgs.rs).
 
+use std::collections::HashSet;
 use std::time::Duration;
 
 use dioxus::prelude::*;
@@ -47,8 +48,9 @@ fn current_role() -> Option<String> {
 struct OtaTarget {
     device_pk: i64,
     device_id: String,
-    /// Dernier build réussi : (version, date) — None = aucun build.
-    latest_build: Option<(String, String)>,
+    /// Newest deployable build: (version, build date when known) — None =
+    /// no deployable build.
+    latest_build: Option<(String, Option<String>)>,
     /// Version courante annoncée par le device (None = jamais annoncé).
     device_version: Option<String>,
     /// Le build compile une arborescence firmware antérieure au serveur
@@ -95,6 +97,10 @@ pub fn Devices() -> Element {
     let mut ota_target = use_signal(|| None::<OtaTarget>);
     // Polling : un seul minuteur à la fois, relancé tant qu'un build vole.
     let mut polling = use_signal(|| false);
+    // Row selection (device pk as string) + open bulk modal (true = build,
+    // false = OTA).
+    let mut bulk_selected = use_signal(HashSet::<String>::new);
+    let mut bulk_modal = use_signal(|| None::<bool>);
 
     let can_write = current_role().is_some_and(|role| crate::state::org::role_can_write(&role));
 
@@ -235,13 +241,21 @@ pub fn Devices() -> Element {
                 // `ota` et qu'aucun déploiement n'est actif — même SANS build
                 // réussi (le modal gère l'état « aucun firmware » : deploy
                 // grisé + raccourci rebuild).
+                // Version status: running (announce) vs newest deployable.
+                let status_badge = fw_status(device).map(fw_status_badge);
+                let deployable = device
+                    .latest_build
+                    .as_ref()
+                    .and_then(|b| b.deployable_version.clone());
                 let ota_ready = device.ota_ready && device.ota.is_none();
                 let ota_connected = device.connected;
-                let ota_latest = device.latest_build.as_ref().filter(|b| b.success).map(|b| {
-                    (
-                        b.fw_version.clone().unwrap_or_else(|| "?".to_string()),
-                        date_label(&b.updated_at),
-                    )
+                // OTA target = newest deployable build; its date is known
+                // only when it is also the newest record.
+                let ota_latest = device.latest_build.as_ref().and_then(|b| {
+                    let version = b.deployable_version.clone()?;
+                    let date = (b.fw_version.as_deref() == Some(version.as_str()))
+                        .then(|| date_label(&b.updated_at));
+                    Some((version, date))
                 });
                 let ota_stale = device
                     .latest_build
@@ -265,9 +279,21 @@ pub fn Devices() -> Element {
                                 span { class: "text-xs text-gray-400", {t!("devices-build-never")} }
                             },
                         }
-                        // Version courante du firmware (announce) — build #N.
+                        // Running version (announce) and newest deployable build.
                         if let Some(v) = &device.fw_version {
-                            span { class: "text-[11px] text-gray-500", "build #{v}" }
+                            span { class: "text-[11px] text-gray-500",
+                                {t!("devices-fw-running", version : v.clone())}
+                            }
+                        }
+                        if let Some(v) = &deployable {
+                            span { class: "text-[11px] text-gray-500",
+                                {t!("devices-fw-latest", version : v.clone())}
+                            }
+                        }
+                        if let Some((class, label)) = &status_badge {
+                            span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium w-fit {class}",
+                                {label.clone()}
+                            }
                         }
                         // Déploiement OTA actif → progression live.
                         if let Some(st) = &ota_state {
@@ -374,6 +400,16 @@ pub fn Devices() -> Element {
             }
         }),
     ];
+
+    // Selected devices among the visible rows (bulk actions).
+    let bulk_devices: Vec<Device> = {
+        let sel = bulk_selected.read();
+        rows.iter()
+            .filter(|d| sel.contains(&d.id.to_string()))
+            .cloned()
+            .collect()
+    };
+    let bulk_count = bulk_devices.len();
 
     // Capability filter options, read outside rsx: a `{match ..}` block with
     // nested `rsx!` arms in the markup breaks `dx fmt` (unparseable output).
@@ -492,6 +528,36 @@ pub fn Devices() -> Element {
                     RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
                 }
 
+                if bulk_count > 0 {
+                    div { class: "flex flex-wrap items-center gap-2 mb-3 px-4 py-2 bg-indigo-50 border border-indigo-200 rounded-lg text-sm",
+                        span { class: "font-medium text-indigo-900",
+                            {t!("devices-bulk-selected", count : bulk_count.to_string())}
+                        }
+                        if can_write {
+                            button {
+                                class: "px-3 py-1 text-sm bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors",
+                                r#type: "button",
+                                onclick: move |_| bulk_modal.set(Some(true)),
+                                icons::Wrench { class: "h-3.5 w-3.5 inline mr-0.5" }
+                                {t!("devices-bulk-build")}
+                            }
+                            button {
+                                class: "px-3 py-1 text-sm bg-violet-100 text-violet-700 rounded-lg hover:bg-violet-200 transition-colors",
+                                r#type: "button",
+                                onclick: move |_| bulk_modal.set(Some(false)),
+                                icons::Upload { class: "h-3.5 w-3.5 inline mr-0.5" }
+                                {t!("devices-bulk-ota")}
+                            }
+                        }
+                        button {
+                            class: "px-3 py-1 text-sm text-gray-600 hover:text-gray-900 transition-colors",
+                            r#type: "button",
+                            onclick: move |_| bulk_selected.set(HashSet::new()),
+                            {t!("devices-bulk-clear")}
+                        }
+                    }
+                }
+
                 ListStates {
                     state: list_state,
                     is_empty,
@@ -500,6 +566,7 @@ pub fn Devices() -> Element {
                         columns,
                         rows,
                         row_key: RowKey::new(|device: &Device| device.id.to_string()),
+                        selected: bulk_selected,
                     }
                     ListPager { count, page }
                 }
@@ -510,6 +577,17 @@ pub fn Devices() -> Element {
                     crate::components::device_wizard::DeviceWizard {
                         on_close: move |_| wizard_open.set(false),
                         on_changed: move |_| reload.with_mut(|r| *r += 1),
+                    }
+                }
+
+                // Bulk build / OTA confirmation (nothing starts before the
+                // user confirms; building never triggers an OTA).
+                if let Some(build) = bulk_modal() {
+                    BulkModal {
+                        is_build: build,
+                        devices: bulk_devices.clone(),
+                        on_close: move |_| bulk_modal.set(None),
+                        on_done: move |_| reload.with_mut(|r| *r += 1),
                     }
                 }
 
@@ -748,6 +826,176 @@ fn RebuildModal(
     }
 }
 
+/// Bulk action confirmation (build or OTA): lists what will happen per
+/// selected device, runs the requests one by one on confirm (never forced,
+/// never chained: a build does not deploy), then reports per-device
+/// results.
+#[component]
+fn BulkModal(
+    /// true = build the selected devices, false = OTA update them.
+    is_build: bool,
+    devices: Vec<Device>,
+    on_close: Callback<()>,
+    on_done: Callback<()>,
+) -> Element {
+    // Plan frozen at opening: the list keeps polling underneath.
+    let plans = use_signal(|| {
+        devices
+            .iter()
+            .map(|d| {
+                let plan = if is_build { build_plan(d) } else { ota_plan(d) };
+                (
+                    d.id,
+                    d.device_id.clone(),
+                    d.predefined_device_name.clone(),
+                    plan,
+                )
+            })
+            .collect::<Vec<_>>()
+    });
+    let mut running = use_signal(|| false);
+    let mut outcomes = use_signal(Vec::<(i64, BulkOutcome)>::new);
+    let wifi_sel = use_signal(|| None::<pnex_core::WifiCredential>);
+    let host_sel = use_signal(|| None::<pnex_core::PnexHost>);
+    let eligible = plans.read().iter().filter(|p| p.3.eligible()).count();
+    let finished = !outcomes.read().is_empty() && !running();
+
+    let submit = move |_| {
+        let connectivity = if is_build {
+            let (Some(creds), Some(srv)) = (wifi_sel(), host_sel()) else {
+                toasts::error("devices-rebuild-incomplete");
+                return;
+            };
+            Some((creds, srv))
+        } else {
+            None
+        };
+        running.set(true);
+        let todo: Vec<(i64, String, String, BulkPlan)> = plans
+            .read()
+            .iter()
+            .filter(|p| p.3.eligible())
+            .cloned()
+            .collect();
+        spawn(async move {
+            for (pk, device_id, model, plan) in todo {
+                let outcome = match (&connectivity, plan) {
+                    (Some((creds, srv)), _) => {
+                        let params = pnex_core::CreateBuild {
+                            device_id,
+                            predefined_device_name: model,
+                            wifi_ssid: creds.ssid.clone(),
+                            wifi_credential_id: Some(creds.id),
+                            wifi_password: String::new(),
+                            pnex_host: srv.host.clone(),
+                            ws_ssl: true,
+                        };
+                        match api::builds::create(params).await {
+                            Ok(_) => BulkOutcome::BuildQueued,
+                            Err(err) => BulkOutcome::Failed(err),
+                        }
+                    }
+                    (None, BulkPlan::Update(version)) => {
+                        let body = serde_json::json!({ "version": version });
+                        match api::ota::deploy(pk, body).await {
+                            Ok(res) if res["pushed"] == serde_json::json!(false) => {
+                                BulkOutcome::OtaQueued
+                            }
+                            Ok(_) => BulkOutcome::OtaStarted,
+                            Err(err) => BulkOutcome::Failed(err),
+                        }
+                    }
+                    (None, _) => continue,
+                };
+                outcomes.with_mut(|o| o.push((pk, outcome)));
+            }
+            running.set(false);
+            on_done.call(());
+        });
+    };
+
+    // Per-device lines, resolved outside rsx (plan or result).
+    let lines: Vec<(i64, String, String, bool)> = plans
+        .read()
+        .iter()
+        .map(|(pk, device_id, _, plan)| {
+            let outcome = outcomes
+                .read()
+                .iter()
+                .find(|(id, _)| id == pk)
+                .map(|(_, o)| o.clone());
+            let (text, ok) = match outcome {
+                Some(BulkOutcome::BuildQueued) => (t!("devices-bulk-done-build"), true),
+                Some(BulkOutcome::OtaStarted) => (t!("devices-bulk-done-ota"), true),
+                Some(BulkOutcome::OtaQueued) => (t!("devices-bulk-done-ota-queued"), true),
+                Some(BulkOutcome::Failed(err)) => (crate::api::error_i18n::localize(&err), false),
+                None => (plan.label(), plan.eligible()),
+            };
+            (*pk, device_id.clone(), text, ok)
+        })
+        .collect();
+    let title = if is_build {
+        t!("devices-bulk-build-title")
+    } else {
+        t!("devices-bulk-ota-title")
+    };
+    let hint = if is_build {
+        t!("devices-bulk-build-hint")
+    } else {
+        t!("devices-bulk-ota-hint")
+    };
+    let confirm_label = if running() {
+        t!("common-loading")
+    } else if is_build {
+        t!("devices-bulk-build-confirm", count : eligible.to_string())
+    } else {
+        t!("devices-bulk-ota-confirm", count : eligible.to_string())
+    };
+
+    rsx! {
+        Modal { title, max_width: "max-w-lg".to_string(), on_close,
+            div { class: "space-y-4",
+                p { class: "text-xs text-gray-500", {hint} }
+                if is_build && !finished {
+                    WifiCredentialPicker { selected: wifi_sel }
+                    PnexHostPicker { selected: host_sel }
+                }
+                ul { class: "divide-y divide-gray-100 border border-gray-200 rounded-lg max-h-72 overflow-y-auto",
+                    for (pk, device_id, text, ok) in lines {
+                        li {
+                            key: "{pk}",
+                            class: "flex items-center justify-between gap-3 px-3 py-2 text-sm",
+                            code { class: "font-medium", {device_id} }
+                            span { class: if ok { "text-xs text-gray-700" } else { "text-xs text-gray-400" },
+                                {text}
+                            }
+                        }
+                    }
+                }
+                if eligible == 0 {
+                    p { class: "text-xs text-amber-600", {t!("devices-bulk-nothing")} }
+                }
+                div { class: "flex justify-end gap-2 pt-2",
+                    button {
+                        class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
+                        r#type: "button",
+                        onclick: move |_| on_close.call(()),
+                        {if finished { t!("common-close") } else { t!("common-cancel") }}
+                    }
+                    if !finished {
+                        button {
+                            class: "px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed",
+                            r#type: "button",
+                            disabled: running() || eligible == 0,
+                            onclick: submit,
+                            {confirm_label}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 /// Confirmation de déploiement OTA — montre CE qui va être déployé (build
 /// cible + date de compilation) et SUR QUOI (version annoncée du device),
 /// gère l'état « aucun firmware » (deploy grisé + raccourci rebuild) et
@@ -764,7 +1012,8 @@ fn OtaModal(
     let has_build = target.latest_build.is_some();
     let device_id = target.device_id.clone();
     let device_pk = target.device_pk;
-    // Rebuild reuses the record id → same version: redeploy needs force.
+    // Each build has its own version: the same version means reinstalling
+    // the exact binary the device already runs (explicit force).
     let same_version = target
         .latest_build
         .as_ref()
@@ -791,8 +1040,10 @@ fn OtaModal(
                             )
                         }
                     }
-                    p { class: "text-xs text-gray-500 mb-1",
-                        {t!("devices-ota-built", date : date.clone())}
+                    if let Some(date) = date {
+                        p { class: "text-xs text-gray-500 mb-1",
+                            {t!("devices-ota-built", date : date.clone())}
+                        }
                     }
                     if same_version {
                         p { class: "text-xs font-medium text-indigo-600 mb-1",
@@ -833,9 +1084,8 @@ fn OtaModal(
                         onclick: move |_| {
                             launching.set(true);
                             spawn(async move {
-                                // Redeploying the running version (rebuild
-                                // reuses the record id = same version) needs
-                                // the force flag, else the API 409s.
+                                // Reinstalling the running version needs the
+                                // force flag, else the API 409s.
                                 let body = if same_version {
                                     serde_json::json!({ "force" : true })
                                 } else {
@@ -869,6 +1119,151 @@ fn OtaModal(
             }
         }
     }
+}
+
+/// Firmware version status of a device (list badge): compares the version
+/// the device runs (announce) with its newest deployable build.
+#[derive(Clone, Copy, PartialEq)]
+enum FwStatus {
+    UpToDate,
+    UpdateAvailable,
+    Building,
+    BuildFailed,
+    Offline,
+}
+
+/// `None` = nothing meaningful to show (edge agent, never built, never
+/// announced).
+fn fw_status(device: &Device) -> Option<FwStatus> {
+    if device.predefined_device_name == pnex_core::EDGE_AGENT_PREDEF {
+        return None;
+    }
+    let build = device.latest_build.as_ref()?;
+    match build.build_phase.as_deref() {
+        Some("queued") | Some("running") => return Some(FwStatus::Building),
+        Some("failed") => return Some(FwStatus::BuildFailed),
+        _ => {}
+    }
+    if !device.connected {
+        return Some(FwStatus::Offline);
+    }
+    let latest = build.deployable_version.as_deref()?;
+    let running = device.fw_version.as_deref()?;
+    if pnex_core::fw_at_least(running, latest) {
+        Some(FwStatus::UpToDate)
+    } else {
+        Some(FwStatus::UpdateAvailable)
+    }
+}
+
+/// Badge classes + label of a [`FwStatus`] (full literal classes for the
+/// Tailwind scan).
+fn fw_status_badge(status: FwStatus) -> (&'static str, String) {
+    match status {
+        FwStatus::UpToDate => ("bg-green-100 text-green-800", t!("devices-fw-up-to-date")),
+        FwStatus::UpdateAvailable => (
+            "bg-violet-100 text-violet-800",
+            t!("devices-fw-update-available"),
+        ),
+        FwStatus::Building => ("bg-amber-100 text-amber-800", t!("devices-fw-building")),
+        FwStatus::BuildFailed => ("bg-red-100 text-red-800", t!("devices-fw-build-failed")),
+        FwStatus::Offline => ("bg-gray-100 text-gray-600", t!("devices-fw-offline")),
+    }
+}
+
+/// What a bulk action will do for one device (computed from the list
+/// payload before the user confirms).
+#[derive(Clone, PartialEq)]
+enum BulkPlan {
+    /// Build: the device gets a new firmware build.
+    Build,
+    /// OTA: the device will be updated to this build version.
+    Update(String),
+    SkipOffline,
+    SkipNotReady,
+    SkipUpToDate,
+    SkipNoBuild,
+    SkipOtaBusy,
+    SkipNotBuildable,
+    SkipBuilding,
+}
+
+impl BulkPlan {
+    fn eligible(&self) -> bool {
+        matches!(self, BulkPlan::Build | BulkPlan::Update(_))
+    }
+
+    /// Localized line (render scope only: uses `t!`).
+    fn label(&self) -> String {
+        match self {
+            BulkPlan::Build => t!("devices-bulk-will-build"),
+            BulkPlan::Update(v) => t!("devices-bulk-will-update", version: v.clone()),
+            BulkPlan::SkipOffline => t!("devices-bulk-skip-offline"),
+            BulkPlan::SkipNotReady => t!("devices-bulk-skip-not-ready"),
+            BulkPlan::SkipUpToDate => t!("devices-bulk-skip-up-to-date"),
+            BulkPlan::SkipNoBuild => t!("devices-bulk-skip-no-build"),
+            BulkPlan::SkipOtaBusy => t!("devices-bulk-skip-ota-busy"),
+            BulkPlan::SkipNotBuildable => t!("devices-bulk-skip-not-buildable"),
+            BulkPlan::SkipBuilding => t!("devices-bulk-skip-building"),
+        }
+    }
+}
+
+/// Bulk build plan of one device: custom types and edge agents have no
+/// firmware to build (O3/D95); a build already in flight is skipped.
+fn build_plan(device: &Device) -> BulkPlan {
+    if device.predefined_device_name == pnex_core::EDGE_AGENT_PREDEF
+        || device.allow_dynamic_measurements
+    {
+        return BulkPlan::SkipNotBuildable;
+    }
+    let building = device
+        .latest_build
+        .as_ref()
+        .is_some_and(|b| matches!(b.build_phase.as_deref(), Some("queued") | Some("running")));
+    if building {
+        BulkPlan::SkipBuilding
+    } else {
+        BulkPlan::Build
+    }
+}
+
+/// Bulk OTA plan of one device: only online, OTA-ready devices whose newest
+/// deployable build is newer than the running version (never forced).
+fn ota_plan(device: &Device) -> BulkPlan {
+    if device.predefined_device_name == pnex_core::EDGE_AGENT_PREDEF || !device.ota_ready {
+        return BulkPlan::SkipNotReady;
+    }
+    if device.ota.is_some() {
+        return BulkPlan::SkipOtaBusy;
+    }
+    if !device.connected {
+        return BulkPlan::SkipOffline;
+    }
+    let Some(latest) = device
+        .latest_build
+        .as_ref()
+        .and_then(|b| b.deployable_version.clone())
+    else {
+        return BulkPlan::SkipNoBuild;
+    };
+    if device
+        .fw_version
+        .as_deref()
+        .is_some_and(|running| pnex_core::fw_at_least(running, &latest))
+    {
+        return BulkPlan::SkipUpToDate;
+    }
+    BulkPlan::Update(latest)
+}
+
+/// Per-device result of a bulk action (localized at render time).
+#[derive(Clone, PartialEq)]
+enum BulkOutcome {
+    BuildQueued,
+    OtaStarted,
+    OtaQueued,
+    Failed(crate::api::error::ApiError),
 }
 
 /// Badge de type — classes littérales complètes (scan Tailwind).

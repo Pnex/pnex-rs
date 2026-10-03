@@ -131,6 +131,28 @@ impl BackgroundWorker<BuildFirmwareArgs> for BuildFirmwareWorker {
                     ..Default::default()
                 };
                 stamp.update(&self.db).await?;
+                // Retention: keep the newest records of the device (each
+                // build is a new row). Best effort, never fails the build.
+                match self.settings.store(&self.db) {
+                    Ok(store) => {
+                        if let Err(e) = crate::services::build_retention::prune_device_builds(
+                            &self.db,
+                            store.as_ref(),
+                            args.org_id,
+                            &args.device_id,
+                        )
+                        .await
+                        {
+                            tracing::warn!(
+                                build = args.build_record_id,
+                                "build retention failed: {e}"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(build = args.build_record_id, "build retention skipped: {e}")
+                    }
+                }
             }
             // Message d'erreur dans les logs serveur uniquement — jamais
             // renvoyé au client (peut contenir des chemins/fragments).

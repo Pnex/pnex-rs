@@ -144,6 +144,12 @@ pub struct LatestBuild {
     pub sources_stale: Option<bool>,
     /// RFC 3339 — dernier changement de phase.
     pub updated_at: String,
+    /// Version of the newest SUCCESSFUL, OTA-deployable build of the device
+    /// (the OTA target by default). May differ from `fw_version` above when
+    /// the newest build is queued/running/failed. `None` = no deployable
+    /// build.
+    #[serde(default)]
+    pub deployable_version: Option<String>,
 }
 
 /// Current OTA deployment status hydrated into `Device` (list + detail).
@@ -297,7 +303,8 @@ mod tests {
                 "build_phase": "succeeded",
                 "fw_version": "42",
                 "sources_stale": null,
-                "updated_at": "2026-08-16T11:00:00+00:00"
+                "updated_at": "2026-08-16T11:00:00+00:00",
+                "deployable_version": "42"
             },
             "allow_dynamic_measurements": false,
             "discovered_measurements": [],
@@ -320,6 +327,7 @@ mod tests {
         assert!(build.success);
         assert_eq!(build.build_phase.as_deref(), Some("succeeded"));
         assert_eq!(build.fw_version.as_deref(), Some("42"));
+        assert_eq!(build.deployable_version.as_deref(), Some("42"));
         let back = serde_json::to_value(&device).unwrap();
         assert_eq!(
             back,

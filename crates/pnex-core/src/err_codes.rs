@@ -138,6 +138,8 @@ pub const SECRET_NAME_TAKEN: &str = "secret-name-taken";
 pub const SECRET_WRITE_FORBIDDEN: &str = "secret-write-forbidden";
 pub const BUILD_CREATE_FORBIDDEN: &str = "build-create-forbidden";
 pub const BUILD_DELETE_FORBIDDEN: &str = "build-delete-forbidden";
+/// A build of this device is already queued or running.
+pub const BUILD_IN_PROGRESS: &str = "build-in-progress";
 pub const STITCH_WRITE_FORBIDDEN: &str = "stitch-write-forbidden";
 pub const STITCH_JOB_TERMINAL: &str = "stitch-job-terminal";
 pub const STITCH_STATE_UNKNOWN: &str = "stitch-state-unknown";
@@ -394,6 +396,7 @@ pub const ALL: &[&str] = &[
     SECRET_WRITE_FORBIDDEN,
     BUILD_CREATE_FORBIDDEN,
     BUILD_DELETE_FORBIDDEN,
+    BUILD_IN_PROGRESS,
     STITCH_WRITE_FORBIDDEN,
     STITCH_JOB_TERMINAL,
     STITCH_STATE_UNKNOWN,

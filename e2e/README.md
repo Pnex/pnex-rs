@@ -98,7 +98,7 @@ Rules:
 | `flow-alert` | `@flows @notifications` | Starlark threshold function → Notification node → email in mailcrab |
 | `edge-refs` | `@edge` | Wi-Fi referential, its password stored as a vault secret |
 | `a11y` (own project) | `@a11y` | axe-core report per route — `task e2e -- --project=a11y` (`PNEX_E2E_A11Y_STRICT=1` to fail) |
-| `hardware` | `@hardware` | real boards, in order: C3 register/build/flash/online, pins, telemetry + quick charts, rebuild + OTA, custom firmware (then generic restored), ESP32-CAM register + live view + flash LED, ESP32 DevKit 38p + TFT register (variant + screen) + pins (screen pins reserved, pad readback), NodeMCU V3 + soldered OLED register + pins (D7 readback, A0), Waveshare ESP32-C6-Zero register + pins (GP14 readback, GP0 ADC) + OTA + custom firmware |
+| `hardware` | `@hardware` | real boards, in order: C3 register/build/flash/online, pins, telemetry + quick charts, rebuild (new version) + non-forced OTA, custom firmware (then generic restored), ESP32-CAM register + live view + flash LED, ESP32 DevKit 38p + TFT register (variant + screen) + pins (screen pins reserved, pad readback), NodeMCU V3 + soldered OLED register + pins (D7 readback, A0), Waveshare ESP32-C6-Zero register + pins (GP14 readback, GP0 ADC) + OTA + custom firmware |
 
 ## Captures
 

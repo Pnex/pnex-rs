@@ -369,37 +369,225 @@ async fn build_timeout() {
     .await;
 }
 
-/// Rebuild = re-arm of the SAME record (update_or_create legacy parity):
-/// a failure does not consume the interval, the successful rebuild reuses
-/// the row.
+/// Lift the org's subscription tier (no min build interval) so several
+/// successful builds can run back to back.
+async fn lift_build_interval(ctx: &loco_rs::app::AppContext, org: i64) {
+    use sea_orm::ConnectionTrait;
+    ctx.db
+        .execute_unprepared(&format!(
+            "UPDATE organizations SET subscription_tier_id = NULL WHERE id = {org}"
+        ))
+        .await
+        .expect("tier lift");
+}
+
+/// Rebuild = a NEW record every time: new id = new, strictly increasing
+/// firmware version, the previous versioned OTA artifact is kept.
 #[tokio::test]
 #[serial]
-async fn rebuild_met_a_jour_le_meme_record() {
-    with_app(|server, env, _ctx| async move {
+async fn rebuild_creates_a_new_record_with_a_higher_version() {
+    with_app(|server, env, ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         create_device(&server, &env.alice, org, "dev-re").await;
 
-        // 1. Échec (n'affecte pas l'intervalle — seuls les succès comptent).
+        // 1. A failure (does not consume the interval: only successes count).
         let first = post_build(&server, &env.alice, org, "dev-re", "fail").await;
         first.assert_status(axum_test::http::StatusCode::CREATED);
         let first_body: serde_json::Value = first.json();
         assert_eq!(first_body["build_record_created"], true);
+        let first_id = first_body["build_id"].as_i64().expect("id");
 
-        // 2. Rebuild immédiat accepté (le dernier build n'est pas un succès).
+        // 2. Immediate rebuild accepted, on a new record.
         let second = post_build(&server, &env.alice, org, "dev-re", "coloc").await;
         second.assert_status(axum_test::http::StatusCode::CREATED);
         let second_body: serde_json::Value = second.json();
-        assert_eq!(second_body["build_record_created"], false);
+        assert_eq!(second_body["build_record_created"], true);
+        let second_id = second_body["build_id"].as_i64().expect("id");
+        assert!(second_id > first_id);
 
-        // Un seul record, réutilisé, maintenant réussi.
+        // 3. A second successful build: yet another record and version.
+        lift_build_interval(&ctx, org).await;
+        let third = post_build(&server, &env.alice, org, "dev-re", "coloc").await;
+        third.assert_status(axum_test::http::StatusCode::CREATED);
+        let third_id = third.json::<serde_json::Value>()["build_id"]
+            .as_i64()
+            .expect("id");
+        assert!(third_id > second_id);
+
+        let list = records(&server, &env.alice, org, "?device_id=dev-re").await;
+        assert_eq!(list["count"], 3);
+        assert_eq!(list["results"][0]["id"], third_id);
+        assert_eq!(list["results"][0]["fw_version"], third_id.to_string());
+        assert_eq!(list["results"][1]["fw_version"], second_id.to_string());
+        assert_eq!(list["results"][2]["build_phase"], "failed");
+
+        // Both OTA artifacts live under their own versioned key.
+        let store = pnex_backend::services::firmware::FirmwareSettings::from_config(&ctx.config)
+            .store(&ctx.db)
+            .expect("store");
+        for id in [second_id, third_id] {
+            let key = pnex_firmware_builder::ota_artifact_key(org, "dev-re", &id.to_string());
+            assert!(store.exists(&key).await.expect("exists"), "{key}");
+        }
+
+        // The device DTO exposes the newest deployable version.
+        let devices: serde_json::Value = server
+            .get("/api/v1/devices")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await
+            .json();
+        let latest = &devices["results"][0]["latest_build"];
+        assert_eq!(latest["fw_version"], third_id.to_string(), "{latest}");
+        assert_eq!(
+            latest["deployable_version"],
+            third_id.to_string(),
+            "{latest}"
+        );
+    })
+    .await;
+}
+
+/// Retention: after a successful build only the 5 newest records of the
+/// device survive, plus the one the device runs and the target of an
+/// active OTA; pruned records lose their OTA artifact, the shared serial
+/// artifact stays.
+#[tokio::test]
+#[serial]
+async fn successful_build_prunes_old_records_and_artifacts() {
+    use pnex_backend::models::_entities::{device_registries, ota_assignments};
+    use sea_orm::{ActiveModelTrait, ColumnTrait, QueryFilter, QueryOrder, Set};
+    with_app(|server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        create_device(&server, &env.alice, org, "dev-ret").await;
+        lift_build_interval(&ctx, org).await;
+        let store = pnex_backend::services::firmware::FirmwareSettings::from_config(&ctx.config)
+            .store(&ctx.db)
+            .expect("store");
+        let serial_key = format!("org_{org}/firmware/dev-ret-firmware.bin");
+
+        // 7 older successful builds, each with its OTA artifact.
+        let mut old_ids = Vec::new();
+        for _ in 0..7 {
+            let row = build_records::ActiveModel {
+                device_id: Set(Some("dev-ret".into())),
+                success: Set(true),
+                build_phase: Set(Some("succeeded".into())),
+                firmware_bin_s3_key: Set(Some(serial_key.clone())),
+                org_id: Set(org),
+                ota_sha256: Set(Some("0".repeat(64))),
+                ota_size_bytes: Set(Some(4)),
+                ..Default::default()
+            }
+            .insert(&ctx.db)
+            .await
+            .expect("insert");
+            let version = row.id.to_string();
+            let mut stamp: build_records::ActiveModel = row.clone().into();
+            stamp.fw_version = Set(Some(version.clone()));
+            stamp.update(&ctx.db).await.expect("stamp");
+            let key = pnex_firmware_builder::ota_artifact_key(org, "dev-ret", &version);
+            store.put(&key, b"old!").await.expect("put");
+            old_ids.push(row.id);
+        }
+
+        // The device runs the oldest one; an active OTA targets the 2nd.
+        let device = device_registries::Entity::find()
+            .filter(device_registries::Column::OrgId.eq(org))
+            .filter(device_registries::Column::DeviceId.eq("dev-ret"))
+            .one(&ctx.db)
+            .await
+            .expect("query")
+            .expect("device");
+        let mut running: device_registries::ActiveModel = device.clone().into();
+        running.fw_version = Set(Some(old_ids[0].to_string()));
+        running.update(&ctx.db).await.expect("fw_version");
+        ota_assignments::ActiveModel {
+            org_id: Set(org),
+            device_registry_id: Set(device.id),
+            target_version: Set(old_ids[1].to_string()),
+            artifact_key: Set(pnex_firmware_builder::ota_artifact_key(
+                org,
+                "dev-ret",
+                &old_ids[1].to_string(),
+            )),
+            sha256: Set("0".repeat(64)),
+            state: Set("pending".into()),
+            ..Default::default()
+        }
+        .insert(&ctx.db)
+        .await
+        .expect("ota row");
+
+        // 8th build, real (fixture toolchain) → retention runs.
+        let res = post_build(&server, &env.alice, org, "dev-ret", "coloc").await;
+        res.assert_status(axum_test::http::StatusCode::CREATED);
+        let new_id = res.json::<serde_json::Value>()["build_id"]
+            .as_i64()
+            .expect("id");
+
+        let left: Vec<i64> = build_records::Entity::find()
+            .filter(build_records::Column::OrgId.eq(org))
+            .filter(build_records::Column::DeviceId.eq("dev-ret"))
+            .order_by_asc(build_records::Column::Id)
+            .all(&ctx.db)
+            .await
+            .expect("query")
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+        // Kept: running (0), OTA target (1), 4 newest old ones (3..7) + new.
+        let mut expected = vec![old_ids[0], old_ids[1]];
+        expected.extend_from_slice(&old_ids[3..]);
+        expected.push(new_id);
+        assert_eq!(left, expected);
+
+        let pruned =
+            pnex_firmware_builder::ota_artifact_key(org, "dev-ret", &old_ids[2].to_string());
+        assert!(
+            !store.exists(&pruned).await.expect("exists"),
+            "pruned artifact"
+        );
+        for id in [old_ids[0], old_ids[1], old_ids[6], new_id] {
+            let key = pnex_firmware_builder::ota_artifact_key(org, "dev-ret", &id.to_string());
+            assert!(store.exists(&key).await.expect("exists"), "{key}");
+        }
+        assert!(
+            store.exists(&serial_key).await.expect("exists"),
+            "serial artifact kept"
+        );
+    })
+    .await;
+}
+
+/// One active build per device: a request while a build of the device is
+/// queued/running → 409 build-in-progress, no new record.
+#[tokio::test]
+#[serial]
+async fn second_build_while_one_is_in_flight_is_refused() {
+    use sea_orm::{ActiveModelTrait, Set};
+    with_app(|server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        create_device(&server, &env.alice, org, "dev-busy").await;
+        // Without a tier interval (whose in-flight check would answer 429).
+        lift_build_interval(&ctx, org).await;
+        build_records::ActiveModel {
+            device_id: Set(Some("dev-busy".into())),
+            success: Set(false),
+            build_phase: Set(Some("running".into())),
+            org_id: Set(org),
+            ..Default::default()
+        }
+        .insert(&ctx.db)
+        .await
+        .expect("insert");
+
+        let res = post_build(&server, &env.alice, org, "dev-busy", "coloc").await;
+        res.assert_status(axum_test::http::StatusCode::CONFLICT);
+        let body: serde_json::Value = res.json();
+        assert_eq!(body["error"], "build-in-progress", "{body}");
         let list = records(&server, &env.alice, org, "").await;
         assert_eq!(list["count"], 1);
-        assert_eq!(list["results"][0]["id"], second_body["build_id"]);
-        assert_eq!(list["results"][0]["build_phase"], "succeeded");
-        assert_eq!(
-            list["results"][0]["firmware_bin_s3_key"],
-            format!("org_{org}/firmware/dev-re-firmware.bin")
-        );
     })
     .await;
 }

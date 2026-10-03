@@ -4,9 +4,11 @@
 //! d'extension V2), la pagination compose avec le `Pager` existant dans le
 //! corps de page. Les états sont délégués à `ListStates`.
 
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use dioxus::prelude::*;
+use dioxus_i18n::t;
 
 /// Clé de ligne — newtype autour d'une closure `&T -> String` : la macro
 /// `#[component]` génère un `PartialEq` par champ sur les props, et
@@ -85,25 +87,58 @@ pub fn DataTable<T: Clone + PartialEq + 'static>(
     /// Clic sur une ligne (reçoit la clé de ligne) — ex. ouvrir un détail.
     #[props(default)]
     on_row_click: Option<Callback<String>>,
+    /// Optional row selection, keyed by the row key: when set, a leading
+    /// checkbox column appears (header checkbox = select/clear all visible
+    /// rows). `None` = no selection column (default).
+    #[props(default)]
+    selected: Option<Signal<HashSet<String>>>,
 ) -> Element {
     // Clés pré-calculées hors rsx (pas de `let` dans le rsx ; la macro
     // d'attribut exige en outre un `PartialEq` sur chaque champ de props,
     // d'où le newtype RowKey).
     let keyed_rows: Vec<(String, &T)> = rows.iter().map(|row| ((row_key.0)(row), row)).collect();
     let row_click = on_row_click;
+    // Selection state of the visible rows (header checkbox).
+    let visible_keys: Vec<String> = keyed_rows.iter().map(|(k, _)| k.clone()).collect();
+    let all_selected = selected.is_some_and(|sel| {
+        let sel = sel.read();
+        !visible_keys.is_empty() && visible_keys.iter().all(|k| sel.contains(k))
+    });
 
     rsx! {
         div { class: "bg-white rounded-lg shadow-sm overflow-hidden",
             table { class: "min-w-full divide-y divide-gray-200",
                 thead { class: "bg-gray-50",
                     tr {
+                        if let Some(mut sel) = selected {
+                            th { class: "th w-8",
+                                input {
+                                    r#type: "checkbox",
+                                    aria_label: t!("crud-select-all"),
+                                    checked: all_selected,
+                                    onclick: move |event| event.stop_propagation(),
+                                    onchange: move |_| {
+                                        let keys = visible_keys.clone();
+                                        sel.with_mut(|set| {
+                                            if all_selected {
+                                                for k in &keys {
+                                                    set.remove(k);
+                                                }
+                                            } else {
+                                                set.extend(keys);
+                                            }
+                                        });
+                                    },
+                                }
+                            }
+                        }
                         for col in columns.iter() {
                             th { class: "th", {col.header.clone()} }
                         }
                     }
                 }
                 tbody { class: "bg-white divide-y divide-gray-200",
-                    for (key, row) in keyed_rows.iter().map(|(k, r)| (k.clone(), *r)) {
+                    for (key, sel_key, row) in keyed_rows.iter().map(|(k, r)| (k.clone(), k.clone(), *r)) {
                         tr {
                             key: "{key}",
                             class: if row_click.is_some() { "hover:bg-gray-50 cursor-pointer" } else { "hover:bg-gray-50" },
@@ -112,6 +147,24 @@ pub fn DataTable<T: Clone + PartialEq + 'static>(
                                     cb.call(key.clone());
                                 }
                             },
+                            if let Some(mut sel) = selected {
+                                td { class: "td w-8",
+                                    input {
+                                        r#type: "checkbox",
+                                        aria_label: t!("crud-select-row"),
+                                        checked: sel.read().contains(&sel_key),
+                                        onclick: move |event| event.stop_propagation(),
+                                        onchange: move |_| {
+                                            let key = sel_key.clone();
+                                            sel.with_mut(|set| {
+                                                if !set.remove(&key) {
+                                                    set.insert(key);
+                                                }
+                                            });
+                                        },
+                                    }
+                                }
+                            }
                             for col in columns.iter() {
                                 td { class: "td {col.td_class}", {(col.cell)(row)} }
                             }
