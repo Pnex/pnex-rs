@@ -114,6 +114,7 @@ plus, `PNEX_TEST_MODE=1` + `PNEX_OTA_ENABLE=1` = `#error`.
 |---|---|---|
 | `esp32-c3` (XIAO) | 47/47 | **Bug prod corrigé** : `analogWrite` du core prend un canal LEDC par pin et ne le rend jamais — le C3 (6 canaux) ne pilotait plus en PWM le 7ᵉ pin utilisé (5 étapes rouges au 1ᵉʳ passage). |
 | `esp32cam-ai-thinker` | 9/9 | GPIO4 (LED flash) : pull-down de carte (grille du MOSFET), le pull-up interne lit 0 → flag profil `pull_down` (stocké en `mcu_boards.details`, omis si faux). |
+| `esp32-devkit-38p-txd` | 90/90 | Rien : passe au 1ᵉʳ passage (TFT câblé). E2E `e2e:hardware` ajouté : wizard variante + écran TFT 1.77", build, flash, pins écran absents des pins pilotables, readback G25 + ADC G34. |
 
 Au passage : la lib ne compilait pas sur ESP32 sans OTA
 (`esp_ota_ops.h` inclus seulement sous `PNEX_OTA_ENABLE`) — sketches
@@ -148,5 +149,5 @@ liaison radio, pas ce chantier.
 | T2 | Console `PNEX_TEST_MODE`, projet `firmware/selftest` | livré |
 | T3 | Plan/verdict Rust + harnais `fw:hil` | livré |
 | T4 | Garde CI + `HIL_PENDING` ; rapports C3 + CAM | livré |
-| T4b | Rapports des 9 cartes de `HIL_PENDING` (au fil du matériel disponible) | à faire |
+| T4b | Rapports des cartes de `HIL_PENDING` (8 restantes au 2026-10-03, au fil du matériel disponible) | en cours |
 | T5 | Gabarit de bouclage L2 (sortie → entrée, PWM → ADC via RC) | à faire |

@@ -98,7 +98,7 @@ Rules:
 | `flow-alert` | `@flows @notifications` | Starlark threshold function → Notification node → email in mailcrab |
 | `edge-refs` | `@edge` | Wi-Fi referential, its password stored as a vault secret |
 | `a11y` (own project) | `@a11y` | axe-core report per route — `task e2e -- --project=a11y` (`PNEX_E2E_A11Y_STRICT=1` to fail) |
-| `hardware` | `@hardware` | real boards, in order: C3 register/build/flash/online, pins, telemetry + quick charts, rebuild + OTA, custom firmware (then generic restored), ESP32-CAM register + live view + flash LED |
+| `hardware` | `@hardware` | real boards, in order: C3 register/build/flash/online, pins, telemetry + quick charts, rebuild + OTA, custom firmware (then generic restored), ESP32-CAM register + live view + flash LED, ESP32 DevKit 38p + TFT register (variant + screen) + pins (screen pins reserved, pad readback) |
 
 ## Captures
 
@@ -132,8 +132,9 @@ Skipped unless the boards are declared:
 |---|---|
 | `PNEX_E2E_C3_PORT` | serial port of an ESP32-C3 (Seeed XIAO profile, e.g. `/dev/ttyACM0`) |
 | `PNEX_E2E_CAM_PORT` | serial port of an ESP32-CAM on its MB carrier (e.g. `/dev/ttyUSB0`) |
+| `PNEX_E2E_ESP32_PORT` | serial port of an ESP32 DevKit 38 pins (TXD/RXD variant) with its ST7735 TFT wired (SCK 18, MOSI 23, CS 5, DC 2, RST 4) |
 | `PNEX_E2E_WIFI_SSID` / `PNEX_E2E_WIFI_PASSWORD` | network the boards join (stored as an Edge referential of the test org) |
-| `PNEX_E2E_C3_ID` / `PNEX_E2E_CAM_ID` | device ids in the test org (`e2e-c3` / `e2e-cam`) |
+| `PNEX_E2E_C3_ID` / `PNEX_E2E_CAM_ID` / `PNEX_E2E_ESP32_ID` | device ids in the test org (`e2e-c3` / `e2e-cam` / `e2e-esp32`) |
 | `PNEX_E2E_MAILCRAB_URL` | mailcrab API (`http://localhost:1080`) |
 
 ```bash
