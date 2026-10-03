@@ -146,6 +146,8 @@ async fn run() -> ExitCode {
     pnex_node_memory::registered();
     // Anomaly scoring + forecasting on telemetry series (augurs).
     pnex_node_predict::registered();
+    // Org controls written from the surfaces (D127): control-source.
+    pnex_node_ui_control::registered();
     // Fonctions Starlark du registre « Fonctions » — même garde-fou.
     pnex_node_starlark::registered();
 

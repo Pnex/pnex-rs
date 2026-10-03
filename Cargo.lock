@@ -7822,6 +7822,7 @@ name = "pnex-flow-runtime"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "edgelink-core",
  "hex",
  "libc",
@@ -7838,6 +7839,7 @@ dependencies = [
  "pnex-node-notify",
  "pnex-node-predict",
  "pnex-node-starlark",
+ "pnex-node-ui-control",
  "pnex-node-value",
  "pnex-node-vision",
  "redis",
@@ -7848,6 +7850,7 @@ dependencies = [
  "sha2 0.10.9",
  "tokio",
  "tokio-util",
+ "uuid",
 ]
 
 [[package]]
@@ -8110,6 +8113,27 @@ dependencies = [
  "starlark",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "pnex-node-ui-control"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "config",
+ "edgelink-core",
+ "edgelink-macro",
+ "futures-util",
+ "inventory",
+ "log 0.4.34",
+ "pnex-core",
+ "redis",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "uuid",
 ]
 
 [[package]]

@@ -2788,3 +2788,38 @@ secret-field-pick = Pick an existing secret
 secret-field-type-placeholder = Value (stored encrypted)
 secret-field-pick-placeholder = — Pick a secret —
 secret-field-unset = Not set
+
+## Org controls (D125–D127)
+err-control-write-forbidden = Owner, admin or member role required to manage or operate controls.
+err-control-key-taken = Another control of the organization already uses this key.
+err-control-value-invalid = Value refused by the control ({ $reason }).
+err-control-rate-limited = Too fast: wait a moment before sending another value.
+err-control-in-use = Deployed flows listen to this control ({ $flow }): stop them or remove the control from their nodes before deleting it.
+err-control-unknown = Control { $control } does not exist (anymore) in the organization: pick another one in the node.
+err-control-store-unavailable = The control store (Valkey) is unavailable: the value was not sent.
+
+## Control source node (D127)
+flows-palette-control-source = Control source
+flows-palette-control-source-help = Receives the values sent from dashboards and annotations (one port per control)
+flows-control-source-help = Emits a message every time a checked control is operated from a dashboard or an annotation: payload = value, topic = control key. One output port per control, in pick order.
+flows-control-source-empty = Check at least one control to listen to
+flows-control-source-none-in-org = No control in the organization yet: create one below or from a dashboard.
+flows-control-source-missing = Deleted control: remove it from this node
+flows-control-source-port = port { $port }
+flows-control-source-emit-on-start = Resend the last value at start
+flows-control-source-emit-on-start-hint = After a restart or a redeploy, every control resends its last value: the outputs recover their state.
+flows-control-source-create = New control
+flows-control-source-create-submit = Create and listen
+controls-kind-switch = Switch
+controls-kind-slider = Slider
+controls-kind-button = Button
+controls-kind-number = Number
+controls-label-placeholder = Label (e.g. Machine room light)
+flow-status-control-listening = Listening
+flow-status-control-bus-unavailable = Control bus unavailable
+flow-status-count-commands = { $commands } commands
+flow-status-stat-commands = Commands received
+err-control-source-empty = Check at least one control to listen to
+err-control-source-too-many = At most 32 controls per node
+err-control-source-unset = Pick a control
+err-control-source-duplicate = A control is listed twice

@@ -675,6 +675,14 @@ fn describe_node_types() -> Result<ToolOutcome, String> {
                     }
                 },
                 {
+                    "kind": "control_source",
+                    "description": "Event source fed by org controls (switch, slider, button, number) operated from dashboards and annotations. One output port per listed control, in list order: payload = value (switch 1/0, slider 0..100 = PWM duty by default), topic = control key, msg.control = {id, key, by, via, ts_ms}. Wire it to device_write (one or several devices): a surface never writes a pin itself.",
+                    "config": {
+                        "controls": "list of org control ids (UUID, 1..=32, must exist in the org at deploy)",
+                        "emit_on_start": "bool, default false: resend each control's last value at engine start / redeploy"
+                    }
+                },
+                {
                     "kind": "anomaly",
                     "description": "Flags unusual values of a numeric series without a fixed threshold (one series per msg.topic; payload = number, or object + key). History persists across redeploys. Port 0 = {value, anomaly, score, expected, lower, upper, warming_up, samples}; port 1 = boolean anomaly state (wire it to a pnex_notify trigger).",
                     "config": {
@@ -962,6 +970,7 @@ mod tests {
             "event_log",
             "memory_write",
             "memory_read",
+            "control_source",
             "anomaly",
             "forecast",
         ] {

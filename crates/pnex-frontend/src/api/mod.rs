@@ -12,6 +12,8 @@ pub mod builds;
 pub mod cameras;
 pub mod client;
 pub mod config;
+/// Org controls (D125–D127): surfaces write, flows listen.
+pub mod controls;
 pub mod dashboard;
 pub mod dashboards;
 pub mod fluid_mixtures;

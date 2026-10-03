@@ -178,6 +178,8 @@ pub(crate) fn status_label(st: &pnex_core::vision::NodeStatus) -> String {
     let counter = if st.code.starts_with("vision-") {
         t!("flow-status-count-analysed", analysed: stat("analysed"), emitted: stat("emitted"))
             .to_string()
+    } else if st.code.starts_with("control-") {
+        t!("flow-status-count-commands", commands: stat("commands")).to_string()
     } else {
         t!("flow-status-count-frames", received: stat("received")).to_string()
     };
@@ -194,6 +196,8 @@ pub(crate) fn status_text(code: &str) -> String {
         "vision-model-load-failed" => t!("flow-status-vision-model-load-failed").to_string(),
         "vision-no-frames" => t!("flow-status-vision-no-frames").to_string(),
         "vision-running" => t!("flow-status-vision-running").to_string(),
+        "control-listening" => t!("flow-status-control-listening").to_string(),
+        "control-bus-unavailable" => t!("flow-status-control-bus-unavailable").to_string(),
         other => other.to_string(),
     }
 }
@@ -216,6 +220,7 @@ pub(crate) fn status_pretty(st: &pnex_core::vision::NodeStatus) -> String {
 fn status_stat_text(key: &str) -> String {
     match key {
         "received" => t!("flow-status-stat-received").to_string(),
+        "commands" => t!("flow-status-stat-commands").to_string(),
         "throttled" => t!("flow-status-stat-throttled").to_string(),
         "emitted" => t!("flow-status-stat-emitted").to_string(),
         "not_ready" => t!("flow-status-stat-not-ready").to_string(),

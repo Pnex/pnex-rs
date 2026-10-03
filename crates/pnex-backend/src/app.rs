@@ -135,6 +135,7 @@ impl Hooks for App {
             // Studio SCADA (D40/D41) : dashboards versionnés + bibliothèque.
             .add_route(controllers::dashboards::routes())
             .add_route(controllers::viz_widgets::routes())
+            .add_route(controllers::controls::routes())
             // Mélanges de fluides personnalisés (CoolProp in-process).
             .add_route(controllers::fluid_mixtures::routes())
             // Diagrammes thermodynamiques (pnex-coolprop in-process).

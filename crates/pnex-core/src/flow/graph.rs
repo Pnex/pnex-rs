@@ -133,6 +133,12 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::memory::MemoryReadConfig,
     },
+    /// Event source fed by org controls written from the surfaces
+    /// (dashboards, annotations): one output port per control (D127).
+    ControlSource {
+        #[serde(default)]
+        config: crate::ui_control::ControlSourceConfig,
+    },
     /// Anomaly scoring on a numeric series (robust z, forecast band,
     /// changepoint) — port 0 = detail, port 1 = boolean state.
     Anomaly {
@@ -251,6 +257,9 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "memory_read" => Ok(Self::MemoryRead {
+                    config: opt_config(config)?,
+                }),
+                "control_source" => Ok(Self::ControlSource {
                     config: opt_config(config)?,
                 }),
                 "anomaly" => Ok(Self::Anomaly {

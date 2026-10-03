@@ -6,6 +6,7 @@ pub mod builds;
 pub mod camera_recordings;
 /// Cameras settings + recorded segments API (D76/D79).
 pub mod cameras;
+pub mod controls;
 pub mod dashboard;
 pub mod dashboards;
 pub mod devices;

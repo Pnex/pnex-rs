@@ -9,6 +9,7 @@ pub mod agent_keys;
 pub mod annotation_layer_versions;
 pub mod annotation_layers;
 pub mod build_records;
+pub mod controls;
 pub mod dashboard_versions;
 pub mod dashboards;
 pub mod device_cameras;

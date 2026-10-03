@@ -247,6 +247,44 @@ pub(crate) async fn video_record_conflicts_for_deploy(
         .collect())
 }
 
+/// Org controls gate (D127): every control listed by a `control-source`
+/// must exist in the org, otherwise the node would wait forever on a value
+/// nobody can write. One violation per (node, missing control).
+pub(crate) async fn unknown_controls_for_deploy(
+    ctx: &AppContext,
+    org_id: i64,
+    candidate_graph: &FlowGraph,
+) -> Result<Vec<pnex_core::FlowViolation>> {
+    let wanted = pnex_core::control_refs_of(candidate_graph);
+    if wanted.is_empty() {
+        return Ok(Vec::new());
+    }
+    let existing: std::collections::HashSet<uuid::Uuid> = crate::models::controls::Controls::find()
+        .filter(crate::models::_entities::controls::Column::OrgId.eq(org_id))
+        .filter(crate::models::_entities::controls::Column::Id.is_in(wanted))
+        .all(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?
+        .into_iter()
+        .map(|m| m.id)
+        .collect();
+    let mut violations = Vec::new();
+    for n in &candidate_graph.nodes {
+        let pnex_core::FlowNodeKind::ControlSource { config } = &n.kind else {
+            continue;
+        };
+        for id in config.controls.iter().filter(|id| !existing.contains(id)) {
+            violations.push(pnex_core::FlowViolation::with_args(
+                Some(n.id.as_str()),
+                pnex_core::err_codes::CONTROL_UNKNOWN,
+                "control-source lists a control that does not exist in the organization",
+                serde_json::json!({ "control": id.to_string() }),
+            ));
+        }
+    }
+    Ok(violations)
+}
+
 /// Dry-run, WRITE usage only: deployed flows of the org whose graph WRITES
 /// this (device slug, pin label). Reads never count — a flow reading a pin
 /// leaves it manually writable. Feeds the manual-write 409 guard.
@@ -397,6 +435,7 @@ async fn deploy_version(
         conflicts.extend(
             video_record_conflicts_for_deploy(&ctx, org.org.id, flow.id, &candidate_graph).await?,
         );
+        conflicts.extend(unknown_controls_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         if !conflicts.is_empty() {
             return Ok((
                 StatusCode::BAD_REQUEST,
