@@ -447,6 +447,12 @@ sémantique, vécues en E2E réel (flow prédictif → ntfy) :
   pouvait jamais rien envoyer (mode historique sans vars = envoi sur
   message de données, qui n'arrive plus depuis le gate obligatoire), et
   l'éditeur ne retenait même pas le choix du template.
+- **Front montant (2026-10-03, O23)** : l'envoi ci-dessus n'a lieu que sur
+  le **front montant** du trigger (false/non reconnu → true) ; un `true`
+  maintenu (Inject périodique) n'envoie plus rien, un `false` réarme le
+  front suivant. Choix : sémantique d'alarme (une alerte par déclenchement),
+  coût nul (état précédent déjà tenu par `armed`, ni timer ni base) ;
+  l'anti-spam reste optionnel, pour l'alarme qui oscille.
 
 ## 15. Amendement D86 — journal des livraisons dans OpenObserve (2026-09-29)
 

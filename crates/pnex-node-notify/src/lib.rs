@@ -19,7 +19,8 @@
 //! recent data; render + send only happen once the set is complete, then
 //! reset. Snapshot without vars ⇒ legacy semantics: render + send on every
 //! message; with the trigger wired (always, see below) that template has no
-//! data anchor, so every armed `true` trigger renders + sends it. Anti-spam (fixed window "max N / D s"): the first send opens the
+//! data anchor, so the trigger's rising edge (false → true) renders + sends
+//! it once; it fires again only after a `false` (O23). Anti-spam (fixed window "max N / D s"): the first send opens the
 //! window, the surplus is a warn — in anchor mode the send is deferred (set
 //! kept and kept up to date), never lost.
 //!
@@ -489,9 +490,14 @@ impl PnexNotifyNode {
                 // node; an armed `true` schedules the commit of a pending
                 // complete set. The raw boolean is consumed (no passthrough).
                 let boolean = coerce_trigger_bool(&payload);
-                let (scheduled, armed) = {
+                let (scheduled, was_armed, armed) = {
                     let mut st = self.state.lock().expect("pnex-notify state");
-                    (st.apply_trigger(boolean, Instant::now()), st.armed)
+                    let was_armed = st.armed;
+                    (
+                        st.apply_trigger(boolean, Instant::now()),
+                        was_armed,
+                        st.armed,
+                    )
                 };
                 if scheduled {
                     self.commit_wake.notify_one();
@@ -506,9 +512,10 @@ impl PnexNotifyNode {
                     },
                 );
                 // A template without variables has no data anchor: nothing
-                // can fill a set, so the armed trigger itself is the alert
-                // (otherwise such a node could never send).
-                if self.config.template.vars.is_empty() && armed {
+                // can fill a set, so the trigger itself is the alert — sent
+                // on its rising edge only (O23: a trigger held `true` by a
+                // periodic inject must not resend every tick).
+                if alert_on_trigger(self.config.template.vars.is_empty(), was_armed, armed) {
                     self.deliver(serde_json::json!({})).await?;
                 }
                 return Ok(());
@@ -836,6 +843,12 @@ fn trigger_gate_update(
     }
 }
 
+/// Variable-free template: the alert fires on the trigger's rising edge
+/// (false/unrecognized → true); a `false` re-arms it for the next edge.
+fn alert_on_trigger(vars_empty: bool, was_armed: bool, armed: bool) -> bool {
+    vars_empty && armed && !was_armed
+}
+
 /// Mandatory trigger gate: a snapshot without the deploy-derived flag is a
 /// stale artifact of the always-send era — refused loudly (D50 school,
 /// isolated flow_error) so no unsolicited notification can ever go out.
@@ -1104,6 +1117,33 @@ mod tests {
             &serde_json::json!(99)
         ));
         assert_eq!(filled["value"], serde_json::json!(99));
+    }
+
+    /// Replays trigger values through the gate; counts variable-free alerts.
+    fn variable_free_alerts(seq: &[Option<bool>]) -> usize {
+        let (mut armed, mut ready) = (false, false);
+        seq.iter()
+            .filter(|v| {
+                let was_armed = armed;
+                trigger_gate_update(&mut armed, &mut ready, false, **v);
+                alert_on_trigger(true, was_armed, armed)
+            })
+            .count()
+    }
+
+    #[test]
+    fn variable_free_template_alerts_on_rising_edge_only() {
+        // O23: an inject holding the trigger true must not resend each tick.
+        assert_eq!(variable_free_alerts(&[Some(true); 3]), 1);
+        assert_eq!(
+            variable_free_alerts(&[Some(true), Some(false), Some(true)]),
+            2
+        );
+        // An unrecognized payload disarms, so the next true is a new edge.
+        assert_eq!(variable_free_alerts(&[Some(true), None, Some(true)]), 2);
+        assert_eq!(variable_free_alerts(&[Some(false), Some(false)]), 0);
+        // Templates with variables never alert from the trigger alone.
+        assert!(!alert_on_trigger(false, false, true));
     }
 
     fn vars(names: &[&str]) -> Vec<String> {
