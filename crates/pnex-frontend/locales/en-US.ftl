@@ -1633,6 +1633,7 @@ device-predef-generic-esp8266-desc = ESP8266 dev board on the generic firmware: 
 device-predef-generic-esp32c3-desc = ESP32-C3 (Seeed XIAO) dev board on the generic firmware: pins driven from the UI (modes, write, subscribe), D0–D10 overlay admission, ADC1 (D0–D2) and strapping-safe outputs.
 device-predef-generic-esp32-desc = ESP32 (DevKit WROOM) dev board on the generic firmware: pins driven from the UI, ADC1 (GPIO32-39), GPIO34-39 input-only, strapping-safe outputs; DevKit V1 30p / 36p / TFT ST7735 variants.
 device-predef-generic-esp32s3-desc = ESP32-S3 (DevKitC-1) dev board on the generic firmware: pins driven from the UI, ADC1 (GPIO1-10), GPIO46 input-only, strapping-safe outputs; OLED 0.96" / TFT 1.77" screens optional.
+device-predef-generic-esp32c6-desc = ESP32-C6 (Waveshare C6-Zero) dev board on the generic firmware: pins driven from the UI, ADC1 (GPIO0-6), strapping-safe outputs; OLED 0.96" / TFT 1.77" screens optional.
 device-predef-generic-esp32cam-desc = AI-Thinker ESP32-CAM (OV2640, PSRAM) on the generic firmware: live video to the server (resolution, quality, fps set from the UI), flash LED (GPIO4) and red LED (GPIO33) driven from the UI. The board has no USB port: flash it through an ESP32-CAM-MB carrier or an FTDI adapter, with GPIO0 tied to GND during the upload.
 common-quoted-message = "{ $name }" — { $message }
 devices-ota-target-line = "{ $device }" → build #{ $version }

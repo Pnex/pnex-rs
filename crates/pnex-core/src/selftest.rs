@@ -114,6 +114,7 @@ pub fn pio_env(soc: Soc) -> &'static str {
         Soc::Esp8266 => "esp8266",
         Soc::Esp32 => "esp32",
         Soc::Esp32C3 => "esp32c3",
+        Soc::Esp32C6 => "esp32c6",
         Soc::Esp32S3 => "esp32s3",
     }
 }

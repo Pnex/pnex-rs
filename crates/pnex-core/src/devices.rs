@@ -28,6 +28,7 @@ pub const GENERIC_IO_PREDEFS: &[&str] = &[
     "generic_esp32c3",
     "generic_esp32",
     "generic_esp32s3",
+    "generic_esp32c6",
 ];
 
 /// Product family of a catalogue model (edge-model.md §2 bis).

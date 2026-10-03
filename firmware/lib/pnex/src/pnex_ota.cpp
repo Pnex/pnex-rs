@@ -5,6 +5,7 @@
 
 #if defined(ESP32)
 #include <Update.h>  // built-in Update library (see env lib_deps)
+#include <WiFi.h>  // WiFiClient (core 3.x headers no longer pull it in)
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <esp_ota_ops.h>

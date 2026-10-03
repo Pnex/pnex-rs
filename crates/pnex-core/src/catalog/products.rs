@@ -88,6 +88,13 @@ pub static ALL: &[CatalogProduct] = &[
         "ESP32-S3 (DevKitC-1) dev board on the generic firmware: pins driven from the UI, ADC1 (GPIO1-10), GPIO46 input-only, strapping-safe outputs; OLED 0.96\" / TFT 1.77\" screens optional.",
         "device-predef-generic-esp32s3-desc",
     ),
+    generic(
+        "generic_esp32c6",
+        "Generic ESP32-C6 (Waveshare C6-Zero)",
+        &boards::WAVESHARE_ESP32C6_ZERO,
+        "ESP32-C6 (Waveshare C6-Zero) dev board on the generic firmware: pins driven from the UI, ADC1 (GPIO0-6), strapping-safe outputs; OLED 0.96\" / TFT 1.77\" screens optional.",
+        "device-predef-generic-esp32c6-desc",
+    ),
     // Generic camera firmware (camera-video.md D77): same /ws/device pin
     // slave as generic_esp32 plus the camera uplink /ws/camera.
     generic(

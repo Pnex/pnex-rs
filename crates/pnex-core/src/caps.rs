@@ -57,6 +57,20 @@ pub const C3_STRAPPING_HIGH: [u16; 3] = [2, 8, 9];
 /// (GPIO5 = ADC2, cassé avec WiFi actif).
 pub const C3_ADC1_PINS: [u16; 5] = [0, 1, 2, 3, 4];
 
+// ─────────────────────── ESP32-C6 ───────────────────────
+// P3 (Waveshare ESP32-C6-Zero, ESP32-C6FH8: in-package flash). Arduino core
+// 3.x only (pioarduino platform).
+
+/// In-package / SPI flash (GPIO24–30) — forbidden for capabilities.
+pub const C6_FLASH_PINS: [u16; 7] = [24, 25, 26, 27, 28, 29, 30];
+/// USB D-/D+ (GPIO12/13) — reserved: USB-JTAG/serial flash/monitor port.
+pub const C6_USB_PINS: [u16; 2] = [12, 13];
+/// Strapping boot-HIGH (GPIO8/9: GPIO9 low at boot = download mode, GPIO8
+/// must then be high): `safe_state: low` forbidden on outputs.
+pub const C6_STRAPPING_HIGH: [u16; 2] = [8, 9];
+/// ADC1 (GPIO0–6) — the C6 has no ADC2.
+pub const C6_ADC1_PINS: [u16; 7] = [0, 1, 2, 3, 4, 5, 6];
+
 // ─────────────────────── ESP32 (classique) ───────────────────────
 // Custom firmware on a classic ESP32 (pio board `esp32dev`) — same rule
 // grid as the C3: protected strapping, ADC1 only, input-only without pull-up.
@@ -105,6 +119,7 @@ pub const S3_ADC1_PINS: [u16; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 pub enum Soc {
     Esp8266,
     Esp32C3,
+    Esp32C6,
     Esp32,
     Esp32S3,
 }
@@ -118,6 +133,7 @@ impl Soc {
         match s.trim().to_ascii_lowercase().as_str() {
             "esp8266" => Some(Soc::Esp8266),
             "esp32-c3" | "esp32c3" => Some(Soc::Esp32C3),
+            "esp32-c6" | "esp32c6" => Some(Soc::Esp32C6),
             "esp32" => Some(Soc::Esp32),
             "esp32-s3" | "esp32s3" => Some(Soc::Esp32S3),
             _ => None,
@@ -131,6 +147,7 @@ impl Soc {
         match self {
             Soc::Esp8266 => "esp8266",
             Soc::Esp32C3 => "esp32-c3",
+            Soc::Esp32C6 => "esp32-c6",
             Soc::Esp32 => "esp32",
             Soc::Esp32S3 => "esp32-s3",
         }
@@ -165,6 +182,11 @@ pub fn is_valid_gpio(gpio: u16) -> bool {
 /// sont réservés).
 pub fn is_valid_gpio_esp32c3(gpio: u16) -> bool {
     gpio <= 21 && !C3_FLASH_PINS.contains(&gpio) && !C3_USB_PINS.contains(&gpio)
+}
+
+/// Valid esp32-c6 pins = GPIO0–23 except USB 12/13 (flash 24–30 forbidden).
+pub fn is_valid_gpio_esp32c6(gpio: u16) -> bool {
+    gpio <= 23 && !C6_USB_PINS.contains(&gpio)
 }
 
 /// Violation des chip-caps — `reason()` donne le message fil/UI (français,
@@ -351,6 +373,20 @@ pub fn pin_fns(soc: Soc, gpio: u16) -> &'static [PinFn] {
             21 => &[PinFn::UartTx],
             _ => NONE,
         },
+        // PneX screen conventions (the C6 routes any peripheral to any pin:
+        // display hints only).
+        Soc::Esp32C6 => match gpio {
+            0 | 1 | 2 | 3 | 4 | 5 | 6 => &[PinFn::Adc1],
+            8 => &[PinFn::Led],
+            16 => &[PinFn::UartTx],
+            17 => &[PinFn::UartRx],
+            18 => &[PinFn::SpiCs],
+            19 => &[PinFn::SpiClk],
+            20 => &[PinFn::SpiMosi],
+            21 => &[PinFn::I2cSda],
+            22 => &[PinFn::I2cScl],
+            _ => NONE,
+        },
         Soc::Esp32 => match gpio {
             32 | 33 => &[PinFn::Adc1, PinFn::Touch],
             34 | 35 | 36 | 37 | 38 | 39 => &[PinFn::Adc1],
@@ -400,6 +436,11 @@ pub fn pin_flags(soc: Soc, gpio: u16) -> &'static [PinFlag] {
             18 | 19 => &[PinFlag::Reserved],
             _ => NONE,
         },
+        Soc::Esp32C6 => match gpio {
+            4 | 5 | 8 | 9 | 15 => &[PinFlag::Strapping],
+            12 | 13 => &[PinFlag::Reserved],
+            _ => NONE,
+        },
         Soc::Esp32 => match gpio {
             34 | 35 | 36 | 37 | 38 | 39 => &[PinFlag::InputOnly],
             0 | 15 | 2 | 12 => &[PinFlag::Strapping],
@@ -430,6 +471,7 @@ pub fn available_modes(soc: Soc, gpio: u16) -> Vec<Mode> {
     let output_capable = match soc {
         Soc::Esp8266 => is_valid_gpio(gpio) && gpio != A0_GPIO,
         Soc::Esp32C3 => is_valid_gpio_esp32c3(gpio),
+        Soc::Esp32C6 => is_valid_gpio_esp32c6(gpio),
         Soc::Esp32 => is_valid_gpio_esp32(gpio) && !ESP32_INPUT_ONLY.contains(&gpio),
         Soc::Esp32S3 => is_valid_gpio_esp32s3(gpio) && !S3_INPUT_ONLY.contains(&gpio),
     };
@@ -481,6 +523,17 @@ pub fn pin_warnings(soc: Soc, gpio: u16) -> Vec<String> {
             }
             if gpio == 5 {
                 w.push(Violation::Adc2Wifi(gpio).token());
+            }
+        }
+        Soc::Esp32C6 => {
+            if C6_FLASH_PINS.contains(&gpio) {
+                w.push(Violation::FlashPins(gpio).token());
+            }
+            if C6_USB_PINS.contains(&gpio) {
+                w.push(Violation::UsbPins(gpio).token());
+            }
+            if C6_STRAPPING_HIGH.contains(&gpio) {
+                w.push(Violation::StrappingHigh(gpio).token());
             }
         }
         Soc::Esp32 => {
@@ -552,6 +605,7 @@ pub fn validate(
     match soc {
         Soc::Esp8266 => validate_esp8266(gpio, mode, opts),
         Soc::Esp32C3 => validate_esp32c3(gpio, mode, opts),
+        Soc::Esp32C6 => validate_esp32c6(gpio, mode, opts),
         Soc::Esp32 => validate_esp32(gpio, mode, opts),
         Soc::Esp32S3 => validate_esp32s3(gpio, mode, opts),
     }
@@ -653,6 +707,37 @@ fn validate_esp32c3(gpio: u16, mode: Mode, opts: &ModeOpts) -> Result<ValidatedP
     if matches!(mode, Mode::DigitalOut | Mode::PwmOut)
         && safe_state == SafeState::Low
         && C3_STRAPPING_HIGH.contains(&gpio)
+    {
+        return Err(Violation::StrappingHigh(gpio));
+    }
+    Ok(ValidatedPin {
+        gpio,
+        mode,
+        pullup,
+        safe_state,
+    })
+}
+
+/// ESP32-C6 — GPIO matrix, ADC1 = GPIO0–6 (no ADC2), strapping boot-HIGH
+/// on 8/9, no input-only pin.
+fn validate_esp32c6(gpio: u16, mode: Mode, opts: &ModeOpts) -> Result<ValidatedPin, Violation> {
+    if !is_valid_gpio_esp32c6(gpio) {
+        if C6_FLASH_PINS.contains(&gpio) {
+            return Err(Violation::FlashPins(gpio));
+        }
+        if C6_USB_PINS.contains(&gpio) {
+            return Err(Violation::UsbPins(gpio));
+        }
+        return Err(Violation::OutOfRange(gpio));
+    }
+    if mode == Mode::AdcIn && !C6_ADC1_PINS.contains(&gpio) {
+        return Err(Violation::Adc2Wifi(gpio));
+    }
+    let pullup = opts.pullup.unwrap_or(false);
+    let safe_state = opts.safe_state.unwrap_or(SafeState::Low);
+    if matches!(mode, Mode::DigitalOut | Mode::PwmOut)
+        && safe_state == SafeState::Low
+        && C6_STRAPPING_HIGH.contains(&gpio)
     {
         return Err(Violation::StrappingHigh(gpio));
     }

@@ -12,8 +12,8 @@ test.describe('hardware', { tag: '@hardware' }, () => {
   test.describe.configure({ mode: 'default' });
   registerAndFlash('c3');
   pinsTests();
-  otaTests();
-  customFirmwareTests();
+  otaTests('c3');
+  customFirmwareTests('c3');
   registerAndFlash('cam');
   cameraTests();
   // ESP32 DevKit 38 pins + TFT: G25 output, G34 (ADC1, input-only) analog.
@@ -22,4 +22,9 @@ test.describe('hardware', { tag: '@hardware' }, () => {
   // NodeMCU V3 + soldered OLED (ESP8266): D7 = GPIO13 output, A0 (wire id 17).
   registerAndFlash('nodemcu');
   pinIoTest('nodemcu', 13, 17);
+  // Waveshare ESP32-C6-Zero (Arduino core 3.x): GP14 output, GP0 (ADC1).
+  registerAndFlash('c6');
+  pinIoTest('c6', 14, 0);
+  otaTests('c6');
+  customFirmwareTests('c6');
 });

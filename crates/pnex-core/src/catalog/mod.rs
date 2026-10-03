@@ -92,6 +92,9 @@ mod tests {
             Soc::Esp32C3 => {
                 caps::is_valid_gpio_esp32c3(gpio) || caps::C3_FLASH_PINS.contains(&gpio)
             }
+            Soc::Esp32C6 => {
+                caps::is_valid_gpio_esp32c6(gpio) || caps::C6_FLASH_PINS.contains(&gpio)
+            }
             Soc::Esp32S3 => {
                 caps::is_valid_gpio_esp32s3(gpio) || caps::S3_FLASH_PINS.contains(&gpio)
             }

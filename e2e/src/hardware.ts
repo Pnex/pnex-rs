@@ -24,6 +24,8 @@ export interface Board {
   screen?: string;
   /** GPIOs the picked screen reserves (never provisioned as pins). */
   screenGpios?: number[];
+  /** IDE chip family label (custom firmware projects). */
+  chipLabel?: string;
 }
 
 export const BOARDS = {
@@ -33,6 +35,15 @@ export const BOARDS = {
     deviceId: process.env.PNEX_E2E_C3_ID ?? 'e2e-c3',
     chip: 'esp32c3',
     baud: 460800,
+    chipLabel: 'ESP32-C3',
+  },
+  c6: {
+    port: process.env.PNEX_E2E_C6_PORT ?? '',
+    model: /^Generic ESP32-C6/,
+    deviceId: process.env.PNEX_E2E_C6_ID ?? 'e2e-c6',
+    chip: 'esp32c6',
+    baud: 460800,
+    chipLabel: 'ESP32-C6',
   },
   cam: {
     port: process.env.PNEX_E2E_CAM_PORT ?? '',

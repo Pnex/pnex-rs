@@ -39,6 +39,7 @@ pub(crate) fn chip_label(family: &str) -> &'static str {
     match family {
         "esp32" => "ESP32",
         "esp32-c3" => "ESP32-C3",
+        "esp32-c6" => "ESP32-C6",
         "esp32-s3" => "ESP32-S3",
         "esp8266" => "ESP8266",
         _ => "?",

@@ -1,15 +1,13 @@
-// Custom firmware on a real ESP32-C3: written in the IDE, attached at
+// Custom firmware on a real board (C3, C6): written in the IDE, attached at
 // registration, built server-side, flashed, its own metric shows up. The
-// board goes back to its generic e2e-c3 firmware afterwards.
+// board goes back to its generic firmware afterwards.
 import { writeFileSync } from 'node:fs';
 import { expect, test } from '../../src/fixtures.ts';
 import type { Api } from '../../src/api.ts';
-import { BOARDS, WIFI, flashMerged, missingHardware } from '../../src/hardware.ts';
+import { BOARDS, WIFI, flashMerged, missingHardware, type Board } from '../../src/hardware.ts';
 import { DevicesPage } from '../../src/pages/devices.ts';
 import { dialog } from '../../src/pages/shell.ts';
 
-const board = BOARDS.c3;
-const FW_DEVICE = 'e2e-c3-fw';
 const METRIC = 'e2e_counter';
 
 interface DeviceRow {
@@ -29,8 +27,10 @@ async function latestBuild(api: Api, id: string): Promise<string> {
   return rows[0]?.build_phase ?? 'none';
 }
 
-export function customFirmwareTests(): void {
-  test('c3: IDE firmware built, flashed, publishes its metric; generic restored', async ({ app, api, page, prefix, capture }, info) => {
+export function customFirmwareTests(key: keyof typeof BOARDS): void {
+  const board: Board = BOARDS[key];
+  const FW_DEVICE = `${board.deviceId}-fw`;
+  test(`${key}: IDE firmware built, flashed, publishes its metric; generic restored`, async ({ app, api, page, prefix, capture }, info) => {
     const missing = missingHardware(board);
     test.skip(!!missing, missing);
     const generic = await device(api, board.deviceId);
@@ -43,7 +43,7 @@ export function customFirmwareTests(): void {
     await page.getByRole('main').getByRole('button', { name: app.t('firmware-new') }).click();
     const create = dialog(page, app.t('firmware-create-title'));
     await create.getByRole('textbox', { name: app.t('firmware-field-name') }).fill(project);
-    await create.getByRole('combobox', { name: new RegExp(`^${app.t('firmware-field-chip')}`) }).selectOption({ label: 'ESP32-C3' });
+    await create.getByRole('combobox', { name: new RegExp(`^${app.t('firmware-field-chip')}`) }).selectOption({ label: board.chipLabel! });
     await create.getByRole('button', { name: app.t('firmware-new'), exact: true }).click();
     const code = page.getByRole('main').locator('textarea').first();
     await expect(code).toHaveValue(/PnexDevice pnex;/);
@@ -78,7 +78,7 @@ export function customFirmwareTests(): void {
         )
         .toBeGreaterThan(0);
     } finally {
-      // 4. Back to the generic firmware already built for e2e-c3.
+      // 4. Back to the generic firmware already built for the board.
       const restore = info.outputPath(`${board.deviceId}.bin`);
       writeFileSync(restore, await api.download(`/download/firmware/${board.deviceId}`));
       await flashMerged(board, restore);

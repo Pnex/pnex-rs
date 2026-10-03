@@ -69,6 +69,10 @@ bool is_protected(uint8_t gpio) {
     return (gpio >= 6 && gpio <= 11) || gpio == 1 || gpio == 3;
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
     return (gpio >= 11 && gpio <= 17) || gpio == 18 || gpio == 19;
+#elif defined(CONFIG_IDF_TARGET_ESP32C6)
+    // In-package flash (GPIO24-30) and USB D-/D+ (12/13); UART0 16/17 stays
+    // free (console on the native USB-CDC port).
+    return gpio >= 24 || gpio == 12 || gpio == 13;
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
     return (gpio >= 26 && gpio <= 37) || gpio == 19 || gpio == 20 || gpio == 43 || gpio == 44;
 #else

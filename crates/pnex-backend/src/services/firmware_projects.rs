@@ -224,6 +224,7 @@ pub fn default_check_board(soc: Soc) -> &'static str {
         Soc::Esp8266 => "nodemcuv2",
         Soc::Esp32 => "esp32dev",
         Soc::Esp32C3 => "esp32-c3-devkitm-1",
+        Soc::Esp32C6 => "esp32-c6-devkitc-1",
         Soc::Esp32S3 => "esp32-s3-devkitc-1",
     }
 }
