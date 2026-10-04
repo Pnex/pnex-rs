@@ -1422,3 +1422,128 @@ async fn org_retention_only_shortens_and_drives_the_purge() {
     })
     .await;
 }
+
+// ─────────────── Templates, functions, read-only surfaces ───────────────
+
+/// Runs one assistant turn made of the given tool calls (one per model
+/// step), then a final text; returns the trace.
+async fn run_tools(
+    server: &axum_test::TestServer,
+    token: &str,
+    org: i64,
+    calls: Vec<(&str, serde_json::Value)>,
+) -> Vec<serde_json::Value> {
+    reset_mock();
+    for (i, (name, args)) in calls.into_iter().enumerate() {
+        push_reply(MockReply::Ok(reply_tool_call(&format!("t{i}"), name, args)));
+    }
+    push_reply(MockReply::Ok(reply_text("done")));
+    let body = chat_send(server, token, org, "go")
+        .await
+        .json::<serde_json::Value>();
+    body["tool_trace"].as_array().cloned().unwrap_or_default()
+}
+
+/// Templates: created, previewed without any delivery, rewritten only on
+/// top of the state read (stale updated_at refused); a viewer cannot write.
+#[tokio::test]
+#[serial]
+async fn assistant_writes_templates_on_top_of_what_it_read() {
+    with_app_ai(true, true, |server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let trace = run_tools(&server, &env.alice, org, vec![(
+            "create_notification_template",
+            serde_json::json!({"name": "High temp", "subject": "Alert", "body": "Temperature {{ temp }} °C"}),
+        )])
+        .await;
+        assert_eq!(trace[0]["ok"], true, "{trace:?}");
+        let list = send_json(&server, "GET", "/api/v1/notify/templates", &env.alice, org, None)
+            .await
+            .json::<serde_json::Value>();
+        let tpl = &list["results"][0];
+        let id = tpl["id"].as_str().expect("id").to_string();
+        assert_eq!(tpl["vars"][0]["name"], "temp", "variables detected: {tpl}");
+
+        let trace = run_tools(&server, &env.alice, org, vec![
+            ("preview_notification_template", serde_json::json!({"template_id": id, "vars": {"temp": "42"}})),
+            ("update_notification_template", serde_json::json!({
+                "template_id": id, "expected_updated_at": "2000-01-01T00:00:00+00:00",
+                "name": "High temp", "body": "changed"})),
+            ("update_notification_template", serde_json::json!({
+                "template_id": id, "expected_updated_at": tpl["updated_at"],
+                "name": "High temp", "body": "Hot: {{ temp }}"})),
+        ])
+        .await;
+        assert_eq!(trace[0]["ok"], true, "{trace:?}");
+        assert_eq!(trace[1]["ok"], false, "stale state refused: {trace:?}");
+        assert_eq!(trace[2]["ok"], true, "{trace:?}");
+        let rendered = mock_requests()[1].to_string();
+        assert!(rendered.contains("Temperature 42"), "preview rendered: {rendered}");
+        let deliveries = send_json(&server, "GET", "/api/v1/notify/deliveries", &env.alice, org, None).await;
+        assert!(!deliveries.text().contains("\"status\""), "nothing sent: {}", deliveries.text());
+
+        // A viewer cannot write a template.
+        let _ = personal_org(&server, &env.bob).await;
+        let add = server
+            .post(&format!("/api/v1/orgs/{org}/members"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .add_header("Content-Type", "application/json")
+            .json(&serde_json::json!({"email": "bob@example.com", "role": "viewer"}))
+            .await;
+        assert_eq!(add.status_code(), 201);
+        let trace = run_tools(&server, &env.bob, org, vec![(
+            "create_notification_template",
+            serde_json::json!({"name": "x", "body": "y"}),
+        )])
+        .await;
+        assert_eq!(trace[0]["ok"], false, "{trace:?}");
+    })
+    .await;
+}
+
+/// Functions: created, read back with its code, a new version only on top
+/// of the version read — the conflict check now lives in the shared
+/// service, so the UI route gets it too.
+#[tokio::test]
+#[serial]
+async fn assistant_versions_functions_on_top_of_what_it_read() {
+    with_app_ai(true, true, |server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let code = "# @input x number\n# @output y number\ndef main(x):\n    return {\"y\": x * 2}\n";
+        let trace = run_tools(&server, &env.alice, org, vec![(
+            "create_function",
+            serde_json::json!({"name": "double", "language": "starlark", "code": code}),
+        )])
+        .await;
+        assert_eq!(trace[0]["ok"], true, "{trace:?}");
+        let list = send_json(&server, "GET", "/api/v1/functions", &env.alice, org, None)
+            .await
+            .json::<serde_json::Value>();
+        let id = list["results"][0]["id"].as_i64().expect("function id");
+
+        let trace = run_tools(&server, &env.alice, org, vec![
+            ("get_function", serde_json::json!({"function_id": id})),
+            ("update_function", serde_json::json!({"function_id": id, "expected_version": 1, "code": code.replace('2', "3")})),
+            ("update_function", serde_json::json!({"function_id": id, "expected_version": 1, "code": code})),
+        ])
+        .await;
+        assert_eq!(trace[0]["ok"], true, "{trace:?}");
+        assert!(mock_requests()[1].to_string().contains("x * 2"), "code read back");
+        assert_eq!(trace[1]["ok"], true, "{trace:?}");
+        assert_eq!(trace[2]["ok"], false, "stale version refused: {trace:?}");
+        let versions = send_json(&server, "GET", &format!("/api/v1/functions/{id}/versions"), &env.alice, org, None).await;
+        assert!(versions.text().contains("\"version_number\":2"), "{}", versions.text());
+        assert!(!versions.text().contains("\"version_number\":3"), "{}", versions.text());
+
+        // Read-only surfaces answer (empty org).
+        let trace = run_tools(&server, &env.alice, org, vec![
+            ("list_pois", serde_json::json!({})),
+            ("list_tours", serde_json::json!({})),
+            ("list_annotation_sets", serde_json::json!({})),
+        ])
+        .await;
+        assert!(trace.iter().all(|t| t["ok"] == true), "{trace:?}");
+    })
+    .await;
+}

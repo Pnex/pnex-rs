@@ -2,81 +2,20 @@ use super::*;
 
 // ─────────────────────────────── Templates ───────────────────────────────
 
-#[derive(Debug, Deserialize)]
-pub(super) struct TemplateInput {
-    name: String,
-    #[serde(default)]
-    subject: Option<String>,
-    body: String,
-    #[serde(default)]
-    vars: Vec<TemplateVar>,
-}
+use crate::services::notify_templates::{self as tpl_service, TemplateInput, TemplateWriteError};
 
-fn validate_template_input(name: &str, body: &str, subject: Option<&str>) -> Option<Response> {
-    let name = name.trim();
-    if name.is_empty() {
-        return Some(field_status("name", err_codes::FIELD_REQUIRED));
-    }
-    if name.chars().count() > 200 {
-        return Some(field_status(
-            "name",
-            &format!("{}:200", err_codes::FIELD_MAX_LENGTH),
-        ));
-    }
-    if body.trim().is_empty() {
-        return Some(field_status("body", err_codes::FIELD_REQUIRED));
-    }
-    // Syntaxe minijinja : rendu à vide pour refuser un template cassé à la
-    // sauvegarde (l'erreur au send serait bien plus difficile à déboguer).
-    if let Err(e) = pnex_notify::render(
-        subject,
-        body,
-        &Default::default(),
-        serde_json::json!({}),
-        serde_json::json!({}),
-    ) {
-        if matches!(e, pnex_notify::NotifyError::Render(_)) {
-            return Some(template_render_error(&e).into_response());
-        }
-        // TooLarge sur contextes vides : impossible — toute autre erreur non.
-    }
-    None
-}
-
-/// Fusionne les vars détectées dans le template (`{{ name }}` /
-/// `{{ vars.name }}` du sujet et du corps, cf. `pnex_notify::template_vars`)
-/// avec celles déclarées par l'UI : une var détectée manquante est ajoutée
-/// (example vide), l'example d'une var déjà déclarée est conservé. L'ordre
-/// UI d'abord, puis les détectées manquantes dans l'ordre d'apparition —
-/// cet ordre devient l'ordre des ancres canvas du nœud notify.
-fn merge_template_vars(detected: Vec<String>, declared: Vec<TemplateVar>) -> Vec<TemplateVar> {
-    let mut out = declared;
-    for name in detected {
-        if !out.iter().any(|v| v.name == name) {
-            out.push(TemplateVar {
-                name,
-                example: String::new(),
-            });
-        }
-    }
-    out
-}
-
-async fn ensure_template_name_free(db: &DatabaseConnection, org_id: i64, name: &str) -> Result<()> {
-    let clash = NotifyTemplates::find()
-        .filter(notify_templates::Column::OrgId.eq(org_id))
-        .filter(notify_templates::Column::Name.eq(name))
-        .one(db)
-        .await
-        .map_err(|_| Error::InternalServerError)?
-        .is_some();
-    if clash {
-        return Err(conflict(
+/// Service error → the historical HTTP shapes (400 field, 400 render,
+/// 409 name conflict, 500).
+fn template_write_response(e: TemplateWriteError) -> Result<Response> {
+    match e {
+        TemplateWriteError::Field(field, token) => Ok(field_status(field, &token)),
+        TemplateWriteError::Render(e) => Ok(template_render_error(&e).into_response()),
+        TemplateWriteError::NameTaken => Err(conflict(
             "notify-template-name-conflict",
             "A template already uses this name.",
-        ));
+        )),
+        TemplateWriteError::Db => Err(Error::InternalServerError),
     }
-    Ok(())
 }
 
 /// `GET /api/v1/notify/templates`.
@@ -130,26 +69,10 @@ pub(super) async fn create_template(
             "Owner, admin or member role required to manage notifications.",
         ));
     }
-    let name = params.name.trim().to_string();
-    if let Some(resp) = validate_template_input(&name, &params.body, params.subject.as_deref()) {
-        return Ok(resp);
-    }
-    ensure_template_name_free(&ctx.db, org.org.id, &name).await?;
-    let vars = merge_template_vars(
-        pnex_notify::template_vars(params.subject.as_deref(), &params.body),
-        params.vars,
-    );
-    let m = notify_templates::ActiveModel {
-        org_id: Set(org.org.id),
-        name: Set(name),
-        subject: Set(params.subject),
-        body: Set(params.body),
-        vars: Set(parse_vars(&vars)?),
-        ..Default::default()
-    }
-    .insert(&ctx.db)
-    .await
-    .map_err(|_| Error::InternalServerError)?;
+    let m = match tpl_service::create(&ctx.db, org.org.id, &params).await {
+        Ok(m) => m,
+        Err(e) => return template_write_response(e),
+    };
     Ok((StatusCode::CREATED, format::json(template_dto(m))).into_response())
 }
 
@@ -169,26 +92,10 @@ pub(super) async fn update_template(
     let Some(m) = find_template(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
-    let name = params.name.trim().to_string();
-    if let Some(resp) = validate_template_input(&name, &params.body, params.subject.as_deref()) {
-        return Ok(resp);
-    }
-    if name != m.name {
-        ensure_template_name_free(&ctx.db, org.org.id, &name).await?;
-    }
-    let vars = merge_template_vars(
-        pnex_notify::template_vars(params.subject.as_deref(), &params.body),
-        params.vars,
-    );
-    let mut active: notify_templates::ActiveModel = m.into();
-    active.name = Set(name);
-    active.subject = Set(params.subject);
-    active.body = Set(params.body);
-    active.vars = Set(parse_vars(&vars)?);
-    let updated = active
-        .update(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
+    let updated = match tpl_service::update(&ctx.db, m, &params).await {
+        Ok(m) => m,
+        Err(e) => return template_write_response(e),
+    };
     Ok(format::json(template_dto(updated)).into_response())
 }
 
@@ -251,24 +158,8 @@ pub(super) async fn preview_template(
             )
         })?
     };
-    // Un example **vide** n'est pas injecté : une var déclarée vide
-    // masquerait la clé payload de même nom au niveau racine du rendu
-    // (vars > payload dans le contexte — bug du preview « [] alerte »).
-    let declared: Vec<TemplateVar> = serde_json::from_value(m.vars.clone()).unwrap_or_default();
-    let mut vars = vars;
-    for v in declared {
-        if !v.example.is_empty() {
-            vars.entry(v.name).or_insert(v.example);
-        }
-    }
-    let rendered = pnex_notify::render(
-        m.subject.as_deref(),
-        &m.body,
-        &vars,
-        payload,
-        serde_json::json!({ "preview": true }),
-    )
-    .map_err(|e| template_render_error(&e))?;
+    let rendered =
+        tpl_service::preview(&m, vars, payload).map_err(|e| template_render_error(&e))?;
     Ok(format::json(pnex_core::PreviewResult {
         subject: rendered.subject,
         body: rendered.body,

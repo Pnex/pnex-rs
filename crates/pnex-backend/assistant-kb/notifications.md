@@ -24,3 +24,4 @@ The Notifications page (Automation menu) manages how flows notify people: channe
 - Templates and channels are resolved at deploy: after changing or deleting a channel or template used by a flow, redeploy the flow (the editor warns about stale references).
 - Channel and template names are unique in the organization.
 - Viewers see the page read-only.
+- The assistant can read, preview and write message templates, never channels, and it never sends a message.

@@ -36,6 +36,7 @@ pub mod memory;
 /// Notifications (D49–D54) — broker WS, journal, pruner, livraison.
 pub mod notify;
 pub mod notify_journal;
+pub mod notify_templates;
 pub mod openobserve;
 pub mod ota;
 pub mod pois;

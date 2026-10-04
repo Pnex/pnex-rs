@@ -28,6 +28,9 @@ pub enum FunctionWriteError {
     Directive(pnex_core::DirectiveError),
     /// Panne DB (mise en 500 par le contrôleur).
     Db(String),
+    /// Optimistic concurrency lost: `expected_version_number` is no longer
+    /// the latest version (checked inside the save transaction).
+    Conflict { current: i64 },
 }
 
 impl std::fmt::Display for FunctionWriteError {
@@ -36,6 +39,12 @@ impl std::fmt::Display for FunctionWriteError {
             FunctionWriteError::Field(field, msg) => write!(f, "{field} : {msg}"),
             FunctionWriteError::Directive(e) => write!(f, "code : {e}"),
             FunctionWriteError::Db(s) => write!(f, "{s}"),
+            FunctionWriteError::Conflict { current } => {
+                write!(
+                    f,
+                    "version conflict: the function is now at version {current}"
+                )
+            }
         }
     }
 }
@@ -185,6 +194,18 @@ pub async fn save_new_version(
         .begin()
         .await
         .map_err(|e| FunctionWriteError::Db(format!("transaction : {e}")))?;
+    // Optimistic concurrency inside the transaction: the caller edited the
+    // version it read; a save in between is a conflict, never overwritten.
+    let latest_number = latest_version(&txn, function_row.id)
+        .await
+        .map_err(|e| FunctionWriteError::Db(format!("lecture version max : {e}")))?
+        .map(|v| v.version_number)
+        .unwrap_or(0);
+    if latest_number != input.expected_version_number {
+        return Err(FunctionWriteError::Conflict {
+            current: latest_number,
+        });
+    }
     let mut active: functions::ActiveModel = function_row.clone().into();
     if let Some(n) = &name {
         active.name = Set(n.clone());
