@@ -150,10 +150,19 @@ appliquer les classes du lot 2).
   refresh au champ (un seul groupe flex) → plus de bouton seul sur une ligne
   (9 pages). Vérifié sur le téléphone : devices 196 → 61 px par ligne, plus
   aucune action hors écran sur dashboards / orgs / flows / devices.
+- **2026-10-04 — suite** (retour user « le dashboard ouvert est moche ») :
+  en-tête de la vue dashboard compacté (553 → 392 px : ← icône, titre
+  tronqué, ✎ ; version + cadence en 2e ligne) ; « Ouvrir » garde son
+  libellé dans la liste (œil, plus d'éclair « flash ») ; libellé
+  « Rafraîchissement » masqué sous `sm` (accueil libéré, M14) ; recherche
+  globale dans le drawer mobile, qui se ferme à l'ouverture d'un résultat
+  (M16) ; carte : panneau POI en overlay fermé par défaut sous `lg` (M13) ;
+  en-tête de l'app masqué tant qu'un éditeur est monté
+  (`ui::EDITORS_OPEN`, compteur), éditeur en `100dvh` (M12).
 - Reste : M7 (refresh encore dans l'en-tête sur orgs, system, cameras,
   models, controls, dashboards, dans la barre d'onglets sur edges/refs et
-  notifications — cohérent par famille, à trancher), M12 (double en-tête
-  éditeur), M6 tables hors socle, hors-lot M13–M17.
+  notifications — cohérent par famille, à trancher), M6 tables hors socle,
+  M15 pinout illisible, M17 détail org.
 
 ## 4. Décision à prendre (avant le lot 2)
 

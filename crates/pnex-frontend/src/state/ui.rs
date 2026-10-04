@@ -10,6 +10,12 @@ use crate::storage::{self, KeyValueStorage, KEY_SIDEBAR_RAIL};
 /// Sidebar desktop repliée (rail d'icônes `w-16`) — défaut : dépliée.
 pub static RAIL: GlobalSignal<bool> = GlobalSignal::new(|| false);
 
+/// Number of mounted full-screen editors (`EditorShell`). While > 0 the
+/// mobile app header is hidden: the editor bar carries its own back button.
+/// A counter, not a bool: switching editors may mount the next one before
+/// the previous one drops.
+pub static EDITORS_OPEN: GlobalSignal<u32> = GlobalSignal::new(|| 0);
+
 /// Replie la sidebar (rail) et persiste la préférence.
 pub fn set(rail: bool) {
     RAIL.with_mut(|v| *v = rail);

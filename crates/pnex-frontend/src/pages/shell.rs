@@ -67,6 +67,12 @@ fn ShellContent() -> Element {
                                 crate::components::icons::X { class: "h-6 w-6" }
                             }
                         }
+                        // Global search (D69) in the drawer too: on a phone
+                        // the desktop sidebar never shows.
+                        SidebarSearch {
+                            rail: false,
+                            on_navigate: Some(Callback::new(move |()| sidebar_open.set(false))),
+                        }
                         div { class: "flex-1 min-h-0 overflow-y-auto sidebar-scroll px-4 py-6",
                             Nav {
                                 on_navigate: Some(Callback::new(move |()| sidebar_open.set(false))),
@@ -101,7 +107,9 @@ fn ShellContent() -> Element {
 
             div { class: if rail { "lg:pl-16" } else { "lg:pl-64" },
                 // En-tête mobile
-                div { class: "sticky top-0 z-40 lg:hidden",
+                // Hidden while a full-screen editor is open: its own bar
+                // has the back button (saves 64 px of canvas on phones).
+                div { class: if *ui::EDITORS_OPEN.read() > 0 { "hidden" } else { "sticky top-0 z-40 lg:hidden" },
                     div { class: "flex h-16 items-center justify-between bg-white px-4 shadow-sm",
                         button {
                             class: "text-gray-500 hover:text-gray-600",
@@ -727,7 +735,12 @@ fn NavAutomationGroup(on_navigate: Option<Callback<()>>, rail: bool) -> Element 
 /// (school `components/assistant.rs`). Rail mode: one icon button that
 /// re-expands the sidebar.
 #[component]
-fn SidebarSearch(rail: bool) -> Element {
+fn SidebarSearch(
+    rail: bool,
+    /// Called after a hit opens its object (the mobile drawer closes).
+    #[props(default)]
+    on_navigate: Option<Callback<()>>,
+) -> Element {
     const DEBOUNCE_MS: u64 = 250;
     const MIN_CHARS: usize = 2;
 
@@ -856,6 +869,9 @@ fn SidebarSearch(rail: bool) -> Element {
                                 if let Some((entity_type, hit)) = flat.get(idx) {
                                     let hit = hit.clone();
                                     open_hit(&navigator, entity_type, &hit);
+                                    if let Some(cb) = on_navigate {
+                                        cb.call(());
+                                    }
                                 }
                             }
                             Key::Escape => {
@@ -895,6 +911,7 @@ fn SidebarSearch(rail: bool) -> Element {
                                 hit: hit.clone(),
                                 active: idx == active(),
                                 is_group_start: is_group_start(&flat, idx),
+                                on_navigate,
                             }
                         }
                     }
@@ -983,6 +1000,7 @@ fn SearchHitRow(
     hit: crate::api::search::SearchHit,
     active: bool,
     is_group_start: bool,
+    on_navigate: Option<Callback<()>>,
 ) -> Element {
     let navigator = use_navigator();
     rsx! {
@@ -993,7 +1011,12 @@ fn SearchHitRow(
         }
         button {
             class: if active { "flex w-full items-center gap-3 px-3 py-2 text-left bg-blue-600/10" } else { "flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-gray-100" },
-            onclick: move |_| open_hit(&navigator, &entity_type, &hit),
+            onclick: move |_| {
+                open_hit(&navigator, &entity_type, &hit);
+                if let Some(cb) = on_navigate {
+                    cb.call(());
+                }
+            },
             HitIcon { entity_type: entity_type.clone() }
             span { class: "flex-1 min-w-0",
                 div { class: "text-sm font-medium text-gray-900 truncate", {hit.title.clone()} }
