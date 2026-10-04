@@ -195,7 +195,10 @@ pub(super) fn PoiDetail(
             // de rappel en bas à gauche.
             if let Some(target) = preview() {
                 if !preview_hidden() {
-                    div { class: "absolute inset-y-0 left-0 right-96 z-10 bg-white flex flex-col",
+                    // Phone: full screen over the drawer (left of a 384 px drawer
+                    // there is ~9 px, the header spilled over the drawer);
+                    // its close button returns to the drawer.
+                    div { class: "absolute inset-y-0 left-0 right-0 z-10 bg-white flex flex-col md:right-96",
                         PoiPreviewPanel {
                             key: "preview-{target.kind}-{target.id}",
                             target,
