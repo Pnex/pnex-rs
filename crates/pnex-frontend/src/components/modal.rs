@@ -10,8 +10,11 @@ use super::icons;
 /// Footer row of a dialog's actions, pinned to the bottom of the scrolling
 /// [`Modal`] body so the submit stays reachable in long forms (negative
 /// margins = the body padding). Must be a direct descendant of the body
-/// content (no extra padded or scrolling wrapper in between).
-pub const MODAL_FOOTER: &str = "sticky bottom-0 -mx-4 -mb-4 flex justify-end gap-2 border-t border-gray-100 bg-white px-4 py-3 sm:-mx-6 sm:-mb-6 sm:px-6";
+/// content (no extra padded or scrolling wrapper in between). The sticky
+/// offset is negative too: a sticky box stays inside the body's *content*
+/// box, so `bottom-0` lifted the footer by the padding and it covered the
+/// last line of a form that did not even scroll.
+pub const MODAL_FOOTER: &str = "sticky -bottom-4 sm:-bottom-6 -mx-4 -mb-4 flex justify-end gap-2 border-t border-gray-100 bg-white px-4 py-3 sm:-mx-6 sm:-mb-6 sm:px-6";
 
 #[component]
 pub fn Modal(
