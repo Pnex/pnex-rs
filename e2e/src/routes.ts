@@ -17,6 +17,7 @@ export const ROUTES: RouteCase[] = [
   { path: '/events', title: 'events-title' },
   { path: '/studio', title: 'nav-studio' },
   { path: '/annotations', title: 'annot-page-title' },
+  { path: '/controls', title: 'nav-controls' },
   { path: '/devices', title: 'nav-devices' },
   { path: '/mixtures', title: 'mixtures-title' },
   { path: '/flows', title: 'nav-flows' },

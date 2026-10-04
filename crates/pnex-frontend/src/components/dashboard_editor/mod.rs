@@ -427,7 +427,7 @@ pub fn DashboardEditor(
                 }
             },
             inspector: inspector_slot,
-            empty_hint: if cx.layout.cloned().widgets.is_empty() { Some(t!("eshell-empty-hint").to_string()) } else { None },
+            empty_hint: if cx.layout.cloned().widgets.is_empty() && !mobile_format { Some(t!("eshell-empty-hint").to_string()) } else { None },
         }
         // ── Modales / tiroir versions
         if conflict() {
