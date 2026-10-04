@@ -91,14 +91,14 @@ pub fn Firmware() -> Element {
                     }
                 }
             },
-        ),
+        ).secondary(),
         Column::new(
             t!("firmware-col-revision").to_string(),
             |p: &FirmwareProjectSummary| {
                 rsx! { {format!("r{}", p.current_revision_number)} }
             },
         )
-        .with_td_class("text-sm text-gray-600"),
+        .with_td_class("text-sm text-gray-600").secondary(),
         Column::new(
             t!("firmware-col-devices").to_string(),
             |p: &FirmwareProjectSummary| {
@@ -112,7 +112,7 @@ pub fn Firmware() -> Element {
                 rsx! { {date_label(&p.updated_at)} }
             },
         )
-        .with_td_class("text-gray-500 text-sm"),
+        .with_td_class("text-gray-500 text-sm").secondary(),
         Column::new(
             t!("common-actions").to_string(),
             move |p: &FirmwareProjectSummary| {
@@ -136,7 +136,7 @@ pub fn Firmware() -> Element {
                     }
                 }
             },
-        ),
+        ).actions(),
     ];
 
     rsx! {

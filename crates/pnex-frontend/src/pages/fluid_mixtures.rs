@@ -127,7 +127,7 @@ pub fn FluidMixtures() -> Element {
                 rsx! { {m.description.clone().unwrap_or_else(|| "—".into())} }
             },
         )
-        .with_td_class("text-gray-600"),
+        .with_td_class("text-gray-600").secondary(),
         Column::new(
             t!("mixtures-basis").to_string(),
             |m: &pnex_core::FluidMixture| {
@@ -139,7 +139,7 @@ pub fn FluidMixtures() -> Element {
                 }
             },
         )
-        .with_td_class("text-gray-600"),
+        .with_td_class("text-gray-600").secondary(),
         Column::new(
             t!("mixtures-components").to_string(),
             |m: &pnex_core::FluidMixture| {
@@ -165,7 +165,7 @@ pub fn FluidMixtures() -> Element {
                 }
             },
         )
-        .with_td_class("text-gray-500 text-sm"),
+        .with_td_class("text-gray-500 text-sm").secondary(),
         Column::new(
             t!("common-actions").to_string(),
             move |m: &pnex_core::FluidMixture| {
@@ -207,7 +207,7 @@ pub fn FluidMixtures() -> Element {
                     }
                 }
             },
-        ),
+        ).actions(),
     ];
 
     rsx! {

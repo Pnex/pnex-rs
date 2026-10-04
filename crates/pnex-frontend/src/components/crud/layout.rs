@@ -64,9 +64,11 @@ pub fn ListLayout(
     children: Element,
 ) -> Element {
     rsx! {
-        div { class: "p-6",
+        // Phone: tighter gutters, bottom room so the floating assistant
+        // button never covers the last row; desktop values from md up.
+        div { class: "p-4 pb-24 md:p-6",
             if header {
-                div { class: "mb-8 flex items-center justify-between flex-wrap gap-3",
+                div { class: "mb-4 md:mb-8 flex items-center justify-between flex-wrap gap-3",
                     div { class: "flex items-center gap-3",
                         if let Some(back) = on_back {
                             button {
@@ -102,7 +104,7 @@ pub fn ListLayout(
                 }
             }
             if let Some(filters) = filters {
-                div { class: "mb-6 flex flex-wrap items-center gap-2", {filters} }
+                div { class: "mb-4 md:mb-6 flex flex-wrap items-center gap-2", {filters} }
             }
             {children}
         }
@@ -114,9 +116,9 @@ pub fn ListLayout(
 fn TitleBlock(title: String, subtitle: Option<String>) -> Element {
     rsx! {
         div {
-            h1 { class: "text-3xl font-bold text-gray-900", {title} }
+            h1 { class: "text-2xl md:text-3xl font-bold text-gray-900", {title} }
             if let Some(sub) = subtitle {
-                p { class: "text-gray-600 mt-2", {sub} }
+                p { class: "text-sm md:text-base text-gray-600 mt-1 md:mt-2", {sub} }
             }
         }
     }

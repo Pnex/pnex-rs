@@ -14,7 +14,7 @@ use crate::components::icons;
 #[component]
 pub fn FilterBar(children: Element) -> Element {
     rsx! {
-        div { class: "mb-6 flex flex-wrap items-center gap-2", {children} }
+        div { class: "mb-4 md:mb-6 flex flex-wrap items-center gap-2", {children} }
     }
 }
 

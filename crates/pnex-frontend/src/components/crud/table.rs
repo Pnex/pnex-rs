@@ -46,6 +46,46 @@ pub struct Column<T: 'static> {
     pub td_class: &'static str,
     /// Rendu du contenu de cellule pour une ligne (boutons, badges…).
     pub cell: Rc<dyn Fn(&T) -> Element>,
+    /// Mobile behaviour of the column (desktop rendering is unchanged).
+    pub kind: ColumnKind,
+}
+
+/// Mobile behaviour of a [`Column`]. Below the `md` breakpoint the table
+/// scrolls horizontally; these roles keep it usable on a phone.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum ColumnKind {
+    /// Always visible.
+    #[default]
+    Normal,
+    /// Hidden below `md` (dates, versions, details) so the essential
+    /// columns fit a phone screen.
+    Secondary,
+    /// Row actions: pinned to the right edge below `md`, so they stay
+    /// reachable while the rest of the row scrolls.
+    Actions,
+}
+
+// Full class literals (Tailwind scans the sources, no string building).
+const SECONDARY_CLASS: &str = "hidden md:table-cell";
+const ACTIONS_TH_CLASS: &str = "sticky right-0 bg-gray-50 md:static";
+const ACTIONS_TD_CLASS: &str = "sticky right-0 bg-white group-hover:bg-gray-50 whitespace-nowrap shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.25)] md:static md:shadow-none";
+
+impl ColumnKind {
+    fn th_class(self) -> &'static str {
+        match self {
+            ColumnKind::Normal => "",
+            ColumnKind::Secondary => SECONDARY_CLASS,
+            ColumnKind::Actions => ACTIONS_TH_CLASS,
+        }
+    }
+
+    fn td_class(self) -> &'static str {
+        match self {
+            ColumnKind::Normal => "",
+            ColumnKind::Secondary => SECONDARY_CLASS,
+            ColumnKind::Actions => ACTIONS_TD_CLASS,
+        }
+    }
 }
 
 impl<T: 'static> Column<T> {
@@ -54,12 +94,25 @@ impl<T: 'static> Column<T> {
             header,
             td_class: "",
             cell: Rc::new(cell),
+            kind: ColumnKind::Normal,
         }
     }
 
     /// Pose les classes additionnelles du `<td>`.
     pub fn with_td_class(mut self, td_class: &'static str) -> Self {
         self.td_class = td_class;
+        self
+    }
+
+    /// Hides the column below `md` (see [`ColumnKind::Secondary`]).
+    pub fn secondary(mut self) -> Self {
+        self.kind = ColumnKind::Secondary;
+        self
+    }
+
+    /// Marks the row-actions column (see [`ColumnKind::Actions`]).
+    pub fn actions(mut self) -> Self {
+        self.kind = ColumnKind::Actions;
         self
     }
 }
@@ -72,6 +125,7 @@ impl<T> PartialEq for Column<T> {
     fn eq(&self, other: &Self) -> bool {
         self.header == other.header
             && self.td_class == other.td_class
+            && self.kind == other.kind
             && Rc::ptr_eq(&self.cell, &other.cell)
     }
 }
@@ -106,7 +160,9 @@ pub fn DataTable<T: Clone + PartialEq + 'static>(
     });
 
     rsx! {
-        div { class: "bg-white rounded-lg shadow-sm overflow-hidden",
+        // Horizontal scroll instead of clipping: on a phone the columns past
+        // the viewport (row actions first) must stay reachable.
+        div { class: "bg-white rounded-lg shadow-sm overflow-x-auto",
             table { class: "min-w-full divide-y divide-gray-200",
                 thead { class: "bg-gray-50",
                     tr {
@@ -133,7 +189,7 @@ pub fn DataTable<T: Clone + PartialEq + 'static>(
                             }
                         }
                         for col in columns.iter() {
-                            th { class: "th", {col.header.clone()} }
+                            th { class: "th {col.kind.th_class()}", {col.header.clone()} }
                         }
                     }
                 }
@@ -141,7 +197,7 @@ pub fn DataTable<T: Clone + PartialEq + 'static>(
                     for (key, sel_key, row) in keyed_rows.iter().map(|(k, r)| (k.clone(), k.clone(), *r)) {
                         tr {
                             key: "{key}",
-                            class: if row_click.is_some() { "hover:bg-gray-50 cursor-pointer" } else { "hover:bg-gray-50" },
+                            class: if row_click.is_some() { "group hover:bg-gray-50 cursor-pointer" } else { "group hover:bg-gray-50" },
                             onclick: move |_| {
                                 if let Some(cb) = row_click.as_ref() {
                                     cb.call(key.clone());
@@ -166,7 +222,9 @@ pub fn DataTable<T: Clone + PartialEq + 'static>(
                                 }
                             }
                             for col in columns.iter() {
-                                td { class: "td {col.td_class}", {(col.cell)(row)} }
+                                td { class: "td {col.kind.td_class()} {col.td_class}",
+                                    {(col.cell)(row)}
+                                }
                             }
                         }
                     }

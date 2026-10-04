@@ -241,7 +241,7 @@ pub fn Annotations() -> Element {
                 rsx! { {attached_label} }
             }
         })
-        .with_td_class("text-gray-600"),
+        .with_td_class("text-gray-600").secondary(),
         Column::new(
             t!("annot-page-col-status").to_string(),
             |s: &pnex_core::AnnotationLayerSummary| {
@@ -290,7 +290,7 @@ pub fn Annotations() -> Element {
                 }
             },
         )
-        .with_td_class("text-right"),
+        .with_td_class("text-right").actions(),
     ];
 
     rsx! {

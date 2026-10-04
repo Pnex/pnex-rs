@@ -82,7 +82,7 @@ pub fn Controls() -> Element {
                     code { class: "text-xs text-gray-500", "{item}" }
                 }
             }
-        }),
+        }).secondary(),
         Column::new(t!("controls-col-kind").to_string(), |c: &UiControl| {
             let kind = kind_text(c.spec.kind);
             let domain = spec_summary(&c.spec);
@@ -118,7 +118,7 @@ pub fn Controls() -> Element {
                     span { class: "text-sm text-gray-700", {names.join(", ")} }
                 }
             }
-        }),
+        }).secondary(),
         Column::new(String::new(), move |c: &UiControl| {
             let edit = c.clone();
             let del = c.clone();
@@ -139,7 +139,7 @@ pub fn Controls() -> Element {
                 }
             }
         })
-        .with_td_class("text-right whitespace-nowrap"),
+        .with_td_class("text-right whitespace-nowrap").actions(),
     ];
 
     rsx! {

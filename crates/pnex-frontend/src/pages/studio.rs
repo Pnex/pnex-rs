@@ -106,7 +106,7 @@ pub fn Studio() -> Element {
                 rsx! { {format!("v{}", tour.latest_version_number)} }
             },
         )
-        .with_td_class("text-sm text-gray-600"),
+        .with_td_class("text-sm text-gray-600").secondary(),
         Column::new(
             t!("studio-col-publication").to_string(),
             |tour: &TourSummary| {
@@ -127,7 +127,7 @@ pub fn Studio() -> Element {
                 rsx! { {date_label(&tour.updated_at)} }
             },
         )
-        .with_td_class("text-gray-500 text-sm"),
+        .with_td_class("text-gray-500 text-sm").secondary(),
         Column::new(
             t!("common-actions").to_string(),
             move |tour: &TourSummary| {
@@ -152,7 +152,7 @@ pub fn Studio() -> Element {
                     }
                 }
             },
-        ),
+        ).actions(),
     ];
 
     rsx! {

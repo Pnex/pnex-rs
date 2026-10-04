@@ -205,7 +205,7 @@ fn ListView(
                     "{label}"
                 }
             }
-        }),
+        }).secondary(),
         Column::new(t!("db-version").to_string(), |d: &VizDashboardSummary| {
             let version_label = t!("db-current-version", version: d.current_version_number).to_string();
             rsx! {
@@ -225,28 +225,34 @@ fn ListView(
                 rsx! {
                     button {
                         class: "inline-flex items-center px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 mr-2",
+                        title: t!("db-open"),
+                        aria_label: t!("db-open"),
                         onclick: move |_| on_open.call((id_open.clone(), false)),
-                        icons::Zap { class: "h-4 w-4 mr-1" }
-                        {t!("db-open")}
+                        icons::Zap { class: "h-4 w-4 sm:mr-1" }
+                        span { class: "hidden sm:inline", {t!("db-open")} }
                     }
                     if can_write {
                         button {
                             class: "inline-flex items-center px-3 py-1.5 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 mr-2",
+                            title: t!("db-edit"),
+                            aria_label: t!("db-edit"),
                             onclick: move |_| on_open.call((id_edit.clone(), true)),
-                            icons::Wrench { class: "h-4 w-4 mr-1" }
-                            {t!("db-edit")}
+                            icons::Wrench { class: "h-4 w-4 sm:mr-1" }
+                            span { class: "hidden sm:inline", {t!("db-edit")} }
                         }
                         button {
                             class: DANGER_BTN,
+                            title: t!("viz-delete"),
+                            aria_label: t!("viz-delete"),
                             onclick: move |_| delete_target.set(Some((id_delete.clone(), name_delete.clone()))),
-                            icons::Trash2 { class: "h-3.5 w-3.5 inline mr-0.5" }
-                            {t!("viz-delete")}
+                            icons::Trash2 { class: "h-3.5 w-3.5 inline sm:mr-0.5" }
+                            span { class: "hidden sm:inline", {t!("viz-delete")} }
                         }
                     }
                 }
             },
         )
-        .with_td_class("text-right whitespace-nowrap"),
+        .with_td_class("text-right whitespace-nowrap").actions(),
     ];
 
     rsx! {

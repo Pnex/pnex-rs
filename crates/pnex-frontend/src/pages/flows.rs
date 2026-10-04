@@ -128,11 +128,11 @@ pub fn Flows() -> Element {
                 }
             }
         })
-        .with_td_class("text-sm text-gray-600"),
+        .with_td_class("text-sm text-gray-600").secondary(),
         Column::new(t!("flows-col-updated").to_string(), |flow: &FlowSummary| {
             rsx! { {date_label(&flow.updated_at)} }
         })
-        .with_td_class("text-gray-500 text-sm"),
+        .with_td_class("text-gray-500 text-sm").secondary(),
         Column::new(
             t!("common-actions").to_string(),
             move |flow: &FlowSummary| {
@@ -165,7 +165,7 @@ pub fn Flows() -> Element {
                     }
                 }
             },
-        ),
+        ).actions(),
     ];
 
     rsx! {

@@ -442,9 +442,11 @@ pub fn TourEditor(
                 }
                 button {
                     class: "inline-flex items-center px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                    title: t!("studio-versions"),
+                    aria_label: t!("studio-versions"),
                     onclick: move |_| versions_open.set(true),
-                    icons::History { class: "h-4 w-4 mr-1" }
-                    {t!("studio-versions")}
+                    icons::History { class: "h-4 w-4 sm:mr-1" }
+                    span { class: "hidden sm:inline", {t!("studio-versions")} }
                 }
             },
             banner: rsx! {

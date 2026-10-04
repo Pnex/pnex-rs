@@ -375,7 +375,8 @@ fn DataCard(
                 {s.doc_num.map(|n| n.to_string()).unwrap_or_else(|| "—".into())}
             }
         })
-        .with_td_class("text-gray-600"),
+        .with_td_class("text-gray-600")
+        .secondary(),
         Column::new(t!("system-col-size").to_string(), |s: &O2StreamInfo| {
             let disk = s
                 .compressed_bytes
@@ -395,7 +396,8 @@ fn DataCard(
                 {format!("{} → {}", short_utc(&s.time_min), short_utc(&s.time_max))}
             }
         })
-        .with_td_class("text-gray-600 text-sm"),
+        .with_td_class("text-gray-600 text-sm")
+        .secondary(),
         Column::new(
             t!("system-col-retention").to_string(),
             |s: &O2StreamInfo| {
@@ -431,7 +433,7 @@ fn DataCard(
                     }
                 }
             }
-        }));
+        }).actions());
     }
 
     rsx! {

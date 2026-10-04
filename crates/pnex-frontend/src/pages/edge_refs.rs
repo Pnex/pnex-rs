@@ -236,7 +236,7 @@ fn WifiTab(
                 rsx! { {date_label(&wifi.created_at)} }
             },
         )
-        .with_td_class("text-gray-600"),
+        .with_td_class("text-gray-600").secondary(),
         Column::new(
             t!("common-actions").to_string(),
             move |wifi: &WifiCredential| {
@@ -263,7 +263,7 @@ fn WifiTab(
                     }
                 }
             },
-        ),
+        ).actions(),
     ];
 
     rsx! {
@@ -302,7 +302,7 @@ fn HostsTab(
         Column::new(t!("edgerefs-col-created").to_string(), |host: &PnexHost| {
             rsx! { {date_label(&host.created_at)} }
         })
-        .with_td_class("text-gray-600"),
+        .with_td_class("text-gray-600").secondary(),
         Column::new(t!("common-actions").to_string(), move |host: &PnexHost| {
             let host_edit = host.clone();
             let id_delete = host.id;
@@ -324,7 +324,7 @@ fn HostsTab(
                     }
                 }
             }
-        }),
+        }).actions(),
     ];
 
     rsx! {
