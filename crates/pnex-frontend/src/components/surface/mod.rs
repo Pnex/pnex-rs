@@ -10,6 +10,7 @@
 //! context with [`use_surface_controls`]; without it (editor preview) the
 //! cards render disabled.
 
+pub mod annotation;
 pub mod control;
 
 use std::collections::BTreeMap;

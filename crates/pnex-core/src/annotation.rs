@@ -24,6 +24,12 @@ pub const ANNOTATION_KIND_DEVICE: &str = "device";
 pub const ANNOTATION_KIND_PIN: &str = "pin";
 pub const ANNOTATION_KIND_STATUS: &str = "status";
 pub const ANNOTATION_KIND_NOTE: &str = "note";
+/// Operates an org control (D128: an annotation never references a pin to
+/// write; the flows listening to the control act).
+pub const ANNOTATION_KIND_CONTROL: &str = "control";
+/// Live reading of a telemetry series or an org memory value, optionally
+/// with a sparkline (D129).
+pub const ANNOTATION_KIND_READING: &str = "reading";
 
 /// Violation de validation du document (école `TourViolation`) — message en
 /// français, affichable tel quel au client.
@@ -93,10 +99,30 @@ impl<'de> Deserialize<'de> for AnnotationGeometry {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum AnnotationTarget {
-    Device { device_id: String },
-    Pin { device_id: String, pin_gpio: u32 },
-    Status { device_id: String },
-    Note { text: String },
+    Device {
+        device_id: String,
+    },
+    Pin {
+        device_id: String,
+        pin_gpio: u32,
+    },
+    Status {
+        device_id: String,
+    },
+    Note {
+        text: String,
+    },
+    /// Org control operated from the annotation (D125, D128).
+    Control {
+        control_id: uuid::Uuid,
+    },
+    /// Same read binding as the dashboard widgets (D129); `spark` draws the
+    /// history of the series window under the value.
+    Reading {
+        source: crate::viz::SourceRef,
+        #[serde(default)]
+        spark: bool,
+    },
 }
 
 /// Item d'annotation posé sur un média.
@@ -140,6 +166,8 @@ fn kind_matches_target(kind: &str, target: &AnnotationTarget) -> bool {
         AnnotationTarget::Pin { .. } => kind == ANNOTATION_KIND_PIN,
         AnnotationTarget::Status { .. } => kind == ANNOTATION_KIND_STATUS,
         AnnotationTarget::Note { .. } => kind == ANNOTATION_KIND_NOTE,
+        AnnotationTarget::Control { .. } => kind == ANNOTATION_KIND_CONTROL,
+        AnnotationTarget::Reading { .. } => kind == ANNOTATION_KIND_READING,
     }
 }
 
@@ -210,6 +238,26 @@ pub fn validate_annotation_doc(doc: &AnnotationDoc) -> Vec<AnnotationViolation> 
                     ));
                 }
             }
+        }
+        match &item.target {
+            AnnotationTarget::Control { control_id } if control_id.is_nil() => {
+                v.push(violation(
+                    Some(&item.id),
+                    "control_unset",
+                    format!("item {} : pick a control", item.id),
+                ));
+            }
+            AnnotationTarget::Reading { source, spark } => {
+                let shape = if *spark { "line" } else { "stat" };
+                crate::viz::check_sources(shape, std::slice::from_ref(source), &mut |code, msg| {
+                    v.push(violation(
+                        Some(&item.id),
+                        code,
+                        format!("item {} : {msg}", item.id),
+                    ));
+                });
+            }
+            _ => {}
         }
         // Couleur `#rrggbb` stricte (D55 §4 : `^#[0-9a-fA-F]{6}$`).
         if let Some(color) = &item.color {
@@ -409,6 +457,82 @@ mod tests {
             label: format!("Item {id}"),
             target,
         }
+    }
+
+    #[test]
+    fn control_and_reading_items_validate_and_round_trip() {
+        let geo = || AnnotationGeometry::Equirect {
+            yaw: 10.0,
+            pitch: -5.0,
+        };
+        let reading = |metric: &str, spark: bool| AnnotationTarget::Reading {
+            source: crate::viz::SourceRef {
+                role: "primary".into(),
+                metric: metric.into(),
+                device_id: "proud-ibex".into(),
+                window: "1h".into(),
+                memory: None,
+            },
+            spark,
+        };
+        let doc = AnnotationDoc {
+            items: vec![
+                item(
+                    "c1",
+                    ANNOTATION_KIND_CONTROL,
+                    AnnotationTarget::Control {
+                        control_id: uuid::Uuid::from_u128(7),
+                    },
+                    geo(),
+                ),
+                item(
+                    "r1",
+                    ANNOTATION_KIND_READING,
+                    reading("temperature", true),
+                    geo(),
+                ),
+            ],
+        };
+        assert!(validate_annotation_doc(&doc).is_empty());
+        let json = serde_json::to_value(&doc).unwrap();
+        assert_eq!(json["items"][1]["target"]["type"], "reading");
+        let back: AnnotationDoc = serde_json::from_value(json).unwrap();
+        assert_eq!(back, doc);
+
+        let bad = AnnotationDoc {
+            items: vec![
+                item(
+                    "c2",
+                    ANNOTATION_KIND_CONTROL,
+                    AnnotationTarget::Control {
+                        control_id: uuid::Uuid::nil(),
+                    },
+                    geo(),
+                ),
+                item(
+                    "r2",
+                    ANNOTATION_KIND_READING,
+                    reading("bad metric!", false),
+                    geo(),
+                ),
+                item(
+                    "r3",
+                    ANNOTATION_KIND_CONTROL,
+                    reading("temperature", false),
+                    geo(),
+                ),
+            ],
+        };
+        let codes: Vec<String> = validate_annotation_doc(&bad)
+            .into_iter()
+            .map(|v| v.code)
+            .collect();
+        assert!(codes.contains(&"control_unset".to_string()), "{codes:?}");
+        assert!(codes.contains(&"bad_metric".to_string()), "{codes:?}");
+        assert!(
+            codes.contains(&"kind_target_mismatch".to_string()),
+            "{codes:?}"
+        );
     }
 
     #[test]

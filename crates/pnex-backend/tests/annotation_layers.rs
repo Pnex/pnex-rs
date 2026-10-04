@@ -1017,3 +1017,91 @@ async fn ensemble_annote_tour_associe() {
     })
     .await;
 }
+
+/// D128/D129: a `control` item references an org control (an unknown one is
+/// refused at save), a `reading` item carries a dashboard source and may
+/// target a flow virtual device (never registered).
+#[tokio::test]
+#[serial]
+async fn control_and_reading_items() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let pano_id = upload(
+            &server,
+            &env.alice,
+            org,
+            "?filename=sphere.jpg&content_type=image%2Fjpeg",
+            gpano_jpeg(),
+        )
+        .await
+        .json::<serde_json::Value>()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let layer = create_layer(&server, &env.alice, org, "Surfaces").await;
+        let layer_id = layer["id"].as_str().unwrap().to_string();
+        let control = server
+            .post("/api/v1/controls")
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&serde_json::json!({
+                "key": "light.room", "label": "Room light", "spec": { "kind": "switch" }
+            }))
+            .await
+            .json::<serde_json::Value>();
+        let control_id = control["id"].as_str().unwrap().to_string();
+        let doc = |control: &str| {
+            serde_json::json!({ "items": [
+                {"id": "c1", "media_asset_id": pano_id, "kind": "control",
+                 "geometry": {"type": "equirect", "yaw": 10.0, "pitch": 0.0},
+                 "label": "Light", "target": {"type": "control", "control_id": control}},
+                {"id": "r1", "media_asset_id": pano_id, "kind": "reading",
+                 "geometry": {"type": "equirect", "yaw": 20.0, "pitch": 0.0},
+                 "label": "Temp", "target": {"type": "reading", "spark": true, "source": {
+                     "role": "primary", "metric": "temperature",
+                     "device_id": "flow_12", "window": "1h"}}}
+            ]})
+        };
+
+        let unknown = save_layer(
+            &server,
+            &env.alice,
+            org,
+            &layer_id,
+            1,
+            doc("00000000-0000-0000-0000-0000000000aa"),
+        )
+        .await;
+        assert_eq!(unknown.status_code(), 400, "unknown control -> 400");
+
+        let saved = save_layer(&server, &env.alice, org, &layer_id, 1, doc(&control_id)).await;
+        assert_eq!(saved.status_code(), 200, "{}", saved.text());
+        assert_eq!(
+            publish_layer(&server, &env.alice, org, &layer_id)
+                .await
+                .status_code(),
+            200
+        );
+        let read = read_annotations(&server, &env.alice, org, &pano_id)
+            .await
+            .json::<serde_json::Value>();
+        let kinds: Vec<&str> = read["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["kind"].as_str().unwrap())
+            .collect();
+        assert_eq!(kinds.len(), 2, "{read}");
+        assert!(kinds.contains(&"control") && kinds.contains(&"reading"));
+        let reading = read["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["kind"] == "reading")
+            .unwrap();
+        assert_eq!(reading["target"]["source"]["device_id"], "flow_12");
+        assert!(reading.get("resolved").is_none() || reading["resolved"].is_null());
+    })
+    .await;
+}

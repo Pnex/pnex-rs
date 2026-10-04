@@ -155,6 +155,10 @@ fn layer_write_error_response(
             "doc",
             &format!("device \"{device_id}\" inconnu pour cette organisation."),
         ),
+        E::UnknownControl { id } => field_status(
+            "doc",
+            &format!("control {id} is unknown in this organization."),
+        ),
         E::AnchorMismatch { id } => field_status(
             "doc",
             &format!(
@@ -197,7 +201,9 @@ fn device_slug(target: &pnex_core::AnnotationTarget) -> Option<&String> {
         pnex_core::AnnotationTarget::Device { device_id } => Some(device_id),
         pnex_core::AnnotationTarget::Pin { device_id, .. } => Some(device_id),
         pnex_core::AnnotationTarget::Status { device_id } => Some(device_id),
-        pnex_core::AnnotationTarget::Note { .. } => None,
+        pnex_core::AnnotationTarget::Note { .. }
+        | pnex_core::AnnotationTarget::Control { .. }
+        | pnex_core::AnnotationTarget::Reading { .. } => None,
     }
 }
 

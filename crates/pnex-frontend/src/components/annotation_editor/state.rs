@@ -180,6 +180,8 @@ pub fn target_kind(target: &AnnotationTarget) -> &'static str {
         AnnotationTarget::Pin { .. } => ANNOTATION_KIND_PIN,
         AnnotationTarget::Status { .. } => ANNOTATION_KIND_STATUS,
         AnnotationTarget::Note { .. } => ANNOTATION_KIND_NOTE,
+        AnnotationTarget::Control { .. } => pnex_core::ANNOTATION_KIND_CONTROL,
+        AnnotationTarget::Reading { .. } => pnex_core::ANNOTATION_KIND_READING,
     }
 }
 

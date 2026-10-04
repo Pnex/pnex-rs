@@ -51,6 +51,8 @@ pub enum AnnotationLayerWriteError {
     },
     /// Device ciblé (slug) inexistant dans l'org.
     UnknownDevice { device_id: String },
+    /// A `control` item references a control absent from the org.
+    UnknownControl { id: uuid::Uuid },
     /// Item ancré sur un média autre que celui déclaré par l'ensemble
     /// (pivot UX : un ensemble = un média ; un ensemble-tour : un média
     /// de scène du tour).
@@ -159,7 +161,11 @@ async fn validate_doc_devices(
             AnnotationTarget::Device { device_id } => Some(device_id.clone()),
             AnnotationTarget::Pin { device_id, .. } => Some(device_id.clone()),
             AnnotationTarget::Status { device_id } => Some(device_id.clone()),
-            AnnotationTarget::Note { .. } => None,
+            // Controls are checked by `validate_doc_controls`; a reading may
+            // target a flow virtual device (`flow_{id}`), never registered.
+            AnnotationTarget::Note { .. }
+            | AnnotationTarget::Control { .. }
+            | AnnotationTarget::Reading { .. } => None,
         })
         .collect();
     if slugs.is_empty() {
@@ -180,7 +186,9 @@ async fn validate_doc_devices(
             AnnotationTarget::Device { device_id } => Some(device_id),
             AnnotationTarget::Pin { device_id, .. } => Some(device_id),
             AnnotationTarget::Status { device_id } => Some(device_id),
-            AnnotationTarget::Note { .. } => None,
+            AnnotationTarget::Note { .. }
+            | AnnotationTarget::Control { .. }
+            | AnnotationTarget::Reading { .. } => None,
         };
         if let Some(slug) = slug {
             if !known.contains(slug.as_str()) {
@@ -195,6 +203,41 @@ async fn validate_doc_devices(
 
 /// Numéro de la dernière version d'une couche (0 si aucune — ne doit pas
 /// arriver : la création pose toujours v1).
+/// Every `control` item references a control of the org (D125). Weak at
+/// read like the device targets: a control deleted later renders as such.
+async fn validate_doc_controls(
+    db: &DatabaseConnection,
+    org_id: i64,
+    doc: &AnnotationDoc,
+) -> Result<(), AnnotationLayerWriteError> {
+    let mut ids: Vec<uuid::Uuid> = doc
+        .items
+        .iter()
+        .filter_map(|item| match &item.target {
+            AnnotationTarget::Control { control_id } => Some(*control_id),
+            _ => None,
+        })
+        .collect();
+    if ids.is_empty() {
+        return Ok(());
+    }
+    ids.sort();
+    ids.dedup();
+    let known: HashSet<uuid::Uuid> = crate::models::_entities::controls::Entity::find()
+        .filter(crate::models::_entities::controls::Column::OrgId.eq(org_id))
+        .filter(crate::models::_entities::controls::Column::Id.is_in(ids.clone()))
+        .all(db)
+        .await
+        .map_err(|_| AnnotationLayerWriteError::Db)?
+        .into_iter()
+        .map(|c| c.id)
+        .collect();
+    match ids.into_iter().find(|id| !known.contains(id)) {
+        Some(id) => Err(AnnotationLayerWriteError::UnknownControl { id }),
+        None => Ok(()),
+    }
+}
+
 pub async fn latest_version_number<C: sea_orm::ConnectionTrait>(
     db: &C,
     layer_id: Uuid,
@@ -321,6 +364,7 @@ pub async fn append_annotation_layer_version(
     validate_layer_write(name_for_validation, doc)?;
     validate_doc_assets(db, layer.org_id, doc).await?;
     validate_doc_devices(db, layer.org_id, doc).await?;
+    validate_doc_controls(db, layer.org_id, doc).await?;
     // Pivot UX : un ensemble est ancré sur SON média (D55 renforcé au
     // niveau couche) — tout item ailleurs est refusé. Un ensemble-tour
     // : l'ancre doit être un média de scène du tour (version

@@ -63,3 +63,13 @@
 .pnex-annot-note {
   background-color: #d97706;
 }
+
+/* Org control operated from the annotation (D128) and live reading
+   (D129); colours match annot_dot_color on the Rust side. */
+.pnex-annot-control {
+  background-color: #0d9488;
+}
+
+.pnex-annot-reading {
+  background-color: #0284c7;
+}
