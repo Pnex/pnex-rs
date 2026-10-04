@@ -16,7 +16,7 @@ use std::net::Ipv4Addr;
 use std::time::Duration;
 
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, put};
 use axum::Json;
 use futures_util::StreamExt;
@@ -676,13 +676,24 @@ struct LanScanQuery {
 /// ouvert). Auth requis, lecture ouverte à tous les rôles : le scan ne
 /// révèle rien que le réseau du serveur n'expose déjà.
 ///
-/// Déploiement conteneurisé : un conteneur bridge voit ses interfaces
-/// 172.x — passer `?prefix=192.168.1.` (l'outbound vers le LAN traverse le
-/// NAT docker) ou basculer le service en `network_mode: host`.
-async fn lan_scan(_org: OrgContext, Query(q): Query<LanScanQuery>) -> Result<Response> {
+/// Default range (no `?prefix=`): the /24 of the address the user reached
+/// the app at (`X-Forwarded-Host` / `Host`, e.g. `192.168.1.185` behind the
+/// edge), plus `PNEX_LAN_PREFIX` (comma-separated `a.b.c.`), plus the
+/// server's own private interfaces — except in a container, whose
+/// interfaces are Docker bridges (172.x) devices can never reach.
+async fn lan_scan(
+    _org: OrgContext,
+    headers: HeaderMap,
+    Query(q): Query<LanScanQuery>,
+) -> Result<Response> {
     let prefixes: Vec<String> = match q.prefix {
         Some(p) => vec![p],
-        None => private_prefixes(),
+        None => default_prefixes(
+            request_host(&headers).as_deref(),
+            std::env::var("PNEX_LAN_PREFIX").ok().as_deref(),
+            in_container(),
+            private_prefixes,
+        ),
     }
     .into_iter()
     .filter(|p| valid_prefix(p))
@@ -695,15 +706,28 @@ async fn lan_scan(_org: OrgContext, Query(q): Query<LanScanQuery>) -> Result<Res
         })
         .into_response());
     }
+    // Two doors per address: the backend port (bare-metal / dev stack) and
+    // the TLS edge on 443 (Docker install: only the edge is published).
     let mut candidates: Vec<String> = prefixes
         .iter()
-        .flat_map(|p| (1..=254).map(move |i| format!("http://{p}{i}:{SCAN_PORT}")))
+        .flat_map(|p| {
+            (1..=254).flat_map(move |i| {
+                [
+                    format!("http://{p}{i}:{SCAN_PORT}"),
+                    format!("https://{p}{i}"),
+                ]
+            })
+        })
         .collect();
     candidates.sort();
     candidates.dedup();
 
+    // Discovery only: an unauthenticated GET of the public version info.
+    // A local edge serves a certificate of its own CA, unknown here.
     let client = reqwest::Client::builder()
         .timeout(SCAN_TIMEOUT)
+        .danger_accept_invalid_certs(true)
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|_| Error::InternalServerError)?;
     let mut hits = futures_util::stream::iter(candidates)
@@ -718,6 +742,8 @@ async fn lan_scan(_org: OrgContext, Query(q): Query<LanScanQuery>) -> Result<Res
         .collect::<Vec<_>>()
         .await;
     hits.sort_by(|a, b| a.host.cmp(&b.host));
+    // Same server through both doors: one row.
+    hits.dedup_by(|a, b| a.host == b.host);
 
     Ok(format::json(LanScanResult { prefixes, hits }).into_response())
 }
@@ -735,6 +761,7 @@ async fn probe_hit(client: &reqwest::Client, base: &str) -> Option<LanScanHit> {
     // through the TLS edge on 443 (D70): the registered host is the bare IP.
     let ip = base
         .trim_start_matches("http://")
+        .trim_start_matches("https://")
         .trim_end_matches(&format!(":{SCAN_PORT}"));
     (info.service == SERVICE).then(|| LanScanHit {
         host: ip.to_string(),
@@ -743,9 +770,73 @@ async fn probe_hit(client: &reqwest::Client, base: &str) -> Option<LanScanHit> {
     })
 }
 
+/// Host the browser reached the app at, without port: `X-Forwarded-Host`
+/// (edge) first, then `Host`.
+fn request_host(headers: &HeaderMap) -> Option<String> {
+    let raw = headers
+        .get("x-forwarded-host")
+        .or_else(|| headers.get(axum::http::header::HOST))?
+        .to_str()
+        .ok()?;
+    let first = raw.split(',').next()?.trim();
+    // `[v6]:port` and `v4:port` → bare host.
+    let host = if let Some(rest) = first.strip_prefix('[') {
+        rest.split(']').next()?
+    } else {
+        first.split(':').next()?
+    };
+    (!host.is_empty()).then(|| host.to_string())
+}
+
+/// `/.dockerenv` (Docker) or `/run/.containerenv` (Podman).
+fn in_container() -> bool {
+    std::path::Path::new("/.dockerenv").exists()
+        || std::path::Path::new("/run/.containerenv").exists()
+}
+
+/// Default scan ranges, in order: the request host's /24 (when it is a
+/// private IPv4), `PNEX_LAN_PREFIX`, then the server's interfaces — the
+/// latter skipped in a container unless nothing else is known.
+fn default_prefixes(
+    host: Option<&str>,
+    env: Option<&str>,
+    container: bool,
+    interfaces: impl FnOnce() -> Vec<String>,
+) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    if let Some(ip) = host.and_then(|h| h.parse::<Ipv4Addr>().ok()) {
+        if ip.is_private() {
+            let o = ip.octets();
+            out.push(format!("{}.{}.{}.", o[0], o[1], o[2]));
+        }
+    }
+    for p in env.unwrap_or_default().split(',') {
+        let p = p.trim();
+        if p.is_empty() {
+            continue;
+        }
+        let p = if p.ends_with('.') {
+            p.to_string()
+        } else {
+            format!("{p}.")
+        };
+        if !out.contains(&p) {
+            out.push(p);
+        }
+    }
+    if !container || out.is_empty() {
+        for p in interfaces() {
+            if !out.contains(&p) {
+                out.push(p);
+            }
+        }
+    }
+    out
+}
+
 /// Préfixes « a.b.c. » des IPv4 privées du serveur (auto-détection). Sur un
 /// déploiement conteneurisé (bridge 172.x), la plage vue est le bridge —
-/// cf. `?prefix=` du handler.
+/// cf. `default_prefixes`.
 fn private_prefixes() -> Vec<String> {
     let mut prefixes: Vec<String> = if_addrs::get_if_addrs()
         .unwrap_or_default()
@@ -772,4 +863,55 @@ fn valid_prefix(prefix: &str) -> bool {
             .parse::<Ipv4Addr>()
             .map(|ip| ip.is_private())
             .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn none() -> Vec<String> {
+        vec!["172.18.0.".into()]
+    }
+
+    #[test]
+    fn container_scans_the_lan_the_user_came_from() {
+        // Docker install reached at 192.168.1.185: the bridge is skipped.
+        assert_eq!(
+            default_prefixes(Some("192.168.1.185"), None, true, none),
+            vec!["192.168.1.".to_string()]
+        );
+        // Bare metal: the interfaces are scanned too.
+        assert_eq!(
+            default_prefixes(Some("192.168.1.185"), None, false, none),
+            vec!["192.168.1.".to_string(), "172.18.0.".to_string()]
+        );
+    }
+
+    #[test]
+    fn env_prefix_and_fallbacks() {
+        // Reached by name (pnex.local): PNEX_LAN_PREFIX gives the range.
+        assert_eq!(
+            default_prefixes(Some("pnex.local"), Some("10.0.0, 192.168.1."), true, none),
+            vec!["10.0.0.".to_string(), "192.168.1.".to_string()]
+        );
+        // Nothing known in a container: the interfaces, rather than nothing.
+        assert_eq!(
+            default_prefixes(Some("pnex.local"), None, true, none),
+            vec!["172.18.0.".to_string()]
+        );
+        // A public address is never turned into a range.
+        assert_eq!(
+            default_prefixes(Some("8.8.8.8"), None, true, Vec::new),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn request_host_strips_port_and_prefers_forwarded() {
+        let mut h = HeaderMap::new();
+        h.insert(axum::http::header::HOST, "10.1.2.3:5150".parse().unwrap());
+        assert_eq!(request_host(&h).as_deref(), Some("10.1.2.3"));
+        h.insert("x-forwarded-host", "192.168.1.185".parse().unwrap());
+        assert_eq!(request_host(&h).as_deref(), Some("192.168.1.185"));
+    }
 }
