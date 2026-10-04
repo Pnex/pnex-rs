@@ -135,7 +135,8 @@ pub fn Secrets() -> Element {
                     div { class: "text-xs text-gray-400", {by} }
                 }
             }
-        }),
+        })
+        .secondary(),
     ];
     if can_manage {
         columns.push(Column::new(
@@ -185,7 +186,7 @@ pub fn Secrets() -> Element {
                     }
                 }
             },
-        ));
+        ).actions());
     }
 
     rsx! {

@@ -452,7 +452,7 @@ fn ChannelsTab(
                     }
                 }
             },
-        ),
+        ).actions(),
     ];
 
     rsx! {
@@ -621,11 +621,11 @@ fn TemplatesTab(
                 rsx! { {tpl.subject.clone().unwrap_or_else(|| t!("notify-no-subject").to_string())} }
             },
         )
-        .with_td_class("text-gray-600"),
+        .with_td_class("text-gray-600").secondary(),
         Column::new(t!("notify-col-vars").to_string(), |tpl: &NotifyTemplate| {
             rsx! { "{tpl.vars.len()}" }
         })
-        .with_td_class("text-gray-600"),
+        .with_td_class("text-gray-600").secondary(),
         Column::new(
             t!("common-actions").to_string(),
             move |tpl: &NotifyTemplate| {
@@ -652,7 +652,7 @@ fn TemplatesTab(
                     }
                 }
             },
-        ),
+        ).actions(),
     ];
 
     rsx! {

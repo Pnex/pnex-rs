@@ -184,7 +184,9 @@ pub fn EditorShell(
         // (la colonne de contenu porte déjà le décalage sidebar lg:pl-64/16).
         div { class: "flex h-[calc(100dvh-4rem)] flex-col lg:h-screen",
             // ─── Zone 1/2 : barre du haut (gauche identité · droite version+actions)
-            div { class: "flex h-14 shrink-0 items-center gap-2 overflow-x-auto bg-white border-b border-gray-200 px-3",
+            // Phone: two rows (identity, then actions right-aligned) instead
+            // of one 680 px row scrolled sideways; single 56 px row from sm up.
+            div { class: "flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5 bg-white border-b border-gray-200 px-3 py-2 sm:h-14 sm:flex-nowrap sm:overflow-x-auto sm:py-0",
                 button {
                     class: "inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-gray-600 hover:bg-gray-100",
                     onclick: move |_| on_back.call(()),
@@ -224,37 +226,43 @@ pub fn EditorShell(
                         },
                         Some(_) => rsx! {
                             button {
-                                class: "group -ml-1 flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-0.5 hover:bg-gray-100",
+                                class: "group -ml-1 flex min-w-0 items-center gap-1 rounded-lg px-1.5 py-0.5 hover:bg-gray-100 sm:shrink-0",
                                 title: "{rename_title}",
                                 onclick: move |_| {
                                     draft.set(title.clone());
                                     renaming.set(true);
                                 },
-                                span { class: "max-w-[15rem] truncate text-base font-semibold text-gray-900", {title.clone()} }
+                                span { class: "min-w-0 max-w-[15rem] truncate text-base font-semibold text-gray-900",
+                                    {title.clone()}
+                                }
                                 icons::Pencil { class: "h-3.5 w-3.5 shrink-0 text-gray-400 group-hover:text-gray-600" }
                             }
                         },
                         None => rsx! {
-                            h2 { class: "max-w-[16rem] shrink-0 truncate text-base font-semibold text-gray-900",
+                            h2 { class: "min-w-0 max-w-[16rem] truncate text-base font-semibold text-gray-900 sm:shrink-0",
                                 {title}
                             }
                         },
                     }
                 }
                 if let Some(sub) = subtitle {
-                    span { class: "shrink-0 text-xs text-gray-400", {sub} }
+                    span { class: "hidden shrink-0 text-xs text-gray-400 sm:inline",
+                        {sub}
+                    }
                 }
                 StatusChip { status }
                 // Chips annexes (dirty, version ancienne…)
                 {extra_chips}
-                div { class: "min-w-4 flex-1" }
+                div { class: "hidden min-w-4 flex-1 sm:block" }
                 if let Some(v) = version {
-                    span { class: "inline-flex shrink-0 items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs font-medium text-gray-600",
+                    span { class: "hidden shrink-0 items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs font-medium text-gray-600 sm:inline-flex",
                         {format!("v{v}")}
                     }
                 }
                 // Zone 3 : actions de l'éditeur (boutons existants, déplacés).
-                div { class: "flex shrink-0 items-center gap-2", {actions} }
+                div { class: "flex w-full items-center justify-end gap-2 overflow-x-auto sm:w-auto sm:shrink-0 sm:overflow-visible",
+                    {actions}
+                }
             }
             // ─── Bandeau (violations / read-only / encart déploiement)
             if let Some(b) = banner {

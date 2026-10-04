@@ -90,11 +90,12 @@ fn OrgsPage(initial: Option<i64>) -> Element {
                     {role_label}
                 }
             }
-        }),
+        })
+        .secondary(),
         Column::new(t!("orgs-col-tier").to_string(), |summary: &pnex_core::OrgSummary| {
             rsx! { {summary.subscription_tier.clone().unwrap_or_else(|| "—".into())} }
         })
-        .with_td_class("text-gray-600"),
+        .with_td_class("text-gray-600").secondary(),
         Column::new(
             t!("common-actions").to_string(),
             move |summary: &pnex_core::OrgSummary| {
@@ -117,7 +118,7 @@ fn OrgsPage(initial: Option<i64>) -> Element {
                     }
                 }
             },
-        ),
+        ).actions(),
     ];
 
     rsx! {

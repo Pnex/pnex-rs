@@ -983,15 +983,20 @@ pub fn FlowEditor(
                         } else {
                             "px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                         },
+                        title: t!("flows-debug-panel"),
+                        aria_label: t!("flows-debug-panel"),
                         onclick: move |_| debug_open.set(!debug_open()),
-                        {t!("flows-debug-panel")}
+                        icons::Bug { class: "h-4 w-4 inline sm:mr-1" }
+                        span { class: "hidden sm:inline", {t!("flows-debug-panel")} }
                     }
                 }
                 button {
                     class: "inline-flex items-center px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                    title: t!("flows-versions"),
+                    aria_label: t!("flows-versions"),
                     onclick: move |_| versions_open.set(true),
-                    icons::History { class: "h-4 w-4 mr-1" }
-                    {t!("flows-versions")}
+                    icons::History { class: "h-4 w-4 sm:mr-1" }
+                    span { class: "hidden sm:inline", {t!("flows-versions")} }
                 }
             },
             banner: rsx! {

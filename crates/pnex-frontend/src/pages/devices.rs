@@ -196,11 +196,11 @@ pub fn Devices() -> Element {
                     {type_label}
                 }
             }
-        }),
+        }).secondary(),
         Column::new(t!("devices-col-model").to_string(), |device: &Device| {
             rsx! { {device.predefined_device_name.clone()} }
         })
-        .with_td_class("text-gray-600"),
+        .with_td_class("text-gray-600").secondary(),
         Column::new(t!("devices-col-status").to_string(), |device: &Device| {
             rsx! {
                 div { class: "flex flex-col gap-0.5",
@@ -368,7 +368,7 @@ pub fn Devices() -> Element {
                     }
                 }
             },
-        ),
+        ).secondary(),
         Column::new(t!("common-actions").to_string(), move |device: &Device| {
             let pk = device.id;
             // O3 : jamais de build proposé pour les types custom (le back
@@ -398,7 +398,7 @@ pub fn Devices() -> Element {
                     }
                 }
             }
-        }),
+        }).actions(),
     ];
 
     // Selected devices among the visible rows (bulk actions).

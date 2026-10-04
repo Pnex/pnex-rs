@@ -204,17 +204,20 @@ pub fn Media() -> Element {
         Column::new(t!("media-col-size").to_string(), |asset: &MediaAsset| {
             rsx! { {format_size(asset.size_bytes)} }
         })
-        .with_td_class("text-gray-600"),
+        .with_td_class("text-gray-600")
+        .secondary(),
         Column::new(
             t!("media-col-versions").to_string(),
             |asset: &MediaAsset| {
                 rsx! { "{asset.versions_count}" }
             },
-        ),
+        )
+        .secondary(),
         Column::new(t!("media-col-updated").to_string(), |asset: &MediaAsset| {
             rsx! { {date_label(&asset.updated_at)} }
         })
-        .with_td_class("text-gray-500 text-sm"),
+        .with_td_class("text-gray-500 text-sm")
+        .secondary(),
     ];
 
     rsx! {

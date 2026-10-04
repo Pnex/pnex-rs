@@ -107,7 +107,8 @@ pub fn Cameras() -> Element {
                     {mode}
                 }
             }
-        }),
+        })
+        .secondary(),
         Column::new(
             t!("cameras-col-last-frame").to_string(),
             move |c: &CameraView| {
@@ -123,7 +124,8 @@ pub fn Cameras() -> Element {
                     div { class: "text-xs text-gray-400", "{viewers}" }
                 }
             },
-        ),
+        )
+        .secondary(),
         Column::new(String::new(), move |c: &CameraView| {
             // One clone per button: each `move` closure consumes its own.
             let cam_live = c.clone();
@@ -155,7 +157,8 @@ pub fn Cameras() -> Element {
                     }
                 }
             }
-        }),
+        })
+        .actions(),
     ];
 
     rsx! {

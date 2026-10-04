@@ -380,9 +380,11 @@ pub fn DashboardEditor(
                 }
                 button {
                     class: "inline-flex items-center px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                    title: t!("ver-title"),
+                    aria_label: t!("ver-title"),
                     onclick: move |_| versions_open.set(true),
-                    icons::History { class: "h-4 w-4 mr-1" }
-                    {t!("ver-title")}
+                    icons::History { class: "h-4 w-4 sm:mr-1" }
+                    span { class: "hidden sm:inline", {t!("ver-title")} }
                 }
             },
             banner: rsx! {

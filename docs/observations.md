@@ -547,3 +547,18 @@ Tous trouvés par la suite e2e, chacun couvert par un test (unitaire ou e2e) :
 - **Matériel** : séquence manuelle (`task e2e:hardware`, ports + WiFi en
   variables) ; chaque run réenregistre les cartes (nouveau jeton, ~4 min).
 - **Statut** : ouvert.
+
+## 2026-10-04 — audit d'affichage mobile (APK sur téléphone, viewport 392 px)
+
+### O26 — UI mobile : tables CRUD coupées, barre d'éditeur trop large
+
+- **Symptômes** (constat user) : « la ligne de boutons en haut est trop
+  large, il faut glisser », « impossible de glisser sur la droite » dans
+  les CRUD.
+- **Cause racine** : le wrapper de `DataTable` est en `overflow-hidden` →
+  colonnes au-delà de ~345 px (dont **Actions**) inaccessibles sur les 17
+  pages liste ; la barre `EditorShell` fait 613–680 px avec Enregistrer /
+  Déployer hors écran.
+- **Détail** : 17 anomalies M1–M17 mesurées + plan en 4 lots dans
+  [`architecture/mobile-ui.md`](architecture/mobile-ui.md).
+- **Statut** : ouvert (plan posé, lots 1–4 à faire).

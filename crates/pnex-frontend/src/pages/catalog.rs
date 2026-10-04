@@ -102,7 +102,7 @@ pub fn Catalog() -> Element {
                 rsx! { "{pd.device_type}" }
             },
         )
-        .with_td_class("text-gray-600"),
+        .with_td_class("text-gray-600").secondary(),
         Column::new(
             t!("catalog-col-board").to_string(),
             |pd: &PredefinedDevice| {
@@ -132,7 +132,7 @@ pub fn Catalog() -> Element {
                     }
                 }
             },
-        ),
+        ).secondary(),
         Column::new(
             t!("catalog-col-pinout").to_string(),
             move |pd: &PredefinedDevice| {
@@ -151,7 +151,7 @@ pub fn Catalog() -> Element {
                     }
                 }
             },
-        ),
+        ).actions(),
     ];
 
     rsx! {
