@@ -655,3 +655,26 @@ carte (11°, 5 jours) ; mémoire lisible comme source de carte.
   un travail non commité d'une autre session, `AiRetention`) : le builder
   tourne encore l'image du 2026-10-03.
 - **Statut** : informatif.
+
+### O33 — Image Docker : migration absente du binaire (cache cargo périmé) → 500 partout
+
+- **Symptôme** (2026-10-04 14:00) : après `task docker:build` + `task app:up`,
+  toutes les routes authentifiées répondent 500 en 1 ms (`/api/v1/user-info`,
+  `/api/v1/orgs`) ; le boot logue « No pending migrations » alors que la base
+  est à `000004` et que le code enregistre `m20261004_000005_org_ai_retention`.
+- **Cause** : le binaire servi contient l'entité `organizations.ai_retention_days`
+  mais pas la migration 000005 (aucune chaîne `m20261004_000005` dans le
+  binaire). `target/` vit dans un cache mount BuildKit et cargo juge la
+  fraîcheur à la **mtime** ; `COPY . .` conserve les mtimes de l'arbre. Un
+  build précédent (lancé à 12:27) avait compilé le migrateur avant le commit
+  `5cccb2d` (12:35) : `lib.rs` modifié pendant ce build est resté « plus
+  ancien » que son artefact → jamais recompilé. `touch` seul ne suffit pas :
+  la couche `RUN cargo build` est reprise du cache Docker (clé = contenu).
+- **Contournement appliqué** : `touch` des fichiers de migration +
+  `docker buildx build --no-cache-filter toolchain,web,build`.
+- **Correctif proposé** (non fait) : dans le `RUN` du stage `build`, forcer la
+  recompilation des crates du workspace (`find crates -name '*.rs' -newer …`
+  ne suffit pas ; plus simple : `touch` de tous les `crates/**/*.rs` avant
+  `cargo build`, ou `cargo clean -p` des crates du workspace — les dépendances
+  restent en cache). Concerne aussi les images de release.
+- **Statut** : ouvert.
