@@ -4,6 +4,7 @@
 //! Adding a board: a new module here + its line in `ALL`.
 
 mod esp32_devkit_38p_txd;
+mod esp32_devkit_38p_wroom32u;
 mod esp32_devkit_tft_st7735;
 mod esp32_devkit_v1_30p;
 mod esp32_devkit_v1_36p;
@@ -28,6 +29,7 @@ pub const ESP32_DEVKIT_TFT_ST7735: CatalogBoard = esp32_devkit_tft_st7735::BOARD
 pub const ESP32S3_DEVKITC1: CatalogBoard = esp32s3_devkitc1::BOARD;
 pub const ESP32_DEVKITC_V4_38P: CatalogBoard = esp32_devkitc_v4_38p::BOARD;
 pub const ESP32_DEVKIT_38P_TXD: CatalogBoard = esp32_devkit_38p_txd::BOARD;
+pub const ESP32_DEVKIT_38P_WROOM32U: CatalogBoard = esp32_devkit_38p_wroom32u::BOARD;
 pub const NODEMCU_V3_OLED: CatalogBoard = nodemcu_v3_oled::BOARD;
 pub const ESP32CAM_AI_THINKER: CatalogBoard = esp32cam_ai_thinker::BOARD;
 pub const WAVESHARE_ESP32C6_ZERO: CatalogBoard = waveshare_esp32c6_zero::BOARD;
@@ -48,4 +50,5 @@ pub static ALL: &[CatalogBoard] = &[
     ESP32CAM_AI_THINKER,
     WAVESHARE_ESP32C6_ZERO,
     GENERIC,
+    ESP32_DEVKIT_38P_WROOM32U,
 ];
