@@ -6,12 +6,15 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::{
-    AnnotationTarget, ANNOTATION_KIND_DEVICE, ANNOTATION_KIND_NOTE, ANNOTATION_KIND_PIN,
-    ANNOTATION_KIND_STATUS,
+    AnnotationTarget, ANNOTATION_KIND_CONTROL, ANNOTATION_KIND_DEVICE, ANNOTATION_KIND_PIN,
+    ANNOTATION_KIND_READING, ANNOTATION_KIND_STATUS,
 };
 
 use crate::components::annotation_editor::state::{
     set_item_color, set_item_label, set_item_target, AnnotationEditorCx,
+};
+use crate::components::annotation_editor::surface_targets::{
+    ControlTargetEditor, ReadingTargetEditor,
 };
 use crate::components::resource_picker::{PickerTab, ResourcePick, ResourcePicker};
 
@@ -33,6 +36,20 @@ fn target_for_kind(new_kind: &str, current: &AnnotationTarget) -> AnnotationTarg
         ANNOTATION_KIND_DEVICE => AnnotationTarget::Device {
             device_id: slug.unwrap_or_default(),
         },
+        // Picked in the editor below (a nil id is a violation until then).
+        ANNOTATION_KIND_CONTROL => AnnotationTarget::Control {
+            control_id: uuid::Uuid::nil(),
+        },
+        ANNOTATION_KIND_READING => AnnotationTarget::Reading {
+            source: pnex_core::SourceRef {
+                role: "primary".into(),
+                metric: String::new(),
+                device_id: slug.unwrap_or_default(),
+                window: "1h".into(),
+                memory: None,
+            },
+            spark: false,
+        },
         _ => AnnotationTarget::Note {
             text: String::new(),
         },
@@ -44,17 +61,14 @@ fn current_slug(target: &AnnotationTarget) -> Option<String> {
         AnnotationTarget::Device { device_id }
         | AnnotationTarget::Pin { device_id, .. }
         | AnnotationTarget::Status { device_id } => Some(device_id.clone()),
-        AnnotationTarget::Note { .. } => None,
+        AnnotationTarget::Note { .. }
+        | AnnotationTarget::Control { .. }
+        | AnnotationTarget::Reading { .. } => None,
     }
 }
 
 fn kind_of(target: &AnnotationTarget) -> &'static str {
-    match target {
-        AnnotationTarget::Device { .. } => ANNOTATION_KIND_DEVICE,
-        AnnotationTarget::Pin { .. } => ANNOTATION_KIND_PIN,
-        AnnotationTarget::Status { .. } => ANNOTATION_KIND_STATUS,
-        AnnotationTarget::Note { .. } => ANNOTATION_KIND_NOTE,
-    }
+    crate::components::annotation_editor::state::target_kind(target)
 }
 
 /// Panneau d'inspection de l'item sélectionné (rien rendu si aucun).
@@ -135,9 +149,28 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
                     option { value: "device", {t!("annot-kind-device")} }
                     option { value: "pin", {t!("annot-kind-pin")} }
                     option { value: "status", {t!("annot-kind-status")} }
+                    option { value: "control", {t!("annot-kind-control")} }
+                    option { value: "reading", {t!("annot-kind-reading")} }
                 }
             }
-            if kind_now != "note" {
+            if let AnnotationTarget::Control { control_id } = item.target.clone() {
+                ControlTargetEditor {
+                    key: "{item.id}",
+                    cx,
+                    item_id: item.id.clone(),
+                    current: control_id,
+                }
+            }
+            if let AnnotationTarget::Reading { source, spark } = item.target.clone() {
+                ReadingTargetEditor {
+                    key: "{item.id}",
+                    cx,
+                    item_id: item.id.clone(),
+                    source,
+                    spark,
+                }
+            }
+            if matches!(kind_now.as_str(), "device" | "pin" | "status") {
                 div { class: "text-xs text-gray-600",
                     {t!("annot-inspector-target")}
                     span { class: "ml-1 font-mono text-gray-900", "{slug_now}" }

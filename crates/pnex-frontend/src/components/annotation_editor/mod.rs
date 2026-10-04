@@ -10,5 +10,7 @@ pub mod panel;
 pub mod popover;
 /// État éditeur (AnnotationEditorCx) + réducteurs purs testés.
 pub mod state;
+/// Control / reading target editors (D128/D129).
+pub mod surface_targets;
 /// Drawer versions + publication (école tour_editor/versions.rs).
 pub mod versions;

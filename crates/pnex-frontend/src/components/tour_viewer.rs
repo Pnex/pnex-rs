@@ -475,6 +475,27 @@ pub fn TourViewer(
         .and_then(|o| o.as_ref())
         .is_some_and(|a| !a.items.is_empty());
     let annot_selected_now = annot_selected.cloned();
+    // Control / reading items of the shown media: operable and readable in
+    // a side panel on the right (D129), next to their markers.
+    let surface_items: Vec<ResolvedAnnotationItem> = annotations
+        .value()
+        .read()
+        .as_ref()
+        .and_then(|o| o.as_ref())
+        .map(|a| {
+            a.items
+                .iter()
+                .filter(|i| crate::components::surface::annotation::is_surface_item(i))
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    let surface_key = surface_items
+        .iter()
+        .map(|i| i.id.as_str())
+        .collect::<Vec<_>>()
+        .join(",");
+    let show_surface = annotations_enabled && annot_on() && !surface_items.is_empty();
 
     rsx! {
         div { class: if compact { "flex w-full gap-3 flex-1 min-h-0" } else { "flex w-full gap-3 h-[70vh]" },
@@ -589,6 +610,14 @@ pub fn TourViewer(
                             on_close: move |_| annot_selected.set(None),
                         }
                     }
+                }
+            }
+            if show_surface {
+                div { class: "w-64 shrink-0 space-y-2 overflow-y-auto",
+                    span { class: "text-xs font-semibold uppercase tracking-wide text-gray-500",
+                        {t!("annot-surface-title")}
+                    }
+                    crate::components::surface::annotation::AnnotationSurface { key: "{surface_key}", items: surface_items.clone() }
                 }
             }
         }

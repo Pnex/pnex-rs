@@ -61,8 +61,12 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
         "device" => "annot-kind-device",
         "pin" => "annot-kind-pin",
         "status" => "annot-kind-status",
+        "control" => "annot-kind-control",
+        "reading" => "annot-kind-reading",
         _ => "annot-kind-note",
     };
+    let surface = crate::components::surface::annotation::is_surface_item(&item);
+    let surface_items = vec![item.clone()];
     let is_dead = resolved.as_ref().map(|r| r.dead).unwrap_or(false);
     let target_block = target_text(&item, is_dead);
     let live_now = live.cloned();
@@ -98,8 +102,16 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
                     }
                 }
 
+                // Control / reading: the dashboard card itself (D129).
+                if surface {
+                    div { class: "mt-3",
+                        crate::components::surface::annotation::AnnotationSurface { items: surface_items }
+                    }
+                }
                 // Cible : résolue ou morte (grisée — référence tolérée, S7).
-                div { class: if is_dead { "mt-3 text-xs rounded-lg px-3 py-2 bg-gray-50 text-gray-400 border border-gray-100" } else { "mt-3 text-xs rounded-lg px-3 py-2 bg-blue-50 text-blue-800 border border-blue-100" },
+                div {
+                    hidden: surface,
+                    class: if is_dead { "mt-3 text-xs rounded-lg px-3 py-2 bg-gray-50 text-gray-400 border border-gray-100" } else { "mt-3 text-xs rounded-lg px-3 py-2 bg-blue-50 text-blue-800 border border-blue-100" },
                     {target_block}
                 }
 
@@ -143,6 +155,8 @@ pub fn annot_dot_color(kind: &str) -> &'static str {
         "device" => "bg-blue-600",
         "pin" => "bg-violet-600",
         "status" => "bg-emerald-600",
+        "control" => "bg-teal-600",
+        "reading" => "bg-sky-600",
         _ => "bg-amber-600",
     }
 }
@@ -166,6 +180,8 @@ fn target_text(item: &ResolvedAnnotationItem, is_dead: bool) -> String {
             pin_gpio,
             ..
         } => format!("{} · {device_id} · gpio {pin_gpio}", t!("annot-kind-pin")),
+        // Rendered as cards (`AnnotationSurface`), never as text.
+        AnnotationTarget::Control { .. } | AnnotationTarget::Reading { .. } => String::new(),
     }
 }
 

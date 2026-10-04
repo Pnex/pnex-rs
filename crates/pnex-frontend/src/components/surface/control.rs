@@ -40,11 +40,12 @@ fn fire(
     surface: SurfaceControls,
     id: Uuid,
     v: f64,
+    via: Option<String>,
     mut busy: Signal<bool>,
     mut drag: Signal<Option<f64>>,
 ) {
     busy.set(true);
-    let via = surface.via.cloned();
+    let via = via.unwrap_or_else(|| surface.via.cloned());
     spawn(async move {
         match api::controls::write_value(id, v, Some(via)).await {
             Ok(value) => surface.record(id, value),
@@ -56,7 +57,14 @@ fn fire(
 }
 
 #[component]
-pub fn ControlBody(widget: Widget, state: Option<TelemetryPoint>) -> Element {
+pub fn ControlBody(
+    widget: Widget,
+    state: Option<TelemetryPoint>,
+    /// Originating surface of the writes when it differs from the context
+    /// one (an annotation panel mixes items of several layers).
+    #[props(default)]
+    via: Option<String>,
+) -> Element {
     let surface = try_use_context::<SurfaceControls>();
     let busy = use_signal(|| false);
     // Slider position while dragged / awaiting the write.
@@ -65,9 +73,16 @@ pub fn ControlBody(widget: Widget, state: Option<TelemetryPoint>) -> Element {
     let mut pending: Signal<Option<f64>> = use_signal(|| None);
     let mut draft = use_signal(String::new);
 
-    let kind = kind_of_widget(&widget.widget_type).unwrap_or(ControlKind::Switch);
     let control_id = widget.options.control.as_ref().map(|c| c.control_id);
     let def = control_id.and_then(|id| surface.and_then(|s| s.def(&id)));
+    // The control decides the card shape (an annotation only knows the
+    // control id); the widget type is the fallback while loading.
+    let kind = def
+        .as_ref()
+        .map(|d| d.spec.kind)
+        .or_else(|| kind_of_widget(&widget.widget_type))
+        .unwrap_or(ControlKind::Switch);
+    let via_override = via.clone();
     let value = control_id.and_then(|id| surface.and_then(|s| s.value(&id)));
     let missing = control_id.is_some() && def.is_none() && surface.is_some_and(|s| s.loaded());
     let idle = def.as_ref().is_some_and(|d| d.listened_by.is_empty());
@@ -107,7 +122,7 @@ pub fn ControlBody(widget: Widget, state: Option<TelemetryPoint>) -> Element {
         if confirm_needed {
             pending.set(Some(v));
         } else {
-            fire(surface, id, v, busy, drag);
+            fire(surface, id, v, via_override.clone(), busy, drag);
         }
     };
 
@@ -286,7 +301,7 @@ pub fn ControlBody(widget: Widget, state: Option<TelemetryPoint>) -> Element {
                     let v = pending.peek().to_owned();
                     pending.set(None);
                     if let (Some(v), Some(surface), Some(id)) = (v, surface, control_id) {
-                        fire(surface, id, v, busy, drag);
+                        fire(surface, id, v, via.clone(), busy, drag);
                     }
                 },
                 on_cancel: move |_| {

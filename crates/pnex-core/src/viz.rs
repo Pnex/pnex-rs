@@ -795,8 +795,13 @@ pub fn validate_widget(
     v.append(&mut extra_violations);
 }
 
-/// Per-source rules shared by instruments and control state sources.
-fn check_sources<F: FnMut(&str, String)>(widget_type: &str, source: &[SourceRef], push: &mut F) {
+/// Per-source rules shared by instruments, control state sources and
+/// annotation readings (D129).
+pub(crate) fn check_sources<F: FnMut(&str, String)>(
+    widget_type: &str,
+    source: &[SourceRef],
+    push: &mut F,
+) {
     for s in source {
         if let Some(m) = &s.memory {
             // A memory value is a single live number: no history.
