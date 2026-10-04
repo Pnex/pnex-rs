@@ -9,6 +9,9 @@
 # Tags pushed for each image (pnex-server-rs, pnex-builder-rs):
 #   main-<shortsha>  immutable, pin it in pnex-deploy (--tag / VERSION)
 #   main, latest     moving tags, always the latest green main
+#   <version>        on a release tag `v<version>` (e.g. v0.1.0-beta.1 ->
+#                    0.1.0-beta.1): what pnex-deploy's VERSION pins for
+#                    `install.sh --version <version>`. latest is not moved.
 #
 # Required secrets: DOCKER_USERNAME, DOCKER_TOKEN (Docker Hub access
 # token with read/write scope on the shanisma namespace).
@@ -20,6 +23,10 @@ on:
     workflows: ["CI"]
     types: [completed]
     branches: [main]
+  # Release tags: versioned images of the tagged commit (tag a commit whose
+  # CI is green).
+  push:
+    tags: ["v*"]
   # Manual re-publish of the current main (e.g. after rotating the token).
   workflow_dispatch:
 
@@ -35,9 +42,10 @@ permissions:
 # would cancel an in-progress publish (e.g. a manual dispatch) and then skip.
 concurrency:
   group: >-
-    ${{ (github.event_name == 'workflow_dispatch' ||
-         github.event.workflow_run.conclusion == 'success')
-        && 'images-main' || format('images-skip-{0}', github.run_id) }}
+    ${{ github.event_name == 'push' && format('images-{0}', github.ref_name) ||
+        ((github.event_name == 'workflow_dispatch' ||
+          github.event.workflow_run.conclusion == 'success')
+         && 'images-main' || format('images-skip-{0}', github.run_id)) }}
   cancel-in-progress: true
 
 jobs:
@@ -45,6 +53,7 @@ jobs:
     name: docker buildx (server + builder)
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
@@ -65,7 +74,19 @@ jobs:
           submodules: true
       - name: Tags
         id: tags
-        run: echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          short=$(git rev-parse --short=7 HEAD)
+          echo "short=$short" >> "$GITHUB_OUTPUT"
+          if [[ $GITHUB_EVENT_NAME == push && $GITHUB_REF == refs/tags/v* ]]; then
+            version=${GITHUB_REF_NAME#v}
+            server="$REGISTRY/pnex-server-rs:$version"
+            builder="$REGISTRY/pnex-builder-rs:$version"
+          else
+            server="$REGISTRY/pnex-server-rs:main-$short,$REGISTRY/pnex-server-rs:main,$REGISTRY/pnex-server-rs:latest"
+            builder="$REGISTRY/pnex-builder-rs:main-$short,$REGISTRY/pnex-builder-rs:main,$REGISTRY/pnex-builder-rs:latest"
+          fi
+          echo "server=$server" >> "$GITHUB_OUTPUT"
+          echo "builder=$builder" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
@@ -82,10 +103,8 @@ jobs:
           target: server
           platforms: ${{ env.PLATFORMS }}
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/pnex-server-rs:main-${{ steps.tags.outputs.short }}
-            ${{ env.REGISTRY }}/pnex-server-rs:main
-            ${{ env.REGISTRY }}/pnex-server-rs:latest
+          build-args: BUILD_SHA=${{ steps.tags.outputs.short }}
+          tags: ${{ steps.tags.outputs.server }}
           cache-from: type=gha,scope=pnex-images
           cache-to: type=gha,scope=pnex-images,mode=max
       # Same BuildKit instance: the shared stages come from the server build.
@@ -97,16 +116,13 @@ jobs:
           target: builder
           platforms: ${{ env.PLATFORMS }}
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/pnex-builder-rs:main-${{ steps.tags.outputs.short }}
-            ${{ env.REGISTRY }}/pnex-builder-rs:main
-            ${{ env.REGISTRY }}/pnex-builder-rs:latest
+          build-args: BUILD_SHA=${{ steps.tags.outputs.short }}
+          tags: ${{ steps.tags.outputs.builder }}
           cache-from: type=gha,scope=pnex-images
       - name: Summary
         run: |
           {
             echo "### Published (linux/amd64 + linux/arm64)"
-            echo "- \`$REGISTRY/pnex-server-rs:main-${{ steps.tags.outputs.short }}\`"
-            echo "- \`$REGISTRY/pnex-builder-rs:main-${{ steps.tags.outputs.short }}\`"
-            echo "(also tagged \`main\` and \`latest\`)"
+            echo "- \`${{ steps.tags.outputs.server }}\`"
+            echo "- \`${{ steps.tags.outputs.builder }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
