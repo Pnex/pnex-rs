@@ -1,8 +1,10 @@
 //! AI assistant endpoints — status, LLM providers of the org (key = vault
-//! reference, secrets.md D116), provider test, chat.
+//! reference, secrets.md D116), provider test, and the user's private
+//! conversations (D145).
 
 use pnex_core::{
-    AiChatRequest, AiChatResponse, AiStatus, LlmProvider, LlmProviderInput, LlmProviderTest,
+    AiConversation, AiConversationDetail, AiConversationWrite, AiSendMessage, AiStatus,
+    AiTurnResponse, LlmProvider, LlmProviderInput, LlmProviderTest, Paginated,
 };
 use uuid::Uuid;
 
@@ -55,12 +57,75 @@ pub async fn test_provider(id: Uuid) -> Result<LlmProviderTest, ApiError> {
     .await
 }
 
-/// `POST /api/v1/ai/chat` — un tour complet (boucle d'outils côté serveur).
-pub async fn chat(req: AiChatRequest) -> Result<AiChatResponse, ApiError> {
+/// Conversations of the current user in the current org (D145).
+const CONVERSATIONS: &str = "/api/v1/ai/conversations";
+
+/// `GET …/conversations` — most recent first.
+pub async fn conversations() -> Result<Paginated<AiConversation>, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("{CONVERSATIONS}?limit=100"),
+        None,
+    )
+    .await
+}
+
+/// `POST …/conversations` — new empty conversation.
+pub async fn create_conversation() -> Result<AiConversation, ApiError> {
+    let body = serde_json::to_value(AiConversationWrite::default()).unwrap_or_default();
+    client::request(reqwest::Method::POST, CONVERSATIONS, Some(body)).await
+}
+
+/// `GET …/conversations/{id}` — every stored message (resume).
+pub async fn conversation(id: Uuid) -> Result<AiConversationDetail, ApiError> {
+    client::request(reqwest::Method::GET, &format!("{CONVERSATIONS}/{id}"), None).await
+}
+
+/// `PATCH …/conversations/{id}` — rename.
+pub async fn rename_conversation(id: Uuid, title: String) -> Result<AiConversation, ApiError> {
+    let body = serde_json::to_value(AiConversationWrite { title: Some(title) }).unwrap_or_default();
+    client::request(
+        reqwest::Method::PATCH,
+        &format!("{CONVERSATIONS}/{id}"),
+        Some(body),
+    )
+    .await
+}
+
+/// `DELETE …/conversations/{id}` — 204, permanent.
+pub async fn delete_conversation(id: Uuid) -> Result<(), ApiError> {
+    client::request_opt::<()>(
+        reqwest::Method::DELETE,
+        &format!("{CONVERSATIONS}/{id}"),
+        None,
+    )
+    .await?;
+    Ok(())
+}
+
+/// `DELETE …/conversations` — every conversation of mine in this org.
+pub async fn delete_all_conversations() -> Result<(), ApiError> {
+    client::request_opt::<serde_json::Value>(reqwest::Method::DELETE, CONVERSATIONS, None).await?;
+    Ok(())
+}
+
+/// `GET …/conversations/export` — raw JSON export (portability).
+pub async fn export_conversations() -> Result<serde_json::Value, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("{CONVERSATIONS}/export"),
+        None,
+    )
+    .await
+}
+
+/// `POST …/conversations/{id}/messages` — one agent turn; only the new
+/// message travels, the server rebuilds the history.
+pub async fn send_message(id: Uuid, msg: AiSendMessage) -> Result<AiTurnResponse, ApiError> {
     client::request(
         reqwest::Method::POST,
-        "/api/v1/ai/chat",
-        Some(serde_json::to_value(req).unwrap_or_default()),
+        &format!("{CONVERSATIONS}/{id}/messages"),
+        Some(serde_json::to_value(msg).unwrap_or_default()),
     )
     .await
 }

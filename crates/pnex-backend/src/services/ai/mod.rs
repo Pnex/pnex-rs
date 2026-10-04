@@ -15,6 +15,7 @@
 pub mod agent;
 pub mod config;
 pub mod context;
+pub mod conversations;
 pub mod error;
 pub mod provider;
 pub mod providers;

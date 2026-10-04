@@ -205,6 +205,8 @@ impl Hooks for App {
         crate::services::video::spawn_pruner(ctx);
         // Hourly O2 retention reconcile (D72): new streams get the value.
         crate::services::retention::spawn_reconciler(ctx);
+        // Erasure of inactive assistant conversations (D145).
+        crate::services::ai::conversations::spawn_purger(ctx);
         // Flow execution cluster (D106): this process as a flow worker (one
         // supervised runtime for the orgs placed on it) and as a placement
         // controller candidate — here and not connect_workers (ServerOnly

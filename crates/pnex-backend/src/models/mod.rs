@@ -3,6 +3,8 @@
 //! (hooks, validations) vit dans des modules services dédiés, pas ici.
 
 pub mod _entities;
+pub mod ai_conversations;
+pub mod ai_messages;
 pub mod annotation_layer_versions;
 pub mod annotation_layers;
 pub mod build_records;

@@ -247,14 +247,6 @@ pub struct LlmProviderTest {
     pub error: Option<String>,
 }
 
-/// Message de l'historique envoyé par le front (texte seul — les tours
-/// d'outils restent côté serveur).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AiChatMessage {
-    pub role: String,
-    pub content: String,
-}
-
 /// Contexte de page (route courante + entité ouverte).
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct AiPageContext {
@@ -264,16 +256,6 @@ pub struct AiPageContext {
     pub flow_id: Option<i64>,
     #[serde(default)]
     pub device_id: Option<i64>,
-}
-
-/// `POST /api/v1/ai/chat` — requête d'un tour de chat.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AiChatRequest {
-    pub messages: Vec<AiChatMessage>,
-    #[serde(default)]
-    pub language: Option<String>,
-    #[serde(default)]
-    pub page: Option<AiPageContext>,
 }
 
 /// Trace d'outil renvoyée au front (bulle repliable ✓/✗ + deep-link flow).
@@ -295,11 +277,70 @@ pub struct AiToolTrace {
     pub args: Option<serde_json::Value>,
 }
 
-/// `POST /api/v1/ai/chat` — réponse finale d'un tour (outils inclus).
+/// One conversation of the current user in the current org (D145); list
+/// rows never carry messages nor tool traces.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AiConversation {
+    pub id: uuid::Uuid,
+    pub title: String,
+    /// RFC 3339.
+    pub created_at: String,
+    pub last_message_at: String,
+}
+
+/// One stored message of a conversation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AiMessage {
+    pub seq: i32,
+    /// `user` | `assistant`.
+    pub role: String,
+    pub content: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_trace: Vec<AiToolTrace>,
+    /// RFC 3339.
+    pub created_at: String,
+}
+
+/// `GET /api/v1/ai/conversations/{id}` — resume a conversation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AiConversationDetail {
+    pub conversation: AiConversation,
+    pub messages: Vec<AiMessage>,
+}
+
+/// `POST /api/v1/ai/conversations` (title optional) and `PATCH` (rename).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AiConversationWrite {
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+/// `POST /api/v1/ai/conversations/{id}/messages` — only the new message:
+/// the history is rebuilt by the server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AiChatResponse {
+pub struct AiSendMessage {
+    pub content: String,
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub page: Option<AiPageContext>,
+}
+
+/// Answer of one agent turn.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiTurnResponse {
     pub answer: String,
     pub tool_trace: Vec<AiToolTrace>,
+    /// Updated conversation (title set by the first message).
+    pub conversation: AiConversation,
+}
+
+/// `GET /api/v1/ai/conversations/export` — portability export.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiConversationsExport {
+    /// RFC 3339.
+    pub exported_at: String,
+    pub conversations: Vec<AiConversationDetail>,
 }
 
 #[cfg(test)]

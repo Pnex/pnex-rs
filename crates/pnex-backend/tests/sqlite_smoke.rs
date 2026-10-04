@@ -165,6 +165,34 @@ async fn sqlite_boot_build_download() {
             let n: i64 = row.try_get("", "n").expect("n");
             assert_eq!(n, 1, "un artefact en base");
 
+            // Assistant conversations (D145) on SQLite: create, one-turn
+            // lease (timestamp comparison stored as text), release, purge.
+            {
+                use pnex_backend::services::ai::conversations as conv;
+                let created = server
+                    .post("/api/v1/ai/conversations")
+                    .add_header("Authorization", format!("Bearer {alice}"))
+                    .add_header("X-Org-Id", org.to_string())
+                    .add_header("Content-Type", "application/json")
+                    .json(&serde_json::json!({"title": "sqlite"}))
+                    .await;
+                created.assert_status(axum_test::http::StatusCode::CREATED);
+                let id = uuid::Uuid::parse_str(
+                    created.json::<serde_json::Value>()["id"]
+                        .as_str()
+                        .expect("id"),
+                )
+                .expect("uuid");
+                assert!(conv::acquire(&ctx.db, id).await.expect("acquire"));
+                assert!(
+                    !conv::acquire(&ctx.db, id).await.expect("held"),
+                    "lease held"
+                );
+                conv::release(&ctx.db, id).await;
+                assert!(conv::acquire(&ctx.db, id).await.expect("reacquire"));
+                assert_eq!(conv::purge_inactive(&ctx.db, 1).await.expect("purge"), 0);
+            }
+
             // Download proxifié : contenu de la fixture (secrets propagés).
             let dl = server
                 .get("/api/v1/download/firmware/capteur-jardin")
