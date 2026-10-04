@@ -220,6 +220,11 @@ impl Hooks for App {
             rate_limit,
             crate::services::rate_limit::middleware,
         ));
+        // `/internal/*` is never served to requests that came through the
+        // public edge (SEC-4).
+        let router = router.layer(axum::middleware::from_fn(
+            crate::auth::internal_guard::middleware,
+        ));
         Ok(router)
     }
 

@@ -11,6 +11,7 @@
 //!   (infra status, global retention) → 403 `platform-admin-required`.
 
 pub mod claims;
+pub mod internal_guard;
 pub mod jwks;
 pub mod provisioning;
 pub mod service_token;

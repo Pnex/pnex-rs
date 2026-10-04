@@ -98,6 +98,12 @@ server {
         proxy_send_timeout 1h;
     }
 
+    # Service-to-service routes (flow runtime, notify relay, cluster
+    # peers) are reached directly, never through the public edge.
+    location /internal/ {
+        return 404;
+    }
+
     location / {
         proxy_pass http://$pnex_backend;
         proxy_read_timeout 300s;
