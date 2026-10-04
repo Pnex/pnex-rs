@@ -894,3 +894,126 @@ fn WeatherCard(widget: Widget, title: String, values: LiveValues) -> Element {
         }
     }
 }
+
+/// Short summary of a card for a chip row (D139): icon, text, tint.
+pub fn chip_summary(w: &Widget, values: &LiveValues) -> (String, String, Option<String>) {
+    let title = w.title.trim().to_string();
+    let Some(home) = &w.options.home else {
+        // Plain widget: title + newest value of its first source.
+        let v = w
+            .source
+            .first()
+            .and_then(|s| values.get(&s.series_key()).cloned().flatten())
+            .and_then(|p| p.last().map(|p| p.value));
+        let rule = v.and_then(|v| pnex_core::resolve_state(&w.options.states, v));
+        let text = match (rule.and_then(|r| r.label.clone()), v) {
+            (Some(l), _) => l,
+            (None, Some(v)) => {
+                let unit = w.options.unit.clone().unwrap_or_default();
+                format!(
+                    "{} {unit}",
+                    format_value(v, w.options.decimals.unwrap_or(1))
+                )
+                .trim()
+                .to_string()
+            }
+            (None, None) => "—".into(),
+        };
+        let text = if title.is_empty() {
+            text
+        } else {
+            format!("{title} {text}")
+        };
+        let icon = rule
+            .and_then(|r| r.icon.clone())
+            .or_else(|| w.options.icon.clone())
+            .unwrap_or_else(|| "home-check".into());
+        return (icon, text, rule.and_then(|r| r.color.clone()));
+    };
+    let icon = w
+        .options
+        .icon
+        .clone()
+        .unwrap_or_else(|| home.card.default_icon(home.variant.as_deref()).to_string());
+    let v = |role: &str| last_of(w, role, values).map(|p| p.value);
+    let named = |text: String| {
+        if title.is_empty() {
+            text
+        } else {
+            format!("{title} · {text}")
+        }
+    };
+    match home.card {
+        HomeCard::Binary => {
+            let variant = home.variant.clone().unwrap_or_else(|| "generic".into());
+            match v("state").map(|x| home.is_on(x)) {
+                Some(on) => {
+                    let tint = match (on, binary_alarm(&variant)) {
+                        (true, true) => Some(RED.to_string()),
+                        (true, false) => Some(AMBER.to_string()),
+                        _ => None,
+                    };
+                    (icon, named(binary_text(&variant, on)), tint)
+                }
+                None => (icon, named("—".into()), None),
+            }
+        }
+        HomeCard::ThermoHygro => (icon, named(format!("{}°", fmt(v("temperature"), 1))), None),
+        HomeCard::Power => (icon, named(format!("{} W", fmt(v("power"), 0))), None),
+        HomeCard::AirQuality => {
+            let co2 = v("co2");
+            (
+                icon,
+                named(format!("{} ppm", fmt(co2, 0))),
+                co2.map(|c| co2_color(c).to_string()),
+            )
+        }
+        HomeCard::Weather => {
+            let cond =
+                v("condition_code").and_then(pnex_core::weather::WeatherCondition::from_code);
+            let day = v("is_day").is_none_or(|d| d >= 0.5);
+            let icon = cond.map(|c| c.icon(day).to_string()).unwrap_or(icon);
+            (
+                icon,
+                named(format!("{}°", fmt(v("temperature"), 0))),
+                Some(BLUE.to_string()),
+            )
+        }
+        HomeCard::Light | HomeCard::Fan | HomeCard::Irrigation => {
+            let on_value = home.spec_of("power").map(|s| s.on_value()).unwrap_or(1.0);
+            let on = v("state").or_else(|| commanded(home, "power")) == Some(on_value);
+            let text = if on {
+                t!("controls-on").to_string()
+            } else {
+                t!("controls-off").to_string()
+            };
+            (icon, named(text), on.then(|| AMBER.to_string()))
+        }
+        HomeCard::Gate | HomeCard::Lock | HomeCard::Alarm => {
+            let role = if home.card == HomeCard::Alarm {
+                "mode"
+            } else {
+                "command"
+            };
+            let spec = home.spec_of(role);
+            let option = v("state")
+                .or_else(|| commanded(home, role))
+                .and_then(|x| spec.as_ref().and_then(|s| s.option_of(x).cloned()));
+            let text = option
+                .as_ref()
+                .map(super::option_label)
+                .unwrap_or_else(|| "—".into());
+            let icon = option.and_then(|o| o.icon).unwrap_or(icon);
+            (icon, named(text), None)
+        }
+        _ => (
+            icon,
+            if title.is_empty() {
+                card_label(home.card)
+            } else {
+                title
+            },
+            None,
+        ),
+    }
+}

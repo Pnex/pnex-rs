@@ -274,80 +274,9 @@ pub fn live_layout(
 ) -> Element {
     match layout.format {
         DashboardFormat::Desktop => live_canvas(layout, values),
-        DashboardFormat::Mobile => live_stack(layout, values),
-    }
-}
-
-/// Grid classes of a mobile card (D124): column span (1 = half, 2 = full
-/// row, default full) and a height fitted to the widget type.
-pub fn mobile_card_classes(w: &Widget) -> &'static str {
-    let half = w.options.span == Some(1);
-    match (w.widget_type.as_str(), half) {
-        ("thermo_chart", _) => "col-span-2 h-80",
-        ("gauge", true) => "col-span-1 h-40",
-        ("gauge", false) => "col-span-2 h-48",
-        ("line", true) => "col-span-1 h-36",
-        ("line", false) => "col-span-2 h-40",
-        ("slider" | "number", true) => "col-span-1 h-32",
-        ("slider" | "number", false) => "col-span-2 h-32",
-        ("text", true) => "col-span-1 min-h-20",
-        ("text", false) => "col-span-2 min-h-20",
-        (_, true) => "col-span-1 h-28",
-        (_, false) => "col-span-2 h-28",
-    }
-}
-
-/// Mobile stack (D124): sections in order, each a 2-column grid of cards.
-/// Pure CSS, phone-width column centred on a large screen.
-pub fn live_stack(
-    layout: &DashboardLayout,
-    values: &HashMap<String, Option<Vec<TelemetryPoint>>>,
-) -> Element {
-    let sections: Vec<(String, String, Vec<Widget>)> = layout
-        .sections
-        .iter()
-        .map(|sec| {
-            let cards = sec
-                .items
-                .iter()
-                .filter_map(|id| layout.widgets.iter().find(|w| &w.id == id).cloned())
-                .collect();
-            (sec.id.clone(), sec.title.clone(), cards)
-        })
-        .collect();
-    rsx! {
-        div { class: "mx-auto w-full max-w-md space-y-5",
-            for (id, title, cards) in sections {
-                section { key: "{id}", class: "space-y-2",
-                    if !title.trim().is_empty() {
-                        h2 { class: "px-1 text-xs font-semibold uppercase tracking-wide text-gray-500",
-                            "{title}"
-                        }
-                    }
-                    div { class: "grid grid-cols-2 gap-3",
-                        for w in cards {
-                            StackCard {
-                                key: "{w.id}",
-                                w: w.clone(),
-                                values: values.clone(),
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn StackCard(w: Widget, values: HashMap<String, Option<Vec<TelemetryPoint>>>) -> Element {
-    let (points, degraded) = widget_points(&w, &values);
-    let classes = mobile_card_classes(&w);
-    let fade = if degraded { "opacity-50" } else { "" };
-    rsx! {
-        div { class: "{classes} {fade} overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm",
-            WidgetBody { widget: w.clone(), points, values: Some(values.clone()) }
-        }
+        DashboardFormat::Mobile => rsx! {
+            crate::components::dashboard_live_mobile::LiveStack { layout: layout.clone(), values: values.clone() }
+        },
     }
 }
 

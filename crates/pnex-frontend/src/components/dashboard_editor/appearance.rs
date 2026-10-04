@@ -64,9 +64,13 @@ pub fn AppearancePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Element
     let show_thresholds = has_thresholds(&widget.widget_type);
     let show_states = has_states(&widget.widget_type);
     let show_stale = has_staleness(&widget);
-    if !show_thresholds && !show_states && !show_stale {
+    // Conditional visibility (D139): mobile cards reading a source.
+    let show_visibility =
+        cx.layout.read().format == pnex_core::DashboardFormat::Mobile && !widget.source.is_empty();
+    if !show_thresholds && !show_states && !show_stale && !show_visibility {
         return rsx! {};
     }
+    let visible_when = widget.options.visible_when.clone();
     let stale = widget
         .options
         .stale_after_s
@@ -163,6 +167,9 @@ pub fn AppearancePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Element
                     }
                 }
                 p { class: "text-[10px] text-gray-400", {t!("appear-states-help")} }
+            }
+            if show_visibility {
+                VisibilityRule { cx, rule: visible_when, can_write }
             }
             if show_stale {
                 label { class: "block text-[10px] text-gray-500", {t!("appear-stale")} }
@@ -292,6 +299,81 @@ fn StateRuleRow(cx: EditorCx, index: usize, rule: StateRule, can_write: bool) ->
                     disabled: !can_write,
                     on_change: move |v: Option<String>| edit_rule(cx, i, |r| r.icon = v),
                 }
+            }
+        }
+    }
+}
+
+/// "Show the card only when its first source …" (D139).
+#[component]
+fn VisibilityRule(cx: EditorCx, rule: Option<StateRule>, can_write: bool) -> Element {
+    let active = rule.is_some();
+    let r = rule.unwrap_or(StateRule {
+        op: StateOp::Gte,
+        value: 1.0,
+        ..Default::default()
+    });
+    let (r1, r2) = (r.clone(), r.clone());
+    rsx! {
+        div { class: "space-y-1",
+            label { class: "flex items-center gap-2 text-xs text-gray-700",
+                input {
+                    r#type: "checkbox",
+                    checked: active,
+                    disabled: !can_write,
+                    onchange: move |e| {
+                        let on = e.checked();
+                        let base = r1.clone();
+                        edit_widget(cx, move |w| w.options.visible_when = on.then_some(base));
+                    },
+                }
+                {t!("appear-visible-when")}
+            }
+            if active {
+                div { class: "flex items-center gap-1.5",
+                    select {
+                        class: "rounded border border-gray-300 bg-white px-1 py-1 text-sm",
+                        disabled: !can_write,
+                        value: op_key(r.op),
+                        onchange: move |e| {
+                            let op = match e.value().as_str() {
+                                "gte" => StateOp::Gte,
+                                "lte" => StateOp::Lte,
+                                _ => StateOp::Eq,
+                            };
+                            edit_widget(
+                                cx,
+                                move |w| {
+                                    if let Some(v) = w.options.visible_when.as_mut() {
+                                        v.op = op;
+                                    }
+                                },
+                            );
+                        },
+                        option { value: "eq", "=" }
+                        option { value: "gte", "≥" }
+                        option { value: "lte", "≤" }
+                    }
+                    input {
+                        class: "w-20 rounded border border-gray-300 px-1.5 py-1 text-sm",
+                        "type": "number",
+                        step: "any",
+                        disabled: !can_write,
+                        value: "{r2.value}",
+                        onchange: move |e| {
+                            let v = e.value().parse::<f64>().unwrap_or(0.0);
+                            edit_widget(
+                                cx,
+                                move |w| {
+                                    if let Some(r) = w.options.visible_when.as_mut() {
+                                        r.value = v;
+                                    }
+                                },
+                            );
+                        },
+                    }
+                }
+                p { class: "text-[10px] text-gray-400", {t!("appear-visible-when-help")} }
             }
         }
     }

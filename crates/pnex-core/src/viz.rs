@@ -224,6 +224,10 @@ pub struct WidgetOptions {
     /// Composite home card (present iff type is `home_card`, D138).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub home: Option<crate::home::HomeCardOptions>,
+    /// Mobile: the card shows only while its first source matches this
+    /// rule (D139: "leak detected", "window open"). No data = shown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visible_when: Option<StateRule>,
 }
 
 /// Options of the `symbol` widget — a shape of the front-end symbol
@@ -451,6 +455,14 @@ pub fn resolve_state(rules: &[StateRule], v: f64) -> Option<&StateRule> {
     rules.iter().find(|r| r.matches(v))
 }
 
+/// Mobile visibility of a card (D139) given its newest value.
+pub fn card_visible(options: &WidgetOptions, last: Option<f64>) -> bool {
+    match (&options.visible_when, last) {
+        (Some(rule), Some(v)) => rule.matches(v),
+        _ => true,
+    }
+}
+
 /// Is the newest point (`ts`, epoch seconds like [`crate::TelemetryPoint`])
 /// older than the widget's staleness budget at `now` (epoch seconds)?
 pub fn is_stale(options: &WidgetOptions, ts: f64, now: f64) -> bool {
@@ -551,6 +563,68 @@ pub struct MobileSection {
     pub title: String,
     #[serde(default)]
     pub items: Vec<String>,
+    /// Page holding the section (D139); `None` = the first page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<String>,
+    /// Section icon (home icon catalog, D136).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(default, skip_serializing_if = "is_default_style")]
+    pub style: SectionStyle,
+}
+
+/// How a mobile section renders its cards (D139).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SectionStyle {
+    /// Grid of cards (D124).
+    #[default]
+    Cards,
+    /// Row of compact chips (page header summary).
+    Chips,
+    /// A room: header with aggregates (temperature, lights on, power) and
+    /// a "turn everything off" action, then the cards.
+    Room,
+}
+
+fn is_default_style(s: &SectionStyle) -> bool {
+    *s == SectionStyle::Cards
+}
+
+/// A page (tab) of a mobile dashboard (D139).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct MobilePage {
+    /// `[a-z0-9-]{1,32}`.
+    pub id: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+}
+
+/// Max number of pages of a mobile dashboard.
+pub const MOBILE_PAGES_MAX: usize = 12;
+const PAGE_TITLE_MAX: usize = 40;
+
+fn valid_page_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 32
+        && id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+impl DashboardLayout {
+    /// Page of a section: its own when it exists, else the first page
+    /// (`None` when the dashboard has no page).
+    pub fn page_of<'a>(&'a self, section: &MobileSection) -> Option<&'a str> {
+        let own = section.page.as_deref();
+        self.pages
+            .iter()
+            .find(|x| Some(x.id.as_str()) == own)
+            .or_else(|| self.pages.first())
+            .map(|p| p.id.as_str())
+    }
 }
 
 /// Layout d'un dashboard — stocké en JSONB dans `dashboard_versions`.
@@ -569,6 +643,10 @@ pub struct DashboardLayout {
     /// section).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sections: Vec<MobileSection>,
+    /// Mobile only: pages (tabs) of the dashboard, empty = one implicit
+    /// page (D139).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pages: Vec<MobilePage>,
 }
 
 // ─────────────────────────────── Validation ───────────────────────────────
@@ -733,7 +811,7 @@ pub fn validate_layout(l: &DashboardLayout) -> Vec<VizViolation> {
     }
 
     if desktop {
-        if !l.sections.is_empty() {
+        if !l.sections.is_empty() || !l.pages.is_empty() {
             v.push(VizViolation::new(
                 None,
                 "desktop_sections",
@@ -796,9 +874,50 @@ fn validate_sections(
             format!("at most {MOBILE_SECTIONS_MAX} sections"),
         ));
     }
+    if l.pages.len() > MOBILE_PAGES_MAX {
+        v.push(VizViolation::new(
+            None,
+            "pages_too_many",
+            format!("at most {MOBILE_PAGES_MAX} pages"),
+        ));
+    }
+    let mut page_ids = std::collections::HashSet::new();
+    for p in &l.pages {
+        if !valid_page_id(&p.id) || !page_ids.insert(p.id.as_str()) {
+            v.push(VizViolation::new(
+                None,
+                "page_id",
+                "page id invalid or duplicated",
+            ));
+        }
+        if p.title.chars().count() > PAGE_TITLE_MAX || p.title.chars().any(char::is_control) {
+            v.push(VizViolation::new(
+                None,
+                "page_title",
+                "page title too long or invalid",
+            ));
+        }
+        if p.icon.as_deref().is_some_and(|i| !valid_symbol_id(i)) {
+            v.push(VizViolation::new(None, "page_icon", "invalid page icon id"));
+        }
+    }
     let mut section_ids = std::collections::HashSet::new();
     let mut placed: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
     for sec in &l.sections {
+        if sec.page.as_deref().is_some_and(|p| !page_ids.contains(p)) {
+            v.push(VizViolation::new(
+                None,
+                "section_unknown_page",
+                format!("section \"{}\" references an unknown page", sec.id),
+            ));
+        }
+        if sec.icon.as_deref().is_some_and(|i| !valid_symbol_id(i)) {
+            v.push(VizViolation::new(
+                None,
+                "section_icon",
+                "invalid section icon id",
+            ));
+        }
         if sec.id.trim().is_empty() || sec.id.len() > 128 || !section_ids.insert(sec.id.as_str()) {
             v.push(VizViolation::new(
                 None,
@@ -964,6 +1083,16 @@ pub fn validate_widget(
         }
     }
     validate_states(options, &mut push);
+    if options
+        .visible_when
+        .as_ref()
+        .is_some_and(|r| !r.value.is_finite())
+    {
+        push(
+            "visible_when_value",
+            "the visibility value must be finite".into(),
+        );
+    }
     v.append(&mut extra_violations);
 }
 
@@ -1229,6 +1358,7 @@ mod tests {
             widgets,
             wires: vec![],
             sections,
+            pages: vec![],
         }
     }
 
@@ -1237,6 +1367,7 @@ mod tests {
             id: id.into(),
             title: "General".into(),
             items: items.iter().map(|s| (*s).to_owned()).collect(),
+            ..Default::default()
         }
     }
 
@@ -1679,5 +1810,60 @@ mod tests {
         assert_eq!(back, o);
         let legacy: StateRule = serde_json::from_str(r#"{"value": 1}"#).unwrap();
         assert_eq!(legacy.op, StateOp::Eq);
+    }
+
+    #[test]
+    fn pages_and_section_styles_are_validated() {
+        let mut l = mobile(vec![widget("w1", "stat")], vec![section("s1", &["w1"])]);
+        l.pages = vec![
+            MobilePage {
+                id: "home".into(),
+                title: "Home".into(),
+                icon: Some("home-house".into()),
+            },
+            MobilePage {
+                id: "energy".into(),
+                title: "Energy".into(),
+                icon: None,
+            },
+        ];
+        l.sections[0].page = Some("energy".into());
+        l.sections[0].style = SectionStyle::Room;
+        assert!(validate_layout(&l).is_empty(), "{:?}", validate_layout(&l));
+        assert_eq!(l.page_of(&l.sections[0]), Some("energy"));
+        let json = serde_json::to_value(&l).unwrap();
+        assert_eq!(json["sections"][0]["style"], "room");
+        let back: DashboardLayout = serde_json::from_value(json).unwrap();
+        assert_eq!(back, l);
+
+        let mut bad = l.clone();
+        bad.sections[0].page = Some("nope".into());
+        bad.pages[1].id = "Bad Id".into();
+        let codes: Vec<String> = validate_layout(&bad).into_iter().map(|x| x.code).collect();
+        assert!(
+            codes.contains(&"section_unknown_page".to_string()),
+            "{codes:?}"
+        );
+        assert!(codes.contains(&"page_id".to_string()), "{codes:?}");
+
+        let mut desktop = layout(vec![widget("w1", "gauge")]);
+        desktop.pages = l.pages.clone();
+        assert!(validate_layout(&desktop)
+            .iter()
+            .any(|x| x.code == "desktop_sections"));
+    }
+
+    #[test]
+    fn visibility_rule_hides_only_on_known_values() {
+        let mut o = WidgetOptions::default();
+        assert!(card_visible(&o, Some(0.0)));
+        o.visible_when = Some(StateRule {
+            op: StateOp::Gte,
+            value: 1.0,
+            ..Default::default()
+        });
+        assert!(!card_visible(&o, Some(0.0)));
+        assert!(card_visible(&o, Some(1.0)));
+        assert!(card_visible(&o, None), "no data: shown");
     }
 }
