@@ -177,12 +177,22 @@ pub fn EditorShell(
     let rename_title = t!("eshell-rename");
     // Deux closures (`onkeydown`/`onblur`) consomment chacune leur copie
     // (un String ne peut être déplacé dans deux closures `move`).
+    // Hide the mobile app header while this editor is mounted (see
+    // `ui::EDITORS_OPEN`); the effect reads no signal, so it runs once.
+    use_effect(|| {
+        *crate::state::ui::EDITORS_OPEN.write() += 1;
+    });
+    use_drop(|| {
+        let open = *crate::state::ui::EDITORS_OPEN.peek();
+        *crate::state::ui::EDITORS_OPEN.write() = open.saturating_sub(1);
+    });
     let title_enter = title.clone();
     let title_blur = title.clone();
     rsx! {
-        // Mobile : réserve le header sticky (h-16) ; desktop : pleine hauteur
-        // (la colonne de contenu porte déjà le décalage sidebar lg:pl-64/16).
-        div { class: "flex h-[calc(100dvh-4rem)] flex-col lg:h-screen",
+        // Full height: the mobile app header is hidden while an editor is
+        // open (`ui::EDITORS_OPEN`); desktop content column already carries
+        // the sidebar offset (lg:pl-64/16).
+        div { class: "flex h-[100dvh] flex-col lg:h-screen",
             // ─── Zone 1/2 : barre du haut (gauche identité · droite version+actions)
             // Phone: two rows (identity, then actions right-aligned) instead
             // of one 680 px row scrolled sideways; single 56 px row from sm up.

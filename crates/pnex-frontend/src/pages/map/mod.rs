@@ -50,7 +50,21 @@ const DEFAULT_ZOOM: f64 = 5.0;
 
 #[component]
 pub fn Map() -> Element {
-    let mut sidebar_open = use_signal(|| true);
+    // Phone: the POI panel starts closed (it would cover the map) and
+    // opens as an overlay; from lg up it sits open beside the map.
+    let mut sidebar_open = use_signal(|| false);
+    use_effect(move || {
+        spawn(async move {
+            let wide = dioxus::document::eval("return window.innerWidth >= 1024")
+                .await
+                .ok()
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            if wide {
+                sidebar_open.set(true);
+            }
+        });
+    });
     let mut search = use_signal(String::new);
     let mut filter_device = use_signal(|| false);
     let mut filter_position = use_signal(|| false);
@@ -199,10 +213,15 @@ pub fn Map() -> Element {
 
     rsx! {
         div {
-            class: "flex h-[calc(100vh-4rem)] lg:h-screen overflow-hidden bg-gray-100",
+            class: "relative flex h-[calc(100vh-4rem)] lg:h-screen overflow-hidden bg-gray-100",
             // ── Sidebar gauche repliable ──────────────────────────
             if sidebar_open() {
-                aside { class: "w-80 shrink-0 bg-white border-r border-gray-200 flex flex-col",
+                // Phone backdrop: tap outside the overlay panel to close it.
+                div {
+                    class: "absolute inset-0 z-20 bg-black/20 lg:hidden",
+                    onclick: move |_| sidebar_open.set(false),
+                }
+                aside { class: "absolute inset-y-0 left-0 z-30 w-80 max-w-[85vw] shrink-0 bg-white border-r border-gray-200 flex flex-col shadow-xl lg:static lg:z-auto lg:max-w-none lg:shadow-none",
                     // En-tête + repli.
                     div { class: "flex items-center justify-between px-4 py-3 border-b border-gray-200",
                         h1 { class: "text-base font-semibold text-gray-900", {t!("viz-map-title")} }
