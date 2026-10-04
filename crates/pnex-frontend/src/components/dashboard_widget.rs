@@ -13,6 +13,7 @@ use pnex_core::{TelemetryPoint, Widget};
 use std::collections::HashMap;
 
 use crate::components::charts::thermo::ThermoChart;
+use crate::components::home_icons::HomeIconView;
 use crate::components::symbols;
 
 use crate::components::charts::{
@@ -60,8 +61,14 @@ pub fn WidgetBody(
         };
     }
 
+    // Stale value (D135): the card greys out and says so.
+    let stale = last
+        .as_ref()
+        .is_some_and(|p| pnex_core::is_stale(&w.options, p.ts, crate::util::now_secs()));
     rsx! {
-        div { class: "flex h-full w-full flex-col overflow-hidden rounded-lg",
+        div {
+            class: if stale { "flex h-full w-full flex-col overflow-hidden rounded-lg opacity-50 grayscale" } else { "flex h-full w-full flex-col overflow-hidden rounded-lg" },
+            title: if stale { t!("db-stale").to_string() } else { String::new() },
             // En-tête : titre + unité.
             if !w.title.trim().is_empty() || header_unit.is_some() {
                 div { class: "flex items-baseline justify-between px-3 pt-2",
@@ -188,25 +195,53 @@ fn gauge_body(widget: Widget, last: Option<TelemetryPoint>, decimals: u8) -> Ele
     }
 }
 
+/// Appearance of a value after the state rules (D135): colour, icon, and
+/// the text shown (a rule label replaces the number and its unit).
+struct Look {
+    color: String,
+    icon: Option<String>,
+    text: String,
+    unit: Option<String>,
+}
+
+fn look(w: &Widget, last: Option<&TelemetryPoint>, decimals: u8, fallback: &str) -> Look {
+    let Some(p) = last else {
+        return Look {
+            color: TEXT_MUTED.to_string(),
+            icon: w.options.icon.clone(),
+            text: "—".into(),
+            unit: w.options.unit.clone(),
+        };
+    };
+    let base = threshold_color(&w.options.thresholds, p.value, fallback);
+    let rule = pnex_core::resolve_state(&w.options.states, p.value);
+    let labelled = rule.and_then(|r| r.label.clone());
+    Look {
+        color: rule.and_then(|r| r.color.clone()).unwrap_or(base),
+        icon: rule
+            .and_then(|r| r.icon.clone())
+            .or_else(|| w.options.icon.clone()),
+        unit: if labelled.is_some() {
+            None
+        } else {
+            w.options.unit.clone()
+        },
+        text: labelled.unwrap_or_else(|| format_value(p.value, decimals)),
+    }
+}
+
 #[component]
 fn stat_body(widget: Widget, last: Option<TelemetryPoint>, decimals: u8) -> Element {
-    let w = &widget;
-    let value_color = match &last {
-        Some(p) => threshold_color(&w.options.thresholds, p.value, ACCENT),
-        None => TEXT_MUTED.to_string(),
-    };
-    let label = last
-        .as_ref()
-        .map(|p| format_value(p.value, decimals))
-        .unwrap_or_else(|| "—".into());
+    let l = look(&widget, last.as_ref(), decimals, ACCENT);
     rsx! {
-        div { class: "flex flex-1 flex-col items-center justify-center gap-1 px-2",
-            span {
-                class: "text-3xl font-semibold leading-none",
-                style: "color: {value_color}",
-                "{label}"
+        div {
+            class: "flex flex-1 flex-col items-center justify-center gap-1 px-2",
+            style: "color: {l.color}",
+            if let Some(icon) = l.icon {
+                HomeIconView { id: icon, class: "h-7 w-7" }
             }
-            if let Some(unit) = &w.options.unit {
+            span { class: "text-3xl font-semibold leading-none", "{l.text}" }
+            if let Some(unit) = &l.unit {
                 span { class: "text-xs text-gray-400", "{unit}" }
             }
         }
@@ -279,8 +314,8 @@ fn indicator_body(widget: Widget, last: Option<TelemetryPoint>, decimals: u8) ->
     let w = &widget;
     // LED : verte si la valeur franchit le premier seuil, rouge sinon —
     // sans seuil ni donnée : grise.
-    let (color, state_label) = match &last {
-        None => (GRAY.to_string(), "—".to_string()),
+    let led = match &last {
+        None => GRAY.to_string(),
         Some(p) => {
             let over = w
                 .options
@@ -288,22 +323,30 @@ fn indicator_body(widget: Widget, last: Option<TelemetryPoint>, decimals: u8) ->
                 .first()
                 .map(|t| p.value >= t.value)
                 .unwrap_or(true);
-            let value = format_value(p.value, decimals);
-            if over {
-                ("#16a34a".to_string(), value)
-            } else {
-                ("#dc2626".to_string(), value)
-            }
+            if over { "#16a34a" } else { "#dc2626" }.to_string()
         }
+    };
+    // A matching state rule overrides the LED colour, text and icon (D135).
+    let l = look(w, last.as_ref(), decimals, &led);
+    let color = if last.is_some() && !w.options.states.is_empty() {
+        l.color.clone()
+    } else {
+        led
     };
     rsx! {
         div { class: "flex flex-1 items-center justify-center gap-3 px-2",
-            span {
-                class: "h-5 w-5 rounded-full",
-                style: "background-color: {color}; box-shadow: 0 0 8px {color}",
+            if let Some(icon) = l.icon {
+                span { style: "color: {color}",
+                    HomeIconView { id: icon, class: "h-6 w-6" }
+                }
+            } else {
+                span {
+                    class: "h-5 w-5 rounded-full",
+                    style: "background-color: {color}; box-shadow: 0 0 8px {color}",
+                }
             }
-            span { class: "text-lg font-medium text-gray-800", "{state_label}" }
-            if let Some(unit) = &w.options.unit {
+            span { class: "text-lg font-medium text-gray-800", "{l.text}" }
+            if let Some(unit) = &l.unit {
                 span { class: "text-xs text-gray-400", "{unit}" }
             }
         }

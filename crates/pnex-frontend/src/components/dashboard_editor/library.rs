@@ -24,22 +24,9 @@ pub const SYMBOLS_KEY: &str = "symbol";
 /// Palette key opening the guided "from a device" panel (parcours §1.2).
 pub const FROM_DEVICE_KEY: &str = "from_device";
 
-const KIND_LABELS: [(&str, &str); 10] = [
-    ("switch", "lib-kind-switch"),
-    ("slider", "lib-kind-slider"),
-    ("button", "lib-kind-button"),
-    ("number", "lib-kind-number"),
-    ("gauge", "lib-kind-gauge"),
-    ("stat", "lib-kind-stat"),
-    ("line", "lib-kind-line"),
-    ("indicator", "lib-kind-indicator"),
-    ("text", "lib-kind-text"),
-    ("thermo_chart", "lib-kind-thermo_chart"),
-];
-
 pub fn kind_label(kind: &str) -> String {
-    // t! exige des littéraux : match explicite (la liste KIND_LABELS
-    // reste la source des boutons).
+    // t! needs literal keys: explicit match (PALETTE_GROUPS lists the
+    // palette entries).
     match kind {
         "gauge" => t!("lib-kind-gauge").to_string(),
         "stat" => t!("lib-kind-stat").to_string(),
@@ -74,33 +61,57 @@ pub fn kind_icon(kind: &str) -> (PaletteIcon, &'static str) {
     }
 }
 
-/// Items de la palette coquille — un par type de widget (clic = ajout).
+/// Palette groups in display order (D134). Each widget kind belongs to
+/// exactly one group; the shell starts a section whenever it changes.
+const PALETTE_GROUPS: [(&str, &[&str]); 4] = [
+    ("controls", &["switch", "slider", "button", "number"]),
+    ("display", &["stat", "gauge", "indicator", "text"]),
+    ("charts", &["line"]),
+    ("industrial", &["thermo_chart"]),
+];
+
+fn group_label(group: &str) -> String {
+    match group {
+        "start" => t!("lib-group-start").to_string(),
+        "controls" => t!("lib-group-controls").to_string(),
+        "display" => t!("lib-group-display").to_string(),
+        "charts" => t!("lib-group-charts").to_string(),
+        "industrial" => t!("lib-group-industrial").to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn kind_item(kind: &str, group: &str) -> PaletteItem {
+    let (icon, tile) = kind_icon(kind);
+    let item = PaletteItem::new(kind.to_string(), kind_label(kind))
+        .with_icon(icon, tile)
+        .with_group(group_label(group));
+    // Control cards act through a flow (D128): say so in the palette.
+    if pnex_core::CONTROL_WIDGET_TYPES.contains(&kind) {
+        item.with_description(t!("lib-control-desc").to_string())
+    } else {
+        item
+    }
+}
+
+/// Items de la palette coquille — un par type de widget (clic = ajout),
+/// grouped by category (D134).
 pub fn palette_items() -> Vec<PaletteItem> {
-    let mut items: Vec<PaletteItem> = KIND_LABELS
-        .iter()
-        .map(|(kind, _)| {
-            let (icon, tile) = kind_icon(kind);
-            let item =
-                PaletteItem::new((*kind).to_string(), kind_label(kind)).with_icon(icon, tile);
-            // Control cards act through a flow (D128): say so in the palette.
-            if pnex_core::CONTROL_WIDGET_TYPES.contains(kind) {
-                item.with_description(t!("lib-control-desc").to_string())
-            } else {
-                item
-            }
-        })
-        .collect();
-    items.insert(
-        0,
+    let mut items = vec![
         PaletteItem::new(FROM_DEVICE_KEY, t!("db-from-device").to_string())
             .with_description(t!("db-from-device-desc").to_string())
-            .with_icon(PaletteIcon::Cpu, "bg-teal-50 text-teal-700"),
-    );
+            .with_icon(PaletteIcon::Cpu, "bg-teal-50 text-teal-700")
+            .with_group(group_label("start")),
+    ];
+    for (group, kinds) in PALETTE_GROUPS {
+        items.extend(kinds.iter().map(|k| kind_item(k, group)));
+    }
     let (icon, tile) = kind_icon(SYMBOLS_KEY);
     items.push(
         PaletteItem::new(SYMBOLS_KEY, t!("sym-library").to_string())
             .with_description(t!("sym-library-desc").to_string())
-            .with_icon(icon, tile),
+            .with_icon(icon, tile)
+            .with_group(group_label("industrial")),
     );
     items
 }
@@ -260,6 +271,24 @@ pub fn TemplateList(mut cx: EditorCx) -> Element {
                 },
                 on_cancel: move |_| deleting.set(None),
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_widget_kind_has_one_palette_group() {
+        for kind in pnex_core::VIZ_WIDGET_TYPES {
+            let n = PALETTE_GROUPS
+                .iter()
+                .filter(|(_, kinds)| kinds.contains(kind))
+                .count();
+            // `symbol` is reached through the library entry, not as a kind.
+            let expected = usize::from(*kind != SYMBOLS_KEY);
+            assert_eq!(n, expected, "{kind}");
         }
     }
 }

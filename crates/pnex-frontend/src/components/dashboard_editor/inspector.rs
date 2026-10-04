@@ -12,6 +12,7 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::{SourceRef, VIZ_WINDOW_PRESETS};
 
+use super::appearance::AppearancePanel;
 use super::control_panel::ControlPanel;
 use super::symbol_options::SymbolOptionsPanel;
 use super::thermo_panel::ThermoPanel;
@@ -521,6 +522,7 @@ fn widget_panel(
                 }
             }
 
+            AppearancePanel { cx, widget: w.clone(), can_write }
             div { class: "pt-2 flex flex-col gap-2 border-t border-gray-100",
                 button {
                     class: if can_write { "inline-flex items-center justify-center px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50" } else { "hidden" },

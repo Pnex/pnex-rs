@@ -116,23 +116,20 @@ pub fn DashboardLive(dashboard_id: String) -> Element {
 }
 
 /// Live values of `sources`, keyed by [`pnex_core::SourceRef::series_key`]:
-/// telemetry series through one `series-batch` (1 h window), memory values
-/// through one `memory/values` call. `None` = unavailable (degraded).
+/// telemetry series through one `series-batch` (each series fetched over
+/// the widest window its widgets ask for), memory values through one
+/// `memory/values` call. `None` = unavailable (degraded).
 pub async fn fetch_live_values(
     sources: Vec<pnex_core::SourceRef>,
 ) -> HashMap<String, Option<Vec<TelemetryPoint>>> {
     let mut map: HashMap<String, Option<Vec<TelemetryPoint>>> =
         sources.iter().map(|s| (s.series_key(), None)).collect();
-    let mut specs = Vec::new();
+    let mut specs = series_specs(&sources);
+    specs.sort_by(|a, b| (&a.metric, &a.device_id).cmp(&(&b.metric, &b.device_id)));
     let mut memory = Vec::new();
     for s in sources {
-        match s.memory {
-            Some(m) => memory.push(m),
-            None => specs.push(pnex_core::SeriesSpec {
-                metric: s.metric,
-                device_id: s.device_id,
-                window: "1h".into(),
-            }),
+        if let Some(m) = s.memory {
+            memory.push(m);
         }
     }
     memory.sort();
@@ -351,5 +348,71 @@ fn StackCard(w: Widget, values: HashMap<String, Option<Vec<TelemetryPoint>>>) ->
         div { class: "{classes} {fade} overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm",
             WidgetBody { widget: w.clone(), points, values: Some(values.clone()) }
         }
+    }
+}
+
+/// One `series-batch` spec per telemetry series, over the widest window
+/// requested for it (unknown windows fall back to 1 h).
+fn series_specs(sources: &[pnex_core::SourceRef]) -> Vec<pnex_core::SeriesSpec> {
+    let secs = |w: &str| {
+        pnex_core::VIZ_WINDOW_PRESETS
+            .iter()
+            .find(|(k, _)| *k == w)
+            .map(|(_, s)| *s)
+    };
+    let mut by_series: HashMap<(String, String), String> = HashMap::new();
+    for s in sources.iter().filter(|s| s.memory.is_none()) {
+        let window = if secs(&s.window).is_some() {
+            s.window.clone()
+        } else {
+            "1h".to_string()
+        };
+        by_series
+            .entry((s.metric.clone(), s.device_id.clone()))
+            .and_modify(|cur| {
+                if secs(&window) > secs(cur) {
+                    *cur = window.clone();
+                }
+            })
+            .or_insert(window);
+    }
+    by_series
+        .into_iter()
+        .map(|((metric, device_id), window)| pnex_core::SeriesSpec {
+            metric,
+            device_id,
+            window,
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod window_tests {
+    use super::*;
+
+    fn src(metric: &str, window: &str) -> pnex_core::SourceRef {
+        pnex_core::SourceRef {
+            role: "primary".into(),
+            metric: metric.into(),
+            device_id: "dev".into(),
+            window: window.into(),
+            memory: None,
+        }
+    }
+
+    #[test]
+    fn each_series_uses_its_widest_window() {
+        let mut specs = series_specs(&[
+            src("t", "5m"),
+            src("t", "24h"),
+            src("h", "15m"),
+            src("p", "bogus"),
+        ]);
+        specs.sort_by(|a, b| a.metric.cmp(&b.metric));
+        let got: Vec<(&str, &str)> = specs
+            .iter()
+            .map(|s| (s.metric.as_str(), s.window.as_str()))
+            .collect();
+        assert_eq!(got, vec![("h", "15m"), ("p", "1h"), ("t", "24h")]);
     }
 }

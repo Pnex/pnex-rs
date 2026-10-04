@@ -24,6 +24,19 @@ pub fn now_label() -> String {
     }
 }
 
+/// Wall clock in epoch seconds (`Date.now()` on the web: `SystemTime`
+/// panics on wasm32-unknown-unknown).
+pub fn now_secs() -> f64 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        js_sys::Date::now() / 1000.0
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        chrono::Utc::now().timestamp_millis() as f64 / 1000.0
+    }
+}
+
 /// Same as `now_label` with second precision — auto-saved template names on
 /// test/preview (datetime in the name, collisions unlikely within a minute).
 pub fn now_label_secs() -> String {

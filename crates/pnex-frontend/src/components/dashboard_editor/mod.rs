@@ -13,6 +13,7 @@
 //! l'appel ; 409 → modale recharger/écraser (école flow editor).
 
 mod actions;
+mod appearance;
 mod canvas;
 mod control_panel;
 mod device_panel;
