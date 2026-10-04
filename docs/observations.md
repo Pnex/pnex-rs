@@ -671,10 +671,33 @@ carte (11°, 5 jours) ; mémoire lisible comme source de carte.
   ancien » que son artefact → jamais recompilé. `touch` seul ne suffit pas :
   la couche `RUN cargo build` est reprise du cache Docker (clé = contenu).
 - **Contournement appliqué** : `touch` des fichiers de migration +
-  `docker buildx build --no-cache-filter toolchain,web,build`.
+  `docker buildx build --no-cache-filter toolchain,web,build` → l'image
+  `pnex-builder` a bien reçu un binaire à jour, mais **pas** `pnex-server`
+  (même binaire 13:49, malgré la recompilation de `pnex-migration` dans le
+  log) ; le serveur a alors crash-loopé (« migration applied but its file is
+  missing », 000005 appliquée entre-temps par le builder). Dépannage local :
+  image `pnex-server:dev` dérivée qui recopie `/usr/local/bin/pnex-server`
+  depuis `pnex-builder:dev`. La cause exacte du binaire figé côté target
+  `server` reste à comprendre.
 - **Correctif proposé** (non fait) : dans le `RUN` du stage `build`, forcer la
   recompilation des crates du workspace (`find crates -name '*.rs' -newer …`
   ne suffit pas ; plus simple : `touch` de tous les `crates/**/*.rs` avant
   `cargo build`, ou `cargo clean -p` des crates du workspace — les dépendances
   restent en cache). Concerne aussi les images de release.
 - **Statut** : ouvert.
+
+### O34 — NodeMCU V3 + OLED : le bouton FLASH n'est jamais lu sur GPIO0
+
+- **Constat** (2026-10-04, carte ex-`e2e-nodemcu` réenregistrée `proud-ibex`
+  en org Demo) : D3/GPIO0 en `digital_in` souscrit à 1 s ; journal série
+  (`firmware/hil/serial_tail.py`, sans reset) : 45 lectures `GPIO0 value=1`
+  pendant que l'opérateur appuie plusieurs fois sur FLASH. La chaîne
+  flow → carte marche (`write GPIO2 -> HIGH (readback=HIGH)` toutes les 5 s).
+- **Pistes** : sérigraphie « G01 » près du bouton (GPIO1/TX ?) sur cette
+  variante OLED ; ou lecture des entrées numériques cassée dans le firmware
+  générique 8266 (la suite e2e ne teste sur cette carte que D7 en sortie et
+  A0, jamais une entrée numérique).
+- **Impact** : étape 07 des captures (bouton → LED → notification) non
+  rejouable sur cette carte.
+- **Statut** : ouvert.
+
