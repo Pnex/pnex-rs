@@ -321,6 +321,20 @@ pub fn tool_specs() -> Vec<ToolSpec> {
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{},"required":[]}"#).expect("static schema"),
         },
         ToolSpec {
+            name: "list_controls",
+            description: "Controls of the organization (switches, sliders… declared by dashboards and annotations): spec, last commanded value, and the deployed flows listening to each. Read-only: the assistant never operates a control.",
+            input_schema: json!({"type": "object", "properties": {}, "required": []}),
+        },
+        ToolSpec {
+            name: "read_memory",
+            description: "Shared memory of the organization (written by memory_write flow nodes). Without keys: the keys, their numeric fields and age. With keys (\"key\" or \"key#field\"): their current values. Read-only.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {"keys": {"type": "array", "items": {"type": "string"}}},
+                "required": []
+            }),
+        },
+        ToolSpec {
             name: "validate_flow_graph",
             description: "Valide un graphe de flow (structure, nœuds, câblage) SANS le sauvegarder — renvoie les violations à corriger. À appeler avant chaque create_flow/update_flow.",
             input_schema: json!({
@@ -446,6 +460,8 @@ pub async fn execute(
         "list_annotation_sets" => super::more_tools::list_annotation_layers(deps).await,
         "list_tours" => super::more_tools::list_tours(deps).await,
         "list_pois" => super::more_tools::list_pois(deps).await,
+        "list_controls" => super::more_tools::list_controls(deps).await,
+        "read_memory" => super::more_tools::read_memory(deps, args).await,
         _ => Err(format!(
             "outil inconnu: {name} — seuls les outils listés dans la conversation sont disponibles"
         )
@@ -605,6 +621,17 @@ pub fn summarize(name: &str, out: &ToolOutcome) -> String {
             "{} POI(s)",
             out.value["pois"].as_array().map_or(0, Vec::len)
         ),
+        "list_controls" => format!(
+            "{} control(s)",
+            out.value["controls"].as_array().map_or(0, Vec::len)
+        ),
+        "read_memory" => match out.value["values"].as_array() {
+            Some(v) => format!("{} value(s)", v.len()),
+            None => format!(
+                "{} key(s)",
+                out.value["keys"].as_array().map_or(0, Vec::len)
+            ),
+        },
         _ => "ok".to_string(),
     }
 }
@@ -1146,6 +1173,8 @@ mod tests {
                 "list_annotation_sets",
                 "list_tours",
                 "list_pois",
+                "list_controls",
+                "read_memory",
                 "validate_flow_graph",
                 "validate_calc_expression",
                 "create_flow",

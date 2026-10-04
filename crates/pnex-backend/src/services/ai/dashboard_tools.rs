@@ -27,7 +27,7 @@ use crate::services::dashboards::DashboardWriteError;
 const DASHBOARDS_CAP: u64 = 50;
 
 /// Deployed flows `(id, name)` listening to each control of the org.
-async fn coupled_controls(
+pub(super) async fn coupled_controls(
     db: &DatabaseConnection,
     org_id: i64,
 ) -> Result<HashMap<Uuid, Vec<(i64, String)>>, String> {

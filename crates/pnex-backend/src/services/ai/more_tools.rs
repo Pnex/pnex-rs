@@ -459,3 +459,85 @@ pub async fn list_pois(deps: &ToolDeps<'_>) -> Result<ToolOutcome, ToolError> {
         .collect();
     outcome(json!({ "pois": list }))
 }
+
+// ─────────────────────────── Controls and shared memory (read) ───────────────────────────
+
+/// Controls of the org with their last commanded value and the deployed
+/// flows listening to them. Read only: the assistant never writes a
+/// control (D143) — a surface or the user does.
+pub async fn list_controls(deps: &ToolDeps<'_>) -> Result<ToolOutcome, ToolError> {
+    use crate::models::_entities::controls;
+    let rows = controls::Entity::find()
+        .filter(controls::Column::OrgId.eq(deps.org_id))
+        .order_by_asc(controls::Column::Label)
+        .limit(LIST_CAP)
+        .all(deps.db)
+        .await
+        .map_err(|e| format!("reading controls: {e}"))?;
+    let conn = match deps.config {
+        Some(c) => crate::services::shared_valkey::conn(c).await,
+        None => None,
+    };
+    let ids: Vec<Uuid> = rows.iter().map(|c| c.id).collect();
+    let values = crate::services::controls::read_values(conn, deps.org_id, &ids).await;
+    let listeners = super::dashboard_tools::coupled_controls(deps.db, deps.org_id).await?;
+    let list: Vec<Value> = rows
+        .iter()
+        .map(|c| {
+            json!({
+                "id": c.id,
+                "key": c.key,
+                "label": c.label,
+                "kind": c.kind,
+                "spec": c.spec,
+                "declared_by": c.origin,
+                "value": values.get(&c.id).cloned().flatten(),
+                "deployed_flows_listening": listeners
+                    .get(&c.id)
+                    .map(|fs| fs.iter().map(|(id, n)| json!({"id": id, "name": n})).collect::<Vec<_>>())
+                    .unwrap_or_default(),
+            })
+        })
+        .collect();
+    outcome(json!({ "controls": list }))
+}
+
+/// Shared memory of the org (memory_write nodes): without `keys`, the
+/// keys with their numeric fields and age; with `keys`, their values.
+pub async fn read_memory(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
+    let config = deps
+        .config
+        .ok_or_else(|| "the shared memory is not available here".to_string())?;
+    let keys: Vec<String> = args
+        .get("keys")
+        .and_then(Value::as_array)
+        .map(|ks| {
+            ks.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    if keys.is_empty() {
+        let list = crate::services::memory::list_keys(config, deps.org_id).await;
+        return outcome(json!({ "keys": list }));
+    }
+    let refs: Vec<pnex_core::memory::MemoryRef> = keys
+        .iter()
+        .take(pnex_core::memory::MEMORY_VALUES_CAP)
+        .map(|k| {
+            let (key, field) = k.split_once('#').unwrap_or((k.as_str(), ""));
+            pnex_core::memory::MemoryRef {
+                key: key.to_string(),
+                field: field.to_string(),
+            }
+        })
+        .collect();
+    let resp = crate::services::memory::values(config, deps.org_id, &refs).await;
+    let values: Vec<Value> = keys
+        .iter()
+        .zip(resp.results.iter())
+        .map(|(k, v)| json!({ "key": k, "available": v.available, "value": v.value, "ts_ms": v.ts_ms }))
+        .collect();
+    outcome(json!({ "available": resp.available, "values": values }))
+}
