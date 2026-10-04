@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::api;
 use crate::api::error::ApiError;
 use crate::app::Route;
-use crate::components::crud::filters::{FilterBar, RefreshButton, SearchInput};
+use crate::components::crud::filters::{FilterBar, SearchInput};
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
@@ -287,8 +287,8 @@ pub fn Secrets() -> Element {
                     placeholder: t!("secrets-search-placeholder").to_string(),
                     value: search,
                     on_submit: move |_| reload.with_mut(|r| *r += 1),
+                    on_refresh: move |_| reload.with_mut(|r| *r += 1),
                 }
-                RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
             }
             if let Some(err) = error() {
                 div { class: "bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700 mb-6",

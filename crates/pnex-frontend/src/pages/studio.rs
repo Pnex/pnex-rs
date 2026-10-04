@@ -12,7 +12,7 @@ use pnex_core::TourSummary;
 use crate::api;
 use crate::components::badges::date_label;
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::{FilterBar, RefreshButton, SearchInput};
+use crate::components::crud::filters::{FilterBar, SearchInput};
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
@@ -206,8 +206,8 @@ pub fn Studio() -> Element {
                                 page.set(0);
                                 reload.with_mut(|r| *r += 1);
                             },
+                            on_refresh: move |_| reload.with_mut(|r| *r += 1),
                         }
-                        RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
                     }
 
                     ListStates {

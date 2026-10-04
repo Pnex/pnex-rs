@@ -9,7 +9,7 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 
 use crate::api;
-use crate::components::crud::filters::{FilterBar, RefreshButton, SearchInput};
+use crate::components::crud::filters::{FilterBar, SearchInput};
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
@@ -357,8 +357,8 @@ pub fn FluidMixtures() -> Element {
                         placeholder: t!("mixtures-search-placeholder").to_string(),
                         value: search,
                         on_submit: move |_| reload.with_mut(|r| *r += 1),
+                        on_refresh: move |_| reload.with_mut(|r| *r += 1),
                     }
-                    RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
                 }
 
                 if let Some(err) = error() {

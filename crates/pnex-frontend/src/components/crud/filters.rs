@@ -29,10 +29,44 @@ pub fn SearchInput(
     /// Signal de la requête courante (saisie conservée entre deux rendus).
     mut value: Signal<String>,
     on_submit: Callback<()>,
+    /// Manual refresh glued to the end of the field: search and refresh
+    /// wrap as one group, so the button never lands alone on a phone row.
+    #[props(default)]
+    on_refresh: Option<Callback<()>>,
+) -> Element {
+    rsx! {
+        if let Some(refresh) = on_refresh {
+            div { class: "flex flex-1 min-w-48 items-center gap-2",
+                SearchField {
+                    placeholder,
+                    value,
+                    on_submit,
+                    class: "flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                }
+                RefreshButton { on_click: refresh }
+            }
+        } else {
+            SearchField {
+                placeholder,
+                value,
+                on_submit,
+                class: "flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm",
+            }
+        }
+    }
+}
+
+/// The bare search `<input>` of [`SearchInput`].
+#[component]
+fn SearchField(
+    placeholder: String,
+    mut value: Signal<String>,
+    on_submit: Callback<()>,
+    class: &'static str,
 ) -> Element {
     rsx! {
         input {
-            class: "flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm",
+            class,
             r#type: "search",
             placeholder: "{placeholder}",
             value: "{value}",

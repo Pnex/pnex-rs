@@ -23,7 +23,7 @@ use crate::api;
 use crate::components::badges::date_label;
 use crate::components::code_highlight::{AreaHandle, FunctionCodeEditor, LineMark, MarkSeverity};
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::{FilterBar, RefreshButton, SearchInput};
+use crate::components::crud::filters::{FilterBar, SearchInput};
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
@@ -208,8 +208,8 @@ pub fn Functions() -> Element {
                                 placeholder: t!("functions-search-placeholder").to_string(),
                                 value: search,
                                 on_submit: move |_| {},
+                                on_refresh: move |_| reload.with_mut(|r| *r += 1),
                             }
-                            RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
                         }
 
                         ListStates {

@@ -21,7 +21,7 @@ use crate::api;
 use crate::api::media::{MediaAsset, MediaFilters, MediaKind, UploadParams};
 use crate::components::badges::date_label;
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::{FilterBar, RefreshButton, SearchInput};
+use crate::components::crud::filters::{FilterBar, SearchInput};
 use crate::components::crud::layout::{ListLayout, PRIMARY_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
@@ -319,8 +319,8 @@ pub fn Media() -> Element {
                         on_submit: move |_| {
                             page.set(0);
                         },
+                        on_refresh: move |_| reload.with_mut(|r| *r += 1),
                     }
-                    RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
                 }
 
                 ListStates {
