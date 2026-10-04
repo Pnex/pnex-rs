@@ -146,8 +146,14 @@ appliquer les classes du lot 2).
   - `EditorShell` : barre sur 2 lignes sous `sm` (identité / actions
     alignées à droite), `#id` et chip version masqués, Historique et Debug
     en icône seule → Enregistrer / Déployer visibles sans glisser (M11).
-- Reste : lot 3 (M7 place unique du refresh, M8 barre de filtres), M12
-  (double en-tête éditeur), M6 tables hors socle, hors-lot M13–M17.
+- **2026-10-04 — lot 3 partiel** : `SearchInput { on_refresh }` colle le
+  refresh au champ (un seul groupe flex) → plus de bouton seul sur une ligne
+  (9 pages). Vérifié sur le téléphone : devices 196 → 61 px par ligne, plus
+  aucune action hors écran sur dashboards / orgs / flows / devices.
+- Reste : M7 (refresh encore dans l'en-tête sur orgs, system, cameras,
+  models, controls, dashboards, dans la barre d'onglets sur edges/refs et
+  notifications — cohérent par famille, à trancher), M12 (double en-tête
+  éditeur), M6 tables hors socle, hors-lot M13–M17.
 
 ## 4. Décision à prendre (avant le lot 2)
 
