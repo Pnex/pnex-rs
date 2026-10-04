@@ -79,3 +79,28 @@ async fn interne_mauvais_token_et_device_inconnu() {
     })
     .await;
 }
+
+/// SEC-4: a request that came through the public edge (forwarding header)
+/// never reaches an internal route, even with the right token.
+#[tokio::test]
+#[serial]
+async fn interne_via_proxy_public_404() {
+    with_app(|server| async move {
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-test-123") };
+        for header in ["x-forwarded-for", "x-real-ip", "forwarded"] {
+            let resp = server
+                .post("/internal/flow/device-write")
+                .add_header("Content-Type", "application/json")
+                .add_header("x-pnex-flow-token", "tok-test-123")
+                .add_header(header, "203.0.113.7")
+                .json(&serde_json::json!({
+                    "org_id": 1, "device_id": "inconnu", "values": {"relais": true}
+                }))
+                .await;
+            assert_eq!(resp.status_code(), 404, "{header}");
+            assert!(resp.text().is_empty(), "{header}: {}", resp.text());
+        }
+        unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
+    })
+    .await;
+}
