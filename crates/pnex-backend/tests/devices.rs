@@ -470,6 +470,56 @@ async fn isolation_tenant_et_roles() {
         assert_eq!(res.status_code(), 200, "viewer lit les devices de l'org");
         let res = create_device(&server, &env.bob, alice_org, "esp-v", "soil_sensor").await;
         assert_eq!(res.status_code(), 403, "viewer ne crée pas");
+
+        // SEC-8: device credentials never reach a viewer (list + detail),
+        // nor the firmware image that embeds them; the owner keeps them.
+        let list: serde_json::Value = server
+            .get("/api/v1/devices")
+            .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", alice_org.to_string())
+            .await
+            .json();
+        assert!(list["results"][0]["device_token"].is_null(), "{list}");
+        let detail: serde_json::Value = server
+            .get(&format!("/api/v1/devices/{alice_device}"))
+            .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", alice_org.to_string())
+            .await
+            .json();
+        assert!(detail["device_token"].is_null(), "{detail}");
+        let owner: serde_json::Value = server
+            .get(&format!("/api/v1/devices/{alice_device}"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", alice_org.to_string())
+            .await
+            .json();
+        assert!(owner["device_token"]["token"].is_string(), "{owner}");
+        let res = server
+            .get("/api/v1/download/firmware/esp-001")
+            .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", alice_org.to_string())
+            .await;
+        assert_eq!(
+            res.status_code(),
+            403,
+            "viewer ne télécharge pas le firmware"
+        );
+
+        // SEC-7: a viewer neither deploys nor cancels an OTA rollout.
+        let res = server
+            .post(&format!("/api/v1/devices/{alice_device}/ota"))
+            .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", alice_org.to_string())
+            .add_header("Content-Type", "application/json")
+            .json(&serde_json::json!({ "force": true }))
+            .await;
+        assert_eq!(res.status_code(), 403, "viewer ne déploie pas d'OTA");
+        let res = server
+            .delete(&format!("/api/v1/devices/{alice_device}/ota"))
+            .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", alice_org.to_string())
+            .await;
+        assert_eq!(res.status_code(), 403, "viewer n'annule pas d'OTA");
         let _ = ctx;
     })
     .await;

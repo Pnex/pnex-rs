@@ -184,14 +184,20 @@ pub(super) async fn list(
         .map(|t| (t.id, t.name))
         .collect();
     let caps = capabilities_of(&ctx.db, &pd_ids).await?;
-    let tokens: HashMap<i64, device_tokens::Model> = device_tokens::Entity::find()
-        .filter(device_tokens::Column::DeviceRegistryId.is_in(device_pks.clone()))
-        .all(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?
-        .into_iter()
-        .map(|t| (t.device_registry_id, t))
-        .collect();
+    // Device credentials only go to roles that provision devices (SEC-8):
+    // a viewer gets no token / key.
+    let tokens: HashMap<i64, device_tokens::Model> = if org.can_write() {
+        device_tokens::Entity::find()
+            .filter(device_tokens::Column::DeviceRegistryId.is_in(device_pks.clone()))
+            .all(&ctx.db)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .into_iter()
+            .map(|t| (t.device_registry_id, t))
+            .collect()
+    } else {
+        HashMap::new()
+    };
     // Liveness leases (D108): last seen + connected per device, batched.
     let states = crate::services::device_liveness::seen_many(&ctx.db, &device_pks).await?;
 
@@ -567,7 +573,12 @@ pub(super) async fn detail(
     let Some(device) = find_device(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
-    format::json(device_full(&ctx.db, device).await?)
+    let mut dto = device_full(&ctx.db, device).await?;
+    // Same credential rule as the list (SEC-8).
+    if !org.can_write() {
+        dto.device_token = None;
+    }
+    format::json(dto)
 }
 
 /// `PUT|PATCH /api/v1/devices/{id}` — metadata only (legacy contract: any

@@ -587,6 +587,14 @@ async fn download(
     org: OrgContext,
     Path(device_id): Path<String>,
 ) -> Result<Response> {
+    // The image embeds the device token, its key and the WiFi credentials
+    // (SEC-8): same roles as the build itself, never a viewer.
+    if !org.can_write() {
+        return Err(forbidden(
+            pnex_core::err_codes::DEVICE_WRITE_FORBIDDEN,
+            "Owner, admin or member role required to manage devices.",
+        ));
+    }
     let Some(record) = build_records::Entity::find()
         .filter(build_records::Column::OrgId.eq(org.org.id))
         .filter(build_records::Column::DeviceId.eq(device_id.trim()))

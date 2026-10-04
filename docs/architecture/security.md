@@ -200,14 +200,14 @@ MEDIUM = escalade à l'intérieur d'une org.
 
 | # | Sév. | Finding | Règle | Statut |
 |---|---|---|---|---|
-| SEC-1 | HIGH | **RCE par le nœud `red` → `exec`** | R5 | corrigé (`fix/security-high`) |
-| SEC-2 | HIGH | **Falsification de `pnex_org_id` via un nœud `red` `pnex-*`** | R3 | corrigé (`fix/security-high`) |
-| SEC-3 | HIGH | **`env.get` des fonctions JS lit l'environnement du runtime** | R6 | corrigé (`fix/security-high` + fork edgelinkd) |
+| SEC-1 | HIGH | **RCE par le nœud `red` → `exec`** | R5 | corrigé |
+| SEC-2 | HIGH | **Falsification de `pnex_org_id` via un nœud `red` `pnex-*`** | R3 | corrigé |
+| SEC-3 | HIGH | **`env.get` des fonctions JS lit l'environnement du runtime** | R6 | corrigé (+ fork edgelinkd) |
 | SEC-4 | HIGH* | **`/internal/*` exposé et `org_id` fourni par l'appelant** | R7 | corrigé — exposition ; résiduel ci-dessous |
-| SEC-5 | HIGH | **XSS stocké : médias servis avec le `Content-Type` du client** | R12 | corrigé (`fix/security-high`) |
-| SEC-6 | HIGH | **XSS stocké : labels pannellum sans `escapeHTML`** | R11 | corrigé (`fix/security-high`) |
-| SEC-7 | MEDIUM | **Viewer : déploiement / annulation OTA** | R2 | ouvert |
-| SEC-8 | MEDIUM | **Viewer : jetons et clés des devices, firmware avec PSK WiFi** | R4 | ouvert |
+| SEC-5 | HIGH | **XSS stocké : médias servis avec le `Content-Type` du client** | R12 | corrigé |
+| SEC-6 | HIGH | **XSS stocké : labels pannellum sans `escapeHTML`** | R11 | corrigé |
+| SEC-7 | MEDIUM | **Viewer : déploiement / annulation OTA** | R2 | corrigé |
+| SEC-8 | MEDIUM | **Viewer : jetons et clés des devices, firmware avec PSK WiFi** | R4 | corrigé |
 
 \* SEC-4 seul exige le jeton de service ; c'est l'amplificateur qui rend
 SEC-1 / SEC-3 inter-org (actionneurs de n'importe quelle org).
@@ -300,7 +300,7 @@ réservé owner/admin par le coffre. *Correctif* : `device_token` à `None`
 hors `can_write` (ou endpoint « révéler » dédié) ; `builds.rs::download`
 sous `can_manage_secrets`.
 
-### Correctifs HIGH (2026-10-04, branche `fix/security-high`)
+### Correctifs (2026-10-04)
 
 - **SEC-1 / SEC-2** — `pnex_core::flow::node_types` : `RED_ALLOWED_TYPES`
   (transformations pures) vérifiée par `validate_graph` (save + deploy,
@@ -342,7 +342,16 @@ sous `can_manage_secrets`.
 | SEC-W5 | — | `email_verified` non exigé au rattachement de compte (`auth/provisioning.rs:117`) | sûr tant que Rauthy garantit l'email ; à exiger avant tout IdP amont |
 | SEC-W6 | — | Firmware `setInsecure` sans `PNEX_CA_CERT_FILE` | refuser un build `wss` sans CA épinglée |
 
+- **SEC-7** — `controllers/ota.rs` : `deploy` et `cancel` exigent
+  `can_write` (`device-write-forbidden`).
+- **SEC-8** — liste et détail des devices : `device_token` absent hors
+  `can_write` ; `GET /download/firmware/{id}` exige `can_write`. Test
+  `devices.rs::isolation_tenant_et_roles` (viewer : pas de jeton, 403 OTA
+  et téléchargement ; owner : jeton présent).
+  *Note* : un member peut toujours lancer un build et télécharger
+  l'image (qui embarque le PSK WiFi) — inhérent au provisioning, rattaché
+  à SEC-W2.
+
 ### Reste à faire
 
-1. **SEC-7 + SEC-8** — gardes de rôle (MEDIUM).
-2. Les SEC-W selon priorité produit.
+Les SEC-W selon priorité produit ; aucun finding ≥ 8/10 ouvert.
