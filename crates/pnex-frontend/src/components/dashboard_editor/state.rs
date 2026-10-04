@@ -5,8 +5,8 @@
 //! entiers — un synoptique fait quelques Ko, la simplicité gagne.
 
 use pnex_core::{
-    CanvasSpec, DashboardLayout, SourceRef, SymbolOptions, ThermoChartOptions, ThermoPressureUnit,
-    Widget, WidgetOptions, WidgetTemplate, Wire,
+    CanvasSpec, DashboardFormat, DashboardLayout, MobileSection, SourceRef, SymbolOptions,
+    ThermoChartOptions, ThermoPressureUnit, Widget, WidgetOptions, WidgetTemplate, Wire,
 };
 
 use super::geometry::default_size;
@@ -47,7 +47,9 @@ pub fn new_widget(layout: &mut DashboardLayout, id: String, widget_type: &str, x
                 pressure_unit: ThermoPressureUnit::default(),
             }),
         )
-    } else if widget_type == "text" {
+    } else if widget_type == "text" || pnex_core::CONTROL_WIDGET_TYPES.contains(&widget_type) {
+        // Control cards: the state source is optional (opt-in from the
+        // inspector), the control itself is picked there.
         (vec![], None)
     } else {
         (
@@ -121,6 +123,9 @@ pub fn resize_widget(layout: &mut DashboardLayout, id: &str, w: i64, h: i64) {
 /// widget n'existe pas).
 pub fn delete_widget(layout: &mut DashboardLayout, id: &str) {
     layout.widgets.retain(|w| w.id != id);
+    for sec in &mut layout.sections {
+        sec.items.retain(|i| i != id);
+    }
     layout
         .wires
         .retain(|t| t.from.widget_id != id && t.to.widget_id != id);
@@ -157,6 +162,176 @@ pub fn resize_canvas(layout: &mut DashboardLayout, width: i64, height: i64) {
         height,
         background: layout.canvas.background.clone(),
     };
+}
+
+// ─────────────────────────── Mobile composer (D124) ───────────────────────────
+
+/// Next free section id (`s-N`, max + 1 of the existing ones).
+pub fn next_section_id(layout: &DashboardLayout) -> String {
+    let n = layout
+        .sections
+        .iter()
+        .filter_map(|s| s.id.strip_prefix("s-"))
+        .filter_map(|n| n.parse::<u32>().ok())
+        .max()
+        .unwrap_or(0);
+    format!("s-{}", n + 1)
+}
+
+/// Appends a section; returns its id.
+pub fn add_section(layout: &mut DashboardLayout, title: &str) -> String {
+    let id = next_section_id(layout);
+    layout.sections.push(MobileSection {
+        id: id.clone(),
+        title: title.to_owned(),
+        items: vec![],
+    });
+    id
+}
+
+pub fn rename_section(layout: &mut DashboardLayout, id: &str, title: &str) {
+    if let Some(sec) = layout.sections.iter_mut().find(|s| s.id == id) {
+        sec.title = title.to_owned();
+    }
+}
+
+/// Removes a section; its cards join the previous section (the next one
+/// for the first). The last section is never removed (a card always has
+/// a home).
+pub fn delete_section(layout: &mut DashboardLayout, id: &str) {
+    if layout.sections.len() < 2 {
+        return;
+    }
+    let Some(pos) = layout.sections.iter().position(|s| s.id == id) else {
+        return;
+    };
+    let removed = layout.sections.remove(pos);
+    let target = pos.saturating_sub(1).min(layout.sections.len() - 1);
+    if pos == 0 {
+        let mut items = removed.items;
+        items.append(&mut layout.sections[0].items);
+        layout.sections[0].items = items;
+    } else {
+        layout.sections[target].items.extend(removed.items);
+    }
+}
+
+/// Moves a section up (`-1`) or down (`+1`).
+pub fn shift_section(layout: &mut DashboardLayout, id: &str, delta: i32) {
+    let Some(pos) = layout.sections.iter().position(|s| s.id == id) else {
+        return;
+    };
+    let to = pos as i64 + i64::from(delta);
+    if to < 0 || to >= layout.sections.len() as i64 {
+        return;
+    }
+    layout.sections.swap(pos, to as usize);
+}
+
+/// Puts a card at the end of `section` (the last section when `None` or
+/// unknown; a first section is created when there is none).
+pub fn place_in_section(layout: &mut DashboardLayout, widget_id: &str, section: Option<&str>) {
+    for sec in &mut layout.sections {
+        sec.items.retain(|i| i != widget_id);
+    }
+    if layout.sections.is_empty() {
+        add_section(layout, "");
+    }
+    let pos = section
+        .and_then(|id| layout.sections.iter().position(|s| s.id == id))
+        .unwrap_or(layout.sections.len() - 1);
+    layout.sections[pos].items.push(widget_id.to_owned());
+}
+
+/// Moves a card into `section` at `index` (clamped; drag and drop).
+pub fn move_card(layout: &mut DashboardLayout, widget_id: &str, section: &str, index: usize) {
+    if !layout.sections.iter().any(|s| s.id == section) {
+        return;
+    }
+    for sec in &mut layout.sections {
+        sec.items.retain(|i| i != widget_id);
+    }
+    if let Some(sec) = layout.sections.iter_mut().find(|s| s.id == section) {
+        let index = index.min(sec.items.len());
+        sec.items.insert(index, widget_id.to_owned());
+    }
+}
+
+/// Moves a card just before `before_id` (drop on a card; any section).
+pub fn move_card_before(layout: &mut DashboardLayout, widget_id: &str, before_id: &str) {
+    if widget_id == before_id || card_position(layout, before_id).is_none() {
+        return;
+    }
+    for sec in &mut layout.sections {
+        sec.items.retain(|i| i != widget_id);
+    }
+    if let Some((section, index)) = card_position(layout, before_id) {
+        if let Some(sec) = layout.sections.iter_mut().find(|s| s.id == section) {
+            sec.items.insert(index, widget_id.to_owned());
+        }
+    }
+}
+
+/// Section id and index of a card.
+pub fn card_position(layout: &DashboardLayout, widget_id: &str) -> Option<(String, usize)> {
+    layout.sections.iter().find_map(|s| {
+        s.items
+            .iter()
+            .position(|i| i == widget_id)
+            .map(|p| (s.id.clone(), p))
+    })
+}
+
+/// Moves a card one step back (`-1`) or forward (`+1`); past the edge of
+/// its section it joins the end of the previous / the start of the next.
+pub fn shift_card(layout: &mut DashboardLayout, widget_id: &str, delta: i32) {
+    let Some(si) = layout
+        .sections
+        .iter()
+        .position(|s| s.items.iter().any(|i| i == widget_id))
+    else {
+        return;
+    };
+    let items = &mut layout.sections[si].items;
+    let pos = items.iter().position(|i| i == widget_id).unwrap_or(0);
+    let to = pos as i64 + i64::from(delta);
+    if to >= 0 && (to as usize) < items.len() {
+        items.swap(pos, to as usize);
+        return;
+    }
+    let card = items.remove(pos);
+    if to < 0 && si > 0 {
+        layout.sections[si - 1].items.push(card);
+    } else if to >= 0 && si + 1 < layout.sections.len() {
+        layout.sections[si + 1].items.insert(0, card);
+    } else {
+        // No neighbour section: the card stays where it was.
+        layout.sections[si].items.insert(pos, card);
+    }
+}
+
+/// Card width on mobile: 1 = half, 2 = full row.
+pub fn set_span(layout: &mut DashboardLayout, widget_id: &str, span: u8) {
+    if let Some(w) = layout.widgets.iter_mut().find(|w| w.id == widget_id) {
+        w.options.span = Some(span.clamp(1, 2));
+    }
+}
+
+/// Empty layout of a new dashboard of `format` (mobile: one section).
+pub fn initial_layout(format: DashboardFormat, first_section: &str) -> DashboardLayout {
+    let mut layout = DashboardLayout {
+        format,
+        canvas: CanvasSpec {
+            width: 1600,
+            height: 900,
+            background: None,
+        },
+        ..Default::default()
+    };
+    if format == DashboardFormat::Mobile {
+        add_section(&mut layout, first_section);
+    }
+    layout
 }
 
 // ───────────────────────────── Undo / Redo ─────────────────────────────
@@ -363,6 +538,84 @@ mod tests {
             11,
             "max des suffixes sur les deux préfixes w/t"
         );
+    }
+
+    fn mobile() -> DashboardLayout {
+        let mut l = initial_layout(DashboardFormat::Mobile, "General");
+        for id in ["w-0001", "w-0002", "w-0003"] {
+            new_widget(&mut l, id.into(), "switch", 0, 0);
+            place_in_section(&mut l, id, None);
+        }
+        l
+    }
+
+    fn items(l: &DashboardLayout) -> Vec<Vec<&str>> {
+        l.sections
+            .iter()
+            .map(|s| s.items.iter().map(String::as_str).collect())
+            .collect()
+    }
+
+    #[test]
+    fn mobile_cards_move_within_and_across_sections() {
+        let mut l = mobile();
+        assert_eq!(items(&l), vec![vec!["w-0001", "w-0002", "w-0003"]]);
+        let s2 = add_section(&mut l, "Garage");
+        assert_eq!(s2, "s-2");
+        // Past the end of the first section → start of the next one.
+        shift_card(&mut l, "w-0003", 1);
+        assert_eq!(items(&l), vec![vec!["w-0001", "w-0002"], vec!["w-0003"]]);
+        shift_card(&mut l, "w-0001", 1);
+        assert_eq!(items(&l), vec![vec!["w-0002", "w-0001"], vec!["w-0003"]]);
+        // Back past the start → end of the previous section.
+        shift_card(&mut l, "w-0003", -1);
+        assert_eq!(items(&l), vec![vec!["w-0002", "w-0001", "w-0003"], vec![]]);
+        // No neighbour: unchanged.
+        shift_card(&mut l, "w-0002", -1);
+        assert_eq!(items(&l)[0][0], "w-0002");
+        // Drop on a card: lands just before it, whatever the direction.
+        move_card_before(&mut l, "w-0002", "w-0003");
+        assert_eq!(items(&l)[0], vec!["w-0001", "w-0002", "w-0003"]);
+        move_card_before(&mut l, "w-0003", "w-0001");
+        assert_eq!(items(&l)[0], vec!["w-0003", "w-0001", "w-0002"]);
+        move_card_before(&mut l, "w-0003", "w-0002");
+        assert_eq!(items(&l)[0], vec!["w-0001", "w-0003", "w-0002"]);
+        move_card_before(&mut l, "w-0003", "w-0001");
+        move_card_before(&mut l, "w-0002", "w-0001");
+        assert_eq!(items(&l)[0], vec!["w-0003", "w-0002", "w-0001"]);
+        move_card_before(&mut l, "w-0002", "w-0003");
+        move_card_before(&mut l, "w-0001", "w-0003");
+        assert_eq!(items(&l)[0], vec!["w-0002", "w-0001", "w-0003"]);
+        move_card(&mut l, "w-0001", "s-2", 9);
+        assert_eq!(items(&l), vec![vec!["w-0002", "w-0003"], vec!["w-0001"]]);
+        assert_eq!(card_position(&l, "w-0001"), Some(("s-2".into(), 0)));
+        assert!(pnex_core::validate_layout(&l)
+            .iter()
+            .all(|v| v.code == "control_missing"));
+    }
+
+    #[test]
+    fn mobile_sections_delete_keeps_cards_and_widgets_leave_sections() {
+        let mut l = mobile();
+        add_section(&mut l, "B");
+        move_card(&mut l, "w-0002", "s-2", 0);
+        // Deleting a section hands its cards to the previous one.
+        delete_section(&mut l, "s-2");
+        assert_eq!(items(&l), vec![vec!["w-0001", "w-0003", "w-0002"]]);
+        // The last section stays.
+        delete_section(&mut l, "s-1");
+        assert_eq!(l.sections.len(), 1);
+        // Deleting the first section hands its cards to the next one, in front.
+        add_section(&mut l, "C");
+        move_card(&mut l, "w-0001", "s-2", 0);
+        delete_section(&mut l, "s-1");
+        assert_eq!(items(&l), vec![vec!["w-0003", "w-0002", "w-0001"]]);
+        delete_widget(&mut l, "w-0002");
+        assert_eq!(items(&l), vec![vec!["w-0003", "w-0001"]]);
+        set_span(&mut l, "w-0003", 7);
+        assert_eq!(find_widget(&l, "w-0003").unwrap().options.span, Some(2));
+        shift_section(&mut l, "s-2", -1);
+        assert_eq!(l.sections[0].id, "s-2");
     }
 
     #[test]

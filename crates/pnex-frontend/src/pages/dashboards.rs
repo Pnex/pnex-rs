@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::{TelemetryPoint, VizDashboard, VizDashboardSummary};
+use pnex_core::{DashboardFormat, TelemetryPoint, VizDashboard, VizDashboardSummary};
 
 use crate::api;
 use crate::components::badges::date_label;
@@ -19,7 +19,7 @@ use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::dashboard_editor::DashboardEditor;
-use crate::components::dashboard_live::live_canvas;
+use crate::components::dashboard_live::live_layout;
 use crate::components::icons;
 use crate::components::refresh_rate::{use_auto_refresh, RefreshRateControl};
 use crate::state::viz::{OPEN_DASHBOARD, VIZ_EDIT};
@@ -142,6 +142,7 @@ fn ListView(
 ) -> Element {
     let page = use_signal(|| 0i64);
     let mut delete_target = use_signal(|| None::<(String, String)>);
+    let mut choosing = use_signal(|| false);
 
     // Org, reload et page lus dans la partie SYNCHRONE de la closure
     // (pattern devices.rs : abonnements garantis). FIX : `page()` n'était
@@ -190,6 +191,17 @@ fn ListView(
                     div { class: "text-xs text-gray-500", "{desc}" }
                 }
                 div { class: "text-xs text-gray-400", "{date_label(&d.updated_at)}" }
+            }
+        }),
+        Column::new(t!("db-format").to_string(), |d: &VizDashboardSummary| {
+            let (label, class) = match d.format {
+                DashboardFormat::Desktop => (t!("db-format-desktop"), "bg-gray-100 text-gray-700"),
+                DashboardFormat::Mobile => (t!("db-format-mobile"), "bg-teal-50 text-teal-700"),
+            };
+            rsx! {
+                span { class: "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {class}",
+                    "{label}"
+                }
             }
         }),
         Column::new(t!("db-version").to_string(), |d: &VizDashboardSummary| {
@@ -246,25 +258,31 @@ fn ListView(
                 RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
             },
             add_label: Some(t!("db-create").to_string()),
-            on_add: move |_| {
-                // Création immédiate, sans modale : nom daté puis ouverture
-                // directe en édition (fluidité — retour user 2026-09-18).
-                let params = pnex_core::CreateDashboard {
-                    name: t!("db-default-name", date : crate ::util::now_label()).to_string(),
-                    description: None,
-                    layout: None,
-                };
-                spawn(async move {
-                    match api::dashboards::create(params).await {
-                        Ok(dashboard) => {
-                            toasts::success(t!("db-created").to_string());
-                            reload.with_mut(|r| *r += 1);
-                            on_open.call((dashboard.id, true));
-                        }
-                        Err(e) => toasts::error(e),
+            on_add: move |_| choosing.toggle(),
+            // D123: the format is picked once, at creation (no modal: two
+            // tiles, a click creates and opens the editor).
+            if choosing() {
+                div { class: "mb-4 grid gap-3 sm:grid-cols-2",
+                    FormatTile {
+                        icon_mobile: false,
+                        title: t!("db-format-desktop").to_string(),
+                        help: t!("db-format-desktop-help").to_string(),
+                        on_pick: move |_| {
+                            choosing.set(false);
+                            create_dashboard(DashboardFormat::Desktop, reload, on_open);
+                        },
                     }
-                });
-            },
+                    FormatTile {
+                        icon_mobile: true,
+                        title: t!("db-format-mobile").to_string(),
+                        help: t!("db-format-mobile-help").to_string(),
+                        on_pick: move |_| {
+                            choosing.set(false);
+                            create_dashboard(DashboardFormat::Mobile, reload, on_open);
+                        },
+                    }
+                }
+            }
             if org::current().is_none() {
                 p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
             } else {
@@ -310,6 +328,61 @@ fn ListView(
     }
 }
 
+/// Creates a dashboard of `format` (dated name) and opens it in the editor
+/// (fluidity — user feedback 2026-09-18).
+fn create_dashboard(
+    format: DashboardFormat,
+    mut reload: Signal<u32>,
+    on_open: EventHandler<(String, bool)>,
+) {
+    let layout = crate::components::dashboard_editor::state::initial_layout(
+        format,
+        &t!("db-section-default"),
+    );
+    let params = pnex_core::CreateDashboard {
+        name: t!("db-default-name", date : crate ::util::now_label()).to_string(),
+        description: None,
+        layout: Some(layout),
+    };
+    let created = t!("db-created").to_string();
+    spawn(async move {
+        match api::dashboards::create(params).await {
+            Ok(dashboard) => {
+                toasts::success(created);
+                reload.with_mut(|r| *r += 1);
+                on_open.call((dashboard.id, true));
+            }
+            Err(e) => toasts::error(e),
+        }
+    });
+}
+
+/// One format choice of the "+ New" strip.
+#[component]
+fn FormatTile(
+    icon_mobile: bool,
+    title: String,
+    help: String,
+    on_pick: EventHandler<()>,
+) -> Element {
+    rsx! {
+        button {
+            r#type: "button",
+            class: "flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-4 text-left hover:border-blue-300 hover:bg-blue-50",
+            onclick: move |_| on_pick.call(()),
+            if icon_mobile {
+                icons::Smartphone { class: "h-6 w-6 shrink-0 text-teal-600" }
+            } else {
+                icons::Monitor { class: "h-6 w-6 shrink-0 text-blue-600" }
+            }
+            div {
+                p { class: "text-sm font-semibold text-gray-900", "{title}" }
+                p { class: "text-xs text-gray-500", "{help}" }
+            }
+        }
+    }
+}
+
 // ─────────────────────────── Vue live ───────────────────────────
 
 #[component]
@@ -320,6 +393,7 @@ fn LiveSubView(
     on_back: EventHandler<()>,
 ) -> Element {
     let reload = use_signal(|| 0u32);
+    let via_id = dashboard_id.clone();
 
     let detail = use_resource(move || {
         let id = dashboard_id.clone();
@@ -368,6 +442,23 @@ fn LiveSubView(
     // User-selectable auto-refresh (default 15 s) + "refresh now".
     let auto = use_auto_refresh(reload, POLL_SECS);
 
+    // Control cards (D125): definitions and last commanded values follow
+    // the same refresh; a viewer sees them disabled.
+    crate::components::surface::use_surface_controls(
+        move || {
+            detail
+                .read()
+                .as_ref()
+                .cloned()
+                .flatten()
+                .map(|d| crate::components::surface::control_ids(&d.layout))
+                .unwrap_or_default()
+        },
+        reload,
+        format!("dashboard:{via_id}"),
+        can_write,
+    );
+
     let version_number = detail_loaded
         .as_ref()
         .map(|d| d.current_version_number)
@@ -412,7 +503,7 @@ fn LiveSubView(
             {
                 match detail_loaded {
                     Some(d) => rsx! {
-                        {live_canvas(&d.layout, &values)}
+                        {live_layout(&d.layout, &values)}
                     },
                     None => rsx! {
                         p { class: "text-gray-500 text-center py-12", "…" }

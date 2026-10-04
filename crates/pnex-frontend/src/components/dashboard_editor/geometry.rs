@@ -21,6 +21,10 @@ pub fn default_size(widget_type: &str) -> (i64, i64) {
         "text" => (260, 120),
         "thermo_chart" => (480, 360),
         "symbol" => (80, 80),
+        "switch" => (200, 120),
+        "slider" => (260, 140),
+        "button" => (180, 110),
+        "number" => (220, 150),
         _ => (240, 160),
     }
 }

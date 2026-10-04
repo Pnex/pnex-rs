@@ -25,15 +25,7 @@ fn commit(cx: &mut EditorCx, mut cfg: Signal<ControlSourceConfig>, next: Control
     });
 }
 
-/// Localized name of a control kind.
-pub(crate) fn kind_text(kind: ControlKind) -> String {
-    match kind {
-        ControlKind::Switch => t!("controls-kind-switch").to_string(),
-        ControlKind::Slider => t!("controls-kind-slider").to_string(),
-        ControlKind::Button => t!("controls-kind-button").to_string(),
-        ControlKind::Number => t!("controls-kind-number").to_string(),
-    }
-}
+use crate::components::surface::kind_text;
 
 /// Control source inspector: the org controls to listen to (one output
 /// port each, in pick order), replay at start, inline creation.

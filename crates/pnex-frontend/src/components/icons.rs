@@ -142,6 +142,17 @@ icon!(
 
 // Interface
 icon!(Menu, "M4 6h16", "M4 12h16", "M4 18h16");
+icon!(
+    Smartphone,
+    "M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z",
+    "M12 18h.01"
+);
+icon!(
+    Monitor,
+    "M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
+    "M8 21h8",
+    "M12 17v4"
+);
 // Serveur auto-hébergé (section « self-hosted » de la page de login)
 icon!(
     Server,
@@ -154,6 +165,35 @@ icon!(X, "M18 6 6 18", "M6 6l12 12");
 icon!(ChevronDown, "m6 9 6 6 6-6");
 icon!(ChevronRight, "m9 18 6-6-6-6");
 icon!(ChevronLeft, "m15 18-6-6 6-6");
+icon!(ChevronUp, "m18 15-6-6-6 6");
+icon!(
+    ToggleRight,
+    "M8 5h8a7 7 0 0 1 0 14H8A7 7 0 0 1 8 5z",
+    "M16 9a3 3 0 1 0 0 6 3 3 0 1 0 0-6z"
+);
+icon!(
+    SlidersHorizontal,
+    "M21 4h-7",
+    "M10 4H3",
+    "M21 12h-9",
+    "M8 12H3",
+    "M21 20h-5",
+    "M12 20H3",
+    "M14 2v4",
+    "M8 10v4",
+    "M16 18v4"
+);
+icon!(
+    Pointer,
+    "M12 3a9 9 0 1 0 0 18 9 9 0 1 0 0-18z",
+    "M12 8a4 4 0 1 0 0 8 4 4 0 1 0 0-8z"
+);
+icon!(WidthFull, "m18 8 4 4-4 4", "m6 8-4 4 4 4", "M2 12h20");
+icon!(
+    WidthHalf,
+    "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
+    "M12 3v18"
+);
 // Dossiers de l'arborescence D42 (/tree).
 icon!(
     Folder,

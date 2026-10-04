@@ -39,6 +39,9 @@ pub enum PaletteIcon {
     Video,
     History,
     Shapes,
+    ToggleRight,
+    SlidersHorizontal,
+    Pointer,
 }
 
 /// Rendu d'une `PaletteIcon` (match explicite — jamais d'icône construite).
@@ -119,6 +122,15 @@ pub fn IconView(icon: PaletteIcon, class: Option<String>) -> Element {
                 },
                 PaletteIcon::Shapes => rsx! {
                     icons::Shapes { class }
+                },
+                PaletteIcon::ToggleRight => rsx! {
+                    icons::ToggleRight { class }
+                },
+                PaletteIcon::SlidersHorizontal => rsx! {
+                    icons::SlidersHorizontal { class }
+                },
+                PaletteIcon::Pointer => rsx! {
+                    icons::Pointer { class }
                 },
             }
         }

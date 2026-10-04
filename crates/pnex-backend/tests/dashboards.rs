@@ -339,3 +339,72 @@ async fn save_sans_nom_valide_et_404_inconnu() {
     })
     .await;
 }
+
+/// D123: a mobile dashboard is created with its format, the list exposes the
+/// format of the current version, and a save can never switch the format.
+#[tokio::test]
+#[serial]
+async fn mobile_format_is_listed_and_immutable() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let mobile = serde_json::json!({
+            "format": "mobile",
+            "canvas": { "width": 1600, "height": 900 },
+            "widgets": [],
+            "sections": [ { "id": "s-1", "title": "General", "items": [] } ]
+        });
+        let created = server
+            .post("/api/v1/dashboards")
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&serde_json::json!({ "name": "Phone", "layout": mobile }))
+            .await
+            .json::<serde_json::Value>();
+        assert_eq!(created["layout"]["format"], "mobile");
+        let id = created["id"].as_str().unwrap().to_string();
+        create_dashboard(&server, &env.alice, org, "Desk").await;
+
+        let list = server
+            .get("/api/v1/dashboards")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await
+            .json::<serde_json::Value>();
+        let formats: Vec<(String, String)> = list["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|d| {
+                (
+                    d["name"].as_str().unwrap().to_string(),
+                    d["format"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect();
+        assert!(
+            formats.contains(&("Phone".into(), "mobile".into())),
+            "{formats:?}"
+        );
+        assert!(
+            formats.contains(&("Desk".into(), "desktop".into())),
+            "{formats:?}"
+        );
+
+        // Saving a desktop layout over a mobile dashboard is refused.
+        let switched = server
+            .patch(&format!("/api/v1/dashboards/{id}"))
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&serde_json::json!({
+                "expected_version_number": 1,
+                "layout": layout_json("soil-01"),
+            }))
+            .await;
+        assert_eq!(switched.status_code(), 400);
+        let body = switched.json::<serde_json::Value>();
+        assert_eq!(body["violations"][0]["code"], "format_immutable", "{body}");
+    })
+    .await;
+}

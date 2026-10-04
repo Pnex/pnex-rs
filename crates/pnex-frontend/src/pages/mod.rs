@@ -9,6 +9,7 @@ pub mod auth_callback;
 /// Cameras: live view, capture settings and recordings (camera-video.md D80).
 pub mod cameras;
 pub mod catalog;
+pub mod controls;
 pub mod dashboard;
 pub mod dashboards;
 pub mod devices;
@@ -49,6 +50,7 @@ pub use annotations::Annotations;
 pub use auth_callback::AuthCallback;
 pub use cameras::Cameras;
 pub use catalog::Catalog;
+pub use controls::Controls;
 pub use dashboard::Dashboard;
 pub use dashboards::Dashboards;
 pub use devices::Devices;

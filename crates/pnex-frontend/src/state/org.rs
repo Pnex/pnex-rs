@@ -53,6 +53,17 @@ pub fn role_can_write(role: &str) -> bool {
     matches!(role, "owner" | "admin" | "member")
 }
 
+/// The signed-in user may write content in the current org (member+).
+pub fn current_can_write() -> bool {
+    let (Some(user), Some(org_id)) = (crate::state::session::user(), current()) else {
+        return false;
+    };
+    user.orgs
+        .iter()
+        .find(|m| m.id == org_id)
+        .is_some_and(|m| role_can_write(&m.role))
+}
+
 /// Org governance (members, LLM providers, telemetry deletion, vault
 /// writes): owner or admin. Mirrors `OrgContext::can_administer`.
 pub fn role_can_administer(role: &str) -> bool {

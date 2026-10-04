@@ -432,7 +432,8 @@ fn NavDataGroup(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
         || route == Route::Cameras {}
         || route == Route::Models {}
         || route == Route::Studio {}
-        || route == Route::Annotations {};
+        || route == Route::Annotations {}
+        || route == Route::Controls {};
     let mut open = use_signal(|| in_media);
 
     let close_drawer = move |_| {
@@ -505,6 +506,13 @@ fn NavDataGroup(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                         onclick: close_drawer,
                         crate::components::icons::MapPin { class: "h-5 w-5" }
                         span { {t!("nav-annotations")} }
+                    }
+                    Link {
+                        to: Route::Controls {},
+                        class: nav_class(route == Route::Controls {}, false),
+                        onclick: close_drawer,
+                        crate::components::icons::ToggleRight { class: "h-5 w-5" }
+                        span { {t!("nav-controls")} }
                     }
                     div { class: "flex w-full items-center space-x-3 rounded-lg px-3 py-2 text-left text-gray-500 cursor-not-allowed",
                         crate::components::icons::MapPin { class: "h-5 w-5" }
