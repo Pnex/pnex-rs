@@ -24,6 +24,20 @@
 - **Dépendances : `task security:deps`** (`cargo deny`, job CI `deny` bloquant) ; toute exception dans `deny.toml` porte sa justification.
 - Finding découvert en route = ligne au registre §7 (SEC-n), même s'il n'est pas corrigé dans la même PR.
 
+## Assistant IA : toute fonctionnalité lui est livrée (D142–D145, règle permanente)
+
+Ajouter un nœud de flow ou une fonctionnalité utilisateur **sans mettre l'assistant à jour dans le même commit = travail non fini**, au même titre qu'une clé fluent manquante. Référence : `docs/architecture/ai-assistant.md` §9.
+
+- **Nouveau type de nœud** → une entrée `NodeDoc` dans `crates/pnex-core/src/flow/node_docs.rs` (résumé, champs de config, ports, pièges utilisateur), en anglais. Garde bloquante `every_kind_is_documented`. Jamais de liste manuelle de nœuds dans `services/ai/`. Règle de graphe qui change (payload, métrique, câblage) → `FLOW_AUTHORING_RULES` ; l'exemple `FLOW_EXAMPLE` reste valide (test).
+- **Nouvelle page / fonctionnalité / code d'erreur visible** → fiche de connaissance `crates/pnex-backend/assistant-kb/*.md` (dès que la couche 2 de D142 existe ; gardes : routes, nœuds et `err_codes` cités existants, chaque route de premier niveau couverte). Fiches `troubleshooting` = symptôme → cause → geste **dans l'UI**, jamais de CLI/API.
+- **Nouvel outil de l'assistant** → règle d'extension §9.3, opposable : écriture via le **service partagé avec le contrôleur HTTP de l'UI** (mêmes validations, mêmes 409) ; `can_write` re-vérifié + org depuis le principal (R1, R2) ; une fiche qui décrit l'outil ; trace UI + deep-link ; test « registre == ensemble autorisé » mis à jour.
+- **Consignes actées, jamais assouplies par un ajout** :
+  - aucune action physique : ni commande device/OTA/flash, ni écriture de contrôle ou de mémoire Valkey — seul un flow déployé par l'humain agit (D123, A4) ;
+  - jamais de deploy, stop ni suppression ; un flow **déployé** n'est pas modifiable par l'assistant (`ai-flow-running`, vérifié côté serveur), un widget de dashboard couplé à un flow déployé non plus (D144) ;
+  - concurrence optimiste : l'assistant écrit sur la version qu'il a lue (`expected_version`), jamais sur « la dernière » ;
+  - refus outil = code machine + `args` (clé `err-<code>` dans les deux `.ftl`), jamais de message pré-rendu ;
+  - aucun secret ni identifiant dans une sortie d'outil (R4, R16) ; conversations privées utilisateur × org (D145).
+
 ## Formatage (hygiène, bloquant en CI)
 
 - **`task fmt` avant chaque commit, `task fmt:check` = job CI `fmt`.** Rust → `cargo fmt` ; intérieur des `rsx!` → `dx fmt` via le wrapper gardé `crates/pnex-frontend/scripts/rsx_fmt.py`.
