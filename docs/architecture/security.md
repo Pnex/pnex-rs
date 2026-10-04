@@ -194,7 +194,8 @@ sont retenus.
 
 Statuts : **ouvert** · **corrigé** (commit) · **accepté** (justification).
 Sévérité : HIGH = compromission inter-org / plateforme ou prise de compte ;
-MEDIUM = escalade à l'intérieur d'une org.
+MEDIUM = escalade à l'intérieur d'une org ; LOW = défaut de cloisonnement
+sans impact exploitable démontré.
 
 ### Retenus (confiance ≥ 8/10)
 
@@ -208,9 +209,21 @@ MEDIUM = escalade à l'intérieur d'une org.
 | SEC-6 | HIGH | **XSS stocké : labels pannellum sans `escapeHTML`** | R11 | corrigé |
 | SEC-7 | MEDIUM | **Viewer : déploiement / annulation OTA** | R2 | corrigé |
 | SEC-8 | MEDIUM | **Viewer : jetons et clés des devices, firmware avec PSK WiFi** | R4 | corrigé |
+| SEC-9 | LOW | **Dashboard : id de contrôle d'une autre org accepté au save** | R1 | corrigé (18484ae) |
 
 \* SEC-4 seul exige le jeton de service ; c'est l'amplificateur qui rend
 SEC-1 / SEC-3 inter-org (actionneurs de n'importe quelle org).
+
+**SEC-9 — Contrôle étranger dans un layout de dashboard (trouvé en route,
+2026-10-04, D131).** Contrairement aux annotations, le save d'un dashboard
+ne vérifiait pas que `options.control` désignait un contrôle de l'org :
+un membre pouvait stocker l'UUID d'un contrôle d'une autre org. Sans impact
+démontré — l'écriture (`/controls/{id}/value`) et la lecture des valeurs
+restent filtrées par l'org du principal (404 / `null`) — mais la règle R1
+n'était pas tenue au stockage. *Correctif* : `services/surface_controls.rs`
+ne lie qu'un contrôle de l'org ; un id inconnu est remplacé par la source
+propre du widget (`tests/controls.rs`,
+`surface_declared_controls_are_provisioned_and_released`).
 
 **SEC-1 — RCE par le nœud `red` (confiance 9).** `FlowNodeKind::Red`
 accepte tout `type_name` (`pnex-core/src/flow/graph.rs:271`) ;
