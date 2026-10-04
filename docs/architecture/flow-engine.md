@@ -226,8 +226,14 @@ Limitations documentées (acceptées, décision 2026-09-15) :
 
 - le nœud `function` vendor n'a **ni limite CPU/mémoire ni deadline** — une
   boucle infinie pend la tâche du nœud jusqu'au stop du flow ; propriété
-  pré-existante (l'échappatoire `Red` permet déjà du JS arbitraire), non
-  aggravée. Rationale : l'isolation des fonctions « bizarres » est un sujet
+  pré-existante, non aggravée. Depuis D130 (SEC-1/SEC-2, 2026-10-04)
+  l'échappatoire `Red` est restreinte à une liste blanche de
+  transformations pures (`pnex_core::flow::RED_ALLOWED_TYPES` : ni
+  `function`, ni `exec`, ni `template`, ni type `pnex-*`), ses clés
+  `pnex_*` sont retirées à la projection, et le registre du runtime
+  n'enregistre que `runtime_type_allowed` ; le magasin d'env des engines
+  ne contient plus l'environnement du process (SEC-3, fork edgelinkd) —
+  voir `security.md`. Rationale : l'isolation des fonctions « bizarres » est un sujet
   **d'infrastructure** (1 tenant = 1 process/conteneur à l'horizon SaaS),
   pas de sandbox in-process. Chemin de migration si ça mord : basculer la
   projection JS vers un nœud custom (switch de projection, l'éditeur et le

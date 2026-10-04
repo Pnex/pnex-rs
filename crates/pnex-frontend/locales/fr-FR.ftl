@@ -2028,6 +2028,7 @@ flows-video-retention-hint = 0 = conserver indéfiniment (max { $max })
 flows-video-stream = Nom du flux
 flows-video-stream-hint = Nom logique facultatif (par défaut, le nom de la caméra)
 err-camera-device-missing = Choisissez une caméra
+err-red-type-forbidden = Le type Node-RED « { $type } » est interdit (accès hôte ou type PNeX réservé)
 err-camera-fps-invalid = Le fps max doit être entre 0 (toutes les images) et 25
 err-video-segment-secs-invalid = La durée d'un segment doit être entre 5 et 3600 secondes
 err-video-record-duplicate = Ce flow enregistre déjà la caméra { $camera } — gardez un seul nœud Enregistrement vidéo par caméra.

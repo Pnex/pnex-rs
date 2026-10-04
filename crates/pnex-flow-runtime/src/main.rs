@@ -151,7 +151,7 @@ async fn run() -> ExitCode {
     // Fonctions Starlark du registre « Fonctions » — même garde-fou.
     pnex_node_starlark::registered();
 
-    let reg = match RegistryBuilder::default().build() {
+    let reg = match allowlisted_registry() {
         Ok(r) => r,
         Err(e) => {
             log::error!("Registre de nœuds indisponible : {e}");
@@ -163,6 +163,24 @@ async fn run() -> ExitCode {
         return run_check(&reg, &flows_path).await;
     }
     run_serve(reg, flows_path, home).await
+}
+
+/// Node registry restricted to `pnex_core::runtime_type_allowed` (SEC-1,
+/// docs/architecture/security.md R5): every compiled-in builtin with a host
+/// effect (`exec`, `template`, …) is dropped, so an artifact naming one fails
+/// to load instead of running it.
+fn allowlisted_registry() -> edgelink_core::Result<edgelink_core::runtime::registry::RegistryHandle>
+{
+    let all = RegistryBuilder::default().build()?;
+    let mut builder = RegistryBuilder::new();
+    for (type_name, meta) in all.all() {
+        if pnex_core::runtime_type_allowed(type_name) {
+            builder = builder.register(meta);
+        } else {
+            log::debug!("[REGISTRY] builtin '{type_name}' not allowlisted, dropped");
+        }
+    }
+    builder.build()
 }
 
 /// Pré-flight du deploy : construit chaque engine **sans `start()`** — ni

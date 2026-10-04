@@ -360,6 +360,9 @@ pub fn to_red_flows_json_with(
             FlowNodeKind::RegPid { config } => reg_pid_entry("pnex-reg-pid", n, meta, config),
             FlowNodeKind::Red { type_name, config } => {
                 let mut obj = config.as_object().cloned().unwrap_or_default();
+                // Tenant / provenance fields are server-stamped only (SEC-2):
+                // a user config never carries them into the artifact.
+                obj.retain(|k, _| !k.starts_with(super::PNEX_FIELD_PREFIX));
                 obj.insert("type".into(), serde_json::Value::String(type_name.clone()));
                 serde_json::Value::Object(obj)
             }
