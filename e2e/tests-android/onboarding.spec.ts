@@ -15,7 +15,10 @@ test.describe('android onboarding', { tag: ['@android', '@onboarding'] }, () => 
     await page.getByPlaceholder(t(locale, 'server-url-placeholder')).first().fill(API_BASE);
     await page.getByRole('button', { name: t(locale, 'server-url-connect') }).click();
 
-    if (serverCa) {
+    // The trust screen only follows a failed HTTPS probe: a plain-http
+    // stack goes straight to the login.
+    const pinsCa = !!serverCa && API_BASE.startsWith('https:');
+    if (pinsCa) {
       await expect(page.getByText(t(locale, 'trust-ca-title'), { exact: true })).toBeVisible();
       await page.getByRole('button', { name: t(locale, 'trust-ca-accept') }).click();
     }
@@ -23,6 +26,6 @@ test.describe('android onboarding', { tag: ['@android', '@onboarding'] }, () => 
 
     const stored = android.readStorage();
     expect(stored['pnex.api_base']).toBe(API_BASE);
-    if (serverCa) expect(stored['pnex.server_ca']?.trim()).toBe(serverCa.trim());
+    if (pinsCa) expect(stored['pnex.server_ca']?.trim()).toBe(serverCa.trim());
   });
 });

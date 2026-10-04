@@ -56,7 +56,11 @@ impl WebContextImpl {
   }
 
   pub fn create_context(context: WebContext) -> Self {
-    let automation = false;
+    // PNeX patch: WebDriver automation (WebKitWebDriver) only in a build with
+    // feature `pnex-automation` (pnex-frontend `e2e`) AND when the run asks
+    // for it — libwebkit2gtk then accepts a remote automation session.
+    let automation =
+      cfg!(feature = "pnex-automation") && std::env::var_os("PNEX_E2E_AUTOMATION").is_some();
     context.set_automation_allowed(automation);
 
     // e.g. wry 0.9.4

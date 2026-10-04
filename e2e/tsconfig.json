@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src", "tests", "tests-android", "*.ts"]
+  "include": ["src", "tests", "tests-android", "tests-linux", "*.ts"]
 }

@@ -62,6 +62,9 @@ linux-body = [
     "os-webview",
 ]
 mac-proxy = []
+# PNeX patch: allow WebKitWebDriver sessions (Linux e2e builds only, see
+# vendor/patches/README.md). Never enabled by a shipped build.
+pnex-automation = []
 os-webview = [
     "javascriptcore-rs",
     "webkit2gtk",

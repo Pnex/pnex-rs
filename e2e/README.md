@@ -159,6 +159,47 @@ puts the generic `e2e-c3` image back.
 A live camera films the room it sits in: never publish its captures as
 content without checking what they show.
 
+## Linux desktop (`@linux`)
+
+The native desktop app (Dioxus desktop on WebKitGTK) driven through
+WebKitWebDriver + WebdriverIO — Playwright cannot attach to WebKitGTK, the
+runner stays Playwright. Specs live in `tests-linux/`, config
+`playwright.linux.config.ts`, fixtures `src/fixtures-linux.ts` (same `api`,
+`t`/`tr`, `prefix` as the web suite; `desktop` is a `DesktopShell` over the
+WebDriver session).
+
+```bash
+sudo apt install webkit2gtk-driver                  # WebKitWebDriver, once
+task e2e:linux                                      # build the e2e app, run everything
+task e2e:linux -- tests-linux/lan-scan.spec.ts      # one spec
+cd e2e && bunx playwright test -c playwright.linux.config.ts   # app already built
+```
+
+| Variable | Default |
+|---|---|
+| `PNEX_E2E_LINUX_APP` | `target/dx/pnex-frontend/linux-e2e/pnex-frontend` (`task build:frontend:linux:e2e`) |
+| `PNEX_E2E_WEBKIT_DRIVER` | `WebKitWebDriver` |
+
+- **The e2e app** has feature `e2e`: `window.__pnexNavigate(path)` (in-memory
+  router, `desktop.goto()`) and the vendored wry patch that allows a WebDriver
+  session — only when the run also sets `PNEX_E2E_AUTOMATION` (the harness
+  does). Release builds (`task build:frontend:linux`) never carry it.
+- **Session**: each test gets its own `XDG_DATA_HOME`; the app's
+  `pnex/pnex-storage.json` is seeded there before launch
+  (`test.use({ session })`: `signed-in`, `server-only`, `fresh`). The
+  operator's own `~/.local/share/pnex` is never read nor written.
+- **Window**: resized to 1280×800 (dx opens 800 px wide, below `lg`, where
+  the map folds its panel).
+- **Inputs**: `desktop.fill()` sets the value in one go — WebDriver
+  key-by-key typing reaches the Dioxus signal truncated on WebKitGTK.
+- **Checks on every test**: no Rust panic printed by the app.
+
+| Spec | Covers |
+|---|---|
+| `smoke` (`@smoke @i18n`) | signed-in boot, every route renders, en + fr |
+| `onboarding` | fresh install: server URL → CA fingerprint (https) → login |
+| `lan-scan` | fresh install: LAN scan finds the stack → connect → CA → login |
+
 ## Android (`@android`)
 
 The native app on a phone attached through adb, driven through its WebView
