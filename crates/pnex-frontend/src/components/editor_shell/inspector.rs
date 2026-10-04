@@ -30,9 +30,11 @@ pub fn InspectorPanel(
     body: Element,
 ) -> Element {
     let close_label = t!("eshell-close");
+    // Phones: full width (a 320 px strip next to 70 px of canvas is of no
+    // use); the close button brings the canvas back.
     rsx! {
         aside {
-            class: "absolute inset-y-0 right-0 z-30 flex h-full w-80 flex-col border-l border-gray-200 bg-white shadow-xl",
+            class: "absolute inset-y-0 right-0 z-30 flex h-full w-full sm:w-80 flex-col border-l border-gray-200 bg-white shadow-xl",
             tabindex: "0",
             onkeydown: move |e: KeyboardEvent| {
                 if e.key() == Key::Escape {

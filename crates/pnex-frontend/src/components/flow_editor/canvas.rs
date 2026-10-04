@@ -17,6 +17,7 @@ use crate::components::editor_shell::{PaletteIcon, PaletteItem};
 
 mod gestures;
 mod palette;
+mod pinch;
 
 use gestures::*;
 pub(crate) use palette::*;
@@ -38,6 +39,8 @@ pub(crate) fn Canvas(
     let pan = cx.pan.cloned();
     let zoom = cx.zoom.cloned();
     let interaction = cx.interaction.cloned();
+    pinch::use_pinch_zoom(cx);
+    crate::components::dom_rect::use_rect_tracker("flow-canvas");
 
     // Nœuds en violation (validation sauvegarde + staleness pin/device) —
     // un câble est rouge dès qu'une de ses extrémités l'est.
@@ -160,7 +163,10 @@ pub(crate) fn Canvas(
         div { class: "relative h-full w-full bg-white overflow-hidden select-none",
             svg {
                 id: "flow-canvas",
-                class: "absolute inset-0 w-full h-full",
+                // `touch-none`: the browser must not claim touches for its
+                // own scroll / zoom — it fired `pointercancel` after a few
+                // millimetres and a one-finger pan or drag stopped dead.
+                class: "absolute inset-0 w-full h-full touch-none",
                 tabindex: "0",
                 // No native text selection on the canvas: a node drag must
                 // never highlight the labels it sweeps over (all gestures
@@ -806,7 +812,9 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                             event.stop_propagation();
                         }
                     },
-                    onclick: move |event| {
+                    // `pointerup`, not `click`: touches on the canvas get no
+                    // click (see `pinch.rs`, ghost click suppression).
+                    onpointerup: move |event| {
                         if let Some(pretty) = badge_pretty_click.clone() {
                             event.stop_propagation();
                             cx.expanded_display.set(Some((node_id_badge.clone(), pretty)));

@@ -145,22 +145,10 @@ pub fn wire_path(
     ))
 }
 
-/// Mesure du rect du canvas dans le DOM (web uniquement — l'éditeur est
-/// web-only V1, école `flow_editor/geometry.rs::canvas_rect`).
-#[cfg(target_arch = "wasm32")]
+/// Canvas origin `(left, top)` — web reads the DOM, native reads the rect
+/// streamed by the tracker mounted with the canvas.
 pub fn canvas_rect() -> Option<(f64, f64)> {
-    let window = web_sys::window()?;
-    let document = window.document()?;
-    let element = document.get_element_by_id("dashboard-canvas")?;
-    let rect = element.get_bounding_client_rect();
-    Some((rect.left(), rect.top()))
-}
-
-/// Cible native : pas de canvas (l'éditeur ne tourne qu'en CSR web pour
-/// l'instant) — les gestes ne démarrent jamais sans rect.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn canvas_rect() -> Option<(f64, f64)> {
-    None
+    crate::components::dom_rect::rect_of("dashboard-canvas").map(|r| (r.0, r.1))
 }
 
 #[cfg(test)]
