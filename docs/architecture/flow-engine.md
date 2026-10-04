@@ -519,3 +519,18 @@ Nœud unique : **rien à régler**. Plusieurs pods : `PNEX_FLOW_ADVERTISE_URL=ht
 | **D109** | **Chaque kind appartient à une catégorie unique**, déclarée par un `match` exhaustif (`kind_category`, `flow_editor/canvas/palette.rs`) : ajouter un kind sans choisir sa section ne compile pas. La palette `+` affiche des **sections titrées** dans l'ordre fixe `PALETTE_CATEGORIES` (parcours d'un flow : Déclencheurs → Devices → Régulation → Données & calcul → Code → Stockage & séries → IA & prédictif → Intégrations → Debug). La recherche reste transverse (libellé, description **et** nom de catégorie) ; une section vidée par le filtre disparaît avec son titre. `PaletteItem.group` est optionnel : dashboard et studio restent en liste plate. |
 
 Répartition et suite (catalogue piloté par descripteurs, parité n8n) : `roadmap.md` P1.7 / P2.11. La couleur des nœuds au canevas reste par kind.
+
+## 9. Nœud `pnex-control-source` (D127) — 2026-10-03
+
+Source événementielle des **contrôles d'org** (`surfaces-controls.md`) :
+config `{controls: [uuid], emit_on_start}`, un port de sortie par contrôle
+(dans l'ordre de la liste). `SUBSCRIBE pnex:ctl:v1:{org}` ; chaque écriture
+d'une surface sort `payload` = valeur, `topic` = clé du contrôle,
+`msg.control = {id, key, by, via, ts_ms}`. `emit_on_start` relit les
+dernières valeurs (MGET) **après** l'abonnement : aucune écriture perdue
+entre les deux. Reconnexion avec backoff (≤ 30 s), statut `control-listening`
+/ `control-bus-unavailable`, compteur `commands`. Le deploy refuse un
+contrôle absent de l'org (`control-unknown`) ; un contrôle écouté par un flow
+déployé ne peut pas être supprimé (`control-in-use`). Un interrupteur (1/0)
+ou un curseur (0..100) se branche tel quel sur `device-write` ; la règle
+« une source d'écriture par pin » reste la seule voie vers un pin (D128).

@@ -110,10 +110,10 @@ des panoramas) ; les items `Flat` existent au modèle, leur création se
 fera sur la page média plus tard.
 
 **D60 — Portes ouvertes (non construit).** Le modèle laisse la place
-sans cassure : (1) **inputs d'écriture** — la cible
-`Pin{device_id, pin_gpio}` porte déjà l'identité de commande, l'API
-commands existe ; un item `kind: input` + handler de write sera un
-additif ; (2) **géométrie splat** — un variant `Splat` de
+sans cassure : (1) **inputs d'écriture** — **révisée par D128
+(2026-10-03), livrée 2026-10-04** : un input d'annotation référence un
+**contrôle d'org** (`kind: control`), jamais `Pin{…}` ni l'API commands ;
+l'effet passe par un flow (§12) ; (2) **géométrie splat** — un variant `Splat` de
 `AnnotationGeometry` est additif ; (3) **page globale `/annotations`** (listing toutes couches, gestion cross-tours) — **construite 2026-09-16** (Data > Annotations : couches + pickeur média + viewer + panneau, flow sans tour) ; (4) **overlay panorama
 de la page média** (viewer `panorama` nu, sans hotspots — passera par le
 viewer tour avec annotations seules) ; (5) purge des couches par les
@@ -305,3 +305,23 @@ D60 restent ouvertes) :
 - **mouseEventToCoords** : synchrone 2.5.7 mais lit le `config`
   module-global de pannellum — hypothèse **un viewer actif à la fois**
   (modal : OK) ; à re-vérifier si deux viewers coexistent un jour.
+
+## 12. Items `control` et `reading` (D128/D129, 2026-10-04)
+
+Deux kinds additifs, rendus avec les cartes des dashboards
+(`components/surface/`, `surfaces-controls.md`) :
+
+- **`control`** : `target = {type: "control", control_id}`. La carte
+  (interrupteur, curseur, bouton, saisie) suit le type du contrôle ; un
+  membre l'actionne, un viewer la voit désactivée. L'écriture porte
+  `via = annotation:{layer_id}` ; l'effet sur les devices est décrit par
+  un flow `control-source` (D127). Save : contrôle inconnu de l'org → 400.
+- **`reading`** : `target = {type: "reading", source: SourceRef, spark}` —
+  même liaison que les widgets (télémétrie device ou device virtuel de
+  flow, mémoire d'org). `spark: true` trace l'historique de la fenêtre
+  (widget `line`) ; impossible sur une valeur mémoire (pas d'historique).
+
+Rendu : la popover d'un marqueur affiche la carte ; le viewer de tour
+ajoute à droite un panneau « Contrôles et lectures » listant les items
+de ce type du média affiché (poll 15 s, D31). Marqueurs
+`.pnex-annot-control` (sarcelle) et `.pnex-annot-reading` (bleu ciel).

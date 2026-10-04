@@ -1,6 +1,7 @@
 # Surfaces pilotables — contrôles d'org, pont surface → flow, format mobile/PC (D123–D129)
 
-> **Statut : PROPOSÉ (2026-10-03)** — à valider avant implémentation.
+> **Statut : LIVRÉ (L1–L7, 2026-10-04)** — décisions validées le 2026-10-03,
+> implémentation et écarts consignés au §4.
 > Docs liés : `viz-bases.md` (D24 versioning, D31 polling, D40 canvas libre,
 > D41 bibliothèque), `annotations.md` (D55–D60, porte ouverte « inputs »),
 > `flow-engine.md` (nœuds custom, deploy, fencing D106), `inventory.md`
@@ -88,3 +89,33 @@ C'est le pendant symétrique de la mémoire d'org :
   demandera.
 - **Droits par contrôle** (restreindre un contrôle à certains membres) :
   hors scope ; à reprendre avec le rôle opérateur.
+
+## 4. Implémentation (2026-10-03 → 2026-10-04)
+
+| Lot | Livré | Où |
+|---|---|---|
+| L1 | Modèle partagé navigateur/serveur : `ControlKind`, `ControlSpec::{check, accepts}`, `ControlRef`, `ControlSourceConfig` ; `DashboardLayout.format` / `sections`, `WidgetOptions.control` / `span` ; `validate_layout` (règles mobile, widgets de contrôle) | `pnex_core::ui_control`, `pnex_core::viz` |
+| L2 | Table `controls` (PG + SQLite, parité D120), `/api/v1/controls` (CRUD, `…/value`, `values`), Valkey `SET` + `PUBLISH` avec débit `SET NX PX 250`, journal O2 `ev_controls`, 409 `control-in-use`, porte de deploy `control-unknown` | `services/controls.rs`, `controllers/controls.rs` |
+| L3 | Nœud `pnex-control-source` (crate `pnex-node-ui-control`) : SUBSCRIBE, rejeu MGET après abonnement, statuts `control-listening` / `control-bus-unavailable` ; palette Déclencheurs, inspecteur avec création à la volée | `crates/pnex-node-ui-control`, `flow_editor` |
+| L4 | « + Nouveau » → tuiles PC / Mobile ; badge de format en liste ; `format_immutable` au save ; composer mobile (sections, cartes ½ / pleine largeur, glisser-déposer + flèches) ; cartes de contrôle live (`components/surface/`) ; page Data › Contrôles | `dashboard_editor/mobile.rs`, `components/surface/`, `pages/controls.rs` |
+| L5 | Palette « Depuis un device » : sorties digitales → interrupteur, PWM → curseur (contrôle créé, ou réutilisé si la clé existe), mesures → valeur / jauge / courbe ; « Créer le flow » (brouillon `control-source` → `device-write`, ouvert dans l'éditeur, jamais déployé automatiquement) | `dashboard_editor/device_panel.rs`, `control_panel.rs` |
+| L6 | Annotations `control` / `reading` (cf. `annotations.md` §12) | `pnex_core::annotation`, `components/surface/annotation.rs` |
+| L7 | Cette section, `viz-bases.md`, `annotations.md`, `flow-engine.md`, `inventory.md`, `roadmap.md` | — |
+
+Écarts et précisions par rapport aux décisions :
+
+- **Sparkline** : pas de nouveau type de widget, c'est le widget `line`
+  existant (fenêtre `5m..24h` via `series-batch`). Un item d'annotation
+  `reading` porte `spark: true` pour l'afficher.
+- **`via`** : `dashboard:{id}` pour un dashboard, `annotation:{layer_id}`
+  pour une annotation (la couche, pas l'item).
+- **Source d'état** d'une carte de contrôle : `source[0]` facultative, de rôle
+  `state`. La carte affiche « État réel : … » sous la valeur commandée.
+- **Contrôle supprimé** : la carte affiche « Contrôle supprimé ». Le nœud
+  n'a pas de statut dédié : la suppression est refusée tant qu'un flow
+  déployé l'écoute, et le deploy refuse un contrôle inconnu.
+- **Annotation** : le save refuse un contrôle inconnu de l'org (comme un
+  device inconnu) ; une lecture peut viser un device virtuel de flow
+  (`flow_{id}`), jamais enregistré, donc non vérifié.
+- **Débit** : deux actions sur le même contrôle à moins de 250 ms → 429
+  `control-rate-limited` ; le curseur n'écrit qu'au relâchement.
