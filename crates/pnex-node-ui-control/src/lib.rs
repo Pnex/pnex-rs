@@ -105,6 +105,8 @@ fn body_of(ev: &ControlEvent) -> BTreeMap<String, Variant> {
             "by": ev.value.by,
             "via": ev.value.via,
             "ts_ms": ev.value.ts_ms,
+            // Symbolic form (select / command key, RGB `#rrggbb`), D137.
+            "option": ev.value.option,
         })),
     );
     body
@@ -337,6 +339,7 @@ mod tests {
                 ts_ms: 1_790_000_000_000,
                 by: Some("alice".into()),
                 via: Some("dashboard:x".into()),
+                option: Some("open".into()),
             },
         }
     }
@@ -361,5 +364,6 @@ mod tests {
         assert_eq!(control["id"], Uuid::from_u128(1).to_string());
         assert_eq!(control["by"], "alice");
         assert_eq!(control["via"], "dashboard:x");
+        assert_eq!(control["option"], "open");
     }
 }

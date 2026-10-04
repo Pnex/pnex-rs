@@ -24,6 +24,7 @@ use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
 use crate::components::modal::Modal;
+use crate::components::surface::spec_editor::{spec_error_text, SpecFields};
 use crate::components::surface::{control_group, kind_text, spec_summary, suggest_key};
 use crate::state::{org, toasts};
 
@@ -201,19 +202,6 @@ pub fn Controls() -> Element {
     }
 }
 
-/// Parses an optional numeric field (empty = default of the kind).
-fn opt_num(s: &str) -> Result<Option<f64>, ()> {
-    let s = s.trim().replace(',', ".");
-    if s.is_empty() {
-        return Ok(None);
-    }
-    s.parse::<f64>().map(Some).map_err(|_| ())
-}
-
-fn num_text(v: Option<f64>) -> String {
-    v.map(|v| v.to_string()).unwrap_or_default()
-}
-
 /// Creation / edition form. The kind is chosen at creation only: the
 /// widgets bound to a control are of its kind.
 #[component]
@@ -232,50 +220,23 @@ fn ControlForm(
     let mut key = use_signal(|| init.as_ref().map(|c| c.key.clone()).unwrap_or_default());
     // The key follows the label until typed by hand (creation only).
     let mut key_touched = use_signal(|| init.is_some());
-    let mut kind = use_signal(|| spec0.kind);
-    let on = use_signal(|| num_text(spec0.on));
-    let off = use_signal(|| num_text(spec0.off));
-    let min = use_signal(|| num_text(spec0.min));
-    let max = use_signal(|| num_text(spec0.max));
-    let step = use_signal(|| num_text(spec0.step));
-    let press = use_signal(|| num_text(spec0.press));
-    let mut unit = use_signal(|| spec0.unit.clone().unwrap_or_default());
-    let mut confirm = use_signal(|| spec0.confirm);
+    let mut spec = use_signal(|| spec0.clone());
     let mut busy = use_signal(|| false);
 
-    // Spec built from the fields (None: a number does not parse).
-    let build = move || -> Option<ControlSpec> {
-        let mut spec = ControlSpec::new(kind());
-        spec.on = opt_num(&on()).ok()?;
-        spec.off = opt_num(&off()).ok()?;
-        spec.min = opt_num(&min()).ok()?;
-        spec.max = opt_num(&max()).ok()?;
-        spec.step = opt_num(&step()).ok()?;
-        spec.press = opt_num(&press()).ok()?;
-        let u = unit().trim().to_string();
-        spec.unit = (!u.is_empty()).then_some(u);
-        spec.confirm = confirm();
-        Some(spec)
-    };
-    let spec = build();
+    let current = spec();
     let key_ok = valid_control_key(key().trim());
     let label_ok = check_control_label(&label()).is_none();
-    let spec_error: Option<String> = match &spec {
-        None => Some(t!("controls-form-number-invalid").to_string()),
-        Some(s) => s.check().map(|(code, _)| spec_error_text(code)),
-    };
+    let spec_error: Option<String> = current.check().map(|(code, _)| spec_error_text(code));
     let ok = key_ok && label_ok && spec_error.is_none() && !busy();
     let title = if editing_id.is_some() {
         t!("controls-edit").to_string()
     } else {
         t!("controls-new").to_string()
     };
-    let k = kind();
+    let k = current.kind;
 
     let submit = move |_| {
-        let Some(spec) = build() else {
-            return;
-        };
+        let spec = spec.peek().clone();
         busy.set(true);
         let key_v = key.peek().trim().to_string();
         let label_v = label.peek().trim().to_string();
@@ -352,7 +313,9 @@ fn ControlForm(
                                 .into_iter()
                                 .find(|k| k.as_str() == e.value())
                             {
-                                kind.set(next);
+                                let mut fresh = ControlSpec::new(next);
+                                fresh.confirm = spec.peek().confirm;
+                                spec.set(fresh);
                             }
                         },
                         for kd in ControlKind::ALL {
@@ -365,62 +328,10 @@ fn ControlForm(
                         }
                     }
                 }
-                div { class: "grid grid-cols-3 gap-2",
-                    if k == ControlKind::Switch {
-                        NumField {
-                            label: t!("controls-form-on").to_string(),
-                            value: on,
-                            placeholder: "1",
-                        }
-                        NumField {
-                            label: t!("controls-form-off").to_string(),
-                            value: off,
-                            placeholder: "0",
-                        }
-                    }
-                    if k == ControlKind::Slider || k == ControlKind::Number {
-                        NumField {
-                            label: t!("controls-form-min").to_string(),
-                            value: min,
-                            placeholder: if k == ControlKind::Slider { "0" } else { "" },
-                        }
-                        NumField {
-                            label: t!("controls-form-max").to_string(),
-                            value: max,
-                            placeholder: if k == ControlKind::Slider { "100" } else { "" },
-                        }
-                        NumField {
-                            label: t!("controls-form-step").to_string(),
-                            value: step,
-                            placeholder: if k == ControlKind::Slider { "1" } else { "" },
-                        }
-                    }
-                    if k == ControlKind::Button {
-                        NumField {
-                            label: t!("controls-form-press").to_string(),
-                            value: press,
-                            placeholder: "1",
-                        }
-                    }
-                    div {
-                        label { class: "block text-xs font-medium text-gray-500 mb-1",
-                            {t!("controls-form-unit")}
-                        }
-                        input {
-                            class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm",
-                            value: "{unit}",
-                            placeholder: "%",
-                            oninput: move |e| unit.set(e.value()),
-                        }
-                    }
-                }
-                label { class: "flex items-center gap-2 text-sm text-gray-700",
-                    input {
-                        r#type: "checkbox",
-                        checked: confirm(),
-                        onchange: move |e| confirm.set(e.checked()),
-                    }
-                    {t!("controls-form-confirm")}
+                SpecFields {
+                    spec: current.clone(),
+                    disabled: false,
+                    on_change: move |next: ControlSpec| spec.set(next),
                 }
                 if let Some(err) = spec_error {
                     p { class: "text-xs text-red-600", "{err}" }
@@ -446,40 +357,12 @@ fn ControlForm(
     }
 }
 
-/// Localized text of a spec check code (`ControlSpec::check`).
-fn spec_error_text(code: &str) -> String {
-    match code {
-        "control_spec_switch_same" => t!("controls-spec-switch-same").to_string(),
-        "control_spec_range" => t!("controls-spec-range").to_string(),
-        "control_spec_step" => t!("controls-spec-step").to_string(),
-        "control_spec_unit" => t!("controls-spec-unit").to_string(),
-        _ => t!("controls-form-number-invalid").to_string(),
-    }
-}
-
 #[component]
 fn FormRow(label: String, children: Element) -> Element {
     rsx! {
         div {
             label { class: "block text-xs font-medium text-gray-500 uppercase mb-1", "{label}" }
             {children}
-        }
-    }
-}
-
-#[component]
-fn NumField(label: String, mut value: Signal<String>, placeholder: String) -> Element {
-    rsx! {
-        div {
-            label { class: "block text-xs font-medium text-gray-500 mb-1", "{label}" }
-            input {
-                class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm",
-                r#type: "text",
-                inputmode: "decimal",
-                value: "{value}",
-                placeholder: "{placeholder}",
-                oninput: move |e| value.set(e.value()),
-            }
         }
     }
 }

@@ -46,6 +46,10 @@ pub struct DeclaredControl {
     pub label: String,
     /// Control the item is bound to, if any.
     pub current: Option<Uuid>,
+    /// Value domain the item declares for its own control (D137): applied
+    /// at provisioning and kept in sync on its own control; `None` = the
+    /// control keeps (or is created with) the default spec of its kind.
+    pub spec: Option<ControlSpec>,
 }
 
 /// Result of a sync: the control bound to each item, and the controls
@@ -88,6 +92,13 @@ fn label_for(item: &DeclaredControl) -> String {
     } else {
         cut
     }
+}
+
+/// A declared spec is applied only when it is valid and of the item's own
+/// kind (the surface validation already refuses the other cases; this is
+/// the last line before the database).
+fn declared_spec_ok(item: &DeclaredControl, spec: &ControlSpec) -> bool {
+    item.kind == Some(spec.kind) && spec.check().is_none()
 }
 
 /// First free key of the org starting from `base` (`base`, `base-2`, …).
@@ -172,12 +183,24 @@ pub async fn sync_surface<C: ConnectionTrait>(
         let linked = item.current.filter(|id| known.contains(id));
         let bound = linked.or(own.map(|m| m.id));
         if let Some(id) = bound {
-            // Own control: its label follows the item label.
+            // Own control: its label and declared spec follow the item.
             if let Some(m) = own.filter(|m| m.id == id) {
                 let label = label_for(item);
+                let mut active: controls::ActiveModel = m.clone().into();
+                let mut dirty = false;
                 if !item.label.trim().is_empty() && m.label != label {
-                    let mut active: controls::ActiveModel = m.clone().into();
                     active.label = Set(label);
+                    dirty = true;
+                }
+                if let Some(spec) = item.spec.as_ref().filter(|s| declared_spec_ok(item, s)) {
+                    let json = serde_json::to_value(spec).map_err(|_| SyncError::Db)?;
+                    if m.spec != json {
+                        active.kind = Set(spec.kind.as_str().to_string());
+                        active.spec = Set(json);
+                        dirty = true;
+                    }
+                }
+                if dirty {
                     active.update(db).await?;
                 }
             }
@@ -195,7 +218,11 @@ pub async fn sync_surface<C: ConnectionTrait>(
         )
         .await?;
         reserved_keys.insert(key.clone());
-        let spec = ControlSpec::new(kind);
+        let spec = item
+            .spec
+            .clone()
+            .filter(|s| declared_spec_ok(item, s))
+            .unwrap_or_else(|| ControlSpec::new(kind));
         let created = controls::ActiveModel {
             id: Set(Uuid::new_v4()),
             org_id: Set(org_id),
@@ -503,6 +530,7 @@ mod tests {
             kind: Some(ControlKind::Switch),
             label: label.into(),
             current: None,
+            spec: None,
         }
     }
 

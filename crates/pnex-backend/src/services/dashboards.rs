@@ -79,6 +79,7 @@ async fn bind_surface_controls<C: sea_orm::ConnectionTrait>(
                 kind: Some(kind),
                 label: w.title.clone(),
                 current: w.options.control.as_ref().map(|c| c.control_id),
+                spec: w.options.control_spec.clone(),
             })
         })
         .collect();

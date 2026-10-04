@@ -224,6 +224,7 @@ async fn bind_doc_controls<C: sea_orm::ConnectionTrait>(
                 kind: *kind,
                 label: item.label.clone(),
                 current: (!control_id.is_nil()).then_some(*control_id),
+                spec: None,
             }),
             _ => None,
         })

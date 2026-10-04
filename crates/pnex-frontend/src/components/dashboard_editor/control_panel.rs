@@ -14,6 +14,7 @@ use uuid::Uuid;
 use super::EditorCx;
 use crate::api;
 use crate::components::surface::control::kind_of_widget;
+use crate::components::surface::spec_editor::SpecFields;
 use crate::components::surface::{create_flow_draft, spec_summary};
 
 /// Applies one undoable change to the widget `id`.
@@ -65,7 +66,20 @@ pub(super) fn ControlPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Ele
     let wid_link = widget.id.clone();
     let wid_own = widget.id.clone();
     let wid_state = widget.id.clone();
+    let wid_spec = widget.id.clone();
     let has_state = !widget.source.is_empty();
+    // Domain declared by the widget (D137): its own choice, else what its
+    // own control holds, else the default of the kind.
+    let declared = widget
+        .options
+        .control_spec
+        .clone()
+        .or_else(|| def.as_ref().filter(|_| own).map(|d| d.spec.clone()))
+        .unwrap_or_else(|| pnex_core::ui_control::ControlSpec::new(kind));
+    let declared_error = declared
+        .check()
+        .map(|(code, _)| crate::components::surface::spec_editor::spec_error_text(code));
+    let shared = current.is_some() && !own && def.is_some();
     let dirty = *cx.layout.read() != *cx.saved_layout.read();
     let reference = format!("{} › #{}", cx.name.read(), widget.id);
 
@@ -138,6 +152,29 @@ pub(super) fn ControlPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Ele
                                     {crate::components::surface::control_display_name(&c)}
                                 }
                             }
+                        }
+                    }
+                }
+            }
+            details {
+                class: "rounded border border-gray-200 bg-white p-2",
+                open: kind.has_options(),
+                summary { class: "cursor-pointer text-xs font-medium text-gray-600",
+                    {t!("insp-control-domain")}
+                }
+                div { class: "mt-2 space-y-1",
+                    if shared {
+                        p { class: "text-[10px] text-gray-500", {t!("insp-control-domain-shared")} }
+                    } else {
+                        SpecFields {
+                            spec: declared,
+                            disabled: !can_write,
+                            on_change: move |next: pnex_core::ui_control::ControlSpec| {
+                                patch_widget(cx, &wid_spec, |w| w.options.control_spec = Some(next));
+                            },
+                        }
+                        if let Some(err) = declared_error {
+                            p { class: "text-xs text-red-600", "{err}" }
                         }
                     }
                 }

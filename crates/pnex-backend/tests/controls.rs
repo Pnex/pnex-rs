@@ -749,3 +749,110 @@ async fn empty_control_source_saves_but_never_deploys() {
     })
     .await;
 }
+
+/// D137: a select widget declares its options; the server provisions the
+/// control with them, keeps them in sync at each save, refuses a value
+/// outside the options and stores the option key next to the number. An
+/// invalid declared domain is refused with the dashboard save.
+#[tokio::test]
+#[serial]
+async fn declared_select_spec_is_applied_and_enforced() {
+    with_app(|server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let spec =
+            |opts: serde_json::Value| serde_json::json!({ "kind": "select", "options": opts });
+        let modes = spec(serde_json::json!([
+            {"value": 0, "key": "off"},
+            {"value": 1, "key": "heat", "icon": "home-flame"},
+            {"value": 2, "key": "cool", "label": "AC"},
+        ]));
+        let mut layout = control_layout(&[("w-0001", "select", "Mode", None)]);
+        layout["widgets"][0]["options"]["control_spec"] = modes;
+        let created = post(
+            &server,
+            &env.alice,
+            org,
+            "/api/v1/dashboards",
+            serde_json::json!({ "name": "Home", "layout": layout }),
+        )
+        .await;
+        created.assert_status(axum_test::http::StatusCode::CREATED);
+        let dash: serde_json::Value = created.json();
+        let dash_id = dash["id"].as_str().unwrap().to_string();
+        let id = bound_control(&dash, "w-0001");
+        let list = get(&server, &env.alice, org, "/api/v1/controls").await;
+        let c = control_by_id(&list, &id).expect("provisioned");
+        assert_eq!(c["spec"]["kind"], "select");
+        assert_eq!(c["spec"]["options"].as_array().unwrap().len(), 3);
+        assert_eq!(c["spec"]["options"][2]["label"], "AC");
+
+        // Re-save with one more option: the own control follows.
+        let mut layout = control_layout(&[("w-0001", "select", "Mode", Some(&id))]);
+        layout["widgets"][0]["options"]["control_spec"] = spec(serde_json::json!([
+            {"value": 0, "key": "off"},
+            {"value": 1, "key": "heat"},
+            {"value": 2, "key": "cool"},
+            {"value": 3, "key": "auto"},
+        ]));
+        patch(
+            &server,
+            &env.alice,
+            org,
+            &format!("/api/v1/dashboards/{dash_id}"),
+            serde_json::json!({ "expected_version_number": 1, "layout": layout }),
+        )
+        .await
+        .assert_status_ok();
+        let list = get(&server, &env.alice, org, "/api/v1/controls").await;
+        let c = control_by_id(&list, &id).unwrap();
+        assert_eq!(c["spec"]["options"][3]["key"], "auto");
+
+        // Invalid declared domain (duplicate keys): the save is refused.
+        let mut bad = control_layout(&[("w-0001", "select", "Mode", Some(&id))]);
+        bad["widgets"][0]["options"]["control_spec"] = spec(serde_json::json!([
+            {"value": 0, "key": "off"},
+            {"value": 1, "key": "off"},
+        ]));
+        let refused = patch(
+            &server,
+            &env.alice,
+            org,
+            &format!("/api/v1/dashboards/{dash_id}"),
+            serde_json::json!({ "expected_version_number": 2, "layout": bad }),
+        )
+        .await;
+        assert_eq!(refused.status_code(), 400, "{}", refused.text());
+
+        if valkey(&ctx).await.is_none() {
+            eprintln!("skip value checks: test Valkey unreachable");
+            return;
+        }
+        let path = format!("/api/v1/controls/{id}/value");
+        let off = post(
+            &server,
+            &env.alice,
+            org,
+            &path,
+            serde_json::json!({"value": 7}),
+        )
+        .await;
+        assert_eq!(off.status_code(), 400);
+        assert_eq!(
+            off.json::<serde_json::Value>()["errors"]["args"]["reason"],
+            "not_an_option"
+        );
+        let ok = post(
+            &server,
+            &env.alice,
+            org,
+            &path,
+            serde_json::json!({"value": 2}),
+        )
+        .await;
+        ok.assert_status_ok();
+        let stored = ok.json::<serde_json::Value>();
+        assert_eq!(stored["v"], 2.0);
+        assert_eq!(stored["option"], "cool");
+    })
+    .await;
+}

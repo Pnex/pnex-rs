@@ -2,7 +2,7 @@
 
 > **Statut : EN COURS.** Plan validé par l'utilisateur le 2026-10-04 sur
 > tous les points, avec deux reports consignés au §6 (mode sombre global,
-> code PIN serrure/alarme). **Lot A livré le 2026-10-04** (§4).
+> code PIN serrure/alarme). **Lots A et B livrés le 2026-10-04** (§4).
 > Docs liés : `surfaces-controls.md` (D123–D133 : « une surface lit, un flow
 > agit », contrôles d'org, format mobile/PC, provisionnement au save),
 > `viz-bases.md` (D24, D31, D40, D41), `flow-engine.md` (nœuds custom),
@@ -117,6 +117,26 @@ chaque commit, clés i18n FR + EN dans le même commit.
   recherchable). Écart : « device hors ligne » ne grise pas encore la
   carte (seule la péremption de la valeur le fait) — branché avec la
   présence D108 au lot C.
+
+- **Lot B (2026-10-04)** — `ControlKind` étendu à `select`, `stepper`,
+  `command`, `color` (`ControlKind::ALL` = 8, mêmes types de widget).
+  **Précision de D137 : le pipeline reste numérique.** Une option de
+  `select`/`command` porte `{value (nombre), key, label?, icon?}` ; la
+  valeur écrite et `msg.payload` restent un nombre (`device-write` direct),
+  la clé est émise en plus dans `msg.control.option` (`ControlValue.option`,
+  calculée par le serveur via `ControlSpec::symbol_of`). Couleur RVB =
+  entier `0xRRGGBB` (`msg.control.option` = `#rrggbb`), kelvin = plage
+  (2200..6500 pas 50 par défaut). Libellé d'option vide = traduction des
+  clés connues (`ctl-opt-open`, `ctl-opt-heat`…). **Le widget déclare le
+  domaine de son contrôle** (`WidgetOptions.control_spec`) : appliqué au
+  provisionnement et resynchronisé à chaque save sur son propre contrôle
+  (jamais sur un contrôle partagé lié), validé par `validate_widget` et
+  re-vérifié avant la base. Éditeur de domaine unique `SpecFields`
+  (inspecteur du dashboard + page Contrôles). Cartes : segments (≤ 4
+  options) ou liste déroulante, − valeur +, boutons de commande avec
+  icônes, sélecteur RVB, curseur kelvin. Test backend
+  `declared_select_spec_is_applied_and_enforced`. Pas de migration
+  (`controls.kind` varchar(16) sans contrainte).
 
 ## 6. Reports consignés
 

@@ -25,6 +25,10 @@ pub fn default_size(widget_type: &str) -> (i64, i64) {
         "slider" => (260, 140),
         "button" => (180, 110),
         "number" => (220, 150),
+        "select" => (300, 130),
+        "stepper" => (260, 140),
+        "command" => (280, 130),
+        "color" => (200, 140),
         _ => (240, 160),
     }
 }
