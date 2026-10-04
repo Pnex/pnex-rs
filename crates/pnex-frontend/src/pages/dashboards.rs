@@ -228,8 +228,8 @@ fn ListView(
                         title: t!("db-open"),
                         aria_label: t!("db-open"),
                         onclick: move |_| on_open.call((id_open.clone(), false)),
-                        icons::Zap { class: "h-4 w-4 sm:mr-1" }
-                        span { class: "hidden sm:inline", {t!("db-open")} }
+                        icons::Eye { class: "h-4 w-4 mr-1" }
+                        {t!("db-open")}
                     }
                     if can_write {
                         button {
@@ -674,27 +674,42 @@ fn LiveSubView(
     let version_label = t!("db-current-version", version: version_number).to_string();
 
     rsx! {
-        div { class: "p-6",
-            div { class: "mb-6 flex items-center justify-between",
-                div { class: "flex items-center gap-3",
+        div { class: "p-4 pb-24 md:p-6",
+            // Phone: [back icon] [truncated title] [edit] on one line, then
+            // version + refresh rate; one line with labels from sm up.
+            div { class: "mb-4 md:mb-6 flex flex-wrap items-center gap-x-3 gap-y-2",
+                div { class: "flex min-w-0 flex-1 items-center gap-2",
                     button {
-                        class: "inline-flex items-center px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50",
+                        class: "inline-flex shrink-0 items-center rounded-lg p-2 text-gray-600 hover:bg-gray-100 sm:border sm:border-gray-300 sm:px-3",
+                        title: t!("db-back"),
+                        aria_label: t!("db-back"),
                         onclick: move |_| on_back.call(()),
-                        icons::ArrowLeft { class: "h-4 w-4 mr-2" }
-                        {t!("db-back")}
+                        icons::ArrowLeft { class: "h-5 w-5 sm:h-4 sm:w-4 sm:mr-2" }
+                        span { class: "hidden text-sm sm:inline", {t!("db-back")} }
                     }
-                    h1 { class: "text-2xl font-bold text-gray-900",
+                    h1 { class: "min-w-0 truncate text-xl font-bold text-gray-900 sm:text-2xl",
                         "{detail_loaded.as_ref().map(|d| d.name.clone()).unwrap_or_default()}"
                     }
-                    span { class: "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-50 text-green-700",
-                        "{version_label}"
-                    }
-                }
-                div { class: "flex items-center gap-3",
-                    RefreshRateControl { auto }
                     if can_write {
                         button {
-                            class: "inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700",
+                            class: "ml-auto inline-flex shrink-0 items-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 sm:hidden",
+                            title: t!("db-mode-edit"),
+                            aria_label: t!("db-mode-edit"),
+                            onclick: move |_| on_edit.call(()),
+                            icons::Wrench { class: "h-4 w-4" }
+                        }
+                    }
+                }
+                div { class: "flex w-full items-center gap-3 sm:w-auto",
+                    span { class: "inline-flex shrink-0 items-center whitespace-nowrap rounded px-2 py-0.5 text-xs font-medium bg-green-50 text-green-700",
+                        "{version_label}"
+                    }
+                    div { class: "ml-auto sm:ml-0",
+                        RefreshRateControl { auto }
+                    }
+                    if can_write {
+                        button {
+                            class: "hidden items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 sm:inline-flex",
                             onclick: move |_| on_edit.call(()),
                             icons::Wrench { class: "h-4 w-4 mr-2" }
                             {t!("db-mode-edit")}
