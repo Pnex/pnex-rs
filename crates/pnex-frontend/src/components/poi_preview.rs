@@ -46,21 +46,29 @@ pub fn PoiPreviewPanel(
     rsx! {
         div { class: "flex h-full w-full flex-col",
             // Header : icône kind + nom + badge kind + actions.
-            div { class: "flex items-center gap-2 px-4 py-2 border-b border-gray-200 shrink-0",
+            div { class: "flex items-center gap-2 px-3 py-2 border-b border-gray-200 shrink-0 sm:px-4",
                 KindIcon { kind: target.kind.clone() }
-                span { class: "text-sm font-semibold text-gray-900 truncate", "{target.name}" }
-                span { class: "text-xs uppercase tracking-wide text-gray-400 shrink-0",
+                span { class: "min-w-0 text-sm font-semibold text-gray-900 truncate",
+                    "{target.name}"
+                }
+                span { class: "hidden text-xs uppercase tracking-wide text-gray-400 shrink-0 sm:inline",
                     "{kind_label}"
                 }
                 div { class: "flex-1" }
                 button {
                     class: "inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 shrink-0",
+                    title: t!("poi-preview-edit"),
+                    aria_label: t!("poi-preview-edit"),
                     onclick: move |_| on_edit.call(()),
-                    icons::Wrench { class: "h-3.5 w-3.5 mr-1.5" }
-                    {t!("poi-preview-edit")}
+                    icons::Wrench { class: "h-3.5 w-3.5 sm:mr-1.5" }
+                    span { class: "hidden sm:inline", {t!("poi-preview-edit")} }
                 }
                 button {
-                    class: "inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 shrink-0",
+                    // Hidden on phones: the drawer is full width there, there is
+                    // no map beside it to show (close returns to the drawer).
+                    class: "hidden items-center px-2.5 py-1.5 text-xs font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 shrink-0 sm:inline-flex",
+                    title: t!("poi-preview-show-map"),
+                    aria_label: t!("poi-preview-show-map"),
                     onclick: move |_| on_show_map.call(()),
                     icons::Map { class: "h-3.5 w-3.5 mr-1.5" }
                     {t!("poi-preview-show-map")}
