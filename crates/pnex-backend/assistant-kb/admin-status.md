@@ -22,3 +22,7 @@ Platform status is the platform administrator's page: the health of every infras
 - Organization members see their effective retention, read-only, on the System page.
 - This page is about the installation; the AI service card does not configure any LLM — each organization brings its own in its organization detail.
 - Component details are runtime diagnostics shown as the server reports them.
+
+## Assistant conversations
+
+The **Assistant conversations** card sets the platform retention of inactive assistant conversations (1–3650 days, default 180); **Default value** restores it. Organizations can only shorten it.

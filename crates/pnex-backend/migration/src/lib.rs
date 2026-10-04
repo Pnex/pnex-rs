@@ -15,6 +15,7 @@ mod m20261001_000001_baseline;
 mod m20261003_000002_controls;
 mod m20261004_000003_control_origin;
 mod m20261004_000004_ai_conversations;
+mod m20261004_000005_org_ai_retention;
 
 pub struct Migrator;
 
@@ -26,6 +27,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261003_000002_controls::Migration),
             Box::new(m20261004_000003_control_origin::Migration),
             Box::new(m20261004_000004_ai_conversations::Migration),
+            Box::new(m20261004_000005_org_ai_retention::Migration),
         ]
     }
 }

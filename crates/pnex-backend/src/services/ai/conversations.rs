@@ -375,6 +375,14 @@ pub async fn append_turn(
 
 /// Platform retention of inactive conversations (days, ≥ 1).
 pub async fn retention_days(db: &DatabaseConnection) -> u32 {
+    platform_retention(db)
+        .await
+        .unwrap_or(DEFAULT_RETENTION_DAYS)
+        .max(1)
+}
+
+/// Platform value stored in `system_settings` (`None` = default).
+pub async fn platform_retention(db: &DatabaseConnection) -> Option<u32> {
     system_settings::Entity::find()
         .filter(system_settings::Column::Key.eq(RETENTION_KEY))
         .one(db)
@@ -382,18 +390,92 @@ pub async fn retention_days(db: &DatabaseConnection) -> u32 {
         .ok()
         .flatten()
         .and_then(|r| r.value.trim().parse::<u32>().ok())
-        .unwrap_or(DEFAULT_RETENTION_DAYS)
-        .max(1)
 }
 
-/// Erases conversations without a message for `days`; returns how many.
-pub async fn purge_inactive(db: &DatabaseConnection, days: u32) -> Result<u64, DbErr> {
-    let cutoff = now() - chrono::Duration::days(i64::from(days));
-    let res = ai_conversations::Entity::delete_many()
-        .filter(ai_conversations::Column::LastMessageAt.lt(cutoff))
-        .exec(db)
+/// Sets (`Some`) or clears (`None`) the platform value.
+pub async fn set_platform_retention(
+    db: &DatabaseConnection,
+    days: Option<u32>,
+    user_id: i64,
+) -> Result<(), DbErr> {
+    let existing = system_settings::Entity::find()
+        .filter(system_settings::Column::Key.eq(RETENTION_KEY))
+        .one(db)
         .await?;
-    Ok(res.rows_affected)
+    match (existing, days) {
+        (Some(row), None) => {
+            system_settings::Entity::delete_by_id(row.id)
+                .exec(db)
+                .await?;
+        }
+        (Some(row), Some(days)) => {
+            let mut active: system_settings::ActiveModel = row.into();
+            active.value = Set(days.to_string());
+            active.updated_by = Set(Some(user_id));
+            active.update(db).await?;
+        }
+        (None, Some(days)) => {
+            system_settings::ActiveModel {
+                key: Set(RETENTION_KEY.to_string()),
+                value: Set(days.to_string()),
+                updated_by: Set(Some(user_id)),
+                ..Default::default()
+            }
+            .insert(db)
+            .await?;
+        }
+        (None, None) => {}
+    }
+    Ok(())
+}
+
+/// Effective retention of an org: its own value may only shorten the
+/// platform one.
+pub fn effective_retention(platform_days: u32, org_days: Option<i32>) -> u32 {
+    let org = org_days
+        .and_then(|d| u32::try_from(d).ok())
+        .filter(|d| *d >= 1);
+    org.map_or(platform_days, |d| d.min(platform_days)).max(1)
+}
+
+/// Erases conversations without a message for `days`, in one org or in
+/// every org (`None`); returns how many.
+pub async fn purge_inactive_in(
+    db: &DatabaseConnection,
+    org_id: Option<i64>,
+    days: u32,
+) -> Result<u64, DbErr> {
+    let cutoff = now() - chrono::Duration::days(i64::from(days));
+    let mut q = ai_conversations::Entity::delete_many()
+        .filter(ai_conversations::Column::LastMessageAt.lt(cutoff));
+    if let Some(org) = org_id {
+        q = q.filter(ai_conversations::Column::OrgId.eq(org));
+    }
+    Ok(q.exec(db).await?.rows_affected)
+}
+
+/// Erases conversations without a message for `days` (every org).
+pub async fn purge_inactive(db: &DatabaseConnection, days: u32) -> Result<u64, DbErr> {
+    purge_inactive_in(db, None, days).await
+}
+
+/// One purge pass: the platform retention everywhere, then the shorter
+/// retention of the orgs that set one.
+pub async fn purge_pass(db: &DatabaseConnection) -> Result<u64, DbErr> {
+    use crate::models::_entities::organizations;
+    let platform = retention_days(db).await;
+    let mut erased = purge_inactive_in(db, None, platform).await?;
+    let shorter = organizations::Entity::find()
+        .filter(organizations::Column::AiRetentionDays.is_not_null())
+        .all(db)
+        .await?;
+    for org in shorter {
+        let days = effective_retention(platform, org.ai_retention_days);
+        if days < platform {
+            erased += purge_inactive_in(db, Some(org.id), days).await?;
+        }
+    }
+    Ok(erased)
 }
 
 /// Hourly purge loop, one pod at a time (D106).
@@ -405,12 +487,9 @@ pub fn spawn_purger(ctx: &AppContext) {
             if crate::services::singleton::my_turn(&ctx.db, "ai-conversation-purge", PURGE_EVERY)
                 .await
             {
-                let days = retention_days(&ctx.db).await;
-                match purge_inactive(&ctx.db, days).await {
+                match purge_pass(&ctx.db).await {
                     Ok(0) => {}
-                    Ok(n) => {
-                        tracing::info!(erased = n, days, "inactive assistant conversations erased")
-                    }
+                    Ok(n) => tracing::info!(erased = n, "inactive assistant conversations erased"),
                     Err(e) => tracing::warn!("assistant conversation purge failed: {e}"),
                 }
             }
@@ -504,6 +583,14 @@ mod tests {
         let long = "x".repeat(100);
         assert_eq!(title_of(&long).chars().count(), TITLE_MAX_CHARS + 1);
         assert_eq!(title_of("   "), "…");
+    }
+
+    #[test]
+    fn org_retention_only_shortens_the_platform_one() {
+        assert_eq!(effective_retention(180, None), 180);
+        assert_eq!(effective_retention(180, Some(30)), 30);
+        assert_eq!(effective_retention(180, Some(400)), 180);
+        assert_eq!(effective_retention(180, Some(0)), 180);
     }
 
     #[test]

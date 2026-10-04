@@ -31,6 +31,6 @@ Write tools need the owner, admin or member role; a viewer can chat and read.
 
 ## Conversations
 
-Open **Conversations** in the chat panel to resume, rename, delete or export (JSON) your conversations, or **Erase all**. A conversation is visible to you only, in the organization where you started it — nobody else, not even an owner, can read it. Conversations are erased automatically after a period of inactivity, and when you leave the organization. One reply at a time per conversation (*ai-conversation-busy* while one is being written).
+Open **Conversations** in the chat panel to resume, rename, delete or export (JSON) your conversations, or **Erase all**. A conversation is visible to you only, in the organization where you started it — nobody else, not even an owner, can read it. Conversations are erased automatically after a period of inactivity (180 days by default; see the **Assistant conversations** card on the System page, where an owner or admin can shorten it), and when you leave the organization. One reply at a time per conversation (*ai-conversation-busy* while one is being written).
 
 Your messages are sent to the LLM provider configured by your organization (see the card llm-providers); what the provider keeps is governed by its own terms.

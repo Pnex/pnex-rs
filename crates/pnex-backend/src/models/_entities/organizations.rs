@@ -14,6 +14,9 @@ pub struct Model {
     pub name: String,
     pub subscription_tier_id: Option<i64>,
     pub data_retention_days: Option<i32>,
+    /// Assistant conversation retention of the org (days, D145), at most
+    /// the platform value; NULL follows the platform.
+    pub ai_retention_days: Option<i32>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

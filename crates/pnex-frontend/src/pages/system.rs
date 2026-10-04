@@ -106,6 +106,7 @@ pub fn System() -> Element {
                         RetentionCard { info: info.clone() }
                     },
                 }
+                crate::components::ai_retention::AiRetentionCard { platform: false }
                 DataCard {
                     streams: streams.value().read().clone(),
                     can_write,

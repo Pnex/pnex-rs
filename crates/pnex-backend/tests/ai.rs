@@ -1306,3 +1306,119 @@ async fn coupled_dashboard_widget_is_frozen_while_its_flow_runs() {
     })
     .await;
 }
+
+/// Conversation retention: an owner/admin may only shorten the platform
+/// value, a viewer may not change it, and the purge applies each org's
+/// effective value.
+#[tokio::test]
+#[serial]
+async fn org_retention_only_shortens_and_drives_the_purge() {
+    with_app_ai(true, true, |server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let bob_org = personal_org(&server, &env.bob).await;
+        let get = send_json(
+            &server,
+            "GET",
+            "/api/v1/ai/retention",
+            &env.alice,
+            org,
+            None,
+        )
+        .await
+        .json::<serde_json::Value>();
+        assert_eq!(get["days"], 180, "{get}");
+        assert_eq!(get["editable"], true);
+
+        let above = send_json(
+            &server,
+            "PUT",
+            "/api/v1/ai/retention",
+            &env.alice,
+            org,
+            Some(serde_json::json!({"days": 400})),
+        )
+        .await;
+        assert_eq!(above.status_code(), 422, "{}", above.text());
+        assert!(above.text().contains("ai-retention-above-platform"));
+        let set = send_json(
+            &server,
+            "PUT",
+            "/api/v1/ai/retention",
+            &env.alice,
+            org,
+            Some(serde_json::json!({"days": 30})),
+        )
+        .await
+        .json::<serde_json::Value>();
+        assert_eq!(set["days"], 30, "{set}");
+        assert_eq!(set["org_days"], 30);
+
+        // Only a platform admin sets the platform value.
+        let platform = send_json(
+            &server,
+            "PUT",
+            "/api/v1/ai/retention/default",
+            &env.alice,
+            org,
+            Some(serde_json::json!({"days": 90})),
+        )
+        .await;
+        assert_eq!(platform.status_code(), 403, "{}", platform.text());
+
+        // A viewer of alice's org cannot change it.
+        let add = server
+            .post(&format!("/api/v1/orgs/{org}/members"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .add_header("Content-Type", "application/json")
+            .json(&serde_json::json!({"email": "bob@example.com", "role": "viewer"}))
+            .await;
+        assert_eq!(add.status_code(), 201, "{}", add.text());
+        let viewer = send_json(
+            &server,
+            "PUT",
+            "/api/v1/ai/retention",
+            &env.bob,
+            org,
+            Some(serde_json::json!({"days": 10})),
+        )
+        .await;
+        assert_eq!(viewer.status_code(), 403, "{}", viewer.text());
+
+        // 31-day-old conversations: erased in alice's org (30 d), kept in
+        // bob's personal org (platform 180 d).
+        let a = new_conversation(&server, &env.alice, org).await;
+        let b = new_conversation(&server, &env.bob, bob_org).await;
+        {
+            use pnex_backend::models::_entities::ai_conversations;
+            use sea_orm::{ActiveModelTrait, EntityTrait, Set};
+            for id in [&a, &b] {
+                let row =
+                    ai_conversations::Entity::find_by_id(uuid::Uuid::parse_str(id).expect("uuid"))
+                        .one(&ctx.db)
+                        .await
+                        .expect("read")
+                        .expect("row");
+                let mut old: ai_conversations::ActiveModel = row.into();
+                old.last_message_at =
+                    Set((chrono::Utc::now() - chrono::Duration::days(31)).fixed_offset());
+                old.update(&ctx.db).await.expect("age");
+            }
+        }
+        let erased = pnex_backend::services::ai::conversations::purge_pass(&ctx.db)
+            .await
+            .expect("purge");
+        assert_eq!(erased, 1);
+        let kept = send_json(
+            &server,
+            "GET",
+            &format!("/api/v1/ai/conversations/{b}"),
+            &env.bob,
+            bob_org,
+            None,
+        )
+        .await;
+        assert_eq!(kept.status_code(), 200);
+    })
+    .await;
+}

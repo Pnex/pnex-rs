@@ -1,6 +1,7 @@
 //! Composants partagés du front : icônes (SVG lucide inline), toasts, modales.
 
 pub mod agent_panel;
+pub mod ai_retention;
 /// Annotations sur médias (D55–D60) — popover live partagée + panneau
 /// d'édition studio (tranche 4).
 pub mod annotation_editor;

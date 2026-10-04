@@ -325,6 +325,11 @@ pub const AI_FLOW_RUNNING: &str = "ai-flow-running";
 /// A reply is already being written in this conversation (one turn at a
 /// time, D145).
 pub const AI_CONVERSATION_BUSY: &str = "ai-conversation-busy";
+/// Changing the org's assistant retention needs the owner or admin role.
+pub const AI_RETENTION_FORBIDDEN: &str = "ai-retention-forbidden";
+/// The org's assistant retention may only be shorter than the platform
+/// value; `args.max` = the platform value in days.
+pub const AI_RETENTION_ABOVE_PLATFORM: &str = "ai-retention-above-platform";
 
 // ── Registered codes ─────────────────────────────────────────────────────
 
@@ -505,6 +510,8 @@ pub const ALL: &[&str] = &[
     CONTROL_IN_USE,
     AI_FLOW_RUNNING,
     AI_CONVERSATION_BUSY,
+    AI_RETENTION_FORBIDDEN,
+    AI_RETENTION_ABOVE_PLATFORM,
     CONTROL_UNKNOWN,
     CONTROL_STORE_UNAVAILABLE,
 ];
