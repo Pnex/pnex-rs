@@ -562,3 +562,96 @@ Tous trouvés par la suite e2e, chacun couvert par un test (unitaire ou e2e) :
 - **Détail** : 17 anomalies M1–M17 mesurées + plan en 4 lots dans
   [`architecture/mobile-ui.md`](architecture/mobile-ui.md).
 - **Statut** : ouvert (plan posé, lots 1–4 à faire).
+
+## 2026-10-04 — démonstration domotique de bout en bout (captures docs, `e2e-nodemcu`)
+
+Parcours joué dans l'UI (Playwright, org E2E, image serveur rebuildée sur
+`c418999`) pour les captures du site : tableau mobile « Demo – Home » depuis
+le modèle **Maison** → carte Lumière (valeurs inversées 0/1, LED active bas)
+→ **Créer le flow…** → Source contrôle → Appareil (écriture) D4 → déploiement
+→ vue live 392 px → **Tout éteindre** ; flow « Demo – Weather » (MET Norway →
+2 × Écriture mémoire) → carte Météo + pastille Extérieur.
+
+**Vérifié OK** : modale de création + modèles ; contrôles provisionnés au save
+(références `#w-000n.role`) ; brouillon jamais déployé seul ; catalogue Source
+contrôle groupé par tableau ; page Contrôles (« Sans effet » / « Écouté par ») ;
+interrupteur mobile → D4 `last_value=false` (allumée) ; Tout éteindre (confirm)
+→ D4 `true` avec la valeur Arrêt inversée ; résumé de pièce « 1 on » ; panneau
+Détail ; Depuis un device (+ Lumière / + Interrupteur sur D4) ; nœud Météo +
+carte (11°, 5 jours) ; mémoire lisible comme source de carte.
+
+### O27 — Inspecteur de carte maison : source mémoire affichée fausse à la réouverture
+
+- **Repro** : carte « Extérieur » (Température & humidité), source
+  `demo.weather.now · temperature`, Enregistrer ; rouvrir l'éditeur et
+  sélectionner la carte.
+- **Constat** : le select affiche `demo.weather.daily · d0_condition_code`
+  (première option mémoire) alors que le layout enregistré porte bien
+  `memory: {key: demo.weather.now, field: temperature}` et que la vue live
+  affiche la bonne valeur (11,4 °C). Variante du « select fantôme » dioxus.
+- **Risque** : l'utilisateur croit sa source perdue ; non vérifié si un
+  ré-enregistrement sans toucher au select peut écraser la source.
+- **Statut** : ouvert.
+
+### O28 — « On and off values must differ » affiché alors que 0 ≠ 1
+
+- **Repro** : Lumière → Marche / arrêt → Valeurs ; saisir Valeur allumé `0`
+  puis Valeur éteint `1`.
+- **Constat** : l'erreur reste affichée (état intermédiaire 0/0 pendant la
+  saisie non réévalué) ; l'enregistrement passe et le contrôle porte bien
+  `on: 0, off: 1`. Erreur d'affichage seulement.
+- **Statut** : ouvert.
+
+### O29 — Vue live mobile : en-tête écrasé, cartes trop hautes
+
+- **En-tête** à 392 px : titre coupé mot par mot (« Demo / – / Home »),
+  « Back to list » sur deux lignes, « v2 · live » et « Refresh every » tassés
+  (capture `home-mobile-live`). À rapprocher de mobile-ui.md (pas vu dans
+  M1–M17 pour la vue live d'un tableau).
+- **Cartes** : hauteur fixe (`h-44`, carte Lumière ~350 px de haut sur
+  téléphone pour une ligne de contenu ; carte Météo idem dans l'éditeur) → beaucoup
+  de vide, peu de cartes visibles par écran.
+- **Statut** : ouvert.
+
+### O30 — Libellés générés : clé de rôle brute, homonymes indiscernables
+
+- Le contrôle et le brouillon de flow prennent la **clé** du rôle :
+  « Ceiling light · power », « Control — Ceiling light · power » (au lieu de
+  « Marche / arrêt », non traduit).
+- Le modèle Maison crée deux « Ceiling light » (Salon, Cuisine) et deux
+  « Shutter » : rien ne les distingue dans le catalogue Source contrôle ni
+  sur la page Contrôles (la pièce n'apparaît pas).
+- Après déploiement, le sous-titre du nœud Source contrôle affiche l'id
+  brut (`f53a092b`) au lieu de la clé affichée en brouillon.
+- **Statut** : ouvert.
+
+### O31 — Mineurs constatés
+
+- Sous-titre de la page Tableaux de bord resté « Composable SCADA screens… »
+  (ignore le format mobile).
+- « Créer et ouvrir le flow » ouvre l'éditeur sur `/flows` sans id dans
+  l'URL : un rechargement perd le flow.
+- A11y : confirmation « Tout éteindre » et panneau Détail sans
+  `role=dialog` ; champs Valeur allumé/éteint et Clé/Durée de vie de
+  l'Écriture mémoire sans label associé ; cliquer une carte du composeur
+  mobile au clic Playwright standard échoue (élément jamais « stable »,
+  re-rendus continus ?) — clic souris à coordonnées nécessaire.
+- FR : « Source contrôle » (palette) vs « Source de contrôle » (aide) ;
+  « Device cible… » vs « Appareil » partout ailleurs ; groupe de palette
+  « Commandes » homonyme du type de contrôle « Commandes » ; menu « Flux »
+  vs « flow » dans tout le reste de l'UI.
+- Section « Pastilles » du modèle Maison sans titre → l'éditeur affiche le
+  placeholder « SECTION TITLE ».
+- **Statut** : ouvert.
+
+### O32 — État laissé par la démo
+
+- Org E2E : tableau « Demo – Home », flows #18 « Control — Ceiling light ·
+  power » et #20 « Demo – Weather » **déployés** ; D4 de `e2e-nodemcu` passée
+  en `digital_out` et réservée par le flow #18. La suite e2e vide l'org E2E à
+  chaque run (les captures sont déjà dans pnex-website) ; elle n'utilise pas
+  D4.
+- Image `pnex-builder:dev` non reconstruite (le second target a échoué sur
+  un travail non commité d'une autre session, `AiRetention`) : le builder
+  tourne encore l'image du 2026-10-03.
+- **Statut** : informatif.
