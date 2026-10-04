@@ -211,21 +211,20 @@ async fn asset(
         .get(&version_row.storage_key)
         .await
         .map_err(|_| not_found())?;
-    let filename = pnex_firmware_builder::sanitize_segment(&version_row.filename);
+    // Allowlisted type + nosniff + sandbox CSP (SEC-5): this route is public
+    // and served on the app origin.
+    let headers = crate::services::media::user_content_headers(
+        &version_row.content_type,
+        &version_row.filename,
+    );
     Ok((
         StatusCode::OK,
-        [
-            ("content-type", version_row.content_type.clone()),
-            (
-                "content-disposition",
-                format!("inline; filename=\"{filename}\""),
-            ),
-            // Version immuable (append-only) + URL versionnée → cache long.
-            (
-                "cache-control",
-                "public, max-age=31536000, immutable".to_string(),
-            ),
-        ],
+        headers,
+        // Version immuable (append-only) + URL versionnée → cache long.
+        [(
+            "cache-control",
+            "public, max-age=31536000, immutable".to_string(),
+        )],
         bytes,
     )
         .into_response())

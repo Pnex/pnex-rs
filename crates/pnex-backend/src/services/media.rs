@@ -493,6 +493,66 @@ impl MediaStore for S3Store {
     }
 }
 
+// ───────────────────── Served content type (SEC-5) ─────────────────────
+
+/// Content types a stored media version may be served with: raster images
+/// and video render inline; every other declared type (HTML, SVG, XML, …)
+/// is stored and served as opaque bytes (docs/architecture/security.md R12).
+const INLINE_CONTENT_TYPES: &[&str] = &[
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "image/avif",
+    "video/mp4",
+    "video/webm",
+];
+
+/// Fallback of any content type outside [`INLINE_CONTENT_TYPES`].
+pub const OPAQUE_CONTENT_TYPE: &str = "application/octet-stream";
+
+/// Normalised, allowlisted content type of a media version: the client's
+/// declared value is never trusted (an uploaded `text/html` or SVG would
+/// otherwise run script on the app origin).
+pub fn safe_content_type(declared: &str) -> &'static str {
+    let essence = declared
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    INLINE_CONTENT_TYPES
+        .iter()
+        .find(|t| **t == essence)
+        .copied()
+        .unwrap_or(OPAQUE_CONTENT_TYPE)
+}
+
+/// Response headers of user-supplied bytes (media, public tour assets):
+/// allowlisted type, `nosniff`, a sandboxing CSP, and `attachment` for
+/// anything that is not an inline image/video.
+pub fn user_content_headers(declared: &str, filename: &str) -> [(&'static str, String); 4] {
+    let content_type = safe_content_type(declared);
+    let disposition = if content_type == OPAQUE_CONTENT_TYPE {
+        "attachment"
+    } else {
+        "inline"
+    };
+    let filename = sanitize_segment(filename);
+    [
+        ("content-type", content_type.to_string()),
+        (
+            "content-disposition",
+            format!("{disposition}; filename=\"{filename}\""),
+        ),
+        ("x-content-type-options", "nosniff".to_string()),
+        (
+            "content-security-policy",
+            "default-src 'none'; sandbox".to_string(),
+        ),
+    ]
+}
+
 /// sha256 hexadécimal (école artifact_store).
 pub fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
@@ -548,6 +608,28 @@ mod tests {
         settings.fs_shared = false;
         settings.storage_backend = "s3".into();
         assert_eq!(settings.boot_check(true), StorageBootCheck::Ok);
+    }
+
+    /// SEC-5: script-capable types are never served as such.
+    #[test]
+    fn content_type_allowlist() {
+        assert_eq!(safe_content_type("image/JPEG; q=1"), "image/jpeg");
+        for bad in [
+            "text/html",
+            "image/svg+xml",
+            "application/xhtml+xml",
+            "text/xml",
+            "",
+        ] {
+            assert_eq!(safe_content_type(bad), OPAQUE_CONTENT_TYPE, "{bad}");
+        }
+        let h = user_content_headers("text/html", "x.html");
+        assert_eq!(h[0].1, OPAQUE_CONTENT_TYPE);
+        assert!(h[1].1.starts_with("attachment"));
+        assert_eq!(h[2], ("x-content-type-options", "nosniff".to_string()));
+        assert!(user_content_headers("image/png", "a.png")[1]
+            .1
+            .starts_with("inline"));
     }
 
     /// Le secret S3 ne fuit pas dans le Debug.

@@ -29,19 +29,11 @@ async fn content_response(
         .get(&version.storage_key)
         .await
         .map_err(|_| Error::NotFound)?;
-    let filename = pnex_firmware_builder::sanitize_segment(&version.filename);
-    Ok((
-        StatusCode::OK,
-        [
-            ("content-type", version.content_type.clone()),
-            (
-                "content-disposition",
-                format!("inline; filename=\"{filename}\""),
-            ),
-        ],
-        bytes,
-    )
-        .into_response())
+    // Served type re-derived from the allowlist (rows written before SEC-5
+    // may hold a client-declared type).
+    let headers =
+        crate::services::media::user_content_headers(&version.content_type, &version.filename);
+    Ok((StatusCode::OK, headers, bytes).into_response())
 }
 
 /// `GET /api/v1/media/{id}/content` — octets de la version courante.

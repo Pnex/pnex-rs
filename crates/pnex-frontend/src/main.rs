@@ -19,6 +19,7 @@ mod download;
 mod flash;
 mod i18n;
 mod i18n_guard;
+mod js_guard;
 mod map_viewer;
 mod media_viewer;
 mod pages;
