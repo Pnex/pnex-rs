@@ -189,24 +189,12 @@ pub fn NotifyDeliveriesTab(
                         table { class: "min-w-full divide-y divide-gray-200 text-sm",
                             thead { class: "bg-gray-50",
                                 tr {
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
-                                        {t!("notify-col-date")}
-                                    }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
-                                        {t!("notify-col-channel")}
-                                    }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
-                                        {t!("notify-col-status")}
-                                    }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
-                                        {t!("notify-col-source")}
-                                    }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
-                                        {t!("notify-col-subject")}
-                                    }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
-                                        {t!("notify-col-flow")}
-                                    }
+                                    th { class: "th", {t!("notify-col-date")} }
+                                    th { class: "th", {t!("notify-col-channel")} }
+                                    th { class: "th", {t!("notify-col-status")} }
+                                    th { class: "th hidden md:table-cell", {t!("notify-col-source")} }
+                                    th { class: "th min-w-[10rem]", {t!("notify-col-subject")} }
+                                    th { class: "th hidden md:table-cell", {t!("notify-col-flow")} }
                                 }
                             }
                             tbody { class: "divide-y divide-gray-100",
@@ -246,7 +234,7 @@ fn DeliveryRow(
                 let next = !open();
                 open.set(next);
             },
-            td { class: "px-4 py-2 text-gray-600 whitespace-nowrap",
+            td { class: "td text-gray-600 whitespace-nowrap",
                 if open() {
                     icons::ChevronDown { class: "h-3 w-3 inline mr-1 text-gray-400" }
                 } else {
@@ -254,11 +242,11 @@ fn DeliveryRow(
                 }
                 {ts_label(d.ts_us)}
             }
-            td { class: "px-4 py-2 text-gray-900",
+            td { class: "td text-gray-900",
                 "{channel}"
                 span { class: "ml-2 text-xs text-gray-500", "{d.channel_kind}" }
             }
-            td { class: "px-4 py-2 whitespace-nowrap",
+            td { class: "td whitespace-nowrap",
                 span { class: "px-2 py-0.5 rounded-full text-xs {status_classes(&d.status)}",
                     {status_label(&d.status)}
                     if let Some(code) = d.http_status {
@@ -266,9 +254,11 @@ fn DeliveryRow(
                     }
                 }
             }
-            td { class: "px-4 py-2 text-gray-600", {source_label(&d.source)} }
-            td { class: "px-4 py-2 text-gray-700", {d.subject.clone().unwrap_or_default()} }
-            td { class: "px-4 py-2",
+            td { class: "td hidden text-gray-600 md:table-cell", {source_label(&d.source)} }
+            td { class: "td min-w-[10rem] text-gray-700 break-words",
+                {d.subject.clone().unwrap_or_default()}
+            }
+            td { class: "td hidden md:table-cell",
                 if let Some(id) = flow_id {
                     button {
                         class: "text-blue-600 hover:underline",
@@ -286,9 +276,15 @@ fn DeliveryRow(
         if open() {
             tr {
                 td {
-                    class: "px-4 pb-3 bg-gray-50 text-xs text-gray-700",
+                    class: "px-3 pb-3 bg-gray-50 text-xs text-gray-700 md:px-4",
                     colspan: "6",
                     dl { class: "grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 pt-2",
+                        dt { class: "text-gray-500 md:hidden", {t!("notify-col-source")} }
+                        dd { class: "md:hidden", {source_label(&d.source)} }
+                        if let Some(id) = flow_id {
+                            dt { class: "text-gray-500 md:hidden", {t!("notify-col-flow")} }
+                            dd { class: "md:hidden", "#{id}" }
+                        }
                         if let Some(err) = d.error.clone() {
                             dt { class: "text-gray-500", {t!("notify-detail-error")} }
                             dd { class: "font-mono text-red-700 break-all", "{err}" }

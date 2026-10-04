@@ -48,7 +48,7 @@ pub fn LlmProviders(can_manage: bool) -> Element {
 
     rsx! {
         div { class: "space-y-3",
-            div { class: "flex items-start justify-between gap-2",
+            div { class: "flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between",
                 div {
                     h3 { class: "text-sm font-semibold text-gray-900", {t!("llm-title")} }
                     p { class: "text-xs text-gray-500 mt-1", {help} }
@@ -56,7 +56,7 @@ pub fn LlmProviders(can_manage: bool) -> Element {
                 if can_manage && editing().is_none() {
                     button {
                         r#type: "button",
-                        class: BTN,
+                        class: "{BTN} self-start whitespace-nowrap",
                         onclick: move |_| editing.set(Some(Editing::New)),
                         {t!("llm-add")}
                     }
@@ -75,9 +75,9 @@ pub fn LlmProviders(can_manage: bool) -> Element {
                             tr { class: "text-left text-xs uppercase text-gray-500 border-b",
                                 th { class: "py-2 pr-4", {t!("llm-col-name")} }
                                 th { class: "py-2 pr-4", {t!("llm-col-kind")} }
-                                th { class: "py-2 pr-4", {t!("llm-col-model")} }
-                                th { class: "py-2 pr-4", {t!("llm-col-key")} }
-                                th { class: "py-2" }
+                                th { class: "py-2 pr-4 hidden md:table-cell", {t!("llm-col-model")} }
+                                th { class: "py-2 pr-4 hidden md:table-cell", {t!("llm-col-key")} }
+                                th { class: "py-2 sticky right-0 bg-white md:static" }
                             }
                         }
                         tbody {
@@ -149,6 +149,7 @@ fn ProviderRow(
         tr { class: "border-b border-gray-100",
             td { class: "py-2 pr-4 text-gray-900",
                 span { class: "font-medium", {provider.name.clone()} }
+                p { class: "text-xs text-gray-500 font-mono md:hidden", {provider.model.clone()} }
                 if provider.is_default {
                     span { class: "ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-xs",
                         {t!("llm-default")}
@@ -156,9 +157,13 @@ fn ProviderRow(
                 }
             }
             td { class: "py-2 pr-4 text-gray-600", {provider.kind.clone()} }
-            td { class: "py-2 pr-4 text-gray-600 font-mono text-xs", {provider.model.clone()} }
-            td { class: "py-2 pr-4 text-gray-600 text-xs font-mono", {key_label} }
-            td { class: "py-2 text-right whitespace-nowrap space-x-1",
+            td { class: "py-2 pr-4 hidden text-gray-600 font-mono text-xs md:table-cell",
+                {provider.model.clone()}
+            }
+            td { class: "py-2 pr-4 hidden text-gray-600 text-xs font-mono md:table-cell",
+                {key_label}
+            }
+            td { class: "py-2 pl-2 text-right space-x-1 sticky right-0 bg-white whitespace-nowrap shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.25)] md:static md:shadow-none",
                 if editable {
                     button {
                         r#type: "button",

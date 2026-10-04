@@ -19,6 +19,7 @@ use crate::components::confirm::ConfirmDialog;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
+use crate::components::crud::table::{ACTIONS_TD_CLASS, ACTIONS_TH_CLASS};
 use crate::components::icons;
 use crate::state::{org, session, toasts};
 
@@ -100,28 +101,18 @@ pub fn Models() -> Element {
                         table { class: "min-w-full divide-y divide-gray-200 text-sm",
                             thead { class: "bg-gray-50",
                                 tr {
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
-                                        {t!("models-col-name")}
-                                    }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
-                                        {t!("models-col-family")}
-                                    }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
-                                        {t!("models-col-input")}
-                                    }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
-                                        {t!("models-col-labels")}
-                                    }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                    th { class: "th", {t!("models-col-name")} }
+                                    th { class: "th", {t!("models-col-family")} }
+                                    th { class: "th hidden md:table-cell", {t!("models-col-input")} }
+                                    th { class: "th hidden md:table-cell", {t!("models-col-labels")} }
+                                    th { class: "th hidden md:table-cell",
                                         {t!("models-col-threshold")}
                                     }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
-                                        {t!("models-col-check")}
-                                    }
-                                    th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                    th { class: "th", {t!("models-col-check")} }
+                                    th { class: "th hidden md:table-cell",
                                         {t!("models-col-updated")}
                                     }
-                                    th { class: "px-4 py-2" }
+                                    th { class: "th {ACTIONS_TH_CLASS}" }
                                 }
                             }
                             tbody { class: "divide-y divide-gray-100",
@@ -234,20 +225,20 @@ fn ModelRow(
     let m_edit = model.clone();
     let m_delete = model.clone();
     rsx! {
-        tr { class: "hover:bg-gray-50",
-            td { class: "px-4 py-2",
+        tr { class: "group hover:bg-gray-50",
+            td { class: "td",
                 p { class: "font-medium text-gray-900", "{model.name}" }
                 if !model.description.is_empty() {
                     p { class: "text-xs text-gray-500", "{model.description}" }
                 }
             }
-            td { class: "px-4 py-2 text-gray-600", {model.spec.family.wire().to_uppercase()} }
-            td { class: "px-4 py-2 text-gray-600",
+            td { class: "td text-gray-600", {model.spec.family.wire().to_uppercase()} }
+            td { class: "td hidden text-gray-600 md:table-cell",
                 "{model.spec.input_width}×{model.spec.input_height}"
             }
-            td { class: "px-4 py-2 text-gray-600", "{model.spec.labels.len()}" }
-            td { class: "px-4 py-2 text-gray-600", "{model.spec.score_threshold:.2}" }
-            td { class: "px-4 py-2 max-w-xs",
+            td { class: "td hidden text-gray-600 md:table-cell", "{model.spec.labels.len()}" }
+            td { class: "td hidden text-gray-600 md:table-cell", "{model.spec.score_threshold:.2}" }
+            td { class: "td min-w-[8rem] max-w-xs",
                 span { class: "inline-flex px-2 py-0.5 rounded text-xs font-medium {badge_class}",
                     {badge_label}
                 }
@@ -262,8 +253,8 @@ fn ModelRow(
                     }
                 }
             }
-            td { class: "px-4 py-2 text-gray-500", {date_label(&model.updated_at)} }
-            td { class: "px-4 py-2",
+            td { class: "td hidden text-gray-500 md:table-cell", {date_label(&model.updated_at)} }
+            td { class: "td {ACTIONS_TD_CLASS}",
                 div { class: "flex justify-end gap-2",
                     button {
                         class: "px-3 py-1 text-sm text-fuchsia-700 bg-fuchsia-50 border border-fuchsia-200 rounded-lg hover:bg-fuchsia-100 whitespace-nowrap",

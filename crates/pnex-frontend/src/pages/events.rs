@@ -267,22 +267,16 @@ pub fn Events() -> Element {
                             table { class: "min-w-full divide-y divide-gray-200 text-sm",
                                 thead { class: "bg-gray-50",
                                     tr {
-                                        th { class: "px-4 py-2 text-left font-medium text-gray-600",
-                                            {t!("events-col-time")}
-                                        }
-                                        th { class: "px-4 py-2 text-left font-medium text-gray-600",
-                                            {t!("events-col-level")}
-                                        }
-                                        th { class: "px-4 py-2 text-left font-medium text-gray-600",
-                                            {t!("events-col-message")}
-                                        }
-                                        th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                        th { class: "th", {t!("events-col-time")} }
+                                        th { class: "th", {t!("events-col-level")} }
+                                        th { class: "th min-w-[12rem]", {t!("events-col-message")} }
+                                        th { class: "th hidden md:table-cell",
                                             {t!("events-col-topic")}
                                         }
-                                        th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                        th { class: "th hidden md:table-cell",
                                             {t!("events-col-flow")}
                                         }
-                                        th { class: "px-4 py-2 text-left font-medium text-gray-600",
+                                        th { class: "th hidden md:table-cell",
                                             {t!("events-col-node")}
                                         }
                                     }
@@ -317,7 +311,7 @@ fn EventRow(ev: EventRecord) -> Element {
                 let next = !open();
                 open.set(next);
             },
-            td { class: "px-4 py-2 text-gray-600 whitespace-nowrap",
+            td { class: "td text-gray-600 whitespace-nowrap",
                 if open() {
                     icons::ChevronDown { class: "h-3 w-3 inline mr-1 text-gray-400" }
                 } else {
@@ -325,7 +319,7 @@ fn EventRow(ev: EventRecord) -> Element {
                 }
                 {ts_label(ev.ts_us)}
             }
-            td { class: "px-4 py-2",
+            td { class: "td",
                 span { class: "px-2 py-0.5 rounded-full text-xs {level_classes(&ev.level)}",
                     {
                         EventLevel::from_wire(&ev.level)
@@ -334,9 +328,11 @@ fn EventRow(ev: EventRecord) -> Element {
                     }
                 }
             }
-            td { class: "px-4 py-2 text-gray-900", "{ev.message}" }
-            td { class: "px-4 py-2 text-gray-600", {ev.topic.clone().unwrap_or_default()} }
-            td { class: "px-4 py-2",
+            td { class: "td min-w-[12rem] text-gray-900 break-words", "{ev.message}" }
+            td { class: "td hidden text-gray-600 md:table-cell",
+                {ev.topic.clone().unwrap_or_default()}
+            }
+            td { class: "td hidden md:table-cell",
                 if let Some(id) = flow_id {
                     button {
                         class: "text-blue-600 hover:underline",
@@ -350,11 +346,25 @@ fn EventRow(ev: EventRecord) -> Element {
                     }
                 }
             }
-            td { class: "px-4 py-2 text-gray-500 font-mono text-xs", "{ev.node_id}" }
+            td { class: "td hidden text-gray-500 font-mono text-xs md:table-cell",
+                "{ev.node_id}"
+            }
         }
         if open() {
             tr {
-                td { class: "px-4 pb-3 bg-gray-50", colspan: "6",
+                td { class: "px-3 pb-3 bg-gray-50 md:px-4", colspan: "6",
+                    dl { class: "mb-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs md:hidden",
+                        dt { class: "text-gray-500", {t!("events-col-topic")} }
+                        dd { class: "text-gray-700 break-all",
+                            {ev.topic.clone().unwrap_or_default()}
+                        }
+                        dt { class: "text-gray-500", {t!("events-col-flow")} }
+                        dd { class: "text-gray-700",
+                            {flow_id.map(|id| format!("#{id}")).unwrap_or_default()}
+                        }
+                        dt { class: "text-gray-500", {t!("events-col-node")} }
+                        dd { class: "text-gray-700 font-mono break-all", "{ev.node_id}" }
+                    }
                     if has_payload {
                         pre { class: "text-xs font-mono bg-white border border-gray-200 rounded-lg p-3 overflow-x-auto max-h-80",
                             "{payload}"

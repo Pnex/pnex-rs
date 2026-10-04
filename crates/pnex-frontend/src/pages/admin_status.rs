@@ -359,7 +359,7 @@ fn OrgsOverview() -> Element {
                             thead {
                                 tr { class: "text-left text-xs uppercase text-gray-500 border-b",
                                     th { class: "py-2 pr-4", {t!("admin-orgs-col-org")} }
-                                    th { class: "py-2 pr-4", {t!("admin-orgs-col-tier")} }
+                                    th { class: "py-2 pr-4 hidden md:table-cell", {t!("admin-orgs-col-tier")} }
                                     th { class: "py-2 pr-4", {t!("admin-orgs-col-retention")} }
                                     th { class: "py-2 pr-4", {t!("admin-orgs-col-override")} }
                                     th { class: "py-2 pr-4", {t!("admin-orgs-col-usage")} }
@@ -480,11 +480,16 @@ fn OrgRow(row: OrgSystemRow, on_saved: Callback<()>) -> Element {
     let over = matches!((row.used_bytes, row.quota_bytes), (Some(u), Some(q)) if u > q);
     rsx! {
         tr { class: "border-b last:border-0",
-            td { class: "py-2 pr-4 font-medium text-gray-900", {row.name.clone()} }
-            td { class: "py-2 pr-4 text-gray-600",
+            td { class: "py-2 pr-4 font-medium text-gray-900",
+                {row.name.clone()}
+                p { class: "text-xs font-normal text-gray-500 md:hidden",
+                    {row.tier_name.clone().unwrap_or_else(|| "—".into())}
+                }
+            }
+            td { class: "py-2 pr-4 hidden text-gray-600 md:table-cell",
                 {row.tier_name.clone().unwrap_or_else(|| "—".into())}
             }
-            td { class: "py-2 pr-4 text-gray-900",
+            td { class: "py-2 pr-4 text-gray-900 whitespace-nowrap",
                 {t!("system-days-short", count : row.retention_days)}
                 span { class: "ml-2 text-xs text-gray-500", "({source})" }
             }

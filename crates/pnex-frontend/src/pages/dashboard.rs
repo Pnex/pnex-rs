@@ -233,12 +233,12 @@ pub fn Dashboard() -> Element {
                 }
 
                 div { class: "bg-white rounded-lg shadow-sm",
-                    div { class: "p-6 border-b border-gray-200",
+                    div { class: "p-4 border-b border-gray-200 md:p-6",
                         h2 { class: "text-lg font-semibold text-gray-900",
                             {t!("dash-last-measurements")}
                         }
                     }
-                    div { class: "p-6",
+                    div { class: "overflow-x-auto p-4 md:p-6",
                         match telemetry {
                             Some(t) if t.available && !t.latest.is_empty() => rsx! {
                                 table { class: "w-full text-sm",
@@ -247,7 +247,7 @@ pub fn Dashboard() -> Element {
                                             th { class: "py-2 pr-4", {t!("dash-col-device")} }
                                             th { class: "py-2 pr-4", {t!("dash-col-metric")} }
                                             th { class: "py-2 pr-4 text-right", {t!("dash-col-value")} }
-                                            th { class: "py-2", {t!("dash-col-time")} }
+                                            th { class: "py-2 hidden sm:table-cell", {t!("dash-col-time")} }
                                         }
                                     }
                                     tbody {
@@ -255,10 +255,10 @@ pub fn Dashboard() -> Element {
                                             tr {
                                                 key: "{m.metric}-{m.device_id}-{m.timestamp.as_deref().unwrap_or_default()}",
                                                 class: "border-b border-gray-100",
-                                                td { class: "py-2 pr-4 font-medium text-gray-900", {m.device_id.clone()} }
+                                                td { class: "py-2 pr-4 font-medium text-gray-900 break-all", {m.device_id.clone()} }
                                                 td { class: "py-2 pr-4 text-gray-700", {m.metric.clone()} }
                                                 td { class: "py-2 pr-4 text-right font-bold text-gray-900", "{m.value}" }
-                                                td { class: "py-2 text-xs text-gray-500",
+                                                td { class: "py-2 hidden text-xs text-gray-500 sm:table-cell",
                                                     {m.timestamp.as_deref().map(date_label).unwrap_or_else(|| "—".into())}
                                                 }
                                             }

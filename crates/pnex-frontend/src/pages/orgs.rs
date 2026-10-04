@@ -238,22 +238,26 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
             rsx! {
                 div { class: "bg-white rounded-lg shadow-sm",
                     // En-tête
-                    div { class: "p-6 border-b border-gray-200 flex items-center justify-between gap-4",
-                        div {
+                    div { class: "p-4 border-b border-gray-200 flex items-center justify-between gap-4 md:p-6",
+                        div { class: "min-w-0",
                             button {
                                 class: "text-sm text-blue-600 hover:text-blue-700 mb-1",
                                 onclick: move |_| on_back.call(()),
                                 {"← "}
                                 {t!("orgs-back")}
                             }
-                            h2 { class: "text-xl font-semibold text-gray-900", {name} }
+                            h2 { class: "truncate text-xl font-semibold text-gray-900",
+                                {name}
+                            }
                         }
                         if is_owner {
                             button {
-                                class: "px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors",
+                                class: "inline-flex shrink-0 items-center gap-1 px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors",
+                                title: t!("orgs-delete"),
+                                aria_label: t!("orgs-delete"),
                                 onclick: move |_| confirm_delete.set(true),
-                                icons::Trash2 { class: "h-4 w-4 inline mr-1" }
-                                {t!("orgs-delete")}
+                                icons::Trash2 { class: "h-4 w-4" }
+                                span { class: "hidden sm:inline", {t!("orgs-delete")} }
                             }
                         }
                     }
@@ -261,7 +265,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                     // Renommage (owner/admin)
                     if can_write {
                         form {
-                            class: "p-6 border-b border-gray-200 flex gap-2",
+                            class: "p-4 border-b border-gray-200 flex gap-2 md:p-6",
                             onsubmit: move |event| {
                                 // Bloque la soumission native (rechargement du SPA).
                                 event.prevent_default();
@@ -296,14 +300,14 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                     }
 
                     // LLM providers of the org (managed by owner/admin)
-                    div { class: "p-6 border-b border-gray-200",
+                    div { class: "p-4 border-b border-gray-200 md:p-6",
                         crate::components::llm_providers::LlmProviders { can_manage: can_write }
                     }
 
                     // Ajout de membre (owner/admin)
                     if can_write {
                         form {
-                            class: "p-6 border-b border-gray-200 flex flex-wrap gap-2",
+                            class: "p-4 border-b border-gray-200 flex flex-wrap gap-2 md:p-6",
                             onsubmit: move |event| {
                                 // Bloque la soumission native (rechargement du SPA).
                                 event.prevent_default();
@@ -365,7 +369,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                     }
 
                     // Membres
-                    div { class: "p-6",
+                    div { class: "p-4 md:p-6",
                         h3 { class: "text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4",
                             {t!("orgs-members")}
                         }
@@ -462,12 +466,12 @@ fn member_row(
     rsx! {
         div {
             key: "{user_id}",
-            class: "flex items-center justify-between p-3 bg-gray-50 rounded-lg",
-            div {
-                p { class: "text-sm font-medium text-gray-900", {display} }
-                p { class: "text-xs text-gray-500", {email} }
+            class: "flex items-center justify-between gap-2 p-3 bg-gray-50 rounded-lg",
+            div { class: "min-w-0",
+                p { class: "truncate text-sm font-medium text-gray-900", {display} }
+                p { class: "truncate text-xs text-gray-500", {email} }
             }
-            div { class: "flex items-center gap-2",
+            div { class: "flex shrink-0 items-center gap-2",
                 if can_write {
                     select {
                         aria_label: t!("orgs-member-role"),

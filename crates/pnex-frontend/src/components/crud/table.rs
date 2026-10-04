@@ -66,9 +66,10 @@ pub enum ColumnKind {
 }
 
 // Full class literals (Tailwind scans the sources, no string building).
+// Public so hand-written tables (outside `DataTable`) behave the same on phones.
 const SECONDARY_CLASS: &str = "hidden md:table-cell";
-const ACTIONS_TH_CLASS: &str = "sticky right-0 bg-gray-50 md:static";
-const ACTIONS_TD_CLASS: &str = "sticky right-0 bg-white group-hover:bg-gray-50 whitespace-nowrap shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.25)] md:static md:shadow-none";
+pub const ACTIONS_TH_CLASS: &str = "sticky right-0 bg-gray-50 md:static";
+pub const ACTIONS_TD_CLASS: &str = "sticky right-0 bg-white group-hover:bg-gray-50 whitespace-nowrap shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.25)] md:static md:shadow-none";
 
 impl ColumnKind {
     fn th_class(self) -> &'static str {
