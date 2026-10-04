@@ -54,6 +54,13 @@ pub fn WidgetBody(
         };
     }
 
+    // Home cards draw their whole card (D138).
+    if w.widget_type == pnex_core::home::HOME_WIDGET_TYPE {
+        return rsx! {
+            crate::components::surface::home_card::HomeCardBody { widget: widget.clone(), values }
+        };
+    }
+
     // Symbols draw their own caption (under the drawing, not a card header).
     if w.widget_type == "symbol" {
         return rsx! {

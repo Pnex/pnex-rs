@@ -79,6 +79,9 @@ pub fn ControlBody(
     /// one (an annotation panel mixes items of several layers).
     #[props(default)]
     via: Option<String>,
+    /// Inside a home card (D138): no header, no state line, no frame.
+    #[props(default)]
+    compact: bool,
 ) -> Element {
     let surface = try_use_context::<SurfaceControls>();
     let busy = use_signal(|| false);
@@ -102,9 +105,11 @@ pub fn ControlBody(
     let missing = control_id.is_some() && def.is_none() && surface.is_some_and(|s| s.loaded());
     let idle = def.as_ref().is_some_and(|d| d.listened_by.is_empty());
     let interactive = surface.is_some_and(|s| s.interactive) && def.is_some() && !busy();
+    // Declared domain (D137) while the control is not loaded / not saved.
     let spec = def
         .as_ref()
         .map(|d| d.spec.clone())
+        .or_else(|| widget.options.control_spec.clone())
         .unwrap_or_else(|| ControlSpec::new(kind));
     let decimals = decimals_of(&widget, &spec);
     let unit = spec.unit.clone().unwrap_or_default();
@@ -456,11 +461,15 @@ pub fn ControlBody(
     });
     let confirm_value = pending().map(|v| value_text(&spec_text, v, decimals, &unit));
 
+    let frame = if compact {
+        "flex w-full flex-col"
+    } else {
+        "flex h-full w-full flex-col overflow-hidden rounded-lg"
+    };
+    let state_line = state_line.filter(|_| !compact);
     rsx! {
-        div {
-            class: "flex h-full w-full flex-col overflow-hidden rounded-lg",
-            title: "{last_by}",
-            div { class: "flex items-center justify-between gap-2 px-3 pt-2",
+        div { class: frame, title: "{last_by}",
+            div { class: if compact { "hidden" } else { "flex items-center justify-between gap-2 px-3 pt-2" },
                 span { class: "truncate text-xs font-medium text-gray-500", "{title}" }
                 if missing {
                     span { class: "shrink-0 rounded bg-red-50 px-1.5 text-[10px] font-medium text-red-700",

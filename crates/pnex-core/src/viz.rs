@@ -40,6 +40,7 @@ pub const VIZ_WIDGET_TYPES: &[&str] = &[
     "stepper",
     "command",
     "color",
+    "home_card",
 ];
 
 /// Control widget types (D125): each drives one org control
@@ -220,6 +221,9 @@ pub struct WidgetOptions {
     /// seconds (D135). `None` = never stale.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stale_after_s: Option<u32>,
+    /// Composite home card (present iff type is `home_card`, D138).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home: Option<crate::home::HomeCardOptions>,
 }
 
 /// Options of the `symbol` widget — a shape of the front-end symbol
@@ -509,6 +513,23 @@ pub struct Widget {
     pub source: Vec<SourceRef>,
     #[serde(default)]
     pub options: WidgetOptions,
+}
+
+impl Widget {
+    /// Every control this widget drives: the control of a control widget,
+    /// the role controls of a home card (D138).
+    pub fn control_ids(&self) -> Vec<uuid::Uuid> {
+        let mut ids: Vec<uuid::Uuid> = self.options.control.iter().map(|c| c.control_id).collect();
+        if let Some(h) = &self.options.home {
+            ids.extend(h.controls.values().map(|c| c.control_id));
+        }
+        ids
+    }
+
+    /// Source of a role (`SourceRef.role`), home cards.
+    pub fn source_of(&self, role: &str) -> Option<&SourceRef> {
+        self.source.iter().find(|s| s.role == role)
+    }
 }
 
 /// Dashboard format, chosen at creation and never changed (D123).
@@ -844,6 +865,12 @@ pub fn validate_widget(
     // A control widget without a control is valid: the server provisions
     // its own control when the dashboard is saved (D131).
     let is_control = CONTROL_WIDGET_TYPES.contains(&widget_type);
+    if widget_type != crate::home::HOME_WIDGET_TYPE && options.home.is_some() {
+        push(
+            "home_unexpected",
+            "only home cards carry card options".into(),
+        );
+    }
     if !is_control && (options.control.is_some() || options.control_spec.is_some()) {
         push(
             "control_unexpected",
@@ -867,6 +894,21 @@ pub fn validate_widget(
                 "control_state_sources",
                 "a control widget shows at most one state source".into(),
             );
+        }
+        check_sources(widget_type, source, &mut push);
+    } else if widget_type == crate::home::HOME_WIDGET_TYPE {
+        match &options.home {
+            None => push("home_missing", "a home card needs its card options".into()),
+            Some(h) => {
+                let roles: Vec<&str> = source.iter().map(|s| s.role.as_str()).collect();
+                let mut seen = std::collections::BTreeSet::new();
+                if roles.iter().any(|r| !seen.insert(*r)) {
+                    push("home_source_duplicate", "one source per role".into());
+                }
+                for (code, message) in crate::home::check_home_card(h, &roles) {
+                    push(code, message);
+                }
+            }
         }
         check_sources(widget_type, source, &mut push);
     } else if widget_type == "text" {

@@ -10,9 +10,11 @@ use crate::api;
 use crate::components::confirm::ConfirmDialog;
 use crate::components::editor_shell::{PaletteIcon, PaletteItem};
 use crate::components::icons;
+use crate::components::surface::home_card::card_label;
 use crate::state::toasts;
 use dioxus::prelude::*;
 use dioxus_i18n::t;
+use pnex_core::home::HomeCard;
 
 use super::state;
 use super::EditorCx;
@@ -69,6 +71,41 @@ pub fn kind_icon(kind: &str) -> (PaletteIcon, &'static str) {
     }
 }
 
+/// Palette key prefix of a home card (`home:thermostat`, D138).
+pub const HOME_KEY_PREFIX: &str = "home:";
+
+/// Home card palette groups (D134, D138), after "Start".
+const HOME_GROUPS: [(&str, &[HomeCard]); 3] = [
+    (
+        "home",
+        &[
+            HomeCard::Light,
+            HomeCard::Thermostat,
+            HomeCard::Cover,
+            HomeCard::Fan,
+            HomeCard::Gate,
+            HomeCard::Lock,
+            HomeCard::Alarm,
+            HomeCard::Scene,
+            HomeCard::Irrigation,
+            HomeCard::Appliance,
+        ],
+    ),
+    (
+        "sensors",
+        &[
+            HomeCard::Binary,
+            HomeCard::ThermoHygro,
+            HomeCard::AirQuality,
+            HomeCard::Clock,
+        ],
+    ),
+    (
+        "energy",
+        &[HomeCard::Power, HomeCard::Meter, HomeCard::EnergyFlow],
+    ),
+];
+
 /// Palette groups in display order (D134). Each widget kind belongs to
 /// exactly one group; the shell starts a section whenever it changes.
 const PALETTE_GROUPS: [(&str, &[&str]); 4] = [
@@ -86,6 +123,9 @@ const PALETTE_GROUPS: [(&str, &[&str]); 4] = [
 fn group_label(group: &str) -> String {
     match group {
         "start" => t!("lib-group-start").to_string(),
+        "home" => t!("lib-group-home").to_string(),
+        "sensors" => t!("lib-group-sensors").to_string(),
+        "energy" => t!("lib-group-energy").to_string(),
         "controls" => t!("lib-group-controls").to_string(),
         "display" => t!("lib-group-display").to_string(),
         "charts" => t!("lib-group-charts").to_string(),
@@ -116,6 +156,19 @@ pub fn palette_items() -> Vec<PaletteItem> {
             .with_icon(PaletteIcon::Cpu, "bg-teal-50 text-teal-700")
             .with_group(group_label("start")),
     ];
+    for (group, cards) in HOME_GROUPS {
+        items.extend(cards.iter().map(|card| {
+            PaletteItem::new(
+                format!("{HOME_KEY_PREFIX}{}", card.as_str()),
+                card_label(*card),
+            )
+            .with_icon(
+                PaletteIcon::Home(card.default_icon(None)),
+                "bg-amber-50 text-amber-700",
+            )
+            .with_group(group_label(group))
+        }));
+    }
     for (group, kinds) in PALETTE_GROUPS {
         items.extend(kinds.iter().map(|k| kind_item(k, group)));
     }
@@ -132,6 +185,10 @@ pub fn palette_items() -> Vec<PaletteItem> {
 /// Ajout d'un widget vide du type — ex-boutons « + Nouveau » de la
 /// bibliothèque, désormais déclenchés par le pick de la palette.
 pub fn add_new_widget(mut cx: EditorCx, kind: &str) {
+    if let Some(card) = kind.strip_prefix(HOME_KEY_PREFIX).and_then(HomeCard::parse) {
+        add_home_card(cx, card);
+        return;
+    }
     let current = cx.layout.read().clone();
     cx.history.with_mut(|h| h.push(&current));
     cx.counter.with_mut(|c| *c += 1);
@@ -147,6 +204,26 @@ pub fn add_new_widget(mut cx: EditorCx, kind: &str) {
             if matches!(kind, "switch" | "button" | "stat" | "indicator" | "color") {
                 state::set_span(l, &id, 1);
             }
+        }
+    });
+    cx.selected.set(Some(super::Selection::Widget(id)));
+}
+
+/// Adds a home card (D138): required roles declared at their default
+/// domain, required sources to pick in the inspector.
+pub fn add_home_card(mut cx: EditorCx, card: HomeCard) {
+    let current = cx.layout.read().clone();
+    cx.history.with_mut(|h| h.push(&current));
+    cx.counter.with_mut(|c| *c += 1);
+    let id = state::next_id("w", cx.counter.cloned());
+    let x = 80 + (cx.counter.cloned() % 8) as i64 * 24;
+    let y = 80 + (cx.counter.cloned() % 8) as i64 * 24;
+    let section = cx.section.cloned();
+    cx.layout.with_mut(|l| {
+        state::new_home_card(l, id.clone(), card, x, y);
+        if l.format == pnex_core::DashboardFormat::Mobile {
+            state::place_in_section(l, &id, section.as_deref());
+            state::set_span(l, &id, card.default_span());
         }
     });
     cx.selected.set(Some(super::Selection::Widget(id)));
@@ -299,9 +376,20 @@ mod tests {
                 .iter()
                 .filter(|(_, kinds)| kinds.contains(kind))
                 .count();
-            // `symbol` is reached through the library entry, not as a kind.
-            let expected = usize::from(*kind != SYMBOLS_KEY);
+            // `symbol` and `home_card` are reached through their own entries.
+            let expected = usize::from(*kind != SYMBOLS_KEY && *kind != "home_card");
             assert_eq!(n, expected, "{kind}");
+        }
+    }
+
+    #[test]
+    fn every_home_card_is_in_one_palette_group() {
+        for card in HomeCard::ALL {
+            let n = HOME_GROUPS
+                .iter()
+                .filter(|(_, cards)| cards.contains(&card))
+                .count();
+            assert_eq!(n, 1, "{card:?}");
         }
     }
 }

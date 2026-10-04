@@ -12,6 +12,7 @@
 
 pub mod annotation;
 pub mod control;
+pub mod home_card;
 pub mod spec_editor;
 
 use std::collections::BTreeMap;
@@ -124,7 +125,7 @@ pub fn control_ids(layout: &pnex_core::DashboardLayout) -> Vec<Uuid> {
     layout
         .widgets
         .iter()
-        .filter_map(|w| w.options.control.as_ref().map(|c| c.control_id))
+        .flat_map(|w| w.control_ids())
         .collect()
 }
 

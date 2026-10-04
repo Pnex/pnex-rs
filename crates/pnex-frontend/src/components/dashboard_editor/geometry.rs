@@ -33,6 +33,17 @@ pub fn default_size(widget_type: &str) -> (i64, i64) {
     }
 }
 
+/// Default size of a home card (D138).
+pub fn home_card_size(card: pnex_core::home::HomeCard) -> (i64, i64) {
+    use pnex_core::home::HomeCard::*;
+    match card {
+        Light | Thermostat | Cover | Alarm | Appliance => (300, 200),
+        EnergyFlow => (320, 240),
+        Fan | Irrigation => (300, 160),
+        _ => (220, 130),
+    }
+}
+
 /// Point client (px CSS) → coordonnées canvas (px document).
 pub fn to_canvas(client: (f64, f64), rect: (f64, f64), pan: (f64, f64), zoom: f64) -> (f64, f64) {
     (

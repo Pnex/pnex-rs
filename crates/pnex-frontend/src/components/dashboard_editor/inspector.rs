@@ -14,6 +14,7 @@ use pnex_core::{SourceRef, VIZ_WINDOW_PRESETS};
 
 use super::appearance::AppearancePanel;
 use super::control_panel::ControlPanel;
+use super::home_panel::HomePanel;
 use super::symbol_options::SymbolOptionsPanel;
 use super::thermo_panel::ThermoPanel;
 use crate::components::icons;
@@ -187,6 +188,14 @@ fn widget_panel(
             if w.widget_type == "symbol" {
                 SymbolOptionsPanel { cx, widget: w.clone(), can_write }
             }
+            if w.widget_type == pnex_core::home::HOME_WIDGET_TYPE {
+                HomePanel {
+                    cx,
+                    widget: w.clone(),
+                    can_write,
+                    catalog: catalog.clone(),
+                }
+            }
             // thermo_chart : panneau dédié, pas de binding générique.
             if w.widget_type == "thermo_chart" {
                 ThermoPanel {
@@ -206,6 +215,7 @@ fn widget_panel(
             // en « device_id invalide : « » »).
             // A static symbol (no source) has no binding either.
             if w.widget_type != "text" && w.widget_type != "thermo_chart"
+                && w.widget_type != pnex_core::home::HOME_WIDGET_TYPE
                 && !(w.widget_type == "symbol" && w.source.is_empty())
                 && !(is_control && w.source.is_empty())
             {

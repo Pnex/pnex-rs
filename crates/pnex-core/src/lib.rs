@@ -101,6 +101,10 @@ pub mod memory;
 /// through the `control-source` node.
 pub mod ui_control;
 
+/// Home cards of the dashboards (D138): composite cards driving N controls
+/// by role.
+pub mod home;
+
 /// Vision contract (D81–D83): model spec, detections, registry DTOs,
 /// `vision-detect` node config.
 pub mod vision;

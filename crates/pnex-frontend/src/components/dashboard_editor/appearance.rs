@@ -22,7 +22,7 @@ pub fn has_thresholds(widget_type: &str) -> bool {
 
 /// Widget types that apply state rules and the card icon.
 pub fn has_states(widget_type: &str) -> bool {
-    matches!(widget_type, "stat" | "indicator")
+    matches!(widget_type, "stat" | "indicator" | "home_card")
 }
 
 /// Widget types reading a live value (staleness applies).
