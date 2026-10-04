@@ -1,0 +1,32 @@
+# cargo-deny — dependency gate (CI job `deny`, `task security:deps`).
+# Policy: docs/architecture/security.md §5. Every `ignore` entry carries the
+# reason it is not exploitable here and is re-checked at each security audit.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "warn"
+ignore = [
+    # rsa (Marvin, timing on PKCS#1 v1.5 decryption) via loco-rs → jsonwebtoken.
+    # We only verify RS256 signatures with Rauthy's public keys: no private-key
+    # operation runs in the process. No fixed release upstream.
+    { id = "RUSTSEC-2023-0071", reason = "public-key verification only, no fix upstream" },
+    # Unmaintained, no vulnerability, no maintained drop-in upstream.
+    { id = "RUSTSEC-2025-0141", reason = "bincode unmaintained (edgelinkd / flow nodes)" },
+    { id = "RUSTSEC-2026-0215", reason = "smallstr unmaintained (edgelinkd / flow nodes)" },
+    { id = "RUSTSEC-2023-0089", reason = "atomic-polyfill unmaintained (starlark)" },
+    { id = "RUSTSEC-2024-0388", reason = "derivative unmaintained (starlark)" },
+    { id = "RUSTSEC-2025-0057", reason = "fxhash unmaintained (starlark)" },
+    { id = "RUSTSEC-2024-0436", reason = "paste unmaintained (simba / augurs)" },
+    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained (unic-langid macros, build time)" },
+]
+
+[bans]
+multiple-versions = "allow"
+
+[sources]
+# Only crates.io; vendored forks go through `path =` (vendor/patches).
+unknown-registry = "deny"
+unknown-git = "deny"

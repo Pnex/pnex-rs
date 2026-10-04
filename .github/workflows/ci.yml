@@ -154,6 +154,22 @@ jobs:
       - name: rsx fmt
         run: python3 crates/pnex-frontend/scripts/rsx_fmt.py check
 
+  deny:
+    name: deny (RustSec advisories + sources)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Path deps of the workspace live in the vendor/edgelinkd submodule.
+          submodules: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: cargo-bins/cargo-binstall@main
+      - name: Install cargo-deny
+        run: cargo binstall -y --locked cargo-deny
+      # Policy and justified exceptions: deny.toml, docs/architecture/security.md §5.
+      - name: cargo deny
+        run: cargo deny check advisories sources
+
   frontend:
     name: dx build (web)
     runs-on: ubuntu-latest

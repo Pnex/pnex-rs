@@ -16,6 +16,14 @@
 - **Exceptions verbatim documentées** : diagnostics runtime (`last_error`, feed debug, erreurs nodes/starlark/device), corps des notifications ws/OTA (anglais canonique), texte libre en base (notes média), `pages/showcase.rs`, détail pont JS flash, filelog take360.
 - **Gardes bloquants** : `i18n_guard` (scan anti-chaînes FR en dur côté front), `error_detail_codes_are_registered` (codes serveur), parité + sweep `t!` existants. Une chaîne FR en dur dans l'UI = test rouge.
 
+## Sécurité (D130, règle permanente)
+
+- **Toute modification de code passe la revue de sécurité** de `docs/architecture/security.md` §6 avant commit (grille en 9 points), et `/security-review` avant merge d'une branche. Les règles invariantes R1–R20 (§3) sont opposables : un écart = refus, ou justification consignée au registre §7.
+- **Modèle de menace à garder en tête** : tout inscrit est owner de son org perso → « member » n'est pas une barrière ; la frontière est l'**org**, puis la **plateforme**. Le runtime de flows exécute du code utilisateur multi-org : il est non fiable, le backend re-vérifie tout ce qu'il reçoit.
+- Réflexes : org depuis le principal jamais la requête (R1) ; garde de rôle en tête de chaque handler d'écriture + test viewer → 403 (R2) ; pas d'identifiant/secret dans un DTO de lecture (R4, R16) ; rien d'utilisateur en HTML sur l'origine de l'app (R11–R13) ; registre de nœuds en liste blanche, pas d'env visible du code utilisateur (R5, R6).
+- **Dépendances : `task security:deps`** (`cargo deny`, job CI `deny` bloquant) ; toute exception dans `deny.toml` porte sa justification.
+- Finding découvert en route = ligne au registre §7 (SEC-n), même s'il n'est pas corrigé dans la même PR.
+
 ## Formatage (hygiène, bloquant en CI)
 
 - **`task fmt` avant chaque commit, `task fmt:check` = job CI `fmt`.** Rust → `cargo fmt` ; intérieur des `rsx!` → `dx fmt` via le wrapper gardé `crates/pnex-frontend/scripts/rsx_fmt.py`.
