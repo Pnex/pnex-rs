@@ -13,7 +13,9 @@
 > Renvois : `media.md` (D21 — médias **référencés, jamais dupliqués**, couche
 > 2/3 de la vision média), `flow-engine.md` (D18 — documents versionnés
 > append-only), `inventory.md` (D2 org-tenant, D14 pagination, D13/D17 — la
-> visualisation n'est jamais un chemin de contrôle).
+> visualisation n'est jamais un chemin de contrôle : une carte de contrôle
+> écrit un **contrôle d'org**, seul un flow déployé agit sur les devices,
+> `surfaces-controls.md` D123–D129).
 > Contraintes transverses : Dioxus **CSR pur** (jamais fullstack/SSR),
 > télémétrie = **REST polling** (pas de WS navigateur), endpoints **additifs**
 > — ne jamais bumper `pnex_api_contract::CONTRACT`.
@@ -232,11 +234,12 @@ rôle (`source` = liste) ; les points ne sont **jamais** stockés (D31) :
 
 ```json
 {
+  "format": "desktop | mobile",
   "canvas": {"width": 1600, "height": 900, "background": "#f8fafc"},
   "widgets": [
     {
       "id": "w-0001",
-      "type": "gauge | stat | line | indicator | text",
+      "type": "gauge | stat | line | indicator | text | thermo_chart | symbol | switch | slider | button | number",
       "title": "Température serveur",
       "x": 120, "y": 80, "w": 240, "h": 200,
       "source": [
@@ -245,16 +248,29 @@ rôle (`source` = liste) ; les points ne sont **jamais** stockés (D31) :
       ],
       "options": {"unit": "°C", "min": 0, "max": 50,
                    "decimals": 1, "thresholds": [{"value": 40, "color": "#dc2626"}],
-                   "text": "… (widget text)"}
+                   "text": "… (widget text)",
+                   "control": {"control_id": "0192…"},
+                   "span": 1}
     }
   ],
   "wires": [
     {"id": "t-0001",
      "from": {"widget_id": "w-0001", "side": "right"},
      "to": {"widget_id": "w-0002", "side": "left"}}
+  ],
+  "sections": [
+    {"id": "s-1", "title": "Général", "items": ["w-0001"]}
   ]
 }
 ```
+
+Ajouts D123–D125 (`surfaces-controls.md`) : `format` est fixé à la
+création (absent = `desktop`, refus `format_immutable` au save) ; en
+`mobile`, `x/y/w/h` sont ignorés, `wires` interdits, chaque widget est
+dans exactement une `section` et `span` vaut 1 (demi-largeur) ou 2
+(défaut, pleine largeur). Les widgets `switch | slider | button | number`
+portent `options.control` (obligatoire, réservé à ces types) et au plus
+une source d'état.
 
 **`tour_versions.doc`** — V1 `maquette` (nœuds `floor`), V2 `panorama`
 (nœuds `media_asset_id` — **référence** `media_assets`, jamais dupliqué, D21) :

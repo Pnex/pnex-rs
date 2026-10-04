@@ -113,7 +113,7 @@ tâche).
 | **Devices / pins** | Consolidé — CRUD, catalogue, quotas, pinout SVG v2, board variants, placements D43 | E2E matériel (write/PWM, fraîcheur read via Valkey) |
 | **TFT / écrans** | V2 livré — barre dès boot, timeline OTA, panneau 21 pins (8e69519) | E2E matériel (tft_dev) |
 | **Média (D21) + Take 360** | Couche 1 livrée ; Take 360 V2 serveur + V3 guidage device-validé + auto-cal focale | Capture portrait 2 anneaux, résolution 1080+, iOS/web, calibration par device |
-| **Viz** (carte POI-first D35–D39, dashboards D40/D41) | Mergés ; tables dormantes supprimées (migration de base D120, 2026-10-01) | Décisions §9 : style de tuiles configurable, widget psychrométrique/Mollier ; E2E interactif + Android |
+| **Viz** (carte POI-first D35–D39, dashboards D40/D41, surfaces pilotables D123–D129) | Mergés ; dashboards mobile + contrôles d'org + nœud `control-source` livrés 2026-10-04 ; tables dormantes supprimées (migration de base D120, 2026-10-01) | Décisions §9 : style de tuiles configurable, widget psychrométrique/Mollier ; E2E interactif + Android |
 | **Studio** (tours + annotations) | Mergés (0aae2ad, 9e78241) | Maquette 3D, LRU panoramas, éditeur vue initiale, export offline ; annotations : reste couche ETL/device |
 | **Assistant IA v1** | Implémenté — 10 outils fermés, devices read-only (A4) | Tranches suivantes non spécifiées |
 | **Collection C1a** | http_fetch livré (2026-09-15) | — |
@@ -581,3 +581,8 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   Ouvert : dette a11y (O21), suite e2e en CI (O25). Licence O20 tranchée le
   jour même : ArduinoWebsockets (GPL-3) remplacée par le client WS maison
   `pnex_ws` (Apache-2.0).
+- **2026-10-04 (surfaces pilotables)** — D123–D129 livrés (L1–L7,
+  `surfaces-controls.md`) : dashboards PC/mobile, contrôles d'org, nœud
+  `control-source`, ajout guidé depuis un device avec « Créer le flow »,
+  items d'annotation `control` / `reading`. Reste : e2e matériel
+  interrupteur → LED réelle (banc P0.1).
