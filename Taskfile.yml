@@ -656,6 +656,11 @@ tasks:
     cmds:
       - cargo clippy --workspace -- -D warnings
 
+  security:deps:
+    desc: Dependency gate — RustSec advisories + crate sources (deny.toml, same gate as CI job `deny`)
+    cmds:
+      - cargo deny check advisories sources
+
   # ---------- Local disk cleanup (dev only) ----------
 
   tools:sweep:
