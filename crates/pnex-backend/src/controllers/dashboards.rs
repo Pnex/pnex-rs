@@ -110,8 +110,18 @@ async fn current_formats(
         .iter()
         .map(|d| (d.id, d.current_version_number))
         .collect();
+    // Only the current version of each row (a dashboard keeps every saved
+    // version: never load the whole history for a badge).
+    let mut cond = sea_orm::Condition::any();
+    for (id, n) in &current {
+        cond = cond.add(
+            sea_orm::Condition::all()
+                .add(dashboard_versions::Column::DashboardId.eq(*id))
+                .add(dashboard_versions::Column::VersionNumber.eq(*n)),
+        );
+    }
     let versions = dashboard_versions::Entity::find()
-        .filter(dashboard_versions::Column::DashboardId.is_in(current.keys().copied()))
+        .filter(cond)
         .all(db)
         .await
         .map_err(|_| Error::InternalServerError)?;

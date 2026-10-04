@@ -19,9 +19,18 @@ export class DashboardsPage {
     return this.page.locator('main tr').filter({ hasText: name });
   }
 
-  /** "New dashboard" creates one immediately and opens it in edit mode. */
-  async create(name: string): Promise<DashboardEditor> {
+  /**
+   * "New dashboard" offers the format (D123); a tile creates the dashboard
+   * immediately and opens it in edit mode.
+   */
+  async create(name: string, format: 'desktop' | 'mobile' = 'desktop'): Promise<DashboardEditor> {
     await this.page.getByRole('main').getByRole('button', { name: this.app.t('db-create') }).click();
+    const title = this.app.t(format === 'mobile' ? 'db-format-mobile' : 'db-format-desktop');
+    await this.page
+      .getByRole('main')
+      .getByRole('button')
+      .filter({ has: this.page.getByText(title, { exact: true }) })
+      .click();
     const editor = new DashboardEditor(this.app);
     await editor.waitReady();
     await editor.rename(name);
@@ -88,7 +97,9 @@ export class DashboardEditor {
     if (!(await search.isVisible())) {
       await this.main.getByRole('button', { name: this.app.t('eshell-add-widget') }).click();
     }
-    await this.main.getByRole('button', { name: label, exact: true }).click();
+    // Items with a description carry it in their accessible name.
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    await this.main.getByRole('button', { name: new RegExp(`^${escaped}(\\s|$)`) }).first().click();
     await expect(this.inspector).toBeVisible();
   }
 
@@ -109,7 +120,7 @@ export class DashboardEditor {
 
   /** Leaves edit mode: lands on the live view of the same dashboard. */
   async back(): Promise<void> {
-    await this.main.getByRole('button', { name: this.app.t('eshell-back') }).click();
+    await this.main.getByRole('button', { name: this.app.t('eshell-back'), exact: true }).click();
     await expect(this.main.getByRole('button', { name: this.app.t('db-back') })).toBeVisible();
   }
 }
