@@ -527,6 +527,15 @@ pub struct Widget {
     pub options: WidgetOptions,
 }
 
+impl SourceRef {
+    /// A source not configured yet (no device, no metric, no memory): a
+    /// home card may keep one for a role until the user picks it (D141
+    /// templates); it is skipped by the validation and the live fetch.
+    pub fn is_unset(&self) -> bool {
+        self.memory.is_none() && self.device_id.is_empty() && self.metric.is_empty()
+    }
+}
+
 impl Widget {
     /// Every control this widget drives: the control of a control widget,
     /// the role controls of a home card (D138).
@@ -1029,7 +1038,9 @@ pub fn validate_widget(
                 }
             }
         }
-        check_sources(widget_type, source, &mut push);
+        // Unset role sources wait for the user's pick (templates, D141).
+        let set: Vec<SourceRef> = source.iter().filter(|s| !s.is_unset()).cloned().collect();
+        check_sources(widget_type, &set, &mut push);
     } else if widget_type == "text" {
         // Le widget texte n'affiche pas de série.
         if !source.is_empty() {
@@ -1865,5 +1876,24 @@ mod tests {
         assert!(!card_visible(&o, Some(0.0)));
         assert!(card_visible(&o, Some(1.0)));
         assert!(card_visible(&o, None), "no data: shown");
+    }
+
+    #[test]
+    fn home_card_keeps_unset_role_sources() {
+        let mut w = widget("w1", crate::home::HOME_WIDGET_TYPE);
+        w.source = vec![SourceRef {
+            role: "state".into(),
+            metric: String::new(),
+            device_id: String::new(),
+            window: "1h".into(),
+            memory: None,
+        }];
+        assert!(w.source[0].is_unset());
+        w.options.home = Some(crate::home::HomeCardOptions::new(
+            crate::home::HomeCard::Binary,
+        ));
+        let mut v = Vec::new();
+        validate_widget(&w.id, &w.widget_type, &w.source, &w.options, &mut v);
+        assert!(v.is_empty(), "{v:?}");
     }
 }

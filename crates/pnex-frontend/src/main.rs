@@ -25,6 +25,7 @@ mod media_viewer;
 mod pages;
 mod state;
 mod storage;
+mod surface_guard;
 mod tour_viewer;
 mod tron;
 mod util;

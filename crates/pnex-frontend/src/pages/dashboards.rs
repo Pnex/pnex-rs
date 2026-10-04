@@ -18,6 +18,7 @@ use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
+use crate::components::dashboard_editor::state::HomeTemplate;
 use crate::components::dashboard_editor::DashboardEditor;
 use crate::components::dashboard_live::live_layout;
 use crate::components::icons;
@@ -265,9 +266,9 @@ fn ListView(
             if choosing() {
                 NewDashboardModal {
                     on_close: move |_| choosing.set(false),
-                    on_create: move |pick: (String, DashboardFormat)| {
+                    on_create: move |pick: (String, DashboardFormat, Option<HomeTemplate>)| {
                         choosing.set(false);
-                        create_dashboard(pick.0, pick.1, reload, on_open);
+                        create_dashboard(pick.0, pick.1, pick.2, reload, on_open);
                     },
                 }
             }
@@ -319,13 +320,22 @@ fn ListView(
 fn create_dashboard(
     name: String,
     format: DashboardFormat,
+    template: Option<HomeTemplate>,
     mut reload: Signal<u32>,
     on_open: EventHandler<(String, bool)>,
 ) {
-    let layout = crate::components::dashboard_editor::state::initial_layout(
-        format,
-        &t!("db-section-default"),
-    );
+    let layout = match template {
+        // Template titles resolved now (render-scope i18n, D141).
+        Some(t) => crate::components::dashboard_editor::state::template_layout(t, |k| {
+            dioxus_i18n::prelude::i18n()
+                .try_translate(k)
+                .unwrap_or_else(|_| k.to_string())
+        }),
+        None => crate::components::dashboard_editor::state::initial_layout(
+            format,
+            &t!("db-section-default"),
+        ),
+    };
     let params = pnex_core::CreateDashboard {
         name: if name.trim().is_empty() {
             t!("db-default-name", date : crate ::util::now_label()).to_string()
@@ -353,10 +363,11 @@ fn create_dashboard(
 #[component]
 fn NewDashboardModal(
     on_close: EventHandler<()>,
-    on_create: EventHandler<(String, DashboardFormat)>,
+    on_create: EventHandler<(String, DashboardFormat, Option<HomeTemplate>)>,
 ) -> Element {
     let mut name = use_signal(String::new);
     let mut format = use_signal(|| None::<DashboardFormat>);
+    let mut template = use_signal(|| None::<HomeTemplate>);
     let placeholder = t!("db-default-name", date : crate ::util::now_label()).to_string();
     let picked = format();
     rsx! {
@@ -390,6 +401,12 @@ fn NewDashboardModal(
                         }
                     }
                 }
+                if picked == Some(DashboardFormat::Mobile) {
+                    TemplatePicker {
+                        selected: template(),
+                        on_pick: move |t: Option<HomeTemplate>| template.set(t),
+                    }
+                }
                 div { class: "flex gap-2 rounded-lg bg-teal-50 px-3 py-2 text-xs text-teal-900",
                     icons::Info { class: "h-4 w-4 shrink-0" }
                     p { {t!("db-new-controls-hint")} }
@@ -408,13 +425,63 @@ fn NewDashboardModal(
                         disabled: picked.is_none(),
                         onclick: move |_| {
                             if let Some(f) = format() {
-                                on_create.call((name(), f));
+                                let tpl = template().filter(|_| f == DashboardFormat::Mobile);
+                                on_create.call((name(), f, tpl));
                             }
                         },
                         {t!("db-new-create")}
                     }
                 }
             }
+        }
+    }
+}
+
+/// Mobile starting point (D141): empty, or a ready-made home dashboard.
+#[component]
+fn TemplatePicker(
+    selected: Option<HomeTemplate>,
+    on_pick: EventHandler<Option<HomeTemplate>>,
+) -> Element {
+    let options: Vec<(Option<HomeTemplate>, String, &'static str)> = vec![
+        (None, t!("db-tpl-empty").to_string(), "home-check"),
+        (
+            Some(HomeTemplate::Home),
+            t!("db-tpl-home").to_string(),
+            "home-house",
+        ),
+        (
+            Some(HomeTemplate::Energy),
+            t!("db-tpl-energy").to_string(),
+            "home-bolt",
+        ),
+        (
+            Some(HomeTemplate::Security),
+            t!("db-tpl-security").to_string(),
+            "home-shield",
+        ),
+        (
+            Some(HomeTemplate::Garden),
+            t!("db-tpl-garden").to_string(),
+            "home-tree",
+        ),
+    ];
+    rsx! {
+        div {
+            p { class: "mb-2 text-sm font-medium text-gray-700", {t!("db-tpl-pick")} }
+            div { class: "flex flex-wrap gap-2",
+                for (value, label, icon) in options {
+                    button {
+                        key: "{label}",
+                        r#type: "button",
+                        class: if selected == value { "flex items-center gap-1.5 rounded-full border border-blue-500 bg-blue-50 px-3 py-1.5 text-sm text-blue-700" } else { "flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:border-blue-300" },
+                        onclick: move |_| on_pick.call(value),
+                        crate::components::home_icons::HomeIconView { id: icon, class: "h-4 w-4" }
+                        "{label}"
+                    }
+                }
+            }
+            p { class: "mt-1 text-xs text-gray-500", {t!("db-tpl-help")} }
         }
     }
 }

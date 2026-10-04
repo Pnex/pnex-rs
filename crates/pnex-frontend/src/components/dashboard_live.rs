@@ -122,8 +122,11 @@ pub fn DashboardLive(dashboard_id: String) -> Element {
 pub async fn fetch_live_values(
     sources: Vec<pnex_core::SourceRef>,
 ) -> HashMap<String, Option<Vec<TelemetryPoint>>> {
-    let mut map: HashMap<String, Option<Vec<TelemetryPoint>>> =
-        sources.iter().map(|s| (s.series_key(), None)).collect();
+    let mut map: HashMap<String, Option<Vec<TelemetryPoint>>> = sources
+        .iter()
+        .filter(|s| !s.is_unset())
+        .map(|s| (s.series_key(), None))
+        .collect();
     let mut specs = series_specs(&sources);
     specs.sort_by(|a, b| (&a.metric, &a.device_id).cmp(&(&b.metric, &b.device_id)));
     let mut memory = Vec::new();
@@ -290,7 +293,10 @@ fn series_specs(sources: &[pnex_core::SourceRef]) -> Vec<pnex_core::SeriesSpec> 
             .map(|(_, s)| *s)
     };
     let mut by_series: HashMap<(String, String), String> = HashMap::new();
-    for s in sources.iter().filter(|s| s.memory.is_none()) {
+    for s in sources
+        .iter()
+        .filter(|s| s.memory.is_none() && !s.is_unset())
+    {
         let window = if secs(&s.window).is_some() {
             s.window.clone()
         } else {

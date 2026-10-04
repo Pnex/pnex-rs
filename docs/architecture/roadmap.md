@@ -432,7 +432,7 @@ périmètre V1 (décision #10). Ne jamais copier code, icônes ou
 descriptions de n8n (licence Sustainable Use, cf. règle des assets
 tiers) : on reproduit des fonctionnalités, pas l'implémentation.
 
-### P2.12 — Dashboards « Maison » : palette domotique (ajout 2026-10-04)
+### P2.12 — Dashboards « Maison » : palette domotique (ajout 2026-10-04) — **livré 2026-10-04** (lots A → E)
 
 Plan validé le 2026-10-04 (`home-dashboards.md`, D134–D141) : palette
 catégorisée, règles d'état, icônes maison, primitives de contrôle

@@ -1,8 +1,8 @@
 # Dashboards « Maison » — palette domotique, cartes composées, météo (D134–D141)
 
-> **Statut : EN COURS.** Plan validé par l'utilisateur le 2026-10-04 sur
+> **Statut : LIVRÉ (lots A → E, 2026-10-04).** Plan validé par l'utilisateur le 2026-10-04 sur
 > tous les points, avec deux reports consignés au §6 (mode sombre global,
-> code PIN serrure/alarme). **Lots A, B, C, C' (météo) et D livrés le 2026-10-04** (§4).
+> code PIN serrure/alarme). **Lots A, B, C, C' (météo), D et E livrés le 2026-10-04** (§4).
 >
 > **Invariant (précision utilisateur 2026-10-04) : aucun lien direct
 > dashboard → device.** Une surface écrit des contrôles, seul un flow
@@ -99,7 +99,8 @@ de surface ne lisent que `api::pins::pinout`/`pins` (libellés), jamais
 | D — Mobile | aucun (mise en page) |
 | E — Accélérateurs | « Depuis un device » **lit** le type de pin ; « Créer le flow » génère un flow `control-source` → `device-write` **visible, jamais déployé automatiquement** : c'est le flow qui agit, pas la surface |
 
-**Garde CI à ajouter** (au plus tard avec le lot E) : test bloquant qui
+**Garde CI — en place depuis le lot E** : `crates/pnex-frontend/src/surface_guard.rs`
+et `crates/pnex-backend/tests/surface_device_guard.rs`. Spécification d'origine : test bloquant qui
 refuse toute référence à l'API de commande device (`api::pins::command`,
 endpoints de commande/OTA/flash) depuis `components/surface`,
 `dashboard_editor`, `annotation_editor` et `home`, et toute référence au
@@ -228,6 +229,22 @@ bus device depuis les services de surface côté backend.
   courbe 24 h de chaque source télémétrie. Grille 2 colonnes (téléphone),
   4 (tablette), 6 (grand écran). **Écart** : pas d'appui long (bouton
   détail explicite, plus fiable au tactile comme à la souris).
+
+- **Lot E (2026-10-04)** — **modèles** de dashboards mobiles (Maison :
+  pages Accueil + Sécurité, pièces Salon / Cuisine / Chambre, pastilles
+  météo et extérieur, scènes ; Énergie ; Sécurité ; Jardin & piscine),
+  proposés dans la modale de création quand le format mobile est choisi ;
+  titres traduits à la création. Pour que les modèles s'enregistrent tels
+  quels, **une source de carte maison peut rester « non configurée »**
+  (`SourceRef::is_unset` : ni device, ni métrique, ni mémoire), ignorée par
+  la validation et par le chargement des valeurs ; la carte affiche « À
+  configurer ». **« Depuis un device »** : bouton « + Lumière » par sortie
+  (variateur sur une sortie PWM, état lu sur la métrique du pin) et carte
+  maison suggérée par métrique (heuristique de nom : température, CO₂,
+  puissance, énergie, porte, fenêtre, mouvement, fumée, fuite).
+  **« Créer le flow »** par rôle de carte composée une fois le tableau
+  enregistré (brouillon `control-source` → `device-write`, jamais déployé
+  automatiquement). **Gardes CI** de l'invariant §1 bis (front + backend).
 
 ## 6. Reports consignés
 
