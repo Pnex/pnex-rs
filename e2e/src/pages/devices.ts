@@ -28,7 +28,8 @@ export class DevicesPage {
   }
 
   row(deviceId: string): Locator {
-    return this.page.locator('main tr').filter({ hasText: deviceId });
+    // Exact text: `e2e-esp32` must not match the `e2e-esp32u` row.
+    return this.page.locator('main tr').filter({ has: this.page.getByText(deviceId, { exact: true }) });
   }
 
   get wizard(): Locator {
