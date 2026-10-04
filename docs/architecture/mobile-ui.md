@@ -159,10 +159,19 @@ appliquer les classes du lot 2).
   (M16) ; carte : panneau POI en overlay fermé par défaut sous `lg` (M13) ;
   en-tête de l'app masqué tant qu'un éditeur est monté
   (`ui::EDITORS_OPEN`, compteur), éditeur en `100dvh` (M12).
+- **2026-10-04 — dialogues, alignements, POI** : `Modal` jamais plus haut
+  que l'écran (corps défilant), `MODAL_FOOTER` épingle la rangée d'actions
+  (FormDialog + 10 dialogues) ; `DANGER_BTN` en `inline-flex` (la poubelle
+  était plus basse que ses voisins) ; actions dashboards / contrôles en une
+  rangée flex de hauteur fixe ; stepper device compact ; pinout à 560 px
+  minimum + défilement ; aperçu d'objet attaché à un POI (dashboard…) en
+  plein écran sous `md` — il recevait 9 px à gauche du drawer et son en-tête
+  débordait sur celui du drawer (retour user « des trucs se superposent »).
 - Reste : M7 (refresh encore dans l'en-tête sur orgs, system, cameras,
   models, controls, dashboards, dans la barre d'onglets sur edges/refs et
   notifications — cohérent par famille, à trancher), M6 tables hors socle,
-  M15 pinout illisible, M17 détail org.
+  M17 détail org ; deux pieds de dialogue maison dans `system.rs` (hors
+  `Modal`).
 
 ## 4. Décision à prendre (avant le lot 2)
 
