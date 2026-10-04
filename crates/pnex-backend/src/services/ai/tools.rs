@@ -31,6 +31,8 @@ pub struct ToolDeps<'a> {
     pub author: Option<String>,
     /// Client O2 résolu (`None` = télémétrie dégradée).
     pub o2: Option<&'a crate::services::openobserve::client::Client>,
+    /// App config (live caches, flow cluster); `None` in unit tests.
+    pub config: Option<&'a loco_rs::config::Config>,
 }
 
 /// Résultat d'exécution : la valeur JSON vue par le modèle + l'id du flow
@@ -156,6 +158,104 @@ pub fn tool_specs() -> Vec<ToolSpec> {
             }),
         },
         ToolSpec {
+            name: "search_knowledge",
+            description: "Searches the PneX knowledge cards (features, how-tos, troubleshooting) embedded in the server. Use it before answering how something works, where a setting is, or why something fails; then read_knowledge for the full card. Answers must describe gestures in the UI only.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "keywords, e.g. \"device no telemetry\""},
+                    "limit": {"type": "integer", "description": "1..=5 (default 5)"}
+                },
+                "required": ["query"]
+            }),
+        },
+        ToolSpec {
+            name: "read_knowledge",
+            description: "Full text of one knowledge card (id from search_knowledge).",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string", "description": "card id"}
+                },
+                "required": ["id"]
+            }),
+        },
+        ToolSpec {
+            name: "diagnose_device",
+            description: "Read-only diagnosis of one device of the organization: online state and last seen, pins (mode, subscription period, last value), firmware version, last OTA update, hints. id = internal id from list_devices.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "device_id": {"type": "integer", "description": "internal device id (list_devices)"}
+                },
+                "required": ["device_id"]
+            }),
+        },
+        ToolSpec {
+            name: "diagnose_flow",
+            description: "Read-only diagnosis of one flow: status, last saved vs deployed version, engine state and last engine error, last message of each debug/display node, hints.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "flow_id": {"type": "integer", "description": "internal flow id (list_flows)"}
+                },
+                "required": ["flow_id"]
+            }),
+        },
+        ToolSpec {
+            name: "list_dashboards",
+            description: "Lists the organization's dashboards (id, name, current version).",
+            input_schema: json!({"type": "object", "properties": {}, "required": []}),
+        },
+        ToolSpec {
+            name: "get_dashboard",
+            description: "Current layout of a dashboard (format, canvas, widgets, mobile sections/pages) and its version. `coupled_flows` maps each widget whose control feeds a DEPLOYED flow to those flows: such a widget can only be moved or resized until the user stops the flows.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {"dashboard_id": {"type": "string", "description": "dashboard UUID (list_dashboards)"}},
+                "required": ["dashboard_id"]
+            }),
+        },
+        ToolSpec {
+            name: "validate_dashboard_layout",
+            description: "Checks a dashboard layout WITHOUT saving: validation violations and, with dashboard_id, the changes refused on coupled widgets. Call it before create_dashboard/update_dashboard and warn the user about coupled widgets first.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "layout": {"type": "object", "description": "complete DashboardLayout"},
+                    "dashboard_id": {"type": "string", "description": "optional: compare with this dashboard's current layout"}
+                },
+                "required": ["layout"]
+            }),
+        },
+        ToolSpec {
+            name: "create_dashboard",
+            description: "Creates a dashboard (version 1, live immediately). The format (pc or mobile) is fixed at creation. A control widget DECLARES a new control (it never operates anything): wiring it to a device takes a control_source flow the user deploys.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "layout": {"type": "object", "description": "optional DashboardLayout (default: empty desktop canvas)"}
+                },
+                "required": ["name"]
+            }),
+        },
+        ToolSpec {
+            name: "update_dashboard",
+            description: "Saves a new version of a dashboard — LIVE immediately (no draft). Pass the version read with get_dashboard as expected_version (conflict → reload and redo). Widgets coupled to a deployed flow can only be moved or resized: removing, re-binding, retyping, re-specifying or renaming them is refused with ai-flow-running listing the flows to stop. No deletion.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "dashboard_id": {"type": "string"},
+                    "expected_version": {"type": "integer"},
+                    "layout": {"type": "object", "description": "complete DashboardLayout of the new version"},
+                    "name": {"type": "string", "description": "optional new name"}
+                },
+                "required": ["dashboard_id", "expected_version", "layout"]
+            }),
+        },
+        ToolSpec {
             name: "validate_flow_graph",
             description: "Valide un graphe de flow (structure, nœuds, câblage) SANS le sauvegarder — renvoie les violations à corriger. À appeler avant chaque create_flow/update_flow.",
             input_schema: json!({
@@ -245,10 +345,21 @@ pub async fn execute(
         "query_telemetry" => query_telemetry(deps, args).await.map_err(Into::into),
         "list_notifications" => list_notifications(deps).await.map_err(Into::into),
         "describe_node_types" => describe_node_types(args).map_err(Into::into),
+        "search_knowledge" => search_knowledge(args).map_err(Into::into),
+        "read_knowledge" => read_knowledge(args).map_err(Into::into),
+        "diagnose_device" => diagnose_device(deps, args).await.map_err(Into::into),
+        "diagnose_flow" => diagnose_flow(deps, args).await.map_err(Into::into),
         "validate_flow_graph" => validate_flow_graph(args).map_err(Into::into),
         "validate_calc_expression" => validate_calc_expression(args).map_err(Into::into),
         "create_flow" => create_flow(deps, args).await.map_err(Into::into),
         "update_flow" => update_flow(deps, args).await,
+        "list_dashboards" => super::dashboard_tools::list_dashboards(deps).await,
+        "get_dashboard" => super::dashboard_tools::get_dashboard(deps, args).await,
+        "validate_dashboard_layout" => {
+            super::dashboard_tools::validate_dashboard_layout(deps, args).await
+        }
+        "create_dashboard" => super::dashboard_tools::create_dashboard(deps, args).await,
+        "update_dashboard" => super::dashboard_tools::update_dashboard(deps, args).await,
         _ => Err(format!(
             "outil inconnu: {name} — seuls les outils listés dans la conversation sont disponibles"
         )
@@ -287,6 +398,21 @@ pub fn summarize(name: &str, out: &ToolOutcome) -> String {
             out.value["templates"].as_array().map_or(0, Vec::len)
         ),
         "describe_node_types" => "catalogue des nœuds".to_string(),
+        "search_knowledge" => format!(
+            "{} card(s)",
+            out.value["results"].as_array().map_or(0, Vec::len)
+        ),
+        "read_knowledge" => format!("card {}", out.value["id"]),
+        "diagnose_device" => format!(
+            "device {} — {} hint(s)",
+            out.value["device"]["slug"],
+            out.value["hints"].as_array().map_or(0, Vec::len)
+        ),
+        "diagnose_flow" => format!(
+            "flow #{} — {} hint(s)",
+            out.value["flow"]["id"],
+            out.value["hints"].as_array().map_or(0, Vec::len)
+        ),
         "validate_flow_graph" => {
             if out.value["valid"].as_bool().unwrap_or(false) {
                 "graphe valide".to_string()
@@ -311,6 +437,34 @@ pub fn summarize(name: &str, out: &ToolOutcome) -> String {
         "update_flow" => format!(
             "flow #{} — version {} enregistrée (draft)",
             out.value["flow_id"], out.value["version"]
+        ),
+        "list_dashboards" => format!(
+            "{} dashboard(s)",
+            out.value["dashboards"].as_array().map_or(0, Vec::len)
+        ),
+        "get_dashboard" => format!(
+            "dashboard « {} » v{}",
+            out.value["dashboard"]["name"].as_str().unwrap_or_default(),
+            out.value["dashboard"]["version"]
+        ),
+        "validate_dashboard_layout" => {
+            if out.value["valid"].as_bool().unwrap_or(false) {
+                "layout valid".to_string()
+            } else {
+                "layout refused".to_string()
+            }
+        }
+        "create_dashboard" => format!(
+            "dashboard « {} » created (live v{})",
+            out.value["name"].as_str().unwrap_or_default(),
+            out.value["version"]
+        ),
+        "update_dashboard" => format!(
+            "dashboard v{} saved (live): +{} −{} ~{} widget(s)",
+            out.value["version"],
+            out.value["widgets_added"].as_array().map_or(0, Vec::len),
+            out.value["widgets_removed"].as_array().map_or(0, Vec::len),
+            out.value["widgets_changed"].as_array().map_or(0, Vec::len)
         ),
         _ => "ok".to_string(),
     }
@@ -606,6 +760,53 @@ fn describe_node_types(args: &Value) -> Result<ToolOutcome, String> {
     })
 }
 
+fn search_knowledge(args: &Value) -> Result<ToolOutcome, String> {
+    let query = arg_str(args, "query")?;
+    let limit = args
+        .get("limit")
+        .and_then(Value::as_u64)
+        .map_or(super::knowledge::SEARCH_MAX, |l| l as usize);
+    let hits = super::knowledge::search(&query, limit);
+    Ok(ToolOutcome {
+        value: json!({ "results": hits }),
+        flow_id: None,
+    })
+}
+
+fn read_knowledge(args: &Value) -> Result<ToolOutcome, String> {
+    let id = arg_str(args, "id")?;
+    let card = super::knowledge::card(&id)
+        .ok_or_else(|| format!("unknown card {id} — use search_knowledge to find ids"))?;
+    Ok(ToolOutcome {
+        value: json!({
+            "id": card.id,
+            "title": card.title,
+            "kind": card.kind,
+            "pages": card.pages,
+            "body": card.body,
+        }),
+        flow_id: None,
+    })
+}
+
+async fn diagnose_device(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, String> {
+    let device_id = arg_i64(args, "device_id")?;
+    let value = super::diagnose::device(deps.db, deps.config, deps.org_id, device_id).await?;
+    Ok(ToolOutcome {
+        value,
+        flow_id: None,
+    })
+}
+
+async fn diagnose_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, String> {
+    let flow_id = arg_i64(args, "flow_id")?;
+    let value = super::diagnose::flow(deps.db, deps.config, deps.org_id, flow_id).await?;
+    Ok(ToolOutcome {
+        value,
+        flow_id: None,
+    })
+}
+
 fn validate_flow_graph(args: &Value) -> Result<ToolOutcome, String> {
     let graph: pnex_core::FlowGraph = serde_json::from_value(arg_value(args, "graph")?.clone())
         .map_err(|e| format!("graphe illisible (FlowGraph attendu): {e}"))?;
@@ -718,7 +919,7 @@ async fn update_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, T
 
 /// `ai-flow-running` refusal listing the deployed flows that block the
 /// change (D143, D144); `args.flow` = their names for the UI.
-fn flow_running_error(flows: &[(i64, String)]) -> ToolError {
+pub(super) fn flow_running_error(flows: &[(i64, String)]) -> ToolError {
     let listed: Vec<String> = flows
         .iter()
         .map(|(id, name)| format!("#{id} « {name} »"))
@@ -784,6 +985,15 @@ mod tests {
                 "list_notifications",
                 "query_telemetry",
                 "describe_node_types",
+                "search_knowledge",
+                "read_knowledge",
+                "diagnose_device",
+                "diagnose_flow",
+                "list_dashboards",
+                "get_dashboard",
+                "validate_dashboard_layout",
+                "create_dashboard",
+                "update_dashboard",
                 "validate_flow_graph",
                 "validate_calc_expression",
                 "create_flow",
@@ -823,6 +1033,7 @@ mod tests {
             can_write: true,
             author: None,
             o2: None,
+            config: None,
         };
         for name in [
             "deploy_flow",

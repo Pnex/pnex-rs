@@ -527,6 +527,7 @@ async fn run_conversation_turn(
         can_write: org.can_write(),
         author: Some(org.auth.user.email.clone()).filter(|e| !e.trim().is_empty()),
         o2: o2_client.as_ref(),
+        config: Some(&ctx.config),
     };
     let reply = agent::run_turn(&deps, cfg, cfg.provider, system, history).await?;
     let trace: Vec<pnex_core::AiToolTrace> = reply

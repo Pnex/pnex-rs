@@ -2,6 +2,7 @@
 //! flow, contexte vivant de l'org (devices, pins, télémétrie, flows) et
 //! contexte de page. Reconstruit à chaque tour de chat : pas de RAG, la
 //! « connaissance » de l'agent est le bundle fraîche + les outils.
+//! The knowledge card of the current page is injected (D142).
 
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
@@ -181,7 +182,21 @@ RÈGLES FLOW :
                 device_id
             ));
         }
+        // Knowledge card of the page the user is on (D142).
+        if let Some(card) = page
+            .page
+            .as_deref()
+            .and_then(super::knowledge::card_for_page)
+        {
+            p.push_str(&format!(
+                "CURRENT PAGE: {} — {} (full card: read_knowledge \"{}\").\n",
+                card.title, card.summary, card.id
+            ));
+        }
     }
+    p.push_str(
+        "KNOWLEDGE: for how-to, where-is or why-does-it-fail questions, call search_knowledge then read_knowledge, and diagnose_device / diagnose_flow for the facts of a given device or flow. Describe gestures in the PneX UI only: never a command line, an API call or a config file.\n\n",
+    );
 
     // ── 5. Language ──
     p.push_str(lang_instruction(language));
