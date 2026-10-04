@@ -17,6 +17,8 @@ pub struct Model {
     #[sea_orm(column_type = "JsonBinary")]
     pub spec: Json,
     pub created_by: Option<i64>,
+    /// Declaring surface item (D131), NULL = standalone control.
+    pub origin: Option<String>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

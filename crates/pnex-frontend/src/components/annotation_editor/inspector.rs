@@ -36,9 +36,11 @@ fn target_for_kind(new_kind: &str, current: &AnnotationTarget) -> AnnotationTarg
         ANNOTATION_KIND_DEVICE => AnnotationTarget::Device {
             device_id: slug.unwrap_or_default(),
         },
-        // Picked in the editor below (a nil id is a violation until then).
+        // Own control, provisioned by the server at save (D131); the kind
+        // and an optional link to an existing control are set below.
         ANNOTATION_KIND_CONTROL => AnnotationTarget::Control {
             control_id: uuid::Uuid::nil(),
+            kind: Some(pnex_core::ui_control::ControlKind::Switch),
         },
         ANNOTATION_KIND_READING => AnnotationTarget::Reading {
             source: pnex_core::SourceRef {
@@ -153,12 +155,13 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
                     option { value: "reading", {t!("annot-kind-reading")} }
                 }
             }
-            if let AnnotationTarget::Control { control_id } = item.target.clone() {
+            if let AnnotationTarget::Control { control_id, kind } = item.target.clone() {
                 ControlTargetEditor {
                     key: "{item.id}",
                     cx,
                     item_id: item.id.clone(),
                     current: control_id,
+                    kind,
                 }
             }
             if let AnnotationTarget::Reading { source, spark } = item.target.clone() {

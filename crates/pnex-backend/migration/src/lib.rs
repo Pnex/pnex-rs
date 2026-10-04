@@ -13,6 +13,7 @@ pub use sea_orm_migration::prelude::*;
 
 mod m20261001_000001_baseline;
 mod m20261003_000002_controls;
+mod m20261004_000003_control_origin;
 
 pub struct Migrator;
 
@@ -22,6 +23,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m20261001_000001_baseline::Migration),
             Box::new(m20261003_000002_controls::Migration),
+            Box::new(m20261004_000003_control_origin::Migration),
         ]
     }
 }

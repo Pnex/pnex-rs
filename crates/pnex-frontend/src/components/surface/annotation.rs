@@ -31,12 +31,14 @@ pub fn item_widget(item: &ResolvedAnnotationItem) -> Option<Widget> {
         options: WidgetOptions::default(),
     };
     match &item.target {
-        AnnotationTarget::Control { control_id } => {
-            // Placeholder type: the card follows the control kind.
-            w.widget_type = "switch".into();
-            w.options.control = Some(pnex_core::ui_control::ControlRef {
-                control_id: *control_id,
-            });
+        AnnotationTarget::Control { control_id, kind } => {
+            // Placeholder type: the card follows the control kind. A nil id
+            // is an own control not provisioned yet (unsaved layer).
+            w.widget_type = kind.map_or("switch", |k| k.widget_type()).into();
+            w.options.control =
+                (!control_id.is_nil()).then_some(pnex_core::ui_control::ControlRef {
+                    control_id: *control_id,
+                });
         }
         AnnotationTarget::Reading { source, spark } => {
             w.widget_type = if *spark { "line" } else { "stat" }.into();

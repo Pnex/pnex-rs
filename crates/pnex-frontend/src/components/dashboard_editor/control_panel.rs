@@ -1,18 +1,20 @@
-//! Inspector of a control card (D125): the org control it drives (pick or
-//! create inline), the optional state source, and "Create the flow" (a
-//! draft `control-source` → `device-write`, parcours §1.3).
+//! Inspector of a control card (D125, D131): the widget **declares** its
+//! own control — provisioned by the server when the dashboard is saved and
+//! listed in the flow node catalog under this dashboard — or links an
+//! existing control (shared state across surfaces, advanced). Plus the
+//! optional state source and "Create the flow" (a draft `control-source` →
+//! `device-write`, parcours §1.3).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::ui_control::{ControlRef, ControlSpec, CreateUiControl, UiControl};
+use pnex_core::ui_control::{ControlRef, UiControl, ORIGIN_DASHBOARD};
 use pnex_core::{SourceRef, Widget};
 use uuid::Uuid;
 
 use super::EditorCx;
 use crate::api;
 use crate::components::surface::control::kind_of_widget;
-use crate::components::surface::{create_flow_draft, spec_summary, suggest_key};
-use crate::state::toasts;
+use crate::components::surface::{create_flow_draft, spec_summary};
 
 /// Applies one undoable change to the widget `id`.
 fn patch_widget(mut cx: EditorCx, id: &str, f: impl FnOnce(&mut Widget)) {
@@ -25,80 +27,119 @@ fn patch_widget(mut cx: EditorCx, id: &str, f: impl FnOnce(&mut Widget)) {
     });
 }
 
+/// The control is the one this widget declared (origin = this dashboard,
+/// this widget).
+fn is_own(control: &UiControl, dashboard_id: &str, widget_id: &str) -> bool {
+    control.origin.as_ref().is_some_and(|o| {
+        o.surface == ORIGIN_DASHBOARD
+            && o.surface_id.to_string() == dashboard_id
+            && o.item_id == widget_id
+    })
+}
+
 #[component]
 pub(super) fn ControlPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Element {
     let kind = kind_of_widget(&widget.widget_type);
-    let mut reload = use_signal(|| 0u32);
     let controls = use_resource(move || async move {
-        let _ = reload();
+        // Refetched after each save: provisioned controls appear then.
+        let _ = cx.saved_version.read();
         api::controls::list().await.unwrap_or_default()
     });
     let Some(kind) = kind else {
         return rsx! {};
     };
     let all: Vec<UiControl> = controls.read().clone().unwrap_or_default();
-    let candidates: Vec<UiControl> = all
-        .iter()
-        .filter(|c| c.spec.kind == kind)
-        .cloned()
-        .collect();
     let current = widget.options.control.as_ref().map(|c| c.control_id);
     let def = current.and_then(|id| all.iter().find(|c| c.id == id).cloned());
-    let loaded = controls.read().is_some();
-    let wid = widget.id.clone();
+    let dashboard_id = cx.dashboard_id.read().clone();
+    let own = def
+        .as_ref()
+        .is_some_and(|d| is_own(d, &dashboard_id, &widget.id));
+    // Link candidates: same kind, never this widget's own control.
+    let candidates: Vec<UiControl> = all
+        .iter()
+        .filter(|c| c.spec.kind == kind && !is_own(c, &dashboard_id, &widget.id))
+        .cloned()
+        .collect();
+    let linked_id = if own { None } else { current };
+    let wid_link = widget.id.clone();
+    let wid_own = widget.id.clone();
     let wid_state = widget.id.clone();
     let has_state = !widget.source.is_empty();
     let dirty = *cx.layout.read() != *cx.saved_layout.read();
+    let reference = format!("{} › #{}", cx.name.read(), widget.id);
 
     rsx! {
         div { class: "space-y-2 rounded-lg border border-teal-100 bg-teal-50/40 p-2",
-            label {
-                r#for: "insp-control",
-                class: "block text-[10px] font-medium text-gray-400 uppercase",
+            p { class: "block text-[10px] font-medium text-gray-400 uppercase",
                 {t!("insp-control")}
             }
-            select {
-                id: "insp-control",
-                class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",
-                disabled: !can_write,
-                onchange: move |e| {
-                    let Ok(id) = e.value().parse::<Uuid>() else { return };
-                    patch_widget(
-                        cx,
-                        &wid,
-                        |w| w.options.control = Some(ControlRef { control_id: id }),
-                    );
-                },
-                if current.is_none() {
-                    option { value: "", selected: true, disabled: true, {t!("insp-control-pick")} }
+            if current.is_none() {
+                div { class: "rounded border border-dashed border-teal-300 bg-white px-2 py-1.5 text-xs",
+                    p { class: "font-mono text-teal-800", "{reference}" }
+                    p { class: "text-gray-500", {t!("insp-source-pending")} }
                 }
-                for c in candidates {
-                    option {
-                        key: "{c.id}",
-                        value: "{c.id}",
-                        selected: current == Some(c.id),
-                        "{c.label} ({c.key})"
+            } else if let Some(d) = def.clone() {
+                if own {
+                    div { class: "rounded border border-teal-200 bg-white px-2 py-1.5 text-xs",
+                        p { class: "font-mono text-teal-800", "{reference}" }
+                    }
+                } else {
+                    div { class: "rounded border border-indigo-200 bg-white px-2 py-1.5 text-xs space-y-1",
+                        p { class: "text-indigo-800",
+                            {t!("insp-source-shared", label : d.label.clone())}
+                        }
+                        if can_write {
+                            button {
+                                class: "text-[11px] text-indigo-700 underline",
+                                onclick: move |_| {
+                                    patch_widget(cx, &wid_own, |w| w.options.control = None);
+                                },
+                                {t!("insp-source-own")}
+                            }
+                        }
                     }
                 }
-                if current.is_some() && def.is_none() && loaded {
-                    option { value: "", selected: true, disabled: true, {t!("controls-missing")} }
+                ControlInfo { control: d }
+            } else if controls.read().is_some() {
+                p { class: "rounded bg-red-50 px-2 py-1 text-xs text-red-700",
+                    {t!("controls-missing")}
                 }
             }
-            if let Some(d) = def.clone() {
-                ControlInfo { control: d }
-            }
             if can_write {
-                QuickCreate {
-                    kind_spec: ControlSpec::new(kind),
-                    on_created: move |id: Uuid| {
-                        reload += 1;
-                        let wid = widget.id.clone();
-                        patch_widget(
-                            cx,
-                            &wid,
-                            |w| w.options.control = Some(ControlRef { control_id: id }),
-                        );
-                    },
+                details { class: "rounded border border-gray-200 bg-white p-2",
+                    summary { class: "cursor-pointer text-xs font-medium text-gray-600",
+                        {t!("insp-source-link")}
+                    }
+                    div { class: "mt-2 space-y-1",
+                        p { class: "text-[10px] text-gray-500", {t!("insp-source-link-help")} }
+                        select {
+                            id: "insp-control",
+                            class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",
+                            onchange: move |e| {
+                                let Ok(id) = e.value().parse::<Uuid>() else { return };
+                                patch_widget(
+                                    cx,
+                                    &wid_link,
+                                    |w| w.options.control = Some(ControlRef { control_id: id }),
+                                );
+                            },
+                            option {
+                                value: "",
+                                selected: linked_id.is_none(),
+                                disabled: true,
+                                {t!("insp-control-pick")}
+                            }
+                            for c in candidates {
+                                option {
+                                    key: "{c.id}",
+                                    value: "{c.id}",
+                                    selected: linked_id == Some(c.id),
+                                    {crate::components::surface::control_display_name(&c)}
+                                }
+                            }
+                        }
+                    }
                 }
             }
             label { class: "flex items-center gap-2 text-xs text-gray-700",
@@ -139,7 +180,7 @@ pub(super) fn ControlPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Ele
     }
 }
 
-/// Domain and listeners of the picked control.
+/// Key, domain and listeners of the bound control.
 #[component]
 fn ControlInfo(control: UiControl) -> Element {
     let domain = spec_summary(&control.spec);
@@ -160,60 +201,6 @@ fn ControlInfo(control: UiControl) -> Element {
                 }
             } else {
                 p { class: "text-gray-600", {t!("insp-control-listened", flows : names.join(", "))} }
-            }
-        }
-    }
-}
-
-/// Inline creation of a control of the card kind (default spec; tune it on
-/// the Controls page).
-#[component]
-fn QuickCreate(kind_spec: ControlSpec, on_created: EventHandler<Uuid>) -> Element {
-    let mut label = use_signal(String::new);
-    let mut busy = use_signal(|| false);
-    let key = suggest_key(&label());
-    let ok = !label().trim().is_empty() && !key.is_empty() && !busy();
-    let submit = move |_| {
-        let params = CreateUiControl {
-            key: suggest_key(&label.peek()),
-            label: label.peek().trim().to_string(),
-            spec: kind_spec.clone(),
-        };
-        busy.set(true);
-        spawn(async move {
-            match api::controls::create(params).await {
-                Ok(c) => {
-                    label.set(String::new());
-                    on_created.call(c.id);
-                }
-                Err(e) => toasts::error(e),
-            }
-            busy.set(false);
-        });
-    };
-    rsx! {
-        details { class: "rounded border border-gray-200 bg-white p-2",
-            summary { class: "cursor-pointer text-xs font-medium text-gray-600",
-                {t!("insp-control-create")}
-            }
-            div { class: "mt-2 space-y-1",
-                input {
-                    class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm",
-                    placeholder: t!("controls-label-placeholder").to_string(),
-                    value: "{label}",
-                    oninput: move |e| label.set(e.value()),
-                }
-                if !key.is_empty() {
-                    p { class: "text-[10px] text-gray-400",
-                        {t!("insp-control-key", key : key.clone())}
-                    }
-                }
-                button {
-                    class: "w-full rounded bg-gray-900 px-2 py-1 text-xs text-white disabled:opacity-40",
-                    disabled: !ok,
-                    onclick: submit,
-                    {t!("common-create")}
-                }
             }
         }
     }

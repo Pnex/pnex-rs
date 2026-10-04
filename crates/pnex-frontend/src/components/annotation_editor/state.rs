@@ -243,6 +243,35 @@ impl AnnotationEditorCx {
     }
 }
 
+/// D131: copies onto `local` the control ids the server provisioned for
+/// the `control` items declaring their own control (nil id), matched by
+/// item id. Every other local edit is kept.
+pub fn adopt_bound_controls(local: &AnnotationDoc, server: &AnnotationDoc) -> AnnotationDoc {
+    let mut out = local.clone();
+    for item in &mut out.items {
+        let AnnotationTarget::Control { control_id, .. } = &mut item.target else {
+            continue;
+        };
+        if !control_id.is_nil() {
+            continue;
+        }
+        let bound = server
+            .items
+            .iter()
+            .find(|s| s.id == item.id)
+            .and_then(|s| match &s.target {
+                AnnotationTarget::Control { control_id, .. } if !control_id.is_nil() => {
+                    Some(*control_id)
+                }
+                _ => None,
+            });
+        if let Some(id) = bound {
+            *control_id = id;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,6 +280,26 @@ mod tests {
         let mut doc = AnnotationDoc::default();
         place_item(&mut doc, "asset-1", 10.0, -5.0);
         doc
+    }
+
+    #[test]
+    fn save_adopts_provisioned_controls_only_for_own_items() {
+        let own = |id: uuid::Uuid| AnnotationTarget::Control {
+            control_id: id,
+            kind: Some(pnex_core::ui_control::ControlKind::Switch),
+        };
+        let mut local = doc_with_one();
+        local.items[0].target = own(uuid::Uuid::nil());
+        let mut server = local.clone();
+        server.items[0].target = own(uuid::Uuid::from_u128(3));
+        local.items[0].label = "Edited while saving".into();
+        let out = adopt_bound_controls(&local, &server);
+        assert_eq!(out.items[0].target, own(uuid::Uuid::from_u128(3)));
+        assert_eq!(out.items[0].label, "Edited while saving");
+        // A linked control is never replaced.
+        let mut linked = local.clone();
+        linked.items[0].target = own(uuid::Uuid::from_u128(9));
+        assert_eq!(adopt_bound_controls(&linked, &server), linked);
     }
 
     #[test]

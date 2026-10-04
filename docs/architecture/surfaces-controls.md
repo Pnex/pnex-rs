@@ -1,7 +1,9 @@
-# Surfaces pilotables — contrôles d'org, pont surface → flow, format mobile/PC (D123–D129)
+# Surfaces pilotables — contrôles d'org, pont surface → flow, format mobile/PC (D123–D129, D131–D133)
 
 > **Statut : LIVRÉ (L1–L7, 2026-10-04)** — décisions validées le 2026-10-03,
-> implémentation et écarts consignés au §4.
+> implémentation et écarts consignés au §4. **Révision du 2026-10-04
+> (D131–D133, §5)** : la surface déclare, le moteur enregistre — plus de
+> contrôle à choisir avant de pouvoir enregistrer un dashboard.
 > Docs liés : `viz-bases.md` (D24 versioning, D31 polling, D40 canvas libre,
 > D41 bibliothèque), `annotations.md` (D55–D60, porte ouverte « inputs »),
 > `flow-engine.md` (nœuds custom, deploy, fencing D106), `inventory.md`
@@ -53,8 +55,13 @@ C'est le pendant symétrique de la mémoire d'org :
 
 ## 1. Parcours cible (« tuer le YAML ESPHome »)
 
-1. Dashboards → **+ Nouveau → Mobile**. Une pile vide s'ouvre, avec une
-   section « Général ».
+> Révisé par D131–D133 (§5) : l'étape 2 n'exige plus de contrôle ; tout
+> interrupteur posé devient une source référencée, et le flow se construit
+> avant ou après le dashboard, au choix.
+
+1. Dashboards → **+ Nouveau** : une modale présente PC et Mobile (aperçu,
+   usages) ; on nomme, on choisit **Mobile**. Une pile vide s'ouvre, avec
+   une section « Général ».
 2. **Ajout guidé depuis un device** : on choisit un device, et le composer
    liste ses pins et ses métriques avec un widget proposé pour chacun :
    - sortie digitale → nouveau contrôle `switch` ;
@@ -119,3 +126,36 @@ C'est le pendant symétrique de la mémoire d'org :
   (`flow_{id}`), jamais enregistré, donc non vérifié.
 - **Débit** : deux actions sur le même contrôle à moins de 250 ms → 429
   `control-rate-limited` ; le curseur n'écrit qu'au relâchement.
+
+## 5. Révision « la surface déclare, le moteur enregistre » (D131–D133, 2026-10-04)
+
+Retour utilisateur après la livraison : poser un interrupteur exigeait de
+choisir un « contrôle piloté » existant, sans quoi l'enregistrement était
+refusé (`control_missing`). L'utilisateur devait donc créer le contrôle,
+voire le flow, avant le dashboard : un interblocage. Le nœud `control-source`
+sans contrôle coché n'avait pas de sortie visible, et les contrôles n'y
+étaient pas rattachés à leur surface.
+
+| # | Décision | Motif |
+|---|---|---|
+| D131 | **Un widget de contrôle (ou un item d'annotation `control`) déclare sa propre source ; le serveur l'enregistre à la sauvegarde de la surface.** Dans la transaction du save, chaque item sans contrôle reçoit un contrôle d'org dont `origin` = `{dashboard|annotation}:{uuid surface}:{id item}` (colonne `controls.origin`, migration 000003, unique par org). Clé générée stable `dash-<8 hex>.w-0001` / `annot-<8 hex>.<item>` (suffixe `-2`… en cas de collision), libellé = titre de l'item (sinon son id), qui suit le titre aux saves suivants. Le document stocké et renvoyé porte les ids liés ; l'éditeur les adopte. Un item d'annotation déclare le **type** de sa commande (`target.kind`, `control_id` nil jusqu'au save). **Amende D125** : la création à la volée devient implicite ; lier un contrôle existant (état partagé entre surfaces) reste possible en option avancée. Un id de contrôle inconnu de l'org (supprimé, ou d'une autre org) n'est jamais lié : l'item reçoit sa propre source (dashboard), ou le save est refusé s'il ne déclare pas de type (annotation). Retirer l'item ou supprimer la surface **libère** sa source : supprimée si plus rien ne la référence (dernière version et version déployée des flows, version courante des autres dashboards, dernière et publiée des autres ensembles d'annotations), sinon conservée comme contrôle indépendant (`origin` vidée) pour qu'aucun flow ne perde son déclencheur. | L'utilisateur construit la surface d'abord ou le flow d'abord, sans passage obligé ; chaque élément posé est référençable (« Tableau › #w-0001 ») et réutilisable dans les flows. |
+| D132 | **« + Nouveau tableau de bord » ouvre une modale** : nom, deux cartes de format (aperçu dessiné, résumé, trois usages types), rappel que les commandes posées deviennent des sources pour les flows, et que le format est définitif. **Amende D123** (« sans modale ») ; le format reste fixé à la création. | Les tuiles en ligne n'expliquaient pas la différence entre les formats ni leur usage. |
+| D133 | **Le nœud `control-source` est un catalogue des sources** : groupées par surface (« Tableau de bord · Salle machine », « Annotations · Pano RDC », puis « Contrôles indépendants »), référence `#w-0001 · libellé`, recherche au-delà de 6 sources. Il a **toujours** sa sortie à droite (un port non libellé tant que rien n'est coché) et **aucune entrée** (un câble ne peut pas y aboutir). Un nœud sans source s'enregistre comme brouillon (le flow peut précéder ses surfaces) ; seul le deploy l'exige (`control_source_empty`, porte de deploy et construction du runtime). La page Contrôles affiche la colonne « Déclaré par ». **Précise D127** (config inchangée : `{controls: [id], emit_on_start}`). | Le nœud apparaissait comme une entrée (point à gauche) sans sortie ; les sources doivent se retrouver par leur surface. |
+
+Implémentation : `pnex_core::ui_control` (`control_origin`, `auto_control_key`,
+`ControlOrigin`, `UiControl.origin`), `validate_layout` sans
+`control_missing`, `AnnotationTarget::Control.kind` ;
+`services/surface_controls.rs` (`sync_surface`, `release_surface`,
+`resolve_origins`) appelé par `services/dashboards.rs` et
+`services/annotation_layer.rs` dans leur transaction ; front :
+`dashboard_editor/control_panel.rs`, `annotation_editor/surface_targets.rs`,
+`flow_editor/inspector/control_source.rs`, `pages/dashboards.rs`
+(modale). Gardes : `tests/controls.rs`
+(`surface_declared_controls_are_provisioned_and_released`),
+`tests/annotation_layers.rs`, e2e `controls.spec.ts` (le switch posé sans
+contrôle pilote un flow déployé).
+
+Limite connue : restaurer une ancienne version d'un dashboard (déplacement
+de pointeur, D24) ne re-provisionne rien ; une carte dont la source a été
+libérée entre-temps affiche « Contrôle supprimé » et retrouve une source au
+prochain enregistrement.

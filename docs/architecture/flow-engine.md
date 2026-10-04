@@ -540,3 +540,7 @@ contrôle absent de l'org (`control-unknown`) ; un contrôle écouté par un flo
 déployé ne peut pas être supprimé (`control-in-use`). Un interrupteur (1/0)
 ou un curseur (0..100) se branche tel quel sur `device-write` ; la règle
 « une source d'écriture par pin » reste la seule voie vers un pin (D128).
+**D133** (2026-10-04) : dans l'éditeur, le nœud n'a pas d'entrée et garde
+toujours sa sortie ; son inspecteur liste les sources groupées par surface
+(les interrupteurs, curseurs et boutons posés sur les dashboards et les
+annotations y apparaissent dès l'enregistrement de leur surface, D131).

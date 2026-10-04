@@ -192,7 +192,14 @@ pub fn DashboardEditor(
 
     // Control cards show their control (label, kind, "no effect" badge) in
     // the preview too; never operable from the editor.
-    let preview_tick = use_signal(|| 0u32);
+    let mut preview_tick = use_signal(|| 0u32);
+    // Each save may provision controls (D131): reload the definitions.
+    let saved_version = cx.saved_version;
+    use_effect(move || {
+        let _ = saved_version.read();
+        let next = *preview_tick.peek() + 1;
+        preview_tick.set(next);
+    });
     let via = format!("dashboard:{}", cx.dashboard_id.peek());
     crate::components::surface::use_surface_controls(
         move || crate::components::surface::control_ids(&layout.read()),

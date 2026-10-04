@@ -24,7 +24,7 @@ use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
 use crate::components::modal::Modal;
-use crate::components::surface::{kind_text, spec_summary, suggest_key};
+use crate::components::surface::{control_group, kind_text, spec_summary, suggest_key};
 use crate::state::{org, toasts};
 
 #[component]
@@ -70,6 +70,16 @@ pub fn Controls() -> Element {
             rsx! {
                 div { class: "text-sm font-medium text-gray-900", "{c.label}" }
                 code { class: "text-xs text-gray-500", "{c.key}" }
+            }
+        }),
+        Column::new(t!("controls-col-origin").to_string(), |c: &UiControl| {
+            let group = control_group(c);
+            let item = c.origin.as_ref().map(|o| format!("#{}", o.item_id));
+            rsx! {
+                div { class: "text-sm text-gray-700", "{group}" }
+                if let Some(item) = item {
+                    code { class: "text-xs text-gray-500", "{item}" }
+                }
             }
         }),
         Column::new(t!("controls-col-kind").to_string(), |c: &UiControl| {

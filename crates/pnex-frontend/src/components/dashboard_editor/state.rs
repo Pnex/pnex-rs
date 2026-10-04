@@ -412,6 +412,27 @@ pub fn find_widget(layout: &DashboardLayout, id: &str) -> Option<Widget> {
     layout.widgets.iter().find(|w| w.id == id).cloned()
 }
 
+/// D131: copies onto `local` the control ids the server bound to the
+/// control widgets that had none (matched by widget id). Every other
+/// local edit is kept.
+pub fn adopt_bound_controls(local: &DashboardLayout, server: &DashboardLayout) -> DashboardLayout {
+    let mut out = local.clone();
+    for w in &mut out.widgets {
+        if w.options.control.is_some() {
+            continue;
+        }
+        if let Some(bound) = server
+            .widgets
+            .iter()
+            .find(|s| s.id == w.id && s.widget_type == w.widget_type)
+            .and_then(|s| s.options.control.clone())
+        {
+            w.options.control = Some(bound);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -589,9 +610,31 @@ mod tests {
         move_card(&mut l, "w-0001", "s-2", 9);
         assert_eq!(items(&l), vec![vec!["w-0002", "w-0003"], vec!["w-0001"]]);
         assert_eq!(card_position(&l, "w-0001"), Some(("s-2".into(), 0)));
-        assert!(pnex_core::validate_layout(&l)
+        // Control cards without a control are valid (provisioned at save).
+        assert!(pnex_core::validate_layout(&l).is_empty());
+    }
+
+    #[test]
+    fn save_adopts_the_server_bound_controls_only() {
+        let local = mobile();
+        let mut server = local.clone();
+        let bound = pnex_core::ui_control::ControlRef {
+            control_id: uuid::Uuid::from_u128(5),
+        };
+        for w in &mut server.widgets {
+            w.options.control = Some(bound.clone());
+        }
+        // An edit made while saving survives; the ids are adopted.
+        let mut edited = local.clone();
+        edited.widgets[0].title = "Edited".into();
+        let out = adopt_bound_controls(&edited, &server);
+        assert_eq!(out.widgets[0].title, "Edited");
+        assert!(out
+            .widgets
             .iter()
-            .all(|v| v.code == "control_missing"));
+            .all(|w| w.options.control == Some(bound.clone())));
+        // Untouched editor: identical to the saved layout (not dirty).
+        assert_eq!(adopt_bound_controls(&local, &server), server);
     }
 
     #[test]

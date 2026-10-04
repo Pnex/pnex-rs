@@ -56,6 +56,44 @@ fn validate_dashboard_write(
     Ok(())
 }
 
+/// D131: provisions the controls declared by the control widgets (inside
+/// the save transaction) and returns the layout with every control widget
+/// bound to its control — the version stored and returned to the editor.
+async fn bind_surface_controls<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    dashboard_id: uuid::Uuid,
+    layout: &DashboardLayout,
+) -> Result<DashboardLayout, DashboardWriteError> {
+    use crate::services::surface_controls::{sync_surface, DeclaredControl};
+    use pnex_core::ui_control::{ControlKind, ControlRef, ORIGIN_DASHBOARD};
+    let items: Vec<DeclaredControl> = layout
+        .widgets
+        .iter()
+        .filter_map(|w| {
+            let kind = ControlKind::ALL
+                .into_iter()
+                .find(|k| k.widget_type() == w.widget_type)?;
+            Some(DeclaredControl {
+                item_id: w.id.clone(),
+                kind: Some(kind),
+                label: w.title.clone(),
+                current: w.options.control.as_ref().map(|c| c.control_id),
+            })
+        })
+        .collect();
+    let outcome = sync_surface(db, org_id, ORIGIN_DASHBOARD, dashboard_id, &items, None)
+        .await
+        .map_err(|_| DashboardWriteError::Db)?;
+    let mut bound = layout.clone();
+    for w in &mut bound.widgets {
+        if let Some(id) = outcome.bound.get(&w.id) {
+            w.options.control = Some(ControlRef { control_id: *id });
+        }
+    }
+    Ok(bound)
+}
+
 /// Crée un dashboard **et sa version 1** (une transaction). Le layout
 /// peut être absent (canvas par défaut posé par le front au premier
 /// save).
@@ -90,10 +128,11 @@ pub async fn create_dashboard(
     .insert(&txn)
     .await
     .map_err(|_| DashboardWriteError::Db)?;
+    let layout = bind_surface_controls(&txn, org_id, dashboard.id, layout).await?;
     dashboard_versions::ActiveModel {
         dashboard_id: Set(dashboard.id),
         version_number: Set(1),
-        layout: Set(serde_json::to_value(layout).map_err(|_| DashboardWriteError::Db)?),
+        layout: Set(serde_json::to_value(&layout).map_err(|_| DashboardWriteError::Db)?),
         author: Set(author),
         ..Default::default()
     }
@@ -195,6 +234,7 @@ pub async fn append_version(
         });
     }
     let latest = latest_version_number(&txn, dashboard.id).await?;
+    let layout = bind_surface_controls(&txn, dashboard.org_id, dashboard.id, layout).await?;
     let mut active: dashboards::ActiveModel = dashboard.clone().into();
     if let Some(name) = new_name.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
         active.name = Set(name.to_string());
@@ -206,7 +246,7 @@ pub async fn append_version(
     let new_version = dashboard_versions::ActiveModel {
         dashboard_id: Set(dashboard.id),
         version_number: Set(latest + 1),
-        layout: Set(serde_json::to_value(layout).map_err(|_| DashboardWriteError::Db)?),
+        layout: Set(serde_json::to_value(&layout).map_err(|_| DashboardWriteError::Db)?),
         author: Set(author),
         ..Default::default()
     }

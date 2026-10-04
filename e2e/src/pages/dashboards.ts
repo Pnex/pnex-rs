@@ -20,20 +20,22 @@ export class DashboardsPage {
   }
 
   /**
-   * "New dashboard" offers the format (D123); a tile creates the dashboard
-   * immediately and opens it in edit mode.
+   * "New dashboard" opens the creation modal (D123): name, format card,
+   * "Create and open" — the editor opens on the new dashboard.
    */
   async create(name: string, format: 'desktop' | 'mobile' = 'desktop'): Promise<DashboardEditor> {
     await this.page.getByRole('main').getByRole('button', { name: this.app.t('db-create') }).click();
+    const dlg = this.page.getByRole('dialog', { name: this.app.t('db-new-title') });
+    await dlg.getByLabel(this.app.t('db-new-name'), { exact: true }).fill(name);
     const title = this.app.t(format === 'mobile' ? 'db-format-mobile' : 'db-format-desktop');
-    await this.page
-      .getByRole('main')
+    await dlg
       .getByRole('button')
       .filter({ has: this.page.getByText(title, { exact: true }) })
       .click();
+    await dlg.getByRole('button', { name: this.app.t('db-new-create') }).click();
     const editor = new DashboardEditor(this.app);
     await editor.waitReady();
-    await editor.rename(name);
+    await expect(this.page.getByRole('main').getByRole('button', { name })).toBeVisible();
     return editor;
   }
 

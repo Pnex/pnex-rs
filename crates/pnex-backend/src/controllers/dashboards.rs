@@ -373,6 +373,17 @@ async fn delete(
     )
     .await
     .map_err(|_| Error::InternalServerError)?;
+    // D131: the controls its widgets declared are released (deleted, or
+    // kept standalone while a flow or another surface uses them).
+    let released = crate::services::surface_controls::release_surface(
+        &ctx.db,
+        org.org.id,
+        pnex_core::ui_control::ORIGIN_DASHBOARD,
+        dashboard.id,
+    )
+    .await
+    .map_err(|_| Error::InternalServerError)?;
+    crate::services::surface_controls::forget_deleted(&ctx, org.org.id, &released).await;
     dashboard
         .into_active_model()
         .delete(&ctx.db)

@@ -123,7 +123,7 @@ impl ControlSourceNode {
             controls: cfg.controls.clone(),
             emit_on_start: cfg.emit_on_start,
         };
-        if let Some((code, message)) = check.check() {
+        if let Some((code, message)) = check.check_deployable() {
             return Err(EdgelinkError::BadFlowsJson(format!("{NODE} [{code}] : {message}")).into());
         }
         if cfg.pnex_org_id <= 0 {

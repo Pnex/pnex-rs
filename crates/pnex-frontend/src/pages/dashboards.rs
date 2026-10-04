@@ -21,6 +21,7 @@ use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::dashboard_editor::DashboardEditor;
 use crate::components::dashboard_live::live_layout;
 use crate::components::icons;
+use crate::components::modal::Modal;
 use crate::components::refresh_rate::{use_auto_refresh, RefreshRateControl};
 use crate::state::viz::{OPEN_DASHBOARD, VIZ_EDIT};
 use crate::state::{org, session, toasts};
@@ -258,29 +259,16 @@ fn ListView(
                 RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
             },
             add_label: Some(t!("db-create").to_string()),
-            on_add: move |_| choosing.toggle(),
-            // D123: the format is picked once, at creation (no modal: two
-            // tiles, a click creates and opens the editor).
+            on_add: move |_| choosing.set(true),
+            // D123: the format is picked once, at creation — the modal
+            // explains both formats and how their controls reach the flows.
             if choosing() {
-                div { class: "mb-4 grid gap-3 sm:grid-cols-2",
-                    FormatTile {
-                        icon_mobile: false,
-                        title: t!("db-format-desktop").to_string(),
-                        help: t!("db-format-desktop-help").to_string(),
-                        on_pick: move |_| {
-                            choosing.set(false);
-                            create_dashboard(DashboardFormat::Desktop, reload, on_open);
-                        },
-                    }
-                    FormatTile {
-                        icon_mobile: true,
-                        title: t!("db-format-mobile").to_string(),
-                        help: t!("db-format-mobile-help").to_string(),
-                        on_pick: move |_| {
-                            choosing.set(false);
-                            create_dashboard(DashboardFormat::Mobile, reload, on_open);
-                        },
-                    }
+                NewDashboardModal {
+                    on_close: move |_| choosing.set(false),
+                    on_create: move |pick: (String, DashboardFormat)| {
+                        choosing.set(false);
+                        create_dashboard(pick.0, pick.1, reload, on_open);
+                    },
                 }
             }
             if org::current().is_none() {
@@ -301,8 +289,6 @@ fn ListView(
                 }
             }
 
-            // Modal de création supprimée : « + Nouveau » crée directement
-            // (nom daté) et ouvre l'éditeur en mode édition.
             if let Some((id, name)) = delete_target() {
                 ConfirmDialog {
                     title: t!("db-delete").to_string(),
@@ -328,9 +314,10 @@ fn ListView(
     }
 }
 
-/// Creates a dashboard of `format` (dated name) and opens it in the editor
-/// (fluidity — user feedback 2026-09-18).
+/// Creates a dashboard of `format` and opens it in the editor (fluidity —
+/// user feedback 2026-09-18). An empty name falls back to a dated one.
 fn create_dashboard(
+    name: String,
     format: DashboardFormat,
     mut reload: Signal<u32>,
     on_open: EventHandler<(String, bool)>,
@@ -340,7 +327,11 @@ fn create_dashboard(
         &t!("db-section-default"),
     );
     let params = pnex_core::CreateDashboard {
-        name: t!("db-default-name", date : crate ::util::now_label()).to_string(),
+        name: if name.trim().is_empty() {
+            t!("db-default-name", date : crate ::util::now_label()).to_string()
+        } else {
+            name.trim().to_string()
+        },
         description: None,
         layout: Some(layout),
     };
@@ -357,28 +348,172 @@ fn create_dashboard(
     });
 }
 
-/// One format choice of the "+ New" strip.
+/// "+ New dashboard" modal: name, then one of the two formats, each with
+/// a sketch and its typical uses; the format is final (D123).
 #[component]
-fn FormatTile(
-    icon_mobile: bool,
-    title: String,
-    help: String,
-    on_pick: EventHandler<()>,
+fn NewDashboardModal(
+    on_close: EventHandler<()>,
+    on_create: EventHandler<(String, DashboardFormat)>,
 ) -> Element {
+    let mut name = use_signal(String::new);
+    let mut format = use_signal(|| None::<DashboardFormat>);
+    let placeholder = t!("db-default-name", date : crate ::util::now_label()).to_string();
+    let picked = format();
+    rsx! {
+        Modal {
+            title: t!("db-new-title").to_string(),
+            max_width: "max-w-3xl".to_string(),
+            on_close: move |_| on_close.call(()),
+            div { class: "space-y-5",
+                label { class: "block text-sm font-medium text-gray-700",
+                    {t!("db-new-name")}
+                    input {
+                        class: "mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        r#type: "text",
+                        placeholder: "{placeholder}",
+                        value: "{name}",
+                        oninput: move |e| name.set(e.value()),
+                    }
+                }
+                div {
+                    p { class: "mb-2 text-sm font-medium text-gray-700", {t!("db-new-pick")} }
+                    div { class: "grid gap-3 sm:grid-cols-2",
+                        FormatCard {
+                            mobile: false,
+                            selected: picked == Some(DashboardFormat::Desktop),
+                            on_pick: move |_| format.set(Some(DashboardFormat::Desktop)),
+                        }
+                        FormatCard {
+                            mobile: true,
+                            selected: picked == Some(DashboardFormat::Mobile),
+                            on_pick: move |_| format.set(Some(DashboardFormat::Mobile)),
+                        }
+                    }
+                }
+                div { class: "flex gap-2 rounded-lg bg-teal-50 px-3 py-2 text-xs text-teal-900",
+                    icons::Info { class: "h-4 w-4 shrink-0" }
+                    p { {t!("db-new-controls-hint")} }
+                }
+                p { class: "text-xs text-gray-500", {t!("db-new-final")} }
+                div { class: "flex justify-end gap-2",
+                    button {
+                        class: "px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
+                        r#type: "button",
+                        onclick: move |_| on_close.call(()),
+                        {t!("common-cancel")}
+                    }
+                    button {
+                        class: "px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40",
+                        r#type: "button",
+                        disabled: picked.is_none(),
+                        onclick: move |_| {
+                            if let Some(f) = format() {
+                                on_create.call((name(), f));
+                            }
+                        },
+                        {t!("db-new-create")}
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// One selectable format of the creation modal: sketch, name, summary and
+/// typical uses.
+#[component]
+fn FormatCard(mobile: bool, selected: bool, on_pick: EventHandler<()>) -> Element {
+    let ring = if selected {
+        "border-blue-500 ring-2 ring-blue-200 bg-blue-50/40"
+    } else {
+        "border-gray-200 hover:border-blue-300"
+    };
+    let (title, help) = if mobile {
+        (t!("db-format-mobile"), t!("db-format-mobile-help"))
+    } else {
+        (t!("db-format-desktop"), t!("db-format-desktop-help"))
+    };
+    let uses = if mobile {
+        vec![
+            t!("db-format-mobile-use-1"),
+            t!("db-format-mobile-use-2"),
+            t!("db-format-mobile-use-3"),
+        ]
+    } else {
+        vec![
+            t!("db-format-desktop-use-1"),
+            t!("db-format-desktop-use-2"),
+            t!("db-format-desktop-use-3"),
+        ]
+    };
     rsx! {
         button {
             r#type: "button",
-            class: "flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-4 text-left hover:border-blue-300 hover:bg-blue-50",
+            class: "flex flex-col gap-3 rounded-xl border bg-white p-4 text-left transition {ring}",
+            aria_pressed: "{selected}",
             onclick: move |_| on_pick.call(()),
-            if icon_mobile {
-                icons::Smartphone { class: "h-6 w-6 shrink-0 text-teal-600" }
-            } else {
-                icons::Monitor { class: "h-6 w-6 shrink-0 text-blue-600" }
+            div { class: "flex h-28 items-center justify-center rounded-lg bg-gray-50",
+                if mobile {
+                    MobileSketch {}
+                } else {
+                    DesktopSketch {}
+                }
             }
-            div {
+            div { class: "flex items-center gap-2",
+                if mobile {
+                    icons::Smartphone { class: "h-5 w-5 text-teal-600" }
+                } else {
+                    icons::Monitor { class: "h-5 w-5 text-blue-600" }
+                }
                 p { class: "text-sm font-semibold text-gray-900", "{title}" }
-                p { class: "text-xs text-gray-500", "{help}" }
+                if selected {
+                    icons::Check { class: "ml-auto h-4 w-4 text-blue-600" }
+                }
             }
+            p { class: "text-xs text-gray-600", "{help}" }
+            ul { class: "space-y-1 text-xs text-gray-500",
+                for u in uses {
+                    li { class: "flex gap-1.5",
+                        span { class: "text-gray-400", "•" }
+                        span { "{u}" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Sketch of a desktop dashboard: a wide canvas, free-placed widgets and a
+/// wire.
+#[component]
+fn DesktopSketch() -> Element {
+    rsx! {
+        div { class: "relative h-20 w-36 rounded border border-gray-300 bg-white",
+            div { class: "absolute left-2 top-2 h-7 w-7 rounded-full border-4 border-blue-300" }
+            div { class: "absolute left-12 top-3 h-6 w-16 rounded bg-blue-100" }
+            div { class: "absolute left-6 bottom-2 h-5 w-24 rounded bg-gray-100" }
+            div { class: "absolute left-9 top-9 h-px w-10 bg-gray-400" }
+            div { class: "absolute right-2 top-2 h-4 w-6 rounded bg-emerald-100" }
+        }
+    }
+}
+
+/// Sketch of a mobile dashboard: a phone with a stack of cards.
+#[component]
+fn MobileSketch() -> Element {
+    rsx! {
+        div { class: "flex h-24 w-14 flex-col gap-1 rounded-lg border-2 border-gray-300 bg-white p-1",
+            div { class: "h-1 w-6 self-center rounded bg-gray-200" }
+            div { class: "flex gap-1",
+                div { class: "flex h-4 flex-1 items-center justify-center rounded bg-teal-50",
+                    div { class: "h-1.5 w-3 rounded-full bg-teal-400" }
+                }
+                div { class: "h-4 flex-1 rounded bg-gray-100" }
+            }
+            div { class: "flex h-4 items-center rounded bg-gray-100 px-1",
+                div { class: "h-0.5 w-full rounded bg-teal-300" }
+            }
+            div { class: "h-4 rounded bg-teal-100" }
         }
     }
 }

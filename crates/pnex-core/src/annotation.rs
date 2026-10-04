@@ -112,9 +112,13 @@ pub enum AnnotationTarget {
     Note {
         text: String,
     },
-    /// Org control operated from the annotation (D125, D128).
+    /// Org control operated from the annotation (D125, D128). A nil
+    /// `control_id` declares the item's own control: the server provisions
+    /// one of `kind` when the layer is saved (D131).
     Control {
         control_id: uuid::Uuid,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        kind: Option<crate::ui_control::ControlKind>,
     },
     /// Same read binding as the dashboard widgets (D129); `spark` draws the
     /// history of the series window under the value.
@@ -240,12 +244,24 @@ pub fn validate_annotation_doc(doc: &AnnotationDoc) -> Vec<AnnotationViolation> 
             }
         }
         match &item.target {
-            AnnotationTarget::Control { control_id } if control_id.is_nil() => {
-                v.push(violation(
-                    Some(&item.id),
-                    "control_unset",
-                    format!("item {} : pick a control", item.id),
-                ));
+            AnnotationTarget::Control { control_id, kind } => {
+                if control_id.is_nil() && kind.is_none() {
+                    v.push(violation(
+                        Some(&item.id),
+                        "control_unset",
+                        format!("item {} : pick a control or a control kind", item.id),
+                    ));
+                }
+                if item.id.chars().count() > crate::ui_control::CONTROL_ORIGIN_ITEM_MAX_LEN {
+                    v.push(violation(
+                        Some(&item.id),
+                        "item_id_too_long",
+                        format!(
+                            "item id longer than {} characters",
+                            crate::ui_control::CONTROL_ORIGIN_ITEM_MAX_LEN
+                        ),
+                    ));
+                }
             }
             AnnotationTarget::Reading { source, spark } => {
                 let shape = if *spark { "line" } else { "stat" };
@@ -482,6 +498,17 @@ mod tests {
                     ANNOTATION_KIND_CONTROL,
                     AnnotationTarget::Control {
                         control_id: uuid::Uuid::from_u128(7),
+                        kind: None,
+                    },
+                    geo(),
+                ),
+                // Own control declared by kind, provisioned at save (D131).
+                item(
+                    "c0",
+                    ANNOTATION_KIND_CONTROL,
+                    AnnotationTarget::Control {
+                        control_id: uuid::Uuid::nil(),
+                        kind: Some(crate::ui_control::ControlKind::Slider),
                     },
                     geo(),
                 ),
@@ -495,7 +522,9 @@ mod tests {
         };
         assert!(validate_annotation_doc(&doc).is_empty());
         let json = serde_json::to_value(&doc).unwrap();
-        assert_eq!(json["items"][1]["target"]["type"], "reading");
+        assert_eq!(json["items"][2]["target"]["type"], "reading");
+        assert_eq!(json["items"][1]["target"]["kind"], "slider");
+        assert!(json["items"][0]["target"].get("kind").is_none());
         let back: AnnotationDoc = serde_json::from_value(json).unwrap();
         assert_eq!(back, doc);
 
@@ -506,6 +535,7 @@ mod tests {
                     ANNOTATION_KIND_CONTROL,
                     AnnotationTarget::Control {
                         control_id: uuid::Uuid::nil(),
+                        kind: None,
                     },
                     geo(),
                 ),

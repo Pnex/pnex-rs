@@ -137,6 +137,36 @@ pub fn kind_text(kind: ControlKind) -> String {
     }
 }
 
+/// Group of a control in the catalogs (D131): its declaring surface
+/// (`Dashboard · Machine room`), or the standalone group.
+pub fn control_group(c: &UiControl) -> String {
+    match &c.origin {
+        Some(o) => {
+            let name = o
+                .surface_name
+                .clone()
+                .unwrap_or_else(|| t!("controls-origin-gone").to_string());
+            let kind = if o.surface == pnex_core::ui_control::ORIGIN_ANNOTATION {
+                t!("controls-origin-annotation")
+            } else {
+                t!("controls-origin-dashboard")
+            };
+            format!("{kind} · {name}")
+        }
+        None => t!("controls-origin-standalone").to_string(),
+    }
+}
+
+/// Display name of a control: `#w-0001 · Light` when declared by a surface
+/// item (the label alone when it is the item id), else `Light (light.room)`.
+pub fn control_display_name(c: &UiControl) -> String {
+    match &c.origin {
+        Some(o) if c.label == o.item_id => format!("#{}", o.item_id),
+        Some(o) => format!("#{} · {}", o.item_id, c.label),
+        None => format!("{} ({})", c.label, c.key),
+    }
+}
+
 /// One-line value domain of a spec (`on 1 / off 0`, `0 … 100 % (step 1)`).
 pub fn spec_summary(spec: &ControlSpec) -> String {
     let unit = spec.unit.clone().unwrap_or_default();

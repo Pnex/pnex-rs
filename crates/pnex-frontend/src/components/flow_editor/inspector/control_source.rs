@@ -25,10 +25,38 @@ fn commit(cx: &mut EditorCx, mut cfg: Signal<ControlSourceConfig>, next: Control
     });
 }
 
-use crate::components::surface::kind_text;
+use crate::components::surface::{control_display_name, control_group, kind_text};
 
-/// Control source inspector: the org controls to listen to (one output
-/// port each, in pick order), replay at start, inline creation.
+/// Catalog groups: dashboards and annotations by name, standalone last.
+fn grouped(all: &[UiControl], query: &str) -> Vec<(String, Vec<UiControl>)> {
+    let q = query.trim().to_lowercase();
+    let mut groups: std::collections::BTreeMap<(bool, String), Vec<UiControl>> =
+        std::collections::BTreeMap::new();
+    for c in all {
+        let group = control_group(c);
+        let hay =
+            format!("{group} {} {} {}", control_display_name(c), c.key, c.label).to_lowercase();
+        if !q.is_empty() && !hay.contains(&q) {
+            continue;
+        }
+        groups
+            .entry((c.origin.is_none(), group))
+            .or_default()
+            .push(c.clone());
+    }
+    groups
+        .into_iter()
+        .map(|((_, name), mut items)| {
+            items.sort_by(|a, b| control_display_name(a).cmp(&control_display_name(b)));
+            (name, items)
+        })
+        .collect()
+}
+
+/// Control source inspector: the sources declared by the surfaces
+/// (dashboards, annotations — D131) and the standalone controls, grouped by
+/// surface; one output port per checked source, in pick order; replay at
+/// start; inline creation of a standalone control.
 #[component]
 pub(super) fn ControlSourceForm(
     mut cx: EditorCx,
@@ -42,6 +70,8 @@ pub(super) fn ControlSourceForm(
         api::controls::list().await.unwrap_or_default()
     });
     let all: Vec<UiControl> = controls.read().clone().unwrap_or_default();
+    let mut query = use_signal(String::new);
+    let groups = grouped(&all, &query());
     let current = cfg();
     let full = current.controls.len() >= CONTROL_SOURCE_MAX;
     // Listed ids absent from the org (deleted meanwhile): kept visible so
@@ -72,17 +102,35 @@ pub(super) fn ControlSourceForm(
             if all.is_empty() && controls.read().is_some() {
                 p { class: "text-xs text-gray-500", {t!("flows-control-source-none-in-org")} }
             }
-            ul { class: "space-y-1",
-                for c in all.clone() {
-                    ControlRow {
-                        key: "{c.id}",
-                        control: c.clone(),
-                        checked: current.controls.contains(&c.id),
-                        port: current.controls.iter().position(|id| *id == c.id),
-                        disabled: !can_write || (full && !current.controls.contains(&c.id)),
-                        on_toggle: move |id| toggle(id),
+            if all.len() > 6 {
+                input {
+                    class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
+                    r#type: "search",
+                    placeholder: t!("flows-control-source-search").to_string(),
+                    value: "{query}",
+                    oninput: move |event| query.set(event.value()),
+                }
+            }
+            for (group, items) in groups {
+                div { key: "{group}", class: "space-y-1",
+                    p { class: "text-[10px] font-semibold uppercase tracking-wide text-gray-400",
+                        "{group}"
+                    }
+                    ul { class: "space-y-1",
+                        for c in items {
+                            ControlRow {
+                                key: "{c.id}",
+                                control: c.clone(),
+                                checked: current.controls.contains(&c.id),
+                                port: current.controls.iter().position(|id| *id == c.id),
+                                disabled: !can_write || (full && !current.controls.contains(&c.id)),
+                                on_toggle: move |id| toggle(id),
+                            }
+                        }
                     }
                 }
+            }
+            ul { class: "space-y-1",
                 for id in missing {
                     li {
                         key: "{id}",
@@ -146,7 +194,7 @@ fn ControlRow(
                 onchange: move |_| on_toggle.call(id),
             }
             div { class: "min-w-0 flex-1",
-                div { class: "text-sm truncate", "{control.label}" }
+                div { class: "text-sm truncate", {control_display_name(&control)} }
                 div { class: "text-xs text-gray-500 truncate",
                     code { "{control.key}" }
                     " · {kind}"

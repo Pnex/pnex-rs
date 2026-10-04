@@ -31,7 +31,12 @@ pub(super) fn save(mut cx: EditorCx, name: Option<String>) {
         match api::dashboards::update(&dashboard_id, params).await {
             Ok(d) => {
                 cx.name.set(d.name.clone());
-                cx.saved_layout.set(cx.layout.read().clone());
+                // D131: the server bound the control widgets to their
+                // provisioned controls — adopt the ids (edits made while
+                // saving stay local and dirty).
+                let local = state::adopt_bound_controls(&cx.layout.read(), &d.layout);
+                cx.layout.set(local);
+                cx.saved_layout.set(d.layout.clone());
                 cx.saved_version.set(d.current_version_number);
                 toasts::success(t!("db-saved", version: d.current_version_number).to_string());
             }
