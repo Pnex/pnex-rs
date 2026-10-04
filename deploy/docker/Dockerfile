@@ -68,6 +68,12 @@ RUN cd firmware && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256su
 
 # ── Wasm front (dx): built once, shared by every target platform ──────────
 FROM toolchain AS web
+# Short commit sha shown next to the semver ("0.1.0 (abc1234)"), read at
+# compile time by option_env!("BUILD_SHA"). Declared here, not in the
+# toolchain stage: a new value only invalidates the build RUN, never the
+# toolchain layers.
+ARG BUILD_SHA=dev
+ENV BUILD_SHA=${BUILD_SHA}
 # One cargo registry/git cache per stage: web and every TARGETARCH build run
 # in parallel, and a shared mount races on crate unpacking ("File exists").
 # dx downloads its tools (wasm-opt…) from GitHub into its data dir on first
@@ -84,6 +90,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pnex-cargo-registry-w
 # ── Native binaries, cross-compiled for $TARGETPLATFORM ───────────────────
 FROM toolchain AS build
 ARG TARGETARCH
+ARG BUILD_SHA=dev
+ENV BUILD_SHA=${BUILD_SHA}
 # target/ lives in a cache mount (incremental rebuilds), so artefacts are
 # copied out to /out within the same RUN.
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pnex-cargo-registry-${TARGETARCH} \
