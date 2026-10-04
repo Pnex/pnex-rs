@@ -3,8 +3,8 @@
 //! conversations (D145).
 
 use pnex_core::{
-    AiConversation, AiConversationDetail, AiConversationWrite, AiSendMessage, AiStatus,
-    AiTurnResponse, LlmProvider, LlmProviderInput, LlmProviderTest, Paginated,
+    AiConversation, AiConversationDetail, AiConversationWrite, AiRetention, AiSendMessage,
+    AiStatus, AiTurnResponse, LlmProvider, LlmProviderInput, LlmProviderTest, Paginated,
 };
 use uuid::Uuid;
 
@@ -126,6 +126,33 @@ pub async fn send_message(id: Uuid, msg: AiSendMessage) -> Result<AiTurnResponse
         reqwest::Method::POST,
         &format!("{CONVERSATIONS}/{id}/messages"),
         Some(serde_json::to_value(msg).unwrap_or_default()),
+    )
+    .await
+}
+
+/// `GET /api/v1/ai/retention` — conversation retention of the org.
+pub async fn retention() -> Result<AiRetention, ApiError> {
+    client::request(reqwest::Method::GET, "/api/v1/ai/retention", None).await
+}
+
+/// `PUT /api/v1/ai/retention` — org value (owner/admin), `None` = follow
+/// the platform.
+pub async fn set_retention(days: Option<u32>) -> Result<AiRetention, ApiError> {
+    client::request(
+        reqwest::Method::PUT,
+        "/api/v1/ai/retention",
+        Some(serde_json::json!({ "days": days })),
+    )
+    .await
+}
+
+/// `PUT /api/v1/ai/retention/default` — platform value (platform admin),
+/// `None` = built-in default.
+pub async fn set_platform_retention(days: Option<u32>) -> Result<serde_json::Value, ApiError> {
+    client::request(
+        reqwest::Method::PUT,
+        "/api/v1/ai/retention/default",
+        Some(serde_json::json!({ "days": days })),
     )
     .await
 }

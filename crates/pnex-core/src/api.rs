@@ -335,6 +335,25 @@ pub struct AiTurnResponse {
     pub conversation: AiConversation,
 }
 
+/// `GET /api/v1/ai/retention` — how long inactive assistant conversations
+/// are kept in the current org (D145).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AiRetention {
+    /// Effective value (days): the org value, at most the platform one.
+    pub days: u32,
+    /// Platform value (days).
+    pub platform_days: u32,
+    /// Org value (days), when the org shortened it.
+    #[serde(default)]
+    pub org_days: Option<u32>,
+    /// The caller may change the org value (owner/admin).
+    #[serde(default)]
+    pub editable: bool,
+    /// The caller may change the platform value (platform admin).
+    #[serde(default)]
+    pub platform_editable: bool,
+}
+
 /// `GET /api/v1/ai/conversations/export` — portability export.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiConversationsExport {

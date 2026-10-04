@@ -54,6 +54,8 @@ pub fn routes() -> Routes {
                 .delete(conversation_delete),
         )
         .add("/conversations/{id}/messages", post(conversation_send))
+        .add("/retention", get(retention_get).put(retention_put))
+        .add("/retention/default", put(retention_default_put))
 }
 
 /// `GET /api/v1/ai/status` — every member. Kill-switch off: answered
@@ -550,4 +552,88 @@ async fn run_conversation_turn(
     .await
     .map_err(db_error)?;
     Ok((reply, trace, updated))
+}
+
+// ─────────────────────── Retention (D145) ───────────────────────
+
+async fn retention_dto(ctx: &AppContext, org: &OrgContext) -> Result<pnex_core::AiRetention> {
+    let platform = conversations::retention_days(&ctx.db).await;
+    Ok(pnex_core::AiRetention {
+        days: conversations::effective_retention(platform, org.org.ai_retention_days),
+        platform_days: platform,
+        org_days: org
+            .org
+            .ai_retention_days
+            .and_then(|d| u32::try_from(d).ok()),
+        editable: org.can_administer(),
+        platform_editable: org.auth.user.platform_admin,
+    })
+}
+
+/// `GET /api/v1/ai/retention` — every member.
+async fn retention_get(org: OrgContext, State(ctx): State<AppContext>) -> Result<Response> {
+    format::json(retention_dto(&ctx, &org).await?)
+}
+
+/// `PUT /api/v1/ai/retention` — owner/admin; the org may only SHORTEN the
+/// platform value (`null` = follow the platform).
+async fn retention_put(
+    org: OrgContext,
+    State(ctx): State<AppContext>,
+    Json(body): Json<pnex_core::RetentionUpdate>,
+) -> Result<Response> {
+    if !org.can_administer() {
+        return Err(forbidden(
+            err_codes::AI_RETENTION_FORBIDDEN,
+            "Owner or admin role required to change the conversation retention",
+        ));
+    }
+    let platform = conversations::retention_days(&ctx.db).await;
+    if let Some(days) = body.days {
+        if days < 1 || days > platform {
+            return Err(Error::CustomError(
+                axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+                loco_rs::controller::ErrorDetail {
+                    error: Some(err_codes::AI_RETENTION_ABOVE_PLATFORM.to_string()),
+                    description: Some(
+                        "The organization may only keep conversations for less time than the platform"
+                            .to_string(),
+                    ),
+                    errors: Some(serde_json::json!({ "args": { "max": platform.to_string() } })),
+                },
+            ));
+        }
+    }
+    let mut active: crate::models::_entities::organizations::ActiveModel = org.org.clone().into();
+    active.ai_retention_days = sea_orm::Set(body.days.map(|d| d as i32));
+    let updated = active.update(&ctx.db).await.map_err(db_error)?;
+    tracing::info!(org_id = updated.id, days = ?body.days, "assistant conversation retention updated");
+    let mut org = org;
+    org.org = updated;
+    format::json(retention_dto(&ctx, &org).await?)
+}
+
+/// `PUT /api/v1/ai/retention/default` — platform admin (1..=3650 days,
+/// `null` = built-in default).
+async fn retention_default_put(
+    admin: crate::auth::PlatformAdmin,
+    State(ctx): State<AppContext>,
+    Json(body): Json<pnex_core::RetentionUpdate>,
+) -> Result<Response> {
+    if let Some(days) = body.days {
+        if !(1..=3650).contains(&days) {
+            return Err(Error::CustomError(
+                axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+                loco_rs::controller::ErrorDetail::new(
+                    err_codes::RETENTION_OUT_OF_RANGE,
+                    "Retention must be between 1 and 3650 days.".to_string(),
+                ),
+            ));
+        }
+    }
+    conversations::set_platform_retention(&ctx.db, body.days, admin.0.user.id)
+        .await
+        .map_err(db_error)?;
+    tracing::info!(days = ?body.days, by = admin.0.user.id, "platform conversation retention updated");
+    format::json(serde_json::json!({ "days": conversations::retention_days(&ctx.db).await }))
 }

@@ -90,6 +90,9 @@ pub fn AdminStatus() -> Element {
                 },
             }
             OrgsOverview {}
+            div { class: "mt-8",
+                crate::components::ai_retention::AiRetentionCard { platform: true }
+            }
             section { class: "mt-8 bg-white rounded-lg shadow p-5",
                 SecretsRekey {
                     stale: stale_secrets(&status.value().read()),

@@ -24,3 +24,7 @@ The System page shows the active organization's telemetry storage: how long meas
 - "No data received yet: the OpenObserve space is created with the first measurement." means the organization has not sent any telemetry: connect a device and subscribe a pin (or write a metric from a flow).
 - "OpenObserve is not configured on this server." means telemetry storage is not available on this installation; ask the platform administrator.
 - Members and Viewers see the page read-only.
+
+## Assistant conversations
+
+The **Assistant conversations** card shows how long conversations without a new message are kept before automatic erasure. An owner or admin can shorten it for the organization (never beyond the platform value) or click **Follow the platform**.
