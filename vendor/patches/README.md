@@ -92,6 +92,15 @@ d'un abort. Fichier : `wry/src/android/mod.rs` (chemin du protocole custom).
 Câblage : `wry = { path = "vendor/patches/wry" }` dans `[patch.crates-io]`.
 Le fix est intégré en amont ≥ 0.54 — à retirer quand dioxus monte wry.
 
+Second patch (2026-10-04) : feature `pnex-automation` (désactivée par
+défaut) dans `wry/src/webkitgtk/web_context.rs`. Le contexte WebKitGTK
+n'autorise une session WebDriver (WebKitWebDriver, suite e2e Linux) que si
+la feature est compilée — uniquement via la feature `e2e` de pnex-frontend
+(`task build:frontend:linux:e2e`) — **et** que `PNEX_E2E_AUTOMATION` est posé
+au lancement. Aucun build distribué ne l'active (revue sécurité D130). Le
+retrait du fix #1551 ne doit pas emporter ce patch : le garder tant que la
+suite `e2e/tests-linux` existe.
+
 ## coolprop/ (mécanisme différent : patch C++ au build)
 
 `coolprop/exception-guards.patch` ne fait **pas** partie du mécanisme

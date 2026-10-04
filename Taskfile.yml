@@ -173,6 +173,16 @@ tasks:
       - mkdir -p target/dist
       - tar -C {{.DX_OUT}}/release/linux -czf target/dist/pnex-desktop-linux-{{.ARCH}}.tar.gz --transform 's,^app,pnex,' app
 
+  build:frontend:linux:e2e:
+    desc: Build the Linux e2e app (feature `e2e` = harness hooks + WebKitWebDriver automation; never distributed) → target/dx/pnex-frontend/linux-e2e/
+    deps: [css:build, js:build]
+    cmds:
+      - cd crates/pnex-frontend && dx build --linux --release --no-default-features --features "desktop,e2e"
+      # Copied out of the dx output: build:frontend:linux reruns dx (no
+      # sources check), the e2e app can never end up in its tarball.
+      - rm -rf {{.DX_OUT}}/linux-e2e
+      - cp -r {{.DX_OUT}}/release/linux/app {{.DX_OUT}}/linux-e2e
+
   # Windows cross-build from Linux (x86_64-pc-windows-gnu). Prerequisites:
   # `apt install mingw-w64` + `rustup target add x86_64-pc-windows-gnu`.
   # win-linker.sh strips the MSVC-only flags dx injects for Windows bundles.
@@ -677,6 +687,13 @@ tasks:
       - task: build:frontend:android:e2e
       - adb install -r {{.ROOT_DIR}}/{{.DX_OUT}}/pnex-e2e.apk
       - bunx playwright test -c playwright.android.config.ts {{.CLI_ARGS}}
+
+  e2e:linux:
+    desc: Native Linux desktop suite through WebKitWebDriver (builds the e2e app; apt webkit2gtk-driver; e2e/README.md "Linux")
+    dir: e2e
+    cmds:
+      - task: build:frontend:linux:e2e
+      - bunx playwright test -c playwright.linux.config.ts {{.CLI_ARGS}}
 
   lint:
     desc: Clippy sur tout le workspace

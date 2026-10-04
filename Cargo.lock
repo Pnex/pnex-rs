@@ -7889,6 +7889,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "webbrowser",
+ "wry",
 ]
 
 [[package]]

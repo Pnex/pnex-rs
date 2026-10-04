@@ -5,3 +5,5 @@ playwright-report/
 captures/
 test-results-android/
 playwright-report-android/
+test-results-linux/
+playwright-report-linux/

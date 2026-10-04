@@ -85,6 +85,11 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 # passage rend les deux chemins sûrs.
 webbrowser = "1"
 
+# Linux e2e only (feature `e2e`): turns on the vendored wry patch that lets
+# WebKitWebDriver drive the app. Same crate dioxus-desktop already uses.
+[target.'cfg(target_os = "linux")'.dependencies]
+wry = { version = "0.53", default-features = false, optional = true }
+
 # Persistance du store natif (tokens, URL serveur) — Android : résolution du
 # dossier files de l'app par ndk_context + JNI brut (même école que le patch
 # webbrowser vendu, versions alignées pour dédupliquer les crates).
@@ -126,7 +131,8 @@ router = ["dioxus/router"]
 # On-device diagnostics (Take 360 raw state line). Off in every shipped
 # build; opt in for device debugging (ANDROID_FEATURES="mobile diag").
 diag = []
-# Native e2e harness hooks (window.__pnexNavigate). Test builds only
-# (task build:frontend:android:e2e), never a shipped APK. Does not imply
-# `diag`: the suite checks the UI as shipped.
-e2e = []
+# Native e2e harness hooks (window.__pnexNavigate; Linux: WebKitWebDriver
+# automation allowed under PNEX_E2E_AUTOMATION). Test builds only
+# (task build:frontend:android:e2e / linux:e2e), never shipped. Does not
+# imply `diag`: the suite checks the UI as shipped.
+e2e = ["wry/pnex-automation"]
