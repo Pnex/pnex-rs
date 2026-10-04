@@ -54,6 +54,7 @@ pub mod settings;
 pub mod shared_valkey;
 pub mod singleton;
 pub mod stitch;
+pub mod surface_controls;
 pub mod system_status;
 pub mod telemetry;
 pub mod tour;

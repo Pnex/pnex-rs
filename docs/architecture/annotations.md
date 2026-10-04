@@ -311,11 +311,15 @@ D60 restent ouvertes) :
 Deux kinds additifs, rendus avec les cartes des dashboards
 (`components/surface/`, `surfaces-controls.md`) :
 
-- **`control`** : `target = {type: "control", control_id}`. La carte
+- **`control`** : `target = {type: "control", control_id, kind?}`. La carte
   (interrupteur, curseur, bouton, saisie) suit le type du contrôle ; un
   membre l'actionne, un viewer la voit désactivée. L'écriture porte
   `via = annotation:{layer_id}` ; l'effet sur les devices est décrit par
-  un flow `control-source` (D127). Save : contrôle inconnu de l'org → 400.
+  un flow `control-source` (D127). **D131** : `control_id` nil + `kind` =
+  l'item déclare sa propre source, enregistrée au save (origine
+  `annotation:{layer}:{item}`) et listée dans le nœud sous cet ensemble ;
+  un id d'un contrôle existant = lien (état partagé). Save : contrôle
+  inconnu de l'org sans `kind` → 400.
 - **`reading`** : `target = {type: "reading", source: SourceRef, spark}` —
   même liaison que les widgets (télémétrie device ou device virtuel de
   flow, mémoire d'org). `spark: true` trace l'historique de la fenêtre

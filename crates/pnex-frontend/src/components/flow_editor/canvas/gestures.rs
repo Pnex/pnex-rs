@@ -124,7 +124,9 @@ pub(super) fn canvas_pointer_move(event: PointerEvent, mut cx: EditorCx) {
                 return;
             };
             let cursor = geometry::to_graph(client, rect, cx.pan.cloned(), cx.zoom.cloned());
+            // Forward wiring lands on an input: a source node is no target.
             let hover_target = geometry::node_at(&cx.graph.peek(), cursor)
+                .filter(|node| reverse || geometry::accepts_input(node))
                 .map(|node| node.id.clone())
                 .filter(|id| id != &from_id);
             cx.interaction.set(Interaction::Wiring {

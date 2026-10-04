@@ -194,6 +194,12 @@ pub fn notify_input_labels(config: &pnex_core::NotifyNodeConfig) -> Vec<String> 
     labels
 }
 
+/// Whether a node takes incoming wires: event sources (`control-source`,
+/// fed by the surfaces) have no input port.
+pub fn accepts_input(node: &FlowNode) -> bool {
+    !matches!(node.kind, FlowNodeKind::ControlSource { .. })
+}
+
 /// Input anchor rows of a node: y offsets **relative** to the node, one per
 /// input row — device-write: per configured output pin (natural sorted
 /// order); function node: per declared input, **declared order** (no sort).

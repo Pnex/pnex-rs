@@ -434,6 +434,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
     // affichés à droite des ancres (port « tout » inclus). Hauteur dyna-
     // mique : le nœud grandit avec le nombre de ports (pas PORT_PITCH).
     let out_count = state::output_count_of(&node);
+    let accepts_input = geometry::accepts_input(&node);
     let node_h = geometry::node_height_for(&node);
     // Libellés de ports affichés dès qu'il y a plusieurs ports, et toujours
     // pour une fonction (une sortie nommée unique doit montrer son nom ;
@@ -489,15 +490,20 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                 .collect()
         }
         pnex_core::FlowNodeKind::ControlSource { config } => {
-            // One port per listened control, labelled by its key.
+            // One port per listened control, labelled by its key; a node
+            // with no control yet still shows its (unlabelled) output.
             let rel_y = |port: usize| node_h * (port + 1) as f64 / (out_count + 1) as f64;
-            config
-                .controls
-                .iter()
-                .map(crate::api::controls::key_of)
-                .enumerate()
-                .map(|(i, label)| (i, rel_y(i), label, node.id.clone()))
-                .collect()
+            if config.controls.is_empty() {
+                vec![(0, rel_y(0), String::new(), node.id.clone())]
+            } else {
+                config
+                    .controls
+                    .iter()
+                    .map(crate::api::controls::key_of)
+                    .enumerate()
+                    .map(|(i, label)| (i, rel_y(i), label, node.id.clone()))
+                    .collect()
+            }
         }
         pnex_core::FlowNodeKind::MemoryRead { config } => {
             // Port 0 = every key as one object, then one port per key.
@@ -682,9 +688,10 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                 {subtitle}
             }
             // Input port of plain single-input nodes (device-write omits it
-            // — its pin rows carry the visual). Grabbable like the pin rows:
-            // drag from the anchor wires in reverse.
-            if in_anchor_rows.is_empty() {
+            // — its pin rows carry the visual; event sources have none).
+            // Grabbable like the pin rows: drag from the anchor wires in
+            // reverse.
+            if in_anchor_rows.is_empty() && accepts_input {
                 circle {
                     cx: "0",
                     cy: "{node_h / 2.0}",

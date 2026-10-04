@@ -39,7 +39,8 @@ pub const VIZ_WIDGET_TYPES: &[&str] = &[
 ];
 
 /// Control widget types (D125): each drives one org control
-/// (`WidgetOptions.control`) and may show one optional state source.
+/// (`WidgetOptions.control`, provisioned at save when absent, D131) and may
+/// show one optional state source.
 pub const CONTROL_WIDGET_TYPES: &[&str] = &["switch", "slider", "button", "number"];
 
 /// Max number of sections of a mobile dashboard (D124).
@@ -188,8 +189,9 @@ pub struct WidgetOptions {
     /// `symbol` widget options (present iff type is symbol).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub symbol: Option<SymbolOptions>,
-    /// Org control driven by a control widget (present iff the type is one
-    /// of [`CONTROL_WIDGET_TYPES`]).
+    /// Org control driven by a control widget (only on
+    /// [`CONTROL_WIDGET_TYPES`]; absent = the server provisions the widget's
+    /// own control at save, D131).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub control: Option<crate::ui_control::ControlRef>,
     /// Mobile card width: 1 = half, 2 = full row (default 2). Ignored on
@@ -718,13 +720,9 @@ pub fn validate_widget(
         );
         return;
     }
+    // A control widget without a control is valid: the server provisions
+    // its own control when the dashboard is saved (D131).
     let is_control = CONTROL_WIDGET_TYPES.contains(&widget_type);
-    if is_control && options.control.is_none() {
-        push(
-            "control_missing",
-            "pick the control driven by this widget".into(),
-        );
-    }
     if !is_control && options.control.is_some() {
         push(
             "control_unexpected",
@@ -1316,7 +1314,7 @@ mod tests {
     }
 
     #[test]
-    fn control_widgets_need_a_control_and_accept_one_state_source() {
+    fn control_widgets_accept_one_state_source_and_an_optional_control() {
         let ok = control_widget("sw", "switch");
         assert!(validate_layout(&layout(vec![ok.clone()])).is_empty());
 
@@ -1329,10 +1327,10 @@ mod tests {
         let v = validate_layout(&layout(vec![two]));
         assert!(v.iter().any(|x| x.code == "control_state_sources"));
 
-        let mut missing = ok.clone();
-        missing.options.control = None;
-        let v = validate_layout(&layout(vec![missing]));
-        assert!(v.iter().any(|x| x.code == "control_missing"));
+        // No control yet: valid, the server provisions it at save (D131).
+        let mut unbound = ok.clone();
+        unbound.options.control = None;
+        assert!(validate_layout(&layout(vec![unbound])).is_empty());
 
         let mut gauge = widget("g", "gauge");
         gauge.options.control = ok.options.control.clone();

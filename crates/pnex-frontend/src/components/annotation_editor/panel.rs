@@ -16,7 +16,8 @@ use crate::api;
 use crate::api::annotation_layers::{classify_save_error, SaveError};
 use crate::components::annotation_editor::inspector::AnnotationInspector;
 use crate::components::annotation_editor::state::{
-    has_item, item_rows, item_rows_flat, move_item, place_item, AnnotationEditorCx, EditorItemRow,
+    adopt_bound_controls, has_item, item_rows, item_rows_flat, move_item, place_item,
+    AnnotationEditorCx, EditorItemRow,
 };
 use crate::components::annotation_editor::versions::AnnotationVersionsDrawer;
 use crate::components::modal::Modal;
@@ -238,6 +239,8 @@ pub fn AnnotationLayerPanel(
                                     .await;
                                 match res {
                                     Ok(d) => {
+                                        let local = adopt_bound_controls(&cx.doc.cloned(), &d.doc);
+                                        cx.doc.set(local);
                                         cx.saved_doc.set(d.doc.clone());
                                         cx.saved_version.set(d.doc_version_number);
                                         crate::state::toasts::success(t!("toast-annot-saved"));
@@ -408,6 +411,8 @@ pub fn AnnotationLayerPanel(
                                             .await
                                         {
                                             Ok(d) => {
+                                                let local = adopt_bound_controls(&cx.doc.cloned(), &d.doc);
+                                                cx.doc.set(local);
                                                 cx.saved_doc.set(d.doc.clone());
                                                 cx.saved_version.set(d.doc_version_number);
                                                 crate::state::toasts::success(t!("toast-annot-saved"));

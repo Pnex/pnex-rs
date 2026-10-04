@@ -3131,14 +3131,15 @@ fn control_source_validates_projects_and_lists_refs() {
     assert_eq!(cs["wires"].as_array().unwrap().len(), 2, "{cs}");
     assert_eq!(cs["pnex_org_id"], 42);
 
-    // A palette drop (empty config) is flagged until a control is picked.
+    // A palette drop (empty config) saves as a draft (D133): the deploy
+    // gate refuses it until a source is checked.
     let empty: FlowGraph = serde_json::from_value(serde_json::json!({
         "nodes": [{"id": "cs", "kind": "control_source"}]
     }))
     .unwrap();
-    let codes: Vec<String> = validate_graph(&empty)
-        .iter()
-        .map(|x| x.code.clone())
-        .collect();
-    assert_eq!(codes, ["control_source_empty"], "{codes:?}");
+    assert!(
+        validate_graph(&empty).is_empty(),
+        "{:?}",
+        validate_graph(&empty)
+    );
 }

@@ -86,7 +86,7 @@ Rules:
 | `functions` | `@functions` | Starlark template, live test, new version, JS runtime error, delete |
 | `flows` | `@flows` | canvas build (inject → values → memory write), save, deploy, value in the memory store |
 | `dashboards` | `@dashboards` | Value widget bound to a memory key fed by a deployed flow, live view |
-| `controls` | `@dashboards` | mobile dashboard (format tile), switch card bound to an org control, a deployed control-source → memory-write flow receives the press |
+| `controls` | `@dashboards` | mobile dashboard (creation modal), switch card declaring its own source at save (no control to pick, D131), a deployed control-source → memory-write flow receives the press; deleting the dashboard deletes the unused source |
 | `annotation-controls` | `@studio` | control item on a panorama, operated from the tour preview side panel, reaches a deployed flow |
 | `events` | `@events` | Event log node → OpenObserve → Events page |
 | `notifications` | `@notifications` | SMTP channel tested from its form: the mail lands in mailcrab |

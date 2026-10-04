@@ -81,7 +81,11 @@ fn spec_of(m: &controls::Model) -> Result<ControlSpec> {
     serde_json::from_value(m.spec.clone()).map_err(|_| Error::InternalServerError)
 }
 
-fn dto(m: controls::Model, listened_by: Vec<ControlListener>) -> Result<UiControl> {
+fn dto(
+    m: controls::Model,
+    listened_by: Vec<ControlListener>,
+    origin: Option<pnex_core::ui_control::ControlOrigin>,
+) -> Result<UiControl> {
     let spec = spec_of(&m)?;
     Ok(UiControl {
         id: m.id,
@@ -90,9 +94,21 @@ fn dto(m: controls::Model, listened_by: Vec<ControlListener>) -> Result<UiContro
         label: m.label,
         spec,
         listened_by,
+        origin,
         created_at: m.created_at.to_rfc3339(),
         updated_at: m.updated_at.to_rfc3339(),
     })
+}
+
+/// Display origin of the surface-declared controls among `rows` (D131).
+async fn origins_of(
+    db: &DatabaseConnection,
+    org_id: i64,
+    rows: &[controls::Model],
+) -> Result<std::collections::HashMap<Uuid, pnex_core::ui_control::ControlOrigin>> {
+    crate::services::surface_controls::resolve_origins(db, org_id, rows)
+        .await
+        .map_err(|_| Error::InternalServerError)
 }
 
 /// Field checks of a full definition: `Some(response)` = invalid.
@@ -192,11 +208,13 @@ async fn list(
         .await
         .map_err(|_| Error::InternalServerError)?;
     let mut listeners = store::listeners_by_control(&ctx, org.org.id).await?;
+    let mut origins = origins_of(&ctx.db, org.org.id, &rows).await?;
     let results: Vec<UiControl> = rows
         .into_iter()
         .map(|m| {
             let by = listeners.remove(&m.id).unwrap_or_default();
-            dto(m, by)
+            let origin = origins.remove(&m.id);
+            dto(m, by, origin)
         })
         .collect::<Result<_>>()?;
 
@@ -230,7 +248,10 @@ async fn detail(
         .await?
         .remove(&id)
         .unwrap_or_default();
-    Ok(format::json(dto(m, by)?).into_response())
+    let origin = origins_of(&ctx.db, org.org.id, std::slice::from_ref(&m))
+        .await?
+        .remove(&id);
+    Ok(format::json(dto(m, by, origin)?).into_response())
 }
 
 /// `POST /api/v1/controls` — 201.
@@ -260,7 +281,7 @@ async fn create(
     .insert(&ctx.db)
     .await
     .map_err(|_| Error::InternalServerError)?;
-    Ok((StatusCode::CREATED, format::json(dto(m, Vec::new())?)).into_response())
+    Ok((StatusCode::CREATED, format::json(dto(m, Vec::new(), None)?)).into_response())
 }
 
 /// `PATCH /api/v1/controls/{id}` — key, label and/or spec. Changing the
@@ -308,7 +329,10 @@ async fn update(
         .await?
         .remove(&id)
         .unwrap_or_default();
-    Ok(format::json(dto(updated, by)?).into_response())
+    let origin = origins_of(&ctx.db, org.org.id, std::slice::from_ref(&updated))
+        .await?
+        .remove(&id);
+    Ok(format::json(dto(updated, by, origin)?).into_response())
 }
 
 /// `DELETE /api/v1/controls/{id}` — 204; 409 while deployed flows listen to

@@ -507,3 +507,245 @@ async fn deploy_gate_listeners_and_delete_guard() {
     })
     .await;
 }
+
+async fn patch(
+    server: &axum_test::TestServer,
+    token: &str,
+    org: i64,
+    path: &str,
+    body: serde_json::Value,
+) -> axum_test::TestResponse {
+    server
+        .patch(path)
+        .add_header("Authorization", format!("Bearer {token}"))
+        .add_header("X-Org-Id", org.to_string())
+        .add_header("Content-Type", "application/json")
+        .json(&body)
+        .await
+}
+
+async fn get(
+    server: &axum_test::TestServer,
+    token: &str,
+    org: i64,
+    path: &str,
+) -> serde_json::Value {
+    server
+        .get(path)
+        .add_header("Authorization", format!("Bearer {token}"))
+        .add_header("X-Org-Id", org.to_string())
+        .await
+        .json::<serde_json::Value>()
+}
+
+/// Desktop layout with control widgets `(id, type, title, control)`.
+fn control_layout(widgets: &[(&str, &str, &str, Option<&str>)]) -> serde_json::Value {
+    let widgets: Vec<serde_json::Value> = widgets
+        .iter()
+        .enumerate()
+        .map(|(i, (id, ty, title, control))| {
+            let mut options = serde_json::json!({});
+            if let Some(c) = control {
+                options["control"] = serde_json::json!({ "control_id": c });
+            }
+            serde_json::json!({
+                "id": id, "type": ty, "title": title,
+                "x": 40 + 300 * i as i64, "y": 40, "w": 240, "h": 120,
+                "source": [], "options": options,
+            })
+        })
+        .collect();
+    serde_json::json!({
+        "canvas": { "width": 1600, "height": 900 },
+        "widgets": widgets,
+        "wires": [],
+    })
+}
+
+/// Control bound to widget `id` in a dashboard response.
+fn bound_control(dashboard: &serde_json::Value, id: &str) -> String {
+    dashboard["layout"]["widgets"]
+        .as_array()
+        .expect("widgets")
+        .iter()
+        .find(|w| w["id"] == id)
+        .and_then(|w| w["options"]["control"]["control_id"].as_str())
+        .unwrap_or_else(|| panic!("widget {id} bound: {dashboard}"))
+        .to_string()
+}
+
+fn control_by_id<'a>(list: &'a serde_json::Value, id: &str) -> Option<&'a serde_json::Value> {
+    list["results"]
+        .as_array()
+        .expect("results")
+        .iter()
+        .find(|c| c["id"] == id)
+}
+
+/// D131: a control widget declares its own control — provisioned at save
+/// (stable id and generated key, label following the title, origin
+/// resolved for the flow catalog), released when the widget or the
+/// dashboard goes away (kept standalone while a flow references it), and a
+/// foreign control id never crosses orgs.
+#[tokio::test]
+#[serial]
+async fn surface_declared_controls_are_provisioned_and_released() {
+    with_app(|server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let created = post(
+            &server,
+            &env.alice,
+            org,
+            "/api/v1/dashboards",
+            serde_json::json!({
+                "name": "Machine room",
+                "layout": control_layout(&[
+                    ("w-0001", "switch", "Light", None),
+                    ("w-0002", "slider", "", None),
+                ]),
+            }),
+        )
+        .await;
+        created.assert_status(axum_test::http::StatusCode::CREATED);
+        let dash: serde_json::Value = created.json();
+        let dash_id = dash["id"].as_str().unwrap().to_string();
+        let light = bound_control(&dash, "w-0001");
+        let dimmer = bound_control(&dash, "w-0002");
+        assert_ne!(light, dimmer);
+
+        let list = get(&server, &env.alice, org, "/api/v1/controls").await;
+        let c = control_by_id(&list, &light).expect("light provisioned");
+        let short = &dash_id.replace('-', "")[..8];
+        assert_eq!(c["key"], format!("dash-{short}.w-0001"));
+        assert_eq!(c["label"], "Light");
+        assert_eq!(c["spec"]["kind"], "switch");
+        assert_eq!(c["origin"]["surface"], "dashboard");
+        assert_eq!(c["origin"]["surface_id"], dash_id.as_str());
+        assert_eq!(c["origin"]["surface_name"], "Machine room");
+        assert_eq!(c["origin"]["item_id"], "w-0001");
+        let d = control_by_id(&list, &dimmer).expect("dimmer provisioned");
+        assert_eq!(d["label"], "w-0002", "untitled widget: item id as label");
+        assert_eq!(d["spec"]["kind"], "slider");
+
+        // Re-save without the ids (an editor that lost them): same controls
+        // (found by origin); the title change renames the light.
+        let saved = patch(
+            &server,
+            &env.alice,
+            org,
+            &format!("/api/v1/dashboards/{dash_id}"),
+            serde_json::json!({
+                "expected_version_number": 1,
+                "layout": control_layout(&[
+                    ("w-0001", "switch", "Main light", None),
+                    ("w-0002", "slider", "", Some(&dimmer)),
+                ]),
+            }),
+        )
+        .await;
+        saved.assert_status_ok();
+        let saved: serde_json::Value = saved.json();
+        assert_eq!(bound_control(&saved, "w-0001"), light);
+        assert_eq!(bound_control(&saved, "w-0002"), dimmer);
+        let list = get(&server, &env.alice, org, "/api/v1/controls").await;
+        assert_eq!(control_by_id(&list, &light).unwrap()["label"], "Main light");
+
+        // A flow references the light (saved, not deployed).
+        create_listening_flow(&server, &env.alice, org, "Light flow", &light).await;
+
+        // Widget removed: its unused control is deleted.
+        patch(
+            &server,
+            &env.alice,
+            org,
+            &format!("/api/v1/dashboards/{dash_id}"),
+            serde_json::json!({
+                "expected_version_number": 2,
+                "layout": control_layout(&[("w-0001", "switch", "Main light", Some(&light))]),
+            }),
+        )
+        .await
+        .assert_status_ok();
+        let list = get(&server, &env.alice, org, "/api/v1/controls").await;
+        assert!(
+            control_by_id(&list, &dimmer).is_none(),
+            "unused control deleted"
+        );
+
+        // Dashboard deleted: the light survives as a standalone control
+        // (a flow uses it).
+        server
+            .delete(&format!("/api/v1/dashboards/{dash_id}"))
+            .add_header("Authorization", format!("Bearer {}", env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await
+            .assert_status(axum_test::http::StatusCode::NO_CONTENT);
+        let list = get(&server, &env.alice, org, "/api/v1/controls").await;
+        let kept = control_by_id(&list, &light).expect("used control kept");
+        assert!(kept.get("origin").is_none(), "released: {kept}");
+
+        // Org isolation: Bob linking Alice's control gets his own one.
+        let bob_org = personal_org(&server, &env.bob).await;
+        let bob_dash: serde_json::Value = post(
+            &server,
+            &env.bob,
+            bob_org,
+            "/api/v1/dashboards",
+            serde_json::json!({
+                "name": "Bob",
+                "layout": control_layout(&[("w-0001", "switch", "", Some(&light))]),
+            }),
+        )
+        .await
+        .json();
+        let bob_control = bound_control(&bob_dash, "w-0001");
+        assert_ne!(bob_control, light, "foreign control never bound");
+        let bob_list = get(&server, &env.bob, bob_org, "/api/v1/controls").await;
+        assert!(control_by_id(&bob_list, &bob_control).is_some());
+        assert!(control_by_id(&bob_list, &light).is_none());
+    })
+    .await;
+}
+
+/// D133: a flow whose `control-source` has no source yet saves as a draft
+/// (the flow may be built before its surfaces); the deploy refuses it.
+#[tokio::test]
+#[serial]
+async fn empty_control_source_saves_but_never_deploys() {
+    with_app(|server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let res = post(
+            &server,
+            &env.alice,
+            org,
+            "/api/v1/flows",
+            serde_json::json!({
+                "name": "Draft",
+                "graph": {"nodes": [
+                    {"id": "cs", "kind": "control_source", "config": {"controls": []},
+                     "outputs": [{"port": 0, "targets": ["dbg"]}]},
+                    {"id": "dbg", "kind": "debug"}
+                ]},
+            }),
+        )
+        .await;
+        res.assert_status(axum_test::http::StatusCode::CREATED);
+        let flow_id = res.json::<serde_json::Value>()["id"].as_i64().unwrap();
+        let deploy = post(
+            &server,
+            &env.alice,
+            org,
+            &format!("/api/v1/flows/{flow_id}/deploy"),
+            serde_json::json!({}),
+        )
+        .await;
+        deploy.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
+        let body: serde_json::Value = deploy.json();
+        assert_eq!(
+            body["violations"][0]["code"], "control_source_empty",
+            "{body}"
+        );
+        assert_eq!(body["violations"][0]["node_id"], "cs", "{body}");
+    })
+    .await;
+}

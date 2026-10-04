@@ -247,17 +247,31 @@ pub(crate) async fn video_record_conflicts_for_deploy(
         .collect())
 }
 
-/// Org controls gate (D127): every control listed by a `control-source`
-/// must exist in the org, otherwise the node would wait forever on a value
-/// nobody can write. One violation per (node, missing control).
+/// Org controls gate (D127, D133): a `control-source` listens to at least
+/// one control (an empty node saves as a draft, never deploys), and every
+/// listed control must exist in the org, otherwise the node would wait
+/// forever on a value nobody can write. One violation per empty node and
+/// per (node, missing control).
 pub(crate) async fn unknown_controls_for_deploy(
     ctx: &AppContext,
     org_id: i64,
     candidate_graph: &FlowGraph,
 ) -> Result<Vec<pnex_core::FlowViolation>> {
+    let mut violations = Vec::new();
+    for n in &candidate_graph.nodes {
+        if let pnex_core::FlowNodeKind::ControlSource { config } = &n.kind {
+            if let Some((code, message)) = config.check_deployable() {
+                violations.push(pnex_core::FlowViolation::new(
+                    Some(n.id.as_str()),
+                    code,
+                    message,
+                ));
+            }
+        }
+    }
     let wanted = pnex_core::control_refs_of(candidate_graph);
     if wanted.is_empty() {
-        return Ok(Vec::new());
+        return Ok(violations);
     }
     let existing: std::collections::HashSet<uuid::Uuid> = crate::models::controls::Controls::find()
         .filter(crate::models::_entities::controls::Column::OrgId.eq(org_id))
@@ -268,7 +282,6 @@ pub(crate) async fn unknown_controls_for_deploy(
         .into_iter()
         .map(|m| m.id)
         .collect();
-    let mut violations = Vec::new();
     for n in &candidate_graph.nodes {
         let pnex_core::FlowNodeKind::ControlSource { config } = &n.kind else {
             continue;

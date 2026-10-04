@@ -203,39 +203,53 @@ async fn validate_doc_devices(
 
 /// Numéro de la dernière version d'une couche (0 si aucune — ne doit pas
 /// arriver : la création pose toujours v1).
-/// Every `control` item references a control of the org (D125). Weak at
-/// read like the device targets: a control deleted later renders as such.
-async fn validate_doc_controls(
-    db: &DatabaseConnection,
+/// D131: provisions the controls declared by the `control` items (nil id +
+/// kind), keeps the links to existing controls of the org, and returns the
+/// document with every control item bound — the version stored. A link to
+/// a control absent from the org without a kind to fall back on is
+/// refused. Runs inside the save transaction.
+async fn bind_doc_controls<C: sea_orm::ConnectionTrait>(
+    db: &C,
     org_id: i64,
+    layer_id: Uuid,
     doc: &AnnotationDoc,
-) -> Result<(), AnnotationLayerWriteError> {
-    let mut ids: Vec<uuid::Uuid> = doc
+) -> Result<AnnotationDoc, AnnotationLayerWriteError> {
+    use crate::services::surface_controls::{sync_surface, DeclaredControl, SyncError};
+    let items: Vec<DeclaredControl> = doc
         .items
         .iter()
         .filter_map(|item| match &item.target {
-            AnnotationTarget::Control { control_id } => Some(*control_id),
+            AnnotationTarget::Control { control_id, kind } => Some(DeclaredControl {
+                item_id: item.id.clone(),
+                kind: *kind,
+                label: item.label.clone(),
+                current: (!control_id.is_nil()).then_some(*control_id),
+            }),
             _ => None,
         })
         .collect();
-    if ids.is_empty() {
-        return Ok(());
+    let outcome = sync_surface(
+        db,
+        org_id,
+        pnex_core::ui_control::ORIGIN_ANNOTATION,
+        layer_id,
+        &items,
+        None,
+    )
+    .await
+    .map_err(|e| match e {
+        SyncError::UnknownControl(id) => AnnotationLayerWriteError::UnknownControl { id },
+        SyncError::Db => AnnotationLayerWriteError::Db,
+    })?;
+    let mut bound = doc.clone();
+    for item in &mut bound.items {
+        if let AnnotationTarget::Control { control_id, .. } = &mut item.target {
+            if let Some(id) = outcome.bound.get(&item.id) {
+                *control_id = *id;
+            }
+        }
     }
-    ids.sort();
-    ids.dedup();
-    let known: HashSet<uuid::Uuid> = crate::models::_entities::controls::Entity::find()
-        .filter(crate::models::_entities::controls::Column::OrgId.eq(org_id))
-        .filter(crate::models::_entities::controls::Column::Id.is_in(ids.clone()))
-        .all(db)
-        .await
-        .map_err(|_| AnnotationLayerWriteError::Db)?
-        .into_iter()
-        .map(|c| c.id)
-        .collect();
-    match ids.into_iter().find(|id| !known.contains(id)) {
-        Some(id) => Err(AnnotationLayerWriteError::UnknownControl { id }),
-        None => Ok(()),
-    }
+    Ok(bound)
 }
 
 pub async fn latest_version_number<C: sea_orm::ConnectionTrait>(
@@ -350,6 +364,7 @@ pub async fn create_annotation_layer(
 /// Enregistre une **nouvelle version** (append-only) avec concurrence
 /// optimiste : `expected_version_number` doit être la version courante
 /// (la dernière — école `append_tour_version`).
+/// Returns the stored document (control items bound, D131).
 #[allow(clippy::too_many_arguments)]
 pub async fn append_annotation_layer_version(
     db: &DatabaseConnection,
@@ -359,12 +374,11 @@ pub async fn append_annotation_layer_version(
     new_name: Option<String>,
     author: Option<String>,
     note: Option<String>,
-) -> Result<(annotation_layers::Model, i64), AnnotationLayerWriteError> {
+) -> Result<(annotation_layers::Model, i64, AnnotationDoc), AnnotationLayerWriteError> {
     let name_for_validation = new_name.as_deref().unwrap_or(&layer.name);
     validate_layer_write(name_for_validation, doc)?;
     validate_doc_assets(db, layer.org_id, doc).await?;
     validate_doc_devices(db, layer.org_id, doc).await?;
-    validate_doc_controls(db, layer.org_id, doc).await?;
     // Pivot UX : un ensemble est ancré sur SON média (D55 renforcé au
     // niveau couche) — tout item ailleurs est refusé. Un ensemble-tour
     // : l'ancre doit être un média de scène du tour (version
@@ -426,6 +440,7 @@ pub async fn append_annotation_layer_version(
             current: latest,
         });
     }
+    let doc = &bind_doc_controls(&txn, layer.org_id, layer.id, doc).await?;
     let mut active: annotation_layers::ActiveModel = layer.clone().into();
     if let Some(name) = new_name.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
         active.name = Set(name.to_string());
@@ -463,5 +478,5 @@ pub async fn append_annotation_layer_version(
         version = new_version.version_number,
         "couche d'annotations enregistrée (nouvelle version)"
     );
-    Ok((layer, new_version.version_number))
+    Ok((layer, new_version.version_number, doc.clone()))
 }

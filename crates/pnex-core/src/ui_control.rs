@@ -349,6 +349,76 @@ pub struct ControlRef {
     pub control_id: Uuid,
 }
 
+// ──────────────────────── Surface-declared controls ────────────────────────
+
+/// Surface kind of a dashboard control widget (D131).
+pub const ORIGIN_DASHBOARD: &str = "dashboard";
+/// Surface kind of an annotation `control` item (D131).
+pub const ORIGIN_ANNOTATION: &str = "annotation";
+/// Max length of a surface item id that declares a control (the origin
+/// string `{kind}:{uuid}:{item}` stays under the column width).
+pub const CONTROL_ORIGIN_ITEM_MAX_LEN: usize = 128;
+
+/// Origin of a control declared by a surface item (D131):
+/// `{kind}:{surface_uuid}:{item_id}`. The server provisions one control per
+/// declaring item when the surface is saved.
+pub fn control_origin(kind: &str, surface_id: Uuid, item_id: &str) -> String {
+    format!("{kind}:{surface_id}:{item_id}")
+}
+
+/// Prefix shared by every control declared by one surface.
+pub fn control_origin_prefix(kind: &str, surface_id: Uuid) -> String {
+    format!("{kind}:{surface_id}:")
+}
+
+/// Splits an origin into (kind, surface id, item id).
+pub fn parse_control_origin(origin: &str) -> Option<(&str, Uuid, &str)> {
+    let (kind, rest) = origin.split_once(':')?;
+    let (surface, item) = rest.split_once(':')?;
+    let surface = Uuid::parse_str(surface).ok()?;
+    (!kind.is_empty() && !item.is_empty()).then_some((kind, surface, item))
+}
+
+/// Generated key of a surface-declared control: readable and stable,
+/// `dash-1a2b3c4d.w-0001` / `annot-1a2b3c4d.item`. Characters outside the
+/// key charset become `-`; the result is cut to the 64-char key limit.
+/// Uniqueness in the org is ensured by the caller (suffix on collision).
+pub fn auto_control_key(kind: &str, surface_id: Uuid, item_id: &str) -> String {
+    let prefix = match kind {
+        ORIGIN_DASHBOARD => "dash",
+        ORIGIN_ANNOTATION => "annot",
+        _ => "ctl",
+    };
+    let short = &surface_id.simple().to_string()[..8];
+    let item: String = item_id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let mut key = format!("{prefix}-{short}.{item}");
+    key.truncate(64);
+    key
+}
+
+/// Where a surface-declared control lives, resolved for display (control
+/// list, flow node catalog). `surface_name` is `None` when the surface was
+/// deleted meanwhile.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ControlOrigin {
+    /// [`ORIGIN_DASHBOARD`] or [`ORIGIN_ANNOTATION`].
+    pub surface: String,
+    pub surface_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface_name: Option<String>,
+    /// Widget id (`w-0001`) or annotation item id.
+    pub item_id: String,
+}
+
 /// Configuration of the `control-source` flow node: one output port per
 /// listed control (`payload` = value, `topic` = control key).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -367,15 +437,11 @@ impl ControlSourceConfig {
         self.controls.len()
     }
 
-    /// Structural check shared by the save validation and the runtime build
-    /// (existence in the org is checked at deploy).
+    /// Structural check of the save validation. An empty node is a valid
+    /// draft (D133: the flow may be built before its surfaces); the deploy
+    /// and the runtime build require a source ([`Self::check_deployable`]).
+    /// Existence in the org is checked at deploy.
     pub fn check(&self) -> Option<(&'static str, String)> {
-        if self.controls.is_empty() {
-            return Some((
-                "control_source_empty",
-                "add at least one control to listen to".into(),
-            ));
-        }
         if self.controls.len() > CONTROL_SOURCE_MAX {
             return Some((
                 "control_source_too_many",
@@ -395,6 +461,20 @@ impl ControlSourceConfig {
             }
         }
         None
+    }
+}
+
+impl ControlSourceConfig {
+    /// [`Self::check`] plus at least one source: the deploy gate and the
+    /// runtime build.
+    pub fn check_deployable(&self) -> Option<(&'static str, String)> {
+        if self.controls.is_empty() {
+            return Some((
+                "control_source_empty",
+                "add at least one control to listen to".into(),
+            ));
+        }
+        self.check()
     }
 }
 
@@ -419,6 +499,10 @@ pub struct UiControl {
     /// (the UI shows a "no effect" badge).
     #[serde(default)]
     pub listened_by: Vec<ControlListener>,
+    /// Surface item that declared it (D131); `None` = standalone control
+    /// (created from the Controls page or a flow).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<ControlOrigin>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -548,8 +632,10 @@ mod tests {
 
     #[test]
     fn source_config_check_and_ports() {
+        // An empty node saves as a draft but never deploys.
         let empty = ControlSourceConfig::default();
-        assert_eq!(empty.check().unwrap().0, "control_source_empty");
+        assert!(empty.check().is_none());
+        assert_eq!(empty.check_deployable().unwrap().0, "control_source_empty");
         let a = Uuid::from_u128(1);
         let dup = ControlSourceConfig {
             controls: vec![a, a],
@@ -580,6 +666,35 @@ mod tests {
         assert!(!valid_control_via("dashboard {x}"));
         assert!(check_control_label("Éclairage salle").is_none());
         assert!(check_control_label("  ").is_some());
+    }
+
+    #[test]
+    fn surface_origins_and_auto_keys() {
+        let dash = Uuid::parse_str("1a2b3c4d-0000-4000-8000-000000000001").unwrap();
+        let origin = control_origin(ORIGIN_DASHBOARD, dash, "w-0001");
+        assert_eq!(origin, format!("dashboard:{dash}:w-0001"));
+        assert!(origin.starts_with(&control_origin_prefix(ORIGIN_DASHBOARD, dash)));
+        assert_eq!(
+            parse_control_origin(&origin),
+            Some((ORIGIN_DASHBOARD, dash, "w-0001"))
+        );
+        // Item ids may carry ':' (only the first two separate fields).
+        assert_eq!(
+            parse_control_origin(&format!("annotation:{dash}:a:b")),
+            Some((ORIGIN_ANNOTATION, dash, "a:b"))
+        );
+        assert_eq!(parse_control_origin("dashboard:not-a-uuid:w"), None);
+        assert_eq!(parse_control_origin(&format!("dashboard:{dash}:")), None);
+
+        let key = auto_control_key(ORIGIN_DASHBOARD, dash, "w-0001");
+        assert_eq!(key, "dash-1a2b3c4d.w-0001");
+        assert!(valid_control_key(&key));
+        let odd = auto_control_key(ORIGIN_ANNOTATION, dash, "item 1/é");
+        assert_eq!(odd, "annot-1a2b3c4d.item-1--");
+        assert!(valid_control_key(&odd));
+        let long = auto_control_key(ORIGIN_DASHBOARD, dash, &"x".repeat(200));
+        assert_eq!(long.len(), 64);
+        assert!(valid_control_key(&long));
     }
 
     #[test]

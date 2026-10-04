@@ -78,20 +78,24 @@ pub fn ListLayout(
                         }
                         TitleBlock { title, subtitle }
                     }
-                    if let Some(actions) = actions {
-                        {actions}
-                    }
-                    if can_write {
-                        // Contrat documenté : bouton « ajouter » rendu ssi
-                        // `on_add` ET `add_label` sont fournis (add_label None =
-                        // page en mode détail, pas de création ici).
-                        if let (Some(add), Some(label)) = (on_add, add_label) {
-                            button {
-                                class: PRIMARY_BTN,
-                                r#type: "button",
-                                onclick: move |_| add.call(()),
-                                icons::Plus { class: "h-4 w-4 inline mr-1" }
-                                {label}
+                    // One right-aligned group: extra actions sit next to
+                    // the add button, never floating mid-header.
+                    div { class: "flex items-center gap-2 flex-wrap",
+                        if let Some(actions) = actions {
+                            {actions}
+                        }
+                        if can_write {
+                            // Contrat documenté : bouton « ajouter » rendu ssi
+                            // `on_add` ET `add_label` sont fournis (add_label None =
+                            // page en mode détail, pas de création ici).
+                            if let (Some(add), Some(label)) = (on_add, add_label) {
+                                button {
+                                    class: PRIMARY_BTN,
+                                    r#type: "button",
+                                    onclick: move |_| add.call(()),
+                                    icons::Plus { class: "h-4 w-4 inline mr-1" }
+                                    {label}
+                                }
                             }
                         }
                     }

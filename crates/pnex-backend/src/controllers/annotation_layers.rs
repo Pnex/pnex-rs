@@ -470,29 +470,23 @@ async fn update(
     let Some(layer) = find_layer(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
-    let (layer, version) = match crate::services::annotation_layer::append_annotation_layer_version(
-        &ctx.db,
-        &layer,
-        params.expected_version_number,
-        &params.doc,
-        params.name,
-        params.author,
-        params.note,
-    )
-    .await
-    {
-        Ok(v) => v,
-        Err(e) => return Ok(layer_write_error_response(e)),
-    };
+    let (layer, version, doc) =
+        match crate::services::annotation_layer::append_annotation_layer_version(
+            &ctx.db,
+            &layer,
+            params.expected_version_number,
+            &params.doc,
+            params.name,
+            params.author,
+            params.note,
+        )
+        .await
+        {
+            Ok(v) => v,
+            Err(e) => return Ok(layer_write_error_response(e)),
+        };
     let published_number = published_number_of(&ctx.db, layer.published_version_id).await?;
-    Ok(format::json(detail_dto(
-        layer,
-        params.doc,
-        version,
-        version,
-        published_number,
-    ))
-    .into_response())
+    Ok(format::json(detail_dto(layer, doc, version, version, published_number)).into_response())
 }
 
 // ─────────────────────────── DELETE /annotation-layers/{id} ───────────────────────────
@@ -513,6 +507,17 @@ async fn delete(
     let Some(layer) = find_layer(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
+    // D131: the controls its items declared are released (deleted, or kept
+    // standalone while a flow or another surface uses them).
+    let released = crate::services::surface_controls::release_surface(
+        &ctx.db,
+        org.org.id,
+        pnex_core::ui_control::ORIGIN_ANNOTATION,
+        layer.id,
+    )
+    .await
+    .map_err(|_| Error::InternalServerError)?;
+    crate::services::surface_controls::forget_deleted(&ctx, org.org.id, &released).await;
     annotation_layers::Entity::delete_by_id(layer.id)
         .exec(&ctx.db)
         .await

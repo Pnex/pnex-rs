@@ -1102,6 +1102,41 @@ async fn control_and_reading_items() {
             .unwrap();
         assert_eq!(reading["target"]["source"]["device_id"], "flow_12");
         assert!(reading.get("resolved").is_none() || reading["resolved"].is_null());
+
+        // D131: an item declaring its own control (nil id + kind) gets one
+        // provisioned at save, bound in the stored document; the next save
+        // keeps it.
+        let own_doc = serde_json::json!({ "items": [
+            {"id": "c2", "media_asset_id": pano_id, "kind": "control",
+             "geometry": {"type": "equirect", "yaw": 30.0, "pitch": 0.0},
+             "label": "Fan", "target": {"type": "control",
+                 "control_id": "00000000-0000-0000-0000-000000000000", "kind": "slider"}}
+        ]});
+        let saved = save_layer(&server, &env.alice, org, &layer_id, 2, own_doc.clone()).await;
+        assert_eq!(saved.status_code(), 200, "{}", saved.text());
+        let saved = saved.json::<serde_json::Value>();
+        let own = saved["doc"]["items"][0]["target"]["control_id"]
+            .as_str()
+            .expect("bound control")
+            .to_string();
+        assert_ne!(own, "00000000-0000-0000-0000-000000000000", "{saved}");
+        let again = save_layer(&server, &env.alice, org, &layer_id, 3, own_doc).await;
+        assert_eq!(
+            again.json::<serde_json::Value>()["doc"]["items"][0]["target"]["control_id"],
+            own.as_str(),
+            "found again by origin"
+        );
+        let fan = server
+            .get(&format!("/api/v1/controls/{own}"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await
+            .json::<serde_json::Value>();
+        assert_eq!(fan["label"], "Fan");
+        assert_eq!(fan["spec"]["kind"], "slider");
+        assert_eq!(fan["origin"]["surface"], "annotation");
+        assert_eq!(fan["origin"]["surface_name"], "Surfaces");
+        assert_eq!(fan["origin"]["item_id"], "c2");
     })
     .await;
 }
