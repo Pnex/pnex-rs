@@ -227,7 +227,7 @@ fn ListView(
                     // delete button used to sit lower than its neighbours).
                     div { class: "flex items-center justify-end gap-2",
                         button {
-                            class: "inline-flex items-center px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
+                            class: "inline-flex h-8 items-center px-3 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
                             title: t!("db-open"),
                             aria_label: t!("db-open"),
                             onclick: move |_| on_open.call((id_open.clone(), false)),
@@ -236,7 +236,7 @@ fn ListView(
                         }
                         if can_write {
                             button {
-                                class: "inline-flex items-center px-3 py-1.5 text-sm text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700",
+                                class: "inline-flex h-8 items-center px-3 text-sm text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700",
                                 title: t!("db-edit"),
                                 aria_label: t!("db-edit"),
                                 onclick: move |_| on_open.call((id_edit.clone(), true)),
@@ -244,7 +244,7 @@ fn ListView(
                                 span { class: "hidden sm:inline", {t!("db-edit")} }
                             }
                             button {
-                                class: "inline-flex items-center px-3 py-1.5 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors",
+                                class: "inline-flex h-8 items-center px-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors",
                                 title: t!("viz-delete"),
                                 aria_label: t!("viz-delete"),
                                 onclick: move |_| delete_target.set(Some((id_delete.clone(), name_delete.clone()))),
