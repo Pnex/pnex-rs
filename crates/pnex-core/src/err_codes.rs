@@ -322,6 +322,9 @@ pub const CONTROL_STORE_UNAVAILABLE: &str = "control-store-unavailable";
 /// (D143 flow edit, D144 coupled dashboard widget); `args.flow` = their
 /// names. The user stops them in the flow editor, then asks again.
 pub const AI_FLOW_RUNNING: &str = "ai-flow-running";
+/// A reply is already being written in this conversation (one turn at a
+/// time, D145).
+pub const AI_CONVERSATION_BUSY: &str = "ai-conversation-busy";
 
 // ── Registered codes ─────────────────────────────────────────────────────
 
@@ -501,6 +504,7 @@ pub const ALL: &[&str] = &[
     CONTROL_RATE_LIMITED,
     CONTROL_IN_USE,
     AI_FLOW_RUNNING,
+    AI_CONVERSATION_BUSY,
     CONTROL_UNKNOWN,
     CONTROL_STORE_UNAVAILABLE,
 ];

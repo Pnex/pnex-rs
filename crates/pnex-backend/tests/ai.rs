@@ -233,14 +233,40 @@ async fn chat_send(
     org_id: i64,
     user_text: &str,
 ) -> axum_test::TestResponse {
-    server
-        .post("/api/v1/ai/chat")
+    let conv = new_conversation(server, token, org_id).await;
+    send_in(server, token, org_id, &conv, user_text).await
+}
+
+/// Creates an empty conversation, returns its id.
+async fn new_conversation(server: &axum_test::TestServer, token: &str, org_id: i64) -> String {
+    let created = server
+        .post("/api/v1/ai/conversations")
         .add_header("Authorization", bearer(token))
         .add_header("X-Org-Id", org_id.to_string())
         .add_header("Content-Type", "application/json")
-        .json(&serde_json::json!({
-            "messages": [{"role": "user", "content": user_text}]
-        }))
+        .json(&serde_json::json!({}))
+        .await;
+    assert_eq!(created.status_code(), 201, "{}", created.text());
+    created.json::<serde_json::Value>()["id"]
+        .as_str()
+        .expect("conversation id")
+        .to_string()
+}
+
+/// One turn in an existing conversation (only the new message is sent).
+async fn send_in(
+    server: &axum_test::TestServer,
+    token: &str,
+    org_id: i64,
+    conversation: &str,
+    user_text: &str,
+) -> axum_test::TestResponse {
+    server
+        .post(&format!("/api/v1/ai/conversations/{conversation}/messages"))
+        .add_header("Authorization", bearer(token))
+        .add_header("X-Org-Id", org_id.to_string())
+        .add_header("Content-Type", "application/json")
+        .json(&serde_json::json!({ "content": user_text }))
         .await
 }
 
@@ -300,6 +326,7 @@ async fn send_json(
     let req = match method {
         "POST" => server.post(path),
         "PUT" => server.put(path),
+        "PATCH" => server.patch(path),
         "DELETE" => server.delete(path),
         _ => server.get(path),
     }
@@ -831,6 +858,335 @@ async fn borne_iterations_force_la_reponse_finale() {
         assert!(
             !body["answer"].as_str().unwrap_or_default().is_empty(),
             "une réponse textuelle finale est forcée: {body}"
+        );
+    })
+    .await;
+}
+
+// ─────────────────────── Conversations (D145) ───────────────────────
+
+/// Adds bob to `org` with `role` (bob logs in once first: JIT user).
+async fn add_bob(server: &axum_test::TestServer, env: &Env, org: i64, role: &str) {
+    let _ = personal_org(server, &env.bob).await;
+    let add = server
+        .post(&format!("/api/v1/orgs/{org}/members"))
+        .add_header("Authorization", bearer(&env.alice))
+        .add_header("X-Org-Id", org.to_string())
+        .add_header("Content-Type", "application/json")
+        .json(&serde_json::json!({"email": "bob@example.com", "role": role}))
+        .await;
+    assert_eq!(add.status_code(), 201, "{}", add.text());
+}
+
+/// A conversation is private to its author within its org: another
+/// member of the same org, and the author from another org, get 404 on
+/// read, rename, delete and send; lists carry no tool trace.
+#[tokio::test]
+#[serial]
+async fn conversations_are_private_to_user_and_org() {
+    with_app_ai(true, true, |server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        // bob's personal org, read before he joins alice's (orgs[0] after).
+        let bob_org = personal_org(&server, &env.bob).await;
+        assert_ne!(bob_org, org);
+        add_bob(&server, &env, org, "admin").await;
+        // alice is also a member of bob's org: same user, other org.
+        let add = server
+            .post(&format!("/api/v1/orgs/{bob_org}/members"))
+            .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", bob_org.to_string())
+            .add_header("Content-Type", "application/json")
+            .json(&serde_json::json!({"email": "alice@example.com", "role": "admin"}))
+            .await;
+        assert_eq!(add.status_code(), 201, "{}", add.text());
+        reset_mock();
+        push_reply(MockReply::Ok(reply_tool_call(
+            "t1",
+            "describe_node_types",
+            serde_json::json!({"kinds": ["calc"]}),
+        )));
+        push_reply(MockReply::Ok(reply_text("hello")));
+        let conv = new_conversation(&server, &env.alice, org).await;
+        let turn = send_in(&server, &env.alice, org, &conv, "my secret plan").await;
+        assert_eq!(turn.status_code(), 200, "{}", turn.text());
+        let path = format!("/api/v1/ai/conversations/{conv}");
+
+        // bob (admin of the same org) and alice from bob's org: 404.
+        for (token, as_org) in [(&env.bob, org), (&env.alice, bob_org)] {
+            let get = send_json(&server, "GET", &path, token, as_org, None).await;
+            assert_eq!(get.status_code(), 404, "{}", get.text());
+            let rename = send_json(
+                &server,
+                "PATCH",
+                &path,
+                token,
+                as_org,
+                Some(serde_json::json!({"title": "x"})),
+            )
+            .await;
+            assert_eq!(rename.status_code(), 404, "{}", rename.text());
+            let del = send_json(&server, "DELETE", &path, token, as_org, None).await;
+            assert_eq!(del.status_code(), 404, "{}", del.text());
+            let send = send_in(&server, token, as_org, &conv, "hi").await;
+            assert_eq!(send.status_code(), 404, "{}", send.text());
+            let list = send_json(
+                &server,
+                "GET",
+                "/api/v1/ai/conversations",
+                token,
+                as_org,
+                None,
+            )
+            .await;
+            assert_eq!(list.json::<serde_json::Value>()["count"], 0);
+        }
+
+        // The author sees it, titled by the first message, without trace in
+        // the list; the detail holds both messages and the trace.
+        let list = send_json(
+            &server,
+            "GET",
+            "/api/v1/ai/conversations",
+            &env.alice,
+            org,
+            None,
+        )
+        .await
+        .json::<serde_json::Value>();
+        assert_eq!(list["count"], 1, "{list}");
+        assert_eq!(list["results"][0]["title"], "my secret plan");
+        assert!(!list.to_string().contains("tool_trace"), "{list}");
+        let detail = send_json(&server, "GET", &path, &env.alice, org, None)
+            .await
+            .json::<serde_json::Value>();
+        let msgs = detail["messages"].as_array().expect("messages");
+        assert_eq!(msgs.len(), 2, "{detail}");
+        assert_eq!(msgs[0]["role"], "user");
+        assert_eq!(msgs[1]["tool_trace"][0]["name"], "describe_node_types");
+    })
+    .await;
+}
+
+/// The history is rebuilt by the server: the second turn replays the
+/// first one (user + assistant) to the model, the client sends only the
+/// new message.
+#[tokio::test]
+#[serial]
+async fn history_is_rebuilt_server_side() {
+    with_app_ai(true, true, |server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let conv = new_conversation(&server, &env.alice, org).await;
+        reset_mock();
+        push_reply(MockReply::Ok(reply_text("first answer")));
+        push_reply(MockReply::Ok(reply_text("second answer")));
+        assert_eq!(
+            send_in(&server, &env.alice, org, &conv, "first question")
+                .await
+                .status_code(),
+            200
+        );
+        let second = send_in(&server, &env.alice, org, &conv, "second question").await;
+        assert_eq!(second.status_code(), 200, "{}", second.text());
+        let sent = mock_requests()[1]["messages"].to_string();
+        for part in ["first question", "first answer", "second question"] {
+            assert!(sent.contains(part), "{part} missing from {sent}");
+        }
+    })
+    .await;
+}
+
+/// A viewer may converse, but write tools are refused inside the tool.
+#[tokio::test]
+#[serial]
+async fn viewer_converses_but_cannot_write() {
+    with_app_ai(true, true, |server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        add_bob(&server, &env, org, "viewer").await;
+        reset_mock();
+        push_reply(MockReply::Ok(reply_tool_call(
+            "t1",
+            "create_flow",
+            serde_json::json!({"name": "x", "graph": graph_adc_metric()}),
+        )));
+        push_reply(MockReply::Ok(reply_text("not allowed")));
+        let resp = chat_send(&server, &env.bob, org, "make a flow").await;
+        assert_eq!(resp.status_code(), 200, "{}", resp.text());
+        let body = resp.json::<serde_json::Value>();
+        assert_eq!(body["tool_trace"][0]["ok"], false, "{body}");
+        let flows = send_json(&server, "GET", "/api/v1/flows", &env.alice, org, None)
+            .await
+            .json::<serde_json::Value>();
+        assert_eq!(flows["count"], 0, "{flows}");
+    })
+    .await;
+}
+
+/// One turn at a time: a held lease → 409 ai-conversation-busy, no LLM call.
+#[tokio::test]
+#[serial]
+async fn one_turn_at_a_time() {
+    with_app_ai(true, true, |server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let conv = new_conversation(&server, &env.alice, org).await;
+        let id = uuid::Uuid::parse_str(&conv).expect("uuid");
+        assert!(
+            pnex_backend::services::ai::conversations::acquire(&ctx.db, id)
+                .await
+                .expect("acquire")
+        );
+        reset_mock();
+        let busy = send_in(&server, &env.alice, org, &conv, "hi").await;
+        assert_eq!(busy.status_code(), 409, "{}", busy.text());
+        assert!(
+            busy.text().contains("ai-conversation-busy"),
+            "{}",
+            busy.text()
+        );
+        assert!(mock_requests().is_empty());
+        pnex_backend::services::ai::conversations::release(&ctx.db, id).await;
+        push_reply(MockReply::Ok(reply_text("ok")));
+        assert_eq!(
+            send_in(&server, &env.alice, org, &conv, "hi")
+                .await
+                .status_code(),
+            200
+        );
+    })
+    .await;
+}
+
+/// Rename, export, delete one, delete all; leaving the org erases the
+/// member's conversations there; the purge erases inactive ones.
+#[tokio::test]
+#[serial]
+async fn conversations_crud_export_and_erasure() {
+    with_app_ai(true, true, |server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let a = new_conversation(&server, &env.alice, org).await;
+        let _b = new_conversation(&server, &env.alice, org).await;
+        let path = format!("/api/v1/ai/conversations/{a}");
+
+        let renamed = send_json(
+            &server,
+            "PATCH",
+            &path,
+            &env.alice,
+            org,
+            Some(serde_json::json!({"title": "Pump"})),
+        )
+        .await;
+        assert_eq!(renamed.json::<serde_json::Value>()["title"], "Pump");
+        let empty = send_json(
+            &server,
+            "PATCH",
+            &path,
+            &env.alice,
+            org,
+            Some(serde_json::json!({"title": " "})),
+        )
+        .await;
+        assert_eq!(empty.status_code(), 400);
+
+        let export = send_json(
+            &server,
+            "GET",
+            "/api/v1/ai/conversations/export",
+            &env.alice,
+            org,
+            None,
+        )
+        .await
+        .json::<serde_json::Value>();
+        assert_eq!(
+            export["conversations"].as_array().expect("list").len(),
+            2,
+            "{export}"
+        );
+
+        assert_eq!(
+            send_json(&server, "DELETE", &path, &env.alice, org, None)
+                .await
+                .status_code(),
+            204
+        );
+        assert_eq!(
+            send_json(&server, "GET", &path, &env.alice, org, None)
+                .await
+                .status_code(),
+            404
+        );
+        let all = send_json(
+            &server,
+            "DELETE",
+            "/api/v1/ai/conversations",
+            &env.alice,
+            org,
+            None,
+        )
+        .await
+        .json::<serde_json::Value>();
+        assert_eq!(all["deleted"], 1, "{all}");
+
+        // bob leaves alice's org → his conversations there are erased.
+        add_bob(&server, &env, org, "member").await;
+        let _ = new_conversation(&server, &env.bob, org).await;
+        let bob_id = send_json(
+            &server,
+            "GET",
+            &format!("/api/v1/orgs/{org}/members"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await
+        .json::<serde_json::Value>();
+        let bob_id = bob_id
+            .as_array()
+            .or_else(|| bob_id["results"].as_array())
+            .expect("members")
+            .iter()
+            .find(|m| m["email"] == "bob@example.com")
+            .and_then(|m| m["user_id"].as_i64().or_else(|| m["id"].as_i64()))
+            .expect("bob id");
+        let left = send_json(
+            &server,
+            "DELETE",
+            &format!("/api/v1/orgs/{org}/members/{bob_id}"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(left.status_code(), 204, "{}", left.text());
+        use sea_orm::{EntityTrait, PaginatorTrait};
+        let remaining = pnex_backend::models::_entities::ai_conversations::Entity::find()
+            .count(&ctx.db)
+            .await
+            .expect("count");
+        assert_eq!(remaining, 0);
+
+        // Purge: a conversation inactive for longer than the retention goes.
+        let _ = new_conversation(&server, &env.alice, org).await;
+        assert_eq!(
+            pnex_backend::services::ai::conversations::purge_inactive(&ctx.db, 30)
+                .await
+                .expect("purge"),
+            0
+        );
+        use sea_orm::{ActiveModelTrait, Set};
+        let row = pnex_backend::models::_entities::ai_conversations::Entity::find()
+            .one(&ctx.db)
+            .await
+            .expect("read")
+            .expect("row");
+        let mut old: pnex_backend::models::_entities::ai_conversations::ActiveModel = row.into();
+        old.last_message_at = Set((chrono::Utc::now() - chrono::Duration::days(31)).fixed_offset());
+        old.update(&ctx.db).await.expect("age");
+        assert_eq!(
+            pnex_backend::services::ai::conversations::purge_inactive(&ctx.db, 30)
+                .await
+                .expect("purge"),
+            1
         );
     })
     .await;

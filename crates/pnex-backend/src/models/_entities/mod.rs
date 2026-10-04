@@ -6,6 +6,8 @@ pub mod prelude;
 
 pub mod agent_enrollments;
 pub mod agent_keys;
+pub mod ai_conversations;
+pub mod ai_messages;
 pub mod annotation_layer_versions;
 pub mod annotation_layers;
 pub mod build_records;

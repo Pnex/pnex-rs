@@ -11,8 +11,9 @@
 > §7 décrivent l'état actuel.
 >
 > **2026-10-04 — v2 SPÉCIFIÉE (D142–D145, §9), implémentation en cours** :
-> étapes 1–2 du §9.5 livrées (doc des nœuds générée, garde
-> `ai-flow-running`) ; reste D145, fiches + diagnostics, D144. Base de
+> étapes 1–3 du §9.5 livrées (doc des nœuds générée, garde
+> `ai-flow-running`, conversations D145) ; reste fiches + diagnostics,
+> D144. Base de
 > connaissance embarquée autoportante, édition de flow seulement à l'arrêt,
 > outils dashboards, conversations par utilisateur en base (CRUD, reprise,
 > rétention RGPD) + audit sans contenu dans O2.
@@ -390,6 +391,6 @@ org → 404 ; viewer peut converser mais `update_flow`/`create_dashboard`
 |---|---|---|
 | 1. Doc des nœuds générée | **livrée** | `pnex_core::flow::node_docs` (`NODE_DOCS`, `FLOW_AUTHORING_RULES`, `FLOW_EXAMPLE`) ; `describe_node_types {kinds?}` la sérialise ; règles du prompt système générées depuis la même table. Garde `every_kind_is_documented` : les kinds acceptés par le désérialiseur de `FlowNodeKind` (scan de `graph.rs`) == kinds documentés. 7 kinds absents ajoutés (cool_prop, reg_tt_heat/cool, reg_pid, pnex_function, json_split/merge) ; l'exemple au kind `device` supprimé est remplacé par un exemple validé par test. Recette « nouveau nœud » : 9ᵉ point = une entrée `NODE_DOCS` |
 | 2. D143 | **livrée** | `update_flow` refuse `status = deployed` → `ai-flow-running` (`args.flow`), lu en base au moment de l'outil ; trace d'outil porte `code`/`args`, résolus côté UI en `err-<code>` (repli verbatim). **Correctif au passage** : `update_flow` relisait la dernière version côté serveur et l'utilisait comme version attendue → une sauvegarde humaine entre `get_flow` et `update_flow` était écrasée sans conflit ; `expected_version` (= `latest_version_number` de `get_flow`) est désormais obligatoire. Test : `tests/ai.rs::update_flow_only_on_a_stopped_flow` |
-| 3. D145 | à faire | |
+| 3. D145 | **livrée** | Migration `m20261004_000004_ai_conversations` (PG + SQLite, parité verte) ; `services/ai/conversations.rs` ; `POST /api/v1/ai/chat` **supprimé**, remplacé par l'API du tableau ci-dessus (lecture/effacement/export permis kill-switch coupé : on peut toujours lire et effacer ce qui est stocké sur soi). Historique reconstruit serveur : 24 derniers messages en texte, les outils d'un tour ancien rejoués sous forme de résumé `summarize` (aucun rejeu d'appel d'outil, neutre vis-à-vis du fournisseur). Bail « un tour à la fois » = colonne `busy_until` posée par UPDATE conditionnel (atomique, multi-réplicas, 300 s) → 409 `ai-conversation-busy`. Trace stockée bornée (16 entrées, arguments ≤ 2 000 car., résumé ≤ 500). Rétention : clé `system_settings` `ai_conversation_retention_days` (défaut 180 j), purge horaire mono-pod (`singleton`). Cascades : FK utilisateur et org ; départ d'une org = effacement dans la même transaction que le retrait du membre. Audit O2 `ai_audit` sans contenu (test). UI : liste dans le drawer (nouvelle, reprendre, renommer, supprimer, tout effacer, exporter) + mentions fournisseur et confidentialité. **Reste** : surcharge de rétention par l'org (à la baisse) et réglage UI de la valeur plateforme (aujourd'hui : clé `system_settings`) |
 | 4. Fiches + diagnostics | à faire | |
 | 5. D144 | à faire | |

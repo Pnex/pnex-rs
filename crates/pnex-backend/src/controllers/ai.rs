@@ -1,5 +1,6 @@
 //! AI assistant — `/api/v1/ai/*`: state (UI visibility), LLM providers of
-//! the org (secrets.md D116, key = vault reference), provider test, chat.
+//! the org (secrets.md D116, key = vault reference), provider test, and
+//! the user's private conversations (D145).
 //! The platform provides no LLM (D119): each org brings its own.
 //!
 //! Garde-fous : kill-switch (`settings.ai.enabled`) coupé → chat 403 sans
@@ -7,8 +8,11 @@
 //! `can_write` dans `services::ai::tools` ; **aucun** chemin de ce module
 //! vers deploy/delete/commandes.
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::routing::{get, post, put};
+
+use crate::controllers::pagination;
+use crate::services::ai::conversations;
 use loco_rs::prelude::*;
 use uuid::Uuid;
 
@@ -36,7 +40,20 @@ pub fn routes() -> Routes {
         .add("/providers", get(org_list).post(org_create))
         .add("/providers/{id}", put(org_update).delete(org_delete))
         .add("/providers/{id}/test", post(org_test))
-        .add("/chat", post(chat))
+        .add(
+            "/conversations",
+            get(conversation_list)
+                .post(conversation_create)
+                .delete(conversation_delete_all),
+        )
+        .add("/conversations/export", get(conversation_export))
+        .add(
+            "/conversations/{id}",
+            get(conversation_detail)
+                .patch(conversation_rename)
+                .delete(conversation_delete),
+        )
+        .add("/conversations/{id}/messages", post(conversation_send))
 }
 
 /// `GET /api/v1/ai/status` — every member. Kill-switch off: answered
@@ -231,28 +248,255 @@ async fn org_test(
     test_response(&ctx, org.org.id, id).await
 }
 
-/// `POST /api/v1/ai/chat` — tout membre (les outils d'écriture re-vérifient
-/// `can_write`). Kill-switch OFF → 403 sans requête LLM.
-async fn chat(
+// ─────────────────────── Conversations (D145) ───────────────────────
+
+/// Pagination query of the conversation list.
+#[derive(Debug, serde::Deserialize)]
+struct ListQuery {
+    limit: Option<String>,
+    offset: Option<String>,
+}
+
+/// Conversation of the caller in the current org, else 404 (the existence
+/// of anyone else's conversation is never revealed).
+async fn owned_or_404(
+    ctx: &AppContext,
+    org: &OrgContext,
+    id: Uuid,
+) -> Result<crate::models::_entities::ai_conversations::Model> {
+    conversations::find_owned(&ctx.db, org.auth.user.id, org.org.id, id)
+        .await
+        .map_err(db_error)?
+        .ok_or(Error::NotFound)
+}
+
+/// `GET /api/v1/ai/conversations` — my conversations in this org (D14).
+/// Rows carry no message nor tool trace. Allowed with the kill-switch off
+/// (a user can always read and erase what is stored about them).
+async fn conversation_list(
     org: OrgContext,
     State(ctx): State<AppContext>,
-    Json(body): Json<pnex_core::AiChatRequest>,
+    Query(q): Query<ListQuery>,
 ) -> Result<Response> {
-    // 1. Kill-switch → 403, aucune requête (DB du connecteur ni LLM).
+    let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let (count, rows) = pagination::sql_page(
+        &ctx.db,
+        conversations::owned(org.auth.user.id, org.org.id),
+        page,
+    )
+    .await
+    .map_err(|_| Error::InternalServerError)?;
+    let results: Vec<pnex_core::AiConversation> = rows.iter().map(conversations::dto).collect();
+    Ok(format::json(pagination::envelope(
+        "/api/v1/ai/conversations",
+        &[],
+        page,
+        count,
+        results,
+    ))
+    .into_response())
+}
+
+/// `POST /api/v1/ai/conversations` — new empty conversation.
+async fn conversation_create(
+    org: OrgContext,
+    State(ctx): State<AppContext>,
+    Json(body): Json<pnex_core::AiConversationWrite>,
+) -> Result<Response> {
+    let title = body.title.as_deref().filter(|t| !t.trim().is_empty());
+    let conv = conversations::create(&ctx.db, org.auth.user.id, org.org.id, title)
+        .await
+        .map_err(db_error)?;
+    Ok((
+        axum::http::StatusCode::CREATED,
+        format::json(conversations::dto(&conv)),
+    )
+        .into_response())
+}
+
+/// `GET /api/v1/ai/conversations/{id}` — resume: every stored message.
+async fn conversation_detail(
+    org: OrgContext,
+    State(ctx): State<AppContext>,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    let conv = owned_or_404(&ctx, &org, id).await?;
+    format::json(
+        conversations::detail(&ctx.db, &conv)
+            .await
+            .map_err(db_error)?,
+    )
+}
+
+/// `PATCH /api/v1/ai/conversations/{id}` — rename.
+async fn conversation_rename(
+    org: OrgContext,
+    State(ctx): State<AppContext>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<pnex_core::AiConversationWrite>,
+) -> Result<Response> {
+    let Some(title) = body.title.as_deref().filter(|t| !t.trim().is_empty()) else {
+        return Ok((
+            axum::http::StatusCode::BAD_REQUEST,
+            format::json(serde_json::json!({ "title": "required" })),
+        )
+            .into_response());
+    };
+    let conv = owned_or_404(&ctx, &org, id).await?;
+    let conv = conversations::rename(&ctx.db, conv, title)
+        .await
+        .map_err(db_error)?;
+    format::json(conversations::dto(&conv))
+}
+
+/// `DELETE /api/v1/ai/conversations/{id}` — permanent erasure.
+async fn conversation_delete(
+    org: OrgContext,
+    State(ctx): State<AppContext>,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    let conv = owned_or_404(&ctx, &org, id).await?;
+    conversations::delete(&ctx.db, conv.id)
+        .await
+        .map_err(db_error)?;
+    Ok(axum::http::StatusCode::NO_CONTENT.into_response())
+}
+
+/// `DELETE /api/v1/ai/conversations` — erase all my conversations of
+/// this org.
+async fn conversation_delete_all(
+    org: OrgContext,
+    State(ctx): State<AppContext>,
+) -> Result<Response> {
+    let deleted = conversations::delete_all(&ctx.db, org.auth.user.id, org.org.id)
+        .await
+        .map_err(db_error)?;
+    format::json(serde_json::json!({ "deleted": deleted }))
+}
+
+/// `GET /api/v1/ai/conversations/export` — portability export (JSON).
+async fn conversation_export(org: OrgContext, State(ctx): State<AppContext>) -> Result<Response> {
+    let rows = conversations::owned(org.auth.user.id, org.org.id)
+        .all(&ctx.db)
+        .await
+        .map_err(db_error)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for conv in &rows {
+        out.push(
+            conversations::detail(&ctx.db, conv)
+                .await
+                .map_err(db_error)?,
+        );
+    }
+    format::json(pnex_core::AiConversationsExport {
+        exported_at: chrono::Utc::now().to_rfc3339(),
+        conversations: out,
+    })
+}
+
+/// `POST /api/v1/ai/conversations/{id}/messages` — one agent turn. Every
+/// member may converse (viewers included); write tools re-check
+/// `can_write`. Kill-switch off → 403 without any LLM request. One turn
+/// at a time per conversation → 409 `ai-conversation-busy`.
+async fn conversation_send(
+    org: OrgContext,
+    State(ctx): State<AppContext>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<pnex_core::AiSendMessage>,
+) -> Result<Response> {
     if !AiSettings::from_config(&ctx.config).enabled {
         return Err(crate::services::ai::AiError::Disabled.into());
     }
-    if body.messages.is_empty() {
-        return Err(Error::BadRequest("messages must not be empty".into()));
+    let content = body.content.trim();
+    if content.is_empty() {
+        return Ok((
+            axum::http::StatusCode::BAD_REQUEST,
+            format::json(serde_json::json!({ "content": "required" })),
+        )
+            .into_response());
     }
-    // 2. Config effective — None → 400 ai_not_configured.
+    if content.chars().count() > conversations::CONTENT_MAX_CHARS {
+        return Ok((
+            axum::http::StatusCode::BAD_REQUEST,
+            format::json(serde_json::json!({
+                "content": format!("max_length:{}", conversations::CONTENT_MAX_CHARS)
+            })),
+        )
+            .into_response());
+    }
+    let conv = owned_or_404(&ctx, &org, id).await?;
     let Some(cfg) = config::resolve(&ctx.db, &ctx.config, org.org.id).await else {
         return Err(crate::services::ai::AiError::NotConfigured.into());
     };
-    // 3. Client O2 (lecture télémétrie) — None si O2 non configuré.
+    if !conversations::acquire(&ctx.db, conv.id)
+        .await
+        .map_err(db_error)?
+    {
+        return Err(Error::CustomError(
+            axum::http::StatusCode::CONFLICT,
+            loco_rs::controller::ErrorDetail::new(
+                err_codes::AI_CONVERSATION_BUSY,
+                "A reply is already being written in this conversation".to_string(),
+            ),
+        ));
+    }
+    let started = std::time::Instant::now();
+    let result = run_conversation_turn(&ctx, &org, &cfg, &conv, content, &body).await;
+    conversations::release(&ctx.db, conv.id).await;
+    let latency_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let mut event = conversations::AuditEvent {
+        org_id: org.org.id,
+        user_id: org.auth.user.id,
+        conversation_id: conv.id,
+        provider: cfg.provider.as_str(),
+        model: cfg.model.clone(),
+        tokens_in: 0,
+        tokens_out: 0,
+        tools: Vec::new(),
+        written_flow_ids: Vec::new(),
+        latency_ms,
+        outcome: "ok".into(),
+    };
+    match result {
+        Ok((reply, trace, updated)) => {
+            event.tokens_in = reply.usage.input_tokens;
+            event.tokens_out = reply.usage.output_tokens;
+            event.tools = trace.iter().map(|t| (t.name.clone(), t.ok)).collect();
+            event.written_flow_ids = trace
+                .iter()
+                .filter(|t| t.ok)
+                .filter_map(|t| t.flow_id)
+                .collect();
+            conversations::audit(&ctx, event);
+            format::json(pnex_core::AiTurnResponse {
+                answer: reply.answer,
+                tool_trace: trace,
+                conversation: conversations::dto(&updated),
+            })
+        }
+        Err(e) => {
+            event.outcome = "error".into();
+            conversations::audit(&ctx, event);
+            Err(e)
+        }
+    }
+}
+
+/// Body of one turn: prompt, server-side history, agent loop, storage.
+async fn run_conversation_turn(
+    ctx: &AppContext,
+    org: &OrgContext,
+    cfg: &crate::services::ai::ResolvedAiConfig,
+    conv: &crate::models::_entities::ai_conversations::Model,
+    content: &str,
+    body: &pnex_core::AiSendMessage,
+) -> Result<(
+    agent::AgentReply,
+    Vec<pnex_core::AiToolTrace>,
+    crate::models::_entities::ai_conversations::Model,
+)> {
     let o2_client =
         OpenobserveSettings::from_config(&ctx.config).map(|s| openobserve::client::Client::new(&s));
-    // 4. Prompt système (bundle org + page + langue).
     let page = body
         .page
         .as_ref()
@@ -270,26 +514,13 @@ async fn chat(
         page.as_ref(),
     )
     .await;
-    // 5. Historique texte → messages normalisés (le front n'envoie que le
-    // texte des tours précédents ; les tours d'outils restent serveur).
-    let history: Vec<Msg> = body
-        .messages
-        .iter()
-        .filter(|m| m.role == "user" || m.role == "assistant")
-        .map(|m| {
-            if m.role == "user" {
-                Msg::User {
-                    text: m.content.clone(),
-                }
-            } else {
-                Msg::Assistant {
-                    text: Some(m.content.clone()),
-                    tool_calls: vec![],
-                }
-            }
-        })
-        .collect();
-    // 6. Boucle d'agent.
+    // History rebuilt from storage: the client only sends the new message.
+    let mut history: Vec<Msg> = conversations::history(&ctx.db, conv.id)
+        .await
+        .map_err(db_error)?;
+    history.push(Msg::User {
+        text: content.to_string(),
+    });
     let deps = tools::ToolDeps {
         db: &ctx.db,
         org_id: org.org.id,
@@ -297,22 +528,25 @@ async fn chat(
         author: Some(org.auth.user.email.clone()).filter(|e| !e.trim().is_empty()),
         o2: o2_client.as_ref(),
     };
-    let reply = agent::run_turn(&deps, &cfg, cfg.provider, system, history).await?;
-    Ok(format::json(pnex_core::AiChatResponse {
-        answer: reply.answer,
-        tool_trace: reply
-            .tool_trace
-            .into_iter()
-            .map(|t| pnex_core::AiToolTrace {
-                name: t.name,
-                arguments: t.arguments,
-                ok: t.ok,
-                summary: t.summary,
-                flow_id: t.flow_id,
-                code: t.code.map(str::to_string),
-                args: t.args,
-            })
-            .collect(),
-    })
-    .into_response())
+    let reply = agent::run_turn(&deps, cfg, cfg.provider, system, history).await?;
+    let trace: Vec<pnex_core::AiToolTrace> = reply
+        .tool_trace
+        .iter()
+        .map(conversations::trace_dto)
+        .collect();
+    let updated = conversations::append_turn(
+        &ctx.db,
+        conv,
+        conversations::TurnRecord {
+            user_text: content,
+            page: body.page.as_ref().and_then(|p| p.page.as_deref()),
+            answer: &reply.answer,
+            trace: &trace,
+            tokens_in: reply.usage.input_tokens,
+            tokens_out: reply.usage.output_tokens,
+        },
+    )
+    .await
+    .map_err(db_error)?;
+    Ok((reply, trace, updated))
 }

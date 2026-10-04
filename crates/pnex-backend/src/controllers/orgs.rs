@@ -16,6 +16,7 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use loco_rs::prelude::*;
+use sea_orm::TransactionTrait;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, ExprTrait, PaginatorTrait, QueryFilter, Set,
 };
@@ -681,10 +682,22 @@ async fn remove_member(
         }
     }
 
-    organization_members::Entity::delete_by_id(target.id)
-        .exec(&ctx.db)
+    // Leaving an org erases the member's assistant conversations in it
+    // (D145): they are private to the user within that org only. One
+    // transaction: no membership removed with its conversations kept.
+    let txn = ctx
+        .db
+        .begin()
         .await
         .map_err(|_| Error::InternalServerError)?;
+    organization_members::Entity::delete_by_id(target.id)
+        .exec(&txn)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    crate::services::ai::conversations::delete_all(&txn, user_id, org_id)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    txn.commit().await.map_err(|_| Error::InternalServerError)?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
