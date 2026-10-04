@@ -48,7 +48,85 @@ fn resolve_locale() -> LanguageIdentifier {
             }
         }
     }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        // Native apps: follow the OS language (fr-BE, fr_FR.UTF-8… → fr-FR).
+        if let Some(tag) = system_locale_tag()
+            .as_deref()
+            .and_then(language_from_system_tag)
+        {
+            return tag;
+        }
+    }
     langid!("en-US")
+}
+
+/// Maps an OS locale tag on a supported locale by its language subtag only
+/// ("fr-BE", "fr_FR.UTF-8", "en-GB" …); `None` for unsupported languages.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+fn language_from_system_tag(tag: &str) -> Option<LanguageIdentifier> {
+    let language = tag.split(['-', '_', '.', '@']).next().unwrap_or_default();
+    locale_from_tag(language)
+}
+
+/// OS locale tag of the device (Android: `Locale.getDefault()`, which also
+/// honours the per-app language setting).
+#[cfg(target_os = "android")]
+fn system_locale_tag() -> Option<String> {
+    let env = crate::capture::attach_env()?;
+    unsafe {
+        let class = ((**env).v1_1.FindClass)(env, c"java/util/Locale".as_ptr());
+        if class.is_null() || ((**env).v1_2.ExceptionCheck)(env) {
+            ((**env).v1_1.ExceptionClear)(env);
+            return None;
+        }
+        let get_default = ((**env).v1_1.GetStaticMethodID)(
+            env,
+            class,
+            c"getDefault".as_ptr(),
+            c"()Ljava/util/Locale;".as_ptr(),
+        );
+        let to_tag = ((**env).v1_1.GetMethodID)(
+            env,
+            class,
+            c"toLanguageTag".as_ptr(),
+            c"()Ljava/lang/String;".as_ptr(),
+        );
+        if get_default.is_null() || to_tag.is_null() || ((**env).v1_2.ExceptionCheck)(env) {
+            ((**env).v1_1.ExceptionClear)(env);
+            return None;
+        }
+        let locale =
+            ((**env).v1_1.CallStaticObjectMethodA)(env, class, get_default, std::ptr::null());
+        if locale.is_null() || ((**env).v1_2.ExceptionCheck)(env) {
+            ((**env).v1_1.ExceptionClear)(env);
+            return None;
+        }
+        let jtag = ((**env).v1_1.CallObjectMethodA)(env, locale, to_tag, std::ptr::null());
+        if jtag.is_null() || ((**env).v1_2.ExceptionCheck)(env) {
+            ((**env).v1_1.ExceptionClear)(env);
+            return None;
+        }
+        let chars = ((**env).v1_1.GetStringUTFChars)(env, jtag, std::ptr::null_mut());
+        if chars.is_null() {
+            return None;
+        }
+        let tag = std::ffi::CStr::from_ptr(chars)
+            .to_string_lossy()
+            .into_owned();
+        ((**env).v1_1.ReleaseStringUTFChars)(env, jtag, chars);
+        Some(tag)
+    }
+}
+
+/// OS locale tag of the desktop session (POSIX precedence; Windows: none yet,
+/// falls back to en-US).
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+fn system_locale_tag() -> Option<String> {
+    ["LC_ALL", "LC_MESSAGES", "LANG"]
+        .iter()
+        .filter_map(|key| std::env::var(key).ok())
+        .find(|value| !value.is_empty() && value != "C" && value != "POSIX")
 }
 
 /// Préférence de langue persistée localement (clé `pnex.locale`).
@@ -111,6 +189,23 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn system_tags_map_by_language() {
+        assert_eq!(
+            super::language_from_system_tag("fr-BE"),
+            Some(langid!("fr-FR"))
+        );
+        assert_eq!(
+            super::language_from_system_tag("fr_FR.UTF-8"),
+            Some(langid!("fr-FR"))
+        );
+        assert_eq!(
+            super::language_from_system_tag("en-GB"),
+            Some(langid!("en-US"))
+        );
+        assert_eq!(super::language_from_system_tag("de-DE"), None);
     }
 
     #[test]

@@ -43,6 +43,8 @@ fn ShellContent() -> Element {
     use_effect(move || {
         ui::restore();
     });
+    #[cfg(feature = "e2e")]
+    use_e2e_navigation();
     // Signal global réactif : le contenu et la sidebar se re-render au toggle.
     let rail = *ui::RAIL.read();
 
@@ -120,6 +122,25 @@ fn ShellContent() -> Element {
             }
         }
     }
+}
+
+/// e2e builds only (feature `e2e`, never shipped): exposes
+/// `window.__pnexNavigate(path)` so the native e2e harness can open any route.
+/// Native routers keep an in-memory history, a URL navigation does nothing.
+#[cfg(feature = "e2e")]
+fn use_e2e_navigation() {
+    let navigator = use_navigator();
+    use_future(move || async move {
+        let mut bridge = document::eval(
+            "window.__pnexNavigate = (path) => dioxus.send(path); \
+             await new Promise(() => {});",
+        );
+        while let Ok(path) = bridge.recv::<String>().await {
+            if let Ok(route) = path.parse::<Route>() {
+                navigator.push(route);
+            }
+        }
+    });
 }
 
 /// Classes de navigation : littéraux complets pour le scan Tailwind (jamais

@@ -105,6 +105,26 @@ tasks:
       # dx signe avec sa debug key et garde le nom app-debug.apk même en release.
       - "{{.DX_OUT}}/release/android/app/app/build/outputs/apk/debug/app-debug.apk"
     cmds:
+      - task: android:apk
+        vars: { ANDROID_FEATURES: mobile }
+
+  build:frontend:android:e2e:
+    desc: Build the e2e APK (feature `e2e` = harness hooks; never distributed) → target/dx/pnex-frontend/pnex-e2e.apk
+    deps: [css:build, js:build]
+    cmds:
+      - task: android:apk
+        vars: { ANDROID_FEATURES: "mobile,e2e" }
+      # Moved, not copied: build:frontend:android checks the timestamp of
+      # app-debug.apk, a leftover e2e APK there would pass as up to date.
+      - mv {{.DX_OUT}}/release/android/app/app/build/outputs/apk/debug/app-debug.apk {{.DX_OUT}}/pnex-e2e.apk
+
+  # Shared APK build (dx + manifest/resources patch + gradle). No sources
+  # check here: the callers own it (the feature set is not in the APK path).
+  android:apk:
+    internal: true
+    requires:
+      vars: [ANDROID_FEATURES]
+    cmds:
       # dx accumule les jniLibs des builds précédents dans le projet gradle
       # généré (vu le 2026-09-08 : l'arm64 s'est AJOUTÉ aux x86_64 d'un build
       # précédent → APK 192 Mo avec les deux ABI). Nettoyage avant build.
@@ -121,7 +141,7 @@ tasks:
           # lancement — Rauthy blackliste instantanément toute IP demandant
           # un chemin /_* (« suspicious API scan ») → blocages de login en
           # série (constat 2026-09-08, une demi-journée de debug).
-          dx build --platform android --release --target aarch64-linux-android --no-default-features --features mobile
+          dx build --platform android --release --target aarch64-linux-android --no-default-features --features "{{.ANDROID_FEATURES}}"
           # dx régénère le manifest à chaque build (impossible d'injecter un
           # intent-filter via Dioxus.toml) : patch deep link `pnex` après coup
           # puis ré-assemblage gradle (rapide à chaud). Chemins en
@@ -649,6 +669,14 @@ tasks:
     dir: e2e
     cmds:
       - bunx playwright test --grep @hardware --workers=1 {{.CLI_ARGS}}
+
+  e2e:android:
+    desc: Native Android suite on the adb device (builds + installs the e2e APK; e2e/README.md "Android")
+    dir: e2e
+    cmds:
+      - task: build:frontend:android:e2e
+      - adb install -r {{.ROOT_DIR}}/{{.DX_OUT}}/pnex-e2e.apk
+      - bunx playwright test -c playwright.android.config.ts {{.CLI_ARGS}}
 
   lint:
     desc: Clippy sur tout le workspace

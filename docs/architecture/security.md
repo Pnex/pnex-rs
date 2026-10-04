@@ -210,6 +210,7 @@ sans impact exploitable démontré.
 | SEC-7 | MEDIUM | **Viewer : déploiement / annulation OTA** | R2 | corrigé |
 | SEC-8 | MEDIUM | **Viewer : jetons et clés des devices, firmware avec PSK WiFi** | R4 | corrigé |
 | SEC-9 | LOW | **Dashboard : id de contrôle d'une autre org accepté au save** | R1 | corrigé (18484ae) |
+| SEC-10 | MEDIUM | **APK Android distribué « debuggable » : session lisible par USB** | R16 | ouvert |
 
 \* SEC-4 seul exige le jeton de service ; c'est l'amplificateur qui rend
 SEC-1 / SEC-3 inter-org (actionneurs de n'importe quelle org).
@@ -313,6 +314,19 @@ réservé owner/admin par le coffre. *Correctif* : `device_token` à `None`
 hors `can_write` (ou endpoint « révéler » dédié) ; `builds.rs::download`
 sous `can_manage_secrets`.
 
+**SEC-10 — APK distribué debuggable (confiance 9, trouvé 2026-10-04 en
+validant l'app sur téléphone).** `task build:frontend:android` produit
+`gradlew assembleDebug` signé avec la clé debug de dx : l'APK porte
+`android:debuggable`. Conséquences : `adb shell run-as io.pnex.app cat
+files/pnex-storage.json` lit access/refresh/id tokens et la CA épinglée, et
+la WebView est inspectable (`webview_devtools_remote_<pid>`) — exécution de
+JS arbitraire dans la session. Prérequis : accès physique au téléphone
+déverrouillé avec le débogage USB actif (d'où MEDIUM). *Correctif* :
+variante release (`assembleRelease`, `debuggable false`, clé de signature
+de release hors dépôt) pour l'APK distribué ; la variante debuggable reste
+réservée à l'APK e2e (`task build:frontend:android:e2e`, qui en a besoin
+pour `run-as`).
+
 ### Correctifs (2026-10-04)
 
 - **SEC-1 / SEC-2** — `pnex_core::flow::node_types` : `RED_ALLOWED_TYPES`
@@ -367,4 +381,5 @@ sous `can_manage_secrets`.
 
 ### Reste à faire
 
-Les SEC-W selon priorité produit ; aucun finding ≥ 8/10 ouvert.
+SEC-10 (APK release non debuggable, signature de release) ; les SEC-W selon
+priorité produit.

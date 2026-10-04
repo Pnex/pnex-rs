@@ -3,3 +3,5 @@ test-results/
 playwright-report/
 .state/
 captures/
+test-results-android/
+playwright-report-android/
