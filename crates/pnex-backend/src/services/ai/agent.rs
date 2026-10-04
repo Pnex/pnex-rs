@@ -28,6 +28,9 @@ pub fn shared_http() -> &'static reqwest::Client {
     HTTP.get_or_init(|| {
         reqwest::Client::builder()
             .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+            // An LLM API never redirects: following one would let an org's
+            // provider URL bounce the platform onto an internal host (R8).
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("reqwest client")
     })
@@ -39,6 +42,9 @@ pub fn shared_probe_http() -> &'static reqwest::Client {
     HTTP.get_or_init(|| {
         reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
+            // An LLM API never redirects: following one would let an org's
+            // provider URL bounce the platform onto an internal host (R8).
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("reqwest client")
     })

