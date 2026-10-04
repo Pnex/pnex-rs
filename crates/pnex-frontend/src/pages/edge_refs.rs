@@ -16,7 +16,6 @@ use pnex_core::{PnexHost, WifiCredential};
 use crate::api;
 use crate::components::badges::date_label;
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::RefreshButton;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
@@ -79,6 +78,7 @@ pub fn EdgeRefs() -> Element {
         ListLayout {
             title: t!("edgerefs-title").to_string(),
             subtitle: Some(t!("edgerefs-subtitle").to_string()),
+            on_refresh: move |_| reload.with_mut(|r| *r += 1),
             can_write: can_write && !(tab() == Tab::Hosts && hosts_locked),
             // Le libellé « ajouter » suit l'onglet actif (WiFi vs serveurs).
             add_label: Some(
@@ -113,9 +113,6 @@ pub fn EdgeRefs() -> Element {
                                 {t!(tab_def.1)}
                             }
                         }
-                    }
-                    div { class: "ml-auto",
-                        RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
                     }
                 }
 

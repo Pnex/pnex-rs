@@ -174,6 +174,7 @@ pub fn Functions() -> Element {
         ListLayout {
             title: t!("nav-functions").to_string(),
             subtitle: Some(t!("functions-subtitle").to_string()),
+            on_refresh: move |_| reload.with_mut(|r| *r += 1),
             // Editor subview draws its own header — drop the CRUD title and
             // "New function" button entirely (we are in the editor, not in
             // the list).
@@ -208,7 +209,6 @@ pub fn Functions() -> Element {
                                 placeholder: t!("functions-search-placeholder").to_string(),
                                 value: search,
                                 on_submit: move |_| {},
-                                on_refresh: move |_| reload.with_mut(|r| *r += 1),
                             }
                         }
 

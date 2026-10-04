@@ -9,7 +9,6 @@ use pnex_core::{O2StreamInfo, RetentionInfo};
 
 use crate::api;
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::RefreshButton;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
@@ -90,10 +89,8 @@ pub fn System() -> Element {
         ListLayout {
             title: t!("system-title").to_string(),
             subtitle: Some(t!("system-subtitle").to_string()),
+            on_refresh: move |_| bump(),
             can_write,
-            actions: rsx! {
-                RefreshButton { on_click: move |_| bump() }
-            },
             div { class: "space-y-6",
                 match &*retention.value().read() {
                     None => rsx! {

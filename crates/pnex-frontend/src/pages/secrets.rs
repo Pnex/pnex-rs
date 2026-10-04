@@ -193,6 +193,7 @@ pub fn Secrets() -> Element {
         ListLayout {
             title: t!("secrets-title").to_string(),
             subtitle: Some(t!("secrets-subtitle").to_string()),
+            on_refresh: move |_| reload.with_mut(|r| *r += 1),
             can_write: can_manage,
             add_label: Some(t!("secrets-new").to_string()),
             on_add: move |_| {
@@ -287,7 +288,6 @@ pub fn Secrets() -> Element {
                     placeholder: t!("secrets-search-placeholder").to_string(),
                     value: search,
                     on_submit: move |_| reload.with_mut(|r| *r += 1),
-                    on_refresh: move |_| reload.with_mut(|r| *r += 1),
                 }
             }
             if let Some(err) = error() {

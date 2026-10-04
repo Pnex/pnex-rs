@@ -13,7 +13,6 @@ use pnex_core::{DashboardFormat, TelemetryPoint, VizDashboard, VizDashboardSumma
 use crate::api;
 use crate::components::badges::date_label;
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::RefreshButton;
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
@@ -263,12 +262,10 @@ fn ListView(
         ListLayout {
             title: t!("nav-dashboards").to_string(),
             subtitle: Some(t!("db-subtitle").to_string()),
+            on_refresh: move |_| reload.with_mut(|r| *r += 1),
             can_write,
             // Harmonisation socle : rafraîchissement manuel dans l'en-tête
             // (la page n'a pas de barre de filtres).
-            actions: rsx! {
-                RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
-            },
             add_label: Some(t!("db-create").to_string()),
             on_add: move |_| choosing.set(true),
             // D123: the format is picked once, at creation — the modal

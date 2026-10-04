@@ -16,7 +16,7 @@ use pnex_core::TelemetryPoint;
 
 use crate::api;
 use crate::components::charts::{ChartSeries, TimeSeriesChart, PALETTE};
-use crate::components::crud::filters::RefreshButton;
+use crate::components::crud::layout::ListLayout;
 use crate::components::icons;
 use crate::state::org;
 use crate::util::sleep;
@@ -208,17 +208,15 @@ pub fn Visualisation() -> Element {
         .sum();
 
     rsx! {
-        div { class: "p-6",
-            div { class: "mb-8 flex items-center justify-between",
-                div {
-                    h1 { class: "text-3xl font-bold text-gray-900", {t!("nav-quick-charts")} }
-                    p { class: "text-gray-600 mt-2", {t!("vis-subtitle")} }
-                }
-                div { class: "flex items-center gap-3",
-                    span { class: "text-xs text-gray-400", {t!("dash-auto-refresh")} }
-                    RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
-                }
-            }
+        // Canonical list header: same refresh spot as every other page.
+        ListLayout {
+            title: t!("nav-quick-charts").to_string(),
+            subtitle: Some(t!("vis-subtitle").to_string()),
+            on_refresh: move |_| reload.with_mut(|r| *r += 1),
+            can_write: false,
+            actions: rsx! {
+                span { class: "hidden text-xs text-gray-400 sm:inline", {t!("dash-auto-refresh")} }
+            },
 
             // Sélection : métrique × device × fenêtre + ajout
             div { class: "bg-white rounded-lg shadow-sm mb-8",

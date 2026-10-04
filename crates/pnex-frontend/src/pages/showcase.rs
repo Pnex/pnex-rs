@@ -9,7 +9,7 @@ use dioxus::prelude::*;
 use pnex_core::FlowSummary;
 
 use crate::api::error::ApiError;
-use crate::components::crud::filters::{FilterBar, RefreshButton, SearchInput};
+use crate::components::crud::filters::{FilterBar, SearchInput};
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::ListPager;
@@ -105,6 +105,7 @@ pub fn Showcase() -> Element {
             ListLayout {
                 title: "ListLayout — retour agrandi + sous-titre + action".to_string(),
                 subtitle: Some("Le retour est le nouveau canon (icône h-5 w-5, px-4 py-2.5).".to_string()),
+                on_refresh: move |_| {},
                 on_back: move |_| {},
                 can_write: true,
                 add_label: Some("Ajouter un élément".to_string()),
@@ -124,18 +125,15 @@ pub fn Showcase() -> Element {
                 }
             }
 
-            // 3 — FilterBar (search + refresh).
+            // 3 — FilterBar (search only: refresh lives in the header).
             div {
-                h2 { class: "text-lg font-semibold text-gray-900",
-                    "FilterBar / SearchInput / RefreshButton"
-                }
+                h2 { class: "text-lg font-semibold text-gray-900", "FilterBar / SearchInput" }
                 FilterBar {
                     SearchInput {
                         placeholder: "Rechercher…".to_string(),
                         value: search,
                         on_submit: move |_| {},
                     }
-                    RefreshButton { on_click: move |_| {} }
                 }
             }
 

@@ -12,7 +12,7 @@ use pnex_core::events::{EventLevel, EventRecord, DEFAULT_EVENT_STREAM};
 use crate::api;
 use crate::api::events::EventFilters;
 use crate::app::Route;
-use crate::components::crud::filters::{FilterBar, RefreshButton, SearchInput};
+use crate::components::crud::filters::{FilterBar, SearchInput};
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
@@ -157,6 +157,7 @@ pub fn Events() -> Element {
         ListLayout {
             title: t!("events-title").to_string(),
             subtitle: Some(t!("events-subtitle").to_string()),
+            on_refresh: move |_| reload.with_mut(|r| *r += 1),
             can_write: false,
             FilterBar {
                 select {
@@ -241,7 +242,6 @@ pub fn Events() -> Element {
                     value: search,
                     on_submit: move |_| page.set(0),
                 }
-                RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
             }
             if !available {
                 div { class: "text-center py-12 bg-white rounded-lg shadow border border-gray-200",

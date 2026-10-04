@@ -170,6 +170,7 @@ pub fn Studio() -> Element {
             ListLayout {
                 title: t!("nav-studio").to_string(),
                 subtitle: Some(t!("studio-subtitle").to_string()),
+                on_refresh: move |_| reload.with_mut(|r| *r += 1),
                 can_write,
                 add_label: Some(t!("studio-new").to_string()),
                 on_add: move |_| {
@@ -206,7 +207,6 @@ pub fn Studio() -> Element {
                                 page.set(0);
                                 reload.with_mut(|r| *r += 1);
                             },
-                            on_refresh: move |_| reload.with_mut(|r| *r += 1),
                         }
                     }
 

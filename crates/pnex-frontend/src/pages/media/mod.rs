@@ -237,6 +237,7 @@ pub fn Media() -> Element {
             ListLayout {
                 title: t!("media-title").to_string(),
                 subtitle: Some(t!("media-subtitle").to_string()),
+                on_refresh: move |_| reload.with_mut(|r| *r += 1),
                 can_write,
                 add_label: Some(t!("media-upload").to_string()),
                 on_add: move |_| upload_open.set(true),
@@ -319,7 +320,6 @@ pub fn Media() -> Element {
                         on_submit: move |_| {
                             page.set(0);
                         },
-                        on_refresh: move |_| reload.with_mut(|r| *r += 1),
                     }
                 }
 
