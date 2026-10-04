@@ -645,7 +645,7 @@ fn DeleteRangeDialog(name: String, on_done: Callback<()>, on_cancel: Callback<()
             class: "fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4",
             onclick: move |_| on_cancel.call(()),
             div {
-                class: "bg-white rounded-lg shadow-xl max-w-md w-full p-6 space-y-4",
+                class: "bg-white rounded-lg shadow-xl max-w-md w-full max-h-full overflow-y-auto p-4 space-y-4 sm:p-6",
                 role: "dialog",
                 aria_modal: "true",
                 aria_label: t!("system-delete-range-title", name : name.clone()),
@@ -711,7 +711,7 @@ fn PurgeDialog(on_done: Callback<()>, on_cancel: Callback<()>) -> Element {
             class: "fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4",
             onclick: move |_| on_cancel.call(()),
             div {
-                class: "bg-white rounded-lg shadow-xl max-w-md w-full p-6 space-y-4",
+                class: "bg-white rounded-lg shadow-xl max-w-md w-full max-h-full overflow-y-auto p-4 space-y-4 sm:p-6",
                 role: "alertdialog",
                 aria_modal: "true",
                 aria_label: t!("system-purge-title"),

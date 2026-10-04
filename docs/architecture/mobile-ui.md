@@ -175,9 +175,18 @@ appliquer les classes du lot 2).
   `ListLayout`. Vérifié sur les 21 pages : 1 bouton, dans l'en-tête, en
   dernier. Seule exception assumée : le contrôle de cadence auto (accueil,
   vue dashboard), lui aussi en haut à droite. Règle dans le README du socle.
-- Reste : M6 tables hors socle,
-  M17 détail org ; deux pieds de dialogue maison dans `system.rs` (hors
-  `Modal`).
+- **2026-10-04 — M6 + M17** : tables hors socle compactées sur le même
+  principe que `DataTable` (padding `.th`/`.td`, colonnes secondaires
+  masquées sous `md`, repliées dans le détail dépliable ou sous le nom) :
+  événements (sujet/flow/nœud), journal des notifications (source/flow),
+  modèles (entrée/labels/seuil/date + actions collantes), fournisseurs LLM
+  (modèle sous le nom, clé masquée, actions collantes), clés de l'agent
+  edge, orgs de `/admin/status` (offre sous le nom), dernières mesures de
+  l'accueil. `ACTIONS_TH_CLASS` / `ACTIONS_TD_CLASS` publiques pour les
+  tables maison. Détail org : sections `p-4` sous `md`, supprimer en icône,
+  membres tronqués ; en-tête « Ajouter un fournisseur » empilé sous `sm`.
+  Les deux dialogues de `system.rs` défilent (`max-h-full overflow-y-auto`).
+  Vérification téléphone à faire après réinstallation de l'APK.
 
 ## 4. Décision à prendre (avant le lot 2)
 

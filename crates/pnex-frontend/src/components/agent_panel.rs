@@ -381,9 +381,9 @@ fn KeysTable(
                 thead { class: "bg-gray-50 text-left text-xs uppercase tracking-wider text-gray-500",
                     tr {
                         th { class: "px-3 py-2", {t!("agent-keys-col-key")} }
-                        th { class: "px-3 py-2", {t!("agent-keys-col-unit")} }
+                        th { class: "px-3 py-2 hidden md:table-cell", {t!("agent-keys-col-unit")} }
                         th { class: "px-3 py-2", {t!("agent-keys-col-kind")} }
-                        th { class: "px-3 py-2", {t!("agent-keys-col-last")} }
+                        th { class: "px-3 py-2 hidden md:table-cell", {t!("agent-keys-col-last")} }
                         th { class: "px-3 py-2", {t!("agent-keys-col-history")} }
                         th { class: "px-3 py-2" }
                     }
@@ -433,10 +433,14 @@ fn KeyRow(
     };
     rsx! {
         tr { class: "border-t border-gray-100",
-            td { class: "px-3 py-2 font-mono text-gray-900", "{row.key}" }
-            td { class: "px-3 py-2 text-gray-600", {row.unit.clone().unwrap_or_default()} }
+            td { class: "px-3 py-2 font-mono text-gray-900 break-all", "{row.key}" }
+            td { class: "px-3 py-2 hidden text-gray-600 md:table-cell",
+                {row.unit.clone().unwrap_or_default()}
+            }
             td { class: "px-3 py-2 text-gray-500", "{row.kind}" }
-            td { class: "px-3 py-2 text-xs text-gray-500", {date_label(&row.last_seen_at)} }
+            td { class: "px-3 py-2 hidden text-xs text-gray-500 md:table-cell",
+                {date_label(&row.last_seen_at)}
+            }
             td { class: "px-3 py-2",
                 input {
                     r#type: "checkbox",
