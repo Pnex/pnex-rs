@@ -42,6 +42,7 @@ Idempotent : relancer sans risque, ne duplique rien.
 """
 
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -60,6 +61,8 @@ def main(path: str) -> None:
     patch_camera_permission(path)
     patch_media_provider(path)
     patch_network_security(path)
+    patch_launcher_icon(path)
+    patch_app_label(path)
 
 
 def patch_single_task(path: str) -> None:
@@ -270,6 +273,79 @@ def patch_network_security(manifest_path: str) -> None:
         )
         manifest.write_text(xml, encoding="utf-8")
         print("networkSecurityConfig referenced in the manifest")
+
+
+# PNeX "X" mark (assets/logo-mark.png redrawn as vectors) on the 108-unit
+# adaptive-icon viewport; everything stays inside the 66-unit safe zone.
+ICON_BACKGROUND = """<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:pathData="M0,0h108v108h-108z" />
+</vector>
+"""
+
+ICON_FOREGROUND = """<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:strokeColor="#E4462A" android:strokeWidth="6.5"
+        android:strokeLineCap="round" android:pathData="M33,33L75,75M75,33L33,75" />
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M54,47.6a6.4,6.4 0,1 1,0 12.8a6.4,6.4 0,1 1,0 -12.8z" />
+    <path android:fillColor="#59C7D4"
+        android:pathData="M54,49.4a4.6,4.6 0,1 1,0 9.2a4.6,4.6 0,1 1,0 -9.2z" />
+</vector>
+"""
+
+
+def patch_launcher_icon(manifest_path: str) -> None:
+    """Launcher icon: PNeX mark instead of dx's Android Studio template robot.
+
+    dx regenerates `res/` on every build with the stock template icon
+    (green #3DDC84 background) and offers no Dioxus.toml knob for it on
+    Android. API 26+ uses the adaptive vectors below; API 24-25 falls back to
+    the PNGs versioned in `android-res/` (rendered from the same geometry).
+    The template ships them as `.webp`: removed, otherwise gradle fails on a
+    duplicate `ic_launcher` resource. Idempotent.
+    """
+    res = Path(manifest_path).parent / "res"
+    (res / "drawable").mkdir(parents=True, exist_ok=True)
+    (res / "drawable-v24").mkdir(parents=True, exist_ok=True)
+    (res / "drawable" / "ic_launcher_background.xml").write_text(
+        ICON_BACKGROUND, encoding="utf-8"
+    )
+    (res / "drawable-v24" / "ic_launcher_foreground.xml").write_text(
+        ICON_FOREGROUND, encoding="utf-8"
+    )
+    legacy = Path(__file__).parent / "android-res"
+    for src in sorted(legacy.glob("mipmap-*/ic_launcher.png")):
+        dest_dir = res / src.parent.name
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        for stale in dest_dir.glob("ic_launcher.*"):
+            stale.unlink()
+        shutil.copyfile(src, dest_dir / "ic_launcher.png")
+    print("launcher icon replaced (PNeX mark)")
+
+
+APP_LABEL = "PNeX"
+
+
+def patch_app_label(manifest_path: str) -> None:
+    """Launcher label: "PNeX" instead of dx's crate-derived "PnexFrontend".
+
+    dx writes `app_name` into `res/values/strings.xml` from the crate name,
+    with no Dioxus.toml override. Idempotent.
+    """
+    strings = Path(manifest_path).parent / "res" / "values" / "strings.xml"
+    xml = strings.read_text(encoding="utf-8")
+    patched, count = re.subn(
+        r'(<string name="app_name">)[^<]*(</string>)', rf"\g<1>{APP_LABEL}\g<2>", xml
+    )
+    if count == 0:
+        sys.exit("app_name not found in strings.xml — dx template changed?")
+    strings.write_text(patched, encoding="utf-8")
+    print(f"app label set to {APP_LABEL}")
 
 
 if __name__ == "__main__":

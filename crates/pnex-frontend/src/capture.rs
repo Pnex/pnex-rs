@@ -123,8 +123,30 @@ fn spawn_watcher(temp: std::path::PathBuf, captured: String, failed: String) {
         // Timeout global ~10 min (école pont login : 500 ms × 1200).
         let mut last_size: Option<u64> = None;
         let mut stable: u32 = 0;
-        for _ in 0..1200 {
+        // Cancel detection: the camera app pushes us out of the foreground;
+        // once back in front with no photo on disk, the user cancelled (the
+        // intent is fire-and-forget, no activity result to read).
+        let mut camera_shown = false;
+        let mut back_without_photo: u32 = 0;
+        for tick in 0..1200u32 {
             sleep(Duration::from_millis(500)).await;
+            let foreground = app_in_foreground();
+            if foreground == Some(false) && !camera_shown {
+                camera_shown = true;
+                crate::capture360::filelog::log("capture: camera shown");
+            }
+            let has_photo = std::fs::metadata(&temp)
+                .map(|m| m.len() > 0)
+                .unwrap_or(false);
+            if foreground == Some(true) && !has_photo && (camera_shown || tick >= 30) {
+                back_without_photo += 1;
+                if back_without_photo >= 3 {
+                    crate::capture360::filelog::log("capture: back without a photo, cancelled");
+                    break;
+                }
+            } else {
+                back_without_photo = 0;
+            }
             let Ok(meta) = std::fs::metadata(&temp) else {
                 // La caméra n'a pas encore créé le fichier (ou capture
                 // annulée) — on continue jusqu'au timeout.
@@ -147,6 +169,8 @@ fn spawn_watcher(temp: std::path::PathBuf, captured: String, failed: String) {
         let bytes = std::fs::read(&temp).unwrap_or_default();
         let _ = std::fs::remove_file(&temp);
         if bytes.is_empty() {
+            // Cancelled or timed out: nothing to upload, clear the indicator.
+            CAPTURE_ACTIVE.store(false, std::sync::atomic::Ordering::Relaxed);
             return;
         }
         let params = UploadParams {
@@ -541,6 +565,65 @@ fn start_camera_intent(uri: jni::sys::jobject) -> bool {
             ((**env).v1_1.ExceptionClear)(env);
         }
         true
+    }
+}
+
+/// Is the app process in the foreground? (`ActivityManager.getMyMemoryState`
+/// importance == IMPORTANCE_FOREGROUND). The camera app on top of us drops it.
+/// `Activity.hasWindowFocus` is no use here: it stays true under the camera
+/// (constat device 2026-10-04). `None` when it cannot be read.
+#[cfg(target_os = "android")]
+fn app_in_foreground() -> Option<bool> {
+    const IMPORTANCE_FOREGROUND: i32 = 100;
+    let env = attach_env()?;
+    unsafe {
+        let clear = || {
+            if ((**env).v1_2.ExceptionCheck)(env) {
+                ((**env).v1_1.ExceptionClear)(env);
+            }
+        };
+        let info_class = ((**env).v1_1.FindClass)(
+            env,
+            c"android/app/ActivityManager$RunningAppProcessInfo".as_ptr(),
+        );
+        if info_class.is_null() {
+            clear();
+            return None;
+        }
+        let am_class = ((**env).v1_1.FindClass)(env, c"android/app/ActivityManager".as_ptr());
+        if am_class.is_null() {
+            clear();
+            ((**env).v1_1.DeleteLocalRef)(env, info_class);
+            return None;
+        }
+        let ctor = ((**env).v1_1.GetMethodID)(env, info_class, c"<init>".as_ptr(), c"()V".as_ptr());
+        let get_state = ((**env).v1_1.GetStaticMethodID)(
+            env,
+            am_class,
+            c"getMyMemoryState".as_ptr(),
+            c"(Landroid/app/ActivityManager$RunningAppProcessInfo;)V".as_ptr(),
+        );
+        let field =
+            ((**env).v1_1.GetFieldID)(env, info_class, c"importance".as_ptr(), c"I".as_ptr());
+        let mut result = None;
+        if !ctor.is_null() && !get_state.is_null() && !field.is_null() {
+            let info = ((**env).v1_1.NewObjectA)(env, info_class, ctor, std::ptr::null());
+            if !info.is_null() {
+                let args = [jni::sys::jvalue { l: info }];
+                ((**env).v1_1.CallStaticVoidMethodA)(env, am_class, get_state, args.as_ptr());
+                if !((**env).v1_2.ExceptionCheck)(env) {
+                    let importance = ((**env).v1_1.GetIntField)(env, info, field);
+                    result = Some(importance == IMPORTANCE_FOREGROUND);
+                }
+                ((**env).v1_1.DeleteLocalRef)(env, info);
+            }
+        }
+        clear();
+        // Polled every 500 ms on a long-lived attached thread: free the
+        // local references right away instead of piling them up.
+        ((**env).v1_1.DeleteLocalRef)(env, info_class);
+        ((**env).v1_1.DeleteLocalRef)(env, am_class);
+        result
     }
 }
 

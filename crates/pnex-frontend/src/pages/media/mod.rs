@@ -145,6 +145,13 @@ pub fn Media() -> Element {
                         toasts::error(t!("media-camera-failed"));
                     }
                     reload.with_mut(|r| *r += 1);
+                } else if !crate::capture::capture_in_progress() {
+                    // Capture cancelled (back from the camera without a
+                    // photo): no result to report, just drop the indicator.
+                    let running = capture_running();
+                    if running {
+                        capture_running.set(false);
+                    }
                 }
 
                 // Take 360: pipeline result (detached stitch + upload) —

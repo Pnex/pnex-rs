@@ -157,3 +157,48 @@ puts the generic `e2e-c3` image back.
 
 A live camera films the room it sits in: never publish its captures as
 content without checking what they show.
+
+## Android (`@android`)
+
+The native app on a phone attached through adb, driven through its WebView
+(Playwright `_android` + the app's DevTools socket). Specs live in
+`tests-android/`, config `playwright.android.config.ts`, fixtures
+`src/fixtures-android.ts` (same `api`, `t`/`tr`, `prefix`, `capture` as the
+web suite; `app` is an `AndroidShell`).
+
+```bash
+task e2e:android                                   # build + install the e2e APK, run everything
+task e2e:android -- tests-android/media.spec.ts    # one spec
+cd e2e && bunx playwright test -c playwright.android.config.ts   # APK already installed
+```
+
+| Variable | Default |
+|---|---|
+| `PNEX_E2E_ANDROID_API_BASE` | `PNEX_E2E_BASE_URL` — origin **the phone** reaches the stack at (LAN IP, not `localhost`) |
+| `PNEX_E2E_ANDROID_SERIAL` | the only device in `adb devices` |
+| `PNEX_E2E_ANDROID_INSTALL=1` | install `PNEX_E2E_ANDROID_APK` (default `target/dx/pnex-frontend/pnex-e2e.apk`) before the run |
+
+- **The e2e APK** (`task build:frontend:android:e2e`) is the app with feature
+  `e2e`: it adds `window.__pnexNavigate(path)`, the native router keeping an
+  in-memory history (`app.goto()` uses it). Never distributed. It does not
+  enable `diag`: the suite checks the UI as shipped (no Take 360 debug line).
+- **Session**: the app stores it in `files/pnex-storage.json`, written through
+  `run-as` before each launch (`test.use({ session })`: `signed-in`,
+  `server-only`, `fresh`). The operator's own storage is saved at the start of
+  the run and put back at the end.
+- **Checks on every test**: no page error, no Rust panic in logcat
+  (`PNEX-PANIC` / `panicked at`).
+- **Native UI** (camera app, permission dialogs, keys): the suite avoids input
+  injection — leaving the camera = relaunching the activity. MIUI refuses
+  `input`/`pm grant` unless "USB debugging (Security settings)" is on;
+  `canInject` tells a test, which then skips. The CAMERA permission is granted
+  once by hand (the media tests skip without it).
+- **MIUI installs** ask for confirmation on the phone ("Install via USB"):
+  tick "Remember my choice" once.
+
+| Spec | Covers |
+|---|---|
+| `smoke` (`@smoke @i18n`) | signed-in boot, every route renders, en + fr |
+| `onboarding` | fresh install in the OS language → server picker → CA trust (TOFU) → login |
+| `media` | Take 360 (guided start, live camera, no debug line, cancel) · photo intent cancelled → no pending upload |
+| `deeplink` | `pnex://return` resumes the running app (single instance) |

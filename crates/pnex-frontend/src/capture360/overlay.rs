@@ -45,8 +45,10 @@ const ID_DOT: &str = "p360-dot";
 const ID_ARROW: &str = "p360-arrow";
 const ID_ARC: &str = "p360-arc";
 const ID_DEG: &str = "p360-deg";
+/// 1×1 transparent GIF used as the <video> poster.
+const VIDEO_POSTER: &str =
+    "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 const ID_PITCH: &str = "p360-pitch";
-const ID_STAB: &str = "p360-stab";
 const ID_FLASH: &str = "p360-flash";
 
 /// Snapshot de rendu copié depuis les atomics à chaque tick — DISCRET
@@ -105,8 +107,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
         state::reset_session();
         state::PHASE.store(Phase::Searching as u8, Ordering::Relaxed);
         wakelock::keep_screen_on(true);
-        if !crate::capture::camera_granted() {
-            crate::capture::request_camera();
+        if !crate::capture::camera_granted() && !wait_camera_permission().await {
             state::ERROR_CODE.store(1, Ordering::Relaxed);
             state::PHASE.store(Phase::Error as u8, Ordering::Relaxed);
             return;
@@ -361,7 +362,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                 // ── Couche DOM continue (15 Hz) ────────────────────────
                 if now.saturating_sub(last_dom_push) >= 66 {
                     last_dom_push = now;
-                    push_overlay_dom(pose, target_yaw, target_pitch, dwell_start, now, stable);
+                    push_overlay_dom(pose, target_yaw, target_pitch, dwell_start, now);
                 }
 
                 // Progression de stitch animée (le rendu ne reporte pas de
@@ -374,7 +375,8 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                 }
 
                 // Debug en DOM à 10 Hz (temporaire — smoke test).
-                if now.saturating_sub(last_debug_push) >= 100 {
+                // Diagnostics builds only (feature `diag`).
+                if cfg!(feature = "diag") && now.saturating_sub(last_debug_push) >= 100 {
                     last_debug_push = now;
                     push_debug_dom(
                         beat as u32,
@@ -424,6 +426,13 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
     let overall_done = ui().ring * n_steps + ui().step;
     let overall_total = guidance::N_RINGS * n_steps;
     let overall_pct = overall_done.checked_div(overall_total).unwrap_or(0);
+    let progress_label = t!(
+        "media-take360-progress",
+        ring: ui().ring + 1,
+        rings: guidance::N_RINGS,
+        pct: overall_pct
+    )
+    .to_string();
 
     rsx! {
         div { class: "fixed inset-0 z-[100] bg-black select-none",
@@ -434,6 +443,9 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                     id: VIDEO_ID,
                     autoplay: true,
                     playsinline: true,
+                    // Transparent poster: hides the Android WebView default
+                    // grey "play" placeholder shown until the stream starts.
+                    poster: VIDEO_POSTER,
                     class: "absolute inset-0 h-full w-full object-cover",
                 }
                 // SVG guidage : arc de dwell (remplissage DOM), réticule,
@@ -485,15 +497,6 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                         "fill-opacity": "0.95",
                         style: "display:none",
                     }
-                    // Pastille stabilité : verte immobile, orange en
-                    // mouvement (couleur DOM).
-                    circle {
-                        id: ID_STAB,
-                        cx: "200",
-                        cy: "252",
-                        r: "5",
-                        fill: "#22c55e",
-                    }
                 }
                 // Flash blanc de capture — opacité pilotée DOM (pas de
                 // re-render dioxus).
@@ -505,12 +508,10 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
             }
 
             // Pastille de consigne — t! à littéral, le match choisit.
-            if in_guidance {
-                div { class: "absolute top-8 inset-x-0 flex justify-center",
-                    div { class: "px-4 py-2 rounded-full bg-black/60 text-white text-sm text-center",
-                        if !ui().anchored {
-                            {t!("media-take360-hint-anchor")}
-                        } else if ui().ring >= 1 && !ui().band_ok {
+            if in_guidance && ui().anchored {
+                div { class: "absolute top-20 inset-x-0 flex flex-col items-center gap-2 px-6",
+                    div { class: "px-4 py-2 rounded-full bg-black/60 text-white text-base font-medium text-center",
+                        if ui().ring >= 1 && !ui().band_ok {
                             if ui().ring == 1 {
                                 {t!("media-take360-hint-tilt")}
                             } else {
@@ -526,12 +527,33 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                             {t!("media-take360-hint-keep")}
                         }
                     }
+                    div { class: "px-3 py-1 rounded-full bg-black/40 text-white/80 text-xs text-center",
+                        {t!("media-take360-hint-auto")}
+                    }
+                }
+            }
+
+            // Before the start: what the capture expects, step by step, and
+            // one primary action (anchors the ring on the current heading).
+            if in_guidance && !ui().anchored {
+                div { class: "absolute inset-x-4 bottom-8 rounded-2xl bg-black/75 p-5 text-white",
+                    div { class: "text-lg font-semibold mb-3", {t!("media-take360-intro-title")} }
+                    ol { class: "space-y-2 text-sm text-white/90 list-decimal pl-5 mb-5",
+                        li { {t!("media-take360-intro-step1")} }
+                        li { {t!("media-take360-intro-step2")} }
+                        li { {t!("media-take360-intro-step3")} }
+                    }
+                    button {
+                        class: "w-full py-3 rounded-xl bg-blue-600 text-white text-base font-semibold",
+                        onclick: move |_| state::reanchor(),
+                        {t!("media-take360-start")}
+                    }
                 }
             }
 
             // Compteur de pas + progression (discret) + lectures continues
             // (degrés/pitch) en spans DOM.
-            if in_guidance {
+            if in_guidance && ui().anchored {
                 div { class: "absolute bottom-24 inset-x-0 text-center text-white",
                     if ui().ring >= 1 && !ui().band_ok {
                         div { class: "text-sm text-white/80 mb-1",
@@ -546,9 +568,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                     div { class: "mt-1.5 text-sm font-medium",
                         span { id: ID_DEG, "" }
                     }
-                    div { class: "text-xs text-white/60 mt-1",
-                        "Anneau {ui().ring + 1}/{guidance::N_RINGS} · {overall_pct} % du panorama"
-                    }
+                    div { class: "text-xs text-white/60 mt-1", "{progress_label}" }
                 }
             }
 
@@ -599,11 +619,13 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                 }
             }
 
-            // [DEBUG] état interne — temporaire (smoke test device).
-            div {
-                id: "p360-debug",
-                class: "absolute bottom-4 left-4 text-green-400 text-xs font-mono bg-black/70 px-2 py-1 rounded",
-                "…"
+            // Raw internal state line: diagnostics builds only (feature `diag`).
+            if cfg!(feature = "diag") {
+                div {
+                    id: "p360-debug",
+                    class: "absolute bottom-4 left-4 text-green-400 text-xs font-mono bg-black/70 px-2 py-1 rounded",
+                    "…"
+                }
             }
 
             // Boutons : « Reprendre » (retrait dernière frame), ancre
@@ -616,19 +638,46 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                         {t!("media-take360-undo")}
                     }
                 }
-                button {
-                    class: "absolute top-6 left-6 px-3 py-1.5 rounded-full bg-black/60 text-white text-sm",
-                    onclick: move |_| state::reanchor(),
-                    {t!("media-take360-anchor")}
+                // Moving the start point only makes sense before the first
+                // photo: afterwards it would shift the ring off the frames.
+                if ui().anchored && ui().ring == 0 && ui().step == 0 {
+                    button {
+                        class: "absolute top-6 left-6 px-3 py-1.5 rounded-full bg-black/60 text-white text-sm",
+                        onclick: move |_| state::reanchor(),
+                        {t!("media-take360-restart-here")}
+                    }
                 }
                 button {
-                    class: "absolute top-6 right-6 px-3 py-1.5 rounded-full bg-black/60 text-white text-sm",
+                    class: "absolute top-5 right-5 h-10 w-10 flex items-center justify-center rounded-full bg-black/60 text-white",
+                    title: t!("media-take360-cancel"),
+                    aria_label: t!("media-take360-cancel"),
                     onclick: cancel,
-                    {t!("media-take360-cancel")}
+                    crate::components::icons::X { class: "h-6 w-6" }
                 }
             }
         }
     }
+}
+
+/// Asks for the CAMERA permission and waits for the system dialog's answer
+/// (polled: the request is fire-and-forget on the JNI side). Without this the
+/// first Take 360 ended on the error screen even when the user granted the
+/// permission right away. Gives up after ~60 s or on cancel.
+async fn wait_camera_permission() -> bool {
+    super::filelog::log("overlay: CAMERA not granted, requesting");
+    crate::capture::request_camera();
+    for _ in 0..200 {
+        crate::util::sleep(Duration::from_millis(300)).await;
+        if state::CANCEL.load(Ordering::Relaxed) {
+            return false;
+        }
+        if crate::capture::camera_granted() {
+            super::filelog::log("overlay: CAMERA granted");
+            return true;
+        }
+    }
+    super::filelog::log("overlay: CAMERA still not granted, giving up");
+    false
 }
 
 /// Longueur de l'arc de dwell (circonférence du réticule).
@@ -643,7 +692,6 @@ fn push_overlay_dom(
     target_pitch: f32,
     dwell_start: Option<u64>,
     now: u64,
-    stable: bool,
 ) {
     // Pré-ancre : la cible serait relative au zéro de session (souvent
     // capturé EN MOUVEMENT — cf. state.rs) → point guideur au CENTRE et
@@ -697,7 +745,6 @@ fn push_overlay_dom(
     let pitch_text = pose
         .map(|p| format!("{:+.0}°", p.pitch))
         .unwrap_or_default();
-    let stab_color = if stable { "#22c55e" } else { "#f59e0b" };
 
     // Flash : la JS garde sa propre séquence — un delta déclenche
     // l'animation (opacity 0.7 → fade 250 ms).
@@ -713,8 +760,6 @@ fn push_overlay_dom(
             if ({arrow_show}) {{ arrow.setAttribute('points', '{arrow_pts}'); arrow.style.display = ''; }} \
             else arrow.style.display = 'none'; \
          }} \
-         const stab = document.getElementById('{id_stab}'); \
-         if (stab) stab.setAttribute('fill', '{stab_color}'); \
          const deg = document.getElementById('{id_deg}'); \
          if (deg) deg.textContent = '{deg_text}'; \
          const pit = document.getElementById('{id_pitch}'); \
@@ -734,7 +779,6 @@ fn push_overlay_dom(
         id_dot = ID_DOT,
         id_arc = ID_ARC,
         id_arrow = ID_ARROW,
-        id_stab = ID_STAB,
         id_deg = ID_DEG,
         id_pitch = ID_PITCH,
         id_flash = ID_FLASH,
@@ -743,7 +787,6 @@ fn push_overlay_dom(
         arc_offset = arc_offset,
         arrow_show = arrow_show,
         arrow_pts = arrow_pts,
-        stab_color = stab_color,
         deg_text = deg_text,
         pitch_text = pitch_text,
         capture_seq = capture_seq,

@@ -123,3 +123,10 @@ mobile = ["dioxus/mobile"]
 # --no-default-features --features desktop (task build:frontend:desktop).
 desktop = ["dioxus/desktop"]
 router = ["dioxus/router"]
+# On-device diagnostics (Take 360 raw state line). Off in every shipped
+# build; opt in for device debugging (ANDROID_FEATURES="mobile diag").
+diag = []
+# Native e2e harness hooks (window.__pnexNavigate). Test builds only
+# (task build:frontend:android:e2e), never a shipped APK. Does not imply
+# `diag`: the suite checks the UI as shipped.
+e2e = []
