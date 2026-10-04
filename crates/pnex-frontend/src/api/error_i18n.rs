@@ -128,6 +128,25 @@ pub fn localize_violation(violation: &FlowViolation) -> String {
     resolve(&err_codes::fluent_key(&violation.code), Some(&args))
 }
 
+/// Localize an assistant tool trace line: a coded refusal resolves its
+/// `err-<code>` key with `args`, anything else (or a failed translation)
+/// shows the verbatim summary. Render scope required.
+pub fn localize_tool_summary(
+    code: Option<&str>,
+    args: Option<&serde_json::Value>,
+    summary: &str,
+) -> String {
+    match code {
+        Some(code) if err_codes::exists(code) => {
+            let fluent_args = json_to_args(args);
+            i18n()
+                .try_translate_with_args(&err_codes::fluent_key(code), fluent_args.as_ref())
+                .unwrap_or_else(|_| summary.to_owned())
+        }
+        _ => summary.to_owned(),
+    }
+}
+
 /// Localize a full API-violations payload (`{"violations": […]}`) — the
 /// localized form of `api::flows::violations_message`.
 pub fn violations_localized(err: &ApiError) -> Option<String> {

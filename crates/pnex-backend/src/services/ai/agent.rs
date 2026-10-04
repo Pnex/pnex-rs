@@ -99,7 +99,7 @@ pub async fn run_turn(
             tool_calls: turn.tool_calls.clone(),
         });
         for call in turn.tool_calls {
-            let outcome: Result<ToolOutcome, String> =
+            let outcome: Result<ToolOutcome, tools::ToolError> =
                 tools::execute(deps, &call.name, &call.arguments).await;
             match outcome {
                 Ok(outcome) => {
@@ -110,6 +110,8 @@ pub async fn run_turn(
                         ok: true,
                         summary: tools::summarize(&call.name, &outcome),
                         flow_id: outcome.flow_id,
+                        code: None,
+                        args: None,
                     });
                     messages.push(Msg::ToolResult {
                         id: call.id.clone(),
@@ -119,18 +121,20 @@ pub async fn run_turn(
                     });
                 }
                 Err(err) => {
-                    tracing::info!(tool = %call.name, erreur = %err, "outil assistant en échec");
+                    tracing::info!(tool = %call.name, erreur = %err.message, "outil assistant en échec");
                     trace.push(ToolTrace {
                         name: call.name.clone(),
                         arguments: call.arguments.clone(),
                         ok: false,
-                        summary: err.clone(),
+                        summary: err.message.clone(),
                         flow_id: None,
+                        code: err.code,
+                        args: err.args,
                     });
                     messages.push(Msg::ToolResult {
                         id: call.id.clone(),
                         name: call.name.clone(),
-                        content: err,
+                        content: err.message,
                         is_error: true,
                     });
                 }
@@ -175,5 +179,7 @@ pub fn trace_entry(
         ok,
         summary,
         flow_id,
+        code: None,
+        args: None,
     }
 }

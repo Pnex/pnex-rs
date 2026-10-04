@@ -2842,6 +2842,7 @@ err-control-key-taken = Un autre contrôle de l'organisation utilise déjà cett
 err-control-value-invalid = Valeur refusée par le contrôle ({ $reason }).
 err-control-rate-limited = Trop rapide : attendez un instant avant de renvoyer une valeur.
 err-control-in-use = Ce contrôle est écouté par des flows déployés ({ $flow }) : arrêtez-les ou retirez le contrôle de leurs nœuds avant de le supprimer.
+err-ai-flow-running = Refusé par l'assistant : des flows déployés sont concernés ({ $flow }). Arrêtez-les dans l'éditeur de flow, puis redemandez.
 err-control-unknown = Le contrôle { $control } n'existe pas (ou plus) dans l'organisation : choisissez-en un autre dans le nœud.
 err-control-store-unavailable = Le stockage des contrôles (Valkey) est indisponible : la valeur n'a pas été envoyée.
 

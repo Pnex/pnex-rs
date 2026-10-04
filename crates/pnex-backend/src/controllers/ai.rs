@@ -309,6 +309,8 @@ async fn chat(
                 ok: t.ok,
                 summary: t.summary,
                 flow_id: t.flow_id,
+                code: t.code.map(str::to_string),
+                args: t.args,
             })
             .collect(),
     })

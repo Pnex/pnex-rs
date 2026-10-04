@@ -10,7 +10,9 @@
 > (`llm_providers`, clé dans le coffre). A3 et A5 sont caducs ; §2, §3, §6,
 > §7 décrivent l'état actuel.
 >
-> **2026-10-04 — v2 SPÉCIFIÉE, NON IMPLÉMENTÉE (D142–D145, §9)** : base de
+> **2026-10-04 — v2 SPÉCIFIÉE (D142–D145, §9), implémentation en cours** :
+> étapes 1–2 du §9.5 livrées (doc des nœuds générée, garde
+> `ai-flow-running`) ; reste D145, fiches + diagnostics, D144. Base de
 > connaissance embarquée autoportante, édition de flow seulement à l'arrêt,
 > outils dashboards, conversations par utilisateur en base (CRUD, reprise,
 > rétention RGPD) + audit sans contenu dans O2.
@@ -146,7 +148,7 @@ les posait doit créer le fournisseur plateforme dans /system.
   401 → 502 actionnable ; sans fournisseur → non configuré, chat 400 ; borne d'itérations.
   Reprise `ai_connectors` → `llm_providers` : `tests/secrets.rs`.
 
-## 9. v2 — spécification (2026-10-04, D142–D145, non implémentée)
+## 9. v2 — spécification (2026-10-04, D142–D145, implémentation en cours)
 
 > Décisions utilisateur du 2026-10-04. Constat de départ : la connaissance
 > de l'assistant est écrite à la main (`context.rs`, `describe_node_types`)
@@ -381,3 +383,13 @@ org → 404 ; viewer peut converser mais `update_flow`/`create_dashboard`
 3. D145 (conversations + audit) — prérequis UX avant d'élargir les outils ;
 4. D142 couches 2–3 (fiches + `search_knowledge` + diagnostics) ;
 5. D144 (dashboards), puis candidats suivants selon la règle d'extension.
+
+**État d'implémentation**
+
+| Étape | État | Où |
+|---|---|---|
+| 1. Doc des nœuds générée | **livrée** | `pnex_core::flow::node_docs` (`NODE_DOCS`, `FLOW_AUTHORING_RULES`, `FLOW_EXAMPLE`) ; `describe_node_types {kinds?}` la sérialise ; règles du prompt système générées depuis la même table. Garde `every_kind_is_documented` : les kinds acceptés par le désérialiseur de `FlowNodeKind` (scan de `graph.rs`) == kinds documentés. 7 kinds absents ajoutés (cool_prop, reg_tt_heat/cool, reg_pid, pnex_function, json_split/merge) ; l'exemple au kind `device` supprimé est remplacé par un exemple validé par test. Recette « nouveau nœud » : 9ᵉ point = une entrée `NODE_DOCS` |
+| 2. D143 | **livrée** | `update_flow` refuse `status = deployed` → `ai-flow-running` (`args.flow`), lu en base au moment de l'outil ; trace d'outil porte `code`/`args`, résolus côté UI en `err-<code>` (repli verbatim). **Correctif au passage** : `update_flow` relisait la dernière version côté serveur et l'utilisait comme version attendue → une sauvegarde humaine entre `get_flow` et `update_flow` était écrasée sans conflit ; `expected_version` (= `latest_version_number` de `get_flow`) est désormais obligatoire. Test : `tests/ai.rs::update_flow_only_on_a_stopped_flow` |
+| 3. D145 | à faire | |
+| 4. Fiches + diagnostics | à faire | |
+| 5. D144 | à faire | |

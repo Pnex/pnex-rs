@@ -680,6 +680,87 @@ async fn l_agent_ne_peut_pas_deployer() {
     .await;
 }
 
+/// Sets a flow status directly (deploying needs the runtime; only the
+/// stored status matters to the D143 guard).
+async fn set_flow_status(ctx: &loco_rs::app::AppContext, flow_id: i64, status: &str) {
+    use pnex_backend::models::_entities::flows;
+    use sea_orm::{ActiveModelTrait, EntityTrait, Set};
+    let row = flows::Entity::find_by_id(flow_id)
+        .one(&ctx.db)
+        .await
+        .expect("read flow")
+        .expect("flow exists");
+    let mut active: flows::ActiveModel = row.into();
+    active.status = Set(status.to_string());
+    active.update(&ctx.db).await.expect("update status");
+}
+
+/// D143: update_flow refuses a deployed flow with the coded refusal
+/// `ai-flow-running` (no new version), accepts it once stopped, and
+/// refuses a stale `expected_version` instead of overwriting a human save.
+#[tokio::test]
+#[serial]
+async fn update_flow_only_on_a_stopped_flow() {
+    with_app_ai(true, true, |server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let created = server
+            .post("/api/v1/flows")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .add_header("Content-Type", "application/json")
+            .json(&serde_json::json!({"name": "running", "graph": graph_adc_metric()}))
+            .await
+            .json::<serde_json::Value>();
+        let flow_id = created["id"].as_i64().expect("id");
+        let update = |version: i64| {
+            reply_tool_call(
+                "t1",
+                "update_flow",
+                serde_json::json!({"flow_id": flow_id, "expected_version": version, "graph": graph_adc_metric()}),
+            )
+        };
+        let latest_version = |server: &axum_test::TestServer| {
+            let req = server
+                .get(&format!("/api/v1/flows/{flow_id}"))
+                .add_header("Authorization", bearer(&env.alice))
+                .add_header("X-Org-Id", org.to_string());
+            async move { req.await.json::<serde_json::Value>()["latest_version_number"].clone() }
+        };
+
+        // Deployed → refused, coded, no new version.
+        set_flow_status(&ctx, flow_id, "deployed").await;
+        reset_mock();
+        push_reply(MockReply::Ok(update(1)));
+        push_reply(MockReply::Ok(reply_text("Stop it first.")));
+        let body = chat_send(&server, &env.alice, org, "edit it").await.json::<serde_json::Value>();
+        let trace = &body["tool_trace"][0];
+        assert_eq!(trace["ok"], false, "{body}");
+        assert_eq!(trace["code"], "ai-flow-running", "{body}");
+        assert_eq!(trace["args"]["flow"], "running", "{body}");
+        assert_eq!(latest_version(&server).await, 1);
+        let tool_result = mock_requests()[1].to_string();
+        assert!(tool_result.contains("ai-flow-running"), "the model reads the code");
+
+        // Stopped by the user → accepted as version 2.
+        set_flow_status(&ctx, flow_id, "stopped").await;
+        reset_mock();
+        push_reply(MockReply::Ok(update(1)));
+        push_reply(MockReply::Ok(reply_text("Done.")));
+        let body = chat_send(&server, &env.alice, org, "edit it").await.json::<serde_json::Value>();
+        assert_eq!(body["tool_trace"][0]["ok"], true, "{body}");
+        assert_eq!(latest_version(&server).await, 2);
+
+        // Stale expected_version (the model read v1, v2 exists) → conflict.
+        reset_mock();
+        push_reply(MockReply::Ok(update(1)));
+        push_reply(MockReply::Ok(reply_text("Reloading.")));
+        let body = chat_send(&server, &env.alice, org, "edit it").await.json::<serde_json::Value>();
+        assert_eq!(body["tool_trace"][0]["ok"], false, "{body}");
+        assert_eq!(latest_version(&server).await, 2);
+    })
+    .await;
+}
+
 /// (7) Fournisseur 401 → 502 avec message actionnable.
 #[tokio::test]
 #[serial]
