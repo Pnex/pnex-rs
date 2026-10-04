@@ -211,6 +211,10 @@ sans impact exploitable démontré.
 | SEC-8 | MEDIUM | **Viewer : jetons et clés des devices, firmware avec PSK WiFi** | R4 | corrigé |
 | SEC-9 | LOW | **Dashboard : id de contrôle d'une autre org accepté au save** | R1 | corrigé (18484ae) |
 | SEC-10 | MEDIUM | **APK Android distribué « debuggable » : session lisible par USB** | R16 | ouvert |
+| SEC-11 | MEDIUM | **Markdown de l'assistant : liens `javascript:` et images distantes** (ex-SEC-W1, relevé à l'audit de release) | R11 | corrigé |
+| SEC-12 | LOW | **Sauvegarde Android (auto-backup, transfert) emportait le jeton de rafraîchissement** | R16 | corrigé |
+| SEC-13 | LOW | **Assistant : widget libre re-lié au contrôle d'un flow déployé** | D144 | corrigé |
+| SEC-14 | LOW | **URL d'un fournisseur LLM vers un hôte interne (SSRF aveugle)** | R8 | partiel — redirections coupées ; filtrage d'adresses avec SEC-W3 |
 
 \* SEC-4 seul exige le jeton de service ; c'est l'amplificateur qui rend
 SEC-1 / SEC-3 inter-org (actionneurs de n'importe quelle org).
@@ -358,11 +362,54 @@ pour `run-as`).
   `pnex-frontend/src/js_guard.rs` (tout viewer pannellum échappe, aucun
   puits HTML hors `innerHTML = ''`).
 
+### Audit de release 0.1.0-beta.1 (2026-10-04)
+
+Delta `c2d69ae..HEAD` (42 commits : assistant v2, contrôles et surfaces,
+dashboards Maison, nœuds météo / ui-control, front mobile, e2e Linux) en
+4 audits de domaine (assistant ; surfaces, contrôles, médias ; flows,
+nœuds, runtime ; front et ponts JS), même seuil de confiance ≥ 8.
+`task security:deps` vert (advisories, sources). Aucun HIGH ; aucun
+contournement inter-org trouvé.
+
+- **SEC-11** — `components/markdown.rs` : un lien ne garde sa cible que
+  pour `http(s):`, `mailto:` ou une URL relative (espaces et caractères de
+  contrôle retirés avant le test du schéma) ; une image n'est jamais
+  chargée (son texte alternatif reste) — un `![](https://…)` injecté
+  aurait exfiltré la conversation sans clic. Tests
+  `unsafe_links_render_as_text`, `safe_links_are_kept`,
+  `images_never_load`.
+- **SEC-12** — `patch-android-manifest.py::patch_no_backup` :
+  `allowBackup=false`, `fullBackupContent=false` et
+  `data_extraction_rules.xml` excluant tous les domaines (sauvegarde
+  cloud et transfert d'appareil).
+- **SEC-13** — `services/ai/dashboard_tools.rs::coupling_conflicts` :
+  re-lier un widget existant (libre ou lié à un autre contrôle) à un
+  contrôle écouté par un flow déployé est refusé (`ai-flow-running`),
+  comme la modification d'un widget déjà couplé. Test
+  `free_widget_rebound_onto_a_running_flow_is_refused`.
+- **SEC-14** — un owner (donc tout inscrit) peut viser un hôte interne
+  avec `base_url` ; la réponse n'est jamais rendue (statut seul). Les
+  clients LLM ne suivent plus aucune redirection. Le filtrage des plages
+  privées n'est **pas** posé : un LLM local sur le LAN (Ollama) est un
+  usage central en auto-hébergé — il viendra avec le résolveur filtrant
+  de SEC-W3, activable en SaaS.
+
+**À surveiller (relevés de l'audit de release, < 8)** : corps de réponse
+météo non borné (taille) ; bannissement d'un fournisseur météo par
+volume (UA/IP plateforme partagés) ; erreurs brutes (`DbErr`) dans les
+sorties d'outils de l'assistant ; check « flow déployé » hors de la
+transaction d'écriture (`update_flow`, `update_dashboard`) ;
+`restore_version` d'un dashboard ne repasse pas la synchro des contrôles
+(SEC-9 « stocké, non appliqué ») ; asset d'une visite publique servi à sa
+version courante et non à celle publiée ; magasin desktop
+`pnex-storage.json` en 0644 ; `\` non échappé dans deux ponts JS
+natifs (non exploitable, R13 demande `serde_json`).
+
 ### Sous le seuil (confiance < 8) — à surveiller, non bloquants
 
 | # | Conf. | Sujet | Note |
 |---|---|---|---|
-| SEC-W1 | 7 | Markdown de l'assistant : liens `javascript:` (`components/markdown.rs:54`, `assistant.rs:223`) | exige injection de prompt + clic ; filtrer les schémas d'URL (R11) |
+| SEC-W1 | 7 | Markdown de l'assistant : liens `javascript:` | → **SEC-11**, corrigé |
 | SEC-W2 | 7 | Member redirige un secret du coffre vers son hôte (`notify/testing.rs:90` test-draft, http-fetch avec `Ref`) | contredit D117 ; lier secret ↔ destination (R9) ou documenter comme accepté |
 | SEC-W3 | 6 | SSRF http-fetch avec lecture de la réponse (`pnex-node-http-fetch/src/lib.rs:370`) | impact selon l'hébergeur (métadonnées cloud) ; résolveur DNS filtrant (R8) |
 | SEC-W4 | 4 | `version` non assainie dans `ota_artifact_key` (`pnex-firmware-builder/src/store.rs:104`) | inexploitable en backend `db` ; `sanitize_segment` (R18) |
@@ -381,5 +428,6 @@ pour `run-as`).
 
 ### Reste à faire
 
-SEC-10 (APK release non debuggable, signature de release) ; les SEC-W selon
-priorité produit.
+SEC-10 (APK release non debuggable, signature de release) ; SEC-14 /
+SEC-W3 (résolveur filtrant) ; les points à surveiller selon priorité
+produit.

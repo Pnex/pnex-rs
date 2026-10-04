@@ -12,7 +12,7 @@
 //! Detection is server-side, from the deployed versions — never from the
 //! model's word. The assistant never writes a control value (D143).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use pnex_core::{DashboardLayout, Widget};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
@@ -81,8 +81,38 @@ pub struct CouplingConflict {
     pub flows: Vec<(i64, String)>,
 }
 
-/// Changes of `new` against `old` that touch coupled widgets.
+/// Changes of `new` against `old` that touch coupled widgets — a coupled
+/// widget changed or removed, or an existing widget re-bound onto a control
+/// a deployed flow listens to (a free widget turned into a remote for a
+/// running flow).
 pub fn coupling_conflicts(
+    old: &DashboardLayout,
+    new: &DashboardLayout,
+    coupled: &HashMap<Uuid, Vec<(i64, String)>>,
+) -> Vec<CouplingConflict> {
+    let mut conflicts = changed_coupled_widgets(old, new, coupled);
+    for nw in &new.widgets {
+        let Some(ow) = old.widgets.iter().find(|ow| ow.id == nw.id) else {
+            continue;
+        };
+        if conflicts.iter().any(|c| c.widget_id == nw.id) {
+            continue;
+        }
+        let ids = |w: &Widget| w.control_ids().into_iter().collect::<BTreeSet<Uuid>>();
+        let flows = flows_of(nw, coupled);
+        if !flows.is_empty() && ids(nw) != ids(ow) {
+            conflicts.push(CouplingConflict {
+                widget_id: nw.id.clone(),
+                change: "changed",
+                flows,
+            });
+        }
+    }
+    conflicts
+}
+
+/// Coupled widgets of `old` changed or removed in `new`.
+fn changed_coupled_widgets(
     old: &DashboardLayout,
     new: &DashboardLayout,
     coupled: &HashMap<Uuid, Vec<(i64, String)>>,
@@ -430,6 +460,23 @@ mod tests {
             coupling_conflicts(&old, &removed, &coupled)[0].change,
             "removed"
         );
+    }
+
+    #[test]
+    fn free_widget_rebound_onto_a_running_flow_is_refused() {
+        let c = Uuid::new_v4();
+        let coupled = HashMap::from([(c, vec![(7, "pump loop".to_string())])]);
+        let own = Uuid::new_v4();
+        let old = layout(vec![widget("w1", Some(own)), widget("w2", None)]);
+        for id in ["w1", "w2"] {
+            let mut rebound = old.clone();
+            let w = rebound.widgets.iter_mut().find(|w| w.id == id).unwrap();
+            w.options.control = Some(pnex_core::ui_control::ControlRef { control_id: c });
+            let conflicts = coupling_conflicts(&old, &rebound, &coupled);
+            assert_eq!(conflicts.len(), 1, "{id}");
+            assert_eq!(conflicts[0].widget_id, id);
+            assert_eq!(conflicts[0].flows, vec![(7, "pump loop".to_string())]);
+        }
     }
 
     #[test]

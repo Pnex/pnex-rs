@@ -61,6 +61,7 @@ def main(path: str) -> None:
     patch_camera_permission(path)
     patch_media_provider(path)
     patch_network_security(path)
+    patch_no_backup(path)
     patch_launcher_icon(path)
     patch_app_label(path)
 
@@ -273,6 +274,58 @@ def patch_network_security(manifest_path: str) -> None:
         )
         manifest.write_text(xml, encoding="utf-8")
         print("networkSecurityConfig referenced in the manifest")
+
+
+# Every storage domain excluded from cloud backup and device-to-device
+# transfer (Android 12+ reads these rules, older releases `allowBackup`).
+DATA_EXTRACTION_RULES = """<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>
+"""
+
+
+def patch_no_backup(manifest_path: str) -> None:
+    """No Android backup of the app data (security.md R16).
+
+    `files/pnex-storage.json` holds the refresh token: the default
+    `allowBackup=true` put it in Google auto-backup and device transfers
+    (anyone restoring the backup gets a long-lived session). Idempotent.
+    """
+    manifest = Path(manifest_path)
+    res_xml = manifest.parent.parent.parent / "src" / "main" / "res" / "xml"
+    res_xml.mkdir(parents=True, exist_ok=True)
+    (res_xml / "data_extraction_rules.xml").write_text(DATA_EXTRACTION_RULES, encoding="utf-8")
+
+    xml = manifest.read_text(encoding="utf-8")
+    if "android:allowBackup" in xml:
+        print("allowBackup already set")
+        return
+    app_tag = re.search(r"<application\b", xml)
+    if app_tag is None:
+        sys.exit("<application> not found — dx template changed?")
+    xml = (
+        xml[: app_tag.end()]
+        + ' android:allowBackup="false"'
+        + ' android:fullBackupContent="false"'
+        + ' android:dataExtractionRules="@xml/data_extraction_rules"'
+        + xml[app_tag.end() :]
+    )
+    manifest.write_text(xml, encoding="utf-8")
+    print("app data excluded from Android backup")
 
 
 # PNeX "X" mark (assets/logo-mark.png redrawn as vectors) on the 108-unit
