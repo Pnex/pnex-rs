@@ -36,7 +36,9 @@ env:
 permissions:
   contents: read
 
-# One publish at a time; a newer main commit supersedes a queued one.
+# One publish at a time; a newer main commit supersedes a QUEUED one, never
+# the one in progress: a publish takes ~1h40 (arm64 under QEMU) and
+# cancelling it on every push left `latest` hours behind main.
 # Runs that will be skipped (CI cancelled/failed) get their own throwaway
 # group: concurrency applies before the job `if`, so in the shared group they
 # would cancel an in-progress publish (e.g. a manual dispatch) and then skip.
@@ -46,7 +48,7 @@ concurrency:
         ((github.event_name == 'workflow_dispatch' ||
           github.event.workflow_run.conclusion == 'success')
          && 'images-main' || format('images-skip-{0}', github.run_id)) }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   publish:
