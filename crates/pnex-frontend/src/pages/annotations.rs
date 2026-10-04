@@ -15,7 +15,7 @@ use crate::components::annotation_editor::state::{
     item_rows_flat, move_item_flat, place_item_flat, AnnotationEditorCx,
 };
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::{FilterBar, RefreshButton, SearchInput};
+use crate::components::crud::filters::{FilterBar, SearchInput};
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
@@ -308,8 +308,8 @@ pub fn Annotations() -> Element {
                             placeholder: search_placeholder,
                             value: search,
                             on_submit: move |_| {},
+                            on_refresh: move |_| sets_reload.with_mut(|r| *r += 1),
                         }
-                        RefreshButton { on_click: move |_| sets_reload.with_mut(|r| *r += 1) }
                         select {
                             aria_label: t!("annot-page-media-filter"),
                             class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
