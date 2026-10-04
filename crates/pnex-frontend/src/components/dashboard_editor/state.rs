@@ -5,8 +5,9 @@
 //! entiers — un synoptique fait quelques Ko, la simplicité gagne.
 
 use pnex_core::{
-    CanvasSpec, DashboardFormat, DashboardLayout, MobileSection, SourceRef, SymbolOptions,
-    ThermoChartOptions, ThermoPressureUnit, Widget, WidgetOptions, WidgetTemplate, Wire,
+    CanvasSpec, DashboardFormat, DashboardLayout, MobilePage, MobileSection, SectionStyle,
+    SourceRef, SymbolOptions, ThermoChartOptions, ThermoPressureUnit, Widget, WidgetOptions,
+    WidgetTemplate, Wire,
 };
 
 use super::geometry::default_size;
@@ -222,13 +223,131 @@ pub fn next_section_id(layout: &DashboardLayout) -> String {
 
 /// Appends a section; returns its id.
 pub fn add_section(layout: &mut DashboardLayout, title: &str) -> String {
+    add_section_on(layout, title, None)
+}
+
+/// Appends a section on `page` (D139; `None` = the first page).
+pub fn add_section_on(layout: &mut DashboardLayout, title: &str, page: Option<&str>) -> String {
     let id = next_section_id(layout);
     layout.sections.push(MobileSection {
         id: id.clone(),
         title: title.to_owned(),
         items: vec![],
+        page: page
+            .filter(|p| layout.pages.first().is_some_and(|f| f.id != *p))
+            .map(str::to_owned),
+        ..Default::default()
     });
     id
+}
+
+/// Next free page id (`p-1`, `p-2`…).
+fn next_page_id(layout: &DashboardLayout) -> String {
+    let n = layout
+        .pages
+        .iter()
+        .filter_map(|p| p.id.strip_prefix("p-"))
+        .filter_map(|n| n.parse::<u32>().ok())
+        .max()
+        .unwrap_or(0);
+    format!("p-{}", n + 1)
+}
+
+/// Adds a page (D139) with one empty section; the first call also turns
+/// the implicit page into a real one titled `first_title`. Returns the new
+/// page id and its section id.
+pub fn add_page(layout: &mut DashboardLayout, first_title: &str, title: &str) -> (String, String) {
+    if layout.pages.is_empty() {
+        let id = next_page_id(layout);
+        layout.pages.push(MobilePage {
+            id,
+            title: first_title.to_owned(),
+            icon: Some("home-house".into()),
+        });
+    }
+    let id = next_page_id(layout);
+    layout.pages.push(MobilePage {
+        id: id.clone(),
+        title: title.to_owned(),
+        icon: None,
+    });
+    let section = add_section_on(layout, "", Some(&id));
+    (id, section)
+}
+
+pub fn rename_page(layout: &mut DashboardLayout, id: &str, title: &str) {
+    if let Some(p) = layout.pages.iter_mut().find(|p| p.id == id) {
+        p.title = title.to_owned();
+    }
+}
+
+pub fn set_page_icon(layout: &mut DashboardLayout, id: &str, icon: Option<String>) {
+    if let Some(p) = layout.pages.iter_mut().find(|p| p.id == id) {
+        p.icon = icon;
+    }
+}
+
+/// Removes a page; its sections move to the first remaining page. With a
+/// single page left, the dashboard goes back to the implicit page.
+pub fn delete_page(layout: &mut DashboardLayout, id: &str) {
+    let Some(pos) = layout.pages.iter().position(|p| p.id == id) else {
+        return;
+    };
+    layout.pages.remove(pos);
+    for sec in &mut layout.sections {
+        if sec.page.as_deref() == Some(id) {
+            sec.page = None;
+        }
+    }
+    if layout.pages.len() == 1 {
+        layout.pages.clear();
+        for sec in &mut layout.sections {
+            sec.page = None;
+        }
+    }
+    // The first page holds the sections without page.
+    if let Some(first) = layout.pages.first().map(|p| p.id.clone()) {
+        for sec in &mut layout.sections {
+            if sec.page.as_deref() == Some(first.as_str()) {
+                sec.page = None;
+            }
+        }
+    }
+}
+
+/// Moves a section to `page` (`None` or the first page = no explicit page).
+pub fn set_section_page(layout: &mut DashboardLayout, id: &str, page: Option<&str>) {
+    let first = layout.pages.first().map(|p| p.id.clone());
+    if let Some(sec) = layout.sections.iter_mut().find(|s| s.id == id) {
+        sec.page = page
+            .filter(|p| Some(p.to_string()) != first)
+            .map(str::to_owned);
+    }
+}
+
+pub fn set_section_style(layout: &mut DashboardLayout, id: &str, style: SectionStyle) {
+    if let Some(sec) = layout.sections.iter_mut().find(|s| s.id == id) {
+        sec.style = style;
+    }
+}
+
+pub fn set_section_icon(layout: &mut DashboardLayout, id: &str, icon: Option<String>) {
+    if let Some(sec) = layout.sections.iter_mut().find(|s| s.id == id) {
+        sec.icon = icon;
+    }
+}
+
+/// Sections of `page` (`None` = first / implicit page), in order.
+pub fn sections_of_page<'a>(
+    layout: &'a DashboardLayout,
+    page: Option<&str>,
+) -> Vec<&'a MobileSection> {
+    let page = page.or_else(|| layout.pages.first().map(|p| p.id.as_str()));
+    layout
+        .sections
+        .iter()
+        .filter(|s| layout.page_of(s) == page)
+        .collect()
 }
 
 pub fn rename_section(layout: &mut DashboardLayout, id: &str, title: &str) {
@@ -727,5 +846,30 @@ mod tests {
             l.canvas.width += 1;
         }
         assert!(history.past.len() <= 50, "cap respecté");
+    }
+
+    #[test]
+    fn pages_add_move_and_delete() {
+        let mut l = mobile();
+        let (p2, s2) = add_page(&mut l, "Home", "Energy");
+        assert_eq!(l.pages.len(), 2);
+        assert_eq!(l.pages[0].title, "Home");
+        assert_eq!(
+            sections_of_page(&l, None).len(),
+            1,
+            "old section stays on page 1"
+        );
+        assert_eq!(sections_of_page(&l, Some(&p2))[0].id, s2);
+        set_section_page(&mut l, "s-1", Some(&p2));
+        assert_eq!(sections_of_page(&l, Some(&p2)).len(), 2);
+        set_section_style(&mut l, "s-1", SectionStyle::Room);
+        assert_eq!(l.sections[0].style, SectionStyle::Room);
+        delete_page(&mut l, &p2);
+        assert!(l.pages.is_empty(), "single page left = implicit page");
+        assert!(l.sections.iter().all(|s| s.page.is_none()));
+        assert!(l
+            .sections
+            .iter()
+            .all(|s| s.style != SectionStyle::Cards || s.page.is_none()));
     }
 }

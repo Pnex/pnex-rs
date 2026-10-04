@@ -3279,3 +3279,22 @@ wcond-heavy-rain = Forte pluie
 wcond-sleet = Neige fondue
 wcond-snow = Neige
 wcond-thunderstorm = Orage
+
+# Mobile pages, rooms, chips (D139)
+db-page-home = Accueil
+db-page-new = Nouvelle page
+db-page-add = + Page
+db-page-title = Nom de la page
+db-page-delete = Supprimer la page (ses sections passent sur la première page)
+db-section-style-cards = Cartes
+db-section-style-room = Pièce (résumé + tout éteindre)
+db-section-style-chips = Pastilles (résumé en tête)
+db-section-page = Page
+db-detail-open = Détail et historique
+db-detail-range = min { $min } · max { $max }
+db-detail-24h = Dernières 24 heures
+db-room-lights-on = { $count } allumée(s)
+db-room-all-off = Tout éteindre
+db-room-all-off-confirm = Éteindre toutes les lumières, ventilations et prises de { $room } ?
+appear-visible-when = Afficher seulement si la valeur est…
+appear-visible-when-help = Vue mobile : la carte n'apparaît que tant que sa première source correspond (ex. ≥ 1 pour « fuite détectée »). Sans donnée, elle reste visible.

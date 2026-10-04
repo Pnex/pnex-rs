@@ -17,6 +17,8 @@ pub mod crud;
 pub mod dashboard_editor;
 /// Rendu live read-only d'un dashboard (page Dashboards + aperçu POI).
 pub mod dashboard_live;
+/// Live view of mobile dashboards: pages, rooms, chips, detail (D139).
+pub mod dashboard_live_mobile;
 pub mod dashboard_widget;
 pub mod device_wizard;
 /// Pickers du référentiel Edge (WiFi + hosts) pour le wizard device.

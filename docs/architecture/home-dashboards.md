@@ -2,7 +2,7 @@
 
 > **Statut : EN COURS.** Plan validé par l'utilisateur le 2026-10-04 sur
 > tous les points, avec deux reports consignés au §6 (mode sombre global,
-> code PIN serrure/alarme). **Lots A, B, C et C' (météo) livrés le 2026-10-04** (§4).
+> code PIN serrure/alarme). **Lots A, B, C, C' (météo) et D livrés le 2026-10-04** (§4).
 >
 > **Invariant (précision utilisateur 2026-10-04) : aucun lien direct
 > dashboard → device.** Une surface écrit des contrôles, seul un flow
@@ -211,6 +211,23 @@ bus device depuis les services de surface côté backend.
   **Météo** (`HomeCard::Weather`) : liaison rapide par les deux clés
   mémoire (actuel / 7 jours), 5 jours affichés. Vérifié en réel contre les
   deux API (test `#[ignore]` `live_providers_parse`). Catalogue IA à jour.
+
+- **Lot D (2026-10-04)** — modèle additif, rétrocompatible :
+  `layout.pages` (≤ 12, vide = page implicite), `MobileSection.page /
+  icon / style` (`cards` | `room` | `chips`), `WidgetOptions.visible_when`
+  (règle D135 sur la première source ; sans donnée = visible). Composeur :
+  barre de pages (ajout, renommage, icône, suppression → sections vers la
+  1re page), options de section (icône, style, page). Vue live
+  (`dashboard_live_mobile.rs`) : onglets de pages, section **pièce** =
+  en-tête avec température moyenne (cartes thermo-hygro / thermostat),
+  nombre de lumières allumées, puissance totale et bouton **Tout
+  éteindre** (confirmé, écrit la valeur « off » de chaque contrôle
+  `power` de la pièce : même porte et mêmes flows que les cartes),
+  section **pastilles** = rangée de résumés compacts (`chip_summary`),
+  bouton **détail** sur chaque carte = feuille du bas avec la carte et la
+  courbe 24 h de chaque source télémétrie. Grille 2 colonnes (téléphone),
+  4 (tablette), 6 (grand écran). **Écart** : pas d'appui long (bouton
+  détail explicite, plus fiable au tactile comme à la souris).
 
 ## 6. Reports consignés
 

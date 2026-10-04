@@ -3280,3 +3280,22 @@ wcond-heavy-rain = Heavy rain
 wcond-sleet = Sleet
 wcond-snow = Snow
 wcond-thunderstorm = Thunderstorm
+
+# Mobile pages, rooms, chips (D139)
+db-page-home = Home
+db-page-new = New page
+db-page-add = + Page
+db-page-title = Page name
+db-page-delete = Delete the page (its sections move to the first page)
+db-section-style-cards = Cards
+db-section-style-room = Room (summary + all off)
+db-section-style-chips = Chips (header summary)
+db-section-page = Page
+db-detail-open = Details and history
+db-detail-range = min { $min } · max { $max }
+db-detail-24h = Last 24 hours
+db-room-lights-on = { $count } on
+db-room-all-off = All off
+db-room-all-off-confirm = Turn off every light, fan and switch of { $room }?
+appear-visible-when = Show only when the value is…
+appear-visible-when-help = Mobile view: the card appears only while its first source matches (e.g. ≥ 1 for "leak detected"). Without data it stays visible.
