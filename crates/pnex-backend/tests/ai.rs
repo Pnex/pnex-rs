@@ -1191,3 +1191,118 @@ async fn conversations_crud_export_and_erasure() {
     })
     .await;
 }
+
+// ─────────────────────── Dashboards (D144) ───────────────────────
+
+/// A dashboard widget whose control feeds a DEPLOYED flow can only be
+/// moved by the assistant: renaming it is refused with ai-flow-running
+/// naming the flow; once the flow is stopped the rename goes through.
+#[tokio::test]
+#[serial]
+async fn coupled_dashboard_widget_is_frozen_while_its_flow_runs() {
+    with_app_ai(true, true, |server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let layout = serde_json::json!({
+            "canvas": {"width": 1600, "height": 900},
+            "widgets": [{"id": "w1", "type": "switch", "title": "Pump",
+                         "x": 40, "y": 40, "w": 240, "h": 120, "source": [], "options": {}}],
+            "wires": [],
+        });
+        let created = send_json(
+            &server,
+            "POST",
+            "/api/v1/dashboards",
+            &env.alice,
+            org,
+            Some(serde_json::json!({"name": "Garden", "layout": layout})),
+        )
+        .await
+        .json::<serde_json::Value>();
+        let dashboard_id = created["id"].as_str().expect("id").to_string();
+        let control = created["layout"]["widgets"][0]["options"]["control"]["control_id"]
+            .as_str()
+            .expect("bound control")
+            .to_string();
+
+        // A flow listens to that control, deployed (status + version set
+        // directly: deploying needs the runtime).
+        let flow = send_json(
+            &server,
+            "POST",
+            "/api/v1/flows",
+            &env.alice,
+            org,
+            Some(serde_json::json!({"name": "pump loop", "graph": {"nodes": [
+                {"id": "c", "kind": "control_source", "config": {"controls": [control]},
+                 "outputs": [{"port": 0, "targets": ["d"]}]},
+                {"id": "d", "kind": "debug", "config": {}}
+            ]}})),
+        )
+        .await
+        .json::<serde_json::Value>();
+        let flow_id = flow["id"].as_i64().expect("flow id");
+        {
+            use pnex_backend::models::_entities::{flow_versions, flows};
+            use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+            let version = flow_versions::Entity::find()
+                .filter(flow_versions::Column::FlowId.eq(flow_id))
+                .one(&ctx.db)
+                .await
+                .expect("read version")
+                .expect("version");
+            let row = flows::Entity::find_by_id(flow_id)
+                .one(&ctx.db)
+                .await
+                .expect("read flow")
+                .expect("flow");
+            let mut active: flows::ActiveModel = row.into();
+            active.status = Set("deployed".into());
+            active.deployed_version_id = Set(Some(version.id));
+            active.update(&ctx.db).await.expect("deploy");
+        }
+
+        let current = send_json(&server, "GET", &format!("/api/v1/dashboards/{dashboard_id}"), &env.alice, org, None)
+            .await
+            .json::<serde_json::Value>();
+        let mut renamed = current["layout"].clone();
+        renamed["widgets"][0]["title"] = serde_json::json!("Valve");
+        let update = |layout: serde_json::Value, version: i64| {
+            reply_tool_call(
+                "t1",
+                "update_dashboard",
+                serde_json::json!({"dashboard_id": dashboard_id, "expected_version": version, "layout": layout}),
+            )
+        };
+
+        reset_mock();
+        push_reply(MockReply::Ok(update(renamed.clone(), 1)));
+        push_reply(MockReply::Ok(reply_text("stop it first")));
+        let body = chat_send(&server, &env.alice, org, "rename the pump").await.json::<serde_json::Value>();
+        assert_eq!(body["tool_trace"][0]["ok"], false, "{body}");
+        assert_eq!(body["tool_trace"][0]["code"], "ai-flow-running", "{body}");
+        assert_eq!(body["tool_trace"][0]["args"]["flow"], "pump loop", "{body}");
+
+        // Moving it is allowed while the flow runs.
+        let mut moved = current["layout"].clone();
+        moved["widgets"][0]["x"] = serde_json::json!(400);
+        reset_mock();
+        push_reply(MockReply::Ok(update(moved, 1)));
+        push_reply(MockReply::Ok(reply_text("moved")));
+        let body = chat_send(&server, &env.alice, org, "move it").await.json::<serde_json::Value>();
+        assert_eq!(body["tool_trace"][0]["ok"], true, "{body}");
+
+        // The flow stopped by the user → the rename goes through (v3).
+        set_flow_status(&ctx, flow_id, "stopped").await;
+        reset_mock();
+        push_reply(MockReply::Ok(update(renamed, 2)));
+        push_reply(MockReply::Ok(reply_text("renamed")));
+        let body = chat_send(&server, &env.alice, org, "rename now").await.json::<serde_json::Value>();
+        assert_eq!(body["tool_trace"][0]["ok"], true, "{body}");
+        let after = send_json(&server, "GET", &format!("/api/v1/dashboards/{dashboard_id}"), &env.alice, org, None)
+            .await
+            .json::<serde_json::Value>();
+        assert_eq!(after["current_version_number"], 3, "{after}");
+        assert_eq!(after["layout"]["widgets"][0]["title"], "Valve");
+    })
+    .await;
+}

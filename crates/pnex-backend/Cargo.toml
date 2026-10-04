@@ -92,6 +92,8 @@ serde_yaml = "0.9"
 # ("exactly one of the 'rust_crypto' and 'aws_lc_rs' features")
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 thiserror = "2"
+# Assistant knowledge cards embedded in the binary (D142, MIT/Apache-2.0).
+include_dir = "0.7"
 reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
   "json",

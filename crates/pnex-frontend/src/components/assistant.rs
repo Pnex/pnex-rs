@@ -14,7 +14,7 @@
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::{AiConversation, AiMessage, AiSendMessage, AiToolTrace};
+use pnex_core::{AiConversation, AiMessage, AiPageContext, AiSendMessage, AiToolTrace};
 use uuid::Uuid;
 
 use crate::api;
@@ -115,6 +115,11 @@ fn AssistantDrawer(on_close: Callback) -> Element {
         messages.with_mut(|m| m.push(ChatBubble::User(trimmed.clone())));
         input.set(String::new());
         thinking.set(true);
+        // Current page path: the server injects its knowledge card (D142).
+        let page = AiPageContext {
+            page: Some(router().current::<crate::app::Route>().to_string()),
+            ..Default::default()
+        };
         spawn(async move {
             let id = match CURRENT() {
                 Some(id) => Ok(id),
@@ -126,7 +131,7 @@ fn AssistantDrawer(on_close: Callback) -> Element {
                     let msg = AiSendMessage {
                         content: trimmed,
                         language: Some(crate::i18n::current_tag()),
-                        page: None,
+                        page: Some(page),
                     };
                     api::ai::send_message(id, msg).await
                 }
