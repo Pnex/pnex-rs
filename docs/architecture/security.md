@@ -210,7 +210,7 @@ sans impact exploitable démontré.
 | SEC-7 | MEDIUM | **Viewer : déploiement / annulation OTA** | R2 | corrigé |
 | SEC-8 | MEDIUM | **Viewer : jetons et clés des devices, firmware avec PSK WiFi** | R4 | corrigé |
 | SEC-9 | LOW | **Dashboard : id de contrôle d'une autre org accepté au save** | R1 | corrigé (18484ae) |
-| SEC-10 | MEDIUM | **APK Android distribué « debuggable » : session lisible par USB** | R16 | ouvert |
+| SEC-10 | MEDIUM | **APK Android distribué « debuggable » : session lisible par USB** | R16 | accepté pour 0.1.0-beta.1 (sideload, testeurs connus) — keystore de release avec le Play Store |
 | SEC-11 | MEDIUM | **Markdown de l'assistant : liens `javascript:` et images distantes** (ex-SEC-W1, relevé à l'audit de release) | R11 | corrigé |
 | SEC-12 | LOW | **Sauvegarde Android (auto-backup, transfert) emportait le jeton de rafraîchissement** | R16 | corrigé |
 | SEC-13 | LOW | **Assistant : widget libre re-lié au contrôle d'un flow déployé** | D144 | corrigé |
@@ -428,6 +428,7 @@ natifs (non exploitable, R13 demande `serde_json`).
 
 ### Reste à faire
 
-SEC-10 (APK release non debuggable, signature de release) ; SEC-14 /
+SEC-10 (APK release non debuggable, signature de release — accepté
+pour la beta 1) ; SEC-14 /
 SEC-W3 (résolveur filtrant) ; les points à surveiller selon priorité
 produit.
