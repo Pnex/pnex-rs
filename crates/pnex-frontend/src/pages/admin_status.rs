@@ -16,7 +16,6 @@ use pnex_core::{ComponentStatus, OrgSystemRow, StatusMetric};
 
 use crate::api;
 use crate::api::error_i18n::resolve;
-use crate::components::crud::filters::RefreshButton;
 use crate::components::crud::layout::ListLayout;
 use crate::pages::system::{format_bytes, parse_days};
 use crate::state::{session, toasts};
@@ -66,10 +65,8 @@ pub fn AdminStatus() -> Element {
         ListLayout {
             title: t!("admin-status-title").to_string(),
             subtitle: Some(subtitle),
+            on_refresh: move |_| reload.with_mut(|r| *r += 1),
             can_write: false,
-            actions: rsx! {
-                RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
-            },
             match &*status.value().read() {
                 None => rsx! {
                     div { class: "text-center py-12",

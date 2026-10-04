@@ -299,6 +299,7 @@ pub fn Annotations() -> Element {
                 ListLayout {
                     title: t!("annot-page-title").to_string(),
                     subtitle: Some(t!("annot-page-subtitle").to_string()),
+                    on_refresh: move |_| sets_reload.with_mut(|r| *r += 1),
                     can_write,
                     add_label: Some(t!("annot-page-new").to_string()),
                     on_add: move |_| new_open.set(true),
@@ -308,7 +309,6 @@ pub fn Annotations() -> Element {
                             placeholder: search_placeholder,
                             value: search,
                             on_submit: move |_| {},
-                            on_refresh: move |_| sets_reload.with_mut(|r| *r += 1),
                         }
                         select {
                             aria_label: t!("annot-page-media-filter"),

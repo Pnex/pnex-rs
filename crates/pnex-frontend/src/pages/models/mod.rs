@@ -16,7 +16,6 @@ use pnex_core::vision::{MlModel, ModelCheckStatus};
 use crate::api;
 use crate::components::badges::date_label;
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::RefreshButton;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
@@ -82,12 +81,10 @@ pub fn Models() -> Element {
         ListLayout {
             title: t!("models-title").to_string(),
             subtitle: Some(t!("models-subtitle").to_string()),
+            on_refresh: move |_| reload.with_mut(|r| *r += 1),
             can_write,
             add_label: Some(t!("models-add").to_string()),
             on_add: move |_| dialog.set(Some(Dialog::Create)),
-            actions: rsx! {
-                RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
-            },
             ListStates {
                 state: list_state,
                 is_empty,

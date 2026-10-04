@@ -11,7 +11,6 @@ use dioxus_i18n::t;
 use pnex_core::camera::{CameraView, CaptureMode};
 
 use crate::api;
-use crate::components::crud::filters::RefreshButton;
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
@@ -165,10 +164,8 @@ pub fn Cameras() -> Element {
         ListLayout {
             title: t!("cameras-title").to_string(),
             subtitle: Some(t!("cameras-subtitle").to_string()),
+            on_refresh: move |_| reload.with_mut(|r| *r += 1),
             can_write,
-            actions: rsx! {
-                RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
-            },
             ListStates {
                 state: list_state,
                 is_empty,

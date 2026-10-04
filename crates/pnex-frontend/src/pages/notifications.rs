@@ -15,7 +15,6 @@ use pnex_core::{NotifyChannel, NotifyTemplate};
 
 use crate::api;
 use crate::components::badges::date_label;
-use crate::components::crud::filters::RefreshButton;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::ListPager;
 use crate::components::crud::states::ListStates;
@@ -123,6 +122,7 @@ pub fn Notifications() -> Element {
         ListLayout {
             title: t!("nav-notifications").to_string(),
             subtitle: Some(t!("notify-subtitle").to_string()),
+            on_refresh: move |_| reload.with_mut(|r| *r += 1),
             can_write,
             // Header "add" action, like the whole CRUD socle — the label
             // follows the active tab (channels vs templates).
@@ -154,9 +154,6 @@ pub fn Notifications() -> Element {
                             onclick: move |_| tab.set(tab_def.0),
                             {t!(tab_def.1)}
                         }
-                    }
-                    div { class: "ml-auto",
-                        RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
                     }
                 }
 

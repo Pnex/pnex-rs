@@ -49,6 +49,11 @@ pub fn ListLayout(
     /// avant le bouton « ajouter ».
     #[props(default)]
     actions: Option<Element>,
+    /// Manual refresh — THE single place of the refresh button on every
+    /// list page: last button of the header, right after the add button.
+    /// Never in a search bar, a tab row or a filter row.
+    #[props(default)]
+    on_refresh: Option<Callback<()>>,
     /// Render the header row at all — full-page detail subviews that draw
     /// their own header (functions editor) pass `false` to drop the CRUD
     /// title / add-button row entirely.
@@ -99,6 +104,9 @@ pub fn ListLayout(
                                     {label}
                                 }
                             }
+                        }
+                        if let Some(refresh) = on_refresh {
+                            crate::components::crud::filters::RefreshButton { on_click: refresh }
                         }
                     }
                 }

@@ -12,7 +12,7 @@ blocs ci-dessous, sans jamais réécrire la coquille.
 | `layout::ListLayout` | Coquille : header (titre, sous-titre, retour, « ajouter », slot `actions`), slot filtres, corps | `on_back` → bouton borduré icône `h-5 w-5` (agrandi) ; slot `actions` pour les en-têtes multi-boutons (media) ; bouton ajouter rendu ssi `can_write && on_add`+`add_label` |
 | `states::ListStates` | Zones loading / empty / error | `state: Option<Result<(), ApiError>>` — **non générique** ; empty enrichi via `empty_icon`/`empty_detail` (catalog, media) |
 | `table::DataTable<T>` / `table::Column<T>` | Table (tokens `.th`/`.td`, markup historique) | Colonnes déclaratives, cellule = `Fn(&T) -> Element` **sans** le `<td>` ; `on_row_click` (reçoit la clé de ligne — annotations) ; pas de tri (V2), pagination hors table |
-| `filters::FilterBar` / `SearchInput` / `RefreshButton` | Barre de filtres | Search : saisie **live** (refetch à la frappe quand le signal est lu en synchrone de la resource), Enter → `on_submit` (reset page 0 côté page) ; `RefreshButton` icône seule partout (un seul idiome, tooltip i18n) |
+| `filters::FilterBar` / `SearchInput` / `RefreshButton` | Barre de filtres | Search : saisie **live** (refetch à la frappe quand le signal est lu en synchrone de la resource), Enter → `on_submit` (reset page 0 côté page) ; `RefreshButton` icône seule partout (un seul idiome, tooltip i18n) — **jamais posé à la main dans une page** : passer `on_refresh` à `ListLayout` |
 | `pager::ListPager` | Pagination | Délègue au `Pager` existant (D14) ; câblage `page.set` intégré, `page_size` défaut 10 (`PAGE_SIZE`) |
 | `form::FormDialog` | Modal création/édition | `Modal` + pied cancel/submit (`busy`, `valid`) ; champs et signaux restent à la page |
 
@@ -26,7 +26,7 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 
 use crate::api;
-use crate::components::crud::filters::{FilterBar, RefreshButton, SearchInput};
+use crate::components::crud::filters::{FilterBar, SearchInput};
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
@@ -80,6 +80,7 @@ pub fn Things() -> Element {
             can_write: true,
             add_label: Some(t!("things-new").to_string()),
             on_add: move |_| /* ouvrir FormDialog */,
+            on_refresh: move |_| reload.with_mut(|r| *r += 1),
             div { class: "space-y-0",
                 FilterBar {
                     SearchInput {
@@ -90,7 +91,6 @@ pub fn Things() -> Element {
                             reload.with_mut(|r| *r += 1);
                         },
                     }
-                    RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
                 }
                 ListStates {
                     state: state,
@@ -133,8 +133,15 @@ pub fn Things() -> Element {
 ## Checklist de migration d'une page
 
 - [ ] Header → `ListLayout` (garder les props i18n existantes).
-- [ ] Filtres → `FilterBar` + `SearchInput`/`RefreshButton` ; selects
-      spécifiques restent en rsx page dans la barre.
+- [ ] Filtres → `FilterBar` + `SearchInput` ; selects spécifiques restent
+      en rsx page dans la barre.
+- [ ] Rafraîchir → `ListLayout { on_refresh }` **uniquement** : dernier
+      bouton de l'en-tête, à droite de « Nouveau… ». Jamais dans une barre de
+      recherche, d'onglets ou de filtres (règle 2026-10-04, une seule place
+      sur toutes les pages).
+- [ ] Mobile : `Column::secondary()` sur les colonnes masquables sous `md`
+      (dates, versions, détails), `Column::actions()` sur la colonne
+      d'actions (collée à droite sous `md`).
 - [ ] Match d'états → calcul synchrone + `ListStates`.
 - [ ] Table → `DataTable` + `Column` (une colonne actions pour les
       boutons de ligne) ; `ListPager` pour la pagination.

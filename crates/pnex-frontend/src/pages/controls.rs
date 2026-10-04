@@ -18,7 +18,6 @@ use uuid::Uuid;
 
 use crate::api;
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::RefreshButton;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
@@ -149,10 +148,8 @@ pub fn Controls() -> Element {
         ListLayout {
             title: t!("nav-controls").to_string(),
             subtitle: Some(t!("controls-subtitle").to_string()),
+            on_refresh: move |_| reload.with_mut(|r| *r += 1),
             can_write,
-            actions: rsx! {
-                RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
-            },
             add_label: Some(t!("controls-new").to_string()),
             on_add: move |_| editing.set(Some(None)),
             if org::current().is_none() {

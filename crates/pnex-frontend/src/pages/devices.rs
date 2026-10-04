@@ -422,6 +422,8 @@ pub fn Devices() -> Element {
         ListLayout {
             title: t!("nav-devices").to_string(),
             subtitle: Some(t!("devices-subtitle").to_string()),
+            // Refresh is a list action: not shown on a device detail.
+            on_refresh: if selected().is_none() { Some(Callback::new(move |_| reload.with_mut(|r| *r += 1))) } else { None },
             // Détail device ouvert → pas de « + Register » (on n'enregistre
             // pas un device depuis la fiche d'un autre).
             can_write,
@@ -524,7 +526,6 @@ pub fn Devices() -> Element {
                             page.set(0);
                             reload.with_mut(|r| *r += 1);
                         },
-                        on_refresh: move |_| reload.with_mut(|r| *r += 1),
                     }
                 }
 

@@ -214,6 +214,7 @@ pub fn FluidMixtures() -> Element {
         ListLayout {
             title: t!("mixtures-title").to_string(),
             subtitle: Some(t!("mixtures-subtitle").to_string()),
+            on_refresh: move |_| reload.with_mut(|r| *r += 1),
             can_write: true,
             add_label: Some(t!("mixtures-new").to_string()),
             on_add: move |_| {
@@ -357,7 +358,6 @@ pub fn FluidMixtures() -> Element {
                         placeholder: t!("mixtures-search-placeholder").to_string(),
                         value: search,
                         on_submit: move |_| reload.with_mut(|r| *r += 1),
-                        on_refresh: move |_| reload.with_mut(|r| *r += 1),
                     }
                 }
 

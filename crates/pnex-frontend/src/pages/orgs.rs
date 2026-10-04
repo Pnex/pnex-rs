@@ -9,7 +9,6 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 
 use crate::api;
-use crate::components::crud::filters::RefreshButton;
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
@@ -125,12 +124,10 @@ fn OrgsPage(initial: Option<i64>) -> Element {
         ListLayout {
             title: t!("orgs-title").to_string(),
             subtitle: Some(t!("orgs-subtitle").to_string()),
+            on_refresh: move |_| reload.with_mut(|r| *r += 1),
             can_write: true,
             // Harmonisation socle : rafraîchissement manuel dans l'en-tête
             // (la page n'a pas de barre de filtres).
-            actions: rsx! {
-                RefreshButton { on_click: move |_| reload.with_mut(|r| *r += 1) }
-            },
             // Création
             form {
                 class: "mb-6 flex gap-2",

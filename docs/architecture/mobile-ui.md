@@ -167,9 +167,15 @@ appliquer les classes du lot 2).
   minimum + défilement ; aperçu d'objet attaché à un POI (dashboard…) en
   plein écran sous `md` — il recevait 9 px à gauche du drawer et son en-tête
   débordait sur celui du drawer (retour user « des trucs se superposent »).
-- Reste : M7 (refresh encore dans l'en-tête sur orgs, system, cameras,
-  models, controls, dashboards, dans la barre d'onglets sur edges/refs et
-  notifications — cohérent par famille, à trancher), M6 tables hors socle,
+- **2026-10-04 — M7 tranché (user : « il faut harmoniser »)** : le bouton
+  rafraîchir a **une seule place**, `ListLayout { on_refresh }` = dernier
+  bouton de l'en-tête, juste après « Nouveau… » (seul en haut à droite sans
+  bouton de création). Retiré des barres de recherche, d'onglets et de
+  filtres ; `SearchInput { on_refresh }` supprimé ; visualisation passée sur
+  `ListLayout`. Vérifié sur les 21 pages : 1 bouton, dans l'en-tête, en
+  dernier. Seule exception assumée : le contrôle de cadence auto (accueil,
+  vue dashboard), lui aussi en haut à droite. Règle dans le README du socle.
+- Reste : M6 tables hors socle,
   M17 détail org ; deux pieds de dialogue maison dans `system.rs` (hors
   `Modal`).
 

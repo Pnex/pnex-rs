@@ -191,6 +191,7 @@ pub fn Flows() -> Element {
             ListLayout {
                 title: t!("nav-flows").to_string(),
                 subtitle: Some(t!("flows-subtitle").to_string()),
+                on_refresh: move |_| reload.with_mut(|r| *r += 1),
                 can_write,
                 add_label: Some(t!("flows-new").to_string()),
                 on_add: move |_| {
@@ -261,7 +262,6 @@ pub fn Flows() -> Element {
                                 page.set(0);
                                 reload.with_mut(|r| *r += 1);
                             },
-                            on_refresh: move |_| reload.with_mut(|r| *r += 1),
                         }
                     }
 
