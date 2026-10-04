@@ -68,7 +68,8 @@ pub fn RefreshRateControl(auto: AutoRefresh, on_refresh: Option<Callback<()>>) -
     rsx! {
         div { class: "flex items-center gap-2",
             label { class: "flex items-center gap-2 text-xs text-gray-500",
-                {t!("refresh-rate-label")}
+                // Phone: the select alone (its aria-label names it).
+                span { class: "hidden sm:inline", {t!("refresh-rate-label")} }
                 select {
                     class: "px-2 py-1.5 text-sm border border-gray-300 rounded-lg bg-white",
                     "aria-label": t!("refresh-rate-label"),
