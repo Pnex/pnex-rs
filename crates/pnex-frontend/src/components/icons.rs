@@ -200,6 +200,20 @@ icon!(
     "M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"
 );
 icon!(Plus, "M5 12h14", "M12 5v14");
+// Pinout zoom (catalog modal, pinout editor).
+icon!(
+    ZoomIn,
+    "M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16z",
+    "m21 21-4.3-4.3",
+    "M11 8v6",
+    "M8 11h6"
+);
+icon!(
+    ZoomOut,
+    "M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16z",
+    "m21 21-4.3-4.3",
+    "M8 11h6"
+);
 // Renommage inline (coquille d'éditeur) — lucide pencil.
 icon!(
     Pencil,
