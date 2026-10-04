@@ -480,19 +480,10 @@ pub fn ensure_positions(graph: &mut FlowGraph) {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+/// Canvas rect `(left, top, width, height)` — web reads the DOM, native
+/// reads the rect streamed by the tracker mounted in `Canvas`.
 pub fn canvas_rect() -> Option<(f64, f64, f64, f64)> {
-    let document = web_sys::window()?.document()?;
-    let element = document.get_element_by_id("flow-canvas")?;
-    let rect = element.get_bounding_client_rect();
-    Some((rect.left(), rect.top(), rect.width(), rect.height()))
-}
-
-/// Cible native : pas de canvas (l'éditeur ne tourne qu'en CSR web pour
-/// l'instant) — les gestes ne démarrent jamais sans rect.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn canvas_rect() -> Option<(f64, f64, f64, f64)> {
-    None
+    crate::components::dom_rect::rect_of("flow-canvas")
 }
 
 /// Convertit une position client (px écran) en position graphe.

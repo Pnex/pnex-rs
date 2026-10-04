@@ -13,6 +13,7 @@ use crate::components::dashboard_widget::WidgetBody;
 /// géométrie passe par `geometry::to_canvas` (1 unité = 1 px document).
 #[component]
 pub(super) fn CanvasView(cx: EditorCx) -> Element {
+    crate::components::dom_rect::use_rect_tracker("dashboard-canvas");
     let layout_snapshot = cx.layout.read().clone();
     let canvas = layout_snapshot.canvas.clone();
     let widgets = layout_snapshot.widgets.clone();
@@ -32,7 +33,8 @@ pub(super) fn CanvasView(cx: EditorCx) -> Element {
     rsx! {
         div {
             id: "dashboard-canvas",
-            class: "relative h-full w-full overflow-hidden bg-gray-100",
+            // `touch-none`: touches stay ours (no `pointercancel` mid-pan).
+            class: "relative h-full w-full touch-none overflow-hidden bg-gray-100",
             tabindex: "0",
             onpointerdown: move |event| canvas_pointer_down(event, cx),
             onpointermove: move |event| canvas_pointer_move(event, cx),

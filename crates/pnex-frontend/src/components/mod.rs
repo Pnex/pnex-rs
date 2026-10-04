@@ -22,6 +22,7 @@ pub mod dashboard_live;
 pub mod dashboard_live_mobile;
 pub mod dashboard_widget;
 pub mod device_wizard;
+pub mod dom_rect;
 /// Pickers du référentiel Edge (WiFi + hosts) pour le wizard device.
 pub mod edge_refs_picker;
 /// Coquille d'éditeur unifiée (flows/dashboards/studio) — barre 3 zones,
