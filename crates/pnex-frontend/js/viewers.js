@@ -73,6 +73,9 @@ function mountPanorama(hostId, url) {
   try {
     host.innerHTML = '';
     var viewer = pannellumLib.viewer(host, {
+      // Security (SEC-6): pannellum renders hotspot text as raw HTML unless
+      // escapeHTML is set; labels are user content shown on the app origin.
+      escapeHTML: true,
       type: 'equirectangular',
       panorama: url,
       autoLoad: true,
@@ -235,6 +238,9 @@ function mountTour(hostId, sceneJson) {
       cfgById[cfg.id] = cfg;
     });
     var viewer = pannellumLib.viewer(host, {
+      // Security (SEC-6): link and annotation labels are user content —
+      // also covers hotspots added later through addHotSpot.
+      escapeHTML: true,
       type: 'equirectangular',
       panorama: scene.url,
       autoLoad: true,

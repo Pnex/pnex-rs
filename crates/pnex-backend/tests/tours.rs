@@ -625,12 +625,13 @@ async fn endpoint_public_et_cache() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
 
-        // Assets : plan (floorplan) + panorama de scène.
+        // Assets : plan (floorplan) + panorama de scène. The floor plan is
+        // declared `text/html` by the client (SEC-5 attack shape).
         let res = upload(
             &server,
             &env.alice,
             org,
-            "?filename=plan.png&kind=floorplan&content_type=image%2Fpng",
+            "?filename=plan.html&kind=floorplan&content_type=text%2Fhtml",
             plain_jpeg(),
         )
         .await;
@@ -726,7 +727,32 @@ async fn endpoint_public_et_cache() {
             res.header("cache-control").to_str().unwrap(),
             "public, max-age=31536000, immutable"
         );
+        assert_eq!(
+            res.header("x-content-type-options").to_str().unwrap(),
+            "nosniff"
+        );
         assert_eq!(res.into_bytes(), gpano_jpeg(), "octets exacts du panorama");
+
+        // SEC-5: a client-declared HTML type is never served as such on the
+        // public (app-origin) route.
+        let res = server
+            .get(&format!("/api/v1/public/tours/{token}/assets/{plan_id}"))
+            .await;
+        assert_eq!(res.status_code(), 200);
+        assert_eq!(
+            res.header("content-type").to_str().unwrap(),
+            "application/octet-stream"
+        );
+        assert!(res
+            .header("content-disposition")
+            .to_str()
+            .unwrap()
+            .starts_with("attachment"));
+        assert!(res
+            .header("content-security-policy")
+            .to_str()
+            .unwrap()
+            .contains("sandbox"));
         let res = server
             .get(&format!(
                 "/api/v1/public/tours/{token}/assets/{pano_id}?v=1"

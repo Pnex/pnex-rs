@@ -61,7 +61,8 @@ pub(crate) async fn write_version(
         org_id: Set(org_id),
         version_number: Set(next),
         filename: Set(filename),
-        content_type: Set(content_type),
+        // Allowlisted at write time (SEC-5): the stored type is what is served.
+        content_type: Set(crate::services::media::safe_content_type(&content_type).to_string()),
         size_bytes: Set(bytes.len() as i64),
         storage_key: Set(key.clone()),
         sha256: Set(Some(sha)),
