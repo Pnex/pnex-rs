@@ -67,7 +67,7 @@ async fn bind_surface_controls<C: sea_orm::ConnectionTrait>(
 ) -> Result<DashboardLayout, DashboardWriteError> {
     use crate::services::surface_controls::{sync_surface, DeclaredControl};
     use pnex_core::ui_control::{ControlKind, ControlRef, ORIGIN_DASHBOARD};
-    let items: Vec<DeclaredControl> = layout
+    let mut items: Vec<DeclaredControl> = layout
         .widgets
         .iter()
         .filter_map(|w| {
@@ -83,6 +83,26 @@ async fn bind_surface_controls<C: sea_orm::ConnectionTrait>(
             })
         })
         .collect();
+    // Home cards (D138): one control per active role, item `{widget}.{role}`.
+    for w in &layout.widgets {
+        let Some(home) = &w.options.home else {
+            continue;
+        };
+        for r in home.active_roles() {
+            let title = if w.title.trim().is_empty() {
+                w.id.as_str()
+            } else {
+                w.title.trim()
+            };
+            items.push(DeclaredControl {
+                item_id: pnex_core::home::role_item_id(&w.id, r.role),
+                kind: Some(r.kind),
+                label: format!("{title} · {}", r.role),
+                current: home.control_of(r.role),
+                spec: home.spec_of(r.role),
+            });
+        }
+    }
     let outcome = sync_surface(db, org_id, ORIGIN_DASHBOARD, dashboard_id, &items, None)
         .await
         .map_err(|_| DashboardWriteError::Db)?;
@@ -90,6 +110,19 @@ async fn bind_surface_controls<C: sea_orm::ConnectionTrait>(
     for w in &mut bound.widgets {
         if let Some(id) = outcome.bound.get(&w.id) {
             w.options.control = Some(ControlRef { control_id: *id });
+        }
+        let wid = w.id.clone();
+        if let Some(home) = w.options.home.as_mut() {
+            let active: Vec<&'static str> = home.active_roles().iter().map(|r| r.role).collect();
+            home.controls
+                .retain(|role, _| active.contains(&role.as_str()));
+            for role in active {
+                let item = pnex_core::home::role_item_id(&wid, role);
+                if let Some(id) = outcome.bound.get(&item) {
+                    home.controls
+                        .insert(role.to_string(), ControlRef { control_id: *id });
+                }
+            }
         }
     }
     Ok(bound)

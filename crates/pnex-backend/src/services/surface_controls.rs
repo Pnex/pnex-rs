@@ -384,12 +384,7 @@ async fn refs_outside<C: ConnectionTrait>(
             .await?;
         for l in layouts {
             if let Ok(layout) = serde_json::from_value::<pnex_core::DashboardLayout>(l) {
-                refs.extend(
-                    layout
-                        .widgets
-                        .iter()
-                        .filter_map(|w| w.options.control.as_ref().map(|c| c.control_id)),
-                );
+                refs.extend(layout.widgets.iter().flat_map(|w| w.control_ids()));
             }
         }
     }

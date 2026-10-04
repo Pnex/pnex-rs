@@ -856,3 +856,126 @@ async fn declared_select_spec_is_applied_and_enforced() {
     })
     .await;
 }
+
+/// Home card layout: one `home_card` widget with the given options and
+/// sources.
+fn home_layout(options: serde_json::Value, source: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "canvas": { "width": 1600, "height": 900 },
+        "widgets": [{
+            "id": "w-0001", "type": "home_card", "title": "Living room",
+            "x": 40, "y": 40, "w": 300, "h": 200,
+            "source": source, "options": { "home": options },
+        }],
+        "wires": [],
+    })
+}
+
+/// D138: a home card provisions one control per active role (default
+/// domain of the role), binds them back by role, provisions an optional
+/// role once declared and releases it when undeclared; a card missing a
+/// required source is refused.
+#[tokio::test]
+#[serial]
+async fn home_card_provisions_one_control_per_active_role() {
+    with_app(|server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let created = post(
+            &server,
+            &env.alice,
+            org,
+            "/api/v1/dashboards",
+            serde_json::json!({
+                "name": "Home",
+                "layout": home_layout(serde_json::json!({"card": "thermostat"}), serde_json::json!([])),
+            }),
+        )
+        .await;
+        created.assert_status(axum_test::http::StatusCode::CREATED);
+        let dash: serde_json::Value = created.json();
+        let dash_id = dash["id"].as_str().unwrap().to_string();
+        let home = &dash["layout"]["widgets"][0]["options"]["home"];
+        let setpoint = home["controls"]["setpoint"]["control_id"]
+            .as_str()
+            .expect("setpoint bound")
+            .to_string();
+        assert!(home["controls"].get("mode").is_none(), "optional role off");
+        let list = get(&server, &env.alice, org, "/api/v1/controls").await;
+        let c = control_by_id(&list, &setpoint).expect("provisioned");
+        assert_eq!(c["spec"]["kind"], "stepper");
+        assert_eq!(c["spec"]["min"], 5.0);
+        assert_eq!(c["spec"]["step"], 0.5);
+        assert_eq!(c["label"], "Living room · setpoint");
+        assert_eq!(c["origin"]["item_id"], "w-0001.setpoint");
+
+        // Declare the optional mode role: a second control appears.
+        let mode_spec = serde_json::json!({"kind": "select", "options": [
+            {"value": 0, "key": "off"}, {"value": 1, "key": "heat"},
+        ]});
+        let saved: serde_json::Value = patch(
+            &server,
+            &env.alice,
+            org,
+            &format!("/api/v1/dashboards/{dash_id}"),
+            serde_json::json!({
+                "expected_version_number": 1,
+                "layout": home_layout(
+                    serde_json::json!({
+                        "card": "thermostat",
+                        "controls": {"setpoint": {"control_id": setpoint}},
+                        "specs": {"mode": mode_spec},
+                    }),
+                    serde_json::json!([]),
+                ),
+            }),
+        )
+        .await
+        .json();
+        let home = &saved["layout"]["widgets"][0]["options"]["home"];
+        assert_eq!(home["controls"]["setpoint"]["control_id"], setpoint.as_str());
+        let mode = home["controls"]["mode"]["control_id"]
+            .as_str()
+            .expect("mode bound")
+            .to_string();
+        let list = get(&server, &env.alice, org, "/api/v1/controls").await;
+        assert_eq!(control_by_id(&list, &mode).unwrap()["spec"]["kind"], "select");
+
+        // Undeclare it: released (no flow uses it).
+        patch(
+            &server,
+            &env.alice,
+            org,
+            &format!("/api/v1/dashboards/{dash_id}"),
+            serde_json::json!({
+                "expected_version_number": 2,
+                "layout": home_layout(
+                    serde_json::json!({
+                        "card": "thermostat",
+                        "controls": {"setpoint": {"control_id": setpoint}, "mode": {"control_id": mode}},
+                    }),
+                    serde_json::json!([]),
+                ),
+            }),
+        )
+        .await
+        .assert_status_ok();
+        let list = get(&server, &env.alice, org, "/api/v1/controls").await;
+        assert!(control_by_id(&list, &mode).is_none(), "undeclared role released");
+        assert!(control_by_id(&list, &setpoint).is_some());
+
+        // A binary sensor without its state source is refused.
+        let refused = post(
+            &server,
+            &env.alice,
+            org,
+            "/api/v1/dashboards",
+            serde_json::json!({
+                "name": "Bad",
+                "layout": home_layout(serde_json::json!({"card": "binary"}), serde_json::json!([])),
+            }),
+        )
+        .await;
+        assert_eq!(refused.status_code(), 400, "{}", refused.text());
+    })
+    .await;
+}

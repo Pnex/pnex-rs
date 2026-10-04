@@ -42,6 +42,8 @@ pub enum PaletteIcon {
     ToggleRight,
     SlidersHorizontal,
     Pointer,
+    /// Home icon catalog entry (D136), by id.
+    Home(&'static str),
 }
 
 /// Rendu d'une `PaletteIcon` (match explicite — jamais d'icône construite).
@@ -131,6 +133,9 @@ pub fn IconView(icon: PaletteIcon, class: Option<String>) -> Element {
                 },
                 PaletteIcon::Pointer => rsx! {
                     icons::Pointer { class }
+                },
+                PaletteIcon::Home(id) => rsx! {
+                    crate::components::home_icons::HomeIconView { id, class }
                 },
             }
         }

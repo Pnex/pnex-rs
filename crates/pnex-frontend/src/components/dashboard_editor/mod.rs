@@ -18,6 +18,7 @@ mod canvas;
 mod control_panel;
 mod device_panel;
 pub mod geometry;
+mod home_panel;
 pub mod inspector;
 pub mod library;
 mod mobile;

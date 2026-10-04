@@ -2,7 +2,13 @@
 
 > **Statut : EN COURS.** Plan validé par l'utilisateur le 2026-10-04 sur
 > tous les points, avec deux reports consignés au §6 (mode sombre global,
-> code PIN serrure/alarme). **Lots A et B livrés le 2026-10-04** (§4).
+> code PIN serrure/alarme). **Lots A, B et C livrés le 2026-10-04** (§4).
+>
+> **Invariant (précision utilisateur 2026-10-04) : aucun lien direct
+> dashboard → device.** Une surface écrit des contrôles, seul un flow
+> déployé agit (D123). Tant que cet invariant tient, tous les lots restent
+> validés, y compris les flows pré-câblés du lot E (créés visibles, jamais
+> déployés automatiquement). Vérification et garde : §1 bis.
 > Docs liés : `surfaces-controls.md` (D123–D133 : « une surface lit, un flow
 > agit », contrôles d'org, format mobile/PC, provisionnement au save),
 > `viz-bases.md` (D24, D31, D40, D41), `flow-engine.md` (nœuds custom),
@@ -76,6 +82,29 @@ chaque commit, clés i18n FR + EN dans le même commit.
 | D — Mobile | Pages, pièces + agrégats, chips, fiche détail, visibilité, colonnes adaptatives | D139 |
 | E — Accélérateurs | Depuis un device, modèles, flows pré-câblés | D141 |
 
+## 1 bis. Invariant : aucun lien direct dashboard → device (2026-10-04)
+
+Une surface (dashboard, annotation) ne fait que **déclarer et écrire des
+contrôles** ; seul un flow déployé agit sur un device (D123, D131).
+Vérifié au lot B et sur le lot C en cours : ni `controllers/controls.rs`,
+ni `services/dashboards.rs`, ni `services/surface_controls.rs`, ni
+`pnex_core::home` ne référencent le bus device ; côté front, les éditeurs
+de surface ne lisent que `api::pins::pinout`/`pins` (libellés), jamais
+`api::pins::command`.
+
+| Lot | Rapport aux devices |
+|---|---|
+| C — Cartes composées | provisionne N contrôles par carte, aucune écriture device |
+| C' — Météo | aucun (service externe en liste blanche, R8) |
+| D — Mobile | aucun (mise en page) |
+| E — Accélérateurs | « Depuis un device » **lit** le type de pin ; « Créer le flow » génère un flow `control-source` → `device-write` **visible, jamais déployé automatiquement** : c'est le flow qui agit, pas la surface |
+
+**Garde CI à ajouter** (au plus tard avec le lot E) : test bloquant qui
+refuse toute référence à l'API de commande device (`api::pins::command`,
+endpoints de commande/OTA/flash) depuis `components/surface`,
+`dashboard_editor`, `annotation_editor` et `home`, et toute référence au
+bus device depuis les services de surface côté backend.
+
 ## 2. Catalogue des cartes (lot C)
 
 | Domaine | Cartes | Rôles (contrôles / sources) |
@@ -138,9 +167,36 @@ chaque commit, clés i18n FR + EN dans le même commit.
   `declared_select_spec_is_applied_and_enforced`. Pas de migration
   (`controls.kind` varchar(16) sans contrainte).
 
+- **Lot C (2026-10-04)** — `pnex_core::home` : widget `home_card` +
+  `WidgetOptions.home = {card, controls: rôle → ControlRef, specs: rôle →
+  ControlSpec, variant, on_above}` ; table statique par carte des rôles de
+  contrôle (type + domaine par défaut : consigne 5..30 pas 0,5 °C, modes
+  off/heat/cool/auto, portail et serrure confirmés…) et des rôles de
+  source (`SourceRef.role`). Un rôle optionnel est actif ssi son domaine
+  est déclaré. Le save provisionne un contrôle par rôle actif (item
+  `w-0001.setpoint`, libellé « Titre · rôle »), réécrit les ids par rôle,
+  libère un rôle retiré ; `Widget::control_ids()` fait compter ces
+  contrôles dans les références (libération D131, valeurs des surfaces).
+  17 cartes : lumière, thermostat, ventilateur, volet, portail, serrure,
+  alarme, scène, arrosage, capteur binaire (8 variantes), thermo-hygro,
+  qualité de l'air (zones CO₂ 800 / 1200 ppm), puissance (+ mini-courbe),
+  compteur, flux d'énergie, appareil (statut par règles d'état D135),
+  horloge. Les commandes réutilisent `ControlBody` en mode compact (même
+  porte, confirmation, écriture). Palette : groupes Maison / Capteurs /
+  Énergie. Inspecteur `home_panel.rs` : variante, une source par rôle
+  (liste unique device › métrique / mémoire), rôles optionnels à cocher,
+  domaine par rôle. Test backend
+  `home_card_provisions_one_control_per_active_role`. **Écarts** : le
+  compteur affiche la consommation sur la fenêtre glissante de sa source
+  (dernier − premier point d'un index cumulatif), pas encore par jour /
+  semaine / mois calendaires ; la présence device (D108) ne grise pas
+  encore les cartes ; cartes non vérifiées dans un navigateur (stack de
+  dev en images Docker non reconstruites).
+
 ## 6. Reports consignés
 
 | # | Sujet | Statut |
 |---|---|---|
 | REP-1 | **Mode sombre global.** Aucune classe `dark:` ni thème dans l'UI (Tailwind v4, gris codés en dur, couleurs de widgets littérales dans `dashboard_widget.rs`). Très attendu sur un dashboard domotique mobile, mais demande de repasser sur toutes les pages : chantier transverse séparé (jetons de couleur, variante sombre des symboles et des cartes). | Reporté (décision utilisateur 2026-10-04) |
 | REP-2 | **Code PIN serrure / alarme.** Pratique courante (HA `code_arm_required`, clavier alarm-panel, ESPHome `alarm_control_panel` codes) : l'écriture d'un contrôle protégé exige un code, vérifié **côté serveur** (haché sur le contrôle, jamais renvoyé en lecture, limité en tentatives, journalisé). En attendant : simple confirmation (`confirm`). | Reporté (décision utilisateur 2026-10-04) |
+| REP-3 | **Carte mentale des liaisons.** Annotation optionnelle sur un flow (et sur le nœud `control-source`) indiquant qui l'a créé (utilisateur, accélérateur, assistant) et ses liens (surfaces → contrôles → flow → devices), pour que l'utilisateur garde une vue d'ensemble des couplages. | Idée future (utilisateur 2026-10-04) |

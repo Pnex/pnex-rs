@@ -79,6 +79,48 @@ pub fn new_widget(layout: &mut DashboardLayout, id: String, widget_type: &str, x
     });
 }
 
+/// New home card (D138): required roles at their default domain, one
+/// empty source per required source role (picked in the inspector).
+pub fn new_home_card(
+    layout: &mut DashboardLayout,
+    id: String,
+    card: pnex_core::home::HomeCard,
+    x: i64,
+    y: i64,
+) {
+    let (w, h) = super::geometry::home_card_size(card);
+    let source = card
+        .source_roles()
+        .iter()
+        .filter(|r| r.required)
+        .map(|r| SourceRef {
+            role: r.role.to_string(),
+            metric: String::new(),
+            device_id: String::new(),
+            window: if card == pnex_core::home::HomeCard::Meter {
+                "24h".into()
+            } else {
+                "1h".into()
+            },
+            memory: None,
+        })
+        .collect();
+    layout.widgets.push(Widget {
+        id,
+        widget_type: pnex_core::home::HOME_WIDGET_TYPE.to_owned(),
+        title: String::new(),
+        x,
+        y,
+        w,
+        h,
+        source,
+        options: WidgetOptions {
+            home: Some(pnex_core::home::HomeCardOptions::new(card)),
+            ..Default::default()
+        },
+    });
+}
+
 /// New `symbol` widget of the catalog shape (static drawing, no source:
 /// a live source is opt-in from the inspector). Size follows the aspect.
 pub fn new_symbol(layout: &mut DashboardLayout, id: String, shape: &str, x: i64, y: i64) {
@@ -418,6 +460,21 @@ pub fn find_widget(layout: &DashboardLayout, id: &str) -> Option<Widget> {
 pub fn adopt_bound_controls(local: &DashboardLayout, server: &DashboardLayout) -> DashboardLayout {
     let mut out = local.clone();
     for w in &mut out.widgets {
+        // Home cards (D138): adopt the role controls the server bound.
+        if let Some(home) = w.options.home.as_mut() {
+            if let Some(server_home) = server
+                .widgets
+                .iter()
+                .find(|s| s.id == w.id && s.widget_type == w.widget_type)
+                .and_then(|s| s.options.home.as_ref())
+            {
+                for (role, bound) in &server_home.controls {
+                    home.controls
+                        .entry(role.clone())
+                        .or_insert_with(|| bound.clone());
+                }
+            }
+        }
         if w.options.control.is_some() {
             continue;
         }
