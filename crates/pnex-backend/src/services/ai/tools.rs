@@ -527,7 +527,7 @@ fn describe_node_types() -> Result<ToolOutcome, String> {
         value: json!({
             "pipeline": "[inject] → [device] → [calc] → [metric]",
             "payload_key_rule": "les variables du nœud calc sont les clés du payload produit par le nœud device : sanitize(device_slug) + \"_\" + sanitize(pin_label), CASSE CONSERVÉE (pnex_core::device_payload_key, ex. device \"proud-puffin\" + pin \"A0\" → \"proud_puffin_A0\" — pin \"a0\" serait rejeté : calc_case_mismatch)",
-            "metric_rule": "le nœud metric écrit la série etl_<nom_sanitisé> avec device_id=\"flow_<id>\" (pnex_core::etl_metric_name)",
+            "metric_rule": "le nœud metric écrit la série etl_<nom_sanitisé> avec device_id=\"flow_<id>\" (pnex_core::etl_metric_name) ; un payload objet écrit une série etl_<nom>_<champ> par champ numérique",
             "nodes": [
                 {
                     "kind": "inject",
@@ -680,6 +680,17 @@ fn describe_node_types() -> Result<ToolOutcome, String> {
                     "config": {
                         "controls": "list of org control ids (UUID, 1..=32, must exist in the org at deploy)",
                         "emit_on_start": "bool, default false: resend each control's last value at engine start / redeploy"
+                    }
+                },
+                {
+                    "kind": "weather",
+                    "description": "Timed weather source (no input) for the coordinates, from an allowlisted provider. Port 0 = current conditions {temperature, feels_like, humidity, pressure, wind_speed (km/h), wind_gust, wind_direction, precipitation, cloud_cover, condition, condition_code, icon, is_day}; port 1 = 7-day forecast {days: [...], d0_t_min, d0_t_max, d0_precipitation, d0_condition_code, ... d6_*}; port 2 = 48-hour forecast {hours: [...], h0_temperature ... h23_*}. Wire to memory_write (live values for dashboards) and/or metric (object payload = one series per numeric field).",
+                    "config": {
+                        "provider": "\"met_norway\" (default, CC BY 4.0, commercial use allowed) | \"open_meteo\" (non-commercial use only)",
+                        "latitude": "-90..=90",
+                        "longitude": "-180..=180",
+                        "interval_min": "refresh in minutes, 10..=1440 (default 30)",
+                        "emit_on_start": "bool, default true: fetch at engine start / redeploy"
                     }
                 },
                 {
@@ -971,6 +982,7 @@ mod tests {
             "memory_write",
             "memory_read",
             "control_source",
+            "weather",
             "anomaly",
             "forecast",
         ] {

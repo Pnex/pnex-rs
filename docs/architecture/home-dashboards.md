@@ -2,7 +2,7 @@
 
 > **Statut : EN COURS.** Plan validé par l'utilisateur le 2026-10-04 sur
 > tous les points, avec deux reports consignés au §6 (mode sombre global,
-> code PIN serrure/alarme). **Lots A, B et C livrés le 2026-10-04** (§4).
+> code PIN serrure/alarme). **Lots A, B, C et C' (météo) livrés le 2026-10-04** (§4).
 >
 > **Invariant (précision utilisateur 2026-10-04) : aucun lien direct
 > dashboard → device.** Une surface écrit des contrôles, seul un flow
@@ -192,6 +192,25 @@ bus device depuis les services de surface côté backend.
   semaine / mois calendaires ; la présence device (D108) ne grise pas
   encore les cartes ; cartes non vérifiées dans un navigateur (stack de
   dev en images Docker non reconstruites).
+
+- **Lot C' — météo (2026-10-04)** — `pnex_core::weather` (config, URL
+  construite côté serveur depuis les coordonnées, normalisation des deux
+  fournisseurs testée sur réponses figées) + crate `pnex-node-weather`
+  (source temporisée sans entrée, 3 ports : actuel / 7 jours / 48 h,
+  User-Agent identifié, redirections refusées, nouvel essai à 2 min sur
+  échec, statuts `weather-updated|waiting|unavailable`). **Fournisseur par
+  défaut : MET Norway** (CC BY 4.0, usage commercial permis) ; Open-Meteo
+  proposé avec mention « usage non commercial ». Champs normalisés :
+  température, ressenti (Steadman pour MET Norway), humidité, pression,
+  vent km/h, rafales, direction, précipitations, nébulosité, UV,
+  `condition` (10 états) + `condition_code` + `icon` + `is_day` ; jours
+  groupés par date UTC (MET Norway) ou locale (Open-Meteo) ; aplatis
+  `d0..d6_*` et `h0..h23_*` pour la mémoire et O2. **`pnex-metric` accepte
+  désormais un objet : une série `etl_<nom>_<champ>` par champ numérique**
+  (≤ 200), ce qui fait passer la météo vers O2 en un seul nœud. Carte
+  **Météo** (`HomeCard::Weather`) : liaison rapide par les deux clés
+  mémoire (actuel / 7 jours), 5 jours affichés. Vérifié en réel contre les
+  deux API (test `#[ignore]` `live_providers_parse`). Catalogue IA à jour.
 
 ## 6. Reports consignés
 

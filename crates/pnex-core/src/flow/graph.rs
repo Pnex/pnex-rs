@@ -139,6 +139,12 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::ui_control::ControlSourceConfig,
     },
+    /// Timed weather source (D140): no input, three outputs (current,
+    /// daily, hourly) normalized from an allowlisted provider.
+    Weather {
+        #[serde(default)]
+        config: crate::weather::WeatherConfig,
+    },
     /// Anomaly scoring on a numeric series (robust z, forecast band,
     /// changepoint) — port 0 = detail, port 1 = boolean state.
     Anomaly {
@@ -260,6 +266,9 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "control_source" => Ok(Self::ControlSource {
+                    config: opt_config(config)?,
+                }),
+                "weather" => Ok(Self::Weather {
                     config: opt_config(config)?,
                 }),
                 "anomaly" => Ok(Self::Anomaly {

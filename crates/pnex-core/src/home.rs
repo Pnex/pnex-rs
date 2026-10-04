@@ -42,6 +42,8 @@ pub enum HomeCard {
     EnergyFlow,
     Appliance,
     Clock,
+    /// Weather of the `weather` flow node, read from org memory (D140).
+    Weather,
 }
 
 /// One control a card drives.
@@ -81,13 +83,50 @@ macro_rules! src {
     };
 }
 
+/// Source roles of the weather card: fields of the current payload, then
+/// `d{n}_*` fields of the daily payload (role = memory field name).
+pub const WEATHER_CURRENT_ROLES: &[&str] = &[
+    "temperature",
+    "condition_code",
+    "is_day",
+    "feels_like",
+    "humidity",
+    "wind_speed",
+];
+/// Forecast days shown by the weather card.
+pub const WEATHER_CARD_DAYS: usize = 5;
+
+const WEATHER_SOURCE_ROLES: &[SourceRole] = &[
+    src!("temperature", true),
+    src!("condition_code", false),
+    src!("is_day", false),
+    src!("feels_like", false),
+    src!("humidity", false),
+    src!("wind_speed", false),
+    src!("d0_t_min", false),
+    src!("d0_t_max", false),
+    src!("d0_condition_code", false),
+    src!("d1_t_min", false),
+    src!("d1_t_max", false),
+    src!("d1_condition_code", false),
+    src!("d2_t_min", false),
+    src!("d2_t_max", false),
+    src!("d2_condition_code", false),
+    src!("d3_t_min", false),
+    src!("d3_t_max", false),
+    src!("d3_condition_code", false),
+    src!("d4_t_min", false),
+    src!("d4_t_max", false),
+    src!("d4_condition_code", false),
+];
+
 /// Variants of the binary sensor card (icon and on/off wording).
 pub const BINARY_VARIANTS: &[&str] = &[
     "door", "window", "motion", "presence", "smoke", "leak", "co", "generic",
 ];
 
 impl HomeCard {
-    pub const ALL: [HomeCard; 17] = [
+    pub const ALL: [HomeCard; 18] = [
         HomeCard::Light,
         HomeCard::Thermostat,
         HomeCard::Fan,
@@ -105,6 +144,7 @@ impl HomeCard {
         HomeCard::EnergyFlow,
         HomeCard::Appliance,
         HomeCard::Clock,
+        HomeCard::Weather,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -126,6 +166,7 @@ impl HomeCard {
             HomeCard::EnergyFlow => "energy_flow",
             HomeCard::Appliance => "appliance",
             HomeCard::Clock => "clock",
+            HomeCard::Weather => "weather",
         }
     }
 
@@ -188,6 +229,7 @@ impl HomeCard {
                 src!("remaining", false),
             ],
             HomeCard::Clock => &[],
+            HomeCard::Weather => WEATHER_SOURCE_ROLES,
         }
     }
 
@@ -300,6 +342,7 @@ impl HomeCard {
             HomeCard::EnergyFlow => "home-solar",
             HomeCard::Appliance => "home-washer",
             HomeCard::Clock => "home-clock",
+            HomeCard::Weather => "home-partly-cloudy",
         }
     }
 

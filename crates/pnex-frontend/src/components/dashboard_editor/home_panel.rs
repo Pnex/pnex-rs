@@ -120,7 +120,15 @@ pub fn HomePanel(cx: EditorCx, widget: Widget, can_write: bool, catalog: SourceC
                     },
                 }
             }
-            if !source_roles.is_empty() {
+            if card == pnex_core::home::HomeCard::Weather {
+                WeatherBind {
+                    cx,
+                    widget: widget.clone(),
+                    catalog: catalog.clone(),
+                    can_write,
+                }
+            }
+            if !source_roles.is_empty() && card != pnex_core::home::HomeCard::Weather {
                 p { class: "text-[10px] font-medium uppercase text-gray-400", {t!("hcard-sources")} }
                 for r in source_roles.iter() {
                     RoleSource {
@@ -344,6 +352,90 @@ fn RoleControl(
                 }
                 if let Some(err) = error {
                     p { class: "text-xs text-red-600", "{err}" }
+                }
+            }
+        }
+    }
+}
+
+/// Memory key the weather sources of `roles` currently point at.
+fn bound_key(widget: &Widget, roles: &[&str]) -> String {
+    roles
+        .iter()
+        .find_map(|r| widget.source_of(r).and_then(|s| s.memory.as_ref()))
+        .map(|m| m.key.clone())
+        .unwrap_or_default()
+}
+
+/// Points every role of `roles` at the same-named field of memory `key`
+/// (`""` = unbinds them; the required temperature stays, unset).
+fn bind_weather(w: &mut Widget, key: &str, roles: &[String]) {
+    w.source.retain(|s| !roles.contains(&s.role));
+    if key.is_empty() {
+        return;
+    }
+    for role in roles {
+        w.source.push(SourceRef {
+            role: role.clone(),
+            metric: String::new(),
+            device_id: String::new(),
+            window: "1h".into(),
+            memory: Some(MemoryRef {
+                key: key.to_string(),
+                field: role.clone(),
+            }),
+        });
+    }
+}
+
+/// Weather card quick binding (D140): the memory key written from the
+/// `weather` node's "current" output, and the one of its "7 days" output.
+#[component]
+fn WeatherBind(cx: EditorCx, widget: Widget, catalog: SourceCatalog, can_write: bool) -> Element {
+    use pnex_core::home::{WEATHER_CARD_DAYS, WEATHER_CURRENT_ROLES};
+    let current: Vec<String> = WEATHER_CURRENT_ROLES
+        .iter()
+        .map(|r| r.to_string())
+        .collect();
+    let daily: Vec<String> = (0..WEATHER_CARD_DAYS)
+        .flat_map(|d| ["t_min", "t_max", "condition_code"].map(|f| format!("d{d}_{f}")))
+        .collect();
+    let current_key = bound_key(&widget, WEATHER_CURRENT_ROLES);
+    let daily_refs: Vec<&str> = daily.iter().map(String::as_str).collect();
+    let daily_key = bound_key(&widget, &daily_refs);
+    let keys: Vec<String> = catalog.memory.keys().cloned().collect();
+    let keys2 = keys.clone();
+    rsx! {
+        div { class: "space-y-1",
+            p { class: "text-[10px] text-gray-500", {t!("hweather-bind-help")} }
+            label { class: "block text-[10px] text-gray-500", {t!("hweather-bind-current")} }
+            select {
+                class: "w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm",
+                disabled: !can_write,
+                value: "{current_key}",
+                onchange: move |e| {
+                    let key = e.value();
+                    let roles = current.clone();
+                    edit_widget(cx, |w| bind_weather(w, &key, &roles));
+                },
+                option { value: "", {t!("hweather-bind-none")} }
+                for k in keys {
+                    option { key: "{k}", value: "{k}", "{k}" }
+                }
+            }
+            label { class: "block text-[10px] text-gray-500", {t!("hweather-bind-daily")} }
+            select {
+                class: "w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm",
+                disabled: !can_write,
+                value: "{daily_key}",
+                onchange: move |e| {
+                    let key = e.value();
+                    let roles = daily.clone();
+                    edit_widget(cx, |w| bind_weather(w, &key, &roles));
+                },
+                option { value: "", {t!("hweather-bind-none")} }
+                for k in keys2 {
+                    option { key: "{k}", value: "{k}", "{k}" }
                 }
             }
         }

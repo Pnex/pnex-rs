@@ -90,6 +90,7 @@ pub fn card_label(card: HomeCard) -> String {
         HomeCard::EnergyFlow => t!("hcard-energy_flow").to_string(),
         HomeCard::Appliance => t!("hcard-appliance").to_string(),
         HomeCard::Clock => t!("hcard-clock").to_string(),
+        HomeCard::Weather => t!("hcard-weather").to_string(),
     }
 }
 
@@ -227,6 +228,9 @@ pub fn HomeCardBody(widget: Widget, values: Option<LiveValues>) -> Element {
         },
         HomeCard::Clock => rsx! {
             ClockCard {}
+        },
+        HomeCard::Weather => rsx! {
+            WeatherCard { widget: w.clone(), title, values }
         },
     };
     rsx! {
@@ -785,6 +789,108 @@ fn ClockCard() -> Element {
         div { class: "flex flex-1 flex-col items-center justify-center",
             span { class: "text-4xl font-semibold tabular-nums text-gray-900", "{time}" }
             span { class: "text-xs text-gray-500", "{date}" }
+        }
+    }
+}
+
+/// Localized name of a normalized weather condition.
+pub fn condition_label(c: pnex_core::weather::WeatherCondition) -> String {
+    use pnex_core::weather::WeatherCondition::*;
+    match c {
+        Clear => t!("wcond-clear").to_string(),
+        PartlyCloudy => t!("wcond-partly-cloudy").to_string(),
+        Cloudy => t!("wcond-cloudy").to_string(),
+        Fog => t!("wcond-fog").to_string(),
+        Drizzle => t!("wcond-drizzle").to_string(),
+        Rain => t!("wcond-rain").to_string(),
+        HeavyRain => t!("wcond-heavy-rain").to_string(),
+        Sleet => t!("wcond-sleet").to_string(),
+        Snow => t!("wcond-snow").to_string(),
+        Thunderstorm => t!("wcond-thunderstorm").to_string(),
+    }
+}
+
+/// One forecast day of the weather card.
+#[derive(Clone, PartialEq)]
+struct DayCell {
+    label: String,
+    icon: String,
+    max: String,
+    min: String,
+}
+
+/// Weather card (D140): fields written to org memory by the `weather`
+/// flow node, current conditions plus up to five forecast days.
+#[component]
+fn WeatherCard(widget: Widget, title: String, values: LiveValues) -> Element {
+    use pnex_core::weather::WeatherCondition;
+    let v = |role: &str| last_of(&widget, role, &values).map(|p| p.value);
+    let is_day = v("is_day").is_none_or(|d| d >= 0.5);
+    let cond = v("condition_code").and_then(WeatherCondition::from_code);
+    let icon = cond
+        .map(|c| c.icon(is_day))
+        .unwrap_or("home-partly-cloudy")
+        .to_string();
+    let condition = cond.map(condition_label).unwrap_or_default();
+    let temp = fmt(v("temperature"), 0);
+    let mut details = Vec::new();
+    if let Some(f) = v("feels_like") {
+        details.push(t!("hweather-feels", value : format_value(f, 0)).to_string());
+    }
+    if let Some(h) = v("humidity") {
+        details.push(t!("hcard-humidity", value : format_value(h, 0)).to_string());
+    }
+    if let Some(w) = v("wind_speed") {
+        details.push(t!("hweather-wind", value : format_value(w, 0)).to_string());
+    }
+    let days: Vec<DayCell> = (0..pnex_core::home::WEATHER_CARD_DAYS)
+        .filter_map(|d| {
+            let max = v(&format!("d{d}_t_max"))?;
+            let min = v(&format!("d{d}_t_min"));
+            let c = v(&format!("d{d}_condition_code")).and_then(WeatherCondition::from_code);
+            let label = match d {
+                0 => t!("hweather-today").to_string(),
+                1 => t!("hweather-tomorrow").to_string(),
+                n => t!("hweather-day-n", n : n).to_string(),
+            };
+            Some(DayCell {
+                label,
+                icon: c.map(|c| c.icon(true)).unwrap_or("home-cloud").to_string(),
+                max: format!("{}°", format_value(max, 0)),
+                min: min
+                    .map(|m| format!("{}°", format_value(m, 0)))
+                    .unwrap_or_default(),
+            })
+        })
+        .collect();
+    let details = details.join(" · ");
+    rsx! {
+        p { class: "truncate text-xs font-medium text-gray-500", "{title}" }
+        div { class: "flex items-center gap-3",
+            span { class: "text-sky-600",
+                HomeIconView { id: icon, class: "h-12 w-12" }
+            }
+            div { class: "min-w-0",
+                p { class: "text-3xl font-semibold leading-none text-gray-900", "{temp}°" }
+                p { class: "truncate text-sm text-gray-600", "{condition}" }
+            }
+        }
+        if !details.is_empty() {
+            p { class: "text-xs text-gray-500", "{details}" }
+        }
+        if !days.is_empty() {
+            div { class: "mt-auto flex justify-between gap-1 border-t border-gray-100 pt-2",
+                for day in days {
+                    div {
+                        key: "{day.label}",
+                        class: "flex flex-col items-center text-[11px] text-gray-600",
+                        span { "{day.label}" }
+                        HomeIconView { id: day.icon, class: "h-5 w-5 text-sky-600" }
+                        span { class: "font-medium text-gray-900", "{day.max}" }
+                        span { class: "text-gray-400", "{day.min}" }
+                    }
+                }
+            }
         }
     }
 }

@@ -94,6 +94,11 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
                     v.push(FlowViolation::new(Some(&n.id), code, message));
                 }
             }
+            FlowNodeKind::Weather { config } => {
+                if let Some((code, message)) = config.check() {
+                    v.push(FlowViolation::new(Some(&n.id), code, message));
+                }
+            }
             FlowNodeKind::Metric { config } => {
                 if config.metric_name.trim().is_empty() {
                     v.push(FlowViolation::new(

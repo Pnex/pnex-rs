@@ -1,9 +1,10 @@
 use super::*;
 
 /// Liste canonique des kinds proposés à l'ajout (ordre de la maquette).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 27] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 28] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
+    PaletteKind::Weather,
     PaletteKind::Value,
     PaletteKind::DeviceRead,
     PaletteKind::DeviceWrite,
@@ -58,6 +59,7 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::MemoryWrite => "memory-write",
         PaletteKind::MemoryRead => "memory-read",
         PaletteKind::ControlSource => "control-source",
+        PaletteKind::Weather => "weather",
         PaletteKind::Anomaly => "anomaly",
         PaletteKind::Forecast => "forecast",
         PaletteKind::Debug => "debug",
@@ -101,6 +103,10 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::MemoryWrite => (PaletteIcon::Database, "bg-lime-50 text-lime-700"),
         PaletteKind::MemoryRead => (PaletteIcon::Database, "bg-green-50 text-green-700"),
         PaletteKind::ControlSource => (PaletteIcon::Gauge, "bg-blue-50 text-blue-600"),
+        PaletteKind::Weather => (
+            PaletteIcon::Home("home-partly-cloudy"),
+            "bg-sky-50 text-sky-600",
+        ),
         PaletteKind::Anomaly => (PaletteIcon::Activity, "bg-red-50 text-red-600"),
         PaletteKind::Forecast => (PaletteIcon::Spline, "bg-violet-50 text-violet-700"),
         PaletteKind::Debug => (PaletteIcon::Bug, "bg-violet-50 text-violet-600"),
@@ -134,6 +140,7 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::MemoryWrite { .. } => PaletteKind::MemoryWrite,
         FlowNodeKind::MemoryRead { .. } => PaletteKind::MemoryRead,
         FlowNodeKind::ControlSource { .. } => PaletteKind::ControlSource,
+        FlowNodeKind::Weather { .. } => PaletteKind::Weather,
         FlowNodeKind::Anomaly { .. } => PaletteKind::Anomaly,
         FlowNodeKind::Forecast { .. } => PaletteKind::Forecast,
         FlowNodeKind::Debug { .. } => PaletteKind::Debug,
@@ -173,9 +180,10 @@ pub(crate) const PALETTE_CATEGORIES: [PaletteCategory; 9] = [
 /// without picking its section.
 pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
     match kind {
-        PaletteKind::Inject | PaletteKind::ControlSource | PaletteKind::CameraSource => {
-            PaletteCategory::Triggers
-        }
+        PaletteKind::Inject
+        | PaletteKind::ControlSource
+        | PaletteKind::CameraSource
+        | PaletteKind::Weather => PaletteCategory::Triggers,
         PaletteKind::DeviceRead | PaletteKind::DeviceWrite | PaletteKind::Display => {
             PaletteCategory::Devices
         }
@@ -340,6 +348,10 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::ControlSource => (
             t!("flows-palette-control-source").to_string(),
             t!("flows-palette-control-source-help").to_string(),
+        ),
+        PaletteKind::Weather => (
+            t!("flows-palette-weather").to_string(),
+            t!("flows-palette-weather-help").to_string(),
         ),
         PaletteKind::Anomaly => (
             t!("flows-palette-anomaly").to_string(),

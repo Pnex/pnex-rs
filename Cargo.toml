@@ -14,6 +14,7 @@ members = [
     "crates/pnex-node-control",
     # Org controls written from the surfaces (D127): control-source.
     "crates/pnex-node-ui-control",
+    "crates/pnex-node-weather",
     # Propriétés thermophysiques in-process (CoolProp vendored) — cf.
     # crates/pnex-coolprop[-sys] et vendor/README.md.
     "crates/pnex-node-coolprop",
@@ -78,6 +79,7 @@ pnex-node-display = { path = "crates/pnex-node-display" }
 pnex-node-value = { path = "crates/pnex-node-value" }
 pnex-node-control = { path = "crates/pnex-node-control" }
 pnex-node-ui-control = { path = "crates/pnex-node-ui-control" }
+pnex-node-weather = { path = "crates/pnex-node-weather" }
 pnex-node-coolprop = { path = "crates/pnex-node-coolprop" }
 pnex-coolprop = { path = "crates/pnex-coolprop" }
 pnex-notify = { path = "crates/pnex-notify" }

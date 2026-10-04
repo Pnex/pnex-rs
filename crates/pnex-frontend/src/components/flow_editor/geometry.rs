@@ -123,6 +123,8 @@ pub fn port_counts_of(node: &FlowNode) -> (usize, usize) {
         // Anomaly: detail + boolean state; forecast: detail + breach + ETA.
         FlowNodeKind::Anomaly { .. } => (pnex_core::predictive::ANOMALY_PORT_COUNT, 0),
         FlowNodeKind::Forecast { .. } => (pnex_core::predictive::FORECAST_PORT_COUNT, 0),
+        // Weather: current, daily, hourly; timed source without input.
+        FlowNodeKind::Weather { .. } => (pnex_core::weather::WEATHER_PORT_COUNT, 0),
         // Camera source: event-driven, one frame-reference output. Video
         // record: one output per written segment.
         FlowNodeKind::CameraSource { .. } | FlowNodeKind::VideoRecord { .. } => (1, 0),
@@ -178,6 +180,11 @@ pub fn predict_output_labels(kind: &FlowNodeKind) -> Vec<String> {
             t!("flows-forecast-port-breach").to_string(),
             t!("flows-forecast-port-eta").to_string(),
         ],
+        FlowNodeKind::Weather { .. } => vec![
+            t!("flows-weather-port-current").to_string(),
+            t!("flows-weather-port-daily").to_string(),
+            t!("flows-weather-port-hourly").to_string(),
+        ],
         _ => Vec::new(),
     }
 }
@@ -197,7 +204,10 @@ pub fn notify_input_labels(config: &pnex_core::NotifyNodeConfig) -> Vec<String> 
 /// Whether a node takes incoming wires: event sources (`control-source`,
 /// fed by the surfaces) have no input port.
 pub fn accepts_input(node: &FlowNode) -> bool {
-    !matches!(node.kind, FlowNodeKind::ControlSource { .. })
+    !matches!(
+        node.kind,
+        FlowNodeKind::ControlSource { .. } | FlowNodeKind::Weather { .. }
+    )
 }
 
 /// Input anchor rows of a node: y offsets **relative** to the node, one per
