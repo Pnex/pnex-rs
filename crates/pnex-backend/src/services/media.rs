@@ -443,6 +443,7 @@ impl S3Store {
         };
         builder = builder.region(region);
         // Retry des erreurs transitoires (5xx, timeout) — école artifact_store.
+        crate::services::artifact_store::ensure_http_transport();
         let operator = Operator::new(builder)
             .map_err(|e| format!("MediaStore s3 : initialisation impossible : {e}"))?
             .layer(RetryLayer::default());
