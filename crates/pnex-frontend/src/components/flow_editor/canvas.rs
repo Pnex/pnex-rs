@@ -307,6 +307,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::MemoryWrite { .. } => kind_labels(PaletteKind::MemoryWrite),
         pnex_core::FlowNodeKind::MemoryRead { .. } => kind_labels(PaletteKind::MemoryRead),
         pnex_core::FlowNodeKind::ControlSource { .. } => kind_labels(PaletteKind::ControlSource),
+        pnex_core::FlowNodeKind::Weather { .. } => kind_labels(PaletteKind::Weather),
         pnex_core::FlowNodeKind::Anomaly { .. } => kind_labels(PaletteKind::Anomaly),
         pnex_core::FlowNodeKind::Forecast { .. } => kind_labels(PaletteKind::Forecast),
         pnex_core::FlowNodeKind::Debug { .. } => kind_labels(PaletteKind::Debug),
@@ -380,10 +381,12 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::MemoryRead { .. } => {
             (geometry::MEMORY_READ_FILL, geometry::MEMORY_READ_STROKE)
         }
-        pnex_core::FlowNodeKind::ControlSource { .. } => (
-            geometry::CONTROL_SOURCE_FILL,
-            geometry::CONTROL_SOURCE_STROKE,
-        ),
+        pnex_core::FlowNodeKind::ControlSource { .. } | pnex_core::FlowNodeKind::Weather { .. } => {
+            (
+                geometry::CONTROL_SOURCE_FILL,
+                geometry::CONTROL_SOURCE_STROKE,
+            )
+        }
         pnex_core::FlowNodeKind::Debug { .. } => (geometry::DEBUG_FILL, geometry::DEBUG_STROKE),
         pnex_core::FlowNodeKind::Red { .. } => (geometry::RED_FILL, geometry::RED_STROKE),
     };
@@ -534,7 +537,9 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                 .map(|(i, label)| (i, rel_y(i), label, node.id.clone()))
                 .collect()
         }
-        pnex_core::FlowNodeKind::Anomaly { .. } | pnex_core::FlowNodeKind::Forecast { .. } => {
+        pnex_core::FlowNodeKind::Anomaly { .. }
+        | pnex_core::FlowNodeKind::Forecast { .. }
+        | pnex_core::FlowNodeKind::Weather { .. } => {
             let rel_y = |port: usize| node_h * (port + 1) as f64 / (out_count + 1) as f64;
             geometry::predict_output_labels(&node.kind)
                 .into_iter()
@@ -1047,6 +1052,10 @@ fn node_subtitle(node: &FlowNode) -> String {
                 format!("{} +{}", crate::api::controls::key_of(first), rest.len())
             }
         },
+        pnex_core::FlowNodeKind::Weather { config } => format!(
+            "{:.2}, {:.2} · {} min",
+            config.latitude, config.longitude, config.interval_min
+        ),
         pnex_core::FlowNodeKind::MemoryRead { config } => match config.keys.as_slice() {
             [] => "—".into(),
             [one] => one.clone(),

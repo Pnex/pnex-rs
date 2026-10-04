@@ -3143,3 +3143,23 @@ fn control_source_validates_projects_and_lists_refs() {
         validate_graph(&empty)
     );
 }
+
+#[test]
+fn metric_payload_object_writes_one_series_per_numeric_field() {
+    let one = metric_values_from_payload(Some(&serde_json::json!(21.5))).unwrap();
+    assert_eq!(one, vec![(None, 21.5)]);
+    let obj =
+        serde_json::json!({"temperature": 14.2, "is_day": true, "condition": "rain", "days": []});
+    let mut many = metric_values_from_payload(Some(&obj)).unwrap();
+    many.sort_by(|a, b| a.0.cmp(&b.0));
+    assert_eq!(
+        many,
+        vec![
+            (Some("is_day".into()), 1.0),
+            (Some("temperature".into()), 14.2)
+        ]
+    );
+    let none = serde_json::json!({"condition": "rain"});
+    assert!(metric_values_from_payload(Some(&none)).is_err());
+    assert!(metric_values_from_payload(Some(&serde_json::json!("x"))).is_err());
+}

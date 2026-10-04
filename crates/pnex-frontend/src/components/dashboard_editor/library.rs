@@ -97,6 +97,7 @@ const HOME_GROUPS: [(&str, &[HomeCard]); 3] = [
             HomeCard::Binary,
             HomeCard::ThermoHygro,
             HomeCard::AirQuality,
+            HomeCard::Weather,
             HomeCard::Clock,
         ],
     ),

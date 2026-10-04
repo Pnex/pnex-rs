@@ -16,6 +16,7 @@ pnex-node-display = { workspace = true }
 pnex-node-value = { workspace = true }
 pnex-node-control = { workspace = true }
 pnex-node-ui-control = { workspace = true }
+pnex-node-weather = { workspace = true }
 pnex-node-coolprop = { workspace = true }
 pnex-node-notify = { workspace = true }
 pnex-node-http-fetch = { workspace = true }

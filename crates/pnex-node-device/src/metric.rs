@@ -90,8 +90,9 @@ impl PnexMetricNode {
     }
 
     async fn execute(&self, msg: MsgHandle, cancel: CancellationToken) -> Result<()> {
-        // 1) Frontière d'entrée : une valeur numérique.
-        let value: f64 = {
+        // 1) Input boundary: a number, a boolean or an object of numeric
+        // fields (one series per field, D140).
+        let values: Vec<(Option<String>, f64)> = {
             let m = msg.read().await;
             let payload_json = match m.get("payload").cloned() {
                 Some(v) => Some(serde_json::to_value(&v).map_err(|e| {
@@ -101,7 +102,7 @@ impl PnexMetricNode {
                 })?),
                 None => None,
             };
-            pnex_core::metric_value_from_payload(payload_json.as_ref()).map_err(|v| {
+            pnex_core::metric_values_from_payload(payload_json.as_ref()).map_err(|v| {
                 EdgelinkError::InvalidOperation(format!(
                     "pnex-metric [{}] : {}",
                     self.name(),
@@ -109,23 +110,31 @@ impl PnexMetricNode {
                 ))
             })?
         };
+        let series_name = |field: &Option<String>| match field {
+            Some(f) => pnex_core::etl_metric_name(&format!("{}_{f}", self.config.metric_name)),
+            None => pnex_core::etl_metric_name(&self.config.metric_name),
+        };
 
         // 2) Remote-write borné (timeout 10 s côté client) et annulable.
         // Org O2 vide (provisioning pas encore passé) : écriture sautée,
         // pipeline vivant — la reprojection post-provisioning comblera.
         if self.config.pnex_o2_org.trim().is_empty() {
             log::warn!(
-                "pnex-metric [{}] : org O2 non provisionnée — {} = {value} NON écrit",
+                "pnex-metric [{}] : O2 org not provisioned — {} series NOT written",
                 self.name(),
-                pnex_core::etl_metric_name(&self.config.metric_name)
+                values.len()
             );
             self.fan_out_one(Envelope { port: 0, msg }, cancel).await
         } else {
             let org = self.config.pnex_o2_org.clone();
-            let metric = pnex_core::etl_metric_name(&self.config.metric_name);
             let virtual_device = format!("flow_{}", self.config.pnex_flow_id);
             let ts_ms = chrono::Utc::now().timestamp_millis();
-            let series = vec![crate::o2::etl_series(metric, virtual_device, value, ts_ms)];
+            let series = values
+                .iter()
+                .map(|(field, value)| {
+                    crate::o2::etl_series(series_name(field), virtual_device.clone(), *value, ts_ms)
+                })
+                .collect::<Vec<_>>();
             tokio::select! {
                 res = self.o2.write(&org, series) => {
                     if let Err(e) = res {
@@ -138,9 +147,9 @@ impl PnexMetricNode {
             }
 
             log::debug!(
-                "pnex-metric [{}] : {} = {value} écrit dans {org}",
+                "pnex-metric [{}] : {} series written to {org}",
                 self.name(),
-                pnex_core::etl_metric_name(&self.config.metric_name)
+                values.len()
             );
 
             // 3) Passthrough : le payload sort inchangé (debug aval possible).

@@ -105,6 +105,9 @@ pub mod ui_control;
 /// by role.
 pub mod home;
 
+/// Weather source node contract (D140): providers, normalized payloads.
+pub mod weather;
+
 /// Vision contract (D81–D83): model spec, detections, registry DTOs,
 /// `vision-detect` node config.
 pub mod vision;

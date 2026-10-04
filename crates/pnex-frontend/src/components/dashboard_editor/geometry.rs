@@ -38,7 +38,7 @@ pub fn home_card_size(card: pnex_core::home::HomeCard) -> (i64, i64) {
     use pnex_core::home::HomeCard::*;
     match card {
         Light | Thermostat | Cover | Alarm | Appliance => (300, 200),
-        EnergyFlow => (320, 240),
+        EnergyFlow | Weather => (320, 240),
         Fan | Irrigation => (300, 160),
         _ => (220, 130),
     }

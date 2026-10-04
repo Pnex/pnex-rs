@@ -7842,6 +7842,7 @@ dependencies = [
  "pnex-node-ui-control",
  "pnex-node-value",
  "pnex-node-vision",
+ "pnex-node-weather",
  "redis",
  "rquickjs",
  "rquickjs-sys",
@@ -8169,6 +8170,25 @@ dependencies = [
  "pnex-node-camera",
  "pnex-vision",
  "redis",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "pnex-node-weather"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "config",
+ "edgelink-core",
+ "edgelink-macro",
+ "inventory",
+ "log 0.4.34",
+ "pnex-core",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

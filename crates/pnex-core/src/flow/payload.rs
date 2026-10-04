@@ -74,6 +74,42 @@ pub fn metric_value_from_payload(
     }
 }
 
+/// Max number of series one object payload writes through `pnex-metric`.
+pub const METRIC_OBJECT_MAX_FIELDS: usize = 200;
+
+/// Values the `metric` node writes for a payload (D140): a number or a
+/// boolean = one series named after the node (`None` suffix); an object =
+/// one series per top-level numeric / boolean field (suffix = the field,
+/// sanitized by the caller through `etl_metric_name`), other fields
+/// skipped. An object without any numeric field is refused.
+pub fn metric_values_from_payload(
+    payload: Option<&serde_json::Value>,
+) -> Result<Vec<(Option<String>, f64)>, FlowViolation> {
+    let Some(serde_json::Value::Object(map)) = payload else {
+        return metric_value_from_payload(payload).map(|v| vec![(None, v)]);
+    };
+    let out: Vec<(Option<String>, f64)> = map
+        .iter()
+        .filter_map(|(k, v)| {
+            match v {
+                serde_json::Value::Number(n) => n.as_f64().filter(|x| x.is_finite()),
+                serde_json::Value::Bool(b) => Some(if *b { 1.0 } else { 0.0 }),
+                _ => None,
+            }
+            .map(|x| (Some(k.clone()), x))
+        })
+        .take(METRIC_OBJECT_MAX_FIELDS)
+        .collect();
+    if out.is_empty() {
+        return Err(FlowViolation::new(
+            None,
+            "metric_input_contract",
+            "the metric node expects a number, a boolean or an object with numeric fields",
+        ));
+    }
+    Ok(out)
+}
+
 fn type_of(v: &serde_json::Value) -> &'static str {
     match v {
         serde_json::Value::Null => "null",

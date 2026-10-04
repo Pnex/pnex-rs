@@ -162,6 +162,19 @@ pub fn to_red_flows_json_with(
                     "pnex_org_id": meta.org_id,
                 })
             }
+            FlowNodeKind::Weather { config } => {
+                // Ports: current, daily, hourly.
+                padded_ports = Some(crate::weather::WEATHER_PORT_COUNT);
+                serde_json::json!({
+                    "type": "pnex-weather",
+                    "provider": config.provider,
+                    "latitude": config.latitude,
+                    "longitude": config.longitude,
+                    "interval_min": config.interval_min,
+                    "emit_on_start": config.emit_on_start,
+                    "pnex_node_id": n.id,
+                })
+            }
             FlowNodeKind::Anomaly { config } => {
                 padded_ports = Some(crate::predictive::ANOMALY_PORT_COUNT);
                 serde_json::json!({

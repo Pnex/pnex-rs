@@ -1,0 +1,27 @@
+[package]
+name = "pnex-node-weather"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Flow node PNeX — weather source (D140): allowlisted providers, normalized current / daily / hourly payloads"
+
+[dependencies]
+edgelink-core = { path = "../../vendor/edgelinkd/crates/core", default-features = false, features = ["core", "js"] }
+edgelink-macro = { path = "../../vendor/edgelinkd/crates/macro" }
+# Config, URL allowlist and response normalization (single source of truth).
+pnex-core = { workspace = true }
+# Only for the Option<&config::Config> factory type — same features as edgelink-core
+config = { version = "0.15", default-features = false, features = ["convert-case", "toml"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { version = "1", default-features = false, features = ["time", "sync", "macros"] }
+async-trait = "0.1"
+tokio-util = "0.7"
+log = "0.4"
+chrono = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+# The `#[flow_node]` macro emits unqualified `inventory::submit!` — direct dep required
+inventory = "0.3"
+
+[dev-dependencies]
+tokio = { version = "1", default-features = false, features = ["rt", "macros", "time"] }

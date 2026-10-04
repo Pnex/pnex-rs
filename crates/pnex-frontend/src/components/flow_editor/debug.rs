@@ -198,6 +198,9 @@ pub(crate) fn status_text(code: &str) -> String {
         "vision-running" => t!("flow-status-vision-running").to_string(),
         "control-listening" => t!("flow-status-control-listening").to_string(),
         "control-bus-unavailable" => t!("flow-status-control-bus-unavailable").to_string(),
+        "weather-updated" => t!("flow-status-weather-updated").to_string(),
+        "weather-waiting" => t!("flow-status-weather-waiting").to_string(),
+        "weather-unavailable" => t!("flow-status-weather-unavailable").to_string(),
         other => other.to_string(),
     }
 }

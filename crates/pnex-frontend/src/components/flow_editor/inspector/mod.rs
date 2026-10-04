@@ -166,6 +166,9 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::ControlSource { config } => rsx! {
             ControlSourceForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::Weather { config } => rsx! {
+            WeatherForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::Anomaly { config } => rsx! {
             AnomalyForm { cx, initial: config.clone(), can_write }
         },
@@ -234,6 +237,7 @@ mod simple;
 mod value;
 mod video_record;
 mod vision_detect;
+mod weather;
 
 use camera_source::CameraSourceForm;
 use control_source::ControlSourceForm;
@@ -254,3 +258,4 @@ use simple::{DebugForm, DisplayForm, MetricForm};
 use value::{CalcForm, ValueForm};
 use video_record::VideoRecordForm;
 use vision_detect::VisionDetectForm;
+use weather::WeatherForm;
