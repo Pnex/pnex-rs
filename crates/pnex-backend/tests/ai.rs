@@ -1541,6 +1541,8 @@ async fn assistant_versions_functions_on_top_of_what_it_read() {
             ("list_pois", serde_json::json!({})),
             ("list_tours", serde_json::json!({})),
             ("list_annotation_sets", serde_json::json!({})),
+            ("list_controls", serde_json::json!({})),
+            ("read_memory", serde_json::json!({})),
         ])
         .await;
         assert!(trace.iter().all(|t| t["ok"] == true), "{trace:?}");
