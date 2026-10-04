@@ -78,7 +78,3 @@ pub(super) fn template_dto(m: notify_templates::Model) -> NotifyTemplate {
         updated_at: m.updated_at.to_rfc3339(),
     }
 }
-
-pub(super) fn parse_vars(vars: &[TemplateVar]) -> Result<serde_json::Value> {
-    serde_json::to_value(vars).map_err(|_| Error::InternalServerError)
-}

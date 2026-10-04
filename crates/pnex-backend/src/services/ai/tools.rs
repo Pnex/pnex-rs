@@ -256,6 +256,71 @@ pub fn tool_specs() -> Vec<ToolSpec> {
             }),
         },
         ToolSpec {
+            name: "get_notification_template",
+            description: "Full notification template (subject, body, declared variables, updated_at).",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"template_id":{"type":"string","description":"template UUID (list_notifications)"}},"required":["template_id"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "preview_notification_template",
+            description: "Renders a template with example variables and an optional msg payload — NEVER sends anything.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"template_id":{"type":"string"},"vars":{"type":"object","description":"{var: value}; missing ones use the declared examples"},"payload":{"description":"simulated msg.payload"}},"required":["template_id"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "create_notification_template",
+            description: "Creates a notification template (minijinja; variables {{ name }} are detected automatically). Sends nothing. Channels are managed by the user only.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"name":{"type":"string"},"subject":{"type":"string"},"body":{"type":"string"},"vars":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"example":{"type":"string"}}}}},"required":["name","body"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "update_notification_template",
+            description: "Rewrites a template in place, on top of the state read with get_notification_template (pass its updated_at as expected_updated_at). Deployed flows keep their snapshot until the user redeploys.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"template_id":{"type":"string"},"expected_updated_at":{"type":"string"},"name":{"type":"string"},"subject":{"type":"string"},"body":{"type":"string"},"vars":{"type":"array","items":{"type":"object"}}},"required":["template_id","expected_updated_at","name","body"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "list_functions",
+            description: "Lists the organization's JS/Starlark functions (Functions page).",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{},"required":[]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "get_function",
+            description: "Latest code and declared @input/@output interface of a function, its version count, and the deployed flows that use it (with their pinned version).",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"function_id":{"type":"integer"}},"required":["function_id"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "validate_function",
+            description: "Compile-only check of JS or Starlark code (no execution): diagnostics with line/column.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"language":{"type":"string","enum":["js","starlark"]},"code":{"type":"string"}},"required":["language","code"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "test_function",
+            description: "Runs a function in the sandbox of the Test button (no network, no device, no side effect): its latest saved version, or `code` (unsaved) in the function's language, with typed `inputs` and an optional `msg`.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"function_id":{"type":"integer"},"code":{"type":"string"},"inputs":{"type":"object"},"msg":{"type":"object"}},"required":["function_id"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "create_function",
+            description: "Creates a JS or Starlark function (version 1). Declare its interface with @input/@output directives; check it with validate_function first.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"name":{"type":"string"},"language":{"type":"string","enum":["js","starlark"]},"code":{"type":"string"},"description":{"type":"string"}},"required":["name","language","code"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "update_function",
+            description: "Saves a new version of a function (code and/or name/description) on top of the version read with get_function (expected_version = its latest_version). Deployed flows keep their pinned version until the user selects the new one and redeploys.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"function_id":{"type":"integer"},"expected_version":{"type":"integer"},"code":{"type":"string"},"name":{"type":"string"},"description":{"type":"string"},"note":{"type":"string"}},"required":["function_id","expected_version"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "list_annotation_sets",
+            description: "Lists the organization's annotation sets (name, published, attached to a media or a tour). Read-only.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{},"required":[]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "list_tours",
+            description: "Lists the organization's virtual tours (name, mode, published, whether a public link exists). Read-only.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{},"required":[]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "list_pois",
+            description: "Lists the map points of interest (label, location, coordinates, devices placed there). Read-only.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{},"required":[]}"#).expect("static schema"),
+        },
+        ToolSpec {
             name: "validate_flow_graph",
             description: "Valide un graphe de flow (structure, nœuds, câblage) SANS le sauvegarder — renvoie les violations à corriger. À appeler avant chaque create_flow/update_flow.",
             input_schema: json!({
@@ -360,6 +425,27 @@ pub async fn execute(
         }
         "create_dashboard" => super::dashboard_tools::create_dashboard(deps, args).await,
         "update_dashboard" => super::dashboard_tools::update_dashboard(deps, args).await,
+        "get_notification_template" => {
+            super::more_tools::get_notification_template(deps, args).await
+        }
+        "preview_notification_template" => {
+            super::more_tools::preview_notification_template(deps, args).await
+        }
+        "create_notification_template" => {
+            super::more_tools::create_notification_template(deps, args).await
+        }
+        "update_notification_template" => {
+            super::more_tools::update_notification_template(deps, args).await
+        }
+        "list_functions" => super::more_tools::list_functions(deps).await,
+        "get_function" => super::more_tools::get_function(deps, args).await,
+        "validate_function" => super::more_tools::validate_function(deps, args).await,
+        "test_function" => super::more_tools::test_function(deps, args).await,
+        "create_function" => super::more_tools::create_function(deps, args).await,
+        "update_function" => super::more_tools::update_function(deps, args).await,
+        "list_annotation_sets" => super::more_tools::list_annotation_layers(deps).await,
+        "list_tours" => super::more_tools::list_tours(deps).await,
+        "list_pois" => super::more_tools::list_pois(deps).await,
         _ => Err(format!(
             "outil inconnu: {name} — seuls les outils listés dans la conversation sont disponibles"
         )
@@ -465,6 +551,59 @@ pub fn summarize(name: &str, out: &ToolOutcome) -> String {
             out.value["widgets_added"].as_array().map_or(0, Vec::len),
             out.value["widgets_removed"].as_array().map_or(0, Vec::len),
             out.value["widgets_changed"].as_array().map_or(0, Vec::len)
+        ),
+        "get_notification_template" => format!(
+            "template « {} »",
+            out.value["template"]["name"].as_str().unwrap_or_default()
+        ),
+        "preview_notification_template" => "preview rendered (not sent)".to_string(),
+        "create_notification_template" | "update_notification_template" => format!(
+            "template « {} » saved",
+            out.value["name"].as_str().unwrap_or_default()
+        ),
+        "list_functions" => format!(
+            "{} function(s)",
+            out.value["functions"].as_array().map_or(0, Vec::len)
+        ),
+        "get_function" => format!(
+            "function « {} » v{}",
+            out.value["function"]["name"].as_str().unwrap_or_default(),
+            out.value["latest_version"]
+        ),
+        "validate_function" => {
+            if out.value["ok"].as_bool().unwrap_or(false) {
+                "code compiles".to_string()
+            } else {
+                "compile errors".to_string()
+            }
+        }
+        "test_function" => {
+            if out.value["ok"].as_bool().unwrap_or(false) {
+                "test passed".to_string()
+            } else {
+                "test failed".to_string()
+            }
+        }
+        "create_function" => format!(
+            "function « {} » created (v{})",
+            out.value["name"].as_str().unwrap_or_default(),
+            out.value["version"]
+        ),
+        "update_function" => format!(
+            "function #{} — version {}",
+            out.value["function_id"], out.value["new_version"]
+        ),
+        "list_annotation_sets" => format!(
+            "{} annotation set(s)",
+            out.value["annotation_sets"].as_array().map_or(0, Vec::len)
+        ),
+        "list_tours" => format!(
+            "{} tour(s)",
+            out.value["tours"].as_array().map_or(0, Vec::len)
+        ),
+        "list_pois" => format!(
+            "{} POI(s)",
+            out.value["pois"].as_array().map_or(0, Vec::len)
         ),
         _ => "ok".to_string(),
     }
@@ -994,6 +1133,19 @@ mod tests {
                 "validate_dashboard_layout",
                 "create_dashboard",
                 "update_dashboard",
+                "get_notification_template",
+                "preview_notification_template",
+                "create_notification_template",
+                "update_notification_template",
+                "list_functions",
+                "get_function",
+                "validate_function",
+                "test_function",
+                "create_function",
+                "update_function",
+                "list_annotation_sets",
+                "list_tours",
+                "list_pois",
                 "validate_flow_graph",
                 "validate_calc_expression",
                 "create_flow",

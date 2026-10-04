@@ -25,5 +25,5 @@ The Functions page (Automation menu) is the organization's registry of versioned
 - A function used by a deployed flow cannot be deleted.
 - If someone saved a newer version first, the editor reloads.
 - Testing needs the flow runtime enabled on the server.
-- The assistant cannot pick a function inside a flow node: leave the node for you to select the function in the editor.
+- The assistant can list, read, check, test (sandbox) and write functions, each save being a new version; it never changes the version a deployed flow pins — you select it in the node and redeploy.
 - Viewers see functions read-only.

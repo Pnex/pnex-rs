@@ -20,6 +20,7 @@ pub mod dashboard_tools;
 pub mod diagnose;
 pub mod error;
 pub mod knowledge;
+pub mod more_tools;
 pub mod provider;
 pub mod providers;
 pub mod tools;

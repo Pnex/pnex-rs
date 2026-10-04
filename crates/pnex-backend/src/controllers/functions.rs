@@ -183,6 +183,11 @@ fn write_error_response(e: FunctionWriteError) -> Response {
             field_status("code", &format!("ligne {} : {}", e.line, e.message))
         }
         FunctionWriteError::Db(_) => Error::InternalServerError.into_response(),
+        FunctionWriteError::Conflict { .. } => (
+            StatusCode::CONFLICT,
+            format::json(serde_json::json!({"error": "version_conflict"})),
+        )
+            .into_response(),
     }
 }
 

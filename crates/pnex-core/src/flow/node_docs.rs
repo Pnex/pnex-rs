@@ -242,7 +242,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("inputs", "snapshot of the declared inputs (input rows)"),
             ("outputs", "snapshot of the declared outputs (output ports)"),
         ],
-        notes: "The assistant cannot list functions: leave the node for the user to pick the function in the editor. Editing a function does not change deployed flows until they are redeployed.",
+        notes: "Find the function with list_functions / get_function (its inputs and outputs give the node rows and ports). A new function version does not change deployed flows: the node pins version_number, the user selects the new version and redeploys.",
     },
     NodeDoc {
         kind: "json_split",
