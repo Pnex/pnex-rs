@@ -429,7 +429,7 @@ fn WifiForm(
                         {t!("edgerefs-wifi-rotation-hint")}
                     }
                 }
-                div { class: "flex justify-end gap-2 pt-2",
+                div { class: crate::components::modal::MODAL_FOOTER,
                     button {
                         class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
                         r#type: "button",
@@ -528,7 +528,7 @@ fn HostForm(existing: Option<PnexHost>, on_close: Callback<()>, on_saved: Callba
                 // Détection LAN côté serveur : préremplit l'hôte (la
                 // sauvegarde reste un clic « Save » plus bas).
                 crate::components::lan_detect::LanDetect { on_pick: move |picked| host.set(picked) }
-                div { class: "flex justify-end gap-2 pt-2",
+                div { class: crate::components::modal::MODAL_FOOTER,
                     button {
                         class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
                         r#type: "button",

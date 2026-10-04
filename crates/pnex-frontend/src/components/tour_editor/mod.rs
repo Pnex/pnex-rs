@@ -889,7 +889,7 @@ fn AddFloorModal(on_close: Callback<()>, on_created: Callback<(String, i32)>) ->
                         oninput: move |event| level.set(event.value()),
                     }
                 }
-                div { class: "flex justify-end gap-2 pt-2",
+                div { class: crate::components::modal::MODAL_FOOTER,
                     button {
                         class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
                         r#type: "button",

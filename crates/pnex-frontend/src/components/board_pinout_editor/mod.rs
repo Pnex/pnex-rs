@@ -266,7 +266,8 @@ fn BoardLayout(
             div { class: "overflow-x-auto",
                 svg {
                     id: "board-pinout-svg",
-                    class: "mx-auto block h-auto w-full",
+                    // Phone: legible minimum width, the wrapper scrolls.
+                    class: "mx-auto block h-auto w-full min-w-[560px] sm:min-w-0",
                     style: "max-width: {svg_max_w}px",
                     xmlns: "http://www.w3.org/2000/svg",
                     view_box: "0 0 {svg_w} {svg_h}",

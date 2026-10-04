@@ -805,7 +805,7 @@ fn RebuildModal(
                         }
                     }
                 }
-                div { class: "flex justify-end gap-2 pt-2",
+                div { class: crate::components::modal::MODAL_FOOTER,
                     button {
                         class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
                         r#type: "button",
@@ -975,7 +975,7 @@ fn BulkModal(
                 if eligible == 0 {
                     p { class: "text-xs text-amber-600", {t!("devices-bulk-nothing")} }
                 }
-                div { class: "flex justify-end gap-2 pt-2",
+                div { class: crate::components::modal::MODAL_FOOTER,
                     button {
                         class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
                         r#type: "button",

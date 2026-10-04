@@ -372,7 +372,7 @@ pub fn NotifyTemplateForm(
                     }
                 }
 
-                div { class: "flex justify-end gap-2 pt-2",
+                div { class: crate::components::modal::MODAL_FOOTER,
                     button {
                         class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium",
                         disabled: busy(),

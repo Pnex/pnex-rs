@@ -7,6 +7,12 @@ use dioxus_i18n::t;
 
 use super::icons;
 
+/// Footer row of a dialog's actions, pinned to the bottom of the scrolling
+/// [`Modal`] body so the submit stays reachable in long forms (negative
+/// margins = the body padding). Must be a direct descendant of the body
+/// content (no extra padded or scrolling wrapper in between).
+pub const MODAL_FOOTER: &str = "sticky bottom-0 -mx-4 -mb-4 flex justify-end gap-2 border-t border-gray-100 bg-white px-4 py-3 sm:-mx-6 sm:-mb-6 sm:px-6";
+
 #[component]
 pub fn Modal(
     title: String,
@@ -16,15 +22,17 @@ pub fn Modal(
 ) -> Element {
     rsx! {
         div {
-            class: "fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4",
+            class: "fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3 sm:p-4",
             onclick: move |_| on_close.call(()),
             div {
-                class: "bg-white rounded-lg shadow-xl w-full {max_width}",
+                // Never taller than the viewport: header stays put, only the body
+                // scrolls (a phone used to lose the dialog's buttons).
+                class: "flex max-h-full w-full flex-col bg-white rounded-lg shadow-xl {max_width}",
                 role: "dialog",
                 aria_modal: "true",
                 aria_label: "{title}",
                 onclick: move |event| event.stop_propagation(),
-                div { class: "flex items-center justify-between px-6 py-4 border-b border-gray-200",
+                div { class: "flex shrink-0 items-center justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-gray-200",
                     h3 { class: "text-lg font-semibold text-gray-900", "{title}" }
                     button {
                         class: "p-1 text-gray-400 hover:text-gray-600 transition-colors",
@@ -35,7 +43,7 @@ pub fn Modal(
                         icons::X { class: Some("w-5 h-5".into()) }
                     }
                 }
-                div { class: "p-6 max-h-[85vh] overflow-y-auto", {children} }
+                div { class: "min-h-0 flex-1 overflow-y-auto p-4 sm:p-6", {children} }
             }
         }
     }
