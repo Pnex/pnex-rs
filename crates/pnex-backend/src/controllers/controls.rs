@@ -413,6 +413,7 @@ async fn write_value(
             ts_ms: chrono::Utc::now().timestamp_millis(),
             by: Some(by),
             via,
+            option: spec.symbol_of(v),
         },
     };
     let conn = crate::services::shared_valkey::conn(&ctx.config).await;

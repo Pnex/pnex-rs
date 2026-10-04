@@ -60,14 +60,26 @@ pub enum ControlKind {
     Button,
     /// Free numeric input, optionally bounded.
     Number,
+    /// One option of a closed list (HVAC mode, scene, fan speed…), D137.
+    Select,
+    /// − value + buttons on a bounded range (thermostat setpoint), D137.
+    Stepper,
+    /// Momentary command among a closed list (open / stop / close), D137.
+    Command,
+    /// Colour: `0xRRGGBB` integer, or a colour temperature in kelvin, D137.
+    Color,
 }
 
 impl ControlKind {
-    pub const ALL: [ControlKind; 4] = [
+    pub const ALL: [ControlKind; 8] = [
         ControlKind::Switch,
         ControlKind::Slider,
         ControlKind::Button,
         ControlKind::Number,
+        ControlKind::Select,
+        ControlKind::Stepper,
+        ControlKind::Command,
+        ControlKind::Color,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -76,7 +88,16 @@ impl ControlKind {
             ControlKind::Slider => "slider",
             ControlKind::Button => "button",
             ControlKind::Number => "number",
+            ControlKind::Select => "select",
+            ControlKind::Stepper => "stepper",
+            ControlKind::Command => "command",
+            ControlKind::Color => "color",
         }
+    }
+
+    /// Kinds whose values are a closed list of [`ControlOption`].
+    pub fn has_options(self) -> bool {
+        matches!(self, ControlKind::Select | ControlKind::Command)
     }
 
     /// Widget type of the dashboard card that drives this kind.
@@ -106,6 +127,10 @@ pub enum ControlValueError {
     OffStep {
         step: f64,
     },
+    /// Select / command: not the value of one of the options.
+    NotAnOption,
+    /// Colour (RGB mode): not an integer in `0..=0xFFFFFF`.
+    NotAColor,
 }
 
 impl ControlValueError {
@@ -116,8 +141,68 @@ impl ControlValueError {
             ControlValueError::NotThePress { .. } => "not_the_press",
             ControlValueError::OutOfRange { .. } => "out_of_range",
             ControlValueError::OffStep { .. } => "off_step",
+            ControlValueError::NotAnOption => "not_an_option",
+            ControlValueError::NotAColor => "not_a_color",
         }
     }
+}
+
+/// Max number of options of a select / command control.
+pub const CONTROL_OPTIONS_MAX: usize = 32;
+/// Max length of an option label (chars).
+pub const CONTROL_OPTION_LABEL_MAX: usize = 48;
+/// Largest RGB colour value (`0xFFFFFF`).
+pub const COLOR_RGB_MAX: f64 = 16_777_215.0;
+
+/// One entry of a select / command control (D137). The value written and
+/// sent to the flows stays a number (the whole control pipeline is
+/// numeric); `key` is its symbolic form, emitted as `msg.control.option`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ControlOption {
+    pub value: f64,
+    /// `[A-Za-z0-9_.-]{1,32}`: `heat`, `open`, `scene-evening`…
+    pub key: String,
+    /// Display label; `None` = the UI translates well-known keys
+    /// (`open`, `stop`, `heat`…) and shows the key otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// Home icon catalog id (D136).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+}
+
+/// Option key rule.
+pub fn valid_option_key(key: &str) -> bool {
+    !key.is_empty()
+        && key.len() <= 32
+        && key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
+}
+
+/// Colour domain of a [`ControlKind::Color`] control.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ColorMode {
+    /// `0xRRGGBB` integer (`#ff8800` = 16746496).
+    #[default]
+    Rgb,
+    /// Colour temperature in kelvin (default 2200..=6500 step 50).
+    Kelvin,
+}
+
+/// `0xRRGGBB` → `#rrggbb`.
+pub fn rgb_to_hex(v: f64) -> String {
+    format!("#{:06x}", (v.clamp(0.0, COLOR_RGB_MAX)) as u32)
+}
+
+/// `#rrggbb` → `0xRRGGBB` integer.
+pub fn hex_to_rgb(hex: &str) -> Option<f64> {
+    let digits = hex.strip_prefix('#')?;
+    if digits.len() != 6 {
+        return None;
+    }
+    u32::from_str_radix(digits, 16).ok().map(f64::from)
 }
 
 /// Definition of a control value domain. Flat struct with optional fields
@@ -144,11 +229,33 @@ pub struct ControlSpec {
     /// Ask for a confirmation before sending (dangerous actuators).
     #[serde(default)]
     pub confirm: bool,
+    /// Options of a select / command control (D137).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<ControlOption>,
+    /// Domain of a colour control (D137).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<ColorMode>,
 }
 
 impl ControlSpec {
-    /// Default spec of a kind (switch 1/0, slider 0..=100 step 1, button 1).
+    /// Default spec of a kind (switch 1/0, slider 0..=100 step 1, button 1,
+    /// select off/on, command open/stop/close, RGB colour).
     pub fn new(kind: ControlKind) -> Self {
+        let option = |value: f64, key: &str, icon: Option<&str>| ControlOption {
+            value,
+            key: key.to_string(),
+            label: None,
+            icon: icon.map(str::to_string),
+        };
+        let options = match kind {
+            ControlKind::Select => vec![option(0.0, "off", None), option(1.0, "on", None)],
+            ControlKind::Command => vec![
+                option(1.0, "open", Some("home-arrow-up")),
+                option(0.0, "stop", Some("home-stop")),
+                option(-1.0, "close", Some("home-arrow-down")),
+            ],
+            _ => Vec::new(),
+        };
         Self {
             kind,
             on: None,
@@ -159,6 +266,29 @@ impl ControlSpec {
             press: None,
             unit: None,
             confirm: false,
+            options,
+            color: (kind == ControlKind::Color).then_some(ColorMode::Rgb),
+        }
+    }
+
+    /// Colour mode of a colour control (RGB by default).
+    pub fn color_mode(&self) -> ColorMode {
+        self.color.unwrap_or_default()
+    }
+
+    /// Option holding the value `v` (select / command).
+    pub fn option_of(&self, v: f64) -> Option<&ControlOption> {
+        self.options.iter().find(|o| o.value == v)
+    }
+
+    /// Symbolic form of an accepted value, sent alongside the number
+    /// (`msg.control.option`): the option key of a select / command, the
+    /// `#rrggbb` form of an RGB colour.
+    pub fn symbol_of(&self, v: f64) -> Option<String> {
+        match self.kind {
+            ControlKind::Select | ControlKind::Command => self.option_of(v).map(|o| o.key.clone()),
+            ControlKind::Color if self.color_mode() == ColorMode::Rgb => Some(rgb_to_hex(v)),
+            _ => None,
         }
     }
 
@@ -174,29 +304,44 @@ impl ControlSpec {
         self.press.unwrap_or(1.0)
     }
 
-    /// Effective lower bound: slider defaults to 0, number is unbounded.
+    /// Effective lower bound: slider / stepper default to 0, kelvin to
+    /// 2200, RGB is 0, number is unbounded.
     pub fn min_value(&self) -> Option<f64> {
         match self.kind {
-            ControlKind::Slider => Some(self.min.unwrap_or(0.0)),
+            ControlKind::Slider | ControlKind::Stepper => Some(self.min.unwrap_or(0.0)),
             ControlKind::Number => self.min,
+            ControlKind::Color => Some(match self.color_mode() {
+                ColorMode::Rgb => 0.0,
+                ColorMode::Kelvin => self.min.unwrap_or(2_200.0),
+            }),
             _ => None,
         }
     }
 
-    /// Effective upper bound: slider defaults to 100, number is unbounded.
+    /// Effective upper bound: slider / stepper default to 100, kelvin to
+    /// 6500, RGB is `0xFFFFFF`, number is unbounded.
     pub fn max_value(&self) -> Option<f64> {
         match self.kind {
-            ControlKind::Slider => Some(self.max.unwrap_or(100.0)),
+            ControlKind::Slider | ControlKind::Stepper => Some(self.max.unwrap_or(100.0)),
             ControlKind::Number => self.max,
+            ControlKind::Color => Some(match self.color_mode() {
+                ColorMode::Rgb => COLOR_RGB_MAX,
+                ColorMode::Kelvin => self.max.unwrap_or(6_500.0),
+            }),
             _ => None,
         }
     }
 
-    /// Effective step: slider defaults to 1, number accepts any value.
+    /// Effective step: slider / stepper default to 1, kelvin to 50, RGB is
+    /// 1 (integers), number accepts any value.
     pub fn step_value(&self) -> Option<f64> {
         match self.kind {
-            ControlKind::Slider => Some(self.step.unwrap_or(1.0)),
+            ControlKind::Slider | ControlKind::Stepper => Some(self.step.unwrap_or(1.0)),
             ControlKind::Number => self.step,
+            ControlKind::Color => Some(match self.color_mode() {
+                ColorMode::Rgb => 1.0,
+                ColorMode::Kelvin => self.step.unwrap_or(50.0),
+            }),
             _ => None,
         }
     }
@@ -215,12 +360,19 @@ impl ControlSpec {
                 ));
             }
         }
+        if let Some(problem) = self.check_options() {
+            return Some(problem);
+        }
         match self.kind {
             ControlKind::Switch if self.on_value() == self.off_value() => Some((
                 "control_spec_switch_same",
                 "on and off values must differ".into(),
             )),
-            ControlKind::Slider | ControlKind::Number => {
+            ControlKind::Color if self.color_mode() == ColorMode::Rgb => None,
+            ControlKind::Slider
+            | ControlKind::Number
+            | ControlKind::Stepper
+            | ControlKind::Color => {
                 if let (Some(lo), Some(hi)) = (self.min_value(), self.max_value()) {
                     if lo >= hi {
                         return Some(("control_spec_range", "min must be < max".into()));
@@ -244,6 +396,67 @@ impl ControlSpec {
             }
             _ => None,
         }
+    }
+
+    /// Options rule: present only on select / command, 2..=32 entries for a
+    /// select and 1..=32 for a command, unique finite values and keys.
+    fn check_options(&self) -> Option<(&'static str, String)> {
+        if !self.kind.has_options() {
+            return (!self.options.is_empty()).then(|| {
+                (
+                    "control_spec_options_unexpected",
+                    "only select and command controls have options".into(),
+                )
+            });
+        }
+        let min = if self.kind == ControlKind::Select {
+            2
+        } else {
+            1
+        };
+        if self.options.len() < min || self.options.len() > CONTROL_OPTIONS_MAX {
+            return Some((
+                "control_spec_options_count",
+                format!("between {min} and {CONTROL_OPTIONS_MAX} options"),
+            ));
+        }
+        let mut keys = std::collections::BTreeSet::new();
+        for (i, o) in self.options.iter().enumerate() {
+            if !o.value.is_finite() {
+                return Some(("control_spec_not_finite", "values must be finite".into()));
+            }
+            if self.options[..i].iter().any(|p| p.value == o.value) {
+                return Some((
+                    "control_spec_option_duplicate",
+                    "two options share a value".into(),
+                ));
+            }
+            if !valid_option_key(&o.key) || !keys.insert(o.key.as_str()) {
+                return Some((
+                    "control_spec_option_key",
+                    "option keys are unique, 1 to 32 characters [A-Za-z0-9_.-]".into(),
+                ));
+            }
+            if o.label.as_deref().is_some_and(|l| {
+                l.trim().is_empty()
+                    || l.chars().count() > CONTROL_OPTION_LABEL_MAX
+                    || l.chars().any(char::is_control)
+            }) {
+                return Some((
+                    "control_spec_option_label",
+                    format!(
+                        "option labels are 1 to {CONTROL_OPTION_LABEL_MAX} printable characters"
+                    ),
+                ));
+            }
+            if o.icon
+                .as_deref()
+                .is_some_and(|i| !crate::valid_symbol_id(i))
+            {
+                return Some(("control_spec_option_icon", "invalid option icon id".into()));
+            }
+        }
+        None
     }
 
     /// Value gate: returns the value to store (snapped to the step grid to
@@ -270,7 +483,20 @@ impl ControlSpec {
                     Err(ControlValueError::NotThePress { press })
                 }
             }
-            ControlKind::Slider | ControlKind::Number => {
+            ControlKind::Select | ControlKind::Command => match self.option_of(v) {
+                Some(_) => Ok(v),
+                None => Err(ControlValueError::NotAnOption),
+            },
+            ControlKind::Color
+                if self.color_mode() == ColorMode::Rgb
+                    && !(v.fract() == 0.0 && (0.0..=COLOR_RGB_MAX).contains(&v)) =>
+            {
+                Err(ControlValueError::NotAColor)
+            }
+            ControlKind::Slider
+            | ControlKind::Number
+            | ControlKind::Stepper
+            | ControlKind::Color => {
                 let (min, max) = (self.min_value(), self.max_value());
                 let below = min.is_some_and(|lo| v < lo);
                 let above = max.is_some_and(|hi| v > hi);
@@ -323,6 +549,10 @@ pub struct ControlValue {
     /// informative only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub via: Option<String>,
+    /// Symbolic form of `v` ([`ControlSpec::symbol_of`]): option key of a
+    /// select / command, `#rrggbb` of an RGB colour (D137).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub option: Option<String>,
 }
 
 /// Pub/sub frame: one control write. `key` is denormalized so the node can
@@ -707,5 +937,104 @@ mod tests {
         );
         let back: ControlSpec = serde_json::from_value(json).unwrap();
         assert_eq!(back, s);
+    }
+
+    #[test]
+    fn select_and_command_accept_only_their_options() {
+        let select = ControlSpec::new(ControlKind::Select);
+        assert!(select.check().is_none());
+        assert_eq!(select.accepts(1.0), Ok(1.0));
+        assert_eq!(select.accepts(2.0), Err(ControlValueError::NotAnOption));
+        assert_eq!(select.symbol_of(1.0).as_deref(), Some("on"));
+        let command = ControlSpec::new(ControlKind::Command);
+        assert!(command.check().is_none());
+        assert_eq!(command.accepts(-1.0), Ok(-1.0));
+        assert_eq!(command.symbol_of(0.0).as_deref(), Some("stop"));
+        assert!(command.accepts(0.5).is_err());
+    }
+
+    #[test]
+    fn option_rules_are_checked() {
+        let mut s = ControlSpec::new(ControlKind::Select);
+        s.options.truncate(1);
+        assert_eq!(s.check().unwrap().0, "control_spec_options_count");
+        let mut s = ControlSpec::new(ControlKind::Select);
+        s.options[1].value = 0.0;
+        assert_eq!(s.check().unwrap().0, "control_spec_option_duplicate");
+        let mut s = ControlSpec::new(ControlKind::Select);
+        s.options[1].key = "off".into();
+        assert_eq!(s.check().unwrap().0, "control_spec_option_key");
+        let mut s = ControlSpec::new(ControlKind::Command);
+        s.options[0].key = "bad key".into();
+        assert_eq!(s.check().unwrap().0, "control_spec_option_key");
+        let mut s = ControlSpec::new(ControlKind::Command);
+        s.options[0].label = Some(" ".into());
+        assert_eq!(s.check().unwrap().0, "control_spec_option_label");
+        let mut s = ControlSpec::new(ControlKind::Command);
+        s.options[0].icon = Some("Bad".into());
+        assert_eq!(s.check().unwrap().0, "control_spec_option_icon");
+        let mut s = ControlSpec::new(ControlKind::Switch);
+        s.options = ControlSpec::new(ControlKind::Select).options;
+        assert_eq!(s.check().unwrap().0, "control_spec_options_unexpected");
+        let mut s = ControlSpec::new(ControlKind::Select);
+        s.options = (0..=CONTROL_OPTIONS_MAX)
+            .map(|i| ControlOption {
+                value: i as f64,
+                key: format!("k{i}"),
+                label: None,
+                icon: None,
+            })
+            .collect();
+        assert_eq!(s.check().unwrap().0, "control_spec_options_count");
+    }
+
+    #[test]
+    fn stepper_is_a_bounded_stepped_range() {
+        let mut s = ControlSpec::new(ControlKind::Stepper);
+        s.min = Some(5.0);
+        s.max = Some(30.0);
+        s.step = Some(0.5);
+        assert!(s.check().is_none());
+        assert_eq!(s.accepts(21.5), Ok(21.5));
+        assert!(matches!(
+            s.accepts(21.2),
+            Err(ControlValueError::OffStep { .. })
+        ));
+        assert!(matches!(
+            s.accepts(31.0),
+            Err(ControlValueError::OutOfRange { .. })
+        ));
+    }
+
+    #[test]
+    fn colors_are_rgb_integers_or_kelvin() {
+        let rgb = ControlSpec::new(ControlKind::Color);
+        assert!(rgb.check().is_none());
+        assert_eq!(rgb.accepts(16_746_496.0), Ok(16_746_496.0));
+        assert_eq!(rgb.symbol_of(16_746_496.0).as_deref(), Some("#ff8800"));
+        assert_eq!(rgb.accepts(0.5), Err(ControlValueError::NotAColor));
+        assert_eq!(
+            rgb.accepts(COLOR_RGB_MAX + 1.0),
+            Err(ControlValueError::NotAColor)
+        );
+        assert_eq!(hex_to_rgb("#ff8800"), Some(16_746_496.0));
+        assert_eq!(hex_to_rgb("ff8800"), None);
+        let mut kelvin = ControlSpec::new(ControlKind::Color);
+        kelvin.color = Some(ColorMode::Kelvin);
+        assert!(kelvin.check().is_none());
+        assert_eq!(kelvin.accepts(2_700.0), Ok(2_700.0));
+        assert!(kelvin.accepts(2_710.0).is_err());
+        assert!(kelvin.accepts(9_000.0).is_err());
+        assert_eq!(kelvin.symbol_of(2_700.0), None);
+    }
+
+    #[test]
+    fn legacy_specs_and_values_still_parse() {
+        let spec: ControlSpec = serde_json::from_str(r#"{"kind":"switch"}"#).unwrap();
+        assert!(spec.options.is_empty() && spec.color.is_none());
+        let v: ControlValue = serde_json::from_str(r#"{"v":1,"ts_ms":2}"#).unwrap();
+        assert!(v.option.is_none());
+        let json = serde_json::to_value(ControlSpec::new(ControlKind::Slider)).unwrap();
+        assert!(json.get("options").is_none() && json.get("color").is_none());
     }
 }

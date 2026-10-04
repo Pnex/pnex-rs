@@ -39,6 +39,10 @@ pub fn kind_label(kind: &str) -> String {
         "slider" => t!("lib-kind-slider").to_string(),
         "button" => t!("lib-kind-button").to_string(),
         "number" => t!("lib-kind-number").to_string(),
+        "select" => t!("lib-kind-select").to_string(),
+        "stepper" => t!("lib-kind-stepper").to_string(),
+        "command" => t!("lib-kind-command").to_string(),
+        "color" => t!("lib-kind-color").to_string(),
         other => other.to_string(),
     }
 }
@@ -57,6 +61,10 @@ pub fn kind_icon(kind: &str) -> (PaletteIcon, &'static str) {
         "slider" => (PaletteIcon::SlidersHorizontal, "bg-teal-50 text-teal-600"),
         "button" => (PaletteIcon::Pointer, "bg-teal-50 text-teal-600"),
         "number" => (PaletteIcon::Hash, "bg-teal-50 text-teal-600"),
+        "select" => (PaletteIcon::Layers, "bg-teal-50 text-teal-600"),
+        "stepper" => (PaletteIcon::Thermometer, "bg-teal-50 text-teal-600"),
+        "command" => (PaletteIcon::Pointer, "bg-teal-50 text-teal-600"),
+        "color" => (PaletteIcon::Image, "bg-teal-50 text-teal-600"),
         _ => (PaletteIcon::Puzzle, "bg-gray-100 text-gray-600"),
     }
 }
@@ -64,7 +72,12 @@ pub fn kind_icon(kind: &str) -> (PaletteIcon, &'static str) {
 /// Palette groups in display order (D134). Each widget kind belongs to
 /// exactly one group; the shell starts a section whenever it changes.
 const PALETTE_GROUPS: [(&str, &[&str]); 4] = [
-    ("controls", &["switch", "slider", "button", "number"]),
+    (
+        "controls",
+        &[
+            "switch", "slider", "button", "number", "select", "stepper", "command", "color",
+        ],
+    ),
     ("display", &["stat", "gauge", "indicator", "text"]),
     ("charts", &["line"]),
     ("industrial", &["thermo_chart"]),
@@ -131,7 +144,7 @@ pub fn add_new_widget(mut cx: EditorCx, kind: &str) {
         if l.format == pnex_core::DashboardFormat::Mobile {
             state::place_in_section(l, &id, section.as_deref());
             // Compact cards side by side, ESPHome style; charts take the row.
-            if matches!(kind, "switch" | "button" | "stat" | "indicator") {
+            if matches!(kind, "switch" | "button" | "stat" | "indicator" | "color") {
                 state::set_span(l, &id, 1);
             }
         }

@@ -4,14 +4,15 @@
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::ui_control::{ControlKind, ControlSpec};
+use pnex_core::ui_control::{hex_to_rgb, rgb_to_hex, ColorMode, ControlKind, ControlSpec};
 use pnex_core::{TelemetryPoint, Widget};
 use uuid::Uuid;
 
-use super::SurfaceControls;
+use super::{option_label, SurfaceControls};
 use crate::api;
 use crate::components::charts::format_value;
 use crate::components::confirm::ConfirmDialog;
+use crate::components::home_icons::HomeIconView;
 use crate::state::toasts;
 
 /// Kind driven by a control widget type (`None`: not a control widget).
@@ -33,6 +34,20 @@ fn decimals_of(widget: &Widget, spec: &ControlSpec) -> u8 {
             None if spec.kind == ControlKind::Number => 2,
             None => 0,
         })
+}
+
+/// Text of a value of `spec`: option label, `#rrggbb`, kelvin or number.
+fn value_text(spec: &ControlSpec, v: f64, decimals: u8, unit: &str) -> String {
+    match spec.kind {
+        ControlKind::Select | ControlKind::Command => spec
+            .option_of(v)
+            .map(option_label)
+            .unwrap_or_else(|| format_value(v, decimals)),
+        ControlKind::Color if spec.color_mode() == ColorMode::Rgb => rgb_to_hex(v),
+        _ => format!("{} {unit}", format_value(v, decimals))
+            .trim()
+            .to_string(),
+    }
 }
 
 /// Writes `v` (already accepted by the spec) and records it on success.
@@ -110,7 +125,9 @@ pub fn ControlBody(
     // in the browser first, the server checks it again.
     let confirm_needed = spec.confirm;
     let spec_send = spec.clone();
-    let mut send = move |v: f64| {
+    // A Copy callback: the option buttons of a select / command each hold
+    // one inside a loop.
+    let send = Callback::new(move |v: f64| {
         let (Some(surface), Some(id)) = (surface, control_id) else {
             return;
         };
@@ -124,7 +141,7 @@ pub fn ControlBody(
         } else {
             fire(surface, id, v, via_override.clone(), busy, drag);
         }
-    };
+    });
 
     let body = match kind {
         ControlKind::Switch => {
@@ -150,7 +167,7 @@ pub fn ControlBody(
                         aria_label: "{title}",
                         class: "relative inline-flex h-8 w-14 shrink-0 items-center rounded-full p-1 transition-colors disabled:opacity-50 {track}",
                         disabled: !interactive,
-                        onclick: move |_| send(next),
+                        onclick: move |_| send.call(next),
                         span { class: "inline-block h-6 w-6 rounded-full bg-white shadow transition-transform {knob}" }
                     }
                     span { class: "text-sm font-medium text-gray-700", "{state_text}" }
@@ -184,7 +201,7 @@ pub fn ControlBody(
                         oninput: move |e| drag.set(e.value().parse::<f64>().ok()),
                         onchange: move |e| {
                             if let Ok(v) = e.value().parse::<f64>() {
-                                send(v);
+                                send.call(v);
                             }
                         },
                     }
@@ -204,7 +221,7 @@ pub fn ControlBody(
                         r#type: "button",
                         class: "w-full rounded-lg bg-teal-600 px-3 py-2 text-sm font-medium text-white hover:bg-teal-700 active:bg-teal-800 disabled:opacity-50",
                         disabled: !interactive,
-                        onclick: move |_| send(press),
+                        onclick: move |_| send.call(press),
                         "{caption}"
                     }
                 }
@@ -233,7 +250,7 @@ pub fn ControlBody(
                             e.prevent_default();
                             let parsed = draft.peek().trim().replace(',', ".").parse::<f64>();
                             if let Ok(v) = parsed {
-                                send(v);
+                                send.call(v);
                                 draft.set(String::new());
                             }
                         },
@@ -258,16 +275,186 @@ pub fn ControlBody(
                 }
             }
         }
+        ControlKind::Select => {
+            let options = spec.options.clone();
+            let segmented = options.len() <= 4;
+            let current = shown.unwrap_or(f64::NAN);
+            if segmented {
+                rsx! {
+                    div { class: "flex flex-1 items-center px-3",
+                        div {
+                            role: "radiogroup",
+                            aria_label: "{title}",
+                            class: "flex w-full gap-1 rounded-lg bg-gray-100 p-1",
+                            for o in options {
+                                OptionButton {
+                                    key: "{o.key}",
+                                    label: option_label(&o),
+                                    icon: o.icon.clone(),
+                                    active: o.value == current,
+                                    disabled: !interactive,
+                                    on_press: move |_| send.call(o.value),
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                let selected = spec
+                    .option_of(current)
+                    .map(|o| o.value.to_string())
+                    .unwrap_or_default();
+                rsx! {
+                    div { class: "flex flex-1 items-center px-3",
+                        select {
+                            aria_label: "{title}",
+                            class: "w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm disabled:opacity-50",
+                            disabled: !interactive,
+                            value: "{selected}",
+                            onchange: move |e| {
+                                if let Ok(v) = e.value().parse::<f64>() {
+                                    send.call(v);
+                                }
+                            },
+                            if selected.is_empty() {
+                                option {
+                                    value: "",
+                                    disabled: true,
+                                    selected: true,
+                                    "—"
+                                }
+                            }
+                            for o in options {
+                                option { key: "{o.key}", value: "{o.value}", {option_label(&o)} }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ControlKind::Stepper => {
+            let min = spec.min_value().unwrap_or(0.0);
+            let max = spec.max_value().unwrap_or(100.0);
+            let step = spec.step_value().unwrap_or(1.0);
+            let base = shown.unwrap_or(min);
+            let down = (base - step).max(min);
+            let up = (base + step).min(max);
+            let text = match shown {
+                Some(v) => format_value(v, decimals),
+                None => "—".into(),
+            };
+            let btn = "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-300 text-xl font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-40";
+            rsx! {
+                div { class: "flex flex-1 items-center justify-center gap-4 px-3",
+                    button {
+                        r#type: "button",
+                        class: btn,
+                        aria_label: t!("controls-step-down").to_string(),
+                        disabled: !interactive || shown.is_some_and(|v| v <= min),
+                        onclick: move |_| send.call(down),
+                        "−"
+                    }
+                    div { class: "flex items-baseline gap-1",
+                        span { class: "text-3xl font-semibold text-gray-900", "{text}" }
+                        span { class: "text-xs text-gray-400", "{unit}" }
+                    }
+                    button {
+                        r#type: "button",
+                        class: btn,
+                        aria_label: t!("controls-step-up").to_string(),
+                        disabled: !interactive || shown.is_some_and(|v| v >= max),
+                        onclick: move |_| send.call(up),
+                        "+"
+                    }
+                }
+            }
+        }
+        ControlKind::Command => {
+            let options = spec.options.clone();
+            let current = shown.unwrap_or(f64::NAN);
+            rsx! {
+                div { class: "flex flex-1 items-center gap-1 px-3",
+                    for o in options {
+                        OptionButton {
+                            key: "{o.key}",
+                            label: option_label(&o),
+                            icon: o.icon.clone(),
+                            active: o.value == current,
+                            disabled: !interactive,
+                            boxed: true,
+                            on_press: move |_| send.call(o.value),
+                        }
+                    }
+                }
+            }
+        }
+        ControlKind::Color if spec.color_mode() == ColorMode::Rgb => {
+            let hex = shown.map(rgb_to_hex).unwrap_or_else(|| "#ffffff".into());
+            rsx! {
+                div { class: "flex flex-1 items-center justify-center gap-3 px-3",
+                    input {
+                        r#type: "color",
+                        aria_label: "{title}",
+                        class: "h-12 w-16 cursor-pointer rounded-lg border border-gray-300 disabled:opacity-50",
+                        value: "{hex}",
+                        disabled: !interactive,
+                        onchange: move |e| {
+                            if let Some(v) = hex_to_rgb(&e.value()) {
+                                send.call(v);
+                            }
+                        },
+                    }
+                    span { class: "font-mono text-sm text-gray-600",
+                        if shown.is_some() {
+                            "{hex}"
+                        } else {
+                            "—"
+                        }
+                    }
+                }
+            }
+        }
+        ControlKind::Color => {
+            let min = spec.min_value().unwrap_or(2_200.0);
+            let max = spec.max_value().unwrap_or(6_500.0);
+            let step = spec.step_value().unwrap_or(50.0);
+            let position = drag().or(shown).unwrap_or(min);
+            let text = match drag().or(shown) {
+                Some(v) => format!("{} K", format_value(v, 0)),
+                None => "—".into(),
+            };
+            rsx! {
+                div { class: "flex flex-1 flex-col justify-center gap-1 px-3",
+                    span { class: "text-center text-2xl font-semibold text-gray-900",
+                        "{text}"
+                    }
+                    input {
+                        r#type: "range",
+                        aria_label: "{title}",
+                        class: "h-3 w-full cursor-pointer appearance-none rounded-full disabled:opacity-50",
+                        style: "background: linear-gradient(to right, #ffa94d, #fff4e0, #cfe3ff)",
+                        min: "{min}",
+                        max: "{max}",
+                        step: "{step}",
+                        value: "{position}",
+                        disabled: !interactive,
+                        oninput: move |e| drag.set(e.value().parse::<f64>().ok()),
+                        onchange: move |e| {
+                            if let Ok(v) = e.value().parse::<f64>() {
+                                send.call(v);
+                            }
+                        },
+                    }
+                }
+            }
+        }
     };
 
+    let spec_text = spec.clone();
     let state_line = state.as_ref().map(|p| {
-        t!(
-            "controls-state", value : format!("{} {}", format_value(p.value, decimals), unit)
-            .trim().to_string()
-        )
-        .to_string()
+        t!("controls-state", value : value_text(&spec_text, p.value, decimals, &unit)).to_string()
     });
-    let confirm_value = pending().map(|v| format!("{} {}", format_value(v, decimals), unit));
+    let confirm_value = pending().map(|v| value_text(&spec_text, v, decimals, &unit));
 
     rsx! {
         div {
@@ -309,6 +496,39 @@ pub fn ControlBody(
                     drag.set(None);
                 },
             }
+        }
+    }
+}
+
+/// One option of a select (segment) or command (boxed button): icon above
+/// the label, highlighted when it holds the current value.
+#[component]
+fn OptionButton(
+    label: String,
+    icon: Option<String>,
+    active: bool,
+    disabled: bool,
+    #[props(default)] boxed: bool,
+    on_press: EventHandler<()>,
+) -> Element {
+    let class = match (boxed, active) {
+        (false, true) => "flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-md bg-white px-1 py-1.5 text-xs font-medium text-teal-700 shadow disabled:opacity-50",
+        (false, false) => "flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-md px-1 py-1.5 text-xs font-medium text-gray-600 hover:bg-white/60 disabled:opacity-50",
+        (true, true) => "flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg border border-teal-600 bg-teal-50 px-1 py-2 text-xs font-medium text-teal-700 disabled:opacity-50",
+        (true, false) => "flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg border border-gray-300 px-1 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50",
+    };
+    rsx! {
+        button {
+            r#type: "button",
+            role: if boxed { "button" } else { "radio" },
+            aria_checked: if boxed { None } else { Some(active.to_string()) },
+            class,
+            disabled,
+            onclick: move |_| on_press.call(()),
+            if let Some(id) = icon {
+                HomeIconView { id, class: "h-5 w-5" }
+            }
+            span { class: "max-w-full truncate", "{label}" }
         }
     }
 }

@@ -12,6 +12,7 @@
 
 pub mod annotation;
 pub mod control;
+pub mod spec_editor;
 
 use std::collections::BTreeMap;
 
@@ -134,7 +135,22 @@ pub fn kind_text(kind: ControlKind) -> String {
         ControlKind::Slider => t!("controls-kind-slider").to_string(),
         ControlKind::Button => t!("controls-kind-button").to_string(),
         ControlKind::Number => t!("controls-kind-number").to_string(),
+        ControlKind::Select => t!("controls-kind-select").to_string(),
+        ControlKind::Stepper => t!("controls-kind-stepper").to_string(),
+        ControlKind::Command => t!("controls-kind-command").to_string(),
+        ControlKind::Color => t!("controls-kind-color").to_string(),
     }
+}
+
+/// Display label of a select / command option: its own label, else the
+/// translation of a well-known key (`open`, `heat`…), else the key.
+pub fn option_label(o: &pnex_core::ui_control::ControlOption) -> String {
+    if let Some(label) = o.label.as_deref().filter(|l| !l.trim().is_empty()) {
+        return label.to_string();
+    }
+    dioxus_i18n::prelude::i18n()
+        .try_translate(&format!("ctl-opt-{}", o.key))
+        .unwrap_or_else(|_| o.key.clone())
 }
 
 /// Group of a control in the catalogs (D131): its declaring surface
@@ -181,7 +197,16 @@ pub fn spec_summary(spec: &ControlSpec) -> String {
         ControlKind::Button => {
             t!("controls-domain-button", press : spec.press_value().to_string()).to_string()
         }
-        ControlKind::Slider | ControlKind::Number => {
+        ControlKind::Select | ControlKind::Command => spec
+            .options
+            .iter()
+            .map(option_label)
+            .collect::<Vec<_>>()
+            .join(" / "),
+        ControlKind::Color if spec.color_mode() == pnex_core::ui_control::ColorMode::Rgb => {
+            t!("controls-domain-rgb").to_string()
+        }
+        ControlKind::Slider | ControlKind::Number | ControlKind::Stepper | ControlKind::Color => {
             let range = format!("{} … {} {unit}", n(spec.min_value()), n(spec.max_value()));
             match spec.step_value() {
                 Some(step) => t!(

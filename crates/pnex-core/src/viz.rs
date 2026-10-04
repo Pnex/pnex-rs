@@ -36,12 +36,18 @@ pub const VIZ_WIDGET_TYPES: &[&str] = &[
     "slider",
     "button",
     "number",
+    "select",
+    "stepper",
+    "command",
+    "color",
 ];
 
 /// Control widget types (D125): each drives one org control
 /// (`WidgetOptions.control`, provisioned at save when absent, D131) and may
 /// show one optional state source.
-pub const CONTROL_WIDGET_TYPES: &[&str] = &["switch", "slider", "button", "number"];
+pub const CONTROL_WIDGET_TYPES: &[&str] = &[
+    "switch", "slider", "button", "number", "select", "stepper", "command", "color",
+];
 
 /// Max number of sections of a mobile dashboard (D124).
 pub const MOBILE_SECTIONS_MAX: usize = 32;
@@ -194,6 +200,12 @@ pub struct WidgetOptions {
     /// own control at save, D131).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub control: Option<crate::ui_control::ControlRef>,
+    /// Value domain the widget declares for its own control (D137:
+    /// options, bounds, colour mode). Applied by the server when it
+    /// provisions the control and kept in sync at each save; ignored for a
+    /// linked shared control. `None` = the control keeps its spec.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_spec: Option<crate::ui_control::ControlSpec>,
     /// Mobile card width: 1 = half, 2 = full row (default 2). Ignored on
     /// desktop dashboards.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -832,11 +844,21 @@ pub fn validate_widget(
     // A control widget without a control is valid: the server provisions
     // its own control when the dashboard is saved (D131).
     let is_control = CONTROL_WIDGET_TYPES.contains(&widget_type);
-    if !is_control && options.control.is_some() {
+    if !is_control && (options.control.is_some() || options.control_spec.is_some()) {
         push(
             "control_unexpected",
             "only control widgets drive a control".into(),
         );
+    }
+    if let (true, Some(spec)) = (is_control, &options.control_spec) {
+        if spec.kind.widget_type() != widget_type {
+            push(
+                "control_spec_kind",
+                "the declared control kind must match the widget type".into(),
+            );
+        } else if let Some((code, message)) = spec.check() {
+            push(code, message);
+        }
     }
     if is_control {
         // The state source is optional (fallback: last commanded value).

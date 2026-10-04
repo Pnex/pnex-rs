@@ -49,6 +49,7 @@ fn event(id: uuid::Uuid, key: &str, v: f64) -> ControlEvent {
             ts_ms: chrono::Utc::now().timestamp_millis(),
             by: Some("e2e".into()),
             via: Some("dashboard:e2e".into()),
+            option: None,
         },
     }
 }
