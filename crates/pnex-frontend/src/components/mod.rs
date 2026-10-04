@@ -32,6 +32,8 @@ pub mod function_node_preview;
 pub mod function_ports;
 pub mod function_templates;
 pub mod functions_reference;
+/// Home icon catalog of the dashboard cards (D136).
+pub mod home_icons;
 pub mod icons;
 /// Éditeur de labels transverse (D42) — réutilisable sur tout kind.
 pub mod kv_pills_editor;

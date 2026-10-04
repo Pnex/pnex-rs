@@ -198,6 +198,16 @@ pub struct WidgetOptions {
     /// desktop dashboards.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub span: Option<u8>,
+    /// Value → colour / icon / label rules (D135), first match wins.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub states: Vec<StateRule>,
+    /// Card icon (home icon catalog id, D136) when no state rule sets one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    /// The card greys out when its newest point is older than this many
+    /// seconds (D135). `None` = never stale.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stale_after_s: Option<u32>,
 }
 
 /// Options of the `symbol` widget — a shape of the front-end symbol
@@ -369,6 +379,105 @@ pub struct Threshold {
     pub value: f64,
     /// Couleur `#rrggbb`.
     pub color: String,
+}
+
+/// Max number of state rules of a widget (D135).
+pub const STATE_RULES_MAX: usize = 16;
+/// Max length of a state rule label (chars).
+pub const STATE_LABEL_MAX: usize = 48;
+/// Bounds of `stale_after_s` (10 s .. 7 days).
+pub const STALE_AFTER_MIN_S: u32 = 10;
+pub const STALE_AFTER_MAX_S: u32 = 604_800;
+
+/// Comparison of a state rule against the live value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StateOp {
+    /// Equal (within 1e-9): discrete states, `0` = closed, `1` = open.
+    #[default]
+    Eq,
+    /// Greater than or equal.
+    Gte,
+    /// Less than or equal.
+    Lte,
+}
+
+/// One value → appearance rule of a card (D135). Every field but the
+/// comparison is optional: a rule may only relabel, only recolour, etc.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct StateRule {
+    #[serde(default)]
+    pub op: StateOp,
+    pub value: f64,
+    /// `#rrggbb`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// Home icon catalog id (D136).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    /// Text shown instead of the number (plain text, never HTML).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+impl StateRule {
+    pub fn matches(&self, v: f64) -> bool {
+        match self.op {
+            StateOp::Eq => (v - self.value).abs() < 1e-9,
+            StateOp::Gte => v >= self.value,
+            StateOp::Lte => v <= self.value,
+        }
+    }
+}
+
+/// First rule matching `v` (rule order = priority).
+pub fn resolve_state(rules: &[StateRule], v: f64) -> Option<&StateRule> {
+    rules.iter().find(|r| r.matches(v))
+}
+
+/// Is the newest point (`ts`, epoch seconds like [`crate::TelemetryPoint`])
+/// older than the widget's staleness budget at `now` (epoch seconds)?
+pub fn is_stale(options: &WidgetOptions, ts: f64, now: f64) -> bool {
+    match options.stale_after_s {
+        Some(s) => now - ts > f64::from(s),
+        None => false,
+    }
+}
+
+fn validate_states(options: &WidgetOptions, push: &mut impl FnMut(&str, String)) {
+    if options.states.len() > STATE_RULES_MAX {
+        push(
+            "states_too_many",
+            format!("at most {STATE_RULES_MAX} state rules"),
+        );
+    }
+    for r in &options.states {
+        if !r.value.is_finite() {
+            push("state_bad_value", "state rule value must be finite".into());
+        }
+        if r.color.as_deref().is_some_and(|c| !valid_hex_color(c)) {
+            push("state_bad_color", "invalid state colour (#rrggbb)".into());
+        }
+        if r.icon.as_deref().is_some_and(|i| !valid_symbol_id(i)) {
+            push("state_bad_icon", "invalid state icon id".into());
+        }
+        if let Some(l) = &r.label {
+            if l.chars().count() > STATE_LABEL_MAX || l.chars().any(char::is_control) {
+                push("state_bad_label", "state label too long or invalid".into());
+            }
+        }
+    }
+    if options.icon.as_deref().is_some_and(|i| !valid_symbol_id(i)) {
+        push("bad_icon", "invalid card icon id".into());
+    }
+    if let Some(s) = options.stale_after_s {
+        if !(STALE_AFTER_MIN_S..=STALE_AFTER_MAX_S).contains(&s) {
+            push(
+                "bad_stale_after",
+                format!("stale delay must be within {STALE_AFTER_MIN_S}..={STALE_AFTER_MAX_S} s"),
+            );
+        }
+    }
 }
 
 /// Un widget posé sur le canvas.
@@ -790,6 +899,7 @@ pub fn validate_widget(
             push("bad_unit", "unité trop longue ou invalide".into());
         }
     }
+    validate_states(options, &mut push);
     v.append(&mut extra_violations);
 }
 
@@ -1404,5 +1514,106 @@ mod tests {
         assert!(validate_layout(&desktop_with_sections)
             .iter()
             .any(|x| x.code == "desktop_sections"));
+    }
+
+    #[test]
+    fn state_rules_first_match_wins() {
+        let rules = vec![
+            StateRule {
+                op: StateOp::Eq,
+                value: 0.0,
+                label: Some("Closed".into()),
+                ..Default::default()
+            },
+            StateRule {
+                op: StateOp::Gte,
+                value: 0.5,
+                label: Some("Open".into()),
+                ..Default::default()
+            },
+            StateRule {
+                op: StateOp::Gte,
+                value: 0.0,
+                label: Some("Ajar".into()),
+                ..Default::default()
+            },
+        ];
+        let label = |v| resolve_state(&rules, v).and_then(|r| r.label.clone());
+        assert_eq!(label(0.0).as_deref(), Some("Closed"));
+        assert_eq!(label(1.0).as_deref(), Some("Open"));
+        assert_eq!(label(0.2).as_deref(), Some("Ajar"));
+        assert_eq!(label(-1.0), None);
+        let lte = StateRule {
+            op: StateOp::Lte,
+            value: 10.0,
+            ..Default::default()
+        };
+        assert!(lte.matches(10.0) && !lte.matches(10.1));
+    }
+
+    #[test]
+    fn stale_follows_the_budget() {
+        let mut o = WidgetOptions::default();
+        assert!(!is_stale(&o, 0.0, 1e9));
+        o.stale_after_s = Some(60);
+        assert!(!is_stale(&o, 1_000.0, 1_060.0));
+        assert!(is_stale(&o, 1_000.0, 1_061.0));
+    }
+
+    #[test]
+    fn state_rules_are_validated() {
+        let mut w = widget("w1", "stat");
+        w.options.states = vec![StateRule {
+            value: 1.0,
+            color: Some("red".into()),
+            icon: Some("Bad Icon".into()),
+            label: Some("x".repeat(STATE_LABEL_MAX + 1)),
+            ..Default::default()
+        }];
+        w.options.icon = Some("home-bulb".into());
+        w.options.stale_after_s = Some(1);
+        let mut v = Vec::new();
+        validate_widget(&w.id, &w.widget_type, &w.source, &w.options, &mut v);
+        let codes: Vec<&str> = v.iter().map(|x| x.code.as_str()).collect();
+        for c in [
+            "state_bad_color",
+            "state_bad_icon",
+            "state_bad_label",
+            "bad_stale_after",
+        ] {
+            assert!(codes.contains(&c), "{c} missing in {codes:?}");
+        }
+        assert!(!codes.contains(&"bad_icon"));
+        w.options.states = (0..=STATE_RULES_MAX)
+            .map(|i| StateRule {
+                value: i as f64,
+                ..Default::default()
+            })
+            .collect();
+        w.options.stale_after_s = Some(300);
+        let mut v = Vec::new();
+        validate_widget(&w.id, &w.widget_type, &w.source, &w.options, &mut v);
+        assert_eq!(
+            v.iter().map(|x| x.code.as_str()).collect::<Vec<_>>(),
+            vec!["states_too_many"]
+        );
+    }
+
+    #[test]
+    fn state_rules_roundtrip_and_stay_compact() {
+        let mut o = WidgetOptions::default();
+        let json = serde_json::to_value(&o).unwrap();
+        assert!(json.get("states").is_none() && json.get("icon").is_none());
+        o.states.push(StateRule {
+            op: StateOp::Gte,
+            value: 2.0,
+            color: Some("#22c55e".into()),
+            ..Default::default()
+        });
+        let back: WidgetOptions =
+            serde_json::from_value(serde_json::to_value(&o).unwrap()).unwrap();
+        assert_eq!(back, o);
+        let legacy: StateRule = serde_json::from_str(r#"{"value": 1}"#).unwrap();
+        assert_eq!(legacy.op, StateOp::Eq);
     }
 }

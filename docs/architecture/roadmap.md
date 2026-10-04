@@ -432,6 +432,22 @@ périmètre V1 (décision #10). Ne jamais copier code, icônes ou
 descriptions de n8n (licence Sustainable Use, cf. règle des assets
 tiers) : on reproduit des fonctionnalités, pas l'implémentation.
 
+### P2.12 — Dashboards « Maison » : palette domotique (ajout 2026-10-04)
+
+Plan validé le 2026-10-04 (`home-dashboards.md`, D134–D141) : palette
+catégorisée, règles d'état, icônes maison, primitives de contrôle
+`select`/`stepper`/`command`/`color`, cartes composées par domaine
+(éclairage, climat, ouvrants, sécurité, énergie, environnement, scènes,
+appareils), nœud `pnex-weather` (actuel / 7 jours / 48 h → mémoire ou
+O2), pages + pièces + chips en mobile, modèles Maison/Énergie/Sécurité/
+Jardin. Lots A → E.
+
+**Reportés (consignés, `home-dashboards.md` §6)** :
+- **REP-1 — Mode sombre global** : chantier transverse sur toutes les
+  pages (jetons de couleur, variantes sombres des cartes et symboles).
+- **REP-2 — Code PIN serrure/alarme** : écriture protégée vérifiée côté
+  serveur ; d'ici là, simple confirmation.
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
@@ -586,3 +602,6 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   `control-source`, ajout guidé depuis un device avec « Créer le flow »,
   items d'annotation `control` / `reading`. Reste : e2e matériel
   interrupteur → LED réelle (banc P0.1).
+- **2026-10-04** — Ajout P2.12 : dashboards « Maison » (D134–D141, plan
+  validé) ; mode sombre global (REP-1) et code PIN serrure/alarme (REP-2)
+  reportés et consignés.
