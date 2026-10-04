@@ -232,6 +232,7 @@ fn BoardLayout(
         .or(board.pretty_name.clone())
         .unwrap_or_default();
     let legend_items = legend_of(&views);
+    let zoom = use_signal(|| preview::ZOOM_LEVELS[0]);
 
     // Export SVG autonome (fichier partageable/imprimable) — le dessin est
     // déjà un `<svg>` autonome (viewBox + attributs), on sérialise le DOM.
@@ -255,7 +256,8 @@ fn BoardLayout(
 
     rsx! {
         div { class: "space-y-4",
-            div { class: "flex justify-end",
+            div { class: "flex items-center justify-end gap-3",
+                preview::ZoomBar { zoom }
                 button {
                     class: "inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:border-blue-400 hover:text-blue-600 transition-colors",
                     r#type: "button",
@@ -268,7 +270,7 @@ fn BoardLayout(
                     id: "board-pinout-svg",
                     // Phone: legible minimum width, the wrapper scrolls.
                     class: "mx-auto block h-auto w-full min-w-[560px] sm:min-w-0",
-                    style: "max-width: {svg_max_w}px",
+                    style: preview::zoom_style(zoom(), svg_max_w),
                     xmlns: "http://www.w3.org/2000/svg",
                     view_box: "0 0 {svg_w} {svg_h}",
                     role: "group",

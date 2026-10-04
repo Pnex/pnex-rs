@@ -255,22 +255,33 @@ fn ModelRow(
             }
             td { class: "td hidden text-gray-500 md:table-cell", {date_label(&model.updated_at)} }
             td { class: "td {ACTIONS_TD_CLASS}",
+                // Phones: icon-only buttons (label in title / aria-label),
+                // otherwise five labelled buttons push the sticky column
+                // past the screen edge.
                 div { class: "flex justify-end gap-2",
                     button {
-                        class: "px-3 py-1 text-sm text-fuchsia-700 bg-fuchsia-50 border border-fuchsia-200 rounded-lg hover:bg-fuchsia-100 whitespace-nowrap",
+                        title: t!("models-test"),
+                        aria_label: t!("models-test"),
+                        class: "inline-flex items-center px-3 py-1 text-sm text-fuchsia-700 bg-fuchsia-50 border border-fuchsia-200 rounded-lg hover:bg-fuchsia-100 whitespace-nowrap",
                         r#type: "button",
                         onclick: move |_| on_action.call(Dialog::Test(m_test.clone())),
-                        {t!("models-test")}
+                        icons::Image { class: "h-4 w-4 sm:hidden" }
+                        span { class: "hidden sm:inline", {t!("models-test")} }
                     }
                     button {
-                        class: "px-3 py-1 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 whitespace-nowrap",
+                        title: t!("models-test-live"),
+                        aria_label: t!("models-test-live"),
+                        class: "inline-flex items-center px-3 py-1 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 whitespace-nowrap",
                         r#type: "button",
                         onclick: move |_| on_action.call(Dialog::Live(m_live.clone())),
-                        {t!("models-test-live")}
+                        icons::Video { class: "h-4 w-4 sm:hidden" }
+                        span { class: "hidden sm:inline", {t!("models-test-live")} }
                     }
                     if can_write {
                         button {
-                            class: "px-3 py-1 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 whitespace-nowrap",
+                            title: t!("models-check"),
+                            aria_label: t!("models-check"),
+                            class: "inline-flex items-center px-3 py-1 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 whitespace-nowrap",
                             r#type: "button",
                             disabled: checking(),
                             onclick: move |_| {
@@ -285,25 +296,34 @@ fn ModelRow(
                                     on_checked.call(());
                                 });
                             },
-                            if checking() {
-                                {t!("models-checking")}
-                            } else {
-                                {t!("models-check")}
+                            icons::RefreshCw { class: "h-4 w-4 sm:hidden" }
+                            span { class: "hidden sm:inline",
+                                if checking() {
+                                    {t!("models-checking")}
+                                } else {
+                                    {t!("models-check")}
+                                }
                             }
                         }
                     }
                     if can_write {
                         button {
-                            class: "px-3 py-1 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
+                            title: t!("models-edit"),
+                            aria_label: t!("models-edit"),
+                            class: "inline-flex items-center px-3 py-1 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
                             r#type: "button",
                             onclick: move |_| on_action.call(Dialog::Edit(m_edit.clone())),
-                            {t!("models-edit")}
+                            icons::Pencil { class: "h-4 w-4 sm:hidden" }
+                            span { class: "hidden sm:inline", {t!("models-edit")} }
                         }
                         button {
                             class: DANGER_BTN,
+                            title: t!("models-delete"),
+                            aria_label: t!("models-delete"),
                             r#type: "button",
                             onclick: move |_| on_action.call(Dialog::Delete(m_delete.clone())),
-                            {t!("models-delete")}
+                            icons::Trash2 { class: "h-4 w-4 sm:hidden" }
+                            span { class: "hidden sm:inline", {t!("models-delete")} }
                         }
                     }
                 }

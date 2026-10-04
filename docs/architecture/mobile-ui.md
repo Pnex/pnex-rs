@@ -186,7 +186,19 @@ appliquer les classes du lot 2).
   tables maison. Détail org : sections `p-4` sous `md`, supprimer en icône,
   membres tronqués ; en-tête « Ajouter un fournisseur » empilé sous `sm`.
   Les deux dialogues de `system.rs` défilent (`max-h-full overflow-y-auto`).
-  Vérification téléphone à faire après réinstallation de l'APK.
+  Vérifié sur le téléphone (sonde ci-dessous).
+- **2026-10-04 — M8, M15 et garde automatique** : `FilterBar` (et le slot
+  `filters` de `ListLayout`, même classe `FILTER_BAR_CLASS`) pose la
+  recherche seule sur la 1re ligne sous `sm` (placeholder entier) et répartit
+  les selects de la page sur les lignes suivantes (8rem minimum chacun) —
+  plus de repli au hasard (M8). Pinout : boutons − / 100 % / + (100 → 300 %)
+  dans la modale du catalogue et l'éditeur de pinout, le dessin élargi défile
+  (M15). Garde : `e2e/tests-android/layout.spec.ts` (+ sonde
+  `e2e/src/mobile-layout.ts`) échoue si la page défile en largeur, si une
+  action sort de l'écran hors conteneur défilant, ou si une action de ligne
+  de table sort de l'écran. Rejouée sur le téléphone (25 routes) : elle a
+  trouvé les 5 boutons de ligne de `/models` hors écran → icône seule sous
+  `sm`. Plus aucun écart.
 
 ## 4. Décision à prendre (avant le lot 2)
 

@@ -11,12 +11,20 @@ use crate::components::icons;
 /// Conteneur des filtres — même classe que le slot `filters` de
 /// [`super::layout::ListLayout`], pour poser la barre dans le corps de page
 /// (filtres propres à la branche liste, masqués dans les sous-vues).
+///
+/// Below `sm` the search takes a full row of its own (first) and the page's
+/// selects share the next rows evenly (min 8rem each, wrapping cleanly),
+/// instead of wrapping at random with a truncated placeholder.
 #[component]
 pub fn FilterBar(children: Element) -> Element {
     rsx! {
-        div { class: "mb-4 md:mb-6 flex flex-wrap items-center gap-2", {children} }
+        div { class: FILTER_BAR_CLASS, {children} }
     }
 }
+
+/// Container classes of [`FilterBar`] (also the `filters` slot of
+/// [`super::layout::ListLayout`]).
+pub const FILTER_BAR_CLASS: &str = "mb-4 md:mb-6 flex flex-wrap items-center gap-2 [&>select]:min-w-0 [&>select]:grow [&>select]:basis-32 sm:[&>select]:grow-0 sm:[&>select]:basis-auto";
 
 /// Champ de recherche serveur — saisie **live sans refetch** (le signal
 /// suffit) ; la soumission est explicite : Enter → `prevent_default` +
@@ -32,7 +40,7 @@ pub fn SearchInput(
 ) -> Element {
     rsx! {
         input {
-            class: "flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm",
+            class: "order-first w-full sm:order-none sm:w-auto sm:flex-1 sm:min-w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm",
             r#type: "search",
             placeholder: "{placeholder}",
             value: "{value}",

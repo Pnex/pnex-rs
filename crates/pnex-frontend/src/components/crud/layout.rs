@@ -112,7 +112,7 @@ pub fn ListLayout(
                 }
             }
             if let Some(filters) = filters {
-                div { class: "mb-4 md:mb-6 flex flex-wrap items-center gap-2", {filters} }
+                div { class: super::filters::FILTER_BAR_CLASS, {filters} }
             }
             {children}
         }
