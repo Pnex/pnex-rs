@@ -14,7 +14,7 @@ use crate::api;
 use crate::components::badges::date_label;
 use crate::components::confirm::ConfirmDialog;
 use crate::components::crud::filters::RefreshButton;
-use crate::components::crud::layout::{ListLayout, DANGER_BTN};
+use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
@@ -223,30 +223,34 @@ fn ListView(
                 let id_delete = d.id.clone();
                 let name_delete = d.name.clone();
                 rsx! {
-                    button {
-                        class: "inline-flex items-center px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 mr-2",
-                        title: t!("db-open"),
-                        aria_label: t!("db-open"),
-                        onclick: move |_| on_open.call((id_open.clone(), false)),
-                        icons::Eye { class: "h-4 w-4 mr-1" }
-                        {t!("db-open")}
-                    }
-                    if can_write {
+                    // One flex row, same height for the three buttons (the
+                    // delete button used to sit lower than its neighbours).
+                    div { class: "flex items-center justify-end gap-2",
                         button {
-                            class: "inline-flex items-center px-3 py-1.5 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 mr-2",
-                            title: t!("db-edit"),
-                            aria_label: t!("db-edit"),
-                            onclick: move |_| on_open.call((id_edit.clone(), true)),
-                            icons::Wrench { class: "h-4 w-4 sm:mr-1" }
-                            span { class: "hidden sm:inline", {t!("db-edit")} }
+                            class: "inline-flex items-center px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
+                            title: t!("db-open"),
+                            aria_label: t!("db-open"),
+                            onclick: move |_| on_open.call((id_open.clone(), false)),
+                            icons::Eye { class: "h-4 w-4 mr-1" }
+                            {t!("db-open")}
                         }
-                        button {
-                            class: DANGER_BTN,
-                            title: t!("viz-delete"),
-                            aria_label: t!("viz-delete"),
-                            onclick: move |_| delete_target.set(Some((id_delete.clone(), name_delete.clone()))),
-                            icons::Trash2 { class: "h-3.5 w-3.5 inline sm:mr-0.5" }
-                            span { class: "hidden sm:inline", {t!("viz-delete")} }
+                        if can_write {
+                            button {
+                                class: "inline-flex items-center px-3 py-1.5 text-sm text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700",
+                                title: t!("db-edit"),
+                                aria_label: t!("db-edit"),
+                                onclick: move |_| on_open.call((id_edit.clone(), true)),
+                                icons::Wrench { class: "h-4 w-4 sm:mr-1" }
+                                span { class: "hidden sm:inline", {t!("db-edit")} }
+                            }
+                            button {
+                                class: "inline-flex items-center px-3 py-1.5 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors",
+                                title: t!("viz-delete"),
+                                aria_label: t!("viz-delete"),
+                                onclick: move |_| delete_target.set(Some((id_delete.clone(), name_delete.clone()))),
+                                icons::Trash2 { class: "h-4 w-4 sm:mr-1" }
+                                span { class: "hidden sm:inline", {t!("viz-delete")} }
+                            }
                         }
                     }
                 }

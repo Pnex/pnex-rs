@@ -87,18 +87,22 @@ pub fn BoardPreviewModal(board: api::boards::Board, on_close: Callback<()>) -> E
     rsx! {
         Modal { title, max_width: "max-w-xl".to_string(), on_close,
             div { class: "space-y-3",
-                svg {
-                    class: "mx-auto block w-full",
-                    style: "max-width: {svg_max_w}px",
-                    xmlns: "http://www.w3.org/2000/svg",
-                    view_box: "0 0 {svg_w} {svg_h}",
-                    role: "group",
-                    BoardSvg {
-                        views,
-                        per_side,
-                        ratio,
-                        selected_label: selected,
-                        chip_label,
+                // Phone: keep a legible minimum width and scroll sideways
+                // instead of shrinking the pin labels to ~6 px.
+                div { class: "overflow-x-auto",
+                    svg {
+                        class: "mx-auto block w-full min-w-[560px] sm:min-w-0",
+                        style: "max-width: {svg_max_w}px",
+                        xmlns: "http://www.w3.org/2000/svg",
+                        view_box: "0 0 {svg_w} {svg_h}",
+                        role: "group",
+                        BoardSvg {
+                            views,
+                            per_side,
+                            ratio,
+                            selected_label: selected,
+                            chip_label,
+                        }
                     }
                 }
                 Legend { items: legend_items }

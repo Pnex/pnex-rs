@@ -782,12 +782,23 @@ fn stepper(current: Step) -> Element {
                     span { class: if index <= current_index { "flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold bg-blue-600 text-white" } else { "flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold bg-gray-200 text-gray-500" },
                         "{index + 1}"
                     }
-                    span { class: if index <= current_index { "text-xs font-medium text-blue-700" } else { "text-xs text-gray-400" },
-                        {t!(* key)}
-                    }
+                    // Phone: only the current step keeps its label, so the
+                    // four steps fit on one row.
+                    span { class: step_label_class(index, current_index), {t!(* key)} }
                 }
             }
         }
+    }
+}
+
+/// Label classes of a wizard step (full literals for the Tailwind scan).
+fn step_label_class(index: usize, current: usize) -> &'static str {
+    if index == current {
+        "text-xs font-medium text-blue-700"
+    } else if index < current {
+        "hidden text-xs font-medium text-blue-700 sm:inline"
+    } else {
+        "hidden text-xs text-gray-400 sm:inline"
     }
 }
 

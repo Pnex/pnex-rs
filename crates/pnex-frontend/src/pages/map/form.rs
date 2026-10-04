@@ -119,7 +119,7 @@ pub(super) fn PoiFormModal(
                         }
                     }
                 }
-                div { class: "flex justify-end gap-2 pt-2",
+                div { class: crate::components::modal::MODAL_FOOTER,
                     button {
                         class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
                         onclick: move |_| on_close.call(()),

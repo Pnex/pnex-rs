@@ -73,7 +73,7 @@ pub(super) fn UploadModal(on_close: Callback<()>, on_uploaded: Callback<()>) -> 
                         option { value: "model", {t!("media-kind-model")} }
                     }
                 }
-                div { class: "flex justify-end gap-2 pt-2",
+                div { class: crate::components::modal::MODAL_FOOTER,
                     button {
                         class: "px-4 py-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg",
                         onclick: move |_| on_close.call(()),

@@ -23,7 +23,7 @@ pub const GHOST_BTN: &str = "px-4 py-2 text-sm text-gray-600 hover:text-gray-900
 /// Danger action — row-level "delete" of CRUD list tables (canonical
 /// style: bordered red + trash icon, icon rendered by the caller since
 /// the label stays i18n-resolved by the page).
-pub const DANGER_BTN: &str = "px-3 py-1 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors";
+pub const DANGER_BTN: &str = "inline-flex items-center px-3 py-1 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors";
 
 #[component]
 pub fn ListLayout(

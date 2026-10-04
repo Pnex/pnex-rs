@@ -35,7 +35,7 @@ pub fn FormDialog(
         Modal { title, max_width, on_close,
             div { class: "space-y-4",
                 {children}
-                div { class: "flex justify-end gap-2 pt-2",
+                div { class: crate::components::modal::MODAL_FOOTER,
                     button {
                         class: GHOST_BTN,
                         r#type: "button",

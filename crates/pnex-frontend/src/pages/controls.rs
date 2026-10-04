@@ -124,17 +124,20 @@ pub fn Controls() -> Element {
             let del = c.clone();
             rsx! {
                 if can_write {
-                    button {
-                        class: "inline-flex items-center px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 mr-2",
-                        onclick: move |_| editing.set(Some(Some(edit.clone()))),
-                        icons::Wrench { class: "h-4 w-4 mr-1" }
-                        {t!("controls-edit-short")}
-                    }
-                    button {
-                        class: DANGER_BTN,
-                        onclick: move |_| delete_target.set(Some(del.clone())),
-                        icons::Trash2 { class: "h-3.5 w-3.5 inline mr-0.5" }
-                        {t!("common-delete")}
+                    // One flex row, both buttons the same height.
+                    div { class: "flex items-center justify-end gap-2",
+                        button {
+                            class: "inline-flex items-center px-3 py-1 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
+                            onclick: move |_| editing.set(Some(Some(edit.clone()))),
+                            icons::Wrench { class: "h-4 w-4 mr-1" }
+                            {t!("controls-edit-short")}
+                        }
+                        button {
+                            class: DANGER_BTN,
+                            onclick: move |_| delete_target.set(Some(del.clone())),
+                            icons::Trash2 { class: "h-3.5 w-3.5 inline mr-0.5" }
+                            {t!("common-delete")}
+                        }
                     }
                 }
             }
@@ -339,7 +342,7 @@ fn ControlForm(
                 if !key().is_empty() && !key_ok {
                     p { class: "text-xs text-red-600", {t!("controls-form-key-invalid")} }
                 }
-                div { class: "flex justify-end gap-2 pt-2",
+                div { class: crate::components::modal::MODAL_FOOTER,
                     button {
                         class: "px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
                         onclick: move |_| on_close.call(()),

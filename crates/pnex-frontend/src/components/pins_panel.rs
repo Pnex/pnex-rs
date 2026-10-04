@@ -363,7 +363,7 @@ pub(crate) fn PinCard(
                                 li { key: "{name}", {name} }
                             }
                         }
-                        div { class: "flex justify-end gap-2 pt-2",
+                        div { class: crate::components::modal::MODAL_FOOTER,
                             button {
                                 class: "px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800",
                                 onclick: move |_| {
