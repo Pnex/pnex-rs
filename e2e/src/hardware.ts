@@ -63,6 +63,17 @@ export const BOARDS = {
     // ST7735 on VSPI: SCK 18, MOSI 23, CS 5, DC 2, RST 4.
     screenGpios: [18, 23, 5, 2, 4],
   },
+  esp32u: {
+    port: process.env.PNEX_E2E_ESP32U_PORT ?? '',
+    model: /^Generic ESP32 \(DevKit/,
+    deviceId: process.env.PNEX_E2E_ESP32U_ID ?? 'e2e-esp32u',
+    chip: 'esp32',
+    baud: 460800,
+    variant: 'ESP32 DevKit 38 pins (WROOM-32U, external antenna)',
+    screen: 'TFT 1.77"',
+    // Same ST7735 wiring as the 38p TXD variant: SCK 18, MOSI 23, CS 5, DC 2, RST 4.
+    screenGpios: [18, 23, 5, 2, 4],
+  },
   nodemcu: {
     port: process.env.PNEX_E2E_NODEMCU_PORT ?? '',
     model: /^Generic ESP8266/,

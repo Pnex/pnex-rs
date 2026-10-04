@@ -135,10 +135,11 @@ Skipped unless the boards are declared:
 | `PNEX_E2E_C3_PORT` | serial port of an ESP32-C3 (Seeed XIAO profile, e.g. `/dev/ttyACM0`) |
 | `PNEX_E2E_CAM_PORT` | serial port of an ESP32-CAM on its MB carrier (e.g. `/dev/ttyUSB0`) |
 | `PNEX_E2E_ESP32_PORT` | serial port of an ESP32 DevKit 38 pins (TXD/RXD variant) with its ST7735 TFT wired (SCK 18, MOSI 23, CS 5, DC 2, RST 4) |
+| `PNEX_E2E_ESP32U_PORT` | serial port of an ESP32 DevKit 38 pins WROOM-32U (external antenna, CP2102) with the same ST7735 TFT wiring |
 | `PNEX_E2E_NODEMCU_PORT` | serial port of a NodeMCU V3 (CH340G) with its soldered 0.96" OLED (SDA D6, SCL D5) |
 | `PNEX_E2E_C6_PORT` | serial port of a Waveshare ESP32-C6-Zero (native USB, e.g. `/dev/ttyACM0`) |
 | `PNEX_E2E_WIFI_SSID` / `PNEX_E2E_WIFI_PASSWORD` | network the boards join (stored as an Edge referential of the test org) |
-| `PNEX_E2E_C3_ID` / `PNEX_E2E_CAM_ID` / `PNEX_E2E_ESP32_ID` / `PNEX_E2E_NODEMCU_ID` / `PNEX_E2E_C6_ID` | device ids in the test org (`e2e-c3` / `e2e-cam` / `e2e-esp32` / `e2e-nodemcu` / `e2e-c6`) |
+| `PNEX_E2E_C3_ID` / `PNEX_E2E_CAM_ID` / `PNEX_E2E_ESP32_ID` / `PNEX_E2E_ESP32U_ID` / `PNEX_E2E_NODEMCU_ID` / `PNEX_E2E_C6_ID` | device ids in the test org (`e2e-c3` / `e2e-cam` / `e2e-esp32` / `e2e-esp32u` / `e2e-nodemcu` / `e2e-c6`) |
 | `PNEX_E2E_MAILCRAB_URL` | mailcrab API (`http://localhost:1080`) |
 
 ```bash
