@@ -257,6 +257,15 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
                         "bad_red_node",
                         "missing Node-RED type",
                     ));
+                } else if !super::red_type_allowed(type_name) {
+                    // Security boundary (SEC-1, SEC-2): host-effect builtins
+                    // and PNeX node types are never reachable from a Red node.
+                    v.push(FlowViolation::with_args(
+                        Some(&n.id),
+                        "red_type_forbidden",
+                        format!("Node-RED type '{type_name}' is not allowed"),
+                        serde_json::json!({ "type": type_name }),
+                    ));
                 }
                 if !config.is_null() && !config.is_object() {
                     v.push(FlowViolation::new(

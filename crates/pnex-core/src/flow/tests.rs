@@ -1867,6 +1867,70 @@ fn projection_red_passthrough_conserve_la_config() {
     assert_eq!(out[1]["z"], "pnexflow1");
 }
 
+fn red_node(type_name: &str, config: serde_json::Value) -> FlowNode {
+    FlowNode {
+        id: "r1".into(),
+        name: None,
+        position: None,
+        outputs: vec![],
+        inputs: vec![],
+        kind: FlowNodeKind::Red {
+            type_name: type_name.into(),
+            config,
+        },
+    }
+}
+
+#[test]
+fn red_node_rejects_host_effect_and_pnex_types() {
+    // SEC-1 / SEC-2: exec, template, files and PNeX node types are never
+    // reachable from a raw Red node.
+    for t in [
+        "exec",
+        "template",
+        "file in",
+        "pnex-device-write",
+        "pnex-memory-read",
+    ] {
+        let g = FlowGraph {
+            nodes: vec![red_node(t, json!({}))],
+        };
+        let v = validate_graph(&g);
+        assert!(
+            v.iter()
+                .any(|x| x.code == "red_type_forbidden" && x.args.as_ref().unwrap()["type"] == t),
+            "{t}: {v:?}"
+        );
+    }
+    let ok = FlowGraph {
+        nodes: vec![red_node("change", json!({"rules": []}))],
+    };
+    assert!(validate_graph(&ok).is_empty());
+}
+
+#[test]
+fn red_projection_strips_user_tenant_fields() {
+    // SEC-2: a forged pnex_org_id / pnex_o2_org never reaches the artifact.
+    let g = FlowGraph {
+        nodes: vec![red_node(
+            "change",
+            json!({"pnex_org_id": 99, "pnex_o2_org": "o2_99", "pnex_flow_id": 5, "rules": []}),
+        )],
+    };
+    let out = to_red_flows_json(
+        &g,
+        &FlowArtifactMeta {
+            flow_id: 1,
+            version_number: 1,
+            org_id: 7,
+            o2_org: "o2_7".into(),
+        },
+    );
+    let entry = out[1].as_object().unwrap();
+    assert!(entry.keys().all(|k| !k.starts_with("pnex_")), "{entry:?}");
+    assert_eq!(entry["rules"], json!([]));
+}
+
 #[test]
 fn dto_create_flow_deserialise() {
     let json = r#"{

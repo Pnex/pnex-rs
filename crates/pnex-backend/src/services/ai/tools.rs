@@ -601,7 +601,7 @@ fn describe_node_types() -> Result<ToolOutcome, String> {
                 },
                 {
                     "kind": "red",
-                    "description": "Nœud Node-RED brut (type_name + config libre) — pour les nœuds edge natifs non modelés. À éviter sauf besoin avancé.",
+                    "description": "Raw Node-RED node (type_name + free config) for unmodelled builtins. Only pure transforms are allowed: change, switch, range, rbe, delay, trigger, json, csv, yaml, split, join, sort, batch, link in/out/call, catch, status, complete, comment, junction, inject, debug. Avoid unless needed.",
                     "config": { "type_name": "type Node-RED natif", "config": "objet libre" }
                 },
                 {

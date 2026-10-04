@@ -7,7 +7,7 @@
 # tous ses tabs à chaque cycle, c'est par là que le superviseur acquitte les
 # deploys), SIGINT/SIGTERM = sortie propre.
 # `--check` = pré-flight : rapport `check_flow` par tab, exit 1 si un tab
-# porte le marqueur de test `"type": "pnex-check-fail"`. Le contenu de
+# porte le marqueur de test `"pnex-check-fail"` (any string value). Le contenu de
 # l'artefact projeté reste vérifiable en lisant flows.json.
 
 # ── Args : [--check] <flows.json> [--home <dir>] ─────────────────────────

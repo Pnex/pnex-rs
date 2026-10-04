@@ -2029,6 +2029,7 @@ flows-video-retention-hint = 0 = keep forever (max { $max })
 flows-video-stream = Stream name
 flows-video-stream-hint = Optional logical name (defaults to the camera name)
 err-camera-device-missing = Select a camera
+err-red-type-forbidden = Node-RED type "{ $type }" is not allowed (host access or reserved PNeX type)
 err-camera-fps-invalid = Max fps must be between 0 (every frame) and 25
 err-video-segment-secs-invalid = Segment duration must be between 5 and 3600 seconds
 err-video-record-duplicate = This flow already records camera { $camera } — keep a single Video recording node per camera.

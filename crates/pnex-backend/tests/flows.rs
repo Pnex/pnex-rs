@@ -348,6 +348,30 @@ async fn validation_rejette_graphe_invalide() {
             }))
             .await;
         assert_eq!(no_trigger.status_code(), 400, "{}", no_trigger.text());
+
+        // SEC-1 / SEC-2: a raw Red node can target neither a host-effect
+        // builtin nor a PNeX node type.
+        for forbidden in ["exec", "template", "pnex-device-write"] {
+            let red = server
+                .post("/api/v1/flows")
+                .add_header("Authorization", bearer(&env.alice))
+                .add_header("X-Org-Id", org.to_string())
+                .add_header("Content-Type", "application/json")
+                .json(&serde_json::json!({
+                    "name": "red forbidden",
+                    "graph": { "nodes": [
+                        { "id": "x", "kind": "red", "type_name": forbidden,
+                          "config": { "command": "id", "pnex_org_id": 1 } },
+                    ]},
+                }))
+                .await;
+            assert_eq!(red.status_code(), 400, "{forbidden}: {}", red.text());
+            let body = red.json::<serde_json::Value>();
+            assert_eq!(
+                body["violations"][0]["code"], "red_type_forbidden",
+                "{forbidden}: {body}"
+            );
+        }
     })
     .await;
 }
@@ -562,8 +586,8 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
         assert_eq!(cross.status_code(), 404, "{}", cross.text());
 
         // (f) Pré-flight au deploy : un flow dont le tab est rejeté par le
-        // runtime (nœud `red` du type marqueur `pnex-check-fail` de la
-        // fixture) répond **400** avec la violation `engine_load` (erreur
+        // runtime (allowlisted `red` comment node carrying the fixture's
+        // `pnex-check-fail` marker) répond **400** avec la violation `engine_load` (erreur
         // moteur réelle), sans marquer la DB (reste draft) ni toucher
         // l'artefact en exécution — le flow sain continue de tourner.
         // NB : la création passe (pas de type-check global, garde-fou PRD).
@@ -576,7 +600,7 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
                 "name": "invalide moteur",
                 "graph": {
                     "nodes": [
-                        { "id": "x1", "kind": "red", "type_name": "pnex-check-fail", "config": {} }
+                        { "id": "x1", "kind": "red", "type_name": "comment", "config": { "info": "pnex-check-fail" } }
                     ]
                 }
             }))
