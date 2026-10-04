@@ -164,6 +164,16 @@ impl S3Config {
     }
 }
 
+/// opendal 0.58 serves HTTP services (S3) through a process-wide transport
+/// that its `auto-register-services` feature installs before `main` — off
+/// here (`default-features = false`). Without it every S3 call fails with
+/// "default HTTP transport is not installed" (firmware builds and media on
+/// an S3 backend). Called before building any S3 operator; idempotent.
+pub(crate) fn ensure_http_transport() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(opendal::install_default);
+}
+
 impl S3Store {
     /// Live connectivity probe of the bucket (opendal `check`: a cheap
     /// list/stat round-trip). Used by the platform status page (D72).
@@ -206,6 +216,7 @@ impl S3Store {
         // Retry des erreurs transitives (5xx, timeout) — uploads d'artefacts
         // idempotents (même clé, même contenu), sans risque de doublon.
         // opendal 0.58 : `.layer()` renvoie l'Operator directement (plus de `.finish()`)
+        ensure_http_transport();
         let operator = Operator::new(builder)
             .map_err(|e| format!("S3 : initialisation impossible : {e}"))?
             .layer(RetryLayer::default());
@@ -383,6 +394,25 @@ mod tests {
             assert!(err.contains(attendu), "{attendu} attendu dans : {err}");
         }
         assert!(S3Store::connect(&s3_config()).is_ok());
+    }
+
+    /// Regression: without the process-wide opendal HTTP transport, an S3
+    /// write failed with "default HTTP transport is not installed" before
+    /// any I/O. Against an unreachable endpoint it must now fail on the
+    /// network instead.
+    #[tokio::test]
+    async fn s3_write_reaches_the_network() {
+        let mut config = s3_config();
+        config.endpoint = "http://127.0.0.1:9".into();
+        let store = S3Store::connect(&config).expect("connect");
+        let Err(err) = store.put("org_1/firmware/x.bin", b"x").await else {
+            panic!("nothing listens on 127.0.0.1:9");
+        };
+        let msg = format!("{err:?}");
+        assert!(
+            !msg.contains("transport is not installed"),
+            "the S3 operator has no HTTP transport: {msg}"
+        );
     }
 
     /// Cycle complet contre un vrai S3-compatible. Ignored par défaut
