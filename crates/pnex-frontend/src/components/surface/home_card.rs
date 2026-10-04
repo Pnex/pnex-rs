@@ -233,9 +233,20 @@ pub fn HomeCardBody(widget: Widget, values: Option<LiveValues>) -> Element {
             WeatherCard { widget: w.clone(), title, values }
         },
     };
+    // A required source still to pick (templates, D141).
+    let to_configure = home
+        .card
+        .source_roles()
+        .iter()
+        .any(|r| r.required && widget.source_of(r.role).is_none_or(|s| s.is_unset()));
     rsx! {
         div { class: "flex h-full w-full flex-col gap-2 overflow-hidden rounded-lg p-3",
             {body}
+            if to_configure {
+                p { class: "mt-auto text-[11px] font-medium text-amber-700",
+                    {t!("hcard-to-configure")}
+                }
+            }
         }
     }
 }

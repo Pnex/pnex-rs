@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
+use pnex_core::home::HomeCard;
 use pnex_core::ui_control::{ControlKind, ControlRef, ControlSpec, CreateUiControl, UiControl};
 use pnex_core::SourceRef;
 
@@ -18,6 +19,65 @@ use crate::api;
 use crate::components::icons;
 use crate::components::surface::{create_flow_draft, suggest_key};
 use crate::state::toasts;
+
+/// Home card suggested for a device metric (D141), by name heuristics:
+/// card, source role, binary variant.
+pub fn suggest_card(metric: &str) -> Option<(HomeCard, &'static str, Option<&'static str>)> {
+    let m = metric.to_ascii_lowercase();
+    let has = |words: &[&str]| words.iter().any(|w| m.contains(w));
+    if has(&["smoke", "fumee"]) {
+        Some((HomeCard::Binary, "state", Some("smoke")))
+    } else if has(&["leak", "fuite", "flood"]) {
+        Some((HomeCard::Binary, "state", Some("leak")))
+    } else if has(&["door", "porte", "contact"]) {
+        Some((HomeCard::Binary, "state", Some("door")))
+    } else if has(&["window", "fenetre"]) {
+        Some((HomeCard::Binary, "state", Some("window")))
+    } else if has(&["motion", "pir", "presence", "occupancy"]) {
+        Some((HomeCard::Binary, "state", Some("motion")))
+    } else if has(&["co2"]) {
+        Some((HomeCard::AirQuality, "co2", None))
+    } else if has(&["kwh", "energy", "energie", "index"]) {
+        Some((HomeCard::Meter, "energy", None))
+    } else if has(&["power", "watt", "puissance"]) {
+        Some((HomeCard::Power, "power", None))
+    } else if has(&["temp"]) {
+        Some((HomeCard::ThermoHygro, "temperature", None))
+    } else {
+        None
+    }
+}
+
+/// Adds a home card bound to a device metric (role source), or an output
+/// pin (state source + declared roles).
+fn add_home_from_device(
+    cx: EditorCx,
+    card: HomeCard,
+    title: String,
+    sources: Vec<SourceRef>,
+    variant: Option<&'static str>,
+    roles: &'static [&'static str],
+) {
+    library::add_home_card(cx, card);
+    let id = super::state::next_id("w", cx.counter.cloned());
+    let mut layout = cx.layout;
+    layout.with_mut(|l| {
+        if let Some(w) = l.widgets.iter_mut().find(|w| w.id == id) {
+            w.title = title;
+            w.source = sources;
+            if let Some(h) = w.options.home.as_mut() {
+                if let Some(v) = variant {
+                    h.variant = Some(v.to_string());
+                }
+                for role in roles {
+                    if let Some(spec) = card.default_spec(role) {
+                        h.specs.insert((*role).to_string(), spec);
+                    }
+                }
+            }
+        }
+    });
+}
 
 /// Kind proposed for an output pin mode.
 fn kind_for_mode(mode: Option<&str>) -> Option<ControlKind> {
@@ -225,14 +285,39 @@ fn PinRow(
         _ => t!("db-from-device-add-switch").to_string(),
     };
     let (d, p, m) = (device.clone(), pin.clone(), metrics.clone());
+    // Home card of the pin (D141): a light, dimmable on a PWM output; its
+    // controls are declared by the card and provisioned at save.
+    let light_sources: Vec<SourceRef> = state_source(&device, &pin, &metrics).into_iter().collect();
+    let light_roles: &'static [&'static str] = if kind == ControlKind::Slider {
+        &["level"]
+    } else {
+        &[]
+    };
+    let light_title = format!("{device} — {pin}");
     rsx! {
         div { class: "rounded-lg border border-gray-200 p-2 space-y-1",
             div { class: "flex items-center justify-between gap-2",
                 span { class: "truncate text-sm text-gray-800", "{pin}" }
-                button {
-                    class: "shrink-0 rounded bg-teal-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-teal-700",
-                    onclick: move |_| add_pin_card(cx, d.clone(), p.clone(), kind, m.clone(), created),
-                    "{action}"
+                div { class: "flex shrink-0 gap-1",
+                    button {
+                        class: "rounded border border-amber-300 px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-50",
+                        onclick: move |_| {
+                            add_home_from_device(
+                                cx,
+                                HomeCard::Light,
+                                light_title.clone(),
+                                light_sources.clone(),
+                                None,
+                                light_roles,
+                            )
+                        },
+                        {t!("db-from-device-add-light")}
+                    }
+                    button {
+                        class: "rounded bg-teal-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-teal-700",
+                        onclick: move |_| add_pin_card(cx, d.clone(), p.clone(), kind, m.clone(), created),
+                        "{action}"
+                    }
                 }
             }
             if let Some(control) = made {
@@ -252,6 +337,8 @@ fn PinRow(
 
 #[component]
 fn MetricRow(cx: EditorCx, device: String, metric: String) -> Element {
+    let suggestion = suggest_card(&metric);
+    let (sd, sm) = (device.clone(), metric.clone());
     let rows = [
         ("stat", t!("lib-kind-stat").to_string()),
         ("gauge", t!("lib-kind-gauge").to_string()),
@@ -261,6 +348,23 @@ fn MetricRow(cx: EditorCx, device: String, metric: String) -> Element {
         div { class: "flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-2",
             span { class: "truncate text-sm text-gray-800", "{metric}" }
             div { class: "flex shrink-0 gap-1",
+                if let Some((card, role, variant)) = suggestion {
+                    button {
+                        class: "rounded border border-amber-300 px-1.5 py-0.5 text-[11px] text-amber-800 hover:bg-amber-50",
+                        title: t!("db-from-device-home-card").to_string(),
+                        onclick: move |_| {
+                            let source = SourceRef {
+                                role: role.to_string(),
+                                metric: sm.clone(),
+                                device_id: sd.clone(),
+                                window: if card == HomeCard::Meter { "24h".into() } else { "1h".into() },
+                                memory: None,
+                            };
+                            add_home_from_device(cx, card, sm.clone(), vec![source], variant, &[]);
+                        },
+                        {crate::components::surface::home_card::card_label(card)}
+                    }
+                }
                 for (kind, label) in rows {
                     ReadingButton {
                         key: "{kind}",
@@ -307,6 +411,39 @@ fn ReadingButton(
                 );
             },
             "{label}"
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metric_names_suggest_home_cards() {
+        let card = |m: &str| suggest_card(m).map(|(c, role, v)| (c, role, v));
+        assert_eq!(
+            card("temperature"),
+            Some((HomeCard::ThermoHygro, "temperature", None))
+        );
+        assert_eq!(
+            card("kitchen_smoke"),
+            Some((HomeCard::Binary, "state", Some("smoke")))
+        );
+        assert_eq!(
+            card("porte_entree"),
+            Some((HomeCard::Binary, "state", Some("door")))
+        );
+        assert_eq!(card("energy_kwh"), Some((HomeCard::Meter, "energy", None)));
+        assert_eq!(card("power_w"), Some((HomeCard::Power, "power", None)));
+        assert_eq!(card("co2"), Some((HomeCard::AirQuality, "co2", None)));
+        assert_eq!(card("rssi"), None);
+        for m in ["temperature", "smoke", "door", "kwh", "power", "co2", "pir"] {
+            let (c, role, _) = suggest_card(m).unwrap();
+            assert!(
+                c.source_role(role).is_some(),
+                "{m}: {role} is a role of {c:?}"
+            );
         }
     }
 }

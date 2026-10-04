@@ -7,7 +7,7 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::home::{HomeCardOptions, BINARY_VARIANTS};
 use pnex_core::memory::MemoryRef;
-use pnex_core::ui_control::ControlSpec;
+use pnex_core::ui_control::{ControlSpec, UiControl};
 use pnex_core::{SourceRef, Widget, VIZ_WINDOW_PRESETS};
 
 use super::inspector::SourceCatalog;
@@ -85,7 +85,26 @@ pub fn HomePanel(cx: EditorCx, widget: Widget, can_write: bool, catalog: SourceC
         return rsx! {};
     };
     let card = home.card;
+    // Provisioned role controls (refetched after each save) for "Create
+    // the flow" (D141).
+    let controls = use_resource(move || async move {
+        let _ = cx.saved_version.read();
+        crate::api::controls::list().await.unwrap_or_default()
+    });
+    let all_controls = controls.read().clone().unwrap_or_default();
+    let dirty = *cx.layout.read() != *cx.saved_layout.read();
     let source_roles = card.source_roles();
+    // Bound control of each role (computed outside the markup, rsx-fmt.md).
+    let role_controls: Vec<(&'static pnex_core::home::ControlRole, Option<UiControl>)> = card
+        .control_roles()
+        .iter()
+        .map(|r| {
+            let bound = home
+                .control_of(r.role)
+                .and_then(|id| all_controls.iter().find(|c| c.id == id).cloned());
+            (r, bound)
+        })
+        .collect();
     let control_roles = card.control_roles();
     let on_above = home.on_above.map(|v| v.to_string()).unwrap_or_default();
     rsx! {
@@ -146,7 +165,7 @@ pub fn HomePanel(cx: EditorCx, widget: Widget, can_write: bool, catalog: SourceC
                 p { class: "text-[10px] font-medium uppercase text-gray-400",
                     {t!("hcard-controls")}
                 }
-                for r in control_roles.iter() {
+                for (r, control) in role_controls {
                     RoleControl {
                         key: "ctl-{r.role}",
                         cx,
@@ -155,6 +174,8 @@ pub fn HomePanel(cx: EditorCx, widget: Widget, can_write: bool, catalog: SourceC
                         role: r.role,
                         required: r.required,
                         can_write,
+                        control,
+                        dirty,
                     }
                 }
                 p { class: "text-[10px] text-gray-400", {t!("hcard-controls-help")} }
@@ -288,6 +309,8 @@ fn RoleControl(
     role: &'static str,
     required: bool,
     can_write: bool,
+    control: Option<pnex_core::ui_control::UiControl>,
+    dirty: bool,
 ) -> Element {
     let active = required || home.specs.contains_key(role);
     let spec = home.spec_of(role).unwrap_or_else(|| {
@@ -352,6 +375,9 @@ fn RoleControl(
                 }
                 if let Some(err) = error {
                     p { class: "text-xs text-red-600", "{err}" }
+                }
+                if let (Some(c), true) = (control, can_write) {
+                    super::control_panel::FlowDraft { control: c, dirty }
                 }
             }
         }

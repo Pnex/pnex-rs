@@ -246,7 +246,7 @@ fn ControlInfo(control: UiControl) -> Element {
 /// "Create the flow": pick the device and output pin, then a draft
 /// `control-source` → `device-write` opens in the flow editor.
 #[component]
-fn FlowDraft(control: UiControl, dirty: bool) -> Element {
+pub(super) fn FlowDraft(control: UiControl, dirty: bool) -> Element {
     let devices = use_resource(|| async {
         api::devices::list(&api::devices::DeviceFilters {
             active: Some(true),

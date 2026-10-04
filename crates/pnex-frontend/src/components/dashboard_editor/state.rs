@@ -337,6 +337,266 @@ pub fn set_section_icon(layout: &mut DashboardLayout, id: &str, icon: Option<Str
     }
 }
 
+/// Ready-made mobile dashboards (D141): home cards placed in rooms and
+/// pages, sources left to pick ("to configure" until then).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HomeTemplate {
+    Home,
+    Energy,
+    Security,
+    Garden,
+}
+
+#[cfg(test)]
+impl HomeTemplate {
+    pub const ALL: [HomeTemplate; 4] = [
+        HomeTemplate::Home,
+        HomeTemplate::Energy,
+        HomeTemplate::Security,
+        HomeTemplate::Garden,
+    ];
+}
+
+/// One card of a template: kind, title key, binary variant.
+type TplCard = (
+    pnex_core::home::HomeCard,
+    &'static str,
+    Option<&'static str>,
+);
+/// One section: title key, icon, style, cards.
+type TplSection = (&'static str, &'static str, SectionStyle, &'static [TplCard]);
+/// One page: title key, icon, sections.
+type TplPage = (&'static str, &'static str, &'static [TplSection]);
+
+fn template_pages(t: HomeTemplate) -> &'static [TplPage] {
+    use pnex_core::home::HomeCard::*;
+    use SectionStyle::*;
+    match t {
+        HomeTemplate::Home => &[
+            (
+                "tpl-page-home",
+                "home-house",
+                &[
+                    (
+                        "",
+                        "home-house",
+                        Chips,
+                        &[
+                            (Weather, "tpl-weather", None),
+                            (ThermoHygro, "tpl-outside", None),
+                        ],
+                    ),
+                    (
+                        "tpl-living-room",
+                        "home-sofa",
+                        Room,
+                        &[
+                            (Light, "tpl-ceiling-light", None),
+                            (Thermostat, "tpl-heating", None),
+                            (Cover, "tpl-shutter", None),
+                        ],
+                    ),
+                    (
+                        "tpl-kitchen",
+                        "home-kitchen",
+                        Room,
+                        &[
+                            (Light, "tpl-ceiling-light", None),
+                            (Appliance, "tpl-dishwasher", None),
+                        ],
+                    ),
+                    (
+                        "tpl-bedroom",
+                        "home-bed",
+                        Room,
+                        &[
+                            (Light, "tpl-bedside-light", None),
+                            (Cover, "tpl-shutter", None),
+                        ],
+                    ),
+                    (
+                        "tpl-scenes",
+                        "home-scene",
+                        Cards,
+                        &[
+                            (Scene, "tpl-scene-night", None),
+                            (Scene, "tpl-scene-away", None),
+                        ],
+                    ),
+                ],
+            ),
+            (
+                "tpl-page-security",
+                "home-shield",
+                &[
+                    (
+                        "tpl-alarm",
+                        "home-shield",
+                        Cards,
+                        &[(Alarm, "tpl-alarm", None), (Lock, "tpl-front-door", None)],
+                    ),
+                    (
+                        "tpl-openings",
+                        "home-door",
+                        Cards,
+                        &[
+                            (Binary, "tpl-front-door", Some("door")),
+                            (Binary, "tpl-window", Some("window")),
+                        ],
+                    ),
+                ],
+            ),
+        ],
+        HomeTemplate::Energy => &[(
+            "tpl-page-energy",
+            "home-bolt",
+            &[
+                ("", "home-bolt", Chips, &[(Power, "tpl-house-power", None)]),
+                (
+                    "tpl-flows",
+                    "home-solar",
+                    Cards,
+                    &[(EnergyFlow, "tpl-energy-flow", None)],
+                ),
+                (
+                    "tpl-meters",
+                    "home-meter",
+                    Cards,
+                    &[
+                        (Meter, "tpl-electricity", None),
+                        (Meter, "tpl-water", None),
+                        (Meter, "tpl-gas", None),
+                    ],
+                ),
+                (
+                    "tpl-appliances",
+                    "home-washer",
+                    Cards,
+                    &[
+                        (Appliance, "tpl-washer", None),
+                        (Power, "tpl-heat-pump", None),
+                    ],
+                ),
+            ],
+        )],
+        HomeTemplate::Security => &[(
+            "tpl-page-security",
+            "home-shield",
+            &[
+                (
+                    "",
+                    "home-shield",
+                    Chips,
+                    &[
+                        (Binary, "tpl-front-door", Some("door")),
+                        (Binary, "tpl-motion", Some("motion")),
+                    ],
+                ),
+                (
+                    "tpl-alarm",
+                    "home-shield-check",
+                    Cards,
+                    &[(Alarm, "tpl-alarm", None)],
+                ),
+                (
+                    "tpl-access",
+                    "home-key",
+                    Cards,
+                    &[
+                        (Lock, "tpl-front-door", None),
+                        (Gate, "tpl-gate", None),
+                        (Gate, "tpl-garage", None),
+                    ],
+                ),
+                (
+                    "tpl-detectors",
+                    "home-smoke",
+                    Cards,
+                    &[
+                        (Binary, "tpl-smoke", Some("smoke")),
+                        (Binary, "tpl-leak", Some("leak")),
+                        (Binary, "tpl-window", Some("window")),
+                    ],
+                ),
+            ],
+        )],
+        HomeTemplate::Garden => &[(
+            "tpl-page-garden",
+            "home-tree",
+            &[
+                ("", "home-sun", Chips, &[(Weather, "tpl-weather", None)]),
+                (
+                    "tpl-watering",
+                    "home-sprinkler",
+                    Cards,
+                    &[
+                        (Irrigation, "tpl-zone-1", None),
+                        (Irrigation, "tpl-zone-2", None),
+                    ],
+                ),
+                (
+                    "tpl-pool",
+                    "home-pool",
+                    Cards,
+                    &[
+                        (ThermoHygro, "tpl-pool-water", None),
+                        (Appliance, "tpl-pool-pump", None),
+                        (Light, "tpl-pool-light", None),
+                    ],
+                ),
+            ],
+        )],
+    }
+}
+
+/// Mobile layout of a template; `label` translates the template keys.
+pub fn template_layout(t: HomeTemplate, label: impl Fn(&str) -> String) -> DashboardLayout {
+    let mut l = DashboardLayout {
+        format: DashboardFormat::Mobile,
+        ..Default::default()
+    };
+    let pages = template_pages(t);
+    let multi = pages.len() > 1;
+    let mut n = 0u32;
+    for (page_key, page_icon, sections) in pages {
+        let page_id = if multi {
+            let id = next_page_id(&l);
+            l.pages.push(MobilePage {
+                id: id.clone(),
+                title: label(page_key),
+                icon: Some((*page_icon).to_string()),
+            });
+            Some(id)
+        } else {
+            None
+        };
+        for (title_key, icon, style, cards) in sections.iter() {
+            let title = if title_key.is_empty() {
+                String::new()
+            } else {
+                label(title_key)
+            };
+            let sid = add_section_on(&mut l, &title, page_id.as_deref());
+            set_section_icon(&mut l, &sid, Some((*icon).to_string()));
+            set_section_style(&mut l, &sid, *style);
+            for (card, card_title, variant) in cards.iter() {
+                n += 1;
+                let id = next_id("w", n);
+                new_home_card(&mut l, id.clone(), *card, 0, 0);
+                place_in_section(&mut l, &id, Some(&sid));
+                set_span(&mut l, &id, card.default_span());
+                if let Some(w) = l.widgets.iter_mut().find(|w| w.id == id) {
+                    w.title = label(card_title);
+                    if let (Some(v), Some(h)) = (variant, w.options.home.as_mut()) {
+                        h.variant = Some((*v).to_string());
+                    }
+                }
+            }
+        }
+    }
+    l
+}
+
 /// Sections of `page` (`None` = first / implicit page), in order.
 pub fn sections_of_page<'a>(
     layout: &'a DashboardLayout,
@@ -871,5 +1131,17 @@ mod tests {
             .sections
             .iter()
             .all(|s| s.style != SectionStyle::Cards || s.page.is_none()));
+    }
+
+    #[test]
+    fn every_template_is_a_valid_layout() {
+        for t in HomeTemplate::ALL {
+            let l = template_layout(t, |k| k.to_string());
+            assert!(!l.widgets.is_empty(), "{t:?}");
+            let v = pnex_core::validate_layout(&l);
+            assert!(v.is_empty(), "{t:?}: {v:?}");
+        }
+        let home = template_layout(HomeTemplate::Home, |k| k.to_string());
+        assert_eq!(home.pages.len(), 2);
     }
 }
