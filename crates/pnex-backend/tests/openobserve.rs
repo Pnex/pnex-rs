@@ -494,6 +494,48 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                     }
                 }
             }),
+        )
+        // SQL search over a metrics stream: the per-device last sample time
+        // (`max(_timestamp)`, µs) that the catalog and the home latest
+        // measurements use. Auth counters are left untouched.
+        .route(
+            "/api/{org}/_search",
+            post({
+                let s = s.clone();
+                move |Path(org): Path<String>, body: String| {
+                    let s = s.clone();
+                    async move {
+                        let sql = serde_json::from_str::<serde_json::Value>(&body)
+                            .ok()
+                            .and_then(|v| v["query"]["sql"].as_str().map(str::to_string))
+                            .unwrap_or_default();
+                        let metric = sql
+                            .split("FROM \"")
+                            .nth(1)
+                            .and_then(|rest| rest.split('"').next())
+                            .unwrap_or_default()
+                            .to_string();
+                        let guard = s.lock().unwrap();
+                        let mut last: HashMap<String, i64> = HashMap::new();
+                        for (o2_org, _, m, labels, _, ts_ms) in &guard.ingested {
+                            if o2_org != &org || m != &metric {
+                                continue;
+                            }
+                            let Some((_, device)) = labels.iter().find(|(k, _)| k == "device_id")
+                            else {
+                                continue;
+                            };
+                            let e = last.entry(device.clone()).or_insert(0);
+                            *e = (*e).max(ts_ms * 1000);
+                        }
+                        let hits: Vec<serde_json::Value> = last
+                            .into_iter()
+                            .map(|(d, ts)| serde_json::json!({"device_id": d, "last_ts": ts}))
+                            .collect();
+                        axum::Json(serde_json::json!({"total": hits.len(), "hits": hits}))
+                    }
+                }
+            }),
         );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
