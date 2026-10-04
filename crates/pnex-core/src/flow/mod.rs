@@ -21,6 +21,7 @@
 //!
 //! - [`config`] — per-kind node configs + pin/reg extractors
 //! - [`graph`] — node kinds, wiring, graph root types
+//! - [`node_docs`] — assistant documentation of every node kind (D142)
 //! - [`node_types`] — Red / runtime node-type allowlists (security boundary)
 //! - [`payload`] — payload boundary helpers
 //! - [`validate`] — graph validation + per-kind contracts
@@ -31,6 +32,7 @@ mod config;
 mod dto;
 mod fence;
 mod graph;
+mod node_docs;
 mod node_types;
 mod payload;
 mod red_flows;
@@ -42,6 +44,7 @@ pub use config::*;
 pub use dto::*;
 pub use fence::*;
 pub use graph::*;
+pub use node_docs::*;
 pub use node_types::*;
 pub use payload::*;
 pub use red_flows::*;

@@ -210,7 +210,15 @@ fn Bubble(bubble: ChatBubble) -> Element {
                                                 {if entry.ok { "✓" } else { "✗" }}
                                             }
                                             span { class: "font-mono", {entry.name.clone()} }
-                                            span { class: "text-gray-500", {entry.summary.clone()} }
+                                            span { class: "text-gray-500",
+                                                {
+                                                    crate::api::error_i18n::localize_tool_summary(
+                                                        entry.code.as_deref(),
+                                                        entry.args.as_ref(),
+                                                        &entry.summary,
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }

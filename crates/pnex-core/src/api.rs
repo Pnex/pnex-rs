@@ -286,6 +286,13 @@ pub struct AiToolTrace {
     /// Flow touché — pilote le bouton « Ouvrir dans l'éditeur ».
     #[serde(default)]
     pub flow_id: Option<i64>,
+    /// Machine code of a coded refusal (`err_codes`), resolved by the UI
+    /// as `err-<code>`; `summary` stays the verbatim fallback.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    /// Interpolation data of `code`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub args: Option<serde_json::Value>,
 }
 
 /// `POST /api/v1/ai/chat` — réponse finale d'un tour (outils inclus).

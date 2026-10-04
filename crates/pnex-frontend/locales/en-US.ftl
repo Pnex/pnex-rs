@@ -2843,6 +2843,7 @@ err-control-key-taken = Another control of the organization already uses this ke
 err-control-value-invalid = Value refused by the control ({ $reason }).
 err-control-rate-limited = Too fast: wait a moment before sending another value.
 err-control-in-use = Deployed flows listen to this control ({ $flow }): stop them or remove the control from their nodes before deleting it.
+err-ai-flow-running = Refused by the assistant: deployed flows are involved ({ $flow }). Stop them in the flow editor, then ask again.
 err-control-unknown = Control { $control } does not exist (anymore) in the organization: pick another one in the node.
 err-control-store-unavailable = The control store (Valkey) is unavailable: the value was not sent.
 

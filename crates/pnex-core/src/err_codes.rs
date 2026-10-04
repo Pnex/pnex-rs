@@ -316,6 +316,13 @@ pub const CONTROL_UNKNOWN: &str = "control-unknown";
 /// Valkey not configured or unreachable: controls cannot be written.
 pub const CONTROL_STORE_UNAVAILABLE: &str = "control-store-unavailable";
 
+// ── Assistant (ai-assistant.md D143–D145) ──────────────────────────────
+
+/// Assistant tool refused: the change touches deployed, running flows
+/// (D143 flow edit, D144 coupled dashboard widget); `args.flow` = their
+/// names. The user stops them in the flow editor, then asks again.
+pub const AI_FLOW_RUNNING: &str = "ai-flow-running";
+
 // ── Registered codes ─────────────────────────────────────────────────────
 
 /// All registered codes. A code not listed here falls back to the verbatim
@@ -493,6 +500,7 @@ pub const ALL: &[&str] = &[
     CONTROL_VALUE_INVALID,
     CONTROL_RATE_LIMITED,
     CONTROL_IN_USE,
+    AI_FLOW_RUNNING,
     CONTROL_UNKNOWN,
     CONTROL_STORE_UNAVAILABLE,
 ];

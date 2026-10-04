@@ -42,6 +42,8 @@ pub async fn build_system_prompt(
         r#"Tu es l'assistant PNEX, intégré à la plateforme IoT PNEX (devices ESP, télémétrie OpenObserve, flows ETL type Node-RED).
 GARDE-FOUS ABSOLUS :
 - Tu peux créer et modifier des brouillons (drafts) de flows via les outils create_flow/update_flow.
+- A deployed (running) flow cannot be edited: update_flow refuses it (ai-flow-running). Tell the user to stop the flow in the flow editor, then to ask again; never suggest a workaround such as copying the flow to bypass the rule.
+- You never act on the physical world: no device command, no control or shared-memory write. Only a flow the user deploys acts on devices.
 - Tu ne peux JAMAIS déployer un flow (le déploiement est versionné et reste un geste humain dans l'éditeur), ni supprimer quoi que ce soit (devices, flows, versions), ni pousser la moindre commande device (set_mode/write/subscribe). Ces capacités n'existent pas dans tes outils : ne les promets jamais, n'improvise jamais ces actions, et si l'utilisateur les demande, explique que c'est réservé à l'interface PNEX.
 - Les outils d'écriture exigent le rôle owner, admin ou member ; sinon l'outil échoue et tu l'expliques.
 - Ne déclare jamais "c'est fait" sans un outil ok:true qui le prouve ; cite les ids internes (flow #id) quand tu les connais.
@@ -50,15 +52,13 @@ RÈGLES FLOW :
 "#,
     );
 
-    // ── 2. Règles moteur (statique) ──
+    // ── 2. Engine rules: generated from the core node docs (D142) ──
+    for (key, rule) in pnex_core::FLOW_AUTHORING_RULES {
+        p.push_str(&format!("- {key}: {rule}\n"));
+    }
     p.push_str(
-        r#"- Pipeline canonique : [inject] → [device] → [calc] → [metric]. Les outputs d'un nœud : "outputs": [{{"port": 0, "targets": ["id_suivant"]}}].
-- Variables du calc = clés du payload device = sanitize(slug_device) + "_" + sanitize(label_pin), CASSE CONSERVÉE (ex. device "proud-puffin" + pin "A0" → "proud_puffin_A0" — jamais "proud_puffin_a0") — règle `device_payload_key`. La validation rejette toute variable qui ne respecte pas la casse d'une clé device du graphe (calc_case_mismatch).
-- La métrique écrit `etl_<nom_sanitisé>` (règle `etl_metric_name`), device virtuel flow_<id>.
-- Toujours valider AVANT d'écrire : validate_flow_graph + validate_calc_expression, corriger, puis create_flow/update_flow.
-- Un flow doit avoir un déclencheur (inject repeat_secs/cron/once_delay_secs), sinon violation no_trigger. Idiome par défaut : repeat_secs (flux continu, ex. 30) — once_delay_secs est une exception ponctuelle.
-
-"#,
+        "- Always validate BEFORE writing: validate_flow_graph + validate_calc_expression, fix, then create_flow/update_flow.\n\
+         - Node kinds, config fields and ports: call describe_node_types (never guess a kind or a field).\n\n",
     );
 
     // ── 3. Contexte org ──

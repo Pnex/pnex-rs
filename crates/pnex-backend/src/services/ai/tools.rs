@@ -42,6 +42,25 @@ pub struct ToolOutcome {
     pub flow_id: Option<i64>,
 }
 
+/// Refusal of a tool. `message` is what the model reads; `code`/`args`
+/// let the UI render the refusal in the user's language (`err-<code>`).
+#[derive(Debug)]
+pub struct ToolError {
+    pub message: String,
+    pub code: Option<&'static str>,
+    pub args: Option<Value>,
+}
+
+impl From<String> for ToolError {
+    fn from(message: String) -> Self {
+        Self {
+            message,
+            code: None,
+            args: None,
+        }
+    }
+}
+
 /// Trace d'un outil, renvoyée au front (bulle repliable ✓/✗).
 #[derive(Clone, Debug)]
 pub struct ToolTrace {
@@ -52,6 +71,10 @@ pub struct ToolTrace {
     pub summary: String,
     /// Flow touché — pilote le bouton « Ouvrir dans l'éditeur ».
     pub flow_id: Option<i64>,
+    /// Machine code of a coded refusal (`ai-flow-running`…).
+    pub code: Option<&'static str>,
+    /// Interpolation data of `code`.
+    pub args: Option<Value>,
 }
 
 /// Les 10 outils du registre (liste figée, ordre du tableau de conception).
@@ -123,10 +146,12 @@ pub fn tool_specs() -> Vec<ToolSpec> {
         },
         ToolSpec {
             name: "describe_node_types",
-            description: "Documentation des types de nœuds de flow disponibles et du pipeline canonique — à consulter avant de créer/modifier un flow.",
+            description: "Documentation of every flow node kind (purpose, config fields, ports, pitfalls), the authoring rules and a valid example graph. Read it before creating or updating a flow; pass `kinds` to fetch only some kinds.",
             input_schema: json!({
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "kinds": {"type": "array", "items": {"type": "string"}, "description": "optional subset of node kinds, e.g. [\"device_read\", \"calc\"]"}
+                },
                 "required": []
             }),
         },
@@ -167,15 +192,16 @@ pub fn tool_specs() -> Vec<ToolSpec> {
         },
         ToolSpec {
             name: "update_flow",
-            description: "Enregistre une NOUVELLE VERSION brouillon d'un flow existant (append-only, jamais déployée). Utiliser get_flow pour obtenir la version courante ; en cas de 409, recharger avec get_flow.",
+            description: "Saves a NEW VERSION of an existing flow (append-only, never deployed). Only a stopped or never-deployed flow can be edited: a deployed flow is refused with ai-flow-running — ask the user to stop it in the flow editor first. Pass the latest_version_number read with get_flow as expected_version; on a version conflict, reload with get_flow and redo the change.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "flow_id": {"type": "integer", "description": "id interne du flow (list_flows)"},
+                    "expected_version": {"type": "integer", "description": "latest_version_number returned by get_flow"},
                     "graph": {"type": "object", "description": "graphe FlowGraph complet de la nouvelle version"},
                     "note": {"type": "string", "description": "note de version optionnelle"}
                 },
-                "required": ["flow_id", "graph"]
+                "required": ["flow_id", "expected_version", "graph"]
             }),
         },
     ]
@@ -206,22 +232,27 @@ fn arg_value<'a>(args: &'a Value, key: &str) -> Result<&'a Value, String> {
 /// Exécute un outil du registre. `match` **fermé** — tout autre nom est
 /// refusé. Les erreurs (String) sont rendues au modèle comme résultat
 /// d'outil en échec ; il se corrige et répond à l'utilisateur.
-pub async fn execute(deps: &ToolDeps<'_>, name: &str, args: &Value) -> Result<ToolOutcome, String> {
+pub async fn execute(
+    deps: &ToolDeps<'_>,
+    name: &str,
+    args: &Value,
+) -> Result<ToolOutcome, ToolError> {
     match name {
-        "list_devices" => list_devices(deps).await,
-        "get_device_pins" => get_device_pins(deps, args).await,
-        "list_flows" => list_flows(deps, args).await,
-        "get_flow" => get_flow(deps, args).await,
-        "query_telemetry" => query_telemetry(deps, args).await,
-        "list_notifications" => list_notifications(deps).await,
-        "describe_node_types" => describe_node_types(),
-        "validate_flow_graph" => validate_flow_graph(args),
-        "validate_calc_expression" => validate_calc_expression(args),
-        "create_flow" => create_flow(deps, args).await,
+        "list_devices" => list_devices(deps).await.map_err(Into::into),
+        "get_device_pins" => get_device_pins(deps, args).await.map_err(Into::into),
+        "list_flows" => list_flows(deps, args).await.map_err(Into::into),
+        "get_flow" => get_flow(deps, args).await.map_err(Into::into),
+        "query_telemetry" => query_telemetry(deps, args).await.map_err(Into::into),
+        "list_notifications" => list_notifications(deps).await.map_err(Into::into),
+        "describe_node_types" => describe_node_types(args).map_err(Into::into),
+        "validate_flow_graph" => validate_flow_graph(args).map_err(Into::into),
+        "validate_calc_expression" => validate_calc_expression(args).map_err(Into::into),
+        "create_flow" => create_flow(deps, args).await.map_err(Into::into),
         "update_flow" => update_flow(deps, args).await,
         _ => Err(format!(
             "outil inconnu: {name} — seuls les outils listés dans la conversation sont disponibles"
-        )),
+        )
+        .into()),
     }
 }
 
@@ -522,221 +553,54 @@ async fn list_notifications(deps: &ToolDeps<'_>) -> Result<ToolOutcome, String> 
     })
 }
 
-fn describe_node_types() -> Result<ToolOutcome, String> {
+/// Serializes the node documentation table of `pnex_core` (D142): the
+/// assistant's knowledge of node kinds has a single source, guarded there.
+/// `kinds` (optional) narrows the answer to save tokens.
+fn describe_node_types(args: &Value) -> Result<ToolOutcome, String> {
+    let wanted: Option<Vec<&str>> = args
+        .get("kinds")
+        .and_then(Value::as_array)
+        .map(|ks| ks.iter().filter_map(Value::as_str).collect());
+    let unknown: Vec<&str> = wanted
+        .iter()
+        .flatten()
+        .copied()
+        .filter(|k| pnex_core::node_doc(k).is_none())
+        .collect();
+    if !unknown.is_empty() {
+        return Err(format!(
+            "unknown node kind(s): {} — call describe_node_types without kinds for the full list",
+            unknown.join(", ")
+        ));
+    }
+    let nodes: Vec<Value> = pnex_core::NODE_DOCS
+        .iter()
+        .filter(|d| wanted.as_ref().is_none_or(|w| w.contains(&d.kind)))
+        .map(|d| {
+            let config: serde_json::Map<String, Value> = d
+                .config
+                .iter()
+                .map(|(field, meaning)| (field.to_string(), json!(meaning)))
+                .collect();
+            let mut node = json!({ "kind": d.kind, "summary": d.summary, "config": config });
+            if !d.notes.is_empty() {
+                node["notes"] = json!(d.notes);
+            }
+            node
+        })
+        .collect();
+    let rules: serde_json::Map<String, Value> = pnex_core::FLOW_AUTHORING_RULES
+        .iter()
+        .map(|(k, v)| (k.to_string(), json!(v)))
+        .collect();
+    let example: Value =
+        serde_json::from_str(pnex_core::FLOW_EXAMPLE).map_err(|e| format!("example: {e}"))?;
     Ok(ToolOutcome {
         value: json!({
-            "pipeline": "[inject] → [device] → [calc] → [metric]",
-            "payload_key_rule": "les variables du nœud calc sont les clés du payload produit par le nœud device : sanitize(device_slug) + \"_\" + sanitize(pin_label), CASSE CONSERVÉE (pnex_core::device_payload_key, ex. device \"proud-puffin\" + pin \"A0\" → \"proud_puffin_A0\" — pin \"a0\" serait rejeté : calc_case_mismatch)",
-            "metric_rule": "le nœud metric écrit la série etl_<nom_sanitisé> avec device_id=\"flow_<id>\" (pnex_core::etl_metric_name) ; un payload objet écrit une série etl_<nom>_<champ> par champ numérique",
-            "nodes": [
-                {
-                    "kind": "inject",
-                    "description": "Déclencheur — un flow doit toujours en avoir un (sinon violation no_trigger).",
-                    "config": {
-                        "repeat_secs": "nombre, secondes entre chaque injection (ex. 30 = toutes les 30 s) — IDIOME PAR DÉFAUT : un flow tourne en continu",
-                        "cron": "expression cron 5-6 champs (alternative à repeat_secs)",
-                        "once_delay_secs": "nombre, injection unique après ce délai (exception ponctuelle, éviter)",
-                        "topic": "chaîne optionnelle",
-                        "payload": "valeur JSON injectée (null = timestamp)"
-                    }
-                },
-                {
-                    "kind": "device_read",
-                    "description": "Lit les dernières valeurs des pins d'UN SEUL device (série O2, PromQL last_over_time). Sorties : un port par pin (payload {device_pin: valeur}) + un port final « tout » avec l'objet combiné clé→valeur (pour croiser plusieurs pins du même device dans un calc).",
-                    "config": {
-                        "device_id": "slug du device — un seul device par nœud (cohérence physique)",
-                        "pins": "[label de pin (ex. \"A0\", \"D1\")] — un port de sortie par pin, ordre = ordre des ports",
-                        "window_secs": "fenêtre de fraîcheur 1..=3600 (défaut 60) ; pas de donnée = payload {} (jamais de zéro inventé)"
-                    }
-                },
-                {
-                    "kind": "device_write",
-                    "description": "Écrit les pins output d'UN SEUL device (digital 1/0, pwm duty 0-100). Payload entrant = map {pin: valeur} : seules les pins configurées et présentes dans la map sont écrites ; sortie passthrough.",
-                    "config": {
-                        "device_id": "slug du device — un seul device par nœud",
-                        "pins": "[label de pin output (digital_out/pwm_out)] — ancres visuelles, une par pin"
-                    }
-                },
-                {
-                    "kind": "calc",
-                    "description": "Applique une expression arithmétique au payload (opérateurs, ternaire, ^, fonctions min/max/abs/round…). Valider avec validate_calc_expression.",
-                    "config": { "expression": "chaîne (variables = clés du payload device, casse exacte : le pin \"A0\" donne la variable …_A0, jamais …_a0)" }
-                },
-                {
-                    "kind": "value",
-                    "description": "Remplace le payload par une valeur fixe (mode static) ou un nombre aléatoire uniforme dans [min, max] (mode random). Transformateur : le déclencheur reste un nœud inject amont.",
-                    "config": {
-                        "mode": "\"static\" (défaut) | \"random\"",
-                        "value": "valeur JSON quelconque (mode static ; null = non renseigné → violation value_static_missing)",
-                        "min": "borne inférieure incluse (mode random, défaut 0)",
-                        "max": "borne supérieure incluse (mode random, défaut 10)"
-                    }
-                },
-                {
-                    "kind": "metric",
-                    "description": "Écrit le payload dans OpenObserve comme une métrique (série etl_<nom>, device virtuel flow_<id>).",
-                    "config": { "metric_name": "chaîne — le préfixe etl_ et la sanitisation sont automatiques" }
-                },
-                {
-                    "kind": "pnex_notify",
-                    "description": "Sends a message template to notification channels (in-app websocket, ntfy, webhook, Telegram, Slack, Discord, SMTP). Get the UUIDs with list_notifications. The node has named input rows: a MANDATORY boolean `trigger` row (the message is sent while it is true — e.g. a calc `x_A0 > 500`) and one row per template variable (the payload arriving on that row fills the variable). Wiring a row = the source node lists this node in its outputs[port].targets AND this node declares the row in its own `inputs`.",
-                    "config": {
-                        "channel_ids": "[channel UUID] — at least one, from list_notifications",
-                        "template_id": "template UUID, from list_notifications",
-                        "template_vars": "[variable name] — exactly the template's vars, one input row each",
-                        "strict": "bool (default false: a failed send is logged and the message passes through)",
-                        "anti_spam": "optional {max_msgs, window_secs} rate limit (e.g. {\"max_msgs\": 3, \"window_secs\": 600})"
-                    },
-                    "inputs": "[{\"pin\": \"trigger\", \"from\": \"<source node id>\", \"from_port\": <port>}, {\"pin\": \"<var name>\", \"from\": …, \"from_port\": …}] — the trigger row is required (a flow with an unwired trigger is refused)"
-                },
-                {
-                    "kind": "debug",
-                    "description": "Capture du message (panneau Debug de l'éditeur).",
-                    "config": { "active": "bool (défaut true)", "complete": "\"payload\" (défaut) ou \"true\" = message entier", "console": "bool" }
-                },
-                {
-                    "kind": "display",
-                    "description": "Sonde live sous le nœud dans l'éditeur (badge de valeur) — aucun champ de config saisi.",
-                    "config": {}
-                },
-                {
-                    "kind": "red",
-                    "description": "Raw Node-RED node (type_name + free config) for unmodelled builtins. Only pure transforms are allowed: change, switch, range, rbe, delay, trigger, json, csv, yaml, split, join, sort, batch, link in/out/call, catch, status, complete, comment, junction, inject, debug. Avoid unless needed.",
-                    "config": { "type_name": "type Node-RED natif", "config": "objet libre" }
-                },
-                {
-                    "kind": "http_fetch",
-                    "description": "Requête HTTP client configurable (type curl) : la réponse remplace msg.payload (JSON auto-parsé si content-type json, sinon texte) + msg.statusCode. Collecte web courante — pour les pages JS lourdes, voir la spec extension (C1b).",
-                    "config": {
-                        "url": "chaîne requise, http(s)://… (query inclus, pas de templating)",
-                        "method": "\"get\" (défaut) | \"post\"",
-                        "headers": "[{name, value}] optionnels",
-                        "auth": "{\"mode\": \"none\"} (défaut) | {\"mode\": \"basic\", username, password} | {\"mode\": \"bearer\", token} | {\"mode\": \"header\", name, value}",
-                        "proxy": "{\"mode\": \"none\"} (défaut) | {\"mode\": \"custom\", url, username?, password?} — providers de scraping : proxy + creds ou clé dans l'URL cible",
-                        "timeout_secs": "1..=300 (défaut 30)",
-        "body": "corps littéral (POST) ; absent = payload entrant (chaîne → brut, autre → JSON)",
-                        "on_error": "\"reject\" (défaut) | \"passthrough\" (payload null + statusCode + http_error)"
-                    }
-                },
-                {
-                    "kind": "camera_source",
-                    "description": "Event-driven source (no inject needed): one message per frame of a camera device. payload = {device_id, seq, ts_ms, width, height, size, frame_key} — a reference to the JPEG, never the bytes. Live view needs no flow.",
-                    "config": {
-                        "device_id": "camera device slug (required)",
-                        "max_fps": "sampling, 0 = every frame (default), max 25"
-                    }
-                },
-                {
-                    "kind": "video_record",
-                    "description": "Records camera-source frames into MJPEG-AVI segments stored by the server (fs or S3/RustFS), one buffer per camera; emits one message per stored segment. No video_record node = nothing is stored.",
-                    "config": {
-                        "segment_secs": "5..=3600 (default 60)",
-                        "max_segment_mb": "1..=256 (default 32)",
-                        "gap_secs": "flush after this many seconds without frames, 1..=600 (default 10)",
-                        "max_fps": "recording rate cap, 0 = every frame (default)",
-                        "retention_days": "0 = keep forever, default 7, max 3650",
-                        "stream": "logical stream name (default: camera slug)"
-                    }
-                },
-                {
-                    "kind": "vision_detect",
-                    "description": "Object detection with a registry model (ml_models, e.g. YOLOX COCO: person, car, dog…) on camera_source frames. payload = {device_id, ts_ms, count, labels, detections: [{label, score, bbox:[x,y,w,h]}], frame_key}. Emits only on detection by default.",
-                    "config": {
-                        "model_id": "ml_models.id (UUID, required)",
-                        "labels": "keep only these labels (empty = all)",
-                        "min_score": "0..1, overrides the model threshold when > 0",
-                        "emit": "\"on_detection\" (default) | \"always\"",
-                        "max_fps": "inference rate per camera, default 1, 0 = every frame"
-                    }
-                },
-                {
-                    "kind": "event_log",
-                    "description": "Stores msg.payload (any JSON) as an event in OpenObserve logs (stream ev_<name>), never in the database; passthrough. Events are searchable on the Events page.",
-                    "config": {
-                        "stream": "stream label (default \"events\" → ev_events)",
-                        "level": "\"debug\" | \"info\" (default) | \"warn\" | \"error\"",
-                        "message": "optional short text (≤ 500 chars)"
-                    }
-                },
-                {
-                    "kind": "memory_write",
-                    "description": "Stores msg.payload (any JSON, e.g. a cool_prop result object) in the org shared memory (Valkey) under a key, with a lifetime; passthrough. Any flow of the org can read it back (memory_read) and dashboards can display its numeric fields (source \"Memory\").",
-                    "config": {
-                        "key": "[A-Za-z0-9_.-]{1,64}, e.g. \"cycle.p1\" (required)",
-                        "ttl_secs": "lifetime in seconds, 1..=2592000, default 3600 (the value disappears if not rewritten)"
-                    }
-                },
-                {
-                    "kind": "memory_read",
-                    "description": "On each incoming message, reads keys of the org shared memory. Port 0 = object {key: value|null}; then one port per key (payload = value, topic = key; muted when missing or older than max_age_secs).",
-                    "config": {
-                        "keys": "list of keys (1..=32)",
-                        "max_age_secs": "freshness in seconds, 0 (default) = any age"
-                    }
-                },
-                {
-                    "kind": "control_source",
-                    "description": "Event source fed by org controls (switch, slider, button, number) operated from dashboards and annotations. One output port per listed control, in list order: payload = value (switch 1/0, slider 0..100 = PWM duty by default), topic = control key, msg.control = {id, key, by, via, ts_ms}. Wire it to device_write (one or several devices): a surface never writes a pin itself.",
-                    "config": {
-                        "controls": "list of org control ids (UUID, 1..=32, must exist in the org at deploy)",
-                        "emit_on_start": "bool, default false: resend each control's last value at engine start / redeploy"
-                    }
-                },
-                {
-                    "kind": "weather",
-                    "description": "Timed weather source (no input) for the coordinates, from an allowlisted provider. Port 0 = current conditions {temperature, feels_like, humidity, pressure, wind_speed (km/h), wind_gust, wind_direction, precipitation, cloud_cover, condition, condition_code, icon, is_day}; port 1 = 7-day forecast {days: [...], d0_t_min, d0_t_max, d0_precipitation, d0_condition_code, ... d6_*}; port 2 = 48-hour forecast {hours: [...], h0_temperature ... h23_*}. Wire to memory_write (live values for dashboards) and/or metric (object payload = one series per numeric field).",
-                    "config": {
-                        "provider": "\"met_norway\" (default, CC BY 4.0, commercial use allowed) | \"open_meteo\" (non-commercial use only)",
-                        "latitude": "-90..=90",
-                        "longitude": "-180..=180",
-                        "interval_min": "refresh in minutes, 10..=1440 (default 30)",
-                        "emit_on_start": "bool, default true: fetch at engine start / redeploy"
-                    }
-                },
-                {
-                    "kind": "anomaly",
-                    "description": "Flags unusual values of a numeric series without a fixed threshold (one series per msg.topic; payload = number, or object + key). History persists across redeploys. Port 0 = {value, anomaly, score, expected, lower, upper, warming_up, samples}; port 1 = boolean anomaly state (wire it to a pnex_notify trigger).",
-                    "config": {
-                        "method": "\"robust_z\" (default: median/MAD outlier) | \"forecast_band\" (outside the one-step ETS forecast band, follows trends/seasons) | \"changepoint\" (level/variance regime change, fires once per change)",
-                        "key": "object payload field (empty = the payload is the number)",
-                        "window": "history samples per series, 16..=5000 (default 200)",
-                        "min_samples": "warm-up before scoring, 8..=window (default 30)",
-                        "threshold": "robust_z only: |z| alarm level (default 3.5)",
-                        "level": "forecast_band only: interval level 0.5..0.999 (default 0.99)",
-                        "season_length": "forecast_band only: samples per cycle, 0 = none (warm-up ≥ 2 seasons)",
-                        "hazard": "changepoint only: expected samples between changes (default 250)"
-                    }
-                },
-                {
-                    "kind": "forecast",
-                    "description": "Forecasts a numeric series (one per msg.topic) and, with a threshold, predicts when it will be crossed — predictive maintenance (wear, fouling, slow drift). One step = the median sampling interval. Port 0 = {value, points:[{ts, mean, lower, upper}], breach, breach_in_secs, breach_at, earliest_breach_in_secs, step_secs}; port 1 = boolean breach (notify trigger); port 2 = seconds until the predicted breach.",
-                    "config": {
-                        "model": "\"ets\" (default: exponential smoothing, MSTL when season_length > 0) | \"linear\" (least-squares trend, best for slow wear)",
-                        "key": "object payload field (empty = the payload is the number)",
-                        "window": "history samples per series, 16..=5000 (default 500)",
-                        "min_samples": "warm-up, 8..=window (default 48)",
-                        "horizon": "steps ahead, 1..=1000 (default 300; one step = the median sampling interval)",
-                        "season_length": "ets only: samples per cycle, 0 = none",
-                        "level": "interval level 0.5..0.999 (default 0.95)",
-                        "threshold": "optional breach level (null = forecast only)",
-                        "direction": "\"above\" (default) | \"below\"",
-                        "every": "refit every N samples, 1..=1000 (default 1)"
-                    }
-                }
-            ],
-            "example": {
-                "description": "« lecture A0 sur device X → formule → écriture O2 toutes les 2 s »",
-                "note": "Les ids de nœuds sont des chaînes libres uniques ; outputs = [{port, targets: [ids des nœuds suivants]}].",
-                "graph": {
-                    "nodes": [
-                        {"id": "n1", "kind": "inject", "config": {"repeat_secs": 2}, "outputs": [{"port": 0, "targets": ["n2"]}]},
-                        {"id": "n2", "kind": "device", "config": {"reads": [{"device_id": "X", "pin": "A0"}]}, "outputs": [{"port": 0, "targets": ["n3"]}]},
-                        {"id": "n3", "kind": "calc", "config": {"expression": "x_A0 * 0.01"}, "outputs": [{"port": 0, "targets": ["n4"]}]},
-                        {"id": "n4", "kind": "metric", "config": {"metric_name": "x_volt"}, "outputs": [{"port": 0, "targets": []}]}
-                    ]
-                }
-            },
-            "device_payload_key_examples": ["soil_sensor_A0", "d1_mini_D1"]
+            "rules": rules,
+            "all_kinds": pnex_core::NODE_DOCS.iter().map(|d| d.kind).collect::<Vec<_>>(),
+            "nodes": nodes,
+            "example": example,
         }),
         flow_id: None,
     })
@@ -803,14 +667,16 @@ async fn create_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, S
     })
 }
 
-async fn update_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, String> {
+async fn update_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     if !deps.can_write {
         return Err(
             "réservé aux rôles owner/admin/member — l'assistant ne peut pas modifier de flow pour vous"
+                .to_string()
                 .into(),
         );
     }
     let flow_id = arg_i64(args, "flow_id")?;
+    let expected_version = arg_i64(args, "expected_version")?;
     let graph: pnex_core::FlowGraph = serde_json::from_value(arg_value(args, "graph")?.clone())
         .map_err(|e| format!("graphe illisible (FlowGraph attendu): {e}"))?;
     let note = args.get("note").and_then(Value::as_str).map(str::to_string);
@@ -821,23 +687,21 @@ async fn update_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, S
         .await
         .map_err(|e| format!("lecture flow: {e}"))?
     else {
-        return Err(format!("flow #{flow_id} inconnu dans cette organisation"));
+        return Err(format!("flow #{flow_id} inconnu dans cette organisation").into());
     };
-    // Concurrence optimiste : l'agent travaille sur la dernière version
-    // connue du serveur ; un éditeur humain entre-temps → 409 rendu au
-    // modèle (qui recharge avec get_flow).
-    let latest = flow_versions::Entity::find()
-        .filter(flow_versions::Column::FlowId.eq(row.id))
-        .order_by_desc(flow_versions::Column::VersionNumber)
-        .one(deps.db)
-        .await
-        .map_err(|e| format!("lecture version: {e}"))?
-        .map(|v| v.version_number)
-        .unwrap_or(0);
-    let (_, version, _) = flow::append_version(
+    // D143: a running flow is frozen for the assistant. Checked here, at
+    // execution time, from the stored status — never from the model's word.
+    // Stopping stays a human gesture (no stop tool exists).
+    if row.status == pnex_core::FLOW_STATUS_DEPLOYED {
+        return Err(flow_running_error(&[(row.id, row.name.clone())]));
+    }
+    // Optimistic concurrency: the model edits the version it read with
+    // get_flow; a human save in between → conflict rendered to the model,
+    // which reloads instead of overwriting the human's change.
+    flow::append_version(
         deps.db,
         &row,
-        latest,
+        expected_version,
         &graph,
         None,
         deps.author.clone(),
@@ -845,11 +709,31 @@ async fn update_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, S
         &ASSISTANT_WRITER,
     )
     .await
-    .map_err(flow_write_error_string)?;
-    Ok(ToolOutcome {
+    .map(|(_, version, _)| ToolOutcome {
         value: json!({ "flow_id": row.id, "version": version }),
         flow_id: Some(row.id),
     })
+    .map_err(|e| flow_write_error_string(e).into())
+}
+
+/// `ai-flow-running` refusal listing the deployed flows that block the
+/// change (D143, D144); `args.flow` = their names for the UI.
+fn flow_running_error(flows: &[(i64, String)]) -> ToolError {
+    let listed: Vec<String> = flows
+        .iter()
+        .map(|(id, name)| format!("#{id} « {name} »"))
+        .collect();
+    ToolError {
+        message: format!(
+            "{}: refused, deployed and running flow(s) {} — ask the user to stop them in the flow editor, then retry. You cannot stop, deploy or delete a flow.",
+            pnex_core::err_codes::AI_FLOW_RUNNING,
+            listed.join(", ")
+        ),
+        code: Some(pnex_core::err_codes::AI_FLOW_RUNNING),
+        args: Some(json!({
+            "flow": flows.iter().map(|(_, n)| n.as_str()).collect::<Vec<_>>().join(", "),
+        })),
+    }
 }
 
 /// Erreurs d'écriture → messages lisibles par le modèle (violations
@@ -951,7 +835,7 @@ mod tests {
             let err = execute(&deps, name, &serde_json::json!({}))
                 .await
                 .expect_err("outil interdit doit échouer");
-            assert!(err.contains("outil inconnu"), "{name} → {err}");
+            assert!(err.message.contains("outil inconnu"), "{name} → {err:?}");
         }
         // Un outil de lecture simple fonctionne sans rien d'autre.
         let out = execute(&deps, "describe_node_types", &serde_json::json!({}))
@@ -960,36 +844,28 @@ mod tests {
         assert!(out.value["nodes"].as_array().expect("nodes").len() >= 8);
     }
 
-    /// Le catalogue cité au modèle mentionne toutes les variantes de
-    /// `FlowNodeKind` (sinon l'agent inventerait des nœuds inexistants).
+    /// The catalogue is the core table: every documented kind is served,
+    /// and the `kinds` filter narrows it (the core guard checks the table
+    /// against `FlowNodeKind`).
     #[test]
-    fn catalogue_cite_toutes_les_variantes_de_flow_node_kind() {
-        let out = describe_node_types().expect("catalogue");
-        let text = serde_json::to_string(&out.value).expect("sérialisable");
-        for kind in [
-            "inject",
-            "device_read",
-            "device_write",
-            "calc",
-            "metric",
-            "debug",
-            "display",
-            "red",
-            "camera_source",
-            "video_record",
-            "vision_detect",
-            "event_log",
-            "memory_write",
-            "memory_read",
-            "control_source",
-            "weather",
-            "anomaly",
-            "forecast",
-        ] {
-            assert!(
-                text.contains(&format!("\"kind\": \"{kind}\"")) || text.contains(kind),
-                "variante {kind} absente du catalogue"
-            );
-        }
+    fn catalogue_serves_the_core_node_docs() {
+        let out = describe_node_types(&serde_json::json!({})).expect("catalogue");
+        let nodes = out.value["nodes"].as_array().expect("nodes");
+        assert_eq!(nodes.len(), pnex_core::NODE_DOCS.len());
+        assert!(out.value["example"]["nodes"].is_array());
+
+        let out = describe_node_types(&serde_json::json!({"kinds": ["calc", "reg_pid"]}))
+            .expect("subset");
+        let kinds: Vec<&str> = out.value["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .filter_map(|n| n["kind"].as_str())
+            .collect();
+        assert_eq!(kinds, vec!["calc", "reg_pid"]);
+
+        let err = describe_node_types(&serde_json::json!({"kinds": ["device"]}))
+            .expect_err("removed kind");
+        assert!(err.contains("unknown node kind"), "{err}");
     }
 }
