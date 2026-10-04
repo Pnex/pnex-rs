@@ -47,7 +47,6 @@ pub async fn create(params: CreateUiControl) -> Result<UiControl, ApiError> {
 }
 
 /// `PATCH /api/v1/controls/{id}`.
-#[allow(dead_code)] // Wired by the surfaces (dashboards, annotations).
 pub async fn update(id: Uuid, params: UpdateUiControl) -> Result<UiControl, ApiError> {
     client::request(
         reqwest::Method::PATCH,
@@ -59,7 +58,6 @@ pub async fn update(id: Uuid, params: UpdateUiControl) -> Result<UiControl, ApiE
 
 /// `DELETE /api/v1/controls/{id}` — 409 `control-in-use` while deployed
 /// flows listen to it.
-#[allow(dead_code)] // Wired by the controls page.
 pub async fn delete(id: Uuid) -> Result<(), ApiError> {
     client::request_opt::<serde_json::Value>(
         reqwest::Method::DELETE,
@@ -72,7 +70,6 @@ pub async fn delete(id: Uuid) -> Result<(), ApiError> {
 
 /// `POST /api/v1/controls/{id}/value` — operate a control from a surface
 /// (`via` = `dashboard:{id}`, `annotation:{id}`). Returns the stored value.
-#[allow(dead_code)] // Wired by the surfaces (dashboards, annotations).
 pub async fn write_value(
     id: Uuid,
     value: f64,
@@ -88,7 +85,6 @@ pub async fn write_value(
 
 /// `POST /api/v1/controls/values` — last commanded values (`None` = never
 /// written).
-#[allow(dead_code)] // Wired by the surfaces (dashboards, annotations).
 pub async fn values(ids: Vec<Uuid>) -> Result<BTreeMap<Uuid, Option<ControlValue>>, ApiError> {
     if ids.is_empty() {
         return Ok(BTreeMap::new());

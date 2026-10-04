@@ -21,7 +21,14 @@ use super::EditorCx;
 /// needs a shape, picked in the library panel).
 pub const SYMBOLS_KEY: &str = "symbol";
 
-const KIND_LABELS: [(&str, &str); 6] = [
+/// Palette key opening the guided "from a device" panel (parcours §1.2).
+pub const FROM_DEVICE_KEY: &str = "from_device";
+
+const KIND_LABELS: [(&str, &str); 10] = [
+    ("switch", "lib-kind-switch"),
+    ("slider", "lib-kind-slider"),
+    ("button", "lib-kind-button"),
+    ("number", "lib-kind-number"),
     ("gauge", "lib-kind-gauge"),
     ("stat", "lib-kind-stat"),
     ("line", "lib-kind-line"),
@@ -41,6 +48,10 @@ pub fn kind_label(kind: &str) -> String {
         "text" => t!("lib-kind-text").to_string(),
         "thermo_chart" => t!("lib-kind-thermo_chart").to_string(),
         "symbol" => t!("lib-kind-symbol").to_string(),
+        "switch" => t!("lib-kind-switch").to_string(),
+        "slider" => t!("lib-kind-slider").to_string(),
+        "button" => t!("lib-kind-button").to_string(),
+        "number" => t!("lib-kind-number").to_string(),
         other => other.to_string(),
     }
 }
@@ -55,6 +66,10 @@ pub fn kind_icon(kind: &str) -> (PaletteIcon, &'static str) {
         "text" => (PaletteIcon::Info, "bg-gray-100 text-gray-600"),
         "thermo_chart" => (PaletteIcon::Thermometer, "bg-amber-50 text-amber-600"),
         "symbol" => (PaletteIcon::Shapes, "bg-violet-50 text-violet-600"),
+        "switch" => (PaletteIcon::ToggleRight, "bg-teal-50 text-teal-600"),
+        "slider" => (PaletteIcon::SlidersHorizontal, "bg-teal-50 text-teal-600"),
+        "button" => (PaletteIcon::Pointer, "bg-teal-50 text-teal-600"),
+        "number" => (PaletteIcon::Hash, "bg-teal-50 text-teal-600"),
         _ => (PaletteIcon::Puzzle, "bg-gray-100 text-gray-600"),
     }
 }
@@ -65,9 +80,22 @@ pub fn palette_items() -> Vec<PaletteItem> {
         .iter()
         .map(|(kind, _)| {
             let (icon, tile) = kind_icon(kind);
-            PaletteItem::new((*kind).to_string(), kind_label(kind)).with_icon(icon, tile)
+            let item =
+                PaletteItem::new((*kind).to_string(), kind_label(kind)).with_icon(icon, tile);
+            // Control cards act through a flow (D128): say so in the palette.
+            if pnex_core::CONTROL_WIDGET_TYPES.contains(kind) {
+                item.with_description(t!("lib-control-desc").to_string())
+            } else {
+                item
+            }
         })
         .collect();
+    items.insert(
+        0,
+        PaletteItem::new(FROM_DEVICE_KEY, t!("db-from-device").to_string())
+            .with_description(t!("db-from-device-desc").to_string())
+            .with_icon(PaletteIcon::Cpu, "bg-teal-50 text-teal-700"),
+    );
     let (icon, tile) = kind_icon(SYMBOLS_KEY);
     items.push(
         PaletteItem::new(SYMBOLS_KEY, t!("sym-library").to_string())
@@ -86,9 +114,35 @@ pub fn add_new_widget(mut cx: EditorCx, kind: &str) {
     let id = state::next_id("w", cx.counter.cloned());
     let x = 80 + (cx.counter.cloned() % 8) as i64 * 24;
     let y = 80 + (cx.counter.cloned() % 8) as i64 * 24;
-    cx.layout
-        .with_mut(|l| state::new_widget(l, id.clone(), kind, x, y));
+    let section = cx.section.cloned();
+    cx.layout.with_mut(|l| {
+        state::new_widget(l, id.clone(), kind, x, y);
+        if l.format == pnex_core::DashboardFormat::Mobile {
+            state::place_in_section(l, &id, section.as_deref());
+            // Compact cards side by side, ESPHome style; charts take the row.
+            if matches!(kind, "switch" | "button" | "stat" | "indicator") {
+                state::set_span(l, &id, 1);
+            }
+        }
+    });
     cx.selected.set(Some(super::Selection::Widget(id)));
+}
+
+/// Adds a widget of `kind` like a palette pick, then lets `f` complete it
+/// (control, source…) in the same undo step. Returns the widget id.
+pub fn add_configured(
+    mut cx: EditorCx,
+    kind: &str,
+    f: impl FnOnce(&mut pnex_core::Widget),
+) -> String {
+    add_new_widget(cx, kind);
+    let id = state::next_id("w", cx.counter.cloned());
+    cx.layout.with_mut(|l| {
+        if let Some(w) = l.widgets.iter_mut().find(|w| w.id == id) {
+            f(w);
+        }
+    });
+    id
 }
 
 /// Adds a symbol widget of the catalog shape (library panel pick).
@@ -102,8 +156,14 @@ pub fn add_symbol(mut cx: EditorCx, shape: &str) {
     // 24 px cascade of the card widgets (which would stack them).
     let x = 80 + (n % 8) * 90;
     let y = 80 + (n / 8 % 6) * 90;
-    cx.layout
-        .with_mut(|l| state::new_symbol(l, id.clone(), shape, x, y));
+    let section = cx.section.cloned();
+    cx.layout.with_mut(|l| {
+        state::new_symbol(l, id.clone(), shape, x, y);
+        if l.format == pnex_core::DashboardFormat::Mobile {
+            state::place_in_section(l, &id, section.as_deref());
+            state::set_span(l, &id, 1);
+        }
+    });
     cx.selected.set(Some(super::Selection::Widget(id)));
 }
 

@@ -45,6 +45,14 @@ pub fn WidgetBody(
         .clone()
         .filter(|u| w.widget_type == "line" && !u.trim().is_empty());
 
+    // Control cards draw their own header (control label, "no effect"
+    // badge) and read the state source as the actual value (D125).
+    if pnex_core::CONTROL_WIDGET_TYPES.contains(&w.widget_type.as_str()) {
+        return rsx! {
+            crate::components::surface::ControlBody { widget: widget.clone(), state: last }
+        };
+    }
+
     // Symbols draw their own caption (under the drawing, not a card header).
     if w.widget_type == "symbol" {
         return rsx! {

@@ -864,6 +864,9 @@ pub struct VizDashboardSummary {
     pub name: String,
     pub description: Option<String>,
     pub current_version_number: i64,
+    /// Format of the current version (D123), shown as a list badge.
+    #[serde(default)]
+    pub format: DashboardFormat,
     pub created_at: String,
     pub updated_at: String,
 }

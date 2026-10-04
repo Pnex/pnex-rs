@@ -10,9 +10,10 @@
 
 use crate::pages::edge_refs::EdgeRefs;
 use crate::pages::{
-    self, AdminStatus, Annotations, AuthCallback, Cameras, Catalog, Dashboard, Dashboards, Devices,
-    Events, Firmware, Flows, FluidMixtures, Functions, Map, Media, Models, NotFound, Notifications,
-    Orgs, OrgsCurrent, Profile, Secrets, ShareTour, Showcase, Studio, System, Visualisation,
+    self, AdminStatus, Annotations, AuthCallback, Cameras, Catalog, Controls, Dashboard,
+    Dashboards, Devices, Events, Firmware, Flows, FluidMixtures, Functions, Map, Media, Models,
+    NotFound, Notifications, Orgs, OrgsCurrent, Profile, Secrets, ShareTour, Showcase, Studio,
+    System, Visualisation,
 };
 use dioxus::prelude::*;
 
@@ -63,6 +64,9 @@ pub enum Route {
 
         #[route("/annotations")]
         Annotations {},
+
+        #[route("/controls")]
+        Controls {},
 
         #[route("/devices")]
         Devices {},

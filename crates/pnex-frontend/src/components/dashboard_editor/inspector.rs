@@ -12,6 +12,7 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::{SourceRef, VIZ_WINDOW_PRESETS};
 
+use super::control_panel::ControlPanel;
 use super::symbol_options::SymbolOptionsPanel;
 use super::thermo_panel::ThermoPanel;
 use crate::components::icons;
@@ -142,6 +143,8 @@ fn widget_panel(
     let metric_in_catalog = source_metrics.contains(&primary.metric);
     // Metric select is inert without write access, a device or a catalog.
     let metric_locked = !can_write || primary.device_id.is_empty() || source_metrics.is_empty();
+    let is_control = pnex_core::CONTROL_WIDGET_TYPES.contains(&w.widget_type.as_str());
+    let is_mobile = cx.layout.read().format == pnex_core::DashboardFormat::Mobile;
     // Copie pour la closure du select source (piège FnMut/Fn captures :
     // `catalog` sert aussi au rendu, jamais de move partagé).
     let cat_for_source = catalog.clone();
@@ -169,6 +172,17 @@ fn widget_panel(
                         });
                 },
             }
+            if is_mobile {
+                SpanPicker { cx, widget: w.clone(), can_write }
+            }
+            if is_control {
+                ControlPanel {
+                    key: "{w.id}",
+                    cx,
+                    widget: w.clone(),
+                    can_write,
+                }
+            }
             if w.widget_type == "symbol" {
                 SymbolOptionsPanel { cx, widget: w.clone(), can_write }
             }
@@ -192,6 +206,7 @@ fn widget_panel(
             // A static symbol (no source) has no binding either.
             if w.widget_type != "text" && w.widget_type != "thermo_chart"
                 && !(w.widget_type == "symbol" && w.source.is_empty())
+                && !(is_control && w.source.is_empty())
             {
                 field_label { label_key: "source", label: t!("insp-source").to_string() }
                 select {
@@ -404,6 +419,8 @@ fn widget_panel(
 
             } else if w.widget_type == "symbol" && w.source.is_empty() {
 
+            } else if is_control {
+
             } else {
                 div { class: "grid grid-cols-2 gap-2",
                     div {
@@ -526,6 +543,44 @@ fn widget_panel(
                     icons::Trash { class: "h-4 w-4 mr-1" }
                     {t!("insp-delete")}
                 }
+            }
+        }
+    }
+}
+
+/// Mobile card width (D124): half or full row.
+#[component]
+fn SpanPicker(mut cx: EditorCx, widget: pnex_core::Widget, can_write: bool) -> Element {
+    let half = widget.options.span == Some(1);
+    let (id_half, id_full) = (widget.id.clone(), widget.id.clone());
+    let on = "flex-1 rounded px-2 py-1 text-xs font-medium bg-blue-600 text-white";
+    let off = "flex-1 rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100";
+    rsx! {
+        field_label { label_key: "span", label: t!("insp-span").to_string() }
+        div {
+            id: "insp-span",
+            class: "flex gap-1 rounded border border-gray-200 p-0.5",
+            button {
+                r#type: "button",
+                class: if half { on } else { off },
+                disabled: !can_write,
+                onclick: move |_| {
+                    let current = cx.layout.read().clone();
+                    cx.history.with_mut(|h| h.push(&current));
+                    cx.layout.with_mut(|l| state::set_span(l, &id_half, 1));
+                },
+                {t!("db-card-half")}
+            }
+            button {
+                r#type: "button",
+                class: if half { off } else { on },
+                disabled: !can_write,
+                onclick: move |_| {
+                    let current = cx.layout.read().clone();
+                    cx.history.with_mut(|h| h.push(&current));
+                    cx.layout.with_mut(|l| state::set_span(l, &id_full, 2));
+                },
+                {t!("db-card-full")}
             }
         }
     }

@@ -14,9 +14,12 @@
 
 mod actions;
 mod canvas;
+mod control_panel;
+mod device_panel;
 pub mod geometry;
 pub mod inspector;
 pub mod library;
+mod mobile;
 pub mod state;
 mod symbol_options;
 mod symbol_panel;
@@ -112,6 +115,12 @@ pub struct EditorCx {
     pub save_as: Signal<Option<String>>,
     /// Symbol library panel shown (tools slot).
     pub symbols_open: Signal<bool>,
+    /// Mobile: section receiving the palette additions (`None`: the last).
+    pub section: Signal<Option<String>>,
+    /// Mobile: card being dragged (HTML drag and drop).
+    pub drag_card: Signal<Option<String>>,
+    /// Guided "from a device" panel shown (tools slot).
+    pub devices_open: Signal<bool>,
 }
 
 #[component]
@@ -148,6 +157,9 @@ pub fn DashboardEditor(
     let palette_reload = use_signal(|| 0_u32);
     let save_as: Signal<Option<String>> = use_signal(|| None);
     let symbols_open = use_signal(|| false);
+    let section: Signal<Option<String>> = use_signal(|| None);
+    let drag_card: Signal<Option<String>> = use_signal(|| None);
+    let devices_open = use_signal(|| false);
     let mut versions_open = use_signal(|| false);
 
     let mut cx = EditorCx {
@@ -172,7 +184,22 @@ pub fn DashboardEditor(
         palette_reload,
         save_as,
         symbols_open,
+        section,
+        drag_card,
+        devices_open,
     };
+    let mobile_format = cx.layout.read().format == pnex_core::DashboardFormat::Mobile;
+
+    // Control cards show their control (label, kind, "no effect" badge) in
+    // the preview too; never operable from the editor.
+    let preview_tick = use_signal(|| 0u32);
+    let via = format!("dashboard:{}", cx.dashboard_id.peek());
+    crate::components::surface::use_surface_controls(
+        move || crate::components::surface::control_ids(&layout.read()),
+        preview_tick,
+        via,
+        false,
+    );
 
     // ── Photo des valeurs à l'entrée (D34) : un seul series-batch, pas
     // de polling en édition. Sources lues **non trackées** : la photo ne
@@ -268,6 +295,8 @@ pub fn DashboardEditor(
         memory: memory_catalog,
     };
 
+    let device_metrics = sources_catalog.by_source.clone();
+
     // ── Slot inspecteur : monté seulement sur sélection (principe 4).
     // Titre = titre du widget sinon libellé du type ; « Trait » pour un lien.
     let inspector_slot: Option<Element> = cx.selected.cloned().map(|sel| match sel {
@@ -362,7 +391,11 @@ pub fn DashboardEditor(
                 }
             },
             canvas: rsx! {
-                CanvasView { cx }
+                if mobile_format {
+                    mobile::MobileComposer { cx }
+                } else {
+                    CanvasView { cx }
+                }
             },
             palette: rsx! {
                 PalettePopover {
@@ -373,6 +406,8 @@ pub fn DashboardEditor(
                     on_pick: move |kind: String| {
                         if kind == library::SYMBOLS_KEY {
                             cx.symbols_open.set(true);
+                        } else if kind == library::FROM_DEVICE_KEY {
+                            cx.devices_open.set(true);
                         } else {
                             library::add_new_widget(cx, &kind);
                         }
@@ -383,9 +418,12 @@ pub fn DashboardEditor(
                 }
             },
             tools: rsx! {
-                ToolsPill { cx }
+                ToolsPill { cx, mobile: mobile_format }
                 if cx.symbols_open.cloned() {
                     SymbolPanel { cx }
+                }
+                if cx.devices_open.cloned() {
+                    device_panel::DevicePanel { cx, by_source: device_metrics }
                 }
             },
             inspector: inspector_slot,
@@ -413,7 +451,7 @@ pub fn DashboardEditor(
 /// des infobulles : la pill gagne la place que la barre pleine largeur
 /// occupait.
 #[component]
-fn ToolsPill(mut cx: EditorCx) -> Element {
+fn ToolsPill(mut cx: EditorCx, mobile: bool) -> Element {
     let select_title = t!("db-tool-select");
     let wire_title = t!("db-tool-wire");
     let undo_title = t!("db-undo");
@@ -422,6 +460,7 @@ fn ToolsPill(mut cx: EditorCx) -> Element {
     rsx! {
         div { class: "flex items-center gap-1 rounded-full border border-gray-200 bg-white p-1 shadow-lg",
             button {
+                hidden: mobile,
                 class: if cx.tool.cloned() == Tool::Select { "flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-white" } else { "flex h-8 w-8 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100" },
                 title: "{select_title}",
                 onclick: move |_| {
@@ -431,6 +470,7 @@ fn ToolsPill(mut cx: EditorCx) -> Element {
                 icons::MousePointer { class: "h-4 w-4" }
             }
             button {
+                hidden: mobile,
                 class: if cx.tool.cloned() == Tool::Wire { "flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-white" } else { "flex h-8 w-8 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100" },
                 title: "{wire_title}",
                 onclick: move |_| {

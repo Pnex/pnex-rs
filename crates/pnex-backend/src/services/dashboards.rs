@@ -145,6 +145,26 @@ pub async fn append_version(
             current: dashboard.current_version_number,
         });
     }
+    // D123: the format is chosen at creation and never changes (duplicate
+    // the dashboard to switch).
+    let current_format = dashboard_versions::Entity::find()
+        .filter(dashboard_versions::Column::DashboardId.eq(dashboard.id))
+        .filter(dashboard_versions::Column::VersionNumber.eq(dashboard.current_version_number))
+        .one(db)
+        .await
+        .map_err(|_| DashboardWriteError::Db)?
+        .and_then(|v| v.layout.get("format").cloned())
+        .and_then(|f| serde_json::from_value::<pnex_core::DashboardFormat>(f).ok())
+        .unwrap_or_default();
+    if current_format != layout.format {
+        return Err(DashboardWriteError::Violations(vec![
+            pnex_core::VizViolation::new(
+                None,
+                "format_immutable",
+                "the dashboard format is chosen at creation and never changes",
+            ),
+        ]));
+    }
     let txn = db.begin().await.map_err(|_| DashboardWriteError::Db)?;
     // The in-memory check above is only a fast path: a concurrent save or
     // restore (another pod) may have moved the pointer since the handler

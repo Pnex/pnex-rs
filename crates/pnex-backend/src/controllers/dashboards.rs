@@ -84,16 +84,50 @@ async fn layout_of(
         .and_then(|v| serde_json::from_value(v.layout).ok()))
 }
 
-fn summary_dto(d: dashboards::Model) -> VizDashboardSummary {
+fn summary_dto(d: dashboards::Model, format: pnex_core::DashboardFormat) -> VizDashboardSummary {
     VizDashboardSummary {
         id: d.id.to_string(),
         org_id: d.org_id,
         name: d.name,
         description: d.description,
         current_version_number: d.current_version_number,
+        format,
         created_at: d.created_at.to_rfc3339(),
         updated_at: d.updated_at.to_rfc3339(),
     }
+}
+
+/// Format of the current version of each listed dashboard (one query for
+/// the page; an unreadable layout falls back to desktop).
+async fn current_formats(
+    db: &DatabaseConnection,
+    rows: &[dashboards::Model],
+) -> Result<std::collections::HashMap<Uuid, pnex_core::DashboardFormat>> {
+    if rows.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let current: std::collections::HashMap<Uuid, i64> = rows
+        .iter()
+        .map(|d| (d.id, d.current_version_number))
+        .collect();
+    let versions = dashboard_versions::Entity::find()
+        .filter(dashboard_versions::Column::DashboardId.is_in(current.keys().copied()))
+        .all(db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    Ok(versions
+        .into_iter()
+        .filter(|v| current.get(&v.dashboard_id) == Some(&v.version_number))
+        .map(|v| {
+            let format = v
+                .layout
+                .get("format")
+                .cloned()
+                .and_then(|f| serde_json::from_value(f).ok())
+                .unwrap_or_default();
+            (v.dashboard_id, format)
+        })
+        .collect())
 }
 
 async fn detail_dto(db: &DatabaseConnection, d: dashboards::Model) -> Result<VizDashboard> {
@@ -190,7 +224,14 @@ async fn list(
     let (count, rows) = pagination::sql_page(&ctx.db, query, page)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    let results: Vec<VizDashboardSummary> = rows.into_iter().map(summary_dto).collect();
+    let formats = current_formats(&ctx.db, &rows).await?;
+    let results: Vec<VizDashboardSummary> = rows
+        .into_iter()
+        .map(|d| {
+            let format = formats.get(&d.id).copied().unwrap_or_default();
+            summary_dto(d, format)
+        })
+        .collect();
 
     let mut filters = Vec::new();
     if let Some(s) = q.search.as_deref().filter(|s| !s.is_empty()) {
