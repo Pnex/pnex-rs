@@ -43,6 +43,13 @@ pub struct ServerInfo {
     pub version: String,
     /// Version du contrat d'API servie par ce binaire.
     pub contract: u32,
+    /// Canonical public origin of the deployment (`https://pnex.local`),
+    /// when the server knows it. A native app that reached the server by IP
+    /// (LAN scan, typed address) switches to it: OIDC redirect URIs and the
+    /// certificate name are registered for this origin, not for the IP.
+    /// Absent on older servers — additive, no contract bump.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
 }
 
 /// Compatibilité app ↔ serveur : égalité stricte des contrats (pas de
@@ -62,10 +69,20 @@ mod tests {
             service: SERVICE.into(),
             version: "0.1.0 (dev)".into(),
             contract: CONTRACT,
+            origin: Some("https://pnex.local".into()),
         };
         let back: ServerInfo =
             serde_json::from_str(&serde_json::to_string(&info).unwrap()).expect("roundtrip");
         assert_eq!(back, info);
+    }
+
+    #[test]
+    fn server_info_without_origin_still_parses() {
+        // Body of a server that predates `origin`: same contract, no field.
+        let old = r#"{"service":"pnex-server","version":"0.1.0 (x)","contract":2}"#;
+        let info: ServerInfo = serde_json::from_str(old).expect("old body");
+        assert_eq!(info.origin, None);
+        assert!(!serde_json::to_string(&info).unwrap().contains("origin"));
     }
 
     #[test]

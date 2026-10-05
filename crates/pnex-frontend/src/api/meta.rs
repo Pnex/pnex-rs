@@ -4,6 +4,7 @@
 //! session, et le scan LAN émet des requêtes vers des hôtes inconnus — pas de
 //! token vers un inconnu, pas de refresh sur un serveur qui n'est pas le nôtre.
 
+use std::net::SocketAddr;
 use std::time::Duration;
 
 use futures::future::{select, Either};
@@ -46,6 +47,19 @@ pub async fn probe(
     timeout: Duration,
     base: &str,
 ) -> Result<ServerInfo, MetaError> {
+    probe_with_peer(client, timeout, base)
+        .await
+        .map(|(info, _)| info)
+}
+
+/// [`probe`], plus the socket address the request actually reached (native
+/// only; `None` on wasm, where the browser owns the connection). Used to
+/// check that an announced origin points at the machine that was probed.
+pub async fn probe_with_peer(
+    client: &reqwest::Client,
+    timeout: Duration,
+    base: &str,
+) -> Result<(ServerInfo, Option<SocketAddr>), MetaError> {
     let url = format!("{}{META_VERSION_PATH}", base.trim().trim_end_matches('/'));
     let request = Box::pin(async move {
         let response = client
@@ -58,16 +72,27 @@ pub async fn probe(
         if !status.is_success() {
             return Err(MetaError::Unreachable(format!("HTTP {status}")));
         }
+        let peer = remote_addr(&response);
         let info: ServerInfo = response.json().await.map_err(|_| MetaError::NotPnex)?;
         if info.service != SERVICE {
             return Err(MetaError::NotPnex);
         }
-        Ok(info)
+        Ok((info, peer))
     });
     match select(request, Box::pin(crate::util::sleep(timeout))).await {
         Either::Left((result, _)) => result,
         Either::Right(((), _)) => Err(MetaError::Unreachable("timeout".to_string())),
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn remote_addr(response: &reqwest::Response) -> Option<SocketAddr> {
+    response.remote_addr()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn remote_addr(_response: &reqwest::Response) -> Option<SocketAddr> {
+    None
 }
 
 /// Serveur courant (base résolue par le seam `api::config`) — consommé par la

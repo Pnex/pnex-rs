@@ -145,6 +145,64 @@ async fn offer_server_ca(base: &str, err: &reqwest::Error) -> SetupError {
     SetupError::AwaitingTrust
 }
 
+/// Base kept for `raw` (`ServerInfo::origin`): a server reached by IP
+/// literal (LAN scan, typed address) that announces its canonical origin is
+/// stored under that origin, since its OIDC redirect URIs and certificate
+/// name are issued for it, not for the IP. The origin is adopted only when
+/// it is an https domain name that answers as a PNEX server AT THAT SAME
+/// IP: a LAN host cannot send the app to another machine. Otherwise (older
+/// server, name not resolvable on this client, different machine) `raw`
+/// stays, as before. Identity reads only, no trust: the probes use the
+/// discovery client, TLS is settled afterwards by `probe_and_store`.
+#[cfg(not(target_arch = "wasm32"))]
+async fn canonical_base(raw: &str) -> String {
+    let base = raw.trim().trim_end_matches('/').to_string();
+    let Some(ip) = ip_literal_host(&base) else {
+        return base;
+    };
+    let timeout = std::time::Duration::from_secs(5);
+    let client = crate::api::tls::discovery_client();
+    let Ok(info) = crate::api::meta::probe(&client, timeout, &base).await else {
+        return base;
+    };
+    let Some(origin) = info.origin.as_deref().and_then(domain_origin) else {
+        return base;
+    };
+    match crate::api::meta::probe_with_peer(&client, timeout, &origin).await {
+        Ok((_, Some(peer))) if peer.ip() == ip => origin,
+        _ => base,
+    }
+}
+
+/// Host of `base` when it is an IP literal (`https://192.168.1.20`).
+#[cfg(not(target_arch = "wasm32"))]
+fn ip_literal_host(base: &str) -> Option<std::net::IpAddr> {
+    let url = reqwest::Url::parse(base).ok()?;
+    let host = url.host_str()?;
+    host.trim_start_matches('[')
+        .trim_end_matches(']')
+        .parse()
+        .ok()
+}
+
+/// `origin` normalised (`https://host[:port]`) when it is an https URL on a
+/// domain name — an IP origin brings nothing over the probed IP.
+#[cfg(not(target_arch = "wasm32"))]
+fn domain_origin(origin: &str) -> Option<String> {
+    let url = reqwest::Url::parse(origin.trim()).ok()?;
+    if url.scheme() != "https" {
+        return None;
+    }
+    let host = url.host_str()?;
+    if ip_literal_host(&format!("https://{host}")).is_some() {
+        return None;
+    }
+    Some(match url.port() {
+        Some(port) => format!("https://{host}:{port}"),
+        None => format!("https://{host}"),
+    })
+}
+
 /// Chemin unique « se connecter à ce serveur » : probe + persistance +
 /// porte de compatibilité (reset puis re-vérification) + bascule
 /// `SERVER_READY`. Emprunté par les trois points d'entrée : `ServerUrl`
@@ -154,7 +212,8 @@ async fn offer_server_ca(base: &str, err: &reqwest::Error) -> SetupError {
 /// jamais à un écran bloquant périmé (serveur précédent).
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) async fn apply_server(raw: &str) -> Result<(), SetupError> {
-    probe_and_store(raw).await?;
+    let base = canonical_base(raw).await;
+    probe_and_store(&base).await?;
     crate::state::compat::reset();
     // La vérification est DÉTACHÉE du scope appelant (`spawn_forever`, pas
     // `spawn` ni await direct) : dès `SERVER_READY=true`, App remplace le
@@ -366,5 +425,40 @@ pub fn ServerUrl() -> Element {
                 }
             }
         }
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::{domain_origin, ip_literal_host};
+
+    #[test]
+    fn only_ip_literal_bases_are_canonicalised() {
+        assert_eq!(
+            ip_literal_host("https://192.168.1.20"),
+            Some("192.168.1.20".parse().unwrap())
+        );
+        assert_eq!(
+            ip_literal_host("http://[fe80::1]:5150"),
+            Some("fe80::1".parse().unwrap())
+        );
+        assert_eq!(ip_literal_host("https://pnex.local"), None);
+        assert_eq!(ip_literal_host("not a url"), None);
+    }
+
+    #[test]
+    fn origin_must_be_an_https_domain() {
+        assert_eq!(
+            domain_origin("https://pnex.local/").as_deref(),
+            Some("https://pnex.local")
+        );
+        assert_eq!(
+            domain_origin("https://pnex.home:8443").as_deref(),
+            Some("https://pnex.home:8443")
+        );
+        // The dev issuer is an IP (Rauthy's own port): never adopted.
+        assert_eq!(domain_origin("https://192.168.1.185:8443"), None);
+        assert_eq!(domain_origin("http://pnex.local"), None);
+        assert_eq!(domain_origin(""), None);
     }
 }
