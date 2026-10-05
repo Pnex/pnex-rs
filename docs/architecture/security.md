@@ -430,6 +430,7 @@ natifs (non exploitable, R13 demande `serde_json`).
 | SEC-W4 | 4 | `version` non assainie dans `ota_artifact_key` (`pnex-firmware-builder/src/store.rs:104`) | inexploitable en backend `db` ; `sanitize_segment` (R18) |
 | SEC-W5 | — | `email_verified` non exigé au rattachement de compte (`auth/provisioning.rs:117`) | sûr tant que Rauthy garantit l'email ; à exiger avant tout IdP amont |
 | SEC-W6 | — | Firmware `setInsecure` sans `PNEX_CA_CERT_FILE` | refuser un build `wss` sans CA épinglée |
+| SEC-W7 | 5 | Le firmware imprime l'URL WebSocket complète sur le port série, jeton du device inclus (base64) (`firmware/lib/pnex/src/pnex.cpp:397`) ; idem l'URL OTA (`pnex_ota.cpp:105`) | accès USB requis, mais les logs série sont collés tels quels dans les forums et tickets (tutoriels) ; masquer le paramètre `token` à l'impression (R16). Relevé le 2026-10-05 |
 
 - **SEC-7** — `controllers/ota.rs` : `deploy` et `cancel` exigent
   `can_write` (`device-write-forbidden`).
