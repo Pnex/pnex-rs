@@ -168,7 +168,16 @@ ENV PATH=/opt/pio/bin:/usr/local/bin:/usr/bin:/bin \
     HOME=/home/pnex
 # Bake platforms + toolchains + frameworks for every supported SoC family.
 COPY deploy/docker/prewarm/ /tmp/prewarm/
+# SEC-15: once the prewarm has created pioarduino's penv, drop what only
+# installs packages and ships vulnerable code (pip vendors old urllib3,
+# msgpack, setuptools; penv resolves with uv) and lift penv's starlette past
+# pioarduino's `<1` pin (PIO Home only, never started in the worker).
 RUN pio run -d /tmp/prewarm \
+ && /opt/platformio/penv/bin/uv pip install --no-cache \
+      --python /opt/platformio/penv/bin/python --no-deps "starlette>=1.3.1" \
+ && /opt/platformio/penv/bin/python -m pip uninstall -y pip \
+ && /opt/pio/bin/python -m pip uninstall -y pip \
+ && apk del --no-cache py3.14-pip \
  && rm -rf /tmp/prewarm /opt/platformio/.cache \
  && find /opt/platformio/packages -type f \( -name '*.pem' -o -name '*.key' \) \
       -exec grep -l 'PRIVATE KEY-----' {} + | xargs -r rm -f \
