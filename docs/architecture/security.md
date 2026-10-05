@@ -215,6 +215,7 @@ sans impact exploitable démontré.
 | SEC-12 | LOW | **Sauvegarde Android (auto-backup, transfert) emportait le jeton de rafraîchissement** | R16 | corrigé |
 | SEC-13 | LOW | **Assistant : widget libre re-lié au contrôle d'un flow déployé** | D144 | corrigé |
 | SEC-14 | LOW | **URL d'un fournisseur LLM vers un hôte interne (SSRF aveugle)** | R8 | partiel — redirections coupées ; filtrage d'adresses avec SEC-W3 |
+| SEC-15 | LOW | **Image `pnex-builder-rs` : paquets Python vulnérables (7 HIGH, 0 CRITICAL)** | dépendances | ouvert — reporté à 0.1.0-beta.4 |
 
 \* SEC-4 seul exige le jeton de service ; c'est l'amplificateur qui rend
 SEC-1 / SEC-3 inter-org (actionneurs de n'importe quelle org).
@@ -229,6 +230,20 @@ n'était pas tenue au stockage. *Correctif* : `services/surface_controls.rs`
 ne lie qu'un contrôle de l'org ; un id inconnu est remplacé par la source
 propre du widget (`tests/controls.rs`,
 `surface_declared_controls_are_provisioned_and_released`).
+
+**SEC-15 — CVE Python de l'image builder (trouvé en route, 2026-10-05,
+release 0.1.0-beta.3).** `trivy image` sur `pnex-builder-rs:0.1.0-beta.2`
+(builder inchangé en beta.3) : 7 HIGH, 4 MEDIUM, 1 LOW, aucune CRITICAL,
+toutes Python — base wolfi propre. HIGH : `urllib3` 2.7.0 (→ 2.8.0, ×2),
+`starlette` 0.52.1 (→ 1.3.1, ×2), `msgpack` 1.1.2 (→ 1.2.1), `setuptools`
+70.3.0 (→ 78.1.1), `ecdsa` 0.19.2 (Minerva, sans correctif amont). Deux
+venvs en cause : `/opt/pio` (pip : platformio + esptool) et
+`/opt/platformio/penv` (venv interne créé par pio au pré-chauffage).
+*Exposition* : faible — le worker n'expose aucun service HTTP (starlette =
+PIO Home, jamais lancé), `ecdsa` ne signe rien côté serveur, le builder
+compile du code utilisateur dans un conteneur dédié. *Correctif prévu
+(beta.4)* : montée des paquets dans les deux venvs après le pré-chauffage
+(Dockerfile, étape `builder`) et scan trivy de l'image en CI.
 
 **SEC-1 — RCE par le nœud `red` (confiance 9).** `FlowNodeKind::Red`
 accepte tout `type_name` (`pnex-core/src/flow/graph.rs:271`) ;
