@@ -613,11 +613,15 @@ pub fn TourViewer(
                 }
             }
             if show_surface {
-                div { class: "w-64 shrink-0 space-y-2 overflow-y-auto",
+                // Keyed on the block root: dioxus drops a key on a non-root
+                // node, so the surface remounts when the item set changes.
+                div {
+                    key: "{surface_key}",
+                    class: "w-64 shrink-0 space-y-2 overflow-y-auto",
                     span { class: "text-xs font-semibold uppercase tracking-wide text-gray-500",
                         {t!("annot-surface-title")}
                     }
-                    crate::components::surface::annotation::AnnotationSurface { key: "{surface_key}", items: surface_items.clone() }
+                    crate::components::surface::annotation::AnnotationSurface { items: surface_items.clone() }
                 }
             }
         }

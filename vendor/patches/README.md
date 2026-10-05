@@ -91,6 +91,9 @@ d'un abort. Fichier : `wry/src/android/mod.rs` (chemin du protocole custom).
 
 Câblage : `wry = { path = "vendor/patches/wry" }` dans `[patch.crates-io]`.
 Le fix est intégré en amont ≥ 0.54 — à retirer quand dioxus monte wry.
+`src/lib.rs` porte un `#![allow(deprecated, unused_variables, …)]` : vendu
+par chemin, le crate affichait ses warnings amont (cappés pour un crate du
+registre). À retirer avec le patch.
 
 Second patch (2026-10-04) : feature `pnex-automation` (désactivée par
 défaut) dans `wry/src/webkitgtk/web_context.rs`. Le contexte WebKitGTK
