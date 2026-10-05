@@ -215,7 +215,7 @@ sans impact exploitable démontré.
 | SEC-12 | LOW | **Sauvegarde Android (auto-backup, transfert) emportait le jeton de rafraîchissement** | R16 | corrigé |
 | SEC-13 | LOW | **Assistant : widget libre re-lié au contrôle d'un flow déployé** | D144 | corrigé |
 | SEC-14 | LOW | **URL d'un fournisseur LLM vers un hôte interne (SSRF aveugle)** | R8 | partiel — redirections coupées ; filtrage d'adresses avec SEC-W3 |
-| SEC-15 | LOW | **Image `pnex-builder-rs` : paquets Python vulnérables (7 HIGH, 0 CRITICAL)** | dépendances | ouvert — reporté à 0.1.0-beta.4 |
+| SEC-15 | LOW | **Image `pnex-builder-rs` : paquets Python vulnérables (7 HIGH, 0 CRITICAL)** | dépendances | corrigé pour 0.1.0-beta.4 (11 sur 12) ; `ecdsa` accepté (pas de correctif amont) |
 
 \* SEC-4 seul exige le jeton de service ; c'est l'amplificateur qui rend
 SEC-1 / SEC-3 inter-org (actionneurs de n'importe quelle org).
@@ -241,9 +241,19 @@ venvs en cause : `/opt/pio` (pip : platformio + esptool) et
 `/opt/platformio/penv` (venv interne créé par pio au pré-chauffage).
 *Exposition* : faible — le worker n'expose aucun service HTTP (starlette =
 PIO Home, jamais lancé), `ecdsa` ne signe rien côté serveur, le builder
-compile du code utilisateur dans un conteneur dédié. *Correctif prévu
-(beta.4)* : montée des paquets dans les deux venvs après le pré-chauffage
-(Dockerfile, étape `builder`) et scan trivy de l'image en CI.
+compile du code utilisateur dans un conteneur dédié. *Correctif
+(beta.4, Dockerfile étape `builder`)* : msgpack, setuptools et urllib3 2.7.0
+étaient les copies embarquées par **pip** (`pip/_vendor`, même pip 26.2.1)
+dans les trois Python de l'image → pip retiré après le pré-chauffage (venv
+`/opt/pio`, `penv`, paquet apk `py3.14-pip`) ; `penv` installe avec `uv`,
+pio ne le réinstalle pas. `starlette` de `penv` forcé ≥ 1.3.1 malgré
+l'épinglage `<1` de pioarduino (PIO Home seul l'importe, jamais lancé). Les
+5 builds de pré-chauffage repassent ; trivy : 12 → 1. *Accepté* : `ecdsa`
+0.19.2 (CVE-2024-23342, attaque temporelle Minerva sur la signature), exigé
+par la plateforme pioarduino (`python_deps`), sans correctif amont ; le
+builder ne signe rien avec. *Constat annexe* : le pré-chauffage ne couvre pas
+tout — l'ESP8266 (`tool-esptoolpy ~1.30000`) et l'ESP32 (toolchain xtensa,
+esptool) retéléchargent des outils à chaque build (déjà vrai en beta.2).
 
 **SEC-1 — RCE par le nœud `red` (confiance 9).** `FlowNodeKind::Red`
 accepte tout `type_name` (`pnex-core/src/flow/graph.rs:271`) ;
