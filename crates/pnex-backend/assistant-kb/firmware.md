@@ -22,6 +22,7 @@ The Custom firmware page (Edges menu) is a C++ editor in the browser: you write 
 
 - Call the PneX loop on every iteration and never block in long delays, or the server marks the device offline and outputs fall back to their safe state.
 - WiFi, device token and encryption key never appear in your code: they are injected at build time.
+- Metrics published with `addMetric` / `publish` show up in Quick charts, and in a flow through the **Device (read)** node: pick the device and check the metric, listed as "(metric)" after the board pins (it appears once the device has published).
 - Libraries outside the catalog are refused. Absolute or ".." includes, embedded files and sketches over 256 KiB are refused too.
 - Only generic models accept a custom firmware; predefined boards keep their PneX firmware.
 - A project cannot be deleted while devices use it.
