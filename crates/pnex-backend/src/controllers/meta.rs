@@ -14,11 +14,31 @@ use pnex_api_contract::{ServerInfo, CONTRACT, SERVICE};
 use crate::app;
 
 #[debug_handler]
-async fn version() -> Result<Response> {
+async fn version(State(ctx): State<AppContext>) -> Result<Response> {
+    let issuer = crate::auth::settings::RauthySettings::from_config(&ctx.config)
+        .ok()
+        .and_then(|s| s.issuer_url);
     format::json(ServerInfo {
         service: SERVICE.to_string(),
         version: app::app_version(),
         contract: CONTRACT,
+        origin: public_origin(issuer.as_deref()),
+    })
+}
+
+/// Canonical origin announced to native apps: the browser-facing issuer
+/// base (`RAUTHY_ISSUER_URL`, `https://<public host>` behind the edge),
+/// reduced to `scheme://host[:port]`. HTTPS only — it is what OIDC redirect
+/// URIs and the certificate are issued for. Already public (OIDC discovery).
+fn public_origin(issuer_url: Option<&str>) -> Option<String> {
+    let url = reqwest::Url::parse(issuer_url?.trim()).ok()?;
+    if url.scheme() != "https" {
+        return None;
+    }
+    let host = url.host_str()?;
+    Some(match url.port() {
+        Some(port) => format!("https://{host}:{port}"),
+        None => format!("https://{host}"),
     })
 }
 
@@ -64,4 +84,32 @@ pub fn routes() -> Routes {
         .prefix("/api/v1/meta")
         .add("/version", get(version))
         .add("/ca", get(ca))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::public_origin;
+
+    #[test]
+    fn public_origin_keeps_scheme_host_and_port_only() {
+        assert_eq!(
+            public_origin(Some("https://pnex.local")).as_deref(),
+            Some("https://pnex.local")
+        );
+        assert_eq!(
+            public_origin(Some("https://pnex.local/")).as_deref(),
+            Some("https://pnex.local")
+        );
+        assert_eq!(
+            public_origin(Some("https://192.168.1.185:8443")).as_deref(),
+            Some("https://192.168.1.185:8443")
+        );
+    }
+
+    #[test]
+    fn public_origin_is_https_only() {
+        assert_eq!(public_origin(None), None);
+        assert_eq!(public_origin(Some("http://localhost:8080")), None);
+        assert_eq!(public_origin(Some("not a url")), None);
+    }
 }
