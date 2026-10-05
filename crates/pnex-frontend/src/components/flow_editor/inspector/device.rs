@@ -99,6 +99,57 @@ pub(super) fn patch_selected_notify_and_rewire(
     });
 }
 
+/// Checks or unchecks one read source (pin label or metric name) of the
+/// selected device-read node; ports stay in natural order.
+fn toggle_read_source(cx: &mut EditorCx, label: String, checked: bool) {
+    patch_selected_and_prune(cx, move |node| {
+        if let FlowNodeKind::DeviceRead { config } = &mut node.kind {
+            if checked && !config.pins.contains(&label) {
+                config.pins.push(label.clone());
+            } else if !checked {
+                config.pins.retain(|p| p != &label);
+            }
+            config.pins = geometry::sorted_pins(&config.pins);
+        }
+    });
+}
+
+/// Metrics a device publishes that are not pins of its board (custom
+/// firmware `addMetric`, e.g. `temperature`), with their checked state.
+/// Checked entries missing from the catalog (no sample in 24 h) stay listed
+/// so they can be unchecked — once the pinout is loaded, so a checked pin is
+/// never shown as a metric meanwhile.
+fn metric_rows_of(
+    series: &[pnex_core::TelemetrySeriesInfo],
+    device_slug: &str,
+    pins: &[api::pins::PinoutPin],
+    selected: &[String],
+) -> Vec<(String, bool)> {
+    let is_pin = |name: &str| {
+        pins.iter()
+            .any(|p| p.label.trim().eq_ignore_ascii_case(name.trim()))
+    };
+    let mut rows: Vec<String> = series
+        .iter()
+        .filter(|s| s.device_id == device_slug && !is_pin(&s.metric))
+        .map(|s| s.metric.clone())
+        .chain(
+            selected
+                .iter()
+                .filter(|p| !pins.is_empty() && !is_pin(p))
+                .cloned(),
+        )
+        .collect();
+    rows.sort();
+    rows.dedup();
+    rows.into_iter()
+        .map(|m| {
+            let checked = selected.contains(&m);
+            (m, checked)
+        })
+        .collect()
+}
+
 /// Charge le pinout du device référencé par le nœud courant (cache + effet
 /// graphe-dépendant, école DeviceForm historique). Retourne le pk du device.
 fn device_pk_of(devices: &Resource<Vec<pnex_core::Device>>, slug: &str) -> Option<i64> {
@@ -154,8 +205,23 @@ pub(super) fn DeviceReadForm(
         }
     });
 
+    // Telemetry catalog: the metrics a custom firmware publishes are read by
+    // name like a pin (same live cache / OpenObserve series).
+    let catalog = use_resource(move || async move {
+        api::telemetry::catalog()
+            .await
+            .map(|c| c.series)
+            .unwrap_or_default()
+    });
+
     let mut window = use_signal(move || v_to_string(initial.window_secs));
     let device_slug = initial.device_id.clone();
+    let metric_rows = metric_rows_of(
+        &catalog.value().read().clone().unwrap_or_default(),
+        &device_slug,
+        &all_pins_of(&devices, &pins_cache, &device_slug),
+        &initial.pins,
+    );
     // Pas de `let` dans rsx : (pin, déjà cochée, pin de sortie) précalculés.
     // Une pin de sortie (digital_out/pwm_out) n'est pas une entrée de
     // lecture : checkbox **désactivée** (grisée) — sauf si déjà cochée
@@ -214,21 +280,7 @@ pub(super) fn DeviceReadForm(
                             disabled: !can_write || (is_output_pin && !checked),
                             checked,
                             onchange: move |event| {
-                                let label = pin.label.clone();
-                                let checked = event.checked();
-                                patch_selected_and_prune(
-                                    &mut cx,
-                                    move |node| {
-                                        if let FlowNodeKind::DeviceRead { config } = &mut node.kind {
-                                            if checked && !config.pins.contains(&label) {
-                                                config.pins.push(label.clone());
-                                            } else if !checked {
-                                                config.pins.retain(|p| p != &label);
-                                            }
-                                            config.pins = geometry::sorted_pins(&config.pins);
-                                        }
-                                    },
-                                );
+                                toggle_read_source(&mut cx, pin.label.clone(), event.checked());
                             },
                         }
                         span { class: "font-mono text-xs",
@@ -244,6 +296,23 @@ pub(super) fn DeviceReadForm(
                                     format!("{} ({})", pin.label, pin.mode.as_deref().unwrap_or("?"))
                                 }
                             }
+                        }
+                    }
+                }
+                for (metric, checked) in metric_rows.clone() {
+                    label {
+                        key: "metric-{metric}",
+                        class: "flex items-center gap-2 text-sm",
+                        input {
+                            r#type: "checkbox",
+                            disabled: !can_write,
+                            checked,
+                            onchange: move |event| {
+                                toggle_read_source(&mut cx, metric.clone(), event.checked());
+                            },
+                        }
+                        span { class: "font-mono text-xs",
+                            {format!("{} ({})", metric, t!("flows-device-metric"))}
                         }
                     }
                 }
@@ -433,5 +502,73 @@ pub(super) fn DeviceWriteForm(
             }
             p { class: "text-xs text-gray-400 font-mono", {t!("flows-device-write-payload")} }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pin(label: &str) -> api::pins::PinoutPin {
+        api::pins::PinoutPin {
+            gpio: Some(0),
+            label: label.into(),
+            mode: Some("analog_in".into()),
+            source: "instance".into(),
+            subscribed_ms: None,
+            pos: None,
+            kind: None,
+            fns: Vec::new(),
+            flags: Vec::new(),
+            available_modes: Vec::new(),
+            warnings: Vec::new(),
+            reserved: false,
+            last_value: None,
+            reserved_by: Vec::new(),
+        }
+    }
+
+    fn series(device: &str, metric: &str) -> pnex_core::TelemetrySeriesInfo {
+        pnex_core::TelemetrySeriesInfo {
+            metric: metric.into(),
+            device_id: device.into(),
+            pred_dev: None,
+            last_value: 1.0,
+            last_seen: None,
+        }
+    }
+
+    #[test]
+    fn custom_metrics_are_offered_but_pins_are_not_duplicated() {
+        let catalog = [
+            series("climate-1", "temperature"),
+            series("climate-1", "humidity"),
+            series("climate-1", "a0"),
+            series("other", "pressure"),
+        ];
+        let rows = metric_rows_of(
+            &catalog,
+            "climate-1",
+            &[pin("A0")],
+            &["temperature".to_string()],
+        );
+        assert_eq!(
+            rows,
+            vec![
+                ("humidity".to_string(), false),
+                ("temperature".to_string(), true)
+            ]
+        );
+    }
+
+    #[test]
+    fn checked_metric_without_recent_sample_stays_uncheckable() {
+        let rows = metric_rows_of(&[], "climate-1", &[pin("A0")], &["humidity".to_string()]);
+        assert_eq!(rows, vec![("humidity".to_string(), true)]);
+    }
+
+    #[test]
+    fn checked_pin_is_not_shown_as_metric_before_the_pinout_loads() {
+        assert!(metric_rows_of(&[], "climate-1", &[], &["A0".to_string()]).is_empty());
     }
 }

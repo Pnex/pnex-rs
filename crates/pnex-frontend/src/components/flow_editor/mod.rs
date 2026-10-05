@@ -236,6 +236,29 @@ pub fn FlowEditor(
                     pinouts.insert(slug, result);
                 }
             }
+            // ── 2b. Metrics published by the devices (custom firmware
+            // `addMetric`): a device-read entry that is not a pin is valid
+            // when the device publishes a series of that name. ──
+            let needs_catalog = reads.iter().any(|(_, slug, pin, is_write)| {
+                !is_write
+                    && matches!(
+                        pinouts.get(slug),
+                        Some(Ok(p)) if !p.pins.iter().any(|x| &x.label == pin)
+                    )
+            });
+            let published: std::collections::HashSet<(String, String)> = if needs_catalog {
+                api::telemetry::catalog()
+                    .await
+                    .map(|c| {
+                        c.series
+                            .into_iter()
+                            .map(|s| (s.device_id, s.metric.to_ascii_lowercase()))
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            } else {
+                Default::default()
+            };
             // ── 3. Une violation par read, dédupliquée (nœud, code, message) ──
             let mut found: Vec<FlowViolation> = Vec::new();
             let mut seen = std::collections::HashSet::new();
@@ -290,6 +313,11 @@ pub fn FlowEditor(
                                 );
                             }
                             match pinout.pins.iter().find(|p| p.label == pin_label) {
+                                None if !is_write
+                                    && published.contains(&(
+                                        device_slug.clone(),
+                                        pin_label.to_ascii_lowercase(),
+                                    )) => {}
                                 None => push(
                                     &mut found,
                                     &mut seen,

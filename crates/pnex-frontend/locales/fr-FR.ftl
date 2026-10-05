@@ -600,7 +600,8 @@ flows-device-device-none = Choisir un appareil…
 flows-device-pin-none = Choisir un pin…
 flows-device-pin-overlay = défaut carte
 flows-device-window = Fenêtre de fraîcheur (s)
-flows-device-read-help = Un seul appareil par nœud. Cochez les pins à lire — chaque pin cochée ajoute un port de sortie au nœud, plus un port « tout » avec l'objet complet.
+flows-device-read-help = Un seul appareil par nœud. Cochez les pins à lire, ou les métriques publiées par un firmware custom — chaque entrée cochée ajoute un port de sortie au nœud, plus un port « tout » avec l'objet complet.
+flows-device-metric = métrique
 flows-device-read-pin-none = Pins à lire :
 flows-device-write-help = Un seul appareil par nœud. Cochez les sorties à piloter (digital_out ou pwm_out) — le message entrant porte une map « pin → valeur ».
 flows-device-write-payload = Payload attendu : une map pin → valeur (ex. relais_1 = 1, chauffage = 75).

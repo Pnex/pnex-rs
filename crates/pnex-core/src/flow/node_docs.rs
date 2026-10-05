@@ -82,7 +82,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         summary: "Reads the latest values of the pins of ONE device (live cache, then OpenObserve).",
         config: &[
             ("device_id", "device slug — one device per node"),
-            ("pins", "[pin label, e.g. \"A0\"] — one output port per pin, in this order"),
+            ("pins", "[pin label, e.g. \"A0\", or a metric a custom firmware publishes, e.g. \"temperature\"] — one output port per entry, in this order"),
             ("window_secs", "freshness window 1..=3600 (default 60); no data = payload {} (never an invented zero)"),
         ],
         notes: "Ports: one per pin (payload {key: value}), then a last \"all\" port with every pin in one object (to combine pins of the same device in a calc). No telemetry at all usually means no pin is subscribed on the device (Pins page).",

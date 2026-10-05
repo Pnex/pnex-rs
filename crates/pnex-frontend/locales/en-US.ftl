@@ -600,7 +600,8 @@ flows-device-device-none = Pick a device…
 flows-device-pin-none = None
 flows-device-pin-overlay = board default
 flows-device-window = Freshness window (s)
-flows-device-read-help = One device per node. Check the pins to read — each checked pin adds an output port, plus an « all » port with the full object.
+flows-device-read-help = One device per node. Check the pins to read, or the metrics a custom firmware publishes — each checked entry adds an output port, plus an « all » port with the full object.
+flows-device-metric = metric
 flows-device-read-pin-none = Pins to read:
 flows-device-write-help = One device per node. Check the outputs to drive (digital_out or pwm_out) — the incoming message carries a « pin → value » map.
 flows-device-write-payload = Expected payload: a pin → value map (e.g. relay_1 = 1, heater = 75).
