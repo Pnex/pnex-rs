@@ -341,6 +341,11 @@
 #![allow(clippy::new_without_default)]
 #![allow(clippy::default_constructed_unit_structs)]
 #![allow(clippy::type_complexity)]
+// PNEX vendored copy: upstream warnings (deprecated webkit2gtk calls,
+// unused bindings on Android, elided lifetimes on Windows) are capped for a
+// registry crate but shown for a path dependency. Silence them as cargo
+// would; our patches stay small and are reviewed separately.
+#![allow(deprecated, unused_variables, unknown_lints, mismatched_lifetime_syntaxes)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 // #[cfg(any(target_os = "macos", target_os = "ios"))]

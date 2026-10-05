@@ -90,8 +90,10 @@ fn ensure_vendored(vendor: &Path) {
         std::fs::remove_dir_all(vendor)
             .expect("failed to remove incomplete vendor/CoolProp directory");
     }
-    println!(
-        "cargo:warning=cloning CoolProp {COOLPROP_TAG} into {} (one-time, ~2 min)",
+    // Progress notes go to the build-script log (`cargo -vv`), not to
+    // `cargo:warning`: they are expected steps, not something to act on.
+    eprintln!(
+        "cloning CoolProp {COOLPROP_TAG} into {} (one-time, ~2 min)",
         vendor.display()
     );
     let status = Command::new("git")
@@ -144,7 +146,7 @@ fn apply_patches(patch: &Path, vendor: &Path) {
                 .status()
                 .expect("failed to spawn `git` for patch apply");
             assert!(status.success(), "git apply of {} failed", patch.display());
-            println!("cargo:warning=applied exception-guard patch to vendored CoolProp");
+            eprintln!("applied exception-guard patch to vendored CoolProp");
         }
         return;
     }
@@ -157,7 +159,7 @@ fn apply_patches(patch: &Path, vendor: &Path) {
         .status()
         .expect("failed to spawn `patch` to apply the exception-guard patch");
     assert!(status.success(), "patch -p1 of {} failed", patch.display());
-    println!("cargo:warning=applied exception-guard patch to vendored CoolProp (patch(1))");
+    eprintln!("applied exception-guard patch to vendored CoolProp (patch(1))");
 }
 
 /// Processeur cmake de la cible si l'on cross-compile Linux
