@@ -1,6 +1,6 @@
 # PRD — Firmware custom : IDE intégré, source versionnée en base (D87–D94)
 
-**Statut :** Livré, désactivé par défaut — L1, L3, L4, L5 livrés ; L2 partiel (sandbox bwrap optionnelle) ; offline et nœud flow des commandes restent (2026-10-01, cf. §14)
+**Statut :** Livré, désactivé par défaut — L1, L3, L4, L5 livrés ; L2 partiel (sandbox bwrap optionnelle) ; offline livré le 2026-10-05 (§8) ; nœud flow des commandes reste (cf. §14)
 **Portée :** firmware ESP (lib PneX), build serveur, front (éditeur), protocole device
 **Renvois :** `firmware-build.md` (pipeline de build par device), `edge-model.md`
 (D44–D48 : manifeste de capacités, golden vectors), `ota.md`, `worker-fabric.md`
@@ -267,10 +267,21 @@ place, la feature reste désactivée par défaut (flag admin plateforme).
   les libs déjà tirées par PneX (U8g2, GFX, ST7735). Exclus
   volontairement : les clients de transport (MQTT, HTTP cloud…) — le
   transport, c'est PneX.
-- Préchargement : au build de l'image worker (et `task` dev), un projet
-  factice par famille de chip tire tout le catalogue dans `~/.platformio`.
-  Budget disque : quelques centaines de Mo au-delà des toolchains (~3,3 Go
-  aujourd'hui pour ESP32 + ESP8266).
+- Préchargement (livré 2026-10-05, 0.1.0-beta.4) : au build de l'image
+  builder, `deploy/docker/prewarm/seed_libdeps.sh` installe, sans compiler,
+  les `lib_deps` de chaque projet compilé par le worker **plus** les entrées
+  du catalogue compatibles avec son SoC (`deploy/docker/prewarm/lib_catalog.txt`,
+  généré depuis `LIB_CATALOG`, test `prewarm_lib_list_matches_the_catalog`)
+  dans `<core>/pnex-libdeps/<projet>`. Le worker **copie** ce semis dans le
+  `.pio/libdeps` de chaque build (jamais un dossier partagé : un build
+  n'écrit pas là où lit celui d'une autre org). ~380 Mo.
+- Deux cores PlatformIO : pioarduino (core Arduino 3.x, C6) dans
+  `PNEX_PIO_CORE_DIR_PIOARDUINO`, séparé du core officiel — les deux
+  plateformes installent `framework-arduinoespressif32` / `tool-esptoolpy`
+  sous le même nom et s'écrasaient (re-téléchargement à chaque bascule).
+  Le worker choisit le core d'après la `platform` de l'ini.
+- Résultat : les 7 projets du worker et les builds custom avec libs du
+  catalogue compilent en `--network none` (sites isolés).
 - Le serveur **refuse** tout `lib_deps` hors catalogue (400, code machine).
 - Le catalogue est exposé en API (`GET /api/v1/firmware/lib-catalog`) pour
   le picker de l'IDE.
@@ -417,8 +428,7 @@ gain de sécurité même sans l'IDE.
 
 1. Sandbox D91 réelle : isolation hors conteneur partagé (worker dédié
    sans secrets DB dans l'environnement, ou bwrap validé sur hôte).
-2. **Offline** : les `lib_deps` se téléchargent dans le workspace de chaque
-   build — magasin de libs préchargé à prévoir.
+2. ~~**Offline**~~ : livré 2026-10-05 (semis de libs + cores séparés, §8).
 3. Nœud flow pour les commandes custom (décision #9 de la roadmap).
 4. Sur la page device : afficher le firmware custom / la révision
    déployée et « mise à jour disponible » (D94).

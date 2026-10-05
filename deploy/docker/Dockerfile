@@ -162,27 +162,54 @@ RUN python3 -m venv /opt/pio \
  && /opt/pio/bin/pip install --no-cache-dir --upgrade pip \
  && /opt/pio/bin/pip install --no-cache-dir \
       "platformio==${PLATFORMIO_VERSION}" "esptool==${ESPTOOL_VERSION}"
+# Two PlatformIO cores: the pioarduino platform (Arduino core 3.x, ESP32-C6)
+# and the official espressif32 install `framework-arduinoespressif32` and
+# `tool-esptoolpy` under the same names and overwrite each other in a shared
+# core — every switch between them downloaded them again. The worker picks
+# the core from the project's platform (PNEX_PIO_CORE_DIR_PIOARDUINO).
 ENV PATH=/opt/pio/bin:/usr/local/bin:/usr/bin:/bin \
     PLATFORMIO_CORE_DIR=/opt/platformio \
+    PNEX_PIO_CORE_DIR_PIOARDUINO=/opt/platformio-pioarduino \
     PLATFORMIO_NO_ANSI=true \
     HOME=/home/pnex
-# Bake platforms + toolchains + frameworks for every supported SoC family.
-COPY deploy/docker/prewarm/ /tmp/prewarm/
+# Bake platforms + toolchains + frameworks for every supported SoC family,
+# then every library a worker build may use (seed_libdeps.sh): firmware
+# builds run without network (air-gapped sites).
+# Toolchains first, in their own layer: a firmware change does not redo them.
+COPY deploy/docker/prewarm/platformio.ini /tmp/prewarm/
+COPY deploy/docker/prewarm/src/ /tmp/prewarm/src/
+# Owned by the worker uid in this same layer: a later `chown -R` would copy
+# every toolchain file into a new layer (image size doubled).
+RUN pio run -d /tmp/prewarm -e esp8266 -e esp32 -e esp32c3 -e esp32s3 \
+ && PLATFORMIO_CORE_DIR=$PNEX_PIO_CORE_DIR_PIOARDUINO pio run -d /tmp/prewarm -e esp32c6 \
+ && rm -rf /tmp/prewarm /opt/platformio/.cache $PNEX_PIO_CORE_DIR_PIOARDUINO/.cache \
+ && find /opt/platformio/packages $PNEX_PIO_CORE_DIR_PIOARDUINO/packages -type f \
+      \( -name '*.pem' -o -name '*.key' \) \
+      -exec grep -l 'PRIVATE KEY-----' {} + | xargs -r rm -f \
+ && chown -R 65532:65532 /opt/platformio $PNEX_PIO_CORE_DIR_PIOARDUINO
+COPY deploy/docker/prewarm/seed_libdeps.sh deploy/docker/prewarm/lib_catalog.txt /tmp/prewarm/
+COPY firmware/ /tmp/fw/
 # SEC-15: once the prewarm has created pioarduino's penv, drop what only
 # installs packages and ships vulnerable code (pip vendors old urllib3,
 # msgpack, setuptools; penv resolves with uv) and lift penv's starlette past
 # pioarduino's `<1` pin (PIO Home only, never started in the worker).
-RUN pio run -d /tmp/prewarm \
- && /opt/platformio/penv/bin/uv pip install --no-cache \
-      --python /opt/platformio/penv/bin/python --no-deps "starlette>=1.3.1" \
- && /opt/platformio/penv/bin/python -m pip uninstall -y pip \
+RUN sh /tmp/prewarm/seed_libdeps.sh /tmp/fw \
+      generic_esp8266:nodemcuv2 generic_esp32:esp32dev \
+      generic_esp32c3:esp32-c3-devkitm-1 generic_esp32s3:esp32-s3-devkitc-1 \
+      generic_esp32c6:esp32-c6-devkitc-1 generic_esp32cam:esp32cam \
+      soil_sensor:nodemcuv2 \
+ && penv=$PNEX_PIO_CORE_DIR_PIOARDUINO/penv \
+ && $penv/bin/uv pip install --no-cache --python $penv/bin/python --no-deps \
+      "starlette>=1.3.1" \
+ && $penv/bin/python -m pip uninstall -y pip \
  && /opt/pio/bin/python -m pip uninstall -y pip \
  && apk del --no-cache py3.14-pip \
- && rm -rf /tmp/prewarm /opt/platformio/.cache \
- && find /opt/platformio/packages -type f \( -name '*.pem' -o -name '*.key' \) \
-      -exec grep -l 'PRIVATE KEY-----' {} + | xargs -r rm -f \
+ && rm -rf /tmp/prewarm /tmp/fw /opt/platformio/.cache \
+      $PNEX_PIO_CORE_DIR_PIOARDUINO/.cache \
  && mkdir -p /home/pnex \
- && chown -R 65532:65532 /opt/platformio /home/pnex
+ && chown 65532:65532 /home/pnex \
+ && find /opt/platformio $PNEX_PIO_CORE_DIR_PIOARDUINO ! -user 65532 \
+      -exec chown -h 65532:65532 {} +
 COPY --from=build /out/bin/pnex-server /usr/local/bin/
 COPY crates/pnex-backend/config/ /app/pnex-backend/config/
 COPY deploy/models/ /app/models/

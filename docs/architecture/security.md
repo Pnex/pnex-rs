@@ -251,9 +251,10 @@ l'épinglage `<1` de pioarduino (PIO Home seul l'importe, jamais lancé). Les
 5 builds de pré-chauffage repassent ; trivy : 12 → 1. *Accepté* : `ecdsa`
 0.19.2 (CVE-2024-23342, attaque temporelle Minerva sur la signature), exigé
 par la plateforme pioarduino (`python_deps`), sans correctif amont ; le
-builder ne signe rien avec. *Constat annexe* : le pré-chauffage ne couvre pas
-tout — l'ESP8266 (`tool-esptoolpy ~1.30000`) et l'ESP32 (toolchain xtensa,
-esptool) retéléchargent des outils à chaque build (déjà vrai en beta.2).
+builder ne signe rien avec. *Constat annexe* (corrigé dans la même beta.4) : le
+pré-chauffage ne couvrait pas tout — libs téléchargées à chaque build,
+cores pioarduino / officiel qui s'écrasaient ; builds hors ligne désormais
+(custom-firmware.md §8).
 
 **SEC-1 — RCE par le nœud `red` (confiance 9).** `FlowNodeKind::Red`
 accepte tout `type_name` (`pnex-core/src/flow/graph.rs:271`) ;

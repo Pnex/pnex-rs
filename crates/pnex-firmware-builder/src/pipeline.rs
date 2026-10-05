@@ -282,7 +282,68 @@ fn stage_project(
     if let Some(custom) = &opts.custom {
         crate::custom::apply_custom_source(&project, custom)?;
     }
+    seed_libdeps(&project_core_dir(&project), &project, &device.project)?;
     Ok(project)
+}
+
+/// Env var naming the PlatformIO core dir of the projects on the pioarduino
+/// platform (ESP32 Arduino core 3.x). It is kept apart from the official
+/// espressif32 core: both install `framework-arduinoespressif32` and
+/// `tool-esptoolpy` under the same names and overwrite each other, so every
+/// switch between the two families downloaded them again.
+pub const PIOARDUINO_CORE_ENV: &str = "PNEX_PIO_CORE_DIR_PIOARDUINO";
+
+/// Whether the project's `platformio.ini` builds on the pioarduino platform.
+fn uses_pioarduino(project: &Path) -> bool {
+    std::fs::read_to_string(project.join("platformio.ini")).is_ok_and(|ini| {
+        ini.lines().any(|l| {
+            let l = l.trim_start();
+            l.starts_with("platform") && l.contains("pioarduino/platform-espressif32")
+        })
+    })
+}
+
+/// PlatformIO core dir for this project: the pioarduino one when the image
+/// provides it and the project uses that platform, else the worker's own.
+fn project_core_dir(project: &Path) -> PathBuf {
+    match std::env::var(PIOARDUINO_CORE_ENV) {
+        Ok(dir) if !dir.is_empty() && uses_pioarduino(project) => PathBuf::from(dir),
+        _ => pio_core_dir(),
+    }
+}
+
+/// Copies the libraries baked into the image for this project
+/// (`<core>/pnex-libdeps/<project>/<env>`) into the project's
+/// `.pio/libdeps`. With the platforms and toolchains also baked in, a build
+/// of a shipped project needs no network (air-gapped sites). A copy, not a
+/// shared dir: a build never writes where another org's build reads. No
+/// seed (dev machine, older image) = PlatformIO downloads as before.
+fn seed_libdeps(core: &Path, project: &Path, name: &str) -> Result<(), BuildError> {
+    let seed = core.join("pnex-libdeps").join(name);
+    if !seed.is_dir() {
+        return Ok(());
+    }
+    copy_tree(&seed, &project.join(".pio").join("libdeps"))
+        .map_err(|e| BuildError::Source(format!("libdeps seed {}: {e}", seed.display())))
+}
+
+/// Recursive copy of `from` into `to` (dirs, files, symlinks kept as links).
+fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let (src, dst) = (entry.path(), to.join(entry.file_name()));
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
+            copy_tree(&src, &dst)?;
+        } else if kind.is_symlink() {
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(std::fs::read_link(&src)?, &dst)?;
+        } else {
+            std::fs::copy(&src, &dst)?;
+        }
+    }
+    Ok(())
 }
 
 /// Builds the `pio run` command: secrets in the child env only (never
@@ -317,17 +378,26 @@ fn pio_command(
     // the generic inis reference `${sysenv.PNEX_FW_VERSION}` unconditionally
     // and PIO fails on a missing sysenv var).
     vars.push(("PNEX_FW_VERSION".into(), device.fw_version.clone()));
+    // Core dir always explicit: it depends on the project's platform.
+    let core = project_core_dir(project);
+    vars.retain(|(k, _)| k != "PLATFORMIO_CORE_DIR");
+    vars.push(("PLATFORMIO_CORE_DIR".into(), core.display().to_string()));
     let argv = match sandbox {
         None => pio_argv,
         Some(sb) => {
-            // Inside the sandbox $HOME is not mounted: the PlatformIO core
-            // dir is passed explicitly and HOME points to the private /tmp.
-            let core = pio_core_dir();
-            vars.retain(|(k, _)| k != "HOME" && k != "PLATFORMIO_CORE_DIR");
+            // Inside the sandbox $HOME is not mounted: HOME points to the
+            // private /tmp (the core dir is already explicit).
+            vars.retain(|(k, _)| k != "HOME");
             vars.push(("HOME".into(), "/tmp".into()));
-            vars.push(("PLATFORMIO_CORE_DIR".into(), core.display().to_string()));
             let workspace = project.parent().unwrap_or(project);
-            crate::custom::sandbox_argv(sb, &pio_argv, workspace, &core, &tool_dirs(&pio_argv[0]))
+            crate::custom::sandbox_argv(
+                sb,
+                &pio_argv,
+                workspace,
+                project,
+                &core,
+                &tool_dirs(&pio_argv[0]),
+            )
         }
     };
     let mut pio = Command::new(&argv[0]);
@@ -567,6 +637,49 @@ mod tests {
             screen: None,
             fw_version: "42".into(),
         }
+    }
+
+    #[test]
+    fn pioarduino_projects_are_detected_from_their_ini() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let ini = tmp.path().join("platformio.ini");
+        std::fs::write(&ini, "[env:x]\nplatform = https://github.com/pioarduino/platform-espressif32/releases/download/55.03.312-1/platform-espressif32.zip\n").unwrap();
+        assert!(uses_pioarduino(tmp.path()));
+        std::fs::write(
+            &ini,
+            "[env:x]\nplatform = espressif32\n; pioarduino/platform-espressif32 in a comment\n",
+        )
+        .unwrap();
+        assert!(!uses_pioarduino(tmp.path()));
+        assert!(!uses_pioarduino(&tmp.path().join("missing")));
+    }
+
+    /// The baked libraries land in `.pio/libdeps`, links kept; no seed for
+    /// the project is not an error.
+    #[test]
+    fn libdeps_seed_is_copied_into_the_project() {
+        let core = tempfile::tempdir().expect("core");
+        let project = tempfile::tempdir().expect("project");
+        let lib = core
+            .path()
+            .join("pnex-libdeps/generic_esp32/esp32/ArduinoJson");
+        std::fs::create_dir_all(lib.join("src")).unwrap();
+        std::fs::write(lib.join("src/ArduinoJson.h"), "// lib").unwrap();
+        std::fs::write(
+            core.path()
+                .join("pnex-libdeps/generic_esp32/esp32/integrity.dat"),
+            "x",
+        )
+        .unwrap();
+        std::os::unix::fs::symlink("src/ArduinoJson.h", lib.join("link.h")).unwrap();
+
+        seed_libdeps(core.path(), project.path(), "generic_esp32").expect("seed");
+        let dst = project.path().join(".pio/libdeps/esp32");
+        assert!(dst.join("ArduinoJson/src/ArduinoJson.h").is_file());
+        assert!(dst.join("integrity.dat").is_file());
+        assert!(dst.join("ArduinoJson/link.h").is_symlink());
+
+        seed_libdeps(core.path(), project.path(), "soil_sensor").expect("no seed is fine");
     }
 
     /// The 9 screen vars are ALWAYS set: 0/-1 without screen, gate=1 and
