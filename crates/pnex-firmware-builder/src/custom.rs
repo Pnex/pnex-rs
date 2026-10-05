@@ -101,13 +101,16 @@ pub(crate) fn inject_lib_deps(ini: &str, specs: &[String]) -> Option<String> {
 }
 
 /// Wraps a command argv in the sandbox. `workspace` (read-write) holds the
-/// staged project; `pio_core` (read-write) is the PlatformIO core dir
+/// staged tree, `project` (inside it) is where the command runs — PlatformIO
+/// reads `platformio.ini` from the working dir; `pio_core` (read-write) is
+/// the PlatformIO core dir
 /// (toolchains, platforms, package cache); `tool_dirs` are the read-only
 /// locations the tool binaries live in (resolved program dir, uv venv…).
 pub fn sandbox_argv(
     sandbox: &Sandbox,
     argv: &[String],
     workspace: &Path,
+    project: &Path,
     pio_core: &Path,
     tool_dirs: &[PathBuf],
 ) -> Vec<String> {
@@ -144,9 +147,9 @@ pub fn sandbox_argv(
     a2.extend([
         "--bind".into(),
         ws.clone(),
-        ws.clone(),
-        "--chdir".into(),
         ws,
+        "--chdir".into(),
+        project.display().to_string(),
     ]);
     a2.push("--".into());
     a2.extend(argv.iter().cloned());
@@ -221,6 +224,7 @@ mod tests {
         let argv = sandbox_argv(
             &sb,
             &["/home/u/.local/bin/pio".into(), "run".into()],
+            Path::new("/tmp/ws"),
             Path::new("/tmp/ws/generic_esp32"),
             Path::new("/home/u/.platformio"),
             &[PathBuf::from("/home/u/.local")],
@@ -232,6 +236,8 @@ mod tests {
         assert!(joined.contains("--bind /home/u/.platformio /home/u/.platformio"));
         assert!(joined.contains("--ro-bind-try /home/u/.local /home/u/.local"));
         assert!(joined.ends_with("-- /home/u/.local/bin/pio run"));
+        // Runs in the project (where platformio.ini is), not the tree root.
+        assert!(joined.contains("--bind /tmp/ws /tmp/ws --chdir /tmp/ws/generic_esp32"));
         // $HOME is never bound as a whole (repo, configs, keys stay hidden).
         assert!(!joined.contains("--bind /home/u /home/u"));
         let open = Sandbox::Bwrap {
@@ -242,6 +248,7 @@ mod tests {
             &open,
             &["pio".into()],
             Path::new("/w"),
+            Path::new("/w/p"),
             Path::new("/c"),
             &[]
         )
