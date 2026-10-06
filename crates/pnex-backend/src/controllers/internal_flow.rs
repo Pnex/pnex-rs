@@ -26,6 +26,9 @@ use pnex_core::{Mode, ServerMsg};
 
 const FLOW_TOKEN_HEADER: &str = "x-pnex-flow-token";
 
+/// Serialized size cap of a custom-firmware command value (D146).
+const COMMAND_VALUE_MAX_BYTES: usize = 512;
+
 #[derive(Debug, Deserialize)]
 pub struct DeviceWriteInput {
     pub org_id: i64,
@@ -336,6 +339,16 @@ async fn device_write(
         }
     }
     for (name, value) in &body.commands {
+        // Bounded: a device reads frames of 1 KiB (ESP8266) to 4 KiB (ESP32);
+        // a larger one is unreadable and the command silently lost.
+        if value.to_string().len() > COMMAND_VALUE_MAX_BYTES {
+            results.push(serde_json::json!({
+                "command": name,
+                "ok": false,
+                "err": "command value too large",
+            }));
+            continue;
+        }
         if !super::pins::announced_command(&device, name) {
             results.push(serde_json::json!({
                 "command": name,
