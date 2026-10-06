@@ -458,6 +458,26 @@ gain de sécurité même sans l'IDE.
 4. Sur la page device : afficher le firmware custom / la révision
    déployée et « mise à jour disponible » (D94).
 5. E2E matériel : BME280 I2C → O2 → flow → notification.
+6. **Commande perdue sans trace (constaté 2026-10-06, tuto LED RGB)** : un
+   `power = 0` écrit sur le contrôle (valeur bien stockée) n'a pas éteint
+   la LED de `climate-1` ; la métrique `light` est restée à 1, le renvoi
+   du même ordre une minute plus tard est passé. Cause non identifiée
+   (contrôle → Source contrôle → Device (write) → route interne →
+   `ServerMsg::Command` → handler) : en mode run, ni le debug du flow ni
+   les logs du runtime ne montrent où le message s'est perdu. À faire :
+   tracer la chaîne (résultat de la route interne et `Ack` du device
+   journalisés côté serveur), et ne plus considérer une commande comme
+   « envoyée » tant que l'`Ack` n'est pas revenu (le nœud n'attend
+   aujourd'hui que le push WS).
+7. **État réel après une commande (idée utilisateur, 2026-10-06)** : le
+   firmware générique PneX remonte déjà l'état réel des pins de sortie
+   (digital 0/1, duty PWM). Pour un firmware custom, rien d'équivalent :
+   chaque sketch doit publier lui-même une métrique d'état (`light` dans
+   le tuto). Piste : la lib renvoie automatiquement, après chaque handler
+   réussi, la valeur appliquée de la commande comme état (`state_report`
+   par `cap_id` de la commande), pour que la carte du dashboard affiche
+   l'état réel sans code en plus, et que la perte d'une commande se voie
+   (état ≠ contrôle).
 
 ## Journal
 
