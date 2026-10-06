@@ -32,7 +32,13 @@ pub struct DeviceWriteInput {
     /// Slug du device cible.
     pub device_id: String,
     /// Map `{pin label: valeur}` — digital = bool/0-1, pwm = duty 0..=100.
+    #[serde(default)]
     pub values: serde_json::Map<String, serde_json::Value>,
+    /// Custom-firmware commands `{name: value}` (D146) — each one is sent as
+    /// `ServerMsg::Command { name, args: {"value": value} }`, restricted to
+    /// the commands of the device's last announce.
+    #[serde(default)]
+    pub commands: serde_json::Map<String, serde_json::Value>,
 }
 
 pub fn routes() -> Routes {
@@ -253,7 +259,7 @@ async fn device_write(
     if let Some(r) = fenced(&ctx, &headers, body.org_id).await {
         return Ok(r);
     }
-    if body.values.is_empty() {
+    if body.values.is_empty() && body.commands.is_empty() {
         return Err(bad_request(
             "flow-device-write-values-empty",
             "Values must not be empty.",
@@ -289,7 +295,7 @@ async fn device_write(
             .into_response());
     };
 
-    let mut results = Vec::with_capacity(body.values.len());
+    let mut results = Vec::with_capacity(body.values.len() + body.commands.len());
     let mut any_sent = false;
     for (label, value) in &body.values {
         let Some(row) = rows.iter().find(|r| {
@@ -327,6 +333,27 @@ async fn device_write(
             results.push(serde_json::json!({ "pin": label, "ok": true }));
         } else {
             results.push(serde_json::json!({ "pin": label, "ok": false, "err": "offline" }));
+        }
+    }
+    for (name, value) in &body.commands {
+        if !super::pins::announced_command(&device, name) {
+            results.push(serde_json::json!({
+                "command": name,
+                "ok": false,
+                "err": "command not announced by the device firmware",
+            }));
+            continue;
+        }
+        let msg = ServerMsg::Command {
+            cmd_id: uuid::Uuid::new_v4().simple().to_string(),
+            name: name.clone(),
+            args: serde_json::json!({ "value": value }),
+        };
+        if ws_device::push_to(device.id, &target, msg).await {
+            any_sent = true;
+            results.push(serde_json::json!({ "command": name, "ok": true }));
+        } else {
+            results.push(serde_json::json!({ "command": name, "ok": false, "err": "offline" }));
         }
     }
     let _ = any_sent;

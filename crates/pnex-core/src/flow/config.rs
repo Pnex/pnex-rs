@@ -82,6 +82,21 @@ pub struct DeviceWriteConfig {
     /// sole label on a single-pin node.
     #[serde(default)]
     pub pins: Vec<String>,
+    /// Commands announced by a custom firmware (`pnex.onCommand`, D88/D146),
+    /// in visual-anchor order after the pins. Same two paths as the pins
+    /// (object payload key, or `msg.topic` stamped by a wire on the
+    /// command's anchor); the device receives `args = {"value": payload}`.
+    /// Commands are not pins: they never take part in the one-write-source
+    /// rule.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commands: Vec<String>,
+}
+
+impl DeviceWriteConfig {
+    /// Input anchors of the node: pins first, then commands.
+    pub fn anchors(&self) -> impl Iterator<Item = &String> {
+        self.pins.iter().chain(self.commands.iter())
+    }
 }
 
 /// Configuration du nœud custom `calc` — expression sur les clés du payload

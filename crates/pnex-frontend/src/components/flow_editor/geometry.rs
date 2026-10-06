@@ -110,7 +110,7 @@ pub const PORT_PITCH: f64 = 20.0;
 pub fn port_counts_of(node: &FlowNode) -> (usize, usize) {
     match &node.kind {
         FlowNodeKind::DeviceRead { config } => (config.pins.len() + 1, 0),
-        FlowNodeKind::DeviceWrite { config } => (2, config.pins.len()),
+        FlowNodeKind::DeviceWrite { config } => (2, config.anchors().count()),
         FlowNodeKind::PnexFunction { config } => (config.outputs.len().max(1), config.inputs.len()),
         FlowNodeKind::PnexNotify { config } => (1, config.template_vars.len() + 1),
         FlowNodeKind::JsonSplit { config } => (config.keys.len().max(1), 0),
@@ -158,6 +158,14 @@ pub fn pin_sort_key(label: &str) -> (String, u32) {
         }
         None => (label.to_string(), 0),
     }
+}
+
+/// Input rows of a device-write: output pins in natural order, then the
+/// custom-firmware commands in config order (D146).
+pub fn write_anchor_labels(config: &pnex_core::DeviceWriteConfig) -> Vec<String> {
+    let mut rows = sorted_pins(&config.pins);
+    rows.extend(config.commands.iter().cloned());
+    rows
 }
 
 /// Pins in natural order (`D0, D1, D2, D9, D10`) — stable on duplicates.
@@ -218,9 +226,9 @@ pub fn accepts_input(node: &FlowNode) -> bool {
 pub fn input_anchor_rows(node: &FlowNode, h: f64) -> Vec<f64> {
     match &node.kind {
         FlowNodeKind::DeviceWrite { config } => {
-            let pins = sorted_pins(&config.pins);
-            let n = pins.len().max(1);
-            (0..pins.len())
+            let rows = write_anchor_labels(config).len();
+            let n = rows.max(1);
+            (0..rows)
                 .map(|i| h * (i + 1) as f64 / (n + 1) as f64)
                 .collect()
         }
@@ -255,7 +263,7 @@ pub fn input_anchor_rows(node: &FlowNode, h: f64) -> Vec<f64> {
 /// unlabeled anchor).
 pub fn input_row_labels(node: &FlowNode) -> Vec<String> {
     match &node.kind {
-        FlowNodeKind::DeviceWrite { config } => sorted_pins(&config.pins),
+        FlowNodeKind::DeviceWrite { config } => write_anchor_labels(config),
         FlowNodeKind::PnexFunction { config } => {
             config.inputs.iter().map(|i| i.name.clone()).collect()
         }

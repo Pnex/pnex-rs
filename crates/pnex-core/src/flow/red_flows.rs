@@ -59,14 +59,21 @@ pub fn to_red_flows_json_with(
                     "pnex_o2_org": meta.o2_org,
                 })
             }
-            FlowNodeKind::DeviceWrite { config } => serde_json::json!({
+            FlowNodeKind::DeviceWrite { config } => {
+                // Ports: passthrough + "device name". Without padding, a write
+                // whose name port is unwired fails `fan_out_one(1)` and the
+                // passthrough never reaches port 0.
+                padded_ports = Some(2);
+                serde_json::json!({
                 "type": "pnex-device-write",
                 "device_id": config.device_id,
                 "pins": config.pins,
+                "commands": config.commands,
                 "pnex_flow_id": meta.flow_id,
                 "pnex_version": meta.version_number,
                 "pnex_org_id": meta.org_id,
-            }),
+                })
+            }
             FlowNodeKind::Calc { config } => serde_json::json!({
                 "type": "pnex-calc",
                 "expression": config.expression,
@@ -463,9 +470,7 @@ fn routed_wires(
             FlowNodeKind::JsonMerge { config } => {
                 config.inputs.iter().map(String::as_str).collect()
             }
-            FlowNodeKind::DeviceWrite { config } => {
-                config.pins.iter().map(String::as_str).collect()
-            }
+            FlowNodeKind::DeviceWrite { config } => config.anchors().map(String::as_str).collect(),
             // The two input rows are named after the payload keys: a wire on
             // a row is stamped `topic = key`, the node latches the value.
             FlowNodeKind::CoolProp { config } => {

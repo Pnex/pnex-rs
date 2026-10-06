@@ -645,6 +645,7 @@ fn validate_device_common(
     id: &str,
     device_id: &str,
     pins: &[String],
+    require_pins: bool,
     v: &mut Vec<FlowViolation>,
 ) -> bool {
     let mut ok = true;
@@ -657,7 +658,7 @@ fn validate_device_common(
         ));
         ok = false;
     }
-    if pins.is_empty() {
+    if require_pins && pins.is_empty() {
         v.push(FlowViolation::new(
             Some(id),
             "device_no_pins",
@@ -691,7 +692,7 @@ fn validate_device_common(
 }
 
 fn validate_device_read(id: &str, c: &DeviceReadConfig, v: &mut Vec<FlowViolation>) {
-    validate_device_common(id, &c.device_id, &c.pins, v);
+    validate_device_common(id, &c.device_id, &c.pins, true, v);
     if !(c.window_secs.is_finite() && (1.0..=3600.0).contains(&c.window_secs)) {
         v.push(FlowViolation::new(
             Some(id),
@@ -702,7 +703,38 @@ fn validate_device_read(id: &str, c: &DeviceReadConfig, v: &mut Vec<FlowViolatio
 }
 
 fn validate_device_write(id: &str, c: &DeviceWriteConfig, v: &mut Vec<FlowViolation>) {
-    validate_device_common(id, &c.device_id, &c.pins, v);
+    // A custom firmware may be driven by commands only: pins are then
+    // optional, but the node still needs at least one anchor.
+    validate_device_common(id, &c.device_id, &c.pins, c.commands.is_empty(), v);
+    let mut seen: std::collections::HashSet<_> = c.pins.iter().map(|p| pin_key(p)).collect();
+    for cmd in &c.commands {
+        if !valid_command_name(cmd) {
+            v.push(FlowViolation::with_args(
+                Some(id),
+                "device_bad_command",
+                "invalid firmware command name (letters, digits, _ . - ; 1 to 32 characters)",
+                serde_json::json!({ "command": cmd }),
+            ));
+            continue;
+        }
+        if !seen.insert(pin_key(cmd)) {
+            v.push(FlowViolation::with_args(
+                Some(id),
+                "device_duplicate_pin",
+                "duplicated pin or command (anchor names must be unique)",
+                serde_json::json!({ "pin": cmd.trim() }),
+            ));
+        }
+    }
+}
+
+/// Name of a custom-firmware command (`pnex.onCommand`): the announced cap
+/// id, kept short and free of separators used by topics and anchors.
+pub fn valid_command_name(name: &str) -> bool {
+    (1..=32).contains(&name.len())
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
 }
 
 /// Égalité de labels de pins, normalisée (trim + casse ASCII ignorée) —

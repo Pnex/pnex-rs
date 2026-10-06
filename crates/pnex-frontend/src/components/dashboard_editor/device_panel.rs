@@ -17,7 +17,7 @@ use super::library;
 use super::EditorCx;
 use crate::api;
 use crate::components::icons;
-use crate::components::surface::{create_flow_draft, suggest_key};
+use crate::components::surface::{create_flow_draft, suggest_key, DraftTarget};
 use crate::state::toasts;
 
 /// Home card suggested for a device metric (D141), by name heuristics:
@@ -326,7 +326,7 @@ fn PinRow(
                 } else {
                     button {
                         class: "w-full rounded border border-teal-200 px-2 py-0.5 text-xs text-teal-700 hover:bg-teal-50",
-                        onclick: move |_| create_flow_draft(&control, &device, &pin),
+                        onclick: move |_| create_flow_draft(&control, &device, &DraftTarget::Pin(pin.clone())),
                         {t!("insp-control-flow-create")}
                     }
                 }
