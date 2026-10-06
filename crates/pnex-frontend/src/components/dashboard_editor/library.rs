@@ -185,6 +185,12 @@ pub fn palette_items() -> Vec<PaletteItem> {
 
 /// Ajout d'un widget vide du type — ex-boutons « + Nouveau » de la
 /// bibliothèque, désormais déclenchés par le pick de la palette.
+/// Position used when the canvas has no free area left: a 24 px cascade.
+fn cascade_of(counter: u32) -> (i64, i64) {
+    let step = (counter % 8) as i64 * 24;
+    (80 + step, 80 + step)
+}
+
 pub fn add_new_widget(mut cx: EditorCx, kind: &str) {
     if let Some(card) = kind.strip_prefix(HOME_KEY_PREFIX).and_then(HomeCard::parse) {
         add_home_card(cx, card);
@@ -194,10 +200,11 @@ pub fn add_new_widget(mut cx: EditorCx, kind: &str) {
     cx.history.with_mut(|h| h.push(&current));
     cx.counter.with_mut(|c| *c += 1);
     let id = state::next_id("w", cx.counter.cloned());
-    let x = 80 + (cx.counter.cloned() % 8) as i64 * 24;
-    let y = 80 + (cx.counter.cloned() % 8) as i64 * 24;
+    let cascade = cascade_of(cx.counter.cloned());
     let section = cx.section.cloned();
     cx.layout.with_mut(|l| {
+        let (w, h) = super::geometry::default_size(kind);
+        let (x, y) = state::free_slot(l, w, h, cascade);
         state::new_widget(l, id.clone(), kind, x, y);
         if l.format == pnex_core::DashboardFormat::Mobile {
             state::place_in_section(l, &id, section.as_deref());
@@ -217,10 +224,11 @@ pub fn add_home_card(mut cx: EditorCx, card: HomeCard) {
     cx.history.with_mut(|h| h.push(&current));
     cx.counter.with_mut(|c| *c += 1);
     let id = state::next_id("w", cx.counter.cloned());
-    let x = 80 + (cx.counter.cloned() % 8) as i64 * 24;
-    let y = 80 + (cx.counter.cloned() % 8) as i64 * 24;
+    let cascade = cascade_of(cx.counter.cloned());
     let section = cx.section.cloned();
     cx.layout.with_mut(|l| {
+        let (w, h) = super::geometry::home_card_size(card);
+        let (x, y) = state::free_slot(l, w, h, cascade);
         state::new_home_card(l, id.clone(), card, x, y);
         if l.format == pnex_core::DashboardFormat::Mobile {
             state::place_in_section(l, &id, section.as_deref());

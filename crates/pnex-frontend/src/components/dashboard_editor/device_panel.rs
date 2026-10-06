@@ -380,9 +380,11 @@ fn MetricRow(cx: EditorCx, device: String, metric: String, siblings: Vec<String>
         ("line", t!("lib-kind-line").to_string()),
     ];
     rsx! {
-        div { class: "flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-2",
-            span { class: "truncate text-sm text-gray-800", "{metric}" }
-            div { class: "flex shrink-0 gap-1",
+        // Name on its own line, actions below and wrapping: four buttons
+        // (suggested card + value, gauge, chart) overflow the narrow panel.
+        div { class: "space-y-1.5 rounded-lg border border-gray-200 p-2",
+            span { class: "block truncate text-sm text-gray-800", "{metric}" }
+            div { class: "flex flex-wrap gap-1",
                 if let Some((card, role, variant)) = suggestion {
                     button {
                         class: "rounded border border-amber-300 px-1.5 py-0.5 text-[11px] text-amber-800 hover:bg-amber-50",

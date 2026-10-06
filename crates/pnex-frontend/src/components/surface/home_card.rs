@@ -25,13 +25,19 @@ fn points_of(w: &Widget, role: &str, values: &LiveValues) -> Option<Vec<Telemetr
     values.get(&s.series_key()).cloned().flatten()
 }
 
-/// Timestamp of the newest point across all the card's sources.
-fn newest_ts(w: &Widget, values: &LiveValues) -> Option<f64> {
-    w.source
+/// Is every source of the card that has points older than "Stale after"?
+/// One fresh source is enough to keep the card lit.
+fn card_stale(w: &Widget, values: &LiveValues, now: f64) -> bool {
+    let series: Vec<Vec<TelemetryPoint>> = w
+        .source
         .iter()
         .filter_map(|s| values.get(&s.series_key()).cloned().flatten())
-        .filter_map(|pts| pts.last().map(|p| p.ts))
-        .reduce(f64::max)
+        .filter(|pts| !pts.is_empty())
+        .collect();
+    !series.is_empty()
+        && series
+            .iter()
+            .all(|pts| pnex_core::is_series_stale(&w.options, pts, now))
 }
 
 /// Newest point of the source of `role`.
@@ -142,8 +148,7 @@ pub fn HomeCardBody(widget: Widget, values: Option<LiveValues>) -> Element {
     let values = values.unwrap_or_default();
     // Stale value (D135): the newest point of the card's sources is older
     // than "Stale after" — the card greys out like the classic widgets.
-    let stale = newest_ts(&widget, &values)
-        .is_some_and(|ts| pnex_core::is_stale(&widget.options, ts, crate::util::now_secs()));
+    let stale = card_stale(&widget, &values, crate::util::now_secs());
     let w = widget.clone();
     let title = if w.title.trim().is_empty() {
         card_label(home.card)
