@@ -472,6 +472,26 @@ pub fn is_stale(options: &WidgetOptions, ts: f64, now: f64) -> bool {
     }
 }
 
+/// Staleness of a series: like [`is_stale`] on its newest point, but a
+/// bucketed series (a widget sharing its series with a wider-window one
+/// gets aggregated points stamped at the bucket start) is given one bucket
+/// width of slack, the spacing of its last two points. Without it, a value
+/// widget next to a 24 h chart of the same series looked stale.
+pub fn is_series_stale(
+    options: &WidgetOptions,
+    points: &[crate::TelemetryPoint],
+    now: f64,
+) -> bool {
+    let Some(last) = points.last() else {
+        return false;
+    };
+    let bucket = match points.len() {
+        n if n >= 2 => (last.ts - points[n - 2].ts).max(0.0),
+        _ => 0.0,
+    };
+    is_stale(options, last.ts + bucket, now)
+}
+
 fn validate_states(options: &WidgetOptions, push: &mut impl FnMut(&str, String)) {
     if options.states.len() > STATE_RULES_MAX {
         push(
@@ -1764,6 +1784,24 @@ mod tests {
         o.stale_after_s = Some(60);
         assert!(!is_stale(&o, 1_000.0, 1_060.0));
         assert!(is_stale(&o, 1_000.0, 1_061.0));
+    }
+
+    #[test]
+    fn bucketed_series_get_one_bucket_of_slack() {
+        let o = WidgetOptions {
+            stale_after_s: Some(600),
+            ..Default::default()
+        };
+        let pt = |ts: f64| crate::TelemetryPoint { ts, value: 1.0 };
+        // 24 h series in 720 s buckets: the last bucket started 700 s ago,
+        // its newest sample may be fresh.
+        let pts = [pt(10_000.0), pt(10_720.0)];
+        assert!(!is_series_stale(&o, &pts, 11_420.0));
+        assert!(is_series_stale(&o, &pts, 12_041.0));
+        // Raw 10 s samples: no real slack.
+        let raw = [pt(10_000.0), pt(10_010.0)];
+        assert!(is_series_stale(&o, &raw, 10_621.0));
+        assert!(!is_series_stale(&o, &[], 1e9));
     }
 
     #[test]

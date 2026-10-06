@@ -29,6 +29,35 @@ pub fn place_widget(
 
 /// Widget neuf vide (bouton « + Nouveau » de la palette, hors
 /// bibliothèque) — source à compléter dans l'inspecteur.
+/// Top-left corner of the first free `w`×`h` area of a desktop canvas
+/// (row by row, 20 px grid, 16 px gap to the other widgets); `fallback`
+/// when the canvas is full. Additions used to cascade by 24 px and stack
+/// on top of each other.
+pub fn free_slot(layout: &DashboardLayout, w: i64, h: i64, fallback: (i64, i64)) -> (i64, i64) {
+    const MARGIN: i64 = 40;
+    const GAP: i64 = 16;
+    const STEP: i64 = 20;
+    let width = layout.canvas.width.max(w + 2 * MARGIN);
+    let height = layout.canvas.height.max(h + 2 * MARGIN);
+    let overlaps = |x: i64, y: i64| {
+        layout.widgets.iter().any(|o| {
+            x < o.x + o.w + GAP && o.x < x + w + GAP && y < o.y + o.h + GAP && o.y < y + h + GAP
+        })
+    };
+    let mut y = MARGIN;
+    while y + h + MARGIN <= height {
+        let mut x = MARGIN;
+        while x + w + MARGIN <= width {
+            if !overlaps(x, y) {
+                return (x, y);
+            }
+            x += STEP;
+        }
+        y += STEP;
+    }
+    fallback
+}
+
 pub fn new_widget(layout: &mut DashboardLayout, id: String, widget_type: &str, x: i64, y: i64) {
     let (w, h) = default_size(widget_type);
     // thermo_chart : pas de source « primaire » vide (les sources viennent
@@ -886,6 +915,24 @@ mod tests {
             wires: vec![],
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn additions_take_the_first_free_area() {
+        let mut l = empty_layout();
+        let (w, h) = (240, 160);
+        let first = free_slot(&l, w, h, (0, 0));
+        assert_eq!(first, (40, 40));
+        new_widget(&mut l, "w-1".into(), "stat", first.0, first.1);
+        let size = (l.widgets[0].w, l.widgets[0].h);
+        let second = free_slot(&l, size.0, size.1, (0, 0));
+        // Next to the first one, never on top of it.
+        assert_eq!(second.1, 40);
+        assert!(second.0 >= 40 + size.0 + 16, "{second:?}");
+        // A full canvas falls back to the cascade position.
+        l.canvas.width = 300;
+        l.canvas.height = 250;
+        assert_eq!(free_slot(&l, size.0, size.1, (80, 80)), (80, 80));
     }
 
     #[test]

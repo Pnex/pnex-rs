@@ -236,7 +236,12 @@ fn RoleSource(
                 for (device, metrics) in devices {
                     optgroup { key: "{device}", label: "{device}",
                         for m in metrics {
-                            option { key: "{m}", value: "t|{device}|{m}", "{m}" }
+                            option {
+                                key: "{m}",
+                                value: "t|{device}|{m}",
+                                selected: selected == format!("t|{device}|{m}"),
+                                "{m}"
+                            }
                         }
                     }
                 }
@@ -244,7 +249,10 @@ fn RoleSource(
                     optgroup { label: t!("insp-memory").to_string(),
                         for (key, fields) in memory {
                             for f in fields {
-                                option { key: "{key}#{f}", value: "m|{key}|{f}",
+                                option {
+                                    key: "{key}#{f}",
+                                    value: "m|{key}|{f}",
+                                    selected: selected == format!("m|{key}|{f}"),
                                     if f.is_empty() {
                                         "{key}"
                                     } else {
@@ -272,8 +280,15 @@ fn RoleSource(
                             },
                         );
                     },
+                    // `selected` per option: a `value` on a freshly mounted
+                    // select is applied before its options exist (shows 5m).
                     for (key, _) in VIZ_WINDOW_PRESETS {
-                        option { key: "{key}", value: "{key}", "{key}" }
+                        option {
+                            key: "{key}",
+                            value: "{key}",
+                            selected: *key == window,
+                            "{key}"
+                        }
                     }
                 }
             }

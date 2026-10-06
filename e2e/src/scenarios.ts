@@ -55,3 +55,59 @@ export async function deployMemoryFlow(
     .toBe(opts.value);
   return editor;
 }
+
+/**
+ * Builds and deploys "Inject → Json Values `fields` → Metric `metric`" (one
+ * etl series per field on the flow's virtual device), then waits until the
+ * series are in the telemetry catalog. Returns the editor, the virtual
+ * device and the series name of each field.
+ */
+export async function deployMetricFlow(
+  app: AppShell,
+  api: Api,
+  opts: { name: string; metric: string; fields: Record<string, number>; everySecs?: number },
+): Promise<{ flow: FlowEditor; device: string; series: Record<string, string> }> {
+  const flows = new FlowsPage(app);
+  await flows.open();
+  const editor = await flows.create(opts.name);
+  const inject = app.t('flows-palette-inject');
+  const values = app.t('flows-palette-value');
+  const metric = app.t('flows-palette-metric');
+
+  await editor.select(inject);
+  await editor.field(app.t('flows-inject-repeat')).fill(String(opts.everySecs ?? 5));
+
+  await editor.addNode('flows-palette-value');
+  // JSON mode of the node: the whole object at once.
+  await editor.inspector.getByRole('button', { name: 'JSON', exact: true }).click();
+  await editor.inspector.locator('textarea').first().fill(JSON.stringify(opts.fields));
+  await editor.move(values, 320, 120);
+
+  await editor.addNode('flows-palette-metric');
+  await editor.inspector.getByLabel(app.t('flows-metric-name'), { exact: true }).fill(opts.metric);
+  await editor.move(metric, 600, 120);
+  await editor.closeInspector();
+
+  await editor.wire(inject, 0, values);
+  await editor.wire(values, 0, metric);
+  await editor.save();
+  await editor.deploy();
+
+  const listed = await api.get('/flows');
+  const rows: any[] = Array.isArray(listed) ? listed : listed.results ?? [];
+  const id = rows.find((f) => f.name === opts.name)?.id;
+  expect(id, `flow ${opts.name}`).toBeTruthy();
+  const device = `flow_${id}`;
+  const series: Record<string, string> = {};
+  for (const field of Object.keys(opts.fields)) series[field] = `etl_${opts.metric}_${field}`;
+  await expect
+    .poll(
+      async () => {
+        const catalog = JSON.stringify(await api.get('/telemetry/catalog'));
+        return Object.values(series).every((s) => catalog.includes(s)) && catalog.includes(device);
+      },
+      { timeout: 90_000, intervals: [3_000], message: `series of ${device} in the catalog` },
+    )
+    .toBe(true);
+  return { flow: editor, device, series };
+}

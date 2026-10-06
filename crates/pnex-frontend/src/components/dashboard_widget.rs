@@ -69,9 +69,9 @@ pub fn WidgetBody(
     }
 
     // Stale value (D135): the card greys out and says so.
-    let stale = last
-        .as_ref()
-        .is_some_and(|p| pnex_core::is_stale(&w.options, p.ts, crate::util::now_secs()));
+    let stale = points
+        .as_deref()
+        .is_some_and(|p| pnex_core::is_series_stale(&w.options, p, crate::util::now_secs()));
     rsx! {
         div {
             class: if stale { "flex h-full w-full flex-col overflow-hidden rounded-lg opacity-50 grayscale" } else { "flex h-full w-full flex-col overflow-hidden rounded-lg" },
