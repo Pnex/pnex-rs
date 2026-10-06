@@ -563,7 +563,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
     let in_anchor_rows: Vec<(f64, String, String, String)> = match &node.kind {
         pnex_core::FlowNodeKind::DeviceWrite { config } => {
             let rows = geometry::input_anchor_rows(&node, node_h);
-            let pins = geometry::sorted_pins(&config.pins);
+            let pins = geometry::write_anchor_labels(config);
             rows.into_iter()
                 .zip(pins)
                 .map(|(y, pin)| (y, pin.clone(), pin, node.id.clone()))
@@ -923,7 +923,7 @@ fn node_subtitle(node: &FlowNode) -> String {
             if config.device_id.is_empty() {
                 "—".into()
             } else {
-                let n = config.pins.len();
+                let n = config.anchors().count();
                 let plural = if n == 1 { "" } else { "s" };
                 format!("{} · {n} output{plural}", config.device_id)
             }

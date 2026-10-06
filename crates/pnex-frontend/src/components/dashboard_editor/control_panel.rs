@@ -15,7 +15,7 @@ use super::EditorCx;
 use crate::api;
 use crate::components::surface::control::kind_of_widget;
 use crate::components::surface::spec_editor::SpecFields;
-use crate::components::surface::{create_flow_draft, spec_summary};
+use crate::components::surface::{create_flow_draft, kind_drives_pins, spec_summary, DraftTarget};
 
 /// Applies one undoable change to the widget `id`.
 fn patch_widget(mut cx: EditorCx, id: &str, f: impl FnOnce(&mut Widget)) {
@@ -243,8 +243,9 @@ fn ControlInfo(control: UiControl) -> Element {
     }
 }
 
-/// "Create the flow": pick the device and output pin, then a draft
-/// `control-source` → `device-write` opens in the flow editor.
+/// "Create the flow": pick the device and an output pin or a firmware
+/// command, then a draft `control-source` → `device-write` opens in the
+/// flow editor. Pins are offered only to kinds whose value a pin accepts.
 #[component]
 pub(super) fn FlowDraft(control: UiControl, dirty: bool) -> Element {
     let devices = use_resource(|| async {
@@ -258,25 +259,44 @@ pub(super) fn FlowDraft(control: UiControl, dirty: bool) -> Element {
         .unwrap_or_default()
     });
     let mut device = use_signal(|| None::<(i64, String)>);
-    let mut pin = use_signal(|| None::<String>);
-    let pins = use_resource(move || {
+    let mut target = use_signal(|| None::<DraftTarget>);
+    let with_pins = kind_drives_pins(control.spec.kind);
+    // (select value, label, target): pins `p:<label>`, commands `c:<name>`.
+    let targets = use_resource(move || {
         let pk = device().map(|d| d.0);
         async move {
             let Some(pk) = pk else {
                 return Vec::new();
             };
-            api::pins::pinout(pk)
-                .await
-                .map(|p| p.pins)
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|p| matches!(p.mode.as_deref(), Some("digital_out" | "pwm_out")))
-                .collect::<Vec<_>>()
+            let Ok(pinout) = api::pins::pinout(pk).await else {
+                return Vec::new();
+            };
+            let mut out: Vec<(String, String, DraftTarget)> = Vec::new();
+            if with_pins {
+                for p in pinout.pins {
+                    if matches!(p.mode.as_deref(), Some("digital_out" | "pwm_out")) {
+                        out.push((
+                            format!("p:{}", p.label),
+                            format!("{} ({})", p.label, p.mode.unwrap_or_default()),
+                            DraftTarget::Pin(p.label),
+                        ));
+                    }
+                }
+            }
+            for c in pinout.commands {
+                out.push((
+                    format!("c:{c}"),
+                    format!("{c} ({})", t!("flows-device-write-command")),
+                    DraftTarget::Command(c),
+                ));
+            }
+            out
         }
     });
     let list = devices.read().clone().unwrap_or_default();
-    let pin_list = pins.read().clone().unwrap_or_default();
-    let ready = device().is_some() && pin().is_some() && !dirty;
+    let target_list = targets.read().clone().unwrap_or_default();
+    let no_target = device().is_some() && targets.read().as_ref().is_some_and(|t| t.is_empty());
+    let ready = device().is_some() && target().is_some() && !dirty;
 
     rsx! {
         details { class: "rounded border border-gray-200 bg-white p-2",
@@ -297,7 +317,7 @@ pub(super) fn FlowDraft(control: UiControl, dirty: bool) -> Element {
                             .find(|d| d.device_id == v)
                             .map(|d| (d.id, d.device_id));
                         device.set(found);
-                        pin.set(None);
+                        target.set(None);
                     },
                     option {
                         value: "",
@@ -312,17 +332,34 @@ pub(super) fn FlowDraft(control: UiControl, dirty: bool) -> Element {
                 if device().is_some() {
                     select {
                         class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",
-                        onchange: move |e| pin.set(Some(e.value())),
+                        onchange: move |e| {
+                            let v = e.value();
+                            let found = targets
+                                .read()
+                                .clone()
+                                .unwrap_or_default()
+                                .into_iter()
+                                .find(|(value, _, _)| *value == v)
+                                .map(|(_, _, t)| t);
+                            target.set(found);
+                        },
                         option {
                             value: "",
-                            selected: pin().is_none(),
+                            selected: target().is_none(),
                             disabled: true,
                             {t!("insp-control-flow-pin")}
                         }
-                        for p in pin_list {
-                            option { key: "{p.label}", value: "{p.label}",
-                                "{p.label} ({p.mode.clone().unwrap_or_default()})"
-                            }
+                        for (value, label, _) in target_list {
+                            option { key: "{value}", value: "{value}", "{label}" }
+                        }
+                    }
+                }
+                if no_target {
+                    p { class: "text-[10px] text-amber-700",
+                        if with_pins {
+                            {t!("insp-control-flow-no-target")}
+                        } else {
+                            {t!("insp-control-flow-no-command")}
                         }
                     }
                 }
@@ -333,8 +370,8 @@ pub(super) fn FlowDraft(control: UiControl, dirty: bool) -> Element {
                     class: "w-full rounded bg-teal-600 px-2 py-1 text-xs font-medium text-white disabled:opacity-40",
                     disabled: !ready,
                     onclick: move |_| {
-                        if let (Some((_, slug)), Some(p)) = (device(), pin()) {
-                            create_flow_draft(&control, &slug, &p);
+                        if let (Some((_, slug)), Some(t)) = (device(), target()) {
+                            create_flow_draft(&control, &slug, &t);
                         }
                     },
                     {t!("insp-control-flow-create")}

@@ -362,6 +362,8 @@ pub(super) fn DeviceWriteForm(
     let mut pins_cache =
         use_signal(std::collections::HashMap::<i64, Vec<api::pins::PinoutPin>>::new);
     let mut pins_requested = use_signal(std::collections::HashSet::<i64>::new);
+    // Custom-firmware commands per device (D146), fetched with the pinout.
+    let mut commands_cache = use_signal(std::collections::HashMap::<i64, Vec<String>>::new);
     use_effect(move || {
         let g = cx.graph.cloned();
         let Some(node_id) = cx.selected_node.cloned() else {
@@ -383,14 +385,34 @@ pub(super) fn DeviceWriteForm(
             if !pins_requested.cloned().contains(&pk) {
                 pins_requested.insert(pk);
                 spawn(async move {
-                    if let Ok(pins) = api::pins::pinout(pk).await {
-                        pins_cache.insert(pk, pins.pins);
+                    if let Ok(pinout) = api::pins::pinout(pk).await {
+                        pins_cache.insert(pk, pinout.pins);
+                        commands_cache.insert(pk, pinout.commands);
                     }
                 });
             }
         }
     });
     let device_slug = initial.device_id.clone();
+    // Announced commands, plus configured ones the firmware no longer
+    // announces (still listed so they can be unchecked).
+    let command_rows: Vec<(String, bool)> = {
+        let mut names = device_pk_of(&devices, &device_slug)
+            .and_then(|pk| commands_cache.read().get(&pk).cloned())
+            .unwrap_or_default();
+        for c in &initial.commands {
+            if !names.contains(c) {
+                names.push(c.clone());
+            }
+        }
+        names
+            .into_iter()
+            .map(|name| {
+                let checked = initial.commands.contains(&name);
+                (name, checked)
+            })
+            .collect()
+    };
     // Precomputed pin rows (no `let` inside `for` rsx): a pin claimed by
     // ANOTHER deployed flow renders greyed and uncheckable — claims of THIS
     // flow (or an already-checked pin) stay editable so the user can release
@@ -429,6 +451,7 @@ pub(super) fn DeviceWriteForm(
                             if let FlowNodeKind::DeviceWrite { config } = &mut node.kind {
                                 config.device_id = slug;
                                 config.pins.clear();
+                                config.commands.clear();
                                 node.inputs.clear();
                             }
                         },
@@ -467,7 +490,7 @@ pub(super) fn DeviceWriteForm(
                                                 config.pins.retain(|p| p != &label);
                                             }
                                             config.pins = geometry::sorted_pins(&config.pins);
-                                            node.inputs.retain(|w| config.pins.contains(&w.pin));
+                                            node.inputs.retain(|w| config.anchors().any(|a| a == &w.pin));
                                         }
                                     },
                                 );
@@ -498,6 +521,46 @@ pub(super) fn DeviceWriteForm(
                             }
                         }
                     }
+                }
+            }
+            if !command_rows.is_empty() {
+                div { class: "space-y-1.5",
+                    p { class: "text-xs font-medium text-gray-600",
+                        {t!("flows-device-write-commands")}
+                    }
+                    for (name, checked) in command_rows {
+                        label {
+                            key: "cmd-{name}",
+                            class: "flex items-center gap-2 text-sm",
+                            input {
+                                r#type: "checkbox",
+                                class: "shrink-0",
+                                disabled: !can_write,
+                                checked,
+                                onchange: move |event| {
+                                    let name = name.clone();
+                                    let checked = event.checked();
+                                    patch_selected(
+                                        &mut cx,
+                                        move |node: &mut FlowNode| {
+                                            if let FlowNodeKind::DeviceWrite { config } = &mut node.kind {
+                                                if checked && !config.commands.contains(&name) {
+                                                    config.commands.push(name.clone());
+                                                } else if !checked {
+                                                    config.commands.retain(|c| c != &name);
+                                                }
+                                                node.inputs.retain(|w| config.anchors().any(|a| a == &w.pin));
+                                            }
+                                        },
+                                    );
+                                },
+                            }
+                            span { class: "font-mono text-xs",
+                                {format!("{name} ({})", t!("flows-device-write-command"))}
+                            }
+                        }
+                    }
+                    p { class: "text-xs text-gray-400", {t!("flows-device-write-commands-help")} }
                 }
             }
             p { class: "text-xs text-gray-400 font-mono", {t!("flows-device-write-payload")} }

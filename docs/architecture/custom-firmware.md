@@ -1,6 +1,6 @@
 # PRD — Firmware custom : IDE intégré, source versionnée en base (D87–D94)
 
-**Statut :** Livré, désactivé par défaut — L1, L3, L4, L5 livrés ; L2 partiel (sandbox bwrap optionnelle) ; offline livré le 2026-10-05 (§8) ; nœud flow des commandes reste (cf. §14)
+**Statut :** Livré, désactivé par défaut — L1, L3, L4, L5 livrés ; L2 partiel (sandbox bwrap optionnelle) ; offline livré le 2026-10-05 (§8) ; commandes custom pilotables par Device (write) (D146, 2026-10-06)
 **Portée :** firmware ESP (lib PneX), build serveur, front (éditeur), protocole device
 **Renvois :** `firmware-build.md` (pipeline de build par device), `edge-model.md`
 (D44–D48 : manifeste de capacités, golden vectors), `ota.md`, `worker-fabric.md`
@@ -153,9 +153,34 @@ Golden vectors (F3) étendus au cas sans `gpio`.
 ### D88 — Commande custom = `ServerMsg::Command { cmd_id, name, args }`
 
 Nouveau message serveur additif ; le device répond par l'`Ack` existant.
-Côté flow : le nœud device-write (ou un nœud `device-command` dédié, à
-trancher à l'implémentation) cible une commande du manifeste. Un firmware
+Côté flow : tranché par D146 — c'est le nœud **Device (write)** qui cible
+une commande du manifeste (pas de nœud `device-command`). Un firmware
 qui ne la connaît pas répond `Ack{ok:false, err:"unknown_command"}`.
+
+### D146 — Device (write) envoie aussi les commandes du firmware (2026-10-06)
+
+Choix utilisateur, par symétrie avec Device (read) qui lit déjà les
+métriques custom : **deux nœuds device seulement**, lecture et écriture.
+
+- `DeviceWriteConfig.commands` (défaut vide, rétro-compatible) : commandes
+  cochées dans l'inspecteur parmi celles du dernier announce (réponse
+  `pinout`, champ `commands`). Ancres d'entrée = pins puis commandes, noms
+  uniques (`device_duplicate_pin`), nom valide (`device_bad_command`) ;
+  `pins` peut être vide si une commande est cochée.
+- Routage identique aux pins : clé d'une map, ou `msg.topic` posé par le
+  tagger du fil tiré sur l'ancre. La route interne
+  `/internal/flow/device-write` reçoit `commands: {nom: valeur}` et pousse
+  `ServerMsg::Command { name, args: {"value": valeur} }`, **uniquement**
+  pour une commande annoncée (sinon résultat `ok:false`, rien n'est
+  poussé) ; mêmes gardes jeton / fencing / `offline` que les pins.
+- Une commande n'est pas un pin : hors règle « une source d'écriture par
+  sortie » (D128), pas de `reserved_by`.
+- « Créer le flow » (surfaces) : un switch / slider / bouton / nombre
+  propose pins de sortie **et** commandes ; une couleur, une option ou une
+  consigne ne propose **que** des commandes (un pin refuserait 0xRRGGBB).
+- Correctif livré avec : la projection rembourre les 2 sorties du Device
+  (write) (passthrough + nom du device) — sans fil sur la sortie « nom »,
+  le message était rejeté et la sortie 0 restait muette.
 
 ### 4.3 Contraintes pédagogiques (squelette + doc)
 
@@ -368,8 +393,8 @@ gain de sécurité même sans l'IDE.
 
 ## 13. Décisions à trancher
 
-1. Nœud flow : étendre device-write aux commandes custom, ou nœud
-   `device-command` dédié (D88).
+1. ~~Nœud flow : étendre device-write ou nœud dédié (D88)~~ → étendre
+   Device (write), D146.
 2. Périmètre exact du premier lot du catalogue (D92).
 3. Technique de sandbox V1 sur le worker co-localisé (bubblewrap vs
    conteneur éphémère) — à aligner avec la fabric (P1.6).
@@ -429,7 +454,7 @@ gain de sécurité même sans l'IDE.
 1. Sandbox D91 réelle : isolation hors conteneur partagé (worker dédié
    sans secrets DB dans l'environnement, ou bwrap validé sur hôte).
 2. ~~**Offline**~~ : livré 2026-10-05 (semis de libs + cores séparés, §8).
-3. Nœud flow pour les commandes custom (décision #9 de la roadmap).
+3. ~~Nœud flow pour les commandes custom~~ : Device (write), D146 (2026-10-06).
 4. Sur la page device : afficher le firmware custom / la révision
    déployée et « mise à jour disponible » (D94).
 5. E2E matériel : BME280 I2C → O2 → flow → notification.
@@ -443,3 +468,7 @@ gain de sécurité même sans l'IDE.
   compile, pas encore le build device) ; E2E navigateur réel. Deux bugs
   préexistants corrigés en chemin : overlay de l'éditeur de code rogné au
   défilement, toasts jamais fermés quand l'appelant se démonte.
+- **2026-10-06** — D146 : les commandes custom passent par Device (write)
+  (inspecteur, route interne, « Créer le flow » filtré par type de
+  contrôle) ; cas d'usage = LED RGB WS2812 du C6-Zero pilotée depuis un
+  dashboard (tutoriel).

@@ -13,6 +13,10 @@
 //!   projection stamps the topic; one unit write per message), or a
 //!   **scalar** on a single-pin node (direct wiring from a device-read
 //!   per-pin port); anything else is dropped with a warn (passthrough).
+//! - commands announced by a custom firmware (`commands`, D146) follow the
+//!   same routing as pins (map key, or topic of their input anchor) and are
+//!   sent as `commands: {name: value}`; the backend wraps the value into
+//!   `args = {"value": …}`.
 //! - écriture lenient : un pin en erreur = warn + continue (jamais de
 //!   crash-loop) ; le message passe en sortie (passthrough).
 //! - Sorties : port 0 = message entrant (passthrough), dernier port =
@@ -38,6 +42,9 @@ struct DeviceWriteNodeConfig {
     device_id: String,
     #[serde(default)]
     pins: Vec<String>,
+    /// Custom-firmware commands (D146), input anchors after the pins.
+    #[serde(default)]
+    commands: Vec<String>,
     /// Estampillé par la projection au deploy (`FlowArtifactMeta.org_id`) —
     /// passé tel quel à la route interne (elle résout le device dans l'org).
     #[serde(default)]
@@ -71,10 +78,21 @@ impl DeviceWriteNode {
             ))
             .into());
         }
-        if cfg.pins.is_empty() {
+        if cfg.pins.is_empty() && cfg.commands.is_empty() {
             return Err(EdgelinkError::BadFlowsJson(
-                "pnex-device-write : aucune pin sélectionnée".into(),
+                "pnex-device-write: no pin or command selected".into(),
             )
+            .into());
+        }
+        if cfg
+            .commands
+            .iter()
+            .any(|c| !pnex_core::valid_command_name(c))
+        {
+            return Err(EdgelinkError::BadFlowsJson(format!(
+                "pnex-device-write: invalid command name for \"{}\"",
+                cfg.device_id
+            ))
             .into());
         }
         for pin in &cfg.pins {
@@ -122,6 +140,11 @@ impl DeviceWriteNode {
 }
 
 impl DeviceWriteNode {
+    /// Input anchors: pins first, then commands.
+    fn anchors(&self) -> impl Iterator<Item = &String> {
+        self.config.pins.iter().chain(self.config.commands.iter())
+    }
+
     /// Passthrough fan-out used by every exit path: the incoming message on
     /// port 0 + the configured device slug on the device-name port (last) —
     /// explicit naming for downstream consumers, no payload convention.
@@ -182,29 +205,30 @@ impl DeviceWriteNode {
             };
             if !scalar.is_null() {
                 if let Some(topic) = topic.as_deref() {
-                    if let Some(pin) = self.config.pins.iter().find(|p| p.as_str() == topic) {
+                    if let Some(name) = self.anchors().find(|p| p.as_str() == topic) {
                         let mut single = serde_json::Map::new();
-                        single.insert(pin.clone(), scalar);
+                        single.insert(name.clone(), scalar);
                         return self.write_values(msg, cancel, single).await;
                     }
                     log::warn!(
                         "pnex-device-write [{}] : payload topic \"{topic}\" matches no \
-                         configured pin ({}) — nothing to write",
+                         configured pin or command ({}) — nothing to write",
                         self.name(),
-                        self.config.pins.join(", ")
+                        self.anchors().cloned().collect::<Vec<_>>().join(", ")
                     );
                     return self.fan_out_done(msg, cancel).await;
                 }
-                if self.config.pins.len() == 1 {
+                let mut anchors = self.anchors();
+                if let (Some(only), None) = (anchors.next(), anchors.next()) {
                     let mut single = serde_json::Map::new();
-                    single.insert(self.config.pins[0].clone(), scalar);
+                    single.insert(only.clone(), scalar);
                     return self.write_values(msg, cancel, single).await;
                 }
             }
             log::warn!(
                 "pnex-device-write [{}] : payload non objet{} — rien à écrire",
                 self.name(),
-                if self.config.pins.len() > 1 {
+                if self.anchors().count() > 1 {
                     " (N pins configurées : passez une map {pin: valeur})"
                 } else {
                     ""
@@ -236,31 +260,33 @@ impl DeviceWriteNode {
         cancel: CancellationToken,
         map: serde_json::Map<String, serde_json::Value>,
     ) -> Result<()> {
-        let mut values = serde_json::Map::new();
-        for pin in &self.config.pins {
-            let Some(v) = map.get(pin.as_str()) else {
-                continue;
-            };
-            // Conversion Variant → JSON pour la route (une seule fois).
-            let json_v = serde_json::to_value(v).map_err(|e| {
-                EdgelinkError::InvalidOperation(format!(
-                    "pnex-device-write : payload non sérialisable : {e}"
-                ))
-            })?;
-            values.insert(pin.clone(), json_v);
-        }
-        if values.is_empty() {
+        let pick = |names: &[String]| {
+            let mut out = serde_json::Map::new();
+            for name in names {
+                if let Some(v) = map.get(name.as_str()) {
+                    out.insert(name.clone(), v.clone());
+                }
+            }
+            out
+        };
+        let values = pick(&self.config.pins);
+        let commands = pick(&self.config.commands);
+        if values.is_empty() && commands.is_empty() {
             log::warn!(
-                "pnex-device-write [{}] : aucune pin configurée présente dans le payload",
+                "pnex-device-write [{}] : no configured pin or command in the payload",
                 self.name()
             );
             return self.fan_out_done(msg, cancel).await;
         }
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "org_id": self.org_id,
             "device_id": self.config.device_id,
             "values": values,
         });
+        if !commands.is_empty() {
+            body["commands"] = serde_json::Value::Object(commands.clone());
+        }
+        let targets: Vec<String> = values.keys().chain(commands.keys()).cloned().collect();
         let request = self
             .http
             .post(&self.url)
@@ -283,14 +309,18 @@ impl DeviceWriteNode {
                         log::warn!(
                             "pnex-device-write [{}] : écriture {}:{} échouée : {status} {detail}",
                             self.name(), self.config.device_id,
-                            values.keys().cloned().collect::<Vec<_>>().join(",")
+                            targets.join(",")
                         );
                     } else {
                         match resp.json::<serde_json::Value>().await {
                             Ok(out) => {
                                 for r in out.get("results").and_then(|x| x.as_array()).unwrap_or(&vec![]) {
                                     let ok = r.get("ok").and_then(|x| x.as_bool()).unwrap_or(false);
-                                    let pin = r.get("pin").and_then(|x| x.as_str()).unwrap_or("?");
+                                    let pin = r
+                                        .get("pin")
+                                        .or_else(|| r.get("command"))
+                                        .and_then(|x| x.as_str())
+                                        .unwrap_or("?");
                                     if !ok {
                                         let err = r.get("err").and_then(|x| x.as_str()).unwrap_or("?");
                                         log::warn!(

@@ -138,6 +138,8 @@ pub struct Pinout {
     pub connected: bool,
     pub board: Option<BoardSummary>,
     pub pins: Vec<PinoutPin>,
+    /// Commands announced by a custom firmware (`pnex.onCommand`, D146).
+    pub commands: Vec<String>,
 }
 
 /// `GET /devices/{id}/pinout` — pinout complet (instances + profil v2).
@@ -200,6 +202,7 @@ pub async fn pinout(device_pk: i64) -> Result<Pinout, ApiError> {
         connected: body["connected"].as_bool().unwrap_or(false),
         board,
         pins,
+        commands: json_str_list(body.get("commands")),
     })
 }
 

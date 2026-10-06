@@ -43,7 +43,7 @@ pub const FLOW_AUTHORING_RULES: &[(&str, &str)] = &[
     ),
     (
         "named_input_rows",
-        "Wiring a named input row (device_write pin, pnex_notify trigger/variable, pnex_function input, json_merge input) takes BOTH sides: the source node lists the target in outputs[port].targets AND the target declares the row in its own inputs.",
+        "Wiring a named input row (device_write pin or command, pnex_notify trigger/variable, pnex_function input, json_merge input) takes BOTH sides: the source node lists the target in outputs[port].targets AND the target declares the row in its own inputs.",
     ),
     (
         "saved_is_not_deployed",
@@ -89,12 +89,13 @@ pub const NODE_DOCS: &[NodeDoc] = &[
     },
     NodeDoc {
         kind: "device_write",
-        summary: "Writes the output pins of ONE device (digital 1/0, PWM duty 0..100). Passthrough output.",
+        summary: "Writes the output pins of ONE device (digital 1/0, PWM duty 0..100) and sends the commands its custom firmware announces. Passthrough output.",
         config: &[
             ("device_id", "device slug — one device per node"),
             ("pins", "[output pin label (digital_out / pwm_out)] — one input row per pin"),
+            ("commands", "[command announced by the device's custom firmware (pnex.onCommand)] — one input row per command, after the pins; pins may then be empty"),
         ],
-        notes: "Incoming payload = map {pin: value}: only configured pins present in the map are written. A scalar payload is accepted when a single pin is configured. An output pin has one writer: a pin already written by another deployed flow is refused at deploy (pin_already_assigned).",
+        notes: "Incoming payload = map {pin_or_command: value}: only configured names present in the map are written. A scalar payload is routed by the input row it arrives on, or accepted when a single pin/command is configured. A command receives args = {\"value\": payload} (an RGB colour control sends 0xRRGGBB as a number); a name the firmware does not announce is refused by the server (logged, nothing sent). An output pin has one writer: a pin already written by another deployed flow is refused at deploy (pin_already_assigned); commands have no such rule.",
     },
     NodeDoc {
         kind: "calc",
@@ -331,7 +332,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("controls", "[org control id (UUID)] 1..=32, must exist at deploy"),
             ("emit_on_start", "bool, default false: resend each control's last value at engine start / redeploy"),
         ],
-        notes: "payload = control value (switch 1/0, slider 0..100 = PWM duty by default), topic = control key, msg.control = {id, key, by, via, ts_ms}. Wire it to device_write: a surface never writes a pin itself. A dashboard widget whose control feeds a deployed flow is coupled to that flow.",
+        notes: "payload = control value (switch 1/0, slider 0..100 = PWM duty by default, colour = 0xRRGGBB number), topic = control key, msg.control = {id, key, by, via, ts_ms, option (\"#rrggbb\" for a colour)}. Wire it to a device_write pin, or to a device_write command for a custom firmware (colours always go to a command): a surface never writes a pin itself. A dashboard widget whose control feeds a deployed flow is coupled to that flow.",
     },
     NodeDoc {
         kind: "anomaly",

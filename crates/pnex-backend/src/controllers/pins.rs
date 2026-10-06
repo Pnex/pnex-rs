@@ -312,6 +312,9 @@ async fn pinout(
         "connected": ws_device::is_connected(device.id).await,
         "board": board_json,
         "pins": pins.into_iter().map(|(_, obj)| obj).collect::<Vec<_>>(),
+        // Commands announced by a custom firmware (D146): the flow editor's
+        // Device (write) offers them next to the output pins.
+        "commands": announced_commands(&device),
     }))
 }
 
@@ -813,7 +816,25 @@ async fn custom_command(
 }
 
 /// Is `name` a `command` cap of the device's last announce manifest?
-fn announced_command(device: &device_registries::Model, name: &str) -> bool {
+/// Command names of the device's last announce manifest, sorted.
+fn announced_commands(device: &device_registries::Model) -> Vec<String> {
+    let mut names: Vec<String> = device
+        .announced_caps
+        .as_ref()
+        .and_then(|v| v.as_array())
+        .map(|caps| {
+            caps.iter()
+                .filter(|c| c.get("family").and_then(|f| f.as_str()) == Some("command"))
+                .filter_map(|c| c.get("id").and_then(|i| i.as_str()).map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort();
+    names.dedup();
+    names
+}
+
+pub(crate) fn announced_command(device: &device_registries::Model, name: &str) -> bool {
     device
         .announced_caps
         .as_ref()

@@ -1176,9 +1176,119 @@ fn node_device_write(id: &str, device_id: &str, pins: &[&str]) -> FlowNode {
             config: DeviceWriteConfig {
                 device_id: device_id.into(),
                 pins: pins.iter().map(|p| (*p).into()).collect(),
+                commands: vec![],
             },
         },
     }
+}
+
+/// Device (write) driving custom-firmware commands (D146).
+fn node_device_write_commands(
+    id: &str,
+    device_id: &str,
+    pins: &[&str],
+    commands: &[&str],
+) -> FlowNode {
+    let mut n = node_device_write(id, device_id, pins);
+    if let FlowNodeKind::DeviceWrite { config } = &mut n.kind {
+        config.commands = commands.iter().map(|c| (*c).into()).collect();
+    }
+    n
+}
+
+#[test]
+fn device_write_commands_validate() {
+    // Commands only: no pin needed.
+    let g = FlowGraph {
+        nodes: vec![node_device_write_commands(
+            "w1",
+            "climate-1",
+            &[],
+            &["color", "power"],
+        )],
+    };
+    assert!(validate_graph(&g).is_empty(), "{:?}", validate_graph(&g));
+
+    // Bad name, and a command named like a pin of the same node.
+    let g = FlowGraph {
+        nodes: vec![node_device_write_commands(
+            "w1",
+            "climate-1",
+            &["led"],
+            &["bad name", "LED"],
+        )],
+    };
+    let codes: Vec<String> = validate_graph(&g).iter().map(|x| x.code.clone()).collect();
+    assert!(
+        codes.contains(&"device_bad_command".to_string()),
+        "{codes:?}"
+    );
+    assert!(
+        codes.contains(&"device_duplicate_pin".to_string()),
+        "{codes:?}"
+    );
+
+    // Commands never take part in the one-write-source rule.
+    let g = FlowGraph {
+        nodes: vec![
+            node_device_write_commands("w1", "climate-1", &[], &["color"]),
+            node_device_write_commands("w2", "climate-1", &[], &["color"]),
+        ],
+    };
+    assert!(validate_graph(&g).is_empty(), "{:?}", validate_graph(&g));
+    assert!(device_write_pin_refs_of(&g).is_empty());
+}
+
+#[test]
+fn projection_device_write_commands_are_routed_anchors() {
+    let meta = FlowArtifactMeta {
+        flow_id: 23,
+        version_number: 1,
+        org_id: 7,
+        o2_org: String::new(),
+    };
+    let mut w1 = node_device_write_commands("w1", "climate-1", &[], &["color"]);
+    w1.inputs = vec![crate::FlowInputWiring {
+        pin: "color".into(),
+        from: "i1".into(),
+        from_port: 0,
+    }];
+    let g = FlowGraph {
+        nodes: vec![
+            FlowNode {
+                id: "i1".into(),
+                name: None,
+                position: None,
+                outputs: vec![FlowWiring {
+                    port: 0,
+                    targets: vec!["w1".into()],
+                }],
+                inputs: vec![],
+                kind: FlowNodeKind::Inject {
+                    config: InjectConfig::default(),
+                },
+            },
+            w1,
+        ],
+    };
+    let entries = to_red_flows_json_with(&g, &meta, &FunctionResolver::new());
+    let out = entries.as_array().unwrap();
+    let find = |id: &str| {
+        out.iter()
+            .find(|e| e.get("id").and_then(|v| v.as_str()) == Some(id))
+            .unwrap_or_else(|| panic!("{id} missing"))
+    };
+    assert_eq!(
+        find("pnexflow23_i1")["wires"][0],
+        serde_json::json!(["pnexflow23_ti1p0_color"])
+    );
+    let tagger = find("pnexflow23_ti1p0_color");
+    assert!(tagger["func"]
+        .as_str()
+        .unwrap()
+        .contains("topic: \"color\""));
+    let node = find("pnexflow23_w1");
+    assert_eq!(node["commands"], serde_json::json!(["color"]));
 }
 
 #[test]
@@ -2551,7 +2661,8 @@ fn projection_device_write_tagger_on_wired_input_anchor() {
     assert_eq!(wnode["type"], serde_json::json!("pnex-device-write"));
     assert_eq!(wnode["device_id"], serde_json::json!("dev-a"));
     assert_eq!(wnode["pins"], serde_json::json!(["G13", "G14"]));
-    assert_eq!(wnode["wires"], serde_json::json!([]));
+    // Both output ports padded (passthrough + device name), even unwired.
+    assert_eq!(wnode["wires"], serde_json::json!([[], []]));
 }
 
 #[test]

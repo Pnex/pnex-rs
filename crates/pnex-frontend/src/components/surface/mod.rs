@@ -249,11 +249,42 @@ pub fn suggest_key(label: &str) -> String {
     out.trim_end_matches('_').to_string()
 }
 
+/// What a "Create the flow" draft writes on the device: an output pin, or a
+/// command announced by a custom firmware (D146).
+#[derive(Debug, Clone, PartialEq)]
+pub enum DraftTarget {
+    Pin(String),
+    Command(String),
+}
+
+impl DraftTarget {
+    fn anchor(&self) -> &str {
+        match self {
+            DraftTarget::Pin(name) | DraftTarget::Command(name) => name,
+        }
+    }
+}
+
+/// Can a control of this kind drive an output pin as is? Switch, slider,
+/// button and number values are 0/1 or a duty; a colour, an option or a
+/// stepper setpoint only makes sense to a firmware command.
+pub fn kind_drives_pins(kind: pnex_core::ui_control::ControlKind) -> bool {
+    use pnex_core::ui_control::ControlKind;
+    matches!(
+        kind,
+        ControlKind::Switch | ControlKind::Slider | ControlKind::Button | ControlKind::Number
+    )
+}
+
 /// Draft graph of "Create the flow" (D127, parcours §1.3): a
 /// `control-source` on `control_id` (replayed at start) wired to a
-/// `device-write` of one pin. A switch (on/off) or a slider (0..100) drives
-/// a digital output or a PWM duty as is.
-pub fn flow_draft(control_id: Uuid, device_slug: &str, pin_label: &str) -> pnex_core::FlowGraph {
+/// `device-write` of one pin or one firmware command. A switch (on/off) or a
+/// slider (0..100) drives a digital output or a PWM duty as is.
+pub fn flow_draft(
+    control_id: Uuid,
+    device_slug: &str,
+    target: &DraftTarget,
+) -> pnex_core::FlowGraph {
     use pnex_core::ui_control::ControlSourceConfig;
     use pnex_core::{
         DeviceWriteConfig, FlowGraph, FlowInputWiring, FlowNode, FlowNodeKind, FlowWiring, Position,
@@ -282,14 +313,22 @@ pub fn flow_draft(control_id: Uuid, device_slug: &str, pin_label: &str) -> pnex_
                 position: Some(Position { x: 400.0, y: 120.0 }),
                 outputs: vec![],
                 inputs: vec![FlowInputWiring {
-                    pin: pin_label.to_owned(),
+                    pin: target.anchor().to_owned(),
                     from: "n1".into(),
                     from_port: 0,
                 }],
                 kind: FlowNodeKind::DeviceWrite {
-                    config: DeviceWriteConfig {
-                        device_id: device_slug.to_owned(),
-                        pins: vec![pin_label.to_owned()],
+                    config: match target {
+                        DraftTarget::Pin(pin) => DeviceWriteConfig {
+                            device_id: device_slug.to_owned(),
+                            pins: vec![pin.clone()],
+                            commands: vec![],
+                        },
+                        DraftTarget::Command(cmd) => DeviceWriteConfig {
+                            device_id: device_slug.to_owned(),
+                            pins: vec![],
+                            commands: vec![cmd.clone()],
+                        },
                     },
                 },
             },
@@ -299,11 +338,11 @@ pub fn flow_draft(control_id: Uuid, device_slug: &str, pin_label: &str) -> pnex_
 
 /// Creates the draft flow of a control and opens it in the flow editor
 /// (deploy stays the user's call).
-pub fn create_flow_draft(control: &UiControl, device_slug: &str, pin_label: &str) {
+pub fn create_flow_draft(control: &UiControl, device_slug: &str, target: &DraftTarget) {
     let params = pnex_core::CreateFlow {
         name: t!("controls-flow-name", label : control.label.clone()).to_string(),
         device_id: None,
-        graph: flow_draft(control.id, device_slug, pin_label),
+        graph: flow_draft(control.id, device_slug, target),
         author: None,
         note: None,
     };
@@ -327,12 +366,23 @@ mod tests {
     #[test]
     fn flow_draft_is_a_valid_graph_listening_to_the_control() {
         let id = Uuid::from_u128(42);
-        let g = flow_draft(id, "proud-ibex", "LED");
+        let g = flow_draft(id, "proud-ibex", &DraftTarget::Pin("LED".into()));
         assert!(
             pnex_core::validate_graph(&g).is_empty(),
             "{:?}",
             pnex_core::validate_graph(&g)
         );
+        let g = flow_draft(id, "climate-1", &DraftTarget::Command("color".into()));
+        assert!(
+            pnex_core::validate_graph(&g).is_empty(),
+            "{:?}",
+            pnex_core::validate_graph(&g)
+        );
+        assert!(matches!(
+            &g.nodes[1].kind,
+            pnex_core::FlowNodeKind::DeviceWrite { config }
+                if config.pins.is_empty() && config.commands == ["color"]
+        ));
         assert_eq!(pnex_core::control_refs_of(&g), vec![id]);
         // Round trip through the stored JSON shape (manual Deserialize).
         let back: pnex_core::FlowGraph =

@@ -109,26 +109,28 @@ fn topic_routing_graph() -> serde_json::Value {
                 "id": "v1",
                 "outputs": [{ "port": 0, "targets": ["s1"] }],
                 "kind": "value",
-                "config": { "mode": "static", "value": { "test": 1, "test2": 100 } }
+                "config": { "mode": "static", "value": { "test": 1, "test2": 100, "test3": 16711680 } }
             },
             {
                 "id": "s1",
                 "outputs": [
                     { "port": 0, "targets": ["w1"] },
-                    { "port": 1, "targets": ["w1"] }
+                    { "port": 1, "targets": ["w1"] },
+                    { "port": 2, "targets": ["w1"] }
                 ],
                 "kind": "json_split",
-                "config": { "keys": ["test", "test2"] }
+                "config": { "keys": ["test", "test2", "test3"] }
             },
             {
                 "id": "w1",
                 "outputs": [{ "port": 0, "targets": ["d1"] }],
                 "inputs": [
                     { "pin": "G13", "from": "s1", "from_port": 0 },
-                    { "pin": "G14", "from": "s1", "from_port": 1 }
+                    { "pin": "G14", "from": "s1", "from_port": 1 },
+                    { "pin": "color", "from": "s1", "from_port": 2 }
                 ],
                 "kind": "device_write",
-                "config": { "device_id": "dev-a", "pins": ["G13", "G14"] }
+                "config": { "device_id": "dev-a", "pins": ["G13", "G14"], "commands": ["color"] }
             },
             {
                 "id": "d1",
@@ -194,7 +196,7 @@ fn split_topic_routed_writes_reach_the_write_route() {
     // each POST lands right after its debug event).
     let deadline = Instant::now() + Duration::from_secs(10);
     while Instant::now() < deadline {
-        if requests.lock().expect("lock").len() >= 2 {
+        if requests.lock().expect("lock").len() >= 3 {
             break;
         }
         std::thread::sleep(Duration::from_millis(50));
@@ -215,6 +217,14 @@ fn split_topic_routed_writes_reach_the_write_route() {
     assert_eq!(
         bodies,
         vec![
+            // Custom-firmware command anchor (D146): same routing, sent
+            // under `commands`.
+            serde_json::json!({
+                "org_id": 7,
+                "device_id": "dev-a",
+                "values": {},
+                "commands": { "color": 16711680 }
+            }),
             serde_json::json!({
                 "org_id": 7,
                 "device_id": "dev-a",
@@ -226,7 +236,7 @@ fn split_topic_routed_writes_reach_the_write_route() {
                 "values": { "G14": 100 }
             }),
         ],
-        "exactly one distinct unit write per wired pin"
+        "exactly one distinct unit write per wired pin or command"
     );
     for rec in &recorded {
         assert_eq!(rec.method, "POST", "only POSTs expected: {rec:?}");

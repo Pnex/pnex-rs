@@ -1522,3 +1522,84 @@ async fn custom_metrics_and_commands_roundtrip() {
     })
     .await;
 }
+
+/// D146: a flow's Device (write) sends custom-firmware commands through the
+/// internal route — an announced command is pushed as
+/// `ServerMsg::Command { args: {"value": …} }`, an unannounced one is
+/// reported in the results and never pushed.
+#[tokio::test]
+#[serial]
+async fn flow_device_write_sends_announced_commands() {
+    unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "test-flow-token") };
+    with_app(|server, auth, _ctx| async move {
+        let org = personal_org(&server, &auth).await;
+        let dev = create_custom(&server, &auth, "custom-rgb").await;
+        let mut ws = connect(&server, &dev).await;
+        let announce = serde_json::json!({
+            "t": "announce", "chip": "esp32", "board": "esp32_c6_zero", "fw": "1",
+            "caps": [
+                {"id": "temperature", "family": "metric", "unit": "°C"},
+                {"id": "color", "family": "command"}
+            ]
+        })
+        .to_string();
+        ws.send_text(encrypt(&announce, &dev.key)).await;
+        let plain = decrypt(&ws.receive_text().await, &dev.key);
+        assert!(plain.contains("provision_ack"), "{plain}");
+
+        // The pinout lists the announced commands for the flow editor.
+        let res = server
+            .get(&format!("/api/v1/devices/{}/pinout", dev.id))
+            .add_header("Authorization", format!("Bearer {auth}"))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        res.assert_status_ok();
+        assert_eq!(
+            res.json::<serde_json::Value>()["commands"],
+            serde_json::json!(["color"])
+        );
+
+        let res = server
+            .post("/internal/flow/device-write")
+            .add_header("x-pnex-flow-token", "test-flow-token")
+            .add_header("Content-Type", "application/json")
+            .json(&serde_json::json!({
+                "org_id": org,
+                "device_id": dev.device_id,
+                "commands": {"color": 16711680, "ghost": 1},
+            }))
+            .await;
+        res.assert_status_ok();
+        let out = res.json::<serde_json::Value>();
+        let results = out["results"].as_array().expect("results");
+        assert!(
+            results
+                .iter()
+                .any(|r| r["command"] == "color" && r["ok"] == true),
+            "{out}"
+        );
+        assert!(
+            results
+                .iter()
+                .any(|r| r["command"] == "ghost" && r["ok"] == false),
+            "{out}"
+        );
+
+        let mut pushed = Vec::new();
+        for _ in 0..10 {
+            let plain = decrypt(&ws.receive_text().await, &dev.key);
+            let msg: pnex_core::ServerMsg = serde_json::from_str(&plain).expect("ServerMsg");
+            if let pnex_core::ServerMsg::Command { name, args, .. } = msg {
+                pushed.push((name, args));
+                break;
+            }
+        }
+        assert_eq!(
+            pushed,
+            vec![("color".to_string(), serde_json::json!({"value": 16711680}))]
+        );
+        ws.close().await;
+    })
+    .await;
+    unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
+}
