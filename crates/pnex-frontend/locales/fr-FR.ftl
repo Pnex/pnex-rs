@@ -3359,6 +3359,7 @@ tpl-heating = Chauffage
 tpl-shutter = Volet
 tpl-dishwasher = Lave-vaisselle
 tpl-bedside-light = Lampe de chevet
+tpl-room-climate = Température
 tpl-scene-night = Bonne nuit
 tpl-scene-away = Départ
 tpl-alarm = Alarme

@@ -410,6 +410,7 @@ fn template_pages(t: HomeTemplate) -> &'static [TplPage] {
                         "home-bed",
                         Room,
                         &[
+                            (ThermoHygro, "tpl-room-climate", None),
                             (Light, "tpl-bedside-light", None),
                             (Cover, "tpl-shutter", None),
                         ],
