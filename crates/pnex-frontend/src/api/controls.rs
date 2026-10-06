@@ -100,10 +100,42 @@ pub async fn values(ids: Vec<Uuid>) -> Result<BTreeMap<Uuid, Option<ControlValue
 
 /// Display key of a control id: its key when known, else the short id.
 /// Reads (and subscribes to) [`CONTROL_KEYS`]: call it from a render.
+/// Key without the surface prefix of a declared control
+/// (`dash-1a2b3c4d.w-0009.power` → `w-0009.power`), for the tight port
+/// labels of the canvas; standalone keys are returned as is.
+pub fn short_key(key: &str) -> &str {
+    match key.split_once('.') {
+        Some((surface, rest))
+            if !rest.is_empty()
+                && ["dash-", "annot-"].iter().any(|p| {
+                    surface
+                        .strip_prefix(p)
+                        .is_some_and(|h| h.len() == 8 && h.chars().all(|c| c.is_ascii_hexdigit()))
+                }) =>
+        {
+            rest
+        }
+        _ => key,
+    }
+}
+
 pub fn key_of(id: &Uuid) -> String {
     CONTROL_KEYS
         .read()
         .get(id)
         .cloned()
         .unwrap_or_else(|| id.to_string()[..8].to_string())
+}
+
+#[cfg(test)]
+mod short_key_tests {
+    use super::short_key;
+
+    #[test]
+    fn surface_prefix_is_dropped() {
+        assert_eq!(short_key("dash-7d0f5f9c.w-0009.power"), "w-0009.power");
+        assert_eq!(short_key("annot-1a2b3c4d.item-1"), "item-1");
+        assert_eq!(short_key("garage.door"), "garage.door");
+        assert_eq!(short_key("dash-zz.w-1"), "dash-zz.w-1");
+    }
 }
