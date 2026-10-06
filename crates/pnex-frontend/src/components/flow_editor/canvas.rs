@@ -508,7 +508,10 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                 config
                     .controls
                     .iter()
-                    .map(crate::api::controls::key_of)
+                    .map(|id| {
+                        let key = crate::api::controls::key_of(id);
+                        crate::api::controls::short_key(&key).to_string()
+                    })
                     .enumerate()
                     .map(|(i, label)| (i, rel_y(i), label, node.id.clone()))
                     .collect()

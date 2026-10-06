@@ -603,7 +603,7 @@ flows-device-window = Freshness window (s)
 flows-device-read-help = One device per node. Check the pins to read, or the metrics a custom firmware publishes — each checked entry adds an output port, plus an « all » port with the full object.
 flows-device-metric = metric
 flows-device-read-pin-none = Pins to read:
-flows-device-write-help = One device per node. Check the outputs to drive (digital_out or pwm_out) — the incoming message carries a « pin → value » map.
+flows-device-write-help = One device per node. Check the outputs to drive (digital_out or pwm_out) and, for a custom firmware, its commands. Wire a value on a row, or send a « name → value » map.
 flows-device-write-payload = Expected payload: a pin → value map (e.g. relay_1 = 1, heater = 75).
 flows-device-write-commands = Firmware commands
 flows-device-write-command = command

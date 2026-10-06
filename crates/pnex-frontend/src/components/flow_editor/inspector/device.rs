@@ -254,8 +254,11 @@ pub(super) fn DeviceReadForm(
                         &mut cx,
                         move |node| {
                             if let FlowNodeKind::DeviceRead { config } = &mut node.kind {
-                                config.device_id = slug;
-                                config.pins.clear();
+                                // Same device picked again: keep its pins.
+                                if config.device_id != slug {
+                                    config.device_id = slug;
+                                    config.pins.clear();
+                                }
                             }
                         },
                     );
@@ -449,6 +452,10 @@ pub(super) fn DeviceWriteForm(
                         &mut cx,
                         move |node: &mut FlowNode| { // Unusable annotations (pins gone) must not linger.
                             if let FlowNodeKind::DeviceWrite { config } = &mut node.kind {
+                                // Same device picked again: keep pins, commands and wires.
+                                if config.device_id == slug {
+                                    return;
+                                }
                                 config.device_id = slug;
                                 config.pins.clear();
                                 config.commands.clear();
