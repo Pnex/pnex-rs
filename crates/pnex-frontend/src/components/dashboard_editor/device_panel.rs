@@ -48,6 +48,40 @@ pub fn suggest_card(metric: &str) -> Option<(HomeCard, &'static str, Option<&'st
     }
 }
 
+/// Sources of a suggested home card: the clicked metric on its role, plus
+/// the humidity metric of the same device for a thermo-hygro card (one
+/// click gives the whole card).
+pub fn suggested_sources(
+    card: HomeCard,
+    role: &str,
+    device: &str,
+    metric: &str,
+    siblings: &[String],
+) -> Vec<SourceRef> {
+    let source = |role: &str, metric: &str| SourceRef {
+        role: role.to_string(),
+        metric: metric.to_string(),
+        device_id: device.to_string(),
+        window: if card == HomeCard::Meter {
+            "24h".into()
+        } else {
+            "1h".into()
+        },
+        memory: None,
+    };
+    let mut sources = vec![source(role, metric)];
+    if card == HomeCard::ThermoHygro {
+        let humidity = siblings.iter().find(|m| {
+            let m = m.to_ascii_lowercase();
+            ["humid", "hygro"].iter().any(|w| m.contains(w))
+        });
+        if let Some(h) = humidity {
+            sources.push(source("humidity", h));
+        }
+    }
+    sources
+}
+
 /// Adds a home card bound to a device metric (role source), or an output
 /// pin (state source + declared roles).
 fn add_home_from_device(
@@ -261,6 +295,7 @@ pub fn DevicePanel(cx: EditorCx, by_source: BTreeMap<String, Vec<String>>) -> El
                             cx,
                             device: slug.clone(),
                             metric: m.clone(),
+                            siblings: metrics.clone(),
                         }
                     }
                 }
@@ -336,7 +371,7 @@ fn PinRow(
 }
 
 #[component]
-fn MetricRow(cx: EditorCx, device: String, metric: String) -> Element {
+fn MetricRow(cx: EditorCx, device: String, metric: String, siblings: Vec<String>) -> Element {
     let suggestion = suggest_card(&metric);
     let (sd, sm) = (device.clone(), metric.clone());
     let rows = [
@@ -353,14 +388,8 @@ fn MetricRow(cx: EditorCx, device: String, metric: String) -> Element {
                         class: "rounded border border-amber-300 px-1.5 py-0.5 text-[11px] text-amber-800 hover:bg-amber-50",
                         title: t!("db-from-device-home-card").to_string(),
                         onclick: move |_| {
-                            let source = SourceRef {
-                                role: role.to_string(),
-                                metric: sm.clone(),
-                                device_id: sd.clone(),
-                                window: if card == HomeCard::Meter { "24h".into() } else { "1h".into() },
-                                memory: None,
-                            };
-                            add_home_from_device(cx, card, sm.clone(), vec![source], variant, &[]);
+                            let sources = suggested_sources(card, role, &sd, &sm, &siblings);
+                            add_home_from_device(cx, card, sd.clone(), sources, variant, &[]);
                         },
                         {crate::components::surface::home_card::card_label(card)}
                     }
@@ -445,5 +474,35 @@ mod tests {
                 "{m}: {role} is a role of {c:?}"
             );
         }
+    }
+
+    #[test]
+    fn thermo_hygro_suggestion_pairs_the_humidity_metric() {
+        let siblings = vec!["humidity".to_string(), "temperature".to_string()];
+        let sources = suggested_sources(
+            HomeCard::ThermoHygro,
+            "temperature",
+            "climate-1",
+            "temperature",
+            &siblings,
+        );
+        let roles: Vec<(&str, &str)> = sources
+            .iter()
+            .map(|s| (s.role.as_str(), s.metric.as_str()))
+            .collect();
+        assert_eq!(
+            roles,
+            [("temperature", "temperature"), ("humidity", "humidity")]
+        );
+        assert!(sources.iter().all(|s| s.device_id == "climate-1"));
+        // No humidity on the device: the temperature alone.
+        let sources = suggested_sources(
+            HomeCard::ThermoHygro,
+            "temperature",
+            "d",
+            "temp",
+            &["temp".to_string()],
+        );
+        assert_eq!(sources.len(), 1);
     }
 }

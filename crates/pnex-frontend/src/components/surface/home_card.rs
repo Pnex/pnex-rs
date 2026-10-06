@@ -25,6 +25,15 @@ fn points_of(w: &Widget, role: &str, values: &LiveValues) -> Option<Vec<Telemetr
     values.get(&s.series_key()).cloned().flatten()
 }
 
+/// Timestamp of the newest point across all the card's sources.
+fn newest_ts(w: &Widget, values: &LiveValues) -> Option<f64> {
+    w.source
+        .iter()
+        .filter_map(|s| values.get(&s.series_key()).cloned().flatten())
+        .filter_map(|pts| pts.last().map(|p| p.ts))
+        .reduce(f64::max)
+}
+
 /// Newest point of the source of `role`.
 fn last_of(w: &Widget, role: &str, values: &LiveValues) -> Option<TelemetryPoint> {
     points_of(w, role, values).and_then(|p| p.last().cloned())
@@ -131,6 +140,10 @@ pub fn HomeCardBody(widget: Widget, values: Option<LiveValues>) -> Element {
         return rsx! {};
     };
     let values = values.unwrap_or_default();
+    // Stale value (D135): the newest point of the card's sources is older
+    // than "Stale after" — the card greys out like the classic widgets.
+    let stale = newest_ts(&widget, &values)
+        .is_some_and(|ts| pnex_core::is_stale(&widget.options, ts, crate::util::now_secs()));
     let w = widget.clone();
     let title = if w.title.trim().is_empty() {
         card_label(home.card)
@@ -240,7 +253,9 @@ pub fn HomeCardBody(widget: Widget, values: Option<LiveValues>) -> Element {
         .iter()
         .any(|r| r.required && widget.source_of(r.role).is_none_or(|s| s.is_unset()));
     rsx! {
-        div { class: "flex h-full w-full flex-col gap-2 overflow-hidden rounded-lg p-3",
+        div {
+            class: if stale { "flex h-full w-full flex-col gap-2 overflow-hidden rounded-lg p-3 opacity-50 grayscale" } else { "flex h-full w-full flex-col gap-2 overflow-hidden rounded-lg p-3" },
+            title: if stale { t!("db-stale").to_string() } else { String::new() },
             {body}
             if to_configure {
                 p { class: "mt-auto text-[11px] font-medium text-amber-700",

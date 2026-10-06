@@ -3360,6 +3360,7 @@ tpl-heating = Heating
 tpl-shutter = Shutter
 tpl-dishwasher = Dishwasher
 tpl-bedside-light = Bedside lamp
+tpl-room-climate = Temperature
 tpl-scene-night = Good night
 tpl-scene-away = Leaving home
 tpl-alarm = Alarm

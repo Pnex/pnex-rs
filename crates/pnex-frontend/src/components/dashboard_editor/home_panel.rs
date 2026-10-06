@@ -199,11 +199,7 @@ fn RoleSource(
         .map(|s| s.window.clone())
         .unwrap_or_else(|| "1h".into());
     let present = current.is_some();
-    let devices: Vec<(String, Vec<String>)> = catalog
-        .by_source
-        .iter()
-        .map(|(d, ms)| (d.clone(), ms.clone()))
-        .collect();
+    let devices = with_saved_series(&catalog, current.as_ref());
     let memory: Vec<(String, Vec<String>)> = catalog
         .memory
         .iter()
@@ -283,6 +279,31 @@ fn RoleSource(
             }
         }
     }
+}
+
+/// Catalog series grouped by device, plus the saved telemetry source when
+/// its device published nothing in the catalog window (24 h): kept listed
+/// so the picker never falls back to the placeholder for a saved card.
+fn with_saved_series(
+    catalog: &SourceCatalog,
+    current: Option<&SourceRef>,
+) -> Vec<(String, Vec<String>)> {
+    let mut devices: Vec<(String, Vec<String>)> = catalog
+        .by_source
+        .iter()
+        .map(|(d, ms)| (d.clone(), ms.clone()))
+        .collect();
+    let Some(s) =
+        current.filter(|s| s.memory.is_none() && !s.device_id.is_empty() && !s.metric.is_empty())
+    else {
+        return devices;
+    };
+    match devices.iter_mut().find(|(d, _)| *d == s.device_id) {
+        Some((_, metrics)) if !metrics.contains(&s.metric) => metrics.push(s.metric.clone()),
+        Some(_) => {}
+        None => devices.push((s.device_id.clone(), vec![s.metric.clone()])),
+    }
+    devices
 }
 
 /// Points the source of `role` at an encoded choice (creates it if absent).
@@ -465,5 +486,43 @@ fn WeatherBind(cx: EditorCx, widget: Widget, catalog: SourceCatalog, can_write: 
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn telemetry(device: &str, metric: &str) -> SourceRef {
+        SourceRef {
+            role: "temperature".into(),
+            metric: metric.into(),
+            device_id: device.into(),
+            window: "1h".into(),
+            memory: None,
+        }
+    }
+
+    #[test]
+    fn saved_series_stays_listed_when_absent_from_the_catalog() {
+        let mut catalog = SourceCatalog::default();
+        catalog
+            .by_source
+            .insert("other".into(), vec!["power".into()]);
+        // Device silent for 24 h: absent from the catalog, still listed.
+        let list = with_saved_series(&catalog, Some(&telemetry("climate-1", "temperature")));
+        assert!(list.contains(&("climate-1".to_string(), vec!["temperature".to_string()])));
+        // Known device, metric gone: the metric is appended once.
+        let list = with_saved_series(&catalog, Some(&telemetry("other", "energy")));
+        assert_eq!(
+            list,
+            vec![(
+                "other".to_string(),
+                vec!["power".to_string(), "energy".to_string()]
+            )]
+        );
+        // Unset source: nothing added.
+        let list = with_saved_series(&catalog, Some(&telemetry("", "")));
+        assert_eq!(list.len(), 1);
     }
 }

@@ -268,9 +268,9 @@ fn widget_panel(
                     if primary.device_id.is_empty() && memory_key.is_none() {
                         option { value: "", selected: true, disabled: true, {t!("insp-pick-source")} }
                     }
-                    if !devices_of(&catalog).is_empty() {
+                    if !devices_of(&catalog, &primary.device_id).is_empty() {
                         optgroup { label: t!("insp-devices").to_string(),
-                            for d in devices_of(&catalog) {
+                            for d in devices_of(&catalog, &primary.device_id) {
                                 option {
                                     key: "{d}",
                                     value: "{d}",
@@ -612,14 +612,21 @@ fn field_label(label_key: String, label: String) -> Element {
     }
 }
 
-/// Sources réelles (hors devices virtuels de flows), triées.
-fn devices_of(catalog: &SourceCatalog) -> Vec<String> {
-    catalog
+/// Sources réelles (hors devices virtuels de flows), triées — plus the
+/// stored device when it published nothing in the catalog window (kept
+/// visible and selected, like a stale memory key).
+fn devices_of(catalog: &SourceCatalog, current: &str) -> Vec<String> {
+    let mut devices: Vec<String> = catalog
         .by_source
         .keys()
         .filter(|d| !catalog.flows.contains(*d))
         .cloned()
-        .collect()
+        .collect();
+    if !current.is_empty() && !current.starts_with("flow_") && !devices.iter().any(|d| d == current)
+    {
+        devices.push(current.to_string());
+    }
+    devices
 }
 
 /// Live memory keys that expose at least one numeric field, plus the
