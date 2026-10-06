@@ -469,6 +469,20 @@ gain de sécurité même sans l'IDE.
    journalisés côté serveur), et ne plus considérer une commande comme
    « envoyée » tant que l'`Ack` n'est pas revenu (le nœud n'attend
    aujourd'hui que le push WS).
+   **Enquête du 2026-10-06 au soir** (cache Valkey `pnex:last:v1:{org}:{device}:light`
+   comme vérité terrain, ~180 ms médiane commande → état publié) :
+   2 pertes constatées (21:15:14, 21:56:06), puis 0 sur ~230 commandes
+   (route interne directe 0/40, contrôle → flow 0/40, couleur 2 s avant
+   0/40, bascules à la seconde autour de la resynchro cluster 0/18).
+   Écarté : file du moteur (mpsc borné, contre-pression), coupure de
+   l'abonnement Valkey du nœud Source contrôle (abonné continu), reload du
+   runtime et resynchro complète toutes les 300 s (artefact identique, flow
+   non touché). Seul tronçon sans observabilité : push WS serveur →
+   handler du device (les `Ack ok:true` ne sont ni attendus ni journalisés).
+   Correctif proposé : suivi des `cmd_id` de commande dans la session WS,
+   warn « commande non acquittée » après quelques secondes, puis renvoi
+   pour les commandes idempotentes (power/level/color) — jamais pour une
+   commande momentanée (bouton), sauf dédup `cmd_id` côté lib.
 7. **État réel après une commande (idée utilisateur, 2026-10-06)** : le
    firmware générique PneX remonte déjà l'état réel des pins de sortie
    (digital 0/1, duty PWM). Pour un firmware custom, rien d'équivalent :
