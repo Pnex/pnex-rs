@@ -1566,7 +1566,7 @@ async fn flow_device_write_sends_announced_commands() {
             .json(&serde_json::json!({
                 "org_id": org,
                 "device_id": dev.device_id,
-                "commands": {"color": 16711680, "ghost": 1},
+                "commands": {"color": 16711680, "ghost": 1, "big": "x".repeat(600)},
             }))
             .await;
         res.assert_status_ok();
@@ -1582,6 +1582,12 @@ async fn flow_device_write_sends_announced_commands() {
             results
                 .iter()
                 .any(|r| r["command"] == "ghost" && r["ok"] == false),
+            "{out}"
+        );
+        assert!(
+            results
+                .iter()
+                .any(|r| r["command"] == "big" && r["err"] == "command value too large"),
             "{out}"
         );
 
