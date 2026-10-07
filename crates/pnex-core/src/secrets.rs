@@ -327,3 +327,61 @@ mod slot_tests {
         );
     }
 }
+
+/// Destination a secret is sent to, as compared by R9 (SEC-W2): the
+/// lowercased origin `scheme://host:port` of `url`, default port made
+/// explicit. Path, query and credentials are ignored: the secret stays
+/// with the same server. `None` = not a URL with a host.
+pub fn destination_of_url(raw: &str) -> Option<String> {
+    let url = url::Url::parse(raw.trim()).ok()?;
+    let host = url.host_str()?.to_ascii_lowercase();
+    let port = url.port_or_known_default()?;
+    Some(format!("{}://{host}:{port}", url.scheme()))
+}
+
+/// Destination key of a URL field that carries a secret: its origin, or
+/// the raw trimmed text when it does not parse (then only the very same
+/// text matches — an unparsable URL never sends anything anyway).
+pub fn destination_key(raw: &str) -> String {
+    destination_of_url(raw).unwrap_or_else(|| format!("raw:{}", raw.trim()))
+}
+
+#[cfg(test)]
+mod destination_tests {
+    use super::*;
+
+    #[test]
+    fn origin_ignores_path_query_and_credentials() {
+        assert_eq!(
+            destination_of_url("https://API.example.com/v1/x?a=1").as_deref(),
+            Some("https://api.example.com:443")
+        );
+        assert_eq!(
+            destination_of_url("https://user:pw@api.example.com:443/other"),
+            destination_of_url("https://api.example.com")
+        );
+        assert_eq!(
+            destination_of_url("http://192.168.1.20:8080/a").as_deref(),
+            Some("http://192.168.1.20:8080")
+        );
+    }
+
+    #[test]
+    fn host_port_or_scheme_change_is_another_destination() {
+        let base = destination_of_url("https://api.example.com/x");
+        assert_ne!(base, destination_of_url("https://evil.example.net/x"));
+        assert_ne!(base, destination_of_url("https://api.example.com:8443/x"));
+        assert_ne!(base, destination_of_url("http://api.example.com/x"));
+        // Userinfo tricks resolve to the real host.
+        assert_eq!(
+            destination_of_url("https://api.example.com@evil.example.net/").as_deref(),
+            Some("https://evil.example.net:443")
+        );
+    }
+
+    #[test]
+    fn unparsable_urls_only_match_themselves() {
+        assert_eq!(destination_of_url("not a url"), None);
+        assert_eq!(destination_key(" not a url "), "raw:not a url");
+    }
+}

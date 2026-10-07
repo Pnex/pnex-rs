@@ -882,6 +882,15 @@ fn default_http_timeout_secs() -> u64 {
 }
 
 impl HttpFetchNodeConfig {
+    /// Destination key of a secret field (R9): the request URL's origin
+    /// for `auth.*`, the proxy's for `proxy.password`.
+    pub fn secret_destination(&self, field: &str) -> String {
+        match (&self.proxy, field) {
+            (HttpFetchProxy::Custom { url, .. }, "proxy.password") => crate::destination_key(url),
+            _ => crate::destination_key(&self.url),
+        }
+    }
+
     /// The secret fields of the node, by stable field name
     /// (`auth.password`, `auth.token`, `auth.value`, `proxy.password`).
     pub fn secret_slots(&self) -> Vec<(&'static str, &crate::SecretSlot)> {

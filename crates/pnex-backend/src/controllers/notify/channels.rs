@@ -152,6 +152,7 @@ pub(super) async fn create_channel(
         &params.kind,
         None,
         &params.config,
+        (!org.can_manage_secrets()).then_some(&[][..]),
     )
     .await
     {
@@ -234,6 +235,7 @@ pub(super) async fn update_channel(
         Ok(ring) => ring,
         Err(e) => return vault_error(e),
     };
+    let held = secrets::notify::held_bindings(&m.kind, &m.config);
     let plan = match secrets::notify::plan(
         &ctx.db,
         &ring,
@@ -241,6 +243,7 @@ pub(super) async fn update_channel(
         &params.kind,
         Some(&m.config),
         &merged,
+        (!org.can_manage_secrets()).then_some(held.as_slice()),
     )
     .await
     {

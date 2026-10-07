@@ -1866,6 +1866,7 @@ err-secret-in-use = Ce secret est encore utilisé : retirez-le de ses usages ava
 err-secret-not-referenced = Ce secret n'est référencé par aucun flow déployé de l'organisation.
 err-secret-name-taken = Un secret porte déjà ce nom dans l'organisation.
 err-secret-write-forbidden = Rôle owner ou admin requis pour créer, modifier ou supprimer un secret.
+err-secret-destination-locked = Seul un owner ou un admin peut attacher un secret ou changer sa destination (URL, hôte, port, réseau WiFi). Gardez le secret et l'adresse actuels, ou demandez-le à un owner ou un admin.
 err-edge-host-locked = Le serveur PNeX est imposé par ce déploiement : impossible d'en ajouter ou d'en modifier.
 err-build-create-forbidden = Rôle owner, admin ou membre requis pour lancer les builds.
 err-build-delete-forbidden = Rôle owner, admin ou membre requis pour gérer les builds.
@@ -2923,6 +2924,7 @@ secret-field-pick = Choisir un secret existant
 secret-field-type-placeholder = Valeur (stockée chiffrée)
 secret-field-pick-placeholder = — Choisir un secret —
 secret-field-unset = Non défini
+secret-field-managers-only = Non défini — seul un owner ou un admin peut attacher un secret à ce champ.
 
 ## Org controls (D125–D127)
 err-control-write-forbidden = Rôle owner, admin ou membre requis pour gérer ou actionner les contrôles.

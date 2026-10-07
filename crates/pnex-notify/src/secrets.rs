@@ -49,6 +49,40 @@ pub fn secret_refs(kind: &str, config: &serde_json::Value) -> Vec<(String, Uuid)
         .collect()
 }
 
+/// Destination key the secrets of a channel are sent to (R9, SEC-W2).
+/// `None` = fixed by the kind: the secret is the URL itself (Discord,
+/// Slack) or the host is hard-wired (Telegram), so a config change cannot
+/// redirect it.
+pub fn destination(kind: &str, config: &serde_json::Value) -> Option<String> {
+    let text = |f: &str| config.get(f).and_then(|v| v.as_str()).unwrap_or("").trim();
+    match kind {
+        "webhook" => Some(pnex_core::destination_key(text("url"))),
+        "ntfy" => Some(pnex_core::destination_key(text("server"))),
+        "smtp" => {
+            // `""` = `starttls` (front Select quirk, see the smtp channel).
+            let tls = match text("tls") {
+                "" => "starttls",
+                t => t,
+            };
+            let port = config
+                .get("port")
+                .and_then(|v| v.as_i64().or_else(|| v.as_f64().map(|f| f as i64)))
+                .unwrap_or(match tls {
+                    "tls" => 465,
+                    "none" => 25,
+                    _ => 587,
+                });
+            // The TLS mode is part of it: downgrading to `none` would send
+            // the password in clear to the same host.
+            Some(format!(
+                "smtp://{}:{port}/{tls}",
+                text("host").to_ascii_lowercase()
+            ))
+        }
+        _ => None,
+    }
+}
+
 /// `(field, value)` of every legacy plaintext secret of a channel config
 /// (boot takeover input).
 pub fn plaintext_secrets(kind: &str, config: &serde_json::Value) -> Vec<(String, String)> {
@@ -132,6 +166,34 @@ pub async fn fetch(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn channel_destinations() {
+        let hook = |u: &str| destination("webhook", &json!({ "url": u }));
+        assert_eq!(
+            hook("https://h.example.com/a"),
+            hook("https://h.example.com/b?x=1")
+        );
+        assert_ne!(
+            hook("https://h.example.com/a"),
+            hook("https://evil.example.net/a")
+        );
+        assert_eq!(
+            destination("ntfy", &json!({"server": "https://ntfy.sh", "topic": "t"})).as_deref(),
+            Some("https://ntfy.sh:443")
+        );
+        let smtp = |c| destination("smtp", &c);
+        assert_eq!(
+            smtp(json!({"host": "Mail.example.com", "tls": ""})),
+            smtp(json!({"host": "mail.example.com", "port": 587, "tls": "starttls"}))
+        );
+        assert_ne!(
+            smtp(json!({"host": "mail.example.com", "tls": "starttls"})),
+            smtp(json!({"host": "mail.example.com", "port": 587, "tls": "none"}))
+        );
+        assert_eq!(destination("discord", &json!({})), None);
+        assert_eq!(destination("telegram", &json!({"chat_id": "1"})), None);
+    }
 
     #[test]
     fn refs_and_plaintext_are_told_apart() {

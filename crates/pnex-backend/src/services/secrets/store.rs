@@ -31,6 +31,9 @@ pub enum StoreError {
     Invalid { field: &'static str, token: String },
     #[error("owner or admin role required to write a secret")]
     WriteForbidden,
+    /// R9: only owner/admin bind a secret to a field and a destination.
+    #[error("secret of field `{field}` is bound to its destination (owner or admin required)")]
+    DestinationLocked { field: String },
     #[error(transparent)]
     Keyring(#[from] KeyringError),
     #[error(transparent)]
@@ -305,6 +308,26 @@ pub async fn save_single<C: ConnectionTrait>(
     input: Option<&SecretFieldInput>,
 ) -> Result<Option<Uuid>, StoreError> {
     let name = consumer.dedicated(&consumer.prefix);
+    // Strict R9 (SEC-W2): without secrets management, a single consumer
+    // keeps its secret as is. Picking another one, or renaming the
+    // consumer (the WiFi SSID is where the password goes) while it holds
+    // one, is refused.
+    if !can_write_secrets {
+        let picks_other = matches!(
+            input,
+            Some(SecretFieldInput::Pick { secret_id }) if Some(*secret_id) != current
+        );
+        let renamed = current.is_some()
+            && consumer
+                .previous_prefix
+                .as_deref()
+                .is_some_and(|o| o != consumer.prefix);
+        if picks_other || renamed {
+            return Err(StoreError::DestinationLocked {
+                field: consumer.field.to_string(),
+            });
+        }
+    }
     if let (Some(old), Some(secret)) = (
         consumer
             .previous_prefix

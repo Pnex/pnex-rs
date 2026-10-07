@@ -136,6 +136,9 @@ pub const SECRET_IN_USE: &str = "secret-in-use";
 pub const SECRET_NOT_REFERENCED: &str = "secret-not-referenced";
 pub const SECRET_NAME_TAKEN: &str = "secret-name-taken";
 pub const SECRET_WRITE_FORBIDDEN: &str = "secret-write-forbidden";
+/// Strict R9: only owner/admin attach a vault secret to a field or change
+/// its destination; others keep it as is. Args: `field`.
+pub const SECRET_DESTINATION_LOCKED: &str = "secret-destination-locked";
 pub const BUILD_CREATE_FORBIDDEN: &str = "build-create-forbidden";
 pub const BUILD_DELETE_FORBIDDEN: &str = "build-delete-forbidden";
 /// A build of this device is already queued or running.
@@ -455,6 +458,7 @@ pub const ALL: &[&str] = &[
     SECRET_NOT_REFERENCED,
     SECRET_NAME_TAKEN,
     SECRET_WRITE_FORBIDDEN,
+    SECRET_DESTINATION_LOCKED,
     BUILD_CREATE_FORBIDDEN,
     BUILD_DELETE_FORBIDDEN,
     BUILD_IN_PROGRESS,
