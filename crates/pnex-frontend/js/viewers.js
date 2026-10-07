@@ -207,10 +207,16 @@ function mountSplat(hostId, url) {
         camera.data.near = Math.max(frame.R * 1e-3, 1e-3);
         camera.data.far = frame.R * 100;
         var center = new gsplatLib.Vector3(frame.center[0], frame.center[1], frame.center[2]);
-        var controls = new gsplatLib.OrbitControls(
-          camera, canvas, 0.5, 0.35, frame.R * 1.5, false, center
-        );
-        controls.minZoom = frame.R * 0.05;
+        // Keyboard moves (arrows / WASD, Q-E up-down): gsplat binds them on
+        // window, so they are routed through a guard (pointer over the
+        // viewer, no text field focused) and removed with the viewer (O35).
+        var controls = withGuardedKeys(st, function () {
+          return new gsplatLib.OrbitControls(
+            camera, canvas, 0.5, 0.35, frame.R * 1.5, true, center
+          );
+        });
+        // Close enough to walk inside the scene, not only around it.
+        controls.minZoom = frame.R * 0.005;
         controls.maxZoom = frame.R * 10;
         st.renderer = renderer;
         st.scene = scene;
@@ -466,6 +472,40 @@ function pickSplat(st, clientX, clientY) {
 function splatListen(st, target, type, fn, capture) {
   target.addEventListener(type, fn, capture);
   st.listeners.push([target, type, fn, capture]);
+}
+
+// Builds gsplat controls while capturing their window key listeners: each
+// one is registered through splatListen (removed by stopSplat) behind a
+// guard, so typing in a field elsewhere never moves the camera. Key-up
+// always passes so a key released off the viewer does not stay pressed.
+function withGuardedKeys(st, build) {
+  var hover = false;
+  splatListen(st, st.host, 'mouseenter', function () { hover = true; });
+  splatListen(st, st.host, 'mouseleave', function () { hover = false; });
+  var editable = function (el) {
+    if (!el || !el.tagName) return false;
+    var tag = el.tagName.toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
+  };
+  var add = window.addEventListener;
+  window.addEventListener = function (type, fn, opts) {
+    if (type !== 'keydown' && type !== 'keyup') return add.call(window, type, fn, opts);
+    var guarded = function (e) {
+      if (type === 'keydown' && (!hover || editable(document.activeElement))) return;
+      // Arrows move the camera, not the page under it.
+      if (type === 'keydown' && e.code && e.code.indexOf('Arrow') === 0) e.preventDefault();
+      fn(e);
+    };
+    // Registered with the original method (splatListen would re-enter this
+    // override); stopSplat removes it.
+    add.call(window, type, guarded, opts);
+    st.listeners.push([window, type, guarded, opts]);
+  };
+  try {
+    return build();
+  } finally {
+    window.addEventListener = add;
+  }
 }
 
 function bindSplatEvents(st) {
