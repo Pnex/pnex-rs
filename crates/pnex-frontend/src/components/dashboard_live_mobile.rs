@@ -23,23 +23,20 @@ use crate::state::toasts;
 type Values = HashMap<String, Option<Vec<TelemetryPoint>>>;
 
 /// Grid classes of a mobile card (D124): column span (1 = half, 2 = two
-/// columns, default 2) and a height fitted to the widget type.
+/// columns, default 2) and a height fitted to the widget type. Home cards
+/// size to their content with a floor (O29: a fixed height left a light
+/// card half empty); only the energy flow and the forecast keep a fixed
+/// height. Charts keep theirs: their canvas fills the card.
 pub fn mobile_card_classes(w: &Widget) -> &'static str {
     let half = w.options.span == Some(1);
     if let Some(home) = &w.options.home {
         return match (home.card, half) {
             (HomeCard::EnergyFlow | HomeCard::Weather, _) => "col-span-2 h-60",
             (HomeCard::Light | HomeCard::Thermostat | HomeCard::Cover | HomeCard::Alarm, true) => {
-                "col-span-1 h-48"
+                "col-span-1 min-h-32"
             }
-            (HomeCard::Light | HomeCard::Thermostat | HomeCard::Cover | HomeCard::Alarm, false) => {
-                "col-span-2 h-44"
-            }
-            (HomeCard::Fan | HomeCard::Irrigation | HomeCard::Appliance, _) if !half => {
-                "col-span-2 h-36"
-            }
-            (_, true) => "col-span-1 h-32",
-            (_, false) => "col-span-2 h-32",
+            (_, true) => "col-span-1 min-h-24",
+            (_, false) => "col-span-2 min-h-20",
         };
     }
     match (w.widget_type.as_str(), half) {
@@ -209,6 +206,7 @@ fn StackCard(w: Widget, values: Values, on_open: EventHandler<String>) -> Elemen
                 r#type: "button",
                 class: "absolute right-1.5 top-1.5 rounded-full p-1 text-gray-300 hover:bg-gray-100 hover:text-gray-600",
                 title: t!("db-detail-open").to_string(),
+                aria_label: t!("db-detail-open"),
                 onclick: move |_| on_open.call(id.clone()),
                 icons::Maximize { class: "h-3.5 w-3.5" }
             }
@@ -414,12 +412,16 @@ fn DetailSheet(widget: Widget, values: Values, on_close: EventHandler<()>) -> El
             onclick: move |_| on_close.call(()),
             div {
                 class: "max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-gray-50 p-4 md:rounded-2xl",
+                role: "dialog",
+                aria_modal: "true",
+                aria_label: "{title}",
                 onclick: move |e| e.stop_propagation(),
                 div { class: "mb-3 flex items-center justify-between",
                     h2 { class: "text-base font-semibold text-gray-900", "{title}" }
                     button {
                         r#type: "button",
                         class: "rounded-full p-1 text-gray-400 hover:bg-gray-200",
+                        aria_label: t!("common-close"),
                         onclick: move |_| on_close.call(()),
                         icons::X { class: "h-5 w-5" }
                     }
