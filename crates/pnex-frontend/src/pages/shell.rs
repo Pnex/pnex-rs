@@ -647,7 +647,7 @@ fn NavVizGroup(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
 fn NavAutomationGroup(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
     let route = use_route::<Route>();
     let in_flows = route == Route::Functions {}
-        || route == Route::Flows {}
+        || matches!(route, Route::Flows { .. })
         || route == Route::Notifications {}
         || route == Route::Events {}
         || route == Route::FluidMixtures {};
@@ -695,8 +695,8 @@ fn NavAutomationGroup(on_navigate: Option<Callback<()>>, rail: bool) -> Element 
                         span { {t!("nav-functions")} }
                     }
                     Link {
-                        to: Route::Flows {},
-                        class: nav_class(route == Route::Flows {}, false),
+                        to: Route::Flows { id: String::new() },
+                        class: nav_class(matches!(route, Route::Flows { .. }), false),
                         onclick: close_drawer,
                         crate::components::icons::Activity { class: "h-5 w-5" }
                         span { {t!("nav-flows")} }
@@ -975,8 +975,7 @@ fn open_hit(
             navigator.push(Route::Functions {});
         }
         "flow" => {
-            crate::state::flows::OPEN_FLOW.with_mut(|v| *v = hit.id.parse::<i64>().ok());
-            navigator.push(Route::Flows {});
+            navigator.push(Route::Flows { id: hit.id.clone() });
         }
         "dashboard" => {
             navigator.push(Route::Dashboards {

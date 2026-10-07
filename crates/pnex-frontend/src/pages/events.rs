@@ -339,8 +339,7 @@ fn EventRow(ev: EventRecord) -> Element {
                         r#type: "button",
                         onclick: move |e| {
                             e.stop_propagation();
-                            crate::state::flows::OPEN_FLOW.with_mut(|v| *v = Some(id));
-                            navigator.push(Route::Flows {});
+                            navigator.push(Route::Flows { id: id.to_string() });
                         },
                         "#{id}"
                     }

@@ -30,7 +30,7 @@ fn short_date(rfc3339: &str) -> String {
 fn usage_route(kind: SecretConsumerKind) -> Route {
     match kind {
         SecretConsumerKind::NotifyChannel => Route::Notifications {},
-        SecretConsumerKind::Flow => Route::Flows {},
+        SecretConsumerKind::Flow => Route::Flows { id: String::new() },
         SecretConsumerKind::Wifi => Route::EdgeRefs {},
         SecretConsumerKind::LlmProvider => Route::OrgsCurrent {},
     }
@@ -237,10 +237,13 @@ pub fn Secrets() -> Element {
                     valid: form_valid,
                     div { class: "space-y-4",
                         div {
-                            label { class: "block text-sm font-medium text-gray-700 mb-1",
+                            label {
+                                r#for: "secrets-field-1",
+                                class: "block text-sm font-medium text-gray-700 mb-1",
                                 {t!("secrets-name")}
                             }
                             input {
+                                id: "secrets-field-1",
                                 class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono",
                                 placeholder: t!("secrets-name-placeholder"),
                                 value: "{name}",
@@ -248,17 +251,22 @@ pub fn Secrets() -> Element {
                             }
                         }
                         div {
-                            label { class: "block text-sm font-medium text-gray-700 mb-1",
+                            label {
+                                r#for: "secrets-field-2",
+                                class: "block text-sm font-medium text-gray-700 mb-1",
                                 {t!("secrets-description")}
                             }
                             input {
+                                id: "secrets-field-2",
                                 class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                                 value: "{description}",
                                 oninput: move |e| description.set(e.value()),
                             }
                         }
                         div {
-                            label { class: "block text-sm font-medium text-gray-700 mb-1",
+                            label {
+                                r#for: "secrets-field-3",
+                                class: "block text-sm font-medium text-gray-700 mb-1",
                                 if is_edit {
                                     {t!("secrets-new-value")}
                                 } else {
@@ -266,6 +274,7 @@ pub fn Secrets() -> Element {
                                 }
                             }
                             input {
+                                id: "secrets-field-3",
                                 class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono",
                                 r#type: "password",
                                 autocomplete: "new-password",

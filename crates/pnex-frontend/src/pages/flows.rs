@@ -23,7 +23,6 @@ use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
 use crate::components::loading_overlay::LoadingOverlay;
-use crate::state::flows::OPEN_FLOW;
 use crate::state::{org, session, toasts};
 
 /// Rôle de l'utilisateur dans l'org courante (« owner »/« admin »/« viewer ») —
@@ -38,20 +37,24 @@ fn current_role() -> Option<String> {
 }
 
 #[component]
-pub fn Flows() -> Element {
+pub fn Flows(id: String) -> Element {
     let mut reload = use_signal(|| 0u32);
-    let mut selected = use_signal(|| None::<i64>);
-
-    // Deep-link assistant : ouvre le flow demandé (signal consommé une fois).
-    let mut deep_link_done = use_signal(|| false);
-    use_effect(move || {
-        if deep_link_done() {
-            return;
+    // The open flow mirrors the `?id=` of the URL (O31): deep links (search,
+    // assistant, events, "Create and open the flow") and a reload land on
+    // it, the nav link (no id) goes back to the list.
+    let mut selected = use_signal(|| id.parse::<i64>().ok());
+    use_effect(use_reactive((&id,), move |(id,)| {
+        let want = id.parse::<i64>().ok();
+        if *selected.peek() != want {
+            selected.set(want);
         }
-        if let Some(flow_id) = OPEN_FLOW() {
-            selected.set(Some(flow_id));
-            OPEN_FLOW.with_mut(|f| *f = None);
-            deep_link_done.set(true);
+    }));
+    use_effect(move || {
+        let want = selected().map(|f| f.to_string()).unwrap_or_default();
+        if let crate::app::Route::Flows { id } = router().current::<crate::app::Route>() {
+            if id != want {
+                navigator().replace(crate::app::Route::Flows { id: want });
+            }
         }
     });
     let mut filter_status = use_signal(|| "all".to_string());

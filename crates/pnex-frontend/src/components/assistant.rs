@@ -1,7 +1,7 @@
 //! Panneau assistant IA — bouton flottant global (toutes pages, mode
 //! authentifié) + drawer de chat. La trace d'outils est repliable ; une
 //! carte « Ouvrir dans l'éditeur » apparaît quand un outil a touché un
-//! flow (deep-link via `state::flows::OPEN_FLOW`).
+//! flow (deep-link via the `?id=` of `/flows`).
 //!
 //! Conversations (D145): private to the user within the current org,
 //! stored by the server. The drawer lists them (new, resume, rename,
@@ -18,7 +18,6 @@ use pnex_core::{AiConversation, AiMessage, AiPageContext, AiSendMessage, AiToolT
 use uuid::Uuid;
 
 use crate::api;
-use crate::state::flows::OPEN_FLOW;
 use crate::state::{ai, toasts};
 
 /// Conversation shown by the drawer, kept across open/close (reset when
@@ -499,8 +498,10 @@ fn Bubble(bubble: ChatBubble) -> Element {
                                 class: "px-3 py-1.5 rounded-md border border-blue-600 text-blue-600 text-sm hover:bg-blue-50",
                                 onclick: move |_| {
                                     if let Some(flow_id) = entry.flow_id {
-                                        OPEN_FLOW.with_mut(|f| *f = Some(flow_id));
-                                        navigator.push(crate::app::Route::Flows {});
+                                        navigator
+                                            .push(crate::app::Route::Flows {
+                                                id: flow_id.to_string(),
+                                            });
                                     }
                                 },
                                 {t!("ai-open-in-editor")}

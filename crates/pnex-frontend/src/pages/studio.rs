@@ -37,7 +37,7 @@ pub fn Studio() -> Element {
     let mut reload = use_signal(|| 0u32);
     let mut selected = use_signal(|| None::<String>);
 
-    // Deep-link (signal consommé une fois — école OPEN_FLOW).
+    // Deep-link (one-shot signal, consumed once).
     let mut deep_link_done = use_signal(|| false);
     use_effect(move || {
         if deep_link_done() {
