@@ -88,16 +88,23 @@ async fn bind_surface_controls<C: sea_orm::ConnectionTrait>(
         let Some(home) = &w.options.home else {
             continue;
         };
+        let title = if w.title.trim().is_empty() {
+            w.id.as_str()
+        } else {
+            w.title.trim()
+        };
+        // Room = title of the mobile section holding the card.
+        let room = layout
+            .sections
+            .iter()
+            .find(|s| s.items.contains(&w.id))
+            .map(|s| s.title.as_str())
+            .unwrap_or_default();
         for r in home.active_roles() {
-            let title = if w.title.trim().is_empty() {
-                w.id.as_str()
-            } else {
-                w.title.trim()
-            };
             items.push(DeclaredControl {
                 item_id: pnex_core::home::role_item_id(&w.id, r.role),
                 kind: Some(r.kind),
-                label: format!("{title} · {}", r.role),
+                label: pnex_core::home::role_control_label(room, title, r.role),
                 current: home.control_of(r.role),
                 spec: home.spec_of(r.role),
             });

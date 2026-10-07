@@ -101,7 +101,9 @@ pub(super) fn ControlPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Ele
                 } else {
                     div { class: "rounded border border-indigo-200 bg-white px-2 py-1.5 text-xs space-y-1",
                         p { class: "text-indigo-800",
-                            {t!("insp-source-shared", label : d.label.clone())}
+                            {
+                                t!("insp-source-shared", label : crate ::components::surface::control_label(& d))
+                            }
                         }
                         if can_write {
                             button {

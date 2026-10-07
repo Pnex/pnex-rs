@@ -429,6 +429,18 @@ pub fn role_item_id(widget_id: &str, role: &str) -> String {
     format!("{widget_id}.{role}")
 }
 
+/// Label of the control a home card role provisions: `Room · Card · role`.
+/// The room (mobile section title) tells apart homonym cards of a template
+/// (two "Ceiling light"); the role stays its key, language neutral, and the
+/// UI shows it under its localized name (O30). Empty parts are skipped.
+pub fn role_control_label(room: &str, card_title: &str, role: &str) -> String {
+    [room.trim(), card_title.trim(), role]
+        .into_iter()
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join(" · ")
+}
+
 /// Structural check of a home card (save validation). Returns machine
 /// codes with a canonical English message.
 pub fn check_home_card(
@@ -489,6 +501,18 @@ pub fn check_home_card(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn role_control_label_names_room_card_and_role() {
+        assert_eq!(
+            super::role_control_label("Living room", "Ceiling light", "power"),
+            "Living room · Ceiling light · power"
+        );
+        assert_eq!(
+            super::role_control_label(" ", "Ceiling light", "power"),
+            "Ceiling light · power"
+        );
+    }
+
     use super::*;
 
     #[test]

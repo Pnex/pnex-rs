@@ -98,8 +98,6 @@ pub async fn values(ids: Vec<Uuid>) -> Result<BTreeMap<Uuid, Option<ControlValue
     Ok(res.values)
 }
 
-/// Display key of a control id: its key when known, else the short id.
-/// Reads (and subscribes to) [`CONTROL_KEYS`]: call it from a render.
 /// Key without the surface prefix of a declared control
 /// (`dash-1a2b3c4d.w-0009.power` → `w-0009.power`), for the tight port
 /// labels of the canvas; standalone keys are returned as is.
@@ -119,6 +117,8 @@ pub fn short_key(key: &str) -> &str {
     }
 }
 
+/// Display key of a control id: its key when known, else the short id.
+/// Reads (and subscribes to) [`CONTROL_KEYS`]: call it from a render.
 pub fn key_of(id: &Uuid) -> String {
     CONTROL_KEYS
         .read()

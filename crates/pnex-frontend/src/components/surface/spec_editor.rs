@@ -195,8 +195,8 @@ pub fn SpecFields(
                     }
                 }
                 if show_unit {
-                    div {
-                        label { class: "mb-1 block text-xs font-medium text-gray-500",
+                    label { class: "block",
+                        span { class: "mb-1 block text-xs font-medium text-gray-500",
                             {t!("controls-form-unit")}
                         }
                         input {
@@ -204,7 +204,7 @@ pub fn SpecFields(
                             value: "{unit_text}",
                             placeholder: "%",
                             disabled,
-                            onchange: move |e| set_unit.call(e.value()),
+                            oninput: move |e| set_unit.call(e.value()),
                         }
                     }
                 }
@@ -247,18 +247,33 @@ fn NumInput(
     disabled: bool,
     on_value: EventHandler<Option<f64>>,
 ) -> Element {
+    // Applied on every keystroke (O28: on blur only, the error of an
+    // intermediate state stayed shown while the next field was typed). The
+    // local draft keeps partial input ("-", "0.") the spec cannot hold; the
+    // outer value wins as soon as it means something else.
+    let mut draft = use_signal(|| value.clone());
+    let text = draft();
+    let shown = match parse_opt(&text) {
+        Err(()) => text,
+        Ok(v) if Ok(v) == parse_opt(&value) => text,
+        Ok(_) => value.clone(),
+    };
     rsx! {
-        div {
-            label { class: "mb-1 block text-xs font-medium text-gray-500", "{label}" }
+        // The label wraps its input: named for assistive tech (O31).
+        label { class: "block",
+            span { class: "mb-1 block text-xs font-medium text-gray-500", "{label}" }
             input {
                 class: "w-full rounded border border-gray-300 px-2 py-1.5 text-sm",
                 r#type: "text",
                 inputmode: "decimal",
-                value: "{value}",
+                value: "{shown}",
                 placeholder: "{placeholder}",
                 disabled,
-                onchange: move |e| {
-                    if let Ok(v) = parse_opt(&e.value()) {
+                oninput: move |e| {
+                    let raw = e.value();
+                    let parsed = parse_opt(&raw);
+                    draft.set(raw);
+                    if let Ok(v) = parsed {
                         on_value.call(v);
                     }
                 },
@@ -370,7 +385,7 @@ fn OptionRow(
                 title: t!("controls-form-option-key").to_string(),
                 value: "{option.key}",
                 disabled,
-                onchange: move |e| set_key.call(e.value()),
+                oninput: move |e| set_key.call(e.value()),
             }
             input {
                 class: "min-w-0 flex-1 rounded border border-gray-300 px-1.5 py-1 text-xs",
@@ -378,7 +393,7 @@ fn OptionRow(
                 placeholder: "{hint}",
                 value: "{label_text}",
                 disabled,
-                onchange: move |e| set_label.call(e.value()),
+                oninput: move |e| set_label.call(e.value()),
             }
             input {
                 class: "w-14 rounded border border-gray-300 px-1.5 py-1 text-xs",

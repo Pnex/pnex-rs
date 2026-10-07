@@ -67,8 +67,9 @@ pub fn Controls() -> Element {
 
     let columns = vec![
         Column::new(t!("controls-col-control").to_string(), |c: &UiControl| {
+            let label = crate::components::surface::control_label(c);
             rsx! {
-                div { class: "text-sm font-medium text-gray-900", "{c.label}" }
+                div { class: "text-sm font-medium text-gray-900", "{label}" }
                 code { class: "text-xs text-gray-500", "{c.key}" }
             }
         }),
@@ -179,7 +180,11 @@ pub fn Controls() -> Element {
             if let Some(c) = deleting {
                 ConfirmDialog {
                     title: t!("controls-delete").to_string(),
-                    message: t!("controls-delete-confirm", label : c.label.clone()).to_string(),
+                    message: t!(
+                        "controls-delete-confirm", label : crate ::components::surface::control_label(&
+                        c)
+                    )
+                        .to_string(),
                     confirm_label: t!("common-delete").to_string(),
                     on_confirm: move |_| {
                         let id = c.id;

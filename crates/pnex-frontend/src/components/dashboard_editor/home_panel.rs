@@ -113,8 +113,13 @@ pub fn HomePanel(cx: EditorCx, widget: Widget, can_write: bool, catalog: SourceC
                 {t!("hcard-inspector", card : card_label(card))}
             }
             if card == pnex_core::home::HomeCard::Binary {
-                label { class: "block text-[10px] text-gray-500", {t!("hcard-variant")} }
+                label {
+                    r#for: "home-panel-field-1",
+                    class: "block text-[10px] text-gray-500",
+                    {t!("hcard-variant")}
+                }
                 select {
+                    id: "home-panel-field-1",
                     class: "w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm",
                     disabled: !can_write,
                     value: home.variant.clone().unwrap_or_default(),
@@ -126,8 +131,13 @@ pub fn HomePanel(cx: EditorCx, widget: Widget, can_write: bool, catalog: SourceC
                         option { key: "{v}", value: "{v}", {variant_label(v)} }
                     }
                 }
-                label { class: "block text-[10px] text-gray-500", {t!("hcard-on-above")} }
+                label {
+                    r#for: "home-panel-field-2",
+                    class: "block text-[10px] text-gray-500",
+                    {t!("hcard-on-above")}
+                }
                 input {
+                    id: "home-panel-field-2",
                     class: "w-full rounded border border-gray-300 px-2 py-1 text-sm",
                     inputmode: "decimal",
                     placeholder: "0.5",
@@ -200,12 +210,7 @@ fn RoleSource(
         .unwrap_or_else(|| "1h".into());
     let present = current.is_some();
     let devices = with_saved_series(&catalog, current.as_ref());
-    let memory: Vec<(String, Vec<String>)> = catalog
-        .memory
-        .iter()
-        .filter(|(_, f)| !f.is_empty())
-        .map(|(k, f)| (k.clone(), f.clone()))
-        .collect();
+    let memory = with_saved_memory(&catalog, current.as_ref());
     let telemetry = current.as_ref().is_some_and(|s| s.memory.is_none());
     rsx! {
         div { class: "space-y-1",
@@ -319,6 +324,30 @@ fn with_saved_series(
         None => devices.push((s.device_id.clone(), vec![s.metric.clone()])),
     }
     devices
+}
+
+/// Memory keys of the catalog plus the saved one (O27): a key or field the
+/// catalog does not list (yet) must stay selectable, otherwise the select
+/// shows its first memory option instead of the saved source.
+fn with_saved_memory(
+    catalog: &SourceCatalog,
+    current: Option<&SourceRef>,
+) -> Vec<(String, Vec<String>)> {
+    let mut memory: Vec<(String, Vec<String>)> = catalog
+        .memory
+        .iter()
+        .filter(|(_, f)| !f.is_empty())
+        .map(|(k, f)| (k.clone(), f.clone()))
+        .collect();
+    let Some(m) = current.and_then(|s| s.memory.as_ref()) else {
+        return memory;
+    };
+    match memory.iter_mut().find(|(k, _)| *k == m.key) {
+        Some((_, fields)) if !fields.contains(&m.field) => fields.push(m.field.clone()),
+        Some(_) => {}
+        None => memory.push((m.key.clone(), vec![m.field.clone()])),
+    }
+    memory
 }
 
 /// Points the source of `role` at an encoded choice (creates it if absent).
@@ -470,8 +499,13 @@ fn WeatherBind(cx: EditorCx, widget: Widget, catalog: SourceCatalog, can_write: 
     rsx! {
         div { class: "space-y-1",
             p { class: "text-[10px] text-gray-500", {t!("hweather-bind-help")} }
-            label { class: "block text-[10px] text-gray-500", {t!("hweather-bind-current")} }
+            label {
+                r#for: "home-panel-field-3",
+                class: "block text-[10px] text-gray-500",
+                {t!("hweather-bind-current")}
+            }
             select {
+                id: "home-panel-field-3",
                 class: "w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm",
                 disabled: !can_write,
                 value: "{current_key}",
@@ -485,8 +519,13 @@ fn WeatherBind(cx: EditorCx, widget: Widget, catalog: SourceCatalog, can_write: 
                     option { key: "{k}", value: "{k}", "{k}" }
                 }
             }
-            label { class: "block text-[10px] text-gray-500", {t!("hweather-bind-daily")} }
+            label {
+                r#for: "home-panel-field-4",
+                class: "block text-[10px] text-gray-500",
+                {t!("hweather-bind-daily")}
+            }
             select {
+                id: "home-panel-field-4",
                 class: "w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm",
                 disabled: !can_write,
                 value: "{daily_key}",
