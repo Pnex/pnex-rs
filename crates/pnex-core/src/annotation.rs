@@ -52,6 +52,9 @@ pub enum AnnotationGeometry {
     Equirect { yaw: f64, pitch: f64 },
     /// Image plate : x/y ∈ [0, 1] (fraction du conteneur de l'`img`).
     Flat { x: f64, y: f64 },
+    /// Gaussian splat: a point in the scene's world coordinates (any finite
+    /// value — the scale is the capture's own).
+    Splat { x: f64, y: f64, z: f64 },
 }
 
 // Manual `Deserialize`: internally-tagged enums buffer fields through
@@ -87,6 +90,18 @@ impl<'de> Deserialize<'de> for AnnotationGeometry {
                     .and_then(|n| n.as_f64())
                     .ok_or_else(|| serde::de::Error::custom("flat requires numeric `y`"))?,
             }),
+            "splat" => {
+                let axis = |name: &str| {
+                    v.get(name).and_then(|n| n.as_f64()).ok_or_else(|| {
+                        serde::de::Error::custom(format!("splat requires numeric `{name}`"))
+                    })
+                };
+                Ok(Self::Splat {
+                    x: axis("x")?,
+                    y: axis("y")?,
+                    z: axis("z")?,
+                })
+            }
             other => Err(serde::de::Error::custom(format!(
                 "unknown geometry type: {other}"
             ))),
@@ -96,7 +111,7 @@ impl<'de> Deserialize<'de> for AnnotationGeometry {
 
 /// Cible faible d'un item (D57) — résolue **au read, en batch** (école
 /// `link_target_labels`) ; référence morte tolérée (`dead: true`, jamais 500).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum AnnotationTarget {
     Device {
@@ -126,7 +141,112 @@ pub enum AnnotationTarget {
         source: crate::viz::SourceRef,
         #[serde(default)]
         spark: bool,
+        /// Mini chart drawn for the value: `stat`, `line`, `gauge` or
+        /// `indicator` (`READING_DISPLAYS`). Absent = legacy rule: `line`
+        /// when `spark`, else `stat` (see [`reading_display`]).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        display: Option<String>,
+        /// Gauge range (dashboard default 0..100 when absent).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max: Option<f64>,
     },
+}
+
+/// Mini charts a reading item can draw (dashboard widget types).
+pub const READING_DISPLAYS: [&str; 4] = ["stat", "line", "gauge", "indicator"];
+
+/// Effective mini chart of a reading: the explicit `display`, else the
+/// legacy `spark` flag (`line`) or a plain value (`stat`).
+pub fn reading_display(display: Option<&str>, spark: bool) -> &str {
+    match display {
+        Some(d) => d,
+        None if spark => "line",
+        None => "stat",
+    }
+}
+
+// Manual `Deserialize` (same reason as `AnnotationGeometry`): the derived
+// internally-tagged form buffers through serde's `Content`, which breaks
+// numeric fields (`pin_gpio`, `min`, `max`) under `arbitrary_precision`.
+// The tag is matched by hand and each variant is read from a plain struct.
+impl<'de> Deserialize<'de> for AnnotationTarget {
+    fn deserialize<D>(d: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct DeviceRepr {
+            device_id: String,
+        }
+        #[derive(Deserialize)]
+        struct PinRepr {
+            device_id: String,
+            pin_gpio: u32,
+        }
+        #[derive(Deserialize)]
+        struct NoteRepr {
+            text: String,
+        }
+        #[derive(Deserialize)]
+        struct ControlRepr {
+            control_id: uuid::Uuid,
+            #[serde(default)]
+            kind: Option<crate::ui_control::ControlKind>,
+        }
+        #[derive(Deserialize)]
+        struct ReadingRepr {
+            source: crate::viz::SourceRef,
+            #[serde(default)]
+            spark: bool,
+            #[serde(default)]
+            display: Option<String>,
+            #[serde(default)]
+            min: Option<f64>,
+            #[serde(default)]
+            max: Option<f64>,
+        }
+        fn part<T: serde::de::DeserializeOwned, E: serde::de::Error>(
+            v: serde_json::Value,
+        ) -> Result<T, E> {
+            serde_json::from_value(v).map_err(E::custom)
+        }
+
+        let v = serde_json::Value::deserialize(d)?;
+        let tag = v
+            .get("type")
+            .and_then(|t| t.as_str())
+            .unwrap_or("")
+            .to_string();
+        match tag.as_str() {
+            "device" => part::<DeviceRepr, D::Error>(v).map(|r| Self::Device {
+                device_id: r.device_id,
+            }),
+            "pin" => part::<PinRepr, D::Error>(v).map(|r| Self::Pin {
+                device_id: r.device_id,
+                pin_gpio: r.pin_gpio,
+            }),
+            "status" => part::<DeviceRepr, D::Error>(v).map(|r| Self::Status {
+                device_id: r.device_id,
+            }),
+            "note" => part::<NoteRepr, D::Error>(v).map(|r| Self::Note { text: r.text }),
+            "control" => part::<ControlRepr, D::Error>(v).map(|r| Self::Control {
+                control_id: r.control_id,
+                kind: r.kind,
+            }),
+            "reading" => part::<ReadingRepr, D::Error>(v).map(|r| Self::Reading {
+                source: r.source,
+                spark: r.spark,
+                display: r.display,
+                min: r.min,
+                max: r.max,
+            }),
+            other => Err(serde::de::Error::custom(format!(
+                "unknown target type: {other}"
+            ))),
+        }
+    }
 }
 
 /// Item d'annotation posé sur un média.
@@ -242,6 +362,15 @@ pub fn validate_annotation_doc(doc: &AnnotationDoc) -> Vec<AnnotationViolation> 
                     ));
                 }
             }
+            AnnotationGeometry::Splat { x, y, z } => {
+                if !x.is_finite() || !y.is_finite() || !z.is_finite() {
+                    v.push(violation(
+                        Some(&item.id),
+                        "invalid_position",
+                        format!("item {} : position must be finite", item.id),
+                    ));
+                }
+            }
         }
         match &item.target {
             AnnotationTarget::Control { control_id, kind } => {
@@ -263,8 +392,30 @@ pub fn validate_annotation_doc(doc: &AnnotationDoc) -> Vec<AnnotationViolation> 
                     ));
                 }
             }
-            AnnotationTarget::Reading { source, spark } => {
-                let shape = if *spark { "line" } else { "stat" };
+            AnnotationTarget::Reading {
+                source,
+                spark,
+                display,
+                min,
+                max,
+            } => {
+                let shape = reading_display(display.as_deref(), *spark);
+                if !READING_DISPLAYS.contains(&shape) {
+                    v.push(violation(
+                        Some(&item.id),
+                        "invalid_display",
+                        format!("item {} : unknown mini chart `{shape}`", item.id),
+                    ));
+                }
+                if let (Some(lo), Some(hi)) = (min, max) {
+                    if !lo.is_finite() || !hi.is_finite() || lo >= hi {
+                        v.push(violation(
+                            Some(&item.id),
+                            "invalid_range",
+                            format!("item {} : gauge min must be below max", item.id),
+                        ));
+                    }
+                }
                 crate::viz::check_sources(shape, std::slice::from_ref(source), &mut |code, msg| {
                     v.push(violation(
                         Some(&item.id),
@@ -288,6 +439,17 @@ pub fn validate_annotation_doc(doc: &AnnotationDoc) -> Vec<AnnotationViolation> 
         }
     }
     v
+}
+
+/// Media kinds an item of this geometry can anchor on: sphere → `panorama`,
+/// flat image → `photo`/`floorplan` (same list as the tour floor plans),
+/// splat point → `splat`.
+pub fn geometry_media_kinds(g: &AnnotationGeometry) -> &'static [&'static str] {
+    match g {
+        AnnotationGeometry::Equirect { .. } => &["panorama"],
+        AnnotationGeometry::Flat { .. } => &["photo", "floorplan"],
+        AnnotationGeometry::Splat { .. } => &["splat"],
+    }
 }
 
 /// `true` si la géométrie exige un média kind `panorama` (sinon image plate :
@@ -490,6 +652,9 @@ mod tests {
                 memory: None,
             },
             spark,
+            display: None,
+            min: None,
+            max: None,
         };
         let doc = AnnotationDoc {
             items: vec![
@@ -773,5 +938,113 @@ mod tests {
             x: 0.0,
             y: 0.0
         }));
+    }
+
+    #[test]
+    fn media_kinds_per_geometry() {
+        let pano = AnnotationGeometry::Equirect {
+            yaw: 0.0,
+            pitch: 0.0,
+        };
+        let flat = AnnotationGeometry::Flat { x: 0.5, y: 0.5 };
+        let splat = AnnotationGeometry::Splat {
+            x: 1.0,
+            y: -2.0,
+            z: 3.5,
+        };
+        assert_eq!(geometry_media_kinds(&pano), &["panorama"]);
+        assert_eq!(geometry_media_kinds(&flat), &["photo", "floorplan"]);
+        assert_eq!(geometry_media_kinds(&splat), &["splat"]);
+    }
+
+    #[test]
+    fn splat_geometry_round_trips_and_rejects_non_finite() {
+        let json = serde_json::json!({
+            "items": [{
+                "id": "s1", "media_asset_id": "m", "kind": "note",
+                "geometry": {"type": "splat", "x": 0.25, "y": -1.5, "z": 12.0},
+                "target": {"type": "note", "text": "valve"}
+            }]
+        });
+        let doc: AnnotationDoc = serde_json::from_value(json).unwrap();
+        assert_eq!(
+            doc.items[0].geometry,
+            AnnotationGeometry::Splat {
+                x: 0.25,
+                y: -1.5,
+                z: 12.0
+            }
+        );
+        assert!(validate_annotation_doc(&doc).is_empty());
+        let back: AnnotationDoc =
+            serde_json::from_value(serde_json::to_value(&doc).unwrap()).unwrap();
+        assert_eq!(back, doc);
+
+        let missing_z = serde_json::json!({"type": "splat", "x": 1.0, "y": 2.0});
+        assert!(serde_json::from_value::<AnnotationGeometry>(missing_z).is_err());
+
+        let mut bad = doc.clone();
+        bad.items[0].geometry = AnnotationGeometry::Splat {
+            x: f64::NAN,
+            y: 0.0,
+            z: 0.0,
+        };
+        let codes: Vec<String> = validate_annotation_doc(&bad)
+            .into_iter()
+            .map(|v| v.code)
+            .collect();
+        assert!(codes.contains(&"invalid_position".to_string()));
+    }
+
+    #[test]
+    fn reading_display_rules() {
+        assert_eq!(reading_display(None, false), "stat");
+        assert_eq!(reading_display(None, true), "line");
+        assert_eq!(reading_display(Some("gauge"), true), "gauge");
+
+        // Legacy documents (spark only) still parse; the new fields are
+        // additive and omitted when unset.
+        let legacy = serde_json::json!({
+            "type": "reading", "spark": true,
+            "source": {"metric": "temp", "device_id": "d1", "window": "1h"}
+        });
+        let t: AnnotationTarget = serde_json::from_value(legacy).unwrap();
+        let out = serde_json::to_value(&t).unwrap();
+        assert!(out.get("display").is_none() && out.get("min").is_none());
+
+        let gauge = |display: &str, min: Option<f64>, max: Option<f64>| AnnotationDoc {
+            items: vec![item(
+                "g1",
+                ANNOTATION_KIND_READING,
+                AnnotationTarget::Reading {
+                    source: crate::viz::SourceRef {
+                        role: "primary".into(),
+                        metric: "temperature".into(),
+                        device_id: "proud-ibex".into(),
+                        window: "1h".into(),
+                        memory: None,
+                    },
+                    spark: false,
+                    display: Some(display.into()),
+                    min,
+                    max,
+                },
+                AnnotationGeometry::Flat { x: 0.1, y: 0.2 },
+            )],
+        };
+        let ok = gauge("gauge", Some(0.0), Some(120.0));
+        assert!(validate_annotation_doc(&ok).is_empty());
+        let back: AnnotationDoc =
+            serde_json::from_value(serde_json::to_value(&ok).unwrap()).unwrap();
+        assert_eq!(back, ok);
+
+        let codes = |d: &AnnotationDoc| -> Vec<String> {
+            validate_annotation_doc(d)
+                .into_iter()
+                .map(|v| v.code)
+                .collect()
+        };
+        assert!(codes(&gauge("pie", None, None)).contains(&"invalid_display".to_string()));
+        assert!(codes(&gauge("gauge", Some(5.0), Some(5.0))).contains(&"invalid_range".to_string()));
     }
 }

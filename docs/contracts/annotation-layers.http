@@ -94,6 +94,12 @@ GET http://localhost:5150/api/v1/media/{{asset_id}}/annotations
 Authorization: Bearer {{token}}
 X-Org-Id: {{org_id}}
 
+### Read model d'une visite (D147) — seulement les ensembles de CE tour
+### (sans `tour` : seulement les ensembles attachés au média) — 200
+GET http://localhost:5150/api/v1/media/{{asset_id}}/annotations?tour={{tour_id}}
+Authorization: Bearer {{token}}
+X-Org-Id: {{org_id}}
+
 ### Supprimer — 204 (versions en cascade)
 DELETE http://localhost:5150/api/v1/annotation-layers/{{layer_id}}
 Authorization: Bearer {{token}}

@@ -12,8 +12,8 @@
 //! ciblé (slug) doit exister dans `device_registries` de l'org.
 
 use pnex_core::{
-    geometry_requires_panorama, validate_annotation_doc, AnnotationDoc, AnnotationGeometry,
-    AnnotationTarget, AnnotationViolation, TourDoc,
+    validate_annotation_doc, AnnotationDoc, AnnotationGeometry, AnnotationTarget,
+    AnnotationViolation, TourDoc,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
@@ -26,11 +26,6 @@ use crate::models::_entities::{
     annotation_layer_versions, annotation_layers, device_registries, media_assets, tour_versions,
     tours,
 };
-
-/// Kinds admis par géométrie — un item `Equirect` exige un panorama, un item
-/// `Flat` s'affiche sur n'importe quelle image plate (école `KINDS_PLAN`).
-const KINDS_FLAT: &[&str] = &["photo", "floorplan"];
-const KINDS_EQUIRECT: &[&str] = &["panorama"];
 
 /// Erreurs d'écriture d'une couche — le contrôleur les mappe en HTTP
 /// (400 champ/violations, 409 conflit, 500).
@@ -83,13 +78,9 @@ fn validate_layer_write(name: &str, doc: &AnnotationDoc) -> Result<(), Annotatio
     Ok(())
 }
 
-/// Kinds requis pour un item selon sa géométrie.
+/// Media kinds required by an item's geometry (single source: pnex-core).
 fn kinds_for(geometry: &AnnotationGeometry) -> &'static [&'static str] {
-    if geometry_requires_panorama(geometry) {
-        KINDS_EQUIRECT
-    } else {
-        KINDS_FLAT
-    }
+    pnex_core::geometry_media_kinds(geometry)
 }
 
 /// Validation **en base** : chaque `media_asset_id` référencé doit exister

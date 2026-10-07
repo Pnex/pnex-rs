@@ -10,19 +10,19 @@
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::{validate_annotation_doc, UpdateAnnotationLayer};
+use pnex_core::{validate_annotation_doc, AnnotationGeometry, UpdateAnnotationLayer};
 
 use crate::api;
 use crate::api::annotation_layers::{classify_save_error, SaveError};
 use crate::components::annotation_editor::inspector::AnnotationInspector;
 use crate::components::annotation_editor::state::{
-    adopt_bound_controls, has_item, item_rows, item_rows_flat, move_item, place_item,
-    AnnotationEditorCx, EditorItemRow,
+    adopt_bound_controls, has_item, item_rows, item_rows_flat, item_rows_splat, move_item,
+    move_item_splat, place_item, place_item_splat, AnnotationEditorCx, EditorItemRow,
 };
 use crate::components::annotation_editor::versions::AnnotationVersionsDrawer;
 use crate::components::modal::Modal;
 use crate::tour_viewer as bridge;
-use crate::tour_viewer::AnnotMarkerView;
+use crate::tour_viewer::{AnnotMarkerView, AnnotNs, SplatMarkerView};
 
 #[component]
 pub fn AnnotationLayerPanel(
@@ -43,6 +43,13 @@ pub fn AnnotationLayerPanel(
     media_kind: String,
 ) -> Element {
     let is_pano = media_kind == "panorama";
+    let is_splat = media_kind == "splat";
+    // Viewer whose glue the panel drives (flat images are drawn by the page).
+    let ns = if is_splat {
+        AnnotNs::Splat
+    } else {
+        AnnotNs::Tour
+    };
     let mut versions_open = use_signal(|| false);
     // Dernier lot de marqueurs appliqués au host (dé-dup des effects).
     let mut applied_markers = use_signal(|| None::<String>);
@@ -82,10 +89,10 @@ pub fn AnnotationLayerPanel(
     // uniquement (sur image plate, la page gère le clic elle-même).
     let host_place = host_id.clone();
     use_effect(move || {
-        let placing = cx.placing.cloned() && is_pano;
+        let placing = cx.placing.cloned() && (is_pano || is_splat);
         let host = host_place.clone();
         spawn(async move {
-            bridge::set_annot_place_mode(&host, placing).await;
+            bridge::set_place_mode(ns, &host, placing).await;
         });
     });
 
@@ -113,14 +120,37 @@ pub fn AnnotationLayerPanel(
                     if asset.is_empty() {
                         continue;
                     }
+                    // The event carries the geometry of the viewer that
+                    // emitted it; a mismatching one (stale event of another
+                    // viewer) is ignored.
+                    let geometry = p.geometry();
                     cx.update_doc(move |doc| {
-                        let id = place_item(doc, &asset, p.yaw, p.pitch);
-                        cx.selected.set(Some(id));
+                        let id = match geometry {
+                            Some(AnnotationGeometry::Equirect { yaw, pitch }) if is_pano => {
+                                Some(place_item(doc, &asset, yaw, pitch))
+                            }
+                            Some(AnnotationGeometry::Splat { x, y, z }) if is_splat => {
+                                Some(place_item_splat(doc, &asset, x, y, z))
+                            }
+                            _ => None,
+                        };
+                        if let Some(id) = id {
+                            cx.selected.set(Some(id));
+                        }
                     });
                 }
                 if let Some(m) = bridge::take_annot_move(move_seq.cloned()).await {
                     move_seq.set(m.seq);
-                    cx.update_doc(move |doc| move_item(doc, &m.item_id, m.yaw, m.pitch));
+                    let geometry = m.geometry();
+                    cx.update_doc(move |doc| match geometry {
+                        Some(AnnotationGeometry::Equirect { yaw, pitch }) => {
+                            move_item(doc, &m.item_id, yaw, pitch)
+                        }
+                        Some(AnnotationGeometry::Splat { x, y, z }) => {
+                            move_item_splat(doc, &m.item_id, x, y, z)
+                        }
+                        _ => {}
+                    });
                 }
                 if let Some(c) = bridge::take_annot_click(click_seq.cloned()).await {
                     click_seq.set(c.seq);
@@ -135,7 +165,7 @@ pub fn AnnotationLayerPanel(
     // PANORAMA uniquement — les marqueurs plats sont rendus par la page.
     let host_markers = host_id.clone();
     use_effect(move || {
-        if !is_pano {
+        if !is_pano && !is_splat {
             return;
         }
         let doc = cx.doc.cloned();
@@ -143,6 +173,29 @@ pub fn AnnotationLayerPanel(
             .cloned()
             .or_else(|| declared_media.cloned())
             .unwrap_or_default();
+        if is_splat {
+            let rows: Vec<SplatMarkerView> = item_rows_splat(&doc, &asset)
+                .into_iter()
+                .map(|r| SplatMarkerView {
+                    id: r.id,
+                    x: r.x,
+                    y: r.y,
+                    z: r.z,
+                    kind: r.kind,
+                    label: r.label,
+                })
+                .collect();
+            let json = serde_json::to_string(&rows).unwrap_or_default();
+            if applied_markers.cloned().as_deref() == Some(json.as_str()) {
+                return;
+            }
+            applied_markers.set(Some(json));
+            let host = host_markers.clone();
+            spawn(async move {
+                bridge::set_splat_annotations(&host, &rows, true).await;
+            });
+            return;
+        }
         let rows: Vec<AnnotMarkerView> = item_rows(&doc, &asset)
             .into_iter()
             .map(|r| AnnotMarkerView {
@@ -172,6 +225,18 @@ pub fn AnnotationLayerPanel(
     let doc_now = cx.doc.cloned();
     let rows_now = if is_pano {
         item_rows(&doc_now, &asset_now)
+    } else if is_splat {
+        // List coordinates: x / z of the world point (shown as "x, z").
+        item_rows_splat(&doc_now, &asset_now)
+            .into_iter()
+            .map(|r| EditorItemRow {
+                id: r.id,
+                kind: r.kind,
+                label: r.label,
+                yaw: r.x,
+                pitch: r.z,
+            })
+            .collect::<Vec<EditorItemRow>>()
     } else {
         item_rows_flat(&doc_now, &asset_now)
             .into_iter()
@@ -191,6 +256,14 @@ pub fn AnnotationLayerPanel(
     let conflict_now = cx.conflict.cloned();
     let versions_open_now = versions_open.cloned();
     let published_now = published_version.cloned();
+    let mut publishing = use_signal(|| false);
+    // Publication state: viewers (map, media page, tours) only read the
+    // published version, so a saved-but-unpublished draft stays invisible.
+    let saved_now = cx.saved_version.cloned();
+    // Unsaved edits are not published either: warn as well.
+    let up_to_date = published_now == Some(saved_now) && !dirty;
+    let publish_disabled =
+        dirty || publishing() || up_to_date || saved_now < 1 || cx.layer_id.cloned().is_none();
 
     rsx! {
         div { class: "w-96 shrink-0 flex flex-col border-l border-gray-200 bg-white h-full max-h-[70vh]",
@@ -203,6 +276,47 @@ pub fn AnnotationLayerPanel(
                     disabled: cx.layer_id.cloned().is_none(),
                     crate::components::icons::History { class: "h-3.5 w-3.5 mr-1" }
                     {t!("annot-versions")}
+                }
+            }
+            // ─── Publication: status + publish latest saved version ───
+            div { class: if up_to_date { "px-3 py-2 border-b border-gray-200 flex items-center gap-2" } else { "px-3 py-2 border-b border-amber-200 bg-amber-50 flex items-center gap-2" },
+                div { class: "min-w-0 flex-1",
+                    if let Some(version) = published_now {
+                        span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-800",
+                            {t!("annot-published-tag", version : version)}
+                        }
+                    } else {
+                        span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800",
+                            {t!("annot-publish-none")}
+                        }
+                    }
+                    if !up_to_date {
+                        p { class: "mt-1 text-[11px] text-amber-800",
+                            {t!("annot-publish-needed-hint")}
+                        }
+                    }
+                }
+                if can_write {
+                    button {
+                        class: "px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium disabled:opacity-40 shrink-0",
+                        disabled: publish_disabled,
+                        title: if dirty { t!("annot-publish-save-first") } else { t!("annot-publish-latest") },
+                        onclick: move |_| {
+                            let id = cx.layer_id.cloned().unwrap_or_default();
+                            publishing.set(true);
+                            spawn(async move {
+                                match api::annotation_layers::publish(&id, None).await {
+                                    Ok(d) => {
+                                        published_version.set(d.published_version_number);
+                                        crate::state::toasts::success(t!("toast-annot-published"));
+                                    }
+                                    Err(err) => crate::state::toasts::error(err),
+                                }
+                                publishing.set(false);
+                            });
+                        },
+                        {t!("annot-publish-latest")}
+                    }
                 }
             }
             // ─── Toolbar : pose + save ───
@@ -304,7 +418,9 @@ pub fn AnnotationLayerPanel(
                                     span { class: "text-sm text-gray-900 truncate",
                                         {
                                             if r.label.is_empty() {
-                                                t!("annot-kind-device").to_string()
+                                                // Unlabelled item: show its kind.
+                                                t!(crate ::components::annotation_editor::popover::kind_label_key(& r.kind))
+                                                    .to_string()
                                             } else {
                                                 r.label.clone()
                                             }
@@ -316,6 +432,8 @@ pub fn AnnotationLayerPanel(
                                         {
                                             if is_pano {
                                                 format!("{:.0}°/{:.0}°", r.yaw, r.pitch)
+                                            } else if is_splat {
+                                                format!("{:.2}, {:.2}", r.yaw, r.pitch)
                                             } else {
                                                 format!("{:.0}%/{:.0}%", r.yaw, r.pitch)
                                             }

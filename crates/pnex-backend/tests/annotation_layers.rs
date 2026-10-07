@@ -1140,3 +1140,231 @@ async fn control_and_reading_items() {
     })
     .await;
 }
+
+/// Splat set (D147): 3D points anchor on a `splat` media only, reach the
+/// read model unchanged once published, and a reading item keeps its mini
+/// chart choice (gauge + range).
+#[tokio::test]
+#[serial]
+async fn splat_set_anchors_3d_points() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let res = upload(
+            &server,
+            &env.alice,
+            org,
+            "?filename=scene.splat",
+            vec![0u8; 64],
+        )
+        .await;
+        assert_eq!(res.status_code(), 201, "splat upload: {}", res.text());
+        let splat = res.json::<serde_json::Value>();
+        assert_eq!(splat["kind"], "splat");
+        let splat_id = splat["id"].as_str().unwrap().to_string();
+        let photo_id = upload(
+            &server,
+            &env.alice,
+            org,
+            "?filename=plan.jpg&content_type=image%2Fjpeg",
+            plain_jpeg(),
+        )
+        .await
+        .json::<serde_json::Value>()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let res = server
+            .post("/api/v1/annotation-layers")
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&serde_json::json!({ "name": "Bike", "media_asset_id": splat_id }))
+            .await;
+        assert_eq!(res.status_code(), 201, "{}", res.text());
+        let layer_id = res.json::<serde_json::Value>()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // A flat point on the splat is refused (kind mismatch).
+        let flat = serde_json::json!({ "items": [{
+            "id": "a1", "media_asset_id": splat_id, "kind": "note",
+            "geometry": {"type": "flat", "x": 0.5, "y": 0.5},
+            "target": {"type": "note", "text": "x"},
+        }]});
+        let res = save_layer(&server, &env.alice, org, &layer_id, 1, flat).await;
+        assert_eq!(res.status_code(), 400, "flat geometry on a splat");
+
+        let doc = serde_json::json!({ "items": [
+            {"id": "a1", "media_asset_id": splat_id, "kind": "note",
+             "geometry": {"type": "splat", "x": 0.25, "y": -1.5, "z": 3.0},
+             "label": "Saddle", "target": {"type": "note", "text": "check"}},
+            {"id": "a2", "media_asset_id": splat_id, "kind": "reading",
+             "geometry": {"type": "splat", "x": 1.0, "y": 0.0, "z": -2.0},
+             "label": "Tyre",
+             "target": {"type": "reading", "display": "gauge", "min": 0.0, "max": 6.5,
+                        "source": {"metric": "pressure", "device_id": "pac-01", "window": "1h"}}}
+        ]});
+        let res = save_layer(&server, &env.alice, org, &layer_id, 1, doc).await;
+        assert_eq!(res.status_code(), 200, "splat save: {}", res.text());
+
+        let res = publish_layer(&server, &env.alice, org, &layer_id).await;
+        assert_eq!(res.status_code(), 200, "{}", res.text());
+        let res = read_annotations(&server, &env.alice, org, &splat_id).await;
+        assert_eq!(res.status_code(), 200, "{}", res.text());
+        let items = res.json::<serde_json::Value>()["items"].clone();
+        let a1 = items
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["id"] == "a1")
+            .expect("a1 in read model")
+            .clone();
+        assert_eq!(a1["geometry"]["type"], "splat");
+        assert_eq!(a1["geometry"]["z"], 3.0);
+        let a2 = items
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["id"] == "a2")
+            .expect("a2 in read model")
+            .clone();
+        assert_eq!(a2["target"]["display"], "gauge");
+        assert_eq!(a2["target"]["max"], 6.5);
+
+        // A splat point on a photo is refused too.
+        let res = server
+            .post("/api/v1/annotation-layers")
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&serde_json::json!({ "name": "Plan", "media_asset_id": photo_id }))
+            .await;
+        let plan_id = res.json::<serde_json::Value>()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let wrong = serde_json::json!({ "items": [{
+            "id": "p1", "media_asset_id": photo_id, "kind": "note",
+            "geometry": {"type": "splat", "x": 0.0, "y": 0.0, "z": 0.0},
+            "target": {"type": "note", "text": "x"},
+        }]});
+        let res = save_layer(&server, &env.alice, org, &plan_id, 1, wrong).await;
+        assert_eq!(res.status_code(), 400, "splat geometry on a photo");
+    })
+    .await;
+}
+
+/// Read contexts never mix (D147): the standalone panorama shows only the
+/// sets of that media, the tour (`?tour=`) only its own sets — even when
+/// both anchor items on the very same panorama.
+#[tokio::test]
+#[serial]
+async fn standalone_media_and_tour_annotations_are_separate() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let pano_id = upload(
+            &server,
+            &env.alice,
+            org,
+            "?filename=sphere.jpg&content_type=image%2Fjpeg",
+            gpano_jpeg(),
+        )
+        .await
+        .json::<serde_json::Value>()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let post = |path: &'static str, body: serde_json::Value| {
+            let server = &server;
+            let token = env.alice.clone();
+            async move {
+                server
+                    .post(path)
+                    .add_header("Content-Type", "application/json")
+                    .add_header("Authorization", bearer(&token))
+                    .add_header("X-Org-Id", org.to_string())
+                    .json(&body)
+                    .await
+            }
+        };
+        let tour_id = post("/api/v1/tours", serde_json::json!({ "name": "Plant" }))
+            .await
+            .json::<serde_json::Value>()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let res = server
+            .patch(&format!("/api/v1/tours/{tour_id}"))
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&serde_json::json!({
+                "expected_version_number": 1,
+                "doc": {
+                    "mode": "panorama",
+                    "floors": [{"id": "f1", "name": "RDC", "level": 0}],
+                    "scenes": [{"id": "s1", "floor_id": "f1", "media_asset_id": pano_id}],
+                },
+            }))
+            .await;
+        assert_eq!(res.status_code(), 200, "tour scene: {}", res.text());
+
+        let note = |id: &str| {
+            serde_json::json!({ "items": [{
+                "id": id, "media_asset_id": pano_id, "kind": "note",
+                "geometry": {"type": "equirect", "yaw": 10.0, "pitch": 0.0},
+                "target": {"type": "note", "text": id},
+            }]})
+        };
+        // One set on the standalone panorama, one on the tour.
+        let media_set = post(
+            "/api/v1/annotation-layers",
+            serde_json::json!({ "name": "Media set", "media_asset_id": pano_id }),
+        )
+        .await
+        .json::<serde_json::Value>()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let tour_set = post(
+            "/api/v1/annotation-layers",
+            serde_json::json!({ "name": "Tour set", "tour_id": tour_id }),
+        )
+        .await
+        .json::<serde_json::Value>()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        for (set, item) in [(&media_set, "m1"), (&tour_set, "t1")] {
+            let res = save_layer(&server, &env.alice, org, set, 1, note(item)).await;
+            assert_eq!(res.status_code(), 200, "save {item}: {}", res.text());
+            let res = publish_layer(&server, &env.alice, org, set).await;
+            assert_eq!(res.status_code(), 200, "publish {item}: {}", res.text());
+        }
+
+        let ids = |body: serde_json::Value| -> Vec<String> {
+            body["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|i| i["id"].as_str().unwrap().to_string())
+                .collect()
+        };
+        let standalone = read_annotations(&server, &env.alice, org, &pano_id).await;
+        assert_eq!(standalone.status_code(), 200);
+        assert_eq!(ids(standalone.json()), vec!["m1".to_string()]);
+
+        let in_tour = server
+            .get(&format!(
+                "/api/v1/media/{pano_id}/annotations?tour={tour_id}"
+            ))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert_eq!(in_tour.status_code(), 200, "{}", in_tour.text());
+        assert_eq!(ids(in_tour.json()), vec!["t1".to_string()]);
+    })
+    .await;
+}

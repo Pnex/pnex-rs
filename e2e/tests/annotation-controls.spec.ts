@@ -1,7 +1,7 @@
-// Surfaces on a panorama (D128/D129): an annotation set carries a `control`
-// item; the tour preview shows it in the "Controls and readings" panel on the
-// right, and operating it reaches a deployed flow (control-source ->
-// memory-write) like the dashboard cards do.
+// Surfaces on a panorama (D128/D129, D147): an annotation set carries a
+// `control` item; the tour preview shows it as a card anchored next to its
+// marker (cards mode by default), and operating it reaches a deployed flow
+// (control-source -> memory-write) like the dashboard cards do.
 import { expect, test } from '../src/fixtures.ts';
 import { makePanorama } from '../src/fixtures-files.ts';
 
@@ -45,7 +45,8 @@ test.describe('annotation controls', { tag: '@studio' }, () => {
         links: [],
       },
     });
-    const layer = await api.post('/annotation-layers', { name: `${prefix} controls`, media_asset_id: pano.id });
+    // Tour-scoped set: a tour only shows its own sets (D147 read contexts).
+    const layer = await api.post('/annotation-layers', { name: `${prefix} controls`, tour_id: tour.id });
     await api.patch(`/annotation-layers/${layer.id}`, {
       expected_version_number: 1,
       doc: {
@@ -68,11 +69,11 @@ test.describe('annotation controls', { tag: '@studio' }, () => {
       await page.locator('main tr').filter({ hasText: tourName }).getByRole('button', { name: app.t('studio-open') }).click();
       await page.getByRole('main').getByRole('button', { name: app.t('studio-preview') }).click();
 
-      const panel = page.getByText(app.t('annot-surface-title'), { exact: true });
-      await expect(panel).toBeVisible({ timeout: 20_000 });
-      const toggle = page.getByRole('switch');
+      const card = page.locator('[data-annot-card="c1"]');
+      await expect(card).toBeVisible({ timeout: 20_000 });
+      const toggle = card.getByRole('switch');
       await expect(toggle).toBeEnabled({ timeout: 20_000 });
-      await capture('annotation-controls', { caption: 'Control item in the panorama side panel' });
+      await capture('annotation-controls', { caption: 'Control card anchored on the panorama' });
       await toggle.click();
       await expect(toggle).toHaveAttribute('aria-checked', 'true');
 

@@ -14,6 +14,7 @@ use dioxus_i18n::t;
 
 use crate::api;
 use crate::api::media::MediaKind;
+use crate::components::annotated_media::AnnotatedMediaView;
 use crate::components::dashboard_live::DashboardLive;
 use crate::components::icons;
 use crate::components::poi_tree::KindIcon;
@@ -126,9 +127,35 @@ fn MediaPreviewBody(asset_id: String, asset_name: String) -> Element {
                 span { class: "animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" }
             }
         },
+        // Annotatable kinds go through the shared annotated viewer: the
+        // published annotations of the media show on the map preview too.
+        Some(asset) if annotatable(&asset) => rsx! {
+            AnnotatedMediaView {
+                key: "{asset.id}",
+                asset_id: asset.id.clone(),
+                kind: asset.media_kind().as_str().to_string(),
+                host_id: format!("pnex-preview-pano-{}", asset.id.replace('-', "")),
+                compact: true,
+            }
+        },
         Some(asset) => rsx! {
             MediaAssetView { key: "{asset.id}", asset }
         },
+    }
+}
+
+/// Media kinds that can carry annotations (D55, D147): panorama, photo,
+/// floorplan, and splats the viewer reads (`.splat` / `.ply`).
+fn annotatable(asset: &api::media::MediaAsset) -> bool {
+    match asset.media_kind() {
+        MediaKind::Panorama | MediaKind::Photo | MediaKind::Floorplan => true,
+        MediaKind::Splat => asset
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("format"))
+            .and_then(|f| f.as_str())
+            .is_none_or(|f| f == "splat" || f == "ply"),
+        MediaKind::Model => false,
     }
 }
 
@@ -225,6 +252,7 @@ fn TourPreviewBody(tour_id: String) -> Element {
                             host_id: format!("pnex-preview-tour-{}", tour_id_for_view.replace('-', "")),
                             compact: true,
                             annotations_enabled: true,
+                            annotation_tour: Some(tour_id_for_view.clone()),
                             show_side_panel: true,
                             editable: false,
                         }

@@ -15,7 +15,7 @@ Studio (Data › Studio Tour) builds 3D virtual tours: 360° panoramas from the 
 - **Floors**: **Add floor** with a name, a **Level (0 = ground)** and the **North (°)**; give each floor a **Floor plan** (**Import / pick a plan…**) with its width, height and **Scale (m/px)**.
 - **Add scene** on the plan and choose its **Panorama (media library)**; set **Label**, **Yaw**, **Pitch**, **FOV**, and **Set as start scene**.
 - Link scenes: **Link mode** (click the source scene, then the target) or **Add** in the scene's **Links**. Links are **Same floor** or **Across floors**; new scenes are linked to the nearest one automatically. Give each link a **Hotspot label**.
-- **Preview** the tour; annotations placed on a tour are edited there.
+- **Preview** the tour, with its published annotations (read-only: annotations are edited in Data › Annotations).
 - **Save** creates a version. **Publish latest** or publish an older version from **History**; **Unpublish** to withdraw it.
 - **Public link**: **Copy link** to share the published version, **Revoke link** to cut access.
 

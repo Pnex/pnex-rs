@@ -52,14 +52,21 @@ impl LayerFilters {
     }
 }
 
-/// `GET /api/v1/media/{asset_id}/annotations` — read model viewers : items
-/// fusionnés des couches publiées (union, ordre déterministe) avec cibles
-/// résolues (`device_pk`/`dead`).
-pub async fn media_annotations(asset_id: &str) -> Result<MediaAnnotations, ApiError> {
+/// `GET /api/v1/media/{asset_id}/annotations[?tour=]` — read model viewers :
+/// items fusionnés des couches publiées (union, ordre déterministe) avec
+/// cibles résolues (`device_pk`/`dead`). Context (D147): `tour` = that
+/// tour's sets only; `None` = the sets of the standalone media only.
+pub async fn media_annotations(
+    asset_id: &str,
+    tour: Option<&str>,
+) -> Result<MediaAnnotations, ApiError> {
+    let tq = tour
+        .map(|t| format!("?tour={}", crate::api::tours::urlencode(t)))
+        .unwrap_or_default();
     client::request(
         reqwest::Method::GET,
         &format!(
-            "/api/v1/media/{}/annotations",
+            "/api/v1/media/{}/annotations{tq}",
             crate::api::tours::urlencode(asset_id)
         ),
         None,

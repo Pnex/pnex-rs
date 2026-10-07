@@ -51,6 +51,9 @@ fn target_for_kind(new_kind: &str, current: &AnnotationTarget) -> AnnotationTarg
                 memory: None,
             },
             spark: false,
+            display: None,
+            min: None,
+            max: None,
         },
         _ => AnnotationTarget::Note {
             text: String::new(),
@@ -93,7 +96,12 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
         pnex_core::AnnotationGeometry::Equirect { yaw, pitch } => {
             format!("yaw {:.1} / pitch {:.1}", yaw, pitch)
         }
-        _ => String::new(),
+        pnex_core::AnnotationGeometry::Flat { x, y } => {
+            format!("x {:.0}% / y {:.0}%", x * 100.0, y * 100.0)
+        }
+        pnex_core::AnnotationGeometry::Splat { x, y, z } => {
+            format!("x {:.2} / y {:.2} / z {:.2}", x, y, z)
+        }
     };
     let slug_now =
         current_slug(&item.target).unwrap_or_else(|| t!("annot-inspector-none").to_string());
@@ -164,13 +172,19 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
                     kind,
                 }
             }
-            if let AnnotationTarget::Reading { source, spark } = item.target.clone() {
+            if let AnnotationTarget::Reading { source, spark, display, min, max } = item
+                .target
+                .clone()
+            {
                 ReadingTargetEditor {
                     key: "{item.id}",
                     cx,
                     item_id: item.id.clone(),
                     source,
                     spark,
+                    display,
+                    min,
+                    max,
                 }
             }
             if matches!(kind_now.as_str(), "device" | "pin" | "status") {
@@ -184,8 +198,13 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
                     }
                     if matches!(item.target, AnnotationTarget::Pin { .. }) {
                         div { class: "mt-2 flex items-center gap-2",
-                            label { class: "text-xs text-gray-500", {t!("annot-inspector-gpio")} }
+                            label {
+                                r#for: "inspector-field-1",
+                                class: "text-xs text-gray-500",
+                                {t!("annot-inspector-gpio")}
+                            }
                             input {
+                                id: "inspector-field-1",
                                 class: "w-20 rounded-lg border-gray-300 text-sm",
                                 r#type: "number",
                                 min: "0",
@@ -213,7 +232,7 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
                     textarea {
                         class: "mt-1 w-full rounded-lg border-gray-300 text-sm",
                         value: "{note_now}",
-                        onchange: move |e| {
+                        oninput: move |e| {
                             let text = e.value();
                             let id = id_note.clone();
                             cx.update_doc(move |doc| {
@@ -234,7 +253,7 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
                 input {
                     class: "mt-1 w-full rounded-lg border-gray-300 text-sm",
                     value: "{item.label}",
-                    onchange: move |e| {
+                    oninput: move |e| {
                         let label = e.value();
                         let id = id_label.clone();
                         cx.update_doc(move |doc| set_item_label(doc, &id, label));
@@ -243,8 +262,13 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
             }
             // Couleur
             div { class: "flex items-center gap-3",
-                label { class: "text-xs font-medium text-gray-600", {t!("annot-inspector-color")} }
+                label {
+                    r#for: "inspector-field-2",
+                    class: "text-xs font-medium text-gray-600",
+                    {t!("annot-inspector-color")}
+                }
                 input {
+                    id: "inspector-field-2",
                     r#type: "color",
                     class: "h-7 w-10 rounded border border-gray-300",
                     value: "{color_now}",
