@@ -116,9 +116,9 @@ pub fn ControlBody(
     let title = if !widget.title.trim().is_empty() {
         widget.title.clone()
     } else {
-        def.as_ref().map(|d| d.label.clone()).unwrap_or_default()
+        def.as_ref().map(super::control_label).unwrap_or_default()
     };
-    let label = def.as_ref().map(|d| d.label.clone()).unwrap_or_default();
+    let label = def.as_ref().map(super::control_label).unwrap_or_default();
     let last_by = value
         .as_ref()
         .and_then(|v| v.by.clone())

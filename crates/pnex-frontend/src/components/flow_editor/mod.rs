@@ -69,6 +69,10 @@ pub fn FlowEditor(
             if let Ok(page) = api::ml_models::list(Some(100), None).await {
                 crate::state::vision::remember(&page.results);
             }
+            // Control keys for the `control-source` subtitles (O30: the raw
+            // id showed until the inspector was opened); `list` fills the
+            // key cache.
+            let _ = api::controls::list().await;
         });
     });
 
