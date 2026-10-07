@@ -6,7 +6,7 @@ pages: /devices, /firmware
 nodes: 
 err_codes: 
 tools: 
-tags: build failed, firmware, compile error, compilation, rebuild, échec du build, build échoué, erreur de compilation, wifi password, certificate
+tags: build failed, firmware, compile error, compilation, rebuild, échec du build, build échoué, erreur de compilation, wifi password, certificate, certificate too large
 ---
 A device shows the **Build failed** badge: the server could not produce its firmware, so there is nothing to flash or deploy over the air.
 
@@ -24,6 +24,7 @@ The reason shown tells which step failed:
 - **The WiFi password is missing from the vault**: the WiFi network picked for the device was deleted or its secret removed.
 - **The build ran out of time**: the build server is busy or slow.
 - **No certificate authority to pin**: the server is missing its device certificate (an installation problem).
+- **The certificate authority to pin is too large for this chip**: the server pins a CA bundle bigger than the firmware accepts (one root on ESP8266, two on ESP32) — an installation problem.
 - **The device or its token was deleted during the build**, or the custom firmware project has no revision.
 
 ## Fix (in the UI)
@@ -31,6 +32,6 @@ The reason shown tells which step failed:
 1. **Compilation error (custom firmware)**: open the project in **Firmware**, fix the code, click **Verify** until it passes, then **Rebuild** the device from its row in **Devices / Agents**.
 2. **WiFi password missing**: in **Edge referentials**, save the WiFi network again (or pick another one on the device), then **Rebuild**.
 3. **Out of time** or an unexpected server error: click **Rebuild** a little later.
-4. **No certificate authority**: ask the platform administrator; nothing can be fixed from the organization.
+4. **No certificate authority** or **certificate authority too large**: ask the platform administrator (it keeps only the root that signs the server certificate); nothing can be fixed from the organization. Then **Rebuild**.
 
 A failed build never changes what a device already runs: its current firmware keeps working until a new build succeeds and is flashed or deployed.

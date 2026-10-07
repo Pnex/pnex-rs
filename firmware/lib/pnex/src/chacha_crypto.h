@@ -52,6 +52,15 @@ size_t cryptoEncryptBinary(const uint8_t* in, size_t n, uint8_t* out);
 /// Ne null-terminate PAS la sortie ; retourne la longueur décodée.
 unsigned int cryptoB64Decode(const char* b64, unsigned char* out);
 
+/// Returned by cryptoB64DecodeBounded when the decoded value does not fit.
+#define PNEX_B64_TOO_LONG 0xFFFFFFFFu
+
+/// Bounded base64 decode: computes the decoded length first and writes
+/// nothing when it does not fit `cap` bytes WITH its terminating NUL
+/// (returns PNEX_B64_TOO_LONG, `out` set to ""). Otherwise decodes,
+/// null-terminates and returns the decoded length.
+unsigned int cryptoB64DecodeBounded(const char* b64, char* out, unsigned int cap);
+
 /// Base64 encode through the same wrapped lib (single-TU rule above).
 /// `out` must hold 4 * ceil(n / 3) + 1 bytes; it is null-terminated.
 /// Returns the encoded length.

@@ -328,6 +328,7 @@ build-fail-build-compile = The firmware does not compile. For a custom firmware,
 build-fail-build-merge = Assembling the flash image failed.
 build-fail-build-tool = A build server tool could not start.
 build-fail-build-no-ca = No certificate authority to pin in the firmware: the build server has no PNEX_CA_CERT_FILE. Contact your platform administrator.
+build-fail-build-ca-too-large = The certificate authority to pin is too large for this chip's firmware (2 KB on ESP8266, 4 KB on ESP32). Contact your platform administrator: keep only the root that signs the server certificate.
 build-fail-build-timeout = The build ran out of time. Run it again; the build server may be busy.
 build-fail-build-source = The firmware sources could not be prepared on the build server.
 build-fail-build-artifact = The compiler produced no firmware file.

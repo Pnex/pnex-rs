@@ -20,23 +20,28 @@
 #define PNEX_CA_CERT ""
 #endif
 
-// Decoded PEM + parse-once state.
-static char s_ca_pem[2048];
+// Decoded PEM + parse-once state (PNEX_CA_PEM_MAX bytes including the NUL).
+static char s_ca_pem[PNEX_CA_PEM_MAX];
 static unsigned int s_ca_len = 0;
 static bool s_init_done = false;
+// A CA was compiled in but could not be loaded: fail closed (never fall
+// back to setInsecure, the build asked for verification).
+static bool s_ca_rejected = false;
 
 void pnex_tls_init(const char* ca_pem_b64) {
     s_init_done = true;
-    s_ca_len = (ca_pem_b64 && *ca_pem_b64)
-                   ? cryptoB64Decode(ca_pem_b64, (unsigned char*)s_ca_pem)
-                   : 0;
-    s_ca_pem[s_ca_len] = '\0';
-    if (s_ca_len == 0) return;
-    if (s_ca_len >= sizeof(s_ca_pem) - 1) {
-        Serial.printf("[TLS] CA truncated at %u bytes — NOT pinned\n", s_ca_len);
+    unsigned int n = cryptoB64DecodeBounded(ca_pem_b64, s_ca_pem, sizeof(s_ca_pem));
+    if (n == PNEX_B64_TOO_LONG) {
+        // The server refuses such a build (build_ca_too_large): reaching
+        // this means a hand-made build. Never pin a partial chain.
+        Serial.printf("[TLS] CA larger than %u bytes — refused, TLS disabled\n",
+                      (unsigned)(sizeof(s_ca_pem) - 1));
         s_ca_len = 0;
+        s_ca_rejected = true;
         return;
     }
+    s_ca_len = n;
+    if (s_ca_len == 0) return;
     Serial.printf("[TLS] CA pinned (%u bytes PEM)\n", s_ca_len);
 #if !defined(ESP32)
     // Certificate dates need a clock (x509_now); syncs once WiFi is up.
@@ -83,6 +88,11 @@ static time_t x509_now() {
 // ───────────────────────── apply ─────────────────────────
 
 void pnex_tls_apply(WiFiClientSecure& client) {
+    if (s_ca_rejected) {
+        // No trust anchor and no setInsecure: every handshake fails.
+        Serial.println("[TLS] no usable CA — connection refused (rebuild the firmware)");
+        return;
+    }
     if (!pnex_tls_pinned() || s_ca_pem[0] == '\0') {
         client.setInsecure();
         return;

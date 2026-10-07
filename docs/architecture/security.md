@@ -223,6 +223,7 @@ sans impact exploitable démontré.
 | SEC-13 | LOW | **Assistant : widget libre re-lié au contrôle d'un flow déployé** | D144 | corrigé |
 | SEC-14 | LOW | **URL d'un fournisseur LLM vers un hôte interne (SSRF aveugle)** | R8 | corrigé 2026-10-07 — résolveur filtrant `pnex_core::egress` (avec SEC-W3) |
 | SEC-15 | LOW | **Image `pnex-builder-rs` : paquets Python vulnérables (7 HIGH, 0 CRITICAL)** | dépendances | corrigé pour 0.1.0-beta.4 (11 sur 12) ; `ecdsa` accepté (pas de correctif amont) |
+| SEC-16 | LOW | **Firmware : CA épinglée décodée dans un buffer fixe avant le contrôle de taille (débordement mémoire)** | D70 | corrigé 2026-10-08 (trouvé en route le 2026-10-07) |
 
 \* SEC-4 seul exige le jeton de service ; c'est l'amplificateur qui rend
 SEC-1 / SEC-3 inter-org (actionneurs de n'importe quelle org).
@@ -451,6 +452,32 @@ deploys d'autres flows sans verrou commun — `ai-assistant.md` §10) ;
 version courante et non à celle publiée ; magasin desktop
 `pnex-storage.json` en 0644 ; `\` non échappé dans deux ponts JS
 natifs (non exploitable, R13 demande `serde_json`).
+
+**SEC-16 — Débordement du buffer de CA dans le firmware (trouvé en route,
+2026-10-07, mise en place de la démo dev.pnex.io).** `pnex_tls_init`
+(`firmware/lib/pnex/src/pnex_tls.cpp:28`) décode le base64 de
+`PNEX_CA_CERT` dans `s_ca_pem[2048]` **puis** compare la longueur : une
+CA de plus de 2 047 octets PEM écrit au-delà du tableau. Constaté avec un
+bundle de 3 racines (GTS R4 + R1 + ISRG X1, 4 615 octets) : l'ESP32-C6
+plante au boot (panic, message « CA truncated » encore lisible dans la
+pile). L'entrée vient de l'opérateur (`PNEX_CA_CERT_FILE`), pas d'un
+utilisateur : pas d'exploitation démontrée, d'où LOW. *Correctif proposé* :
+vérifier la longueur décodée (`ceil(len_b64 / 4) * 3`) avant de décoder,
+ou décoder dans un buffer alloué à la taille ; côté serveur, refuser au
+build une CA plus grande que la limite firmware (code machine dédié) ;
+porter la limite à 4 Ko sur ESP32 pour autoriser plusieurs racines.
+Contournement : une seule racine (GTS Root R4, 765 octets, sur dev.pnex.io).
+*Corrigé (2026-10-08)* : `cryptoB64DecodeBounded` (`chacha_crypto.cpp`)
+calcule la longueur décodée avant d'écrire et n'écrit rien quand elle ne
+tient pas ; la CA est alors refusée **en échec fermé** (ni ancre ni
+`setInsecure`, toute poignée de main échoue — l'ancien code retombait en
+mode non vérifié) ; même décodage borné pour
+WIFI_SSID / WIFI_PASSWORD / HOST / DEVICE_ID. `PNEX_CA_PEM_MAX`
+(`pnex_tls.h`) passe à 4 096 sur ESP32 (deux racines), reste 2 048 sur
+ESP8266. Le worker refuse au build une CA plus grande que la limite de la
+puce : `build_ca_too_large` (`pnex_core::builds::device_ca_max_pem_bytes`,
+test `device_ca_limit_matches_the_firmware_buffer` qui relit l'en-tête
+firmware, `oversized_device_ca_is_refused_per_soc`).
 
 ### Sous le seuil (confiance < 8) — à surveiller, non bloquants
 

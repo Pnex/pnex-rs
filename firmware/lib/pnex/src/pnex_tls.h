@@ -24,8 +24,21 @@
 #include <ESP8266WiFi.h>  // brings the WiFiClientSecure (BearSSL) typedef
 #endif
 
+// Largest pinnable PEM, terminating NUL included. Mirrors
+// pnex_core::firmware::device_ca_max_pem_bytes (server refuses bigger CAs
+// at build time with build_ca_too_large): 4 KB on ESP32 (two roots fit),
+// 2 KB on the ESP8266 (heap budget, one root).
+#ifndef PNEX_CA_PEM_MAX
+#if defined(ESP32)
+#define PNEX_CA_PEM_MAX 4096
+#else
+#define PNEX_CA_PEM_MAX 2048
+#endif
+#endif
+
 // Decode the CA once (call from pnex_transport_setup, before any
 // pnex_tls_apply). `ca_pem_b64` = PNEX_CA_CERT macro value ("" = none).
+// A CA larger than PNEX_CA_PEM_MAX - 1 bytes is never written nor pinned.
 void pnex_tls_init(const char* ca_pem_b64);
 
 // True when a CA was provided (real verification posture).

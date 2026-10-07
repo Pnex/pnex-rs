@@ -151,6 +151,18 @@ unsigned int cryptoB64Decode(const char* b64, unsigned char* out) {
     return decode_base64((const unsigned char*)b64, out);
 }
 
+unsigned int cryptoB64DecodeBounded(const char* b64, char* out, unsigned int cap) {
+    if (cap == 0) return PNEX_B64_TOO_LONG;
+    out[0] = '\0';
+    if (!b64 || !*b64) return 0;
+    // Size check BEFORE writing: the decoder itself never bounds its output.
+    unsigned int need = decode_base64_length((const unsigned char*)b64);
+    if (need >= cap) return PNEX_B64_TOO_LONG;
+    unsigned int n = decode_base64((const unsigned char*)b64, (unsigned char*)out);
+    out[n] = '\0';
+    return n;
+}
+
 unsigned int cryptoB64Encode(const unsigned char* in, unsigned int n, char* out) {
     return encode_base64(in, n, (unsigned char*)out);
 }
