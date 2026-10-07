@@ -102,7 +102,8 @@ bool pnex_ota_run(const char* url_path,
     snprintf(url, sizeof(url), "%s://%s%s?token=%s&device_id=%s",
              pnex_use_tls() ? "https" : "http",
              pnex_host(), url_path, pnex_token_b64(), pnex_device_id_b64());
-    Serial.printf("[OTA] %s\n", url);
+    // Printed without its query: it carries the device token (SEC-W7).
+    Serial.printf("[OTA] %s://%s%s\n", pnex_use_tls() ? "https" : "http", pnex_host(), url_path);
 
     // Both clients live for the whole download: HTTPClient keeps a
     // reference (the plain one used to die at the end of its else block).

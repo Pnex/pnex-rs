@@ -34,6 +34,9 @@ static char s_password[101];
 static char s_host[65];
 static char s_device_id[65];
 static char s_conn[256];
+// Same URL with the token masked: the only form ever printed (serial logs
+// get pasted into forums and tickets — SEC-W7).
+static char s_conn_log[256];
 
 static PnexTransportInit s_init;
 
@@ -141,6 +144,8 @@ void pnex_transport_setup(const PnexTransportInit& init) {
     // URL selon WS_SSL compilé (port implicite : 443/80, comme le custom).
     snprintf(s_conn, sizeof(s_conn), "%s://%s%s?token=%s&device_id=%s",
              pnex_use_tls() ? "wss" : "ws", s_host, init.ws_path, token, device_id);
+    snprintf(s_conn_log, sizeof(s_conn_log), "%s://%s%s?token=***&device_id=%s",
+             pnex_use_tls() ? "wss" : "ws", s_host, init.ws_path, device_id);
 
     // TLS posture is applied per connect (pnex_ws_open builds the client).
     s_client.onMessage(on_frame);
@@ -151,7 +156,7 @@ void pnex_transport_setup(const PnexTransportInit& init) {
 
 const char* pnex_host() { return s_host; }
 const char* pnex_device_id() { return s_device_id; }
-const char* pnex_conn_string() { return s_conn; }
+const char* pnex_conn_string() { return s_conn_log; }
 
 // Raw base64 credentials for the OTA download URL (see pnex_transport.h).
 const char* pnex_token_b64() { return token; }
