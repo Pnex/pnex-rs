@@ -12,7 +12,7 @@
 use async_trait::async_trait;
 use serde_json::json;
 
-use crate::channels::{str_field, CLIENT};
+use crate::channels::{str_field, INTERNAL_CLIENT};
 use crate::error::NotifyError;
 use crate::{Channel, Message};
 
@@ -64,7 +64,7 @@ impl Channel for WebSocketChannel {
         });
         // Le token ne transite QUE dans le header (D54 : jamais dans une
         // URL, qui est loggable).
-        let resp = CLIENT
+        let resp = INTERNAL_CLIENT
             .post(deliver_url)
             .bearer_auth(token)
             // Fencing identity of the flow worker (D106), empty elsewhere.
@@ -111,6 +111,7 @@ mod tests {
             }),
         );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        crate::channels::open_egress_for_tests();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 

@@ -15,6 +15,9 @@ prompb = ["dep:prost"]
 # Device/agent frame encryption (ChaCha20, D8) — backend + edge agent only;
 # never enabled by the wasm frontend.
 frame-crypto = ["dep:chacha20", "dep:base64", "dep:getrandom"]
+# Guarded reqwest resolver + redirect policy for outbound requests to
+# user-chosen hosts (R8) — backend, notify and http-fetch only.
+egress = ["dep:reqwest", "dep:tokio"]
 
 [dependencies]
 serde = { workspace = true }
@@ -27,6 +30,8 @@ prost = { version = "0.13", optional = true }
 chacha20 = { version = "0.9", optional = true }
 base64 = { version = "0.22", optional = true }
 getrandom = { version = "0.3", optional = true }
+reqwest = { version = "0.12", default-features = false, optional = true }
+tokio = { version = "1", default-features = false, features = ["net"], optional = true }
 
 [dev-dependencies]
 # roundtrip serde du graphe + projection flows.json.

@@ -14,6 +14,7 @@ pub mod api;
 pub use api::*;
 
 pub mod builds;
+pub mod egress;
 pub use builds::*;
 
 pub mod dashboard;

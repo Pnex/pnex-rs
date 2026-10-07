@@ -275,6 +275,7 @@ async fn anthropic_chat(
             .collect(),
     };
     let url = format!("{}/v1/messages", anthropic_base(&cfg.base_url));
+    egress_check(&url)?;
     let resp = http
         .post(&url)
         .header("x-api-key", &cfg.api_key)
@@ -344,6 +345,18 @@ fn anthropic_base(base_url: &str) -> &str {
 
 fn anthropic_request_error(e: reqwest::Error) -> AiError {
     request_error(e)
+}
+
+/// Egress guard of a provider URL (R8, SEC-14): an IP literal skips the
+/// guarded resolver, so it is checked here.
+fn egress_check(url: &str) -> Result<(), AiError> {
+    let refused = reqwest::Url::parse(url)
+        .ok()
+        .and_then(|u| pnex_core::egress::check_url(&u));
+    match refused {
+        Some(code) => Err(AiError::Network(code.to_string())),
+        None => Ok(()),
+    }
 }
 
 /// Mapping commun réseau/timeout → `AiError`.
@@ -553,6 +566,7 @@ async fn openai_chat(
         max_tokens: req.max_tokens,
     };
     let url = format!("{}/chat/completions", cfg.base_url.trim_end_matches('/'));
+    egress_check(&url)?;
     let resp = http
         .post(&url)
         .bearer_auth(&cfg.api_key)

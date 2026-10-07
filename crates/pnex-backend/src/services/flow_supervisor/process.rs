@@ -12,6 +12,11 @@ pub(crate) fn apply_runtime_env(cmd: &mut tokio::process::Command, settings: &Fl
             "PNEX_FLOW_LOG",
             std::env::var("PNEX_FLOW_LOG").unwrap_or_else(|_| "info".into()),
         );
+    // Same egress policy in the runtime as in the server (R8, http-fetch).
+    cmd.env("PNEX_EGRESS", pnex_core::egress::policy().as_str());
+    if let Ok(hosts) = std::env::var("PNEX_EGRESS_ALLOW_HOSTS") {
+        cmd.env("PNEX_EGRESS_ALLOW_HOSTS", hosts);
+    }
     for key in &settings.env_allowlist {
         if let Ok(val) = std::env::var(key) {
             cmd.env(key, val);

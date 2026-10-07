@@ -162,7 +162,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("body", "literal POST body; absent = the incoming payload"),
             ("on_error", "\"reject\" (default) | \"passthrough\" (payload null + statusCode + http_error)"),
         ],
-        notes: "Secret fields (basic and proxy passwords, bearer token, key header value) are moved to the org vault when the flow is saved; the graph then holds a reference, never the value.",
+        notes: "Secret fields (basic and proxy passwords, bearer token, key header value) are moved to the org vault when the flow is saved; the graph then holds a reference, never the value. The server refuses targets pointing at itself or its internal services (loopback, link-local, cloud metadata, single-word host names): the request fails with egress_address_refused / egress_host_refused; LAN addresses (192.168.x.x…) stay reachable unless the platform runs in public mode.",
     },
     NodeDoc {
         kind: "debug",

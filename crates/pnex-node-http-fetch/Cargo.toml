@@ -6,7 +6,7 @@ license.workspace = true
 description = "Nœud de flow PNEX — requête HTTP client configurable (C1a) : GET/POST, headers, auth basic/bearer/clé, proxy direct ou provider de scraping"
 
 [dependencies]
-pnex-core = { workspace = true }
+pnex-core = { workspace = true, features = ["egress"] }
 edgelink-core = { path = "../../vendor/edgelinkd/crates/core", default-features = false, features = ["core", "js"] }
 edgelink-macro = { path = "../../vendor/edgelinkd/crates/macro" }
 # Seulement pour le type Option<&config::Config> de la factory — mêmes features que edgelink-core

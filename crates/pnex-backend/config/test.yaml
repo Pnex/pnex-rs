@@ -38,6 +38,8 @@ database:
 
 # Auth Rauthy (Phase 3/D19) : validation JWKS locale + JIT provisioning.
 settings:
+  # Mock servers listen on loopback: no egress filtering in tests.
+  egress: <%= get_env(name="PNEX_EGRESS", default="open") %>
   # Org secrets vault keyring (secrets.md D112): "<id>:<base64 32 bytes>",
   # write key first. Fixed DEV key — never reuse it in production.
   secrets:

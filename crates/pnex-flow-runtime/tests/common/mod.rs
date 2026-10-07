@@ -30,6 +30,8 @@ impl RuntimeProc {
         let bin = env!("CARGO_BIN_EXE_pnex-flow-runtime");
         let mut cmd = Command::new(bin);
         cmd.arg(flows_path).arg("--home").arg(home);
+        // Mock servers listen on loopback: no egress filtering in tests.
+        cmd.env("PNEX_EGRESS", "open");
         for (k, v) in env {
             cmd.env(k, v);
         }

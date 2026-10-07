@@ -89,6 +89,19 @@ impl Hooks for App {
         environment: &Environment,
         mut config: Config,
     ) -> Result<BootResult> {
+        // Egress policy of outbound requests to user-chosen hosts (R8):
+        // `settings.egress` (lan | public | open), env `PNEX_EGRESS` wins.
+        let egress = std::env::var("PNEX_EGRESS").ok().or_else(|| {
+            config
+                .settings
+                .as_ref()
+                .and_then(|s| s.get("egress"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        });
+        pnex_core::egress::init(pnex_core::egress::EgressPolicy::parse(
+            egress.as_deref().unwrap_or_default(),
+        ));
         // Several pods boot together with auto_migrate: on Postgres the
         // migration runs here under a session advisory lock (pods
         // serialize), then loco's own unlocked auto-migrate is disabled.
