@@ -740,3 +740,102 @@ carte (11°, 5 jours) ; mémoire lisible comme source de carte.
   Pour un bouton : intervalle ≤ 200 ms, ou une détection de front côté
   firmware (à évaluer si un tutoriel en a besoin).
 
+
+## 2026-10-07 — mise en place de la démo « Usine pilote » sur dev.pnex.io (0.1.0-beta.6, Helm)
+
+Contexte : réinstallation à neuf du cluster perso (chart pnex 0.2.0,
+`values-dev.yaml`), org « Usine pilote » montée par API (scripts du pitch
+`pnex-pitch-hapster/capture`), cartes réelles : NodeMCU V3 OLED, ESP32-C6-Zero
+(firmware custom LED RGB), ESP32-CAM.
+
+### O35 — Splat : on tourne autour, on ne s'y promène pas
+
+- **Constat** : dans le viewer splat (médias, annotations), impossible de
+  « se balader » dans la scène (camion Tanks and Temples).
+- **Cause** : `crates/pnex-frontend/js/viewers.js:210` crée les
+  `OrbitControls` de gsplat.js avec `enableKeyboardControls = false` ; seuls
+  restent l'orbite (clic gauche), le zoom molette borné à `0.05 R`
+  (`minZoom`) et le pan (clic droit). Pas de flèches/ZQSD, pas de vue à la
+  première personne.
+- **Correction proposée** : activer le clavier (vérifier qu'il ne capte pas
+  les touches quand un champ de l'éditeur d'annotations a le focus), baisser
+  `minZoom` pour entrer dans la scène, indiquer les commandes dans le viewer
+  (aide « glisser / molette / clic droit / flèches »).
+- **Statut** : ✅ corrigé (2026-10-08) — clavier gsplat activé derrière une
+  garde (`withGuardedKeys` : pointeur sur le viewer, aucun champ de saisie
+  actif ; flèches sans défilement de la page ; écouteurs retirés avec le
+  viewer), `minZoom` à `0.005 R`. Vérifié sous Chrome (SwiftShader) sur le
+  camion réduit à 30 000 points. Pas d'aide affichée dans le viewer.
+
+### O36 — Quota de build : l'appareil construit se compte lui-même
+
+- **Symptôme** : premier build d'une org neuve (tier Free, 1 appareil
+  « mixed ») refusé : « Device limit reached for mixed devices ».
+- **Cause** : `controllers/builds.rs:311` compare `count_devices_of_type`
+  (qui inclut l'appareil déjà enregistré qu'on construit) avec `>=` à la
+  limite : avec une limite de 1, aucun build n'est jamais possible.
+- **Correction proposée** : au build, exclure l'appareil cible du compte (ou
+  `>`), le quota s'appliquant déjà à l'enregistrement (`devices/crud.rs`).
+- **Statut** : ✅ corrigé (2026-10-08) — refus au build seulement au-delà
+  du quota (`>`), test `build_quota_403` réécrit (au quota : 201 ; tier
+  abaissé : 403).
+
+### O37 — `deploymentMode: self_hosted` n'enlève pas les quotas de tier
+
+- **Symptôme** : après passage en `self_hosted`, même refus que O36 ; la
+  page Abonnement affiche toujours « Free ».
+- **Cause** : `tier_limit_for` (`controllers/devices/crud.rs:4`) et le
+  contrôle d'intervalle de build lisent le tier de l'org sans regarder
+  `PNEX_DEPLOYMENT_MODE` ; les orgs créées prennent `PNEX_DEFAULT_ORG_TIER`
+  (Free par défaut), que le chart ne pose pas ; aucune route ne change le
+  tier d'une org existante (contournement : `UPDATE organizations SET
+  subscription_tier_id = 6`).
+- **Correction proposée** : en `self_hosted`, aucune limite de tier
+  (`tier_limit_for` → `None`, intervalle de build non appliqué) ; exposer
+  `api.defaultOrgTier` dans le chart ; un changement de tier par org dans
+  `/admin/status` (admin plateforme).
+- **Statut** : ✅ corrigé (2026-10-08) — `tiers_enforced()` : quotas et
+  intervalle de build seulement en `saas` (test
+  `self_hosted_ignores_subscription_tiers`). Reste ouvert : changement de
+  tier par org depuis `/admin/status`.
+
+### O38 — Chart Helm : aucune CA d'appareil → tout build wss refusé
+
+- **Symptôme** : `build_no_ca` sur tous les builds (« no device CA to pin
+  (PNEX_CA_CERT_FILE) »).
+- **Cause** : seul le compose pose `PNEX_CA_CERT_FILE` (pki-init) ; le chart
+  ne le posait pas, alors que SEC-W6 refuse désormais un build wss sans CA.
+- **Correction** : chart pnex-deploy, valeur `deviceCa.pem` → ConfigMap
+  `<release>-device-ca` montée en `/pki/device-ca.pem` (API + worker) +
+  `PNEX_CA_CERT_FILE` (non commité au 2026-10-07). Derrière Cloudflare :
+  GTS Root R4 seule (limite firmware 2 Ko, cf. SEC-16) ; si Cloudflare change
+  d'autorité, rebuild + reflash. À documenter dans le README du chart.
+- **Statut** : ✅ corrigé — chart 0.2.1 (pnex-deploy) : `deviceCa.pem` par
+  défaut ISRG Root X1, surcharge documentée pour Cloudflare (GTS Root R4) ;
+  limite par puce et `build_ca_too_large` côté serveur (SEC-16).
+
+### O39 — NodeMCU V3 OLED enregistrée sur la board NodeMCU par défaut
+
+- **Symptôme** : écran activé dans le détail + rebuild, OLED noir.
+- **Cause** : enregistrement par API sans `board_id` → board `esp8266`
+  (OLED externe D2/D1) au lieu de `nodemcu_v3_oled` (OLED soudé D6/D5) ; la
+  board est figée à l'enregistrement → suppression, réenregistrement,
+  rebuild, reflash.
+- **Statut** : résolu (opératoire). Piste produit : au premier announce,
+  signaler une board incohérente quand le firmware détecte un écran sur
+  d'autres broches.
+
+### O40 — État laissé par la démo (dev.pnex.io)
+
+- Chart déployé depuis l'arbre de travail pnex-deploy (non commité) avec
+  `--set-file deviceCa.pem=…` ; `values-dev.yaml` : `self_hosted`,
+  `customFirmware.enabled: true`, **`sandbox: none`** (code C++ utilisateur
+  dans le worker, qui détient les identifiants de la base) — acceptable pour
+  un environnement jetable, jamais pour une instance ouverte aux
+  inscriptions.
+- Orgs 1 et 2 passées au tier Admin par SQL.
+- Clé Anthropic de démo dans le coffre de l'org « Usine pilote » (à révoquer
+  après la démo).
+- Firmwares compilés pour le WiFi « Chez Shan » : changement de réseau =
+  rebuild + reflash (le WiFi est compilé dans l'image).
+- **Statut** : informatif.
