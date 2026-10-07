@@ -84,7 +84,9 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pnex-cargo-registry-w
     --mount=type=cache,target=/root/.local/share/dioxus,id=pnex-dx-tools \
     set -eux; \
     rm -rf target/dx/pnex-frontend/release/web/public; \
+    deploy/docker/touch-changed.sh target/.src-manifest; \
     (cd crates/pnex-frontend && dx build --platform web --release); \
+    mv target/.src-manifest.new target/.src-manifest; \
     cp -r target/dx/pnex-frontend/release/web/public /dist
 
 # ── Native binaries, cross-compiled for $TARGETPLATFORM ───────────────────
@@ -93,7 +95,8 @@ ARG TARGETARCH
 ARG BUILD_SHA=dev
 ENV BUILD_SHA=${BUILD_SHA}
 # target/ lives in a cache mount (incremental rebuilds), so artefacts are
-# copied out to /out within the same RUN.
+# copied out to /out within the same RUN. touch-changed.sh makes freshness
+# content-based: cargo's mtime check alone shipped stale binaries (O33).
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pnex-cargo-registry-${TARGETARCH} \
     --mount=type=cache,target=/usr/local/cargo/git,id=pnex-cargo-git-${TARGETARCH} \
     --mount=type=cache,target=/src/target,id=pnex-target-${TARGETARCH} \
@@ -105,8 +108,10 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pnex-cargo-registry-$
       *) echo "unsupported TARGETARCH=$TARGETARCH" >&2; exit 1 ;; \
     esac; \
     export PNEX_FIRMWARE_TREE_HASH="$(cat /firmware-tree-hash)"; \
+    deploy/docker/touch-changed.sh target/.src-manifest; \
     cargo build --release --locked --target "$triple" \
       -p pnex-backend -p pnex-flow-runtime --bin pnex-server --bin pnex-flow-runtime; \
+    mv target/.src-manifest.new target/.src-manifest; \
     mkdir -p /out/bin /out/data/flow-state /out/data/media; \
     cp "target/$triple/release/pnex-server" "target/$triple/release/pnex-flow-runtime" /out/bin/
 COPY --from=web /dist /out/dist
@@ -126,7 +131,9 @@ COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pnex-cargo-registry-agent \
     --mount=type=cache,target=/usr/local/cargo/git,id=pnex-cargo-git-agent \
     --mount=type=cache,target=/src/target,id=pnex-target-agent \
-    deploy/agent/build-dist.sh /agent-dist
+    deploy/docker/touch-changed.sh target/.src-manifest \
+ && deploy/agent/build-dist.sh /agent-dist \
+ && mv target/.src-manifest.new target/.src-manifest
 
 # ── server ────────────────────────────────────────────────────────────────
 FROM cgr.dev/chainguard/glibc-dynamic:latest AS server
