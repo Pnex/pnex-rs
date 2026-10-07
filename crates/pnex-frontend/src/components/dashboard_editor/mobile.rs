@@ -136,6 +136,13 @@ fn SectionBlock(
     } else {
         "rounded-xl p-2"
     };
+    // A chips row is untitled by design: its hint says so instead of
+    // reading like a missing title (O31).
+    let title_hint = if section.style == SectionStyle::Chips {
+        t!("db-section-title-chips")
+    } else {
+        t!("db-section-title")
+    };
     let (s_title, s_drop, s_up, s_down, s_del, s_click) = (
         sid.clone(),
         sid.clone(),
@@ -174,7 +181,7 @@ fn SectionBlock(
                 input {
                     class: "min-w-0 flex-1 rounded bg-transparent px-1 py-0.5 text-xs font-semibold uppercase tracking-wide text-gray-600 hover:bg-white focus:bg-white",
                     value: "{section.title}",
-                    placeholder: t!("db-section-title").to_string(),
+                    placeholder: "{title_hint}",
                     onchange: move |e| {
                         let title = e.value();
                         let id = s_title.clone();
