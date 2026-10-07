@@ -30,6 +30,8 @@ where
     let base = common::spawn_mock_rauthy().await;
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     unsafe { std::env::set_var("RAUTHY_URL", &base) };
+    // Tier quotas only apply to a SaaS deployment (O37).
+    unsafe { std::env::set_var("PNEX_DEPLOYMENT_MODE", "saas") };
     let config: RequestConfig = RequestConfigBuilder::new().build();
     let env = Env {
         alice: common::valid_token(
@@ -221,22 +223,60 @@ async fn build_intervalle_429() {
     .await;
 }
 
-/// Device-type quota (Free: 3 sensors) → 403, exact legacy error string.
+/// Device-type quota (Free: 3 sensors). The device being built is already
+/// registered: an org AT its quota builds normally (O36), an org OVER it
+/// (tier lowered since) gets the exact legacy 403.
 #[tokio::test]
 #[serial]
 async fn build_quota_403() {
-    with_app(|server, env, _ctx| async move {
+    with_app(|server, env, ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         for i in 1..=3 {
             create_device(&server, &env.alice, org, &format!("dev-{i}")).await;
         }
         let res = post_build(&server, &env.alice, org, "dev-1", "coloc").await;
+        res.assert_status(axum_test::http::StatusCode::CREATED);
+
+        use sea_orm::ConnectionTrait;
+        let set_free_sensors = |n: i32| {
+            let db = ctx.db.clone();
+            async move {
+                db.execute_unprepared(&format!(
+                    "UPDATE subscription_tiers SET max_sensor_devices = {n} WHERE name = 'Free'"
+                ))
+                .await
+                .expect("tier quota");
+            }
+        };
+        set_free_sensors(2).await;
+        let res = post_build(&server, &env.alice, org, "dev-2", "coloc").await;
+        set_free_sensors(3).await;
         res.assert_status(axum_test::http::StatusCode::FORBIDDEN);
         let body: serde_json::Value = res.json();
         assert_eq!(
             body["error"],
             "Device limit reached for sensor devices in your subscription tier."
         );
+    })
+    .await;
+}
+
+/// Self-hosted deployment: no tier applies, even to an org that still
+/// carries one (O37) — no device quota, no minimum build interval.
+#[tokio::test]
+#[serial]
+async fn self_hosted_ignores_subscription_tiers() {
+    with_app(|server, env, _ctx| async move {
+        unsafe { std::env::set_var("PNEX_DEPLOYMENT_MODE", "self_hosted") };
+        let org = personal_org(&server, &env.alice).await;
+        for i in 1..=4 {
+            create_device(&server, &env.alice, org, &format!("dev-{i}")).await;
+        }
+        let first = post_build(&server, &env.alice, org, "dev-1", "coloc").await;
+        let second = post_build(&server, &env.alice, org, "dev-4", "coloc").await;
+        unsafe { std::env::set_var("PNEX_DEPLOYMENT_MODE", "saas") };
+        first.assert_status(axum_test::http::StatusCode::CREATED);
+        second.assert_status(axum_test::http::StatusCode::CREATED);
     })
     .await;
 }

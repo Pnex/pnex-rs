@@ -25,6 +25,8 @@ where
     let base = common::spawn_mock_rauthy().await;
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     unsafe { std::env::set_var("RAUTHY_URL", &base) };
+    // Tier quotas only apply to a SaaS deployment (O37).
+    unsafe { std::env::set_var("PNEX_DEPLOYMENT_MODE", "saas") };
     let config: RequestConfig = RequestConfigBuilder::new().build();
     let env = Env {
         alice: common::valid_token(

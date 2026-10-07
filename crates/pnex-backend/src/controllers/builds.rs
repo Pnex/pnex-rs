@@ -81,6 +81,9 @@ fn record_dto(r: build_records::Model) -> pnex_core::BuildRecord {
 
 /// Intervalle min du tier de l'org (None = pas de contrainte).
 async fn min_build_interval(db: &DatabaseConnection, org: &OrgContext) -> Result<Option<i64>> {
+    if !crate::controllers::devices::tiers_enforced() {
+        return Ok(None);
+    }
     let Some(tier_id) = org.org.subscription_tier_id else {
         return Ok(None);
     };
@@ -302,6 +305,9 @@ async fn create(
     };
 
     // Device count quota per type (legacy parity: 403 here, 400 on /devices).
+    // The device being built is already registered (and counted): the build
+    // is refused only when the org is OVER its quota (tier lowered since),
+    // never at it (O36: a Free org could not build its single mixed device).
     let type_name = device_types::Entity::find_by_id(predefined.device_type_id)
         .one(&ctx.db)
         .await
@@ -312,7 +318,7 @@ async fn create(
         crate::controllers::devices::tier_limit_for(&ctx.db, &org, &type_name).await?
     {
         if count_devices_of_type(&ctx.db, org.org.id, predefined.device_type_id).await?
-            >= i64::from(limit)
+            > i64::from(limit)
         {
             return Ok(error_status(
                 StatusCode::FORBIDDEN,

@@ -1,11 +1,22 @@
 use super::*;
 
+/// Subscription tiers only apply to a SaaS deployment: a self-hosted
+/// server has no quota, whatever tier its orgs carry (O37 — an install
+/// switched from `saas` keeps its orgs' tiers).
+pub(crate) fn tiers_enforced() -> bool {
+    crate::services::retention::DeploymentMode::from_env()
+        == crate::services::retention::DeploymentMode::Saas
+}
+
 /// Quota du tier de l'org pour ce type de device (None = pas de plafond).
 pub(crate) async fn tier_limit_for(
     db: &DatabaseConnection,
     org: &OrgContext,
     type_name: &str,
 ) -> Result<Option<i32>> {
+    if !tiers_enforced() {
+        return Ok(None);
+    }
     let Some(tier_id) = org.org.subscription_tier_id else {
         return Ok(None);
     };
