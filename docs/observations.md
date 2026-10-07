@@ -74,7 +74,12 @@
 - **Pistes** : colonne `last_error` sur le record (texte borné — le
   pipeline capture déjà la queue des 30 dernières lignes) exposée dans le
   DTO ; et/ou logs builds → OpenObserve (différé existant, recoupe).
-- **Statut** : à traiter.
+- **Statut** : ✅ résolu (2026-10-07) — colonnes `failure_code` /
+  `failure_detail` sur `build_records` (migration 000006), code machine
+  (`pnex_core::BUILD_FAILURE_CODES`, clés `build-fail-*`) + queue de la
+  sortie du compilateur, jeton / mot de passe WiFi / clé masqués
+  (`scrub_secrets`). Affiché dans le détail device, le wizard et en
+  infobulle du badge « échec ».
 
 ### O5 — Bruit `/_dioxus?build_id=0` en build debug servi par Loco
 
@@ -474,7 +479,12 @@ Tous trouvés par la suite e2e, chacun couvert par un test (unitaire ou e2e) :
   par id) puis migration page par page ; passer le projet a11y en strict
   (`PNEX_E2E_A11Y_STRICT=1`) une fois la dette résorbée ; auditer aussi les
   modales ouvertes.
-- **Statut** : ouvert (partiellement corrigé, cf. O17).
+- **Statut** : ouvert (partiellement corrigé, cf. O17) — 2026-10-07 : 44
+  paires label → champ liées par `for`/`id` (script sur les blocs
+  `label {}` suivis d'un `input`/`select`/`textarea`), champs numériques des
+  contrôles et durées de l'Écriture mémoire nommés. Reste les labels suivis
+  d'un composant (sélecteurs, `SecretField`…) et le passage du projet a11y
+  en strict.
 
 ### O22 — Rebuild = même build record = même version firmware
 
@@ -561,7 +571,8 @@ Tous trouvés par la suite e2e, chacun couvert par un test (unitaire ou e2e) :
   Déployer hors écran.
 - **Détail** : 17 anomalies M1–M17 mesurées + plan en 4 lots dans
   [`architecture/mobile-ui.md`](architecture/mobile-ui.md).
-- **Statut** : ouvert (plan posé, lots 1–4 à faire).
+- **Statut** : ✅ résolu (lots livrés et poussés, `1620f8b`, garde
+  `layout.spec.ts` Android).
 
 ## 2026-10-04 — démonstration domotique de bout en bout (captures docs, `e2e-nodemcu`)
 
@@ -591,7 +602,9 @@ carte (11°, 5 jours) ; mémoire lisible comme source de carte.
   affiche la bonne valeur (11,4 °C). Variante du « select fantôme » dioxus.
 - **Risque** : l'utilisateur croit sa source perdue ; non vérifié si un
   ré-enregistrement sans toucher au select peut écraser la source.
-- **Statut** : ouvert.
+- **Statut** : ✅ corrigé (2026-10-07) — la source mémoire enregistrée reste
+  dans la liste même absente du catalogue (clé expirée), comme les séries
+  télémétrie (`with_saved_memory`).
 
 ### O28 — « On and off values must differ » affiché alors que 0 ≠ 1
 
@@ -600,7 +613,9 @@ carte (11°, 5 jours) ; mémoire lisible comme source de carte.
 - **Constat** : l'erreur reste affichée (état intermédiaire 0/0 pendant la
   saisie non réévalué) ; l'enregistrement passe et le contrôle porte bien
   `on: 0, off: 1`. Erreur d'affichage seulement.
-- **Statut** : ouvert.
+- **Statut** : ✅ corrigé (2026-10-07) — les champs numériques du domaine
+  s'appliquent à chaque frappe (brouillon local pour « - » ou « 0. »),
+  l'erreur suit la saisie.
 
 ### O29 — Vue live mobile : en-tête écrasé, cartes trop hautes
 
@@ -611,7 +626,11 @@ carte (11°, 5 jours) ; mémoire lisible comme source de carte.
 - **Cartes** : hauteur fixe (`h-44`, carte Lumière ~350 px de haut sur
   téléphone pour une ligne de contenu ; carte Météo idem dans l'éditeur) → beaucoup
   de vide, peu de cartes visibles par écran.
-- **Statut** : ouvert.
+- **Statut** : ✅ corrigé (vérifié navigateur 2026-10-07, 392 px) — en-tête
+  OK (titre sur une ligne, actions en icônes, aucun défilement horizontal) ;
+  les cartes Maison prennent la hauteur de leur contenu avec un plancher
+  (`mobile_card_classes` : `min-h-*`, Lumière 80 px au lieu de 176) ; météo,
+  flux d'énergie et graphes gardent une hauteur fixe (contenu qui la remplit).
 
 ### O30 — Libellés générés : clé de rôle brute, homonymes indiscernables
 
@@ -623,7 +642,10 @@ carte (11°, 5 jours) ; mémoire lisible comme source de carte.
   sur la page Contrôles (la pièce n'apparaît pas).
 - Après déploiement, le sous-titre du nœud Source contrôle affiche l'id
   brut (`f53a092b`) au lieu de la clé affichée en brouillon.
-- **Statut** : ouvert.
+- **Statut** : ✅ corrigé (2026-10-07) — contrôle d'une carte maison nommé
+  « Pièce · Carte · rôle » (titre de section = pièce) ; le rôle s'affiche
+  traduit dans l'UI (`control_label`) ; l'éditeur de flows charge les clés
+  des contrôles au montage (sous-titre Source de contrôle).
 
 ### O31 — Mineurs constatés
 
@@ -642,7 +664,14 @@ carte (11°, 5 jours) ; mémoire lisible comme source de carte.
   vs « flow » dans tout le reste de l'UI.
 - Section « Pastilles » du modèle Maison sans titre → l'éditeur affiche le
   placeholder « SECTION TITLE ».
-- **Statut** : ouvert.
+- **Statut** : ✅ corrigé (2026-10-07) — sous-titre Tableaux de bord ;
+  `/flows?id=` (rechargement, liens profonds : recherche, assistant,
+  événements, « Créer et ouvrir le flow ») ; panneau Détail en
+  `role=dialog` (la confirmation l'était déjà) ; champs Valeur
+  allumé/éteint et durées nommés ; « Source de contrôle », « Appareil
+  cible », groupe « Contrôles », menu « Flows » ; pastilles sans titre =
+  indication « titre facultatif ». Non traité : clic Playwright instable
+  sur le composeur mobile.
 
 ### O32 — État laissé par la démo
 
@@ -684,7 +713,10 @@ carte (11°, 5 jours) ; mémoire lisible comme source de carte.
   ne suffit pas ; plus simple : `touch` de tous les `crates/**/*.rs` avant
   `cargo build`, ou `cargo clean -p` des crates du workspace — les dépendances
   restent en cache). Concerne aussi les images de release.
-- **Statut** : ouvert.
+- **Statut** : ✅ corrigé (2026-10-07) — fraîcheur par contenu :
+  `deploy/docker/touch-changed.sh` touche les fichiers dont le hash diffère
+  du manifeste du dernier build réussi (gardé dans le cache `target/`),
+  dans les étapes web, build et agent-dist.
 
 ### O34 — NodeMCU V3 + OLED : le bouton FLASH n'est jamais lu sur GPIO0
 
@@ -699,5 +731,12 @@ carte (11°, 5 jours) ; mémoire lisible comme source de carte.
   A0, jamais une entrée numérique).
 - **Impact** : étape 07 des captures (bouton → LED → notification) non
   rejouable sur cette carte.
-- **Statut** : ouvert.
+- **Statut** : ✅ non reproduit (2026-10-07, même carte flashée
+  `e2e-nodemcu`, org E2E) — D3/GPIO0 `digital_in` souscrit à 300 ms :
+  4 appuis FLASH relevés (`false` pendant l'appui, `true` relâché) via
+  `GET /devices/{id}/pins`. Le câblage et la lecture sont bons. Cause
+  probable du 2026-10-04 : souscription à 1 s = échantillonnage, un appui
+  bref tombe entre deux lectures (il n'y a pas de détection de front).
+  Pour un bouton : intervalle ≤ 200 ms, ou une détection de front côté
+  firmware (à évaluer si un tutoriel en a besoin).
 

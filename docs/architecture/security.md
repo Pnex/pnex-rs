@@ -84,10 +84,17 @@ attaquant anonyme qui s'inscrit le peut aussi. La frontière qui compte est
   (http-fetch, webhooks, fournisseurs LLM) : refuser loopback,
   link-local (169.254/16, fe80::/10), métadonnées cloud et noms de
   services internes ; re-vérifier à chaque redirection.
-- **R9 — Un secret du coffre est lié à sa destination.** Changer l'URL,
-  l'hôte ou le port d'un canal / nœud qui référence un secret exige
-  `can_manage_secrets`, sinon la référence est retirée (D117 : aucun rôle
-  ne relit une valeur, y compris en la redirigeant).
+- **R9 — Un secret du coffre est lié à sa destination.** Seuls owner et
+  admin (`can_manage_secrets`) câblent un secret : le choisir, le changer
+  de champ, ou changer l'origine (schéma, hôte, port ; hôte, port et mode
+  TLS en SMTP) d'un nœud / canal qui en porte un. Un member (et
+  l'assistant) ne peut que **garder** un triplet (champ, secret,
+  destination) que le **même** consommateur porte déjà (même flow —
+  version la plus récente ou déployée —, même canal) ; tout le reste est
+  **refusé** avec `secret-destination-locked` (403), y compris un flow
+  dupliqué ou importé qui porte des références et un test-draft qui
+  diffère du canal enregistré (D117 : aucun rôle ne relit une valeur, y
+  compris en la redirigeant). Garde : `services/secrets/binding.rs`.
 - **R10 — Processus enfants : `env_clear()` + liste blanche**, secrets
   jamais en argv ; build firmware utilisateur sous bwrap (défaut).
 
@@ -214,7 +221,7 @@ sans impact exploitable démontré.
 | SEC-11 | MEDIUM | **Markdown de l'assistant : liens `javascript:` et images distantes** (ex-SEC-W1, relevé à l'audit de release) | R11 | corrigé |
 | SEC-12 | LOW | **Sauvegarde Android (auto-backup, transfert) emportait le jeton de rafraîchissement** | R16 | corrigé |
 | SEC-13 | LOW | **Assistant : widget libre re-lié au contrôle d'un flow déployé** | D144 | corrigé |
-| SEC-14 | LOW | **URL d'un fournisseur LLM vers un hôte interne (SSRF aveugle)** | R8 | partiel — redirections coupées ; filtrage d'adresses avec SEC-W3 |
+| SEC-14 | LOW | **URL d'un fournisseur LLM vers un hôte interne (SSRF aveugle)** | R8 | corrigé 2026-10-07 — résolveur filtrant `pnex_core::egress` (avec SEC-W3) |
 | SEC-15 | LOW | **Image `pnex-builder-rs` : paquets Python vulnérables (7 HIGH, 0 CRITICAL)** | dépendances | corrigé pour 0.1.0-beta.4 (11 sur 12) ; `ecdsa` accepté (pas de correctif amont) |
 
 \* SEC-4 seul exige le jeton de service ; c'est l'amplificateur qui rend
@@ -418,7 +425,17 @@ contournement inter-org trouvé.
   clients LLM ne suivent plus aucune redirection. Le filtrage des plages
   privées n'est **pas** posé : un LLM local sur le LAN (Ollama) est un
   usage central en auto-hébergé — il viendra avec le résolveur filtrant
-  de SEC-W3, activable en SaaS.
+  de SEC-W3, activable en SaaS. **2026-10-07** : résolveur filtrant posé
+  (`pnex_core::egress`, feature `egress`) sur les clients LLM, les canaux
+  de notification et http-fetch ; politique `settings.egress` /
+  `PNEX_EGRESS` : `lan` (défaut : loopback, link-local, métadonnées cloud,
+  multicast et noms d'hôte sans point refusés, LAN joignable), `public`
+  (plages privées refusées aussi, hébergement partagé), `open` (tests).
+  Les littéraux IP (non résolus) sont vérifiés avant l'envoi et chaque
+  redirection est re-vérifiée. `PNEX_EGRESS_ALLOW_HOSTS` autorise des noms
+  internes choisis (`ollama`) ; leurs adresses restent filtrées. Le moteur
+  de flows hérite de la politique du serveur. Hors périmètre : SMTP
+  (lettre, hôte saisi par l'owner).
 
 **À surveiller (relevés de l'audit de release, < 8)** : corps de réponse
 météo non borné (taille) ; bannissement d'un fournisseur météo par
@@ -440,12 +457,12 @@ natifs (non exploitable, R13 demande `serde_json`).
 | # | Conf. | Sujet | Note |
 |---|---|---|---|
 | SEC-W1 | 7 | Markdown de l'assistant : liens `javascript:` | → **SEC-11**, corrigé |
-| SEC-W2 | 7 | Member redirige un secret du coffre vers son hôte (`notify/testing.rs:90` test-draft, http-fetch avec `Ref`) | contredit D117 ; lier secret ↔ destination (R9) ou documenter comme accepté |
-| SEC-W3 | 6 | SSRF http-fetch avec lecture de la réponse (`pnex-node-http-fetch/src/lib.rs:370`) | impact selon l'hébergeur (métadonnées cloud) ; résolveur DNS filtrant (R8) |
+| SEC-W2 | 7 | Member redirige un secret du coffre vers son hôte (`notify/testing.rs:90` test-draft, http-fetch avec `Ref`) | ✅ 2026-10-07 : R9 appliquée strictement (décision produit : seuls owner/admin câblent un secret) — `binding::check` dans `store_graph_secrets` (flows, assistant compris), `notify::plan` (création, mise à jour, test-draft) ; refus `secret-destination-locked` ; tests `secrets.rs::members_keep_secrets_but_never_rewire_them`, `members_never_wire_secrets_nor_administer`, `binding::tests`. WiFi aussi (`store::save_single`) : un member garde le mot de passe, ne le remplace pas et ne renomme pas le SSID qui le porte (cas 7 du même test) |
+| SEC-W3 | 6 | SSRF http-fetch avec lecture de la réponse (`pnex-node-http-fetch/src/lib.rs:370`) | ✅ 2026-10-07 : résolveur filtrant + redirections re-vérifiées (cf. SEC-14) ; test `http_fetch_refuses_loopback_under_the_lan_policy` |
 | SEC-W4 | 4 | `version` non assainie dans `ota_artifact_key` (`pnex-firmware-builder/src/store.rs:104`) | inexploitable en backend `db` ; `sanitize_segment` (R18) |
 | SEC-W5 | — | `email_verified` non exigé au rattachement de compte (`auth/provisioning.rs:117`) | sûr tant que Rauthy garantit l'email ; à exiger avant tout IdP amont |
-| SEC-W6 | — | Firmware `setInsecure` sans `PNEX_CA_CERT_FILE` | refuser un build `wss` sans CA épinglée |
-| SEC-W7 | 5 | Le firmware imprime l'URL WebSocket complète sur le port série, jeton du device inclus (base64) (`firmware/lib/pnex/src/pnex.cpp:397`) ; idem l'URL OTA (`pnex_ota.cpp:105`) | accès USB requis, mais les logs série sont collés tels quels dans les forums et tickets (tutoriels) ; masquer le paramètre `token` à l'impression (R16). Relevé le 2026-10-05 |
+| SEC-W6 | — | Firmware `setInsecure` sans `PNEX_CA_CERT_FILE` | ✅ 2026-10-07 : build `wss` sans CA refusé (`build_no_ca`, `settings.firmware.require_device_ca`, vrai par défaut, faux en test seulement) |
+| SEC-W7 | 5 | Le firmware imprime l'URL WebSocket complète sur le port série, jeton du device inclus (base64) (`firmware/lib/pnex/src/pnex.cpp:397`) ; idem l'URL OTA (`pnex_ota.cpp:105`) | accès USB requis, mais les logs série sont collés tels quels dans les forums et tickets (tutoriels) ; masquer le paramètre `token` à l'impression (R16). Relevé le 2026-10-05 — ✅ 2026-10-07 : `pnex_conn_string()` renvoie l'URL au jeton masqué (`token=***`), l'URL OTA est imprimée sans sa requête |
 
 - **SEC-7** — `controllers/ota.rs` : `deploy` et `cancel` exigent
   `can_write` (`device-write-forbidden`).
@@ -460,6 +477,6 @@ natifs (non exploitable, R13 demande `serde_json`).
 ### Reste à faire
 
 SEC-10 (APK release non debuggable, signature de release — accepté
-pour la beta 1) ; SEC-14 /
-SEC-W3 (résolveur filtrant) ; les points à surveiller selon priorité
-produit.
+pour la beta 1) ; un member peut toujours lancer un build et télécharger
+l'image qui embarque le PSK WiFi (SEC-8, inhérent au provisioning) ; les
+points à surveiller selon priorité produit.
