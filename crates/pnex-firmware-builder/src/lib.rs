@@ -25,7 +25,7 @@ mod pipeline;
 mod store;
 
 pub use custom::{sandbox_argv, BuildOptions, CustomSource, Sandbox};
-pub use env::{child_env, BuildSecrets};
+pub use env::{child_env, scrub_secrets, BuildSecrets};
 pub use merge::{chip_name, merge_args, merge_offsets};
 pub use pipeline::{
     compile_check, run_build, run_build_with, BuildConfig, CompileOutcome, DeviceSpec, ScreenSpec,

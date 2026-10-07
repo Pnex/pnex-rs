@@ -232,6 +232,13 @@ pub fn Devices() -> Element {
                     let (class, label) = phase_badge(build.build_phase.as_deref());
                     (class, label, date_label(&build.updated_at), build.success)
                 });
+                // Failed build: its reason as the badge tooltip (O4).
+                let failure_hint = device
+                    .latest_build
+                    .as_ref()
+                    .and_then(|b| b.failure_code.as_deref())
+                    .map(crate::components::build_failure::build_failure_text)
+                    .unwrap_or_default();
                 let downloadable = firmware.as_ref().is_some_and(|f| f.3);
                 let download_id = device.device_id.clone();
                 let flash_pk = device.id;
@@ -272,7 +279,7 @@ pub fn Devices() -> Element {
                     div { class: "flex flex-col gap-0.5",
                         match &firmware {
                             Some((class, label, date, _)) => rsx! {
-                                span { class: "{class} w-fit", {label.clone()} }
+                                span { class: "{class} w-fit", title: "{failure_hint}", {label.clone()} }
                                 span { class: "text-[11px] text-gray-400", {date.clone()} }
                             },
                             None => rsx! {
@@ -1359,6 +1366,12 @@ fn DeviceDetail(
                 let (class, label) = phase_badge(build.build_phase.as_deref());
                 (class, label, date_label(&build.updated_at))
             });
+            // Why the last build failed (O4), under the header.
+            let build_failure = device
+                .latest_build
+                .as_ref()
+                .filter(|b| b.build_phase.as_deref() == Some("failed"))
+                .map(|b| (b.failure_code.clone(), b.failure_detail.clone()));
             rsx! {
                 div { class: "space-y-4",
                     // Header card — identity, statuses, delete.
@@ -1395,6 +1408,9 @@ fn DeviceDetail(
                                 }
                             }
                         }
+                    }
+                    if let Some((code, detail)) = build_failure {
+                        crate::components::build_failure::BuildFailureNote { code, detail }
                     }
 
                     // Board card — SVG pinout editor (generic, profile v2)

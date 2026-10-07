@@ -691,8 +691,12 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                                     }
                                                 }
                                             } else if record.build_phase.as_deref() == Some("failed") {
-                                                div { class: "bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700",
-                                                    {t!("wizard-build-failed")}
+                                                div { class: "space-y-2",
+                                                    crate::components::build_failure::BuildFailureNote {
+                                                        code: record.failure_code.clone(),
+                                                        detail: record.failure_detail.clone(),
+                                                    }
+                                                    p { class: "text-sm text-red-700", {t!("wizard-build-failed")} }
                                                 }
                                             } else {
                                                 div { class: "flex items-center gap-3 text-sm text-gray-600",

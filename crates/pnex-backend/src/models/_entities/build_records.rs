@@ -26,6 +26,12 @@ pub struct Model {
     /// Custom firmware revision compiled by this build (NULL = generic
     /// build).
     pub firmware_revision_id: Option<i64>,
+    /// Why a failed build failed (O4): machine code from
+    /// `pnex_core::builds::BUILD_FAILURE_CODES`.
+    pub failure_code: Option<String>,
+    /// Tail of the tool output of a failed build, credentials masked.
+    #[sea_orm(column_type = "Text", nullable)]
+    pub failure_detail: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

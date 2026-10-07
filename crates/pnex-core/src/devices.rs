@@ -150,6 +150,12 @@ pub struct LatestBuild {
     /// build.
     #[serde(default)]
     pub deployable_version: Option<String>,
+    /// Failure reason of a failed build (O4, see `BuildRecord`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_code: Option<String>,
+    /// Compiler output tail of a failed build, credentials masked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_detail: Option<String>,
 }
 
 /// Current OTA deployment status hydrated into `Device` (list + detail).

@@ -14,6 +14,8 @@ mkdir -p .pio/build/stub
 case "$WIFI_SSID" in
   ZmFpbA==)  # base64("fail")
     echo "fixture: erreur de compilation simulée"
+    # A tool echoing its flags: the worker must mask the token (O4).
+    echo "flags -DTOKEN=$TOKEN"
     exit 1
     ;;
   c2xlZXA=)  # base64("sleep")
