@@ -20,6 +20,19 @@ use std::sync::LazyLock;
 /// Client HTTP partagé — timeout 10 s par tentative (D53 : le retry
 /// multiplie les tentatives, jamais leur durée).
 pub(crate) static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    // Egress guard (R8): webhook URLs are user-chosen; internal addresses
+    // are refused at resolution, every redirect re-checked.
+    pnex_core::egress::guarded(reqwest::Client::builder())
+        .redirect(pnex_core::egress::redirect_policy(5))
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .expect("reqwest client (rustls)")
+});
+
+/// Client of the platform's own delivery endpoint (`websocket` channel):
+/// an internal URL set by the server, never chosen by a user, so it is not
+/// under the egress guard.
+pub(crate) static INTERNAL_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
@@ -69,4 +82,11 @@ pub(crate) fn compose_text(subject: Option<&str>, body: &str) -> String {
 pub(crate) fn size_guard(text: &str, max: usize) -> Result<(), NotifyError> {
     let n = text.chars().count();
     (n <= max).then_some(()).ok_or(NotifyError::TooLarge(n))
+}
+
+/// Tests: the mock servers listen on loopback, which the egress guard
+/// refuses by default.
+#[cfg(test)]
+pub(crate) fn open_egress_for_tests() {
+    pnex_core::egress::init(pnex_core::egress::EgressPolicy::Open);
 }

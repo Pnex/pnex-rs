@@ -251,6 +251,41 @@ fn http_fetch_404_passthrough_expose_status_code() {
     assert!(full.contains("http_error"), "{full}");
 }
 
+/// Egress guard (R8, SEC-W3): under the default `lan` policy a loopback
+/// target is refused before any connection, the reason reaches the graph.
+#[test]
+fn http_fetch_refuses_loopback_under_the_lan_policy() {
+    let home = common::tmp_home("httpfetch-egress");
+    let flows = home.join("flows.json");
+    let (addr, requests) = start_canned_server(|_req| (200, "text/plain", "leak".to_string()));
+
+    std::fs::write(
+        &flows,
+        http_fetch_flows(
+            &format!("http://{addr}/internal"),
+            "get",
+            None,
+            "passthrough",
+            "true",
+        ),
+    )
+    .unwrap();
+    let rt = common::RuntimeProc::spawn_with_env(&flows, &home, [("PNEX_EGRESS", "lan")]);
+    wait_started(&rt);
+    let line = rt.wait_for(
+        |v| {
+            v.get("event").and_then(|e| e.as_str()) == Some("debug")
+                && v.to_string().contains("egress_address_refused")
+        },
+        Duration::from_secs(30),
+    );
+    assert!(!line.to_string().contains("leak"), "{line}");
+    assert!(
+        requests.lock().expect("lock").is_empty(),
+        "no request may reach loopback"
+    );
+}
+
 /// Vault reference (secrets.md S5): the node fetches the token from the
 /// secret endpoint on its first request and sends it as the bearer; the
 /// artifact itself never holds the value.

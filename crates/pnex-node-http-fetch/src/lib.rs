@@ -63,7 +63,10 @@ const FLOW_TOKEN_HEADER: &str = "x-pnex-flow-token";
 /// Fail-fast au pré-flight : proxy invalide = artefact refusé
 /// (`BadFlowsJson`), jamais un nœud silencieux.
 fn build_client(cfg: &HttpFetchNodeConfig, proxy_password: &str) -> Result<reqwest::Client> {
-    let mut builder = reqwest::Client::builder()
+    // Egress guard (R8, SEC-W3): internal addresses refused at resolution,
+    // each redirect re-checked.
+    let mut builder = pnex_core::egress::guarded(reqwest::Client::builder())
+        .redirect(pnex_core::egress::redirect_policy(10))
         .user_agent("pnex-http-fetch")
         .timeout(Duration::from_secs(cfg.timeout_secs.max(1)))
         .connect_timeout(Duration::from_secs(10));
@@ -367,6 +370,13 @@ impl PnexHttpFetchNode {
             Ok(ready) => ready,
             Err(reason) => return self.fail(reason, None, msg, cancel).await,
         };
+        // An IP literal skips the resolver: checked here (R8).
+        let refused = reqwest::Url::parse(&self.config.url)
+            .ok()
+            .and_then(|u| pnex_core::egress::check_url(&u));
+        if let Some(code) = refused {
+            return self.fail(code.to_string(), None, msg, cancel).await;
+        }
         let mut req = ready.http.request(method, &self.config.url);
         let mut explicit_content_type = false;
         for h in &self.config.headers {

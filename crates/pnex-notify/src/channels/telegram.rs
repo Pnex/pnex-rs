@@ -128,6 +128,7 @@ mod tests {
             }),
         );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        crate::channels::open_egress_for_tests();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
@@ -152,6 +153,7 @@ mod tests {
             post(|| async { StatusCode::UNAUTHORIZED }),
         );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        crate::channels::open_egress_for_tests();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 

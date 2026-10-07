@@ -26,7 +26,9 @@ pub const REQUEST_TIMEOUT_SECS: u64 = 90;
 pub fn shared_http() -> &'static reqwest::Client {
     static HTTP: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     HTTP.get_or_init(|| {
-        reqwest::Client::builder()
+        // Egress guard (R8, SEC-14): internal addresses refused at
+        // resolution.
+        pnex_core::egress::guarded(reqwest::Client::builder())
             .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
             // An LLM API never redirects: following one would let an org's
             // provider URL bounce the platform onto an internal host (R8).
@@ -40,7 +42,7 @@ pub fn shared_http() -> &'static reqwest::Client {
 pub fn shared_probe_http() -> &'static reqwest::Client {
     static HTTP: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     HTTP.get_or_init(|| {
-        reqwest::Client::builder()
+        pnex_core::egress::guarded(reqwest::Client::builder())
             .timeout(Duration::from_secs(30))
             // An LLM API never redirects: following one would let an org's
             // provider URL bounce the platform onto an internal host (R8).

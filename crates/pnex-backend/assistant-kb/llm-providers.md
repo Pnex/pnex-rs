@@ -24,5 +24,6 @@ The table shows **Name**, **Type**, **Model**, **API key** (set, with the secret
 - The assistant uses the organization's default provider. Without one, it shows "Assistant not configured for this organization: add an LLM provider in Organizations → org detail."
 - There is no platform-wide fallback: every organization configures its own.
 - Members and Viewers see the list but cannot change it.
+- The server refuses provider addresses that point at itself or at its internal services (loopback, link-local, cloud metadata, single-word host names such as `ollama`): use the LAN address of the machine running the model (for example `http://192.168.1.20:11434`). The platform administrator can allow a specific host name.
 - The key is never shown again; replace it from the provider form or from the Secrets page. Its usage appears in the Secrets page **Used by** column as "LLM provider".
 - Provider names are unique within the organization.

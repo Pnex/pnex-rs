@@ -8,7 +8,7 @@ publish = false
 default-run = "pnex-server"
 
 [dependencies]
-pnex-core = { workspace = true, features = ["naming", "prompb", "frame-crypto"] }
+pnex-core = { workspace = true, features = ["naming", "prompb", "frame-crypto", "egress"] }
 pnex-notify = { workspace = true }
 # CoolProp in-process : validation des mélanges à la sauvegarde + (phase 3)
 # moteur de diagrammes. Autorisé hors mode B : la règle « backend ne lie

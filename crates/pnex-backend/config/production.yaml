@@ -66,6 +66,10 @@ database:
 
 # Auth Rauthy (Phase 3/D19) : validation JWKS locale + JIT provisioning.
 settings:
+  # Outbound requests to user-chosen hosts (R8, security.md SEC-W3):
+  # lan = loopback, link-local and metadata refused, LAN reachable;
+  # public = private ranges refused too (shared hosting); open = no filter.
+  egress: <%= get_env(name="PNEX_EGRESS", default="lan") %>
   # Org secrets vault keyring (secrets.md D112), mandatory: the server
   # refuses to start without it. "k2:<b64>,k1:<b64>" — write key first,
   # older keys only decrypt (rotation). Generate: `openssl rand -base64 32`.
