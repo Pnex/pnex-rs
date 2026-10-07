@@ -483,6 +483,14 @@ gain de sécurité même sans l'IDE.
    warn « commande non acquittée » après quelques secondes, puis renvoi
    pour les commandes idempotentes (power/level/color) — jamais pour une
    commande momentanée (bouton), sauf dédup `cmd_id` côté lib.
+   **Posé le 2026-10-07** (`services/cmd_acks.rs`) : la session WS suit
+   chaque `Write` et `Command` poussé, journalise son `Ack` (debug, avec le
+   temps aller-retour) et avertit « command not acknowledged » au-delà de
+   3 s. Un `Write` sans `Ack` est repoussé **une fois** (valeur absolue,
+   idempotent) ; une `Command` custom ne l'est jamais : rien ne dit si elle
+   est idempotente et la lib ne déduplique pas `cmd_id`. Reste : dédup
+   `cmd_id` dans la lib (puis renvoi des commandes), et l'état réel (point
+   7) pour que la perte se voie dans l'UI.
 7. **État réel après une commande (idée utilisateur, 2026-10-06)** : le
    firmware générique PneX remonte déjà l'état réel des pins de sortie
    (digital 0/1, duty PWM). Pour un firmware custom, rien d'équivalent :
