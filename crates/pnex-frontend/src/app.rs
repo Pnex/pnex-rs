@@ -74,8 +74,9 @@ pub enum Route {
         #[route("/mixtures")]
         FluidMixtures {},
 
-        #[route("/flows")]
-        Flows {},
+        // `?id=` keeps the open flow across a reload (O31).
+        #[route("/flows?:id")]
+        Flows { id: String },
 
         #[route("/functions")]
         Functions {},

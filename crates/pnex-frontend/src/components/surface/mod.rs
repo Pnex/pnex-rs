@@ -174,12 +174,31 @@ pub fn control_group(c: &UiControl) -> String {
     }
 }
 
+/// Label of a control as shown to the user. A home card role control is
+/// stored as `Room · Card · power` (role key, language neutral); the role
+/// key is shown under its localized name (O30: "Marche / arrêt").
+pub fn control_label(c: &UiControl) -> String {
+    let role = c
+        .origin
+        .as_ref()
+        .and_then(|o| o.item_id.rsplit_once('.'))
+        .map(|(_, role)| role);
+    match role.and_then(|r| {
+        c.label
+            .strip_suffix(&format!(" · {r}"))
+            .map(|head| (head, r))
+    }) {
+        Some((head, r)) => format!("{head} · {}", home_card::role_label(r)),
+        None => c.label.clone(),
+    }
+}
+
 /// Display name of a control: `#w-0001 · Light` when declared by a surface
 /// item (the label alone when it is the item id), else `Light (light.room)`.
 pub fn control_display_name(c: &UiControl) -> String {
     match &c.origin {
         Some(o) if c.label == o.item_id => format!("#{}", o.item_id),
-        Some(o) => format!("#{} · {}", o.item_id, c.label),
+        Some(o) => format!("#{} · {}", o.item_id, control_label(c)),
         None => format!("{} ({})", c.label, c.key),
     }
 }
@@ -340,7 +359,7 @@ pub fn flow_draft(
 /// (deploy stays the user's call).
 pub fn create_flow_draft(control: &UiControl, device_slug: &str, target: &DraftTarget) {
     let params = pnex_core::CreateFlow {
-        name: t!("controls-flow-name", label : control.label.clone()).to_string(),
+        name: t!("controls-flow-name", label : control_label(control)).to_string(),
         device_id: None,
         graph: flow_draft(control.id, device_slug, target),
         author: None,
@@ -351,8 +370,9 @@ pub fn create_flow_draft(control: &UiControl, device_slug: &str, target: &DraftT
         match api::flows::create(params).await {
             Ok(flow) => {
                 crate::state::toasts::success(done);
-                crate::state::flows::OPEN_FLOW.with_mut(|v| *v = Some(flow.id));
-                navigator().push(crate::app::Route::Flows {});
+                navigator().push(crate::app::Route::Flows {
+                    id: flow.id.to_string(),
+                });
             }
             Err(e) => crate::state::toasts::error(e),
         }
