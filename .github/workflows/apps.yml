@@ -243,15 +243,28 @@ jobs:
       - name: Checksums
         working-directory: dist
         run: sha256sum -- * > SHA256SUMS && cat SHA256SUMS
+      # Release notes from the Conventional Commits since the previous v* tag
+      # (cliff.toml). GitHub's --generate-notes lists merged PRs only, and
+      # main is pushed directly: it produced empty notes.
+      - uses: actions/checkout@v5
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          path: src
+          fetch-depth: 0
+      - name: Release notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: src
+        run: pipx run git-cliff==2.14.2 --latest --strip header -o ../release-notes.md
       - name: Versioned release (tag)
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
+          cat release-notes.md
           # v0.1.0-beta.1, v1.2.0-rc.1…: a semver pre-release suffix marks
           # the GitHub release as a pre-release.
           pre=()
           [[ $GITHUB_REF_NAME == *-* ]] && pre=(--prerelease)
           gh release create "$GITHUB_REF_NAME" dist/* -R "$GITHUB_REPOSITORY" \
-            --title "PNeX $GITHUB_REF_NAME" --generate-notes "${pre[@]}"
+            --title "PNeX $GITHUB_REF_NAME" --notes-file release-notes.md "${pre[@]}"
       - name: Rolling nightly pre-release (main)
         if: "!startsWith(github.ref, 'refs/tags/v')"
         run: |

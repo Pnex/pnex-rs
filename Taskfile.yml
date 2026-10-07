@@ -357,6 +357,11 @@ tasks:
       - docker buildx build -f deploy/docker/Dockerfile --target server -t pnex-server:{{.TAG}} --load .
       - docker buildx build -f deploy/docker/Dockerfile --target builder -t pnex-builder:{{.TAG}} --load .
 
+  changelog:
+    desc: Release notes from the Conventional Commits (cliff.toml) — unreleased commits by default; `-- --latest` = last tag, `-- -o CHANGELOG.md` = whole history
+    cmds:
+      - uvx git-cliff@2.14.2 {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}--unreleased{{end}}
+
   docker:publish:
     desc: Build + push multi-arch (amd64, arm64) images to Docker Hub — TAG=dirty-<githash> by default (needs `docker login` and arm64 binfmt)
     vars:

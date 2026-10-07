@@ -1,0 +1,73 @@
+# git-cliff configuration: release notes and CHANGELOG.md from the commit
+# history (Conventional Commits, see CLAUDE.md « Commits »).
+#   task changelog           # notes of the unreleased commits (preview)
+#   task changelog -- --latest   # notes of the last tag
+# CI (apps.yml, `release` job) uses the same file for the GitHub release body.
+
+[changelog]
+header = ""
+body = """
+{% if version -%}
+## {{ version | trim_start_matches(pat="v") }} — {{ timestamp | date(format="%Y-%m-%d") }}
+{% else -%}
+## Unreleased
+{% endif -%}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}
+- {% if commit.scope and commit.scope != "security" %}**{{ commit.scope }}:** {% endif %}{% if commit.breaking %}**BREAKING** {% endif %}{{ commit.message | split(pat="\n") | first | trim | upper_first }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/Pnex/pnex-rs/commit/{{ commit.id }}))
+{%- endfor %}
+{% endfor %}
+{% if previous.version and version -%}
+**Full diff:** [{{ previous.version }}...{{ version }}](https://github.com/Pnex/pnex-rs/compare/{{ previous.version }}...{{ version }})
+{% endif %}
+"""
+footer = ""
+trim = true
+
+[git]
+conventional_commits = true
+# Commits outside the convention are kept (grouped under « Other »), never
+# silently dropped from the notes.
+filter_unconventional = false
+split_commits = false
+# Before the convention was adopted (up to v0.1.0-beta.5), subjects read
+# `Fix (scope): …` / `CI: …`: rewritten to `fix(scope): …` so history parses.
+# Multi-scope `(ui, mobile)` becomes `(ui/mobile)` (a scope has no space).
+commit_preprocessors = [
+  { pattern = '^(Feat|Fix|Docs|Chore|Test|Refactor|Perf|Build|CI|Ci|Style|Revert) \(([^)]*)\):', replace = '${1}(${2}):' },
+  { pattern = '^(\w+)\(([^),]*), ([^),]*)\):', replace = '${1}(${2}/${3}):' },
+  { pattern = '^(\w+)\(([^),]*)/([^),]*), ([^),]*)\):', replace = '${1}(${2}/${3}/${4}):' },
+  { pattern = '^Feat(\(|:)', replace = 'feat${1}' },
+  { pattern = '^Fix(\(|:)', replace = 'fix${1}' },
+  { pattern = '^Docs(\(|:)', replace = 'docs${1}' },
+  { pattern = '^Chore(\(|:)', replace = 'chore${1}' },
+  { pattern = '^Test(\(|:)', replace = 'test${1}' },
+  { pattern = '^Refactor(\(|:)', replace = 'refactor${1}' },
+  { pattern = '^Perf(\(|:)', replace = 'perf${1}' },
+  { pattern = '^Build(\(|:)', replace = 'build${1}' },
+  { pattern = '^C[Ii](\(|:)', replace = 'ci${1}' },
+  { pattern = '^Style(\(|:)', replace = 'style${1}' },
+  { pattern = '^Revert(\(|:)', replace = 'revert${1}' },
+]
+# Order = section order in the notes (the HTML comment only sorts).
+commit_parsers = [
+  { message = '^Initial release', skip = true },
+  { message = '^chore\(release\)', skip = true },
+  { message = '^feat', group = '<!-- 0 -->Features' },
+  { message = '^fix\(security\)', group = '<!-- 1 -->Security' },
+  { message = '^fix', group = '<!-- 2 -->Bug fixes' },
+  { message = '^perf', group = '<!-- 3 -->Performance' },
+  { message = '^refactor', group = '<!-- 4 -->Refactoring' },
+  { message = '^docs', group = '<!-- 5 -->Documentation' },
+  { message = '^test', group = '<!-- 6 -->Tests' },
+  { message = '^(build|ci)', group = '<!-- 7 -->Build and CI' },
+  { message = '^(chore|style|revert)', group = '<!-- 8 -->Maintenance' },
+  { message = '.*', group = '<!-- 9 -->Other' },
+]
+protect_breaking_commits = true
+filter_commits = false
+# Release tags only: `nightly` is a rolling tag, never a version.
+tag_pattern = '^v[0-9]+\.[0-9]+\.[0-9]+'
+topo_order = false
+sort_commits = "oldest"
