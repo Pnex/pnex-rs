@@ -172,8 +172,13 @@ pub fn AppearancePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Element
                 VisibilityRule { cx, rule: visible_when, can_write }
             }
             if show_stale {
-                label { class: "block text-[10px] text-gray-500", {t!("appear-stale")} }
+                label {
+                    r#for: "appearance-field-1",
+                    class: "block text-[10px] text-gray-500",
+                    {t!("appear-stale")}
+                }
                 input {
+                    id: "appearance-field-1",
                     class: "w-full rounded border border-gray-300 px-2 py-1 text-sm",
                     "type": "number",
                     min: "{pnex_core::STALE_AFTER_MIN_S}",

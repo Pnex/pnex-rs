@@ -302,8 +302,9 @@ pub(super) fn ModelFormModal(
             div { class: "space-y-4",
                 div { class: "grid gap-4 md:grid-cols-2",
                     div {
-                        label { class: LABEL_CLASS, {t!("models-name")} }
+                        label { r#for: "form-field-1", class: LABEL_CLASS, {t!("models-name")} }
                         input {
+                            id: "form-field-1",
                             class: INPUT_CLASS,
                             value: "{name}",
                             oninput: move |e| name.set(e.value()),
@@ -313,8 +314,9 @@ pub(super) fn ModelFormModal(
                         }
                     }
                     div {
-                        label { class: LABEL_CLASS, {t!("models-description")} }
+                        label { r#for: "form-field-2", class: LABEL_CLASS, {t!("models-description")} }
                         input {
+                            id: "form-field-2",
                             class: INPUT_CLASS,
                             value: "{description}",
                             oninput: move |e| description.set(e.value()),
@@ -385,8 +387,9 @@ pub(super) fn ModelFormModal(
                 }
                 div { class: "grid gap-4 grid-cols-2 md:grid-cols-5",
                     div {
-                        label { class: LABEL_CLASS, {t!("models-family")} }
+                        label { r#for: "form-field-3", class: LABEL_CLASS, {t!("models-family")} }
                         select {
+                            id: "form-field-3",
                             class: "{INPUT_CLASS} bg-white",
                             onchange: move |e| {
                                 if let Some(f) = VisionFamily::from_wire(&e.value()) {
@@ -487,8 +490,9 @@ fn number_field(
 ) -> Element {
     rsx! {
         div {
-            label { class: LABEL_CLASS, {label} }
+            label { r#for: "form-field-4", class: LABEL_CLASS, {label} }
             input {
+                id: "form-field-4",
                 class: INPUT_CLASS,
                 r#type: "number",
                 step: "any",

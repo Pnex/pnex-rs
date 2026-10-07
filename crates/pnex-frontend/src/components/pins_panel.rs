@@ -180,8 +180,13 @@ pub(crate) fn PinCard(
             if is_configurable && can_write {
                 div { class: "grid grid-cols-2 gap-2",
                     div { class: "space-y-1",
-                        label { class: "text-xs font-medium text-gray-500", {t!("pins-mode")} }
+                        label {
+                            r#for: "pins-panel-field-1",
+                            class: "text-xs font-medium text-gray-500",
+                            {t!("pins-mode")}
+                        }
                         select {
+                            id: "pins-panel-field-1",
                             class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
                             aria_label: t!("pins-mode"),
                             value: "{mode_sel}",
@@ -198,8 +203,13 @@ pub(crate) fn PinCard(
                         }
                     }
                     div { class: "space-y-1",
-                        label { class: "text-xs font-medium text-gray-500", {t!("pins-safe-state")} }
+                        label {
+                            r#for: "pins-panel-field-2",
+                            class: "text-xs font-medium text-gray-500",
+                            {t!("pins-safe-state")}
+                        }
                         select {
+                            id: "pins-panel-field-2",
                             class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
                             aria_label: t!("pins-safe-state"),
                             value: "{safe_sel}",

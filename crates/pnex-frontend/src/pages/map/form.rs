@@ -57,10 +57,13 @@ pub(super) fn PoiFormModal(
             on_close: move |_| on_close.call(()),
             div { class: "space-y-4",
                 div {
-                    label { class: "block text-sm font-medium text-gray-700 mb-1",
+                    label {
+                        r#for: "form-field-1",
+                        class: "block text-sm font-medium text-gray-700 mb-1",
                         {t!("poi-field-label")}
                     }
                     input {
+                        id: "form-field-1",
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         value: "{label}",
                         oninput: move |e| label.set(e.value()),
@@ -87,10 +90,13 @@ pub(super) fn PoiFormModal(
                     }
                 }
                 div {
-                    label { class: "block text-sm font-medium text-gray-700 mb-1",
+                    label {
+                        r#for: "form-field-2",
+                        class: "block text-sm font-medium text-gray-700 mb-1",
                         {t!("poi-field-location")}
                     }
                     input {
+                        id: "form-field-2",
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         placeholder: t!("poi-field-location-hint"),
                         value: "{detail}",
@@ -99,20 +105,26 @@ pub(super) fn PoiFormModal(
                 }
                 div { class: "grid grid-cols-2 gap-3",
                     div {
-                        label { class: "block text-sm font-medium text-gray-700 mb-1",
+                        label {
+                            r#for: "form-field-3",
+                            class: "block text-sm font-medium text-gray-700 mb-1",
                             {t!("poi-field-lat")}
                         }
                         input {
+                            id: "form-field-3",
                             class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                             value: "{lat}",
                             oninput: move |e| lat.set(e.value()),
                         }
                     }
                     div {
-                        label { class: "block text-sm font-medium text-gray-700 mb-1",
+                        label {
+                            r#for: "form-field-4",
+                            class: "block text-sm font-medium text-gray-700 mb-1",
                             {t!("poi-field-lon")}
                         }
                         input {
+                            id: "form-field-4",
                             class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                             value: "{lon}",
                             oninput: move |e| lon.set(e.value()),

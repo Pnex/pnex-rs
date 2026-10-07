@@ -158,10 +158,13 @@ pub(super) fn TestLiveModal(
                 } else {
                     div { class: "flex flex-wrap items-end gap-3",
                         div { class: "flex-1 min-w-48",
-                            label { class: "block text-sm font-medium text-gray-700 mb-1",
+                            label {
+                                r#for: "test-live-field-1",
+                                class: "block text-sm font-medium text-gray-700 mb-1",
                                 {t!("models-live-camera")}
                             }
                             select {
+                                id: "test-live-field-1",
                                 class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                                 disabled: running(),
                                 onchange: move |e| device.set(e.value().parse::<i64>().ok()),
@@ -290,10 +293,13 @@ fn LiveThreshold(
     let changed = (value - model_threshold).abs() > 0.004;
     rsx! {
         div { class: "flex flex-wrap items-center gap-3",
-            label { class: "text-sm text-gray-700 whitespace-nowrap",
+            label {
+                r#for: "test-live-field-2",
+                class: "text-sm text-gray-700 whitespace-nowrap",
                 {t!("models-live-threshold", value : format!("{value:.2}"))}
             }
             input {
+                id: "test-live-field-2",
                 class: "flex-1 min-w-40",
                 r#type: "range",
                 min: "0.05",

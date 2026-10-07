@@ -263,8 +263,13 @@ pub fn Showcase() -> Element {
                         on_close: move |_| {},
                         body: rsx! {
                             div {
-                                label { class: "block text-sm font-medium text-gray-700 mb-1", "Nom du nœud" }
+                                label {
+                                    r#for: "showcase-field-1",
+                                    class: "block text-sm font-medium text-gray-700 mb-1",
+                                    "Nom du nœud"
+                                }
                                 input {
+                                    id: "showcase-field-1",
                                     class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                                     placeholder: "Nom du nœud",
                                 }
