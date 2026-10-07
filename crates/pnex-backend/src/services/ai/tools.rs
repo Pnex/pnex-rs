@@ -63,19 +63,56 @@ impl From<String> for ToolError {
     }
 }
 
+impl From<&str> for ToolError {
+    fn from(message: &str) -> Self {
+        message.to_string().into()
+    }
+}
+
+/// Role guard of every writing tool, re-checked server side (R2): a viewer
+/// gets a coded refusal the UI renders in the user's language.
+pub(super) fn require_write(deps: &ToolDeps<'_>) -> Result<(), ToolError> {
+    if deps.can_write {
+        return Ok(());
+    }
+    Err(ToolError {
+        message: "owner, admin or member role required: the assistant cannot change this for you"
+            .to_string(),
+        code: Some(pnex_core::err_codes::AI_WRITE_FORBIDDEN),
+        args: None,
+    })
+}
+
+/// Internal failure of a tool (database, store): the detail is logged, the
+/// model and the UI only get a generic coded refusal — a database error may
+/// carry SQL or identifiers (R4, R16).
+pub(super) fn internal<E: std::fmt::Display>(context: &'static str) -> impl FnOnce(E) -> ToolError {
+    move |e| {
+        tracing::error!(error = %e, context, "assistant tool internal failure");
+        ToolError {
+            message: format!("internal error while {context}; tell the user to try again later"),
+            code: Some(pnex_core::err_codes::AI_TOOL_INTERNAL),
+            args: None,
+        }
+    }
+}
+
 /// Trace d'un outil, renvoyée au front (bulle repliable ✓/✗).
 #[derive(Clone, Debug)]
 pub struct ToolTrace {
     pub name: String,
     pub arguments: Value,
     pub ok: bool,
-    /// Résumé court, en français, affiché tel quel.
+    /// Short canonical English summary (verbatim fallback of the UI).
     pub summary: String,
+    /// Fluent key of a successful call's summary, rendered by the UI with
+    /// `args` (see [`TraceSummary`]).
+    pub summary_key: Option<&'static str>,
     /// Flow touché — pilote le bouton « Ouvrir dans l'éditeur ».
     pub flow_id: Option<i64>,
     /// Machine code of a coded refusal (`ai-flow-running`…).
     pub code: Option<&'static str>,
-    /// Interpolation data of `code`.
+    /// Interpolation data of `code` (refusal) or of `summary_key` (success).
     pub args: Option<Value>,
 }
 
@@ -392,18 +429,18 @@ fn arg_str(args: &Value, key: &str) -> Result<String, String> {
     args.get(key)
         .and_then(Value::as_str)
         .map(str::to_string)
-        .ok_or_else(|| format!("argument '{key}' manquant ou non textuel"))
+        .ok_or_else(|| format!("argument '{key}' missing or not a string"))
 }
 
 fn arg_i64(args: &Value, key: &str) -> Result<i64, String> {
     args.get(key)
         .and_then(Value::as_i64)
-        .ok_or_else(|| format!("argument '{key}' manquant ou non entier"))
+        .ok_or_else(|| format!("argument '{key}' missing or not an integer"))
 }
 
 fn arg_value<'a>(args: &'a Value, key: &str) -> Result<&'a Value, String> {
     args.get(key)
-        .ok_or_else(|| format!("argument '{key}' manquant"))
+        .ok_or_else(|| format!("argument '{key}' missing"))
 }
 
 // ─────────────────────────── Exécution ───────────────────────────
@@ -417,20 +454,20 @@ pub async fn execute(
     args: &Value,
 ) -> Result<ToolOutcome, ToolError> {
     match name {
-        "list_devices" => list_devices(deps).await.map_err(Into::into),
-        "get_device_pins" => get_device_pins(deps, args).await.map_err(Into::into),
-        "list_flows" => list_flows(deps, args).await.map_err(Into::into),
-        "get_flow" => get_flow(deps, args).await.map_err(Into::into),
-        "query_telemetry" => query_telemetry(deps, args).await.map_err(Into::into),
-        "list_notifications" => list_notifications(deps).await.map_err(Into::into),
-        "describe_node_types" => describe_node_types(args).map_err(Into::into),
-        "search_knowledge" => search_knowledge(args).map_err(Into::into),
-        "read_knowledge" => read_knowledge(args).map_err(Into::into),
-        "diagnose_device" => diagnose_device(deps, args).await.map_err(Into::into),
-        "diagnose_flow" => diagnose_flow(deps, args).await.map_err(Into::into),
-        "validate_flow_graph" => validate_flow_graph(args).map_err(Into::into),
-        "validate_calc_expression" => validate_calc_expression(args).map_err(Into::into),
-        "create_flow" => create_flow(deps, args).await.map_err(Into::into),
+        "list_devices" => list_devices(deps).await,
+        "get_device_pins" => get_device_pins(deps, args).await,
+        "list_flows" => list_flows(deps, args).await,
+        "get_flow" => get_flow(deps, args).await,
+        "query_telemetry" => query_telemetry(deps, args).await,
+        "list_notifications" => list_notifications(deps).await,
+        "describe_node_types" => describe_node_types(args),
+        "search_knowledge" => search_knowledge(args),
+        "read_knowledge" => read_knowledge(args),
+        "diagnose_device" => diagnose_device(deps, args).await,
+        "diagnose_flow" => diagnose_flow(deps, args).await,
+        "validate_flow_graph" => validate_flow_graph(args),
+        "validate_calc_expression" => validate_calc_expression(args),
+        "create_flow" => create_flow(deps, args).await,
         "update_flow" => update_flow(deps, args).await,
         "list_dashboards" => super::dashboard_tools::list_dashboards(deps).await,
         "get_dashboard" => super::dashboard_tools::get_dashboard(deps, args).await,
@@ -463,176 +500,346 @@ pub async fn execute(
         "list_controls" => super::more_tools::list_controls(deps).await,
         "read_memory" => super::more_tools::read_memory(deps, args).await,
         _ => Err(format!(
-            "outil inconnu: {name} — seuls les outils listés dans la conversation sont disponibles"
+            "unknown tool: {name} — only the tools listed in this conversation are available"
         )
         .into()),
     }
 }
 
-/// Résumé court pour la trace UI.
-pub fn summarize(name: &str, out: &ToolOutcome) -> String {
+/// Short summary of a successful tool call, for the UI trace: `key` is the
+/// fluent key the UI renders with `args` (every value a string), `text` the
+/// canonical English form (verbatim fallback, and what the history replay
+/// shows the model).
+pub struct TraceSummary {
+    pub key: &'static str,
+    pub args: Value,
+    pub text: String,
+}
+
+/// Length of a JSON array field (0 when absent).
+fn count(v: &Value) -> String {
+    v.as_array().map_or(0, Vec::len).to_string()
+}
+
+/// Display form of a scalar JSON field (strings unquoted, absent = "?").
+fn shown(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Null => "?".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// Summary of one successful tool call (see [`TraceSummary`]).
+pub fn summarize(name: &str, out: &ToolOutcome) -> TraceSummary {
+    let v = &out.value;
+    let s = |key: &'static str, args: Value, text: String| TraceSummary { key, args, text };
     match name {
-        "list_devices" => format!(
-            "{} device(s)",
-            out.value["devices"].as_array().map_or(0, Vec::len)
-        ),
-        "get_device_pins" => format!(
-            "device #{} — {} pin(s)",
-            out.value["device_id"],
-            out.value["pins"].as_array().map_or(0, Vec::len)
-        ),
-        "list_flows" => format!(
-            "{} flow(s)",
-            out.value["flows"].as_array().map_or(0, Vec::len)
-        ),
-        "get_flow" => format!(
-            "flow #{} « {} »",
-            out.value["flow"]["id"], out.value["flow"]["name"]
-        ),
-        "query_telemetry" => format!(
-            "{} point(s), dernier = {}",
-            out.value["points"].as_array().map_or(0, Vec::len),
-            out.value["summary"]["last"]
-        ),
-        "list_notifications" => format!(
-            "{} channel(s), {} template(s)",
-            out.value["channels"].as_array().map_or(0, Vec::len),
-            out.value["templates"].as_array().map_or(0, Vec::len)
-        ),
-        "describe_node_types" => "catalogue des nœuds".to_string(),
-        "search_knowledge" => format!(
-            "{} card(s)",
-            out.value["results"].as_array().map_or(0, Vec::len)
-        ),
-        "read_knowledge" => format!("card {}", out.value["id"]),
-        "diagnose_device" => format!(
-            "device {} — {} hint(s)",
-            out.value["device"]["slug"],
-            out.value["hints"].as_array().map_or(0, Vec::len)
-        ),
-        "diagnose_flow" => format!(
-            "flow #{} — {} hint(s)",
-            out.value["flow"]["id"],
-            out.value["hints"].as_array().map_or(0, Vec::len)
-        ),
+        "list_devices" => {
+            let n = count(&v["devices"]);
+            s(
+                "ai-trace-devices",
+                json!({"count": n}),
+                format!("{n} device(s)"),
+            )
+        }
+        "get_device_pins" => {
+            let (d, n) = (shown(&v["device_id"]), count(&v["pins"]));
+            s(
+                "ai-trace-device-pins",
+                json!({"device": d, "count": n}),
+                format!("device #{d}: {n} pin(s)"),
+            )
+        }
+        "list_flows" => {
+            let n = count(&v["flows"]);
+            s(
+                "ai-trace-flows",
+                json!({"count": n}),
+                format!("{n} flow(s)"),
+            )
+        }
+        "get_flow" => {
+            let (id, nm) = (shown(&v["flow"]["id"]), shown(&v["flow"]["name"]));
+            s(
+                "ai-trace-flow",
+                json!({"id": id, "name": nm}),
+                format!("flow #{id} \"{nm}\""),
+            )
+        }
+        "query_telemetry" => {
+            let (n, last) = (count(&v["points"]), shown(&v["summary"]["last"]));
+            s(
+                "ai-trace-telemetry",
+                json!({"count": n, "last": last}),
+                format!("{n} point(s), last = {last}"),
+            )
+        }
+        "list_notifications" => {
+            let (c, t) = (count(&v["channels"]), count(&v["templates"]));
+            s(
+                "ai-trace-notifications",
+                json!({"channels": c, "templates": t}),
+                format!("{c} channel(s), {t} template(s)"),
+            )
+        }
+        "describe_node_types" => s("ai-trace-node-types", json!({}), "node catalogue".into()),
+        "search_knowledge" => {
+            let n = count(&v["results"]);
+            s(
+                "ai-trace-cards",
+                json!({"count": n}),
+                format!("{n} card(s)"),
+            )
+        }
+        "read_knowledge" => {
+            let id = shown(&v["id"]);
+            s("ai-trace-card", json!({"id": id}), format!("card {id}"))
+        }
+        "diagnose_device" => {
+            let (d, n) = (shown(&v["device"]["slug"]), count(&v["hints"]));
+            s(
+                "ai-trace-diagnose-device",
+                json!({"device": d, "count": n}),
+                format!("device {d}: {n} hint(s)"),
+            )
+        }
+        "diagnose_flow" => {
+            let (id, n) = (shown(&v["flow"]["id"]), count(&v["hints"]));
+            s(
+                "ai-trace-diagnose-flow",
+                json!({"id": id, "count": n}),
+                format!("flow #{id}: {n} hint(s)"),
+            )
+        }
         "validate_flow_graph" => {
-            if out.value["valid"].as_bool().unwrap_or(false) {
-                "graphe valide".to_string()
+            if v["valid"].as_bool().unwrap_or(false) {
+                s("ai-trace-graph-valid", json!({}), "valid graph".into())
             } else {
-                format!(
-                    "{} violation(s)",
-                    out.value["violations"].as_array().map_or(0, Vec::len)
+                let n = count(&v["violations"]);
+                s(
+                    "ai-trace-graph-violations",
+                    json!({"count": n}),
+                    format!("{n} violation(s)"),
                 )
             }
         }
         "validate_calc_expression" => {
-            if out.value["valid"].as_bool().unwrap_or(false) {
-                "expression valide".to_string()
+            if v["valid"].as_bool().unwrap_or(false) {
+                s(
+                    "ai-trace-expression-valid",
+                    json!({}),
+                    "valid expression".into(),
+                )
             } else {
-                "expression invalide".to_string()
+                s(
+                    "ai-trace-expression-invalid",
+                    json!({}),
+                    "invalid expression".into(),
+                )
             }
         }
-        "create_flow" => format!(
-            "flow #{} « {} » créé (draft v{})",
-            out.value["flow_id"], out.value["name"], out.value["version"]
-        ),
-        "update_flow" => format!(
-            "flow #{} — version {} enregistrée (draft)",
-            out.value["flow_id"], out.value["version"]
-        ),
-        "list_dashboards" => format!(
-            "{} dashboard(s)",
-            out.value["dashboards"].as_array().map_or(0, Vec::len)
-        ),
-        "get_dashboard" => format!(
-            "dashboard « {} » v{}",
-            out.value["dashboard"]["name"].as_str().unwrap_or_default(),
-            out.value["dashboard"]["version"]
-        ),
+        "create_flow" => {
+            let (id, nm, ver) = (
+                shown(&v["flow_id"]),
+                shown(&v["name"]),
+                shown(&v["version"]),
+            );
+            s(
+                "ai-trace-flow-created",
+                json!({"id": id, "name": nm, "version": ver}),
+                format!("flow #{id} \"{nm}\" created (draft v{ver})"),
+            )
+        }
+        "update_flow" => {
+            let (id, ver) = (shown(&v["flow_id"]), shown(&v["version"]));
+            s(
+                "ai-trace-flow-saved",
+                json!({"id": id, "version": ver}),
+                format!("flow #{id}: version {ver} saved (draft)"),
+            )
+        }
+        "list_dashboards" => {
+            let n = count(&v["dashboards"]);
+            s(
+                "ai-trace-dashboards",
+                json!({"count": n}),
+                format!("{n} dashboard(s)"),
+            )
+        }
+        "get_dashboard" => {
+            let (nm, ver) = (
+                shown(&v["dashboard"]["name"]),
+                shown(&v["dashboard"]["version"]),
+            );
+            s(
+                "ai-trace-dashboard",
+                json!({"name": nm, "version": ver}),
+                format!("dashboard \"{nm}\" v{ver}"),
+            )
+        }
         "validate_dashboard_layout" => {
-            if out.value["valid"].as_bool().unwrap_or(false) {
-                "layout valid".to_string()
+            if v["valid"].as_bool().unwrap_or(false) {
+                s("ai-trace-layout-valid", json!({}), "layout valid".into())
             } else {
-                "layout refused".to_string()
+                s(
+                    "ai-trace-layout-refused",
+                    json!({}),
+                    "layout refused".into(),
+                )
             }
         }
-        "create_dashboard" => format!(
-            "dashboard « {} » created (live v{})",
-            out.value["name"].as_str().unwrap_or_default(),
-            out.value["version"]
+        "create_dashboard" => {
+            let (nm, ver) = (shown(&v["name"]), shown(&v["version"]));
+            s(
+                "ai-trace-dashboard-created",
+                json!({"name": nm, "version": ver}),
+                format!("dashboard \"{nm}\" created (live v{ver})"),
+            )
+        }
+        "update_dashboard" => {
+            let ver = shown(&v["version"]);
+            let (a, r, c) = (
+                count(&v["widgets_added"]),
+                count(&v["widgets_removed"]),
+                count(&v["widgets_changed"]),
+            );
+            s(
+                "ai-trace-dashboard-saved",
+                json!({"version": ver, "added": a, "removed": r, "changed": c}),
+                format!("dashboard v{ver} saved (live): +{a} -{r} ~{c} widget(s)"),
+            )
+        }
+        "get_notification_template" => {
+            let nm = shown(&v["template"]["name"]);
+            s(
+                "ai-trace-template",
+                json!({"name": nm}),
+                format!("template \"{nm}\""),
+            )
+        }
+        "preview_notification_template" => s(
+            "ai-trace-template-preview",
+            json!({}),
+            "preview rendered (not sent)".into(),
         ),
-        "update_dashboard" => format!(
-            "dashboard v{} saved (live): +{} −{} ~{} widget(s)",
-            out.value["version"],
-            out.value["widgets_added"].as_array().map_or(0, Vec::len),
-            out.value["widgets_removed"].as_array().map_or(0, Vec::len),
-            out.value["widgets_changed"].as_array().map_or(0, Vec::len)
-        ),
-        "get_notification_template" => format!(
-            "template « {} »",
-            out.value["template"]["name"].as_str().unwrap_or_default()
-        ),
-        "preview_notification_template" => "preview rendered (not sent)".to_string(),
-        "create_notification_template" | "update_notification_template" => format!(
-            "template « {} » saved",
-            out.value["name"].as_str().unwrap_or_default()
-        ),
-        "list_functions" => format!(
-            "{} function(s)",
-            out.value["functions"].as_array().map_or(0, Vec::len)
-        ),
-        "get_function" => format!(
-            "function « {} » v{}",
-            out.value["function"]["name"].as_str().unwrap_or_default(),
-            out.value["latest_version"]
-        ),
+        "create_notification_template" | "update_notification_template" => {
+            let nm = shown(&v["name"]);
+            s(
+                "ai-trace-template-saved",
+                json!({"name": nm}),
+                format!("template \"{nm}\" saved"),
+            )
+        }
+        "list_functions" => {
+            let n = count(&v["functions"]);
+            s(
+                "ai-trace-functions",
+                json!({"count": n}),
+                format!("{n} function(s)"),
+            )
+        }
+        "get_function" => {
+            let (nm, ver) = (shown(&v["function"]["name"]), shown(&v["latest_version"]));
+            s(
+                "ai-trace-function",
+                json!({"name": nm, "version": ver}),
+                format!("function \"{nm}\" v{ver}"),
+            )
+        }
         "validate_function" => {
-            if out.value["ok"].as_bool().unwrap_or(false) {
-                "code compiles".to_string()
+            if v["ok"].as_bool().unwrap_or(false) {
+                s(
+                    "ai-trace-function-compiles",
+                    json!({}),
+                    "code compiles".into(),
+                )
             } else {
-                "compile errors".to_string()
+                s(
+                    "ai-trace-function-compile-errors",
+                    json!({}),
+                    "compile errors".into(),
+                )
             }
         }
         "test_function" => {
-            if out.value["ok"].as_bool().unwrap_or(false) {
-                "test passed".to_string()
+            if v["ok"].as_bool().unwrap_or(false) {
+                s(
+                    "ai-trace-function-test-passed",
+                    json!({}),
+                    "test passed".into(),
+                )
             } else {
-                "test failed".to_string()
+                s(
+                    "ai-trace-function-test-failed",
+                    json!({}),
+                    "test failed".into(),
+                )
             }
         }
-        "create_function" => format!(
-            "function « {} » created (v{})",
-            out.value["name"].as_str().unwrap_or_default(),
-            out.value["version"]
-        ),
-        "update_function" => format!(
-            "function #{} — version {}",
-            out.value["function_id"], out.value["new_version"]
-        ),
-        "list_annotation_sets" => format!(
-            "{} annotation set(s)",
-            out.value["annotation_sets"].as_array().map_or(0, Vec::len)
-        ),
-        "list_tours" => format!(
-            "{} tour(s)",
-            out.value["tours"].as_array().map_or(0, Vec::len)
-        ),
-        "list_pois" => format!(
-            "{} POI(s)",
-            out.value["pois"].as_array().map_or(0, Vec::len)
-        ),
-        "list_controls" => format!(
-            "{} control(s)",
-            out.value["controls"].as_array().map_or(0, Vec::len)
-        ),
-        "read_memory" => match out.value["values"].as_array() {
-            Some(v) => format!("{} value(s)", v.len()),
-            None => format!(
-                "{} key(s)",
-                out.value["keys"].as_array().map_or(0, Vec::len)
-            ),
+        "create_function" => {
+            let (nm, ver) = (shown(&v["name"]), shown(&v["version"]));
+            s(
+                "ai-trace-function-created",
+                json!({"name": nm, "version": ver}),
+                format!("function \"{nm}\" created (v{ver})"),
+            )
+        }
+        "update_function" => {
+            let (id, ver) = (shown(&v["function_id"]), shown(&v["new_version"]));
+            s(
+                "ai-trace-function-saved",
+                json!({"id": id, "version": ver}),
+                format!("function #{id}: version {ver}"),
+            )
+        }
+        "list_annotation_sets" => {
+            let n = count(&v["annotation_sets"]);
+            s(
+                "ai-trace-annotation-sets",
+                json!({"count": n}),
+                format!("{n} annotation set(s)"),
+            )
+        }
+        "list_tours" => {
+            let n = count(&v["tours"]);
+            s(
+                "ai-trace-tours",
+                json!({"count": n}),
+                format!("{n} tour(s)"),
+            )
+        }
+        "list_pois" => {
+            let n = count(&v["pois"]);
+            s("ai-trace-pois", json!({"count": n}), format!("{n} POI(s)"))
+        }
+        "list_controls" => {
+            let n = count(&v["controls"]);
+            s(
+                "ai-trace-controls",
+                json!({"count": n}),
+                format!("{n} control(s)"),
+            )
+        }
+        "read_memory" => match v["values"].as_array() {
+            Some(values) => {
+                let n = values.len().to_string();
+                s(
+                    "ai-trace-memory-values",
+                    json!({"count": n}),
+                    format!("{n} value(s)"),
+                )
+            }
+            None => {
+                let n = count(&v["keys"]);
+                s(
+                    "ai-trace-memory-keys",
+                    json!({"count": n}),
+                    format!("{n} key(s)"),
+                )
+            }
         },
-        _ => "ok".to_string(),
+        _ => s("ai-trace-ok", json!({}), "ok".into()),
     }
 }
 
@@ -644,14 +851,14 @@ const DEVICES_CAP: usize = 50;
 /// Cap du listing flows.
 const FLOWS_CAP: usize = 20;
 
-async fn list_devices(deps: &ToolDeps<'_>) -> Result<ToolOutcome, String> {
+async fn list_devices(deps: &ToolDeps<'_>) -> Result<ToolOutcome, ToolError> {
     let rows = device_registries::Entity::find()
         .filter(device_registries::Column::OrgId.eq(deps.org_id))
         .order_by_asc(device_registries::Column::Id)
         .find_also_related(predefined_devices::Entity)
         .all(deps.db)
         .await
-        .map_err(|e| format!("lecture devices: {e}"))?;
+        .map_err(internal("reading devices"))?;
     let devices: Vec<Value> = rows
         .into_iter()
         .take(DEVICES_CAP)
@@ -670,7 +877,7 @@ async fn list_devices(deps: &ToolDeps<'_>) -> Result<ToolOutcome, String> {
     })
 }
 
-async fn get_device_pins(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, String> {
+async fn get_device_pins(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     let device_id = arg_i64(args, "device_id")?;
     // Scoping org : le device doit appartenir à l'org (404 équivalent).
     let Some(device) = device_registries::Entity::find()
@@ -678,18 +885,16 @@ async fn get_device_pins(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcom
         .filter(device_registries::Column::Id.eq(device_id))
         .one(deps.db)
         .await
-        .map_err(|e| format!("lecture device: {e}"))?
+        .map_err(internal("reading the device"))?
     else {
-        return Err(format!(
-            "device #{device_id} inconnu dans cette organisation"
-        ));
+        return Err(format!("device #{device_id} not found in this organization").into());
     };
     let pins = device_capability_instances::Entity::find()
         .filter(device_capability_instances::Column::DeviceRegistryId.eq(device.id))
         .order_by_asc(device_capability_instances::Column::Gpio)
         .all(deps.db)
         .await
-        .map_err(|e| format!("lecture pins: {e}"))?;
+        .map_err(internal("reading pins"))?;
     Ok(ToolOutcome {
         value: json!({
             "device_id": device.id,
@@ -706,14 +911,14 @@ async fn get_device_pins(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcom
 
 // ─────────────────────────── Outils : flows ───────────────────────────
 
-async fn list_flows(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, String> {
+async fn list_flows(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     let status_filter = args.get("status").and_then(Value::as_str);
     let rows = flows::Entity::find()
         .filter(flows::Column::OrgId.eq(deps.org_id))
         .order_by_desc(flows::Column::Id)
         .all(deps.db)
         .await
-        .map_err(|e| format!("lecture flows: {e}"))?;
+        .map_err(internal("reading flows"))?;
     let page_rows: Vec<&flows::Model> = rows
         .iter()
         .filter(|f| status_filter.is_none_or(|s| f.status == s))
@@ -754,24 +959,24 @@ async fn list_flows(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, St
     })
 }
 
-async fn get_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, String> {
+async fn get_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     let flow_id = arg_i64(args, "flow_id")?;
     let Some(flow) = flows::Entity::find_by_id(flow_id)
         .filter(flows::Column::OrgId.eq(deps.org_id))
         .one(deps.db)
         .await
-        .map_err(|e| format!("lecture flow: {e}"))?
+        .map_err(internal("reading the flow"))?
     else {
-        return Err(format!("flow #{flow_id} inconnu dans cette organisation"));
+        return Err(format!("flow #{flow_id} not found in this organization").into());
     };
     let Some(version) = flow_versions::Entity::find()
         .filter(flow_versions::Column::FlowId.eq(flow.id))
         .order_by_desc(flow_versions::Column::VersionNumber)
         .one(deps.db)
         .await
-        .map_err(|e| format!("lecture version: {e}"))?
+        .map_err(internal("reading the flow version"))?
     else {
-        return Err(format!("flow #{flow_id} sans version (état incohérent)"));
+        return Err(format!("flow #{flow_id} has no version (inconsistent state)").into());
     };
     Ok(ToolOutcome {
         value: json!({
@@ -787,7 +992,7 @@ async fn get_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, Stri
     })
 }
 
-async fn query_telemetry(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, String> {
+async fn query_telemetry(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     let metric = arg_str(args, "metric")?;
     let device_slug = arg_str(args, "device_id")?;
     let window = arg_str(args, "window")?;
@@ -839,19 +1044,19 @@ async fn query_telemetry(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcom
 /// chaque variante de `FlowNodeKind` est mentionnée).
 /// Channels and templates of the org, as references for a pnex_notify node.
 /// Channel settings (tokens, topics, webhooks) are never exposed to the model.
-async fn list_notifications(deps: &ToolDeps<'_>) -> Result<ToolOutcome, String> {
+async fn list_notifications(deps: &ToolDeps<'_>) -> Result<ToolOutcome, ToolError> {
     let channels = notify_channels::Entity::find()
         .filter(notify_channels::Column::OrgId.eq(deps.org_id))
         .order_by_asc(notify_channels::Column::Name)
         .all(deps.db)
         .await
-        .map_err(|e| format!("reading notification channels: {e}"))?;
+        .map_err(internal("reading notification channels"))?;
     let templates = notify_templates::Entity::find()
         .filter(notify_templates::Column::OrgId.eq(deps.org_id))
         .order_by_asc(notify_templates::Column::Name)
         .all(deps.db)
         .await
-        .map_err(|e| format!("reading notification templates: {e}"))?;
+        .map_err(internal("reading notification templates"))?;
     let channels: Vec<Value> = channels
         .iter()
         .map(|c| json!({ "id": c.id, "name": c.name, "kind": c.kind, "enabled": c.enabled }))
@@ -876,7 +1081,7 @@ async fn list_notifications(deps: &ToolDeps<'_>) -> Result<ToolOutcome, String> 
 /// Serializes the node documentation table of `pnex_core` (D142): the
 /// assistant's knowledge of node kinds has a single source, guarded there.
 /// `kinds` (optional) narrows the answer to save tokens.
-fn describe_node_types(args: &Value) -> Result<ToolOutcome, String> {
+fn describe_node_types(args: &Value) -> Result<ToolOutcome, ToolError> {
     let wanted: Option<Vec<&str>> = args
         .get("kinds")
         .and_then(Value::as_array)
@@ -891,7 +1096,8 @@ fn describe_node_types(args: &Value) -> Result<ToolOutcome, String> {
         return Err(format!(
             "unknown node kind(s): {} — call describe_node_types without kinds for the full list",
             unknown.join(", ")
-        ));
+        )
+        .into());
     }
     let nodes: Vec<Value> = pnex_core::NODE_DOCS
         .iter()
@@ -926,7 +1132,7 @@ fn describe_node_types(args: &Value) -> Result<ToolOutcome, String> {
     })
 }
 
-fn search_knowledge(args: &Value) -> Result<ToolOutcome, String> {
+fn search_knowledge(args: &Value) -> Result<ToolOutcome, ToolError> {
     let query = arg_str(args, "query")?;
     let limit = args
         .get("limit")
@@ -939,7 +1145,7 @@ fn search_knowledge(args: &Value) -> Result<ToolOutcome, String> {
     })
 }
 
-fn read_knowledge(args: &Value) -> Result<ToolOutcome, String> {
+fn read_knowledge(args: &Value) -> Result<ToolOutcome, ToolError> {
     let id = arg_str(args, "id")?;
     let card = super::knowledge::card(&id)
         .ok_or_else(|| format!("unknown card {id} — use search_knowledge to find ids"))?;
@@ -955,7 +1161,7 @@ fn read_knowledge(args: &Value) -> Result<ToolOutcome, String> {
     })
 }
 
-async fn diagnose_device(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, String> {
+async fn diagnose_device(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     let device_id = arg_i64(args, "device_id")?;
     let value = super::diagnose::device(deps.db, deps.config, deps.org_id, device_id).await?;
     Ok(ToolOutcome {
@@ -964,7 +1170,7 @@ async fn diagnose_device(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcom
     })
 }
 
-async fn diagnose_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, String> {
+async fn diagnose_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     let flow_id = arg_i64(args, "flow_id")?;
     let value = super::diagnose::flow(deps.db, deps.config, deps.org_id, flow_id).await?;
     Ok(ToolOutcome {
@@ -973,9 +1179,9 @@ async fn diagnose_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome,
     })
 }
 
-fn validate_flow_graph(args: &Value) -> Result<ToolOutcome, String> {
+fn validate_flow_graph(args: &Value) -> Result<ToolOutcome, ToolError> {
     let graph: pnex_core::FlowGraph = serde_json::from_value(arg_value(args, "graph")?.clone())
-        .map_err(|e| format!("graphe illisible (FlowGraph attendu): {e}"))?;
+        .map_err(|e| format!("unreadable graph (FlowGraph expected): {e}"))?;
     let violations = pnex_core::validate_graph(&graph);
     Ok(ToolOutcome {
         value: json!({
@@ -986,7 +1192,7 @@ fn validate_flow_graph(args: &Value) -> Result<ToolOutcome, String> {
     })
 }
 
-fn validate_calc_expression(args: &Value) -> Result<ToolOutcome, String> {
+fn validate_calc_expression(args: &Value) -> Result<ToolOutcome, ToolError> {
     let expression = arg_str(args, "expression")?;
     let errors: Vec<String> = pnex_core::validate_calc(&expression)
         .into_iter()
@@ -1000,16 +1206,11 @@ fn validate_calc_expression(args: &Value) -> Result<ToolOutcome, String> {
 
 // ─────────────────── Outils d'écriture (drafts uniquement) ───────────────────
 
-async fn create_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, String> {
-    if !deps.can_write {
-        return Err(
-            "réservé aux rôles owner/admin/member — l'assistant ne peut pas créer de flow pour vous"
-                .into(),
-        );
-    }
+async fn create_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
+    require_write(deps)?;
     let name = arg_str(args, "name")?;
     let graph: pnex_core::FlowGraph = serde_json::from_value(arg_value(args, "graph")?.clone())
-        .map_err(|e| format!("graphe illisible (FlowGraph attendu): {e}"))?;
+        .map_err(|e| format!("unreadable graph (FlowGraph expected): {e}"))?;
     let device_id = args.get("device_id").and_then(Value::as_i64);
     let (flow, version, _) = flow::create_flow(
         deps.db,
@@ -1018,7 +1219,7 @@ async fn create_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, S
         &graph,
         device_id,
         deps.author.clone(),
-        Some("créé par l'assistant IA".into()),
+        Some("created by the AI assistant".into()),
         &ASSISTANT_WRITER,
     )
     .await
@@ -1035,26 +1236,20 @@ async fn create_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, S
 }
 
 async fn update_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
-    if !deps.can_write {
-        return Err(
-            "réservé aux rôles owner/admin/member — l'assistant ne peut pas modifier de flow pour vous"
-                .to_string()
-                .into(),
-        );
-    }
+    require_write(deps)?;
     let flow_id = arg_i64(args, "flow_id")?;
     let expected_version = arg_i64(args, "expected_version")?;
     let graph: pnex_core::FlowGraph = serde_json::from_value(arg_value(args, "graph")?.clone())
-        .map_err(|e| format!("graphe illisible (FlowGraph attendu): {e}"))?;
+        .map_err(|e| format!("unreadable graph (FlowGraph expected): {e}"))?;
     let note = args.get("note").and_then(Value::as_str).map(str::to_string);
     // Scoping org : le flow doit appartenir à l'org.
     let Some(row) = flows::Entity::find_by_id(flow_id)
         .filter(flows::Column::OrgId.eq(deps.org_id))
         .one(deps.db)
         .await
-        .map_err(|e| format!("lecture flow: {e}"))?
+        .map_err(internal("reading the flow"))?
     else {
-        return Err(format!("flow #{flow_id} inconnu dans cette organisation").into());
+        return Err(format!("flow #{flow_id} not found in this organization").into());
     };
     // D143: a running flow is frozen for the assistant. Checked here, at
     // execution time, from the stored status — never from the model's word.
@@ -1064,15 +1259,16 @@ async fn update_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, T
     }
     // Optimistic concurrency: the model edits the version it read with
     // get_flow; a human save in between → conflict rendered to the model,
-    // which reloads instead of overwriting the human's change.
-    flow::append_version(
+    // which reloads instead of overwriting the human's change. The deployed
+    // status is checked again under the write lock (deploy in between).
+    flow::append_version_if_stopped(
         deps.db,
         &row,
         expected_version,
         &graph,
         None,
         deps.author.clone(),
-        note.or_else(|| Some("modifié par l'assistant IA".into())),
+        note.or_else(|| Some("changed by the AI assistant".into())),
         &ASSISTANT_WRITER,
     )
     .await
@@ -1080,7 +1276,10 @@ async fn update_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, T
         value: json!({ "flow_id": row.id, "version": version }),
         flow_id: Some(row.id),
     })
-    .map_err(|e| flow_write_error_string(e).into())
+    .map_err(|e| match e {
+        flow::FlowWriteError::Deployed => flow_running_error(&[(row.id, row.name.clone())]),
+        e => flow_write_error_string(e).into(),
+    })
 }
 
 /// `ai-flow-running` refusal listing the deployed flows that block the
@@ -1109,16 +1308,17 @@ fn flow_write_error_string(e: flow::FlowWriteError) -> String {
     use crate::services::flow::FlowWriteError as E;
     match e {
         E::Violations(v) => format!(
-            "graphe invalide: {}",
+            "invalid graph: {}",
             serde_json::to_string(&v).unwrap_or_default()
         ),
-        E::NameRequired => "nom de flow requis".into(),
-        E::NameTooLong => "nom de flow trop long (> 200 caractères)".into(),
-        E::DeviceUnknown => "device_id inconnu dans cette organisation".into(),
+        E::NameRequired => "flow name required".into(),
+        E::NameTooLong => "flow name too long (> 200 characters)".into(),
+        E::DeviceUnknown => "device_id not found in this organization".into(),
         E::Conflict { current, .. } => format!(
-            "conflit de version : le flow est désormais en version {current} — rechargez-le avec get_flow puis réessayez"
+            "version conflict: the flow is now at version {current} — reload it with get_flow, then retry"
         ),
-        E::Db => "erreur base de données".into(),
+        E::Db => "database error; tell the user to try again later".into(),
+        E::Deployed => "the flow is deployed: it can only be changed once stopped".into(),
         E::Secret(e) => format!("secret field refused: {e}"),
     }
 }
@@ -1227,7 +1427,7 @@ mod tests {
             let err = execute(&deps, name, &serde_json::json!({}))
                 .await
                 .expect_err("outil interdit doit échouer");
-            assert!(err.message.contains("outil inconnu"), "{name} → {err:?}");
+            assert!(err.message.contains("unknown tool"), "{name} → {err:?}");
         }
         // Un outil de lecture simple fonctionne sans rien d'autre.
         let out = execute(&deps, "describe_node_types", &serde_json::json!({}))
@@ -1258,6 +1458,48 @@ mod tests {
 
         let err = describe_node_types(&serde_json::json!({"kinds": ["device"]}))
             .expect_err("removed kind");
-        assert!(err.contains("unknown node kind"), "{err}");
+        assert!(err.message.contains("unknown node kind"), "{}", err.message);
+    }
+
+    /// Every `ai-trace-*` key `summarize` can emit exists in both UI
+    /// locales (the UI falls back to the English summary otherwise, but a
+    /// missing key is unfinished work), and every registry tool has its own
+    /// summary arm (no silent `ai-trace-ok`).
+    #[test]
+    fn trace_summary_keys_exist_in_both_locales() {
+        let src = include_str!("tools.rs");
+        let keys: std::collections::BTreeSet<&str> = src
+            .match_indices("\"ai-trace-")
+            .map(|(i, _)| {
+                let rest = &src[i + 1..];
+                &rest[..rest.find('"').unwrap()]
+            })
+            // The scan pattern itself is not a key.
+            .filter(|k| *k != "ai-trace-")
+            .collect();
+        assert!(keys.len() > 30, "sterile scan: {keys:?}");
+        let locales =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../pnex-frontend/locales");
+        for locale in ["en-US.ftl", "fr-FR.ftl"] {
+            let ftl = std::fs::read_to_string(locales.join(locale)).unwrap();
+            for key in &keys {
+                assert!(
+                    ftl.lines().any(|l| l.starts_with(&format!("{key} ="))),
+                    "{key} missing from {locale}"
+                );
+            }
+        }
+        let empty = ToolOutcome {
+            value: json!({}),
+            flow_id: None,
+        };
+        for spec in tool_specs() {
+            assert_ne!(
+                summarize(spec.name, &empty).key,
+                "ai-trace-ok",
+                "{} has no summary arm",
+                spec.name
+            );
+        }
     }
 }

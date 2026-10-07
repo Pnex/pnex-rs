@@ -243,8 +243,15 @@ pub struct LlmProviderTest {
     pub model: Option<String>,
     #[serde(default)]
     pub latency_ms: Option<u64>,
+    /// Canonical English description of the failure (verbatim fallback).
     #[serde(default)]
     pub error: Option<String>,
+    /// Machine code of the failure (`err_codes`), rendered as `err-<code>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    /// Interpolation data of `code`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub args: Option<serde_json::Value>,
 }
 
 /// Contexte de page (route courante + entité ouverte).
@@ -268,11 +275,15 @@ pub struct AiToolTrace {
     /// Flow touché — pilote le bouton « Ouvrir dans l'éditeur ».
     #[serde(default)]
     pub flow_id: Option<i64>,
+    /// Fluent key of a successful call's summary (`ai-trace-*`), rendered
+    /// with `args`; absent on traces stored before it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary_key: Option<String>,
     /// Machine code of a coded refusal (`err_codes`), resolved by the UI
     /// as `err-<code>`; `summary` stays the verbatim fallback.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
-    /// Interpolation data of `code`.
+    /// Interpolation data of `code` (refusal) or `summary_key` (success).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub args: Option<serde_json::Value>,
 }

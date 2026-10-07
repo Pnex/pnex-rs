@@ -117,6 +117,7 @@ pub fn trace_dto(t: &ToolTrace) -> AiToolTrace {
         ok: t.ok,
         summary: truncate_chars(&t.summary, TRACE_SUMMARY_MAX_CHARS),
         flow_id: t.flow_id,
+        summary_key: t.summary_key.map(str::to_string),
         code: t.code.map(str::to_string),
         args: t.args.clone(),
     }
@@ -631,6 +632,7 @@ mod tests {
             arguments: serde_json::json!({"graph": "y".repeat(5_000)}),
             ok: true,
             summary: "s".repeat(1_000),
+            summary_key: None,
             flow_id: Some(1),
             code: None,
             args: None,

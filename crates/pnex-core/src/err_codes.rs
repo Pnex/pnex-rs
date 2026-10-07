@@ -150,6 +150,10 @@ pub const VIZ_WRITE_FORBIDDEN: &str = "viz-write-forbidden";
 pub const LLM_PROVIDER_FORBIDDEN: &str = "llm-provider-forbidden";
 pub const LLM_PROVIDER_NOT_FOUND: &str = "llm-provider-not-found";
 pub const LLM_PROVIDER_NAME_TAKEN: &str = "llm-provider-name-taken";
+/// Provider test: the provider has no API key set.
+pub const LLM_PROVIDER_NO_KEY: &str = "llm-provider-no-key";
+/// Provider test: its API key could not be read from the vault.
+pub const LLM_PROVIDER_KEY_UNREADABLE: &str = "llm-provider-key-unreadable";
 pub const NOTIFY_WRITE_FORBIDDEN: &str = "notify-write-forbidden";
 pub const NOTIFY_CHANNEL_NAME_CONFLICT: &str = "notify-channel-name-conflict";
 pub const NOTIFY_TEMPLATE_NAME_CONFLICT: &str = "notify-template-name-conflict";
@@ -330,6 +334,29 @@ pub const AI_RETENTION_FORBIDDEN: &str = "ai-retention-forbidden";
 /// The org's assistant retention may only be shorter than the platform
 /// value; `args.max` = the platform value in days.
 pub const AI_RETENTION_ABOVE_PLATFORM: &str = "ai-retention-above-platform";
+/// The assistant is switched off on this server (`PNEX_AI_ENABLED=false`).
+pub const AI_DISABLED: &str = "ai-disabled";
+/// No default LLM provider in the org (D119: no platform fallback).
+pub const AI_NOT_CONFIGURED: &str = "ai-not-configured";
+/// The LLM provider refused the API key (401/403).
+pub const AI_AUTH_REJECTED: &str = "ai-auth-rejected";
+/// The LLM provider is rate-limiting (429).
+pub const AI_RATE_LIMITED: &str = "ai-rate-limited";
+/// The LLM provider answered an HTTP error; `args.status` = its status.
+pub const AI_UPSTREAM: &str = "ai-upstream";
+/// The LLM provider did not answer in time.
+pub const AI_TIMEOUT: &str = "ai-timeout";
+/// The LLM provider is unreachable (DNS, connection, TLS); `args.detail` =
+/// the transport error (runtime diagnostic, verbatim).
+pub const AI_NETWORK: &str = "ai-network";
+/// The LLM provider's answer could not be decoded.
+pub const AI_BAD_RESPONSE: &str = "ai-bad-response";
+/// Internal failure while an assistant tool ran (details logged server
+/// side, never shown: they may carry SQL or identifiers).
+pub const AI_TOOL_INTERNAL: &str = "ai-tool-internal";
+/// A viewer asked the assistant for a change (writes need owner, admin or
+/// member, R2).
+pub const AI_WRITE_FORBIDDEN: &str = "ai-write-forbidden";
 
 // ── Registered codes ─────────────────────────────────────────────────────
 
@@ -441,6 +468,8 @@ pub const ALL: &[&str] = &[
     LLM_PROVIDER_FORBIDDEN,
     LLM_PROVIDER_NOT_FOUND,
     LLM_PROVIDER_NAME_TAKEN,
+    LLM_PROVIDER_NO_KEY,
+    LLM_PROVIDER_KEY_UNREADABLE,
     NOTIFY_WRITE_FORBIDDEN,
     NOTIFY_CHANNEL_NAME_CONFLICT,
     NOTIFY_TEMPLATE_NAME_CONFLICT,
@@ -512,6 +541,16 @@ pub const ALL: &[&str] = &[
     AI_CONVERSATION_BUSY,
     AI_RETENTION_FORBIDDEN,
     AI_RETENTION_ABOVE_PLATFORM,
+    AI_DISABLED,
+    AI_NOT_CONFIGURED,
+    AI_AUTH_REJECTED,
+    AI_RATE_LIMITED,
+    AI_UPSTREAM,
+    AI_TIMEOUT,
+    AI_NETWORK,
+    AI_BAD_RESPONSE,
+    AI_TOOL_INTERNAL,
+    AI_WRITE_FORBIDDEN,
     CONTROL_UNKNOWN,
     CONTROL_STORE_UNAVAILABLE,
 ];

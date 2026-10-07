@@ -422,9 +422,13 @@ contournement inter-org trouvé.
 
 **À surveiller (relevés de l'audit de release, < 8)** : corps de réponse
 météo non borné (taille) ; bannissement d'un fournisseur météo par
-volume (UA/IP plateforme partagés) ; erreurs brutes (`DbErr`) dans les
-sorties d'outils de l'assistant ; check « flow déployé » hors de la
-transaction d'écriture (`update_flow`, `update_dashboard`) ;
+volume (UA/IP plateforme partagés) ; ~~erreurs brutes (`DbErr`) dans les
+sorties d'outils de l'assistant~~ (corrigé 2026-10-07 : refus générique
+`ai-tool-internal`, détail journalisé) ; ~~check « flow déployé » hors de
+la transaction d'écriture (`update_flow`~~ corrigé 2026-10-07 : relu sous
+le verrou de ligne, `append_version_if_stopped`) ; `update_dashboard` :
+résiduel accepté (fenêtre de l'ordre de la ms, couplage porté par les
+deploys d'autres flows sans verrou commun — `ai-assistant.md` §10) ;
 `restore_version` d'un dashboard ne repasse pas la synchro des contrôles
 (SEC-9 « stocké, non appliqué ») ; asset d'une visite publique servi à sa
 version courante et non à celle publiée ; magasin desktop

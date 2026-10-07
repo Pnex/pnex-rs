@@ -11,6 +11,7 @@ use sea_orm::{
 use uuid::Uuid;
 
 use super::config::{ResolvedAiConfig, ANTHROPIC_BASE_URL};
+use super::error::AiError;
 use super::provider::{AiChatRequest, Msg, Provider};
 use crate::models::_entities::llm_providers;
 use crate::services::secrets::store::{self, StoreError, Writer};
@@ -384,6 +385,8 @@ pub async fn test(
                 model: Some(row.model.clone()),
                 latency_ms: None,
                 error: Some("No API key set for this provider.".into()),
+                code: Some(err_codes::LLM_PROVIDER_NO_KEY.into()),
+                args: None,
             }
         }
         Err(e) => {
@@ -394,6 +397,8 @@ pub async fn test(
                 model: Some(row.model.clone()),
                 latency_ms: None,
                 error: Some("The API key could not be read from the vault.".into()),
+                code: Some(err_codes::LLM_PROVIDER_KEY_UNREADABLE.into()),
+                args: None,
             };
         }
     };
@@ -409,12 +414,15 @@ pub async fn test(
         max_tokens: 16,
     };
     let result = cfg.provider.chat(http, &cfg, &req).await;
+    let err = result.as_ref().err();
     LlmProviderTest {
         ok: result.is_ok(),
         provider: Some(cfg.provider.as_str().to_string()),
         model: Some(cfg.model.clone()),
         latency_ms: Some(started.elapsed().as_millis() as u64),
-        error: result.err().map(|e| e.user_message()),
+        error: err.map(AiError::user_message),
+        code: err.map(|e| e.code().to_string()),
+        args: err.and_then(AiError::args),
     }
 }
 

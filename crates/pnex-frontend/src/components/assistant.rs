@@ -469,6 +469,7 @@ fn Bubble(bubble: ChatBubble) -> Element {
                                                 {
                                                     crate::api::error_i18n::localize_tool_summary(
                                                         entry.code.as_deref(),
+                                                        entry.summary_key.as_deref(),
                                                         entry.args.as_ref(),
                                                         &entry.summary,
                                                     )

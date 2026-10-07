@@ -19,7 +19,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOr
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use super::tools::{ToolDeps, ToolError, ToolOutcome};
+use super::tools::{internal, require_write, ToolDeps, ToolError, ToolOutcome};
 use crate::models::_entities::{dashboard_versions, dashboards};
 use crate::services::dashboards::DashboardWriteError;
 
@@ -30,10 +30,10 @@ const DASHBOARDS_CAP: u64 = 50;
 pub(super) async fn coupled_controls(
     db: &DatabaseConnection,
     org_id: i64,
-) -> Result<HashMap<Uuid, Vec<(i64, String)>>, String> {
+) -> Result<HashMap<Uuid, Vec<(i64, String)>>, super::tools::ToolError> {
     let deployed = crate::controllers::flows::deployed_flows_with_versions(db, org_id)
         .await
-        .map_err(|_| "reading deployed flows failed".to_string())?;
+        .map_err(internal("reading deployed flows"))?;
     let mut out: HashMap<Uuid, Vec<(i64, String)>> = HashMap::new();
     for (flow, version) in deployed {
         let Ok(graph) = serde_json::from_value::<pnex_core::FlowGraph>(version.graph) else {
@@ -190,24 +190,12 @@ fn write_error(e: DashboardWriteError) -> ToolError {
     message.into()
 }
 
-fn require_write(deps: &ToolDeps<'_>) -> Result<(), ToolError> {
-    if deps.can_write {
-        Ok(())
-    } else {
-        Err(
-            "owner, admin or member role required — the assistant cannot change dashboards for you"
-                .to_string()
-                .into(),
-        )
-    }
-}
-
 async fn find(deps: &ToolDeps<'_>, id: Uuid) -> Result<dashboards::Model, ToolError> {
     dashboards::Entity::find_by_id(id)
         .filter(dashboards::Column::OrgId.eq(deps.org_id))
         .one(deps.db)
         .await
-        .map_err(|e| format!("reading dashboard: {e}"))?
+        .map_err(internal("reading dashboard"))?
         .ok_or_else(|| format!("dashboard {id} not found in this organization").into())
 }
 
@@ -220,7 +208,7 @@ async fn current_layout(
         .filter(dashboard_versions::Column::VersionNumber.eq(d.current_version_number))
         .one(db)
         .await
-        .map_err(|e| format!("reading layout: {e}"))?
+        .map_err(internal("reading the layout"))?
         .and_then(|v| serde_json::from_value(v.layout).ok())
         .ok_or_else(|| "current layout unreadable".to_string().into())
 }
@@ -247,7 +235,7 @@ pub async fn list_dashboards(deps: &ToolDeps<'_>) -> Result<ToolOutcome, ToolErr
         .limit(DASHBOARDS_CAP)
         .all(deps.db)
         .await
-        .map_err(|e| format!("reading dashboards: {e}"))?;
+        .map_err(internal("reading dashboards"))?;
     let list: Vec<Value> = rows
         .iter()
         .map(|d| json!({ "id": d.id, "name": d.name, "version": d.current_version_number }))

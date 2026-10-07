@@ -15,7 +15,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use super::tools::{ToolDeps, ToolError, ToolOutcome};
+use super::tools::{internal, require_write, ToolDeps, ToolError, ToolOutcome};
 use crate::models::_entities::{
     annotation_layers, device_placements, function_versions, functions, map_pins, notify_templates,
     tours,
@@ -29,18 +29,6 @@ fn outcome(value: Value) -> Result<ToolOutcome, ToolError> {
         value,
         flow_id: None,
     })
-}
-
-fn require_write(deps: &ToolDeps<'_>) -> Result<(), ToolError> {
-    if deps.can_write {
-        Ok(())
-    } else {
-        Err(
-            "owner, admin or member role required — the assistant cannot change this for you"
-                .to_string()
-                .into(),
-        )
-    }
 }
 
 fn uuid_arg(args: &Value, key: &str) -> Result<Uuid, ToolError> {
@@ -73,7 +61,7 @@ async fn find_template(
         .filter(notify_templates::Column::OrgId.eq(deps.org_id))
         .one(deps.db)
         .await
-        .map_err(|e| format!("reading template: {e}"))?
+        .map_err(internal("reading template"))?
         .ok_or_else(|| format!("template {id} not found in this organization").into())
 }
 
@@ -187,7 +175,7 @@ async fn find_function(deps: &ToolDeps<'_>, id: i64) -> Result<functions::Model,
         .filter(functions::Column::OrgId.eq(deps.org_id))
         .one(deps.db)
         .await
-        .map_err(|e| format!("reading function: {e}"))?
+        .map_err(internal("reading function"))?
         .ok_or_else(|| format!("function #{id} not found in this organization").into())
 }
 
@@ -231,7 +219,7 @@ pub async fn list_functions(deps: &ToolDeps<'_>) -> Result<ToolOutcome, ToolErro
         .limit(LIST_CAP)
         .all(deps.db)
         .await
-        .map_err(|e| format!("reading functions: {e}"))?;
+        .map_err(internal("reading functions"))?;
     let list: Vec<Value> = rows
         .iter()
         .map(|f| json!({ "id": f.id, "name": f.name, "language": f.language, "description": f.description }))
@@ -245,10 +233,10 @@ pub async fn get_function(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutco
     let f = find_function(deps, i64_arg(args, "function_id")?).await?;
     let latest = crate::services::functions::latest_version(deps.db, f.id)
         .await
-        .map_err(|e| format!("reading version: {e}"))?;
+        .map_err(internal("reading version"))?;
     let used_by: Vec<Value> = crate::services::functions::referencing_deployed_flows(deps.db, f.id)
         .await
-        .map_err(|e| format!("reading flows: {e}"))?
+        .map_err(internal("reading flows"))?
         .into_iter()
         .filter(|(flow, _)| flow.org_id == deps.org_id)
         .map(|(flow, v)| json!({ "flow_id": flow.id, "name": flow.name, "deployed_flow_version": v }))
@@ -385,7 +373,7 @@ pub async fn list_annotation_layers(deps: &ToolDeps<'_>) -> Result<ToolOutcome, 
         .limit(LIST_CAP)
         .all(deps.db)
         .await
-        .map_err(|e| format!("reading annotation sets: {e}"))?;
+        .map_err(internal("reading annotation sets"))?;
     let list: Vec<Value> = rows
         .iter()
         .map(|l| {
@@ -408,7 +396,7 @@ pub async fn list_tours(deps: &ToolDeps<'_>) -> Result<ToolOutcome, ToolError> {
         .limit(LIST_CAP)
         .all(deps.db)
         .await
-        .map_err(|e| format!("reading tours: {e}"))?;
+        .map_err(internal("reading tours"))?;
     // The share token is a credential: only whether a public link exists.
     let list: Vec<Value> = rows
         .iter()
@@ -433,13 +421,13 @@ pub async fn list_pois(deps: &ToolDeps<'_>) -> Result<ToolOutcome, ToolError> {
         .limit(LIST_CAP)
         .all(deps.db)
         .await
-        .map_err(|e| format!("reading POIs: {e}"))?;
+        .map_err(internal("reading POIs"))?;
     let mut devices: HashMap<Uuid, Vec<String>> = HashMap::new();
     for p in device_placements::Entity::find()
         .filter(device_placements::Column::OrgId.eq(deps.org_id))
         .all(deps.db)
         .await
-        .map_err(|e| format!("reading placements: {e}"))?
+        .map_err(internal("reading placements"))?
     {
         devices.entry(p.pin_id).or_default().push(p.device_id);
     }
@@ -473,7 +461,7 @@ pub async fn list_controls(deps: &ToolDeps<'_>) -> Result<ToolOutcome, ToolError
         .limit(LIST_CAP)
         .all(deps.db)
         .await
-        .map_err(|e| format!("reading controls: {e}"))?;
+        .map_err(internal("reading controls"))?;
     let conn = match deps.config {
         Some(c) => crate::services::shared_valkey::conn(c).await,
         None => None,

@@ -324,6 +324,9 @@ pub enum FlowWriteError {
     /// A secret field could not be stored (unknown secret, value typed
     /// without the right, vault failure).
     Secret(crate::services::secrets::store::StoreError),
+    /// The flow is deployed and the writer may only change a stopped flow
+    /// (the assistant, D143); checked under the flow's row lock.
+    Deployed,
 }
 
 /// Validation commune (nom + graphe + device) avant toute écriture.
@@ -443,6 +446,61 @@ pub async fn append_version(
     note: Option<String>,
     by: &crate::services::secrets::flow::GraphWriter<'_>,
 ) -> Result<(flows::Model, i64, FlowGraph), FlowWriteError> {
+    append_version_with(
+        db,
+        flow,
+        expected_version_number,
+        graph,
+        new_name,
+        author,
+        note,
+        by,
+        false,
+    )
+    .await
+}
+
+/// [`append_version`] for a writer that may only change a **stopped** flow
+/// (the assistant, D143): the deployed status is re-read inside the write
+/// transaction, under the flow's row lock, so a deploy landing between the
+/// caller's read and this write is refused ([`FlowWriteError::Deployed`]).
+#[allow(clippy::too_many_arguments)]
+pub async fn append_version_if_stopped(
+    db: &DatabaseConnection,
+    flow: &flows::Model,
+    expected_version_number: i64,
+    graph: &FlowGraph,
+    new_name: Option<String>,
+    author: Option<String>,
+    note: Option<String>,
+    by: &crate::services::secrets::flow::GraphWriter<'_>,
+) -> Result<(flows::Model, i64, FlowGraph), FlowWriteError> {
+    append_version_with(
+        db,
+        flow,
+        expected_version_number,
+        graph,
+        new_name,
+        author,
+        note,
+        by,
+        true,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn append_version_with(
+    db: &DatabaseConnection,
+    flow: &flows::Model,
+    expected_version_number: i64,
+    graph: &FlowGraph,
+    new_name: Option<String>,
+    author: Option<String>,
+    note: Option<String>,
+    by: &crate::services::secrets::flow::GraphWriter<'_>,
+    only_if_stopped: bool,
+) -> Result<(flows::Model, i64, FlowGraph), FlowWriteError> {
     let name_for_validation = new_name.as_deref().unwrap_or(&flow.name);
     validate_flow_write(
         db,
@@ -467,6 +525,16 @@ pub async fn append_version(
         .exec(&txn)
         .await
         .map_err(|_| FlowWriteError::Db)?;
+    if only_if_stopped {
+        let status = flows::Entity::find_by_id(flow.id)
+            .one(&txn)
+            .await
+            .map_err(|_| FlowWriteError::Db)?
+            .map(|f| f.status);
+        if status.as_deref() == Some(pnex_core::FLOW_STATUS_DEPLOYED) {
+            return Err(FlowWriteError::Deployed);
+        }
+    }
     let latest = latest_version_number(&txn, flow.id).await?;
     if expected_version_number != latest {
         return Err(FlowWriteError::Conflict {

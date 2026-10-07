@@ -93,7 +93,7 @@ pub async fn run_turn(
             return Ok(AgentReply {
                 answer: turn
                     .text
-                    .unwrap_or_else(|| "(réponse vide du modèle)".to_string()),
+                    .unwrap_or_else(|| "(the model returned an empty answer)".to_string()),
                 tool_trace: trace,
                 usage: usage_total,
             });
@@ -110,14 +110,16 @@ pub async fn run_turn(
             match outcome {
                 Ok(outcome) => {
                     tracing::info!(tool = %call.name, "outil assistant exécuté");
+                    let summary = tools::summarize(&call.name, &outcome);
                     trace.push(ToolTrace {
                         name: call.name.clone(),
                         arguments: call.arguments.clone(),
                         ok: true,
-                        summary: tools::summarize(&call.name, &outcome),
+                        summary: summary.text,
+                        summary_key: Some(summary.key),
                         flow_id: outcome.flow_id,
                         code: None,
-                        args: None,
+                        args: Some(summary.args),
                     });
                     messages.push(Msg::ToolResult {
                         id: call.id.clone(),
@@ -133,6 +135,7 @@ pub async fn run_turn(
                         arguments: call.arguments.clone(),
                         ok: false,
                         summary: err.message.clone(),
+                        summary_key: None,
                         flow_id: None,
                         code: err.code,
                         args: err.args,
@@ -164,7 +167,7 @@ pub async fn run_turn(
     Ok(AgentReply {
         answer: turn
             .text
-            .unwrap_or_else(|| "(réponse vide du modèle)".to_string()),
+            .unwrap_or_else(|| "(the model returned an empty answer)".to_string()),
         tool_trace: trace,
         usage: usage_total,
     })
@@ -184,6 +187,7 @@ pub fn trace_entry(
         arguments,
         ok,
         summary,
+        summary_key: None,
         flow_id,
         code: None,
         args: None,
