@@ -8,6 +8,7 @@ pub mod artifact_store;
 /// Per-device build history retention (keeps the newest records).
 pub mod build_retention;
 pub mod camera;
+pub mod cmd_acks;
 /// Per-pod concurrency caps (CoolProp, vision, runtime checks, uploads).
 pub mod compute_limits;
 pub mod controls;

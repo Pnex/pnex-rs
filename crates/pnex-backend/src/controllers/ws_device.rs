@@ -272,6 +272,10 @@ async fn session_loop(
     let mut last_touch = Instant::now();
     let mut last_route = Instant::now();
     let mut ota = OtaCache::default();
+    // Actuations awaiting their `Ack` (lost-command tracing).
+    let mut acks = crate::services::cmd_acks::PendingAcks::default();
+    let mut ack_tick = tokio::time::interval(Duration::from_secs(1));
+    ack_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     // Edge agent session state (D95) — `None` for microcontrollers.
     let mut agent = (snap.pred_dev == pnex_core::EDGE_AGENT_PREDEF).then(|| {
         crate::services::edge_agent::AgentSession::new(
@@ -296,6 +300,11 @@ async fn session_loop(
                                 ota.note(cmd_id);
                             }
                         }
+                        if p.contains("\"write\"") || p.contains("\"command\"") {
+                            if let Ok(msg) = serde_json::from_str::<ServerMsg>(&p) {
+                                acks.track(&msg, &p, Instant::now());
+                            }
+                        }
                         p
                     }
                     Downlink::Msg(msg) => {
@@ -303,12 +312,31 @@ async fn session_loop(
                             ota.note(cmd_id.clone());
                         }
                         match serde_json::to_string(&msg) {
-                            Ok(p) => p,
+                            Ok(p) => {
+                                acks.track(&msg, &p, Instant::now());
+                                p
+                            }
                             Err(e) => { tracing::warn!(device = %snap.device_id, "unserializable command: {e}"); continue; }
                         }
                     }
                 };
                 let _ = socket.send(Message::Text(encrypt_frame(&plain, &key).into())).await;
+            }
+            // ── Actuations without `Ack`: resend a write once, report the
+            // loss otherwise (custom-firmware.md §14.6) ──
+            _ = ack_tick.tick(), if !acks.is_empty() => {
+                use crate::services::cmd_acks::Overdue;
+                for late in acks.overdue(Instant::now()) {
+                    match late {
+                        Overdue::Resend { cmd_id, what, frame } => {
+                            tracing::warn!(device = %snap.device_id, cmd = %cmd_id, %what, "command not acknowledged, pushed again");
+                            let _ = socket.send(Message::Text(encrypt_frame(&frame, &key).into())).await;
+                        }
+                        Overdue::Lost { cmd_id, what } => {
+                            tracing::warn!(device = %snap.device_id, cmd = %cmd_id, %what, "command not acknowledged by the device");
+                        }
+                    }
+                }
             }
             // ── Uplink : frame du device, sous watchdog d'inactivité (une
             // tâche parkée sur un TCP half-open ne meurt jamais seule) ──
@@ -414,6 +442,9 @@ async fn session_loop(
                             }
                         }
                         Ok(DeviceMsg::Ack { cmd_id, ok, err }) => {
+                            if let Some((what, rtt)) = acks.ack(&cmd_id, Instant::now()) {
+                                tracing::debug!(device = %snap.device_id, cmd = %cmd_id, %what, ok, rtt_ms = rtt.as_millis() as u64, "command acknowledged");
+                            }
                             if !ok {
                                 tracing::warn!(device = %snap.device_id, cmd = %cmd_id, "commande refusée par le device : {:?}", err);
                                 // OTA: an explicit device refusal fails the active
