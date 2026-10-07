@@ -55,6 +55,10 @@ pub struct FirmwareSettings {
     /// operator turns it on — compiling user C++ runs user code on the
     /// worker.
     pub custom: CustomFirmwareSettings,
+    /// Refuse a `wss` build when no device CA can be pinned (SEC-W6):
+    /// without it the firmware falls back to `setInsecure`. Default true;
+    /// only the test configuration turns it off.
+    pub require_device_ca: bool,
 }
 
 /// `settings.firmware.custom` — gate + build sandbox of custom firmware.
@@ -151,6 +155,7 @@ struct FirmwarePartial {
     esptool_cmd: Option<String>,
     timeout_secs: Option<u64>,
     custom: Option<CustomPartial>,
+    require_device_ca: Option<bool>,
 }
 
 #[derive(Default, Deserialize)]
@@ -178,6 +183,7 @@ impl Default for FirmwareSettings {
             esptool_cmd: "esptool".into(),
             timeout_secs: 900,
             custom: CustomFirmwareSettings::default(),
+            require_device_ca: true,
         }
     }
 }
@@ -232,6 +238,9 @@ impl FirmwareSettings {
             esptool_cmd: partial.esptool_cmd.unwrap_or(defaults.esptool_cmd),
             timeout_secs: partial.timeout_secs.unwrap_or(defaults.timeout_secs),
             custom: CustomFirmwareSettings::from_partial(partial.custom),
+            require_device_ca: partial
+                .require_device_ca
+                .unwrap_or(defaults.require_device_ca),
         };
         // Décision utilisateur : l'env surcharge la config.
         if let Ok(backend) = std::env::var("STORAGE_BACKEND") {
@@ -358,6 +367,12 @@ mod tests {
         s.apply_env(Some("nope"), Some("bwrap"));
         assert!(s.enabled, "unknown value ignored");
         assert!(s.sandbox.is_some());
+    }
+
+    /// SEC-W6: a build without a pinned device CA is refused by default.
+    #[test]
+    fn device_ca_is_required_by_default() {
+        assert!(FirmwareSettings::default().require_device_ca);
     }
 
     /// Le Debug de FirmwareSettings ne fuite jamais le secret S3.

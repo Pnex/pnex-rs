@@ -91,6 +91,8 @@ settings:
     pio_cmd: ./tests/fixtures/firmware/fake_pio.sh
     esptool_cmd: ./tests/fixtures/firmware/fake_esptool.sh
     timeout_secs: 2
+    # No edge PKI in tests: builds run without a pinned device CA.
+    require_device_ca: false
   # Stitching serveur (Take 360 V2) — activé par défaut ; le test e2e
   # (tests/stitch_jobs.rs) baisse la largeur à 1024 via PNEX_STITCH_OUT_WIDTH
   # (posée avant le boot, école PNEX_MEDIA_DIR) pour rester < 60 s.

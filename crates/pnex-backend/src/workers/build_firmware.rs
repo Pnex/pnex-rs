@@ -65,6 +65,84 @@ pub struct BuildFirmwareWorker {
     keyring: Option<crate::services::secrets::Keyring>,
 }
 
+/// Why a build failed (O4): a code of `pnex_core::BUILD_FAILURE_CODES`,
+/// the server log message (never shown: may hold paths) and, for a tool
+/// failure, its output tail with the credentials masked (shown).
+#[derive(Debug)]
+struct Failure {
+    code: &'static str,
+    log: String,
+    detail: Option<String>,
+}
+
+impl Failure {
+    fn new(code: &'static str, log: impl Into<String>) -> Self {
+        Self {
+            code,
+            log: log.into(),
+            detail: None,
+        }
+    }
+
+    /// Classifies a builder error; tool output is scrubbed of `secrets`.
+    fn from_build(e: pnex_firmware_builder::BuildError, secrets: &BuildSecrets) -> Self {
+        use pnex_firmware_builder::BuildError as E;
+        let log = e.to_string();
+        let (code, detail) = match e {
+            E::Timeout => ("build_timeout", None),
+            E::Tool(out) => {
+                let code = if out.starts_with("pio run") {
+                    "build_compile"
+                } else if out.starts_with("esptool") {
+                    "build_merge"
+                } else {
+                    "build_tool"
+                };
+                // Drop the "label : status" header line, keep the output.
+                let body = out
+                    .split_once('\n')
+                    .map(|(_, rest)| rest)
+                    .unwrap_or_default();
+                (
+                    code,
+                    Some(bounded_tail(&pnex_firmware_builder::scrub_secrets(
+                        body, secrets,
+                    ))),
+                )
+            }
+            E::Source(_) => ("build_source", None),
+            E::NotFound(_) => ("build_artifact", None),
+            E::Store(_) => ("build_store", None),
+        };
+        Self {
+            code,
+            log,
+            detail: detail.filter(|d| !d.trim().is_empty()),
+        }
+    }
+}
+
+/// Last characters of a detail, within `BUILD_FAILURE_DETAIL_MAX`.
+fn bounded_tail(text: &str) -> String {
+    let n = text.chars().count();
+    let skip = n.saturating_sub(pnex_core::BUILD_FAILURE_DETAIL_MAX);
+    text.chars().skip(skip).collect()
+}
+
+/// Records the failure reason of a build (best effort: the phase is
+/// already `failed`).
+async fn set_failure(db: &sea_orm::DatabaseConnection, id: i64, failure: &Failure) {
+    let reason = build_records::ActiveModel {
+        id: Set(id),
+        failure_code: Set(Some(failure.code.to_string())),
+        failure_detail: Set(failure.detail.clone()),
+        ..Default::default()
+    };
+    if let Err(e) = reason.update(db).await {
+        tracing::warn!(build = id, "build failure reason not recorded: {e}");
+    }
+}
+
 /// Pose une transition de phase (le worker est l'unique écrivain des
 /// phases running/succeeded/failed ; `queued` est posé par le contrôleur).
 async fn set_phase(
@@ -154,11 +232,17 @@ impl BackgroundWorker<BuildFirmwareArgs> for BuildFirmwareWorker {
                     }
                 }
             }
-            // Message d'erreur dans les logs serveur uniquement — jamais
-            // renvoyé au client (peut contenir des chemins/fragments).
-            Err(msg) => {
-                tracing::error!(build = args.build_record_id, erreur = %msg, "build firmware échoué");
+            // The full message stays in the server logs (paths, fragments);
+            // the record keeps a code and the scrubbed tool output (O4).
+            Err(failure) => {
+                tracing::error!(
+                    build = args.build_record_id,
+                    code = failure.code,
+                    erreur = %failure.log,
+                    "build firmware échoué"
+                );
                 set_phase(&self.db, args.build_record_id, PHASE_FAILED, false, None).await?;
+                set_failure(&self.db, args.build_record_id, &failure).await;
             }
         }
         Ok(())
@@ -172,7 +256,7 @@ impl BuildFirmwareWorker {
     async fn run(
         &self,
         args: &BuildFirmwareArgs,
-    ) -> std::result::Result<(BuildArtifact, Option<i64>), String> {
+    ) -> std::result::Result<(BuildArtifact, Option<i64>), Failure> {
         // Token + clé relus en base (jamais via la queue).
         let (registry, token) = device_registries::Entity::find()
             .filter(device_registries::Column::OrgId.eq(args.org_id))
@@ -180,22 +264,35 @@ impl BuildFirmwareWorker {
             .find_also_related(device_tokens::Entity)
             .one(&self.db)
             .await
-            .map_err(|e| format!("db : {e}"))?
-            .ok_or_else(|| format!("device {} introuvable", args.device_id))?;
+            .map_err(|e| Failure::new("build_internal", format!("db : {e}")))?
+            .ok_or_else(|| {
+                Failure::new(
+                    "build_device",
+                    format!("device {} introuvable", args.device_id),
+                )
+            })?;
         let (token, encryption_key) = token
             .map(|token| (token.token, token.encryption_key))
-            .ok_or_else(|| format!("token du device {} introuvable", args.device_id))?;
+            .ok_or_else(|| {
+                Failure::new(
+                    "build_device",
+                    format!("token du device {} introuvable", args.device_id),
+                )
+            })?;
 
         let config = BuildConfig {
             pio_cmd: self.settings.pio_cmd.clone(),
             esptool_cmd: self.settings.esptool_cmd.clone(),
             timeout_secs: self.settings.timeout_secs,
-            store: self.settings.store(&self.db)?,
+            store: self
+                .settings
+                .store(&self.db)
+                .map_err(|e| Failure::new("build_store", e))?,
         };
         let ring = self
             .keyring
             .as_ref()
-            .ok_or_else(|| "secrets keyring unavailable".to_string())?;
+            .ok_or_else(|| Failure::new("build_wifi", "secrets keyring unavailable"))?;
         let wifi_password = crate::services::secrets::wifi::reveal(
             &self.db,
             ring,
@@ -203,7 +300,19 @@ impl BuildFirmwareWorker {
             args.wifi_secret_id,
         )
         .await
-        .map_err(|e| format!("WiFi password unavailable from the vault: {e}"))?;
+        .map_err(|e| {
+            Failure::new(
+                "build_wifi",
+                format!("WiFi password unavailable from the vault: {e}"),
+            )
+        })?;
+        let ca_cert_pem = device_ca_pem();
+        if args.ws_ssl && ca_cert_pem.is_none() && self.settings.require_device_ca {
+            return Err(Failure::new(
+                "build_no_ca",
+                "no device CA to pin (PNEX_CA_CERT_FILE): wss build refused",
+            ));
+        }
         let secrets = BuildSecrets {
             wifi_ssid: args.wifi_ssid.clone(),
             wifi_password,
@@ -212,7 +321,7 @@ impl BuildFirmwareWorker {
             token,
             device_id: args.device_id.clone(),
             encryption_key,
-            ca_cert_pem: device_ca_pem(),
+            ca_cert_pem,
         };
         let mut device = DeviceSpec {
             org_id: args.org_id,
@@ -227,27 +336,33 @@ impl BuildFirmwareWorker {
         let Some(project_id) = registry.firmware_project_id else {
             let artifact = pnex_firmware_builder::run_build(&config, &secrets, &device)
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| Failure::from_build(e, &secrets))?;
             return Ok((artifact, None));
         };
 
         // Custom firmware (D89/D94): the latest revision of the device's
         // project, compiled in the generic project of its chip.
         if !self.settings.custom.enabled {
-            return Err("custom firmware builds are disabled on this worker".into());
+            return Err(Failure::new(
+                "build_custom_disabled",
+                "custom firmware builds are disabled on this worker",
+            ));
         }
         let project = firmware_projects::Entity::find_by_id(project_id)
             .filter(firmware_projects::Column::OrgId.eq(args.org_id))
             .one(&self.db)
             .await
-            .map_err(|e| format!("db : {e}"))?
-            .ok_or("firmware project not found")?;
+            .map_err(|e| Failure::new("build_internal", format!("db : {e}")))?
+            .ok_or_else(|| Failure::new("build_custom_project", "firmware project not found"))?;
         let revision = latest_revision(&self.db, project.id)
             .await
-            .map_err(|e| format!("db : {e}"))?
-            .ok_or("firmware project without revision")?;
+            .map_err(|e| Failure::new("build_internal", format!("db : {e}")))?
+            .ok_or_else(|| {
+                Failure::new("build_custom_project", "firmware project without revision")
+            })?;
         let (check_device, opts) =
-            check_inputs(&project, &revision, self.settings.custom.sandbox.clone())?;
+            check_inputs(&project, &revision, self.settings.custom.sandbox.clone())
+                .map_err(|e| Failure::new("build_custom_project", e))?;
         device.project = check_device.project;
         // A custom firmware owns every pin: no debug screen driver compiled
         // in (it would drive pins the sketch may use).
@@ -263,7 +378,7 @@ impl BuildFirmwareWorker {
         }
         let artifact = pnex_firmware_builder::run_build_with(&config, &secrets, &device, &opts)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| Failure::from_build(e, &secrets))?;
         Ok((artifact, Some(revision.id)))
     }
 }

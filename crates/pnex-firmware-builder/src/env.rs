@@ -67,9 +67,48 @@ pub fn child_env(secrets: &BuildSecrets) -> Vec<(String, String)> {
     vars
 }
 
+/// Masks the credentials of `secrets` in a tool output shown to users
+/// (O4: failure reason of a build). The WiFi password, the device token
+/// and its encryption key are replaced, raw and in the base64 form the
+/// build passes them in. Values shorter than 4 characters are left alone
+/// (they would mask ordinary text).
+pub fn scrub_secrets(text: &str, secrets: &BuildSecrets) -> String {
+    let mut out = text.to_string();
+    let values = [
+        Some(secrets.wifi_password.as_str()),
+        Some(secrets.token.as_str()),
+        secrets.encryption_key.as_deref(),
+    ];
+    for v in values.into_iter().flatten().filter(|v| v.len() >= 4) {
+        out = out.replace(&b64(v), "***").replace(v, "***");
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scrub_masks_raw_and_base64_credentials() {
+        let s = secrets();
+        let text = format!(
+            "flags -DWIFI_PASSWORD={} -DTOKEN={} key {} raw p@ss w0rd and tok-secret",
+            b64("p@ss w0rd"),
+            b64("tok-secret"),
+            "Y2xlLWI2NC1zMk8="
+        );
+        let clean = scrub_secrets(&text, &s);
+        for leak in [
+            "p@ss w0rd",
+            "tok-secret",
+            "Y2xlLWI2NC1zMk8=",
+            &b64("tok-secret"),
+        ] {
+            assert!(!clean.contains(leak), "{leak} leaked in {clean}");
+        }
+        assert!(clean.contains("flags -DWIFI_PASSWORD=***"));
+    }
 
     fn secrets() -> BuildSecrets {
         BuildSecrets {

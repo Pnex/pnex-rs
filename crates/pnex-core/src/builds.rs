@@ -84,11 +84,54 @@ pub struct BuildRecord {
     /// antérieurs à l'OTA.
     #[serde(default)]
     pub fw_version: Option<String>,
+    /// Why a failed build failed (O4): one of [`BUILD_FAILURE_CODES`],
+    /// shown translated; absent while the build runs or succeeded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_code: Option<String>,
+    /// Last lines of the failing tool output (compiler errors), the
+    /// device credentials masked by the worker.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_detail: Option<String>,
     /// RFC 3339.
     pub created_at: String,
     /// RFC 3339 — dernier changement de phase.
     pub updated_at: String,
 }
+
+/// Failure reasons of a firmware build (O4), stored on the record by the
+/// worker; the UI shows the fluent key `build-fail-<code>` (code with `-`).
+pub const BUILD_FAILURE_CODES: &[&str] = &[
+    // The compiler rejected the sources (the detail holds its errors).
+    "build_compile",
+    // Merging the flash image (esptool) failed.
+    "build_merge",
+    // Another external tool could not run.
+    "build_tool",
+    // No device CA to pin: a wss firmware would not verify the server
+    // (SEC-W6).
+    "build_no_ca",
+    // The build exceeded its time budget.
+    "build_timeout",
+    // The firmware sources could not be staged on the worker.
+    "build_source",
+    // The compiler produced no firmware file.
+    "build_artifact",
+    // The firmware could not be stored.
+    "build_store",
+    // The WiFi password could not be read from the vault.
+    "build_wifi",
+    // The device or its token was deleted meanwhile.
+    "build_device",
+    // Custom firmware builds are disabled on the worker.
+    "build_custom_disabled",
+    // The custom firmware project or its revision is missing or invalid.
+    "build_custom_project",
+    // Unexpected server error (database…).
+    "build_internal",
+];
+
+/// Longest failure detail kept on a record (characters, tail kept).
+pub const BUILD_FAILURE_DETAIL_MAX: usize = 4000;
 
 #[cfg(test)]
 mod tests {

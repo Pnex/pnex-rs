@@ -333,6 +333,11 @@ async fn build_echec_outil() {
         let record = &list["results"][0];
         assert_eq!(record["build_phase"], "failed");
         assert_eq!(record["success"], false);
+        // Failure reason (O4): code + compiler output, token masked.
+        assert_eq!(record["failure_code"], "build_compile", "{record}");
+        let detail = record["failure_detail"].as_str().unwrap_or_default();
+        assert!(detail.contains("erreur de compilation simulée"), "{detail}");
+        assert!(detail.contains("-DTOKEN=***"), "token not masked: {detail}");
 
         let dl = server
             .get("/api/v1/download/firmware/dev-fail")
@@ -364,6 +369,7 @@ async fn build_timeout() {
 
         let list = records(&server, &env.alice, org, "").await;
         assert_eq!(list["results"][0]["build_phase"], "failed");
+        assert_eq!(list["results"][0]["failure_code"], "build_timeout");
         assert!(started.elapsed().as_secs() < 30, "test borné");
     })
     .await;

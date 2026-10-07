@@ -11,6 +11,7 @@ pub mod annotation_editor;
 pub mod assistant;
 pub mod badges;
 pub mod board_pinout_editor;
+pub mod build_failure;
 pub mod charts;
 pub mod code_editing;
 pub mod code_highlight;

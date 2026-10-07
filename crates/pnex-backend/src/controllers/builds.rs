@@ -72,6 +72,8 @@ fn record_dto(r: build_records::Model) -> pnex_core::BuildRecord {
         build_phase: r.build_phase,
         firmware_bin_s3_key: r.firmware_bin_s3_key,
         fw_version: r.fw_version,
+        failure_code: r.failure_code,
+        failure_detail: r.failure_detail,
         created_at: r.created_at.to_rfc3339(),
         updated_at: r.updated_at.to_rfc3339(),
     }

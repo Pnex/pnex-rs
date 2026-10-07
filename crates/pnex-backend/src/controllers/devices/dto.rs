@@ -88,6 +88,8 @@ pub(super) fn latest_build_dto(record: build_records::Model) -> pnex_core::Lates
             .sources_fingerprint
             .map(|fp| fp != pnex_firmware_builder::source_fingerprint()),
         updated_at: record.updated_at.to_rfc3339(),
+        failure_code: record.failure_code,
+        failure_detail: record.failure_detail,
     }
 }
 
