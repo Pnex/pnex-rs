@@ -4,6 +4,8 @@
 //! popover vers le canvas (dashboard, D41) doit voir ses `pointermove/up`
 //! atteindre le canvas — la fermeture passe par un pick, la croix, Échap
 //! dans la recherche ou un re-clic sur `+`.
+//! One menu at a time and click-outside close: `state::ui::use_exclusive_menu`
+//! + the dismiss listener of `EditorShell` (menu slots carry `data-floating`).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -228,6 +230,8 @@ pub fn PalettePopover(
     footer: Option<Element>,
 ) -> Element {
     let mut open = use_signal(|| false);
+    // One menu at a time; closes on a click outside (EditorShell).
+    crate::state::ui::use_exclusive_menu(open);
     let mut search = use_signal(String::new);
     let close_label = t!("eshell-close");
 

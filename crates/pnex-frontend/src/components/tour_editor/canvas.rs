@@ -226,7 +226,7 @@ pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
         div { class: "h-full w-full min-w-0 relative bg-gray-50 rounded-lg border border-gray-200 overflow-hidden",
             svg {
                 id: "tour-canvas",
-                class: "w-full h-full block touch-none select-none",
+                class: "w-full h-full block touch-none outline-none select-none",
                 tabindex: "0",
                 onpointerdown: move |event| {
                     event.stop_propagation();
