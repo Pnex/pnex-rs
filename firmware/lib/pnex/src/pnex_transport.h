@@ -73,7 +73,7 @@ void pnex_transport_setup(const PnexTransportInit& init);
 // Config décodée (les mains n'incluent plus config.h — cf. règle supra).
 const char* pnex_host();
 const char* pnex_device_id();
-const char* pnex_conn_string();  // URL complète buildée au setup
+const char* pnex_conn_string();  // Connection URL for logs, token masked (SEC-W7)
 bool pnex_use_tls();             // WS_SSL actif
 bool pnex_crypto_ready();        // clé ChaCha valide chargée
 
