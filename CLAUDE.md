@@ -38,6 +38,15 @@ Ajouter un nœud de flow ou une fonctionnalité utilisateur **sans mettre l'assi
   - refus outil = code machine + `args` (clé `err-<code>` dans les deux `.ftl`), jamais de message pré-rendu ;
   - aucun secret ni identifiant dans une sortie d'outil (R4, R16) ; conversations privées utilisateur × org (D145).
 
+## Commits : Conventional Commits (règle permanente, 2026-10-07)
+
+- **Format obligatoire** : `type(scope): description` — type en **minuscules**, scope optionnel en minuscules sans espace (plusieurs : `ui/mobile`), description en anglais, impérative ou constat court, sans point final, ≤ 72 caractères. Corps libre après une ligne vide (le pourquoi, pas le quoi).
+- **Types** : `feat` (fonctionnalité visible), `fix` (bug), `perf`, `refactor` (sans changement de comportement), `docs`, `test`, `build` (deps, Dockerfile, Taskfile), `ci` (workflows), `chore` (le reste), `style`, `revert`. Correctif de sécurité = `fix(security): …` (section « Security » des notes).
+- **Rupture** : `feat(api)!: …` + pied `BREAKING CHANGE: <ce qui casse et la migration>`.
+- Exemples : `fix(ui): dialog submit enabled while typing`, `feat(flows): device write sends custom commands (D146)`, `docs(firmware): lost command investigation`.
+- Interdits : l'ancien style `Fix (scope): …` (majuscule + espace), un sujet sans type, `wip`, `misc`, `update`.
+- **Les notes de release en dépendent** : `cliff.toml` (git-cliff) groupe les commits par type entre deux tags `v*` ; le job `release` de `apps.yml` les publie comme corps de la release GitHub. Aperçu local : `task changelog` (non publiés) / `task changelog -- --latest` (dernier tag). Un commit mal formé finit dans « Other ».
+
 ## Formatage (hygiène, bloquant en CI)
 
 - **`task fmt` avant chaque commit, `task fmt:check` = job CI `fmt`.** Rust → `cargo fmt` ; intérieur des `rsx!` → `dx fmt` via le wrapper gardé `crates/pnex-frontend/scripts/rsx_fmt.py`.
