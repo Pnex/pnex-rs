@@ -186,6 +186,47 @@ pub fn EditorShell(
         let open = *crate::state::ui::EDITORS_OPEN.peek();
         *crate::state::ui::EDITORS_OPEN.write() = open.saturating_sub(1);
     });
+    // Menus close on a pointer press outside any floating menu or on
+    // Escape (capture phase: canvas handlers stopping propagation still
+    // count). The listener lives while the shell is mounted.
+    use_effect(|| {
+        spawn(async move {
+            let mut ev = document::eval(
+                r#"
+                const prev = window.__pnexMenuDismiss;
+                if (prev) {
+                    document.removeEventListener('pointerdown', prev.down, true);
+                    document.removeEventListener('keydown', prev.key, true);
+                }
+                const down = (e) => {
+                    const t = e.target;
+                    if (!(t && t.closest && t.closest('[data-floating]'))) dioxus.send(true);
+                };
+                const key = (e) => { if (e.key === 'Escape') dioxus.send(true); };
+                document.addEventListener('pointerdown', down, true);
+                document.addEventListener('keydown', key, true);
+                window.__pnexMenuDismiss = { down, key };
+                await new Promise(() => {});
+                "#,
+            );
+            while ev.recv::<bool>().await.is_ok() {
+                crate::state::ui::close_menus();
+            }
+        });
+    });
+    use_drop(|| {
+        crate::state::ui::close_menus();
+        let _ = document::eval(
+            r#"
+            const prev = window.__pnexMenuDismiss;
+            if (prev) {
+                document.removeEventListener('pointerdown', prev.down, true);
+                document.removeEventListener('keydown', prev.key, true);
+                window.__pnexMenuDismiss = null;
+            }
+            "#,
+        );
+    });
     let title_enter = title.clone();
     let title_blur = title.clone();
     rsx! {
@@ -288,11 +329,21 @@ pub fn EditorShell(
                         }
                     }
                 }
+                // `data-floating`: a press inside a menu (or on its toggle
+                // button) never counts as a click outside.
                 if let Some(p) = palette {
-                    div { class: "absolute left-4 top-4 z-20", {p} }
+                    div {
+                        class: "absolute left-4 top-4 z-20",
+                        "data-floating": "true",
+                        {p}
+                    }
                 }
                 if let Some(t) = tools {
-                    div { class: "absolute left-[4.5rem] top-4 z-20", {t} }
+                    div {
+                        class: "absolute left-[4.5rem] top-4 z-20",
+                        "data-floating": "true",
+                        {t}
+                    }
                 }
                 {inspector}
             }

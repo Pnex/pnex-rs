@@ -166,7 +166,7 @@ pub(crate) fn Canvas(
                 // `touch-none`: the browser must not claim touches for its
                 // own scroll / zoom — it fired `pointercancel` after a few
                 // millimetres and a one-finger pan or drag stopped dead.
-                class: "absolute inset-0 w-full h-full touch-none",
+                class: "absolute inset-0 w-full h-full touch-none outline-none",
                 tabindex: "0",
                 // No native text selection on the canvas: a node drag must
                 // never highlight the labels it sweeps over (all gestures

@@ -162,6 +162,9 @@ pub fn DashboardEditor(
     let section: Signal<Option<String>> = use_signal(|| None);
     let drag_card: Signal<Option<String>> = use_signal(|| None);
     let devices_open = use_signal(|| false);
+    // Side menus: one at a time with the palette, closed on a click outside.
+    crate::state::ui::use_exclusive_menu(symbols_open);
+    crate::state::ui::use_exclusive_menu(devices_open);
     let mut versions_open = use_signal(|| false);
 
     let mut cx = EditorCx {

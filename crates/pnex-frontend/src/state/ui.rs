@@ -37,3 +37,37 @@ pub fn restore() {
     let rail = storage::local().get(KEY_SIDEBAR_RAIL).as_deref() == Some("true");
     RAIL.with_mut(|v| *v = rail);
 }
+
+/// Floating menu currently open in an editor (palette, floors panel,
+/// symbols / devices panels…): at most one at a time. `None` = all closed
+/// (click outside, Escape). See [`use_exclusive_menu`].
+pub static ACTIVE_MENU: GlobalSignal<Option<u64>> = GlobalSignal::new(|| None);
+
+static NEXT_MENU_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// Makes the menu driven by `open` exclusive: opening it closes any other
+/// menu, and it closes itself when another one opens or when everything
+/// is dismissed (`close_menus`). The menu keeps owning its `open` signal.
+pub fn use_exclusive_menu(mut open: Signal<bool>) {
+    let id = use_hook(|| NEXT_MENU_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+    // Opened → claim the slot (the other menus see it and close).
+    use_effect(move || {
+        if open() && *ACTIVE_MENU.peek() != Some(id) {
+            *ACTIVE_MENU.write() = Some(id);
+        }
+    });
+    // Slot taken by another menu, or cleared → close.
+    use_effect(move || {
+        let active = ACTIVE_MENU();
+        if active != Some(id) && *open.peek() {
+            open.set(false);
+        }
+    });
+}
+
+/// Closes every editor menu (click outside a menu, Escape).
+pub fn close_menus() {
+    if ACTIVE_MENU.peek().is_some() {
+        *ACTIVE_MENU.write() = None;
+    }
+}

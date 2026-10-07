@@ -34,7 +34,7 @@ pub(super) fn CanvasView(cx: EditorCx) -> Element {
         div {
             id: "dashboard-canvas",
             // `touch-none`: touches stay ours (no `pointercancel` mid-pan).
-            class: "relative h-full w-full touch-none overflow-hidden bg-gray-100",
+            class: "relative h-full w-full touch-none outline-none overflow-hidden bg-gray-100",
             tabindex: "0",
             onpointerdown: move |event| canvas_pointer_down(event, cx),
             onpointermove: move |event| canvas_pointer_move(event, cx),
