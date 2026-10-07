@@ -15,7 +15,9 @@ use crate::state::{ai, toasts};
 const BTN: &str = "px-2 py-1 text-xs border border-gray-300 rounded-lg hover:bg-gray-50";
 const BTN_PRIMARY: &str =
     "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm";
-const INPUT: &str = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm";
+// Explicit white: the edit form sits on a grey block (fields must not look
+// disabled).
+const INPUT: &str = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white";
 
 /// Which form is open.
 #[derive(Clone, Debug, PartialEq)]
@@ -54,10 +56,12 @@ pub fn LlmProviders(can_manage: bool) -> Element {
                     p { class: "text-xs text-gray-500 mt-1", {help} }
                 }
                 if can_manage && editing().is_none() {
+                    // Same primary « + » action as « Add member » (org page).
                     button {
                         r#type: "button",
-                        class: "{BTN} self-start whitespace-nowrap",
+                        class: "inline-flex items-center self-start whitespace-nowrap px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm",
                         onclick: move |_| editing.set(Some(Editing::New)),
+                        crate::components::icons::Plus { class: "h-4 w-4 mr-1" }
                         {t!("llm-add")}
                     }
                 }
@@ -290,8 +294,13 @@ fn ProviderForm(
         div { class: "mt-2 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3",
             div { class: "grid grid-cols-1 md:grid-cols-2 gap-3",
                 div {
-                    label { class: "block text-xs text-gray-600 mb-1", {t!("llm-name")} }
+                    label {
+                        r#for: "llm-providers-field-1",
+                        class: "block text-xs text-gray-600 mb-1",
+                        {t!("llm-name")}
+                    }
                     input {
+                        id: "llm-providers-field-1",
                         class: INPUT,
                         r#type: "text",
                         value: "{name}",
@@ -299,9 +308,14 @@ fn ProviderForm(
                     }
                 }
                 div {
-                    label { class: "block text-xs text-gray-600 mb-1", {t!("llm-kind")} }
+                    label {
+                        r#for: "llm-providers-field-2",
+                        class: "block text-xs text-gray-600 mb-1",
+                        {t!("llm-kind")}
+                    }
                     select {
-                        class: "{INPUT} bg-white",
+                        id: "llm-providers-field-2",
+                        class: INPUT,
                         value: "{kind}",
                         onchange: move |e| kind.set(e.value()),
                         option {
@@ -317,8 +331,13 @@ fn ProviderForm(
                     }
                 }
                 div {
-                    label { class: "block text-xs text-gray-600 mb-1", {t!("llm-base-url")} }
+                    label {
+                        r#for: "llm-providers-field-3",
+                        class: "block text-xs text-gray-600 mb-1",
+                        {t!("llm-base-url")}
+                    }
                     input {
+                        id: "llm-providers-field-3",
                         class: INPUT,
                         r#type: "text",
                         value: "{base_url}",
@@ -327,8 +346,13 @@ fn ProviderForm(
                     }
                 }
                 div {
-                    label { class: "block text-xs text-gray-600 mb-1", {t!("llm-model")} }
+                    label {
+                        r#for: "llm-providers-field-4",
+                        class: "block text-xs text-gray-600 mb-1",
+                        {t!("llm-model")}
+                    }
                     input {
+                        id: "llm-providers-field-4",
                         class: INPUT,
                         r#type: "text",
                         value: "{model}",

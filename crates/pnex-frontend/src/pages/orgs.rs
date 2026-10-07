@@ -299,81 +299,78 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                         }
                     }
 
-                    // LLM providers of the org (managed by owner/admin)
+                    // Members: title, add form (owner/admin), list, then the
+                    // role legend as help.
                     div { class: "p-4 border-b border-gray-200 md:p-6",
-                        crate::components::llm_providers::LlmProviders { can_manage: can_write }
-                    }
-
-                    // Ajout de membre (owner/admin)
-                    if can_write {
-                        form {
-                            class: "p-4 border-b border-gray-200 flex flex-wrap gap-2 md:p-6",
-                            onsubmit: move |event| {
-                                // Bloque la soumission native (rechargement du SPA).
-                                event.prevent_default();
-                                let email = field(&event, "email");
-                                let email = email.trim().to_string();
-                                if email.is_empty() {
-                                    return;
-                                }
-                                member_email.set(String::new());
-                                let role = member_role.cloned();
-                                let org_id = org_id;
-                                spawn(async move {
-                                    match api::orgs::add_member(org_id, &email, &role).await {
-                                        Ok(_) => toasts::success("toast-saved"),
-                                        Err(err) => toasts::error(err),
+                        h3 { class: "text-sm font-semibold text-gray-900 mb-3", {t!("orgs-members")} }
+                        if can_write {
+                            form {
+                                class: "mb-4 flex flex-wrap gap-2",
+                                onsubmit: move |event| {
+                                    // Bloque la soumission native (rechargement du SPA).
+                                    event.prevent_default();
+                                    let email = field(&event, "email");
+                                    let email = email.trim().to_string();
+                                    if email.is_empty() {
+                                        return;
                                     }
-                                    refresh(());
-                                });
-                            },
-                            input {
-                                class: "flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm",
-                                r#type: "email",
-                                name: "email",
-                                placeholder: t!("orgs-email-placeholder"),
-                                value: "{member_email}",
-                            }
-                            select {
-                                aria_label: t!("orgs-member-role"),
-                                class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
-                                onchange: move |event| member_role.set(event.value()),
-                                option {
-                                    value: "viewer",
-                                    selected: member_role() == "viewer",
-                                    {t!("role-viewer")}
+                                    member_email.set(String::new());
+                                    let role = member_role.cloned();
+                                    let org_id = org_id;
+                                    spawn(async move {
+                                        match api::orgs::add_member(org_id, &email, &role).await {
+                                            Ok(_) => toasts::success("toast-saved"),
+                                            Err(err) => toasts::error(err),
+                                        }
+                                        refresh(());
+                                    });
+                                },
+                                input {
+                                    class: "flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                                    r#type: "email",
+                                    name: "email",
+                                    placeholder: t!("orgs-email-placeholder"),
+                                    value: "{member_email}",
                                 }
-                                option {
-                                    value: "member",
-                                    selected: member_role() == "member",
-                                    {t!("role-member")}
+                                select {
+                                    aria_label: t!("orgs-member-role"),
+                                    class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                                    onchange: move |event| member_role.set(event.value()),
+                                    option {
+                                        value: "viewer",
+                                        selected: member_role() == "viewer",
+                                        {t!("role-viewer")}
+                                    }
+                                    option {
+                                        value: "member",
+                                        selected: member_role() == "member",
+                                        {t!("role-member")}
+                                    }
+                                    option {
+                                        value: "admin",
+                                        selected: member_role() == "admin",
+                                        {t!("role-admin")}
+                                    }
+                                    option {
+                                        value: "owner",
+                                        selected: member_role() == "owner",
+                                        {t!("role-owner")}
+                                    }
                                 }
-                                option {
-                                    value: "admin",
-                                    selected: member_role() == "admin",
-                                    {t!("role-admin")}
+                                button {
+                                    class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm",
+                                    r#type: "submit",
+                                    icons::Plus { class: "h-4 w-4 inline mr-1" }
+                                    {t!("orgs-add-member")}
                                 }
-                                option {
-                                    value: "owner",
-                                    selected: member_role() == "owner",
-                                    {t!("role-owner")}
-                                }
-                            }
-                            button {
-                                class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm",
-                                r#type: "submit",
-                                icons::Plus { class: "h-4 w-4 inline mr-1" }
-                                {t!("orgs-add-member")}
                             }
                         }
-                    }
-
-                    // Membres
-                    div { class: "p-4 md:p-6",
-                        h3 { class: "text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4",
-                            {t!("orgs-members")}
+                        div { class: "space-y-2",
+                            for member in members {
+                                {member_row(member, org_id, can_write, refresh, reload)}
+                            }
                         }
-                        ul { class: "mb-4 space-y-1 text-xs text-gray-500",
+                        ul { class: "mt-4 space-y-1 text-xs text-gray-500",
                             li {
                                 span { class: "font-medium text-gray-700", {t!("role-owner")} }
                                 " — "
@@ -395,12 +392,13 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                                 {t!("orgs-role-help-viewer")}
                             }
                         }
-                        div { class: "space-y-2",
-                            for member in members {
-                                {member_row(member, org_id, can_write, refresh, reload)}
-                            }
-                        }
                     }
+
+                    // LLM providers of the org (managed by owner/admin)
+                    div { class: "p-4 md:p-6",
+                        crate::components::llm_providers::LlmProviders { can_manage: can_write }
+                    }
+
                 }
 
                 if confirm_delete() {
