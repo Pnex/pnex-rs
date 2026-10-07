@@ -12,7 +12,7 @@ Each member of an organization has one of four roles: Owner, Admin, Member or Vi
 
 ## What each role can do
 - **Viewer**: read-only. Sees devices, flows, dashboards, data and secret names, changes nothing.
-- **Member**: edits all content — flows (including deploy), devices and pin commands, dashboards, annotations, tours, media, cameras, functions, firmwares, notification channels, edge references, controls — and uses the assistant. In secret fields a Member can only **pick** an existing secret, never type or see a value.
+- **Member**: edits all content — flows (including deploy), devices and pin commands, dashboards, annotations, tours, media, cameras, functions, firmwares, notification channels, edge references, controls — and uses the assistant. In secret fields a Member keeps the secrets an Owner or Admin attached, but never attaches one, types a value, sees a value, or points a node or channel holding a secret to another address.
 - **Admin**: everything a Member does, plus governance: rename the organization, add/remove members and change their roles, manage the secrets vault, manage LLM providers, delete telemetry data on the System page.
 - **Owner**: everything an Admin does, plus deleting the organization and granting, modifying or removing the Owner role.
 

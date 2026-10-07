@@ -55,6 +55,13 @@ pub(crate) fn store_error(e: StoreError) -> Result<Response> {
             "A secret with this name already exists.",
         )),
         StoreError::WriteForbidden => Err(forbidden()),
+        StoreError::DestinationLocked { field } => Err(detail(
+            StatusCode::FORBIDDEN,
+            err_codes::SECRET_DESTINATION_LOCKED,
+            &format!(
+                "Field `{field}` uses a vault secret: only an owner or admin can bind a secret to a field and its destination."
+            ),
+        )),
         StoreError::Invalid { field, token } => Ok((
             StatusCode::BAD_REQUEST,
             format::json(serde_json::json!({ field: token })),

@@ -13,6 +13,7 @@ use pnex_core::{FlowGraph, FlowNodeKind, SecretConsumerKind, SecretFieldInput};
 use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
+use super::binding::{self, Binding};
 use super::crypto::Keyring;
 use super::store::{self, StoreError, Writer};
 use crate::models::_entities::{notify_channels, secret_usages};
@@ -47,9 +48,28 @@ pub struct Plan {
     pub sendable: serde_json::Value,
 }
 
+/// R9 bindings a stored channel holds: its vault references, and its
+/// legacy plaintext fields (nil id), each with the channel's destination.
+pub fn held_bindings(kind: &str, config: &serde_json::Value) -> Vec<Binding> {
+    let dest = pnex_notify::secrets::destination(kind, config).unwrap_or_default();
+    let mut out: Vec<Binding> = pnex_notify::secrets::secret_refs(kind, config)
+        .into_iter()
+        .map(|(f, id)| (f, id, dest.clone()))
+        .collect();
+    out.extend(
+        pnex_notify::secrets::plaintext_secrets(kind, config)
+            .into_iter()
+            .map(|(f, _)| (f, Uuid::nil(), dest.clone())),
+    );
+    out
+}
+
 /// Reads the secret fields of `merged` (the incoming config, after the
 /// "null = unchanged" merge with `existing`) and resolves the plaintext of
 /// each one for validation. A picked secret of another org is `NotFound`.
+/// `held` = bindings of the stored channel for a writer without
+/// `can_manage_secrets` (empty for a new channel), `None` for owner/admin:
+/// every reference (or carried plaintext) must match one of them (R9).
 pub async fn plan<C: ConnectionTrait>(
     db: &C,
     ring: &Keyring,
@@ -57,6 +77,7 @@ pub async fn plan<C: ConnectionTrait>(
     kind: &str,
     existing: Option<&serde_json::Value>,
     merged: &serde_json::Value,
+    held: Option<&[Binding]>,
 ) -> Result<Plan, StoreError> {
     let mut base = merged.clone();
     let mut slots = Vec::new();
@@ -91,6 +112,15 @@ pub async fn plan<C: ConnectionTrait>(
                 }
             },
         };
+        let bound = match &slot {
+            Slot::Ref(id) => Some(*id),
+            Slot::Legacy(_) => Some(Uuid::nil()),
+            Slot::Typed(_) => None,
+        };
+        if let Some(id) = bound {
+            let dest = pnex_notify::secrets::destination(kind, merged).unwrap_or_default();
+            binding::check(held, &[(field.clone(), id, dest)])?;
+        }
         let plain = match &slot {
             Slot::Ref(id) => store::reveal(db, ring, Some(org_id), *id).await?,
             Slot::Typed(v) | Slot::Legacy(v) => v.clone(),

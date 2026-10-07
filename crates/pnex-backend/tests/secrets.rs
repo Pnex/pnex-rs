@@ -962,6 +962,215 @@ async fn http_fetch_secrets_never_stay_in_the_graph() {
     unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
 }
 
+// ───────────────────── R9 / SEC-W2: secret bound to its destination ─────────────────────
+
+fn fetch_graph_to(url: &str, secret: &str) -> Value {
+    json!({ "nodes": [{
+        "id": "h1", "kind": "http_fetch",
+        "config": { "url": url, "auth": {"mode": "bearer", "token": {"secret_id": secret}} }
+    }] })
+}
+
+#[tokio::test]
+#[serial]
+async fn members_keep_secrets_but_never_rewire_them() {
+    with_app(|server, _ctx, alice, bob| async move {
+        let (_, org) = provision(&server, &alice).await;
+        provision(&server, &bob).await;
+        let (s, body) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/orgs/{org}/members"),
+            &alice,
+            org,
+            Some(json!({ "email": "sec-bob@example.com", "role": "member" })),
+        )
+        .await;
+        assert!(s == 200 || s == 201, "{s} {body}");
+        let (_, created) = call(
+            &server,
+            "POST",
+            "/api/v1/secrets",
+            &alice,
+            org,
+            Some(json!({ "name": "api", "value": "tok-R9" })),
+        )
+        .await;
+        let secret = created["id"].as_str().unwrap().to_string();
+        let locked = |s: u16, body: &Value| {
+            assert_eq!(
+                (s, body["error"].as_str()),
+                (403, Some("secret-destination-locked")),
+                "{body}"
+            )
+        };
+
+        // The owner wires the secret toward api.example.dev.
+        let (s, flow) = call(
+            &server,
+            "POST",
+            "/api/v1/flows",
+            &alice,
+            org,
+            Some(json!({ "name": "r9", "graph": fetch_graph_to("https://api.example.dev/a", &secret) })),
+        )
+        .await;
+        assert_eq!(s, 201, "{flow}");
+        let flow_id = flow["id"].as_i64().unwrap();
+        let patch = |token: &str, version: i64, url: &str| {
+            let body = json!({
+                "expected_version_number": version,
+                "graph": fetch_graph_to(url, &secret),
+            });
+            let path = format!("/api/v1/flows/{flow_id}");
+            let token = token.to_string();
+            let server = &server;
+            async move { call(server, "PATCH", &path, &token, org, Some(body)).await }
+        };
+
+        // (1) Member keeps it toward the same origin (path change only).
+        let (s, body) = patch(&bob, 1, "https://api.example.dev/b?x=1").await;
+        assert_eq!(s, 200, "{body}");
+        // (2) Member points it to another host, port or scheme: refused.
+        for url in [
+            "https://collector.attacker.example/a",
+            "https://api.example.dev:8443/a",
+            "http://api.example.dev/a",
+        ] {
+            let (s, body) = patch(&bob, 2, url).await;
+            locked(s, &body);
+        }
+        // (3) Member reuses it toward the same destination in ANOTHER flow:
+        // refused too, a member never wires a secret.
+        let (s, body) = call(
+            &server,
+            "POST",
+            "/api/v1/flows",
+            &bob,
+            org,
+            Some(json!({ "name": "copy", "graph": fetch_graph_to("https://api.example.dev/a", &secret) })),
+        )
+        .await;
+        locked(s, &body);
+        // (4) Owner moves it: allowed, and the new binding holds for the member.
+        let (s, body) = patch(&alice, 2, "https://api2.example.dev/a").await;
+        assert_eq!(s, 200, "{body}");
+        let (s, body) = patch(&bob, 3, "https://api2.example.dev/c").await;
+        assert_eq!(s, 200, "{body}");
+
+        // (5) Webhook channel wired by the owner; member renames it, but
+        // cannot change its URL.
+        let (s, channel) = call(
+            &server,
+            "POST",
+            "/api/v1/notify/channels",
+            &alice,
+            org,
+            Some(json!({
+                "kind": "webhook", "name": "hook", "enabled": true,
+                "config": {
+                    "url": "https://hooks.example.dev/in",
+                    "secret_header": "X-Token",
+                    "secret_value": { "secret_id": secret }
+                }
+            })),
+        )
+        .await;
+        assert_eq!(s, 201, "{channel}");
+        let channel_id = channel["id"].as_str().unwrap().to_string();
+        let put = |name: &str, url: &str| {
+            json!({
+                "kind": "webhook", "name": name, "enabled": true,
+                "config": { "url": url, "secret_header": "X-Token", "secret_value": null }
+            })
+        };
+        let (s, body) = call(
+            &server,
+            "PUT",
+            &format!("/api/v1/notify/channels/{channel_id}"),
+            &bob,
+            org,
+            Some(put("hook-renamed", "https://hooks.example.dev/in")),
+        )
+        .await;
+        assert_eq!(s, 200, "{body}");
+        let (s, body) = call(
+            &server,
+            "PUT",
+            &format!("/api/v1/notify/channels/{channel_id}"),
+            &bob,
+            org,
+            Some(put("hook-renamed", "https://collector.attacker.example/in")),
+        )
+        .await;
+        locked(s, &body);
+
+        // (6) Test drafts: the stored channel pointed elsewhere, or a
+        // picked secret on a new draft, are refused before any send.
+        let mut draft = put("hook-renamed", "https://collector.attacker.example/in");
+        draft["channel_id"] = json!(channel_id);
+        let (s, body) = call(
+            &server,
+            "POST",
+            "/api/v1/notify/channels/test-draft",
+            &bob,
+            org,
+            Some(draft),
+        )
+        .await;
+        locked(s, &body);
+        let (s, body) = call(
+            &server,
+            "POST",
+            "/api/v1/notify/channels/test-draft",
+            &bob,
+            org,
+            Some(json!({
+                "kind": "webhook", "name": "new",
+                "config": {
+                    "url": "https://collector.attacker.example/in",
+                    "secret_header": "X-Token",
+                    "secret_value": { "secret_id": secret }
+                }
+            })),
+        )
+        .await;
+        locked(s, &body);
+
+        // (7) WiFi: the member keeps the password, never swaps it nor
+        // renames the SSID it is sent to.
+        let (s, wifi) = call(
+            &server,
+            "POST",
+            "/api/v1/edge/wifi-credentials",
+            &alice,
+            org,
+            Some(json!({ "ssid": "Home", "password": { "value": "wifi-R9" } })),
+        )
+        .await;
+        assert!(s == 200 || s == 201, "{s} {wifi}");
+        let wifi_path = format!("/api/v1/edge/wifi-credentials/{}", wifi["id"]);
+        for body in [
+            json!({ "ssid": "Home", "password": { "secret_id": secret } }),
+            json!({ "ssid": "Attacker-AP" }),
+        ] {
+            let (s, out) = call(&server, "PUT", &wifi_path, &bob, org, Some(body)).await;
+            locked(s, &out);
+        }
+        let (s, out) = call(
+            &server,
+            "PUT",
+            &wifi_path,
+            &bob,
+            org,
+            Some(json!({ "ssid": "Home" })),
+        )
+        .await;
+        assert_eq!(s, 200, "{out}");
+    })
+    .await;
+}
+
 // ───────────────────── Lot S6: WiFi credentials ─────────────────────
 
 #[tokio::test]
@@ -1075,7 +1284,7 @@ async fn wifi_password_lives_in_the_vault() {
 
 #[tokio::test]
 #[serial]
-async fn members_pick_secrets_but_never_administer() {
+async fn members_never_wire_secrets_nor_administer() {
     with_app(|server, _ctx, alice, bob| async move {
         let (_, org) = provision(&server, &alice).await;
         let (bob_id, _) = provision(&server, &bob).await;
@@ -1155,20 +1364,53 @@ async fn members_pick_secrets_but_never_administer() {
             "{body}"
         );
 
-        // ...only pick an existing secret, whose value never shows.
-        let (s, channel) = call(
+        // ...nor pick one (R9, SEC-W2: only owner/admin wire secrets)...
+        let picked = json!({
+            "kind": "telegram", "name": "picked", "enabled": true,
+            "config": { "bot_token": { "secret_id": secret_id }, "chat_id": "@x" }
+        });
+        let (s, body) = call(
             &server,
             "POST",
             "/api/v1/notify/channels",
             &bob,
             org,
-            Some(json!({
-                "kind": "telegram", "name": "picked", "enabled": true,
-                "config": { "bot_token": { "secret_id": secret_id }, "chat_id": "@x" }
-            })),
+            Some(picked.clone()),
+        )
+        .await;
+        assert_eq!(
+            (s, body["error"].as_str()),
+            (403, Some("secret-destination-locked")),
+            "{body}"
+        );
+
+        // ...but edits a channel the owner wired, whose value never shows.
+        let (s, channel) = call(
+            &server,
+            "POST",
+            "/api/v1/notify/channels",
+            &alice,
+            org,
+            Some(picked),
         )
         .await;
         assert_eq!(s, 201, "{channel}");
+        let (s, channel) = call(
+            &server,
+            "PUT",
+            &format!(
+                "/api/v1/notify/channels/{}",
+                channel["id"].as_str().unwrap()
+            ),
+            &bob,
+            org,
+            Some(json!({
+                "kind": "telegram", "name": "picked", "enabled": true,
+                "config": { "bot_token": null, "chat_id": "@y" }
+            })),
+        )
+        .await;
+        assert_eq!(s, 200, "{channel}");
         assert_eq!(channel["secrets"]["bot_token"]["name"], "tg");
         assert!(!channel.to_string().contains("123:SHARED"));
 

@@ -115,6 +115,12 @@ pub(super) async fn test_draft(
         Ok(ring) => ring,
         Err(e) => return vault_error(e),
     };
+    // R9: a member tests exactly what the stored channel holds (a draft
+    // pointing a held secret elsewhere is refused like its save would be).
+    let held = existing
+        .as_ref()
+        .map(|m| secrets::notify::held_bindings(&m.kind, &m.config))
+        .unwrap_or_default();
     let plan = match secrets::notify::plan(
         &ctx.db,
         &ring,
@@ -122,6 +128,7 @@ pub(super) async fn test_draft(
         &params.kind,
         existing.as_ref().map(|m| &m.config),
         &merged,
+        (!org.can_manage_secrets()).then_some(held.as_slice()),
     )
     .await
     {

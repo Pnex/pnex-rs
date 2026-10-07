@@ -103,13 +103,17 @@ const TAB_ON: &str = "px-3 py-1 text-xs rounded-md bg-white shadow text-gray-900
 pub fn SecretField(
     label: String,
     draft: Signal<SecretDraft>,
-    /// Owner/admin: may type a value (D117). Others may only pick.
+    /// Owner/admin: may type or pick (D117). Others only see the state:
+    /// binding a secret to a field and its destination is owner/admin
+    /// only (R9, SEC-W2).
     can_manage: bool,
     /// Viewer: shows the state, no action.
     #[props(default)]
     read_only: bool,
 ) -> Element {
     let mut draft = draft;
+    let managers_only = !read_only && !can_manage;
+    let read_only = read_only || !can_manage;
     // A reference loaded from a graph has no name yet: look it up (re-run
     // on draft changes, network only while a name is missing).
     let lookup = use_resource(move || async move {
@@ -139,7 +143,7 @@ pub fn SecretField(
         }
     });
     let options = use_resource(move || async move {
-        if mode() != Mode::Pick {
+        if read_only || mode() != Mode::Pick {
             return Vec::new();
         }
         api::secrets::list(None, 100, 0)
@@ -195,6 +199,8 @@ pub fn SecretField(
                         }
                     }
                 }
+            } else if managers_only {
+                span { class: "text-xs text-gray-400", {t!("secret-field-managers-only")} }
             } else if read_only {
                 span { class: "text-xs text-gray-400", {t!("secret-field-unset")} }
             } else {
@@ -216,7 +222,7 @@ pub fn SecretField(
                 }
                 if mode() == Mode::Type {
                     input {
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono",
+                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono bg-white",
                         r#type: "password",
                         autocomplete: "new-password",
                         placeholder: t!("secret-field-type-placeholder"),

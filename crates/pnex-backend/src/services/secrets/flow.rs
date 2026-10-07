@@ -12,6 +12,7 @@ use pnex_core::{FlowGraph, FlowNodeKind, SecretConsumerKind, SecretFieldInput, S
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
+use super::binding::{self, Binding};
 use super::crypto::Keyring;
 use super::store::{self, StoreError, Writer};
 use crate::models::_entities::{flow_versions, flows};
@@ -62,9 +63,64 @@ pub fn graph_refs(graph: &FlowGraph) -> Vec<(String, Uuid)> {
     out
 }
 
+/// R9 bindings of a graph: `(node_id/field, secret id, destination)` of
+/// every vault reference.
+pub fn graph_bindings(graph: &FlowGraph) -> Vec<Binding> {
+    let mut out = Vec::new();
+    for node in &graph.nodes {
+        if let FlowNodeKind::HttpFetch { config } = &node.kind {
+            for (field, slot) in config.secret_slots() {
+                if let Some(id) = slot.secret_id() {
+                    out.push((
+                        format!("{}/{field}", node.id),
+                        id,
+                        config.secret_destination(field),
+                    ));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Bindings `flow_id` already holds: its latest and deployed versions
+/// (nothing for a flow being created).
+async fn held_bindings<C: ConnectionTrait>(
+    db: &C,
+    flow_id: i64,
+) -> Result<Vec<Binding>, StoreError> {
+    let mut graphs = Vec::new();
+    if let Some(v) = flow_versions::Entity::find()
+        .filter(flow_versions::Column::FlowId.eq(flow_id))
+        .order_by_desc(flow_versions::Column::VersionNumber)
+        .one(db)
+        .await?
+    {
+        graphs.push(v.graph);
+    }
+    let deployed = flows::Entity::find_by_id(flow_id)
+        .one(db)
+        .await?
+        .and_then(|f| f.deployed_version_id);
+    if let Some(id) = deployed {
+        if let Some(v) = flow_versions::Entity::find_by_id(id).one(db).await? {
+            graphs.push(v.graph);
+        }
+    }
+    Ok(graphs
+        .into_iter()
+        .filter_map(|g| serde_json::from_value::<FlowGraph>(g).ok())
+        .flat_map(|g| graph_bindings(&g))
+        .collect())
+}
+
 /// Rewrites the secret slots of `graph` into vault references: typed
 /// values go to their dedicated secret (owner/admin with a keyring only),
-/// picked references must belong to `org_id`.
+/// picked references must belong to `org_id`. Without
+/// `can_write_secrets`, every reference must already be held by this flow
+/// on the same field toward the same destination (R9, [`binding`]).
+///
+/// [`binding`]: super::binding
 pub async fn store_graph_secrets<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
@@ -72,6 +128,11 @@ pub async fn store_graph_secrets<C: ConnectionTrait>(
     graph: &mut FlowGraph,
     by: &GraphWriter<'_>,
 ) -> Result<(), StoreError> {
+    let wanted = graph_bindings(graph);
+    if !by.can_write_secrets && !wanted.is_empty() {
+        let held = held_bindings(db, flow_id).await?;
+        binding::check(Some(&held), &wanted)?;
+    }
     let writer = Writer {
         org_id: Some(org_id),
         user_id: by.user_id,
