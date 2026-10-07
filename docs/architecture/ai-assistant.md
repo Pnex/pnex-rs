@@ -10,7 +10,12 @@
 > (`llm_providers`, clé dans le coffre). A3 et A5 sont caducs ; §2, §3, §6,
 > §7 décrivent l'état actuel.
 >
-> **2026-10-04 — v2 SPÉCIFIÉE (D142–D145, §9), implémentation en cours** :
+> **2026-10-07 — finalisation (§10)** : erreurs fournisseur et refus
+> d'outils en codes machine (i18n), trace d'outils localisée, plus d'erreur
+> base brute dans les sorties d'outils, garde « flow déployé » sous le
+> verrou d'écriture. §1–§8 réécrits sur l'état réel (v1 + D116/D119 + v2).
+>
+> **2026-10-04 — v2 SPÉCIFIÉE (D142–D145, §9)** :
 > étapes 1–5 du §9.5 livrées (doc des nœuds générée, garde
 > `ai-flow-running`, conversations D145, fiches + diagnostics, outils
 > dashboards D144, rétention réglable) — **v2 complète**. Base de
@@ -30,25 +35,28 @@
 
 ## 1. Architecture
 
-```
-UI (AssistantPanel : bouton flottant + drawer, toutes pages)
-   │ POST /api/v1/ai/chat {messages, language, page}
-   ▼
-controllers/ai.rs (OrgContext) ──► services/ai/
-   ├─ config.rs   : kill-switch + résolution env > org > désactivé
-   ├─ provider.rs : Anthropic natif | OpenAI-compatible (reqwest, hand-rolled)
-   ├─ agent.rs    : boucle bornée (≤6 appels, max_tokens 4096, timeout 90 s)
-   ├─ tools.rs    : REGISTRE FERMÉ de 10 outils — unique chemin d'exécution
-   └─ context.rs  : prompt système + bundle org (devices, pins, séries O2, flows)
+```mermaid
+flowchart TD
+  UI["UI : AssistantPanel (bouton flottant + drawer, toutes pages)"]
+  UI -->|"POST /api/v1/ai/conversations/{id}/messages {content, page, language}"| C["controllers/ai.rs (OrgContext)"]
+  C --> S["services/ai/"]
+  S --> CFG["config.rs + providers.rs : kill-switch, fournisseur par défaut de l'org (D119)"]
+  S --> P["provider.rs : Anthropic natif | OpenAI-compatible (reqwest maison)"]
+  S --> A["agent.rs : boucle bornée (≤ 6 appels, max_tokens 4096, 90 s)"]
+  S --> T["tools.rs (+ dashboard_tools, more_tools, diagnose) : REGISTRE FERMÉ de 35 outils"]
+  S --> K["knowledge.rs : fiches assistant-kb embarquées, BM25"]
+  S --> X["context.rs : prompt système + bundle org + fiche de la page"]
+  S --> V["conversations.rs : historique en base, rétention, audit O2 sans contenu"]
 ```
 
 **Garde-fous** (invariant structurel, testé) :
 - la surface exécutable par le LLM est **exactement**
-  `services/ai/tools::execute` — un `match` fermé sur 10 outils ;
+  `services/ai/tools::execute` — un `match` fermé sur le registre (35
+  outils, liste au §9 et dans la fiche `assistant`) ;
   pas de deploy, pas de suppression, pas de commande device, aucun outil
   générique (http/sql) ;
 - les outils d'écriture re-vérifient `can_write` (chat ouvert aux viewers,
-  écriture owner/admin) ;
+  écriture owner/admin/member ; refus `ai-write-forbidden`) ;
 - `create_flow`/`update_flow` passent `pnex_core::validate_graph` avant
   persistance ; `validate_calc_expression` permet l'auto-correction ;
 - le chemin `flow_supervisor` / `POST /flows/{id}/deploy` n'est référencé
@@ -57,49 +65,64 @@ controllers/ai.rs (OrgContext) ──► services/ai/
 
 ## 2. Fournisseurs LLM (D116, 2026-10-01)
 
-Table `llm_providers` (migration `m20261001_000048`) : `org_id` (NULL =
-plateforme), `name` (unique par propriétaire), `kind` (`anthropic` |
+> **D119 (2026-10-01)** : plus de fournisseur plateforme — les passages
+> « plateforme » ci-dessous sont caducs ; résolution = défaut de l'org,
+> sinon non configuré. Gestion à un seul endroit : détail de l'org.
+
+Table `llm_providers` (migration de base D120) : `org_id` (toujours
+renseigné depuis D119), `name` (unique par org), `kind` (`anthropic` |
 `openai_compat`), `base_url` (requise pour openai_compat, racine de
 version `…/v1`, sans slash final), `model`, `secret_id` (clé API = référence
 au coffre, secret dédié `llm/<nom>/api_key`), `is_default` (un seul par
 propriétaire, index partiels).
 
 Résolution (`services/ai/providers.rs::effective`) : fournisseur par
-défaut de l'org, sinon fournisseur par défaut de la plateforme (géré par
-l'admin plateforme dans /system), sinon **non configuré** (le drawer
-l'indique). La clé est déchiffrée en mémoire à chaque appel. Le défaut
-plateforme est **visible et utilisable par toutes les orgs**, sa clé leur
-reste illisible (la liste de l'org le montre sans référence de clé).
+défaut de l'org, sinon **non configuré** (le drawer l'indique, code
+`ai-not-configured`). La clé est déchiffrée en mémoire à chaque appel.
 
 Plus aucune configuration LLM en variable d'environnement : seul le
 kill-switch `PNEX_AI_ENABLED=false` subsiste (chat 403 + UI masquée, sans
-requête DB). Reprise au boot : chaque ligne `ai_connectors` devient un
-fournisseur de l'org (par défaut si l'org n'en a pas), sa clé passe au
-coffre, la ligne est supprimée ; la table sera supprimée par une migration
-ultérieure.
+requête DB). L'ancienne table `ai_connectors` et sa reprise au boot ont
+disparu avec la migration de base (D120).
 
 ## 3. API
 
 | Endpoint | Accès | Effet |
 |---|---|---|
-| `GET /api/v1/ai/status` | membre | `{enabled, configured, source (org\|platform), provider_name, provider, model}` |
-| `GET /api/v1/ai/providers` | membre | fournisseurs de l'org + défaut plateforme (`platform: true`, sans référence de clé) |
+| `GET /api/v1/ai/status` | membre | `{enabled, configured, provider_name, provider, model}` |
+| `GET /api/v1/ai/providers` | membre | fournisseurs de l'org (sans référence de clé) |
 | `POST /api/v1/ai/providers`, `PUT`/`DELETE /{id}` | owner/admin | clé : `{"value"}` (secret dédié) ou `{"secret_id"}` (secret de l'org) ; `PUT` sans `api_key` = conserver ; 409 `llm-provider-name-taken` |
-| `POST /api/v1/ai/providers/{id}/test` | owner/admin | ping one-shot, `{ok, latency_ms, error}` |
-| `/api/v1/system/ai/providers[/{id}[/test]]` | admin plateforme | mêmes opérations sur les fournisseurs plateforme |
-| `POST /api/v1/ai/chat` | membre | boucle d'agent ; `{answer, tool_trace}` (trace avec `flow_id` pour le deep-link éditeur) |
+| `POST /api/v1/ai/providers/{id}/test` | owner/admin | ping one-shot, `{ok, latency_ms, error, code, args}` (échec codé comme les erreurs du chat) |
+| `/api/v1/ai/conversations*` | membre | conversations et tour d'agent (D145, tableau du §9.4) |
+| `GET/PUT /api/v1/ai/retention`, `PUT …/retention/default` | membre / owner-admin / admin plateforme | rétention des conversations (§9.5) |
 
-Chat **sync** en v1 (boucle multi-tours : SSE n'apporte que le texte final ;
-client front non-streaming ; budget borné). SSE différé en v2.
+`POST /api/v1/ai/chat` et `/api/v1/system/ai/providers` sont **supprimés**
+(D145, D119). Chat **sync** (boucle multi-tours, réponse finale non
+streamée, budget borné) ; SSE non prévu.
+
+**Erreurs du fournisseur** (`services/ai/error.rs`) : code machine +
+description anglaise canonique, rendues `err-<code>` par l'UI —
+`ai-disabled` 403, `ai-not-configured` 400, `ai-auth-rejected` 502,
+`ai-rate-limited` 429, `ai-upstream` 502 (`args.status`), `ai-timeout` 502,
+`ai-network` 502 (`args.detail`, diagnostic verbatim), `ai-bad-response`
+502.
 
 ## 4. Outils (registre fermé)
 
-`list_devices` · `get_device_pins` · `list_flows` · `get_flow` ·
+Socle v1 : `list_devices` · `get_device_pins` · `list_flows` · `get_flow` ·
 `query_telemetry` (réutilise `visualization::series_points`, anti-injection
-promwrap, `available:false` dégradé) · `describe_node_types` (statique,
-cite les 8 variantes `FlowNodeKind` + pipeline canonique) ·
+promwrap, `available:false` dégradé) · `list_notifications` ·
+`describe_node_types` (généré depuis `NODE_DOCS`, §9.5) ·
 `validate_flow_graph` · `validate_calc_expression` · `create_flow` ·
-`update_flow` (drafts uniquement, note « par l'assistant IA »).
+`update_flow` (flow arrêté uniquement, note « changed by the AI assistant »).
+Extensions v2 (connaissance, diagnostics, dashboards, templates,
+fonctions, lectures annotations/visites/POI/contrôles/mémoire) : §9.5.
+
+**Trace** : chaque appel réussi porte une clé `ai-trace-*` + `args`
+(chaînes) que l'UI rend dans la langue de l'utilisateur, le résumé
+anglais restant le repli et ce que l'historique rejoue au modèle ; un refus
+porte `code` + `args` (`err-<code>`). Garde : toute clé émise existe dans
+les deux `.ftl`, chaque outil du registre a son résumé.
 
 Écriture = `services::flow::{create_flow, append_version}` — point
 d'écriture **unique** partagé avec `controllers/flows.rs` (extraction de la
@@ -108,10 +131,10 @@ tranche refactor ; comportement HTTP identique, tests existants verts).
 ## 5. Prompt système
 
 Reconstruit à chaque tour (`context.rs`) : rôle + garde-fous explicites
-(« ne promets jamais deploy/suppression/commandes »), règles moteur
-(`device_payload_key`, `etl_metric_name`, pipeline `[inject]→[device]→[calc]→[metric]`),
-bundle org vivant (devices ≤50 + pins, séries O2 ≤30, flows ≤20), contexte
-de page, langue (fr défaut, en).
+(« ne promets jamais deploy/suppression/commandes »), règles de graphe
+générées (`FLOW_AUTHORING_RULES`, §9.5), bundle org vivant (devices ≤50 +
+pins, séries O2 ≤30, flows ≤20), fiche de la page courante, langue
+(celle du dernier message ; à défaut celle de l'UI).
 
 ## 6. UI (Dioxus)
 
@@ -119,11 +142,13 @@ de page, langue (fr défaut, en).
   `enabled && configured`) + drawer (pattern `DebugDrawer`) : bulles,
   trace d'outils repliable, carte « Ouvrir dans l'éditeur » (deep-link via
   `state::flows::OPEN_FLOW`).
-- `components/llm_providers.rs` — liste + formulaire en ligne, monté dans
-  `OrgDetail` (fournisseurs de l'org, défaut plateforme en lecture seule)
-  et dans /system (fournisseurs plateforme). Clé = `SecretField` (saisie
-  seule côté plateforme) ; boutons Tester / Modifier / Supprimer.
-- i18n : clés `ai-*` dans les deux `.ftl` (test de parité).
+- `components/llm_providers.rs` — liste + formulaire en ligne, monté
+  **uniquement** dans `OrgDetail` (D119). Clé = `SecretField` ; boutons
+  Tester / Modifier / Supprimer (échec du test localisé par son code).
+- `components/ai_retention.rs` — carte de rétention (/system pour l'org,
+  /admin/status pour la plateforme).
+- i18n : clés `ai-*`, `ai-trace-*`, `err-ai-*`, `err-llm-*` dans les deux
+  `.ftl` (test de parité).
 
 ## 7. Variables d'environnement
 
@@ -132,8 +157,8 @@ de page, langue (fr défaut, en).
 | `PNEX_AI_ENABLED` | kill-switch global | `true` |
 
 Les anciennes `PNEX_AI_PROVIDER`, `PNEX_AI_BASE_URL`, `PNEX_AI_API_KEY` et
-`PNEX_AI_MODEL` sont **retirées sans import** (D116) : un déploiement qui
-les posait doit créer le fournisseur plateforme dans /system.
+`PNEX_AI_MODEL` sont **retirées sans import** (D116) : chaque org crée son
+fournisseur dans le détail de l'organisation (D119).
 
 ## 8. Tests
 
@@ -143,11 +168,13 @@ les posait doit créer le fournisseur plateforme dans /system.
   `execute` refuse les noms hors registre.
 - **Intégration** (`tests/ai.rs`, mock LLM HTTP local) : kill-switch 403
   sans requête LLM ; CRUD fournisseurs (clé au coffre, défaut unique,
-  validations, 409 nom) ; viewer 403 et /system réservé ; défaut org >
-  défaut plateforme (le ping va au mock) ; tour complet → **flow créé draft,
+  validations, 409 nom) ; viewer 403 ; tour complet → **flow créé draft,
   0 deploy, tool_result dans le 2e appel** ; outil interdit → ok:false ;
-  401 → 502 actionnable ; sans fournisseur → non configuré, chat 400 ; borne d'itérations.
-  Reprise `ai_connectors` → `llm_providers` : `tests/secrets.rs`.
+  401 → 502 `ai-auth-rejected` ; sans fournisseur → 400
+  `ai-not-configured` ; borne d'itérations (+ `summary_key` de la trace) ;
+  viewer → refus `ai-write-forbidden` ; deploy entre la lecture et
+  l'écriture → `FlowWriteError::Deployed` ; conversations, dashboards,
+  rétention, templates (voir §9.5).
 
 ## 9. v2 — spécification (2026-10-04, D142–D145, implémentation en cours)
 
@@ -391,8 +418,46 @@ org → 404 ; viewer peut converser mais `update_flow`/`create_dashboard`
 |---|---|---|
 | 1. Doc des nœuds générée | **livrée** | `pnex_core::flow::node_docs` (`NODE_DOCS`, `FLOW_AUTHORING_RULES`, `FLOW_EXAMPLE`) ; `describe_node_types {kinds?}` la sérialise ; règles du prompt système générées depuis la même table. Garde `every_kind_is_documented` : les kinds acceptés par le désérialiseur de `FlowNodeKind` (scan de `graph.rs`) == kinds documentés. 7 kinds absents ajoutés (cool_prop, reg_tt_heat/cool, reg_pid, pnex_function, json_split/merge) ; l'exemple au kind `device` supprimé est remplacé par un exemple validé par test. Recette « nouveau nœud » : 9ᵉ point = une entrée `NODE_DOCS` |
 | 2. D143 | **livrée** | `update_flow` refuse `status = deployed` → `ai-flow-running` (`args.flow`), lu en base au moment de l'outil ; trace d'outil porte `code`/`args`, résolus côté UI en `err-<code>` (repli verbatim). **Correctif au passage** : `update_flow` relisait la dernière version côté serveur et l'utilisait comme version attendue → une sauvegarde humaine entre `get_flow` et `update_flow` était écrasée sans conflit ; `expected_version` (= `latest_version_number` de `get_flow`) est désormais obligatoire. Test : `tests/ai.rs::update_flow_only_on_a_stopped_flow` |
-| 3. D145 | **livrée** | Migration `m20261004_000004_ai_conversations` (PG + SQLite, parité verte) ; `services/ai/conversations.rs` ; `POST /api/v1/ai/chat` **supprimé**, remplacé par l'API du tableau ci-dessus (lecture/effacement/export permis kill-switch coupé : on peut toujours lire et effacer ce qui est stocké sur soi). Historique reconstruit serveur : 24 derniers messages en texte, les outils d'un tour ancien rejoués sous forme de résumé `summarize` (aucun rejeu d'appel d'outil, neutre vis-à-vis du fournisseur). Bail « un tour à la fois » = colonne `busy_until` posée par UPDATE conditionnel (atomique, multi-réplicas, 300 s) → 409 `ai-conversation-busy`. Trace stockée bornée (16 entrées, arguments ≤ 2 000 car., résumé ≤ 500). Rétention : clé `system_settings` `ai_conversation_retention_days` (défaut 180 j), purge horaire mono-pod (`singleton`). Cascades : FK utilisateur et org ; départ d'une org = effacement dans la même transaction que le retrait du membre. Audit O2 `ai_audit` sans contenu (test). UI : liste dans le drawer (nouvelle, reprendre, renommer, supprimer, tout effacer, exporter) + mentions fournisseur et confidentialité. **Reste** : surcharge de rétention par l'org (à la baisse) et réglage UI de la valeur plateforme (aujourd'hui : clé `system_settings`) |
+| 3. D145 | **livrée** | Migration `m20261004_000004_ai_conversations` (PG + SQLite, parité verte) ; `services/ai/conversations.rs` ; `POST /api/v1/ai/chat` **supprimé**, remplacé par l'API du tableau ci-dessus (lecture/effacement/export permis kill-switch coupé : on peut toujours lire et effacer ce qui est stocké sur soi). Historique reconstruit serveur : 24 derniers messages en texte, les outils d'un tour ancien rejoués sous forme de résumé `summarize` (aucun rejeu d'appel d'outil, neutre vis-à-vis du fournisseur). Bail « un tour à la fois » = colonne `busy_until` posée par UPDATE conditionnel (atomique, multi-réplicas, 300 s) → 409 `ai-conversation-busy`. Trace stockée bornée (16 entrées, arguments ≤ 2 000 car., résumé ≤ 500). Rétention : clé `system_settings` `ai_conversation_retention_days` (défaut 180 j), purge horaire mono-pod (`singleton`). Cascades : FK utilisateur et org ; départ d'une org = effacement dans la même transaction que le retrait du membre. Audit O2 `ai_audit` sans contenu (test). UI : liste dans le drawer (nouvelle, reprendre, renommer, supprimer, tout effacer, exporter) + mentions fournisseur et confidentialité. ~~Reste : surcharge de rétention par l'org et réglage UI plateforme~~ → livrés (ligne « Rétention ») |
 | 4. Fiches + diagnostics | **livrée** | 39 fiches `crates/pnex-backend/assistant-kb/*.md` (25 `feature` — une par route de premier niveau + `assistant`, `llm-providers`, `roles` —, 3 `howto`, 8 `troubleshooting`), embarquées par `include_dir` (déjà au workspace, MIT/Apache ; `build.rs` suit le dossier). `services/ai/knowledge.rs` : parseur front-matter, BM25 en mémoire (titre/tags ×3), `card_for_page`. Outils `search_knowledge` (≤ 5), `read_knowledge`. La fiche de la page courante est injectée (le panneau envoie la route). `services/ai/diagnose.rs` : `diagnose_device` (présence D108, pins + intervalle + dernière valeur, firmware, dernier OTA, indices) et `diagnose_flow` (version sauvegardée vs déployée, état moteur + `last_error`, dernier message des nœuds debug/display, indices). Gardes bloquantes : fiche bien formée (id = fichier), pages ∈ routes du routeur (scan de `app.rs`), nœuds ∈ `NODE_DOCS`, codes ∈ `err_codes::ALL`, chaque route couverte par une fiche `feature`, chaque outil du registre cité par une fiche, aucune CLI/API dans un corps ; test de pertinence sur des questions types |
 | 5. D144 | **livrée** | `services/ai/dashboard_tools.rs` : `list_dashboards`, `get_dashboard` (+ `coupled_flows` par widget), `validate_dashboard_layout` (violations + conflits de couplage à blanc), `create_dashboard`, `update_dashboard` (`expected_version`, live). Écriture par `services::dashboards` (même service que l'UI). Widget couplé = un de ses contrôles est cité par un `control-source` d'une version **déployée** : seuls position/taille (et sources d'affichage) peuvent changer, sinon `ai-flow-running` + flows. Un widget **ajouté** par l'assistant perd toute liaison fournie par le modèle (contrôle neuf provisionné) : il ne peut jamais s'accrocher à un contrôle existant. Pas de suppression. Test : `tests/ai.rs::coupled_dashboard_widget_is_frozen_while_its_flow_runs` |
 | Rétention | **livrée** | Migration `m20261004_000005_org_ai_retention` (`organizations.ai_retention_days`, NULL = plateforme). Effective = min(org, plateforme) ; la purge horaire applique la plateforme partout puis la valeur plus courte des orgs qui en ont une. `GET/PUT /api/v1/ai/retention` (lecture tout membre ; écriture owner/admin, refus `ai-retention-forbidden`, au-delà de la plateforme `ai-retention-above-platform` + `args.max`) ; `PUT /api/v1/ai/retention/default` (admin plateforme, 1–3650). UI : carte « Conversations de l'assistant » sur /system (org) et /admin/status (plateforme). Fiches `system`, `admin-status`, `assistant` mises à jour |
 | Extension (règle §9.3) | **livrée** (2026-10-04) | `services/ai/more_tools.rs`, 35 outils au total. **Templates de notification** : `get_`/`preview_` (rendu seul, jamais d'envoi)/`create_`/`update_notification_template` — écriture extraite du contrôleur dans `services/notify_templates.rs` (même chemin UI/assistant, tests notify inchangés verts) ; `update` exige `expected_updated_at` (édition en place, sinon conflit). Canaux **hors de portée** (identifiants ; leur test envoie un vrai message). **Fonctions JS/Starlark** : `list_`/`get_function` (code + flows déployés qui l'utilisent), `validate_function` (compilation seule), `test_function` (bac à sable du bouton Test), `create_`/`update_function` ; le contrôle de version optimiste est désormais **dans la transaction** de `services::functions::save_new_version` (avant : seulement dans le contrôleur, fenêtre de course) → l'UI en bénéficie. Un flow déployé garde la version épinglée. **Lecture seule** : `list_annotation_sets`, `list_tours` (jamais le jeton de partage, seulement « lien public oui/non »), `list_pois` (+ devices placés), `list_controls` (spec, dernière valeur commandée, flows déployés à l'écoute) et `read_memory` (clés, champs numériques, valeurs) — la lecture permise par §9.2, l'écriture restant interdite. Écriture annotations/tours écartée : une annotation peut porter des contrôles (même couplage que D144) et la géométrie sur image/360 se fait mieux à la main |
+
+## 10. Finalisation (2026-10-07)
+
+Relevés de l'audit de release 0.1.0-beta.1 (« à surveiller ») et dette
+i18n de l'assistant, fermés :
+
+- **Erreurs du fournisseur codées** : `AiError` porte un code machine
+  (`ai-disabled`, `ai-not-configured`, `ai-auth-rejected`,
+  `ai-rate-limited`, `ai-upstream`, `ai-timeout`, `ai-network`,
+  `ai-bad-response`) et une description anglaise ; avant, un message
+  français pré-rendu, affiché tel quel à un utilisateur anglophone. Le
+  test d'un fournisseur renvoie le même code (`llm-provider-no-key`,
+  `llm-provider-key-unreadable` pour les échecs avant appel).
+- **Trace d'outils localisée** : clé `ai-trace-*` + `args` (§4) ; avant,
+  des résumés mi-français mi-anglais affichés verbatim. Les traces
+  stockées avant ce changement (sans clé) restent affichées verbatim.
+- **Refus d'outil codés** : rôle viewer → `ai-write-forbidden` (garde
+  unique `tools::require_write`, partagée par tous les outils d'écriture).
+- **Plus d'erreur base brute dans une sortie d'outil** :
+  `tools::internal(contexte)` journalise le détail côté serveur et ne rend
+  au modèle (et à la trace) qu'un refus générique `ai-tool-internal` — une
+  `DbErr` peut porter du SQL ou des identifiants (R4, R16).
+- **« Flow déployé » vérifié sous le verrou d'écriture** :
+  `services::flow::append_version_if_stopped` relit le statut dans la
+  transaction, après le verrou de ligne du flow → un deploy intercalé entre
+  la lecture de l'outil et l'écriture est refusé (`ai-flow-running`).
+  Test : `tests/ai.rs::update_flow_only_on_a_stopped_flow`.
+- **Résiduel accepté — dashboards** : le couplage d'un widget dépend des
+  versions déployées d'**autres** flows ; aucun verrou commun ne sérialise
+  un deploy et une sauvegarde de dashboard. La fenêtre est de l'ordre de la
+  milliseconde (lecture du couplage puis écriture dans le même appel
+  d'outil, version du dashboard protégée par le 409), et le deploy reste
+  un geste humain sur un layout visible. Un verrou commun deploy/dashboard
+  n'est pas justifié à ce stade (security.md §7).
+- **Reste ouvert** : SEC-14 (filtrage des plages privées de l'URL d'un
+  fournisseur) attend le résolveur filtrant de SEC-W3, activable en SaaS
+  — un LLM local sur le LAN (Ollama) reste un usage central en
+  auto-hébergé.

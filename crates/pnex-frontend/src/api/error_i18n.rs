@@ -128,23 +128,40 @@ pub fn localize_violation(violation: &FlowViolation) -> String {
     resolve(&err_codes::fluent_key(&violation.code), Some(&args))
 }
 
+/// Localize a machine code carried outside an HTTP error (e.g. a provider
+/// test result): registered code → `err-<code>` with `args`, otherwise (or
+/// on a failed translation) the verbatim `fallback`. Render scope required.
+pub fn localize_code(code: &str, args: Option<&serde_json::Value>, fallback: &str) -> String {
+    if !err_codes::exists(code) {
+        return fallback.to_owned();
+    }
+    let fluent_args = json_to_args(args);
+    i18n()
+        .try_translate_with_args(&err_codes::fluent_key(code), fluent_args.as_ref())
+        .unwrap_or_else(|_| fallback.to_owned())
+}
+
 /// Localize an assistant tool trace line: a coded refusal resolves its
-/// `err-<code>` key with `args`, anything else (or a failed translation)
+/// `err-<code>` key with `args`, a successful call its `ai-trace-*`
+/// `summary_key` with `args`; anything else (or a failed translation)
 /// shows the verbatim summary. Render scope required.
 pub fn localize_tool_summary(
     code: Option<&str>,
+    summary_key: Option<&str>,
     args: Option<&serde_json::Value>,
     summary: &str,
 ) -> String {
-    match code {
-        Some(code) if err_codes::exists(code) => {
-            let fluent_args = json_to_args(args);
-            i18n()
-                .try_translate_with_args(&err_codes::fluent_key(code), fluent_args.as_ref())
-                .unwrap_or_else(|_| summary.to_owned())
-        }
-        _ => summary.to_owned(),
-    }
+    let key = match (code, summary_key) {
+        (Some(code), _) if err_codes::exists(code) => err_codes::fluent_key(code),
+        // Only the assistant's own namespace: a stored key never reaches
+        // an arbitrary fluent message.
+        (_, Some(key)) if key.starts_with("ai-trace-") => key.to_owned(),
+        _ => return summary.to_owned(),
+    };
+    let fluent_args = json_to_args(args);
+    i18n()
+        .try_translate_with_args(&key, fluent_args.as_ref())
+        .unwrap_or_else(|_| summary.to_owned())
 }
 
 /// Localize a full API-violations payload (`{"violations": […]}`) — the

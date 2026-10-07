@@ -692,7 +692,7 @@ async fn l_agent_ne_peut_pas_deployer() {
         let summary = body["tool_trace"][0]["summary"]
             .as_str()
             .unwrap_or_default();
-        assert!(summary.contains("outil inconnu"), "{summary}");
+        assert!(summary.contains("unknown tool"), "{summary}");
 
         // Le flow reste DRAFT (jamais déployé).
         let detail = server
@@ -784,6 +784,31 @@ async fn update_flow_only_on_a_stopped_flow() {
         let body = chat_send(&server, &env.alice, org, "edit it").await.json::<serde_json::Value>();
         assert_eq!(body["tool_trace"][0]["ok"], false, "{body}");
         assert_eq!(latest_version(&server).await, 2);
+
+        // Deploy landing after the tool read the row (stale "stopped"
+        // model): the write re-checks the status under its lock.
+        use sea_orm::EntityTrait;
+        let stale = pnex_backend::models::_entities::flows::Entity::find_by_id(flow_id)
+            .one(&ctx.db)
+            .await
+            .expect("db")
+            .expect("flow");
+        set_flow_status(&ctx, flow_id, "deployed").await;
+        let graph: pnex_core::FlowGraph = serde_json::from_value(graph_adc_metric()).expect("graph");
+        let writer = pnex_backend::services::secrets::flow::GraphWriter {
+            ring: None,
+            user_id: None,
+            can_write_secrets: false,
+        };
+        let res = pnex_backend::services::flow::append_version_if_stopped(
+            &ctx.db, &stale, 2, &graph, None, None, None, &writer,
+        )
+        .await;
+        assert!(
+            matches!(res, Err(pnex_backend::services::flow::FlowWriteError::Deployed)),
+            "deploy in between is refused"
+        );
+        assert_eq!(latest_version(&server).await, 2);
     })
     .await;
 }
@@ -804,9 +829,11 @@ async fn echec_auth_repond_actionnable() {
         let resp = chat_send(&server, &env.alice, org, "salut").await;
         assert_eq!(resp.status_code(), 502, "{}", resp.text());
         let text = resp.text();
-        assert!(
-            text.contains("ai_auth") || text.contains("Clé API refusée"),
-            "message actionnable attendu: {text}"
+        let body: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(
+            body["error"],
+            pnex_core::err_codes::AI_AUTH_REJECTED,
+            "machine code expected: {text}"
         );
     })
     .await;
@@ -828,6 +855,10 @@ async fn without_provider_the_assistant_is_not_configured() {
         assert_eq!(status["configured"], false, "{status}");
         let resp = chat_send(&server, &env.alice, org, "salut").await;
         assert_eq!(resp.status_code(), 400, "{}", resp.text());
+        assert_eq!(
+            resp.json::<serde_json::Value>()["error"],
+            pnex_core::err_codes::AI_NOT_CONFIGURED
+        );
         assert!(mock_requests().is_empty(), "no LLM call without a provider");
     })
     .await;
@@ -855,6 +886,12 @@ async fn borne_iterations_force_la_reponse_finale() {
         let body = resp.json::<serde_json::Value>();
         let trace = body["tool_trace"].as_array().expect("trace");
         assert_eq!(trace.len(), 7, "7 outils exécutés puis conclusion forcée");
+        // A successful call carries its fluent summary key + string args.
+        assert_eq!(
+            trace[0]["summary_key"], "ai-trace-expression-valid",
+            "{body}"
+        );
+        assert_eq!(trace[0]["summary"], "valid expression", "{body}");
         assert!(
             !body["answer"].as_str().unwrap_or_default().is_empty(),
             "une réponse textuelle finale est forcée: {body}"
@@ -1013,6 +1050,11 @@ async fn viewer_converses_but_cannot_write() {
         assert_eq!(resp.status_code(), 200, "{}", resp.text());
         let body = resp.json::<serde_json::Value>();
         assert_eq!(body["tool_trace"][0]["ok"], false, "{body}");
+        assert_eq!(
+            body["tool_trace"][0]["code"],
+            pnex_core::err_codes::AI_WRITE_FORBIDDEN,
+            "coded refusal, rendered by the UI: {body}"
+        );
         let flows = send_json(&server, "GET", "/api/v1/flows", &env.alice, org, None)
             .await
             .json::<serde_json::Value>();

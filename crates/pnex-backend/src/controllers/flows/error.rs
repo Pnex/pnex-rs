@@ -63,7 +63,9 @@ pub(super) fn flow_write_error_response(e: crate::services::flow::FlowWriteError
             }),
         )
         .into_response(),
-        E::Db => Error::InternalServerError.into_response(),
+        // Only the assistant's writer refuses a deployed flow; never an
+        // HTTP save. Kept total for the match.
+        E::Db | E::Deployed => Error::InternalServerError.into_response(),
         E::Secret(e) => match crate::controllers::secrets::store_error(e) {
             Ok(r) => r,
             Err(e) => e.into_response(),

@@ -180,13 +180,17 @@ fn ProviderRow(
                                         )
                                     }
                                     Ok(r) => {
-                                        toasts::error(
-                                            format!(
-                                                "{} — {}",
-                                                t!("llm-test-fail"),
-                                                r.error.unwrap_or_default(),
-                                            ),
-                                        )
+                                        let reason = match r.code.as_deref() {
+                                            Some(code) => {
+                                                api::error_i18n::localize_code(
+                                                    code,
+                                                    r.args.as_ref(),
+                                                    r.error.as_deref().unwrap_or_default(),
+                                                )
+                                            }
+                                            None => r.error.unwrap_or_default(),
+                                        };
+                                        toasts::error(format!("{} — {}", t!("llm-test-fail"), reason))
                                     }
                                     Err(err) => toasts::error(err),
                                 }

@@ -7,6 +7,8 @@ use loco_rs::config::Config;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde_json::{json, Value};
 
+use super::tools::internal;
+
 use crate::models::_entities::{
     device_capability_instances, device_registries, flow_versions, flows, ota_assignments,
 };
@@ -34,16 +36,14 @@ pub async fn device(
     config: Option<&Config>,
     org_id: i64,
     device_id: i64,
-) -> Result<Value, String> {
+) -> Result<Value, super::tools::ToolError> {
     let Some(dev) = device_registries::Entity::find_by_id(device_id)
         .filter(device_registries::Column::OrgId.eq(org_id))
         .one(db)
         .await
-        .map_err(|e| format!("reading device: {e}"))?
+        .map_err(internal("reading device"))?
     else {
-        return Err(format!(
-            "device #{device_id} not found in this organization"
-        ));
+        return Err(format!("device #{device_id} not found in this organization").into());
     };
     let seen = crate::services::device_liveness::seen_of(db, dev.id)
         .await
@@ -53,7 +53,7 @@ pub async fn device(
         .order_by_asc(device_capability_instances::Column::Gpio)
         .all(db)
         .await
-        .map_err(|e| format!("reading pins: {e}"))?;
+        .map_err(internal("reading pins"))?;
     let last = match config {
         Some(c) => crate::controllers::ws_device::last_values(c, dev.id).await,
         None => Default::default(),
@@ -83,7 +83,7 @@ pub async fn device(
         .order_by_desc(ota_assignments::Column::Id)
         .one(db)
         .await
-        .map_err(|e| format!("reading OTA: {e}"))?;
+        .map_err(internal("reading OTA"))?;
 
     let connected = seen.map(|s| s.connected);
     let mut hints: Vec<&str> = Vec::new();
@@ -136,27 +136,27 @@ pub async fn flow(
     config: Option<&Config>,
     org_id: i64,
     flow_id: i64,
-) -> Result<Value, String> {
+) -> Result<Value, super::tools::ToolError> {
     let Some(row) = flows::Entity::find_by_id(flow_id)
         .filter(flows::Column::OrgId.eq(org_id))
         .one(db)
         .await
-        .map_err(|e| format!("reading flow: {e}"))?
+        .map_err(internal("reading flow"))?
     else {
-        return Err(format!("flow #{flow_id} not found in this organization"));
+        return Err(format!("flow #{flow_id} not found in this organization").into());
     };
     let latest = flow_versions::Entity::find()
         .filter(flow_versions::Column::FlowId.eq(row.id))
         .order_by_desc(flow_versions::Column::VersionNumber)
         .one(db)
         .await
-        .map_err(|e| format!("reading versions: {e}"))?
+        .map_err(internal("reading versions"))?
         .map(|v| v.version_number);
     let deployed = match row.deployed_version_id {
         Some(id) => flow_versions::Entity::find_by_id(id)
             .one(db)
             .await
-            .map_err(|e| format!("reading deployed version: {e}"))?
+            .map_err(internal("reading deployed version"))?
             .map(|v| v.version_number),
         None => None,
     };
