@@ -236,8 +236,13 @@ pub fn Visualisation() -> Element {
                         Some(_) => rsx! {
                             div { class: "flex flex-wrap items-end gap-3",
                                 div {
-                                    label { class: "block text-xs font-medium text-gray-500 uppercase mb-1", {t!("vis-metric")} }
+                                    label {
+                                        r#for: "visualisation-field-1",
+                                        class: "block text-xs font-medium text-gray-500 uppercase mb-1",
+                                        {t!("vis-metric")}
+                                    }
                                     select {
+                                        id: "visualisation-field-1",
                                         aria_label: t!("vis-metric"),
                                         class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                                         onchange: move |event| {
@@ -249,8 +254,13 @@ pub fn Visualisation() -> Element {
                                     }
                                 }
                                 div {
-                                    label { class: "block text-xs font-medium text-gray-500 uppercase mb-1", {t!("vis-device")} }
+                                    label {
+                                        r#for: "visualisation-field-2",
+                                        class: "block text-xs font-medium text-gray-500 uppercase mb-1",
+                                        {t!("vis-device")}
+                                    }
                                     select {
+                                        id: "visualisation-field-2",
                                         aria_label: t!("vis-device"),
                                         class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                                         onchange: move |event| sel_device.set(event.value()),

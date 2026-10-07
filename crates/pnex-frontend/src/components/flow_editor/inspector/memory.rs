@@ -32,12 +32,19 @@ fn unit_label(unit: u32) -> String {
 
 /// Amount + unit picker editing a duration in seconds.
 #[component]
-fn DurationInput(secs: u32, disabled: bool, onchange: EventHandler<u32>) -> Element {
+fn DurationInput(
+    secs: u32,
+    disabled: bool,
+    /// Accessible name of the amount and unit fields (O31).
+    label: String,
+    onchange: EventHandler<u32>,
+) -> Element {
     let (amount, unit) = split_duration(secs);
     rsx! {
         div { class: "flex gap-2",
             input {
                 class: "w-24 px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
+                aria_label: "{label}",
                 r#type: "number",
                 min: "0",
                 value: "{amount}",
@@ -50,6 +57,7 @@ fn DurationInput(secs: u32, disabled: bool, onchange: EventHandler<u32>) -> Elem
             }
             select {
                 class: "px-2 py-1 border border-gray-300 rounded-lg text-sm",
+                aria_label: "{label}",
                 disabled,
                 onchange: move |event| {
                     if let Ok(next) = event.value().parse::<u32>() {
@@ -126,6 +134,7 @@ pub(super) fn MemoryWriteForm(
             div {
                 span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-memory-ttl")} }
                 DurationInput {
+                    label: t!("flows-memory-ttl").to_string(),
                     secs: ttl(),
                     disabled: !can_write,
                     onchange: move |secs: u32| {
@@ -269,6 +278,7 @@ pub(super) fn MemoryReadForm(
                     {t!("flows-memory-max-age")}
                 }
                 DurationInput {
+                    label: t!("flows-memory-max-age").to_string(),
                     secs: max_age,
                     disabled: !can_write,
                     onchange: move |secs: u32| {

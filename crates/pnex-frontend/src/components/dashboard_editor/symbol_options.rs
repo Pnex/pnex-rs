@@ -71,10 +71,13 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
             }
             div { class: "grid grid-cols-2 gap-2",
                 div {
-                    label { class: "block text-[10px] font-medium uppercase text-gray-400",
+                    label {
+                        r#for: "symbol-options-field-1",
+                        class: "block text-[10px] font-medium uppercase text-gray-400",
                         {t!("sym-stroke")}
                     }
                     input {
+                        id: "symbol-options-field-1",
                         class: "h-8 w-full cursor-pointer rounded border border-gray-300",
                         "type": "color",
                         disabled: !can_write,
@@ -86,10 +89,13 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                     }
                 }
                 div {
-                    label { class: "block text-[10px] font-medium uppercase text-gray-400",
+                    label {
+                        r#for: "symbol-options-field-2",
+                        class: "block text-[10px] font-medium uppercase text-gray-400",
                         {t!("sym-fill")}
                     }
                     input {
+                        id: "symbol-options-field-2",
                         class: "h-8 w-full cursor-pointer rounded border border-gray-300",
                         "type": "color",
                         disabled: !can_write,
@@ -101,10 +107,13 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                     }
                 }
                 div {
-                    label { class: "block text-[10px] font-medium uppercase text-gray-400",
+                    label {
+                        r#for: "symbol-options-field-3",
+                        class: "block text-[10px] font-medium uppercase text-gray-400",
                         {t!("sym-rotation")}
                     }
                     select {
+                        id: "symbol-options-field-3",
                         class: "w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm",
                         disabled: !can_write,
                         onchange: move |e| {

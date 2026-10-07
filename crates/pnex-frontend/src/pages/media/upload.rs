@@ -19,10 +19,13 @@ pub(super) fn UploadModal(on_close: Callback<()>, on_uploaded: Callback<()>) -> 
             on_close: move |_| on_close.call(()),
             div { class: "space-y-4",
                 div {
-                    label { class: "block text-sm font-medium text-gray-700 mb-1",
+                    label {
+                        r#for: "upload-field-1",
+                        class: "block text-sm font-medium text-gray-700 mb-1",
                         {t!("media-upload-file")}
                     }
                     input {
+                        id: "upload-field-1",
                         class: "w-full text-sm border border-gray-300 rounded-lg px-3 py-2",
                         r#type: "file",
                         onchange: move |evt| {
@@ -47,10 +50,13 @@ pub(super) fn UploadModal(on_close: Callback<()>, on_uploaded: Callback<()>) -> 
                     }
                 }
                 div {
-                    label { class: "block text-sm font-medium text-gray-700 mb-1",
+                    label {
+                        r#for: "upload-field-2",
+                        class: "block text-sm font-medium text-gray-700 mb-1",
                         {t!("media-upload-name")}
                     }
                     input {
+                        id: "upload-field-2",
                         class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm",
                         placeholder: t!("media-upload-name-placeholder"),
                         value: "{display_name}",
@@ -58,10 +64,13 @@ pub(super) fn UploadModal(on_close: Callback<()>, on_uploaded: Callback<()>) -> 
                     }
                 }
                 div {
-                    label { class: "block text-sm font-medium text-gray-700 mb-1",
+                    label {
+                        r#for: "upload-field-3",
+                        class: "block text-sm font-medium text-gray-700 mb-1",
                         {t!("media-upload-kind")}
                     }
                     select {
+                        id: "upload-field-3",
                         class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white",
                         value: "{kind}",
                         onchange: move |evt| kind.set(evt.value()),

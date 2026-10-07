@@ -654,15 +654,25 @@ fn DeleteRangeDialog(name: String, on_done: Callback<()>, on_cancel: Callback<()
                     {t!("system-delete-range-title", name : name.clone())}
                 }
                 p { class: "text-sm text-gray-600", {t!("system-delete-range-help")} }
-                label { class: "block text-sm font-medium text-gray-700", {t!("system-range-start")} }
+                label {
+                    r#for: "system-field-1",
+                    class: "block text-sm font-medium text-gray-700",
+                    {t!("system-range-start")}
+                }
                 input {
+                    id: "system-field-1",
                     class: "w-full px-3 py-2 border border-gray-300 rounded-lg",
                     r#type: "datetime-local",
                     value: "{start}",
                     oninput: move |e| start.set(e.value()),
                 }
-                label { class: "block text-sm font-medium text-gray-700", {t!("system-range-end")} }
+                label {
+                    r#for: "system-field-2",
+                    class: "block text-sm font-medium text-gray-700",
+                    {t!("system-range-end")}
+                }
                 input {
+                    id: "system-field-2",
                     class: "w-full px-3 py-2 border border-gray-300 rounded-lg",
                     r#type: "datetime-local",
                     value: "{end}",
