@@ -110,6 +110,9 @@ pub const BUILD_FAILURE_CODES: &[&str] = &[
     // No device CA to pin: a wss firmware would not verify the server
     // (SEC-W6).
     "build_no_ca",
+    // The device CA is larger than the firmware of this chip can pin
+    // (SEC-16, see `device_ca_max_pem_bytes`).
+    "build_ca_too_large",
     // The build exceeded its time budget.
     "build_timeout",
     // The firmware sources could not be staged on the worker.
@@ -132,6 +135,18 @@ pub const BUILD_FAILURE_CODES: &[&str] = &[
 
 /// Longest failure detail kept on a record (characters, tail kept).
 pub const BUILD_FAILURE_DETAIL_MAX: usize = 4000;
+
+/// Largest device CA PEM (bytes, without the terminating NUL) the firmware
+/// of a SoC can pin. Mirrors `PNEX_CA_PEM_MAX - 1` in
+/// `firmware/lib/pnex/src/pnex_tls.h`: 4 KB buffer on the ESP32 family
+/// (two roots fit), 2 KB on the ESP8266 (heap budget, one root).
+pub fn device_ca_max_pem_bytes(soc: &str) -> usize {
+    if soc.eq_ignore_ascii_case("esp8266") {
+        2047
+    } else {
+        4095
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -232,5 +247,26 @@ mod tests {
         assert!(json.get("backend").is_none());
         assert!(json.get("job_name").is_none());
         assert_eq!(json["build_id"], 5);
+    }
+
+    /// The server limit stays the firmware buffer minus its NUL (SEC-16):
+    /// parsed from pnex_tls.h so a buffer change cannot drift silently.
+    #[test]
+    fn device_ca_limit_matches_the_firmware_buffer() {
+        let header = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../firmware/lib/pnex/src/pnex_tls.h"
+        ))
+        .expect("pnex_tls.h");
+        let sizes: Vec<usize> = header
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix("#define PNEX_CA_PEM_MAX "))
+            .map(|v| v.trim().parse().expect("numeric PNEX_CA_PEM_MAX"))
+            .collect();
+        // ESP32 branch first, ESP8266 second (header order).
+        assert_eq!(sizes, vec![4096, 2048]);
+        assert_eq!(device_ca_max_pem_bytes("esp32-c6"), sizes[0] - 1);
+        assert_eq!(device_ca_max_pem_bytes("esp32"), sizes[0] - 1);
+        assert_eq!(device_ca_max_pem_bytes("esp8266"), sizes[1] - 1);
     }
 }

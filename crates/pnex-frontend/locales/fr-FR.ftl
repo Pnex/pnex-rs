@@ -328,6 +328,7 @@ build-fail-build-compile = Le firmware ne compile pas. Si c’est un firmware cu
 build-fail-build-merge = L’assemblage de l’image de flash a échoué.
 build-fail-build-tool = Un outil du serveur de build n’a pas pu démarrer.
 build-fail-build-no-ca = Aucune autorité de certification à épingler dans le firmware : le serveur de build n’a pas de PNEX_CA_CERT_FILE. Contactez l’administrateur de la plateforme.
+build-fail-build-ca-too-large = L’autorité de certification à épingler est trop grosse pour le firmware de cette puce (2 Ko sur ESP8266, 4 Ko sur ESP32). Contactez l’administrateur de la plateforme : ne garder que la racine qui signe le certificat du serveur.
 build-fail-build-timeout = Le build a dépassé le temps alloué. Relancez-le ; le serveur de build est peut-être surchargé.
 build-fail-build-source = Les sources du firmware n’ont pas pu être préparées sur le serveur de build.
 build-fail-build-artifact = Le compilateur n’a produit aucun fichier firmware.

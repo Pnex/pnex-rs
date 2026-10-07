@@ -313,6 +313,9 @@ impl BuildFirmwareWorker {
                 "no device CA to pin (PNEX_CA_CERT_FILE): wss build refused",
             ));
         }
+        if let Some(pem) = ca_cert_pem.as_deref() {
+            check_device_ca_size(pem, &args.soc)?;
+        }
         let secrets = BuildSecrets {
             wifi_ssid: args.wifi_ssid.clone(),
             wifi_password,
@@ -402,9 +405,45 @@ fn device_ca_pem() -> Option<String> {
     }
 }
 
+/// Refuses a device CA the target firmware cannot pin (SEC-16): the
+/// firmware would otherwise boot unpinned, or with a pre-fix library
+/// overflow its buffer.
+fn check_device_ca_size(pem: &str, soc: &str) -> Result<(), Failure> {
+    let max = pnex_core::builds::device_ca_max_pem_bytes(soc);
+    if pem.len() > max {
+        return Err(Failure::new(
+            "build_ca_too_large",
+            format!(
+                "device CA is {} bytes of PEM, the {soc} firmware pins at most {max}: keep only the root that signs the server certificate",
+                pem.len()
+            ),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// SEC-16: a CA bundle too large for the chip fails the build with
+    /// its own code; one root fits everywhere, two roots only on ESP32.
+    #[test]
+    fn oversized_device_ca_is_refused_per_soc() {
+        let one_root = "x".repeat(765);
+        let two_roots = "x".repeat(2676);
+        assert!(check_device_ca_size(&one_root, "esp8266").is_ok());
+        assert!(check_device_ca_size(&two_roots, "esp32-c6").is_ok());
+        let err = check_device_ca_size(&two_roots, "esp8266").unwrap_err();
+        assert_eq!(err.code, "build_ca_too_large");
+        let three_roots = "x".repeat(4615);
+        assert_eq!(
+            check_device_ca_size(&three_roots, "esp32")
+                .unwrap_err()
+                .code,
+            "build_ca_too_large"
+        );
+    }
 
     /// No WiFi password in the queued job: only the vault id.
     #[test]

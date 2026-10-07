@@ -117,18 +117,20 @@ void pnex_transport_setup(const PnexTransportInit& init) {
 
     // Décodage base64 de la config compilée — les macros WIFI_SSID/HOST/…
     // arrivent en base64 depuis child_env (env.rs), parité build.sh.
-    unsigned int n = cryptoB64Decode(WIFI_SSID, (unsigned char*)s_ssid);
-    s_ssid[n] = '\0';
-    n = cryptoB64Decode(WIFI_PASSWORD, (unsigned char*)s_password);
-    s_password[n] = '\0';
-    n = cryptoB64Decode(HOST, (unsigned char*)s_host);
-    s_host[n] = '\0';
+    // Bounded decodes: an oversized value is dropped (empty), never written
+    // past its buffer.
+    if (cryptoB64DecodeBounded(WIFI_SSID, s_ssid, sizeof(s_ssid)) == PNEX_B64_TOO_LONG)
+        Serial.println("[pnex] WIFI_SSID too long, ignored");
+    if (cryptoB64DecodeBounded(WIFI_PASSWORD, s_password, sizeof(s_password)) == PNEX_B64_TOO_LONG)
+        Serial.println("[pnex] WIFI_PASSWORD too long, ignored");
+    if (cryptoB64DecodeBounded(HOST, s_host, sizeof(s_host)) == PNEX_B64_TOO_LONG)
+        Serial.println("[pnex] HOST too long, ignored");
     // TOKEN et DEVICE_ID restent en base64 : le contrat d'auth des routes WS
     // (`decode_param`) est « paramètre b64 → décodage serveur → lookup » —
     // l'URL porte les macros telles quelles (envoyés en clair, le rejet
     // 4002 arrive avant l'annonce — leçon du 2026-09-02).
-    n = cryptoB64Decode(DEVICE_ID, (unsigned char*)s_device_id);
-    s_device_id[n] = '\0';
+    if (cryptoB64DecodeBounded(DEVICE_ID, s_device_id, sizeof(s_device_id)) == PNEX_B64_TOO_LONG)
+        Serial.println("[pnex] DEVICE_ID too long, ignored");
 
     // Clé des frames WS — sans elle pnex_crypto_ready()=false et
     // cryptoEncryptFrame renvoie le clair (mode mock) : le serveur ne
