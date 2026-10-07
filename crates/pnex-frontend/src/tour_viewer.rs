@@ -80,22 +80,162 @@ pub struct AnnotClick {
 }
 
 /// Pose d'un marqueur (clic sur le pano hors marqueur, mode éditeur —
-/// global `__pnexAnnotPlace`, coords `mouseEventToCoords`).
+/// global `__pnexAnnotPlace`). Panorama: `yaw`/`pitch`
+/// (`mouseEventToCoords`); splat: the picked world point `x`/`y`/`z`.
+/// Plain optional fields (no flatten/untagged: arbitrary_precision).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct AnnotPlace {
     pub seq: u64,
-    pub yaw: f64,
-    pub pitch: f64,
+    #[serde(default)]
+    pub yaw: Option<f64>,
+    #[serde(default)]
+    pub pitch: Option<f64>,
+    #[serde(default)]
+    pub x: Option<f64>,
+    #[serde(default)]
+    pub y: Option<f64>,
+    #[serde(default)]
+    pub z: Option<f64>,
 }
 
 /// Drag d'ajustement d'un marqueur (mode éditeur — global
-/// `__pnexAnnotMove`).
+/// `__pnexAnnotMove`), same coordinates as [`AnnotPlace`].
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct AnnotMove {
     pub seq: u64,
     pub item_id: String,
-    pub yaw: f64,
-    pub pitch: f64,
+    #[serde(default)]
+    pub yaw: Option<f64>,
+    #[serde(default)]
+    pub pitch: Option<f64>,
+    #[serde(default)]
+    pub x: Option<f64>,
+    #[serde(default)]
+    pub y: Option<f64>,
+    #[serde(default)]
+    pub z: Option<f64>,
+}
+
+/// Geometry carried by a place/move event (`None` if incomplete).
+fn event_geometry(
+    yaw: Option<f64>,
+    pitch: Option<f64>,
+    x: Option<f64>,
+    y: Option<f64>,
+    z: Option<f64>,
+) -> Option<pnex_core::AnnotationGeometry> {
+    match (yaw, pitch, x, y, z) {
+        (Some(yaw), Some(pitch), ..) => {
+            Some(pnex_core::AnnotationGeometry::Equirect { yaw, pitch })
+        }
+        (_, _, Some(x), Some(y), Some(z)) => Some(pnex_core::AnnotationGeometry::Splat { x, y, z }),
+        _ => None,
+    }
+}
+
+impl AnnotPlace {
+    pub fn geometry(&self) -> Option<pnex_core::AnnotationGeometry> {
+        event_geometry(self.yaw, self.pitch, self.x, self.y, self.z)
+    }
+}
+
+impl AnnotMove {
+    pub fn geometry(&self) -> Option<pnex_core::AnnotationGeometry> {
+        event_geometry(self.yaw, self.pitch, self.x, self.y, self.z)
+    }
+}
+
+/// Splat marker (world point) set on a mounted splat viewer.
+#[derive(Debug, Clone, Serialize)]
+pub struct SplatMarkerView {
+    pub id: String,
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+    pub kind: String,
+    pub label: String,
+}
+
+/// Viewer whose annotation glue is called (`pnexViewers.<ns>`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AnnotNs {
+    /// Pannellum (panoramas, tours).
+    Tour,
+    /// gsplat (gaussian splats).
+    Splat,
+}
+
+impl AnnotNs {
+    fn as_str(self) -> &'static str {
+        match self {
+            AnnotNs::Tour => "tour",
+            AnnotNs::Splat => "splat",
+        }
+    }
+}
+
+/// Argument of a glue call.
+enum JsArg {
+    Str(String),
+    Bool(bool),
+}
+
+/// Calls `pnexViewers.<ns>.<method>(args…)` with the mount retry contract
+/// (100 ms × 50) — `true` once the glue answered `true`.
+async fn call_with_retry(ns: &str, method: &str, args: &[JsArg]) -> bool {
+    for _ in 0..50 {
+        if try_call_once(ns, method, args).await {
+            return true;
+        }
+        sleep_ms(100).await;
+    }
+    false
+}
+
+/// Splat markers (post-mount, diffed by id in the glue). `editable` enables
+/// the marker drag (editor only).
+pub async fn set_splat_annotations(
+    host_id: &str,
+    markers: &[SplatMarkerView],
+    editable: bool,
+) -> bool {
+    let json = serde_json::to_string(markers).unwrap_or_default();
+    call_with_retry(
+        AnnotNs::Splat.as_str(),
+        "setAnnotations",
+        &[
+            JsArg::Str(host_id.to_string()),
+            JsArg::Str(json),
+            JsArg::Bool(editable),
+        ],
+    )
+    .await
+}
+
+/// Place mode of a viewer (click → `__pnexAnnotPlace`).
+pub async fn set_place_mode(ns: AnnotNs, host_id: &str, on: bool) -> bool {
+    call_with_retry(
+        ns.as_str(),
+        "setAnnotPlaceMode",
+        &[JsArg::Str(host_id.to_string()), JsArg::Bool(on)],
+    )
+    .await
+}
+
+/// Cards that follow their markers (D147): the glue positions every
+/// `[data-annot-card]` of the overlay `overlay_id` next to its marker in
+/// the viewer `host_id` (panorama hotspot or projected splat point).
+pub async fn follow_cards(host_id: &str, overlay_id: &str, on: bool) -> bool {
+    call_with_retry(
+        "cards",
+        "follow",
+        &[
+            JsArg::Str(host_id.to_string()),
+            JsArg::Str(overlay_id.to_string()),
+            JsArg::Bool(on),
+        ],
+    )
+    .await
 }
 
 /// Monte la scène dans le div `host_id`. Retry 100 ms × 50 (le bundle peut
@@ -151,24 +291,16 @@ pub async fn take_hotspot_move(prev_seq: u64) -> Option<HotspotMove> {
 /// `editable` active le drag d'ajustement (mode éditeur uniquement).
 pub async fn set_annotations(host_id: &str, markers: &[AnnotMarkerView], editable: bool) -> bool {
     let json = serde_json::to_string(markers).unwrap_or_default();
-    for _ in 0..50 {
-        if try_set_annotations_once(host_id, &json, editable).await {
-            return true;
-        }
-        sleep_ms(100).await;
-    }
-    false
-}
-
-/// Active/coupe le mode pose (clic pano → `__pnexAnnotPlace`).
-pub async fn set_annot_place_mode(host_id: &str, on: bool) -> bool {
-    for _ in 0..50 {
-        if try_set_place_mode_once(host_id, on).await {
-            return true;
-        }
-        sleep_ms(100).await;
-    }
-    false
+    call_with_retry(
+        AnnotNs::Tour.as_str(),
+        "setAnnotations",
+        &[
+            JsArg::Str(host_id.to_string()),
+            JsArg::Str(json),
+            JsArg::Bool(editable),
+        ],
+    )
+    .await
 }
 
 /// Gated marker (arrow) drag: true only in the tour editor preview —
@@ -259,44 +391,24 @@ async fn read_move_global() -> Option<String> {
 }
 
 #[cfg(target_arch = "wasm32")]
-async fn try_set_annotations_once(host_id: &str, json: &str, editable: bool) -> bool {
-    let Some(f) = global_method("pnexViewers", "tour")
-        .and_then(|tour| {
-            js_sys::Reflect::get(&tour, &wasm_bindgen::JsValue::from_str("setAnnotations")).ok()
-        })
+async fn try_call_once(ns: &str, method: &str, args: &[JsArg]) -> bool {
+    let Some(f) = global_method("pnexViewers", ns)
+        .and_then(|obj| js_sys::Reflect::get(&obj, &wasm_bindgen::JsValue::from_str(method)).ok())
         .and_then(|v| v.dyn_into::<js_sys::Function>().ok())
     else {
         return false;
     };
-    f.call3(
-        &wasm_bindgen::JsValue::NULL,
-        &wasm_bindgen::JsValue::from_str(host_id),
-        &wasm_bindgen::JsValue::from_str(json),
-        &wasm_bindgen::JsValue::from_bool(editable),
-    )
-    .ok()
-    .and_then(|value| value.as_bool())
-    .unwrap_or(false)
-}
-
-#[cfg(target_arch = "wasm32")]
-async fn try_set_place_mode_once(host_id: &str, on: bool) -> bool {
-    let Some(f) = global_method("pnexViewers", "tour")
-        .and_then(|tour| {
-            js_sys::Reflect::get(&tour, &wasm_bindgen::JsValue::from_str("setAnnotPlaceMode")).ok()
-        })
-        .and_then(|v| v.dyn_into::<js_sys::Function>().ok())
-    else {
-        return false;
-    };
-    f.call2(
-        &wasm_bindgen::JsValue::NULL,
-        &wasm_bindgen::JsValue::from_str(host_id),
-        &wasm_bindgen::JsValue::from_bool(on),
-    )
-    .ok()
-    .and_then(|value| value.as_bool())
-    .unwrap_or(false)
+    let list = js_sys::Array::new();
+    for a in args {
+        list.push(&match a {
+            JsArg::Str(v) => wasm_bindgen::JsValue::from_str(v),
+            JsArg::Bool(v) => wasm_bindgen::JsValue::from_bool(*v),
+        });
+    }
+    f.apply(&wasm_bindgen::JsValue::NULL, &list)
+        .ok()
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -390,22 +502,21 @@ async fn read_move_global() -> Option<String> {
     read_annot_global("__pnexTourHotspotMove").await
 }
 
+// Arguments are injected as JSON literals (strings stay strings: the glue
+// parses the marker JSON itself — passing `JSON.parse(…)` here made it
+// parse an array again and fail).
 #[cfg(not(target_arch = "wasm32"))]
-async fn try_set_annotations_once(host_id: &str, json: &str, editable: bool) -> bool {
-    // Échappement pour l'injection en littéral JS simple-quote.
-    let host_q = host_id.replace('\'', "");
-    let json_q = json.replace('\\', "\\\\").replace('\'', "\\'");
+async fn try_call_once(ns: &str, method: &str, args: &[JsArg]) -> bool {
+    let list: Vec<String> = args
+        .iter()
+        .map(|a| match a {
+            JsArg::Str(v) => serde_json::to_string(v).unwrap_or_else(|_| "\"\"".into()),
+            JsArg::Bool(v) => v.to_string(),
+        })
+        .collect();
     eval_bool(format!(
-        "return window.pnexViewers?.tour?.setAnnotations('{host_q}', JSON.parse('{json_q}'), {editable}) === true"
-    ))
-    .await
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-async fn try_set_place_mode_once(host_id: &str, on: bool) -> bool {
-    let host_q = host_id.replace('\'', "");
-    eval_bool(format!(
-        "return window.pnexViewers?.tour?.setAnnotPlaceMode('{host_q}', {on}) === true"
+        "return window.pnexViewers?.{ns}?.{method}?.({}) === true",
+        list.join(", ")
     ))
     .await
 }

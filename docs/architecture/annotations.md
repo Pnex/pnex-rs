@@ -4,6 +4,9 @@
 > phases — §8).** Référence pour tout le chantier annotations : ancrage
 > média (D55), versioning + activation (D56), cibles faibles (D57),
 > rendu (D58), édition dans le tour (D59), portes ouvertes (D60).
+> **Révision D147 (2026-10-07, §13)** : mini-dashboards sur le média
+> (cartes ancrées, bascule pastilles ↔ cartes), géométrie splat, édition
+> exclusivement dans Data > Annotations.
 > Sources amont : `media.md` (D21 — assets référencés, jamais dupliqués),
 > `studio.md` (S1–S15 — tours, versioning, viewer pannellum), D2
 > (org-tenant), D14 (pagination), D31 (pas de WS navigateur — poll REST).
@@ -114,9 +117,8 @@ sans cassure : (1) **inputs d'écriture** — **révisée par D128
 (2026-10-03), livrée 2026-10-04** : un input d'annotation référence un
 **contrôle d'org** (`kind: control`), jamais `Pin{…}` ni l'API commands ;
 l'effet passe par un flow (§12) ; (2) **géométrie splat** — un variant `Splat` de
-`AnnotationGeometry` est additif ; (3) **page globale `/annotations`** (listing toutes couches, gestion cross-tours) — **construite 2026-09-16** (Data > Annotations : couches + pickeur média + viewer + panneau, flow sans tour) ; (4) **overlay panorama
-de la page média** (viewer `panorama` nu, sans hotspots — passera par le
-viewer tour avec annotations seules) ; (5) purge des couches par les
+`AnnotationGeometry` est additif — **livrée par D147 (§13)** ; (3) **page globale `/annotations`** (listing toutes couches, gestion cross-tours) — **construite 2026-09-16** (Data > Annotations : couches + pickeur média + viewer + panneau, flow sans tour) ; (4) **overlay panorama
+de la page média** — **écartée par D147** (la bibliothèque reste le média brut) ; (5) purge des couches par les
 labels D42 via un futur `KIND_ANNOTATION_LAYER` au registre.
 
 ## 3. Modèle de données (migration `000026`, école 000017)
@@ -204,11 +206,18 @@ collision axum. Droits : écriture owner|admin, lecture membre.
   sur l'`img`, même popover (composant partagé
   `components/annotation_editor/popover.rs`).
 
-## 7. Édition — dans le tour
+## 7. Édition — uniquement dans Data > Annotations (D147)
 
-Intégration dans le modal preview de l'éditeur studio
-(`components/tour_editor/mod.rs`) : bouton « Éditer les annotations »
-(can_write) → modal élargie (`max-w-7xl`), viewer + `AnnotationLayerPanel`
+> Historique : l'édition vivait d'abord dans le modal preview du Studio
+> (D59), puis a été déplacée (§9 V4), restaurée côté Studio le
+> 2026-09-24, et **retirée définitivement par D147** (§13). Le Studio,
+> la carte, les médias et les dashboards ne montrent les annotations
+> qu'en lecture.
+
+Page `pages/annotations.rs` : liste des ensembles → éditeur. Viewer selon
+le support (pano = `TourViewer` sur doc synthétique ; visite = `TourViewer`
+sur le VRAI doc, l'ancre suit la scène naviguée ; photo/plan =
+`FlatAnnotViewer` ; splat = `SplatHost`) + `AnnotationLayerPanel`
 (`w-96`). État = `AnnotationEditorCx` (signaux Copy, école
 `TourEditorCx` : `layer_id`, `doc/saved_doc`, `saved_version`,
 `selected`, `placing`, `violations` ; `dirty = doc != saved_doc`).
@@ -329,3 +338,73 @@ Rendu : la popover d'un marqueur affiche la carte ; le viewer de tour
 ajoute à droite un panneau « Contrôles et lectures » listant les items
 de ce type du média affiché (poll 15 s, D31). Marqueurs
 `.pnex-annot-control` (sarcelle) et `.pnex-annot-reading` (bleu ciel).
+
+## 13. D147 — mini-dashboards sur les médias, splat, édition centralisée (2026-10-07)
+
+Retour utilisateur : « on a posé des bases mais c'est pas foufou » — un
+ensemble annoté n'était visible nulle part (rien de publié, « Publier »
+caché dans le tiroir Historique ; aperçu carte et page Médias montant le
+média nu), le viewer splat n'avait jamais fonctionné (API gsplat
+inexistante appelée), les contrôles/lectures n'apparaissaient que dans
+un panneau latéral, et l'édition restait possible depuis le Studio.
+
+**Décision D147 :**
+
+1. **Édition exclusivement dans Data > Annotations** — pour tous les
+   supports : photo, plan, panorama, splat, et visites 360 (ensemble-tour :
+   le vrai tour, l'ancre suit la scène). Le mode « Éditer les annotations »
+   du Studio est supprimé ; Studio, carte, dashboards = lecture. **La
+   bibliothèque (Data > Médias) montre le média brut, sans annotations**
+   (retour user 2026-10-07 : « la lib c'est le média cru » — un média peut
+   porter des dizaines d'items).
+2. **Publication visible** : barre en tête du panneau (statut, « Publier »
+   la dernière version enregistrée, alerte tant qu'une version enregistrée
+   n'est pas publiée) + bouton **Aperçu** = la vue publiée telle que la
+   voient la carte et les visites. Le pointeur de publication
+   (D56) reste la seule source des viewers.
+3. **Un seul viewer de lecture** : `components/annotated_media.rs`
+   (`AnnotatedMediaView`) derrière l'aperçu POI de la carte et l'aperçu
+   de la page Annotations (jamais la bibliothèque).
+4. **Mini-dashboards sur le média** : les items `control` et `reading`
+   deviennent des **cartes** (mêmes corps que les widgets de dashboard,
+   `components/surface/`) **ancrées à côté de leur marqueur**. Bascule du
+   viewer à 3 états **Masquer / Pastilles / Cartes** (défaut : cartes si le
+   média porte des contrôles/lectures, pastilles sinon) ; le panneau
+   latéral « Contrôles et lectures » est supprimé (jamais deux polls).
+   Positionnement : calque frère du host viewer, cartes `[data-annot-card]`
+   placées par la glue (`pnexViewers.cards.follow`) — pano : rect du
+   hotspot pannellum ; splat : projection faite par la boucle de rendu ;
+   plat : % CSS.
+5. **Mini-graphe d'une lecture** : `target.display` ∈ `stat | line |
+   gauge | indicator` (+ `min`/`max` pour la jauge), additif ; absent =
+   règle historique (`spark` → `line`, sinon `stat`). Une valeur mémoire
+   n'a pas d'historique : jamais `line`.
+6. **Géométrie splat** (porte D60(2) livrée) : `{type: "splat", x, y, z}`
+   en coordonnées monde de la capture, ancrée sur un média `kind=splat`
+   (`geometry_media_kinds`). Pose = rayon caméra → centres gaussiens
+   (tolérance angulaire ~6 px, alpha ≥ 40, premier groupe de profondeur
+   ≥ 3 points — les flotteurs isolés sont ignorés) ; drag = re-pick au
+   lâcher. Viewer gsplat 1.2.9 réécrit (WebGLRenderer + OrbitControls,
+   cadrage sur le 5–95 % du nuage, clavier désactivé).
+
+7. **Contextes de lecture séparés** (retour user 2026-10-07 : « les
+   annotations d'un panorama seul ne doivent pas se mélanger avec celles du
+   même panorama dans une visite ») : le read model
+   `GET /media/{id}/annotations` ne renvoie que les ensembles **du média**
+   (+ ensembles libres sans média ni tour) ; `?tour={id}` ne renvoie que les
+   ensembles **de ce tour** (items du média de la scène). Le `TourViewer`
+   passe `annotation_tour` (Studio, carte, aperçu Annotations) ; la vue d'un
+   média seul n'en passe pas. Avant D147 l'union de toutes les couches de
+   l'org touchant l'asset était servie partout.
+
+**Limites assumées :** pas de test d'occlusion sur splat (un marqueur reste
+visible à travers la géométrie) ; transform d'objet splat ignoré (les
+loaders produisent l'identité) ; formats `.ksplat`/`.spz` sans viewer.
+
+**Pièges :** les cartes ne portent **jamais** `.pnex-annot` (miroir index
+du drag pano) ; le calque des cartes est **frère** du host (unmount =
+`innerHTML = ''`) ; le worker gsplat **vide** `data.positions` — copie
+pour le picking prise juste après le load ; `AnnotationTarget` est
+désérialisé à la main (champs numériques sous `arbitrary_precision`,
+école `AnnotationGeometry`) ; les événements pano et splat partagent les
+compteurs seq (`__pnexAnnot*`, champs `yaw/pitch` ou `x/y/z`).

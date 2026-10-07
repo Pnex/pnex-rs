@@ -40,9 +40,17 @@ pub fn item_widget(item: &ResolvedAnnotationItem) -> Option<Widget> {
                     control_id: *control_id,
                 });
         }
-        AnnotationTarget::Reading { source, spark } => {
-            w.widget_type = if *spark { "line" } else { "stat" }.into();
+        AnnotationTarget::Reading {
+            source,
+            spark,
+            display,
+            min,
+            max,
+        } => {
+            w.widget_type = pnex_core::reading_display(display.as_deref(), *spark).into();
             w.source = vec![source.clone()];
+            w.options.min = *min;
+            w.options.max = *max;
         }
         _ => return None,
     }
@@ -57,11 +65,14 @@ pub fn is_surface_item(item: &ResolvedAnnotationItem) -> bool {
     )
 }
 
-/// Cards of the control / reading items, with their own control context
-/// and a self-rearming 15 s poll. Key the component by the item ids: the
-/// polled set is captured at mount.
-#[component]
-pub fn AnnotationSurface(items: Vec<ResolvedAnnotationItem>) -> Element {
+type LiveValues = HashMap<String, Option<Vec<TelemetryPoint>>>;
+
+/// Live data of the control / reading items: their own control context and
+/// a self-rearming 15 s poll. The item set is captured at mount: key the
+/// calling component by the item ids.
+fn use_surface_live(
+    items: &[ResolvedAnnotationItem],
+) -> (Vec<(ResolvedAnnotationItem, Widget)>, LiveValues) {
     let mut reload = use_signal(|| 0u32);
     let mut polling = use_signal(|| false);
     let widgets: Vec<(ResolvedAnnotationItem, Widget)> = items
@@ -96,8 +107,7 @@ pub fn AnnotationSurface(items: Vec<ResolvedAnnotationItem>) -> Element {
             crate::components::dashboard_live::fetch_live_values(sources).await
         }
     });
-    let values: HashMap<String, Option<Vec<TelemetryPoint>>> =
-        batch.read().clone().unwrap_or_default();
+    let values: LiveValues = batch.read().clone().unwrap_or_default();
     if !polling() {
         polling.set(true);
         spawn(async move {
@@ -106,7 +116,14 @@ pub fn AnnotationSurface(items: Vec<ResolvedAnnotationItem>) -> Element {
             reload.with_mut(|r| *r += 1);
         });
     }
+    (widgets, values)
+}
 
+/// Cards of the control / reading items, stacked (marker popover). Key the
+/// component by the item ids (see [`use_surface_live`]).
+#[component]
+pub fn AnnotationSurface(items: Vec<ResolvedAnnotationItem>) -> Element {
+    let (widgets, values) = use_surface_live(&items);
     rsx! {
         div { class: "space-y-2",
             for (item, w) in widgets {
@@ -135,7 +152,7 @@ fn SurfaceCard(
         .flatten();
     let height = match w.widget_type.as_str() {
         "line" => "h-32",
-        "stat" => "h-24",
+        "stat" | "indicator" => "h-24",
         _ => "h-32",
     };
     let is_control = w.options.control.is_some();
@@ -148,6 +165,110 @@ fn SurfaceCard(
                     widget: w.clone(),
                     points,
                     values: Some(values.clone()),
+                }
+            }
+        }
+    }
+}
+
+/// How a viewer shows the annotations of its media (D147).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum AnnotMode {
+    Hidden,
+    /// Markers only; a click opens the popover.
+    Dots,
+    /// Markers + the control / reading cards anchored next to them.
+    Cards,
+}
+
+/// Effective mode: the viewer's choice, else cards when the media carries
+/// control / reading items, dots otherwise.
+pub fn effective_mode(choice: Option<AnnotMode>, has_cards: bool) -> AnnotMode {
+    choice.unwrap_or(if has_cards {
+        AnnotMode::Cards
+    } else {
+        AnnotMode::Dots
+    })
+}
+
+/// Three-state switch of a viewer (hidden / dots / cards), top-left over
+/// the media. The cards state is offered only when there are cards.
+#[component]
+pub fn AnnotModeToggle(
+    mode: AnnotMode,
+    has_cards: bool,
+    on_change: EventHandler<AnnotMode>,
+) -> Element {
+    let mut options = vec![
+        (AnnotMode::Hidden, "annot-mode-hidden"),
+        (AnnotMode::Dots, "annot-mode-dots"),
+    ];
+    if has_cards {
+        options.push((AnnotMode::Cards, "annot-mode-cards"));
+    }
+    rsx! {
+        div {
+            // Right of the pannellum zoom / fullscreen controls (top-left).
+            class: "absolute top-2 left-12 z-30 inline-flex rounded-lg border border-gray-200 bg-white/90 shadow-sm overflow-hidden",
+            role: "group",
+            aria_label: dioxus_i18n::t!("annot-toggle"),
+            for (m, key) in options {
+                button {
+                    key: "{key}",
+                    class: if m == mode { "px-2.5 py-1.5 text-xs font-medium bg-blue-600 text-white" } else { "px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-white" },
+                    aria_pressed: if m == mode { "true" } else { "false" },
+                    onclick: move |_| on_change.call(m),
+                    {dioxus_i18n::t!(key)}
+                }
+            }
+        }
+    }
+}
+
+/// Overlay of the control / reading cards over a viewer — a SIBLING of the
+/// viewer host (an unmount wipes the host's children). Panorama and splat
+/// cards are positioned by the JS glue (`follow_cards`, it owns their
+/// `transform`/`visibility`); flat images pass `flat` positions (fractions
+/// of the image box) and are placed in CSS. Key by the item ids.
+#[component]
+pub fn AnnotationCardsOverlay(
+    items: Vec<ResolvedAnnotationItem>,
+    overlay_id: String,
+    #[props(default)] flat: bool,
+) -> Element {
+    let (widgets, values) = use_surface_live(&items);
+    rsx! {
+        div {
+            id: "{overlay_id}",
+            // Flat cards may stand above the image top edge: no clipping.
+            class: if flat { "absolute inset-0 z-20 pointer-events-none" } else { "absolute inset-0 z-20 pointer-events-none overflow-hidden" },
+            for (item, w) in widgets {
+                if flat {
+                    if let pnex_core::AnnotationGeometry::Flat { x, y } = item.geometry {
+                        div {
+                            key: "{item.id}",
+                            "data-annot-card": "{item.id}",
+                            "data-pos": "1",
+                            class: "pnex-annot-card absolute w-52 pointer-events-auto",
+                            style: "left: calc({x} * 100%); top: calc({y} * 100%); transform: translate(-50%, calc(-100% - 14px));",
+                            SurfaceCard {
+                                via: format!("annotation:{}", item.layer_id),
+                                w,
+                                values: values.clone(),
+                            }
+                        }
+                    }
+                } else {
+                    div {
+                        key: "{item.id}",
+                        "data-annot-card": "{item.id}",
+                        class: "pnex-annot-card absolute left-0 top-0 w-52 pointer-events-auto",
+                        SurfaceCard {
+                            via: format!("annotation:{}", item.layer_id),
+                            w,
+                            values: values.clone(),
+                        }
+                    }
                 }
             }
         }

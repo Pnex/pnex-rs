@@ -1,6 +1,7 @@
 //! Inspector editors of the surface targets (D128/D129, D131): the control
 //! of a `control` item (its own source, or a link to an existing control), the source of a `reading` item
-//! (device or flow telemetry, org memory) with its optional sparkline.
+//! (device or flow telemetry, org memory) with its mini chart (value,
+//! sparkline, gauge, indicator).
 
 use std::collections::BTreeMap;
 
@@ -8,7 +9,9 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::memory::MemoryRef;
 use pnex_core::ui_control::{ControlKind, UiControl, ORIGIN_ANNOTATION};
-use pnex_core::{AnnotationTarget, SourceRef, VIZ_WINDOW_PRESETS};
+use pnex_core::{
+    reading_display, AnnotationTarget, SourceRef, READING_DISPLAYS, VIZ_WINDOW_PRESETS,
+};
 use uuid::Uuid;
 
 use crate::api;
@@ -23,6 +26,40 @@ fn set_target(cx: AnnotationEditorCx, id: &str, target: AnnotationTarget) {
             it.target = target;
         }
     });
+}
+
+/// Reading target with mini chart `shape` (`READING_DISPLAYS`); `spark`
+/// mirrors `line` for older readers of the document.
+fn reading_target(
+    source: SourceRef,
+    shape: &str,
+    min: Option<f64>,
+    max: Option<f64>,
+) -> AnnotationTarget {
+    // A memory value has no history: never a sparkline.
+    let shape = if source.memory.is_some() && shape == "line" {
+        "stat"
+    } else {
+        shape
+    };
+    let gauge = shape == "gauge";
+    AnnotationTarget::Reading {
+        source,
+        spark: shape == "line",
+        display: Some(shape.to_string()),
+        min: if gauge { min } else { None },
+        max: if gauge { max } else { None },
+    }
+}
+
+/// Fluent key of a mini chart choice.
+fn display_label_key(shape: &str) -> &'static str {
+    match shape {
+        "line" => "annot-display-line",
+        "gauge" => "annot-display-gauge",
+        "indicator" => "annot-display-indicator",
+        _ => "annot-display-stat",
+    }
 }
 
 /// The control is the one this item declared (origin = this layer, this
@@ -204,7 +241,11 @@ pub fn ReadingTargetEditor(
     item_id: String,
     source: SourceRef,
     spark: bool,
+    display: Option<String>,
+    min: Option<f64>,
+    max: Option<f64>,
 ) -> Element {
+    let shape = reading_display(display.as_deref(), spark).to_string();
     let catalog = use_resource(|| async { api::telemetry::catalog().await.ok() });
     let memory = use_resource(|| async { api::memory::keys().await.unwrap_or_default() });
     // device id → metrics (devices and flow virtual devices alike).
@@ -244,19 +285,33 @@ pub fn ReadingTargetEditor(
         .as_ref()
         .and_then(|k| mem.get(k).cloned())
         .unwrap_or_default();
-    let (id_src, id_metric, id_field, id_spark, id_win) = (
+    let (id_src, id_metric, id_field, id_spark, id_win, id_min, id_max) = (
+        item_id.clone(),
+        item_id.clone(),
         item_id.clone(),
         item_id.clone(),
         item_id.clone(),
         item_id.clone(),
         item_id.clone(),
     );
-    let (src_m, src_f, src_s, src_w) = (
+    let (src_m, src_f, src_s, src_w, src_lo, src_hi) = (
+        source.clone(),
+        source.clone(),
         source.clone(),
         source.clone(),
         source.clone(),
         source.clone(),
     );
+    let (sh_src, sh_field, sh_metric, sh_win) =
+        (shape.clone(), shape.clone(), shape.clone(), shape.clone());
+    // Mini charts offered: a memory value has no history (no sparkline).
+    let displays: Vec<&'static str> = READING_DISPLAYS
+        .iter()
+        .copied()
+        .filter(|d| !(is_memory && *d == "line"))
+        .collect();
+    let min_text = min.map(|v| v.to_string()).unwrap_or_default();
+    let max_text = max.map(|v| v.to_string()).unwrap_or_default();
     let (cat_src, mem_src) = (by_source.clone(), mem.clone());
 
     rsx! {
@@ -292,15 +347,7 @@ pub fn ReadingTargetEditor(
                             memory: None,
                         }
                     };
-                    let spark = spark && next.memory.is_none();
-                    set_target(
-                        cx,
-                        &id_src,
-                        AnnotationTarget::Reading {
-                            source: next,
-                            spark,
-                        },
-                    );
+                    set_target(cx, &id_src, reading_target(next, &sh_src, min, max));
                 },
                 if source.device_id.is_empty() && !is_memory {
                     option { value: "", selected: true, disabled: true, {t!("insp-pick-source")} }
@@ -339,14 +386,7 @@ pub fn ReadingTargetEditor(
                         if let Some(m) = next.memory.as_mut() {
                             m.field = e.value();
                         }
-                        set_target(
-                            cx,
-                            &id_field,
-                            AnnotationTarget::Reading {
-                                source: next,
-                                spark: false,
-                            },
-                        );
+                        set_target(cx, &id_field, reading_target(next, &sh_field, min, max));
                     },
                     for f in fields {
                         option {
@@ -370,14 +410,7 @@ pub fn ReadingTargetEditor(
                     onchange: move |e| {
                         let mut next = src_m.clone();
                         next.metric = e.value();
-                        set_target(
-                            cx,
-                            &id_metric,
-                            AnnotationTarget::Reading {
-                                source: next,
-                                spark,
-                            },
-                        );
+                        set_target(cx, &id_metric, reading_target(next, &sh_metric, min, max));
                     },
                     for m in metrics {
                         option {
@@ -389,25 +422,7 @@ pub fn ReadingTargetEditor(
                     }
                 }
             }
-            label { class: "flex items-center gap-2 text-xs text-gray-600",
-                input {
-                    r#type: "checkbox",
-                    checked: spark,
-                    onchange: move |e| {
-                        let on = e.checked();
-                        set_target(
-                            cx,
-                            &id_spark,
-                            AnnotationTarget::Reading {
-                                source: src_s.clone(),
-                                spark: on,
-                            },
-                        );
-                    },
-                }
-                {t!("annot-reading-spark")}
-            }
-            if spark {
+            if shape == "line" {
                 label { class: "block text-xs font-medium text-gray-600",
                     {t!("insp-window")}
                     select {
@@ -415,14 +430,7 @@ pub fn ReadingTargetEditor(
                         onchange: move |e| {
                             let mut next = src_w.clone();
                             next.window = e.value();
-                            set_target(
-                                cx,
-                                &id_win,
-                                AnnotationTarget::Reading {
-                                    source: next,
-                                    spark: true,
-                                },
-                            );
+                            set_target(cx, &id_win, reading_target(next, &sh_win, min, max));
                         },
                         for (key, _) in VIZ_WINDOW_PRESETS {
                             option {
@@ -432,6 +440,51 @@ pub fn ReadingTargetEditor(
                                 "{key}"
                             }
                         }
+                    }
+                }
+            }
+        }
+        // Mini chart drawn on the media card.
+        label { class: "block text-xs font-medium text-gray-600",
+            {t!("annot-display")}
+            select {
+                class: "mt-1 w-full rounded-lg border-gray-300 text-sm",
+                onchange: move |e| {
+                    set_target(cx, &id_spark, reading_target(src_s.clone(), &e.value(), min, max));
+                },
+                for d in displays {
+                    option { key: "{d}", value: "{d}", selected: shape == d,
+                        {t!(display_label_key(d))}
+                    }
+                }
+            }
+        }
+        if shape == "gauge" {
+            div { class: "grid grid-cols-2 gap-2",
+                label { class: "block text-xs font-medium text-gray-600",
+                    {t!("annot-gauge-min")}
+                    input {
+                        r#type: "number",
+                        class: "mt-1 w-full rounded-lg border-gray-300 text-sm",
+                        placeholder: "0",
+                        value: "{min_text}",
+                        onchange: move |e| {
+                            let lo = e.value().trim().parse::<f64>().ok();
+                            set_target(cx, &id_min, reading_target(src_lo.clone(), "gauge", lo, max));
+                        },
+                    }
+                }
+                label { class: "block text-xs font-medium text-gray-600",
+                    {t!("annot-gauge-max")}
+                    input {
+                        r#type: "number",
+                        class: "mt-1 w-full rounded-lg border-gray-300 text-sm",
+                        placeholder: "100",
+                        value: "{max_text}",
+                        onchange: move |e| {
+                            let hi = e.value().trim().parse::<f64>().ok();
+                            set_target(cx, &id_max, reading_target(src_hi.clone(), "gauge", min, hi));
+                        },
                     }
                 }
             }

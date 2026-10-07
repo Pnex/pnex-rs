@@ -2,6 +2,9 @@
 
 pub mod agent_panel;
 pub mod ai_retention;
+/// Read-only media view with its published annotations (map, media page,
+/// annotation page preview).
+pub mod annotated_media;
 /// Annotations sur médias (D55–D60) — popover live partagée + panneau
 /// d'édition studio (tranche 4).
 pub mod annotation_editor;

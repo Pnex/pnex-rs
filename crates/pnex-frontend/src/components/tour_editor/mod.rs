@@ -285,18 +285,6 @@ pub fn TourEditor(
     let mut preview_open = use_signal(|| false);
     // Doc courant pour l'aperçu (figé à l'ouverture).
     let mut preview_doc = use_signal(|| None::<TourDoc>);
-    // Annotation edit mode (restored): tour-scoped annotation sets are
-    // edited HERE, inside the preview modal. The layer is found or created
-    // on first toggle (several sets per tour are allowed — reuse the
-    // first). NOTE: server-side anchor validation compares items against
-    // the SAVED (latest) tour doc — an item placed on an unsaved new scene
-    // fails the layer save with 400 violations (band shown in the panel).
-    let mut annot_cx = crate::components::annotation_editor::state::AnnotationEditorCx::new();
-    let mut annot_edit = use_signal(|| false);
-    let mut annot_asset = use_signal(|| None::<String>);
-    let mut annot_layer = use_signal(|| None::<String>);
-    let mut annot_layer_loading = use_signal(|| false);
-
     // Métadonnées serveur pour le drawer (share token writers, publié).
     let (share_token, published_version, tour_name) = match &*detail.value().read() {
         Some(Ok(tour)) => (
@@ -306,16 +294,6 @@ pub fn TourEditor(
         ),
         _ => (None, None, String::new()),
     };
-
-    // Seed name for the find-or-create of the tour annotation layer.
-    let tour_name_seed = if tour_name.is_empty() {
-        "Annotations".to_string()
-    } else {
-        tour_name.clone()
-    };
-    // Dedicated clone for the edit-toggle closure (rsx closures capture by
-    // move; the rsx still borrows the original `tour_id` for keys).
-    let tour_id_annot = tour_id.clone();
 
     let floors: Vec<pnex_core::TourFloor> = doc.read().floors.clone();
     let scene_count = doc.read().scenes.len();
@@ -399,6 +377,8 @@ pub fn TourEditor(
 
     // Panneau flottant étages/liaison (ex-barre latérale gauche).
     let mut floors_panel_open = use_signal(|| false);
+    // Exclusive with the « + » palette; closes on a click outside.
+    crate::state::ui::use_exclusive_menu(floors_panel_open);
     let floors_title = t!("studio-floors-title");
 
     rsx! {
@@ -606,92 +586,13 @@ pub fn TourEditor(
         if preview_open() {
             Modal {
                 title: t!("studio-preview-title"),
-                max_width: if annot_edit() { "max-w-7xl".to_string() } else { "max-w-5xl".to_string() },
+                max_width: "max-w-5xl".to_string(),
                 on_close: move |_| {
                     preview_open.set(false);
                     preview_doc.set(None);
-                    // Plain reset (no dirty guard, pre-V4 school): unsaved
-                    // panel edits are discarded on close. `annot_layer` is
-                    // re-resolved on next open (list-first find-or-create,
-                    // idempotent). Clearing cx.doc avoids flashing the
-                    // previous session's rows while the panel boot
-                    // re-fetches (booted_for is fresh on each remount).
-                    annot_edit.set(false);
-                    annot_layer.set(None);
-                    annot_layer_loading.set(false);
-                    annot_asset.set(None);
-                    annot_cx.layer_id.set(None);
-                    annot_cx.doc.set(pnex_core::AnnotationDoc::default());
-                    annot_cx
-                        .saved_doc
-                        .set(pnex_core::AnnotationDoc::default());
-                    annot_cx.saved_version.set(0);
-                    annot_cx.selected.set(None);
-                    annot_cx.placing.set(false);
-                    annot_cx.violations.set(Vec::new());
-                    annot_cx.conflict.set(None);
                 },
                 if let Some(preview) = preview_doc.cloned() {
                     div { class: "space-y-3",
-                        // Edit toggle (can_write): enters the annotation
-                        // edit mode — the panel becomes the single writer
-                        // of the viewer host. Find-or-create of the
-                        // tour-scoped layer runs once per open, in a
-                        // spawned task (never at render).
-                        if can_write {
-                            div { class: "flex justify-end",
-                                button {
-                                    class: if annot_edit() { "px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg font-medium" } else { "px-3 py-1.5 text-xs bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50" },
-                                    onclick: move |_| {
-                                        annot_edit.toggle();
-                                        if annot_edit()
-                                            && annot_layer.cloned().is_none()
-                                            && !annot_layer_loading()
-                                        {
-                                            annot_layer_loading.set(true);
-                                            let id = tour_id_annot.clone();
-                                            let name = tour_name_seed.clone();
-                                            spawn(async move {
-                                                let found = api::annotation_layers::list(
-                                                        &api::annotation_layers::LayerFilters {
-                                                            tour: Some(id.clone()),
-                                                            limit: Some(1),
-                                                            ..Default::default()
-                                                        },
-                                                    )
-                                                    .await
-                                                    .ok()
-                                                    .and_then(|p| { p.results.first().map(|s| s.id.clone()) });
-                                                let layer = match found {
-                                                    Some(found_id) => Some(found_id),
-                                                    None => {
-                                                        match api::annotation_layers::create(pnex_core::CreateAnnotationLayer {
-                                                                name,
-                                                                media_asset_id: None,
-                                                                tour_id: Some(id),
-                                                                description: None,
-                                                                author: None,
-                                                                note: None,
-                                                            })
-                                                            .await
-                                                        {
-                                                            Ok(d) => Some(d.id),
-                                                            Err(err) => {
-                                                                crate::state::toasts::error(err);
-                                                                None
-                                                            }
-                                                        }
-                                                    }
-                                                };
-                                                annot_layer.set(layer);
-                                                annot_layer_loading.set(false);
-                                            });
-                                        }
-                                    },
-                                    {t!("annot-edit-toggle")}
-                                }
-                            }
-                        }
                         div { class: "flex gap-3",
                             crate::components::tour_viewer::TourViewer {
                                 key: "preview-{tour_id}",
@@ -720,51 +621,16 @@ pub fn TourEditor(
                                 host_id: tour_viewer::HOST_ID.to_string(),
                                 compact: false,
                                 show_side_panel: true,
-                                // Read overlay of published annotations when
-                                // NOT editing; in edit mode the PANEL is the
-                                // single writer of this host (the viewer's
-                                // own writer is disabled).
-                                annotations_enabled: !annot_edit(),
-                                // Track the displayed scene's media
-                                // continuously (not gated by annot_edit):
-                                // the viewer fires the initial scene at
-                                // mount, so the panel has a correct anchor
-                                // as soon as the toggle happens.
-                                on_scene_change: move |scene_id: String| {
-                                    if let Some(p) = preview_doc.cloned() {
-                                        if let Some(scene) =
-                                            p.scenes.iter().find(|s| s.id == scene_id)
-                                        {
-                                            annot_asset.set(Some(scene.media_asset_id.clone()));
-                                        }
-                                    }
-                                },
+                                // Read-only overlay of the published
+                                // annotations: they are edited in Data >
+                                // Annotations only (D147).
+                                annotations_enabled: true,
+                                annotation_tour: Some(tour_id.clone()),
+                                on_scene_change: move |_: String| {},
                                 // Tour editor preview: arrow drag is
                                 // allowed here and nowhere else (read-only
                                 // viewers keep markers fixed).
                                 editable: true,
-                            }
-                            // Annotation edit mode: the panel is the single
-                            // writer of the viewer host. Gated on the
-                            // resolved layer id — never mounts with an empty
-                            // id (the boot would fetch detail("")), spinner
-                            // while find-or-create resolves.
-                            if annot_edit() {
-                                if let Some(layer_id) = annot_layer.cloned() {
-                                    crate::components::annotation_editor::panel::AnnotationLayerPanel {
-                                        key: "annot-panel-{tour_id}",
-                                        layer_id,
-                                        media_override: annot_asset,
-                                        host_id: tour_viewer::HOST_ID.to_string(),
-                                        can_write,
-                                        cx: annot_cx,
-                                        media_kind: "panorama".to_string(),
-                                    }
-                                } else {
-                                    div { class: "w-96 shrink-0 h-[70vh] flex items-center justify-center border-l border-gray-200 bg-white",
-                                        span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400" }
-                                    }
-                                }
                             }
                         }
                     }

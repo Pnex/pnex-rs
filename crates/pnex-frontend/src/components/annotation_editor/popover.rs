@@ -57,14 +57,7 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
     });
 
     // ─── Précalculs (pas de `let` dans le corps rsx) ───
-    let kind_key = match item.kind.as_str() {
-        "device" => "annot-kind-device",
-        "pin" => "annot-kind-pin",
-        "status" => "annot-kind-status",
-        "control" => "annot-kind-control",
-        "reading" => "annot-kind-reading",
-        _ => "annot-kind-note",
-    };
+    let kind_key = kind_label_key(&item.kind);
     let surface = crate::components::surface::annotation::is_surface_item(&item);
     let surface_items = vec![item.clone()];
     let is_dead = resolved.as_ref().map(|r| r.dead).unwrap_or(false);
@@ -150,6 +143,18 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
 
 /// Couleur du point de kind (cohérente avec `.pnex-annot-{kind}`) — aussi
 /// consommée par les marqueurs plats de la page média.
+/// Fluent key of an item kind (device, pin, status, control, reading, note).
+pub fn kind_label_key(kind: &str) -> &'static str {
+    match kind {
+        "device" => "annot-kind-device",
+        "pin" => "annot-kind-pin",
+        "status" => "annot-kind-status",
+        "control" => "annot-kind-control",
+        "reading" => "annot-kind-reading",
+        _ => "annot-kind-note",
+    }
+}
+
 pub fn annot_dot_color(kind: &str) -> &'static str {
     match kind {
         "device" => "bg-blue-600",

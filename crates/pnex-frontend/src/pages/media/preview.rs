@@ -24,44 +24,10 @@ pub(super) fn MediaPreview(
     let is_panorama = asset.media_kind() == MediaKind::Panorama;
     let is_splat = asset.media_kind() == MediaKind::Splat;
     let is_splat_viewable = is_splat && splat_viewable(&asset);
-
-    // ─── Annotations (D58): flat markers on flat images ───
-    // Media read model (items of published layers) — fetch gated on flat
-    // images: the media page's panorama overlay is a D60(4) open door, not
-    // built in V1.
-    let mut annot_selected = use_signal(|| None::<pnex_core::ResolvedAnnotationItem>);
-    let asset_id_for_annot = asset_id.clone();
-    let annotations = use_resource(move || {
-        let photo = is_photo;
-        let id = asset_id_for_annot.clone();
-        async move {
-            if !photo {
-                return None;
-            }
-            crate::api::annotation_layers::media_annotations(&id)
-                .await
-                .ok()
-        }
-    });
-    let annot_items: Vec<pnex_core::ResolvedAnnotationItem> = annotations
-        .value()
-        .read()
-        .as_ref()
-        .and_then(|o| o.as_ref())
-        .map(|a| a.items.clone())
-        .unwrap_or_default();
-    // Precomputed flat markers (no `let` in the rsx body — tour_viewer
-    // school): (id, x, y, kind, item).
-    let flat_markers: Vec<(String, f64, f64, String, pnex_core::ResolvedAnnotationItem)> =
-        annot_items
-            .iter()
-            .filter_map(|it| match &it.geometry {
-                pnex_core::AnnotationGeometry::Flat { x, y } => {
-                    Some((it.id.clone(), *x, *y, it.kind.clone(), it.clone()))
-                }
-                _ => None,
-            })
-            .collect();
+    // The library shows the RAW media (D147): annotations are edited in
+    // Data > Annotations and shown by the Visualisation views only.
+    let is_floorplan = asset.media_kind() == MediaKind::Floorplan;
+    let is_image = is_photo || is_floorplan;
 
     // Mime cloned BEFORE the effects: a `move` capturing
     // `asset.content_type` = partial move of `asset`, clashing with the
@@ -163,39 +129,20 @@ pub(super) fn MediaPreview(
                     "{version_pill_text}"
                 }
             }
-            if is_photo {
+            if is_image {
                 match blob_url() {
                     Some(url) => rsx! {
                         // `relative w-full` container: the img fills the
                         // preview WIDTH (small images are upscaled too — a
                         // tiny demo PNG must not stay thumbnail-sized).
                         // `h-auto` keeps the element box at the drawn
-                        // content box (no letterbox), so the %-of-container
-                        // annotation markers stay aligned with the displayed
-                        // image (tour_viewer mini-map school); `max-h` only
-                        // clamps unusually tall images.
+                        // content box (no letterbox); `max-h` only clamps
+                        // unusually tall images.
                         div { class: "relative w-full",
                             img {
                                 src: "{url}",
                                 class: "mx-auto h-auto w-full max-h-[560px] object-contain",
                                 alt: "{asset.name}",
-                            }
-                            for (m_id, m_x, m_y, m_kind, m_item) in flat_markers {
-                                button {
-                                    key: "annot-{m_id}",
-                                    class: "absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-md hover:scale-110 transition-transform {crate::components::annotation_editor::popover::annot_dot_color(&m_kind)}",
-                                    style: "left: calc({m_x} * 100%); top: calc({m_y} * 100%);",
-                                    title: "{m_item.label}",
-                                    onclick: move |_| annot_selected.set(Some(m_item.clone())),
-                                }
-                            }
-                        }
-                        if let Some(item) = annot_selected.cloned() {
-                            div { key: "annot-pop-{item.id}",
-                                crate::components::annotation_editor::popover::AnnotationPopover {
-                                    item,
-                                    on_close: move |_| annot_selected.set(None),
-                                }
                             }
                         }
                     },

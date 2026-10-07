@@ -151,6 +151,75 @@ pub fn move_item_flat(doc: &mut AnnotationDoc, item_id: &str, x: f64, y: f64) {
     }
 }
 
+/// Splat item row (world point) — markers of a splat media.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct EditorItemRowSplat {
+    pub id: String,
+    pub kind: String,
+    pub label: String,
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+}
+
+/// Rows of the splat items anchored on a media (document order).
+pub fn item_rows_splat(doc: &AnnotationDoc, media_asset_id: &str) -> Vec<EditorItemRowSplat> {
+    doc.items
+        .iter()
+        .filter(|it| it.media_asset_id == media_asset_id)
+        .filter_map(|it| match &it.geometry {
+            AnnotationGeometry::Splat { x, y, z } => Some(EditorItemRowSplat {
+                id: it.id.clone(),
+                kind: it.kind.clone(),
+                label: it.label.clone(),
+                x: *x,
+                y: *y,
+                z: *z,
+            }),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Places a note on a splat at a picked world point — returns the new id.
+pub fn place_item_splat(
+    doc: &mut AnnotationDoc,
+    media_asset_id: &str,
+    x: f64,
+    y: f64,
+    z: f64,
+) -> String {
+    let id = next_item_id(doc);
+    doc.items.push(AnnotationItem {
+        id: id.clone(),
+        media_asset_id: media_asset_id.to_string(),
+        kind: ANNOTATION_KIND_NOTE.into(),
+        geometry: AnnotationGeometry::Splat { x, y, z },
+        color: None,
+        label: String::new(),
+        target: AnnotationTarget::Note {
+            text: String::new(),
+        },
+    });
+    id
+}
+
+/// Moves a splat item to a re-picked world point (marker drag).
+pub fn move_item_splat(doc: &mut AnnotationDoc, item_id: &str, x: f64, y: f64, z: f64) {
+    for it in doc.items.iter_mut().filter(|it| it.id == item_id) {
+        if let AnnotationGeometry::Splat {
+            x: gx,
+            y: gy,
+            z: gz,
+        } = &mut it.geometry
+        {
+            *gx = x;
+            *gy = y;
+            *gz = z;
+        }
+    }
+}
+
 /// Change la cible d'un item — le `kind` SUIT le type de cible
 /// (cohérence kind↔cible garantie par construction, D57).
 pub fn set_item_target(doc: &mut AnnotationDoc, item_id: &str, target: AnnotationTarget) {
@@ -394,5 +463,21 @@ mod tests {
         assert!(item_ids_for_asset(&doc, "asset-1").is_empty());
         assert!(!has_item(&doc, "a9"));
         assert!(has_item(&doc, &doc.items[0].id));
+    }
+
+    #[test]
+    fn splat_items_place_move_and_list() {
+        let mut doc = AnnotationDoc::default();
+        let id = place_item_splat(&mut doc, "m1", 1.0, -2.0, 3.0);
+        place_item(&mut doc, "m1", 10.0, 5.0);
+        let rows = item_rows_splat(&doc, "m1");
+        assert_eq!(rows.len(), 1);
+        assert_eq!((rows[0].x, rows[0].y, rows[0].z), (1.0, -2.0, 3.0));
+        move_item_splat(&mut doc, &id, 0.5, 0.5, 0.5);
+        assert_eq!(item_rows_splat(&doc, "m1")[0].z, 0.5);
+        // The other geometries ignore a splat move.
+        move_item_splat(&mut doc, "a2", 9.0, 9.0, 9.0);
+        assert_eq!(item_rows(&doc, "m1")[0].yaw, 10.0);
+        assert!(validate_annotation_doc(&doc).is_empty());
     }
 }

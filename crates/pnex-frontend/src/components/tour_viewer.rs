@@ -10,7 +10,9 @@ use pnex_core::{ResolvedAnnotationItem, TourDoc};
 use std::collections::HashMap;
 
 use crate::components::annotation_editor::popover::AnnotationPopover;
-use crate::components::modal::Modal;
+use crate::components::surface::annotation::{
+    effective_mode, is_surface_item, AnnotMode, AnnotModeToggle, AnnotationCardsOverlay,
+};
 use crate::tour_viewer::{AnnotMarkerView, TourHotspotView, TourNav, TourSceneView};
 
 /// Source des octets d'assets (path builder).
@@ -63,6 +65,10 @@ pub fn TourViewer(
     /// Panneau latéral (étages/mini-plan/scènes) — masqué sur la page
     /// annotations pour un média simple (pas de chrome de tour à montrer).
     show_side_panel: bool,
+    /// Read context of the annotations (D147): `Some(tour id)` = this tour's
+    /// sets only; `None` = the standalone media's sets (single-media doc).
+    #[props(default)]
+    annotation_tour: Option<String>,
     /// Gated marker (arrow) drag: true only in the tour editor preview —
     /// read-only viewers (map POI preview, share page, annotation page)
     /// keep markers fixed. Pushed to the JS host guard at event time.
@@ -101,7 +107,10 @@ pub fn TourViewer(
     // marqueurs est un **effet séparé** du mount (la clé de dé-dup du mount
     // reste (scène, url) — JAMAIS les annotations, sinon re-mount à chaque
     // édition).
-    let mut annot_on = use_signal(|| true);
+    // Viewer's display choice (None = automatic: cards when the media
+    // carries control / reading items, dots otherwise — D147).
+    let mut annot_mode = use_signal(|| None::<AnnotMode>);
+    let mut annot_has_cards = use_signal(|| false);
     let mut annot_seq = use_signal(|| 0u64);
     let mut annot_selected = use_signal(|| None::<ResolvedAnnotationItem>);
     // Dernier lot de marqueurs appliqué (scène, url, json) — dé-dup des
@@ -148,12 +157,13 @@ pub fn TourViewer(
     let annotations = use_resource(move || {
         let asset_id = scene_asset.read().clone();
         let enabled = annotations_enabled;
+        let tour = annotation_tour.clone();
         async move {
             if !enabled {
                 return None;
             }
             let asset_id = asset_id?;
-            crate::api::annotation_layers::media_annotations(&asset_id)
+            crate::api::annotation_layers::media_annotations(&asset_id, tour.as_deref())
                 .await
                 .ok()
         }
@@ -328,6 +338,12 @@ pub fn TourViewer(
                             .and_then(|a| {
                                 a.items.iter().find(|it| it.id == click.item_id).cloned()
                             });
+                        // Cards mode: a control / reading item already shows
+                        // its card on the marker — no popover on top of it.
+                        let cards_mode =
+                            effective_mode(annot_mode.cloned(), annot_has_cards.cloned())
+                                == AnnotMode::Cards;
+                        let found = found.filter(|it| !(cards_mode && is_surface_item(it)));
                         annot_selected.set(found);
                     }
                 }
@@ -385,7 +401,8 @@ pub fn TourViewer(
             .and_then(|o| o.as_ref())
             .map(|a| a.items.clone())
             .unwrap_or_default();
-        let markers: Vec<AnnotMarkerView> = if annot_on() {
+        let mode = effective_mode(annot_mode(), annot_has_cards());
+        let markers: Vec<AnnotMarkerView> = if mode != AnnotMode::Hidden {
             items
                 .iter()
                 .filter_map(|it| match &it.geometry {
@@ -413,6 +430,34 @@ pub fn TourViewer(
         let host = host_for_annot.clone();
         spawn(async move {
             crate::tour_viewer::set_annotations(&host, &markers, false).await;
+        });
+    });
+
+    // Has the shown media control / reading items? (drives the automatic
+    // mode — written from an effect, never during render).
+    use_effect(move || {
+        let has = annotations
+            .value()
+            .read()
+            .as_ref()
+            .and_then(|o| o.as_ref())
+            .is_some_and(|a| a.items.iter().any(is_surface_item));
+        if annot_has_cards() != has {
+            annot_has_cards.set(has);
+        }
+    });
+
+    // Cards follow their pannellum hotspots (glue RAF, cancelled on unmount
+    // or when the cards are hidden).
+    let host_for_cards = host_id.clone();
+    use_effect(move || {
+        let on = annotations_enabled
+            && annot_has_cards()
+            && effective_mode(annot_mode(), annot_has_cards()) == AnnotMode::Cards;
+        let host = host_for_cards.clone();
+        let overlay = format!("{host}-cards");
+        spawn(async move {
+            crate::tour_viewer::follow_cards(&host, &overlay, on).await;
         });
     });
 
@@ -475,8 +520,8 @@ pub fn TourViewer(
         .and_then(|o| o.as_ref())
         .is_some_and(|a| !a.items.is_empty());
     let annot_selected_now = annot_selected.cloned();
-    // Control / reading items of the shown media: operable and readable in
-    // a side panel on the right (D129), next to their markers.
+    // Control / reading items of the shown media: cards anchored next to
+    // their markers (D147), when the viewer shows cards.
     let surface_items: Vec<ResolvedAnnotationItem> = annotations
         .value()
         .read()
@@ -485,7 +530,7 @@ pub fn TourViewer(
         .map(|a| {
             a.items
                 .iter()
-                .filter(|i| crate::components::surface::annotation::is_surface_item(i))
+                .filter(|i| is_surface_item(i))
                 .cloned()
                 .collect()
         })
@@ -495,7 +540,10 @@ pub fn TourViewer(
         .map(|i| i.id.as_str())
         .collect::<Vec<_>>()
         .join(",");
-    let show_surface = annotations_enabled && annot_on() && !surface_items.is_empty();
+    let mode_now = effective_mode(annot_mode(), !surface_items.is_empty());
+    let show_cards =
+        annotations_enabled && mode_now == AnnotMode::Cards && !surface_items.is_empty();
+    let overlay_id = format!("{host_id}-cards");
 
     rsx! {
         div { class: if compact { "flex w-full gap-3 flex-1 min-h-0" } else { "flex w-full gap-3 h-[70vh]" },
@@ -578,16 +626,16 @@ pub fn TourViewer(
             // (pannellum trap — MediaPreview school: .pnlm-container sets
             // height:100% after Tailwind; never size the host with a class).
             div { class: "flex-1 relative min-w-0",
-                // Toggle « Annotations » (D58) : rendu si le média affiché
-                // porte ≥ 1 item ; on par défaut ; ferme la popover à l'off.
+                // Display switch (D147): hidden / dots / cards — shown when
+                // the media carries items; closes the popover on change.
                 if has_items && annotations_enabled {
-                    button {
-                        class: "absolute top-2 left-2 z-20 px-3 py-1.5 text-xs font-medium rounded-lg bg-white/90 text-gray-700 border border-gray-200 shadow-sm hover:bg-white",
-                        onclick: move |_| {
-                            annot_on.toggle();
+                    AnnotModeToggle {
+                        mode: mode_now,
+                        has_cards: !surface_items.is_empty(),
+                        on_change: move |m| {
+                            annot_mode.set(Some(m));
                             annot_selected.set(None);
                         },
-                        {t!("annot-toggle")}
                     }
                 }
                 if load_failed() {
@@ -601,6 +649,15 @@ pub fn TourViewer(
                     id: "{host_id}",
                     style: "position: absolute; inset: 0; height: 100%;",
                 }
+                if show_cards {
+                    // Keyed on the item set: the cards' live poll captures it.
+                    div { key: "{surface_key}",
+                        AnnotationCardsOverlay {
+                            items: surface_items.clone(),
+                            overlay_id: overlay_id.clone(),
+                        }
+                    }
+                }
                 // Popover live (D58) : item cliqué, hors canvas (panneau
                 // dioxus), jamais bloquante.
                 if let Some(item) = annot_selected_now {
@@ -611,72 +668,6 @@ pub fn TourViewer(
                         }
                     }
                 }
-            }
-            if show_surface {
-                // Keyed on the block root: dioxus drops a key on a non-root
-                // node, so the surface remounts when the item set changes.
-                div {
-                    key: "{surface_key}",
-                    class: "w-64 shrink-0 space-y-2 overflow-y-auto",
-                    span { class: "text-xs font-semibold uppercase tracking-wide text-gray-500",
-                        {t!("annot-surface-title")}
-                    }
-                    crate::components::surface::annotation::AnnotationSurface { items: surface_items.clone() }
-                }
-            }
-        }
-    }
-}
-
-// ───────────────────────── TourViewerModal (map drawer) ─────────────────────────
-
-/// Aperçu autonome d'un tour depuis le drawer POI — charge le doc de la
-/// DERNIÈRE version authentifié (`ViewerSource::Auth`, le contenu courant
-/// est servi ; la version publiée n'a de sens que pour le lien public).
-/// Hotspots en lecture : le drag est sans effet (`on_hotspot_move` no-op,
-/// école page `/share`).
-#[component]
-pub fn TourViewerModal(tour_id: String, on_close: Callback<()>) -> Element {
-    let id_for_res = tour_id.clone();
-    let detail = use_resource(move || {
-        let id = id_for_res.clone();
-        async move { crate::api::tours::detail(&id).await }
-    });
-
-    rsx! {
-        Modal {
-            title: match detail.value().read().as_ref() {
-                Some(Ok(d)) => d.name.clone(),
-                _ => t!("poi-picker-tab-tour").to_string(),
-            },
-            max_width: "max-w-5xl".to_string(),
-            on_close,
-            match &*detail.value().read() {
-                Some(Ok(d)) => rsx! {
-                    TourViewer {
-                        key: "tour-view-{tour_id}",
-                        doc: d.doc.clone(),
-                        assets: Default::default(),
-                        source: ViewerSource::Auth,
-                        on_hotspot_move: move |_| {},
-                        on_scene_change: move |_: String| {},
-                        host_id: format!("pnex-tour-viewer-{}", tour_id.replace('-', "")),
-                        compact: false,
-                        annotations_enabled: true,
-                        show_side_panel: true,
-                        editable: false,
-                    }
-                },
-                Some(Err(err)) => rsx! {
-                    div { class: "bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700",
-                        {err.message.clone()}
-                    }
-                },
-                None => rsx! {
-                    div { class: "flex justify-center py-6",
-                        span { class: "animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" }
-                    }
-                },
             }
         }
     }

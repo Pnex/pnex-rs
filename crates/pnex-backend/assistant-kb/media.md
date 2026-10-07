@@ -13,7 +13,7 @@ The Media library (Data › Library) stores the organization's versioned files: 
 ## What you can do
 - **Upload** a file: choose a **Name** and a **Type** (auto-detected when "auto": a 360 panorama is recognised automatically).
 - Filter by type (**All**, **Photo**, **360° Panorama**, **3D Splat**, **Floor plan**, **Vision model**), search by name, or filter by label.
-- Open a media to preview it (interactive 360 viewer for panoramas, splat viewer), see **Versions**, **Add a version**, **View** or **Restore** an older one, **Download**, **Delete asset**.
+- Open a media to preview it as is (interactive 360 viewer for panoramas, 3D splat viewer; annotations are not shown here, see the Annotations page); see **Versions**, **Add a version**, **View** or **Restore** an older one, **Download**, **Delete asset**.
 - In the installed apps (not the browser): **Take a photo**; on Android also **Take 360** to capture a panorama with the phone, stitched on the device for a quick preview; the server then builds an HD version that replaces the preview automatically.
 
 ## Good to know

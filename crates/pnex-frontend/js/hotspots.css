@@ -73,3 +73,18 @@
 .pnex-annot-reading {
   background-color: #0284c7;
 }
+
+/* Splat markers (D147): plain divs of the splat overlay, positioned by a
+   transform from the render loop — same look as the panorama markers. */
+.pnex-splat-overlay .pnex-annot {
+  transition: none;
+}
+
+/* Annotation cards (D147): positioned by the glue (`followCards`); hidden
+   until the glue has placed them once (no flash at the overlay origin). */
+[data-annot-card]:not([data-pos]) {
+  visibility: hidden;
+}
+[data-annot-card] {
+  will-change: transform;
+}

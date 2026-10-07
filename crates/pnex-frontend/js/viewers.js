@@ -30,10 +30,10 @@ try {
 } catch (e) {
   console.warn('[pnex-viewers] gsplat indisponible', e);
 }
-// Même souci de forme pour gsplat (ESM pur) : `Renderer`/`Scene` doivent
-// exister — sinon retomber sur la globale éventuelle.
-if (!gsplatLib || typeof gsplatLib.Renderer !== 'function') {
-  gsplatLib = (typeof window !== 'undefined' && typeof window.gsplat?.Renderer === 'function')
+// Same shape issue for gsplat (pure ESM): the 1.2.x API (`WebGLRenderer`,
+// `Scene`, `Loader`…) must be there — otherwise fall back to a global.
+if (!gsplatLib || typeof gsplatLib.WebGLRenderer !== 'function') {
+  gsplatLib = (typeof window !== 'undefined' && typeof window.gsplat?.WebGLRenderer === 'function')
     ? window.gsplat
     : null;
 }
@@ -90,37 +90,621 @@ function mountPanorama(hostId, url) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Gaussian splat viewer (gsplat 1.2.9: WebGLRenderer / Scene / Camera /
+// OrbitControls / Loader / PLYLoader) + 3D annotations (D147). Layout:
+// host > wrap(relative) > [canvas, overlay(pointer-events none)]; the
+// markers live in the overlay (pointer-events auto), positioned every
+// frame by projecting their world point with the camera's viewProj.
+// No occlusion test: a marker stays visible through the geometry.
+// Events reuse the panorama globals and seq counters (__pnexAnnotClick /
+// Place / Move) with x/y/z instead of yaw/pitch.
+function isPly(buffer) {
+  var head = new Uint8Array(buffer, 0, Math.min(4, buffer.byteLength));
+  return head.length === 4 && head[0] === 0x70 && head[1] === 0x6c && head[2] === 0x79 && head[3] === 0x0a;
+}
+
 function mountSplat(hostId, url) {
   var host = hostOf(hostId);
   if (!host || !gsplatLib || !hasWebGL(true)) {
     return false;
   }
   try {
+    stopSplat(host);
     host.innerHTML = '';
+    var wrap = document.createElement('div');
+    wrap.className = 'pnex-splat-wrap';
+    wrap.style.position = 'relative';
+    wrap.style.width = '100%';
+    wrap.style.height = '100%';
+    wrap.style.overflow = 'hidden';
     var canvas = document.createElement('canvas');
     canvas.style.width = '100%';
     canvas.style.height = '100%';
-    host.appendChild(canvas);
+    canvas.style.display = 'block';
+    var overlay = document.createElement('div');
+    overlay.className = 'pnex-splat-overlay';
+    overlay.style.position = 'absolute';
+    overlay.style.inset = '0';
+    overlay.style.pointerEvents = 'none';
+    wrap.appendChild(canvas);
+    wrap.appendChild(overlay);
+    host.appendChild(wrap);
+    var st = {
+      host: host,
+      canvas: canvas,
+      overlay: overlay,
+      renderer: null,
+      scene: null,
+      camera: null,
+      controls: null,
+      pos: null,
+      alpha: null,
+      count: 0,
+      R: 1,
+      // Data → world rotation (identity until the cloud is analysed).
+      m: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      markers: {},
+      editable: false,
+      placeMode: false,
+      abort: typeof AbortController === 'function' ? new AbortController() : null,
+      rendered: false,
+      // Card overlay to drive, kept on the host across (re)mounts.
+      cards: host._pnexCardsOverlay || null,
+      listeners: [],
+    };
+    host._pnexSplat = st;
+    bindSplatEvents(st);
+    // Markers / place mode set before the mount (the editor may push them
+    // while the splat blob is still downloading).
+    var pending = host._pnexSplatPending;
+    host._pnexSplatPending = null;
+    if (pending) {
+      splatSetAnnotations(hostId, pending.json, pending.editable);
+      st.placeMode = !!pending.placeMode;
+    }
     (async function () {
       try {
-        var resp = await fetch(url);
+        var resp = await fetch(url, st.abort ? { signal: st.abort.signal } : undefined);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var buffer = await resp.arrayBuffer();
-        var renderer = new gsplatLib.Renderer(canvas);
+        if (host._pnexSplat !== st) return;
+        var renderer = new gsplatLib.WebGLRenderer(canvas);
         var scene = new gsplatLib.Scene();
-        var data = await gsplatLib.SceneFormat.fromArrayBuffer(buffer);
-        scene.setData(data);
-        renderer.addScene(scene);
-        renderer.render();
+        var camera = new gsplatLib.Camera();
+        var splat = isPly(buffer)
+          ? gsplatLib.PLYLoader.LoadFromArrayBuffer(buffer, scene)
+          : gsplatLib.Loader.LoadFromArrayBuffer(buffer, scene);
+        // Snapshot for picking BEFORE the first render: the render worker
+        // takes over (empties) the data buffers.
+        var data = splat.data;
+        st.count = data.vertexCount;
+        st.pos = new Float32Array(data.positions);
+        st.alpha = new Uint8Array(st.count);
+        var colors = data.colors;
+        for (var i = 0; i < st.count; i++) st.alpha[i] = colors[4 * i + 3];
+        var frame = splatFraming(st);
+        st.R = frame.R;
+        st.m = frame.m;
+        // Orient the splat (data → world rotation) and move the picking
+        // snapshot to world coordinates; annotations stay in data
+        // coordinates (converted at the glue boundary).
+        var qv = quatOfMat3(frame.m);
+        splat.rotation = new gsplatLib.Quaternion(qv[0], qv[1], qv[2], qv[3]);
+        for (var p = 0; p < st.count; p++) {
+          var wpt = mulMat3(frame.m, [st.pos[3 * p], st.pos[3 * p + 1], st.pos[3 * p + 2]]);
+          st.pos[3 * p] = wpt[0];
+          st.pos[3 * p + 1] = wpt[1];
+          st.pos[3 * p + 2] = wpt[2];
+        }
+        Object.keys(st.markers).forEach(function (id) {
+          var mk = st.markers[id];
+          var wm = mulMat3(frame.m, mk.data);
+          mk.x = wm[0];
+          mk.y = wm[1];
+          mk.z = wm[2];
+        });
+        camera.data.near = Math.max(frame.R * 1e-3, 1e-3);
+        camera.data.far = frame.R * 100;
+        var center = new gsplatLib.Vector3(frame.center[0], frame.center[1], frame.center[2]);
+        var controls = new gsplatLib.OrbitControls(
+          camera, canvas, 0.5, 0.35, frame.R * 1.5, false, center
+        );
+        controls.minZoom = frame.R * 0.05;
+        controls.maxZoom = frame.R * 10;
+        st.renderer = renderer;
+        st.scene = scene;
+        st.camera = camera;
+        st.controls = controls;
+        var loop = function () {
+          if (host._pnexSplat !== st) return;
+          try {
+            renderer.resize();
+            controls.update();
+            renderer.render(scene, camera);
+            st.rendered = true;
+            projectSplatMarkers(st);
+          } catch (e) {
+            warn('splat frame failed', e);
+          }
+          host._pnexRaf = requestAnimationFrame(loop);
+        };
+        host._pnexRaf = requestAnimationFrame(loop);
       } catch (e) {
-        warn('splat load échoué', e);
+        if (host._pnexSplat === st) warn('splat load failed', e);
       }
     })();
     return true;
   } catch (e) {
-    warn('splat mount échoué', e);
+    warn('splat mount failed', e);
     return false;
   }
+}
+
+// Framing + orientation from the dense part of the cloud (captures come
+// with any axis convention and far floaters):
+//  - centre = median, scale R = half-diagonal of the inter-quartile box;
+//  - vertical = axis of least variance of the points near the centre (the
+//    ground is the dominant flat structure), oriented by the skewness along
+//    it (vegetation and objects stick UP from the ground);
+//  - the splat is rotated so this vertical becomes gsplat's up (-y).
+// Returns { center (world), R, m (3x3 row-major data → world rotation) }.
+function splatFraming(st) {
+  var n = st.count;
+  var step = Math.max(1, Math.floor(n / 20000));
+  var xs = [], ys = [], zs = [];
+  for (var i = 0; i < n; i += step) {
+    if (st.alpha[i] < 40) continue;
+    xs.push(st.pos[3 * i]);
+    ys.push(st.pos[3 * i + 1]);
+    zs.push(st.pos[3 * i + 2]);
+  }
+  var ident = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  if (xs.length < 10) return { center: [0, 0, 0], R: 1, m: ident };
+  var q = function (arr, p) {
+    var a = arr.slice().sort(function (x, y) { return x - y; });
+    return a[Math.min(a.length - 1, Math.floor(p * a.length))];
+  };
+  var c = [q(xs, 0.5), q(ys, 0.5), q(zs, 0.5)];
+  var dx = q(xs, 0.75) - q(xs, 0.25), dy = q(ys, 0.75) - q(ys, 0.25), dz = q(zs, 0.75) - q(zs, 0.25);
+  var R = Math.max(0.5 * Math.sqrt(dx * dx + dy * dy + dz * dz), 0.1);
+  // Covariance of the points within 1.5 R of the centre.
+  var C = [0, 0, 0, 0, 0, 0, 0, 0, 0], cnt = 0, lim = 1.5 * R;
+  for (var k = 0; k < xs.length; k++) {
+    var v = [xs[k] - c[0], ys[k] - c[1], zs[k] - c[2]];
+    if (Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) > lim) continue;
+    for (var a = 0; a < 3; a++) for (var b = 0; b < 3; b++) C[3 * a + b] += v[a] * v[b];
+    cnt++;
+  }
+  if (cnt < 10) return { center: c, R: R, m: ident };
+  var up = smallestEigenvector(C);
+  // Skewness along the axis: the long tail points up.
+  var proj = [];
+  for (var k2 = 0; k2 < xs.length; k2++) {
+    var w = [xs[k2] - c[0], ys[k2] - c[1], zs[k2] - c[2]];
+    if (Math.sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]) > lim) continue;
+    proj.push(w[0] * up[0] + w[1] * up[1] + w[2] * up[2]);
+  }
+  var med = q(proj, 0.5), m2 = 0, m3 = 0;
+  proj.forEach(function (p) { var d = p - med; m2 += d * d; m3 += d * d * d; });
+  // Negative skewness = long tail toward -axis: that side is up.
+  if (m3 < 0) up = [-up[0], -up[1], -up[2]];
+  var m = rotationTo(up, [0, -1, 0]);
+  return { center: mulMat3(m, c), R: R, m: m };
+}
+
+// Jacobi eigen-decomposition of a symmetric 3x3 (row-major) — returns the
+// unit eigenvector of the smallest eigenvalue.
+function smallestEigenvector(C) {
+  var A = [[C[0], C[1], C[2]], [C[3], C[4], C[5]], [C[6], C[7], C[8]]];
+  var V = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  for (var it = 0; it < 50; it++) {
+    var p = 0, qq = 1, big = 0;
+    for (var i = 0; i < 3; i++) for (var j = i + 1; j < 3; j++) {
+      if (Math.abs(A[i][j]) > big) { big = Math.abs(A[i][j]); p = i; qq = j; }
+    }
+    if (big < 1e-12) break;
+    var th = 0.5 * Math.atan2(2 * A[p][qq], A[qq][qq] - A[p][p]);
+    var co = Math.cos(th), si = Math.sin(th);
+    for (var k = 0; k < 3; k++) {
+      var akp = A[k][p], akq = A[k][qq];
+      A[k][p] = co * akp - si * akq;
+      A[k][qq] = si * akp + co * akq;
+    }
+    for (var k1 = 0; k1 < 3; k1++) {
+      var apk = A[p][k1], aqk = A[qq][k1];
+      A[p][k1] = co * apk - si * aqk;
+      A[qq][k1] = si * apk + co * aqk;
+    }
+    for (var k2 = 0; k2 < 3; k2++) {
+      var vkp = V[k2][p], vkq = V[k2][qq];
+      V[k2][p] = co * vkp - si * vkq;
+      V[k2][qq] = si * vkp + co * vkq;
+    }
+  }
+  var best = 0;
+  for (var e = 1; e < 3; e++) if (A[e][e] < A[best][best]) best = e;
+  var u = [V[0][best], V[1][best], V[2][best]];
+  var len = Math.sqrt(u[0] * u[0] + u[1] * u[1] + u[2] * u[2]) || 1;
+  return [u[0] / len, u[1] / len, u[2] / len];
+}
+
+// Rotation matrix (row-major) taking unit vector a onto unit vector b.
+function rotationTo(a, b) {
+  var vx = a[1] * b[2] - a[2] * b[1], vy = a[2] * b[0] - a[0] * b[2], vz = a[0] * b[1] - a[1] * b[0];
+  var cth = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  if (cth < -0.999999) {
+    // Opposite vectors: half-turn around any axis orthogonal to a.
+    var ax = Math.abs(a[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+    var ox = a[1] * ax[2] - a[2] * ax[1], oy = a[2] * ax[0] - a[0] * ax[2], oz = a[0] * ax[1] - a[1] * ax[0];
+    var ol = Math.sqrt(ox * ox + oy * oy + oz * oz);
+    ox /= ol; oy /= ol; oz /= ol;
+    return [2 * ox * ox - 1, 2 * ox * oy, 2 * ox * oz, 2 * oy * ox, 2 * oy * oy - 1, 2 * oy * oz, 2 * oz * ox, 2 * oz * oy, 2 * oz * oz - 1];
+  }
+  var k = 1 / (1 + cth);
+  return [
+    vx * vx * k + cth, vx * vy * k - vz, vx * vz * k + vy,
+    vy * vx * k + vz, vy * vy * k + cth, vy * vz * k - vx,
+    vz * vx * k - vy, vz * vy * k + vx, vz * vz * k + cth,
+  ];
+}
+
+function mulMat3(m, v) {
+  return [
+    m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
+    m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
+    m[6] * v[0] + m[7] * v[1] + m[8] * v[2],
+  ];
+}
+
+function mulMat3T(m, v) {
+  return [
+    m[0] * v[0] + m[3] * v[1] + m[6] * v[2],
+    m[1] * v[0] + m[4] * v[1] + m[7] * v[2],
+    m[2] * v[0] + m[5] * v[1] + m[8] * v[2],
+  ];
+}
+
+// Quaternion (x, y, z, w) of a row-major rotation matrix.
+function quatOfMat3(m) {
+  var tr = m[0] + m[4] + m[8], qx, qy, qz, qw, S;
+  if (tr > 0) {
+    S = Math.sqrt(tr + 1) * 2; qw = 0.25 * S;
+    qx = (m[7] - m[5]) / S; qy = (m[2] - m[6]) / S; qz = (m[3] - m[1]) / S;
+  } else if (m[0] > m[4] && m[0] > m[8]) {
+    S = Math.sqrt(1 + m[0] - m[4] - m[8]) * 2; qw = (m[7] - m[5]) / S;
+    qx = 0.25 * S; qy = (m[1] + m[3]) / S; qz = (m[2] + m[6]) / S;
+  } else if (m[4] > m[8]) {
+    S = Math.sqrt(1 + m[4] - m[0] - m[8]) * 2; qw = (m[2] - m[6]) / S;
+    qx = (m[1] + m[3]) / S; qy = 0.25 * S; qz = (m[5] + m[7]) / S;
+  } else {
+    S = Math.sqrt(1 + m[8] - m[0] - m[4]) * 2; qw = (m[3] - m[1]) / S;
+    qx = (m[2] + m[6]) / S; qy = (m[5] + m[7]) / S; qz = 0.25 * S;
+  }
+  return [qx, qy, qz, qw];
+}
+
+// World point → overlay pixels (row-vector convention, column-major
+// buffer; the projection already flips y). null when behind the camera.
+function splatProject(st, x, y, z) {
+  var m = st.camera.data.viewProj.buffer;
+  var cx = x * m[0] + y * m[4] + z * m[8] + m[12];
+  var cy = x * m[1] + y * m[5] + z * m[9] + m[13];
+  var cw = x * m[3] + y * m[7] + z * m[11] + m[15];
+  if (cw <= 1e-6) return null;
+  var w = st.canvas.clientWidth, h = st.canvas.clientHeight;
+  return { px: (cx / cw + 1) / 2 * w, py: (1 - cy / cw) / 2 * h, w: w, h: h };
+}
+
+function projectSplatMarkers(st) {
+  if (!st.camera) return;
+  Object.keys(st.markers).forEach(function (id) {
+    var mk = st.markers[id];
+    if (mk.dragging) return;
+    var p = splatProject(st, mk.x, mk.y, mk.z);
+    var vis = !!p && p.px > -0.05 * p.w && p.px < 1.05 * p.w && p.py > -0.05 * p.h && p.py < 1.05 * p.h;
+    if (vis !== mk.vis) {
+      mk.vis = vis;
+      mk.el.style.visibility = vis ? 'visible' : 'hidden';
+    }
+    if (vis && (Math.abs(p.px - mk.px) > 0.5 || Math.abs(p.py - mk.py) > 0.5)) {
+      mk.px = p.px;
+      mk.py = p.py;
+      mk.el.style.transform = 'translate(' + p.px + 'px,' + p.py + 'px) translate(-50%,-50%)';
+    }
+  });
+  if (st.cards) placeCards(st.host, st.cards, function (id) {
+    var mk = st.markers[id];
+    return mk && mk.vis ? { x: mk.px, y: mk.py } : null;
+  });
+}
+
+// Pick the visible surface point under (clientX, clientY): one pass over
+// the gaussian centres, keeping those within ~6 px (angular) of the
+// camera ray; the nearest depth cluster of >= 3 points wins (isolated
+// floaters are skipped). Returns {x, y, z} or null.
+var splatCandidates = new Float32Array(8192);
+function pickSplat(st, clientX, clientY) {
+  if (!st.camera || !st.pos) return null;
+  var rect = st.canvas.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  var ndcX = 2 * (clientX - rect.left) / rect.width - 1;
+  var ndcY = 1 - 2 * (clientY - rect.top) / rect.height;
+  var d = st.camera.screenPointToRay(ndcX, ndcY);
+  var o = st.camera.position;
+  var tol = 6 / Math.max(st.camera.data.fy, 1);
+  var tol2 = tol * tol;
+  var near = st.camera.data.near;
+  var pos = st.pos, alpha = st.alpha, n = st.count;
+  var found = 0, bestR = Infinity, bestT = 0;
+  for (var i = 0; i < n; i++) {
+    if (alpha[i] < 40) continue;
+    var vx = pos[3 * i] - o.x, vy = pos[3 * i + 1] - o.y, vz = pos[3 * i + 2] - o.z;
+    var t = vx * d.x + vy * d.y + vz * d.z;
+    if (t <= near) continue;
+    var r = (vx * vx + vy * vy + vz * vz - t * t) / (t * t);
+    if (r < bestR) { bestR = r; bestT = t; }
+    if (r <= tol2 && found < splatCandidates.length) splatCandidates[found++] = t;
+  }
+  var hit = -1;
+  if (found > 0) {
+    var ts = Array.prototype.slice.call(splatCandidates.subarray(0, found)).sort(function (a, b) { return a - b; });
+    var band = 0.02 * st.R;
+    for (var k = 0; k < ts.length; k++) {
+      var j = k;
+      while (j < ts.length && ts[j] <= ts[k] + band) j++;
+      if (j - k >= 3) { hit = ts[k]; break; }
+    }
+    if (hit < 0) hit = ts[0];
+  } else if (bestR <= 25 * 25 * tol2 / 36) {
+    hit = bestT;
+  }
+  if (hit < 0) return null;
+  return { x: o.x + d.x * hit, y: o.y + d.y * hit, z: o.z + d.z * hit };
+}
+
+function splatListen(st, target, type, fn, capture) {
+  target.addEventListener(type, fn, capture);
+  st.listeners.push([target, type, fn, capture]);
+}
+
+function bindSplatEvents(st) {
+  var host = st.host;
+  var down = null;
+  var drag = null;
+  splatListen(st, host, 'mousedown', function (e) {
+    down = { x: e.clientX, y: e.clientY };
+    var el = e.target && e.target.closest ? e.target.closest('.pnex-annot') : null;
+    if (!el || e.button !== 0) return;
+    var id = el.dataset.annotId;
+    var mk = st.markers[id];
+    if (!mk) return;
+    e.stopPropagation();
+    e.preventDefault();
+    drag = { id: id, mk: mk, sx: e.clientX, sy: e.clientY, moved: false };
+  }, true);
+  splatListen(st, document, 'mousemove', function (e) {
+    if (!drag || !st.editable) return;
+    var dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+    if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+    drag.moved = true;
+    drag.mk.dragging = true;
+    var rect = st.overlay.getBoundingClientRect();
+    drag.mk.el.style.transform = 'translate(' + (e.clientX - rect.left) + 'px,' + (e.clientY - rect.top) + 'px) translate(-50%,-50%)';
+  }, false);
+  splatListen(st, document, 'mouseup', function (e) {
+    if (!drag) return;
+    var d = drag;
+    drag = null;
+    d.mk.dragging = false;
+    d.mk.px = -1e9;
+    if (!d.moved) {
+      annotSeq += 1;
+      window.__pnexAnnotClick = JSON.stringify({ seq: annotSeq, item_id: d.id });
+      return;
+    }
+    var p = pickSplat(st, e.clientX, e.clientY);
+    if (!p) return;
+    d.mk.x = p.x;
+    d.mk.y = p.y;
+    d.mk.z = p.z;
+    var dm = mulMat3T(st.m, [p.x, p.y, p.z]);
+    d.mk.data = dm;
+    annotMoveSeq += 1;
+    window.__pnexAnnotMove = JSON.stringify({ seq: annotMoveSeq, item_id: d.id, x: dm[0], y: dm[1], z: dm[2] });
+  }, false);
+  splatListen(st, host, 'click', function (e) {
+    if (!st.placeMode) return;
+    if (e.target && e.target.closest && e.target.closest('.pnex-annot')) return;
+    if (down && Math.abs(e.clientX - down.x) + Math.abs(e.clientY - down.y) >= 4) return;
+    var p = pickSplat(st, e.clientX, e.clientY);
+    if (!p) return;
+    var dp = mulMat3T(st.m, [p.x, p.y, p.z]);
+    annotPlaceSeq += 1;
+    window.__pnexAnnotPlace = JSON.stringify({ seq: annotPlaceSeq, x: dp[0], y: dp[1], z: dp[2] });
+  }, false);
+}
+
+function splatPending(host) {
+  if (!host._pnexSplatPending) host._pnexSplatPending = { json: '[]', editable: false, placeMode: false };
+  return host._pnexSplatPending;
+}
+
+function splatSetAnnotations(hostId, itemsJson, editable) {
+  var host = hostOf(hostId);
+  if (!host) return false;
+  var st = host._pnexSplat;
+  if (!st) {
+    // Not mounted yet: kept for the mount.
+    var p = splatPending(host);
+    p.json = itemsJson;
+    p.editable = !!editable;
+    return true;
+  }
+  var items;
+  try {
+    items = JSON.parse(itemsJson);
+  } catch (e) {
+    warn('splat annot JSON unreadable', e);
+    return false;
+  }
+  if (!Array.isArray(items)) return false;
+  st.editable = !!editable;
+  var keep = {};
+  items.forEach(function (it) {
+    if (!it || !it.id || !isFinite(it.x) || !isFinite(it.y) || !isFinite(it.z)) return;
+    keep[it.id] = true;
+    var mk = st.markers[it.id];
+    if (!mk) {
+      var el = document.createElement('div');
+      el.style.position = 'absolute';
+      el.style.left = '0';
+      el.style.top = '0';
+      el.style.pointerEvents = 'auto';
+      el.style.visibility = 'hidden';
+      el.dataset.annotId = it.id;
+      st.overlay.appendChild(el);
+      mk = { el: el, px: -1e9, py: -1e9, vis: false, dragging: false };
+      st.markers[it.id] = mk;
+    }
+    mk.data = [it.x, it.y, it.z];
+    var wpos = mulMat3(st.m, mk.data);
+    mk.x = wpos[0];
+    mk.y = wpos[1];
+    mk.z = wpos[2];
+    mk.px = -1e9;
+    mk.el.className = 'pnex-annot pnex-annot-' + (it.kind || 'note');
+    mk.el.title = it.label || '';
+    mk.el.style.cursor = st.editable ? 'grab' : 'pointer';
+  });
+  Object.keys(st.markers).forEach(function (id) {
+    if (!keep[id]) {
+      var el = st.markers[id].el;
+      if (el.parentNode) el.parentNode.removeChild(el);
+      delete st.markers[id];
+    }
+  });
+  return true;
+}
+
+function splatSetPlaceMode(hostId, on) {
+  var host = hostOf(hostId);
+  if (!host) return false;
+  var st = host._pnexSplat;
+  if (!st) {
+    splatPending(host).placeMode = !!on;
+    return true;
+  }
+  st.placeMode = !!on;
+  st.canvas.style.cursor = on ? 'crosshair' : '';
+  return true;
+}
+
+function stopSplat(host) {
+  var st = host && host._pnexSplat;
+  if (!st) return;
+  host._pnexSplat = null;
+  if (st.abort) {
+    try { st.abort.abort(); } catch (e) {}
+  }
+  st.listeners.forEach(function (l) {
+    l[0].removeEventListener(l[1], l[2], l[3]);
+  });
+  st.listeners = [];
+  if (st.controls) {
+    try { st.controls.dispose(); } catch (e) {}
+  }
+  if (st.renderer && st.rendered) {
+    try { st.renderer.dispose(); } catch (e) {}
+  }
+  if (st.renderer) {
+    try {
+      var lose = st.renderer.gl.getExtension('WEBGL_lose_context');
+      if (lose) lose.loseContext();
+    } catch (e) {}
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Annotation cards that follow their markers (D147). Dioxus renders the
+// cards in an overlay that is a SIBLING of the viewer host (unmount wipes
+// the host's children); this glue only sets each card's transform /
+// visibility. Cards carry `data-annot-card=<item id>`, never `.pnex-annot`.
+function placeCards(host, overlayId, anchorOf) {
+  var overlay = document.getElementById(overlayId);
+  if (!overlay) return;
+  var cards = overlay.querySelectorAll('[data-annot-card]');
+  if (!cards.length) return;
+  var ow = overlay.clientWidth, oh = overlay.clientHeight;
+  var anchors = [];
+  for (var i = 0; i < cards.length; i++) anchors.push(anchorOf(cards[i].getAttribute('data-annot-card')));
+  for (var k = 0; k < cards.length; k++) {
+    var card = cards[k], a = anchors[k];
+    // Marker outside the view (pannellum only hides hotspots behind the
+    // camera): hide its card instead of pinning it to the edge.
+    if (a && (a.x < -8 || a.x > ow + 8 || a.y < -8 || a.y > oh + 8)) a = null;
+    if (!a) {
+      if (card.style.visibility !== 'hidden') card.style.visibility = 'hidden';
+      continue;
+    }
+    var cw = card.offsetWidth, ch = card.offsetHeight;
+    var x = Math.max(4, Math.min(ow - cw - 4, a.x - cw / 2));
+    var y = Math.max(4, Math.min(oh - ch - 4, a.y - ch - 16));
+    var last = card._pnexPos;
+    if (!last || Math.abs(last.x - x) > 0.5 || Math.abs(last.y - y) > 0.5) {
+      card._pnexPos = { x: x, y: y };
+      card.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+    }
+    if (card.style.visibility !== 'visible') card.style.visibility = 'visible';
+    if (!card.dataset.pos) card.dataset.pos = '1';
+  }
+}
+
+// Panorama: anchor = the pannellum hotspot div of the item, relative to
+// the host (hidden when pannellum hides it behind the camera).
+function panoCardAnchor(host) {
+  var base = host.getBoundingClientRect();
+  return function (id) {
+    var cfg = host._pnexAnnotCfg && host._pnexAnnotCfg['annot-' + id];
+    var div = cfg && cfg.div;
+    if (!div || div.style.visibility === 'hidden') return null;
+    var r = div.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) return null;
+    return { x: r.left + r.width / 2 - base.left, y: r.top + r.height / 2 - base.top };
+  };
+}
+
+function followCards(hostId, overlayId, on) {
+  var host = hostOf(hostId);
+  if (!host) return false;
+  if (host._pnexCardsRaf) {
+    cancelAnimationFrame(host._pnexCardsRaf);
+    host._pnexCardsRaf = null;
+  }
+  // Remembered on the host: a splat mounted later picks it up.
+  host._pnexCardsOverlay = on ? overlayId : null;
+  if (host._pnexSplat) {
+    // The splat render loop places the cards from its projected markers.
+    host._pnexSplat.cards = on ? overlayId : null;
+    return true;
+  }
+  if (!on) return true;
+  var tick = function () {
+    if (!host.isConnected) {
+      host._pnexCardsRaf = null;
+      return;
+    }
+    if (host._pnexSplat) {
+      // A splat mounted meanwhile: hand the cards to its render loop.
+      host._pnexSplat.cards = overlayId;
+      host._pnexCardsRaf = null;
+      return;
+    }
+    placeCards(host, overlayId, panoCardAnchor(host));
+    host._pnexCardsRaf = requestAnimationFrame(tick);
+  };
+  host._pnexCardsRaf = requestAnimationFrame(tick);
+  return true;
 }
 
 function unmountHost(hostId) {
@@ -128,6 +712,11 @@ function unmountHost(hostId) {
   if (!host) return;
   // Camera live view: close the socket, stop reconnecting, revoke the URL.
   stopCamera(host);
+  // Splat: abort the load, drop listeners, dispose renderer/controls.
+  // The cards loop is NOT cancelled here: mountTour unmounts the host
+  // before each (re)mount; the loop stops by itself once the host leaves
+  // the DOM, or through followCards(…, false).
+  stopSplat(host);
   if (host._pnexViewer) {
     try {
       host._pnexViewer.destroy();
@@ -173,7 +762,13 @@ function unmountHost(hostId) {
 
 window.pnexViewers = {
   panorama: { mount: mountPanorama, unmount: unmountHost },
-  splat: { mount: mountSplat, unmount: unmountHost },
+  splat: {
+    mount: mountSplat,
+    unmount: unmountHost,
+    setAnnotations: splatSetAnnotations,
+    setAnnotPlaceMode: splatSetPlaceMode,
+  },
+  cards: { follow: followCards },
   unmount: unmountHost,
 };
 

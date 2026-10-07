@@ -16,6 +16,7 @@ The Map (Visualization › Map) places the organization's points of interest (PO
 - Click a POI to open its detail: **Edit**, **Recenter**, **Delete**, and the **Attached objects** list (**Open**, **Detach**).
 - **＋ Attach an object** opens a picker with tabs **Media**, **3D tour**, **Dashboard** and **Device**.
 - **Pin as default preview** chooses which attached object is previewed when the POI opens (**Unpin** to undo).
+- The preview of an attached media or tour shows its published annotations: dots, and the control and reading cards (switch **Hide** / **Dots** / **Cards**). Controls can be operated there; annotations are edited in Data › Annotations.
 
 ## Good to know
 - Markers are grouped into clusters when zoomed out; zoom in to separate them.

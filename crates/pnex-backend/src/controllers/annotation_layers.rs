@@ -719,16 +719,25 @@ async fn unpublish(
 
 // ─────────────────────────── Read model viewers ───────────────────────────
 
-/// `GET /api/v1/media/{asset_id}/annotations` — items fusionnés des couches
-/// publiées ancrées sur l'asset (union, ordre déterministe : couches par id
+/// `GET /api/v1/media/{asset_id}/annotations[?tour=]` — items fusionnés des couches
+/// publiées ancrées sur l'asset, in the read context (see `ReadScope`) (union, ordre déterministe : couches par id
 /// asc, items dans l'ordre du doc), résolution device en batch (D57) —
 /// référence morte tolérée (dead: true, jamais 500, école S7). 404 si asset
 /// inconnu dans l'org (masqué). Auth-scoped : lecture membre (share public
 /// exclu V1, D58).
+/// Context of a read: a standalone media shows only the sets attached to
+/// that media; a tour (`?tour=`) shows only that tour's sets — the two never
+/// mix (D147).
+#[derive(Debug, Deserialize)]
+struct ReadScope {
+    tour: Option<Uuid>,
+}
+
 async fn media_annotations(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(asset_id): Path<Uuid>,
+    Query(scope): Query<ReadScope>,
 ) -> Result<Response> {
     let Some(asset) = media_assets::Entity::find_by_id(asset_id)
         .filter(media_assets::Column::OrgId.eq(org.org.id))
@@ -739,10 +748,26 @@ async fn media_annotations(
         return Err(Error::NotFound);
     };
     let asset_str = asset.id.to_string();
-    // Couches publiées de l'org, ordre id asc = déterministe.
+    // Couches publiées de l'org, ordre id asc = déterministe — restricted to
+    // the read context (the tour's sets, or the sets of this media).
+    // Standalone media: the sets of this media + free sets (attached to
+    // nothing, pre-000027); never a tour's sets.
+    let context = match scope.tour {
+        Some(tour_id) => {
+            sea_orm::Condition::all().add(annotation_layers::Column::TourId.eq(tour_id))
+        }
+        None => sea_orm::Condition::any()
+            .add(annotation_layers::Column::MediaAssetId.eq(asset.id))
+            .add(
+                sea_orm::Condition::all()
+                    .add(annotation_layers::Column::MediaAssetId.is_null())
+                    .add(annotation_layers::Column::TourId.is_null()),
+            ),
+    };
     let layers = annotation_layers::Entity::find()
         .filter(annotation_layers::Column::OrgId.eq(org.org.id))
         .filter(annotation_layers::Column::PublishedVersionId.is_not_null())
+        .filter(context)
         .order_by_asc(annotation_layers::Column::Id)
         .all(&ctx.db)
         .await
