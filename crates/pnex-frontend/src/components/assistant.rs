@@ -92,12 +92,22 @@ fn AssistantDrawer(on_close: Callback) -> Element {
     let mut input = use_signal(String::new);
     let mut thinking = use_signal(|| false);
     let mut show_list = use_signal(|| false);
+    // Conversation whose messages are already in `messages`. A send that
+    // creates the conversation marks it loaded before publishing the id:
+    // refetching it then would replace the bubble just shown by the
+    // server's history (still without the pending message).
+    let mut loaded = use_signal(|| None::<Uuid>);
 
     // Resume the current conversation when the drawer opens.
     use_effect(move || {
         let Some(id) = CURRENT() else {
+            loaded.set(None);
             return;
         };
+        if *loaded.peek() == Some(id) {
+            return;
+        }
+        loaded.set(Some(id));
         spawn(async move {
             match api::ai::conversation(id).await {
                 Ok(detail) => messages.set(bubbles_of(detail.messages)),
@@ -126,6 +136,7 @@ fn AssistantDrawer(on_close: Callback) -> Element {
             };
             let result = match id {
                 Ok(id) => {
+                    loaded.set(Some(id));
                     *CURRENT.write() = Some(id);
                     let msg = AiSendMessage {
                         content: trimmed,
@@ -156,6 +167,16 @@ fn AssistantDrawer(on_close: Callback) -> Element {
     };
     let close = move |_| on_close.call(());
     let bubbles = messages().clone();
+
+    // Keep the latest message (and the thinking bubble) in view.
+    use_effect(move || {
+        let _ = messages.read().len();
+        let _ = thinking();
+        let _ = dioxus::document::eval(
+            "requestAnimationFrame(() => { const el = document.getElementById('pnex-ai-chat'); \
+             if (el) el.scrollTop = el.scrollHeight; });",
+        );
+    });
 
     rsx! {
         div { class: "fixed inset-0 z-40",
@@ -191,7 +212,9 @@ fn AssistantDrawer(on_close: Callback) -> Element {
                         },
                     }
                 } else {
-                    div { class: "flex-1 overflow-y-auto px-4 py-3 space-y-3",
+                    div {
+                        id: "pnex-ai-chat",
+                        class: "flex-1 overflow-y-auto px-4 py-3 space-y-3",
                         if !ai::configured() {
                             p { class: "text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2",
                                 {t!("ai-not-configured")}
@@ -204,8 +227,23 @@ fn AssistantDrawer(on_close: Callback) -> Element {
                             Bubble { key: "{idx}", bubble }
                         }
                         if thinking() {
-                            p { class: "text-sm text-gray-400 italic", {t!("ai-thinking")} }
-                            span { class: "animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600" }
+                            // Pending answer: an assistant bubble with animated dots.
+                            div { class: "flex justify-start", role: "status",
+                                div { class: "inline-flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600",
+                                    span { class: "flex gap-1",
+                                        span { class: "h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce" }
+                                        span {
+                                            class: "h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce",
+                                            style: "animation-delay: 150ms",
+                                        }
+                                        span {
+                                            class: "h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce",
+                                            style: "animation-delay: 300ms",
+                                        }
+                                    }
+                                    {t!("ai-thinking")}
+                                }
+                            }
                         }
                     }
                     footer { class: "border-t border-gray-200 p-3",
