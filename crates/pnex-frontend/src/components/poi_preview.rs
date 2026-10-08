@@ -35,7 +35,6 @@ pub fn PoiPreviewPanel(
     target: PreviewTarget,
     on_close: EventHandler<()>,
     on_edit: EventHandler<()>,
-    on_show_map: EventHandler<()>,
 ) -> Element {
     let kind_label = match target.kind.as_str() {
         "media_asset" => t!("poi-picker-tab-media").to_string(),
@@ -65,19 +64,10 @@ pub fn PoiPreviewPanel(
                     span { class: "hidden sm:inline", {t!("poi-preview-edit")} }
                 }
                 button {
-                    // Hidden on phones: the drawer is full width there, there is
-                    // no map beside it to show (close returns to the drawer).
-                    class: "hidden items-center px-2.5 py-1.5 text-xs font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 shrink-0 sm:inline-flex",
-                    title: t!("poi-preview-show-map"),
-                    aria_label: t!("poi-preview-show-map"),
-                    onclick: move |_| on_show_map.call(()),
-                    icons::Map { class: "h-3.5 w-3.5 mr-1.5" }
-                    {t!("poi-preview-show-map")}
-                }
-                button {
                     class: "p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 shrink-0",
                     onclick: move |_| on_close.call(()),
                     title: t!("poi-preview-close").to_string(),
+                    aria_label: t!("poi-preview-close"),
                     icons::X { class: "h-4 w-4" }
                 }
             }

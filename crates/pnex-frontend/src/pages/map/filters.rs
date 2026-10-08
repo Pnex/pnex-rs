@@ -19,6 +19,8 @@ pub(super) fn current_filters(
 /// Refetch cluster (D37) + redessin des markers (items filtrés + couche GPS).
 /// Les erreurs restent silencieuses (école « badge, jamais panic » — pas de
 /// toast à chaque moveend si le réseau tombe).
+/// Returns `false` when the cluster fetch failed: the page shows a status
+/// pill and retries.
 pub(super) async fn redraw_with(
     positions: &Signal<Vec<viz::DevicePosition>>,
     filters: &viz::PoiFilters,
@@ -27,9 +29,9 @@ pub(super) async fn redraw_with(
     east: f64,
     north: f64,
     zoom: i32,
-) {
+) -> bool {
     let Ok(resp) = viz::cluster_pois(west, south, east, north, zoom, filters).await else {
-        return;
+        return false;
     };
     let mut items: Vec<MapItem> = resp
         .items
@@ -60,6 +62,7 @@ pub(super) async fn redraw_with(
         });
     }
     map_viewer::set_items(MAP_HOST, &items).await;
+    true
 }
 
 pub(super) async fn handle_click(

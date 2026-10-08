@@ -11,7 +11,8 @@ export class MapPage {
 
   async open(): Promise<void> {
     await this.app.goto('/map');
-    await expect(this.page.getByRole('heading', { name: this.app.t('viz-map-title'), level: 1 })).toBeVisible();
+    // The h1 lives in the side panel, closed on phones: wait for the map host.
+    await expect(this.page.locator('#pnex-map-host')).toBeVisible();
     // Tiles and the maplibre canvas settle after mount.
     await this.page.waitForTimeout(1500);
   }
@@ -41,7 +42,25 @@ export class MapPage {
     await expect(dlg).toBeHidden();
   }
 
+  /** Read-only preview panel of an attached object (covers the map). */
+  get preview(): Locator {
+    return this.page.locator('[data-testid="poi-preview"]');
+  }
+
+  /** Phone: the POI side panel starts closed — open it first. */
+  async ensurePanel(): Promise<void> {
+    const expand = this.page.getByRole('button', { name: this.app.t('poi-expand') });
+    if (await expand.isVisible()) await expand.click();
+  }
+
+  /** Phone: the preview covers the drawer — close it to pick another row. */
+  async backToDrawer(): Promise<void> {
+    const vw = this.page.viewportSize()?.width ?? 1600;
+    if (vw < 768) await this.preview.getByRole('button', { name: this.app.t('poi-preview-close') }).click();
+  }
+
   async openPoi(label: string): Promise<void> {
+    await this.ensurePanel();
     await this.panel.getByText(label).first().click();
     await expect(this.drawer.getByRole('heading', { level: 2 })).toContainText(label);
   }
