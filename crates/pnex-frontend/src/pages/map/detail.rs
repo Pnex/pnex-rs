@@ -6,9 +6,8 @@ use super::*;
 #[component]
 pub(super) fn PoiDetail(
     poi_id: String,
-    /// Aperçu intégré : cible courante + état « afficher la carte ».
+    /// Embedded preview: current target (closing it shows the map again).
     mut preview: Signal<Option<PreviewTarget>>,
-    mut preview_hidden: Signal<bool>,
     /// Épingle POI (★) : objet affiché en priorité à l'ouverture.
     mut pinned: Signal<Option<PreviewTarget>>,
     on_close: EventHandler<()>,
@@ -139,7 +138,6 @@ pub(super) fn PoiDetail(
         pinned.set(target.clone());
         // Auto-open : l'aperçu épinglé s'affiche à l'ouverture du POI.
         preview.set(target);
-        preview_hidden.set(false);
         seeded_pin.set(Some(poi_id_for_seed.clone()));
     });
 
@@ -190,56 +188,43 @@ pub(super) fn PoiDetail(
                 class: "absolute inset-0 bg-black/30",
                 onclick: move |_| on_close.call(()),
             }
-            // ── Aperçu intégré (read-only) : panneau plein-cadre à gauche du
-            // drawer, au-dessus du backdrop — « Afficher la carte » → pilule
-            // de rappel en bas à gauche.
+            // ── Embedded read-only preview: full panel left of the drawer,
+            // above the backdrop; closing it gives the map back.
             if let Some(target) = preview() {
-                if !preview_hidden() {
-                    // Phone: full screen over the drawer (left of a 384 px drawer
-                    // there is ~9 px, the header spilled over the drawer);
-                    // its close button returns to the drawer.
-                    div { class: "absolute inset-y-0 left-0 right-0 z-10 bg-white flex flex-col md:right-96",
-                        PoiPreviewPanel {
-                            key: "preview-{target.kind}-{target.id}",
-                            target,
-                            on_close: move |_| {
-                                preview.set(None);
-                                preview_hidden.set(false);
-                            },
-                            on_edit: move |_| {
-                                // Édition = onglet de l'app dédié (studio pour
-                                // les tours via deep-link OPEN_TOUR).
-                                let Some(t) = preview.cloned() else { return };
-                                let nav = navigator;
-                                spawn(async move {
-                                    match t.kind.as_str() {
-                                        "dashboard" => {
-                                            nav.push(Route::Dashboards {
-                                                id: t.id,
-                                                mode: "edit".to_string(),
-                                            });
-                                        }
-                                        "tour" => {
-                                            let id = t.id.clone();
-                                            OPEN_TOUR.with_mut(|t| *t = Some(id));
-                                            nav.push(Route::Studio {});
-                                        }
-                                        _ => {
-                                            nav.push(Route::Media {});
-                                        }
+                // Phone: full screen over the drawer (left of a 384 px drawer
+                // there is ~9 px, the header spilled over the drawer);
+                // its close button returns to the drawer.
+                div {
+                    "data-testid": "poi-preview",
+                    class: "absolute inset-y-0 left-0 right-0 z-10 bg-white flex flex-col md:right-96",
+                    PoiPreviewPanel {
+                        key: "preview-{target.kind}-{target.id}",
+                        target,
+                        on_close: move |_| preview.set(None),
+                        on_edit: move |_| {
+                            // Édition = onglet de l'app dédié (studio pour
+                            // les tours via deep-link OPEN_TOUR).
+                            let Some(t) = preview.cloned() else { return };
+                            let nav = navigator;
+                            spawn(async move {
+                                match t.kind.as_str() {
+                                    "dashboard" => {
+                                        nav.push(Route::Dashboards {
+                                            id: t.id,
+                                            mode: "edit".to_string(),
+                                        });
                                     }
-                                });
-                            },
-                            on_show_map: move |_| preview_hidden.set(true),
-                        }
-                    }
-                } else {
-                    // Pilule de rappel : rouvrir l'aperçu masqué.
-                    button {
-                        class: "absolute bottom-4 left-4 z-10 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white rounded-full shadow-lg border border-gray-200 hover:bg-gray-50 transition-colors",
-                        onclick: move |_| preview_hidden.set(false),
-                        icons::Map { class: "h-3.5 w-3.5 text-gray-400" }
-                        {t!("poi-preview-recall", name : target.name.clone())}
+                                    "tour" => {
+                                        let id = t.id.clone();
+                                        OPEN_TOUR.with_mut(|t| *t = Some(id));
+                                        nav.push(Route::Studio {});
+                                    }
+                                    _ => {
+                                        nav.push(Route::Media {});
+                                    }
+                                }
+                            });
+                        },
                     }
                 }
             }
@@ -285,10 +270,7 @@ pub(super) fn PoiDetail(
                                     version: detail_version,
                                     preview,
                                     pinned,
-                                    on_preview: move |t: PreviewTarget| {
-                                        preview.set(Some(t));
-                                        preview_hidden.set(false);
-                                    },
+                                    on_preview: move |t: PreviewTarget| preview.set(Some(t)),
                                     on_pin: pin_now,
                                     on_attach: move |_| {
                                         picker_tab.set(PickerTab::Media);

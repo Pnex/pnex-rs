@@ -38,6 +38,27 @@ static MAP_POLL_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// Couche GPS : rafraîchie tous les ~15 s (école D31 : 50 ticks × 300 ms).
 const POSITIONS_POLL_TICKS: u32 = 50;
+/// Retry delay of a failed points fetch (10 ticks × 300 ms = 3 s).
+const POINTS_RETRY_TICKS: u32 = 10;
+
+/// Loading state of the map points (cluster fetch).
+#[derive(Clone, Copy, PartialEq)]
+enum PointsStatus {
+    Loading,
+    Ready,
+    Failed,
+}
+
+impl PointsStatus {
+    fn from_fetch(ok: bool) -> Self {
+        if ok {
+            Self::Ready
+        } else {
+            Self::Failed
+        }
+    }
+}
+
 /// Palette de pictogrammes POI (curatée — capteurs, eau, énergie, accès,
 /// risque…) ; sur mobile le champ accepte aussi le clavier emoji natif.
 const PALETTE: [&str; 12] = [
@@ -89,10 +110,9 @@ pub fn Map() -> Element {
     let mut add_mode = use_signal(|| false);
     // Coords captées par le clic carte (formulaire de création ouvert).
     let mut pending_add = use_signal(|| None::<(f64, f64)>);
-    // Aperçu intégré (read-only) : objet affiché dans le panneau qui couvre
-    // la carte, état « afficher la carte » et épingle POI (★).
+    // Embedded read-only preview: object shown in the panel covering the
+    // map, and the POI pin (★).
     let mut preview = use_signal(|| None::<PreviewTarget>);
-    let mut preview_hidden = use_signal(|| false);
     let mut pinned = use_signal(|| None::<PreviewTarget>);
     let mut map_failed = use_signal(|| false);
     // Compteur d'événements (création/édition) → refetch liste.
@@ -105,6 +125,9 @@ pub fn Map() -> Element {
     let mut last_view = use_signal(|| None::<(f64, f64, f64, f64, i32)>);
     // Couche GPS live (device_positions, D38).
     let mut positions = use_signal(Vec::<viz::DevicePosition>::new);
+    // Map points status (slow networks: the user sees that points are on
+    // their way, or that they failed and are retried).
+    let mut points_status = use_signal(|| PointsStatus::Loading);
 
     // Liste sidebar : réactive aux filtres + reload (use_resource suit les
     // lectures de signaux de la closure).
@@ -133,6 +156,7 @@ pub fn Map() -> Element {
             let mut pos_loaded = false;
             let mut filters_seen = 0u64;
             let mut tick = 0u32;
+            let mut failed_at = 0u32;
             while MAP_POLL_ACTIVE.load(Ordering::Relaxed) {
                 // Viewport (moveend debouncé côté map.js) → refetch cluster.
                 if let Some(v) = map_viewer::take_viewport(view_seen).await {
@@ -141,7 +165,8 @@ pub fn Map() -> Element {
                     last_view.set(Some((v.west, v.south, v.east, v.north, v.zoom as i32)));
                     let filters =
                         current_filters(search, filter_emoji, filter_device, filter_position);
-                    redraw_with(
+                    points_status.set(PointsStatus::Loading);
+                    let ok = redraw_with(
                         &positions,
                         &filters,
                         v.west,
@@ -151,18 +176,26 @@ pub fn Map() -> Element {
                         v.zoom as i32,
                     )
                     .await;
+                    points_status.set(PointsStatus::from_fetch(ok));
+                    failed_at = tick;
                 }
                 // Filtres changés OU données POI modifiées (création/édition/
                 // suppression, attach/detach device ou pano) → refetch cluster
                 // sur le dernier viewport connu (sinon le pin n'apparaît
                 // qu'au rechargement de la page).
                 let rev = filters_rev() as u64 + reload() as u64;
-                if rev != filters_seen {
+                // A failed fetch is retried every few seconds on the same view.
+                let retry = points_status() == PointsStatus::Failed
+                    && tick.wrapping_sub(failed_at) >= POINTS_RETRY_TICKS;
+                if rev != filters_seen || retry {
                     filters_seen = rev;
                     if let Some((w, s, e, n, z)) = last_view() {
                         let filters =
                             current_filters(search, filter_emoji, filter_device, filter_position);
-                        redraw_with(&positions, &filters, w, s, e, n, z).await;
+                        points_status.set(PointsStatus::Loading);
+                        let ok = redraw_with(&positions, &filters, w, s, e, n, z).await;
+                        points_status.set(PointsStatus::from_fetch(ok));
+                        failed_at = tick;
                     }
                 }
                 // Clics (items et carte nue).
@@ -202,6 +235,8 @@ pub fn Map() -> Element {
     });
 
     // Valeurs possédées pour le rsx (pas de borrow traversant les closures).
+    // `None` while the first list fetch is in flight: "loading", not "empty".
+    let list_loading = list_resource.read().is_none();
     let list_page = list_resource.read().clone().and_then(Result::ok);
     let pois = list_page
         .as_ref()
@@ -299,7 +334,11 @@ pub fn Map() -> Element {
                     }
                     // Liste des POI.
                     div { class: "flex-1 overflow-y-auto",
-                        if pois.is_empty() {
+                        if list_loading {
+                            div { class: "p-6 flex justify-center",
+                                span { class: "animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" }
+                            }
+                        } else if pois.is_empty() {
                             div { class: "p-6 text-center text-sm text-gray-500", {t!("poi-empty")} }
                         } else {
                             for poi in pois.iter() {
@@ -347,6 +386,26 @@ pub fn Map() -> Element {
                         }
                     }
                 }
+                // Points status pill (top centre): spinner while loading,
+                // amber while failing (retried automatically).
+                match (map_failed(), points_status()) {
+                    (false, PointsStatus::Loading) => rsx! {
+                        div {
+                            role: "status",
+                            class: "absolute top-3 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white/95 rounded-full shadow border border-gray-200",
+                            span { class: "animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-600" }
+                            {t!("poi-points-loading")}
+                        }
+                    },
+                    (false, PointsStatus::Failed) => rsx! {
+                        div {
+                            role: "status",
+                            class: "absolute top-3 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 text-xs font-medium text-amber-800 bg-amber-50 rounded-full shadow border border-amber-200",
+                            {t!("poi-points-failed")}
+                        }
+                    },
+                    _ => rsx! {},
+                }
                 if add_active {
                     div { class: "absolute top-16 left-3 z-10 px-3 py-1.5 text-xs font-medium text-white bg-blue-600/90 rounded-lg shadow",
                         {t!("poi-add-hint")}
@@ -359,13 +418,11 @@ pub fn Map() -> Element {
                     key: "{id}",
                     poi_id: id,
                     preview,
-                    preview_hidden,
                     pinned,
                     on_close: move |_| {
                         selected.set(None);
                         // Aperçu + épingle appartiennent au POI ouvert.
                         preview.set(None);
-                        preview_hidden.set(false);
                         pinned.set(None);
                     },
                     on_changed: move |_| reload += 1,

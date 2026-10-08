@@ -31,11 +31,26 @@ pub fn DashboardLive(dashboard_id: String) -> Element {
     let mut reload = use_signal(|| 0u32);
     let mut polling = use_signal(|| false);
 
+    // Failed fetch (slow or lost network): the last good layout stays on
+    // screen; without one the body shows the error and a retry button
+    // instead of an endless placeholder.
+    let mut load_failed = use_signal(|| false);
+    let mut last_ok = use_signal(|| None::<VizDashboard>);
     let detail = use_resource(move || {
         let id = dashboard_id.clone();
         async move {
             let _ = reload();
-            api::dashboards::detail(&id).await.ok()
+            match api::dashboards::detail(&id).await {
+                Ok(d) => {
+                    load_failed.set(false);
+                    last_ok.set(Some(d.clone()));
+                    Some(d)
+                }
+                Err(_) => {
+                    load_failed.set(true);
+                    last_ok.peek().clone()
+                }
+            }
         }
     });
     let detail_loaded: Option<VizDashboard> = detail.read().as_ref().cloned().flatten();
@@ -107,8 +122,20 @@ pub fn DashboardLive(dashboard_id: String) -> Element {
                 Some(d) => rsx! {
                     {live_layout(&d.layout, &values)}
                 },
+                None if load_failed() => rsx! {
+                    div { class: "flex flex-col items-center gap-3 py-12",
+                        p { class: "text-sm text-gray-500", {t!("dashboard-live-unavailable")} }
+                        button {
+                            class: "px-3 py-1.5 text-sm text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors",
+                            onclick: move |_| reload.with_mut(|r| *r += 1),
+                            {t!("common-retry")}
+                        }
+                    }
+                },
                 None => rsx! {
-                    p { class: "text-gray-500 text-center py-12", "…" }
+                    div { class: "flex justify-center py-12",
+                        span { class: "animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" }
+                    }
                 },
             }
         }
