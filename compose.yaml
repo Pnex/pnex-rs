@@ -103,7 +103,7 @@ services:
 
   # S3-compatible pour le tier industriel du stockage firmware (D5 v2) —
   # tests e2e du S3Store (s3_cycle_reel, bucket pnex-test) et runs locaux
-  # STORAGE_BACKEND=s3 (bucket pnex). API :9000, console web :9001
+  # PNEX_STORAGE_BACKEND=s3 (bucket pnex). API :9000, console web :9001
   # (rustfsadmin/rustfsadmin par défaut).
   rustfs:
     image: rustfs/rustfs:1.0.0-rc.2

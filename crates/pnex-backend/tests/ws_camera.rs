@@ -280,7 +280,7 @@ async fn segments_written_listed_and_deleted() {
     with_app(|server, alice, _ctx| async move {
         let dir = tempfile::tempdir().expect("tmp");
         unsafe { std::env::set_var("PNEX_MEDIA_DIR", dir.path()) };
-        unsafe { std::env::set_var("MEDIA_BACKEND", "fs") };
+        unsafe { std::env::set_var("PNEX_MEDIA_BACKEND", "fs") };
         unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-cam") };
         let org = personal_org(&server, &alice).await;
         let dev = create_device(&server, &alice, org, "cam-rec").await;
@@ -338,7 +338,7 @@ async fn segments_written_listed_and_deleted() {
         assert_eq!(list["count"], 0);
         unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
         unsafe { std::env::remove_var("PNEX_MEDIA_DIR") };
-        unsafe { std::env::remove_var("MEDIA_BACKEND") };
+        unsafe { std::env::remove_var("PNEX_MEDIA_BACKEND") };
     })
     .await;
 }
@@ -354,7 +354,7 @@ async fn recording_timeline_export_and_day_delete() {
     with_app(|server, alice, _ctx| async move {
         let dir = tempfile::tempdir().expect("tmp");
         unsafe { std::env::set_var("PNEX_MEDIA_DIR", dir.path()) };
-        unsafe { std::env::set_var("MEDIA_BACKEND", "fs") };
+        unsafe { std::env::set_var("PNEX_MEDIA_BACKEND", "fs") };
         unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-cam") };
         let org = personal_org(&server, &alice).await;
         let dev = create_device(&server, &alice, org, "cam-tl").await;
@@ -434,7 +434,7 @@ async fn recording_timeline_export_and_day_delete() {
         assert!(empty.text().contains(pnex_core::err_codes::CAMERA_EXPORT_EMPTY));
         unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
         unsafe { std::env::remove_var("PNEX_MEDIA_DIR") };
-        unsafe { std::env::remove_var("MEDIA_BACKEND") };
+        unsafe { std::env::remove_var("PNEX_MEDIA_BACKEND") };
     })
     .await;
 }

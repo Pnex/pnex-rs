@@ -34,7 +34,7 @@ where
             ),
         )
     };
-    unsafe { std::env::set_var("MEDIA_BACKEND", "fs") };
+    unsafe { std::env::set_var("PNEX_MEDIA_BACKEND", "fs") };
     let config: RequestConfig = RequestConfigBuilder::new().build();
     let env = Env {
         alice: common::valid_token(

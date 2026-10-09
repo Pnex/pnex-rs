@@ -54,7 +54,7 @@ where
             ),
         )
     };
-    unsafe { std::env::set_var("MEDIA_BACKEND", "fs") };
+    unsafe { std::env::set_var("PNEX_MEDIA_BACKEND", "fs") };
     unsafe { std::env::set_var("PNEX_STITCH_OUT_WIDTH", "1024") };
     unsafe {
         std::env::set_var(

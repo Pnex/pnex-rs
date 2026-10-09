@@ -34,7 +34,7 @@
 >   `services/artifact_store.rs` côté backend — upsert `ON CONFLICT (key)`,
 >   zéro artefact orphelin, plafond défensif 50 Mo). Backend `local` (FS)
 >   **supprimé**. `s3` = tier industriel **implémenté** (Phase C, opendal —
->   cf. ci-dessous), sélection `STORAGE_BACKEND=db|s3` (env) surchargeant
+>   cf. ci-dessous), sélection `PNEX_STORAGE_BACKEND=db|s3` (env) surchargeant
 >   la config. Trois tiers de déploiement :
 >   - **sqlite** (hobbyiste) : tout (données + artefacts + queue loco
 >     `sqlt_loco_queue`) dans un seul fichier — `DATABASE_URL=sqlite://…?mode=rwc`,

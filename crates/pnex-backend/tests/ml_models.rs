@@ -22,7 +22,7 @@ where
     );
     let dir = tempfile::tempdir().expect("tmp");
     unsafe { std::env::set_var("PNEX_MEDIA_DIR", dir.path()) };
-    unsafe { std::env::set_var("MEDIA_BACKEND", "fs") };
+    unsafe { std::env::set_var("PNEX_MEDIA_BACKEND", "fs") };
     let config: RequestConfig = RequestConfigBuilder::new().build();
     loco_rs::testing::request::request_with_config::<App, _, _>(
         config,
@@ -32,7 +32,7 @@ where
     )
     .await;
     unsafe { std::env::remove_var("PNEX_MEDIA_DIR") };
-    unsafe { std::env::remove_var("MEDIA_BACKEND") };
+    unsafe { std::env::remove_var("PNEX_MEDIA_BACKEND") };
     drop(dir);
 }
 

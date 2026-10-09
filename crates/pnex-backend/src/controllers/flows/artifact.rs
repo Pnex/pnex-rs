@@ -294,9 +294,8 @@ pub(crate) async fn reproject_candidate(
     ))
 }
 
-/// `vision-detect` nodes whose model is unknown to the org or `invalid`
-/// after its D100 check (`unchecked` legacy rows pass: the node status
-/// reports a load failure at runtime).
+/// `vision-detect` nodes whose model is unknown to the org or did not pass
+/// its D100 check (only a `valid` model deploys).
 async fn vision_model_violations(
     db: &DatabaseConnection,
     org_id: i64,
@@ -323,7 +322,7 @@ async fn vision_model_violations(
                 "The selected vision model no longer exists.",
                 serde_json::json!({}),
             )),
-            Some(m) if m.check_status == pnex_core::vision::ModelCheckStatus::Invalid.wire() => {
+            Some(m) if m.check_status != pnex_core::vision::ModelCheckStatus::Valid.wire() => {
                 let detail = m.check_error.clone().unwrap_or_default();
                 out.push(pnex_core::FlowViolation::with_args(
                     Some(&node.id),
