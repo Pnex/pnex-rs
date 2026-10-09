@@ -178,7 +178,8 @@ pub fn BoardPinoutEditor(device_pk: i64, can_write: bool) -> Element {
         Some(Ok(response)) => Some(response.clone()),
     };
 
-    // No v2 profile → legacy card grid (v1 boards).
+    // Board without a profile (custom firmware on a bare board): the pins
+    // its sketch announced, as a card grid.
     if pinout.as_ref().is_some_and(|p| p.board.is_none()) {
         return rsx! {
             crate::components::pins_panel::PinsPanel { device_pk, can_write }
