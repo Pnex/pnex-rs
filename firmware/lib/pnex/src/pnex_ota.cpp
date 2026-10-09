@@ -15,6 +15,7 @@
 #include <WiFiClientSecure.h>
 #endif
 
+#include "pnex_ota_sig.h"
 #include "pnex_transport.h"
 #include "pnex_tls.h"
 #include "pnex_status.h"
@@ -93,17 +94,30 @@ static void ota_error_msg(char* err, size_t errsz, const char* what) {
 
 bool pnex_ota_run(const char* url_path,
                   const char* sha_hex,
+                  const char* version,
+                  const char* sig_hex,
                   const PnexOtaHooks& hooks,
                   char* err,
                   size_t errsz) {
     snprintf(err, errsz, "unknown");
-    // URL = scheme://host + path + the same b64 query auth as /ws/device.
+    // Fail fast, before any download: no key compiled, or no signature.
+    if (pnex_ota_pubkey()[0] == '\0') {
+        snprintf(err, errsz, "no ota key in firmware");
+        if (hooks.progress) hooks.progress("failed", 0, err);
+        return false;
+    }
+    if (sig_hex == nullptr || sig_hex[0] == '\0') {
+        snprintf(err, errsz, "unsigned image");
+        if (hooks.progress) hooks.progress("failed", 0, err);
+        return false;
+    }
+    // URL = scheme://host + path + device_id; the token goes in the
+    // Authorization header like /ws/device (D154: never in a URL).
     char url[256];
-    snprintf(url, sizeof(url), "%s://%s%s?token=%s&device_id=%s",
+    snprintf(url, sizeof(url), "%s://%s%s?device_id=%s",
              pnex_use_tls() ? "https" : "http",
-             pnex_host(), url_path, pnex_token_b64(), pnex_device_id_b64());
-    // Printed without its query: it carries the device token (SEC-W7).
-    Serial.printf("[OTA] %s://%s%s\n", pnex_use_tls() ? "https" : "http", pnex_host(), url_path);
+             pnex_host(), url_path, pnex_device_id_b64());
+    Serial.printf("[OTA] %s\n", url);
 
     // Both clients live for the whole download: HTTPClient keeps a
     // reference (the plain one used to die at the end of its else block).
@@ -117,6 +131,11 @@ bool pnex_ota_run(const char* url_path,
     } else {
         // Plain HTTP (LAN/on-prem reference path).
         http.begin(plain, url);
+    }
+    {
+        char auth[192];
+        snprintf(auth, sizeof(auth), "Bearer %s", pnex_token_b64());
+        http.addHeader("Authorization", auth);
     }
     const int code = http.GET();
     if (code != HTTP_CODE_OK) {
@@ -196,6 +215,15 @@ bool pnex_ota_run(const char* url_path,
         snprintf(err, errsz, "sha mismatch");
         pnex_status::set_ota("failed", 0);
         if (hooks.progress) hooks.progress("failed", 0, "sha mismatch");
+        ota_abort();
+        return false;
+    }
+    // Authenticity gate (SEC-18): the digest is the server's, for THIS
+    // device and THIS version.
+    if (!pnex_ota_sig_verify(pnex_ota_pubkey(), pnex_device_id(), version, digest, sig_hex)) {
+        snprintf(err, errsz, "bad signature");
+        pnex_status::set_ota("failed", 0);
+        if (hooks.progress) hooks.progress("failed", 0, err);
         ota_abort();
         return false;
     }

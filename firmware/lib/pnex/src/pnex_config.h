@@ -37,10 +37,10 @@
 #define DEVICE_ID "device_id_base64"
 #endif
 
-// Clé ChaCha20 (32 octets) des frames WS, EN BASE64 — la même que
-// device_tokens.encryption_key côté serveur, injectée par le builder /
-// task fw:flash (env ENCRYPTION_KEY). Vide → frames en clair, réservé au
-// mock local ws-server/ : le serveur réel les rejette.
+// Pre-shared key (32 bytes, BASE64) of the Noise link (D156) — the same as
+// device_tokens.encryption_key server-side, injected by the builder /
+// task fw:flash (env ENCRYPTION_KEY). Empty or invalid → the device never
+// connects (no clear-text mode, SEC-19).
 #ifndef ENCRYPTION_KEY
 #define ENCRYPTION_KEY ""
 #endif
@@ -55,6 +55,21 @@
 // (pnex-tls). Consumed via pnex_tls_init(PNEX_CA_CERT) at transport setup.
 #ifndef PNEX_CA_CERT
 #define PNEX_CA_CERT ""
+#endif
+
+// Ed25519 public key (64 hex chars) of the server that signs OTA images
+// (SEC-18), set by the server build. Empty = every OTA is refused.
+#ifndef PNEX_OTA_PUBKEY
+#define PNEX_OTA_PUBKEY ""
+#endif
+
+// TLS client certificate + key of this device (D153), base64 PEM, issued
+// by the org CA at build time. Empty = no client certificate.
+#ifndef PNEX_CLIENT_CERT
+#define PNEX_CLIENT_CERT ""
+#endif
+#ifndef PNEX_CLIENT_KEY
+#define PNEX_CLIENT_KEY ""
 #endif
 
 // ssid/password ne sont plus exposés ici : décodés au setup() de chaque

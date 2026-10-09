@@ -113,6 +113,11 @@ pub const BUILD_FAILURE_CODES: &[&str] = &[
     // The device CA is larger than the firmware of this chip can pin
     // (SEC-16, see `device_ca_max_pem_bytes`).
     "build_ca_too_large",
+    // The OTA signing key of the instance could not be read or created
+    // (SEC-18): a firmware without it would refuse every update.
+    "build_ota_key",
+    // The device certificate could not be issued by the org CA (D153).
+    "build_device_cert",
     // The build exceeded its time budget.
     "build_timeout",
     // The firmware sources could not be staged on the worker.

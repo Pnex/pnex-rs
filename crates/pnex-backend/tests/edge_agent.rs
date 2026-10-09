@@ -11,7 +11,6 @@ use base64::Engine as _;
 use loco_rs::testing::request::{RequestConfig, RequestConfigBuilder};
 use pnex_backend::app::App;
 use pnex_backend::services::telemetry::{self, TelemetryPoint, TelemetrySink};
-use pnex_core::frame::{decrypt_frame, encrypt_frame};
 use pnex_core::{BatchPoint, DeviceMsg, ServerMsg};
 use serial_test::serial;
 use std::sync::{Arc, Mutex};
@@ -98,33 +97,33 @@ async fn create_device(
     }
 }
 
-async fn connect(server: &axum_test::TestServer, a: &Agent) -> axum_test::TestWebSocket {
-    server
-        .get_websocket(&format!(
+async fn connect(server: &axum_test::TestServer, a: &Agent) -> common::DevWs {
+    common::DevWs::connect(
+        server,
+        &format!(
             "/ws/device?token={}&device_id={}",
             STANDARD.encode(&a.token),
             STANDARD.encode(&a.device_id),
-        ))
-        .await
-        .into_websocket()
-        .await
+        ),
+        &a.key,
+        &a.device_id,
+    )
+    .await
 }
 
-async fn send(ws: &mut axum_test::TestWebSocket, key: &[u8; 32], msg: &DeviceMsg) {
+async fn send(ws: &mut common::DevWs, msg: &DeviceMsg) {
     let plain = serde_json::to_string(msg).expect("json");
-    ws.send_text(encrypt_frame(&plain, key)).await;
+    ws.send_plain(&plain).await;
 }
 
-async fn recv(ws: &mut axum_test::TestWebSocket, key: &[u8; 32]) -> ServerMsg {
-    let raw = ws.receive_text().await;
-    let plain = decrypt_frame(&raw, key).expect("decrypt");
+async fn recv(ws: &mut common::DevWs) -> ServerMsg {
+    let plain = ws.recv_plain().await;
     serde_json::from_str(&plain).expect("ServerMsg")
 }
 
-async fn announce(ws: &mut axum_test::TestWebSocket, key: &[u8; 32]) -> ServerMsg {
+async fn announce(ws: &mut common::DevWs) -> ServerMsg {
     send(
         ws,
-        key,
         &DeviceMsg::Announce {
             chip: pnex_core::EDGE_AGENT_CHIP.into(),
             board: "x86_64-linux".into(),
@@ -134,7 +133,7 @@ async fn announce(ws: &mut axum_test::TestWebSocket, key: &[u8; 32]) -> ServerMs
         },
     )
     .await;
-    recv(ws, key).await
+    recv(ws).await
 }
 
 fn point(seq: u64, key: &str, value: serde_json::Value) -> BatchPoint {
@@ -148,22 +147,16 @@ fn point(seq: u64, key: &str, value: serde_json::Value) -> BatchPoint {
     }
 }
 
-async fn batch_ack(
-    ws: &mut axum_test::TestWebSocket,
-    key: &[u8; 32],
-    epoch: &str,
-    points: Vec<BatchPoint>,
-) -> u64 {
+async fn batch_ack(ws: &mut common::DevWs, epoch: &str, points: Vec<BatchPoint>) -> u64 {
     send(
         ws,
-        key,
         &DeviceMsg::Batch {
             epoch: epoch.into(),
             points,
         },
     )
     .await;
-    match recv(ws, key).await {
+    match recv(ws).await {
         ServerMsg::BatchAck {
             epoch: e,
             up_to_seq,
@@ -219,7 +212,7 @@ async fn agent_free_form_batch_is_discovered_routed_and_deduplicated() {
         let a = create_device(&server, &alice, "agent-lab-1", "edge_agent").await;
 
         let mut ws = connect(&server, &a).await;
-        match announce(&mut ws, &a.key).await {
+        match announce(&mut ws).await {
             ServerMsg::AgentConfig {
                 max_batch,
                 max_keys,
@@ -241,7 +234,7 @@ async fn agent_free_form_batch_is_discovered_routed_and_deduplicated() {
             point(3, "status", serde_json::json!("running")),
             forced,
         ];
-        assert_eq!(batch_ack(&mut ws, &a.key, &ep, points.clone()).await, 4);
+        assert_eq!(batch_ack(&mut ws, &ep, points.clone()).await, 4);
 
         {
             let got = sink.0.lock().expect("sink");
@@ -287,7 +280,7 @@ async fn agent_free_form_batch_is_discovered_routed_and_deduplicated() {
         );
 
         // Replay of the same batch (lost ack): acknowledged, not re-ingested.
-        assert_eq!(batch_ack(&mut ws, &a.key, &ep, points).await, 4);
+        assert_eq!(batch_ack(&mut ws, &ep, points).await, 4);
         assert_eq!(sink.0.lock().expect("sink").len(), 3);
 
         // Per-key O2 toggle, applied by the next session.
@@ -305,11 +298,10 @@ async fn agent_free_form_batch_is_discovered_routed_and_deduplicated() {
         wait_offline(&server, &alice, &a).await;
 
         let mut ws = connect(&server, &a).await;
-        let _ = announce(&mut ws, &a.key).await;
+        let _ = announce(&mut ws).await;
         assert_eq!(
             batch_ack(
                 &mut ws,
-                &a.key,
                 &ep,
                 vec![point(5, "temp salon", serde_json::json!(22))]
             )
@@ -349,14 +341,13 @@ async fn agent_distinct_keys_quota_drops_new_keys_only() {
         res.assert_status_bad_request();
 
         let mut ws = connect(&server, &a).await;
-        match announce(&mut ws, &a.key).await {
+        match announce(&mut ws).await {
             ServerMsg::AgentConfig { max_keys, .. } => assert_eq!(max_keys, 2),
             other => panic!("AgentConfig expected, got {other:?}"),
         }
         let ep = epoch();
         let up = batch_ack(
             &mut ws,
-            &a.key,
             &ep,
             vec![
                 point(1, "a", serde_json::json!(1)),
@@ -411,6 +402,15 @@ async fn enrollment_is_single_use_and_rotates_credentials() {
         assert_eq!(creds.device_id, "agent-enroll");
         assert_eq!(creds.ws_path, "/ws/device");
         assert_ne!(creds.token, a.token, "token rotated");
+        // D153: an org-CA certificate identifies the agent on its link.
+        let cert = creds.client_cert_pem.as_deref().expect("client certificate");
+        assert!(creds.client_key_pem.as_deref().is_some_and(|k| k.contains("PRIVATE KEY")));
+        assert_eq!(
+            pnex_backend::services::device_pki::verify_client_cert(&ctx.db, cert)
+                .await
+                .unwrap(),
+            Ok((a.org, a.id))
+        );
 
         // Single use.
         let res = server
@@ -435,7 +435,7 @@ async fn enrollment_is_single_use_and_rotates_credentials() {
         };
         let mut ws = connect(&server, &fresh).await;
         assert!(matches!(
-            announce(&mut ws, &fresh.key).await,
+            announce(&mut ws).await,
             ServerMsg::AgentConfig { .. }
         ));
         ws.close().await;

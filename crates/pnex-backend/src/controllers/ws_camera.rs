@@ -1,13 +1,16 @@
 //! Camera WebSockets (camera-video.md D73/D75).
 //!
-//! - `GET /ws/camera?token=<b64>&device_id=<b64>` — device uplink, binary
-//!   frames `nonce(12) ‖ ChaCha20(key, PXC1 header ‖ JPEG)` (same key and
-//!   cipher as `/ws/device`, no base64). Auth and close codes identical to
+//! - `GET /ws/camera?device_id=<b64>` + `Authorization: Bearer <b64>`
+//!   (D154) — device uplink, binary
+//!   Noise NNpsk0 link (D156, same key as `/ws/device`) in raw bytes: the
+//!   device's first binary frame is the first Noise message, the server
+//!   answers the second, then each binary frame is the sealed
+//!   `PXC1 header ‖ JPEG` (chunked Noise messages when larger than 64 KiB). Auth and close codes identical to
 //!   `/ws/device` (4002/4001/4006/4008), anti-clone through a dedicated
 //!   `CAMERA_SESSIONS` registry (4003) plus a cross-pod Valkey claim
 //!   (`camera::claim_uplink`, refreshed by the session; a lost claim closes
 //!   with 4003). The token is revalidated periodically like `/ws/device`
-//!   (4005 when revoked). Text frames: `PING` → `PONG`.
+//!   (4005 when revoked). Text frames: sealed `PING` → sealed `PONG`.
 //! - `GET /ws/camera/live?token=<JWT>&org=<id>&device=<pk>` — browser live
 //!   view: raw JPEG binary frames, latest frame first, then every frame of
 //!   the CameraHub broadcast. No storage, no polling.
@@ -21,14 +24,12 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
 use axum::response::Response;
 use base64::Engine as _;
-use chacha20::cipher::{KeyIvInit, StreamCipher};
-use chacha20::{ChaCha20, Key, Nonce};
 use loco_rs::prelude::*;
 use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, QueryFilter};
 use serde::Deserialize;
 use tokio::sync::broadcast::error::RecvError;
 
-use super::ws_ingest::{decode_param, reject, Snapshot};
+use super::ws_ingest::{decode_param, reject, FrameCodec, Snapshot};
 use crate::auth::{jwks, provisioning, settings::RauthySettings};
 use crate::models::_entities::{device_registries, organization_members};
 use crate::services::camera;
@@ -82,32 +83,24 @@ fn max_frame_bytes() -> usize {
         .unwrap_or(DEFAULT_MAX_FRAME_BYTES)
 }
 
-/// `nonce(12) ‖ ct` → plaintext (ChaCha20 RFC 7539, counter 0 — identical to
-/// the text frames of `/ws/device`, minus base64).
-pub(crate) fn decrypt_binary(wire: &[u8], key: &[u8; 32]) -> Option<Vec<u8>> {
-    if wire.len() < 12 {
-        return None;
-    }
-    let (nonce, ct) = wire.split_at(12);
-    let mut buf = ct.to_vec();
-    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(nonce)).apply_keystream(&mut buf);
-    Some(buf)
-}
-
 // ───────────────────────────── Device uplink ─────────────────────────────
 
 #[derive(Debug, Deserialize)]
 pub struct CameraQuery {
-    token: Option<String>,
     device_id: Option<String>,
 }
 
 async fn ws_camera(
     State(ctx): State<AppContext>,
     Query(q): Query<CameraQuery>,
+    headers: axum::http::HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
-    let Some(raw_token) = q.token.as_deref() else {
+    let ingest = crate::services::settings::IngestSettings::from_config(&ctx.config);
+    if !super::ws_ingest::arrived_over_tls(&headers, &ingest) {
+        return reject(ws, super::ws_ingest::CLOSE_TLS_REQUIRED, "TLS required");
+    }
+    let Some(raw_token) = super::ws_ingest::device_token(&headers) else {
         return reject(ws, 4002, "No token provided");
     };
     let token = match decode_param(raw_token) {
@@ -125,6 +118,17 @@ async fn ws_camera(
     if device.device_id != device_id {
         return reject(ws, 4006, "Token/device mismatch");
     }
+    // D153 (L4): the TLS client certificate must be this device's.
+    if !matches!(
+        super::ws_ingest::client_cert_matches(&ctx.db, &headers, &ingest, device.id).await,
+        Ok(true)
+    ) {
+        return reject(
+            ws,
+            super::ws_ingest::CLOSE_CLIENT_CERT,
+            "Client certificate required",
+        );
+    }
     let Some(key) = tok
         .encryption_key
         .as_deref()
@@ -137,32 +141,43 @@ async fn ws_camera(
     else {
         return reject(ws, 4008, "No encryption key");
     };
-    {
-        let mut open = CAMERA_SESSIONS.lock().expect("camera sessions");
-        if !open.insert(device.id) {
-            return reject(ws, 4003, "Camera already connected");
-        }
-    }
-    let guard = UplinkGuard {
-        org_id: device.org_id,
-        device: device.id,
-        session: uuid::Uuid::new_v4().simple().to_string(),
-    };
-    // Cross-pod anti-clone: another pod may hold a live uplink.
-    if !camera::claim_uplink(device.id, &guard.session).await {
-        return reject(ws, 4003, "Camera already connected");
-    }
-    camera::set_uplink(device.org_id, device.id, true);
+    let settings = IngestSettings::from_config(&ctx.config);
     let max = max_frame_bytes();
     let session = UplinkSession {
         db: ctx.db.clone(),
         token,
-        revalidate_every: Duration::from_secs(
-            IngestSettings::from_config(&ctx.config).token_cache_secs,
-        ),
+        revalidate_every: Duration::from_secs(settings.token_cache_secs),
     };
-    ws.max_message_size(max + 64)
-        .on_upgrade(move |socket| uplink_loop(socket, key, device, guard, max, session))
+    let max_wire = max
+        + max.div_ceil(pnex_core::frame::NOISE_MAX_CHUNK) * pnex_core::frame::NOISE_TAG_LEN
+        + 64;
+    ws.max_message_size(max_wire)
+        .on_upgrade(move |mut socket| async move {
+            // Handshake FIRST: only a peer holding the device key takes the
+            // anti-clone slot (a stolen token alone cannot keep the camera out).
+            let Some(codec) = FrameCodec::accept(&mut socket, &key, &device.device_id, true).await
+            else {
+                return;
+            };
+            let fresh = CAMERA_SESSIONS
+                .lock()
+                .expect("camera sessions")
+                .insert(device.id);
+            if !fresh {
+                return close_with(&mut socket, 4003, "Camera already connected").await;
+            }
+            let guard = UplinkGuard {
+                org_id: device.org_id,
+                device: device.id,
+                session: uuid::Uuid::new_v4().simple().to_string(),
+            };
+            // Cross-pod anti-clone: another pod may hold a live uplink.
+            if !camera::claim_uplink(device.id, &guard.session).await {
+                return close_with(&mut socket, 4003, "Camera already connected").await;
+            }
+            camera::set_uplink(device.org_id, device.id, true);
+            uplink_loop(socket, codec, device, guard, max, session).await;
+        })
         .into_response()
 }
 
@@ -189,7 +204,7 @@ async fn close_with(socket: &mut WebSocket, code: u16, reason: &str) {
 
 async fn uplink_loop(
     mut socket: WebSocket,
-    key: [u8; 32],
+    mut codec: FrameCodec,
     device: device_registries::Model,
     guard: UplinkGuard,
     max: usize,
@@ -230,11 +245,23 @@ async fn uplink_loop(
         };
         match msg {
             Message::Binary(wire) => {
-                if wire.len() > max + 12 {
+                if wire.len()
+                    > max
+                        + max.div_ceil(pnex_core::frame::NOISE_MAX_CHUNK)
+                            * pnex_core::frame::NOISE_TAG_LEN
+                        + pnex_core::frame::NOISE_TAG_LEN
+                {
                     bad_frames += 1;
                     continue;
                 }
-                let Some(plain) = decrypt_binary(&wire, &key) else {
+                let Some(plain) = codec.open_bytes(&wire) else {
+                    // A rejected single-chunk frame leaves the Noise counter
+                    // untouched (dropped, link kept); a multi-chunk one
+                    // rejected midway desynchronizes it: close.
+                    if wire.len() > pnex_core::frame::NOISE_MAX_MSG {
+                        tracing::warn!(device = %device.device_id, "ws/camera: unauthenticated frame, closing");
+                        break;
+                    }
                     bad_frames += 1;
                     continue;
                 };
@@ -245,15 +272,24 @@ async fn uplink_loop(
                     }
                     Err(e) => {
                         bad_frames += 1;
-                        // A wrong key decrypts to garbage: log once per burst.
+                        // Authenticated but malformed header: log once per burst.
                         if bad_frames.is_power_of_two() {
                             tracing::warn!(device = %device.device_id, bad_frames, "ws/camera: {e}");
                         }
                     }
                 }
             }
-            Message::Text(t) if t.trim() == "PING" => {
-                if socket.send(Message::Text("PONG".into())).await.is_err() {
+            // Keepalive inside the Noise link too (base64 text frames).
+            Message::Text(t) => {
+                if codec.open(t.as_str()).as_deref().map(str::trim) != Some("PING") {
+                    tracing::warn!(device = %device.device_id, "ws/camera: unauthenticated text frame, closing");
+                    break;
+                }
+                if socket
+                    .send(Message::Text(codec.seal("PONG").into()))
+                    .await
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -359,23 +395,5 @@ async fn live_loop(mut socket: WebSocket, org_id: i64, device: i64, _guard: came
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn binary_decrypt_roundtrip() {
-        let key = [7u8; 32];
-        let nonce = [3u8; 12];
-        let plain = b"PXC1 hello".to_vec();
-        let mut ct = plain.clone();
-        ChaCha20::new(Key::from_slice(&key), Nonce::from_slice(&nonce)).apply_keystream(&mut ct);
-        let mut wire = nonce.to_vec();
-        wire.extend_from_slice(&ct);
-        assert_eq!(decrypt_binary(&wire, &key).unwrap(), plain);
-        assert!(decrypt_binary(&[0; 5], &key).is_none());
     }
 }

@@ -7,31 +7,52 @@
 ## 1. Connexion
 
 ```
-GET ws(s)://<hôte>/ws/sensor/ingest?token=<base64(token)>&device_id=<base64(device_id)>
+GET wss://<hôte>/ws/sensor/ingest?device_id=<base64(device_id)>
+Authorization: Bearer <base64(token)>
 ```
 
+- **Jeton dans l'en-tête `Authorization`, jamais dans l'URL** (D154,
+  lot L2 de `security-tiers.md` §6 bis) : une URL finit dans les journaux
+  d'accès. Le paramètre `token` de l'URL est encore lu pendant la
+  transition L2 (cartes flashées avant), puis supprimé.
+- **TLS obligatoire** : le device passe par l'edge TLS, qui pose
+  `X-Forwarded-Proto: https` et le secret de l'edge (`X-Pnex-Edge`) ;
+  sinon close **4013** (« TLS required »). Désactivé seulement dans la
+  config de test (`ingestion.require_tls`).
+- **Certificat client** (D153) : le device se connecte au point d'entrée
+  devices (`PNEX_DEVICE_PORT`, 4443 en LAN) avec le certificat émis par la
+  CA de son org au build ; sans certificat valide **de ce device**, close
+  **4014** (« Client certificate required »). Désactivé seulement en test
+  (`ingestion.require_client_cert`).
 - `token` et `device_id` sont **encodés base64 côté device** ; le serveur
   décode puis **trime** (les valeurs encodées à la `echo | base64` portent
   un `\n` final).
 - Le token vient de la création du device (`POST /api/v1/devices` →
   `device_token.token`) ; il est unique par device et activable/désactivable.
-- Pas de headers d'auth, pas de sous-protocole, pas de message
-  d'handshake : l'upgrade est acceptée/refusée sur la query string.
+- Pas de sous-protocole : l'upgrade est acceptée ou refusée sur l'en-tête
+  et `device_id`, puis la poignée de main Noise (§2) ouvre le lien. Même
+  règle pour `/ws/device`, `/ws/camera` et le téléchargement OTA
+  (`GET /api/v1/ota/firmware/{device}/{version}?device_id=…` + en-tête).
 
-## 2. Chiffrement (D8 : ChaCha20 nu, pas d'AEAD)
+## 2. Chiffrement : lien Noise (D156, remplace D8 le 2026-10-08)
 
-Toutes les frames, **dans les deux sens**, sont des frames WS **texte** :
+`Noise_NNpsk0_25519_ChaChaPoly_SHA256`, clé partagée =
+`device_token.encryption_key` (base64 de 32 octets, générée à
+l'enregistrement), prologue `PNEX-NOISE-1|<device_id>`.
 
-```
-base64( nonce(12 octets) ‖ ChaCha20(ciphertext) )
-```
+1. Première frame du device (texte) : base64 du premier message Noise
+   (`-> psk, e`, 48 octets).
+2. Réponse du serveur (texte) : base64 du second (`<- e, ee`, 48 octets).
+   Poignée de main refusée (mauvaise clé, autre device, firmware antérieur)
+   → close **4011**.
+3. Ensuite, toutes les frames, **dans les deux sens**, sont des frames WS
+   texte `base64(message de transport Noise)` : ChaCha20-Poly1305, nonce =
+   compteur implicite par sens, tag de 16 octets.
 
-- Clé : `device_token.encryption_key` (base64 de 32 octets, générée à
-  l'enregistrement).
-- Nonce : 12 octets aléatoires **frais à chaque message** (RFC 7539).
 - Base64 standard paddé des deux côtés.
-- Pas de Poly1305 (parité avec le POC initial ; montée AEAD versionnée à
-  venir). Frame illisible → réponse chiffrée `ERROR:decryption_failed`.
+- Frame falsifiée, modifiée, rejouée ou d'une autre connexion → réponse
+  chiffrée `ERROR:decryption_failed` (le lien reste utilisable).
+- Le format D8 (ChaCha20 sans Poly1305) n'existe plus (D157).
 
 ## 3. Device → serveur
 

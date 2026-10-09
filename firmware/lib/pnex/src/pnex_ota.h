@@ -10,8 +10,12 @@
 //   compared to the pushed sha256 BEFORE Update.end flips the boot slot;
 // - progress flows back via DeviceMsg::OtaState frames (ESP32 keeps the
 //   WS open; ESP8266 closes it first — one TLS context fits in ~40 KB);
-// - a device-side downgrade guard: ESP8266 (no bootloader rollback)
-//   refuses a strictly older numeric version.
+// - the image must carry the server's Ed25519 signature over
+//   device id + version + digest (SEC-18, pnex_ota_sig.h), checked against
+//   the compiled public key BEFORE the boot slot flips; a firmware built
+//   without a key refuses every OTA;
+// - a device-side downgrade guard on every chip: a strictly older numeric
+//   version is refused (the version is covered by the signature).
 //
 
 #ifndef PNEX_OTA_H
@@ -27,10 +31,13 @@ struct PnexOtaHooks {
 };
 
 // Run a full OTA: download `url_path` (+ token/device_id query), verify
-// against `sha_hex`, flash, return true when the device must reboot.
-// On failure fills `err` and the device stays on its current firmware.
+// against `sha_hex` and the signature `sig_hex` of (device, `version`,
+// digest), flash, return true when the device must reboot. On failure fills
+// `err` and the device stays on its current firmware.
 bool pnex_ota_run(const char* url_path,
                   const char* sha_hex,
+                  const char* version,
+                  const char* sig_hex,
                   const PnexOtaHooks& hooks,
                   char* err,
                   size_t errsz);

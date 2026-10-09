@@ -11,7 +11,7 @@
 #include <ESP8266WiFi.h>  // BearSSL
 #endif
 
-#include "chacha_crypto.h"  // cryptoB64Decode
+#include "pnex_crypto.h"  // cryptoB64Decode
 
 #include <time.h>
 
@@ -51,6 +51,51 @@ void pnex_tls_init(const char* ca_pem_b64) {
 
 bool pnex_tls_pinned() {
     return s_ca_len > 0;
+}
+
+// Client identity (D153): ECDSA P-256 certificate + key, a few hundred
+// bytes each in PEM.
+static char s_client_cert_pem[1536];
+static char s_client_key_pem[512];
+static bool s_has_client = false;
+
+void pnex_tls_set_client_identity(const char* cert_pem_b64, const char* key_pem_b64) {
+    const unsigned int c = cryptoB64DecodeBounded(cert_pem_b64, s_client_cert_pem, sizeof(s_client_cert_pem));
+    const unsigned int k = cryptoB64DecodeBounded(key_pem_b64, s_client_key_pem, sizeof(s_client_key_pem));
+    s_has_client = c != PNEX_B64_TOO_LONG && k != PNEX_B64_TOO_LONG && c > 0 && k > 0;
+    if (!s_has_client) {
+        // Never keep half an identity (a key would linger in RAM).
+        memset(s_client_key_pem, 0, sizeof(s_client_key_pem));
+        if (cert_pem_b64[0] != '\0' || key_pem_b64[0] != '\0') {
+            Serial.println("[TLS] client certificate unusable — none presented");
+        }
+        return;
+    }
+    Serial.printf("[TLS] client certificate ready (%u bytes PEM)\n", c);
+}
+
+bool pnex_tls_has_client_identity() {
+    return s_has_client;
+}
+
+// Presents the device certificate on `client` when one is compiled in.
+static void apply_client_identity(WiFiClientSecure& client) {
+    if (!s_has_client) return;
+#if defined(ESP32)
+    client.setCertificate(s_client_cert_pem);
+    client.setPrivateKey(s_client_key_pem);
+#else
+    // BearSSL objects parsed once (heap logged like the trust anchor).
+    static BearSSL::X509List* s_chain = nullptr;
+    static BearSSL::PrivateKey* s_key = nullptr;
+    if (s_chain == nullptr) {
+        s_chain = new BearSSL::X509List(s_client_cert_pem);
+        s_key = new BearSSL::PrivateKey(s_client_key_pem);
+        Serial.printf("[TLS] 8266 client certificate parsed, heap=%u\n",
+                      (unsigned)ESP.getFreeHeap());
+    }
+    client.setClientECCert(s_chain, s_key, BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN, BR_KEYTYPE_EC);
+#endif
 }
 
 #if !defined(ESP32)
@@ -93,6 +138,7 @@ void pnex_tls_apply(WiFiClientSecure& client) {
         Serial.println("[TLS] no usable CA — connection refused (rebuild the firmware)");
         return;
     }
+    apply_client_identity(client);
     if (!pnex_tls_pinned() || s_ca_pem[0] == '\0') {
         client.setInsecure();
         return;

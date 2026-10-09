@@ -18,7 +18,7 @@
 // SEULE unité de traduction incluant config.h à côté des projets qui
 // n'utilisent PAS pnex-transport (tft_dev).
 #include "pnex_config.h"
-#include "chacha_crypto.h"
+#include "pnex_crypto.h"
 #include "pnex_tls.h"
 #include "pnex_ws.h"
 
@@ -43,6 +43,19 @@ static PnexTransportInit s_init;
 // Dernier signe de vie serveur (text « PONG » ou pong WS), réarmé au
 // connect. Base du PONG timeout (brick0 : 15 s pour le pin_slave).
 static unsigned long s_last_pong_ms = 0;
+
+// Noise link of the current connection (D156): pnex_ws_connect() sends the
+// first message and waits for the server's answer before returning, so the
+// main only sees an established link (announce).
+static pnex_noise::Link s_link;
+static bool s_handshaking = false;
+// Set once the server's answer established the link of this attempt: a
+// close right after it is a session refusal (4003 anti-clone while a stale
+// session holds the lease), not a handshake failure.
+static bool s_handshake_done = false;
+static unsigned long s_handshake_started_ms = 0;
+// A server that does not answer the handshake in time is not ours.
+constexpr unsigned long HANDSHAKE_TIMEOUT_MS = 10000;
 
 // Prototypes
 static void on_frame(const char* data, size_t len, bool binary);
@@ -89,8 +102,7 @@ static bool lean_wss_connect(bool& ok) {
     pnex_tls_apply(*tcp);  // CA pin when provided, insecure otherwise
     tcp->setBufferSizes(LEAN_TLS_RX, LEAN_TLS_TX);
     char path[224];
-    snprintf(path, sizeof(path), "%s?token=%s&device_id=%s", s_init.ws_path,
-             token, device_id);
+    snprintf(path, sizeof(path), "%s?device_id=%s", s_init.ws_path, device_id);
     ok = s_client.connect(tcp, host, (uint16_t)port, path);
     if (!ok) {
         pnex_tls_log_error(*tcp);
@@ -132,21 +144,23 @@ void pnex_transport_setup(const PnexTransportInit& init) {
     if (cryptoB64DecodeBounded(DEVICE_ID, s_device_id, sizeof(s_device_id)) == PNEX_B64_TOO_LONG)
         Serial.println("[pnex] DEVICE_ID too long, ignored");
 
-    // Clé des frames WS — sans elle pnex_crypto_ready()=false et
-    // cryptoEncryptFrame renvoie le clair (mode mock) : le serveur ne
-    // déchiffre rien, l'annonce n'atteint jamais l'admission (leçon
-    // 2026-09-02 : 0 instances, boucle PONG timeout, « not provisioned
-    // yet »).
-    cryptoSetKey(ENCRYPTION_KEY);
+    // Pre-shared key of the Noise link: without a valid one the device
+    // never connects (no clear-text fallback, SEC-19).
+    if (!cryptoSetKey(ENCRYPTION_KEY)) {
+        Serial.println("[CRYPTO] ENCRYPTION_KEY missing or invalid — the device will not connect");
+    }
 
     // Shared TLS posture (WS + future OTA client): decode the optional CA
     // pin once — empty macro = setInsecure posture, unchanged behavior.
     pnex_tls_init(PNEX_CA_CERT);
+    pnex_tls_set_client_identity(PNEX_CLIENT_CERT, PNEX_CLIENT_KEY);
 
     // URL selon WS_SSL compilé (port implicite : 443/80, comme le custom).
-    snprintf(s_conn, sizeof(s_conn), "%s://%s%s?token=%s&device_id=%s",
-             pnex_use_tls() ? "wss" : "ws", s_host, init.ws_path, token, device_id);
-    snprintf(s_conn_log, sizeof(s_conn_log), "%s://%s%s?token=***&device_id=%s",
+    // The token never travels in the URL (D154): Authorization header.
+    snprintf(s_conn, sizeof(s_conn), "%s://%s%s?device_id=%s",
+             pnex_use_tls() ? "wss" : "ws", s_host, init.ws_path, device_id);
+    s_client.setAuthToken(token);
+    snprintf(s_conn_log, sizeof(s_conn_log), "%s://%s%s?device_id=%s",
              pnex_use_tls() ? "wss" : "ws", s_host, init.ws_path, device_id);
 
     // TLS posture is applied per connect (pnex_ws_open builds the client).
@@ -163,6 +177,8 @@ const char* pnex_conn_string() { return s_conn_log; }
 // Raw base64 credentials for the OTA download URL (see pnex_transport.h).
 const char* pnex_token_b64() { return token; }
 const char* pnex_device_id_b64() { return device_id; }
+
+const char* pnex_ota_pubkey() { return PNEX_OTA_PUBKEY; }
 
 bool pnex_use_tls() {
     return ws_use_tls();
@@ -200,6 +216,50 @@ bool pnex_wifi_connect(unsigned max_attempts, PnexWaitTickFn tick) {
     return ok;
 }
 
+// Noise handshake right after the socket opened (D156): sends the first
+// message, then polls until the server's answer established the link
+// (on_frame) or HANDSHAKE_TIMEOUT_MS elapsed. The mains keep their contract:
+// pnex_ws_connect() true = ready to announce.
+static bool noise_handshake() {
+    const String msg1 = cryptoLinkStartText(s_link, s_device_id);
+    if (msg1.length() == 0) {
+        Serial.println("[NOISE] no valid ENCRYPTION_KEY — not connecting");
+        s_client.close();
+        return false;
+    }
+    s_handshaking = true;
+    s_handshake_done = false;
+    s_handshake_started_ms = millis();
+    if (!s_client.send(msg1)) {
+        s_handshaking = false;
+        s_client.close();
+        return false;
+    }
+    while (s_handshaking && s_client.available() &&
+           millis() - s_handshake_started_ms < HANDSHAKE_TIMEOUT_MS) {
+        s_client.poll();
+        delay(5);
+#if defined(ESP8266)
+        ESP.wdtFeed();
+#endif
+    }
+    if (!s_link.ready()) {
+        if (s_handshake_done) {
+            Serial.println("[WS] session refused by the server after the handshake "
+                           "(device already connected? retrying)");
+        } else if (!s_client.available()) {
+            Serial.println("[NOISE] closed by the server before its answer (key refused?)");
+        } else {
+            Serial.println("[NOISE] handshake timed out — closing");
+        }
+        s_handshaking = false;
+        s_link.reset();
+        s_client.close();
+        return false;
+    }
+    return true;
+}
+
 bool pnex_ws_connect() {
     if (s_client.available()) {
         s_client.close();
@@ -213,6 +273,9 @@ bool pnex_ws_connect() {
 #else
     ok = pnex_ws_open(s_client, s_conn);
 #endif
+    if (ok) {
+        ok = noise_handshake();
+    }
     if (ok) {
 #if defined(ESP8266)
         Serial.printf("[WS] heap after connect: %u (max block %u)\n",
@@ -242,11 +305,14 @@ void pnex_ws_poll() {
 }
 
 void pnex_ws_send_ping() {
-    s_client.send(cryptoEncryptFrame("PING"));
+    const String wire = cryptoSealText(s_link, "PING");
+    if (wire.length() > 0) {
+        s_client.send(wire);
+    }
 }
 
 bool pnex_ws_available() {
-    return s_client.available();
+    return s_client.available() && s_link.ready();
 }
 
 void pnex_ws_send(const char* plain) {
@@ -256,11 +322,11 @@ void pnex_ws_send(const char* plain) {
     // Point de passage unique du trafic data (announce/ack/state_report) —
     // les PING passent par pnex_ws_send_ping et ne comptent pas. Simple
     // incrément : jamais sur le chemin de données.
-    const String wire = cryptoEncryptFrame(plain);
+    const String wire = cryptoSealText(s_link, plain);
     if (wire.length() == 0) {
-        // cryptoEncryptFrame refuse > MAX_PLAIN (il renvoyait le CLAIR
-        // avant — leçon 2026-09-21) : jeter ici, jamais de frame claire.
-        Serial.println("[PROTO] frame trop longue — ignorée");
+        // Link not ready or payload over the chip budget: dropped here,
+        // never sent in clear.
+        Serial.println("[PROTO] frame not sent (link not ready or too long)");
         return;
     }
     pnex_status::bump_tx();
@@ -274,9 +340,29 @@ void pnex_ws_close() {
 // ─────────────────────── Callbacks internes ───────────────────────
 
 static void on_frame(const char* data, size_t, bool) {
-    // Frame serveur chiffrée base64(nonce‖ct) → plaintext ; sans clé
-    // chargée (mock local), la passe-passe est transparente.
-    String msg = cryptoDecryptFrame(data);
+    if (s_handshaking) {
+        // First server frame = second Noise message.
+        s_handshaking = false;
+        if (!cryptoLinkFinishText(s_link, data)) {
+            Serial.println("[NOISE] handshake refused (wrong key or not a PNeX server) — closing");
+            s_link.reset();
+            s_client.close();
+            return;
+        }
+        Serial.println("[NOISE] link established");
+        s_handshake_done = true;
+        s_last_pong_ms = millis();
+        if (s_init.on_connected) {
+            s_init.on_connected();
+        }
+        return;
+    }
+    String msg = cryptoOpenText(s_link, data);
+    if (msg.length() == 0) {
+        // Forged, replayed or oversized: dropped (the link stays usable).
+        Serial.println("[NOISE] unauthenticated server frame dropped");
+        return;
+    }
     msg.trim();
     if (msg == "PONG") {
         // Signe de vie : bookkeeping interne + hook (le générique n'a rien
@@ -288,8 +374,6 @@ static void on_frame(const char* data, size_t, bool) {
         }
         return;
     }
-    // Frame vide (illisible/clé absente) passée au main : le wording du
-    // log « illisible » divergeait déjà entre firmwares.
     if (s_init.on_message) {
         s_init.on_message(msg);
     }
@@ -297,10 +381,11 @@ static void on_frame(const char* data, size_t, bool) {
 
 static void on_event(PnexWsEvent event) {
     if (event == PnexWsEvent::Opened) {
-        if (s_init.on_connected) {
-            s_init.on_connected();
-        }
+        // The Noise handshake is driven by pnex_ws_connect(); the main is
+        // told once the link is established (on_frame).
     } else if (event == PnexWsEvent::Closed) {
+        s_handshaking = false;
+        s_link.reset();
         if (s_init.on_closed) {
             s_init.on_closed();
         }

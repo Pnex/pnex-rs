@@ -94,7 +94,12 @@ mod tests {
         assert!(tmp.path().join("lib/pnex/library.json").is_file());
         assert!(tmp.path().join("lib/pnex/src/Pnex.h").is_file());
         assert!(tmp.path().join("lib/pnex/src/pnex_config.h").is_file());
-        assert!(tmp.path().join("lib/pnex/src/chacha_crypto.h").is_file());
+        assert!(tmp.path().join("lib/pnex/src/pnex_crypto.h").is_file());
+        assert!(tmp.path().join("lib/pnex/src/pnex_noise.cpp").is_file());
+        assert!(tmp
+            .path()
+            .join("lib/pnex/src/monocypher/monocypher.c")
+            .is_file());
         assert!(tmp.path().join("common_libs/display").is_dir());
         assert!(!tmp.path().join(".venv").exists());
         assert!(!tmp.path().join("soil_sensor/.pio").exists());

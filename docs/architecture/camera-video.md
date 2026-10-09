@@ -59,9 +59,11 @@ ESP32-CAM ──/ws/device (JSON chiffré, contrôle)─────────
 ### D73 — Canal vidéo dédié `/ws/camera`, binaire, même clé device
 
 Deuxième WebSocket du device, **uplink seulement**, frames **binaires** :
-`nonce(12) ‖ ChaCha20(clé device, header ‖ JPEG)` — même posture que D8
-(ChaCha20 RFC 7539 nu, nonce frais par frame), sans base64. Auth
-identique à `/ws/device` (`?token=&device_id=` base64, `Snapshot::load`),
+`header ‖ JPEG` scellé sur le lien Noise de la connexion caméra (D156,
+remplace le format D8 le 2026-10-08 : poignée de main en binaire, puis
+messages de transport Noise, découpés par 64 Kio au-delà), sans base64 ;
+le PING/PONG texte passe aussi scellé. Auth
+identique à `/ws/device` (`?device_id=` base64 + jeton en en-tête `Authorization`, D154, `Snapshot::load`),
 anti-clone par un registre `CAMERA_SESSIONS` séparé (close 4003).
 Le contrôle (config caméra, acks, OTA, pins) reste sur `/ws/device`.
 

@@ -130,7 +130,7 @@ du sous-process `pio run`**, pas en argv. Valeurs consommées par
 | `TOKEN` | **base64** | token du device (cf. `device_tokens`) |
 | `DEVICE_ID` | **base64** | `cHN5Y2hvbG9naWNhbC10ZQo=` = `psychological-te` |
 | `WS_SSL` | clair `true`/`false` | **toujours `true` depuis D70** (2026-09-27) : le serveur force `wss://` via l'edge TLS nginx, port 443 implicite, hôte = domaine de l'edge (ex. `shan-hapster.home`) ; `false` ne sert plus qu'aux builds manuels contre le mock `ws-server/` |
-| `ENCRYPTION_KEY` | **base64** | `device_tokens.encryption_key` (32 octets ChaCha20) ; vide → frames en clair (mock `ws-server/` uniquement — le serveur réel répond `ERROR:decryption_failed` à tout et le device ne passe jamais actif). Consommée par `common_libs/crypto` |
+| `ENCRYPTION_KEY` | **base64** | `device_tokens.encryption_key` (32 octets) = clé partagée du lien Noise (D156) ; vide ou invalide → le device ne se connecte jamais (plus de mode en clair, SEC-19). Consommée par `lib/pnex/src/pnex_crypto.cpp` |
 | `PNEX_FW_VERSION` | clair (id de build) | version stampée dans le binaire, annoncée à l'announce, sert de clé à l'artefact OTA versionné (2026-09-22, OTA — cf. ota.md) |
 | `PNEX_CA_CERT` | **base64** (PEM) | racine épinglée WS+OTA (`pnex_tls`), **injectée automatiquement depuis D70** : le worker lit `PNEX_CA_CERT_FILE` (= `deploy/edge/pki-data/device-ca.pem` : CA locale, ou ISRG Root X1 en cloud) à chaque build ; toujours posée (vide si pas de CA ou `ws://`). Vide = `setInsecure` (WS maison `pnex_ws` depuis 2026-10-03 ; avant, ArduinoWebsockets rendait ce cas inopérant sur ESP32) |
 | `PNEX_OTA_ENABLE` | clair `0`/`1` | 1 sur les 4 génériques : cap `ota` à l'announce + dispatch `ota_available` |

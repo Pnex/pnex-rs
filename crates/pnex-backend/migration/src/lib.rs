@@ -17,6 +17,7 @@ mod m20261004_000003_control_origin;
 mod m20261004_000004_ai_conversations;
 mod m20261004_000005_org_ai_retention;
 mod m20261007_000006_build_failure;
+mod m20261009_000007_device_pki;
 
 pub struct Migrator;
 
@@ -30,6 +31,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261004_000004_ai_conversations::Migration),
             Box::new(m20261004_000005_org_ai_retention::Migration),
             Box::new(m20261007_000006_build_failure::Migration),
+            Box::new(m20261009_000007_device_pki::Migration),
         ]
     }
 }

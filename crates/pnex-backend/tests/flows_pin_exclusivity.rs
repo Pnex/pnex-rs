@@ -14,32 +14,11 @@ mod common;
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
-use chacha20::cipher::{KeyIvInit, StreamCipher};
-use chacha20::{ChaCha20, Key, Nonce};
 use loco_rs::testing::request::{RequestConfig, RequestConfigBuilder};
 use pnex_backend::app::App;
 use serial_test::serial;
 
 // ─────────────────── Encrypted WS mirror client (firmware role) ───────────────────
-
-fn encrypt(plain: &str, key: &[u8; 32]) -> String {
-    use rand::RngExt;
-    let mut nonce = [0u8; 12];
-    rand::rng().fill(&mut nonce);
-    let mut buf = plain.as_bytes().to_vec();
-    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(&nonce)).apply_keystream(&mut buf);
-    let mut wire = nonce.to_vec();
-    wire.extend_from_slice(&buf);
-    STANDARD.encode(wire)
-}
-
-fn decrypt(raw: &str, key: &[u8; 32]) -> String {
-    let bytes = STANDARD.decode(raw.trim()).expect("b64");
-    let (nonce, ct) = bytes.split_at(12);
-    let mut buf = ct.to_vec();
-    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(nonce)).apply_keystream(&mut buf);
-    String::from_utf8(buf).expect("utf8")
-}
 
 fn b64_param(raw: &str) -> String {
     STANDARD.encode(raw)
@@ -130,30 +109,29 @@ async fn create_generic(server: &axum_test::TestServer, auth: &str, device_id: &
     }
 }
 
-async fn connect(server: &axum_test::TestServer, d: &Dev) -> axum_test::TestWebSocket {
-    server
-        .get_websocket(&format!(
+async fn connect(server: &axum_test::TestServer, d: &Dev) -> common::DevWs {
+    common::DevWs::connect(
+        server,
+        &format!(
             "/ws/device?token={}&device_id={}",
             b64_param(&d.token),
             b64_param(&d.device_id),
-        ))
-        .await
-        .into_websocket()
-        .await
+        ),
+        &d.key,
+        &d.device_id,
+    )
+    .await
 }
 
 /// Announce → ProvisionAck (pins provisioned on first connection).
-async fn announce_and_expect_provision(
-    ws: &mut axum_test::TestWebSocket,
-    key: &[u8; 32],
-) -> Vec<pnex_core::PinSpec> {
+async fn announce_and_expect_provision(ws: &mut common::DevWs) -> Vec<pnex_core::PinSpec> {
     let announce = serde_json::json!({
         "t": "announce", "chip": "esp8266", "board": "nodemcu", "fw": "0.1.0"
     })
     .to_string();
-    ws.send_text(encrypt(&announce, key)).await;
-    let raw = ws.receive_text().await;
-    let msg: pnex_core::ServerMsg = serde_json::from_str(&decrypt(&raw, key)).expect("ServerMsg");
+    ws.send_plain(&announce).await;
+    let raw = ws.recv_plain().await;
+    let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
     match msg {
         pnex_core::ServerMsg::ProvisionAck { caps, .. } => caps,
         other => panic!("ProvisionAck expected, got: {other:?}"),
@@ -369,7 +347,7 @@ async fn write_manuelle_pin_reservee_409() {
         // the reservation 409 must win over the offline 409.
         {
             let mut ws = connect(&server, &dev).await;
-            announce_and_expect_provision(&mut ws, &dev.key).await;
+            announce_and_expect_provision(&mut ws).await;
             set_d1_output(&server, &auth, org, &dev).await;
             ws.close().await;
         }
@@ -396,7 +374,7 @@ async fn write_manuelle_pin_lue_seulement_autorisee() {
         let org = personal_org(&server, &auth).await;
         let dev = create_generic(&server, &auth, "gen-lu").await;
         let mut ws = connect(&server, &dev).await;
-        announce_and_expect_provision(&mut ws, &dev.key).await;
+        announce_and_expect_provision(&mut ws).await;
         set_d1_output(&server, &auth, org, &dev).await;
 
         let flow_d = create_read_flow(&server, &auth, org, "lect D", "gen-lu", "D1").await;
@@ -464,7 +442,7 @@ async fn pinout_reserved_by() {
         // (overlay pins alone may be absent on Tier-2 generic boards).
         {
             let mut ws = connect(&server, &dev).await;
-            announce_and_expect_provision(&mut ws, &dev.key).await;
+            announce_and_expect_provision(&mut ws).await;
             set_d1_output(&server, &auth, org, &dev).await;
             ws.close().await;
         }

@@ -12,32 +12,11 @@ mod common;
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
-use chacha20::cipher::{KeyIvInit, StreamCipher};
-use chacha20::{ChaCha20, Key, Nonce};
 use loco_rs::testing::request::{RequestConfig, RequestConfigBuilder};
 use pnex_backend::app::App;
 use serial_test::serial;
 
 // ─────────────────── Client miroir (rôle firmware carte mixte) ───────────────────
-
-fn encrypt(plain: &str, key: &[u8; 32]) -> String {
-    use rand::RngExt;
-    let mut nonce = [0u8; 12];
-    rand::rng().fill(&mut nonce);
-    let mut buf = plain.as_bytes().to_vec();
-    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(&nonce)).apply_keystream(&mut buf);
-    let mut wire = nonce.to_vec();
-    wire.extend_from_slice(&buf);
-    STANDARD.encode(wire)
-}
-
-fn decrypt(raw: &str, key: &[u8; 32]) -> String {
-    let bytes = STANDARD.decode(raw.trim()).expect("b64");
-    let (nonce, ct) = bytes.split_at(12);
-    let mut buf = ct.to_vec();
-    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(nonce)).apply_keystream(&mut buf);
-    String::from_utf8(buf).expect("utf8")
-}
 
 fn b64_param(raw: &str) -> String {
     STANDARD.encode(raw)
@@ -129,30 +108,29 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .expect("org perso")
 }
 
-async fn connect(server: &axum_test::TestServer, d: &Dev) -> axum_test::TestWebSocket {
-    server
-        .get_websocket(&format!(
+async fn connect(server: &axum_test::TestServer, d: &Dev) -> common::DevWs {
+    common::DevWs::connect(
+        server,
+        &format!(
             "/ws/device?token={}&device_id={}",
             b64_param(&d.token),
             b64_param(&d.device_id),
-        ))
-        .await
-        .into_websocket()
-        .await
+        ),
+        &d.key,
+        &d.device_id,
+    )
+    .await
 }
 
 /// Announce → ProvisionAck (les cadences/ControlConfig suivent).
-async fn announce_and_expect_provision(
-    ws: &mut axum_test::TestWebSocket,
-    key: &[u8; 32],
-) -> Vec<pnex_core::PinSpec> {
+async fn announce_and_expect_provision(ws: &mut common::DevWs) -> Vec<pnex_core::PinSpec> {
     let announce = serde_json::json!({
         "t": "announce", "chip": "esp8266", "board": "nodemcu", "fw": "0.1.0"
     })
     .to_string();
-    ws.send_text(encrypt(&announce, key)).await;
-    let raw = ws.receive_text().await;
-    let msg: pnex_core::ServerMsg = serde_json::from_str(&decrypt(&raw, key)).expect("ServerMsg");
+    ws.send_plain(&announce).await;
+    let raw = ws.recv_plain().await;
+    let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
     match msg {
         pnex_core::ServerMsg::ProvisionAck { caps, .. } => caps,
         other => panic!("ProvisionAck attendu, reçu : {other:?}"),
@@ -167,7 +145,7 @@ async fn announce_and_expect_provision(
 async fn connect_announce_with_retry(
     server: &axum_test::TestServer,
     d: &Dev,
-) -> (axum_test::TestWebSocket, Vec<pnex_core::PinSpec>) {
+) -> (common::DevWs, Vec<pnex_core::PinSpec>) {
     let announce = serde_json::json!({
         "t": "announce", "chip": "esp8266", "board": "nodemcu", "fw": "0.1.0"
     })
@@ -175,10 +153,10 @@ async fn connect_announce_with_retry(
     for attempt in 0..5 {
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
         let mut ws = connect(server, d).await;
-        ws.send_text(encrypt(&announce, &d.key)).await;
+        ws.send_plain(&announce).await;
         let msg = ws.receive_message().await;
         if let axum_test::WsMessage::Text(raw) = &msg {
-            let plain = decrypt(raw, &d.key);
+            let plain = ws.open(raw).unwrap_or_default();
             if let Ok(pnex_core::ServerMsg::ProvisionAck { caps, .. }) =
                 serde_json::from_str::<pnex_core::ServerMsg>(&plain)
             {
@@ -193,14 +171,10 @@ async fn connect_announce_with_retry(
 
 /// Skip les commandes non régulation (SetMode/Subscribe poussés au device)
 /// et retourne la carte du premier `ControlConfig` (une seule attendue).
-async fn expect_control_config(
-    ws: &mut axum_test::TestWebSocket,
-    key: &[u8; 32],
-) -> pnex_core::ControlSpec {
+async fn expect_control_config(ws: &mut common::DevWs) -> pnex_core::ControlSpec {
     for _ in 0..10 {
-        let raw = ws.receive_text().await;
-        let msg: pnex_core::ServerMsg =
-            serde_json::from_str(&decrypt(&raw, key)).expect("ServerMsg");
+        let raw = ws.recv_plain().await;
+        let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
         if let pnex_core::ServerMsg::ControlConfig { configs, .. } = msg {
             assert_eq!(configs.len(), 1, "une seule carte attendue : {configs:?}");
             return configs.into_iter().next().expect("carte");
@@ -280,13 +254,13 @@ async fn deploy_caste_control_config_au_device_connecte() {
         let org = personal_org(&server, &auth).await;
         let dev = create_generic(&server, &auth, "gen-serre").await;
         let mut ws = connect(&server, &dev).await;
-        let _caps = announce_and_expect_provision(&mut ws, &dev.key).await;
+        let _caps = announce_and_expect_provision(&mut ws).await;
         set_d1_output(&server, &auth, org, &dev).await;
 
         let flow_id = create_reg_flow(&server, &auth, org, "serre TT", "gen-serre", 19.0).await;
         deploy_expect_503(&server, &auth, org, flow_id).await;
 
-        let spec = expect_control_config(&mut ws, &dev.key).await;
+        let spec = expect_control_config(&mut ws).await;
         assert_eq!(spec.node_id, "r1");
         assert_eq!(spec.kind, "tt_heat");
         assert_eq!(
@@ -316,7 +290,7 @@ async fn offline_au_deploy_recast_a_l_announce() {
         // refermer — la carte est offline au deploy.
         {
             let mut ws = connect(&server, &dev).await;
-            let _caps = announce_and_expect_provision(&mut ws, &dev.key).await;
+            let _caps = announce_and_expect_provision(&mut ws).await;
             set_d1_output(&server, &auth, org, &dev).await;
             ws.close().await;
         }
@@ -327,7 +301,7 @@ async fn offline_au_deploy_recast_a_l_announce() {
         // Reconnexion (retry anti-clone) : ProvisionAck puis ControlConfig
         // (aucune cadence persistée entre les deux).
         let (mut ws, _caps) = connect_announce_with_retry(&server, &dev).await;
-        let spec = expect_control_config(&mut ws, &dev.key).await;
+        let spec = expect_control_config(&mut ws).await;
         assert_eq!(spec.kind, "tt_heat");
         assert!((spec.setpoint - 21.0).abs() < 1e-9);
         ws.close().await;
@@ -345,12 +319,12 @@ async fn edit_redeploy_recaste_nouveau_setpoint() {
         let org = personal_org(&server, &auth).await;
         let dev = create_generic(&server, &auth, "gen-seuil").await;
         let mut ws = connect(&server, &dev).await;
-        let _caps = announce_and_expect_provision(&mut ws, &dev.key).await;
+        let _caps = announce_and_expect_provision(&mut ws).await;
         set_d1_output(&server, &auth, org, &dev).await;
 
         let flow_id = create_reg_flow(&server, &auth, org, "serre seuil", "gen-seuil", 19.0).await;
         deploy_expect_503(&server, &auth, org, flow_id).await;
-        let spec = expect_control_config(&mut ws, &dev.key).await;
+        let spec = expect_control_config(&mut ws).await;
         assert!((spec.setpoint - 19.0).abs() < 1e-9);
 
         // v2 : consigne 21 → redeploy → re-cast.
@@ -375,7 +349,7 @@ async fn edit_redeploy_recaste_nouveau_setpoint() {
             .await;
         assert_eq!(updated.status_code(), 200, "{}", updated.text());
         deploy_expect_503(&server, &auth, org, flow_id).await;
-        let spec = expect_control_config(&mut ws, &dev.key).await;
+        let spec = expect_control_config(&mut ws).await;
         assert!((spec.setpoint - 21.0).abs() < 1e-9, "{spec:?}");
         ws.close().await;
     })
@@ -391,13 +365,13 @@ async fn rollback_recaste_ancien_setpoint() {
         let org = personal_org(&server, &auth).await;
         let dev = create_generic(&server, &auth, "gen-rollback").await;
         let mut ws = connect(&server, &dev).await;
-        let _caps = announce_and_expect_provision(&mut ws, &dev.key).await;
+        let _caps = announce_and_expect_provision(&mut ws).await;
         set_d1_output(&server, &auth, org, &dev).await;
 
         let flow_id =
             create_reg_flow(&server, &auth, org, "serre rollback", "gen-rollback", 19.0).await;
         deploy_expect_503(&server, &auth, org, flow_id).await;
-        let _ = expect_control_config(&mut ws, &dev.key).await;
+        let _ = expect_control_config(&mut ws).await;
 
         // v2 à 22 puis rollback v1 → 19 re-casté.
         let updated = server
@@ -425,7 +399,7 @@ async fn rollback_recaste_ancien_setpoint() {
             .json(&serde_json::json!({"version_number": 1}))
             .await;
         res.assert_status(axum_test::http::StatusCode::SERVICE_UNAVAILABLE);
-        let spec = expect_control_config(&mut ws, &dev.key).await;
+        let spec = expect_control_config(&mut ws).await;
         assert!((spec.setpoint - 19.0).abs() < 1e-9, "{spec:?}");
         ws.close().await;
     })
@@ -443,12 +417,12 @@ async fn suppression_caste_liste_vide() {
         let org = personal_org(&server, &auth).await;
         let dev = create_generic(&server, &auth, "gen-clear").await;
         let mut ws = connect(&server, &dev).await;
-        let _caps = announce_and_expect_provision(&mut ws, &dev.key).await;
+        let _caps = announce_and_expect_provision(&mut ws).await;
         set_d1_output(&server, &auth, org, &dev).await;
 
         let flow_id = create_reg_flow(&server, &auth, org, "serre clear", "gen-clear", 19.0).await;
         deploy_expect_503(&server, &auth, org, flow_id).await;
-        let _ = expect_control_config(&mut ws, &dev.key).await;
+        let _ = expect_control_config(&mut ws).await;
 
         let res = server
             .delete(&format!("/api/v1/flows/{flow_id}"))
@@ -459,9 +433,8 @@ async fn suppression_caste_liste_vide() {
         // (le cast est indépendant du runtime — c'est le contrat testé).
         res.assert_status(axum_test::http::StatusCode::SERVICE_UNAVAILABLE);
         for _ in 0..10 {
-            let raw = ws.receive_text().await;
-            let msg: pnex_core::ServerMsg =
-                serde_json::from_str(&decrypt(&raw, &dev.key)).expect("ServerMsg");
+            let raw = ws.recv_plain().await;
+            let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
             if let pnex_core::ServerMsg::ControlConfig { configs, .. } = msg {
                 assert!(configs.is_empty(), "clear attendu, reçu : {configs:?}");
                 ws.close().await;
@@ -483,19 +456,19 @@ async fn conflit_cross_flows_plus_petit_flow_id_gagne() {
         let org = personal_org(&server, &auth).await;
         let dev = create_generic(&server, &auth, "gen-conflit").await;
         let mut ws = connect(&server, &dev).await;
-        let _caps = announce_and_expect_provision(&mut ws, &dev.key).await;
+        let _caps = announce_and_expect_provision(&mut ws).await;
         set_d1_output(&server, &auth, org, &dev).await;
 
         let flow_a = create_reg_flow(&server, &auth, org, "conflit A", "gen-conflit", 19.0).await;
         let flow_b = create_reg_flow(&server, &auth, org, "conflit B", "gen-conflit", 25.0).await;
         assert!(flow_a < flow_b, "ordre de création → ids croissants");
         deploy_expect_503(&server, &auth, org, flow_a).await;
-        let spec = expect_control_config(&mut ws, &dev.key).await;
+        let spec = expect_control_config(&mut ws).await;
         assert!((spec.setpoint - 19.0).abs() < 1e-9);
 
         // Deploy de B : le set entier est recalculé — A (plus petit id) gagne.
         deploy_expect_503(&server, &auth, org, flow_b).await;
-        let spec = expect_control_config(&mut ws, &dev.key).await;
+        let spec = expect_control_config(&mut ws).await;
         assert!(
             (spec.setpoint - 19.0).abs() < 1e-9,
             "A doit gagner : {spec:?}"
@@ -515,7 +488,7 @@ async fn set_mode_capteur_dedeploie_et_clear() {
         let org = personal_org(&server, &auth).await;
         let dev = create_generic(&server, &auth, "gen-stop").await;
         let mut ws = connect(&server, &dev).await;
-        let _caps = announce_and_expect_provision(&mut ws, &dev.key).await;
+        let _caps = announce_and_expect_provision(&mut ws).await;
         set_d1_output(&server, &auth, org, &dev).await;
 
         // Capteur D2 (gpio 4, digital_in) — basculable in↔out.
@@ -540,7 +513,7 @@ async fn set_mode_capteur_dedeploie_et_clear() {
         res.assert_status(axum_test::http::StatusCode::CREATED);
         let flow_id: i64 = res.json::<serde_json::Value>()["id"].as_i64().unwrap();
         deploy_expect_503(&server, &auth, org, flow_id).await;
-        let _ = expect_control_config(&mut ws, &dev.key).await;
+        let _ = expect_control_config(&mut ws).await;
 
         // D2 (gpio 4) → digital_out : la carte perd son capteur. Moteur
         // coupé → la 503 de la projection suit le dé-déploiement (le cast
@@ -558,9 +531,8 @@ async fn set_mode_capteur_dedeploie_et_clear() {
 
         // Le clear suit (le flow est dé-déployé par stop_flows_reading_pin).
         for _ in 0..10 {
-            let raw = ws.receive_text().await;
-            let msg: pnex_core::ServerMsg =
-                serde_json::from_str(&decrypt(&raw, &dev.key)).expect("ServerMsg");
+            let raw = ws.recv_plain().await;
+            let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
             if let pnex_core::ServerMsg::ControlConfig { configs, .. } = msg {
                 assert!(configs.is_empty(), "clear attendu, reçu : {configs:?}");
                 ws.close().await;

@@ -477,6 +477,12 @@ pub enum ServerMsg {
         sha256: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         size: Option<u64>,
+        /// Ed25519 signature (hex, 128 chars) of
+        /// [`crate::ota_sig::signed_message`] by the instance OTA key
+        /// (SEC-18). Firmware built with a public key refuses an image
+        /// without a valid one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sig: Option<String>,
     },
     /// RPC: camera capture settings (camera-video.md D76) — pushed after the
     /// announce of a device carrying the `camera` cap, on every settings
@@ -580,6 +586,7 @@ impl<'de> Deserialize<'de> for ServerMsg {
                     url: req_str(&v, "url")?,
                     sha256: req_str(&v, "sha256")?,
                     size: opt_u64(&v, "size")?,
+                    sig: opt_str(&v, "sig"),
                 }),
                 "camera_config" => Ok(Self::CameraConfig {
                     cmd_id: req_str(&v, "cmd_id")?,

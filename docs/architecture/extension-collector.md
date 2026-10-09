@@ -68,7 +68,7 @@ redémarrage du navigateur.
 ## 5. Transport (décision 1)
 
 **WS `/ws/device` canal unique** : le canal existe, chiffré ChaCha20
-(framing `base64(nonce 12 o || keystream)`, pas d'AEAD — D8), et le
+(framing D8 à l'époque ; lien Noise depuis D156, 2026-10-08), et le
 **re-cast desired-state à l'announce** (`ws_device.rs` : ProvisionAck →
 re-push des `Subscribe` persistés → re-cast `ControlConfig`) rend la sync
 des règles gratuite côté serveur. Zéro changement serveur pour le
@@ -165,7 +165,7 @@ Le service worker MV3 est éphémère — pas de WS persistant v1. Pattern :
 
 ```
 wake (alarm >= 30 s + jitter, ou tab-open, ou on-navigate)
-  → connect WS /ws/device?token=…&device_id=…
+  → connect WS /ws/device?device_id=… (jeton en en-tête Authorization, D154)
   → Announce { chip: "extension", board: <chrome|firefox>, fw: version, caps: ["extension"] }
   → ProvisionAck (admission Tier 2 permissive)
   → drain : Subscribe persistés + RulesConfig (re-cast desired-state)

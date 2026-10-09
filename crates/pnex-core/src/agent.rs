@@ -117,13 +117,27 @@ pub struct AgentEnrollRequest {
 pub struct AgentEnrollResponse {
     pub device_id: String,
     pub token: String,
-    /// Base64 32-byte ChaCha20 key (D8).
+    /// Base64 32-byte pre-shared key of the Noise link (D156).
     pub encryption_key: String,
     /// WebSocket path on the same origin (`/ws/device`).
     pub ws_path: String,
     /// Local root CA PEM to pin (`None` = publicly trusted certificate).
     #[serde(default)]
     pub ca_pem: Option<String>,
+    /// TLS client certificate + PKCS#8 key (PEM) issued by the org CA
+    /// (D153). Every enrollment revokes the previous ones.
+    #[serde(default)]
+    pub client_cert_pem: Option<String>,
+    #[serde(default)]
+    pub client_key_pem: Option<String>,
+    /// Port of the device endpoint (D158) on the server's host; `None` =
+    /// the server URL's own port.
+    #[serde(default)]
+    pub device_port: Option<u16>,
+    /// Own host name of the device endpoint (`host[:port]`), when the
+    /// deployment has one (cloud: `devices.<host>`); wins over `device_port`.
+    #[serde(default)]
+    pub device_host: Option<String>,
 }
 
 #[cfg(test)]

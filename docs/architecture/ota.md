@@ -17,10 +17,11 @@ USER (UI /devices)            BACKEND                                   DEVICE
                               ──► en ligne ? push OtaAvailable (WS) ────────► Ack{ok}
                               hors ligne → pushed:false, pickup à l'announce
 2. DEVICE : GET {scheme}://{HOST}/api/v1/ota/firmware/{device}/{version}
-            ?token=&device_id=   (auth token device = posture /ws/device)
+            ?device_id= + Authorization: Bearer <token>   (posture /ws/device, D154)
             stream 1 KB → Update.h + sha256
             ◄── OtaState{downloading, pct} ≥5 s/5 % ──┤ (ESP32 : WS ouvert)
             sha256 vérifié AVANT Update.end (sinon abort, vieux fw conservé)
+            signature Ed25519 vérifiée AVANT Update.end (SEC-18, §4)
             OtaState{flashing} → reboot
 3. reboot → announce(fw=build #N) → serveur : fw ≥ cible → succeeded (+ journal
    in-app best-effort) ; announce fw < cible pendant downloading/flashing →
@@ -64,9 +65,37 @@ tardive `fw ≥ cible` rattrape un `failed(timeout)`.
   ESP32, reset muet (le HTTP clair passait). Le téléchargement suit le
   transport courant : device en `ws://` → `http://…:5150`, en `wss://` →
   `https://` via nginx.
-- 8266 : garde anti-downgrade locale (version strictement inférieure
-  refusée — pas de rollback bootloader) ; garde serveur taille ≤ ~2 Mo
-  (staging eboot).
+- **Image signée (SEC-18, 2026-10-09)** : clé Ed25519 de l'instance,
+  graine dans le coffre (secret plateforme `pnex-ota-signing-key`, créé
+  au premier usage sous verrou de cluster, couvert par la rotation du
+  keyring) ; clé publique compilée dans chaque build (`PNEX_OTA_PUBKEY`,
+  hex) ; `OtaAvailable.sig` = signature de
+  `"PNEX-OTA-1" ‖ len ‖ device_id ‖ len ‖ version ‖ sha256(image)`
+  (`pnex_core::ota_sig`, miroir C++ `pnex_ota_sig.cpp` + Monocypher
+  Ed25519, golden vectors `ota_sig_goldens.h`). Le device vérifie après
+  le sha256, avant `Update.end` ; firmware sans clé ou ordre sans
+  signature → refus avant tout téléchargement (« no ota key in
+  firmware » / « unsigned image »), signature fausse → « bad
+  signature ». Lier device et version empêche de rejouer l'image d'un
+  autre device (qui porte ses identifiants) et de ré-étiqueter une vieille
+  version. **Clé perdue = reflash USB de tous les devices** : jamais de
+  rotation automatique. Un build qui ne peut pas lire la clé échoue
+  (`build_ota_key`).
+- **Anti-downgrade sur toutes les puces** (SEC-18) : version strictement
+  inférieure refusée (égale admise : redéploiement forcé). Pas de version
+  minimale en NVS : la version comparée est celle de l'image qui tourne,
+  et la version cible est couverte par la signature. Garde serveur taille
+  ≤ ~2 Mo (staging eboot 8266).
+- Devices flashés avant SEC-18 : leur firmware ignore `sig` et accepte
+  l'OTA (compat ascendante du champ) ; dès le premier build signé, seules
+  les images signées passent. **Banc du 2026-10-09** (NodeMCU V3 OLED
+  `proud-ibex`, ESP32-C6-Zero `noise-c6`, wss via l'edge) : OTA 19/20 →
+  21/22 (bascule vers le firmware SEC-18), puis OTA signée 21/22 → 23/24
+  vérifiée et acceptée sur les deux puces (pile 8266 tenue pendant la
+  vérification Ed25519) ; OTA forcée vers 21/22 → « downgrade refused »
+  sur les deux. Reste sur carte : signature invalide (couverte par les
+  tests hôte `test_ota_signature_golden` ; le test matériel exige de
+  remplacer la clé du coffre).
 
 ## 5. ESP8266 — modèle eboot (pas de migration)
 

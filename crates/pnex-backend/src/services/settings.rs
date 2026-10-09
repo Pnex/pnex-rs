@@ -42,6 +42,20 @@ pub struct IngestSettings {
     pub batch_max: usize,
     /// Batch télémétrie : délai max avant flush.
     pub batch_flush_secs: u64,
+    /// D154: device links (`/ws/device`, `/ws/sensor/ingest`, `/ws/camera`,
+    /// OTA download) are accepted only through the TLS edge, which sets
+    /// `X-Forwarded-Proto: https` (overwriting the client's value). Off in
+    /// the test config only (tests talk to the server directly).
+    pub require_tls: bool,
+    /// D153 (L4): a device link must present a client certificate issued by
+    /// its org CA (verified by the backend from the edge's `X-Client-Cert`).
+    pub require_client_cert: bool,
+    /// Shared secret the edge adds to every request (`X-Pnex-Edge`,
+    /// env `PNEX_EDGE_SECRET`): edge-provided headers (`X-Forwarded-Proto`,
+    /// `X-Client-Cert`) are trusted only with it, so a client reaching the
+    /// backend port directly cannot forge them. Never logged.
+    #[serde(skip)]
+    pub edge_secret: Option<String>,
 }
 
 impl Default for IngestSettings {
@@ -56,6 +70,9 @@ impl Default for IngestSettings {
             admission_wait_ms: 5000,
             batch_max: 500,
             batch_flush_secs: 10,
+            require_tls: true,
+            require_client_cert: true,
+            edge_secret: None,
         }
     }
 }
@@ -72,13 +89,19 @@ impl IngestSettings {
     }
 
     /// `settings.ingestion` optionnelle — défauts si absente/incomplète.
+    /// The edge secret comes from the environment only.
     pub fn from_config(config: &Config) -> Self {
-        config
+        let mut settings: Self = config
             .settings
             .as_ref()
             .and_then(|s| s.get("ingestion"))
             .and_then(|v| serde_json::from_value(v.clone()).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        settings.edge_secret = std::env::var("PNEX_EDGE_SECRET")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| s.len() >= 16);
+        settings
     }
 }
 

@@ -18,6 +18,7 @@ pub mod dashboards;
 pub mod db_lock;
 pub mod device_bus;
 pub mod device_liveness;
+pub mod device_pki;
 /// Graceful drain of buffered background writers at shutdown.
 pub mod drain;
 pub mod edge_agent;
@@ -40,6 +41,7 @@ pub mod notify_journal;
 pub mod notify_templates;
 pub mod openobserve;
 pub mod ota;
+pub mod ota_signing;
 pub mod pois;
 pub mod provisioning;
 /// Cross-pod rate limiting of unauthenticated / sensitive routes.

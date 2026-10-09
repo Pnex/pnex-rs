@@ -1,5 +1,5 @@
 //! Uplink: drains the durable queue to `/ws/device` (same tunnel, framing
-//! and ChaCha20 frames as the firmware), with a sliding window of in-flight
+//! and Noise NNpsk0 link as the firmware, D156), with a sliding window of in-flight
 //! batches and purge on `BatchAck`. Reconnects forever with exponential
 //! backoff + jitter; refused credentials park the link in `revoked`.
 
@@ -12,7 +12,7 @@ use anyhow::{anyhow, Context, Result};
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use futures_util::{SinkExt, StreamExt};
-use pnex_core::frame::{decrypt_frame, encrypt_frame};
+use pnex_core::frame::{Initiator, Link as NoiseLink};
 use pnex_core::{BatchPoint, DeviceMsg, ServerMsg};
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::Message;
@@ -26,6 +26,8 @@ const WINDOW: usize = 4;
 const MAX_BATCH_BYTES: usize = 64 * 1024;
 /// Keepalive (the server watchdog closes silent sessions after 45 s).
 const PING_EVERY: Duration = Duration::from_secs(20);
+/// Max wait for the server's Noise answer after the first message.
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 /// An unacknowledged batch older than this restarts the session.
 const ACK_TIMEOUT: Duration = Duration::from_secs(60);
 /// Backoff bounds.
@@ -45,7 +47,10 @@ pub fn target_id() -> String {
 
 /// rustls client config: the pinned local CA only when given, public web
 /// roots otherwise. ring provider (portable cross builds).
-pub fn tls_config(ca_pem: Option<&str>) -> Result<Arc<rustls::ClientConfig>> {
+pub fn tls_config(
+    ca_pem: Option<&str>,
+    client: Option<(&str, &str)>,
+) -> Result<Arc<rustls::ClientConfig>> {
     use rustls_pki_types::pem::PemObject;
     use rustls_pki_types::CertificateDer;
     let mut roots = rustls::RootCertStore::empty();
@@ -63,11 +68,25 @@ pub fn tls_config(ca_pem: Option<&str>) -> Result<Arc<rustls::ClientConfig>> {
         None => roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned()),
     }
     let provider = Arc::new(rustls::crypto::ring::default_provider());
-    let cfg = rustls::ClientConfig::builder_with_provider(provider)
+    let builder = rustls::ClientConfig::builder_with_provider(provider)
         .with_safe_default_protocol_versions()
         .context("TLS protocol setup")?
-        .with_root_certificates(roots)
-        .with_no_client_auth();
+        .with_root_certificates(roots);
+    // D153: the agent's org-CA certificate on the device endpoint.
+    let cfg = match client {
+        Some((cert_pem, key_pem)) => {
+            use rustls_pki_types::PrivateKeyDer;
+            let chain = CertificateDer::pem_slice_iter(cert_pem.as_bytes())
+                .collect::<Result<Vec<_>, _>>()
+                .context("invalid client certificate PEM")?;
+            let key = PrivateKeyDer::from_pem_slice(key_pem.as_bytes())
+                .context("invalid client key PEM")?;
+            builder
+                .with_client_auth_cert(chain, key)
+                .context("client certificate rejected by rustls")?
+        }
+        None => builder.with_no_client_auth(),
+    };
     Ok(Arc::new(cfg))
 }
 
@@ -81,7 +100,7 @@ enum End {
 fn close_end(code: CloseCode, reason: &str) -> End {
     let code = u16::from(code);
     match code {
-        4001 | 4005 | 4006 | 4007 | 4008 => {
+        4001 | 4005 | 4006 | 4007 | 4008 | 4011 => {
             End::Revoked(format!("server refused the credentials ({code} {reason})"))
         }
         4003 => End::Retry(format!("another agent uses these credentials ({code})")),
@@ -100,18 +119,24 @@ pub async fn run(shared: Arc<Shared>, cfg: Config, secrets: Secrets, ca_pem: Opt
             return;
         }
     };
-    let url = match cfg.ws_base(&secrets.ws_path) {
-        Ok(base) => format!(
-            "{base}?token={}&device_id={}",
-            STANDARD.encode(&secrets.token),
-            STANDARD.encode(&secrets.device_id)
-        ),
+    let url = match cfg.ws_base(
+        &secrets.ws_path,
+        secrets.device_host.as_deref(),
+        secrets.device_port,
+    ) {
+        // The token travels in the Authorization header, never in the
+        // URL (D154).
+        Ok(base) => format!("{base}?device_id={}", STANDARD.encode(&secrets.device_id)),
         Err(e) => {
             shared.set_link(Link::Revoked, Some(e.to_string()));
             return;
         }
     };
-    let tls = match tls_config(ca_pem.as_deref()) {
+    let client = secrets
+        .client_cert_pem
+        .as_deref()
+        .zip(secrets.client_key_pem.as_deref());
+    let tls = match tls_config(ca_pem.as_deref(), client) {
         Ok(t) => t,
         Err(e) => {
             shared.set_link(Link::Revoked, Some(e.to_string()));
@@ -122,16 +147,23 @@ pub async fn run(shared: Arc<Shared>, cfg: Config, secrets: Secrets, ca_pem: Opt
     while !shared.shutting_down.load(Ordering::Relaxed) {
         shared.set_link(Link::Connecting, None);
         let connector = tokio_tungstenite::Connector::Rustls(tls.clone());
+        let request = match authorized_request(&url, &secrets.token) {
+            Ok(r) => r,
+            Err(e) => {
+                shared.set_link(Link::Revoked, Some(e));
+                return;
+            }
+        };
         let connected = tokio::time::timeout(
             Duration::from_secs(20),
-            tokio_tungstenite::connect_async_tls_with_config(&url, None, false, Some(connector)),
+            tokio_tungstenite::connect_async_tls_with_config(request, None, false, Some(connector)),
         )
         .await;
         let end = match connected {
             Ok(Ok((ws, _))) => {
                 tracing::info!("connected to {}", cfg.server);
                 backoff = BACKOFF_MIN;
-                session(&shared, ws, &key).await
+                session(&shared, ws, &key, &secrets.device_id).await
             }
             Ok(Err(e)) => End::Retry(format!("connect failed: {e}")),
             Err(_) => End::Retry("connect timeout".into()),
@@ -165,17 +197,60 @@ type Ws =
 
 async fn send_msg(
     sink: &mut futures_util::stream::SplitSink<Ws, Message>,
-    key: &[u8; 32],
+    codec: &mut NoiseLink,
     msg: &DeviceMsg,
 ) -> Result<()> {
     let plain = serde_json::to_string(msg)?;
-    sink.send(Message::Text(encrypt_frame(&plain, key).into()))
+    sink.send(Message::Text(codec.seal_text(&plain).into()))
         .await
         .map_err(|e| anyhow!("send failed: {e}"))
 }
 
-async fn session(shared: &Arc<Shared>, ws: Ws, key: &[u8; 32]) -> End {
+/// Noise handshake (D156): sends the first message, waits for the
+/// server's answer and returns the established link.
+async fn handshake(
+    sink: &mut futures_util::stream::SplitSink<Ws, Message>,
+    stream: &mut futures_util::stream::SplitStream<Ws>,
+    key: &[u8; 32],
+    device_id: &str,
+) -> std::result::Result<NoiseLink, End> {
+    let (init, msg1) = Initiator::start(key, device_id);
+    sink.send(Message::Text(
+        pnex_core::frame::encode_handshake(&msg1).into(),
+    ))
+    .await
+    .map_err(|e| End::Retry(format!("send failed: {e}")))?;
+    let wait = async {
+        loop {
+            match stream.next().await {
+                Some(Ok(Message::Text(text))) => return Ok(text.to_string()),
+                Some(Ok(Message::Close(frame))) => {
+                    return Err(match frame {
+                        Some(f) => close_end(f.code, &f.reason),
+                        None => End::Retry("closed by server".into()),
+                    });
+                }
+                Some(Ok(_)) => continue,
+                Some(Err(e)) => return Err(End::Retry(format!("read failed: {e}"))),
+                None => return Err(End::Retry("connection closed".into())),
+            }
+        }
+    };
+    let answer = tokio::time::timeout(HANDSHAKE_TIMEOUT, wait)
+        .await
+        .unwrap_or_else(|_| Err(End::Retry("no handshake answer from the server".into())))?;
+    pnex_core::frame::decode_handshake(&answer)
+        .and_then(|msg2| init.finish(&msg2))
+        .ok_or_else(|| End::Revoked("Noise handshake failed: wrong key for this device".into()))
+}
+
+async fn session(shared: &Arc<Shared>, ws: Ws, key: &[u8; 32], device_id: &str) -> End {
     let (mut sink, mut stream) = ws.split();
+    let mut codec = match handshake(&mut sink, &mut stream, key, device_id).await {
+        Ok(link) => link,
+        Err(end) => return end,
+    };
+    let codec = &mut codec;
     let announce = DeviceMsg::Announce {
         chip: pnex_core::EDGE_AGENT_CHIP.into(),
         board: target_id(),
@@ -183,7 +258,7 @@ async fn session(shared: &Arc<Shared>, ws: Ws, key: &[u8; 32]) -> End {
         caps: None,
         pins: None,
     };
-    if let Err(e) = send_msg(&mut sink, key, &announce).await {
+    if let Err(e) = send_msg(&mut sink, codec, &announce).await {
         return End::Retry(e.to_string());
     }
     shared.set_link(Link::Connected, None);
@@ -230,7 +305,7 @@ async fn session(shared: &Arc<Shared>, ws: Ws, key: &[u8; 32]) -> End {
                 epoch: epoch.clone(),
                 points,
             };
-            if let Err(e) = send_msg(&mut sink, key, &msg).await {
+            if let Err(e) = send_msg(&mut sink, codec, &msg).await {
                 return End::Retry(e.to_string());
             }
             shared.sent.fetch_add(n, Ordering::Relaxed);
@@ -253,8 +328,8 @@ async fn session(shared: &Arc<Shared>, ws: Ws, key: &[u8; 32]) -> End {
                 };
                 match msg {
                     Message::Text(text) => {
-                        let Some(plain) = decrypt_frame(text.as_str(), key) else {
-                            tracing::warn!("undecryptable server frame");
+                        let Some(plain) = codec.open_text(text.as_str()) else {
+                            tracing::warn!("unauthenticated or replayed server frame");
                             continue;
                         };
                         if plain.trim().eq_ignore_ascii_case("pong") {
@@ -293,7 +368,7 @@ async fn session(shared: &Arc<Shared>, ws: Ws, key: &[u8; 32]) -> End {
                 }
             }
             _ = ping.tick() => {
-                if let Err(e) = sink.send(Message::Text(encrypt_frame("PING", key).into())).await {
+                if let Err(e) = sink.send(Message::Text(codec.seal_text("PING").into())).await {
                     return End::Retry(format!("ping failed: {e}"));
                 }
             }
@@ -326,8 +401,9 @@ mod tests {
 
     #[test]
     fn tls_config_accepts_public_roots_and_rejects_empty_pem() {
-        assert!(tls_config(None).is_ok());
-        assert!(tls_config(Some("not a pem")).is_err());
+        assert!(tls_config(None, None).is_ok());
+        assert!(tls_config(Some("not a pem"), None).is_err());
+        assert!(tls_config(None, Some(("not a pem", "nor a key"))).is_err());
     }
 
     #[test]
@@ -335,4 +411,21 @@ mod tests {
         let t = target_id();
         assert!(t.contains('-'), "{t}");
     }
+}
+
+/// Upgrade request carrying the device token as `Authorization: Bearer
+/// <b64>` (D154: never in the URL, so never in an access log).
+fn authorized_request(
+    url: &str,
+    token: &str,
+) -> Result<tokio_tungstenite::tungstenite::handshake::client::Request, String> {
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+    let mut request = url
+        .into_client_request()
+        .map_err(|e| format!("invalid server URL: {e}"))?;
+    let value = format!("Bearer {}", STANDARD.encode(token))
+        .parse()
+        .map_err(|_| "device token is not a valid header value".to_string())?;
+    request.headers_mut().insert("Authorization", value);
+    Ok(request)
 }

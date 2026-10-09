@@ -376,7 +376,7 @@ void PnexDevice::begin() {
     ti.on_closed = pnex_on_ws_closed;
     pnex_transport_setup(ti);
     if (!pnex_crypto_ready()) {
-        Serial.println("[CRYPTO] clé ENCRYPTION_KEY INVALIDE — frames non chiffrées");
+        Serial.println("[CRYPTO] ENCRYPTION_KEY invalid — the device will not connect");
     }
     Serial.printf("[pnex] config ok : device_id=%s host=%s ssl=%d\n",
                   pnex_device_id(), pnex_host(), pnex_use_tls());
@@ -691,6 +691,8 @@ static char s_ota_cmd_id[40] = {0};
 static bool s_ota_pending = false;
 static char s_ota_url[160] = {0};
 static char s_ota_sha[72] = {0};
+static char s_ota_version[24] = {0};
+static char s_ota_sig[132] = {0};
 
 static void pnex_ota_progress_trampoline(const char* phase, uint8_t pct, const char* err) {
     if (s_ota_self == nullptr) {
@@ -725,10 +727,11 @@ void PnexDevice::handleOtaAvailable(JsonDocument& doc) {
     const char* version = doc["version"] | "";
     const char* url_path = doc["url"] | "";
     const char* sha_hex = doc["sha256"] | "";
+    const char* sig_hex = doc["sig"] | "";
 
-#if defined(ESP8266)
-    // Downgrade guard: the 8266 has no bootloader rollback — refuse a
-    // strictly older numeric version (equal stays allowed: force-redeploy).
+    // Downgrade guard on every chip (SEC-18): refuse a strictly older
+    // numeric version (equal stays allowed: force-redeploy). The version is
+    // covered by the image signature, so it cannot be relabelled.
     {
         const unsigned long own = strtoul(PNEX_FW_VERSION, nullptr, 10);
         const unsigned long target = strtoul(version, nullptr, 10);
@@ -738,7 +741,6 @@ void PnexDevice::handleOtaAvailable(JsonDocument& doc) {
             return;
         }
     }
-#endif
 
     if (s_ota_pending || Update.isRunning()) {
         sendAck(cmd_id, false, "update already running");
@@ -755,6 +757,8 @@ void PnexDevice::handleOtaAvailable(JsonDocument& doc) {
     strlcpy(s_ota_cmd_id, cmd_id, sizeof(s_ota_cmd_id));
     strlcpy(s_ota_url, url_path, sizeof(s_ota_url));
     strlcpy(s_ota_sha, sha_hex, sizeof(s_ota_sha));
+    strlcpy(s_ota_version, version, sizeof(s_ota_version));
+    strlcpy(s_ota_sig, sig_hex, sizeof(s_ota_sig));
     s_ota_pending = true;
 }
 
@@ -772,7 +776,7 @@ bool PnexDevice::runPendingOta() {
 #endif
 
     char err[96];
-    if (pnex_ota_run(s_ota_url, s_ota_sha, hooks, err, sizeof(err))) {
+    if (pnex_ota_run(s_ota_url, s_ota_sha, s_ota_version, s_ota_sig, hooks, err, sizeof(err))) {
         delay(200);  // let the last frame flush
         ESP.restart();
     }
