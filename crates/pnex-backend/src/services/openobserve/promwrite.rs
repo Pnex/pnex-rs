@@ -67,7 +67,7 @@ mod tests {
             org_id: 1,
             device_registry_id: 1,
             device_id: "capteur-1".into(),
-            pred_dev: "soil_sensor".into(),
+            pred_dev: "temp_sensor".into(),
             metric_name: metric.into(),
             value: value.into(),
             timestamp: chrono::Utc.timestamp_opt(1_786_890_000, 0).unwrap(),

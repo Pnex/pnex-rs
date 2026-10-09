@@ -9,6 +9,7 @@ pub mod cameras;
 pub mod controls;
 pub mod dashboard;
 pub mod dashboards;
+pub mod device_link;
 pub mod devices;
 /// Référentiels Edge — credentials WiFi + hosts serveur PNeX (wizard device).
 pub mod edge_agents;
@@ -55,7 +56,6 @@ pub mod viz_widgets;
 /// Camera uplink + browser live view (camera-video.md D73/D75).
 pub mod ws_camera;
 pub mod ws_device;
-pub mod ws_ingest;
 /// Bus WS des notifications (canal `websocket`, D51).
 pub mod ws_notify;
 pub mod ws_ticket;

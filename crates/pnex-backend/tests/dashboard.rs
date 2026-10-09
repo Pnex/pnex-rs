@@ -91,7 +91,7 @@ async fn dashboard_summary_degrade_sans_o2() {
             .add_header("X-Org-Id", org.to_string())
             .json(&serde_json::json!({
                 "device_id": "esp-001",
-                "predefined_device_name": "soil_sensor",
+                "predefined_device_name": "temp_sensor",
             }))
             .await;
 
@@ -108,7 +108,7 @@ async fn dashboard_summary_degrade_sans_o2() {
         assert_eq!(body["liveness"]["live"], 0);
         let device = &body["liveness"]["devices"][0];
         assert_eq!(device["device_id"], "esp-001");
-        assert_eq!(device["predefined_device_name"], "soil_sensor");
+        assert_eq!(device["predefined_device_name"], "temp_sensor");
         assert_eq!(device["live"], false);
         assert!(device["last_seen"].is_null());
 
@@ -124,7 +124,7 @@ async fn dashboard_summary_degrade_sans_o2() {
             use pnex_backend::models::_entities::{device_registries, predefined_devices};
             use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
             let soil = predefined_devices::Entity::find()
-                .filter(predefined_devices::Column::Name.eq("soil_sensor"))
+                .filter(predefined_devices::Column::Name.eq("temp_sensor"))
                 .one(&_ctx.db)
                 .await
                 .unwrap()
@@ -170,7 +170,7 @@ async fn dashboard_summary_cloisonne_par_org() {
             .add_header("X-Org-Id", org_alice.to_string())
             .json(&serde_json::json!({
                 "device_id": "esp-001",
-                "predefined_device_name": "soil_sensor",
+                "predefined_device_name": "temp_sensor",
             }))
             .await;
 

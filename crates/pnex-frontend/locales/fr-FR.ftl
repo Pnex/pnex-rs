@@ -1726,7 +1726,6 @@ err-max-length = Ce champ ne doit pas dépasser { $value } caractères.
 err-invalid-uuid = UUID attendu.
 flows-inspector-var-value-placeholder = {"{{"} msg.x {"}}"} ou littéral
 media-upload-no-file = aucun fichier sélectionné
-device-predef-soil-sensor-desc = Capteur d'humidité et de température du sol
 device-predef-edge-agent-desc = Agent Rust installé sur un ordinateur (Linux, Windows, Raspberry Pi) : n'importe quel script pousse des valeurs libres vers une API HTTP locale ; l'agent les met en tampon sur disque et les transmet de façon sécurisée à PNeX.
 device-predef-generic-esp8266-desc = Carte de dev ESP8266 en firmware générique : pins pilotés depuis l'UI (modes, write, subscribe), sans code à écrire.
 device-predef-generic-esp32c3-desc = Carte de dev ESP32-C3 (Seeed XIAO) en firmware générique : pins pilotés depuis l'UI (modes, write, subscribe), admission overlay D0–D10, ADC1 (D0–D2) et sorties sécurisées strapping.

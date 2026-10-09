@@ -88,8 +88,8 @@ use crud::delete;
 
 // Historical crate-level paths, preserved for external consumers.
 pub(crate) use crud::{tier_limit_for, tiers_enforced};
+pub(crate) use dto::capabilities_of;
 pub use dto::capability_mode_str;
-pub(crate) use dto::{capabilities_of, discovered_names};
 pub(crate) use token::{generate_device_key, generate_token};
 
 pub fn routes() -> Routes {

@@ -171,7 +171,7 @@ async fn issued_certificates_identify_their_device_and_nothing_else() {
 #[serial]
 async fn edge_forwarded_certificate_must_belong_to_the_device() {
     use axum::http::{HeaderMap, HeaderValue};
-    use pnex_backend::controllers::ws_ingest::client_cert_matches;
+    use pnex_backend::controllers::device_link::client_cert_matches;
     use pnex_backend::services::settings::IngestSettings;
 
     with_app(|server, ctx, alice| async move {

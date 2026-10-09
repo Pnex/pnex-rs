@@ -228,7 +228,7 @@ async fn provisioning_picks_a_custom_firmware() {
             .send(
                 "POST",
                 "/api/v1/devices",
-                json!({"device_id": "fw-soil", "predefined_device_name": "soil_sensor", "firmware_project_id": esp8266_id}),
+                json!({"device_id": "fw-soil", "predefined_device_name": "temp_sensor", "firmware_project_id": esp8266_id}),
             )
             .await;
         res.assert_status_bad_request();

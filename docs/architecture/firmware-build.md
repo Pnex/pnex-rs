@@ -96,16 +96,17 @@
 ## 2. Contrat de build constaté dans `firmware/` (vérifié)
 
 Le firmware est un workspace **PlatformIO** (ESP8266 + ESP32-C3, framework
-Arduino) : projets `soil_sensor`, `generic_esp8266`, `generic_esp32c3`
+Arduino) : projets `generic_esp8266`, `generic_esp32c3`
 (Seeed XIAO), `generic_esp32`, `generic_esp32s3`, `generic_esp32c6`
 (Waveshare C6-Zero) + lib PneX `lib/pnex` (transport, crypto, config)
-+ libs partagées `common_libs` (display, pnex-core-cpp). Le mock Python
++ libs partagées `common_libs` (pnex-core-cpp). `soil_sensor` et sa lib
+`display` sont supprimés le 2026-10-10 (capteur à refaire). Le mock Python
 `ws-server` est supprimé (2026-10-09 : il parlait en clair, sans TLS).
 `4_chan_relay` (nanopb, D20) supprimé le 2026-09-13.
 
 ### 2.1 Les build args = variables d'environnement → `-D` defines
 
-Chaque `platformio.ini` (`soil_sensor`, `generic_esp8266`) déclare :
+Chaque `platformio.ini` (`generic_esp8266`, …) déclare :
 
 ```ini
 build_flags =
@@ -171,7 +172,7 @@ uv run pio "$@"       # pio run | pio run --target upload --upload-port <port> |
 
 Le worker réplique ce pattern : spawn `pio run` (dans l'image Docker
 `pio-builder`) avec l'env ci-dessus, cwd = sous-dossier du firmware
-(`soil_sensor/`, `generic_esp8266/`… — `lib_extra_dirs = ../common_libs` impose
+(`generic_esp8266/`… — `lib_extra_dirs = ../common_libs` impose
 la structure du workspace complet).
 
 ### 2.3 Image de build
@@ -254,7 +255,7 @@ Depuis la lib `firmware/lib/pnex/` (`PneX`), le firmware générique est
   (chip-caps strictes si le SoC est connu, **permissives** sinon, warn ;
   SoC observé persisté sur le device — migration 000022). Le close 4007
   « réservé aux devices génériques » est remplacé par ce chemin.
-- **Presets Tier 1 inchangés** : soil_sensor + génériques overlay
+- **Presets Tier 1 inchangés** : génériques overlay
   conservent le build serveur + flash navigateur (§3/§4). Les deux
   chemins partagent la même lib PneX.
 

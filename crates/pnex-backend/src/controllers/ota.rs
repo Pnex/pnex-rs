@@ -354,11 +354,11 @@ async fn download_firmware(
     headers: axum::http::HeaderMap,
 ) -> Result<Response> {
     let ingest = crate::services::settings::IngestSettings::from_config(&ctx.config);
-    if !super::ws_ingest::arrived_over_tls(&headers, &ingest) {
+    if !super::device_link::arrived_over_tls(&headers, &ingest) {
         return Err(not_found_code("auth_failed", "authentication failed"));
     }
     // The token designates the device; the path must name that same one.
-    let device = super::ws_ingest::authenticate_device(&ctx.db, &headers, &ingest)
+    let device = super::device_link::authenticate_device(&ctx.db, &headers, &ingest)
         .await
         .map_err(|_| not_found_code("auth_failed", "authentication failed"))?
         .device;

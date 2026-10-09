@@ -172,7 +172,6 @@ impl Hooks for App {
             // token interne settings.flow.runtime_token.
             .add_route(controllers::internal_flow::routes())
             .add_route(controllers::flow_cluster::routes())
-            .add_route(controllers::ws_ingest::routes())
             .add_route(controllers::ws_device::routes())
             // Camera & video (D73–D80): uplink + live WS, settings/segments API.
             .add_route(controllers::ws_camera::routes())

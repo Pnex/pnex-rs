@@ -261,14 +261,14 @@ mod tests {
     #[test]
     fn device_family_by_catalogue_name() {
         assert_eq!(DeviceFamily::of("generic_esp32"), DeviceFamily::Generic);
-        assert_eq!(DeviceFamily::of("soil_sensor"), DeviceFamily::Predefined);
+        assert_eq!(DeviceFamily::of("temp_sensor"), DeviceFamily::Predefined);
         assert_eq!(
             DeviceFamily::of("generic_esp32cam"),
             DeviceFamily::Predefined
         );
         assert_eq!(DeviceFamily::of(EDGE_AGENT_PREDEF), DeviceFamily::Agent);
         assert!(DeviceFamily::of("generic_esp8266").accepts_custom_firmware());
-        assert!(!DeviceFamily::of("soil_sensor").accepts_custom_firmware());
+        assert!(!DeviceFamily::of("temp_sensor").accepts_custom_firmware());
         assert!(!DeviceFamily::of(EDGE_AGENT_PREDEF).accepts_custom_firmware());
     }
 
@@ -336,7 +336,7 @@ mod tests {
             "id": 42,
             "org_id": 7,
             "device_id": "d",
-            "predefined_device_name": "soil_sensor",
+            "predefined_device_name": "temp_sensor",
             "device_type": "sensor",
             "capabilities": [],
             "active": true,

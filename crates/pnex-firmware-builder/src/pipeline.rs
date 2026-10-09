@@ -60,8 +60,8 @@ pub struct DeviceSpec {
     pub soc: String,
     /// PlatformIO board id de la variante (board figée du device) — injecté
     /// via `PNEX_PIO_BOARD` (les ini génériques font
-    /// `board = ${sysenv.PNEX_PIO_BOARD}`). `None` = l'ini garde sa valeur
-    /// hardcodée (soil_sensor, custom).
+    /// `board = ${sysenv.PNEX_PIO_BOARD}`). `None` = the ini keeps its own
+    /// value (custom firmware).
     pub pio_board: Option<String>,
     /// Id fil de la board (`PNEX_BOARD_NAME`, annoncé par the firmware).
     pub board_name: Option<String>,
@@ -631,7 +631,7 @@ mod tests {
         DeviceSpec {
             org_id: 7,
             device_id: "capteur-jardin".into(),
-            project: "soil_sensor".into(),
+            project: "generic_esp8266".into(),
             soc: soc.into(),
             pio_board: None,
             board_name: None,
@@ -680,7 +680,7 @@ mod tests {
         assert!(dst.join("integrity.dat").is_file());
         assert!(dst.join("ArduinoJson/link.h").is_symlink());
 
-        seed_libdeps(core.path(), project.path(), "soil_sensor").expect("no seed is fine");
+        seed_libdeps(core.path(), project.path(), "generic_esp8266").expect("no seed is fine");
     }
 
     /// The 9 screen vars are ALWAYS set: 0/-1 without screen, gate=1 and

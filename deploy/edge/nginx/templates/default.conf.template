@@ -146,7 +146,7 @@ server {
 
     # Device links only: the control, ingest and camera sockets, and the OTA
     # download.
-    location ~ ^/ws/(device|sensor/ingest|camera)$ {
+    location ~ ^/ws/(device|camera)$ {
         error_log /dev/stderr crit;
         proxy_pass http://$pnex_backend;
         proxy_buffering off;

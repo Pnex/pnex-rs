@@ -771,7 +771,7 @@ async fn recherche_effective_cross_kind_et_folders() {
     .await;
 }
 
-/// Device du catalogue (soil_sensor) attaché à l'org — helper local.
+/// Device du catalogue (temp_sensor) attaché à l'org — helper local.
 async fn create_device(
     server: &axum_test::TestServer,
     token: &str,
@@ -783,7 +783,7 @@ async fn create_device(
         token,
         org,
         "/api/v1/devices",
-        serde_json::json!({"device_id": slug, "predefined_device_name": "soil_sensor"}),
+        serde_json::json!({"device_id": slug, "predefined_device_name": "temp_sensor"}),
     )
     .await;
     assert_eq!(res.status_code(), 201, "create device : {}", res.text());

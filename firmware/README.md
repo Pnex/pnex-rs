@@ -8,11 +8,10 @@ Firmware ESP8266 et ESP32-C3 du projet pnex, convergé dans le monorepo —
 
 | Dossier | Rôle |
 |---|---|
-| `soil_sensor/` | Capteur d'humidité du sol (predefined device) |
 | `generic_esp8266/` | Générique pin_slave (Brick 0) — modèle générique, build serveur |
 | `generic_esp32c3/` | Générique ESP32-C3 (Seeed XIAO ESP32C3) — modèle générique, build serveur |
 | `lib/pnex/` | **Lib PIO `PneX`** — toute la mécanique (transport WiFi+WS+ChaCha, config -D b64, profil pin_slave, déclaration de pins sketch → `Announce.pins` pour le firmware custom). Embarquée dans le serveur et compilée avec l'IDE firmware. Exemple : `examples/CustomMetrics/` |
-| `common_libs/` | Libs partagées — `lib_extra_dirs = ../common_libs` impose la structure frère : `display`, `pnex-core-cpp` (miroir de `pnex_core::control`, golden vectors Rust = C++) |
+| `common_libs/` | Libs partagées — `lib_extra_dirs = ../common_libs` impose la structure frère : `pnex-core-cpp` (miroir de `pnex_core::control`, golden vectors Rust = C++) |
 | `core-cpp-tests/` | Rejoue les golden vectors de `pnex-core-cpp` sur l'hôte (Unity) — `uv run pio test -d core-cpp-tests -e native` ; regen des vecteurs : `PNEX_REGEN_GOLDENS=1 cargo test -p pnex-core --test golden_vectors` |
 
 > **PneX (2026-09-14)** : `pnex-transport`, `crypto` et `config` sont
@@ -41,7 +40,7 @@ détaillé dans `docs/architecture/firmware-build.md`. Le firmware custom
 
 ```bash
 uv sync                # venv pio/esptool épinglé par uv.lock
-uv run pio run -d soil_sensor
+PNEX_PIO_BOARD=nodemcuv2 uv run pio run -d generic_esp8266
 ```
 
 Le serveur embarque cette arborescence à la compilation

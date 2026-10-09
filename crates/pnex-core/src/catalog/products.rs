@@ -2,7 +2,7 @@
 //! registering a device.
 
 use super::boards;
-use super::types::{Capability, DeviceType};
+use super::types::DeviceType;
 use super::CatalogProduct;
 
 /// Shop / documentation links of a product sold by PNeX.
@@ -39,24 +39,6 @@ const fn generic(
 
 /// Every predefined device, in seed order.
 pub static ALL: &[CatalogProduct] = &[
-    CatalogProduct {
-        name: "soil_sensor",
-        pretty_name: "Soil Sensor",
-        revision: "0.1.12",
-        device_type: DeviceType::Sensor,
-        capabilities: &[Capability::SoilMoisture, Capability::SoilTemperature],
-        board: &boards::ESP8266_NODEMCU,
-        shop: Some(ShopLinks {
-            device_doc_url: "http://example.com/doc1",
-            prestashop_product_id: "101",
-            prestashop_buy_url: "http://example.com/buy1",
-            byod_doc_url: "http://example.com/byod1",
-            image_source_url: "http://example.com/image1",
-            stl_files_url: "http://example.com/stl1",
-        }),
-        description: "Read Soil moisture and temperature",
-        description_i18n: "device-predef-soil-sensor-desc",
-    },
     // Generic firmware, compiled per device. The device announces itself on
     // /ws/device; admission is checked against the chip caps + the board
     // profile (no auto-creation at announce).

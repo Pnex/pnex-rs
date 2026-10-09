@@ -65,7 +65,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .expect("org personnelle")
 }
 
-/// Device du catalogue (`soil_sensor`, école builds.rs) attaché à l'org.
+/// Device du catalogue (`temp_sensor`, école builds.rs) attaché à l'org.
 async fn create_device(
     server: &axum_test::TestServer,
     token: &str,
@@ -79,7 +79,7 @@ async fn create_device(
         .add_header("X-Org-Id", org.to_string())
         .json(&serde_json::json!({
             "device_id": slug,
-            "predefined_device_name": "soil_sensor"
+            "predefined_device_name": "temp_sensor"
         }))
         .await;
     assert_eq!(res.status_code(), 201, "create device : {}", res.text());
@@ -740,7 +740,7 @@ async fn positions_observees() {
             org_id: org,
             device_registry_id: registry_id,
             device_id: "tracker-01".into(),
-            pred_dev: "soil_sensor".into(),
+            pred_dev: "temp_sensor".into(),
             metric_name: metric.into(),
             value: value.into(),
             timestamp: chrono::Utc::now(),

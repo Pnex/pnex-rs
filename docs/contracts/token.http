@@ -18,5 +18,5 @@ Content-Type: application/json
 
 {
   "device_id": "device123",
-  "predefined_device_name": "soil_sensor"
+  "predefined_device_name": "generic_esp8266"
 }

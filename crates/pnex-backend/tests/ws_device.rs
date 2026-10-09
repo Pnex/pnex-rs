@@ -1,6 +1,6 @@
 //! Tests du canal device `/ws/device` + endpoints pins/commands (Brick 0).
 //!
-//! Harnais identique à `ws_ingest.rs` (PG requis — TEST_DATABASE_URL).
+//! Needs PostgreSQL (TEST_DATABASE_URL); the database is emptied between tests.
 //! Client miroir : chiffre les DeviceMsg / déchiffre les ServerMsg.
 
 mod common;
@@ -1608,6 +1608,294 @@ async fn token_in_the_authorization_header_opens_the_link() {
         // Handshake + ProvisionAck over the header-authenticated link (the
         // helper panics on anything else).
         announce_and_expect_provision(&mut ws).await;
+    })
+    .await;
+}
+
+// ─────────────────── Link security (auth, Noise, lease) ───────────────────
+
+/// Link with any key (refusal tests).
+async fn connect_keyed(server: &axum_test::TestServer, d: &Dev, key: &[u8; 32]) -> common::DevWs {
+    common::DevWs::connect(
+        server,
+        &format!("/ws/device?token={}", d.token),
+        key,
+        &d.device_id,
+    )
+    .await
+}
+
+/// Noise transport (D156): a replayed or tampered frame is dropped without
+/// breaking the link, and a frame captured on one connection is useless on
+/// the next one.
+#[tokio::test]
+#[serial]
+async fn noise_link_drops_replay_tampering_and_cross_connection() {
+    with_app(|server, auth, _ctx| async move {
+        let dev = create_generic(&server, &auth, "gen-noise").await;
+        let mut ws = connect(&server, &dev).await;
+        let ping = ws.seal("PING");
+        ws.send_text(ping.clone()).await;
+        assert_eq!(ws.recv_plain().await, "PONG");
+
+        // Same frame again, then one flipped bit: both dropped silently.
+        ws.send_text(ping.clone()).await;
+        let mut wire = STANDARD.decode(&ping).unwrap();
+        wire[2] ^= 0x01;
+        ws.send_text(STANDARD.encode(wire)).await;
+
+        // The link still works after the refusals (counters untouched): the
+        // next answer is the PONG of a fresh PING, nothing came before it.
+        ws.send_plain("PING").await;
+        assert_eq!(ws.recv_plain().await, "PONG");
+        ws.close().await;
+
+        // A frame captured on the first connection, replayed on a new one.
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        let mut ws2 = connect(&server, &dev).await;
+        ws2.send_text(ping).await;
+        ws2.send_plain("PING").await;
+        assert_eq!(ws2.recv_plain().await, "PONG");
+        ws2.close().await;
+    })
+    .await;
+}
+
+/// Handshake refused (4011): wrong key, and a firmware speaking the removed
+/// D8 framing (its first frame is not a Noise message, D157).
+#[tokio::test]
+#[serial]
+async fn noise_handshake_failures_close_4011() {
+    with_app(|server, auth, _ctx| async move {
+        let dev = create_generic(&server, &auth, "gen-4011").await;
+        let mut ws = connect_keyed(&server, &dev, &[1u8; 32]).await;
+        assert_eq!(close_code(ws.receive_message().await), Some(4011));
+
+        let mut old = server
+            .get_websocket("/ws/device")
+            .add_header("Authorization", format!("Bearer {}", dev.token))
+            .await
+            .into_websocket()
+            .await;
+        // A D8 frame: base64(nonce ‖ ChaCha20("PING")), 16 bytes.
+        old.send_text(STANDARD.encode([5u8; 16])).await;
+        assert_eq!(close_code(old.receive_message().await), Some(4011));
+    })
+    .await;
+}
+
+/// Auth close codes: 4002 without a token, 4001 for an unknown token. The
+/// device is the token's own: no claimed id to mismatch.
+#[tokio::test]
+#[serial]
+async fn auth_close_codes() {
+    with_app(|server, auth, _ctx| async move {
+        let dev = create_generic(&server, &auth, "gen-auth").await;
+
+        let mut ws = server
+            .get_websocket("/ws/device")
+            .await
+            .into_websocket()
+            .await;
+        assert_eq!(close_code(ws.receive_message().await), Some(4002));
+
+        let unknown = Dev {
+            id: dev.id,
+            device_id: dev.device_id.clone(),
+            token: "unknown".into(),
+            key: dev.key,
+        };
+        let mut ws = connect(&server, &unknown).await;
+        assert_eq!(close_code(ws.receive_message().await), Some(4001));
+    })
+    .await;
+}
+
+/// Lease: a clean disconnect releases it (immediate reconnect accepted),
+/// and the stale lease of a crashed session no longer holds the device.
+#[tokio::test]
+#[serial]
+async fn lease_released_on_close_and_expired_after_a_crash() {
+    with_app(|server, auth, _ctx| async move {
+        let dev = create_generic(&server, &auth, "gen-lease").await;
+        let mut ws1 = connect(&server, &dev).await;
+        ws1.send_plain("PING").await;
+        assert_eq!(ws1.recv_plain().await, "PONG");
+        ws1.close().await;
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        let mut ws2 = connect(&server, &dev).await;
+        ws2.send_plain("PING").await;
+        assert_eq!(ws2.recv_plain().await, "PONG");
+        // Crash: the session is never closed; the 2 s test TTL elapses.
+        tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
+        let mut ws3 = connect(&server, &dev).await;
+        ws3.send_plain("PING").await;
+        assert_eq!(ws3.recv_plain().await, "PONG");
+        drop(ws2);
+        ws3.close().await;
+    })
+    .await;
+}
+
+/// 4005: token deactivated during the session (test cache = 0 s → the next
+/// frame revalidates and closes).
+#[tokio::test]
+#[serial]
+async fn token_deactivated_during_the_session_closes_4005() {
+    with_app(|server, auth, ctx| async move {
+        let dev = create_generic(&server, &auth, "gen-revoked").await;
+        let mut ws = connect(&server, &dev).await;
+        ws.send_plain("PING").await;
+        assert_eq!(ws.recv_plain().await, "PONG");
+
+        use pnex_backend::models::_entities::device_tokens;
+        use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+        let mut row: device_tokens::ActiveModel = device_tokens::Entity::find()
+            .filter(device_tokens::Column::DeviceRegistryId.eq(dev.id))
+            .one(&ctx.db)
+            .await
+            .expect("token")
+            .expect("token")
+            .into();
+        row.is_active = Set(false);
+        row.update(&ctx.db).await.expect("deactivate");
+
+        ws.send_plain("PING").await;
+        assert_eq!(close_code(ws.receive_message().await), Some(4005));
+    })
+    .await;
+}
+
+/// Reaper: `active` follows the lease freshness — fresh → true, silence or
+/// no state → false (sole writer).
+#[tokio::test]
+#[serial]
+async fn reaper_active_follows_freshness() {
+    with_app(|server, auth, ctx| async move {
+        let dev = create_generic(&server, &auth, "reaper-target").await;
+        let active_of = |db: &sea_orm::DatabaseConnection, id: i64| {
+            let db = db.clone();
+            async move {
+                use pnex_backend::models::_entities::device_registries;
+                use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+                device_registries::Entity::find()
+                    .filter(device_registries::Column::Id.eq(id))
+                    .one(&db)
+                    .await
+                    .expect("dev")
+                    .expect("dev")
+                    .active
+            }
+        };
+
+        use pnex_backend::services::device_liveness::{deactivate_stale, forget_epoch, mark_seen};
+        let now = chrono::Utc::now;
+
+        // Created inactive, never seen: the reaper leaves it inactive.
+        deactivate_stale(&ctx.db, 2).await.expect("reaper");
+        assert!(!active_of(&ctx.db, dev.id).await);
+
+        // Fresh sign of life → activated.
+        mark_seen(dev.id, now()).await.expect("seen");
+        deactivate_stale(&ctx.db, 2).await.expect("reaper");
+        assert!(active_of(&ctx.db, dev.id).await);
+
+        // Valkey restart (epoch lost) + stale score: deactivation is held
+        // back during the restart grace — the fleet does not flap offline.
+        forget_epoch().await.expect("epoch");
+        let old = now() - chrono::TimeDelta::seconds(60);
+        mark_seen(dev.id, old).await.expect("seen");
+        let (_, off) = deactivate_stale(&ctx.db, 2).await.expect("reaper");
+        assert_eq!(off, 0, "restart grace");
+        assert!(active_of(&ctx.db, dev.id).await);
+
+        // Grace over (silence TTL elapsed): deactivated, last seen moved to
+        // the Postgres cold record, no lease.
+        tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
+        mark_seen(dev.id, old).await.expect("seen");
+        let (on, off) = deactivate_stale(&ctx.db, 2).await.expect("reaper");
+        assert_eq!((on, off), (0, 1));
+        assert!(!active_of(&ctx.db, dev.id).await);
+        use pnex_backend::models::_entities::device_states;
+        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+        let cold = device_states::Entity::find()
+            .filter(device_states::Column::DeviceRegistryId.eq(dev.id))
+            .one(&ctx.db)
+            .await
+            .expect("state")
+            .expect("cold record");
+        assert_eq!(cold.last_seen_at.timestamp(), old.timestamp());
+        let st = state_of(&ctx.db, dev.id).await;
+        assert!(!st.connected);
+        assert_eq!(st.last_seen.map(|t| t.timestamp()), Some(old.timestamp()));
+    })
+    .await;
+}
+
+/// Liveness of a device as seen by the API.
+async fn state_of(
+    db: &sea_orm::DatabaseConnection,
+    id: i64,
+) -> pnex_backend::services::device_liveness::Seen {
+    pnex_backend::services::device_liveness::seen_of(db, id)
+        .await
+        .expect("state")
+}
+
+/// Lease claim is atomic across pods (concurrent claims: exactly one
+/// winner), refused while a live session holds it, granted when released
+/// or stale; touch and release are owner-checked — a superseded session can
+/// neither refresh nor release the newer session's lease.
+#[tokio::test]
+#[serial]
+async fn lease_claim_is_atomic_and_release_is_owner_checked() {
+    use pnex_backend::services::device_liveness::{claim, release, touch_owned};
+    with_app(|server, auth, ctx| async move {
+        let dev = create_generic(&server, &auth, "lease-owner").await;
+        let db = &ctx.db;
+
+        // Concurrent admissions on a free lease: exactly one wins.
+        let mut tasks = Vec::new();
+        for i in 0..8 {
+            tasks.push(tokio::spawn(async move {
+                let session = format!("race-{i}");
+                let won = claim(dev.id, &session, 60).await.expect("claim");
+                (session, won)
+            }));
+        }
+        let mut winners = Vec::new();
+        for t in tasks {
+            let (session, won) = t.await.expect("join");
+            if won {
+                winners.push(session);
+            }
+        }
+        assert_eq!(winners.len(), 1, "one admission only");
+        let holder = winners.remove(0);
+        assert!(state_of(db, dev.id).await.connected);
+
+        // Fresh live lease: another session is refused, the holder re-claims.
+        assert!(!claim(dev.id, "other", 60).await.expect("claim"));
+        assert!(claim(dev.id, &holder, 1).await.expect("same session"));
+
+        // Expired lease (1 s TTL elapsed): a new session takes over.
+        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+        assert!(claim(dev.id, "newer", 60).await.expect("claim"));
+        // The superseded session can neither touch nor release.
+        assert!(!touch_owned(dev.id, &holder, 60).await.expect("touch"));
+        assert!(!release(db, dev.id, &holder).await.expect("release"));
+        assert!(
+            state_of(db, dev.id).await.connected,
+            "late close of the old session keeps the new lease"
+        );
+        assert!(!claim(dev.id, &holder, 60).await.expect("claim"));
+
+        // The owner refreshes, then releases: immediate reconnect accepted.
+        assert!(touch_owned(dev.id, "newer", 60).await.expect("touch"));
+        assert!(release(db, dev.id, "newer").await.expect("release"));
+        assert!(!state_of(db, dev.id).await.connected);
+        assert!(claim(dev.id, "after-release", 60).await.expect("claim"));
     })
     .await;
 }

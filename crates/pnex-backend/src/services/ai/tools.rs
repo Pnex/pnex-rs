@@ -388,7 +388,7 @@ pub fn tool_specs() -> Vec<ToolSpec> {
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "expression": {"type": "string", "description": "expression (variables = clés du payload device, ex. soil_sensor_A0)"}
+                    "expression": {"type": "string", "description": "expression (variables = clés du payload device, ex. probe_1_A0)"}
                 },
                 "required": ["expression"]
             }),

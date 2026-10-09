@@ -600,7 +600,7 @@ fn point(org_id: i64, metric: &str, value: &str) -> TelemetryPoint {
         org_id,
         device_registry_id: 1,
         device_id: "capteur-1".into(),
-        pred_dev: "soil_sensor".into(),
+        pred_dev: "temp_sensor".into(),
         metric_name: metric.into(),
         value: value.into(),
         timestamp: chrono::Utc::now(),
@@ -1052,7 +1052,7 @@ async fn visualization_catalog_et_series_contre_mock() {
                         metric.into(),
                         vec![
                             ("device_id".into(), "esp-001".into()),
-                            ("pred_dev".into(), "soil_sensor".into()),
+                            ("pred_dev".into(), "temp_sensor".into()),
                         ],
                         value,
                         ts_ms,
@@ -1073,7 +1073,7 @@ async fn visualization_catalog_et_series_contre_mock() {
             assert_eq!(series.len(), 2);
             assert_eq!(series[0]["metric"], "read_temperature", "tri alphabétique");
             assert_eq!(series[0]["device_id"], "esp-001");
-            assert_eq!(series[0]["pred_dev"], "soil_sensor");
+            assert_eq!(series[0]["pred_dev"], "temp_sensor");
             assert_eq!(series[0]["last_value"], 21.5);
             assert_eq!(series[1]["metric"], "soil_moisture");
             assert_eq!(series[1]["last_value"], 99.5, "dernier échantillon");

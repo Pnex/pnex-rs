@@ -249,7 +249,7 @@ async fn canonical_group_order_and_per_group_cap() {
         seed_objects(&ctx.db, org).await;
         // Device (needs a predefined device from the seeded catalogue).
         let soil = predefined_devices::Entity::find()
-            .filter(predefined_devices::Column::Name.eq("soil_sensor"))
+            .filter(predefined_devices::Column::Name.eq("temp_sensor"))
             .one(&ctx.db)
             .await
             .unwrap()

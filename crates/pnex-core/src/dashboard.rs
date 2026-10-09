@@ -40,7 +40,7 @@ pub struct DeviceLiveness {
     pub id: i64,
     /// Business `device_id` (legacy `DeviceRegistry` PK preserved = `id`).
     pub device_id: String,
-    /// Modèle prédéfini (`soil_sensor`, …).
+    /// Modèle prédéfini (`generic_esp8266`, …).
     pub predefined_device_name: String,
     pub device_type: String,
     pub live: bool,
@@ -94,7 +94,7 @@ mod tests {
                     {
                         "id": 11,
                         "device_id": "capteur-jardin",
-                        "predefined_device_name": "soil_sensor",
+                        "predefined_device_name": "temp_sensor",
                         "device_type": "sensor",
                         "live": true,
                         "last_seen": "2026-08-19T10:00:30+00:00"

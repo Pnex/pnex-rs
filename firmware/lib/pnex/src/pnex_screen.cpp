@@ -898,7 +898,7 @@ static void tickOta(const pnex_status::NetState& st, unsigned long now) {
 }
 
 void begin() {
-    // SW I2C (bit-bang U8g2), mirroring the soil_sensor DisplayManager — the
+    // SW I2C (bit-bang U8g2) — the
     // field-proven config on the NodeMCU V3 OLED, where HW I2C (Wire) is not
     // reliable (see the header comment). Defaults: NodeMCU SCL=D1/5,
     // SDA=D2/4.

@@ -1644,7 +1644,7 @@ fn copy_to_clipboard(value: &str) {
     let _ = dioxus::document::eval(&js);
 }
 
-/// Boîte noire des devices prédéfinis (soil_sensor…) : les outputs qu'ils
+/// Boîte noire des devices prédéfinis : les outputs qu'ils
 /// génèrent, rien de configurable — simple et déterministe (décision
 /// utilisateur 2026-09-20).
 fn black_box_outputs(device: &pnex_core::Device) -> Element {

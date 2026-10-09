@@ -5,9 +5,8 @@
 //! pas de Rust : le contrat est le schéma fil (tag `"t"`), pas le partage
 //! de code.
 //!
-//! Framing identique à `/ws/sensor/ingest` — auth query base64
-//! (`token` + `device_id`), frames texte `base64(nonce(12)‖ChaCha20-nu)`,
-//! `PING`/`PONG` au niveau frame, messages métier JSON tagué `t`.
+//! Framing: token in `Authorization: Bearer` (D154), Noise NNpsk0 text
+//! frames (D156), frame-level `PING`/`PONG`, JSON messages tagged `t`.
 //!
 //! Sémantique RPC à la ThingsBoard : toute commande serveur→device est un
 //! RPC avec `cmd_id` et réponse `Ack{cmd_id, ok, err}` requise. La pin map

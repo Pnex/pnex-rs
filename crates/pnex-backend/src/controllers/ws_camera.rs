@@ -28,7 +28,7 @@ use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, QueryFilter};
 use serde::Deserialize;
 use tokio::sync::broadcast::error::RecvError;
 
-use super::ws_ingest::{reject, FrameCodec, Snapshot};
+use super::device_link::{active_token, reject, FrameCodec};
 use crate::models::_entities::{device_registries, organization_members};
 use crate::services::camera;
 use crate::services::settings::IngestSettings;
@@ -89,11 +89,11 @@ async fn ws_camera(
     ws: WebSocketUpgrade,
 ) -> Response {
     let ingest = crate::services::settings::IngestSettings::from_config(&ctx.config);
-    if !super::ws_ingest::arrived_over_tls(&headers, &ingest) {
-        return reject(ws, super::ws_ingest::CLOSE_TLS_REQUIRED, "TLS required");
+    if !super::device_link::arrived_over_tls(&headers, &ingest) {
+        return reject(ws, super::device_link::CLOSE_TLS_REQUIRED, "TLS required");
     }
-    let super::ws_ingest::DeviceAuth { token, device, key } =
-        match super::ws_ingest::authenticate_device(&ctx.db, &headers, &ingest).await {
+    let super::device_link::DeviceAuth { token, device, key } =
+        match super::device_link::authenticate_device(&ctx.db, &headers, &ingest).await {
             Ok(auth) => auth,
             Err(refusal) => return reject(ws, refusal.code, refusal.reason),
         };
@@ -146,7 +146,7 @@ struct UplinkSession {
 
 /// Token still active and still bound to the same device?
 async fn token_still_valid(db: &DatabaseConnection, token: &str, device_id: &str) -> bool {
-    matches!(Snapshot::load(db, token).await, Ok(Some((_, d))) if d.device_id == device_id)
+    matches!(active_token(db, token).await, Ok(Some((_, d))) if d.device_id == device_id)
 }
 
 async fn close_with(socket: &mut WebSocket, code: u16, reason: &str) {

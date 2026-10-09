@@ -204,7 +204,6 @@ RUN sh /tmp/prewarm/seed_libdeps.sh /tmp/fw \
       generic_esp8266:nodemcuv2 generic_esp32:esp32dev \
       generic_esp32c3:esp32-c3-devkitm-1 generic_esp32s3:esp32-s3-devkitc-1 \
       generic_esp32c6:esp32-c6-devkitc-1 generic_esp32cam:esp32cam \
-      soil_sensor:nodemcuv2 \
  && penv=$PNEX_PIO_CORE_DIR_PIOARDUINO/penv \
  && $penv/bin/uv pip install --no-cache --python $penv/bin/python --no-deps \
       "starlette>=1.3.1" \
