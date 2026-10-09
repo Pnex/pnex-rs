@@ -11,7 +11,7 @@
 //!   (`camera::claim_uplink`, refreshed by the session; a lost claim closes
 //!   with 4003). The token is revalidated periodically like `/ws/device`
 //!   (4005 when revoked). Text frames: sealed `PING` → sealed `PONG`.
-//! - `GET /ws/camera/live?token=<JWT>&org=<id>&device=<pk>` — browser live
+//! - `GET /ws/camera/live?ticket=<one-time ticket>&device=<pk>` — browser live
 //!   view: raw JPEG binary frames, latest frame first, then every frame of
 //!   the CameraHub broadcast. No storage, no polling.
 
@@ -29,7 +29,6 @@ use serde::Deserialize;
 use tokio::sync::broadcast::error::RecvError;
 
 use super::ws_ingest::{reject, FrameCodec, Snapshot};
-use crate::auth::{jwks, provisioning, settings::RauthySettings};
 use crate::models::_entities::{device_registries, organization_members};
 use crate::services::camera;
 use crate::services::settings::IngestSettings;
@@ -260,8 +259,7 @@ async fn uplink_loop(
 
 #[derive(Debug, Deserialize)]
 pub struct LiveQuery {
-    token: Option<String>,
-    org: Option<i64>,
+    ticket: Option<String>,
     device: Option<i64>,
 }
 
@@ -270,29 +268,20 @@ async fn ws_camera_live(
     Query(q): Query<LiveQuery>,
     ws: WebSocketUpgrade,
 ) -> Response {
-    let Some(token) = q.token.as_deref().map(str::trim).filter(|t| !t.is_empty()) else {
-        return reject(ws, 4002, "No token provided");
+    let Some(ticket) = q.ticket.as_deref().filter(|t| !t.trim().is_empty()) else {
+        return reject(ws, 4002, "No ticket provided");
     };
-    let (Some(org_id), Some(device_pk)) = (q.org, q.device) else {
-        return reject(ws, 4006, "No org or device provided");
+    let Some(device_pk) = q.device else {
+        return reject(ws, 4006, "No device provided");
     };
-    let Ok(settings) = RauthySettings::from_config(&ctx.config) else {
-        return reject(ws, 1011, "Server config error");
+    let Some(owner) = crate::services::ws_ticket::redeem(&ctx.config, ticket).await else {
+        return reject(ws, 4001, "Invalid ticket");
     };
-    let claims = match jwks::verifier_for(&settings).await.verify(token).await {
-        Ok(c) => c,
-        Err(err) => {
-            tracing::warn!(%err, "ws/camera/live: JWT rejected");
-            return reject(ws, 4001, "Invalid token");
-        }
-    };
-    let Ok(user) = provisioning::get_or_create_user(&ctx.db, &claims).await else {
-        return reject(ws, 1011, "Server error");
-    };
+    let org_id = owner.org_id;
     let member = organization_members::Entity::find()
         .filter(
             organization_members::Column::UserId
-                .eq(user.id)
+                .eq(owner.user_id)
                 .and(organization_members::Column::OrgId.eq(org_id)),
         )
         .one(&ctx.db)

@@ -721,7 +721,10 @@ async fn interne_delivre_frame_ws_et_journalise() {
         // Abonné WS (JWT + org valide).
         unsafe { std::env::set_var("PNEX_NOTIFY_INTERNAL_TOKEN", INTERNAL_TOKEN) };
         let mut ws = server
-            .get_websocket(&format!("/ws/notify?token={}&org={org}", &env.alice))
+            .get_websocket(&format!(
+                "/ws/notify?ticket={}",
+                common::ws_ticket(&server, &env.alice, org).await
+            ))
             .await
             .into_websocket()
             .await;
@@ -801,7 +804,10 @@ async fn test_draft_websocket_draft_reaches_the_bus() {
 
         // WS subscriber (valid JWT + org) before the draft is sent.
         let mut ws = server
-            .get_websocket(&format!("/ws/notify?token={}&org={org}", &env.alice))
+            .get_websocket(&format!(
+                "/ws/notify?ticket={}",
+                common::ws_ticket(&server, &env.alice, org).await
+            ))
             .await
             .into_websocket()
             .await;
@@ -847,7 +853,7 @@ async fn test_draft_websocket_draft_reaches_the_bus() {
     .await;
 }
 
-/// WS sans token / org dont on n'est pas membre → close 4002 / 4006.
+/// WS without a ticket → 4002; no ticket for a foreign org; replayed ticket → 4001.
 #[tokio::test]
 #[serial]
 async fn ws_notify_rejets_auth() {
@@ -862,16 +868,28 @@ async fn ws_notify_rejets_auth() {
         let msg = ws.receive_message().await;
         assert!(matches!(msg, axum_test::WsMessage::Close(Some(f)) if u16::from(f.code) == 4002));
 
-        // Org dont on n'est pas membre : 4006.
-        let org_b = personal_org(&server, &env.bob).await;
-        let _ = &org_b;
-        let mut ws = server
-            .get_websocket(&format!("/ws/notify?token={}&org={org}", &env.bob))
+        // No ticket for an org one is not a member of.
+        let refused = server
+            .post("/api/v1/ws-ticket")
+            .add_header("Authorization", format!("Bearer {}", env.bob))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert!(refused.status_code().is_client_error());
+
+        // A ticket opens one socket only: replayed → 4001.
+        let ticket = common::ws_ticket(&server, &env.alice, org).await;
+        let _first = server
+            .get_websocket(&format!("/ws/notify?ticket={ticket}"))
             .await
             .into_websocket()
             .await;
-        let msg = ws.receive_message().await;
-        assert!(matches!(msg, axum_test::WsMessage::Close(Some(f)) if u16::from(f.code) == 4006));
+        let mut replay = server
+            .get_websocket(&format!("/ws/notify?ticket={ticket}"))
+            .await
+            .into_websocket()
+            .await;
+        let msg = replay.receive_message().await;
+        assert!(matches!(msg, axum_test::WsMessage::Close(Some(f)) if u16::from(f.code) == 4001));
     })
     .await;
 }

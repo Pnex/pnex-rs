@@ -1896,6 +1896,7 @@ err-secret-not-referenced = This secret is not referenced by any deployed flow o
 err-secret-name-taken = A secret with this name already exists in the organization.
 err-secret-write-forbidden = Owner or admin role required to create, change or delete a secret.
 err-secret-destination-locked = Only an owner or admin can attach a secret or change where it goes (URL, host, port, WiFi network). Keep the current secret and address, or ask an owner or admin.
+err-ws-ticket-unavailable = Live updates are unavailable right now (the server cannot issue a connection ticket). Try again in a moment.
 err-edge-host-locked = The PNeX server is imposed by this deployment: it cannot be added or changed.
 err-build-create-forbidden = Owner, admin or member role required to launch builds.
 err-build-delete-forbidden = Owner, admin or member role required to manage builds.

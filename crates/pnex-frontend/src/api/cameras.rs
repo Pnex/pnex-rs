@@ -11,7 +11,6 @@ use serde::Serialize;
 use crate::api::client;
 use crate::api::error::ApiError;
 use crate::api::media::urlencode;
-use crate::storage::{self, KeyValueStorage, KEY_ACCESS_TOKEN};
 
 /// `GET /api/v1/cameras` — cameras of the current org (settings + live state).
 pub async fn list() -> Result<Vec<CameraView>, ApiError> {
@@ -186,18 +185,31 @@ pub async fn annotations(
 }
 
 /// `/ws/camera/live` URL of one camera (D75): API base with the scheme
-/// swapped (http → ws, https → wss) + access token, org and device pk in
-/// the query (browsers cannot set headers on a WebSocket). `None` when no
-/// session or no org is available.
-pub fn live_ws_url(device: i64) -> Option<String> {
-    let token = storage::local().get(KEY_ACCESS_TOKEN)?;
-    let org = crate::state::org::current()?;
+/// swapped (http → ws, https → wss) + a one-time ticket and the device pk
+/// (browsers cannot set headers on a WebSocket; a ticket instead of the
+/// access token keeps the JWT out of URLs). `None` when no ticket could be
+/// obtained (no session, no org, server unreachable).
+pub async fn live_ws_url(device: i64) -> Option<String> {
+    let ticket = ws_ticket().await.ok()?;
     let base = crate::api::config::api_base();
     Some(format!(
-        "{}/ws/camera/live?token={}&org={org}&device={device}",
+        "{}/ws/camera/live?ticket={}&device={device}",
         ws_base(&base),
-        urlencode(&token)
+        urlencode(&ticket)
     ))
+}
+
+#[derive(serde::Deserialize)]
+struct WsTicket {
+    ticket: String,
+}
+
+/// `POST /api/v1/ws-ticket` — one-time ticket of the current org (valid
+/// 60 s, consumed by the first socket that uses it).
+async fn ws_ticket() -> Result<String, ApiError> {
+    client::request::<WsTicket>(reqwest::Method::POST, "/api/v1/ws-ticket", None)
+        .await
+        .map(|t| t.ticket)
 }
 
 /// `http(s)://host` → `ws(s)://host` (base without a trailing slash).

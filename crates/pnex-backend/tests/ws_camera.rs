@@ -199,7 +199,8 @@ async fn camera_uplink_live_and_settings() {
         // A live viewer wakes the on_demand camera.
         let mut viewer = server
             .get_websocket(&format!(
-                "/ws/camera/live?token={alice}&org={org}&device={}",
+                "/ws/camera/live?ticket={}&device={}",
+                common::ws_ticket(&server, &alice, org).await,
                 dev.id
             ))
             .await
@@ -618,7 +619,8 @@ async fn camera_cluster_state_crosses_pods() {
         // A local viewer is fed by the bus relay.
         let mut viewer = server
             .get_websocket(&format!(
-                "/ws/camera/live?token={alice}&org={org}&device={}",
+                "/ws/camera/live?ticket={}&device={}",
+                common::ws_ticket(&server, &alice, org).await,
                 dev.id
             ))
             .await
