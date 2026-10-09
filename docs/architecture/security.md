@@ -229,6 +229,7 @@ sans impact exploitable démontré.
 | SEC-19 | MEDIUM | **Firmware : clé de chiffrement vide = trafic en clair** (repli silencieux) | R16 | corrigé 2026-10-08 — sans clé valide le device ne se connecte pas (`pnex_crypto.cpp`, `pnex_transport.cpp`) |
 | SEC-20 | LOW | **Secrets du device en clair dans le flash** (PSK WiFi, jeton, clé ChaCha) | R16 | accepté jusqu'à V4 (EX-C1/C3) : exige des eFuses, gelés avant la validation communautaire du firmware |
 | SEC-21 | HIGH | **En-têtes de l'edge crus sans preuve d'origine** (`X-Forwarded-Proto`, puis `X-Client-Cert`) : le port du backend est joignable sans nginx (compose publie 5150), un client pouvait les forger | R7 | corrigé 2026-10-09 (trouvé en route, lot L4) — secret partagé edge ↔ backend (`PNEX_EDGE_SECRET`, en-tête `X-Pnex-Edge`, comparaison à temps constant) ; sans lui les en-têtes de l'edge sont ignorés ; vérifié en direct (close 4013) |
+| SEC-22 | MEDIUM | **JWT de l'utilisateur dans l'URL des WebSockets navigateur** (`/ws/notify?token=`, `/ws/camera/live?token=`) : l'URL finit dans les journaux d'accès (proxy, CDN, contrôleur d'ingress) — même classe que O19 côté devices | R16 | corrigé 2026-10-09 (inventaire des ruptures pré-0.1.0) — ticket à usage unique `POST /api/v1/ws-ticket` (60 s, lié à l'utilisateur et à l'org du principal, consommé par `GETDEL` Valkey) ; ticket rejoué → 4001 (test) |
 
 \* SEC-4 seul exige le jeton de service ; c'est l'amplificateur qui rend
 SEC-1 / SEC-3 inter-org (actionneurs de n'importe quelle org).
