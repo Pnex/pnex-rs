@@ -1,0 +1,25 @@
+# End-to-end CI overlay (O25, `.github/workflows/e2e.yml`) on top of
+# compose.yaml + compose.app.yaml: everything on localhost, plain HTTP, no
+# LAN IP and no TLS edge. The browser of the runner reaches the UI on
+# localhost:5150 and Rauthy on localhost:8080, the server reaches Rauthy on
+# rauthy:8080 and checks tokens against the public issuer below.
+#
+#   docker compose -f compose.yaml -f compose.app.yaml -f compose.ci.yaml up -d
+#
+# Never for a real deployment: Rauthy runs in DEV_MODE with insecure cookies.
+
+services:
+  rauthy:
+    environment:
+      PUB_URL: localhost:8080
+      TLS_GENERATE_SELF_SIGNED: "false"
+
+  pnex-server:
+    pull_policy: never
+    environment:
+      RAUTHY_ISSUER_URL: http://localhost:8080/auth/v1/
+      # Tests read the flow editor debug feed.
+      PNEX_FLOW_DEBUG_TOOLS: "true"
+
+  pnex-builder:
+    pull_policy: never
