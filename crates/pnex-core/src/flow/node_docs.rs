@@ -249,7 +249,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         kind: "json_split",
         summary: "Splits a JSON payload: with keys, one named output port per key (payload = value, topic = key); without keys, one message per key or array element.",
         config: &[
-            ("keys", "[key] — output ports in this order (empty = legacy single port)"),
+            ("keys", "[key] — output ports in this order (empty = single port, one message per key)"),
             ("auto", "bool (default true): the editor regenerates keys from the upstream value/merge"),
         ],
         notes: "A key missing from the payload leaves its port silent.",
