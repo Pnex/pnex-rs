@@ -146,7 +146,7 @@ pub(crate) async fn load_board_details(
 }
 
 /// Charge et parse l'overlay **d'admission** du device (mcu_boards.details →
-/// BoardOverlay) avec le SoC du board. v1 → passthrough ; v2 → pins du
+/// BoardOverlay) avec le SoC du board : pins du
 /// profil filtrées chip-caps (`admission_pins`) **et** périphériques
 /// activés (`reserved_gpios`) — un pin écran activé n'obtient JAMAIS
 /// d'instance. Erreur explicite si le device n'est pas générique (pas de
@@ -171,7 +171,6 @@ pub(crate) async fn load_overlay(
         .map_err(|e| Error::string(&format!("overlay board invalide : {e}")))?;
     let peripherals = device_peripherals(device);
     let overlay = match &details {
-        pnex_core::BoardDetails::V1(o) => o.clone(),
         pnex_core::BoardDetails::V2(p) => {
             let mut pins = details.admission_pins(soc);
             let reserved: HashSet<u16> = details.reserved_gpios(&peripherals).into_iter().collect();

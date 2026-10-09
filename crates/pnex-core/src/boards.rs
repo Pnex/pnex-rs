@@ -55,14 +55,9 @@ impl BoardOverlay {
 //
 // Schema v2 of `mcu_boards.details`: a full board profile (geometry +
 // integrated peripherals + positioned pin map) driving the SVG pinout
-// editor. Backward compatible with the v1 overlay through the untagged
-// `BoardDetails` envelope.
-//
-// v1/v2 discriminator: `layout` is REQUIRED in v2 and absent in v1 (v1
-// pin kinds digital|analog also fail `BoardPinKind` parsing), so untagged
-// deserialization falls back to V1. Never make `layout` optional — the
-// v1 compat depends on it. Silicon capabilities (adc/strapping/input-only…)
-// stay in code (`caps.rs`) and are NEVER duplicated in this JSON.
+// editor. Every catalogue board is a v2 profile (the v1 overlay form is
+// no longer read). Silicon capabilities (adc/strapping/input-only…) stay
+// in code (`caps.rs`) and are NEVER duplicated in this JSON.
 
 /// Board profile v2 — geometry + integrated peripherals + pin map.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -244,12 +239,11 @@ impl From<ScreenChoice> for Option<String> {
     }
 }
 
-/// Content of `mcu_boards.details` — v2 first, v1 fallback (untagged).
+/// Content of `mcu_boards.details` — a v2 board profile.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum BoardDetails {
     V2(BoardProfileV2),
-    V1(BoardOverlay),
 }
 
 impl BoardDetails {
@@ -257,7 +251,6 @@ impl BoardDetails {
     pub fn v2(&self) -> Option<&BoardProfileV2> {
         match self {
             BoardDetails::V2(p) => Some(p),
-            BoardDetails::V1(_) => None,
         }
     }
 
@@ -265,18 +258,16 @@ impl BoardDetails {
     pub fn board_id_str(&self) -> &str {
         match self {
             BoardDetails::V2(p) => &p.board,
-            BoardDetails::V1(o) => &o.board,
         }
     }
 
     /// Tier-1 admission pins: gpio-carrying pins legal per the chip-caps
     /// (DigitalIn **or** AdcIn accepted — keeps the esp8266 A0 convention
-    /// pin, drops flash/usb/absent gpios exposed on some headers). v1 →
-    /// passthrough. Peripheral-reserved gpios are NOT filtered here —
+    /// pin, drops flash/usb/absent gpios exposed on some headers).
+    /// Peripheral-reserved gpios are NOT filtered here —
     /// callers combine with `reserved_gpios`.
     pub fn admission_pins(&self, soc: caps::Soc) -> Vec<BoardPin> {
         match self {
-            BoardDetails::V1(o) => o.pins.clone(),
             BoardDetails::V2(p) => p
                 .pins
                 .iter()
@@ -323,7 +314,6 @@ impl BoardDetails {
                 .iter()
                 .find(|p| p.label == label)
                 .and_then(|p| p.gpio),
-            BoardDetails::V1(o) => o.pins.iter().find(|p| p.label == label).map(|p| p.gpio),
         }
     }
 
@@ -426,21 +416,15 @@ mod tests {
     }
 
     #[test]
-    fn board_details_v1_reste_v1_via_enveloppe() {
+    fn board_details_v1_overlay_is_refused() {
         let v1 = r#"{"board":"nodemcu","pins":[{"label":"D1","gpio":5,"kind":"digital"}]}"#;
-        let d: BoardDetails = serde_json::from_str(v1).unwrap();
-        assert!(
-            d.v2().is_none(),
-            "v1 ne doit pas matcher v2 (pas de layout)"
-        );
-        assert_eq!(d.board_id_str(), "nodemcu");
-        assert_eq!(d.gpio_by_label("D1"), Some(5));
+        assert!(serde_json::from_str::<BoardDetails>(v1).is_err());
     }
 
     #[test]
     fn board_details_sentinelle_invalide_echoue() {
         let res: Result<BoardDetails, _> = serde_json::from_str(r#"{"no":"details"}"#);
-        assert!(res.is_err(), "la sentinelle ne doit parser ni v2 ni v1");
+        assert!(res.is_err(), "la sentinelle ne doit pas parser");
     }
 
     #[test]
@@ -490,12 +474,6 @@ mod tests {
         assert_eq!(gpios, vec![4, 5]);
         let reason = d.reserved_reason(4, &on).unwrap();
         assert_eq!(reason, "board-reserved-screen:4");
-        // v1: never any reservation
-        let v1: BoardDetails = serde_json::from_str(
-            r#"{"board":"nodemcu","pins":[{"label":"D1","gpio":5,"kind":"digital"}]}"#,
-        )
-        .unwrap();
-        assert_eq!(v1.reserved_gpios(&on), Vec::<u16>::new());
     }
 
     #[test]

@@ -710,31 +710,19 @@ async fn reg_state_route_vers_o2() {
 #[serial]
 async fn admission_et_chip_caps_esp32c3() {
     with_app(|server, auth, ctx| async move {
-        // C3 board + D0–D10 overlay + predefined device (v1 overlay mirror of
-        // the catalog board `xiao_esp32c3`).
+        // C3 board with the catalogue profile `xiao_esp32c3` + predefined
+        // device.
         use pnex_backend::models::_entities::{device_types, mcu_boards, predefined_devices};
         use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
-        let overlay: pnex_core::BoardOverlay = serde_json::from_value(serde_json::json!({
-            "board": "xiao_esp32c3",
-            "pins": [
-                {"label": "D0", "gpio": 2, "kind": "digital"},
-                {"label": "D1", "gpio": 3, "kind": "digital"},
-                {"label": "D2", "gpio": 4, "kind": "digital"},
-                {"label": "D3", "gpio": 5, "kind": "digital"},
-                {"label": "D4", "gpio": 6, "kind": "digital"},
-                {"label": "D5", "gpio": 7, "kind": "digital"},
-                {"label": "D6", "gpio": 21, "kind": "digital"},
-                {"label": "D7", "gpio": 20, "kind": "digital"},
-                {"label": "D8", "gpio": 8, "kind": "digital"},
-                {"label": "D9", "gpio": 9, "kind": "digital"},
-                {"label": "D10", "gpio": 10, "kind": "digital"}
-            ]
-        }))
-        .expect("overlay c3");
+        let profile = (Some(&pnex_core::catalog::boards::XIAO_ESP32C3)
+            .and_then(|b| b.profile)
+            .expect("catalogue xiao_esp32c3 profile"))();
         let board = mcu_boards::ActiveModel {
             name: Set("esp32-c3".into()),
             soc: Set("esp32-c3".into()),
-            details: Set(Some(serde_json::to_value(&overlay).expect("overlay json"))),
+            details: Set(Some(
+                serde_json::to_value(pnex_core::BoardDetails::V2(profile)).expect("profile json"),
+            )),
             ..Default::default()
         }
         .insert(&ctx.db)
@@ -791,7 +779,9 @@ async fn admission_et_chip_caps_esp32c3() {
             other => panic!("ProvisionAck attendu, reçu : {other:?}"),
         };
         assert_eq!(caps.len(), 11, "11 pins D0–D10 attendus");
-        let labels: Vec<&str> = caps.iter().map(|p| p.label.as_str()).collect();
+        // Profile order (physical header order), compared as a set.
+        let mut labels: Vec<&str> = caps.iter().map(|p| p.label.as_str()).collect();
+        labels.sort_by_key(|l| l[1..].parse::<u32>().unwrap_or(u32::MAX));
         assert_eq!(
             labels,
             vec!["D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10"]

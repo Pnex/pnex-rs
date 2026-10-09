@@ -190,28 +190,17 @@ pub async fn seed_catalogue(db: &sea_orm::DatabaseConnection) {
     .insert(db)
     .await
     .expect("board");
-    // Brick 0 : board esp8266 avec overlay NodeMCU (mcu_boards.details),
-    // consommé par generic_esp8266 via services::provisioning.
-    let overlay: pnex_core::BoardOverlay = serde_json::from_value(serde_json::json!({
-        "board": "nodemcu",
-        "pins": [
-            {"label": "D0", "gpio": 16, "kind": "digital"},
-            {"label": "D1", "gpio": 5, "kind": "digital"},
-            {"label": "D2", "gpio": 4, "kind": "digital"},
-            {"label": "D3", "gpio": 0, "kind": "digital"},
-            {"label": "D4", "gpio": 2, "kind": "digital"},
-            {"label": "D5", "gpio": 14, "kind": "digital"},
-            {"label": "D6", "gpio": 12, "kind": "digital"},
-            {"label": "D7", "gpio": 13, "kind": "digital"},
-            {"label": "D8", "gpio": 15, "kind": "digital"},
-            {"label": "A0", "gpio": 17, "kind": "analog"}
-        ]
-    }))
-    .expect("overlay inline");
+    // Brick 0 : board esp8266 with the catalogue NodeMCU v2 profile
+    // (mcu_boards.details), used by generic_esp8266 via services::provisioning.
+    let profile = (Some(&pnex_core::catalog::boards::ESP8266_NODEMCU)
+        .and_then(|b| b.profile)
+        .expect("catalogue nodemcu profile"))();
     let board8266 = mcu_boards::ActiveModel {
         name: Set("esp8266".into()),
         soc: Set("esp8266".into()),
-        details: Set(Some(serde_json::to_value(&overlay).expect("overlay json"))),
+        details: Set(Some(
+            serde_json::to_value(pnex_core::BoardDetails::V2(profile)).expect("profile json"),
+        )),
         ..Default::default()
     }
     .insert(db)
