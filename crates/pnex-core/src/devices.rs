@@ -255,6 +255,13 @@ pub struct UpdateDevicePeripherals {
     pub screen: crate::boards::ScreenChoice,
 }
 
+/// Body of `PUT /api/v1/devices/{id}/board` — moves the device to another
+/// board variant of the same chip (O39). Takes effect at the next build.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateDeviceBoard {
+    pub board_id: i64,
+}
+
 /// Body of `PUT/PATCH /api/v1/devices/{id}` — **metadata only**
 /// (legacy contract: any other field → 400 "Only metadata updates are
 /// allowed.", enforced by the controller since the payload is rejected upstream).

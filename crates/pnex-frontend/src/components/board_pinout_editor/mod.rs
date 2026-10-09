@@ -16,6 +16,7 @@ use crate::state::toasts;
 use crate::util::sleep;
 use std::time::Duration;
 
+mod board_change;
 mod panels;
 mod preview;
 mod screens;
@@ -26,6 +27,7 @@ pub use preview::BoardPreviewModal;
 
 pub(crate) use screens::*;
 
+use board_change::BoardChangeModal;
 use panels::PinDrawer;
 use svg::{BoardSvg, Legend};
 use view::{board_ratio, layout_per_side, legend_of, pin_views, svg_height, svg_width};
@@ -56,7 +58,19 @@ fn BoardHeader(
         .or(board.name.clone())
         .unwrap_or_default();
     let connected = pinout.as_ref().is_some_and(|p| p.connected);
+    let mut changing_board = use_signal(|| false);
+    // Board change (O39): same chip only, so both the id and the SoC are needed.
+    let change_target = board.id.zip(board.soc.clone()).filter(|_| can_write);
     rsx! {
+        if let (true, Some((current_id, soc))) = (changing_board(), change_target.clone()) {
+            BoardChangeModal {
+                device_pk,
+                current_id,
+                soc,
+                on_close: move |_| changing_board.set(false),
+                on_changed,
+            }
+        }
         div { class: "flex flex-wrap items-center justify-between gap-2 mb-3",
             div { class: "flex items-center gap-2",
                 h3 { class: "text-sm font-semibold text-gray-500 uppercase tracking-wider",
@@ -64,6 +78,14 @@ fn BoardHeader(
                 }
                 if let Some(chip) = &board.chip_label {
                     span { class: "text-xs font-mono text-gray-400", {chip.clone()} }
+                }
+                if change_target.is_some() {
+                    button {
+                        class: "text-xs text-blue-600 hover:underline",
+                        r#type: "button",
+                        onclick: move |_| changing_board.set(true),
+                        {t!("board-change-open")}
+                    }
                 }
                 if connected {
                     span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800",
