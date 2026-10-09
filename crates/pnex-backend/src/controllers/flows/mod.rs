@@ -14,8 +14,8 @@
 //!   l'instance (le runtime exécute un flows.json multi-tabs) — le deploy
 //!   reprojette donc l'ensemble, pas seulement le flow publié.
 //!
-//! Erreurs : forme `{"detail": ...}` (comme devices) pour les 400 champ-par-
-//! champ ; violations de graphe en 400 `{"violations": [...]}` ; 409/503 via
+//! Erreurs : `{"<champ>": "<jeton>"}` pour les 400 champ-par-champ ;
+//! violations de graphe en 400 `{"violations": [...]}` ; 409/503 via
 //! `Error::CustomError` (corps Loco `{"error": code, "description": msg}`,
 //! patron `orgs.rs::conflict`).
 

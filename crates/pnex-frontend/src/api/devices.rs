@@ -1,8 +1,8 @@
 //! Endpoints devices — registre scopé org + catalogue global (Phase 4).
 //!
-//! `create` renvoie un JSON brut : 201 → `Device`, ou 200 `{"detail": …}`
+//! `create` renvoie un JSON brut : 201 → `Device`, ou 200 `{"reactivated": true}`
 //! (réactivation d'un device inactif connu) — l'appelant distingue sur la
-//! présence de `detail`.
+//! présence de `reactivated`.
 
 use pnex_core::{CreateDevice, Device, DeviceCapability, Paginated, PredefinedDevice};
 

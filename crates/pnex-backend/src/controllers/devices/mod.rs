@@ -59,12 +59,7 @@ fn forbidden(code: &str, msg: &str) -> Error {
     )
 }
 
-/// Exact response shape of the legacy views: `{"detail": "..."}`.
-fn detail_status(status: StatusCode, msg: &str) -> Response {
-    (status, format::json(serde_json::json!({ "detail": msg }))).into_response()
-}
-
-/// Field-by-field error, legacy shape: `{"<field>": "..."}`.
+/// Field-by-field error: `{"<field>": "<token>"}`.
 fn field_status(status: StatusCode, field: &str, msg: &str) -> Response {
     (status, format::json(serde_json::json!({ field: msg }))).into_response()
 }

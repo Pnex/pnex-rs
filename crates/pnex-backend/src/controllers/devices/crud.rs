@@ -475,9 +475,11 @@ pub(super) async fn create(
         .map_err(|_| Error::InternalServerError)?
     {
         if existing.active {
-            return Ok(detail_status(
+            return Err(crate::controllers::coded_error(
                 StatusCode::BAD_REQUEST,
+                pnex_core::err_codes::DEVICE_ALREADY_ACTIVE,
                 "This device is already registered and active.",
+                None,
             ));
         }
         let txn = ctx
@@ -493,10 +495,11 @@ pub(super) async fn create(
             .map_err(|_| Error::InternalServerError)?;
         ensure_token(&txn, &device).await?;
         txn.commit().await.map_err(|_| Error::InternalServerError)?;
-        return Ok(detail_status(
+        return Ok((
             StatusCode::OK,
-            "Device reactivated successfully.",
-        ));
+            format::json(serde_json::json!({ "reactivated": true })),
+        )
+            .into_response());
     }
 
     // Tier quota: all states combined (legacy parity).
@@ -543,12 +546,14 @@ pub(super) async fn create(
             .await
             .map_err(|_| Error::InternalServerError)? as i64;
         if count >= i64::from(limit) {
-            return Ok(detail_status(
+            return Err(crate::controllers::coded_error(
                 StatusCode::BAD_REQUEST,
-                &format!(
+                pnex_core::err_codes::DEVICE_QUOTA_REACHED,
+                format!(
                     "Device limit reached for {} devices in your subscription tier.",
                     type_name.to_ascii_lowercase()
                 ),
+                Some(serde_json::json!({ "type": type_name.to_ascii_lowercase() })),
             ));
         }
     }

@@ -144,7 +144,6 @@ pub const SECRET_WRITE_FORBIDDEN: &str = "secret-write-forbidden";
 /// its destination; others keep it as is. Args: `field`.
 pub const SECRET_DESTINATION_LOCKED: &str = "secret-destination-locked";
 pub const BUILD_CREATE_FORBIDDEN: &str = "build-create-forbidden";
-pub const BUILD_DELETE_FORBIDDEN: &str = "build-delete-forbidden";
 /// A build of this device is already queued or running.
 pub const BUILD_IN_PROGRESS: &str = "build-in-progress";
 pub const STITCH_WRITE_FORBIDDEN: &str = "stitch-write-forbidden";
@@ -368,6 +367,24 @@ pub const AI_TOOL_INTERNAL: &str = "ai-tool-internal";
 pub const AI_WRITE_FORBIDDEN: &str = "ai-write-forbidden";
 /// A one-time websocket ticket could not be issued (Valkey unreachable).
 pub const WS_TICKET_UNAVAILABLE: &str = "ws-ticket-unavailable";
+/// No device with this identifier in the org (`args.device_id`).
+pub const DEVICE_NOT_FOUND: &str = "device-not-found";
+/// The subscription tier allows no more devices of this type (`args.type`).
+pub const DEVICE_QUOTA_REACHED: &str = "device-quota-reached";
+/// Registering an identifier that is already active in the org.
+pub const DEVICE_ALREADY_ACTIVE: &str = "device-already-active";
+/// A soldered screen cannot be disabled (`args.name`).
+pub const DEVICE_SCREEN_BUILTIN_LOCKED: &str = "device-screen-builtin-locked";
+/// Screen kind not declared by the board or model (`args.kind`, `args.declared`).
+pub const DEVICE_SCREEN_NOT_DECLARED: &str = "device-screen-not-declared";
+/// Neither the board profile nor the model declares a screen.
+pub const DEVICE_SCREEN_NONE_DECLARED: &str = "device-screen-none-declared";
+/// Minimum interval between two builds of the org not reached.
+pub const BUILD_INTERVAL_NOT_MET: &str = "build-interval-not-met";
+/// The build job could not be queued.
+pub const BUILD_SUBMIT_FAILED: &str = "build-submit-failed";
+/// Function saved against a stale version.
+pub const FUNCTION_VERSION_CONFLICT: &str = "function-version-conflict";
 
 // ── Registered codes ─────────────────────────────────────────────────────
 
@@ -375,6 +392,15 @@ pub const WS_TICKET_UNAVAILABLE: &str = "ws-ticket-unavailable";
 /// `description`/`message` on the frontend (never panics).
 pub const ALL: &[&str] = &[
     WS_TICKET_UNAVAILABLE,
+    DEVICE_NOT_FOUND,
+    DEVICE_QUOTA_REACHED,
+    DEVICE_ALREADY_ACTIVE,
+    DEVICE_SCREEN_BUILTIN_LOCKED,
+    DEVICE_SCREEN_NOT_DECLARED,
+    DEVICE_SCREEN_NONE_DECLARED,
+    BUILD_INTERVAL_NOT_MET,
+    BUILD_SUBMIT_FAILED,
+    FUNCTION_VERSION_CONFLICT,
     AGENT_NOT_AN_AGENT,
     AGENT_UNSUPPORTED_ACTION,
     AGENT_QUOTA_INVALID,
@@ -471,7 +497,6 @@ pub const ALL: &[&str] = &[
     SECRET_WRITE_FORBIDDEN,
     SECRET_DESTINATION_LOCKED,
     BUILD_CREATE_FORBIDDEN,
-    BUILD_DELETE_FORBIDDEN,
     BUILD_IN_PROGRESS,
     STITCH_WRITE_FORBIDDEN,
     STITCH_JOB_TERMINAL,

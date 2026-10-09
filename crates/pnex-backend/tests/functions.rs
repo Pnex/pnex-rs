@@ -402,7 +402,7 @@ async fn validations_400_et_conflit_409() {
         )
         .await;
         assert_eq!(status, 409, "{body}");
-        assert_eq!(body["error"], "version_conflict");
+        assert_eq!(body["error"], "function-version-conflict");
     })
     .await;
 }

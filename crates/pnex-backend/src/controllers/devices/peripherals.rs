@@ -36,12 +36,14 @@ pub(super) async fn update_peripherals(
     // the board, the pins stay reserved for good.
     if body.screen == ScreenChoice::None {
         if let Some(builtin) = profile_screens.iter().find(|s| s.builtin) {
-            return Ok(detail_status(
+            return Err(crate::controllers::coded_error(
                 StatusCode::BAD_REQUEST,
-                &format!(
+                pnex_core::err_codes::DEVICE_SCREEN_BUILTIN_LOCKED,
+                format!(
                     "Soldered builtin screen — it cannot be disabled ({}).",
                     builtin.name
                 ),
+                Some(serde_json::json!({ "name": builtin.name })),
             ));
         }
     }
@@ -56,12 +58,14 @@ pub(super) async fn update_peripherals(
                 None => {
                     let declared: Vec<&str> =
                         profile_screens.iter().map(|s| s.kind.as_str()).collect();
-                    return Ok(detail_status(
+                    return Err(crate::controllers::coded_error(
                         StatusCode::BAD_REQUEST,
-                        &format!(
+                        pnex_core::err_codes::DEVICE_SCREEN_NOT_DECLARED,
+                        format!(
                             "Screen \"{k}\" is not declared on the device board (declared screens: {}).",
                             declared.join(", ")
                         ),
+                        Some(serde_json::json!({ "kind": k, "declared": declared.join(", ") })),
                     ));
                 }
             },
@@ -75,19 +79,23 @@ pub(super) async fn update_peripherals(
             // The model's screen; kind must match exactly.
             Some(k) if k == model_kind => Some(model_kind),
             Some(k) => {
-                return Ok(detail_status(
+                return Err(crate::controllers::coded_error(
                     StatusCode::BAD_REQUEST,
-                    &format!(
+                    pnex_core::err_codes::DEVICE_SCREEN_NOT_DECLARED,
+                    format!(
                         "Screen \"{k}\" is not declared by the device model (declared screen: {model_kind})."
                     ),
+                    Some(serde_json::json!({ "kind": k, "declared": model_kind })),
                 ));
             }
             None => None,
         }
     } else if !matches!(body.screen, ScreenChoice::None) {
-        return Ok(detail_status(
+        return Err(crate::controllers::coded_error(
             StatusCode::BAD_REQUEST,
-            "This device cannot carry a builtin screen (none declared on its board profile nor its model).",
+            pnex_core::err_codes::DEVICE_SCREEN_NONE_DECLARED,
+            "This device cannot carry a screen (none declared on its board profile nor its model).",
+            None,
         ));
     } else {
         None
