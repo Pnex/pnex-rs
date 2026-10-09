@@ -55,8 +55,8 @@ pub(crate) fn Canvas(
     // Resolved wires: the start anchor follows the source's multi-port
     // layout (device-read). A wire into a device-write is drawn from the
     // target's input annotation when one exists (one per targeted pin row —
-    // the row is chosen at drop); legacy wires without annotation keep the
-    // nearest-row fallback.
+    // the row is chosen at drop); a wire without annotation (drawn before
+    // its target row was chosen) uses the nearest row.
     let mut wires: Vec<WireSeg> = Vec::new();
     for node in &graph.nodes {
         let Some(pos) = node.position else { continue };

@@ -69,7 +69,8 @@ pub fn EdgeRefs() -> Element {
         async move { api::hosts::list().await }
     });
     // Host imposed by the deployment (`PNEX_PROD_HOST`): the hosts tab turns
-    // read-only. An error (older server) means no lock.
+    // read-only. A failed request shows the tab editable; the server still
+    // refuses writes when a host is imposed.
     let locked = use_resource(|| async { api::hosts::locked().await.ok().flatten() });
     let locked_host = locked.cloned().flatten();
     let hosts_locked = locked_host.is_some();

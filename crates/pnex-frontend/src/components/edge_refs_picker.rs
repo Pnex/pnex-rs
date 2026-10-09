@@ -212,7 +212,8 @@ pub fn PnexHostPicker(selected: Signal<Option<pnex_core::PnexHost>>) -> Element 
         None => rsx! {
             div { class: "sm:col-span-2 text-xs text-gray-400", {t!("wizard-host-loading")} }
         },
-        // No imposed host, or an older server without the endpoint.
+        // Host imposed by the deployment; otherwise (none, or the request
+        // failed) the user picks one.
         Some(Ok(Some(host))) => rsx! {
             LockedHostView { host, selected }
         },
