@@ -50,7 +50,6 @@ fn target_for_kind(new_kind: &str, current: &AnnotationTarget) -> AnnotationTarg
                 window: "1h".into(),
                 memory: None,
             },
-            spark: false,
             display: None,
             min: None,
             max: None,
@@ -172,16 +171,12 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
                     kind,
                 }
             }
-            if let AnnotationTarget::Reading { source, spark, display, min, max } = item
-                .target
-                .clone()
-            {
+            if let AnnotationTarget::Reading { source, display, min, max } = item.target.clone() {
                 ReadingTargetEditor {
                     key: "{item.id}",
                     cx,
                     item_id: item.id.clone(),
                     source,
-                    spark,
                     display,
                     min,
                     max,

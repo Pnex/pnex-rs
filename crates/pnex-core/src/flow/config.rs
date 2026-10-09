@@ -106,41 +106,15 @@ pub struct CalcConfig {
     pub expression: String,
 }
 
-/// Mode of the custom `pnex-value` node.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ValueMode {
-    /// Fixed JSON value.
-    Static,
-    /// Uniform random number in [min, max].
-    Random,
-}
-
 /// Configuration of the custom `pnex-value` node — replaces `msg.payload`
 /// with a fixed JSON document (the editor ships an object template; the
-/// palette name is "Json Values"). Mode `random` is retired from the editor
-/// but kept here and in the runtime node for old artifacts (deser compat).
-/// Trigger stays upstream (inject): the node is a transformer, not an
-/// autonomous source.
+/// palette name is "Json Values"). Trigger stays upstream (inject): the
+/// node is a transformer, not an autonomous source.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ValueConfig {
-    pub mode: ValueMode,
-    /// Payload en mode `static` (JSON libre ; `null` = non renseigné).
+    /// Payload (free JSON; `null` = not set).
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub value: serde_json::Value,
-    /// Bornes du mode `random` (incluses). Défauts 0..=10.
-    #[serde(default = "default_value_min")]
-    pub min: f64,
-    #[serde(default = "default_value_max")]
-    pub max: f64,
-}
-
-fn default_value_min() -> f64 {
-    0.0
-}
-
-fn default_value_max() -> f64 {
-    10.0
 }
 
 impl ValueConfig {
@@ -148,26 +122,12 @@ impl ValueConfig {
     /// — `Some((code, message))` = config the runtime would reject. Single
     /// source of truth: what the editor flags is exactly what fails at deploy.
     pub fn check(&self) -> Option<(&'static str, String)> {
-        match self.mode {
-            ValueMode::Static => {
-                if self.value.is_null() {
-                    return Some((
-                        "value_static_missing",
-                        "saisissez une valeur (champ vide)".into(),
-                    ));
-                }
-                None
-            }
-            ValueMode::Random => {
-                if !self.min.is_finite() || !self.max.is_finite() || self.min > self.max {
-                    return Some((
-                        "value_range_invalid",
-                        "le random attend min <= max (bornes finies)".into(),
-                    ));
-                }
-                None
-            }
-        }
+        self.value.is_null().then(|| {
+            (
+                "value_static_missing",
+                "saisissez une valeur (champ vide)".into(),
+            )
+        })
     }
 }
 

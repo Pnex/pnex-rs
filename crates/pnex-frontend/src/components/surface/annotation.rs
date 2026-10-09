@@ -42,12 +42,11 @@ pub fn item_widget(item: &ResolvedAnnotationItem) -> Option<Widget> {
         }
         AnnotationTarget::Reading {
             source,
-            spark,
             display,
             min,
             max,
         } => {
-            w.widget_type = pnex_core::reading_display(display.as_deref(), *spark).into();
+            w.widget_type = pnex_core::reading_display(display.as_deref()).into();
             w.source = vec![source.clone()];
             w.options.min = *min;
             w.options.max = *max;

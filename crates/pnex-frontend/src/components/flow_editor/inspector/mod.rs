@@ -11,7 +11,7 @@ use pnex_core::{
     DeviceWriteConfig, FlowNode, FlowNodeKind, FunctionNodeConfig, HttpFetchAuth, HttpFetchHeader,
     HttpFetchMethod, HttpFetchNodeConfig, HttpFetchOnError, HttpFetchProxy, InjectConfig,
     JsonMergeConfig, JsonSplitConfig, MetricConfig, NotifyNodeConfig, RegPidConfig, RegTtConfig,
-    SafeState, ValueConfig, ValueMode, VideoRecordConfig,
+    SafeState, ValueConfig, VideoRecordConfig,
 };
 
 use super::{geometry, state, EditorCx};

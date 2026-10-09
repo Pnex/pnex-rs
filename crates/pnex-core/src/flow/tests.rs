@@ -53,12 +53,7 @@ fn simple_graph() -> FlowGraph {
                 }],
                 inputs: vec![],
                 kind: FlowNodeKind::Value {
-                    config: ValueConfig {
-                        mode: ValueMode::Static,
-                        value: json!(1),
-                        min: 0.0,
-                        max: 10.0,
-                    },
+                    config: ValueConfig { value: json!(1) },
                 },
             },
             FlowNode {
@@ -234,19 +229,14 @@ fn validate_http_fetch_codes_par_violation() {
 #[test]
 fn value_node_validation_et_projection() {
     // Static sans valeur : violation guidée (école device/calc/metric).
-    let node = |value: serde_json::Value, mode: ValueMode, min: f64, max: f64| FlowNode {
+    let node = |value: serde_json::Value| FlowNode {
         id: "v1".into(),
         name: None,
         position: None,
         outputs: vec![],
         inputs: vec![],
         kind: FlowNodeKind::Value {
-            config: ValueConfig {
-                mode,
-                value,
-                min,
-                max,
-            },
+            config: ValueConfig { value },
         },
     };
     let codes_of = |n: &FlowNode| -> Vec<String> {
@@ -258,33 +248,19 @@ fn value_node_validation_et_projection() {
         .collect()
     };
 
-    let n = node(serde_json::Value::Null, ValueMode::Static, 0.0, 10.0);
+    let n = node(serde_json::Value::Null);
     let codes = codes_of(&n);
     assert!(
         codes.contains(&"value_static_missing".to_string()),
         "{codes:?}"
     );
 
-    // Static renseigné : plus aucune violation.
-    let n = node(serde_json::json!({"k": "v"}), ValueMode::Static, 0.0, 10.0);
+    // Set value: no violation left.
+    let n = node(serde_json::json!({"k": "v"}));
     assert!(codes_of(&n).is_empty(), "{:?}", codes_of(&n));
 
-    // Random bornes inversées : violation dédiée.
-    let n = node(serde_json::Value::Null, ValueMode::Random, 5.0, 1.0);
-    let codes = codes_of(&n);
-    assert!(
-        codes.contains(&"value_range_invalid".to_string()),
-        "{codes:?}"
-    );
-
-    // Random bornes valides : plus aucune violation.
-    let n = node(serde_json::Value::Null, ValueMode::Random, 1.0, 5.0);
-    assert!(codes_of(&n).is_empty(), "{:?}", codes_of(&n));
-
-    // Serde : le mode est sérialisé snake_case et relit tel quel.
-    let n = node(serde_json::json!("texte"), ValueMode::Random, 1.0, 5.0);
+    // Serde roundtrip.
     let raw = serde_json::to_string(&n).expect("sérialisable");
-    assert!(raw.contains(r#""mode":"random""#), "{raw}");
     let back: FlowNode = serde_json::from_str(&raw).expect("roundtrip");
     assert_eq!(back, n);
 
@@ -299,9 +275,7 @@ fn value_node_validation_et_projection() {
     let arr = red.as_array().expect("entries");
     let entry = &arr[1];
     assert_eq!(entry["type"], serde_json::json!("pnex-value"));
-    assert_eq!(entry["mode"], serde_json::json!("random"));
-    assert_eq!(entry["min"], serde_json::json!(1.0));
-    assert_eq!(entry["max"], serde_json::json!(5.0));
+    assert_eq!(entry["value"], serde_json::json!({"k": "v"}));
     assert_eq!(entry["pnex_flow_id"], serde_json::json!(3));
     assert_eq!(entry["pnex_version"], serde_json::json!(7));
 }

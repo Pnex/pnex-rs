@@ -28,8 +28,7 @@ fn set_target(cx: AnnotationEditorCx, id: &str, target: AnnotationTarget) {
     });
 }
 
-/// Reading target with mini chart `shape` (`READING_DISPLAYS`); `spark`
-/// mirrors `line` for older readers of the document.
+/// Reading target with mini chart `shape` (`READING_DISPLAYS`).
 fn reading_target(
     source: SourceRef,
     shape: &str,
@@ -45,7 +44,6 @@ fn reading_target(
     let gauge = shape == "gauge";
     AnnotationTarget::Reading {
         source,
-        spark: shape == "line",
         display: Some(shape.to_string()),
         min: if gauge { min } else { None },
         max: if gauge { max } else { None },
@@ -240,12 +238,11 @@ pub fn ReadingTargetEditor(
     cx: AnnotationEditorCx,
     item_id: String,
     source: SourceRef,
-    spark: bool,
     display: Option<String>,
     min: Option<f64>,
     max: Option<f64>,
 ) -> Element {
-    let shape = reading_display(display.as_deref(), spark).to_string();
+    let shape = reading_display(display.as_deref()).to_string();
     let catalog = use_resource(|| async { api::telemetry::catalog().await.ok() });
     let memory = use_resource(|| async { api::memory::keys().await.unwrap_or_default() });
     // device id → metrics (devices and flow virtual devices alike).

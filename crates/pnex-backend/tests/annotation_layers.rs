@@ -1058,7 +1058,7 @@ async fn control_and_reading_items() {
                  "label": "Light", "target": {"type": "control", "control_id": control}},
                 {"id": "r1", "media_asset_id": pano_id, "kind": "reading",
                  "geometry": {"type": "equirect", "yaw": 20.0, "pitch": 0.0},
-                 "label": "Temp", "target": {"type": "reading", "spark": true, "source": {
+                 "label": "Temp", "target": {"type": "reading", "display": "line", "source": {
                      "role": "primary", "metric": "temperature",
                      "device_id": "flow_12", "window": "1h"}}}
             ]})

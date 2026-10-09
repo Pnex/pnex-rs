@@ -76,9 +76,7 @@ enum ValuePane {
 #[component]
 pub(super) fn ValueForm(mut cx: EditorCx, initial: ValueConfig, can_write: bool) -> Element {
     // Two panes: key/value rows (non-developers) and raw JSON with syntax
-    // coloring. The random mode is retired from the editor — every commit
-    // forces `mode = static`, so a legacy random node converts on the first
-    // edit. Strict parse in the JSON pane: the config only moves on a valid
+    // coloring. Strict parse in the JSON pane: the config only moves on a valid
     // document, the red hint flags invalid input.
     let starts_object = initial.value.as_object().is_some();
     let initial_value = initial.value.clone();
@@ -252,13 +250,10 @@ fn kv_cell_to_json(text: &str) -> serde_json::Value {
     serde_json::from_str(trimmed).unwrap_or(serde_json::Value::String(text.to_string()))
 }
 
-/// Commits a JSON document to the selected Json Values node — static mode
-/// is forced (the random mode is retired from the editor; a legacy random
-/// node converts on the first edit).
+/// Commits a JSON document to the selected Json Values node.
 fn patch_value_config(cx: &mut EditorCx, v: serde_json::Value) {
     patch_selected(cx, move |node: &mut FlowNode| {
         if let FlowNodeKind::Value { config } = &mut node.kind {
-            config.mode = ValueMode::Static;
             config.value = v.clone();
         }
     });

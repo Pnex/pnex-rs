@@ -23,10 +23,7 @@ pub(super) fn JsonSplitForm(
         let upstream = graph.nodes.iter().find(|n| {
             n.outputs.iter().any(|w| w.targets.iter().any(|t| t == &id))
                 && match &n.kind {
-                    FlowNodeKind::Value { config } => {
-                        config.mode == pnex_core::ValueMode::Static
-                            && config.value.as_object().is_some()
-                    }
+                    FlowNodeKind::Value { config } => config.value.as_object().is_some(),
                     FlowNodeKind::JsonMerge { config } => {
                         config.inputs.iter().any(|i| !i.trim().is_empty())
                     }

@@ -8286,7 +8286,6 @@ dependencies = [
  "inventory",
  "log 0.4.34",
  "pnex-core",
- "rand 0.10.3",
  "serde",
  "serde_json",
  "tokio",
