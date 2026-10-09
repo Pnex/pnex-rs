@@ -751,7 +751,7 @@ async fn media_annotations(
     // Couches publiées de l'org, ordre id asc = déterministe — restricted to
     // the read context (the tour's sets, or the sets of this media).
     // Standalone media: the sets of this media + free sets (attached to
-    // nothing, pre-000027); never a tour's sets.
+    // nothing); never a tour's sets.
     let context = match scope.tour {
         Some(tour_id) => {
             sea_orm::Condition::all().add(annotation_layers::Column::TourId.eq(tour_id))

@@ -146,8 +146,7 @@ pub struct JsonSplitConfig {
     pub keys: Vec<String>,
     /// Suivi automatique de l'amont (Value statique-objet ou Merge) : les
     /// clés — donc le **nombre de ports** — sont régénérées par l'éditeur à
-    /// chaque édition du graphe. `true` par défaut (y compris pour les
-    /// graphs sauvegardés avant le champ).
+    /// chaque édition du graphe. `true` par défaut.
     #[serde(default = "default_split_auto")]
     pub auto: bool,
 }
@@ -714,7 +713,7 @@ pub struct NotifyNodeConfig {
     pub vars: std::collections::BTreeMap<String, String>,
     /// Noms des vars du template stampés au pick (ordre du template) —
     /// source des ancres d'entrée nommées canvas et du routage deploy
-    /// (tagger `topic = var`). Tolérant aux vieux graphes (serde default).
+    /// (tagger `topic = var`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub template_vars: Vec<String>,
     /// Anti-spam — fenêtre fixe « max N envois par fenêtre de D secondes » :

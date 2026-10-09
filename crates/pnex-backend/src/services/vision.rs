@@ -284,7 +284,7 @@ pub async fn prepare_spec(
 }
 
 /// Re-checks a stored model as is (no spec rewrite) and persists the
-/// outcome — the "Check" button and the pre-D100 rows.
+/// outcome (the "Check" button).
 pub async fn check_model(ctx: &AppContext, m: ml_models::Model) -> Result<ml_models::Model> {
     use sea_orm::{ActiveModelTrait, Set};
     let outcome = match model_bytes(ctx, &m).await? {
