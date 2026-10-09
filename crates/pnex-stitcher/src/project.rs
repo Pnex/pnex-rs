@@ -231,21 +231,6 @@ pub fn interior_weight(frame: &PreparedFrame, u: f32, v: f32) -> f32 {
     (dist / half_min).clamp(0.0, 1.0)
 }
 
-/// Poids de blend « tente » : plateau au centre, chute linéaire sur
-/// `feather_px` vers les bords. Garantit un poids 0 sur le pourtour.
-/// (Conservé pour compat ; le rendu utilise désormais [`interior_weight`].)
-#[must_use]
-pub fn edge_weight(frame: &PreparedFrame, u: f32, v: f32) -> f32 {
-    let dist = u
-        .min(v)
-        .min(frame.width as f32 - u)
-        .min(frame.height as f32 - v);
-    if frame.feather_px < 1.0 {
-        return 1.0;
-    }
-    (dist / frame.feather_px).clamp(0.0, 1.0)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

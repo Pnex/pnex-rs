@@ -47,7 +47,7 @@ pub struct ServerInfo {
     /// when the server knows it. A native app that reached the server by IP
     /// (LAN scan, typed address) switches to it: OIDC redirect URIs and the
     /// certificate name are registered for this origin, not for the IP.
-    /// Absent on older servers — additive, no contract bump.
+    /// Absent when the server does not know its public name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
 }

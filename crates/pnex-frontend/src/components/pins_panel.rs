@@ -63,9 +63,8 @@ pub(crate) fn PinCard(
         .join(", ");
 
     // Mode options (base naming — the REST command takes `analog_in`, never
-    // the wire string `adc_in`): chip-cap list when the API provides it,
-    // else the legacy hardcoded set plus the current mode if missing
-    // (server without the available_modes enrichment).
+    // the wire string `adc_in`): the chip-cap list served with the pin; a pin
+    // the chip caps allow nothing else for keeps its current mode only.
     let mut mode_options: Vec<String> = pin
         .available_modes
         .iter()
@@ -78,14 +77,7 @@ pub(crate) fn PinCard(
         })
         .collect();
     if mode_options.is_empty() {
-        mode_options = vec![
-            "digital_in".to_string(),
-            "digital_out".to_string(),
-            "pwm_out".to_string(),
-        ];
-        if is_analog {
-            mode_options.insert(0, pin.mode.clone());
-        }
+        mode_options.push(pin.mode.clone());
     }
     let role_class = if pin.role == "actuator" {
         "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-100 text-purple-800"
