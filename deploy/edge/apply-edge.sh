@@ -105,6 +105,8 @@ RAUTHY_ISSUER_URL=https://$DOMAIN
 PNEX_CA_CERT_FILE=$ROOT/deploy/edge/pki-data/device-ca.pem
 PNEX_EDGE_SECRET=$EDGE_SECRET
 PNEX_DEVICE_PORT=$DEVICE_PORT
+# Device endpoint compiled into firmware: this host on the device port.
+PNEX_DEVICE_HOST=:$DEVICE_PORT
 EOF
 chmod 600 deploy/edge/edge.env
 echo "  ✓ deploy/edge/edge.env"
