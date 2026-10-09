@@ -8,4 +8,3 @@ license.workspace = true
 [dependencies]
 pnex-coolprop-sys = { path = "../pnex-coolprop-sys" }
 serde = { workspace = true }
-serde_json = { workspace = true }

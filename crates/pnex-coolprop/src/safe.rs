@@ -14,7 +14,7 @@
 //! * Les scalaires `double` signalent l'échec en retournant `_HUGE`
 //!   (= `HUGE_VAL`).
 
-use std::ffi::{c_char, c_double, c_int, c_long, CStr, CString};
+use std::ffi::{c_char, c_double, c_int, c_long, CString};
 use std::sync::{Mutex, MutexGuard};
 
 use pnex_coolprop_sys as sys;
@@ -613,41 +613,11 @@ pub fn haprops_si(
     check_scalar(v)
 }
 
-pub fn haprops_legacy(
-    output: &str,
-    name1: &str,
-    prop1: f64,
-    name2: &str,
-    prop2: f64,
-    name3: &str,
-    prop3: f64,
-) -> Result<f64> {
-    let _g = lock();
-    let _ = errstring();
-    let (o, n1, n2, n3) = (cstr(output), cstr(name1), cstr(name2), cstr(name3));
-    let v = unsafe {
-        sys::HAProps(
-            o.as_ptr(),
-            n1.as_ptr(),
-            prop1,
-            n2.as_ptr(),
-            prop2,
-            n3.as_ptr(),
-            prop3,
-        )
-    };
-    check_scalar(v)
-}
-
 pub fn cair_sat(t: f64) -> Result<f64> {
     let _g = lock();
     let v = unsafe { sys::cair_sat(t) };
     check_scalar(v)
 }
-
-// ----------------------------------------------------------------------
-// Wrappers de style FORTRAN 77
-// ----------------------------------------------------------------------
 
 pub fn propssi_fortran(
     output: &str,
@@ -675,61 +645,9 @@ pub fn propssi_fortran(
     check_scalar(out)
 }
 
-pub fn hapropssi_fortran(
-    output: &str,
-    name1: &str,
-    prop1: f64,
-    name2: &str,
-    prop2: f64,
-    name3: &str,
-    prop3: f64,
-) -> Result<f64> {
-    let _g = lock();
-    let _ = errstring();
-    let (o, n1, n2, n3) = (cstr(output), cstr(name1), cstr(name2), cstr(name3));
-    let (p1, p2, p3, mut out) = (prop1, prop2, prop3, 0f64);
-    unsafe {
-        sys::hapropssi_(
-            o.as_ptr(),
-            n1.as_ptr(),
-            &p1 as *const c_double,
-            n2.as_ptr(),
-            &p2 as *const c_double,
-            n3.as_ptr(),
-            &p3 as *const c_double,
-            &mut out,
-        );
-    }
-    check_scalar(out)
-}
-
-pub fn haprops_fortran(
-    output: &str,
-    name1: &str,
-    prop1: f64,
-    name2: &str,
-    prop2: f64,
-    name3: &str,
-    prop3: f64,
-) -> Result<f64> {
-    let _g = lock();
-    let _ = errstring();
-    let (o, n1, n2, n3) = (cstr(output), cstr(name1), cstr(name2), cstr(name3));
-    let (p1, p2, p3, mut out) = (prop1, prop2, prop3, 0f64);
-    unsafe {
-        sys::haprops_(
-            o.as_ptr(),
-            n1.as_ptr(),
-            &p1 as *const c_double,
-            n2.as_ptr(),
-            &p2 as *const c_double,
-            n3.as_ptr(),
-            &p3 as *const c_double,
-            &mut out,
-        );
-    }
-    check_scalar(out)
-}
+// ----------------------------------------------------------------------
+// Wrappers de style FORTRAN 77
+// ----------------------------------------------------------------------
 
 // ----------------------------------------------------------------------
 // AbstractState (accès stateful bas niveau)
@@ -1793,61 +1711,6 @@ pub fn molar_masses(fluids: &[&str]) -> Result<Vec<f64>> {
 // ----------------------------------------------------------------------
 // Accesseurs dépréciés (unités KSI)
 // ----------------------------------------------------------------------
-
-pub fn props_s(
-    output: &str,
-    name1: &str,
-    prop1: f64,
-    name2: &str,
-    prop2: f64,
-    refr: &str,
-) -> Result<f64> {
-    let _g = lock();
-    let _ = errstring();
-    let (o, n1, n2, r) = (cstr(output), cstr(name1), cstr(name2), cstr(refr));
-    let v = unsafe {
-        sys::PropsS(
-            o.as_ptr(),
-            n1.as_ptr(),
-            prop1,
-            n2.as_ptr(),
-            prop2,
-            r.as_ptr(),
-        )
-    };
-    check_scalar(v)
-}
-
-/// `Props` — comme PropsS mais `Name1`/`Name2` sont des caractères uniques.
-pub fn props_legacy(
-    output: &str,
-    name1: char,
-    prop1: f64,
-    name2: char,
-    prop2: f64,
-    refr: &str,
-) -> Result<f64> {
-    let _g = lock();
-    let _ = errstring();
-    let (o, r) = (cstr(output), cstr(refr));
-    let (n1, n2) = (name1 as c_char, name2 as c_char);
-    let v = unsafe { sys::Props(o.as_ptr(), n1, prop1, n2, prop2, r.as_ptr()) };
-    check_scalar(v)
-}
-
-pub fn props1_legacy(fluid: &str, output: &str) -> Result<f64> {
-    let _g = lock();
-    let _ = errstring();
-    let (f, o) = (cstr(fluid), cstr(output));
-    let v = unsafe { sys::Props1(f.as_ptr(), o.as_ptr()) };
-    check_scalar(v)
-}
-
-/// Convertit une chaîne C empruntée en `String` Rust (helper de test).
-#[allow(dead_code)]
-pub(crate) fn cstr_to_string(p: *const c_char) -> String {
-    unsafe { CStr::from_ptr(p).to_string_lossy().into_owned() }
-}
 
 #[cfg(test)]
 mod tests {

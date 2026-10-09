@@ -226,7 +226,7 @@ fn collect_dict_keys(mchars: &[char], chars: &[char], open: usize, out: &mut Vec
             }
             ':' if depth == 1 => {
                 // Key = token immediately before the colon (original text).
-                if let Some((name, pos)) = key_before(mchars, chars, i) {
+                if let Some((name, pos)) = key_before(chars, i) {
                     out.push((name, line_of_masked_pos(mchars, pos)));
                 }
             }
@@ -238,7 +238,7 @@ fn collect_dict_keys(mchars: &[char], chars: &[char], open: usize, out: &mut Vec
 
 /// The key token before a depth-1 colon, read from the ORIGINAL text
 /// (quotes are visible there, unlike in the masked copy).
-fn key_before(_mchars: &[char], chars: &[char], colon: usize) -> Option<(String, usize)> {
+fn key_before(chars: &[char], colon: usize) -> Option<(String, usize)> {
     let mut j = colon;
     while j > 0 && chars[j - 1].is_whitespace() {
         j -= 1;

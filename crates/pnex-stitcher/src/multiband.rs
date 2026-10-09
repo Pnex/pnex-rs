@@ -72,7 +72,7 @@ pub fn blend(frames: &[PreparedFrame], owner: &OwnerMap, levels: u32) -> (Vec<u8
         let j_bot =
             (((90.0 - f.lat_min) / 180.0 * h as f32).ceil() as i64).clamp(0, h as i64 - 1) as u32;
         for j in j_top..=j_bot {
-            let lat = lat_of(j, w, h);
+            let lat = lat_of(j, h);
             if lat < f.lat_min || lat > f.lat_max {
                 continue;
             }
@@ -102,7 +102,7 @@ pub fn blend(frames: &[PreparedFrame], owner: &OwnerMap, levels: u32) -> (Vec<u8
         let reach = if n_levels <= 1 { 0 } else { 2u32 << n_levels };
         let near = dilate_support(&mask, w, h, reach);
         for j in 0..h {
-            let lat = lat_of(j, w, h);
+            let lat = lat_of(j, h);
             for i in 0..w {
                 let o = (j * w + i) as usize;
                 if !near[o] {

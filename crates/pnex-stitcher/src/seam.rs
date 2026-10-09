@@ -84,7 +84,7 @@ pub fn find_seams(frames: &[PreparedFrame], out_width: u32, qp: &QualityParams) 
     // Legacy) hors des régions à double couverture tabulées.
     let row_len = w as usize;
     for j in 0..h {
-        let lat = lat_of(j, w, h);
+        let lat = lat_of(j, h);
         let eligible: Vec<usize> = frames
             .iter()
             .enumerate()
@@ -192,7 +192,7 @@ fn compute_seam_tables(frames: &[PreparedFrame], seam_w: u32) -> SeamTables {
         let mut runs: Vec<Option<(u32, u32)>> = vec![None; rows];
 
         for (r, j) in (j0..j1).enumerate() {
-            let lat = lat_of(j as u32, seam_w, seam_h);
+            let lat = lat_of(j as u32, seam_h);
             let (mut x0, mut x1) = (u32::MAX, 0u32);
             for c in 0..cols {
                 let col_abs = (mid_col - span_cols + c as i64).rem_euclid(seam_w as i64);
