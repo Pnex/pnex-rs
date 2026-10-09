@@ -24,6 +24,6 @@ case "$WIFI_SSID" in
     ;;
 esac
 
-echo "fixture ssid=$WIFI_SSID pass=$WIFI_PASSWORD host=$HOST token=$TOKEN devid=$DEVICE_ID ssl=$WS_SSL" > .pio/build/stub/firmware.bin
+echo "fixture ssid=$WIFI_SSID pass=$WIFI_PASSWORD host=$HOST token=$TOKEN devid=$DEVICE_ID" > .pio/build/stub/firmware.bin
 echo "boot" > .pio/build/stub/bootloader.bin
 echo "part" > .pio/build/stub/partitions.bin

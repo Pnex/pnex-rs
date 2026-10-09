@@ -32,13 +32,69 @@ struct FakeServer {
     kill_after: usize,
 }
 
-async fn serve(listener: tokio::net::TcpListener, srv: Arc<FakeServer>) {
+/// Test PKI: a CA (pinned by the agent), the fake server's certificate for
+/// 127.0.0.1, and a client identity for the agent (the agent speaks wss
+/// with a client certificate only; the fake server does not check it).
+struct Pki {
+    ca_pem: String,
+    server: (Vec<u8>, Vec<u8>),
+    client: (String, String),
+}
+
+fn pki() -> Pki {
+    use rcgen::{BasicConstraints, CertificateParams, IsCa, Issuer, KeyPair};
+    let ca_key = KeyPair::generate().unwrap();
+    let mut ca_params = CertificateParams::new(Vec::<String>::new()).unwrap();
+    ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+    let ca_cert = ca_params.self_signed(&ca_key).unwrap();
+    let issuer = Issuer::new(ca_params, ca_key);
+    let server_key = KeyPair::generate().unwrap();
+    let server_cert = CertificateParams::new(vec!["127.0.0.1".to_string()])
+        .unwrap()
+        .signed_by(&server_key, &issuer)
+        .unwrap();
+    let client_key = KeyPair::generate().unwrap();
+    let client_cert = CertificateParams::new(vec![DEVICE_ID.to_string()])
+        .unwrap()
+        .signed_by(&client_key, &issuer)
+        .unwrap();
+    Pki {
+        ca_pem: ca_cert.pem(),
+        server: (server_cert.der().to_vec(), server_key.serialize_der()),
+        client: (client_cert.pem(), client_key.serialize_pem()),
+    }
+}
+
+fn acceptor(pki: &Pki) -> tokio_rustls::TlsAcceptor {
+    use rustls_pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let cfg = rustls::ServerConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(
+            vec![CertificateDer::from(pki.server.0.clone())],
+            PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(pki.server.1.clone())),
+        )
+        .unwrap();
+    tokio_rustls::TlsAcceptor::from(Arc::new(cfg))
+}
+
+async fn serve(
+    listener: tokio::net::TcpListener,
+    tls: tokio_rustls::TlsAcceptor,
+    srv: Arc<FakeServer>,
+) {
     loop {
         let Ok((tcp, _)) = listener.accept().await else {
             return;
         };
         let srv = srv.clone();
+        let tls = tls.clone();
         tokio::spawn(async move {
+            let Ok(tcp) = tls.accept(tcp).await else {
+                return;
+            };
             let Ok(ws) = tokio_tungstenite::accept_async(tcp).await else {
                 return;
             };
@@ -124,19 +180,25 @@ fn free_port() -> u16 {
         .port()
 }
 
-fn write_config(dir: &Path, server_port: u16, api_port: u16) {
+fn write_config(dir: &Path, pki: &Pki, server_port: u16, api_port: u16) {
     std::fs::write(
         dir.join("config.toml"),
-        format!("server = \"http://127.0.0.1:{server_port}\"\nlisten = \"127.0.0.1:{api_port}\"\n"),
+        format!(
+            "server = \"https://127.0.0.1:{server_port}\"\nlisten = \"127.0.0.1:{api_port}\"\n"
+        ),
     )
     .unwrap();
+    std::fs::write(dir.join(pnex_edge_agent::config::CA_FILE), &pki.ca_pem).unwrap();
     std::fs::write(
         dir.join("secrets.json"),
         serde_json::json!({
             "device_id": DEVICE_ID,
             "token": "tok",
             "encryption_key": STANDARD.encode(KEY),
-            "ws_path": "/ws/device"
+            "ws_path": "/ws/device",
+            "client_cert_pem": pki.client.0,
+            "client_key_pem": pki.client.1,
+            "device_host": format!("127.0.0.1:{server_port}")
         })
         .to_string(),
     )
@@ -210,9 +272,10 @@ async fn concurrent_producers_survive_a_killed_connection_exactly_once() {
         kill_after: 3,
         ..Default::default()
     });
-    tokio::spawn(serve(listener, srv.clone()));
+    let pki = pki();
+    tokio::spawn(serve(listener, acceptor(&pki), srv.clone()));
     let api_port = free_port();
-    write_config(dir.path(), server_port, api_port);
+    write_config(dir.path(), &pki, server_port, api_port);
     let agent = start_agent(dir.path(), api_port).await;
 
     const PRODUCERS: usize = 8;
@@ -273,7 +336,8 @@ async fn points_accepted_while_server_is_down_survive_an_agent_restart() {
     let dir = tempfile::tempdir().unwrap();
     let server_port = free_port();
     let api_port = free_port();
-    write_config(dir.path(), server_port, api_port);
+    let pki = pki();
+    write_config(dir.path(), &pki, server_port, api_port);
 
     // Server down: the API still answers 202 once points are on disk.
     let agent = start_agent(dir.path(), api_port).await;
@@ -300,7 +364,7 @@ async fn points_accepted_while_server_is_down_survive_an_agent_restart() {
         .await
         .unwrap();
     let srv = Arc::new(FakeServer::default());
-    tokio::spawn(serve(listener, srv.clone()));
+    tokio::spawn(serve(listener, acceptor(&pki), srv.clone()));
     let agent = start_agent(dir.path(), api_port).await;
     wait_delivered(&srv, api_port, 300).await;
     let first = srv.points.lock().unwrap().values().next().cloned().unwrap();
