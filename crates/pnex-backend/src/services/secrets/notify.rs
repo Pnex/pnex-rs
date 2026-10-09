@@ -34,8 +34,6 @@ enum Slot {
     Ref(Uuid),
     /// Value typed in the form (owner/admin only).
     Typed(String),
-    /// Plaintext left by a pre-vault config, carried over on save.
-    Legacy(String),
 }
 
 /// A channel config checked against the vault, ready to validate then
@@ -48,20 +46,14 @@ pub struct Plan {
     pub sendable: serde_json::Value,
 }
 
-/// R9 bindings a stored channel holds: its vault references, and its
-/// legacy plaintext fields (nil id), each with the channel's destination.
+/// R9 bindings a stored channel holds: its vault references, each with the
+/// channel's destination.
 pub fn held_bindings(kind: &str, config: &serde_json::Value) -> Vec<Binding> {
     let dest = pnex_notify::secrets::destination(kind, config).unwrap_or_default();
-    let mut out: Vec<Binding> = pnex_notify::secrets::secret_refs(kind, config)
+    pnex_notify::secrets::secret_refs(kind, config)
         .into_iter()
         .map(|(f, id)| (f, id, dest.clone()))
-        .collect();
-    out.extend(
-        pnex_notify::secrets::plaintext_secrets(kind, config)
-            .into_iter()
-            .map(|(f, _)| (f, Uuid::nil(), dest.clone())),
-    );
-    out
+        .collect()
 }
 
 /// Reads the secret fields of `merged` (the incoming config, after the
@@ -69,13 +61,12 @@ pub fn held_bindings(kind: &str, config: &serde_json::Value) -> Vec<Binding> {
 /// each one for validation. A picked secret of another org is `NotFound`.
 /// `held` = bindings of the stored channel for a writer without
 /// `can_manage_secrets` (empty for a new channel), `None` for owner/admin:
-/// every reference (or carried plaintext) must match one of them (R9).
+/// every reference must match one of them (R9).
 pub async fn plan<C: ConnectionTrait>(
     db: &C,
     ring: &Keyring,
     org_id: i64,
     kind: &str,
-    existing: Option<&serde_json::Value>,
     merged: &serde_json::Value,
     held: Option<&[Binding]>,
 ) -> Result<Plan, StoreError> {
@@ -89,17 +80,6 @@ pub async fn plan<C: ConnectionTrait>(
         }
         let slot = match incoming {
             None | Some(serde_json::Value::Null) => continue,
-            Some(serde_json::Value::String(s)) if s.is_empty() => continue,
-            Some(serde_json::Value::String(s)) => {
-                let kept = existing
-                    .and_then(|e| e.get(&field))
-                    .and_then(|v| v.as_str());
-                if kept == Some(s.as_str()) {
-                    Slot::Legacy(s)
-                } else {
-                    Slot::Typed(s)
-                }
-            }
             Some(v) => match serde_json::from_value::<SecretFieldInput>(v) {
                 Ok(SecretFieldInput::Pick { secret_id }) => Slot::Ref(secret_id),
                 Ok(SecretFieldInput::Value { value }) if value.is_empty() => continue,
@@ -114,7 +94,6 @@ pub async fn plan<C: ConnectionTrait>(
         };
         let bound = match &slot {
             Slot::Ref(id) => Some(*id),
-            Slot::Legacy(_) => Some(Uuid::nil()),
             Slot::Typed(_) => None,
         };
         if let Some(id) = bound {
@@ -123,7 +102,7 @@ pub async fn plan<C: ConnectionTrait>(
         }
         let plain = match &slot {
             Slot::Ref(id) => store::reveal(db, ring, Some(org_id), *id).await?,
-            Slot::Typed(v) | Slot::Legacy(v) => v.clone(),
+            Slot::Typed(v) => v.clone(),
         };
         values.push((field.clone(), plain));
         slots.push((field, slot));
@@ -175,18 +154,6 @@ pub async fn commit<C: ConnectionTrait>(
                     ring,
                     writer,
                     can_write_secrets,
-                    &SecretFieldInput::Value { value },
-                    &dedicated_name(channel_name, &field),
-                )
-                .await?
-            }
-            // Carrying an existing value over is not a new write.
-            Slot::Legacy(value) => {
-                store::resolve_field(
-                    db,
-                    ring,
-                    writer,
-                    true,
                     &SecretFieldInput::Value { value },
                     &dedicated_name(channel_name, &field),
                 )

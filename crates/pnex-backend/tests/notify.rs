@@ -214,7 +214,7 @@ async fn cycle_crud_masquage_et_409() {
                 "config": {
                     "url": "https://home.example/hook",
                     "secret_header": "x-sig",
-                    "secret_value": "s3cr3t"
+                    "secret_value": { "value": "s3cr3t" }
                 }
             }),
         )
@@ -302,7 +302,7 @@ async fn cycle_crud_masquage_telegram() {
                 "name": "bot-alertes",
                 "enabled": true,
                 "config": {
-                    "bot_token": "123:ABCDEF",
+                    "bot_token": { "value": "123:ABCDEF" },
                     "chat_id": "-1001234567890"
                 }
             }),
@@ -472,7 +472,7 @@ async fn test_draft_et_test_canal_webhook() {
             .json(&serde_json::json!({
                 "kind": "webhook",
                 "name": "brouillon",
-                "config": { "url": url, "secret_header": "x-sig", "secret_value": "tok" }
+                "config": { "url": url, "secret_header": "x-sig", "secret_value": { "value": "tok" } }
             }))
             .await
             .json::<serde_json::Value>();
@@ -639,7 +639,7 @@ async fn test_draft_ntfy_contre_recepteur_local() {
                 "config": {
                     "server": format!("http://{addr}"),
                     "topic": "alertes",
-                    "token": "tk_test",
+                    "token": { "value": "tk_test" },
                     "priority": "high",
                     "tags": "warning"
                 }

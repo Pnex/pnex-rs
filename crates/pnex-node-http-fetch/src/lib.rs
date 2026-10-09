@@ -21,7 +21,7 @@
 //! from `PNEX_FLOW_SECRET_URL` on the first request (the backend serves a
 //! secret only once the flow is marked deployed, right after the runtime
 //! acknowledged the artifact), then kept in memory until the next deploy.
-//! A legacy plaintext value is used as is. Providers de
+//! Providers de
 //! scraping : mode proxy (`http://host:port` + user/pass) OU idiome « clé
 //! dans l'URL cible » (ScraperAPI/ZenRows) — pas besoin de proxy. Limites
 //! reqwest v1 : pas de SOCKS (feature off), pas de décompression gzip
@@ -558,7 +558,7 @@ mod tests {
                 "url": "https://api.exemple.dev/x",
                 "method": "post",
                 "headers": [{"name": "Accept", "value": "application/json"}],
-                "auth": {"mode": "bearer", "token": "t"},
+                "auth": {"mode": "bearer", "token": {"value": "t"}},
                 "proxy": {"mode": "none"},
                 "timeout_secs": 15,
                 "body": null,

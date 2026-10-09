@@ -126,7 +126,6 @@ pub(super) async fn test_draft(
         &ring,
         org.org.id,
         &params.kind,
-        existing.as_ref().map(|m| &m.config),
         &merged,
         (!org.can_manage_secrets()).then_some(held.as_slice()),
     )

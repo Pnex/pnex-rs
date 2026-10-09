@@ -229,7 +229,7 @@ Prérequis techniques de V4 (à lever avant de brûler quoi que ce soit) :
 
 | Vague | Contenu | Déclencheur | eFuse |
 |---|---|---|---|
-| **V1** | Protocole industriel pour tous, avant la release (D153–D157) : EX-A1–A6, A10 (couche), B1, B2 | En cours (2026-10-08) | Non |
+| **V1** | Protocole industriel pour tous, avant la release (D153–D157) : EX-A1–A6, A10 (couche), B1, B2 | Livrée (2026-10-09, lots L1–L6) | Non |
 | **V2** | Profil `industrial` logiciel et dossier : B3, B4, B7, D3, E2, F1, G1, G2, H1, H2, H4, I1–I3, J1, J2 ; mécanisme de flags (§4) | Après V1 | Non |
 | **V3** | Profil `critical` logiciel : A7, A8, A10 (transport de la clé), B5, B8, D4, D5, E1, E3, E4, F2–F4, G3, G4, H3, H5, H6, J3 | Premier client industriel réel | Non |
 | **V4** | Durcissement matériel C3/S3/C6 : C1–C5, après les prérequis de §5.C | Firmware validé **1 à 2 ans** par la communauté + banc de cartes sacrifiables | **Oui** |

@@ -150,7 +150,6 @@ pub(super) async fn create_channel(
         &ring,
         org.org.id,
         &params.kind,
-        None,
         &params.config,
         (!org.can_manage_secrets()).then_some(&[][..]),
     )
@@ -241,7 +240,6 @@ pub(super) async fn update_channel(
         &ring,
         org.org.id,
         &params.kind,
-        Some(&m.config),
         &merged,
         (!org.can_manage_secrets()).then_some(held.as_slice()),
     )

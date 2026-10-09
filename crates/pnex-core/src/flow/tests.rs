@@ -584,7 +584,7 @@ fn http_fetch_serde_roundtrip_modes_taggues() {
             "url": "https://api.exemple.dev/x",
             "method": "post",
             "headers": [{"name": "X-Api-Key", "value": "k"}],
-            "auth": {"mode": "bearer", "token": "t"},
+            "auth": {"mode": "bearer", "token": {"value": "t"}},
             "proxy": {"mode": "custom", "url": "http://p:1", "username": "u"},
             "timeout_secs": 45,
             "body": "{}",

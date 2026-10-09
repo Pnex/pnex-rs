@@ -15,9 +15,9 @@
 #   modèle est celui du device ; le firmware est toujours wss) ;
 # - erreurs forme héritée {"error": "..."} ; validation champ {"<champ>": "..."}.
 #
-# Runtime secrets: WiFi + host go through the PG queue (visible to the
-# DB admin, like the previous stack's k8s spec — cf. firmware-build.md) ; the token and
-# the encryption key are read back from the database by the worker.
+# Runtime secrets: the queue only carries the WiFi entry's vault reference
+# and the host; the worker decrypts the WiFi password, reads the token and
+# the Noise key back from the database, and issues the client certificate.
 
 @host = http://localhost:5150
 @token = $PNEX_ACCESS_TOKEN

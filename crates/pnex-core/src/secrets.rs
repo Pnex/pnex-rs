@@ -14,6 +14,12 @@ pub struct SecretRef {
     pub secret_id: Uuid,
 }
 
+/// Wire form of a typed secret value inside a graph about to be saved.
+#[derive(Serialize)]
+struct SecretValue<'a> {
+    value: &'a str,
+}
+
 /// Write side of a secret field in a functional form (D113): either pick an
 /// existing secret, or type a value (owner/admin only) that creates or
 /// replaces the field's dedicated secret.
@@ -26,12 +32,11 @@ pub enum SecretFieldInput {
 
 /// A secret field stored inside a flow graph node (lot S5, http-fetch).
 ///
-/// Wire forms, all accepted on read: `null` / absent / `""` → [`Unset`];
-/// `{"secret_id": "…"}` → [`Ref`]; a bare string or `{"value": "…"}` →
-/// [`Value`]. The backend turns every `Value` into a vault reference on
-/// save, so stored graphs, `flows.json` and the cluster wire only carry
-/// references; a `Value` survives only in a graph about to be saved (or in
-/// a pre-vault graph not taken over yet).
+/// Wire forms: `null` / absent → [`Unset`]; `{"secret_id": "…"}` →
+/// [`Ref`]; `{"value": "…"}` → [`Value`] (blank = unset). A bare string is
+/// refused. The backend turns every `Value` into a vault reference on save,
+/// so stored graphs, `flows.json` and the cluster wire only carry
+/// references; a `Value` only exists in a graph about to be saved.
 ///
 /// [`Unset`]: SecretSlot::Unset
 /// [`Ref`]: SecretSlot::Ref
@@ -79,7 +84,7 @@ impl Serialize for SecretSlot {
         match self {
             Self::Unset => s.serialize_none(),
             Self::Ref(id) => SecretRef { secret_id: *id }.serialize(s),
-            Self::Value(v) => s.serialize_str(v),
+            Self::Value(v) => SecretValue { value: v }.serialize(s),
         }
     }
 }
@@ -91,7 +96,6 @@ impl<'de> Deserialize<'de> for SecretSlot {
         let v = serde_json::Value::deserialize(d)?;
         Ok(match v {
             serde_json::Value::Null => Self::Unset,
-            serde_json::Value::String(s) => Self::from(s),
             serde_json::Value::Object(map) => {
                 if let Some(id) = map.get("secret_id").and_then(|v| v.as_str()) {
                     Self::Ref(Uuid::parse_str(id).map_err(serde::de::Error::custom)?)
@@ -105,7 +109,7 @@ impl<'de> Deserialize<'de> for SecretSlot {
             }
             _ => {
                 return Err(serde::de::Error::custom(
-                    "secret field: expected a string or an object",
+                    "secret field: expected {\"secret_id\"} or {\"value\"}",
                 ))
             }
         })
@@ -265,9 +269,9 @@ mod slot_tests {
         let id = Uuid::from_u128(5);
         let read = |v: serde_json::Value| serde_json::from_value::<SecretSlot>(v).unwrap();
         assert_eq!(read(json!(null)), SecretSlot::Unset);
-        assert_eq!(read(json!("")), SecretSlot::Unset);
-        assert_eq!(read(json!("  ")), SecretSlot::Unset);
-        assert_eq!(read(json!("tok")), SecretSlot::Value("tok".into()));
+        assert_eq!(read(json!({"value": "  "})), SecretSlot::Unset);
+        // A bare plaintext string is refused.
+        assert!(serde_json::from_value::<SecretSlot>(json!("tok")).is_err());
         assert_eq!(
             read(json!({"value": "tok"})),
             SecretSlot::Value("tok".into())
@@ -298,7 +302,7 @@ mod slot_tests {
         );
         assert_eq!(
             serde_json::to_value(SecretSlot::from("v")).unwrap(),
-            json!("v")
+            json!({"value": "v"})
         );
     }
 
@@ -315,11 +319,12 @@ mod slot_tests {
                 token: SecretSlot::Ref(id)
             }
         );
-        let legacy: crate::HttpFetchAuth =
-            serde_json::from_value(json!({"mode": "basic", "username": "u", "password": "p"}))
-                .unwrap();
+        let typed: crate::HttpFetchAuth = serde_json::from_value(
+            json!({"mode": "basic", "username": "u", "password": {"value": "p"}}),
+        )
+        .unwrap();
         assert_eq!(
-            legacy,
+            typed,
             crate::HttpFetchAuth::Basic {
                 username: "u".into(),
                 password: "p".into()

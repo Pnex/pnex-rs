@@ -215,47 +215,31 @@ pub struct DevicePeripherals {
     pub screen: ScreenChoice,
 }
 
-/// Screen picked at device level — wire form `{"screen": null | "ssd1306" |
-/// true}`. `LegacyAny` only exists to keep parsing the pre-choice jsonb rows
-/// (`{"screen": true}`): the server always resolves it against the board
-/// profile (first declared screen) at read time and never writes it back.
+/// Screen picked at device level — wire form `{"screen": null | "ssd1306"}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(from = "ScreenChoiceField", into = "ScreenChoiceField")]
+#[serde(from = "Option<String>", into = "Option<String>")]
 pub enum ScreenChoice {
-    /// No screen (or the legacy `false`).
+    /// No screen.
     #[default]
     None,
     /// Driver kind picked from the board profile — « ssd1306 », « st7735 ».
     Kind(String),
-    /// Legacy `{"screen": true}` — resolved as the profile's first screen.
-    LegacyAny,
 }
 
-/// Untagged envelope for the legacy-tolerant parse of `ScreenChoice`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
-enum ScreenChoiceField {
-    Kind(Option<String>),
-    Legacy(bool),
-}
-
-impl From<ScreenChoiceField> for ScreenChoice {
-    fn from(f: ScreenChoiceField) -> Self {
+impl From<Option<String>> for ScreenChoice {
+    fn from(f: Option<String>) -> Self {
         match f {
-            ScreenChoiceField::Kind(Some(k)) => ScreenChoice::Kind(k),
-            ScreenChoiceField::Kind(None) => ScreenChoice::None,
-            ScreenChoiceField::Legacy(true) => ScreenChoice::LegacyAny,
-            ScreenChoiceField::Legacy(false) => ScreenChoice::None,
+            Some(k) => ScreenChoice::Kind(k),
+            None => ScreenChoice::None,
         }
     }
 }
 
-impl From<ScreenChoice> for ScreenChoiceField {
+impl From<ScreenChoice> for Option<String> {
     fn from(c: ScreenChoice) -> Self {
         match c {
-            ScreenChoice::None => ScreenChoiceField::Kind(None),
-            ScreenChoice::Kind(k) => ScreenChoiceField::Kind(Some(k)),
-            ScreenChoice::LegacyAny => ScreenChoiceField::Legacy(true),
+            ScreenChoice::None => None,
+            ScreenChoice::Kind(k) => Some(k),
         }
     }
 }
@@ -358,7 +342,6 @@ impl BoardDetails {
         };
         let chosen: Option<&ScreenPeripheral> = match &peripherals.screen {
             ScreenChoice::None => None,
-            ScreenChoice::LegacyAny => screens.first(),
             ScreenChoice::Kind(kind) => screens.iter().find(|s| s.kind == *kind),
         };
         screens
@@ -378,7 +361,6 @@ impl BoardDetails {
             ScreenChoice::Kind(kind) => {
                 profile.peripherals.screens.iter().find(|s| s.kind == *kind)
             }
-            ScreenChoice::LegacyAny => profile.peripherals.screens.first(),
             ScreenChoice::None => None,
         }
     }
@@ -497,12 +479,12 @@ mod tests {
             screen: ScreenChoice::None,
         };
         let on = DevicePeripherals {
-            screen: ScreenChoice::LegacyAny,
+            screen: ScreenChoice::Kind("ssd1306".into()),
         };
         // screen off → pins free
         assert_eq!(d.reserved_gpios(&off), Vec::<u16>::new());
         assert_eq!(d.reserved_reason(4, &off), None);
-        // screen on (legacy true) → sda/scl reserved with nominal reason
+        // screen on → sda/scl reserved with nominal reason
         let mut gpios = d.reserved_gpios(&on);
         gpios.sort();
         assert_eq!(gpios, vec![4, 5]);
@@ -522,10 +504,8 @@ mod tests {
         assert_eq!(p.screen, ScreenChoice::None);
         let parsed: DevicePeripherals = serde_json::from_str(r#"{}"#).unwrap();
         assert_eq!(parsed.screen, ScreenChoice::None);
-        let parsed: DevicePeripherals = serde_json::from_str(r#"{"screen": true}"#).unwrap();
-        assert_eq!(parsed.screen, ScreenChoice::LegacyAny);
-        let parsed: DevicePeripherals = serde_json::from_str(r#"{"screen": false}"#).unwrap();
-        assert_eq!(parsed.screen, ScreenChoice::None);
+        // The pre-choice boolean form is refused.
+        assert!(serde_json::from_str::<DevicePeripherals>(r#"{"screen": true}"#).is_err());
         let parsed: DevicePeripherals = serde_json::from_str(r#"{"screen": null}"#).unwrap();
         assert_eq!(parsed.screen, ScreenChoice::None);
         let parsed: DevicePeripherals = serde_json::from_str(r#"{"screen": "ssd1306"}"#).unwrap();
@@ -604,20 +584,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_true_resolves_first_screen_only() {
-        let d: BoardDetails = serde_json::from_str(&v2_two_screens_json()).unwrap();
-        let legacy = DevicePeripherals {
-            screen: ScreenChoice::LegacyAny,
-        };
-        // legacy true → first declared screen only (not both)
-        let mut gpios = d.reserved_gpios(&legacy);
-        gpios.sort();
-        assert_eq!(gpios, vec![4, 5]);
-        assert_eq!(d.resolved_screen_kind(&legacy), Some("ssd1306".to_string()));
-        // serialization roundtrip: LegacyAny stays faithful (true)
-        let json = serde_json::to_value(&legacy).unwrap();
-        assert_eq!(json["screen"], serde_json::json!(true));
-        // and so does the picked kind
+    fn picked_kind_serializes_as_its_name() {
         let tft = DevicePeripherals {
             screen: ScreenChoice::Kind("st7735".into()),
         };
