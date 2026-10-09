@@ -138,7 +138,7 @@ settings:
   # Firmware Phase 6 (défauts champ par champ — cf. services/firmware.rs).
   # Source du firmware : embarquée dans le binaire (firmware/ du monorepo,
   # compilée dedans — aucune config). Artefacts en base par défaut (D5 v2,
-  # table firmware_artifacts) ; STORAGE_BACKEND surcharge storage.backend.
+  # table firmware_artifacts) ; PNEX_STORAGE_BACKEND surcharge storage.backend.
   # S3 = tier industriel (artefacts sur S3-compatible via opendal, données
   # + queue restent en base). Aucune migration entre backends : on choisit
   # son tier à l'installation.
@@ -148,7 +148,7 @@ settings:
   #   DATABASE_URL="sqlite://./pnex.sqlite?mode=rwc"
   firmware:
     storage:
-      backend: <%= get_env(name="STORAGE_BACKEND", default="db") %>
+      backend: <%= get_env(name="PNEX_STORAGE_BACKEND", default="db") %>
       s3_endpoint: <%= get_env(name="PNEX_S3_ENDPOINT", default="") %>
       s3_bucket: <%= get_env(name="PNEX_S3_BUCKET", default="") %>
       s3_region: <%= get_env(name="PNEX_S3_REGION", default="") %>
@@ -165,7 +165,7 @@ settings:
   # vivent jamais en base : magasin dédié opendal (fs défaut / s3 RustFS).
   media:
     storage:
-      backend: <%= get_env(name="MEDIA_BACKEND", default="fs") %>
+      backend: <%= get_env(name="PNEX_MEDIA_BACKEND", default="fs") %>
       # Racine du magasin fs (créé au boot si absent).
       dir: <%= get_env(name="PNEX_MEDIA_DIR", default="./storage/media") %>
       # Plafond d'un upload — 413 JSON propre au-delà ; la limite axum

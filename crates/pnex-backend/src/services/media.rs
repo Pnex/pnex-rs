@@ -36,11 +36,11 @@ use crate::services::artifact_store::S3Config;
 /// body-bytes).
 pub const DEFAULT_MAX_BYTES: usize = 256 * 1024 * 1024;
 
-/// Réglages média — `settings.media` (env `MEDIA_BACKEND`, `PNEX_MEDIA_DIR`,
+/// Réglages média — `settings.media` (env `PNEX_MEDIA_BACKEND`, `PNEX_MEDIA_DIR`,
 /// `PNEX_MEDIA_MAX_BYTES`), école `settings.firmware.*`.
 pub struct MediaSettings {
-    /// `fs` (défaut) | `s3` — l'env `MEDIA_BACKEND` surcharge (école
-    /// `STORAGE_BACKEND`).
+    /// `fs` (défaut) | `s3` — l'env `PNEX_MEDIA_BACKEND` surcharge (école
+    /// `PNEX_STORAGE_BACKEND`).
     pub storage_backend: String,
     /// Racine du magasin `fs`.
     pub dir: String,
@@ -182,7 +182,7 @@ impl MediaSettings {
             settings.fs_shared = shared;
         }
         // Décision utilisateur : l'env surcharge la config (école firmware).
-        if let Ok(backend) = std::env::var("MEDIA_BACKEND") {
+        if let Ok(backend) = std::env::var("PNEX_MEDIA_BACKEND") {
             if !backend.is_empty() {
                 settings.storage_backend = backend;
             }
@@ -296,13 +296,13 @@ pub fn media_boot_guard(config: &Config) -> Result<(), String> {
         StorageBootCheck::SharedFs => {
             tracing::warn!(
                 dir = %settings.dir,
-                "multi-pod deployment on the fs media backend: PNEX_MEDIA_DIR must be the SAME shared (RWX) volume on every pod and worker — prefer MEDIA_BACKEND=s3"
+                "multi-pod deployment on the fs media backend: PNEX_MEDIA_DIR must be the SAME shared (RWX) volume on every pod and worker — prefer PNEX_MEDIA_BACKEND=s3"
             );
             Ok(())
         }
         StorageBootCheck::Refuse => {
             let msg = format!(
-                "refusing to boot: multi-pod deployment (flow cluster advertise_url/token or PNEX_CLUSTER_MODE) with the pod-local fs media backend ({}) — media, video segments, stitch frames and ML models would not be visible across pods. Set MEDIA_BACKEND=s3, or PNEX_MEDIA_FS_SHARED=true if PNEX_MEDIA_DIR is a shared RWX volume",
+                "refusing to boot: multi-pod deployment (flow cluster advertise_url/token or PNEX_CLUSTER_MODE) with the pod-local fs media backend ({}) — media, video segments, stitch frames and ML models would not be visible across pods. Set PNEX_MEDIA_BACKEND=s3, or PNEX_MEDIA_FS_SHARED=true if PNEX_MEDIA_DIR is a shared RWX volume",
                 settings.dir
             );
             tracing::error!("{msg}");

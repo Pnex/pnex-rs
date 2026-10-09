@@ -9,7 +9,7 @@
 //! binaires vivent dans la base, table `firmware_artifacts` ; tiers sqlite
 //! tout-en-un et postgres multi-pods stateless) ou `s3` (tier industriel —
 //! artefacts sur S3-compatible via opendal, cf. `services::artifact_store`).
-//! `STORAGE_BACKEND` (env) **surcharge** `storage.backend` de la config.
+//! `PNEX_STORAGE_BACKEND` (env) **surcharge** `storage.backend` de la config.
 //! Aucun système de migration/réconciliation entre backends : on choisit
 //! son tier à l'installation.
 
@@ -36,7 +36,7 @@ pub const PHASE_FAILED: &str = "failed";
 /// accident via `?settings`).
 #[derive(Clone)]
 pub struct FirmwareSettings {
-    /// `db` | `s3` (surchargeable par `STORAGE_BACKEND`).
+    /// `db` | `s3` (surchargeable par `PNEX_STORAGE_BACKEND`).
     pub storage_backend: String,
     // Connexion S3 (tier industriel — cf. services::artifact_store).
     pub s3_endpoint: String,
@@ -243,7 +243,7 @@ impl FirmwareSettings {
                 .unwrap_or(defaults.require_device_ca),
         };
         // Décision utilisateur : l'env surcharge la config.
-        if let Ok(backend) = std::env::var("STORAGE_BACKEND") {
+        if let Ok(backend) = std::env::var("PNEX_STORAGE_BACKEND") {
             if !backend.is_empty() {
                 settings.storage_backend = backend;
             }

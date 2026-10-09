@@ -131,12 +131,12 @@ settings:
   # le serveur build sa propre version du firmware, zéro clone git ni
   # chemin local — aucune config de source). Artefacts en base par défaut
   # (D5 v2, table firmware_artifacts — pods API stateless) ;
-  # STORAGE_BACKEND=s3 = tier industriel (artefacts sur S3-compatible via
+  # PNEX_STORAGE_BACKEND=s3 = tier industriel (artefacts sur S3-compatible via
   # opendal — données + queue restent en base). Aucune migration entre
   # backends : on choisit son tier à l'installation.
   firmware:
     storage:
-      backend: <%= get_env(name="STORAGE_BACKEND", default="db") %>
+      backend: <%= get_env(name="PNEX_STORAGE_BACKEND", default="db") %>
       s3_endpoint: <%= get_env(name="PNEX_S3_ENDPOINT", default="") %>
       s3_bucket: <%= get_env(name="PNEX_S3_BUCKET", default="") %>
       s3_region: <%= get_env(name="PNEX_S3_REGION", default="") %>
@@ -153,12 +153,12 @@ settings:
   # réutilise les vars PNEX_S3_* du firmware).
   media:
     storage:
-      backend: <%= get_env(name="MEDIA_BACKEND", default="fs") %>
+      backend: <%= get_env(name="PNEX_MEDIA_BACKEND", default="fs") %>
       # Racine du magasin fs (volume persistant requis en prod).
       dir: <%= get_env(name="PNEX_MEDIA_DIR", default="./storage/media") %>
       # Multi-pod (flow cluster advertise_url/token or PNEX_CLUSTER_MODE=true)
       # refuses to boot on fs unless this dir is ONE shared RWX volume
-      # mounted on every pod and worker; prefer MEDIA_BACKEND=s3.
+      # mounted on every pod and worker; prefer PNEX_MEDIA_BACKEND=s3.
       fs_shared: <%= get_env(name="PNEX_MEDIA_FS_SHARED", default="false") %>
       # Plafond d'un upload — 413 JSON propre au-delà ; la limite axum
       # (max+1 Mo, vue routes()) reste le filet.
