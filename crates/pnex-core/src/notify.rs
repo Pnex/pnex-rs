@@ -238,8 +238,8 @@ pub struct StaleNotifyNode {
 mod tests {
     use super::*;
 
-    /// Contrat `notify-kinds.v1` : FieldSpec roundtrip — l'ajout d'options
-    /// doit rester rétrocompatible (défaut vide).
+    /// Contract `notify-kinds.v1`: FieldSpec roundtrip, `options` defaults to
+    /// empty.
     #[test]
     fn field_spec_roundtrip_sans_options() {
         let json = r#"{"id":"url","label_i18n":"notify-field-url","type":"text","required":true}"#;

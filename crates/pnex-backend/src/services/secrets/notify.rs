@@ -3,8 +3,9 @@
 //!
 //! The `secret` fields of a stored channel config hold
 //! `{"secret_id": "…"}`. On save, each one is a choice (`{"secret_id"}`),
-//! a typed value (`{"value"}` or a bare string — creates or replaces the
-//! dedicated secret `notify/<channel>/<field>`), or `null`/absent (kept).
+//! a typed value (`{"value"}` — creates or replaces the dedicated secret
+//! `notify/<channel>/<field>`), or `null`/absent (kept). A bare string is
+//! refused.
 //! Sends resolve the references in memory: the backend with the keyring
 //! ([`sendable`]), the flow runtime through `/internal/flow/secret/{id}`
 //! gated by [`reachable_from_deployed_flows`].

@@ -80,27 +80,6 @@ pub(super) struct ClusterQuery {
     pub(super) has_position: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-pub(super) struct LinkPayload {
-    pub(super) source_kind: Option<String>,
-    pub(super) source_id: Option<Uuid>,
-    pub(super) target_kind: Option<String>,
-    pub(super) target_id: Option<Uuid>,
-    pub(super) label: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(super) struct LinkListQuery {
-    pub(super) source_kind: Option<String>,
-    pub(super) source_id: Option<Uuid>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(super) struct ManualPositionPayload {
-    pub(super) latitude: Option<f64>,
-    pub(super) longitude: Option<f64>,
-}
-
 /// Filtres communs liste/cluster depuis les query params.
 pub(super) fn pin_filters<'a>(
     search: &'a Option<String>,

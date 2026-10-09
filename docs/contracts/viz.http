@@ -173,32 +173,6 @@ DELETE {{base}}/api/v1/resources/edges/{{edge_id}}
 Authorization: Bearer {{token}}
 X-Org-Id: {{org_id}}
 
-### Legacy thin-wrappers (D42 garde les endpoints /viz/links, mêmes
-### sémantiques — l'UI historique passe encore par là) — 201
-POST {{base}}/api/v1/viz/links
-Authorization: Bearer {{token}}
-X-Org-Id: {{org_id}}
-Content-Type: application/json
-
-{
-  "source_kind": "map_pin",
-  "source_id": "{{poi_id}}",
-  "target_kind": "media_asset",
-  "target_id": "{{media_asset_id}}",
-  "label": "Vue 360 de la serre"
-}
-
-### Liens sources d'un POI — 200 (les liens du POI embarquent
-### `target_label` (nom résolu batch) et `target_dead` — cible disparue)
-GET {{base}}/api/v1/viz/links?source_kind=map_pin&source_id={{poi_id}}
-Authorization: Bearer {{token}}
-X-Org-Id: {{org_id}}
-
-### Détacher — 204 (404 masqué si déjà supprimé / hors org)
-DELETE {{base}}/api/v1/viz/links/{{link_id}}
-Authorization: Bearer {{token}}
-X-Org-Id: {{org_id}}
-
 ### ------------------------------------------------- positions GPS (D38) ---
 
 ### Couche live carte : dernière position par device — 200
@@ -216,17 +190,6 @@ X-Org-Id: {{org_id}}
 #      "positioned_at": "2026-09-11T18:30:00+00:00"}
 #   ]
 # }
-
-### Position manuelle (POC/tests ; source=manual, dernier écrivain gagne) — 204
-PUT {{base}}/api/v1/device-positions/tracker-01
-Authorization: Bearer {{token}}
-X-Org-Id: {{org_id}}
-Content-Type: application/json
-
-{
-  "latitude": 45.77,
-  "longitude": 4.84
-}
 
 ### ------------------------------------ studio SCADA : dashboards (D40) ---
 

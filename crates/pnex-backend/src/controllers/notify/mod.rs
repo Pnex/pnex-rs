@@ -111,7 +111,6 @@ pub fn routes() -> Routes {
                 .delete(delete_channel),
         )
         .add("/channels/{id}/test", post(test_channel))
-        .add("/channels/{id}/deliveries", get(channel_deliveries))
         .add("/deliveries", get(list_deliveries))
         .add("/templates", get(list_templates).post(create_template))
         .add(

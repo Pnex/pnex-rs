@@ -29,11 +29,6 @@ Content-Type: application/json
 
 {"framesize": "vga", "quality": 12, "fps": 5, "capture_mode": "continuous", "vflip": false, "hmirror": false}
 
-### Dernière frame reçue (image/jpeg) — 404 camera-no-frame
-GET http://localhost:5150/api/v1/cameras/{{device}}/snapshot
-Authorization: Bearer {{token}}
-X-Org-Id: {{org_id}}
-
 ### Segments enregistrés (enveloppe D14)
 GET http://localhost:5150/api/v1/cameras/segments?device={{device}}&from=2026-09-29T00:00:00Z&limit=20
 Authorization: Bearer {{token}}

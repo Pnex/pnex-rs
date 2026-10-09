@@ -38,7 +38,7 @@ fn journal_unavailable(e: &str) -> Error {
     )
 }
 
-/// Shared by the org-wide journal and the per-channel alias.
+/// The org-wide journal, optionally filtered by channel.
 async fn journal_page(
     ctx: &AppContext,
     org: &OrgContext,
@@ -105,19 +105,4 @@ pub(super) async fn list_deliveries(
         },
     };
     journal_page(&ctx, &org, "/api/v1/notify/deliveries", channel_id, q).await
-}
-
-/// `GET /api/v1/notify/channels/{id}/deliveries` — the journal of one
-/// channel (same envelope).
-pub(super) async fn channel_deliveries(
-    State(ctx): State<AppContext>,
-    org: OrgContext,
-    Path(id): Path<Uuid>,
-    Query(q): Query<DeliveriesQuery>,
-) -> Result<Response> {
-    let Some(_) = find_channel(&ctx.db, &org, id).await? else {
-        return Err(Error::NotFound);
-    };
-    let path = format!("/api/v1/notify/channels/{id}/deliveries");
-    journal_page(&ctx, &org, &path, Some(id), q).await
 }

@@ -505,7 +505,7 @@ async fn test_draft_et_test_canal_webhook() {
         assert_eq!(tested.status_code(), 200, "{:?}", tested.text());
 
         let deliveries = server
-            .get(&format!("/api/v1/notify/channels/{id}/deliveries"))
+            .get(&format!("/api/v1/notify/deliveries?channel_id={id}"))
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await
@@ -682,7 +682,7 @@ async fn interne_sans_token_refuse() {
             .await;
         assert_eq!(resp.status_code(), 401);
         let deliveries = server
-            .get(&format!("/api/v1/notify/channels/{id}/deliveries"))
+            .get(&format!("/api/v1/notify/deliveries?channel_id={id}"))
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await

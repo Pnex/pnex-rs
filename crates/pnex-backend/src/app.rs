@@ -373,8 +373,8 @@ impl Hooks for App {
     }
 
     async fn seed(_ctx: &AppContext, _base: &Path) -> Result<()> {
-        // The catalog seed goes through the `seed` task (register_tasks), which
-        // reuses the legacy YAML fixtures — not through this generic hook.
+        // The catalog is seeded from code (`pnex_core::catalog`, D121) by the
+        // `seed` task and at boot — not through this generic hook.
         Ok(())
     }
 }

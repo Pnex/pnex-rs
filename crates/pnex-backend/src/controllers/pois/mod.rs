@@ -13,7 +13,7 @@
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::routing::{get, patch, post, put};
+use axum::routing::{get, patch, post};
 use axum::Json;
 use loco_rs::controller::format;
 use loco_rs::prelude::*;
@@ -30,7 +30,6 @@ use pnex_core::err_codes;
 mod crud;
 mod dto;
 mod errors;
-mod links;
 mod payloads;
 mod placements;
 mod positions;
@@ -41,7 +40,6 @@ mod positions;
 use crud::*;
 use dto::*;
 use errors::*;
-use links::*;
 use payloads::*;
 use placements::*;
 use positions::*;
@@ -65,8 +63,5 @@ pub fn routes() -> Routes {
         .add("/pois", get(list).post(create))
         .add("/pois/{id}", get(detail).patch(update).delete(delete))
         .add("/pois/{id}/devices", post(attach_device))
-        .add("/viz/links", get(list_links).post(create_link))
-        .add("/viz/links/{id}", axum::routing::delete(delete_link))
         .add("/device-positions", get(list_positions))
-        .add("/device-positions/{device_id}", put(set_manual_position))
 }
