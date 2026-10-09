@@ -660,11 +660,10 @@ pub fn role_of(mode: Mode) -> &'static str {
     }
 }
 
-/// Firmware version = build id (monotonic decimal string, e.g. `"42"`).
-/// Tolerates `1.0.421` shapes (last segment); `None` for non-numeric
-/// versions (e.g. the pre-OTA `"1.0.0"` default — equality fallback only).
+/// Firmware version = build id (monotonic decimal string, e.g. `"42"`);
+/// `None` for anything else (equality fallback only).
 pub fn fw_version_num(v: &str) -> Option<u64> {
-    v.rsplit('.').next()?.parse::<u64>().ok()
+    v.trim().parse::<u64>().ok()
 }
 
 /// "does the device run at least the target?" — numeric as soon as both
@@ -684,14 +683,12 @@ mod tests {
     #[test]
     fn fw_version_numeric_monotonic() {
         assert_eq!(fw_version_num("42"), Some(42));
-        assert_eq!(fw_version_num("1.0.421"), Some(421));
-        // Pre-OTA ("1.0.0"): not numerically comparable to a target.
-        assert_eq!(fw_version_num("1.0.0"), Some(0));
+        assert_eq!(fw_version_num("1.0.421"), None);
         assert_eq!(fw_version_num("dev"), None);
         // Numeric as soon as possible; equality fallback otherwise.
         assert!(fw_at_least("43", "42"));
         assert!(!fw_at_least("41", "42"));
-        assert!(fw_at_least("1.0.421", "421"));
+        assert!(!fw_at_least("1.0.421", "421"));
         assert!(!fw_at_least("1.0.0", "42"));
         assert!(fw_at_least("dev", "dev"));
         assert!(!fw_at_least("dev", "42"));

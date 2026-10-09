@@ -26,8 +26,7 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
             .collect()
     });
     // Template vars already stamped into the node (canvas anchors) — the
-    // self-heal reference: nodes saved before the stamping shipped carry an
-    // empty `template_vars` while a template is picked.
+    // reference to re-stamp a node whose template changed.
     let mut stamped_vars = use_signal(|| initial.template_vars.clone());
     // Anti-spam : enable + max + fenêtre en minutes (fenêtre fixe « compteur
     // × durée », une phrase lisible — l'AntiSpamConfig porte des secondes).
@@ -68,9 +67,7 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
 
     // Stamp the template vars into the node (wireable input anchors) and
     // prune the per-node values to the template's vars — surviving vars keep
-    // their value. One single path for a template (re)pick and the self-heal
-    // of nodes saved before the stamping shipped (template picked, anchors
-    // never stamped — the canvas then shows a single unlabeled anchor).
+    // their value. One single path for a template pick or re-pick.
     use_effect(move || {
         let tid = template_id();
         if tid == NIL_UUID {

@@ -129,7 +129,7 @@ impl PnexCoolPropNode {
 
     /// Latches the input values carried by one message: a scalar on a named
     /// anchor (`topic` = input key, stamped at deploy) or an object payload
-    /// holding one or both keys (legacy contract). Values are stored in SI.
+    /// holding one or both keys. Values are stored in SI.
     fn latch_inputs(
         &self,
         topic: Option<&str>,
@@ -283,8 +283,8 @@ impl PnexCoolPropNode {
             None
         };
 
-        // 3) Fan-out. Ports beyond the artifact's wires array (legacy
-        // single-port artifacts) are skipped.
+        // 3) Fan-out. Ports beyond the artifact's wires array (outputs not
+        // wired) are skipped.
         let to_variant = |v: serde_json::Value| -> Result<Variant> {
             serde_json::from_value(v).map_err(|e| {
                 EdgelinkError::InvalidOperation(format!(
