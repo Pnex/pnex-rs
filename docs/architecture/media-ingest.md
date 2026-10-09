@@ -25,13 +25,17 @@ règle d'extension §9.3), `security.md` (R1–R20, grille §6),
 > **Numérotation** : PRD rédigé avec les numéros D148–D164 ; renuméroté D159–D175 à
 > l'intégration (D148–D158 déjà pris par `security-tiers.md`).
 
-> **Ordre vis-à-vis de l'ontologie (décision #17)** : la 0.2.0 gèle le
-> démarrage de nouveaux piliers. Le lot 0 (POC ASR, sans schéma) n'est
-> pas concerné. Les lots 1+ démarrent après le lot L1 de l'ontologie :
-> `media_stream` et `time_range` naissent alors comme **types système**
-> (`ontology.md` D176, §7). Les entités (personnalités, organisations)
-> sont des objets du pack « Couverture médiatique » (0.3), pas des
-> données propres à ce PRD (D168).
+> **Ordre vis-à-vis de l'ontologie (décision #17, tranchée par l'user le
+> 2026-10-09 : média d'abord)** : P2.13 démarre sans attendre la 0.2.0.
+> Ce n'est pas bloquant : les types système restent dans leurs propres
+> tables (`ontology.md` D177), `media_streams` et `time_ranges` seront
+> enregistrés comme types système par un adaptateur quand L1 arrivera,
+> sans migration de données ; `ResourceRef` existe déjà
+> (`pnex_core::resources`, D42) et le format de provenance D184 est une
+> convention adoptée dès maintenant. Seule vraie dépendance : les
+> **entités** nommées (personnalités, organisations, rattachements
+> datés) sont des objets du pack « Couverture médiatique » (0.3) ; en
+> attendant, le lot 2 s'en tient aux sujets (D168).
 
 ---
 
@@ -767,11 +771,10 @@ clés de stockage et noms de streams O2 construits côté serveur (R18).
 
 Dépendances :
 
-- ontologie L1 (types système) avant le lot 1, entités du pack
-  « Couverture médiatique » (D190) avant les mentions nominatives du
-  lot 2, D182 (plages sur tout objet, à placer dans les lots de
-  l'ontologie) et le format de provenance D184 (L5) avant le lot 3
-  (décision #17) — le lot 0 est indépendant ;
+- ontologie : aucune pour les lots 0, 1, 3, 4 (D177, `ResourceRef`
+  existant, convention D184) ; entités du pack « Couverture médiatique »
+  (D190) avant les mentions **nominatives** du lot 2 (décision #17 :
+  média d'abord) ;
 - fabric de workers P2.7 (worker GPU distant) — contournable au lot 1
   par le process `--worker=asr` joint en mesh ;
 - catalogue de nœuds P2.11 (parseur XML) pour le lot 3.
@@ -808,8 +811,9 @@ Dépendances :
 6. ~~Amendement de D3~~ — **tranché par l'user** (2026-10-09) : pas de
    publication, les chiffres restent dans PNEX ; D3 inchangée, studio de
    rapports en tranche ultérieure (§13).
-7. **Nouveau** — ordre P2.13 / ontologie (décision #17) : lancer le
-   lot 0 tout de suite (aucun schéma) et attendre L1 pour le lot 1 ?
+7. ~~Ordre P2.13 / ontologie~~ — **tranché par l'user** (2026-10-09) :
+   média d'abord ; seules les mentions nominatives attendent le pack
+   « Couverture médiatique ».
 
 ## 15. Journal de relecture (2026-10-09)
 

@@ -527,8 +527,11 @@ de l'org). Lots 0 → 6 :
 
 Dépendance : fabric de workers (P2.7) pour le worker GPU distant,
 contournable au lot 1 par un process `--worker` joint en mesh.
-Alignement avec P2.14 : si l'implémentation démarre après le lot L1 de
-l'ontologie, `media_stream` et `time_range` naissent comme types système.
+Ordre (décision #17, tranchée 2026-10-09) : **média d'abord**. Les types
+système restent dans leurs tables (D177) : `media_stream` et
+`time_range` seront enregistrés par adaptateur à L1, sans migration ;
+seules les mentions nominatives (lot 2) attendent le pack « Couverture
+médiatique ».
 Décision #16.
 
 ### P2.14 — 0.2.0 : noyau ontologique (objets, liens, temps, actions) (ajout 2026-10-09) — **PRD proposé**
@@ -557,7 +560,8 @@ destructive**.
 
 **Risque de dispersion acté** : pendant la 0.2.0, aucun nouveau pilier
 fonctionnel ne démarre (correctifs et finition seulement) — à arbitrer
-avec P2.13 et P2.1. Décision #17.
+avec P2.13 et P2.1. Décision #17 — **exception P2.13** (2026-10-09) : le
+média démarre avant la 0.2.0 (`media-ingest.md`, en-tête).
 
 ## P3 — Horizons (décisions de phase explicites)
 
