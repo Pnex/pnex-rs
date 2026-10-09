@@ -207,6 +207,9 @@ struct TreeRow {
     detach: Option<Detach>,
     /// Dossier : (id, name) pour la suppression.
     delete: Option<(i64, String)>,
+    /// Folder: (id, name) for the D42 labels modal (disjoint copy of
+    /// `delete` so each handler captures its own field).
+    labels: Option<(i64, String)>,
     /// Device : placement pour l'édition de localité.
     placement: Option<DevicePlacement>,
 }
@@ -256,6 +259,8 @@ pub fn PoiTreeSection(
     let mut dragging = use_signal(|| None::<DragItem>);
     let mut new_folder = use_signal(String::new);
     let mut pending_delete = use_signal(|| None::<(i64, String)>);
+    // Folder whose D42 labels are being edited (inherited by its content).
+    let mut labels_folder = use_signal(|| None::<(i64, String)>);
 
     // Marche containment, refetch à chaque bump de version (attach/detach/
     // move/save de localité — le drawer bumppe `detail_version`).
@@ -274,10 +279,13 @@ pub fn PoiTreeSection(
             return;
         }
         if let Some(Ok(model)) = &*model.value().read() {
+            // Breadcrumb deep link: also unfold the path to the clicked folder.
+            let unfold = std::mem::take(&mut *crate::state::map::OPEN_POI_FOLDERS.write());
             expanded.with_mut(|set| {
                 for f in &model.root_folders {
                     set.insert(f.id.clone());
                 }
+                set.extend(unfold);
             });
             seeded.set(true);
         }
@@ -584,6 +592,13 @@ pub fn PoiTreeSection(
                                         });
                                     },
                                 }
+                            } else {
+                                // Stored in a folder without a placement on this
+                                // site (moved elsewhere meanwhile): name only.
+                                span { class: "flex items-center gap-2 text-sm text-gray-800 truncate",
+                                    KindIcon { kind: "device".to_string() }
+                                    {row.name.clone()}
+                                }
                             }
                         }
                         // Détacher : device racine = placement part (device
@@ -683,6 +698,20 @@ pub fn PoiTreeSection(
                                 {t!("poi-attachment-detach")}
                             }
                         }
+                        // Folder: D42 labels (inherited by everything inside).
+                        if row.labels.is_some() {
+                            span {
+                                class: "shrink-0 text-gray-300 hover:text-blue-600 cursor-pointer",
+                                title: t!("resources-labels-title"),
+                                onclick: move |e| {
+                                    e.stop_propagation();
+                                    if let Some(payload) = row.labels.clone() {
+                                        labels_folder.set(Some(payload));
+                                    }
+                                },
+                                icons::Tag { class: "w-3 h-3" }
+                            }
+                        }
                         // Dossier : suppression
                         if row.delete.is_some() {
                             span {
@@ -724,6 +753,19 @@ pub fn PoiTreeSection(
                         pending_delete.set(None);
                     },
                     on_cancel: move |_| pending_delete.set(None),
+                }
+            }
+            if let Some((fid, fname)) = labels_folder() {
+                crate::components::modal::Modal {
+                    title: fname,
+                    max_width: "max-w-md".to_string(),
+                    on_close: move |_| labels_folder.set(None),
+                    crate::components::labels_editor::LabelsEditor {
+                        key: "{fid}",
+                        kind: pnex_core::resources::KIND_FOLDER.to_string(),
+                        id: fid.to_string(),
+                        can_write: crate::state::org::current_can_write(),
+                    }
                 }
             }
         }

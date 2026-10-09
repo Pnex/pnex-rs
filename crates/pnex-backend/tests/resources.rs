@@ -789,3 +789,367 @@ async fn create_device(
     assert_eq!(res.status_code(), 201, "create device : {}", res.text());
     res.json()
 }
+
+// ──────────────────── label= on the other lists (D42) ────────────────────
+
+#[tokio::test]
+#[serial]
+async fn label_filter_on_devices_and_dashboards_lists() {
+    with_app(|server, _db, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        // Two devices, one labelled through a folder (inherited label).
+        let mut devices = Vec::new();
+        for id in ["lbl-dev-a", "lbl-dev-b"] {
+            let res = jpost(
+                &server,
+                &env.alice,
+                org,
+                "/api/v1/devices",
+                serde_json::json!({"device_id": id, "predefined_device_name": "generic_esp8266"}),
+            )
+            .await;
+            res.assert_status(axum_test::http::StatusCode::CREATED);
+            devices.push(res.json::<serde_json::Value>()["id"].as_i64().unwrap());
+        }
+        let folder_id = jpost(
+            &server,
+            &env.alice,
+            org,
+            "/api/v1/resources/folders",
+            serde_json::json!({"name": "Serre lbl"}),
+        )
+        .await
+        .json::<serde_json::Value>()["id"]
+            .as_i64()
+            .unwrap();
+        jput(
+            &server,
+            &env.alice,
+            org,
+            &format!("/api/v1/resources/folder/{folder_id}/labels"),
+            serde_json::json!({"labels": {"site": "serre"}}),
+        )
+        .await
+        .assert_status_ok();
+        jput(
+            &server,
+            &env.alice,
+            org,
+            &format!("/api/v1/resources/device/{}/containment", devices[0]),
+            serde_json::json!({"parent": {"kind": "folder", "id": folder_id.to_string()}}),
+        )
+        .await
+        .assert_status_ok();
+
+        let list = jget(&server, &env.alice, org, "/api/v1/devices?label=site:serre").await;
+        list.assert_status_ok();
+        let body: serde_json::Value = list.json();
+        let ids: Vec<i64> = body["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|d| d["id"].as_i64().unwrap())
+            .collect();
+        assert_eq!(ids, vec![devices[0]]);
+        assert_eq!(body["count"], 1);
+        let bad = jget(&server, &env.alice, org, "/api/v1/devices?label=Bad%20Name").await;
+        bad.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
+
+        // Dashboards: own label.
+        let dash = jpost(
+            &server,
+            &env.alice,
+            org,
+            "/api/v1/dashboards",
+            serde_json::json!({"name": "lbl-dash"}),
+        )
+        .await
+        .json::<serde_json::Value>()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        jpost(
+            &server,
+            &env.alice,
+            org,
+            "/api/v1/dashboards",
+            serde_json::json!({"name": "lbl-dash-other"}),
+        )
+        .await;
+        jput(
+            &server,
+            &env.alice,
+            org,
+            &format!("/api/v1/resources/dashboard/{dash}/labels"),
+            serde_json::json!({"labels": {"critique": null}}),
+        )
+        .await
+        .assert_status_ok();
+        let body: serde_json::Value = jget(
+            &server,
+            &env.alice,
+            org,
+            "/api/v1/dashboards?label=critique",
+        )
+        .await
+        .json();
+        let ids: Vec<&str> = body["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|d| d["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, vec![dash.as_str()]);
+
+        // Another org never matches alice's labels.
+        let bob_org = personal_org(&server, &env.bob).await;
+        let body: serde_json::Value = jget(
+            &server,
+            &env.bob,
+            bob_org,
+            "/api/v1/dashboards?label=critique",
+        )
+        .await
+        .json();
+        assert_eq!(body["count"], 0);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn label_filter_on_flows_list() {
+    with_app(|server, _db, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let graph = serde_json::json!({
+            "nodes": [
+                {
+                    "id": "n1", "kind": "inject",
+                    "config": { "repeat_secs": 5.0, "payload": {"k": 1} },
+                    "outputs": [{ "port": 0, "targets": ["n2"] }]
+                },
+                { "id": "n2", "kind": "debug", "config": {} }
+            ]
+        });
+        let mut flows = Vec::new();
+        for name in ["lbl-flow-a", "lbl-flow-b"] {
+            let res = jpost(
+                &server,
+                &env.alice,
+                org,
+                "/api/v1/flows",
+                serde_json::json!({"name": name, "graph": graph.clone()}),
+            )
+            .await;
+            res.assert_status(axum_test::http::StatusCode::CREATED);
+            flows.push(res.json::<serde_json::Value>()["id"].as_i64().unwrap());
+        }
+        jput(
+            &server,
+            &env.alice,
+            org,
+            &format!("/api/v1/resources/flow/{}/labels", flows[1]),
+            serde_json::json!({"labels": {"zone": "nord"}}),
+        )
+        .await
+        .assert_status_ok();
+
+        let body: serde_json::Value =
+            jget(&server, &env.alice, org, "/api/v1/flows?label=zone:nord")
+                .await
+                .json();
+        let ids: Vec<i64> = body["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f["id"].as_i64().unwrap())
+            .collect();
+        assert_eq!(ids, vec![flows[1]]);
+        assert_eq!(body["count"], 1);
+        // Bare name matches any value.
+        let body: serde_json::Value = jget(&server, &env.alice, org, "/api/v1/flows?label=zone")
+            .await
+            .json();
+        assert_eq!(body["count"], 1);
+        // Malformed filter → 400 on the `label` field.
+        let bad = jget(&server, &env.alice, org, "/api/v1/flows?label=Bad%20Name").await;
+        bad.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
+        // Another org never sees alice's labelled flow.
+        let bob_org = personal_org(&server, &env.bob).await;
+        let body: serde_json::Value = jget(&server, &env.bob, bob_org, "/api/v1/flows?label=zone")
+            .await
+            .json();
+        assert_eq!(body["count"], 0);
+    })
+    .await;
+}
+
+// ──────────────────── location breadcrumb (sites tree) ────────────────────
+
+#[tokio::test]
+#[serial]
+async fn location_breadcrumb_follows_folders_and_site_links() {
+    with_app(|server, _db, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let poi = create_poi(&server, &env.alice, org).await;
+        let media = create_media(&server, &env.alice, org, "loc-pano").await;
+        let other = create_media(&server, &env.alice, org, "loc-other").await;
+
+        let folder = |name: &'static str| {
+            let server = &server;
+            let token = env.alice.clone();
+            async move {
+                jpost(
+                    server,
+                    &token,
+                    org,
+                    "/api/v1/resources/folders",
+                    serde_json::json!({"name": name}),
+                )
+                .await
+                .json::<serde_json::Value>()["id"]
+                    .as_i64()
+                    .unwrap()
+            }
+        };
+        let building = folder("Bâtiment A").await;
+        let room = folder("Chaufferie").await;
+        for (child, parent) in [
+            (
+                format!("/api/v1/resources/folder/{building}/containment"),
+                serde_json::json!({"kind": "map_pin", "id": poi}),
+            ),
+            (
+                format!("/api/v1/resources/folder/{room}/containment"),
+                serde_json::json!({"kind": "folder", "id": building.to_string()}),
+            ),
+            (
+                format!("/api/v1/resources/media_asset/{media}/containment"),
+                serde_json::json!({"kind": "folder", "id": room.to_string()}),
+            ),
+        ] {
+            jput(
+                &server,
+                &env.alice,
+                org,
+                &child,
+                serde_json::json!({"parent": parent}),
+            )
+            .await
+            .assert_status_ok();
+        }
+
+        // In a folder: site, then the folders from the top down.
+        let body: serde_json::Value = jget(
+            &server,
+            &env.alice,
+            org,
+            &format!("/api/v1/resources/media_asset/{media}/location"),
+        )
+        .await
+        .json();
+        let loc = &body["locations"][0];
+        assert_eq!(loc["site"]["kind"], "map_pin");
+        assert_eq!(loc["site"]["id"], poi.as_str());
+        let names: Vec<&str> = loc["folders"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, vec!["Bâtiment A", "Chaufferie"]);
+
+        // Attached at the site root (placed_on edge): site only.
+        jpost(
+            &server,
+            &env.alice,
+            org,
+            "/api/v1/resources/edges",
+            serde_json::json!({
+                "relation": "placed_on",
+                "source_kind": "map_pin",
+                "source_id": poi,
+                "target_kind": "media_asset",
+                "target_id": other
+            }),
+        )
+        .await
+        .assert_status(axum_test::http::StatusCode::CREATED);
+        let body: serde_json::Value = jget(
+            &server,
+            &env.alice,
+            org,
+            &format!("/api/v1/resources/media_asset/{other}/location"),
+        )
+        .await
+        .json();
+        assert_eq!(body["locations"].as_array().unwrap().len(), 1);
+        assert_eq!(body["locations"][0]["folders"].as_array().unwrap().len(), 0);
+
+        // Another org never sees it (R1).
+        let bob_org = personal_org(&server, &env.bob).await;
+        jget(
+            &server,
+            &env.bob,
+            bob_org,
+            &format!("/api/v1/resources/media_asset/{media}/location"),
+        )
+        .await
+        .assert_status(axum_test::http::StatusCode::NOT_FOUND);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn labels_batch_returns_a_page_and_stays_in_the_org() {
+    with_app(|server, _db, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let a = create_media(&server, &env.alice, org, "batch-a").await;
+        let b = create_media(&server, &env.alice, org, "batch-b").await;
+        jput(
+            &server,
+            &env.alice,
+            org,
+            &format!("/api/v1/resources/media_asset/{a}/labels"),
+            serde_json::json!({"labels": {"site": "serre", "critique": null}}),
+        )
+        .await
+        .assert_status_ok();
+        let body: serde_json::Value = jpost(
+            &server,
+            &env.alice,
+            org,
+            "/api/v1/resources/labels/batch",
+            serde_json::json!({"kind": "media_asset", "ids": [a, b]}),
+        )
+        .await
+        .json();
+        assert_eq!(body["labels"][&a]["site"], "serre");
+        assert!(body["labels"][&a]["critique"].is_null());
+        assert!(body["labels"].get(&b).is_none());
+
+        // Bob asks for alice's ids from his org: nothing comes back.
+        let bob_org = personal_org(&server, &env.bob).await;
+        let body: serde_json::Value = jpost(
+            &server,
+            &env.bob,
+            bob_org,
+            "/api/v1/resources/labels/batch",
+            serde_json::json!({"kind": "media_asset", "ids": [a]}),
+        )
+        .await
+        .json();
+        assert_eq!(body["labels"], serde_json::json!({}));
+        let res = jpost(
+            &server,
+            &env.alice,
+            org,
+            "/api/v1/resources/labels/batch",
+            serde_json::json!({"kind": "nope", "ids": []}),
+        )
+        .await;
+        res.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
+    })
+    .await;
+}

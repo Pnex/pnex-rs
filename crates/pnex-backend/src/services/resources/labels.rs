@@ -382,3 +382,35 @@ pub async fn labels_for_many(
     }
     Ok(out)
 }
+
+/// Outcome of a list filter `label=` that cannot be applied.
+#[derive(Debug)]
+pub enum ListLabelFilterError {
+    /// Malformed filter: reason for the `label` field.
+    Invalid(String),
+    Db(DbErr),
+}
+
+/// List filter `label=name` / `label=name:value` (D42) for one kind:
+/// `None` without filter, else the ids (stringified PK) of the org's
+/// resources of `kind` carrying the label, inherited labels included.
+pub async fn list_filter(
+    db: &DatabaseConnection,
+    org_id: i64,
+    raw: Option<&str>,
+    kind: &str,
+) -> Result<Option<HashSet<String>>, ListLabelFilterError> {
+    let Some(raw) = raw.map(str::trim).filter(|r| !r.is_empty()) else {
+        return Ok(None);
+    };
+    let (filter, err) = pnex_core::resources::parse_label_filter(raw);
+    let Some(filter) = filter else {
+        return Err(ListLabelFilterError::Invalid(
+            err.unwrap_or_else(|| "invalid label filter".into()),
+        ));
+    };
+    let ids = ids_with_effective_label(db, org_id, &filter, Some(kind))
+        .await
+        .map_err(ListLabelFilterError::Db)?;
+    Ok(Some(ids.into_iter().map(|(_, id)| id).collect()))
+}

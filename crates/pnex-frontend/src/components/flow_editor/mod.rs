@@ -1030,6 +1030,12 @@ pub fn FlowEditor(
                     icons::History { class: "h-4 w-4 sm:mr-1" }
                     span { class: "hidden sm:inline", {t!("flows-versions")} }
                 }
+                // D42 labels of the flow (same editor as every resource).
+                crate::components::labels_editor::LabelsButton {
+                    kind: pnex_core::resources::KIND_FLOW.to_string(),
+                    id: flow_id.to_string(),
+                    can_write,
+                }
             },
             banner: rsx! {
                 // ─── Bandeau de violations (locales, serveur) + staleness ───

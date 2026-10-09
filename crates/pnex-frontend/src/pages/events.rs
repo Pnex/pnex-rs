@@ -300,8 +300,9 @@ pub fn Events() -> Element {
 fn EventRow(ev: EventRecord) -> Element {
     let mut open = use_signal(|| false);
     let navigator = use_navigator();
-    let payload = serde_json::to_string_pretty(&ev.payload).unwrap_or_default();
-    let has_payload = !ev.payload.is_null();
+    // Readable key/value rows, never raw JSON (end-user page).
+    let payload_rows = flatten_payload(&ev.payload);
+    let has_payload = !payload_rows.is_empty();
     let flow_id = ev.flow_id;
 
     rsx! {
@@ -365,8 +366,15 @@ fn EventRow(ev: EventRecord) -> Element {
                         dd { class: "text-gray-700 font-mono break-all", "{ev.node_id}" }
                     }
                     if has_payload {
-                        pre { class: "text-xs font-mono bg-white border border-gray-200 rounded-lg p-3 overflow-x-auto max-h-80",
-                            "{payload}"
+                        dl { class: "grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs bg-white border border-gray-200 rounded-lg p-3 max-h-80 overflow-y-auto",
+                            for (i, (key, value)) in payload_rows.into_iter().enumerate() {
+                                div { key: "{i}", class: "contents",
+                                    dt { class: "text-gray-500 font-mono break-all",
+                                        "{key}"
+                                    }
+                                    dd { class: "text-gray-900 break-all", "{value}" }
+                                }
+                            }
                         }
                     } else {
                         p { class: "text-xs text-gray-500", {t!("events-no-payload")} }
@@ -377,9 +385,92 @@ fn EventRow(ev: EventRecord) -> Element {
     }
 }
 
+/// Flattens an event payload into readable `(key, value)` rows: nested
+/// objects become dotted keys, arrays of scalars are joined with ", ",
+/// arrays holding objects/arrays are indexed (`items.0.name`). A scalar
+/// payload is a single "Value" row; `null` / empty containers give none.
+fn flatten_payload(payload: &serde_json::Value) -> Vec<(String, String)> {
+    let mut rows = Vec::new();
+    match payload {
+        serde_json::Value::Object(_) | serde_json::Value::Array(_) => {
+            flatten_into(payload, "", &mut rows);
+        }
+        serde_json::Value::Null => {}
+        scalar => rows.push((t!("events-payload-value").to_string(), scalar_text(scalar))),
+    }
+    rows
+}
+
+fn flatten_into(value: &serde_json::Value, prefix: &str, rows: &mut Vec<(String, String)>) {
+    let join = |key: &str| {
+        if prefix.is_empty() {
+            key.to_string()
+        } else {
+            format!("{prefix}.{key}")
+        }
+    };
+    match value {
+        serde_json::Value::Object(map) => {
+            for (k, v) in map {
+                flatten_into(v, &join(k), rows);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            let all_scalar = items.iter().all(|v| !v.is_object() && !v.is_array());
+            if all_scalar {
+                if !items.is_empty() {
+                    let text = items.iter().map(scalar_text).collect::<Vec<_>>().join(", ");
+                    rows.push((prefix.to_string(), text));
+                }
+            } else {
+                for (i, v) in items.iter().enumerate() {
+                    flatten_into(v, &join(&i.to_string()), rows);
+                }
+            }
+        }
+        scalar => rows.push((prefix.to_string(), scalar_text(scalar))),
+    }
+}
+
+/// Scalar as plain text (strings unquoted, null as an em dash).
+fn scalar_text(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Null => "—".to_string(),
+        other => other.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn payload_flattens_to_dotted_keys() {
+        let rows = flatten_payload(&serde_json::json!({
+            "temp": 21.5,
+            "site": {"name": "serre", "zone": null},
+            "tags": ["a", "b", 3],
+            "points": [{"x": 1}, {"x": 2}],
+            "empty": [],
+        }));
+        // Key order depends on serde_json's map flavour: compare sorted.
+        let mut got: Vec<(&str, &str)> =
+            rows.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        got.sort();
+        assert_eq!(
+            got,
+            vec![
+                ("points.0.x", "1"),
+                ("points.1.x", "2"),
+                ("site.name", "serre"),
+                ("site.zone", "—"),
+                ("tags", "a, b, 3"),
+                ("temp", "21.5"),
+            ]
+        );
+        assert!(flatten_payload(&serde_json::Value::Null).is_empty());
+    }
 
     #[test]
     fn period_wire_roundtrip() {

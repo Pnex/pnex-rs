@@ -21,6 +21,8 @@ pub struct DeviceFilters {
     /// Recherche OU multi-champs (device_id, modèle, type, capacités).
     pub search: Option<String>,
     pub active: Option<bool>,
+    /// D42 effective label filter (`name` or `name:value`).
+    pub label: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -42,6 +44,9 @@ impl DeviceFilters {
         }
         if let Some(v) = self.active {
             parts.push(format!("active={v}"));
+        }
+        if let Some(v) = self.label.as_deref().filter(|v| !v.is_empty()) {
+            parts.push(format!("label={}", urlencode(v)));
         }
         if let Some(v) = self.limit {
             parts.push(format!("limit={v}"));
@@ -96,12 +101,13 @@ pub async fn detail(id: i64) -> Result<Device, ApiError> {
     client::request(reqwest::Method::GET, &format!("/api/v1/devices/{id}"), None).await
 }
 
-/// `PATCH /api/v1/devices/{id}` — metadata only (legacy contract).
-pub async fn update_metadata(id: i64, metadata: serde_json::Value) -> Result<Device, ApiError> {
+/// `PUT /api/v1/devices/{id}/board` — another board variant of the same
+/// chip (O39); takes effect at the next build.
+pub async fn set_board(id: i64, board_id: i64) -> Result<serde_json::Value, ApiError> {
     client::request(
-        reqwest::Method::PATCH,
-        &format!("/api/v1/devices/{id}"),
-        Some(serde_json::json!({ "metadata": metadata })),
+        reqwest::Method::PUT,
+        &format!("/api/v1/devices/{id}/board"),
+        Some(serde_json::json!({ "board_id": board_id })),
     )
     .await
 }

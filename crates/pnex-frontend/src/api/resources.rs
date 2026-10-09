@@ -49,6 +49,30 @@ pub struct SearchHit {
 
 // ─────────────────────────── labels ───────────────────────────
 
+/// Max ids accepted by one `labels/batch` call (server bound).
+pub const LABELS_BATCH_MAX: usize = 200;
+
+/// `POST /api/v1/resources/labels/batch` — own labels of a page of rows
+/// (`kind` + stringified PKs, at most [`LABELS_BATCH_MAX`]). Ids without
+/// labels are absent from the returned map.
+pub async fn labels_batch(
+    kind: &str,
+    ids: Vec<String>,
+) -> Result<std::collections::HashMap<String, LabelSet>, ApiError> {
+    #[derive(Deserialize)]
+    struct Dto {
+        #[serde(default)]
+        labels: std::collections::HashMap<String, LabelSet>,
+    }
+    let dto: Dto = client::request(
+        reqwest::Method::POST,
+        "/api/v1/resources/labels/batch",
+        Some(serde_json::json!({ "kind": kind, "ids": ids })),
+    )
+    .await?;
+    Ok(dto.labels)
+}
+
 /// `GET /api/v1/resources/{kind}/{id}/labels`.
 pub async fn get_labels(kind: &str, id: &str) -> Result<LabelSet, ApiError> {
     #[derive(Deserialize)]
@@ -314,4 +338,17 @@ pub async fn search(label: &str, kinds: Option<Vec<&str>>) -> Result<Vec<SearchH
     )
     .await?;
     Ok(page.results)
+}
+
+/// `GET /api/v1/resources/{kind}/{id}/location` — site breadcrumb(s).
+pub async fn location(
+    kind: &str,
+    id: &str,
+) -> Result<pnex_core::resources::ResourceLocations, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/resources/{kind}/{id}/location"),
+        None,
+    )
+    .await
 }

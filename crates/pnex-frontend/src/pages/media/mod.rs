@@ -27,7 +27,7 @@ use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
-use crate::components::labels_editor::LabelsEditor;
+use crate::components::labels_editor::{LabelChips, LabelsEditor};
 use crate::components::modal::Modal;
 use crate::state::media::OPEN_MEDIA;
 use crate::state::{org, session, toasts};
@@ -194,7 +194,10 @@ pub fn Media() -> Element {
     // a thumbnail endpoint is future work).
     let columns = vec![
         Column::new(t!("media-col-name").to_string(), |asset: &MediaAsset| {
-            rsx! { {asset.name.clone()} }
+            rsx! {
+                {asset.name.clone()}
+                LabelChips { labels: asset.labels.clone() }
+            }
         })
         .with_td_class("font-medium text-gray-900"),
         Column::new(t!("media-col-type").to_string(), |asset: &MediaAsset| {

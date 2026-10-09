@@ -59,7 +59,7 @@ pub use firmware::Firmware;
 pub use flows::Flows;
 pub use fluid_mixtures::FluidMixtures;
 pub use functions::Functions;
-pub use map::Map;
+pub use map::{Map, Sites};
 pub use media::Media;
 pub use models::Models;
 pub use not_found::NotFound;

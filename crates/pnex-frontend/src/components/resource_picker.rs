@@ -123,6 +123,7 @@ pub fn ResourcePicker(
                     search,
                     limit: Some(PAGE_SIZE),
                     offset: Some(offset),
+                    ..Default::default()
                 })
                 .await
                 .map(|p| PickerPage {

@@ -267,6 +267,13 @@ pub(super) fn MediaDetail(
                                     }
                                 }
                             }
+                            // Where the media sits in the sites tree.
+                            div { class: "rounded-xl border border-gray-200 bg-white p-4",
+                                crate::components::location_breadcrumb::LocationBreadcrumb {
+                                    kind: pnex_core::resources::KIND_MEDIA_ASSET.to_string(),
+                                    id: asset_id.clone(),
+                                }
+                            }
                             // Labels card (D42 transverse editor).
                             div { class: "rounded-xl border border-gray-200 bg-white p-4",
                                 LabelsEditor {

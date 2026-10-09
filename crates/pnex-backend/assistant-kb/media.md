@@ -21,4 +21,5 @@ The Media library (Data › Library) stores the organization's versioned files: 
 - Files above the server's size limit are refused ("File is too large").
 - Deleting a media used by a tour, an annotation set or a POI leaves a "(deleted)" or "(missing target)" reference there.
 - Previews of some formats are only available in the web interface.
+- **Labels** are the single organization-wide labelling mechanism: chips `name` or `name:value` (lowercase letters, digits, `_`, `-`), the same on devices, media, dashboards, flows, 3D tours, map POIs and their folders. Labels set on a folder are inherited by everything stored in it. Edit them in the **Labels** card of a media.
 - Only Owners, Admins and Members can upload, version and delete.

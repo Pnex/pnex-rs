@@ -25,6 +25,7 @@ use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::edge_refs_picker::{PnexHostPicker, WifiCredentialPicker};
 use crate::components::flash_modal::FlashModal;
 use crate::components::icons;
+use crate::components::labels_editor::{use_row_labels, LabelChips};
 use crate::components::modal::Modal;
 use crate::flash;
 use crate::state::devices::OPEN_DEVICE;
@@ -85,6 +86,8 @@ pub fn Devices() -> Element {
     let mut filter_status = use_signal(|| "all".to_string());
     let mut filter_capability = use_signal(String::new);
     let search = use_signal(String::new);
+    // D42: effective label filter ("name" or "name:value").
+    let filter_label = use_signal(String::new);
     // Page courante (0-based) — remise à 0 à chaque changement de filtre.
     let mut page = use_signal(|| 0i64);
     // Assistant d'enregistrement (mont/démont = état propre à chaque ouverture).
@@ -132,6 +135,14 @@ pub fn Devices() -> Element {
                 "false" => Some(false),
                 _ => None,
             },
+            label: {
+                let value = filter_label().trim().to_string();
+                if value.is_empty() {
+                    None
+                } else {
+                    Some(value)
+                }
+            },
             limit: Some(PAGE_SIZE),
             offset: Some(page() * PAGE_SIZE),
         };
@@ -167,6 +178,14 @@ pub fn Devices() -> Element {
         }
     }
 
+    // D42: own labels of the page rows, one batch per list (re)load.
+    let row_labels = use_row_labels(pnex_core::resources::KIND_DEVICE, move || {
+        match &*list.value().read() {
+            Some(Ok(paged)) => paged.results.iter().map(|d| d.id.to_string()).collect(),
+            _ => Vec::new(),
+        }
+    });
+
     // Lecture synchrone de la ressource (doctrine socle CRUD).
     let (list_state, is_empty, count, rows) = match &*list.value().read() {
         None => (None, false, 0, Vec::new()),
@@ -183,9 +202,11 @@ pub fn Devices() -> Element {
     // (Copy) de la page ; les helpers de ligne (badges, téléchargement,
     // flash) reprennent le rendu exact de l'ancienne device_row.
     let columns = vec![
-        Column::new(t!("devices-col-id").to_string(), |device: &Device| {
+        Column::new(t!("devices-col-id").to_string(), move |device: &Device| {
+            let labels = row_labels.get(&device.id.to_string()).cloned().unwrap_or_default();
             rsx! {
                 code { class: "text-sm", {device.device_id.clone()} }
+                LabelChips { labels }
             }
         })
         .with_td_class("font-medium text-gray-900"),
@@ -529,6 +550,15 @@ pub fn Devices() -> Element {
                     SearchInput {
                         placeholder: t!("devices-search-placeholder").to_string(),
                         value: search,
+                        on_submit: move |_| {
+                            page.set(0);
+                            reload.with_mut(|r| *r += 1);
+                        },
+                    }
+                    // D42: effective label filter (inheritance included).
+                    SearchInput {
+                        placeholder: t!("resources-label-filter-placeholder").to_string(),
+                        value: filter_label,
                         on_submit: move |_| {
                             page.set(0);
                             reload.with_mut(|r| *r += 1);
@@ -1408,6 +1438,13 @@ fn DeviceDetail(
                                 }
                             }
                         }
+                        // Where the device sits in the sites tree.
+                        div { class: "px-5 pb-4",
+                            crate::components::location_breadcrumb::LocationBreadcrumb {
+                                kind: pnex_core::resources::KIND_DEVICE.to_string(),
+                                id: device_pk.to_string(),
+                            }
+                        }
                     }
                     if let Some((code, detail)) = build_failure {
                         crate::components::build_failure::BuildFailureNote { code, detail }
@@ -1472,24 +1509,15 @@ fn DeviceDetail(
                         }
                     }
 
-                    // Labels card — key/value pills, JSON as expert mode.
+                    // Labels card — the single D42 label mechanism.
                     div { class: "bg-white rounded-lg shadow-sm",
                         div { class: "p-5 sm:p-6",
-                            crate::components::kv_pills_editor::KvPillsEditor {
-                                key: "{device_pk}-{reload}",
-                                initial: device.metadata.clone().unwrap_or(serde_json::Value::Null),
-                                title: t!("devices-labels-title"),
-                                hint: t!("devices-labels-hint"),
+                            crate::components::labels_editor::LabelsEditor {
+                                key: "{device_pk}",
+                                kind: pnex_core::resources::KIND_DEVICE.to_string(),
+                                id: device_pk.to_string(),
                                 can_write,
-                                on_save: move |value| {
-                                    spawn(async move {
-                                        match api::devices::update_metadata(device_pk, value).await {
-                                            Ok(_) => toasts::success("toast-saved"),
-                                            Err(err) => toasts::error(err),
-                                        }
-                                        refresh.call(());
-                                    });
-                                },
+                                on_changed: refresh,
                             }
                         }
                     }

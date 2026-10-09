@@ -18,6 +18,7 @@ use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
+use crate::components::labels_editor::{use_row_labels, LabelChips};
 use crate::state::tours::OPEN_TOUR;
 use crate::state::{org, session, toasts};
 
@@ -51,6 +52,8 @@ pub fn Studio() -> Element {
     });
 
     let search = use_signal(String::new);
+    // D42: effective label filter ("name" or "name:value").
+    let filter_label = use_signal(String::new);
     let mut page = use_signal(|| 0i64);
     // Cible de suppression (id, nom) — confirmation à la demande.
     let mut delete_target = use_signal(|| None::<(String, String)>);
@@ -64,12 +67,24 @@ pub fn Studio() -> Element {
                 (!value.is_empty()).then_some(value)
             },
             mode: None,
+            label: {
+                let value = filter_label().trim().to_string();
+                (!value.is_empty()).then_some(value)
+            },
             limit: Some(PAGE_SIZE),
             offset: Some(page() * PAGE_SIZE),
         };
         async move {
             let _ = reload();
             api::tours::list(&filters).await
+        }
+    });
+
+    // D42: own labels of the page rows, one batch per list (re)load.
+    let row_labels = use_row_labels(pnex_core::resources::KIND_TOUR, move || {
+        match &*list.value().read() {
+            Some(Ok(paged)) => paged.results.iter().map(|t| t.id.clone()).collect(),
+            _ => Vec::new(),
         }
     });
 
@@ -91,11 +106,13 @@ pub fn Studio() -> Element {
         Column::new(
             t!("studio-col-name").to_string(),
             move |tour: &TourSummary| {
+                let labels = row_labels.get(&tour.id).cloned().unwrap_or_default();
                 rsx! {
                     div { class: "flex items-center gap-2",
                         {tour.name.clone()}
                         span { class: "text-xs text-gray-400", {tour.mode.clone()} }
                     }
+                    LabelChips { labels }
                 }
             },
         )
@@ -203,6 +220,15 @@ pub fn Studio() -> Element {
                         SearchInput {
                             placeholder: t!("studio-search-placeholder").to_string(),
                             value: search,
+                            on_submit: move |_| {
+                                page.set(0);
+                                reload.with_mut(|r| *r += 1);
+                            },
+                        }
+                        // D42: effective label filter (inheritance included).
+                        SearchInput {
+                            placeholder: t!("resources-label-filter-placeholder").to_string(),
+                            value: filter_label,
                             on_submit: move |_| {
                                 page.set(0);
                                 reload.with_mut(|r| *r += 1);

@@ -58,6 +58,11 @@ export class Api {
     return res.status() === 204 ? (undefined as T) : res.json();
   }
 
+  async put<T = any>(path: string, data?: unknown): Promise<T> {
+    const res = await this.send('PUT', path, data);
+    return res.status() === 204 ? (undefined as T) : res.json();
+  }
+
   async patch<T = any>(path: string, data?: unknown): Promise<T> {
     const res = await this.send('PATCH', path, data);
     return res.status() === 204 ? (undefined as T) : res.json();

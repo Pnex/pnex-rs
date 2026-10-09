@@ -256,6 +256,16 @@ pub(super) fn PoiDetail(
                             if !coord_text.is_empty() {
                                 div { class: "text-xs text-gray-400", "{coord_text}" }
                             }
+                            // D42 labels of the POI itself (its folders carry
+                            // their own, inherited by the objects inside).
+                            div {
+                                crate::components::labels_editor::LabelsEditor {
+                                    key: "{p.id}",
+                                    kind: pnex_core::resources::KIND_MAP_PIN.to_string(),
+                                    id: p.id.clone(),
+                                    can_write: crate::state::org::current_can_write(),
+                                }
+                            }
                             // ── Objets attachés : arbre de dossiers ──
                             div { class: "space-y-1.5",
                                 h3 { class: "text-xs font-semibold text-gray-500 uppercase tracking-wide",

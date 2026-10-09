@@ -165,6 +165,7 @@ pub(super) fn build_views(
             clear_target: target,
             detach: Some(Detach::Edge(link.id)),
             delete: None,
+            labels: None,
             placement: None,
             name,
         });
@@ -213,6 +214,7 @@ pub(super) fn build_views(
             clear_target: None,
             detach: Some(Detach::Placement(p.id)),
             delete: None,
+            labels: None,
             placement: Some(p.clone()),
             name: p.device_id.clone(),
         });
@@ -268,6 +270,7 @@ fn push_folder(
         clear_target: None,
         detach: None,
         delete: Some((fid_num, name.clone())),
+        labels: Some((fid_num, name.clone())),
         placement: None,
         name,
     });
@@ -353,6 +356,7 @@ fn push_folder(
                 id: child.id.clone(),
             }),
             delete: None,
+            labels: None,
             placement,
             name,
         });

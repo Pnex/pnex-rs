@@ -1,5 +1,5 @@
 //! Device registration wizard — port of the React POC `DeviceWizard.tsx`:
-//! stepper, identifier + random generator, optional metadata, model cards,
+//! stepper, identifier + random generator, optional D42 labels, model cards,
 //! board variant, firmware (generic PneX or a custom firmware project),
 //! debug screen (generic firmware only), WiFi, review; then the server
 //! build is followed **inside the modal** (polling ~5 s).
@@ -16,6 +16,7 @@ use super::badges::{date_label, phase_badge};
 use super::edge_refs_picker::{PnexHostPicker, WifiCredentialPicker};
 use super::flash_modal::FlashModal;
 use super::icons;
+use super::labels_editor::LabelChipsInput;
 use super::modal::Modal;
 use crate::api;
 use crate::components::board_pinout_editor as board_pinout;
@@ -26,12 +27,10 @@ use crate::util::sleep;
 mod firmware_pick;
 mod naming;
 mod screen_pick;
-mod templates;
 
 use firmware_pick::*;
 use naming::*;
 use screen_pick::*;
-use templates::*;
 
 /// Retired Tier 2 model (custom_device), replaced by the custom firmware
 /// IDE: never offered, even if an old catalogue row still exists.
@@ -63,7 +62,9 @@ fn is_agent(name: &str) -> bool {
 pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element {
     let mut step = use_signal(|| Step::Identity);
     let mut device_id = use_signal(String::new);
-    let mut meta_rows = use_signal(Vec::<(String, String)>::new);
+    // D42 labels collected before the device exists, written through the
+    // resources labels API right after creation.
+    let labels = use_signal(pnex_core::resources::LabelSet::new);
     let selected = use_signal(|| None::<pnex_core::PredefinedDevice>);
     let mut model_search = use_signal(String::new);
     // Variante de board (chips du Model step) — figée à l'enregistrement
@@ -117,13 +118,6 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
             toasts::error("wizard-id-too-long");
             return;
         }
-        if meta_rows()
-            .iter()
-            .any(|(k, v)| k.trim().is_empty() && !v.trim().is_empty())
-        {
-            toasts::error("wizard-metadata-key-required");
-            return;
-        }
         step.set(Step::Model);
     };
     let go_identity = move |_| step.set(Step::Identity);
@@ -136,13 +130,13 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
         if is_agent(&model.name) {
             // Edge agent: created right away, then installed on a machine.
             let id = device_id().trim().to_string();
-            let metadata = rows_to_json(&meta_rows());
+            let initial_labels = labels();
             creating.set(true);
             spawn(async move {
                 let outcome = api::devices::create(pnex_core::CreateDevice {
                     device_id: id,
                     predefined_device_name: model.name.clone(),
-                    metadata,
+                    metadata: None,
                     board_id: None,
                     firmware_project_id: None,
                 })
@@ -151,6 +145,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                 match outcome {
                     Ok(body) => match body.get("id").and_then(serde_json::Value::as_i64) {
                         Some(pk) => {
+                            write_initial_labels(pk, &initial_labels).await;
                             agent_pk.set(Some(pk));
                             on_changed.call(());
                             step.set(Step::AgentInstall);
@@ -197,13 +192,13 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
             }
         };
         let id = device_id().trim().to_string();
-        let metadata = rows_to_json(&meta_rows());
+        let initial_labels = labels();
         creating.set(true);
         spawn(async move {
             let outcome = api::devices::create(pnex_core::CreateDevice {
                 device_id: id.clone(),
                 predefined_device_name: model.name.clone(),
-                metadata,
+                metadata: None,
                 board_id: variant_board_id(),
                 firmware_project_id: firmware_pick(),
             })
@@ -221,6 +216,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                     match serde_json::from_value::<pnex_core::Device>(body) {
                         Ok(device) if device.device_token.is_some() => {
                             let device_pk = device.id;
+                            write_initial_labels(device_pk, &initial_labels).await;
                             created.set(Some(device));
                             on_changed.call(());
                             {
@@ -382,51 +378,10 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                             span { class: "text-[11px] text-gray-400", "{device_id().chars().count()}/16" }
 
                             div {
-                                div { class: "flex items-center justify-between mb-2",
-                                    span { class: "text-xs font-semibold text-gray-500 uppercase tracking-wider",
-                                        {t!("wizard-metadata-title")}
-                                    }
-                                    button {
-                                        class: "text-sm text-blue-600 hover:text-blue-700",
-                                        r#type: "button",
-                                        onclick: move |_| meta_rows.with_mut(|rows| rows.push((String::new(), String::new()))),
-                                        icons::Plus { class: "h-4 w-4 inline mr-1" }
-                                        {t!("wizard-metadata-add")}
-                                    }
+                                span { class: "block mb-2 text-xs font-semibold text-gray-500 uppercase tracking-wider",
+                                    {t!("wizard-labels-title")}
                                 }
-                                for (index, row) in meta_rows().iter().enumerate() {
-                                    div { class: "flex gap-2 mb-2", key: "{index}",
-                                        input {
-                                            class: "w-1/3 px-3 py-2 border border-gray-300 rounded-lg text-sm",
-                                            r#type: "text",
-                                            placeholder: t!("wizard-metadata-key"),
-                                            value: "{row.0}",
-                                            oninput: move |event| {
-                                                meta_rows.with_mut(|rows| rows[index].0 = event.value());
-                                            },
-                                        }
-                                        input {
-                                            class: "flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm",
-                                            r#type: "text",
-                                            placeholder: t!("wizard-metadata-value"),
-                                            value: "{row.1}",
-                                            oninput: move |event| {
-                                                meta_rows.with_mut(|rows| rows[index].1 = event.value());
-                                            },
-                                        }
-                                        button {
-                                            class: "px-2 text-gray-400 hover:text-red-600 transition-colors",
-                                            r#type: "button",
-                                            onclick: move |_| {
-                                                meta_rows
-                                                    .with_mut(|rows| {
-                                                        rows.remove(index);
-                                                    })
-                                            },
-                                            icons::Trash2 { class: "h-4 w-4" }
-                                        }
-                                    }
-                                }
+                                LabelChipsInput { labels, can_write: true }
                             }
 
                             div { class: "flex justify-end",
@@ -619,7 +574,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                 review_panel(
                                     &device_id(),
                                     &selected(),
-                                    &meta_rows(),
+                                    labels,
                                     rev_ssid.as_deref(),
                                     rev_host.as_deref(),
                                     true,
@@ -957,7 +912,7 @@ fn VariantChip(
 fn review_panel(
     device_id: &str,
     selected: &Option<pnex_core::PredefinedDevice>,
-    rows: &[(String, String)],
+    labels: Signal<pnex_core::resources::LabelSet>,
     ssid: Option<&str>,
     host: Option<&str>,
     with_build: bool,
@@ -966,9 +921,7 @@ fn review_panel(
         .as_ref()
         .map(|pd| pd.pretty_name.clone().unwrap_or_else(|| pd.name.clone()))
         .unwrap_or_default();
-    let metadata = rows_to_json(rows)
-        .map(|value| value.to_string())
-        .unwrap_or_else(|| "—".into());
+    let has_labels = !labels.read().is_empty();
     rsx! {
         div { class: "space-y-3 text-sm",
             div { class: "flex justify-between border-b border-gray-100 pb-2",
@@ -980,8 +933,12 @@ fn review_panel(
                 span { class: "font-medium text-gray-900", {model} }
             }
             div { class: "flex justify-between gap-4 border-b border-gray-100 pb-2",
-                span { class: "text-gray-500 shrink-0", {t!("devices-metadata")} }
-                code { class: "text-gray-900 break-all text-right", {metadata} }
+                span { class: "text-gray-500 shrink-0", {t!("resources-labels-title")} }
+                if has_labels {
+                    LabelChipsInput { labels, can_write: false }
+                } else {
+                    span { class: "text-gray-900", "—" }
+                }
             }
             if with_build {
                 div { class: "flex justify-between border-b border-gray-100 pb-2",
@@ -1000,5 +957,22 @@ fn review_panel(
                 }
             }
         }
+    }
+}
+
+/// Writes the labels collected by the wizard on the freshly created device
+/// (D42). A failure only toasts: the device itself is already registered.
+async fn write_initial_labels(device_pk: i64, labels: &pnex_core::resources::LabelSet) {
+    if labels.is_empty() {
+        return;
+    }
+    if let Err(err) = api::resources::put_labels(
+        pnex_core::resources::KIND_DEVICE,
+        &device_pk.to_string(),
+        labels,
+    )
+    .await
+    {
+        toasts::error(format!("{err}"));
     }
 }
