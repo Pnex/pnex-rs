@@ -70,6 +70,7 @@ fn field_status(status: StatusCode, field: &str, msg: &str) -> Response {
 }
 
 // Submodules (pure code moves from the former single-file controller).
+mod board;
 mod catalogue;
 mod crud;
 mod dto;
@@ -79,6 +80,7 @@ mod token;
 // Private globs: bring every submodule's visible items into this module's
 // namespace so `routes()` resolves its handlers and sibling submodules share
 // helpers through `use super::*;`.
+use board::*;
 use catalogue::*;
 use crud::*;
 use dto::*;
@@ -104,6 +106,7 @@ pub fn routes() -> Routes {
             get(detail).put(update).patch(update).delete(delete),
         )
         .add("/{id}/peripherals", put(update_peripherals))
+        .add("/{id}/board", put(update_board))
 }
 
 /// Routes du catalogue global (préfixe /api/v1 commun).
