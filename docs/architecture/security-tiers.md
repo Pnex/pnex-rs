@@ -323,7 +323,8 @@ D157 : reflash USB de toutes les cartes à la mise à jour).
   certificat client émis à l'enrôlement (les anciens révoqués),
   `device_host`/`device_port` rendus à l'agent, client rustls en mTLS ;
   E2E réel OK via 4443. `PNEX_DEVICE_HOST` (nom du point d'entrée devices
-  compilé dans les firmwares) prioritaire sur `PNEX_DEVICE_PORT`.
+  compilé dans les firmwares) : `host[:port]` ou `:port` (LAN), seule
+  variable lue par le serveur depuis le contrat strict du soir.
   pnex-deploy : compose + `install.sh` (secret d'edge généré, port 4443),
   chart Helm 0.3.0 (`deviceEdge` : nginx dédié derrière un Service
   LoadBalancer sur `devices.<publicHost>`, CA + certificat générés une fois
@@ -335,3 +336,10 @@ D157 : reflash USB de toutes les cartes à la mise à jour).
   compromission impose aujourd'hui une nouvelle CA + rebuild + flash de
   toute l'org — l'outillage (double CA de transition, OTA) reste EX-A8
   en V3.
+- **2026-10-09 (nuit)** — Contrat strict (`2359a27`) : jeton brut en
+  en-tête, plus de `device_id` en URL ni de base64 sur le fil, firmware
+  wss/https seulement (plus de `WS_SSL` ni de `setInsecure`), signature
+  OTA obligatoire. Revalidé sur le banc (8266 + C6, Wi-Fi) : connexion
+  mTLS sur 4443 ; sans certificat → 4014 (443 et 4443) ; en-têtes d'edge
+  forgés en direct → 4013 ; jeton à l'ancien format base64 → 4001 ; OTA
+  signée 1→3 et 2→4 ; rétrogradation forcée refusée par la carte.

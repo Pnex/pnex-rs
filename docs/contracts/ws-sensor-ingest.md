@@ -7,32 +7,31 @@
 ## 1. Connexion
 
 ```
-GET wss://<hôte>/ws/sensor/ingest?device_id=<base64(device_id)>
-Authorization: Bearer <base64(token)>
+GET wss://<point d'entrée devices>/ws/sensor/ingest
+Authorization: Bearer <token>
 ```
 
 - **Jeton dans l'en-tête `Authorization`, jamais dans l'URL** (D154,
   lot L2 de `security-tiers.md` §6 bis) : une URL finit dans les journaux
-  d'accès. Le paramètre `token` de l'URL est encore lu pendant la
-  transition L2 (cartes flashées avant), puis supprimé.
+  d'accès. Aucun paramètre d'URL : le device est celui du jeton.
 - **TLS obligatoire** : le device passe par l'edge TLS, qui pose
   `X-Forwarded-Proto: https` et le secret de l'edge (`X-Pnex-Edge`) ;
   sinon close **4013** (« TLS required »). Désactivé seulement dans la
   config de test (`ingestion.require_tls`).
 - **Certificat client** (D153) : le device se connecte au point d'entrée
-  devices (`PNEX_DEVICE_PORT`, 4443 en LAN) avec le certificat émis par la
+  devices (`PNEX_DEVICE_HOST`, `:4443` en LAN) avec le certificat émis par la
   CA de son org au build ; sans certificat valide **de ce device**, close
   **4014** (« Client certificate required »). Désactivé seulement en test
   (`ingestion.require_client_cert`).
-- `token` et `device_id` sont **encodés base64 côté device** ; le serveur
-  décode puis **trime** (les valeurs encodées à la `echo | base64` portent
-  un `\n` final).
+- Le jeton est envoyé **tel quel** (plus de base64 sur le fil depuis le
+  2026-10-09) ; un jeton encodé est inconnu (4001).
 - Le token vient de la création du device (`POST /api/v1/devices` →
   `device_token.token`) ; il est unique par device et activable/désactivable.
 - Pas de sous-protocole : l'upgrade est acceptée ou refusée sur l'en-tête
-  et `device_id`, puis la poignée de main Noise (§2) ouvre le lien. Même
-  règle pour `/ws/device`, `/ws/camera` et le téléchargement OTA
-  (`GET /api/v1/ota/firmware/{device}/{version}?device_id=…` + en-tête).
+  (jeton + certificat), puis la poignée de main Noise (§2) ouvre le lien.
+  Même règle pour `/ws/device`, `/ws/camera` et le téléchargement OTA
+  (`GET /api/v1/ota/firmware/{device}/{version}` + en-tête, le chemin doit
+  nommer le device du jeton), en `https` uniquement.
 
 ## 2. Chiffrement : lien Noise (D156, remplace D8 le 2026-10-08)
 
@@ -84,12 +83,13 @@ l'enregistrement), prologue `PNEX-NOISE-1|<device_id>`.
 
 | Code | Cause                                                         |
 |------|---------------------------------------------------------------|
-| 4001 | token inconnu/inactif, décodage impossible, erreur inattendue |
-| 4002 | paramètre `token` absent                                      |
+| 4001 | jeton inconnu/inactif, clé invalide, erreur inattendue        |
+| 4002 | en-tête `Authorization: Bearer` absent                        |
 | 4003 | device déjà connecté (bail tenu — cf. §5)                     |
 | 4005 | token invalidé en cours de session (revalidation ~10 s)       |
-| 4006 | `device_id` ≠ device du token                                 |
-| 4008 | clé de chiffrement absente/invalide                           |
+| 4011 | poignée de main Noise refusée                                 |
+| 4013 | arrivé hors de l'edge TLS                                     |
+| 4014 | certificat client absent ou d'un autre device                 |
 
 ## 5. Bail de vie / anti-clone (D9, décision user 2026-08-16)
 

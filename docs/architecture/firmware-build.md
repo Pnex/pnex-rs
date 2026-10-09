@@ -188,8 +188,8 @@ firmware:build-docker`).
   `firmware_config`. Le worker résout config + secrets (store), **extrait
   la source embarquée dans un tmp par job** puis spawn `pio run` avec les
   variables §2.1 (WIFI_SSID, WIFI_PASSWORD, HOST, TOKEN, DEVICE_ID **en
-  base64** — un SSID avec espaces casserait le flag `-D` ; `WS_SSL`
-  forcé à `true` par le serveur depuis D70).
+  base64** — un SSID avec espaces casserait le flag `-D` ; plus de
+  `WS_SSL` : toujours wss).
 - **UI (page Devices / wizard)** — livré : le wizard collecte WiFi, hôte
   (toujours wss depuis D70) **+ la carte PIO**. (Les snippets copiables du
   device custom Tier 2 sont retirés — cf. §5 ; un code utilisateur passe
@@ -244,7 +244,7 @@ Depuis la lib `firmware/lib/pnex/` (`PneX`), le firmware générique est
 **publiable** (`pio pkg publish`) et compilable par l'utilisateur final :
 
 - **Wizard custom** (`custom_device`, type `mixed`) : étape Config avec
-  WiFi/hôte/ws_ssl + sélecteur de carte (nodemcuv2 / esp32dev /
+  WiFi/hôte + sélecteur de carte (nodemcuv2 / esp32dev /
   seeed_xiao_esp32c3 / autre), puis génération de **deux snippets**
   copiables — `platformio.ini` (secrets b64 **inline**, pas de
   `${sysenv.*}` : le build utilisateur n'a pas d'env à injecter) et
