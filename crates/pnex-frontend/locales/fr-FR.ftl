@@ -598,10 +598,11 @@ flows-versions-deploy-confirm-message = Le runtime rechargera cette version ant�
 
 # ─────────────── Flux ETL (D18) — nœuds device/calc/metric (Phase 6) ───────────────
 flows-palette-device-read = Appareil (lecture)
-flows-palette-device-read-help = Lit les dernières valeurs des pins d'un seul appareil — un port par pin + un port nom du device
+flows-palette-device-read-help = Lit les dernières valeurs des pins d'un seul appareil — un port par pin + un dernier port avec toutes les valeurs
 flows-palette-device-write = Appareil (écriture)
 flows-palette-device-write-help = Écrit les sorties d'un seul appareil — payload map pin → valeur (1/0 ou PWM duty 0-100)
 flow-port-device-name = nom
+flow-port-device-all = tout
 flows-palette-calc = Calcul
 flows-palette-calc-help = Expression sur les lectures (variables = clés de payload)
 flows-palette-metric = Métrique
@@ -1576,8 +1577,8 @@ functions-ref-title = Référence
 functions-ref-search-placeholder = Chercher une fonction (ex. sorted, JSON)
 functions-ref-no-result = Aucune fonction ne correspond — essayez un autre mot.
 functions-ref-unavailable-title = Pas disponible dans une fonction
-functions-ref-unavailable-starlark = Boucles while et récursion (désactivées en Starlark). · import, fichiers, réseau : passez par les nœuds natifs (SQL, HTTP, MQTT).
-functions-ref-unavailable-js = fetch, require / import, setTimeout. · Fichiers, réseau : passez par les nœuds natifs (SQL, HTTP, MQTT).
+functions-ref-unavailable-starlark = Boucles while et récursion (désactivées en Starlark). · import, fichiers, réseau : passez par les nœuds natifs (requête HTTP, lecture et écriture d’appareil, mémoire).
+functions-ref-unavailable-js = fetch, require / import, setTimeout. · Fichiers, réseau : passez par les nœuds natifs (requête HTTP, lecture et écriture d’appareil, mémoire).
 functions-ref-docs-title = Documentation complète
 functions-ref-insert = Insérer dans l'éditeur
 functions-ref-group-context = Contexte PNEX

@@ -465,7 +465,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
             rows.push((
                 config.pins.len(),
                 rel_y(config.pins.len()),
-                t!("flow-port-device-name").to_string(),
+                t!("flow-port-device-all").to_string(),
                 node.id.clone(),
             ));
             rows

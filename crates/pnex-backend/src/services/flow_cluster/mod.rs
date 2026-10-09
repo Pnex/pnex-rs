@@ -436,9 +436,11 @@ async fn owner_of(db: &DatabaseConnection, org_id: i64) -> Option<String> {
 type FenceCache = std::collections::HashMap<i64, (String, i64, std::time::Instant)>;
 
 /// Is a runtime write for `org_id` stamped with `fence` (`<id>:<boot>`,
-/// header [`pnex_core::FLOW_WORKER_HEADER`]) allowed? No header = legacy
-/// caller, allowed (the service token already authenticates; fencing is
-/// about correctness, not access). Owner lookups are cached 1 s.
+/// header [`pnex_core::FLOW_WORKER_HEADER`]) allowed? A runtime always
+/// stamps its fence; a call without one comes from the backend itself (the
+/// notify Test button goes through the same internal route) and is
+/// allowed: the service token already authenticates, fencing is about
+/// correctness, not access. Owner lookups are cached 1 s.
 pub async fn fence_ok(db: &DatabaseConnection, org_id: i64, fence: Option<&str>) -> bool {
     static CACHE: std::sync::OnceLock<std::sync::Mutex<FenceCache>> = std::sync::OnceLock::new();
     let Some(raw) = fence else {

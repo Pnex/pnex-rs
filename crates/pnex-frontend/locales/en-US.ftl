@@ -598,10 +598,11 @@ flows-versions-deploy-confirm-message = The runtime will reload this earlier ver
 
 # ─────────────── ETL flows (D18) — device/calc/metric nodes (Phase 6) ───────────────
 flows-palette-device-read = Device (read)
-flows-palette-device-read-help = Reads the latest pin values of a single device — one port per pin plus a device-name port
+flows-palette-device-read-help = Reads the latest pin values of a single device — one port per pin plus a last port with every value
 flows-palette-device-write = Device (write)
 flows-palette-device-write-help = Writes a single device's outputs — payload map pin → value (1/0 or PWM duty 0-100)
 flow-port-device-name = name
+flow-port-device-all = all
 flows-palette-calc = Calc
 flows-palette-calc-help = Expression over the readings (variables = payload keys)
 flows-palette-metric = Metric
@@ -1577,8 +1578,8 @@ functions-ref-title = Reference
 functions-ref-search-placeholder = Search a function (e.g. sorted, JSON)
 functions-ref-no-result = No matching function — try another word.
 functions-ref-unavailable-title = Not available in a function
-functions-ref-unavailable-starlark = While loops and recursion (disabled in Starlark). · import, files, network: use the native nodes (SQL, HTTP, MQTT).
-functions-ref-unavailable-js = fetch, require / import, setTimeout. · Files, network: use the native nodes (SQL, HTTP, MQTT).
+functions-ref-unavailable-starlark = While loops and recursion (disabled in Starlark). · import, files, network: use the native nodes (HTTP fetch, device read and write, memory).
+functions-ref-unavailable-js = fetch, require / import, setTimeout. · Files, network: use the native nodes (HTTP fetch, device read and write, memory).
 functions-ref-docs-title = Full documentation
 functions-ref-insert = Insert into editor
 functions-ref-group-context = PNEX context
