@@ -485,6 +485,29 @@ Tous trouvés par la suite e2e, chacun couvert par un test (unitaire ou e2e) :
   contrôles et durées de l'Écriture mémoire nommés. Reste les labels suivis
   d'un composant (sélecteurs, `SecretField`…) et le passage du projet a11y
   en strict.
+  — 2026-10-09 : inventaire complet des `label {}` sans `for` (hors
+  fichiers en cours d'édition par une autre session) : 129 enveloppent
+  déjà leur contrôle (accessibles, inchangés) ; les 20 autres sont
+  rattachés — 7 `for`/`id` vers un `input`/`select`/`textarea` natif
+  (source de rôle Maison, sélecteurs WiFi/hôte de `edge_refs_picker`,
+  choix de fonction, canal de test des modèles de notification, labels
+  des modèles ML, emoji POI), 5 composants (`SecretField` : ids
+  par instance ; `TemplateEditor` : prop `id` existante branchée sur sujet
+  et corps ; `HomeIconPicker` : prop `labelledby` ; `FormRow` des
+  contrôles : prop `field_id`), 7 titres de listes/groupes de boutons
+  passés en `p` + `role="group"`/`aria-labelledby` sur chaque ligne
+  (seuils, états, options de contrôle, variables de modèle, composants
+  de mélange, fenêtre de visualisation), 1 titre sans contrôle (hôte
+  imposé) passé en `p`. axe : `empty-table-header` corrigé dans le socle
+  (`Column::header_sr_only`, en-tête « Actions »/« Sélection » en
+  `sr-only` sur caméras, contrôles et système) ; `link-in-text-block`
+  corrigé (lien souligné dans la carte de rétention de /system). Reste :
+  1 label de `admin_status.rs` (rétention globale, fichier alors en
+  édition ailleurs), `color-contrast` (7 routes, non traité), audit des
+  modales ouvertes, et le passage en strict (`PNEX_E2E_A11Y_STRICT=1`)
+  qui demande une passe e2e contre la stack ; les helpers
+  `fieldAfterLabel` des tests e2e peuvent désormais migrer vers
+  `getByLabel`.
 
 ### O22 — Rebuild = même build record = même version firmware
 
@@ -556,7 +579,14 @@ Tous trouvés par la suite e2e, chacun couvert par un test (unitaire ou e2e) :
   utilisateurs (un seul compte Rauthy de test).
 - **Matériel** : séquence manuelle (`task e2e:hardware`, ports + WiFi en
   variables) ; chaque run réenregistre les cartes (nouveau jeton, ~4 min).
-- **Statut** : ouvert.
+- **Statut** : CI posée le 2026-10-09, **à valider au premier run** —
+  `.github/workflows/e2e.yml` (nightly 02:30 UTC + `workflow_dispatch` avec
+  tag d'image et filtre `--grep`, jamais sur `pull_request`, dépôt `Pnex`
+  seulement) : images `main` publiées, stack complète via la surcouche
+  `compose.ci.yaml` (tout en localhost HTTP, issuer
+  `http://localhost:8080/auth/v1/`), suite hors `@hardware`, rapport
+  Playwright + logs de la stack en artefact. Non couvert inchangé
+  (annotations, vision, assistant, Android/desktop, multi-utilisateurs).
 
 ## 2026-10-04 — audit d'affichage mobile (APK sur téléphone, viewport 392 px)
 
@@ -796,8 +826,11 @@ Contexte : réinstallation à neuf du cluster perso (chart pnex 0.2.0,
   `/admin/status` (admin plateforme).
 - **Statut** : ✅ corrigé (2026-10-08) — `tiers_enforced()` : quotas et
   intervalle de build seulement en `saas` (test
-  `self_hosted_ignores_subscription_tiers`). Reste ouvert : changement de
-  tier par org depuis `/admin/status`.
+  `self_hosted_ignores_subscription_tiers`). Changement de tier par org
+  livré le 2026-10-09 : `GET /system/tiers` + `PUT /system/orgs/{id}/tier`
+  (admin plateforme, `tier-unknown` → 422), liste déroulante dans
+  `/admin/status` (test `org_tier_is_changed_by_platform_admins_only`).
+  `api.defaultOrgTier` ajouté au chart (pnex-deploy, non commité).
 
 ### O38 — Chart Helm : aucune CA d'appareil → tout build wss refusé
 
@@ -821,9 +854,12 @@ Contexte : réinstallation à neuf du cluster perso (chart pnex 0.2.0,
   (OLED externe D2/D1) au lieu de `nodemcu_v3_oled` (OLED soudé D6/D5) ; la
   board est figée à l'enregistrement → suppression, réenregistrement,
   rebuild, reflash.
-- **Statut** : résolu (opératoire). Piste produit : au premier announce,
-  signaler une board incohérente quand le firmware détecte un écran sur
-  d'autres broches.
+- **Statut** : ✅ corrigé (2026-10-09) — « Changer de carte » dans le
+  détail du device : `PUT /api/v1/devices/{id}/board` (rôles d'écriture,
+  même SoC sinon `device-board-soc-mismatch`, écran soudé qui suit la
+  carte), puis rebuild + mise à jour ; plus de suppression/réenregistrement
+  (test `device_board.rs`). Reste la piste « détection au premier
+  announce » (firmware).
 
 ### O40 — État laissé par la démo (dev.pnex.io)
 

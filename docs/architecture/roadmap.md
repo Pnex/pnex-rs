@@ -134,6 +134,8 @@ tâche).
 | **Coffre de secrets** (D110–D119) | **Livré 2026-10-01** — S1–S8 (`secrets.md`) : XChaCha20-Poly1305, trousseau en env, références typées, runtime qui résout par id, rôle `member`, rotation + rechiffrement | Clés device et tokens agent hors coffre (chiffrement au repos possible plus tard) |
 | **API publique** | **Rien** — aucune API destinée aux programmes tiers en dehors de l'agent edge (push de valeurs) | Horizon P3 (abonnements live, jetons à portée, REST documentée) |
 | **Mémoire d'org** (Valkey) | Livré — `memory-write`/`memory-read` par org, source « Mémoire » des widgets | — |
+| **Flux média entrants** (D159–D175) | **PRD proposé** 2026-10-09 (`media-ingest.md`) — rien d'implémenté | Validation du PRD, puis lot 0 (POC ASR) — P2.13 |
+| **Ontologie / 0.2.0** (D176–D191) | **PRD proposé** 2026-10-09 (`ontology.md`) ; graine existante = couche Resource D42 | Validation du PRD, puis spike L0 — P2.14 |
 
 ## P0 — Consolidation : fermer le livré non validé
 
@@ -199,6 +201,42 @@ Le backend (labels GIN, containment, edges) est livré ;
 il manque l'UI (arbre des couches org). Sans elle, la couche org n'existe
 pas pour l'utilisateur — c'est le plus grand trou user-facing du socle.
 
+> **2026-10-09** : filtre `label=` (effectif, héritage compris) ajouté aux
+> listes devices, dashboards et visites (`labels::list_filter`, test
+> `resources.rs::label_filter_on_devices_and_dashboards_lists`) ; l'UI
+> n'expose encore les labels que sur les médias. **À trancher avant
+> l'UI** : la fiche device affiche déjà une carte « Labels » qui édite les
+> *métadonnées* libres (`metadata`), distincte des labels D42 — fusionner
+> (les métadonnées deviennent des labels D42) ou renommer l'une des deux ;
+> et où vit l'arbre (page dédiée « Organisation » vs extension du tiroir
+> POI déjà en arbre mixte).
+>
+> **2026-10-09 (tranché, livré non commité)** : un seul arbre, celui des
+> lieux, deux entrées — la Carte et la page **Sites** (`/sites`, menu
+> Visualisation : liste pleine page des repères, même tiroir que la carte,
+> « Vue carte » / « Vue liste » pour basculer) ; fil d'Ariane
+> **Emplacement** « Site › dossier › dossier » dans les fiches device et
+> média et dans les éditeurs dashboard / visite, chaque étape ouvre le site
+> (`GET /resources/{kind}/{id}/location`, test
+> `location_breadcrumb_follows_folders_and_site_links`). Pas de page « arbre
+> abstrait » (« Organisations » = espaces de travail, nom déjà pris).
+>
+> **2026-10-09 (tranché, décision utilisateur)** : les labels sont **un seul
+> mécanisme global**, les labels D42. La carte « Labels » de la fiche device
+> édite désormais les labels D42 (`LabelsEditor`), le wizard d'enregistrement
+> les collecte (composant partagé `LabelChipsInput`, écrits via
+> `PUT /resources/device/{id}/labels` juste après la création) ; l'UI
+> n'envoie plus `metadata` (champ/API conservés côté backend, legacy masqué,
+> pas de migration ; `KvPillsEditor` supprimé). Même éditeur partout :
+> bouton « Labels » de la barre des éditeurs flow / dashboard / visite
+> (`LabelsButton`), section du tiroir POI (`map_pin`), icône étiquette des
+> dossiers de l'arbre POI (`folder`). Filtre label (`SearchInput`) sur les
+> listes devices, dashboards, visites et flows ; `label=` ajouté à
+> `GET /flows` (test `label_filter_on_flows_list`). Pas de chips de labels
+> dans les lignes de liste (aucun endpoint batch hors médias). La page
+> Événements n'affiche plus de JSON brut (liste clé/valeur aplatie). Reste
+> ouvert : la vue arbre « Organisation » dédiée.
+
 ### P1.2 — Android « distribuable »
 
 > **Étapes 1–2 livrées le 2026-10-02** (branche
@@ -212,7 +250,18 @@ pas pour l'utilisateur — c'est le plus grand trou user-facing du socle.
 2. ~~Branding APK~~ — `[bundle] identifier = "io.pnex.app"` dans
    Dioxus.toml (sortie du placeholder `com.example.PnexFrontend`). Une
    APK installée avant ce changement est une autre app : la désinstaller.
-3. Reste : keystore de release (Play Store), libellé de l'app.
+3. ~~Keystore de release~~ — plomberie livrée le 2026-10-09 :
+   `task build:frontend:android:release` (type `release` non debuggable,
+   signé par la clé lue dans l'environnement, R8 désactivé car il casse
+   les classes atteintes par JNI, `versionCode` dérivé du dernier tag
+   `v*` : `0.1.0-beta.7` → 100207) ; job CI `android` signé dès que les
+   secrets `ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`,
+   `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` existent (repli debug
+   sinon). Libellé de l'app déjà « PNeX ». **Reste** : générer la clé de
+   release (à conserver hors du dépôt, sauvegardée : la perdre interdit
+   toute mise à jour sur le Play Store), la poser en secrets, valider
+   l'APK release sur téléphone (les testeurs désinstallent l'APK debug :
+   signature différente).
 
 ### P1.3 — F3 : firmware `regulator` (D20)
 
@@ -448,6 +497,65 @@ Jardin. Lots A → E.
 - **REP-2 — Code PIN serrure/alarme** : écriture protégée vérifiée côté
   serveur ; d'ici là, simple confirmation.
 
+### P2.13 — Ingestion de flux média : transcription, plages, rapports (ajout 2026-10-09) — **PRD proposé**
+
+PRD `media-ingest.md` (D159–D175), zéro code avant validation. Capter
+des flux continus (Icecast, HLS, DASH, RTSP, DVB-T via Tvheadend) en
+**audio seul**, les transcrire en quasi temps réel sur un worker GPU
+(job Loco tag `asr`), ranger le temps en **plages** annoncées/recalées
+et produire des **rapports figés** dans le studio. Premier cas d'usage :
+couverture des sujets par chaîne (radios et TNT publiques), agrégats
+seulement. Invariants : le runtime de flows ne voit que du texte
+(`media-source`), audio éphémère par défaut, aucune identification
+vocale, egress filtré, garde-fous juridiques encodés (TDM, extraits
+courts sourcés). Lots 0 → 5 :
+
+0. **POC ASR** : crate `pnex-asr` (trait `Transcriber`), sherpa-onnx vs
+   whisper.cpp sur 1 h de radio annotée (WER, noms propres, RTF GPU/Pi).
+1. **Capture + transcription** (D159–D162, D165–D167) : France Inter
+   24 h, couverture ≥ 99 %, zéro audio résiduel.
+2. **Flows + séries** (D163, D168, D171) : dashboard « mentions par
+   heure » sur 3 flux.
+3. **Plages + métadonnées** (D169, D170) : stats par émission sur une
+   semaine — dépend du parseur XML de P2.11.
+4. **Studio de rapports** (D173, D174) : rapport « factuel » hebdo en
+   cron — **avis d'un avocat PI avant toute publication grand public**.
+5. **Diarisation** (D166) : temps de parole par plage.
+
+Dépendance : fabric de workers (P2.7) pour le worker GPU distant,
+contournable au lot 1 par un process `--worker` joint en mesh.
+Alignement avec P2.14 : si l'implémentation démarre après le lot L1 de
+l'ontologie, `media_stream` et `time_range` naissent comme types système.
+Décision #16.
+
+### P2.14 — 0.2.0 : noyau ontologique (objets, liens, temps, actions) (ajout 2026-10-09) — **PRD proposé**
+
+PRD `ontology.md` (D176–D191), cible de la **version 0.2.0**, zéro code
+avant validation. Généralise la couche Resource D42 : types d'objets
+définis par l'utilisateur (données versionnées, `KindSpec` dérivé),
+propriétés typées dont temporelles (désignent une série ou un stream
+O2, ne copient rien), liens typés à validité temporelle, **le temps
+appartient aux objets** (un capteur remplacé ne casse plus la courbe de
+la pompe), provenance sur chaque fait, API de requête JSON portable
+PG/sqlite, explorateur générique, packs métier. Les types système
+restent dans leurs tables (adaptateurs) ; migration 0.1 → 0.2 **non
+destructive**.
+
+| Lot | Contenu | Sortie |
+|---|---|---|
+| L0 | Spike : types en données dérivant le `KindSpec` | registre généré == registre codé |
+| L1 | D176–D178 : types, objets, propriétés scalaires, YAML | « Pompe » + 100 objets, PG + sqlite |
+| L2 | D179–D180 : types de liens, validité temporelle, migration `placed_on`/`placed_at` | requête `as_of` correcte |
+| L3 | D178 temporel + D181 : liaisons device → objet | remplacement de capteur sans rupture |
+| L4 | D185–D187 : requête, explorateur, dashboards de type | dashboard de type Pompe |
+| L5 | D184, D189, D191 : provenance, assistant, migration | base 0.1 réelle migrée |
+| 0.2.0 | L0–L5 + pack « Maintenance augmentée » | release |
+| 0.3 | D183 actions, packs Maison et Couverture médiatique, ACL par objet | — |
+
+**Risque de dispersion acté** : pendant la 0.2.0, aucun nouveau pilier
+fonctionnel ne démarre (correctifs et finition seulement) — à arbitrer
+avec P2.13 et P2.1. Décision #17.
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
@@ -474,6 +582,15 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   API REST documentée sur les mêmes jetons. Aujourd'hui seul le push de
   valeurs existe, via l'agent edge (D95–D99). Hors 0.1.0 : la priorité
   est le contenu pour faire adhérer une communauté. Décision #11.
+- **Profils de sécurité, du maker au militaire** (`security-tiers.md`,
+  D148–D152, ajout 2026-10-08) : exigences les plus élevées tracées
+  (IEC 62443 SL1 → SL4, CRA, ANSSI), activables par flags
+  (`open` par défaut, `industrial`, `critical`, `sovereign`). Vagues :
+  V1 correctifs protocole pour tous (SEC-17 à SEC-19 : frames AEAD +
+  anti-rejeu, OTA signée, anti-downgrade logiciel) ; V2–V3 profils
+  industriel et critique, logiciels ; **V4 eFuses seulement après 1 à 2
+  ans de validation communautaire du firmware** ; V5 souverain sur
+  demande client. Rien d'implémenté. Décision #15.
 - **Ouvertures** : palette flow par capacité (au moment où l'éditeur
   touche aux formulaires D20), compression du fil MCU (jamais un
   prérequis), sous-titres/tours offline.
@@ -494,8 +611,11 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 | 10 | Parité n8n : périmètre V1 (logique de flux, déclencheurs, credentials, quelles intégrations d'abord) et descripteur généré vs inspecteurs dédiés | Au PRD de P2.11 |
 | 11 | API publique : transport des abonnements live (WebSocket vs SSE vs REST), modèle de jetons (portée device/flow, lecture/écriture, rotation), lien avec les déclencheurs webhook de P2.11 | Au passage de P3 à P2 |
 | 12 | ~~Base de dev antérieure à D120~~ — tranché 2026-10-03 : tout détruit, `pnex` recréée (O18) | ✅ |
-| 13 | Jetons device dans l'URL des WebSockets : logs masqués 2026-10-03 (edge, compose, Helm) ; reste auth par en-tête / premier message (O19) | Backlog |
+| 13 | ~~Jetons device dans l'URL des WebSockets~~ — tranché 2026-10-09 : en-tête `Authorization` partout (lot L2 de D153, `security-tiers.md` §6 bis), jeton en URL ignoré | ✅ |
+| 15 | Profils de sécurité : date de lancement de V1 (correctifs protocole, SEC-17 à SEC-19) ; socle de V4 (ESP-IDF C++ ou firmware Rust) ; statut CRA de PneX (avis juridique) | V1 : prochaine passe sécurité ; V4 : après 1 à 2 ans de communauté |
 | 14 | ~~Version firmware par rebuild~~ — tranché 2026-10-03 : 1 build = 1 enregistrement = 1 version, OTA en lot manuelle (O22) | ✅ |
+| 16 | Flux média : runtime ASR (sherpa-onnx, whisper.cpp ou les deux), tags de worker Loco 1.1 suffisants ou queue dédiée, superviseur de capture in-process ou séparé sur Pi, agrégation « par plage » côté O2 ou backend, plafond des extraits publiés (`media-ingest.md` §14) | Lot 0 (POC ASR) ; plafond après avis juridique |
+| 17 | Ontologie 0.2.0 : identifiant d'objet global (UUID vs `ResourceRef`), format du schéma de propriétés (maison vs JSON Schema), liaison device → objet (lien générique vs table dédiée), packs forkables ou surcouche, langage de requête textuel, spécification publique du noyau ; ordre P2.13 / P2.14 / P2.1 vu le gel des nouveaux piliers (`ontology.md` §9) | À la validation du PRD |
 
 ## Journal de la roadmap
 
@@ -605,3 +725,12 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 - **2026-10-04** — Ajout P2.12 : dashboards « Maison » (D134–D141, plan
   validé) ; mode sombre global (REP-1) et code PIN serrure/alarme (REP-2)
   reportés et consignés.
+- **2026-10-08** — Ajout en P3 : profils de sécurité du maker au
+  militaire (`security-tiers.md`, D148–D152), décision #15. Exigences
+  tracées, implémentation par vagues ; eFuses gelés jusqu'à 1 à 2 ans de
+  validation communautaire du firmware. Registre : SEC-17 à SEC-20.
+- **2026-10-09 (média + ontologie)** — Deux PRD proposés, rien
+  d'implémenté : P2.13 ingestion de flux média (`media-ingest.md`,
+  D159–D175, décision #16) et P2.14 noyau ontologique de la 0.2.0
+  (`ontology.md`, D176–D191, décision #17). Numérotation décalée de +11 à
+  l'intégration (D148–D158 déjà pris par `security-tiers.md`).
