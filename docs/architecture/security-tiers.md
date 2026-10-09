@@ -107,7 +107,7 @@ S = sovereign ; « opt » = optionnel à ce niveau), impact
 | EX-A3 | Plus de repli « clé vide = trafic en clair » : `#error` hors build mock | O | L | V1 | Fait 2026-10-08 — lien Noise NNpsk0 (D156), lot L1 |
 | EX-A4 | Jeton device hors de l'URL (en-tête ou premier message) — repli D157 seulement | O | L | V1 (D154) | Fait 2026-10-09 (lot L2) — `Authorization: Bearer` sur `/ws/device`, `/ws/sensor/ingest`, `/ws/camera`, téléchargement OTA ; jeton en URL ignoré ; validé sur NodeMCU + C6 |
 | EX-A5 | TLS obligatoire : `ws://` refusé | O | L | V1 (D154) | Fait 2026-10-09 (lot L2) — lien device refusé sans `X-Forwarded-Proto: https` de l'edge (close 4013), `ingestion.require_tls` (faux en test seulement) |
-| EX-A6 | **Identité par device en X.509** + TLS mutuel, en remplacement du jeton partagé | O (repli jeton en `open`, D157) | L | V1 (D153) | Fait 2026-10-09 (lots L3–L5) — CA ECDSA P-256 par org (clé au coffre), certificat par build, point d'entrée devices dédié (`PNEX_DEVICE_PORT`, 4443 en LAN) en `ssl_verify_client optional_no_ca`, vérification backend registre + chaîne + appartenance au device (close 4014) ; validé sur NodeMCU (BearSSL) et C6 ; reste l'agent edge (L6) |
+| EX-A6 | **Identité par device en X.509** + TLS mutuel, en remplacement du jeton partagé | O (repli jeton en `open`, D157) | L | V1 (D153) | Fait 2026-10-09 (lots L3–L5) — CA ECDSA P-256 par org (clé au coffre), certificat par build, point d'entrée devices dédié (`PNEX_DEVICE_PORT`, 4443 en LAN) en `ssl_verify_client optional_no_ca`, vérification backend registre + chaîne + appartenance au device (close 4014) ; validé sur NodeMCU (BearSSL) et C6 ; agent edge et déploiement (compose, Helm 0.3.0) faits en L6 |
 | EX-A7 | Certificats émis par **l'autorité du client** (BYOK, PKCS#11 / HSM) | C | L | V3 | Absent |
 | EX-A8 | Rotation des clés et des certificats sans reflash USB | I | L | V3 | Rotation de CA = rebuild + OTA |
 | EX-A9 | Crypto agile, algorithmes conformes aux recommandations ANSSI ; module FIPS 140-3 en option | S | L | V5 | Absent |
@@ -319,3 +319,19 @@ D157 : reflash USB de toutes les cartes à la mise à jour).
   jeton valide sans certificat → 4014 ; en-têtes de l'edge forgés en
   direct sur le backend → 4013 (SEC-21, trouvé et corrigé en route).
   Reste L6 (agent edge, pnex-deploy compose + Helm).
+- **2026-10-09 (soir)** — L6 livré, tout commité (non poussé). Agent edge :
+  certificat client émis à l'enrôlement (les anciens révoqués),
+  `device_host`/`device_port` rendus à l'agent, client rustls en mTLS ;
+  E2E réel OK via 4443. `PNEX_DEVICE_HOST` (nom du point d'entrée devices
+  compilé dans les firmwares) prioritaire sur `PNEX_DEVICE_PORT`.
+  pnex-deploy : compose + `install.sh` (secret d'edge généré, port 4443),
+  chart Helm 0.3.0 (`deviceEdge` : nginx dédié derrière un Service
+  LoadBalancer sur `devices.<publicHost>`, CA + certificat générés une fois
+  et conservés, épinglés par les firmwares ; certificat public possible
+  via `deviceEdge.tls.existingSecret`). Chart rendu et config nginx testée
+  en conteneur ; **jamais déployé sur un cluster** — à valider sur
+  dev.pnex.io (DNS `devices.*` + IP du LB). Rotation de CA d'org : non
+  outillée en V1 (CA 30 ans, certificats devices 10 ans) ; une
+  compromission impose aujourd'hui une nouvelle CA + rebuild + flash de
+  toute l'org — l'outillage (double CA de transition, OTA) reste EX-A8
+  en V3.
