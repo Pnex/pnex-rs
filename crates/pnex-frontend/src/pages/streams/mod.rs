@@ -166,6 +166,23 @@ pub fn Streams() -> Element {
     }
 }
 
+/// Capture failure code (`media_streams.capture_error`) → sentence;
+/// unknown codes stay verbatim.
+fn capture_error_label(code: &str) -> String {
+    match code {
+        "unreachable" => t!("streams-error-unreachable").to_string(),
+        "format-unsupported" => t!("streams-error-format-unsupported").to_string(),
+        "encrypted" => t!("streams-error-encrypted").to_string(),
+        "too-large" => t!("streams-error-too-large").to_string(),
+        "stalled" => t!("streams-error-stalled").to_string(),
+        "decoder-failed" => t!("streams-error-decoder-failed").to_string(),
+        "decoder-missing" => t!("streams-error-decoder-missing").to_string(),
+        "secret-unreadable" => t!("streams-error-secret-unreadable").to_string(),
+        "store-failed" => t!("streams-error-store-failed").to_string(),
+        other => other.to_string(),
+    }
+}
+
 /// Badge of the capture state (disabled streams read « off »).
 fn capture_badge(s: &MediaStream) -> (&'static str, String) {
     if !s.enabled {
@@ -239,8 +256,10 @@ fn StreamRow(
                 span { class: "inline-flex px-2 py-0.5 rounded text-xs font-medium {badge_class}",
                     {badge_label}
                 }
-                if let Some(err) = stream.capture_error.clone() {
-                    p { class: "text-xs text-red-700 mt-0.5 break-words", "{err}" }
+                if let Some(err) = stream.capture_error.as_deref() {
+                    p { class: "text-xs text-red-700 mt-0.5 break-words",
+                        {capture_error_label(err)}
+                    }
                 }
             }
             td { class: "td hidden text-gray-600 md:table-cell", "{stream.audio_retention}" }

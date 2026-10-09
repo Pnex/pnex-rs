@@ -1,12 +1,16 @@
 //! Media ingest (media-ingest.md P2.13): declared streams captured into
 //! audio segments, transcribed by the queue, text stored in O2.
 //!
+//! - [`capture`]: supervisor of `server` captures (fetcher, confined
+//!   ffmpeg, segmenter), [`segments`]: segment blobs and rows;
 //! - [`streams`] / [`profiles`]: CRUD services shared by the HTTP
 //!   controller (and later the assistant tools, D142 §9.3);
 //! - [`MediaIngestSettings`]: platform settings (`settings.media_ingest`,
 //!   `PNEX_MEDIA_*` / `PNEX_ASR_*` overrides).
 
+pub mod capture;
 pub mod profiles;
+pub mod segments;
 pub mod streams;
 
 use loco_rs::config::Config;

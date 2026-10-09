@@ -71,6 +71,9 @@ regex = { version = "1.11" }
 rand = "0.10"
 # Superviseur du runtime de flows (D18) : SIGUSR1 + test de vie du pid
 libc = "0.2"
+# Unprivileged filesystem/TCP confinement of the media decoder (media-ingest.md
+# D160): works where user namespaces (bwrap) are refused. MIT OR Apache-2.0.
+landlock = "0.4"
 base64 = "0.22"
 # Empreinte sha256 des artefacts firmware (intégrité, table firmware_artifacts)
 sha2 = "0.10"
