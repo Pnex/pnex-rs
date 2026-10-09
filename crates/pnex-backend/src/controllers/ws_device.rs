@@ -28,7 +28,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::Deserialize;
 use tokio::sync::mpsc;
 
-use super::ws_ingest::{decode_param, decrypt_frame, encrypt_frame, reject, Snapshot};
+use super::ws_ingest::{close_socket, decode_param, reject, FrameCodec, Snapshot};
 use crate::models::_entities::{
     device_capability_instances, device_registries, predefined_devices,
 };
@@ -138,7 +138,6 @@ impl DeviceSnapshot {
 
 #[derive(Debug, Deserialize)]
 pub struct DeviceQuery {
-    token: Option<String>,
     device_id: Option<String>,
 }
 
@@ -149,16 +148,20 @@ pub fn routes() -> Routes {
 async fn ws_device(
     State(ctx): State<AppContext>,
     Query(q): Query<DeviceQuery>,
+    headers: axum::http::HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
     let settings = IngestSettings::from_config(&ctx.config);
+    if !super::ws_ingest::arrived_over_tls(&headers, &settings) {
+        return reject(ws, super::ws_ingest::CLOSE_TLS_REQUIRED, "TLS required");
+    }
     // Reconnect storm guard: bounded concurrent admissions per pod; a
     // device that cannot get a slot in time is told to retry (1013).
     let Some(permit) = super::ws_ingest::admission_permit(&settings).await else {
         return reject(ws, 1013, "Try again later");
     };
     // Auth (ordre ingest : 4002 → 4001 → 4006 → 4008 → 4003).
-    let Some(raw_token) = q.token.as_deref() else {
+    let Some(raw_token) = super::ws_ingest::device_token(&headers) else {
         return reject(ws, 4002, "No token provided");
     };
     let token = match decode_param(raw_token) {
@@ -176,6 +179,17 @@ async fn ws_device(
     };
     if device.device_id != device_id {
         return reject(ws, 4006, "Token/device mismatch");
+    }
+    // D153 (L4): the TLS client certificate must be this device's.
+    if !matches!(
+        super::ws_ingest::client_cert_matches(&ctx.db, &headers, &settings, device.id).await,
+        Ok(true)
+    ) {
+        return reject(
+            ws,
+            super::ws_ingest::CLOSE_CLIENT_CERT,
+            "Client certificate required",
+        );
     }
     let Some(key) = tok
         .encryption_key
@@ -198,45 +212,51 @@ async fn ws_device(
         Err(_) => return reject(ws, 4007, "No device snapshot"),
     };
 
-    // Anti-clone (cross-pod, atomic): the Valkey lease compare-and-set
-    // decides — granted when no live session holds it (released, expired
-    // after the silence TTL, or never seen). A live session on any pod →
-    // 4003. The reaper remains the sole writer of `active`.
-    let session = uuid::Uuid::new_v4().simple().to_string();
-    match device_liveness::claim(snap.device_registry_id, &session, settings.silence_ttl_secs).await
-    {
-        Ok(true) => {}
-        Ok(false) => return reject(ws, 4003, "Device already connected"),
-        Err(_) => return reject(ws, 1013, "Try again later"),
-    }
-    // Local registry: the downlink is registered BEFORE the upgrade (a
-    // command arriving meanwhile waits for the loop). A previous local
-    // session of the device is necessarily stale (the lease was claimable):
-    // replacing it closes its downlink, which ends its loop.
-    let (downlink_tx, downlink_rx) = mpsc::unbounded_channel::<Downlink>();
-    let superseded = DEVICE_SESSIONS.lock().expect("sessions").insert(
-        snap.device_registry_id,
-        LocalSession {
-            session: session.clone(),
-            tx: downlink_tx,
-        },
-    );
-    if superseded.is_some() {
-        tracing::warn!(device = %snap.device_id, "stale local session superseded by a new connection");
-    }
-    // The guard (registry cleanup on exit) is created right after the insert.
-    let guard = DeviceSessionGuard(snap.device_registry_id, session);
-    // Commands issued on other pods now route here (D107).
-    crate::services::device_bus::claim(snap.device_registry_id, &guard.1).await;
     drop(permit);
     let token_owned = token;
     let settings_owned = settings;
-    ws.on_upgrade(move |socket| async move {
+    ws.on_upgrade(move |mut socket| async move {
+        // Handshake FIRST: only a peer that proved it holds the device key
+        // takes the anti-clone lease (a stolen token alone cannot keep the
+        // real device out).
+        let Some(codec) = FrameCodec::accept(&mut socket, &key, &device_id, false).await else {
+            return;
+        };
+        // Anti-clone (cross-pod, atomic): the Valkey lease compare-and-set
+        // decides — granted when no live session holds it (released, expired
+        // after the silence TTL, or never seen). A live session on any pod →
+        // 4003. The reaper remains the sole writer of `active`.
+        let session = uuid::Uuid::new_v4().simple().to_string();
+        match device_liveness::claim(snap.device_registry_id, &session, settings_owned.silence_ttl_secs).await
+        {
+            Ok(true) => {}
+            Ok(false) => return close_socket(&mut socket, 4003, "Device already connected").await,
+            Err(_) => return close_socket(&mut socket, 1013, "Try again later").await,
+        }
+        // Local registry: the downlink is registered before the loop (a
+        // command arriving meanwhile waits for it). A previous local session
+        // of the device is necessarily stale (the lease was claimable):
+        // replacing it closes its downlink, which ends its loop.
+        let (downlink_tx, downlink_rx) = mpsc::unbounded_channel::<Downlink>();
+        let superseded = DEVICE_SESSIONS.lock().expect("sessions").insert(
+            snap.device_registry_id,
+            LocalSession {
+                session: session.clone(),
+                tx: downlink_tx,
+            },
+        );
+        if superseded.is_some() {
+            tracing::warn!(device = %snap.device_id, "stale local session superseded by a new connection");
+        }
+        // The guard (registry cleanup on exit) is created right after the insert.
+        let guard = DeviceSessionGuard(snap.device_registry_id, session);
+        // Commands issued on other pods now route here (D107).
+        crate::services::device_bus::claim(snap.device_registry_id, &guard.1).await;
         session_loop(
             socket,
             ctx,
             token_owned,
-            key,
+            codec,
             snap,
             downlink_rx,
             guard,
@@ -257,7 +277,7 @@ async fn session_loop(
     mut socket: WebSocket,
     ctx: AppContext,
     token: String,
-    key: [u8; 32],
+    mut codec: FrameCodec,
     mut snap: DeviceSnapshot,
     mut downlink: mpsc::UnboundedReceiver<Downlink>,
     guard: DeviceSessionGuard,
@@ -320,7 +340,7 @@ async fn session_loop(
                         }
                     }
                 };
-                let _ = socket.send(Message::Text(encrypt_frame(&plain, &key).into())).await;
+                let _ = socket.send(Message::Text(codec.seal(&plain).into())).await;
             }
             // ── Actuations without `Ack`: resend a write once, report the
             // loss otherwise (custom-firmware.md §14.6) ──
@@ -330,7 +350,7 @@ async fn session_loop(
                     match late {
                         Overdue::Resend { cmd_id, what, frame } => {
                             tracing::warn!(device = %snap.device_id, cmd = %cmd_id, %what, "command not acknowledged, pushed again");
-                            let _ = socket.send(Message::Text(encrypt_frame(&frame, &key).into())).await;
+                            let _ = socket.send(Message::Text(codec.seal(&frame).into())).await;
                         }
                         Overdue::Lost { cmd_id, what } => {
                             tracing::warn!(device = %snap.device_id, cmd = %cmd_id, %what, "command not acknowledged by the device");
@@ -377,7 +397,7 @@ async fn session_loop(
                     }
                     last_validation = Instant::now();
                 }
-                let plain = match decrypt_frame(&text, &key) {
+                let plain = match codec.open(&text) {
                     Some(p) => p,
                     None => { tracing::warn!(device = %snap.device_id, "frame device indéchiffrable"); continue; }
                 };
@@ -389,7 +409,7 @@ async fn session_loop(
                 let is_ping = plain.trim().eq_ignore_ascii_case("ping");
                 if is_ping {
                     let _ = socket
-                        .send(Message::Text(encrypt_frame("PONG", &key).into()))
+                        .send(Message::Text(codec.seal("PONG").into()))
                         .await;
                 } else {
                     match serde_json::from_str::<DeviceMsg>(&plain) {
@@ -397,7 +417,7 @@ async fn session_loop(
                             // Edge agent (D95): no pins, no manifest — the
                             // registration (token) is the admission.
                             if let Some(sess) = agent.as_mut() {
-                                handle_agent_announce(&ctx, &mut socket, &key, &snap, sess, &fw).await;
+                                handle_agent_announce(&ctx, &mut socket, &mut codec, &snap, sess, &fw).await;
                             }
                         }
                         Ok(DeviceMsg::Batch { epoch, points }) => {
@@ -414,14 +434,14 @@ async fn session_loop(
                             if let Some(up_to_seq) =
                                 crate::services::edge_agent::ingest_batch(&ctx, sess, &who, &epoch, points).await
                             {
-                                send_server_msg(&mut socket, &key, &ServerMsg::BatchAck { epoch, up_to_seq }).await;
+                                send_server_msg(&mut socket, &mut codec, &ServerMsg::BatchAck { epoch, up_to_seq }).await;
                             }
                         }
                         Ok(DeviceMsg::Announce { chip, board, fw, caps, pins }) => {
                             // Provisioning is DB heavy: bounded per pod like
                             // the handshake (waits, never rejects).
                             let _slot = super::ws_ingest::admission_slot(&settings).await;
-                            if let Some(cmd_id) = handle_announce(&ctx, &mut socket, &key, &mut snap, &chip, &board, &fw, caps.as_deref(), pins.as_deref()).await {
+                            if let Some(cmd_id) = handle_announce(&ctx, &mut socket, &mut codec, &mut snap, &chip, &board, &fw, caps.as_deref(), pins.as_deref()).await {
                                 ota.note(cmd_id);
                             }
                         }
@@ -601,7 +621,7 @@ impl OtaCache {
 async fn handle_agent_announce(
     ctx: &AppContext,
     socket: &mut WebSocket,
-    key: &[u8; 32],
+    codec: &mut FrameCodec,
     snap: &DeviceSnapshot,
     sess: &mut crate::services::edge_agent::AgentSession,
     fw: &str,
@@ -623,7 +643,7 @@ async fn handle_agent_announce(
         max_batch: crate::services::edge_agent::AGENT_MAX_BATCH,
         max_keys: sess.max_keys(),
     };
-    send_server_msg(socket, key, &cfg).await;
+    send_server_msg(socket, codec, &cfg).await;
 }
 
 /// Outcome of a periodic token revalidation.
@@ -718,7 +738,7 @@ async fn revalidate(
 async fn handle_announce(
     ctx: &AppContext,
     socket: &mut WebSocket,
-    key: &[u8; 32],
+    codec: &mut FrameCodec,
     snap: &mut DeviceSnapshot,
     chip: &str,
     board: &str,
@@ -750,7 +770,7 @@ async fn handle_announce(
         _ => {
             send_server_msg(
                 socket,
-                key,
+                codec,
                 &ServerMsg::Reject {
                     reason: "device introuvable".into(),
                 },
@@ -794,7 +814,7 @@ async fn handle_announce(
     {
         Ok(specs) => {
             snap.reload_pins(&ctx.db).await;
-            send_server_msg(socket, key, &ServerMsg::ProvisionAck { caps: specs }).await;
+            send_server_msg(socket, codec, &ServerMsg::ProvisionAck { caps: specs }).await;
             // Restauration du desired-state : le ProvisionAck ne porte pas
             // les cadences — re-pousser les Subscribe persistés, sinon un
             // reflash/reconnect perdait les lectures périodiques alors que
@@ -803,7 +823,7 @@ async fn handle_announce(
                 if ms > 0 {
                     send_server_msg(
                         socket,
-                        key,
+                        codec,
                         &ServerMsg::Subscribe {
                             cmd_id: uuid::Uuid::new_v4().simple().to_string(),
                             gpio: gpio as u16,
@@ -824,7 +844,7 @@ async fn handle_announce(
                 Ok(configs) if !configs.is_empty() => {
                     send_server_msg(
                         socket,
-                        key,
+                        codec,
                         &ServerMsg::ControlConfig {
                             cmd_id: uuid::Uuid::new_v4().simple().to_string(),
                             configs,
@@ -858,7 +878,7 @@ async fn handle_announce(
                         .await;
                         send_server_msg(
                             socket,
-                            key,
+                            codec,
                             &crate::services::camera::config_msg(&settings, enabled),
                         )
                         .await;
@@ -899,9 +919,17 @@ async fn handle_announce(
                     if let Err(e) = upd.update(&ctx.db).await {
                         tracing::warn!(device = %snap.device_id, "ota cmd_id refresh failed: {e}");
                     }
+                    let sig = crate::services::ota_signing::sign_for_order(
+                        &ctx.db,
+                        &ctx.config,
+                        &snap.device_id,
+                        &row.target_version,
+                        &row.sha256,
+                    )
+                    .await;
                     send_server_msg(
                         socket,
-                        key,
+                        codec,
                         &ServerMsg::OtaAvailable {
                             cmd_id: cmd_id.clone(),
                             version: row.target_version.clone(),
@@ -911,6 +939,7 @@ async fn handle_announce(
                             ),
                             sha256: row.sha256.clone(),
                             size: row.size_bytes.map(|s| s as u64),
+                            sig,
                         },
                     )
                     .await;
@@ -922,7 +951,7 @@ async fn handle_announce(
             tracing::error!(device = %snap.device_id, "admission refusée : {e}");
             send_server_msg(
                 socket,
-                key,
+                codec,
                 &ServerMsg::Reject {
                     reason: format!("admission refusée : {e}"),
                 },
@@ -1081,13 +1110,11 @@ fn handle_reg_diag(snap: &DeviceSnapshot, e: &pnex_core::RegDiag) {
 }
 
 /// Envoi serveur → device (chiffré).
-async fn send_server_msg(socket: &mut WebSocket, key: &[u8; 32], msg: &ServerMsg) {
+async fn send_server_msg(socket: &mut WebSocket, codec: &mut FrameCodec, msg: &ServerMsg) {
     let Ok(plain) = serde_json::to_string(msg) else {
         return;
     };
-    let _ = socket
-        .send(Message::Text(encrypt_frame(&plain, key).into()))
-        .await;
+    let _ = socket.send(Message::Text(codec.seal(&plain).into())).await;
 }
 
 /// Snapshot device complet : identité + carte gpio→label + contraintes

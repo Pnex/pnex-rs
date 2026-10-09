@@ -130,12 +130,15 @@ pub mod prompb;
 #[cfg(feature = "prompb")]
 pub use prompb::*;
 
-// Device/agent frame encryption (D8) — native consumers only.
+// Device/agent link encryption (Noise, D156) — native consumers only.
 #[cfg(feature = "frame-crypto")]
 pub mod frame;
 
 pub mod pagination;
 pub use pagination::*;
+
+/// Signed OTA images (SEC-18): message bound to device + version + digest.
+pub mod ota_sig;
 
 /// Protocole fil `/ws/device` (Brick 0) — source de vérité du contrat device.
 pub mod proto;

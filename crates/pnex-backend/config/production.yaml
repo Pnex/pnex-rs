@@ -107,6 +107,10 @@ settings:
     silence_ttl_secs: <%= get_env(name="PNEX_SILENCE_TTL_SECS", default="10") %>
     reaper_interval_secs: <%= get_env(name="PNEX_REAPER_INTERVAL_SECS", default="5") %>
     token_cache_secs: <%= get_env(name="PNEX_TOKEN_CACHE_SECS", default="30") %>
+    # D154: devices only through the TLS edge (X-Forwarded-Proto: https).
+    require_tls: <%= get_env(name="PNEX_DEVICE_REQUIRE_TLS", default="true") %>
+    # D153: devices present their org-CA certificate on the device endpoint.
+    require_client_cert: <%= get_env(name="PNEX_DEVICE_REQUIRE_CLIENT_CERT", default="true") %>
     admission_concurrency: <%= get_env(name="PNEX_DEVICE_ADMISSION_CONCURRENCY", default="32") %>
     admission_wait_ms: <%= get_env(name="PNEX_DEVICE_ADMISSION_WAIT_MS", default="5000") %>
     batch_max: <%= get_env(name="PNEX_BATCH_MAX", default="500") %>

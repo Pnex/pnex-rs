@@ -405,6 +405,25 @@ async fn enroll(
         }
     }
     txn.commit().await.map_err(|_| Error::InternalServerError)?;
+    // D153: a fresh TLS client identity; the previous agent install (and
+    // its certificate) is cut off like its token.
+    let ring = crate::services::secrets::Keyring::from_config(&ctx.config)
+        .map_err(|_| Error::InternalServerError)?;
+    crate::services::device_pki::revoke_all(&ctx.db, device.id)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    let client = crate::services::device_pki::issue_device_cert(
+        &ctx.db,
+        &ring,
+        device.org_id,
+        device.id,
+        &device.device_id,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!(device = %device.device_id, "agent certificate: {e}");
+        Error::InternalServerError
+    })?;
     tracing::info!(device = %device.device_id, "edge agent enrolled");
     format::json(AgentEnrollResponse {
         device_id: device.device_id,
@@ -412,6 +431,15 @@ async fn enroll(
         encryption_key: key,
         ws_path: "/ws/device".to_string(),
         ca_pem: super::meta::local_ca_pem(),
+        client_cert_pem: Some(client.cert_pem),
+        client_key_pem: Some(client.key_pem),
+        device_port: std::env::var("PNEX_DEVICE_PORT")
+            .ok()
+            .and_then(|p| p.trim().parse().ok()),
+        device_host: std::env::var("PNEX_DEVICE_HOST")
+            .ok()
+            .map(|h| h.trim().to_string())
+            .filter(|h| !h.is_empty()),
     })
 }
 

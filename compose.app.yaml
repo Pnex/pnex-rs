@@ -44,6 +44,10 @@ x-pnex-env: &pnex-env
   # /api/v1/meta/ca for apps/phones (local mode only — not in cloud mode).
   PNEX_CA_CERT_FILE: /pki/device-ca.pem
   PNEX_EDGE_MODE: ${PNEX_EDGE_MODE:-local}
+  # Edge headers are trusted only with this secret (set by the edge).
+  PNEX_EDGE_SECRET: ${PNEX_EDGE_SECRET:-}
+  # Device endpoint port compiled into firmware (D158).
+  PNEX_DEVICE_PORT: ${PNEX_DEVICE_PORT:-}
   # Production server host imposed on firmware builds; empty = users pick
   # from the org's host referential (docs/architecture/firmware-build.md).
   PNEX_PROD_HOST: ${PNEX_PROD_HOST:-}

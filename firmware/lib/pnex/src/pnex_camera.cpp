@@ -14,7 +14,7 @@
 #include <esp_wifi.h>
 
 #include "Pnex.h"
-#include "chacha_crypto.h"
+#include "pnex_crypto.h"
 #include "pnex_camera_frame.h"
 #include "pnex_tls.h"
 #include "pnex_transport.h"
@@ -81,6 +81,10 @@ uint8_t s_fps = 5;
 
 PnexWsClient s_ws;
 bool s_ws_up = false;  // tracked from the events (available() lags on close)
+// Noise link of the camera socket (D156), handshaken after each connect.
+pnex_noise::Link s_link;
+bool s_handshaking = false;
+constexpr unsigned long HANDSHAKE_TIMEOUT_MS = 10000;
 char s_url[256];
 
 uint32_t s_backoff_ms = BACKOFF_MIN_MS;
@@ -162,6 +166,8 @@ void ws_close() {
         Serial.println("[CAM] camera WS closed");
     }
     s_ws_up = false;
+    s_handshaking = false;
+    s_link.reset();
 }
 
 void on_ws_event(PnexWsEvent event) {
@@ -170,11 +176,48 @@ void on_ws_event(PnexWsEvent event) {
         s_ws_up = true;
     } else if (event == PnexWsEvent::Closed) {
         s_ws_up = false;
+        s_handshaking = false;
+        s_link.reset();
     }
 }
 
-void on_ws_message(const char*, size_t, bool) {
-    // Uplink only: the server just answers "PONG" to the keepalive.
+void on_ws_message(const char* data, size_t len, bool binary) {
+    if (s_handshaking) {
+        // First server frame = second Noise message (binary).
+        s_handshaking = false;
+        if (!binary || !cryptoLinkFinishBinary(s_link, (const uint8_t*)data, len)) {
+            Serial.println("[CAM] Noise handshake refused");
+            s_link.reset();
+        }
+        return;
+    }
+    // Uplink only: the server just answers a sealed "PONG" to the
+    // keepalive; opened anyway to keep the receive counter in step.
+    if (!binary) {
+        (void)cryptoOpenText(s_link, data);
+    }
+}
+
+// Noise handshake right after the socket opened: first message out, then
+// poll until the server's answer established the link (or timeout).
+bool camera_handshake() {
+    uint8_t msg1[pnex_noise::MSG1_LEN];
+    if (!cryptoLinkStartBinary(s_link, pnex_device_id(), msg1)) {
+        Serial.println("[CAM] no valid ENCRYPTION_KEY — not connecting");
+        return false;
+    }
+    s_handshaking = true;
+    if (!s_ws.sendBinary(msg1, sizeof(msg1))) {
+        s_handshaking = false;
+        return false;
+    }
+    const unsigned long t0 = millis();
+    while (s_handshaking && s_ws.available() && millis() - t0 < HANDSHAKE_TIMEOUT_MS) {
+        s_ws.poll();
+        delay(5);
+    }
+    s_handshaking = false;
+    return s_link.ready();
 }
 
 // Deferred connect (loop context, never from the WS callback: the TLS
@@ -191,7 +234,13 @@ void try_connect(unsigned long now) {
     // Idempotent; re-applied on each connect in case the lib reset it.
     WiFi.setSleep(false);
     // Patient handshake + TLS posture: pnex_ws_open (O20).
-    if (pnex_ws_open(s_ws, s_url)) {
+    bool opened = pnex_ws_open(s_ws, s_url);
+    if (opened && !camera_handshake()) {
+        s_ws.close();
+        s_link.reset();
+        opened = false;
+    }
+    if (opened) {
         s_ws_up = true;
         s_session_frames = 0;
         s_connected_since_ms = millis();
@@ -221,22 +270,22 @@ void send_frame() {
     }
     const size_t plain_len = pnex_camera_frame::HEADER_LEN + fb->len;
     if (fb->format != PIXFORMAT_JPEG || fb->len < 2 || plain_len > MAX_FRAME_BYTES ||
-        !ensure_buffer(CRYPTO_NONCE_LEN + plain_len)) {
+        !ensure_buffer(pnex_noise::Link::sealed_len(plain_len))) {
         esp_camera_fb_return(fb);
         ++s_dropped;
         return;
     }
-    uint8_t* plain = s_buf + CRYPTO_NONCE_LEN;
+    uint8_t* plain = s_buf;
     pnex_camera_frame::encode_header(plain, ++s_seq, (uint32_t)millis(), (uint16_t)fb->width,
                                      (uint16_t)fb->height);
     memcpy(plain + pnex_camera_frame::HEADER_LEN, fb->buf, fb->len);
     // Frame buffer back to the driver BEFORE the (slow) network send.
     esp_camera_fb_return(fb);
 
-    // In place: plain aliases s_buf + 12. Without a key it moves the clear
-    // frame to s_buf (mock local server).
+    // Sealed in place (Noise chunks of 64 KiB, tags appended): s_buf holds
+    // sealed_len(plain_len) bytes.
     const unsigned long t0 = millis();
-    const size_t wire_len = cryptoEncryptBinary(plain, plain_len, s_buf);
+    const size_t wire_len = cryptoSealBinaryInPlace(s_link, s_buf, plain_len);
     if (wire_len == 0 || !send_binary_chunked(s_buf, wire_len)) {
         ++s_dropped;
         return;
@@ -402,9 +451,10 @@ void pnex_camera_loop() {
     // decoded by pnex.begin() (transport setup), after pnex_camera_begin().
     static bool url_ready = false;
     if (!url_ready) {
-        snprintf(s_url, sizeof(s_url), "%s://%s/ws/camera?token=%s&device_id=%s",
-                 pnex_use_tls() ? "wss" : "ws", pnex_host(), pnex_token_b64(),
-                 pnex_device_id_b64());
+        // Token in the Authorization header, never in the URL (D154).
+        snprintf(s_url, sizeof(s_url), "%s://%s/ws/camera?device_id=%s",
+                 pnex_use_tls() ? "wss" : "ws", pnex_host(), pnex_device_id_b64());
+        s_ws.setAuthToken(pnex_token_b64());
         url_ready = true;
     }
 
@@ -448,8 +498,11 @@ void pnex_camera_loop() {
     }
 
     if (now - s_last_keepalive_ms >= KEEPALIVE_MS) {
-        // Clear text on purpose: /ws/camera answers a plain "PING".
-        s_ws.send("PING");
+        // Sealed keepalive (the server answers a sealed "PONG").
+        const String ping = cryptoSealText(s_link, "PING");
+        if (ping.length() > 0) {
+            s_ws.send(ping);
+        }
         s_last_keepalive_ms = now;
     }
 

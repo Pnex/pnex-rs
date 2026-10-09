@@ -282,6 +282,8 @@ pub fn check_secrets() -> pnex_firmware_builder::BuildSecrets {
         device_id: "check".into(),
         encryption_key: None,
         ca_cert_pem: None,
+        ota_pubkey: None,
+        client_cert: None,
     }
 }
 

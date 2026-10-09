@@ -35,7 +35,7 @@ scripts locaux ──HTTP 127.0.0.1:7070──▶ API axum ─(mpsc borné)─�
 ### D95 — Un agent est un device
 
 `predefined_device = edge_agent`, `device_type = agent`, même registre, même
-token + clé ChaCha20 (D8, sans Poly1305 — identique aux devices), même tunnel
+token + clé partagée du lien Noise (D156, identique aux devices ; D8 retiré le 2026-10-08), même tunnel
 `/ws/device`, même anti-clone 4003, même revalidation 4005, même liveness.
 L'`Announce` porte `chip = "agent"` : **pas d'admission de pins, pas de
 manifeste**, l'enregistrement (token valide) est l'admission. Gardes

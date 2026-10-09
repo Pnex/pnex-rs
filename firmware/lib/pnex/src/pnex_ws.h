@@ -72,6 +72,10 @@ public:
     PnexWsClient& operator=(const PnexWsClient&) = delete;
 
     void onMessage(PnexWsMessageFn fn) { on_message_ = fn; }
+    // Device credential sent as `Authorization: Bearer <token>` on the
+    // upgrade request (D154: never in the URL). The pointer must outlive
+    // the client (compiled config).
+    void setAuthToken(const char* token) { auth_token_ = token; }
     void onEvent(PnexWsEventFn fn) { on_event_ = fn; }
 
     // Takes ownership of `tcp` (already configured by the caller), opens
@@ -99,6 +103,7 @@ public:
 
 private:
     bool handshake(const char* host, const char* path);
+    const char* auth_token_ = nullptr;
     bool read_line(char* buf, size_t cap, unsigned long deadline);
     bool read_exact(uint8_t* buf, size_t n);
     bool write_all(const uint8_t* data, size_t n);

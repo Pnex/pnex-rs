@@ -623,6 +623,8 @@ mod tests {
             device_id: "capteur-jardin".into(),
             encryption_key: None,
             ca_cert_pem: None,
+            ota_pubkey: None,
+            client_cert: None,
         }
     }
 
@@ -923,6 +925,8 @@ mod real_pio_tests {
             device_id: "check".into(),
             encryption_key: None,
             ca_cert_pem: None,
+            ota_pubkey: None,
+            client_cert: None,
         };
         let device = DeviceSpec {
             org_id: 1,
@@ -993,6 +997,8 @@ mod real_pio_tests {
             device_id: "young-walrus".into(),
             encryption_key: None,
             ca_cert_pem: None,
+            ota_pubkey: None,
+            client_cert: None,
         };
         let device = DeviceSpec {
             org_id: 1,
@@ -1034,6 +1040,8 @@ mod real_pio_tests {
             device_id: "young-walrus".into(),
             encryption_key: None,
             ca_cert_pem: None,
+            ota_pubkey: None,
+            client_cert: None,
         };
         let device = DeviceSpec {
             org_id: 1,

@@ -12,9 +12,9 @@ description = "Types partagés PNEX — compile en natif + wasm32, aucune dépen
 naming = ["dep:deunicode"]
 # Messages prompb (remote-write OpenObserve) — backend + pnex-node-device.
 prompb = ["dep:prost"]
-# Device/agent frame encryption (ChaCha20, D8) — backend + edge agent only;
-# never enabled by the wasm frontend.
-frame-crypto = ["dep:chacha20", "dep:base64", "dep:getrandom"]
+# Device/agent link encryption: Noise NNpsk0 inside TLS (D155–D157) —
+# backend + edge agent only; never enabled by the wasm frontend.
+frame-crypto = ["dep:snow", "dep:base64"]
 # Guarded reqwest resolver + redirect policy for outbound requests to
 # user-chosen hosts (R8) — backend, notify and http-fetch only.
 egress = ["dep:reqwest", "dep:tokio"]
@@ -27,9 +27,9 @@ serde_json = { workspace = true }
 uuid = { version = "1", default-features = false, features = ["serde"] }
 deunicode = { version = "1", optional = true }
 prost = { version = "0.13", optional = true }
-chacha20 = { version = "0.9", optional = true }
+# Noise Protocol Framework (Apache-2.0 OR MIT), default crypto resolver.
+snow = { version = "0.10", optional = true }
 base64 = { version = "0.22", optional = true }
-getrandom = { version = "0.3", optional = true }
 reqwest = { version = "0.12", default-features = false, optional = true }
 # Secret destinations (R9): same parser as reqwest, wasm-safe.
 url = "2"
@@ -38,3 +38,7 @@ tokio = { version = "1", default-features = false, features = ["net"], optional 
 [dev-dependencies]
 # roundtrip serde du graphe + projection flows.json.
 serde_json = { workspace = true }
+# Digest of the chunked frame in the Noise golden vectors.
+sha2 = "0.10"
+# Reference signer of the OTA golden vectors (SEC-18), same crate as the server.
+ed25519-dalek = "2"

@@ -2,9 +2,10 @@
 ### D73–D86). Endpoints ADDITIFS : ne jamais bumper pnex_api_contract::CONTRACT.
 ###
 ### WebSockets (hors fichier .http) :
-### - device : GET /ws/camera?token=<b64>&device_id=<b64> — frames binaires
-###   nonce(12) ‖ ChaCha20(clé device, "PXC1" seq u32 uptime u32 w u16 h u16
-###   (LE) ‖ JPEG) ; texte "PING" → "PONG" ; close 4001/4002/4003/4006/4008.
+### - device : GET /ws/camera?device_id=<b64> + Authorization: Bearer <b64> (D154) — poignée de main
+###   Noise NNpsk0 en binaire (D156), puis frames binaires = lien Noise scellant
+###   ("PXC1" seq u32 uptime u32 w u16 h u16 (LE) ‖ JPEG) ; PING/PONG texte
+###   scellés ; close 4001/4002/4003/4006/4008/4011.
 ### - navigateur : GET /ws/camera/live?token=<JWT>&org=<id>&device=<pk> —
 ###   JPEG bruts en binaire, dernière frame d'abord ; close 4004 caméra inconnue.
 ### Contrôle : ServerMsg::CameraConfig sur /ws/device

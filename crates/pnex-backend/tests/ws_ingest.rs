@@ -1,5 +1,5 @@
-//! Tests de parité du WS d'ingestion (Phase 5) : handshake base64, frames
-//! ChaCha20 nu, PING/PONG, validation key=value, close codes, anti-clone.
+//! Ingest WebSocket tests: base64 auth query, Noise NNpsk0 link (D156),
+//! PING/PONG, key=value validation, close codes, anti-clone.
 //!
 //! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
 //! Config test : `silence_ttl_secs: 2`, `token_cache_secs: 0`
@@ -9,8 +9,6 @@ mod common;
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
-use chacha20::cipher::{KeyIvInit, StreamCipher};
-use chacha20::{ChaCha20, Key, Nonce};
 use loco_rs::testing::request::{RequestConfig, RequestConfigBuilder};
 use pnex_backend::app::App;
 use pnex_backend::services::telemetry::{self, TelemetryPoint, TelemetrySink};
@@ -18,25 +16,6 @@ use serial_test::serial;
 use std::sync::{Arc, Mutex};
 
 // ─────────────────── Client miroir (rôle firmware) ───────────────────
-
-fn encrypt(plain: &str, key: &[u8; 32]) -> String {
-    use rand::RngExt;
-    let mut nonce = [0u8; 12];
-    rand::rng().fill(&mut nonce);
-    let mut buf = plain.as_bytes().to_vec();
-    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(&nonce)).apply_keystream(&mut buf);
-    let mut wire = nonce.to_vec();
-    wire.extend_from_slice(&buf);
-    STANDARD.encode(wire)
-}
-
-fn decrypt(raw: &str, key: &[u8; 32]) -> String {
-    let bytes = STANDARD.decode(raw.trim()).expect("b64");
-    let (nonce, ct) = bytes.split_at(12);
-    let mut buf = ct.to_vec();
-    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(nonce)).apply_keystream(&mut buf);
-    String::from_utf8(buf).expect("utf8")
-}
 
 /// Paramètre query tel que le firmware l'envoie (base64 du texte).
 fn b64_param(raw: &str) -> String {
@@ -142,21 +121,34 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .expect("org perso")
 }
 
-/// Connexion WS avec les paramètres base64 du firmware.
-async fn connect(
+/// Firmware-like connection: base64 query parameters, then the Noise
+/// handshake keyed by the device key.
+async fn connect(server: &axum_test::TestServer, dev: &Dev) -> common::DevWs {
+    connect_with(server, dev, &dev.key).await
+}
+
+async fn connect_with(server: &axum_test::TestServer, dev: &Dev, key: &[u8; 32]) -> common::DevWs {
+    connect_raw(server, &dev.token, &dev.device_id, key).await
+}
+
+/// Any credentials (refusal tests).
+async fn connect_raw(
     server: &axum_test::TestServer,
     token: &str,
     device_id: &str,
-) -> axum_test::TestWebSocket {
-    server
-        .get_websocket(&format!(
+    key: &[u8; 32],
+) -> common::DevWs {
+    common::DevWs::connect(
+        server,
+        &format!(
             "/ws/sensor/ingest?token={}&device_id={}",
             b64_param(token),
             b64_param(device_id),
-        ))
-        .await
-        .into_websocket()
-        .await
+        ),
+        key,
+        device_id.trim(),
+    )
+    .await
 }
 
 // ─────────────────── Tests ───────────────────
@@ -173,19 +165,18 @@ async fn cycle_ingest_chiffre_complet() {
         telemetry::set_sink(sink.clone());
         let org = personal_org(&server, &auth).await;
 
-        let mut ws = connect(&server, &dev.token, &dev.device_id).await;
+        let mut ws = connect(&server, &dev).await;
 
-        ws.send_text(encrypt("PING", &dev.key)).await;
-        assert_eq!(decrypt(&ws.receive_text().await, &dev.key), "PONG");
+        ws.send_plain("PING").await;
+        assert_eq!(ws.recv_plain().await, "PONG");
 
         // Mesure valide (capacité du modèle) → ok + point scopé org.
-        ws.send_text(encrypt("read_temperature=21.5", &dev.key))
-            .await;
-        assert_eq!(decrypt(&ws.receive_text().await, &dev.key), "ok");
+        ws.send_plain("read_temperature=21.5").await;
+        assert_eq!(ws.recv_plain().await, "ok");
 
         // Mesure hors capacités (device strict) → error:invalid_capability.
-        ws.send_text(encrypt("soil_moisture=42", &dev.key)).await;
-        let err = decrypt(&ws.receive_text().await, &dev.key);
+        ws.send_plain("soil_moisture=42").await;
+        let err = ws.recv_plain().await;
         assert!(err.starts_with("error:invalid_capability:"), "{err}");
 
         // Formats invalides.
@@ -193,29 +184,22 @@ async fn cycle_ingest_chiffre_complet() {
             ("sans_egal", "error:invalid_format"),
             ("=5", "error:empty_key"),
         ] {
-            ws.send_text(encrypt(frame, &dev.key)).await;
-            assert_eq!(decrypt(&ws.receive_text().await, &dev.key), expected);
+            ws.send_plain(frame).await;
+            assert_eq!(ws.recv_plain().await, expected);
         }
         let long = format!("{}=1", "x".repeat(101));
-        ws.send_text(encrypt(&long, &dev.key)).await;
-        assert_eq!(
-            decrypt(&ws.receive_text().await, &dev.key),
-            "error:measurement_name_too_long"
-        );
+        ws.send_plain(&long).await;
+        assert_eq!(ws.recv_plain().await, "error:measurement_name_too_long");
 
-        // Frame non déchiffrable (clé désynchronisée) → ERROR:decryption_failed.
-        ws.send_text(encrypt("read_temperature=1", &[9u8; 32]))
-            .await;
-        assert_eq!(
-            decrypt(&ws.receive_text().await, &dev.key),
-            "ERROR:decryption_failed"
-        );
+        // Unauthenticated frame (forged, or another key) → ERROR:decryption_failed,
+        // the link stays usable.
+        ws.send_text(STANDARD.encode([7u8; 40])).await;
+        assert_eq!(ws.recv_plain().await, "ERROR:decryption_failed");
 
         // D16 : nom normalisé (casse/séparateurs/accents fonduus) → la
         // mesure passe la validation stricte et sort canonique.
-        ws.send_text(encrypt("Read-Temperature = 19.5", &dev.key))
-            .await;
-        assert_eq!(decrypt(&ws.receive_text().await, &dev.key), "ok");
+        ws.send_plain("Read-Temperature = 19.5").await;
+        assert_eq!(ws.recv_plain().await, "ok");
 
         // Le sink a reçu exactement les mesures valides, avec le routage org.
         let points = sink.0.lock().expect("sink").clone();
@@ -240,6 +224,83 @@ async fn cycle_ingest_chiffre_complet() {
     .await;
 }
 
+/// Noise link (D156): a replayed, a tampered and a forged frame are refused
+/// (no telemetry, the link stays usable), a frame captured on one
+/// connection is useless on the next one.
+#[tokio::test]
+#[serial]
+async fn noise_link_refuses_replay_tampering_and_cross_connection() {
+    telemetry::reset_sink();
+    with_app(|server, auth, _ctx| async move {
+        let dev = create_device(&server, &auth, "capteur-noise", "soil_sensor").await;
+        let sink = Arc::new(RecSink::default());
+        telemetry::set_sink(sink.clone());
+
+        let mut ws = connect(&server, &dev).await;
+        let measure = ws.seal("read_temperature=21.5");
+        ws.send_text(measure.clone()).await;
+        assert_eq!(ws.recv_plain().await, "ok");
+
+        // Same frame again.
+        ws.send_text(measure.clone()).await;
+        assert_eq!(ws.recv_plain().await, "ERROR:decryption_failed");
+
+        // One flipped bit in a captured ciphertext (an attacker's forgery;
+        // a genuine frame altered in transit would desynchronize the link,
+        // which TLS prevents anyway).
+        let mut wire = STANDARD.decode(&measure).unwrap();
+        wire[2] ^= 0x01;
+        ws.send_text(STANDARD.encode(wire)).await;
+        assert_eq!(ws.recv_plain().await, "ERROR:decryption_failed");
+
+        // The link still works after the refusals (counters untouched).
+        ws.send_plain("PING").await;
+        assert_eq!(ws.recv_plain().await, "PONG");
+        assert_eq!(
+            sink.0.lock().expect("sink").len(),
+            1,
+            "only the genuine measure"
+        );
+        ws.close().await;
+
+        // A frame captured on the first connection, replayed on a new one.
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        let mut ws2 = connect(&server, &dev).await;
+        ws2.send_text(measure).await;
+        assert_eq!(ws2.recv_plain().await, "ERROR:decryption_failed");
+        assert_eq!(sink.0.lock().expect("sink").len(), 1);
+        ws2.close().await;
+        telemetry::reset_sink();
+    })
+    .await;
+}
+
+/// Handshake refused (4011): wrong key, and a firmware speaking the removed
+/// D8 framing (its first frame is not a Noise message, D157).
+#[tokio::test]
+#[serial]
+async fn noise_handshake_failures_close_4011() {
+    with_app(|server, auth, _ctx| async move {
+        let dev = create_device(&server, &auth, "capteur-4011", "soil_sensor").await;
+        let mut ws = connect_with(&server, &dev, &[1u8; 32]).await;
+        assert_eq!(close_code(ws.receive_message().await), Some(4011));
+
+        let mut old = server
+            .get_websocket(&format!(
+                "/ws/sensor/ingest?device_id={}",
+                b64_param(&dev.device_id),
+            ))
+            .add_header("Authorization", format!("Bearer {}", b64_param(&dev.token)))
+            .await
+            .into_websocket()
+            .await;
+        // A D8 frame: base64(nonce ‖ ChaCha20("PING")), 16 bytes.
+        old.send_text(STANDARD.encode([5u8; 16])).await;
+        assert_eq!(close_code(old.receive_message().await), Some(4011));
+    })
+    .await;
+}
+
 /// Close codes d'auth : 4002 sans token, 4001 token inconnu, 4006 mismatch,
 /// 4008 sans clé. Paramètre `\n` trailing (encodage firmware) trimé.
 #[tokio::test]
@@ -258,11 +319,11 @@ async fn close_codes_authentification() {
         assert_eq!(close_code(ws.receive_message().await), Some(4002));
 
         // 4001 : token inconnu.
-        let mut ws = connect(&server, "inconnu", "dev-a").await;
+        let mut ws = connect_raw(&server, "inconnu", "dev-a", &dev.key).await;
         assert_eq!(close_code(ws.receive_message().await), Some(4001));
 
         // 4006 : token de dev-a, device_id de dev-b.
-        let mut ws = connect(&server, &dev.token, &other.device_id).await;
+        let mut ws = connect_raw(&server, &dev.token, &other.device_id, &dev.key).await;
         assert_eq!(close_code(ws.receive_message().await), Some(4006));
 
         // 4008 : clé absente.
@@ -277,14 +338,20 @@ async fn close_codes_authentification() {
             .into();
         row.encryption_key = Set(None);
         row.update(&ctx.db).await.expect("key null");
-        let mut ws = connect(&server, &other.token, &other.device_id).await;
+        let mut ws = connect_raw(&server, &other.token, &other.device_id, &other.key).await;
         assert_eq!(close_code(ws.receive_message().await), Some(4008));
 
         // Trim `\n` : le firmware encode `echo | base64` (newline final)
         // — le serveur trime après décodage.
-        let mut ws = connect(&server, &format!("{}\n", dev.token), &dev.device_id).await;
-        ws.send_text(encrypt("PING", &dev.key)).await;
-        assert_eq!(decrypt(&ws.receive_text().await, &dev.key), "PONG");
+        let mut ws = connect_raw(
+            &server,
+            &format!("{}\n", dev.token),
+            &dev.device_id,
+            &dev.key,
+        )
+        .await;
+        ws.send_plain("PING").await;
+        assert_eq!(ws.recv_plain().await, "PONG");
         ws.close().await;
     })
     .await;
@@ -300,28 +367,28 @@ async fn anti_clone_bail() {
         let dev = create_device(&server, &auth, "clone-target", "soil_sensor").await;
 
         // Session 1 ouverte.
-        let mut ws1 = connect(&server, &dev.token, &dev.device_id).await;
-        ws1.send_text(encrypt("PING", &dev.key)).await;
-        assert_eq!(decrypt(&ws1.receive_text().await, &dev.key), "PONG");
+        let mut ws1 = connect(&server, &dev).await;
+        ws1.send_plain("PING").await;
+        assert_eq!(ws1.recv_plain().await, "PONG");
 
         // Clone rejeté pendant la session.
-        let mut ws2 = connect(&server, &dev.token, &dev.device_id).await;
+        let mut ws2 = connect(&server, &dev).await;
         assert_eq!(close_code(ws2.receive_message().await), Some(4003));
 
         // Déconnexion propre : bail libéré, reconnect immédiat OK.
         ws1.close().await;
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-        let mut ws3 = connect(&server, &dev.token, &dev.device_id).await;
-        ws3.send_text(encrypt("PING", &dev.key)).await;
-        assert_eq!(decrypt(&ws3.receive_text().await, &dev.key), "PONG");
+        let mut ws3 = connect(&server, &dev).await;
+        ws3.send_plain("PING").await;
+        assert_eq!(ws3.recv_plain().await, "PONG");
         ws3.close().await;
 
         // Simule un crash (session non refermée) : last_seen périmé
         // (TTL test = 2 s) → le bail est expiré, connexion acceptée.
         tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
-        let mut ws4 = connect(&server, &dev.token, &dev.device_id).await;
-        ws4.send_text(encrypt("PING", &dev.key)).await;
-        assert_eq!(decrypt(&ws4.receive_text().await, &dev.key), "PONG");
+        let mut ws4 = connect(&server, &dev).await;
+        ws4.send_plain("PING").await;
+        assert_eq!(ws4.recv_plain().await, "PONG");
         ws4.close().await;
     })
     .await;
@@ -346,22 +413,18 @@ async fn dynamique_decouverte_et_plafond() {
         row.max_unique_measurements = Set(2);
         row.update(&ctx.db).await.expect("plafond");
 
-        let mut ws = connect(&server, &dev.token, &dev.device_id).await;
+        let mut ws = connect(&server, &dev).await;
         for (name, value) in [("pression", "1.2"), ("humidite", "88")] {
-            ws.send_text(encrypt(&format!("{name}={value}"), &dev.key))
-                .await;
-            assert_eq!(decrypt(&ws.receive_text().await, &dev.key), "ok");
+            ws.send_plain(&format!("{name}={value}")).await;
+            assert_eq!(ws.recv_plain().await, "ok");
         }
 
         // D16 : style différent = même mesure découverte (pas de doublon —
         // le plafond de 2 n'est pas atteint).
-        ws.send_text(encrypt("Pression = 1.4", &dev.key)).await;
-        assert_eq!(decrypt(&ws.receive_text().await, &dev.key), "ok");
-        ws.send_text(encrypt("tension=3.3", &dev.key)).await;
-        assert_eq!(
-            decrypt(&ws.receive_text().await, &dev.key),
-            "error:too_many_measurements"
-        );
+        ws.send_plain("Pression = 1.4").await;
+        assert_eq!(ws.recv_plain().await, "ok");
+        ws.send_plain("tension=3.3").await;
+        assert_eq!(ws.recv_plain().await, "error:too_many_measurements");
 
         // La découverte est persistée (JSONB, relecture au reconnect) —
         // noms canoniques (D16).
@@ -374,11 +437,8 @@ async fn dynamique_decouverte_et_plafond() {
         assert!(names.get("pression").is_some() && names.get("humidite").is_some());
 
         // Nom normalisé vide → format invalide.
-        ws.send_text(encrypt("---=1", &dev.key)).await;
-        assert_eq!(
-            decrypt(&ws.receive_text().await, &dev.key),
-            "error:invalid_format"
-        );
+        ws.send_plain("---=1").await;
+        assert_eq!(ws.recv_plain().await, "error:invalid_format");
         ws.close().await;
     })
     .await;
@@ -391,9 +451,9 @@ async fn dynamique_decouverte_et_plafond() {
 async fn revalidation_token_desactive() {
     with_app(|server, auth, ctx| async move {
         let dev = create_device(&server, &auth, "ephemere", "soil_sensor").await;
-        let mut ws = connect(&server, &dev.token, &dev.device_id).await;
-        ws.send_text(encrypt("PING", &dev.key)).await;
-        assert_eq!(decrypt(&ws.receive_text().await, &dev.key), "PONG");
+        let mut ws = connect(&server, &dev).await;
+        ws.send_plain("PING").await;
+        assert_eq!(ws.recv_plain().await, "PONG");
 
         use pnex_backend::models::_entities::device_tokens;
         use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
@@ -407,7 +467,7 @@ async fn revalidation_token_desactive() {
         row.is_active = Set(false);
         row.update(&ctx.db).await.expect("désactivation");
 
-        ws.send_text(encrypt("PING", &dev.key)).await;
+        ws.send_plain("PING").await;
         assert_eq!(close_code(ws.receive_message().await), Some(4005));
     })
     .await;
@@ -556,25 +616,25 @@ async fn stale_ingest_session_is_superseded_without_releasing_the_new_lease() {
     with_app(|server, auth, ctx| async move {
         let dev = create_device(&server, &auth, "stale-ingest", "soil_sensor").await;
         let ws1 = {
-            let mut ws1 = connect(&server, &dev.token, &dev.device_id).await;
-            ws1.send_text(encrypt("PING", &dev.key)).await;
-            assert_eq!(decrypt(&ws1.receive_text().await, &dev.key), "PONG");
+            let mut ws1 = connect(&server, &dev).await;
+            ws1.send_plain("PING").await;
+            assert_eq!(ws1.recv_plain().await, "PONG");
             ws1
         };
         // ws1 goes silent (half-open): lease stale after the 2 s test TTL.
         tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
-        let mut ws2 = connect(&server, &dev.token, &dev.device_id).await;
-        ws2.send_text(encrypt("PING", &dev.key)).await;
-        assert_eq!(decrypt(&ws2.receive_text().await, &dev.key), "PONG");
+        let mut ws2 = connect(&server, &dev).await;
+        ws2.send_plain("PING").await;
+        assert_eq!(ws2.recv_plain().await, "PONG");
         // Let the superseded session tear down (owner-checked release).
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
         let st = state_of(&ctx.db, dev.id).await;
         assert!(st.connected, "new session still holds the lease");
         // A clone is still rejected while ws2 is live.
-        let mut ws3 = connect(&server, &dev.token, &dev.device_id).await;
+        let mut ws3 = connect(&server, &dev).await;
         assert_eq!(close_code(ws3.receive_message().await), Some(4003));
-        ws2.send_text(encrypt("PING", &dev.key)).await;
-        assert_eq!(decrypt(&ws2.receive_text().await, &dev.key), "PONG");
+        ws2.send_plain("PING").await;
+        assert_eq!(ws2.recv_plain().await, "PONG");
         drop(ws1);
         ws2.close().await;
     })

@@ -217,13 +217,18 @@ sans impact exploitable démontré.
 | SEC-7 | MEDIUM | **Viewer : déploiement / annulation OTA** | R2 | corrigé |
 | SEC-8 | MEDIUM | **Viewer : jetons et clés des devices, firmware avec PSK WiFi** | R4 | corrigé |
 | SEC-9 | LOW | **Dashboard : id de contrôle d'une autre org accepté au save** | R1 | corrigé (18484ae) |
-| SEC-10 | MEDIUM | **APK Android distribué « debuggable » : session lisible par USB** | R16 | accepté pour 0.1.0-beta.1 (sideload, testeurs connus) — keystore de release avec le Play Store |
+| SEC-10 | MEDIUM | **APK Android distribué « debuggable » : session lisible par USB** | R16 | accepté pour 0.1.0-beta.1 (sideload, testeurs connus) — 2026-10-09 : APK release non debuggable signé prêt (`task build:frontend:android:release`, job CI `android`) ; reste à créer la clé et la poser en secrets GitHub |
 | SEC-11 | MEDIUM | **Markdown de l'assistant : liens `javascript:` et images distantes** (ex-SEC-W1, relevé à l'audit de release) | R11 | corrigé |
 | SEC-12 | LOW | **Sauvegarde Android (auto-backup, transfert) emportait le jeton de rafraîchissement** | R16 | corrigé |
 | SEC-13 | LOW | **Assistant : widget libre re-lié au contrôle d'un flow déployé** | D144 | corrigé |
 | SEC-14 | LOW | **URL d'un fournisseur LLM vers un hôte interne (SSRF aveugle)** | R8 | corrigé 2026-10-07 — résolveur filtrant `pnex_core::egress` (avec SEC-W3) |
 | SEC-15 | LOW | **Image `pnex-builder-rs` : paquets Python vulnérables (7 HIGH, 0 CRITICAL)** | dépendances | corrigé pour 0.1.0-beta.4 (11 sur 12) ; `ecdsa` accepté (pas de correctif amont) |
 | SEC-16 | LOW | **Firmware : CA épinglée décodée dans un buffer fixe avant le contrôle de taille (débordement mémoire)** | D70 | corrigé 2026-10-08 (trouvé en route le 2026-10-07) |
+| SEC-17 | HIGH | **Frames device non authentifiées et sans anti-rejeu** (ChaCha20 seul, D8) | D8 | corrigé (couche interne) 2026-10-08 — lien Noise NNpsk0 (D156) serveur + agent + firmware, D8 supprimé ; reste le TLS mutuel (D153, lots L2–L4) |
+| SEC-18 | MEDIUM | **OTA non authentifiée, pas d'anti-downgrade sur ESP32** | — | corrigé 2026-10-09 (non commité ; banc 8266 + C6 : OTA signée acceptée, downgrade refusé — signature invalide testée sur hôte seulement) — image signée Ed25519 liée au device + version, clé publique compilée, anti-downgrade sur toutes les puces (ota.md §4) ; signature hors builder = EX-B7 (V2) |
+| SEC-19 | MEDIUM | **Firmware : clé de chiffrement vide = trafic en clair** (repli silencieux) | R16 | corrigé 2026-10-08 — sans clé valide le device ne se connecte pas (`pnex_crypto.cpp`, `pnex_transport.cpp`) |
+| SEC-20 | LOW | **Secrets du device en clair dans le flash** (PSK WiFi, jeton, clé ChaCha) | R16 | accepté jusqu'à V4 (EX-C1/C3) : exige des eFuses, gelés avant la validation communautaire du firmware |
+| SEC-21 | HIGH | **En-têtes de l'edge crus sans preuve d'origine** (`X-Forwarded-Proto`, puis `X-Client-Cert`) : le port du backend est joignable sans nginx (compose publie 5150), un client pouvait les forger | R7 | corrigé 2026-10-09 (trouvé en route, lot L4) — secret partagé edge ↔ backend (`PNEX_EDGE_SECRET`, en-tête `X-Pnex-Edge`, comparaison à temps constant) ; sans lui les en-têtes de l'edge sont ignorés ; vérifié en direct (close 4013) |
 
 \* SEC-4 seul exige le jeton de service ; c'est l'amplificateur qui rend
 SEC-1 / SEC-3 inter-org (actionneurs de n'importe quelle org).
@@ -479,6 +484,32 @@ puce : `build_ca_too_large` (`pnex_core::builds::device_ca_max_pem_bytes`,
 test `device_ca_limit_matches_the_firmware_buffer` qui relit l'en-tête
 firmware, `oversized_device_ca_is_refused_per_soc`).
 
+**SEC-17 à SEC-20 — Revue externe du firmware (2026-10-08).** Constats
+vérifiés dans le code ; plan complet et profils dans
+`security-tiers.md` (D148–D152).
+
+- **SEC-17** — `pnex_core::frame` : `base64(nonce ‖ ChaCha20(json))`,
+  sans Poly1305. Le chiffrement est malléable : le JSON étant très
+  prévisible, un attaquant réseau qui capture une frame peut retrouver
+  le flux de clé et forger une commande de même longueur (actionneur,
+  URL + sha d'OTA). Aucun compteur : une frame capturée se rejoue. Seule
+  barrière en `ws://` LAN. *Correctif prévu* : ChaCha20-Poly1305 +
+  compteur monotone par session dans les données authentifiées, des
+  deux côtés, golden vectors partagés.
+- **SEC-18** — L'OTA vérifie un sha256 livré par le même canal que
+  l'ordre : intégrité, pas authenticité. Le refus d'une version plus
+  ancienne n'existe que sur ESP8266 (`firmware/lib/pnex/src/pnex.cpp`).
+  *Correctif prévu* : signature Ed25519 de l'image (clé publique
+  embarquée, signature hors du builder) + version minimale en NVS sur
+  toutes les puces.
+- **SEC-19** — `pnex_config.h` : `ENCRYPTION_KEY` vide → frames en clair.
+  Le serveur réel refuse, mais le firmware ne doit pas pouvoir être
+  construit ainsi hors mock. *Correctif prévu* : `#error`.
+- **SEC-20** — PSK WiFi, jeton et clé compilés dans l'image : un
+  `esptool read_flash` les livre. Correctif = Secure Boot + Flash
+  Encryption ou NVS chiffré (eFuses) : **gelé** jusqu'à la vague V4
+  (D149), ESP8266 non corrigeable (profil `open` uniquement).
+
 ### Sous le seuil (confiance < 8) — à surveiller, non bloquants
 
 | # | Conf. | Sujet | Note |
@@ -486,8 +517,8 @@ firmware, `oversized_device_ca_is_refused_per_soc`).
 | SEC-W1 | 7 | Markdown de l'assistant : liens `javascript:` | → **SEC-11**, corrigé |
 | SEC-W2 | 7 | Member redirige un secret du coffre vers son hôte (`notify/testing.rs:90` test-draft, http-fetch avec `Ref`) | ✅ 2026-10-07 : R9 appliquée strictement (décision produit : seuls owner/admin câblent un secret) — `binding::check` dans `store_graph_secrets` (flows, assistant compris), `notify::plan` (création, mise à jour, test-draft) ; refus `secret-destination-locked` ; tests `secrets.rs::members_keep_secrets_but_never_rewire_them`, `members_never_wire_secrets_nor_administer`, `binding::tests`. WiFi aussi (`store::save_single`) : un member garde le mot de passe, ne le remplace pas et ne renomme pas le SSID qui le porte (cas 7 du même test) |
 | SEC-W3 | 6 | SSRF http-fetch avec lecture de la réponse (`pnex-node-http-fetch/src/lib.rs:370`) | ✅ 2026-10-07 : résolveur filtrant + redirections re-vérifiées (cf. SEC-14) ; test `http_fetch_refuses_loopback_under_the_lan_policy` |
-| SEC-W4 | 4 | `version` non assainie dans `ota_artifact_key` (`pnex-firmware-builder/src/store.rs:104`) | inexploitable en backend `db` ; `sanitize_segment` (R18) |
-| SEC-W5 | — | `email_verified` non exigé au rattachement de compte (`auth/provisioning.rs:117`) | sûr tant que Rauthy garantit l'email ; à exiger avant tout IdP amont |
+| SEC-W4 | 4 | `version` non assainie dans `ota_artifact_key` (`pnex-firmware-builder/src/store.rs:104`) | inexploitable en backend `db` ; `sanitize_segment` (R18) — ✅ 2026-10-09 : `version` assainie aussi (`ota_key_sanitizes_every_segment`) |
+| SEC-W5 | — | `email_verified` non exigé au rattachement de compte (`auth/provisioning.rs:117`) | sûr tant que Rauthy garantit l'email ; à exiger avant tout IdP amont — ✅ 2026-10-09 : re-liaison par email seulement si `email_verified` (Rauthy l'émet dans l'access token), sinon 401 (`relink_by_email_requires_a_verified_email`) |
 | SEC-W6 | — | Firmware `setInsecure` sans `PNEX_CA_CERT_FILE` | ✅ 2026-10-07 : build `wss` sans CA refusé (`build_no_ca`, `settings.firmware.require_device_ca`, vrai par défaut, faux en test seulement) |
 | SEC-W7 | 5 | Le firmware imprime l'URL WebSocket complète sur le port série, jeton du device inclus (base64) (`firmware/lib/pnex/src/pnex.cpp:397`) ; idem l'URL OTA (`pnex_ota.cpp:105`) | accès USB requis, mais les logs série sont collés tels quels dans les forums et tickets (tutoriels) ; masquer le paramètre `token` à l'impression (R16). Relevé le 2026-10-05 — ✅ 2026-10-07 : `pnex_conn_string()` renvoie l'URL au jeton masqué (`token=***`), l'URL OTA est imprimée sans sa requête |
 
@@ -506,4 +537,6 @@ firmware, `oversized_device_ca_is_refused_per_soc`).
 SEC-10 (APK release non debuggable, signature de release — accepté
 pour la beta 1) ; un member peut toujours lancer un build et télécharger
 l'image qui embarque le PSK WiFi (SEC-8, inhérent au provisioning) ; les
-points à surveiller selon priorité produit.
+points à surveiller selon priorité produit. SEC-17 à SEC-19 : vague V1 de
+`security-tiers.md` ; SEC-20 : vague V4 (eFuses, après validation
+communautaire du firmware).

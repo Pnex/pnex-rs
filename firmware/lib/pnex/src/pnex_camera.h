@@ -16,14 +16,16 @@
 //
 // Runtime:
 // - boot state = not streaming; a `camera_config` with enabled=true opens
-//   a SECOND WebSocket `/ws/camera?token=&device_id=` (same scheme, host
+//   a SECOND WebSocket `/ws/camera?device_id=` (token in the Authorization
+//   header, D154; same scheme, host
 //   and TLS posture as the control WS) and frames are pushed at `fps`;
-// - each frame = one binary WS message `nonce(12) || ChaCha20(PXC1
-//   header(16) || JPEG)` (pnex_camera_frame.h + cryptoEncryptBinary);
+// - after a binary Noise handshake (D156), each frame = one binary WS
+//   message: `PXC1 header(16) || JPEG` sealed on the camera's Noise link
+//   (pnex_camera_frame.h + cryptoSealBinaryInPlace);
 // - enabled=false, or the control WS going down, closes the camera WS and
 //   resets the state to "not streaming" (the server re-pushes the config
 //   after the next announce);
-// - reconnect backoff 1 s → 30 s; a clear "PING" text every 15 s keeps
+// - reconnect backoff 1 s → 30 s; a sealed "PING" text every 15 s keeps
 //   the server watchdog (45 s) quiet when frames are sparse.
 //
 #ifndef PNEX_CAMERA_H

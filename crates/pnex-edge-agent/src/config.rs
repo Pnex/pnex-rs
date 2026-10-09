@@ -50,9 +50,21 @@ fn default_max_age_secs() -> u64 {
 pub struct Secrets {
     pub device_id: String,
     pub token: String,
-    /// Base64 ChaCha20 key.
+    /// Base64 pre-shared key of the Noise link (D156).
     pub encryption_key: String,
     pub ws_path: String,
+    /// TLS client certificate + key (PEM) issued by the org CA (D153).
+    /// Absent in a secrets file written before: enroll again.
+    #[serde(default)]
+    pub client_cert_pem: Option<String>,
+    #[serde(default)]
+    pub client_key_pem: Option<String>,
+    /// Device endpoint port on the server host (D158), if any.
+    #[serde(default)]
+    pub device_port: Option<u16>,
+    /// Device endpoint with its own host name (`host[:port]`), if any.
+    #[serde(default)]
+    pub device_host: Option<String>,
 }
 
 impl Config {
@@ -73,17 +85,37 @@ impl Config {
             .collect()
     }
 
-    /// WebSocket URL of the device channel (`https` → `wss`, `http` → `ws`).
-    pub fn ws_base(&self, ws_path: &str) -> Result<String> {
+    /// WebSocket URL of the device channel (`https` → `wss`, `http` → `ws`),
+    /// on the device endpoint port when the server has one (D158).
+    pub fn ws_base(
+        &self,
+        ws_path: &str,
+        device_host: Option<&str>,
+        device_port: Option<u16>,
+    ) -> Result<String> {
         let server = self.server.trim_end_matches('/');
-        let rest = if let Some(r) = server.strip_prefix("https://") {
-            format!("wss://{r}")
+        let (scheme, authority) = if let Some(r) = server.strip_prefix("https://") {
+            ("wss", r)
         } else if let Some(r) = server.strip_prefix("http://") {
-            format!("ws://{r}")
+            ("ws", r)
         } else {
             return Err(anyhow!("server URL must start with https:// or http://"));
         };
-        Ok(format!("{rest}{ws_path}"))
+        if let Some(host) = device_host.map(str::trim).filter(|h| !h.is_empty()) {
+            return Ok(format!("{scheme}://{host}{ws_path}"));
+        }
+        let authority = match device_port {
+            Some(port) => {
+                // Host without its port (IPv6 literals keep their brackets).
+                let host = match authority.rsplit_once(':') {
+                    Some((h, p)) if p.bytes().all(|b| b.is_ascii_digit()) && !h.ends_with(':') => h,
+                    _ => authority,
+                };
+                format!("{host}:{port}")
+            }
+            None => authority.to_string(),
+        };
+        Ok(format!("{scheme}://{authority}{ws_path}"))
     }
 }
 
@@ -215,14 +247,38 @@ mod tests {
     #[test]
     fn ws_url_follows_scheme() {
         assert_eq!(
-            cfg("https://pnex.local/").ws_base("/ws/device").unwrap(),
+            cfg("https://pnex.local/")
+                .ws_base("/ws/device", None, None)
+                .unwrap(),
             "wss://pnex.local/ws/device"
         );
         assert_eq!(
-            cfg("http://10.0.0.2:5150").ws_base("/ws/device").unwrap(),
+            cfg("http://10.0.0.2:5150")
+                .ws_base("/ws/device", None, None)
+                .unwrap(),
             "ws://10.0.0.2:5150/ws/device"
         );
-        assert!(cfg("pnex.local").ws_base("/ws/device").is_err());
+        assert!(cfg("pnex.local").ws_base("/ws/device", None, None).is_err());
+        // D158: the device endpoint port replaces the server URL's port.
+        assert_eq!(
+            cfg("https://192.168.1.185")
+                .ws_base("/ws/device", None, Some(4443))
+                .unwrap(),
+            "wss://192.168.1.185:4443/ws/device"
+        );
+        assert_eq!(
+            cfg("https://pnex.local:8443/")
+                .ws_base("/ws/device", None, Some(4443))
+                .unwrap(),
+            "wss://pnex.local:4443/ws/device"
+        );
+        // Own device host (cloud): wins over the port.
+        assert_eq!(
+            cfg("https://dev.pnex.io")
+                .ws_base("/ws/device", Some("devices.dev.pnex.io"), Some(4443))
+                .unwrap(),
+            "wss://devices.dev.pnex.io/ws/device"
+        );
     }
 
     #[test]

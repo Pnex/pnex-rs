@@ -316,15 +316,34 @@ impl BuildFirmwareWorker {
         if let Some(pem) = ca_cert_pem.as_deref() {
             check_device_ca_size(pem, &args.soc)?;
         }
+        // SEC-18: the public key the firmware checks OTA images against.
+        let ota_key = crate::services::ota_signing::signing_key(&self.db, ring)
+            .await
+            .map_err(|e| {
+                Failure::new("build_ota_key", format!("OTA signing key unavailable: {e}"))
+            })?;
+        // D153: the device's TLS client identity, issued for this build by
+        // its org CA (the private key only ever lives in this image).
+        let client = crate::services::device_pki::issue_device_cert(
+            &self.db,
+            ring,
+            args.org_id,
+            registry.id,
+            &args.device_id,
+        )
+        .await
+        .map_err(|e| Failure::new("build_device_cert", format!("device certificate: {e}")))?;
         let secrets = BuildSecrets {
             wifi_ssid: args.wifi_ssid.clone(),
             wifi_password,
-            host: args.pnex_host.clone(),
+            host: crate::services::firmware::device_endpoint_env(&args.pnex_host),
             ws_ssl: args.ws_ssl,
             token,
             device_id: args.device_id.clone(),
             encryption_key,
             ca_cert_pem,
+            ota_pubkey: Some(crate::services::ota_signing::public_key_hex(&ota_key)),
+            client_cert: Some((client.cert_pem.clone(), client.key_pem.clone())),
         };
         let mut device = DeviceSpec {
             org_id: args.org_id,

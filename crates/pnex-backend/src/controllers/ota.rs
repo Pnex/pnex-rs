@@ -232,6 +232,14 @@ async fn deploy(
     payload["pushed"] = serde_json::json!(false);
     // Online → push immediately; offline → pickup at the next announce.
     if ws_device::is_connected(device.id).await {
+        let sig = crate::services::ota_signing::sign_for_order(
+            &ctx.db,
+            &ctx.config,
+            &device.device_id,
+            &row.target_version,
+            &row.sha256,
+        )
+        .await;
         ws_device::push_command(
             device.id,
             ServerMsg::OtaAvailable {
@@ -243,6 +251,7 @@ async fn deploy(
                 ),
                 sha256: row.sha256.clone(),
                 size: row.size_bytes.map(|s| s as u64),
+                sig,
             },
         )
         .await;
@@ -338,7 +347,6 @@ async fn cancel(
 
 #[derive(Debug, Deserialize)]
 struct DeviceAuthQuery {
-    token: Option<String>,
     device_id: Option<String>,
 }
 
@@ -348,10 +356,13 @@ async fn download_firmware(
     State(ctx): State<AppContext>,
     Path((device_id_str, version)): Path<(String, String)>,
     Query(q): Query<DeviceAuthQuery>,
+    headers: axum::http::HeaderMap,
 ) -> Result<Response> {
-    let token = q
-        .token
-        .as_deref()
+    let ingest = crate::services::settings::IngestSettings::from_config(&ctx.config);
+    if !super::ws_ingest::arrived_over_tls(&headers, &ingest) {
+        return Err(not_found_code("auth_failed", "authentication failed"));
+    }
+    let token = super::ws_ingest::device_token(&headers)
         .map(decode_param)
         .flatten()
         .ok_or_else(|| not_found_code("auth_failed", "authentication failed"))?;
@@ -368,6 +379,13 @@ async fn download_firmware(
         .await
         .map_err(|_| Error::InternalServerError)?
         .ok_or_else(|| not_found_code("auth_failed", "authentication failed"))?;
+    // D153 (L4): downloaded over the device's own certificate.
+    if !super::ws_ingest::client_cert_matches(&ctx.db, &headers, &ingest, device.id)
+        .await
+        .map_err(|_| Error::InternalServerError)?
+    {
+        return Err(not_found_code("auth_failed", "authentication failed"));
+    }
     // Artifact key is org-scoped: the authenticated device's own org.
     let key = pnex_firmware_builder::ota_artifact_key(device.org_id, &device.device_id, &version);
     let settings = firmware::FirmwareSettings::from_config(&ctx.config);

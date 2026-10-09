@@ -32,6 +32,10 @@ pub mod ns {
     // 0x504e_0005 was the pre-release secrets takeover: never reuse it.
     /// Master key rotation of the vault (global, key 0).
     pub const SECRETS_REKEY: i32 = 0x504e_0006;
+    /// First-use creation of the OTA signing key (global, key 0).
+    pub const OTA_SIGNING_KEY: i32 = 0x504e_0007;
+    /// First-use creation of the device CA of one org (key = org id).
+    pub const DEVICE_CA: i32 = 0x504e_0008;
 }
 
 /// Advisory lock key used by the boot migration (single int8 form).

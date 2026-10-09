@@ -8,36 +8,11 @@ mod common;
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
-use chacha20::cipher::{KeyIvInit, StreamCipher};
-use chacha20::{ChaCha20, Key, Nonce};
 use loco_rs::testing::request::{RequestConfig, RequestConfigBuilder};
 use pnex_backend::app::App;
 use pnex_core::camera::FrameHeader;
 use serial_test::serial;
 use std::time::Duration;
-
-fn encrypt_text(plain: &str, key: &[u8; 32]) -> String {
-    STANDARD.encode(encrypt_bin(plain.as_bytes(), key))
-}
-
-fn encrypt_bin(plain: &[u8], key: &[u8; 32]) -> Vec<u8> {
-    use rand::RngExt;
-    let mut nonce = [0u8; 12];
-    rand::rng().fill(&mut nonce);
-    let mut buf = plain.to_vec();
-    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(&nonce)).apply_keystream(&mut buf);
-    let mut wire = nonce.to_vec();
-    wire.extend_from_slice(&buf);
-    wire
-}
-
-fn decrypt_text(raw: &str, key: &[u8; 32]) -> String {
-    let bytes = STANDARD.decode(raw.trim()).expect("b64");
-    let (nonce, ct) = bytes.split_at(12);
-    let mut buf = ct.to_vec();
-    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(nonce)).apply_keystream(&mut buf);
-    String::from_utf8(buf).expect("utf8")
-}
 
 struct Dev {
     id: i64,
@@ -112,13 +87,12 @@ async fn create_device(
 }
 
 /// Reads decrypted server messages until a `CameraConfig` shows up.
-async fn next_camera_config(ws: &mut axum_test::TestWebSocket, key: &[u8; 32]) -> (bool, u8) {
+async fn next_camera_config(ws: &mut common::DevWs) -> (bool, u8) {
     for _ in 0..10 {
-        let raw = tokio::time::timeout(Duration::from_secs(5), ws.receive_text())
+        let raw = tokio::time::timeout(Duration::from_secs(5), ws.recv_plain())
             .await
             .expect("server message");
-        let msg: pnex_core::ServerMsg =
-            serde_json::from_str(&decrypt_text(&raw, key)).expect("ServerMsg");
+        let msg: pnex_core::ServerMsg = serde_json::from_str(&raw).expect("ServerMsg");
         if let pnex_core::ServerMsg::CameraConfig { enabled, fps, .. } = msg {
             return (enabled, fps);
         }
@@ -128,9 +102,9 @@ async fn next_camera_config(ws: &mut axum_test::TestWebSocket, key: &[u8; 32]) -
 
 /// `enabled` of the first `CameraConfig` carrying `fps` (earlier configs,
 /// e.g. a heartbeat re-push, are skipped).
-async fn config_with_fps(ws: &mut axum_test::TestWebSocket, key: &[u8; 32], fps: u8) -> bool {
+async fn config_with_fps(ws: &mut common::DevWs, fps: u8) -> bool {
     for _ in 0..5 {
-        let (enabled, got) = next_camera_config(ws, key).await;
+        let (enabled, got) = next_camera_config(ws).await;
         if got == fps {
             return enabled;
         }
@@ -189,22 +163,24 @@ async fn camera_uplink_live_and_settings() {
             clear_viewer_presence(&mut kv, dev.id).await;
         }
 
-        let mut ctl = server
-            .get_websocket(&format!(
+        let mut ctl = common::DevWs::connect(
+            &server,
+            &format!(
                 "/ws/device?token={}&device_id={}",
                 STANDARD.encode(&dev.token),
                 STANDARD.encode(&dev.device_id),
-            ))
-            .await
-            .into_websocket()
-            .await;
+            ),
+            &dev.key,
+            &dev.device_id,
+        )
+        .await;
         let announce = serde_json::json!({
             "t": "announce", "chip": "esp8266", "board": "nodemcu", "fw": "7",
             "caps": [{"id": "camera", "family": "video"}]
         })
         .to_string();
-        ctl.send_text(encrypt_text(&announce, &dev.key)).await;
-        assert_eq!(next_camera_config(&mut ctl, &dev.key).await, (false, 5));
+        ctl.send_plain(&announce).await;
+        assert_eq!(next_camera_config(&mut ctl).await, (false, 5));
 
         // Listed as a camera.
         let list: serde_json::Value = server
@@ -233,32 +209,29 @@ async fn camera_uplink_live_and_settings() {
             .await
             .into_websocket()
             .await;
-        assert_eq!(next_camera_config(&mut ctl, &dev.key).await, (true, 5));
+        assert_eq!(next_camera_config(&mut ctl).await, (true, 5));
 
         // Uplink: an encrypted frame reaches the viewer as raw JPEG.
-        let mut cam = server
-            .get_websocket(&format!(
+        let mut cam = common::DevWs::connect_binary(
+            &server,
+            &format!(
                 "/ws/camera?token={}&device_id={}",
                 STANDARD.encode(&dev.token),
                 STANDARD.encode(&dev.device_id),
-            ))
-            .await
-            .into_websocket()
-            .await;
-        cam.send_message(axum_test::WsMessage::Binary(
-            encrypt_bin(&frame(1), &dev.key).into(),
-        ))
+            ),
+            &dev.key,
+            &dev.device_id,
+        )
         .await;
+        cam.send_sealed_bytes(&frame(1)).await;
         let got = tokio::time::timeout(Duration::from_secs(5), viewer.receive_bytes())
             .await
             .expect("live frame");
         assert_eq!(&got[..], &frame(1)[16..]);
 
-        // Garbage (wrong key) is dropped, never forwarded.
-        cam.send_message(axum_test::WsMessage::Binary(
-            encrypt_bin(&frame(2), &[9u8; 32]).into(),
-        ))
-        .await;
+        // A forged frame is dropped, never forwarded (the link stays up).
+        cam.send_message(axum_test::WsMessage::Binary(vec![7u8; 64].into()))
+            .await;
 
         let snap = server
             .get(&format!("/api/v1/cameras/{}/snapshot", dev.id))
@@ -269,15 +242,17 @@ async fn camera_uplink_live_and_settings() {
         assert_eq!(&snap.as_bytes()[..], &frame(1)[16..]);
 
         // A second uplink for the same camera is refused (anti-clone).
-        let mut clone = server
-            .get_websocket(&format!(
+        let mut clone = common::DevWs::connect_binary(
+            &server,
+            &format!(
                 "/ws/camera?token={}&device_id={}",
                 STANDARD.encode(&dev.token),
                 STANDARD.encode(&dev.device_id),
-            ))
-            .await
-            .into_websocket()
-            .await;
+            ),
+            &dev.key,
+            &dev.device_id,
+        )
+        .await;
         match clone.receive_message().await {
             axum_test::WsMessage::Close(Some(f)) => assert_eq!(u16::from(f.code), 4003),
             other => panic!("expected close 4003, got {other:?}"),
@@ -301,7 +276,7 @@ async fn camera_uplink_live_and_settings() {
             .json(&serde_json::json!({"fps": 10, "capture_mode": "continuous"}))
             .await;
         ok.assert_status_ok();
-        assert_eq!(next_camera_config(&mut ctl, &dev.key).await, (true, 10));
+        assert_eq!(next_camera_config(&mut ctl).await, (true, 10));
 
         cam.close().await;
         viewer.close().await;
@@ -518,22 +493,24 @@ async fn camera_cluster_state_crosses_pods() {
             .hset(camera::VIEWERS_KEY, &viewer_field, format!("2|{future}"))
             .await
             .unwrap();
-        let mut ctl = server
-            .get_websocket(&format!(
+        let mut ctl = common::DevWs::connect(
+            &server,
+            &format!(
                 "/ws/device?token={}&device_id={}",
                 STANDARD.encode(&dev.token),
                 STANDARD.encode(&dev.device_id),
-            ))
-            .await
-            .into_websocket()
-            .await;
+            ),
+            &dev.key,
+            &dev.device_id,
+        )
+        .await;
         let announce = serde_json::json!({
             "t": "announce", "chip": "esp8266", "board": "nodemcu", "fw": "7",
             "caps": [{"id": "camera", "family": "video"}]
         })
         .to_string();
-        ctl.send_text(encrypt_text(&announce, &dev.key)).await;
-        assert_eq!(next_camera_config(&mut ctl, &dev.key).await, (true, 5));
+        ctl.send_plain(&announce).await;
+        assert_eq!(next_camera_config(&mut ctl).await, (true, 5));
 
         // Remote viewers gone, a flow worker of another pod wants it.
         let _: () = kv.hdel(camera::VIEWERS_KEY, &viewer_field).await.unwrap();
@@ -557,7 +534,7 @@ async fn camera_cluster_state_crosses_pods() {
                 .json(&serde_json::json!({ "fps": fps }))
         };
         patch(6).await.assert_status_ok();
-        assert!(config_with_fps(&mut ctl, &dev.key, 6).await);
+        assert!(config_with_fps(&mut ctl, 6).await);
         // An expired demand field no longer counts.
         let expired = camera::FlowDemandEntry {
             exp: 1,
@@ -572,7 +549,7 @@ async fn camera_cluster_state_crosses_pods() {
             .await
             .unwrap();
         patch(7).await.assert_status_ok();
-        assert!(!config_with_fps(&mut ctl, &dev.key, 7).await);
+        assert!(!config_with_fps(&mut ctl, 7).await);
         let _: () = kv.hdel(camera::FLOW_KEY, &flow_field).await.unwrap();
 
         // The uplink is held by another pod: a local uplink is refused.
@@ -580,15 +557,17 @@ async fn camera_cluster_state_crosses_pods() {
             .set_ex(camera::uplink_key(dev.id), format!("{other}|s1"), 30)
             .await
             .unwrap();
-        let mut clone = server
-            .get_websocket(&format!(
+        let mut clone = common::DevWs::connect_binary(
+            &server,
+            &format!(
                 "/ws/camera?token={}&device_id={}",
                 STANDARD.encode(&dev.token),
                 STANDARD.encode(&dev.device_id),
-            ))
-            .await
-            .into_websocket()
-            .await;
+            ),
+            &dev.key,
+            &dev.device_id,
+        )
+        .await;
         match clone.receive_message().await {
             axum_test::WsMessage::Close(Some(f)) => assert_eq!(u16::from(f.code), 4003),
             other => panic!("expected close 4003, got {other:?}"),
@@ -710,19 +689,18 @@ async fn camera_cluster_state_crosses_pods() {
         // Remote uplink gone: a local uplink takes the claim, then its
         // token is revoked → 4005 at the next message.
         let _: () = kv.del(camera::uplink_key(dev.id)).await.unwrap();
-        let mut cam = server
-            .get_websocket(&format!(
+        let mut cam = common::DevWs::connect_binary(
+            &server,
+            &format!(
                 "/ws/camera?token={}&device_id={}",
                 STANDARD.encode(&dev.token),
                 STANDARD.encode(&dev.device_id),
-            ))
-            .await
-            .into_websocket()
-            .await;
-        cam.send_message(axum_test::WsMessage::Binary(
-            encrypt_bin(&frame(3), &dev.key).into(),
-        ))
+            ),
+            &dev.key,
+            &dev.device_id,
+        )
         .await;
+        cam.send_sealed_bytes(&frame(3)).await;
         let mut holder: Option<String> = None;
         for _ in 0..50 {
             holder = kv.get(camera::uplink_key(dev.id)).await.unwrap();
@@ -748,10 +726,7 @@ async fn camera_cluster_state_crosses_pods() {
                 .await
                 .unwrap();
         }
-        cam.send_message(axum_test::WsMessage::Binary(
-            encrypt_bin(&frame(4), &dev.key).into(),
-        ))
-        .await;
+        cam.send_sealed_bytes(&frame(4)).await;
         let closed = tokio::time::timeout(Duration::from_secs(5), async {
             loop {
                 match cam.receive_message().await {

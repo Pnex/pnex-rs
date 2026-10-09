@@ -44,6 +44,14 @@ void pnex_tls_init(const char* ca_pem_b64);
 // True when a CA was provided (real verification posture).
 bool pnex_tls_pinned();
 
+// Device TLS client identity (D153): certificate + PKCS#8 private key
+// issued by the org CA, base64 PEM (PNEX_CLIENT_CERT / PNEX_CLIENT_KEY,
+// "" = none). Decoded once; presented by every TLS client of the device.
+void pnex_tls_set_client_identity(const char* cert_pem_b64, const char* key_pem_b64);
+
+// True when a client certificate is compiled in.
+bool pnex_tls_has_client_identity();
+
 // Apply the shared trust posture to a client.
 // - unpinned  → setInsecure() (both cores).
 // - ESP32 pinned → setCACert.

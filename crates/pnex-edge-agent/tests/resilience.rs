@@ -13,11 +13,12 @@ use std::time::Duration;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use futures_util::{SinkExt, StreamExt};
-use pnex_core::frame::{decrypt_frame, encrypt_frame};
 use pnex_core::{DeviceMsg, ServerMsg};
 use tokio_tungstenite::tungstenite::Message;
 
 const KEY: [u8; 32] = [9u8; 32];
+/// Device id written to the agent secrets (bound into the Noise prologue).
+const DEVICE_ID: &str = "agent-test";
 
 #[derive(Default)]
 struct FakeServer {
@@ -43,14 +44,28 @@ async fn serve(listener: tokio::net::TcpListener, srv: Arc<FakeServer>) {
             };
             let conn_no = srv.connections.fetch_add(1, Ordering::SeqCst) + 1;
             let (mut tx, mut rx) = ws.split();
+            // Noise handshake, server side (same as the real server).
+            let Some(Ok(Message::Text(first))) = rx.next().await else {
+                return;
+            };
+            let msg1 = pnex_core::frame::decode_handshake(first.as_str()).expect("b64");
+            let (mut codec, msg2) =
+                pnex_core::frame::respond(&KEY, DEVICE_ID, &msg1).expect("handshake");
+            if tx
+                .send(Message::Text(
+                    pnex_core::frame::encode_handshake(&msg2).into(),
+                ))
+                .await
+                .is_err()
+            {
+                return;
+            }
             let mut batches_here = 0usize;
             while let Some(Ok(msg)) = rx.next().await {
                 let Message::Text(text) = msg else { continue };
-                let plain = decrypt_frame(text.as_str(), &KEY).expect("decrypt");
+                let plain = codec.open_text(text.as_str()).expect("authenticated frame");
                 if plain == "PING" {
-                    let _ = tx
-                        .send(Message::Text(encrypt_frame("PONG", &KEY).into()))
-                        .await;
+                    let _ = tx.send(Message::Text(codec.seal_text("PONG").into())).await;
                     continue;
                 }
                 let reply = match serde_json::from_str::<DeviceMsg>(&plain).expect("DeviceMsg") {
@@ -90,7 +105,7 @@ async fn serve(listener: tokio::net::TcpListener, srv: Arc<FakeServer>) {
                 };
                 let plain = serde_json::to_string(&reply).unwrap();
                 if tx
-                    .send(Message::Text(encrypt_frame(&plain, &KEY).into()))
+                    .send(Message::Text(codec.seal_text(&plain).into()))
                     .await
                     .is_err()
                 {
@@ -118,7 +133,7 @@ fn write_config(dir: &Path, server_port: u16, api_port: u16) {
     std::fs::write(
         dir.join("secrets.json"),
         serde_json::json!({
-            "device_id": "agent-test",
+            "device_id": DEVICE_ID,
             "token": "tok",
             "encryption_key": STANDARD.encode(KEY),
             "ws_path": "/ws/device"

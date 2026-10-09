@@ -11,7 +11,7 @@
 #include <ESP8266WiFi.h>
 #endif
 
-#include "chacha_crypto.h"  // cryptoB64Encode
+#include "pnex_crypto.h"  // cryptoB64Encode
 #include "pnex_tls.h"
 
 namespace {
@@ -224,9 +224,12 @@ bool PnexWsClient::handshake(const char* host, const char* path) {
         "Upgrade: websocket\r\n"
         "Connection: Upgrade\r\n"
         "Sec-WebSocket-Key: %s\r\n"
-        "Sec-WebSocket-Version: 13\r\n"
-        "\r\n",
+        "Sec-WebSocket-Version: 13\r\n",
         path, host, key);
+    if (auth_token_ != nullptr && auth_token_[0] != '\0') {
+        tcp_->printf("Authorization: Bearer %s\r\n", auth_token_);
+    }
+    tcp_->print("\r\n");
 
     // Expected Sec-WebSocket-Accept = base64(SHA-1(key + RFC GUID)).
     char concat[64];

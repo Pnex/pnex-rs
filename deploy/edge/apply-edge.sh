@@ -75,6 +75,18 @@ if [[ $MODE == local && $ALIAS != "$DOMAIN" ]]; then
 else
     export PNEX_DOMAIN_ALIAS=""
 fi
+# Edge <-> backend shared secret (X-Pnex-Edge): the backend trusts the edge's
+# headers (X-Forwarded-Proto, X-Client-Cert) only with it. Sticky, like the
+# domain: generated once, kept in edge.env.
+previous_secret() {
+    [[ -f deploy/edge/edge.env ]] && sed -n 's/^PNEX_EDGE_SECRET=//p' deploy/edge/edge.env
+}
+EDGE_SECRET="${PNEX_EDGE_SECRET:-$(previous_secret)}"
+EDGE_SECRET="${EDGE_SECRET:-$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 40)}"
+# Device endpoint (D158): its own TLS listener asking for the device client
+# certificate, so browsers on 443 are never asked for one.
+DEVICE_PORT="${PNEX_DEVICE_PORT:-4443}"
+export PNEX_EDGE_SECRET="$EDGE_SECRET" PNEX_DEVICE_PORT="$DEVICE_PORT"
 BACKEND="${PNEX_EDGE_BACKEND:-host}"
 case $BACKEND in
     host|container) ;;
@@ -91,7 +103,10 @@ PNEX_EDGE_MODE=$MODE
 PNEX_EXTRA_SANS=$PNEX_EXTRA_SANS
 RAUTHY_ISSUER_URL=https://$DOMAIN
 PNEX_CA_CERT_FILE=$ROOT/deploy/edge/pki-data/device-ca.pem
+PNEX_EDGE_SECRET=$EDGE_SECRET
+PNEX_DEVICE_PORT=$DEVICE_PORT
 EOF
+chmod 600 deploy/edge/edge.env
 echo "  ✓ deploy/edge/edge.env"
 
 # ── 2) Stack up (rauthy recreated with the proxy-mode overrides) ────────

@@ -33,6 +33,12 @@ pub struct BuildSecrets {
     /// the TLS edge's device root (D70). `None` = no pinning (setInsecure,
     /// on both cores).
     pub ca_cert_pem: Option<String>,
+    /// Ed25519 public key (hex) of the instance OTA signer (SEC-18):
+    /// `None` = the firmware refuses every OTA.
+    pub ota_pubkey: Option<String>,
+    /// Device client certificate + private key (PEM), issued by the org CA
+    /// for this build (D153). `None` = no client certificate compiled.
+    pub client_cert: Option<(String, String)>,
 }
 
 fn b64(v: &str) -> String {
@@ -64,6 +70,24 @@ pub fn child_env(secrets: &BuildSecrets) -> Vec<(String, String)> {
         .map(b64)
         .unwrap_or_default();
     vars.push(("PNEX_CA_CERT".into(), ca));
+    // Always set too (PIO fails on a missing `${sysenv.*}`); a public key,
+    // not a secret. Hex only, so it can never break the `-D` flag.
+    let ota_pubkey = secrets
+        .ota_pubkey
+        .as_deref()
+        .filter(|k| k.len() == 64 && k.bytes().all(|b| b.is_ascii_hexdigit()))
+        .unwrap_or_default()
+        .to_string();
+    vars.push(("PNEX_OTA_PUBKEY".into(), ota_pubkey));
+    // Client certificate + key in base64 (no quote or newline can break the
+    // `-D` flag); always set, empty without one.
+    let (cert, key) = secrets
+        .client_cert
+        .as_ref()
+        .map(|(c, k)| (b64(c), b64(k)))
+        .unwrap_or_default();
+    vars.push(("PNEX_CLIENT_CERT".into(), cert));
+    vars.push(("PNEX_CLIENT_KEY".into(), key));
     vars
 }
 
@@ -78,6 +102,7 @@ pub fn scrub_secrets(text: &str, secrets: &BuildSecrets) -> String {
         Some(secrets.wifi_password.as_str()),
         Some(secrets.token.as_str()),
         secrets.encryption_key.as_deref(),
+        secrets.client_cert.as_ref().map(|(_, key)| key.as_str()),
     ];
     for v in values.into_iter().flatten().filter(|v| v.len() >= 4) {
         out = out.replace(&b64(v), "***").replace(v, "***");
@@ -120,6 +145,8 @@ mod tests {
             device_id: "capteur-jardin".into(),
             encryption_key: Some("Y2xlLWI2NC1zMk8=".into()),
             ca_cert_pem: None,
+            ota_pubkey: None,
+            client_cert: None,
         }
     }
 
@@ -214,5 +241,22 @@ mod tests {
         let mut s = secrets();
         s.encryption_key = None;
         assert!(!child_env(&s).iter().any(|(n, _)| n == "ENCRYPTION_KEY"));
+    }
+
+    #[test]
+    fn ota_pubkey_is_always_set_and_hex_only() {
+        let get = |s: &BuildSecrets| {
+            child_env(s)
+                .into_iter()
+                .find(|(n, _)| n == "PNEX_OTA_PUBKEY")
+                .map(|(_, v)| v)
+        };
+        let mut s = secrets();
+        assert_eq!(get(&s).as_deref(), Some(""));
+        s.ota_pubkey = Some("ab".repeat(32));
+        assert_eq!(get(&s), Some("ab".repeat(32)));
+        // Anything else never reaches the `-D` flag.
+        s.ota_pubkey = Some("\"; rm -rf /".into());
+        assert_eq!(get(&s).as_deref(), Some(""));
     }
 }

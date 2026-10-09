@@ -56,6 +56,8 @@ pub struct TokenSpec {
     pub exp: i64,
     pub issuer: String,
     pub audience: serde_json::Value,
+    /// `email_verified` claim (Rauthy sets it; SEC-W5 relink guard).
+    pub email_verified: bool,
 }
 
 impl Default for TokenSpec {
@@ -67,6 +69,7 @@ impl Default for TokenSpec {
             given_name: "Alice".into(),
             family_name: "Martin".into(),
             exp: chrono::Utc::now().timestamp() + 3600,
+            email_verified: true,
             issuer: String::new(),
             audience: serde_json::json!(["account", "pnex"]),
         }
@@ -87,6 +90,7 @@ pub fn mint_token(spec: &TokenSpec) -> String {
         "iss": spec.issuer,
         "aud": spec.audience,
         "exp": spec.exp,
+        "email_verified": spec.email_verified,
     });
     jsonwebtoken::encode(&header, &claims, &encoding_key()).expect("signature token test")
 }
@@ -251,4 +255,191 @@ pub async fn seed_catalogue(db: &sea_orm::DatabaseConnection) {
             .expect("lien capability");
         }
     }
+}
+
+/// Device side of a `/ws/*` connection, Noise NNpsk0 link included (D156):
+/// [`DevWs::connect`] sends the first Noise message and reads the server's
+/// answer, like the firmware. When the server refuses the connection
+/// instead (close code), the close frame is kept for `receive_message`.
+pub struct DevWs {
+    pub ws: axum_test::TestWebSocket,
+    link: Option<pnex_core::frame::Link>,
+    pending: Option<axum_test::WsMessage>,
+}
+
+impl DevWs {
+    /// Text link (`/ws/device`, `/ws/sensor/ingest`).
+    pub async fn connect(
+        server: &axum_test::TestServer,
+        url: &str,
+        key: &[u8; 32],
+        device_id: &str,
+    ) -> Self {
+        Self::start(server, url, key, device_id, false).await
+    }
+
+    /// Binary link (`/ws/camera`).
+    pub async fn connect_binary(
+        server: &axum_test::TestServer,
+        url: &str,
+        key: &[u8; 32],
+        device_id: &str,
+    ) -> Self {
+        Self::start(server, url, key, device_id, true).await
+    }
+
+    /// Text link with the device token in the `Authorization` header
+    /// (D154) instead of the URL.
+    pub async fn connect_with_header(
+        server: &axum_test::TestServer,
+        url: &str,
+        token_b64: &str,
+        key: &[u8; 32],
+        device_id: &str,
+    ) -> Self {
+        let ws = server
+            .get_websocket(url)
+            .add_header("Authorization", format!("Bearer {token_b64}"))
+            .await
+            .into_websocket()
+            .await;
+        Self::handshake(ws, key, device_id, false).await
+    }
+
+    async fn start(
+        server: &axum_test::TestServer,
+        url: &str,
+        key: &[u8; 32],
+        device_id: &str,
+        binary: bool,
+    ) -> Self {
+        // Tests still write `?token=…` in their URLs: it is moved to the
+        // `Authorization` header, where the server reads it (D154).
+        let (url, token) = split_token(url);
+        let request = server.get_websocket(&url);
+        let request = match token {
+            Some(t) => request.add_header("Authorization", format!("Bearer {t}")),
+            None => request,
+        };
+        let ws = request.await.into_websocket().await;
+        Self::handshake(ws, key, device_id, binary).await
+    }
+
+    async fn handshake(
+        mut ws: axum_test::TestWebSocket,
+        key: &[u8; 32],
+        device_id: &str,
+        binary: bool,
+    ) -> Self {
+        let (init, msg1) = pnex_core::frame::Initiator::start(key, device_id);
+        if binary {
+            ws.send_message(axum_test::WsMessage::Binary(msg1.into()))
+                .await;
+        } else {
+            ws.send_text(pnex_core::frame::encode_handshake(&msg1))
+                .await;
+        }
+        let answer = ws.receive_message().await;
+        let msg2 = match &answer {
+            axum_test::WsMessage::Text(t) => pnex_core::frame::decode_handshake(t.as_str()),
+            axum_test::WsMessage::Binary(b) => Some(b.to_vec()),
+            _ => None,
+        };
+        match msg2 {
+            Some(msg2) => Self {
+                ws,
+                link: Some(init.finish(&msg2).expect("Noise handshake")),
+                pending: None,
+            },
+            None => Self {
+                ws,
+                link: None,
+                pending: Some(answer),
+            },
+        }
+    }
+
+    fn link(&mut self) -> &mut pnex_core::frame::Link {
+        self.link
+            .as_mut()
+            .expect("connection refused by the server")
+    }
+
+    /// Seals a text frame without sending it (replay / tampering tests).
+    pub fn seal(&mut self, plain: &str) -> String {
+        self.link().seal_text(plain)
+    }
+
+    /// Opens a text frame of the server.
+    pub fn open(&mut self, raw: &str) -> Option<String> {
+        self.link().open_text(raw)
+    }
+
+    pub async fn send_plain(&mut self, plain: &str) {
+        let wire = self.seal(plain);
+        self.ws.send_text(wire).await;
+    }
+
+    pub async fn recv_plain(&mut self) -> String {
+        let raw = self.ws.receive_text().await;
+        self.open(&raw).expect("authenticated server frame")
+    }
+
+    /// Seals and sends a binary frame (camera uplink).
+    pub async fn send_sealed_bytes(&mut self, plain: &[u8]) {
+        let wire = self.link().seal(plain);
+        self.ws
+            .send_message(axum_test::WsMessage::Binary(wire.into()))
+            .await;
+    }
+
+    pub async fn send_text(&mut self, raw: String) {
+        self.ws.send_text(raw).await;
+    }
+
+    pub async fn send_message(&mut self, msg: axum_test::WsMessage) {
+        self.ws.send_message(msg).await;
+    }
+
+    pub async fn receive_text(&mut self) -> String {
+        self.ws.receive_text().await
+    }
+
+    /// Next message, the refusal close frame first when the server
+    /// refused the connection.
+    pub async fn receive_message(&mut self) -> axum_test::WsMessage {
+        match self.pending.take() {
+            Some(m) => m,
+            None => self.ws.receive_message().await,
+        }
+    }
+
+    pub async fn close(self) {
+        self.ws.close().await;
+    }
+}
+
+/// Splits the `token` parameter out of a device URL: (URL without it,
+/// its value). D154 moved the device token to the `Authorization` header.
+pub fn split_token(url: &str) -> (String, Option<String>) {
+    let Some((path, query)) = url.split_once('?') else {
+        return (url.to_string(), None);
+    };
+    let mut token = None;
+    let rest: Vec<&str> = query
+        .split('&')
+        .filter(|kv| match kv.strip_prefix("token=") {
+            Some(v) => {
+                token = Some(v.to_string());
+                false
+            }
+            None => true,
+        })
+        .collect();
+    let url = if rest.is_empty() {
+        path.to_string()
+    } else {
+        format!("{path}?{}", rest.join("&"))
+    };
+    (url, token)
 }

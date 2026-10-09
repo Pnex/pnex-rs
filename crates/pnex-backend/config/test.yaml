@@ -60,6 +60,10 @@ settings:
     silence_ttl_secs: 2
     reaper_interval_secs: 1
     token_cache_secs: 0
+    # Tests talk to the server directly, without the TLS edge (D154).
+    require_tls: false
+    # Device client certificates are covered by tests/device_pki.rs.
+    require_client_cert: false
     batch_max: <%= get_env(name="PNEX_BATCH_MAX", default="500") %>
     batch_flush_secs: <%= get_env(name="PNEX_BATCH_FLUSH_SECS", default="10") %>
   # AI assistant kill-switch. LLM providers are managed in the UI

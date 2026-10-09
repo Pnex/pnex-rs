@@ -7,8 +7,6 @@ mod common;
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
-use chacha20::cipher::{KeyIvInit, StreamCipher};
-use chacha20::{ChaCha20, Key, Nonce};
 use loco_rs::testing::request::{RequestConfig, RequestConfigBuilder};
 use pnex_backend::app::App;
 use pnex_backend::services::telemetry::{self, TelemetryPoint, TelemetrySink};
@@ -16,25 +14,6 @@ use serial_test::serial;
 use std::sync::{Arc, Mutex};
 
 // ─────────────────── Client miroir (rôle firmware générique) ───────────────────
-
-fn encrypt(plain: &str, key: &[u8; 32]) -> String {
-    use rand::RngExt;
-    let mut nonce = [0u8; 12];
-    rand::rng().fill(&mut nonce);
-    let mut buf = plain.as_bytes().to_vec();
-    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(&nonce)).apply_keystream(&mut buf);
-    let mut wire = nonce.to_vec();
-    wire.extend_from_slice(&buf);
-    STANDARD.encode(wire)
-}
-
-fn decrypt(raw: &str, key: &[u8; 32]) -> String {
-    let bytes = STANDARD.decode(raw.trim()).expect("b64");
-    let (nonce, ct) = bytes.split_at(12);
-    let mut buf = ct.to_vec();
-    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(nonce)).apply_keystream(&mut buf);
-    String::from_utf8(buf).expect("utf8")
-}
 
 fn b64_param(raw: &str) -> String {
     STANDARD.encode(raw)
@@ -179,17 +158,14 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
 }
 
 /// Announce → attend le ProvisionAck, retourne les caps reçues.
-async fn announce_and_expect_provision(
-    ws: &mut axum_test::TestWebSocket,
-    key: &[u8; 32],
-) -> Vec<pnex_core::PinSpec> {
+async fn announce_and_expect_provision(ws: &mut common::DevWs) -> Vec<pnex_core::PinSpec> {
     let announce = serde_json::json!({
         "t": "announce", "chip": "esp8266", "board": "nodemcu", "fw": "0.1.0"
     })
     .to_string();
-    ws.send_text(encrypt(&announce, key)).await;
-    let raw = ws.receive_text().await;
-    let plain = decrypt(&raw, key);
+    ws.send_plain(&announce).await;
+    let raw = ws.recv_plain().await;
+    let plain = raw.clone();
     let msg: pnex_core::ServerMsg = serde_json::from_str(&plain).expect("ServerMsg");
     match msg {
         pnex_core::ServerMsg::ProvisionAck { caps, .. } => caps,
@@ -198,16 +174,18 @@ async fn announce_and_expect_provision(
 }
 
 /// Connexion WS `/ws/device` (auth b64 query, comme le firmware).
-async fn connect(server: &axum_test::TestServer, d: &Dev) -> axum_test::TestWebSocket {
-    server
-        .get_websocket(&format!(
+async fn connect(server: &axum_test::TestServer, d: &Dev) -> common::DevWs {
+    common::DevWs::connect(
+        server,
+        &format!(
             "/ws/device?token={}&device_id={}",
             b64_param(&d.token),
             b64_param(&d.device_id),
-        ))
-        .await
-        .into_websocket()
-        .await
+        ),
+        &d.key,
+        &d.device_id,
+    )
+    .await
 }
 
 /// Attend la libération effective de la session device (GET /pins
@@ -242,7 +220,7 @@ async fn announce_provision_et_state_report() {
         let sink = Arc::new(RecSink::default());
         telemetry::set_sink(sink.clone());
         let mut ws = connect(&server, &dev).await;
-        let caps = announce_and_expect_provision(&mut ws, &dev.key).await;
+        let caps = announce_and_expect_provision(&mut ws).await;
         assert_eq!(caps.len(), 10, "NodeMCU : D0-D8 + A0");
         let d5 = caps.iter().find(|c| c.label == "D5").expect("D5");
         assert_eq!((d5.gpio, d5.mode), (14, pnex_core::Mode::DigitalIn));
@@ -251,14 +229,14 @@ async fn announce_provision_et_state_report() {
 
         // StateReport D5=HIGH → mémoire + télémétrie (série d5, generic_gpio).
         let report = serde_json::json!({"t": "state_report", "gpio": 14, "value": 1}).to_string();
-        ws.send_text(encrypt(&report, &dev.key)).await;
+        ws.send_plain(&report).await;
         // StateReport D6 booléen (le firmware envoie true/false pour les pins
         // digitaux) → télémétrie 1/0 (Prometheus n'a pas de booléens), UI
         // garde le booléen brut pour l'affichage HIGH/LOW. Avant le fix, ce
         // point était silencieusement jeté par le parse f64 de promwrite.
         let report =
             serde_json::json!({"t": "state_report", "gpio": 12, "value": true}).to_string();
-        ws.send_text(encrypt(&report, &dev.key)).await;
+        ws.send_plain(&report).await;
         // Attente active brève : la session traite les frames en tâche de fond.
         let org = personal_org(&server, &auth).await;
         for _ in 0..40 {
@@ -331,7 +309,7 @@ async fn commandes_validation_puis_offline_409() {
         let org = personal_org(&server, &auth).await;
         // Announce préalable : les instances (pins) n'existent qu'après.
         let mut ws = connect(&server, &dev).await;
-        let _caps = announce_and_expect_provision(&mut ws, &dev.key).await;
+        let _caps = announce_and_expect_provision(&mut ws).await;
         ws.close().await;
         wait_offline(&server, &auth, org, dev.id).await;
         // write sur un pin en digital_in → 400.
@@ -405,7 +383,7 @@ async fn anti_clone_4003() {
     with_app(|server, auth, _ctx| async move {
         let dev = create_generic(&server, &auth, "gen-clone").await;
         let mut ws1 = connect(&server, &dev).await;
-        let _caps = announce_and_expect_provision(&mut ws1, &dev.key).await;
+        let _caps = announce_and_expect_provision(&mut ws1).await;
         let mut ws2 = connect(&server, &dev).await;
         let code = loop {
             let m = ws2.receive_message().await;
@@ -430,11 +408,11 @@ async fn stale_session_is_superseded_and_commands_reach_the_new_one() {
         let dev = create_generic(&server, &auth, "gen-stale").await;
         let org = personal_org(&server, &auth).await;
         let mut ws1 = connect(&server, &dev).await;
-        let _caps = announce_and_expect_provision(&mut ws1, &dev.key).await;
+        let _caps = announce_and_expect_provision(&mut ws1).await;
         // ws1 goes silent: its lease is stale after the 2 s test TTL.
         tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
         let mut ws2 = connect(&server, &dev).await;
-        let _caps = announce_and_expect_provision(&mut ws2, &dev.key).await;
+        let _caps = announce_and_expect_provision(&mut ws2).await;
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
         let state = pnex_backend::services::device_liveness::seen_of(&ctx.db, dev.id)
@@ -461,7 +439,7 @@ async fn stale_session_is_superseded_and_commands_reach_the_new_one() {
             }))
             .await;
         assert!(res.status_code().is_success(), "{}", res.status_code());
-        let plain = decrypt(&ws2.receive_text().await, &dev.key);
+        let plain = ws2.recv_plain().await;
         let msg: pnex_core::ServerMsg = serde_json::from_str(&plain).expect("ServerMsg");
         assert!(
             matches!(msg, pnex_core::ServerMsg::SetMode { gpio: 14, .. }),
@@ -496,10 +474,9 @@ async fn announce_persiste_fw_version_et_ota_ready() {
             ]
         })
         .to_string();
-        ws.send_text(encrypt(&announce, &dev.key)).await;
-        let raw = ws.receive_text().await;
-        let msg: pnex_core::ServerMsg =
-            serde_json::from_str(&decrypt(&raw, &dev.key)).expect("ServerMsg");
+        ws.send_plain(&announce).await;
+        let raw = ws.recv_plain().await;
+        let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
         assert!(
             matches!(msg, pnex_core::ServerMsg::ProvisionAck { .. }),
             "ProvisionAck attendu, reçu : {msg:?}"
@@ -530,7 +507,7 @@ async fn announce_sans_cap_ota_reste_pas_admis() {
         let dev = create_generic(&server, &auth, "gen-ota-off").await;
         let org = personal_org(&server, &auth).await;
         let mut ws = connect(&server, &dev).await;
-        let _ = announce_and_expect_provision(&mut ws, &dev.key).await;
+        let _ = announce_and_expect_provision(&mut ws).await;
         ws.close().await;
         wait_offline(&server, &auth, org, dev.id).await;
 
@@ -564,10 +541,9 @@ async fn announce_avec_manifeste_accepte() {
             ]
         })
         .to_string();
-        ws.send_text(encrypt(&announce, &dev.key)).await;
-        let raw = ws.receive_text().await;
-        let msg: pnex_core::ServerMsg =
-            serde_json::from_str(&decrypt(&raw, &dev.key)).expect("ServerMsg");
+        ws.send_plain(&announce).await;
+        let raw = ws.recv_plain().await;
+        let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
         assert!(
             matches!(msg, pnex_core::ServerMsg::ProvisionAck { ref caps, .. } if caps.len() == 10),
             "ProvisionAck attendu, reçu : {msg:?}"
@@ -589,13 +565,13 @@ async fn state_report_etendu_route_par_label() {
         let sink = Arc::new(RecSink::default());
         telemetry::set_sink(sink.clone());
         let mut ws = connect(&server, &dev).await;
-        let _caps = announce_and_expect_provision(&mut ws, &dev.key).await;
+        let _caps = announce_and_expect_provision(&mut ws).await;
         let report = serde_json::json!({
             "t": "state_report", "gpio": 14, "value": 1,
             "uptime_ms": 123456u64, "boot_id": "a1b2c3d4", "seq": 42u64
         })
         .to_string();
-        ws.send_text(encrypt(&report, &dev.key)).await;
+        ws.send_plain(&report).await;
         for _ in 0..40 {
             {
                 let pts = sink.0.lock().unwrap();
@@ -632,13 +608,13 @@ async fn state_report_cap_route_le_sens() {
         let sink = Arc::new(RecSink::default());
         telemetry::set_sink(sink.clone());
         let mut ws = connect(&server, &dev).await;
-        let _caps = announce_and_expect_provision(&mut ws, &dev.key).await;
+        let _caps = announce_and_expect_provision(&mut ws).await;
         let report = serde_json::json!({
             "t": "state_report", "gpio": 14, "value": 25.5,
             "cap_id": "temperature", "uptime_ms": 1000u64, "boot_id": "b1", "seq": 1u64
         })
         .to_string();
-        ws.send_text(encrypt(&report, &dev.key)).await;
+        ws.send_plain(&report).await;
         for _ in 0..40 {
             if !sink.0.lock().unwrap().is_empty() {
                 break;
@@ -687,7 +663,7 @@ async fn reg_state_route_vers_o2() {
         let sink = Arc::new(RecSink::default());
         telemetry::set_sink(sink.clone());
         let mut ws = connect(&server, &dev).await;
-        let _caps = announce_and_expect_provision(&mut ws, &dev.key).await;
+        let _caps = announce_and_expect_provision(&mut ws).await;
         let msg = serde_json::json!({
             "t": "reg_state", "entries": [
                 {"node_id": "r1", "kind": "tt_heat", "setpoint": 19.0,
@@ -697,7 +673,7 @@ async fn reg_state_route_vers_o2() {
             ]
         })
         .to_string();
-        ws.send_text(encrypt(&msg, &dev.key)).await;
+        ws.send_plain(&msg).await;
         for _ in 0..40 {
             if sink.0.lock().unwrap().len() >= 5 {
                 break;
@@ -815,10 +791,9 @@ async fn admission_et_chip_caps_esp32c3() {
             "t": "announce", "chip": "esp32-c3", "board": "xiao_esp32c3", "fw": "1.0.0"
         })
         .to_string();
-        ws.send_text(encrypt(&announce, &dev.key)).await;
-        let raw = ws.receive_text().await;
-        let msg: pnex_core::ServerMsg =
-            serde_json::from_str(&decrypt(&raw, &dev.key)).expect("ServerMsg");
+        ws.send_plain(&announce).await;
+        let raw = ws.recv_plain().await;
+        let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
         let caps = match msg {
             pnex_core::ServerMsg::ProvisionAck { caps, .. } => caps,
             other => panic!("ProvisionAck attendu, reçu : {other:?}"),
@@ -907,10 +882,9 @@ async fn custom_firmware_admits_declared_pins() {
             ]
         })
         .to_string();
-        ws.send_text(encrypt(&announce, &dev.key)).await;
-        let raw = ws.receive_text().await;
-        let msg: pnex_core::ServerMsg =
-            serde_json::from_str(&decrypt(&raw, &dev.key)).expect("ServerMsg");
+        ws.send_plain(&announce).await;
+        let raw = ws.recv_plain().await;
+        let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
         let caps = match msg {
             pnex_core::ServerMsg::ProvisionAck { caps, .. } => caps,
             other => panic!("ProvisionAck attendu, reçu : {other:?}"),
@@ -952,9 +926,9 @@ async fn custom_firmware_admits_declared_pins() {
             "pins": [{"gpio": 6, "label": "x", "mode": "digital_in"}]
         })
         .to_string();
-        ws.send_text(encrypt(&announce_flash, &dev.key)).await;
-        let raw = ws.receive_text().await;
-        let plain = decrypt(&raw, &dev.key);
+        ws.send_plain(&announce_flash).await;
+        let raw = ws.recv_plain().await;
+        let plain = raw.clone();
         assert!(
             plain.contains("flash SPI"),
             "rejet chip-caps attendu pour gpio flash 6 : {plain}"
@@ -969,10 +943,9 @@ async fn custom_firmware_admits_declared_pins() {
             ]
         })
         .to_string();
-        ws.send_text(encrypt(&announce_prune, &dev.key)).await;
-        let raw = ws.receive_text().await;
-        let msg: pnex_core::ServerMsg =
-            serde_json::from_str(&decrypt(&raw, &dev.key)).expect("ServerMsg");
+        ws.send_plain(&announce_prune).await;
+        let raw = ws.recv_plain().await;
+        let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
         let caps = match msg {
             pnex_core::ServerMsg::ProvisionAck { caps, .. } => caps,
             other => panic!("ProvisionAck attendu, reçu : {other:?}"),
@@ -1004,10 +977,9 @@ async fn admission_skips_uart_console_pins() {
             ]
         })
         .to_string();
-        ws.send_text(encrypt(&announce, &dev.key)).await;
-        let raw = ws.receive_text().await;
-        let msg: pnex_core::ServerMsg =
-            serde_json::from_str(&decrypt(&raw, &dev.key)).expect("ServerMsg");
+        ws.send_plain(&announce).await;
+        let raw = ws.recv_plain().await;
+        let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
         let caps = match msg {
             pnex_core::ServerMsg::ProvisionAck { caps, .. } => caps,
             other => panic!("expected ProvisionAck, got: {other:?}"),
@@ -1056,9 +1028,9 @@ async fn custom_firmware_without_pins_gets_an_empty_pin_map() {
                 "t": "announce", "chip": "esp32", "board": "any", "fw": "1.0.0", "pins": pins
             })
             .to_string();
-            ws.send_text(encrypt(&announce, &dev.key)).await;
-            let raw = ws.receive_text().await;
-            match serde_json::from_str(&decrypt(&raw, &dev.key)).expect("ServerMsg") {
+            ws.send_plain(&announce).await;
+            let raw = ws.recv_plain().await;
+            match serde_json::from_str(&raw.clone()).expect("ServerMsg") {
                 pnex_core::ServerMsg::ProvisionAck { caps, .. } => {
                     assert_eq!(caps.len(), expected, "pins: {pins}")
                 }
@@ -1092,7 +1064,7 @@ async fn generic_without_overlay_nor_custom_firmware_refused() {
 
 /// Announce with the `ota` cap (fw version announced) — helper: returns
 /// after reading the ProvisionAck frame.
-async fn announce_ota(ws: &mut axum_test::TestWebSocket, key: &[u8; 32], fw: &str) {
+async fn announce_ota(ws: &mut common::DevWs, fw: &str) {
     let announce = serde_json::json!({
         "t": "announce", "chip": "esp8266", "board": "nodemcu", "fw": fw,
         "caps": [
@@ -1103,9 +1075,9 @@ async fn announce_ota(ws: &mut axum_test::TestWebSocket, key: &[u8; 32], fw: &st
         ]
     })
     .to_string();
-    ws.send_text(encrypt(&announce, key)).await;
-    let raw = ws.receive_text().await;
-    let msg: pnex_core::ServerMsg = serde_json::from_str(&decrypt(&raw, key)).expect("ServerMsg");
+    ws.send_plain(&announce).await;
+    let raw = ws.recv_plain().await;
+    let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
     assert!(
         matches!(msg, pnex_core::ServerMsg::ProvisionAck { .. }),
         "ProvisionAck attendu, reçu : {msg:?}"
@@ -1158,7 +1130,7 @@ async fn ota_cycle_complet_en_ligne() {
         let build_id = post_build(&ctx, &server, &auth, org, &dev.device_id).await;
 
         let mut ws = connect(&server, &dev).await;
-        announce_ota(&mut ws, &dev.key, "0.1.0").await;
+        announce_ota(&mut ws, "0.1.0").await;
 
         // Deploy: online → pushed.
         let res = server
@@ -1174,13 +1146,29 @@ async fn ota_cycle_complet_en_ligne() {
         assert_eq!(body["target_version"], build_id.to_string());
 
         // Device side: receive ota_available.
-        let raw = ws.receive_text().await;
+        let raw = ws.recv_plain().await;
         let msg: pnex_core::ServerMsg =
-            serde_json::from_str(&decrypt(&raw, &dev.key)).expect("ServerMsg");
+            serde_json::from_str(&raw.clone()).expect("ServerMsg");
         let cmd_id = match &msg {
-            pnex_core::ServerMsg::OtaAvailable { cmd_id, version, sha256, .. } => {
+            pnex_core::ServerMsg::OtaAvailable { cmd_id, version, sha256, sig, .. } => {
                 assert_eq!(version.as_str(), build_id.to_string());
                 assert_eq!(sha256.len(), 64);
+                // SEC-18: signed by the instance key for this device + version.
+                let ring = pnex_backend::services::secrets::Keyring::from_config(&ctx.config).unwrap();
+                let key = pnex_backend::services::ota_signing::signing_key(&ctx.db, &ring)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    sig.as_deref(),
+                    pnex_backend::services::ota_signing::sign_image(
+                        &key,
+                        &dev.device_id,
+                        version,
+                        sha256
+                    )
+                    .as_deref()
+                );
+                assert!(sig.is_some());
                 cmd_id.clone()
             }
             other => panic!("OtaAvailable attendu, reçu : {other:?}"),
@@ -1195,7 +1183,7 @@ async fn ota_cycle_complet_en_ligne() {
             if let Some(p) = progress {
                 st["progress"] = serde_json::json!(p);
             }
-            ws.send_text(encrypt(&st.to_string(), &dev.key)).await;
+            ws.send_plain(&st.to_string()).await;
             let mut cur = serde_json::Value::Null;
             for _ in 0..80 {
                 let status = server
@@ -1222,13 +1210,13 @@ async fn ota_cycle_complet_en_ligne() {
             "caps": [{"id": "digital_state", "family": "state"}, {"id": "ota", "family": "maintenance"}]
         })
         .to_string();
-        ws.send_text(encrypt(&announce, &dev.key)).await;
+        ws.send_plain(&announce).await;
         // Consume frames until the ProvisionAck (any stray re-push of the
         // assignment is tolerated, mirroring the firmware's tolerance).
         loop {
-            let raw = ws.receive_text().await;
+            let raw = ws.recv_plain().await;
             let msg: pnex_core::ServerMsg =
-                serde_json::from_str(&decrypt(&raw, &dev.key)).expect("ServerMsg");
+                serde_json::from_str(&raw.clone()).expect("ServerMsg");
             if matches!(msg, pnex_core::ServerMsg::ProvisionAck { .. }) {
                 break;
             }
@@ -1286,7 +1274,7 @@ async fn ota_offline_pickup_a_l_annonce() {
         // First announce (online): ota_ready becomes known; then the device
         // leaves — the deploy below is offline.
         let mut ws = connect(&server, &dev).await;
-        announce_ota(&mut ws, &dev.key, "0.1.0").await;
+        announce_ota(&mut ws, "0.1.0").await;
         ws.close().await;
         wait_offline(&server, &auth, org, dev.id).await;
 
@@ -1309,16 +1297,16 @@ async fn ota_offline_pickup_a_l_annonce() {
             "caps": [{"id": "digital_state", "family": "state"}, {"id": "ota", "family": "maintenance"}]
         })
         .to_string();
-        ws.send_text(encrypt(&announce, &dev.key)).await;
+        ws.send_plain(&announce).await;
         // ProvisionAck first…
-        let raw = ws.receive_text().await;
+        let raw = ws.recv_plain().await;
         let first: pnex_core::ServerMsg =
-            serde_json::from_str(&decrypt(&raw, &dev.key)).expect("ServerMsg");
+            serde_json::from_str(&raw.clone()).expect("ServerMsg");
         assert!(matches!(first, pnex_core::ServerMsg::ProvisionAck { .. }));
         // …then the picked-up OtaAvailable.
-        let raw = ws.receive_text().await;
+        let raw = ws.recv_plain().await;
         let msg: pnex_core::ServerMsg =
-            serde_json::from_str(&decrypt(&raw, &dev.key)).expect("ServerMsg");
+            serde_json::from_str(&raw.clone()).expect("ServerMsg");
         assert!(
             matches!(msg, pnex_core::ServerMsg::OtaAvailable { .. }),
             "OtaAvailable attendu (pickup), reçu : {msg:?}"
@@ -1349,7 +1337,7 @@ async fn ota_gardes_et_refus_device() {
 
         // Announce with the cap (fw legacy "1.0.0").
         let mut ws = connect(&server, &dev).await;
-        announce_ota(&mut ws, &dev.key, "1.0.0").await;
+        announce_ota(&mut ws, "1.0.0").await;
 
         // Deploy online → pushed.
         let res = server
@@ -1362,9 +1350,8 @@ async fn ota_gardes_et_refus_device() {
         let body: serde_json::Value = res.json();
         assert_eq!(body["pushed"], true);
 
-        let raw = ws.receive_text().await;
-        let msg: pnex_core::ServerMsg =
-            serde_json::from_str(&decrypt(&raw, &dev.key)).expect("ServerMsg");
+        let raw = ws.recv_plain().await;
+        let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
         let cmd_id = match &msg {
             pnex_core::ServerMsg::OtaAvailable { cmd_id, .. } => cmd_id.clone(),
             other => panic!("OtaAvailable attendu, reçu : {other:?}"),
@@ -1374,7 +1361,7 @@ async fn ota_gardes_et_refus_device() {
         let ack =
             serde_json::json!({"t":"ack","cmd_id":cmd_id,"ok":false,"err":"ota not supported"})
                 .to_string();
-        ws.send_text(encrypt(&ack, &dev.key)).await;
+        ws.send_plain(&ack).await;
         let mut head = serde_json::Value::Null;
         for _ in 0..80 {
             let status = server
@@ -1395,6 +1382,17 @@ async fn ota_gardes_et_refus_device() {
         // Download route: valid device-token auth + bad token rejected.
         let dl = server
             .get(&format!(
+                "/api/v1/ota/firmware/{}/{}?device_id={}",
+                dev.device_id,
+                build_id,
+                b64_param(&dev.device_id),
+            ))
+            .add_header("Authorization", format!("Bearer {}", b64_param(&dev.token)))
+            .await;
+        dl.assert_status(axum_test::http::StatusCode::OK);
+        // D154: a token in the URL is no longer read.
+        let in_url = server
+            .get(&format!(
                 "/api/v1/ota/firmware/{}/{}?token={}&device_id={}",
                 dev.device_id,
                 build_id,
@@ -1402,6 +1400,7 @@ async fn ota_gardes_et_refus_device() {
                 b64_param(&dev.device_id),
             ))
             .await;
+        in_url.assert_status(axum_test::http::StatusCode::NOT_FOUND);
         dl.assert_status(axum_test::http::StatusCode::OK);
         assert!(!dl.as_bytes().is_empty());
         let dl_bad = server
@@ -1437,8 +1436,8 @@ async fn custom_metrics_and_commands_roundtrip() {
             ]
         })
         .to_string();
-        ws.send_text(encrypt(&announce, &dev.key)).await;
-        let plain = decrypt(&ws.receive_text().await, &dev.key);
+        ws.send_plain(&announce).await;
+        let plain = ws.recv_plain().await;
         assert!(plain.contains("provision_ack"), "{plain}");
 
         for (cap, value) in [
@@ -1447,7 +1446,7 @@ async fn custom_metrics_and_commands_roundtrip() {
         ] {
             let report =
                 serde_json::json!({"t": "state_report", "cap_id": cap, "value": value}).to_string();
-            ws.send_text(encrypt(&report, &dev.key)).await;
+            ws.send_plain(&report).await;
         }
         for _ in 0..80 {
             if sink
@@ -1503,7 +1502,7 @@ async fn custom_metrics_and_commands_roundtrip() {
             .to_string();
         let mut got = None;
         for _ in 0..10 {
-            let plain = decrypt(&ws.receive_text().await, &dev.key);
+            let plain = ws.recv_plain().await;
             let msg: pnex_core::ServerMsg = serde_json::from_str(&plain).expect("ServerMsg");
             if let pnex_core::ServerMsg::Command {
                 cmd_id: c,
@@ -1543,8 +1542,8 @@ async fn flow_device_write_sends_announced_commands() {
             ]
         })
         .to_string();
-        ws.send_text(encrypt(&announce, &dev.key)).await;
-        let plain = decrypt(&ws.receive_text().await, &dev.key);
+        ws.send_plain(&announce).await;
+        let plain = ws.recv_plain().await;
         assert!(plain.contains("provision_ack"), "{plain}");
 
         // The pinout lists the announced commands for the flow editor.
@@ -1593,7 +1592,7 @@ async fn flow_device_write_sends_announced_commands() {
 
         let mut pushed = Vec::new();
         for _ in 0..10 {
-            let plain = decrypt(&ws.receive_text().await, &dev.key);
+            let plain = ws.recv_plain().await;
             let msg: pnex_core::ServerMsg = serde_json::from_str(&plain).expect("ServerMsg");
             if let pnex_core::ServerMsg::Command { name, args, .. } = msg {
                 pushed.push((name, args));
@@ -1608,4 +1607,26 @@ async fn flow_device_write_sends_announced_commands() {
     })
     .await;
     unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
+}
+
+/// D154: the device token travels in the `Authorization` header; the URL
+/// carries only the (non-secret) device id.
+#[tokio::test]
+#[serial]
+async fn token_in_the_authorization_header_opens_the_link() {
+    with_app(|server, auth, _ctx| async move {
+        let dev = create_generic(&server, &auth, "gen-hdr-auth").await;
+        let mut ws = common::DevWs::connect_with_header(
+            &server,
+            &format!("/ws/device?device_id={}", b64_param(&dev.device_id)),
+            &b64_param(&dev.token),
+            &dev.key,
+            &dev.device_id,
+        )
+        .await;
+        // Handshake + ProvisionAck over the header-authenticated link (the
+        // helper panics on anything else).
+        announce_and_expect_provision(&mut ws).await;
+    })
+    .await;
 }

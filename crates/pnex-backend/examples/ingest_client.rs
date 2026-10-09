@@ -1,38 +1,18 @@
-//! Client d'ingestion de test — joue le rôle du firmware (mimique du
-//! soil_sensor : PING + `key=value` chiffrés ChaCha20).
+//! Test ingestion client — plays the firmware (soil_sensor mimic: PING +
+//! `key=value` frames over the Noise NNpsk0 link, D156).
 //!
-//! Usage (valeurs = celles affichées par l'API à la création du device) :
+//! Usage (values = those shown by the API when the device is created):
 //! ```sh
 //! cargo run -p pnex-backend --example ingest_client -- \
 //!   --url ws://localhost:5150/ws/sensor/ingest \
 //!   --token "$DEVICE_TOKEN" --device-id "$DEVICE_ID" --key "$KEY_B64" \
 //!   --metric read_temperature --interval-ms 1000 [--count 20]
 //! ```
-//! Avec `--hold` : reste connecté sans rien envoyer (teste l'anti-clone).
+//! With `--hold`: stays connected without sending anything (anti-clone test).
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
-use chacha20::cipher::{KeyIvInit, StreamCipher};
-use chacha20::{ChaCha20, Key, Nonce};
-use rand::RngExt;
-
-fn encrypt(plain: &str, key: &[u8; 32]) -> String {
-    let mut nonce = [0u8; 12];
-    rand::rng().fill(&mut nonce);
-    let mut buf = plain.as_bytes().to_vec();
-    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(&nonce)).apply_keystream(&mut buf);
-    let mut wire = nonce.to_vec();
-    wire.extend_from_slice(&buf);
-    STANDARD.encode(wire)
-}
-
-fn decrypt(raw: &str, key: &[u8; 32]) -> String {
-    let bytes = STANDARD.decode(raw.trim()).expect("frame b64");
-    let (nonce, ct) = bytes.split_at(12);
-    let mut buf = ct.to_vec();
-    ChaCha20::new(Key::from_slice(key), Nonce::from_slice(nonce)).apply_keystream(&mut buf);
-    String::from_utf8(buf).expect("utf8")
-}
+use pnex_core::frame::{decode_handshake, encode_handshake, Initiator};
 
 #[tokio::main]
 async fn main() {
@@ -83,21 +63,41 @@ async fn main() {
     let (mut write, mut read) = ws.split();
 
     use futures_util::{SinkExt, StreamExt};
-    let send = |plain: &str| encrypt(plain, &key);
+    // Noise handshake first (text link: base64 of the handshake messages).
+    let (init, msg1) = Initiator::start(&key, device_id.trim());
     write
         .send(tokio_tungstenite::tungstenite::Message::Text(
-            send("PING").into(),
+            encode_handshake(&msg1).into(),
         ))
         .await
-        .expect("envoi PING");
-    let msg = read.next().await.expect("PONG attendu").expect("ws");
+        .expect("send handshake");
+    let answer = read.next().await.expect("handshake answer").expect("ws");
+    if let tokio_tungstenite::tungstenite::Message::Close(frame) = &answer {
+        let code = frame.as_ref().map(|f| u16::from(f.code)).unwrap_or(0);
+        println!("✗ refused by the server (close {code})");
+        std::process::exit(2);
+    }
+    let msg2 = decode_handshake(&answer.into_text().expect("text")).expect("handshake b64");
+    let mut link = init.finish(&msg2).expect("Noise handshake");
+
+    write
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            link.seal_text("PING").into(),
+        ))
+        .await
+        .expect("send PING");
+    let msg = read.next().await.expect("PONG expected").expect("ws");
     match msg {
         tokio_tungstenite::tungstenite::Message::Close(frame) => {
             let code = frame.as_ref().map(|f| u16::from(f.code)).unwrap_or(0);
-            println!("✗ rejeté par le serveur (close {code})");
+            println!("✗ refused by the server (close {code})");
             std::process::exit(2);
         }
-        other => println!("← {}", decrypt(&other.into_text().expect("texte"), &key)),
+        other => println!(
+            "← {}",
+            link.open_text(&other.into_text().expect("text"))
+                .expect("authenticated frame")
+        ),
     }
 
     if hold {
@@ -111,7 +111,7 @@ async fn main() {
         let frame = format!("{metric}={}", 18.0 + i as f64 / 10.0);
         write
             .send(tokio_tungstenite::tungstenite::Message::Text(
-                send(&frame).into(),
+                link.seal_text(&frame).into(),
             ))
             .await
             .expect("envoi mesure");
@@ -129,7 +129,8 @@ async fn main() {
         }
         println!(
             "← {} (frame {i}/{count})",
-            decrypt(&msg.into_text().expect("texte"), &key)
+            link.open_text(&msg.into_text().expect("text"))
+                .expect("authenticated frame")
         );
         tokio::time::sleep(std::time::Duration::from_millis(interval_ms)).await;
     }

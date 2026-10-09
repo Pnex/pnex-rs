@@ -53,11 +53,16 @@ services:
       PNEX_BACKEND_UPSTREAM: ${PNEX_BACKEND_UPSTREAM:?run task edge:up}
       # `<hostname>.local` alias redirected to PNEX_DOMAIN (empty = none).
       PNEX_DOMAIN_ALIAS: ${PNEX_DOMAIN_ALIAS:-}
+      # Header proving to the backend that a request came through this edge.
+      PNEX_EDGE_SECRET: ${PNEX_EDGE_SECRET:?run task edge:up}
+      # Device endpoint (client certificate asked), D158.
+      PNEX_DEVICE_PORT: ${PNEX_DEVICE_PORT:-4443}
       # Only our variables are substituted (keeps $host, $http_upgrade…).
       NGINX_ENVSUBST_FILTER: "^PNEX_"
     ports:
       - "80:80"
       - "443:443"
+      - "${PNEX_DEVICE_PORT:-4443}:${PNEX_DEVICE_PORT:-4443}"
     volumes:
       - ./deploy/edge/nginx/templates:/etc/nginx/templates:ro
       - ./deploy/edge/nginx/40-cert-watch.sh:/docker-entrypoint.d/40-cert-watch.sh:ro

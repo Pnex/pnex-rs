@@ -387,3 +387,55 @@ mod tests {
         assert!(repr.contains("<masqué>"), "{repr}");
     }
 }
+
+/// Device endpoint of the deployment (D158), from the environment:
+/// `PNEX_DEVICE_HOST` (its own name, e.g. `devices.dev.pnex.io` in the
+/// cloud) wins over `PNEX_DEVICE_PORT` (same host, own port — LAN edge).
+pub fn device_endpoint_env(host: &str) -> String {
+    match std::env::var("PNEX_DEVICE_HOST")
+        .ok()
+        .map(|h| h.trim().to_string())
+        .filter(|h| !h.is_empty())
+    {
+        Some(device_host) => device_host,
+        None => device_endpoint(host, std::env::var("PNEX_DEVICE_PORT").ok().as_deref()),
+    }
+}
+
+/// Host compiled into a firmware (D158): the device endpoint. When the
+/// deployment exposes it on its own port (`PNEX_DEVICE_PORT`, e.g. 4443 on
+/// a LAN edge where the host is a bare IP) and the host names no port, the
+/// port is appended. A host with an explicit port is kept as is.
+pub fn device_endpoint(host: &str, device_port: Option<&str>) -> String {
+    let host = host.trim();
+    let has_port = host
+        .rsplit_once(':')
+        .is_some_and(|(_, p)| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()));
+    match device_port
+        .map(str::trim)
+        .filter(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+    {
+        Some(port) if !has_port => format!("{host}:{port}"),
+        _ => host.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod device_endpoint_tests {
+    use super::device_endpoint;
+
+    #[test]
+    fn device_port_is_appended_only_when_the_host_has_none() {
+        assert_eq!(
+            device_endpoint("192.168.1.185", Some("4443")),
+            "192.168.1.185:4443"
+        );
+        assert_eq!(
+            device_endpoint("devices.dev.pnex.io", None),
+            "devices.dev.pnex.io"
+        );
+        assert_eq!(device_endpoint("host:8443", Some("4443")), "host:8443");
+        assert_eq!(device_endpoint("host", Some("")), "host");
+        assert_eq!(device_endpoint("host", Some("44a3")), "host");
+    }
+}

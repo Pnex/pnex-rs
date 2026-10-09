@@ -1,8 +1,8 @@
 {
   "name": "PneX",
   "version": "1.0.0",
-  "description": "PNeX generic ESP firmware library: WiFi + secure WebSocket (ChaCha20) pin_slave client for a PNeX server. Declare pins (inputs, outputs, analog) in your sketch; the server drives them.",
-  "keywords": ["pnex", "iot", "esp8266", "esp32", "esp32c3", "websocket", "chacha20", "pin-slave"],
+  "description": "PNeX generic ESP firmware library: WiFi + secure WebSocket (Noise NNpsk0 inside TLS) pin_slave client for a PNeX server. Declare pins (inputs, outputs, analog) in your sketch; the server drives them.",
+  "keywords": ["pnex", "iot", "esp8266", "esp32", "esp32c3", "websocket", "noise", "pin-slave"],
   "license": "Apache-2.0",
   "homepage": "https://github.com/Pnex/pnex-rs",
   "repository": {
