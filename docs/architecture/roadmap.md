@@ -497,18 +497,18 @@ Jardin. Lots A → E.
 - **REP-2 — Code PIN serrure/alarme** : écriture protégée vérifiée côté
   serveur ; d'ici là, simple confirmation.
 
-### P2.13 — Ingestion de flux média : transcription, plages, rapports (ajout 2026-10-09) — **PRD proposé**
+### P2.13 — Ingestion de flux média : transcription, plages (ajout 2026-10-09) — **PRD proposé**
 
 PRD `media-ingest.md` (D159–D175), zéro code avant validation. Capter
 des flux continus (Icecast, HLS, DASH, RTSP, DVB-T via Tvheadend) en
 **audio seul**, les transcrire en quasi temps réel sur un worker GPU
-(job Loco tag `asr`), ranger le temps en **plages** annoncées/recalées
-et produire des **rapports figés** dans le studio. Premier cas d'usage :
+(job Loco, tag `asr` réglable), ranger le temps en **plages** annoncées/recalées
+et lire les chiffres dans PNEX (pas de publication). Premier cas d'usage :
 couverture des sujets par chaîne (radios et TNT publiques), agrégats
 seulement. Invariants : le runtime de flows ne voit que du texte
-(`media-source`), audio éphémère par défaut, aucune identification
-vocale, egress filtré, garde-fous juridiques encodés (TDM, extraits
-courts sourcés). Lots 0 → 5 :
+(`media_source`), audio éphémère par défaut, aucune identification
+vocale, egress filtré, garde-fous juridiques encodés (TDM, rien ne sort
+de l'org). Lots 0 → 6 :
 
 0. **POC ASR** : crate `pnex-asr` (trait `Transcriber`), sherpa-onnx vs
    whisper.cpp sur 1 h de radio annotée (WER, noms propres, RTF GPU/Pi).
@@ -518,9 +518,12 @@ courts sourcés). Lots 0 → 5 :
    heure » sur 3 flux.
 3. **Plages + métadonnées** (D169, D170) : stats par émission sur une
    semaine — dépend du parseur XML de P2.11.
-4. **Studio de rapports** (D173, D174) : rapport « factuel » hebdo en
-   cron — **avis d'un avocat PI avant toute publication grand public**.
+4. **Consultation** (D173) : stats par plage dans les dashboards PNEX et
+   `/media` — pas de publication de rapport (décision user 2026-10-09),
+   studio de rapports en tranche ultérieure.
 5. **Diarisation** (D166) : temps de parole par plage.
+6. **Boîtier de capture** (D160, D175) : agent edge `media_capture` sur
+   canal device mTLS + Noise, caméras IP sur le bus.
 
 Dépendance : fabric de workers (P2.7) pour le worker GPU distant,
 contournable au lot 1 par un process `--worker` joint en mesh.
@@ -617,7 +620,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 | 13 | ~~Jetons device dans l'URL des WebSockets~~ — tranché 2026-10-09 : en-tête `Authorization` partout (lot L2 de D153, `security-tiers.md` §6 bis), jeton en URL ignoré | ✅ |
 | 15 | Profils de sécurité : date de lancement de V1 (correctifs protocole, SEC-17 à SEC-19) ; socle de V4 (ESP-IDF C++ ou firmware Rust) ; statut CRA de PneX (avis juridique) | V1 : prochaine passe sécurité ; V4 : après 1 à 2 ans de communauté |
 | 14 | ~~Version firmware par rebuild~~ — tranché 2026-10-03 : 1 build = 1 enregistrement = 1 version, OTA en lot manuelle (O22) | ✅ |
-| 16 | Flux média : runtime ASR (sherpa-onnx, whisper.cpp ou les deux), tags de worker Loco 1.1 suffisants ou queue dédiée, superviseur de capture in-process ou séparé sur Pi, agrégation « par plage » côté O2 ou backend, plafond des extraits publiés (`media-ingest.md` §14) | Lot 0 (POC ASR) ; plafond après avis juridique |
+| 16 | Flux média : runtime ASR (sherpa-onnx, whisper.cpp ou les deux), ~~tags Loco ou queue dédiée~~ (tranché à la relecture du 2026-10-09 : tags, ASR configurable), superviseur de capture in-process (proposé), agrégation « par plage » (primitive D182), ~~plafond des extraits, amendement de D3~~ (sans objet : pas de publication), ordre vis-à-vis de l'ontologie (`media-ingest.md` §14) | Lot 0 (POC ASR) ; ordre à la validation |
 | 17 | Ontologie 0.2.0 : identifiant d'objet global (UUID vs `ResourceRef`), format du schéma de propriétés (maison vs JSON Schema), liaison device → objet (lien générique vs table dédiée), packs forkables ou surcouche, langage de requête textuel, spécification publique du noyau ; ordre P2.13 / P2.14 / P2.1 vu le gel des nouveaux piliers (`ontology.md` §9) | À la validation du PRD |
 
 ## Journal de la roadmap
