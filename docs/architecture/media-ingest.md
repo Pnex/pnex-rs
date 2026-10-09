@@ -226,10 +226,23 @@ reçoit du **texte** et des événements, et fait l'ETL léger.
   socket et lire les identifiants dans l'URL, donc en argv).
 - Process enfant (R10) : patron `flow_supervisor/process.rs`
   (`env_clear` + liste blanche, `kill_on_drop`, `PR_SET_PDEATHSIG`,
-  `RLIMIT_AS`, plus `RLIMIT_CPU`), aucune valeur secrète en argv ; ffmpeg
-  décode des octets non fiables, il tourne donc sous **bwrap** comme le
-  build firmware : FS en lecture seule hormis un répertoire de segments
-  0700 propre au flux, namespace réseau vide.
+  `RLIMIT_AS`), aucune valeur secrète en argv ; ffmpeg décode des octets
+  non fiables. **Confinement retenu au lot 1** (mesuré le 2026-10-10) :
+  bwrap exige des user namespaces, refusés par Ubuntu 24.04
+  (`apparmor_restrict_unprivileged_userns`) et dans les conteneurs non
+  privilégiés — l'image builder tourne déjà en `PNEX_FIRMWARE_SANDBOX=none`.
+  Le confinement par défaut (`PNEX_MEDIA_SANDBOX=kernel`) n'utilise donc que
+  ce qu'un process non privilégié s'applique avant `exec` : **seccomp**
+  (`socket()` et `io_uring_setup()` refusés, ABI étrangère tuée : aucun
+  réseau, ni socket unix vers Valkey ou Docker), **Landlock** (FS entier en
+  lecture seule, TCP refusé ; best effort sur noyau ancien), rlimits
+  (`RLIMIT_FSIZE` 0, mémoire 1 Gio, 64 fd, pas de core) et
+  `PR_SET_PDEATHSIG`. ffmpeg n'écrit aucun fichier : il lit `pipe:0` et
+  écrit du PCM sur `pipe:1`, le découpage en segments est fait en Rust.
+  `PNEX_MEDIA_SANDBOX=bwrap` ajoute bwrap par-dessus là où les namespaces
+  marchent ; `none` est réservé au développement. Tests : un enfant
+  confiné n'atteint pas un port TCP local qu'un enfant non confiné atteint,
+  et n'écrit pas un fichier qu'un enfant non confiné écrit.
 - Un superviseur par flux : redémarrage à backoff exponentiel borné
   (patron `flow_supervisor::run_supervisor`, généralisé à N enfants) ;
   un flux qui plante n'affecte pas les autres.
@@ -928,7 +941,7 @@ Le lot 1 avance par tranches, chacune testée et commitée seule.
 | Tranche | Contenu | État |
 |---|---|---|
 | 1a — Schéma + API + page | tables `media_streams`, `media_segments`, `asr_profiles`, colonne `ml_models.audio_meta` (base 0.1.0, PG + SQLite) ; contrat `pnex_core::media_ingest` ; CRUD `/api/v1/media/streams` (+ `segments`) et `/api/v1/asr/profiles` ; quota par verrou advisory ; secret `media-stream` lié à l'origine de l'URL ; page `/streams` ; fiche KB `streams` | ✅ 2026-10-10 |
-| 1b — Capture `server` | fetcher filtré (icecast, http_file, HLS), ffmpeg sous bwrap, superviseur par flux avec bail, écriture des segments | à faire |
+| 1b — Capture `server` | fetcher filtré (icecast, http_file, HLS ; redirections suivies à la main, secret à l'origine exacte, débit et tailles bornés), ffmpeg confiné (seccomp + Landlock + rlimits), découpage PCM en Rust avec chevauchement, superviseur par flux avec bail `task:media-capture:<id>` et backoff, segments `captured` ; capté et transcrit à la main sur France Inter (icecast et HLS) | ✅ 2026-10-10 |
 | 1c — Transcription | worker `transcribe_segment` (pnex-asr), `tx_<slug>`, PUBLISH, purge D161, `GET /api/v1/media/transcripts` | à faire |
 | 1d — Modèles audio | registre D167 (tâches/familles audio, import archive, check par porteur, test par dépôt d'audio) | à faire |
 | 1e — Images + porteur `worker` | ffmpeg et bwrap dans les images, `/internal/media/segment` | à faire |
@@ -942,6 +955,12 @@ Le lot 1 avance par tranches, chacune testée et commitée seule.
   `worker` et `device` n'existent pas (`media-capture-unsupported`).
 - Les kinds acceptés sont ceux dont la capture existe : `icecast`, `hls`,
   `http_file` ; `dash`, `rtsp`, `dvb` arrivent avec leur fetcher.
+- Horodatage icecast : `host` au premier octet reçu ; le serveur envoie
+  d'abord quelques secondes de tampon, l'heure du segment est donc en
+  avance d'autant (≤ ~20 s). HLS avec `PROGRAM-DATE-TIME` : horloge `pdt`.
+- Shoutcast v1 (`ICY 200 OK`), métadonnées ICY (D170) et HLS chiffré
+  (`EXT-X-KEY`) ne sont pas pris en charge au lot 1 (`format-unsupported`,
+  `encrypted`).
 - Un slug supprimé peut être réattribué : la vérification « streams O2
   `tx_<slug>` encore en rétention » de D159 n'est pas faite. À traiter
   avant la tranche 1c (sinon un nouveau flux hérite de l'historique d'un
