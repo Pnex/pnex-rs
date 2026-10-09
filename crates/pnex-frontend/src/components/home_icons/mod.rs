@@ -73,6 +73,9 @@ pub fn HomeIconPicker(
     value: Option<String>,
     disabled: bool,
     on_change: EventHandler<Option<String>>,
+    /// Id of the visible caption naming this picker (`aria-labelledby`).
+    #[props(default)]
+    labelledby: Option<String>,
 ) -> Element {
     let mut open = use_signal(|| false);
     let mut query = use_signal(String::new);
@@ -91,8 +94,12 @@ pub fn HomeIconPicker(
         })
         .filter(|(_, icons)| !icons.is_empty())
         .collect();
+    let group_role = labelledby.as_ref().map(|_| "group");
     rsx! {
-        div { class: "space-y-1",
+        div {
+            class: "space-y-1",
+            role: group_role,
+            aria_labelledby: labelledby,
             div { class: "flex items-center gap-2",
                 button {
                     r#type: "button",

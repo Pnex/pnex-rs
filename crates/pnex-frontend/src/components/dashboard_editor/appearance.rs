@@ -80,17 +80,30 @@ pub fn AppearancePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Element
         div { class: "space-y-2 border-t border-gray-100 pt-2",
             p { class: "text-[10px] font-medium uppercase text-gray-400", {t!("appear-title")} }
             if show_states {
-                label { class: "block text-[10px] text-gray-500", {t!("appear-icon")} }
+                p {
+                    id: "appearance-icon-label",
+                    class: "block text-[10px] text-gray-500",
+                    {t!("appear-icon")}
+                }
                 HomeIconPicker {
+                    labelledby: Some("appearance-icon-label".to_string()),
                     value: widget.options.icon.clone(),
                     disabled: !can_write,
                     on_change: move |v: Option<String>| edit_widget(cx, |w| w.options.icon = v),
                 }
             }
             if show_thresholds {
-                label { class: "block text-[10px] text-gray-500", {t!("appear-thresholds")} }
+                p {
+                    id: "appearance-thresholds-label",
+                    class: "block text-[10px] text-gray-500",
+                    {t!("appear-thresholds")}
+                }
                 for (i, th) in thresholds.iter().cloned().enumerate() {
-                    div { key: "th-{i}", class: "flex items-center gap-2",
+                    div {
+                        key: "th-{i}",
+                        class: "flex items-center gap-2",
+                        role: "group",
+                        aria_labelledby: "appearance-thresholds-label",
                         span { class: "text-xs text-gray-500", "≥" }
                         input {
                             class: "w-24 rounded border border-gray-300 px-2 py-1 text-sm",
@@ -149,7 +162,11 @@ pub fn AppearancePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Element
                 p { class: "text-[10px] text-gray-400", {t!("appear-thresholds-help")} }
             }
             if show_states {
-                label { class: "block text-[10px] text-gray-500", {t!("appear-states")} }
+                p {
+                    id: "appearance-states-label",
+                    class: "block text-[10px] text-gray-500",
+                    {t!("appear-states")}
+                }
                 for (i, rule) in rules.iter().cloned().enumerate() {
                     StateRuleRow {
                         key: "rule-{i}",
@@ -235,7 +252,10 @@ fn StateRuleRow(cx: EditorCx, index: usize, rule: StateRule, can_write: bool) ->
     let has_color = rule.color.is_some();
     let label = rule.label.clone().unwrap_or_default();
     rsx! {
-        div { class: "space-y-1 rounded border border-gray-100 p-1.5",
+        div {
+            class: "space-y-1 rounded border border-gray-100 p-1.5",
+            role: "group",
+            aria_labelledby: "appearance-states-label",
             div { class: "flex items-center gap-1.5",
                 select {
                     class: "rounded border border-gray-300 bg-white px-1 py-1 text-sm",

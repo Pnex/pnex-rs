@@ -235,11 +235,14 @@ pub fn NotifyTemplateForm(
                     }
                 }
                 div {
-                    label { class: "block text-sm font-medium text-gray-700 mb-1",
+                    label {
+                        r#for: "notify-template-subject-input",
+                        class: "block text-sm font-medium text-gray-700 mb-1",
                         {t!("notify-template-subject")}
                     }
                     crate::components::code_highlight::TemplateEditor {
                         multiline: false,
+                        id: "notify-template-subject-input".to_string(),
                         placeholder: t!("notify-template-subject-placeholder").to_string(),
                         value: "{subject}",
                         oninput: move |e: String| subject.set(e),
@@ -247,7 +250,9 @@ pub fn NotifyTemplateForm(
                 }
                 div {
                     div { class: "flex items-center justify-between",
-                        label { class: "block text-sm font-medium text-gray-700",
+                        label {
+                            r#for: "notify-template-body-input",
+                            class: "block text-sm font-medium text-gray-700",
                             {t!("notify-template-body")}
                             span { class: "text-red-500 ml-1", "*" }
                         }
@@ -271,7 +276,9 @@ pub fn NotifyTemplateForm(
                 // Vars déclarées (lignes {name, example}).
                 div { class: "space-y-2",
                     div { class: "flex items-center justify-between",
-                        label { class: "block text-sm font-medium text-gray-700",
+                        p {
+                            id: "notify-template-vars-label",
+                            class: "block text-sm font-medium text-gray-700",
                             {t!("notify-template-vars")}
                         }
                         button {
@@ -282,7 +289,11 @@ pub fn NotifyTemplateForm(
                     }
                     p { class: "text-xs text-gray-500", {t!("notify-template-vars-hint")} }
                     for (i, (var_name, example)) in vars.read().clone().into_iter().enumerate() {
-                        div { class: "flex gap-2 items-center", key: "{i}",
+                        div {
+                            class: "flex gap-2 items-center",
+                            key: "{i}",
+                            role: "group",
+                            aria_labelledby: "notify-template-vars-label",
                             input {
                                 class: "w-40 px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
                                 placeholder: t!("notify-vars-name-placeholder"),
@@ -339,13 +350,16 @@ pub fn NotifyTemplateForm(
                 // Test d'envoi (canal choisi) — disponible aussi sur un
                 // brouillon (auto-sauvegardé au clic).
                 div { class: "border-t border-gray-200 pt-3 space-y-2",
-                    label { class: "block text-sm font-medium text-gray-700",
+                    label {
+                        r#for: "notify-template-test-channel",
+                        class: "block text-sm font-medium text-gray-700",
                         {t!("notify-test-send-title")}
                     }
                     match &*test_channels.value().read() {
                         Some(Ok(paged)) if !paged.results.is_empty() => rsx! {
                             div { class: "flex gap-2",
                                 select {
+                                    id: "notify-template-test-channel",
                                     class: "flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                                     onchange: move |e| test_target.set(Some(e.value())),
                                     option {

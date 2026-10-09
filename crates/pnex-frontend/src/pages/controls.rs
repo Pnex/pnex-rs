@@ -119,7 +119,7 @@ pub fn Controls() -> Element {
                 }
             }
         }).secondary(),
-        Column::new(String::new(), move |c: &UiControl| {
+        Column::new(t!("common-actions").to_string(), move |c: &UiControl| {
             let edit = c.clone();
             let del = c.clone();
             rsx! {
@@ -142,7 +142,7 @@ pub fn Controls() -> Element {
                 }
             }
         })
-        .with_td_class("text-right whitespace-nowrap").actions(),
+        .with_td_class("text-right whitespace-nowrap").actions().header_sr_only(),
     ];
 
     rsx! {
@@ -283,8 +283,11 @@ fn ControlForm(
             max_width: "max-w-lg".to_string(),
             on_close: move |_| on_close.call(()),
             div { class: "space-y-3",
-                FormRow { label: t!("controls-form-label").to_string(),
+                FormRow {
+                    label: t!("controls-form-label").to_string(),
+                    field_id: "controls-form-label",
                     input {
+                        id: "controls-form-label",
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         value: "{label}",
                         placeholder: t!("controls-label-placeholder").to_string(),
@@ -297,8 +300,11 @@ fn ControlForm(
                         },
                     }
                 }
-                FormRow { label: t!("controls-form-key").to_string(),
+                FormRow {
+                    label: t!("controls-form-key").to_string(),
+                    field_id: "controls-form-key",
                     input {
+                        id: "controls-form-key",
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono",
                         value: "{key}",
                         placeholder: "light.room",
@@ -309,8 +315,11 @@ fn ControlForm(
                     }
                     p { class: "mt-1 text-xs text-gray-500", {t!("controls-form-key-help")} }
                 }
-                FormRow { label: t!("controls-col-kind").to_string(),
+                FormRow {
+                    label: t!("controls-col-kind").to_string(),
+                    field_id: "controls-form-kind",
                     select {
+                        id: "controls-form-kind",
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                         disabled: editing_id.is_some(),
                         onchange: move |e| {
@@ -362,11 +371,16 @@ fn ControlForm(
     }
 }
 
+/// `field_id` = id of the native control passed as child (label `for`).
 #[component]
-fn FormRow(label: String, children: Element) -> Element {
+fn FormRow(label: String, field_id: String, children: Element) -> Element {
     rsx! {
         div {
-            label { class: "block text-xs font-medium text-gray-500 uppercase mb-1", "{label}" }
+            label {
+                r#for: "{field_id}",
+                class: "block text-xs font-medium text-gray-500 uppercase mb-1",
+                "{label}"
+            }
             {children}
         }
     }

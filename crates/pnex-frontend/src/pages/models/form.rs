@@ -428,7 +428,9 @@ pub(super) fn ModelFormModal(
                 p { class: "text-xs text-gray-500", {t!("models-spec-hint")} }
                 div {
                     div { class: "flex items-center justify-between mb-1",
-                        label { class: "text-sm font-medium text-gray-700",
+                        label {
+                            r#for: "form-field-labels",
+                            class: "text-sm font-medium text-gray-700",
                             {t!("models-labels", count : label_count)}
                         }
                         button {
@@ -439,6 +441,7 @@ pub(super) fn ModelFormModal(
                         }
                     }
                     textarea {
+                        id: "form-field-labels",
                         class: "{INPUT_CLASS} h-40 font-mono",
                         value: "{labels}",
                         oninput: move |e| labels.set(e.value()),

@@ -300,7 +300,11 @@ fn OptionsEditor(
     });
     rsx! {
         div { class: "space-y-1",
-            label { class: "block text-xs font-medium text-gray-500", {t!("controls-form-options")} }
+            p {
+                id: "spec-editor-options-label",
+                class: "block text-xs font-medium text-gray-500",
+                {t!("controls-form-options")}
+            }
             for (i, o) in rows.into_iter().enumerate() {
                 OptionRow {
                     key: "opt-{i}",
@@ -379,7 +383,10 @@ fn OptionRow(
     });
     let label_text = option.label.clone().unwrap_or_default();
     rsx! {
-        div { class: "flex items-center gap-1",
+        div {
+            class: "flex items-center gap-1",
+            role: "group",
+            aria_labelledby: "spec-editor-options-label",
             input {
                 class: key_class,
                 title: t!("controls-form-option-key").to_string(),

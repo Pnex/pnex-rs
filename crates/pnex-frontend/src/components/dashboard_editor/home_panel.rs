@@ -215,7 +215,11 @@ fn RoleSource(
     rsx! {
         div { class: "space-y-1",
             div { class: "flex items-center justify-between",
-                label { class: "text-xs text-gray-700", {role_label(role)} }
+                label {
+                    r#for: "home-panel-role-{role}",
+                    class: "text-xs text-gray-700",
+                    {role_label(role)}
+                }
                 if !required && present && can_write {
                     button {
                         class: "text-[10px] text-gray-400 hover:text-red-500",
@@ -225,6 +229,7 @@ fn RoleSource(
                 }
             }
             select {
+                id: "home-panel-role-{role}",
                 class: "w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm",
                 disabled: !can_write,
                 value: "{selected}",

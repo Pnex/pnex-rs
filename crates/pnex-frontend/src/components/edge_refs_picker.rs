@@ -86,13 +86,21 @@ pub fn WifiCredentialPicker(mut selected: Signal<Option<pnex_core::WifiCredentia
 
     rsx! {
         div { class: "sm:col-span-2 space-y-2",
-            label { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("wizard-wifi-select")} }
+            label {
+                id: "edge-refs-wifi-label",
+                r#for: "edge-refs-wifi-select",
+                class: "text-xs font-medium text-gray-500 mb-1 block",
+                {t!("wizard-wifi-select")}
+            }
             match rows.cloned() {
                 Some(Ok(rows)) => {
                     let expanded = show_add().unwrap_or(rows.is_empty());
                     if expanded {
                         rsx! {
-                            div { class: "grid gap-2 sm:grid-cols-2",
+                            div {
+                                class: "grid gap-2 sm:grid-cols-2",
+                                role: "group",
+                                aria_labelledby: "edge-refs-wifi-label",
                                 input {
                                     class: "px-3 py-2 border border-gray-300 rounded-lg text-sm",
                                     placeholder: "{ssid_placeholder}",
@@ -126,6 +134,7 @@ pub fn WifiCredentialPicker(mut selected: Signal<Option<pnex_core::WifiCredentia
                         rsx! {
                             div { class: "flex items-center gap-2",
                                 select {
+                                    id: "edge-refs-wifi-select",
                                     class: "flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                                     value: "{selected_id}",
                                     onchange: {
@@ -233,7 +242,7 @@ fn LockedHostView(host: String, mut selected: Signal<Option<pnex_core::PnexHost>
     });
     rsx! {
         div { class: "sm:col-span-2 space-y-1",
-            label { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("wizard-host-select")} }
+            p { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("wizard-host-select")} }
             div { class: "flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700",
                 icons::Server { class: "h-4 w-4 text-gray-400" }
                 span { class: "font-mono", "wss://{host}" }
@@ -302,13 +311,21 @@ fn FreeHostPicker(mut selected: Signal<Option<pnex_core::PnexHost>>) -> Element 
 
     rsx! {
         div { class: "sm:col-span-2 space-y-2",
-            label { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("wizard-host-select")} }
+            label {
+                id: "edge-refs-host-label",
+                r#for: "edge-refs-host-select",
+                class: "text-xs font-medium text-gray-500 mb-1 block",
+                {t!("wizard-host-select")}
+            }
             match rows.cloned() {
                 Some(Ok(rows)) => {
                     let expanded = show_add().unwrap_or(rows.is_empty());
                     if expanded {
                         rsx! {
-                            div { class: "grid gap-2 sm:grid-cols-2",
+                            div {
+                                class: "grid gap-2 sm:grid-cols-2",
+                                role: "group",
+                                aria_labelledby: "edge-refs-host-label",
                                 label { class: "sm:col-span-2 block",
                                     input {
                                         class: "px-3 py-2 border border-gray-300 rounded-lg text-sm",
@@ -349,6 +366,7 @@ fn FreeHostPicker(mut selected: Signal<Option<pnex_core::PnexHost>>) -> Element 
                         rsx! {
                             div { class: "flex items-center gap-2",
                                 select {
+                                    id: "edge-refs-host-select",
                                     class: "flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                                     value: "{selected_id}",
                                     onchange: {
