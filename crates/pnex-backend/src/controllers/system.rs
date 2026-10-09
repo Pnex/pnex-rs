@@ -12,11 +12,11 @@ use chrono::{DateTime, Timelike, Utc};
 use loco_rs::prelude::*;
 use pnex_core::{
     err_codes, O2DeleteRangeRequest, O2DeleteResult, O2PurgeRequest, O2StreamInfo, O2StreamList,
-    RetentionInfo, RetentionUpdate,
+    OrgTierUpdate, RetentionInfo, RetentionUpdate, TierOption,
 };
 
 use crate::auth::{OrgContext, PlatformAdmin};
-use crate::models::_entities::organizations;
+use crate::models::_entities::{organizations, subscription_tiers};
 use crate::services::openobserve::{self, Client, OpenobserveSettings};
 use crate::services::retention::{self, DeploymentMode};
 use crate::services::system_status;
@@ -47,6 +47,8 @@ pub fn routes() -> Routes {
         )
         .add("/o2/purge", post(o2_purge))
         .add("/orgs", get(orgs_overview))
+        .add("/orgs/{org_id}/tier", put(org_tier_put))
+        .add("/tiers", get(tiers_list))
         .add("/status", get(status))
         .add("/secrets/rekey", post(super::secrets::platform_rekey))
 }
@@ -420,6 +422,7 @@ async fn orgs_overview(_admin: PlatformAdmin, State(ctx): State<AppContext>) -> 
         rows.push(pnex_core::OrgSystemRow {
             org_id: org.id,
             name: org.name.clone(),
+            tier_id: org.subscription_tier_id,
             tier_name: tier.map(|t| t.name),
             retention_days: effective.days,
             retention_source: effective.source.as_str().to_string(),
@@ -454,6 +457,65 @@ async fn orgs_overview(_admin: PlatformAdmin, State(ctx): State<AppContext>) -> 
         }
     }
     format::json(rows)
+}
+
+/// `GET /api/v1/system/tiers` — platform admin.
+async fn tiers_list(_admin: PlatformAdmin, State(ctx): State<AppContext>) -> Result<Response> {
+    use sea_orm::QueryOrder;
+    let tiers = subscription_tiers::Entity::find()
+        .order_by_asc(subscription_tiers::Column::Id)
+        .all(&ctx.db)
+        .await
+        .map_err(db_err)?;
+    format::json(
+        tiers
+            .into_iter()
+            .map(|t| TierOption {
+                id: t.id,
+                name: t.name,
+            })
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// `PUT /api/v1/system/orgs/{org_id}/tier` — platform admin (O37). The
+/// tier drives quotas and retention in SaaS mode only; it is still stored
+/// in self-hosted mode so that a later switch to SaaS keeps it.
+async fn org_tier_put(
+    admin: PlatformAdmin,
+    State(ctx): State<AppContext>,
+    Path(org_id): Path<i64>,
+    Json(body): Json<OrgTierUpdate>,
+) -> Result<Response> {
+    if let Some(tier_id) = body.tier_id {
+        let exists = subscription_tiers::Entity::find_by_id(tier_id)
+            .one(&ctx.db)
+            .await
+            .map_err(db_err)?
+            .is_some();
+        if !exists {
+            return Err(coded(
+                axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+                err_codes::TIER_UNKNOWN,
+                "Unknown subscription tier.",
+            ));
+        }
+    }
+    let org = organizations::Entity::find_by_id(org_id)
+        .one(&ctx.db)
+        .await
+        .map_err(db_err)?
+        .ok_or(Error::NotFound)?;
+    let mut active: organizations::ActiveModel = org.into();
+    active.subscription_tier_id = sea_orm::Set(body.tier_id);
+    active.update(&ctx.db).await.map_err(db_err)?;
+    tracing::info!(org_id, tier_id = ?body.tier_id, by = admin.0.user.id, "org subscription tier updated");
+    // The tier sets the retention in SaaS mode.
+    let bg = ctx.clone();
+    tokio::spawn(async move { retention::reconcile_org_id(&bg, org_id).await });
+    format::json(OrgTierUpdate {
+        tier_id: body.tier_id,
+    })
 }
 
 /// `GET /api/v1/system/status` — platform admin.

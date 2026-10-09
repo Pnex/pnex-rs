@@ -507,6 +507,8 @@ pub struct OrgSystemRow {
     pub org_id: i64,
     pub name: String,
     #[serde(default)]
+    pub tier_id: Option<i64>,
+    #[serde(default)]
     pub tier_name: Option<String>,
     /// Effective retention (days) and its source.
     pub retention_days: u32,
@@ -523,6 +525,22 @@ pub struct OrgSystemRow {
     /// Subscription quota (bytes) — SaaS only.
     #[serde(default)]
     pub quota_bytes: Option<u64>,
+}
+
+/// `GET /api/v1/system/tiers` — subscription tiers an org can be put on
+/// (platform admin).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TierOption {
+    pub id: i64,
+    pub name: String,
+}
+
+/// `PUT /api/v1/system/orgs/{id}/tier` — platform admin; `None` removes
+/// the tier (no quota).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OrgTierUpdate {
+    #[serde(default)]
+    pub tier_id: Option<i64>,
 }
 
 /// `POST /api/v1/system/o2/purge` — typed confirmation (org name).

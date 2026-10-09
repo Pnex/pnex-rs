@@ -309,3 +309,93 @@ async fn orgs_overview_is_admin_only_and_lists_every_org() {
     })
     .await;
 }
+
+#[tokio::test]
+#[serial]
+async fn org_tier_is_changed_by_platform_admins_only() {
+    use pnex_backend::models::_entities::{organizations, subscription_tiers};
+    with_app(|server, ctx, alice, bob| async move {
+        let (alice_id, _, _) = provision(&server, &alice).await;
+        let (_, bob_org, _) = provision(&server, &bob).await;
+        let now = chrono::Utc::now().into();
+        let tier = subscription_tiers::ActiveModel {
+            created_at: Set(now),
+            updated_at: Set(now),
+            name: Set("o37-test-tier".into()),
+            max_sensor_devices: Set(1),
+            max_actuator_devices: Set(1),
+            max_mixed_devices: Set(1),
+            min_build_interval_secs: Set(0),
+            ..Default::default()
+        }
+        .insert(&ctx.db)
+        .await
+        .unwrap();
+
+        // Owner of their own org, but not platform admin: refused (R2).
+        let res = server
+            .put(&format!("/api/v1/system/orgs/{bob_org}/tier"))
+            .add_header("Authorization", bearer(&bob))
+            .json(&serde_json::json!({ "tier_id": tier.id }))
+            .await;
+        assert_eq!(res.status_code(), 403);
+        let res = server
+            .get("/api/v1/system/tiers")
+            .add_header("Authorization", bearer(&bob))
+            .await;
+        assert_eq!(res.status_code(), 403);
+
+        make_platform_admin(&ctx.db, alice_id).await;
+        let res = server
+            .get("/api/v1/system/tiers")
+            .add_header("Authorization", bearer(&alice))
+            .await;
+        assert_eq!(res.status_code(), 200);
+        let tiers: Vec<serde_json::Value> = res.json();
+        assert!(tiers.iter().any(|t| t["id"] == tier.id));
+
+        let res = server
+            .put(&format!("/api/v1/system/orgs/{bob_org}/tier"))
+            .add_header("Authorization", bearer(&alice))
+            .json(&serde_json::json!({ "tier_id": tier.id + 100_000 }))
+            .await;
+        assert_eq!(res.status_code(), 422);
+        assert_eq!(res.json::<serde_json::Value>()["error"], "tier-unknown");
+
+        let res = server
+            .put(&format!("/api/v1/system/orgs/{bob_org}/tier"))
+            .add_header("Authorization", bearer(&alice))
+            .json(&serde_json::json!({ "tier_id": tier.id }))
+            .await;
+        assert_eq!(res.status_code(), 200);
+        let org = organizations::Entity::find_by_id(bob_org)
+            .one(&ctx.db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(org.subscription_tier_id, Some(tier.id));
+        let res = server
+            .get("/api/v1/system/orgs")
+            .add_header("Authorization", bearer(&alice))
+            .await;
+        let rows: Vec<serde_json::Value> = res.json();
+        let row = rows.iter().find(|r| r["org_id"] == bob_org).unwrap();
+        assert_eq!(row["tier_id"], tier.id);
+        assert_eq!(row["tier_name"], "o37-test-tier");
+
+        // `null` removes the tier.
+        let res = server
+            .put(&format!("/api/v1/system/orgs/{bob_org}/tier"))
+            .add_header("Authorization", bearer(&alice))
+            .json(&serde_json::json!({ "tier_id": null }))
+            .await;
+        assert_eq!(res.status_code(), 200);
+        let org = organizations::Entity::find_by_id(bob_org)
+            .one(&ctx.db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(org.subscription_tier_id, None);
+    })
+    .await;
+}
