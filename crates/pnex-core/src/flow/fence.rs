@@ -13,7 +13,7 @@ pub const FLOW_WORKER_ENV: &str = "PNEX_FLOW_WORKER_FENCE";
 pub const FLOW_WORKER_HEADER: &str = "x-pnex-flow-worker";
 
 /// The fencing identity of this runtime process (`None` outside a cluster
-/// worker: legacy runtimes and tests call without the header).
+/// worker: backend-internal callers and tests send no header).
 pub fn flow_worker_fence() -> Option<&'static str> {
     static FENCE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
     FENCE
