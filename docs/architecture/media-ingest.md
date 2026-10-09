@@ -793,6 +793,38 @@ Dépendances :
   rendu PDF sans réseau, pas de publication automatique d'une synthèse
   IA, avis d'avocat).
 
+### 13.1 Autres cas d'usage de la chaîne (noté le 2026-10-09, non prioritaire)
+
+La chaîne capter → transcrire → classer → découper en plages → agréger
+n'est pas propre à la couverture des chaînes TV/radio. Cas relevés par
+l'user, à garder en tête pour ne pas figer le design sur le premier cas
+(aucun travail planifié) :
+
+- **Investisseurs** : note de synthèse journalière, hebdomadaire ou
+  mensuelle à partir de sources d'actualité, podcasts, conférences de
+  résultats, conférences de presse des banques centrales, API publiques
+  (`http_fetch` : SEC EDGAR, communiqués).
+- **Recherche scientifique** : veille sur conférences, séminaires
+  enregistrés, podcasts et publications.
+- **Veille concurrentielle** et **suivi d'annonces** (produits,
+  partenariats, recrutements).
+
+Ce que ces cas demandent en plus du PRD :
+
+- une **synthèse privée** (D174 reporté) livrée par les canaux de
+  notification existants, jamais publiée ; chaque affirmation sourcée
+  (source + timecode), chiffres vérifiés contre la transcription,
+  transcription traitée comme texte non fiable (injection) ;
+- des entités génériques dans l'ontologie (société, ticker, laboratoire,
+  produit) au lieu des seules personnalités/organisations ;
+- des sources de type podcast/RSS et page web, en plus des flux continus.
+
+Sources à écarter : téléchargement YouTube (conditions d'utilisation ;
+l'API officielle ne donne pas les sous-titres d'une vidéo tierce) et
+chaînes protégées ou géobloquées (CNBC, Bloomberg TV — non-objectif §2).
+Sources propres : RSS, podcasts, sites des banques centrales, webcasts
+publics, API publiques.
+
 ## 14. Questions ouvertes
 
 1. Runtime ASR : sherpa-onnx seul, whisper.cpp seul, ou les deux derrière
