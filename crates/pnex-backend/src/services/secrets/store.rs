@@ -14,7 +14,8 @@ use uuid::Uuid;
 
 use super::crypto::{Keyring, KeyringError, Sealed, SecretCryptoError};
 use crate::models::_entities::{
-    flows, llm_providers, notify_channels, org_secrets, secret_usages, wifi_credentials,
+    flows, llm_providers, media_streams, notify_channels, org_secrets, secret_usages,
+    wifi_credentials,
 };
 use crate::services::db_lock::is_unique_violation;
 
@@ -538,6 +539,16 @@ async fn resolve_labels<C: ConnectionTrait>(
             .await?
         {
             names.insert((SecretConsumerKind::LlmProvider, r.id.to_string()), r.name);
+        }
+    }
+    let ids = uuids(ids_of(SecretConsumerKind::MediaStream));
+    if !ids.is_empty() {
+        for r in media_streams::Entity::find()
+            .filter(media_streams::Column::Id.is_in(ids))
+            .all(db)
+            .await?
+        {
+            names.insert((SecretConsumerKind::MediaStream, r.id.to_string()), r.name);
         }
     }
     let ids = uuids(ids_of(SecretConsumerKind::NotifyChannel));

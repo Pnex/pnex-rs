@@ -34,6 +34,10 @@ pub struct Model {
     pub check_error: Option<String>,
     pub infer_ms: Option<i64>,
     pub checked_at: Option<DateTimeWithTimeZone>,
+    /// Audio models only (media-ingest.md D167): languages and sample rate
+    /// read from the files at import.
+    #[sea_orm(column_type = "JsonBinary", nullable)]
+    pub audio_meta: Option<Json>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

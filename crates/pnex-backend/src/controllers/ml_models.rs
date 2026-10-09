@@ -275,6 +275,7 @@ async fn create(
         check_error: Set(None),
         infer_ms: Set(Some(infer_ms as i64)),
         checked_at: Set(Some(now)),
+        audio_meta: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
     }

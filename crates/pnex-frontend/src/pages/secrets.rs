@@ -33,6 +33,7 @@ fn usage_route(kind: SecretConsumerKind) -> Route {
         SecretConsumerKind::Flow => Route::Flows { id: String::new() },
         SecretConsumerKind::Wifi => Route::EdgeRefs {},
         SecretConsumerKind::LlmProvider => Route::OrgsCurrent {},
+        SecretConsumerKind::MediaStream => Route::Streams {},
     }
 }
 
@@ -43,6 +44,7 @@ fn usage_label(u: &SecretUsage) -> String {
         SecretConsumerKind::Flow => t!("secrets-usage-flow"),
         SecretConsumerKind::Wifi => t!("secrets-usage-wifi"),
         SecretConsumerKind::LlmProvider => t!("secrets-usage-llm-provider"),
+        SecretConsumerKind::MediaStream => t!("secrets-usage-media-stream"),
     };
     let target = u.label.clone().unwrap_or_else(|| u.consumer_id.clone());
     format!("{kind} · {target}")

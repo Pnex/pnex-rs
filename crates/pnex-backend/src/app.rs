@@ -178,6 +178,7 @@ impl Hooks for App {
             .add_route(controllers::cameras::routes())
             .add_route(controllers::camera_recordings::routes())
             .add_route(controllers::events::routes())
+            .add_route(controllers::media_ingest::routes())
             .add_route(controllers::ml_models::routes())
             .add_route(controllers::ml_models::internal_routes())
             .add_route(controllers::pins::routes())
