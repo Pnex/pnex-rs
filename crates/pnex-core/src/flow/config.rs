@@ -137,7 +137,7 @@ impl ValueConfig {
 ///   sort sur ce port (`payload` = valeur, `topic` = clé) ; clé absente du
 ///   payload = port muet, clé sans port = ignorée ; array → éléments sur le
 ///   port 0 (`topic` = index) ; autre payload → passthrough port 0.
-/// - `keys` vide (legacy) : un seul port, un msg par clé (`topic` = clé),
+/// - `keys` vide (single-port mode) : un seul port, un msg par clé (`topic` = clé),
 ///   array → un msg par élément ; tout autre payload passe inchangé.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JsonSplitConfig {

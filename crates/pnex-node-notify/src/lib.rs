@@ -17,7 +17,7 @@
 //! (topic = name via the deploy taggers, else the keys of an object
 //! payload), **last value wins** so a waiting set always carries the most
 //! recent data; render + send only happen once the set is complete, then
-//! reset. Snapshot without vars ⇒ legacy semantics: render + send on every
+//! reset. Snapshot without vars ⇒ immediate mode: render + send on every
 //! message; with the trigger wired (always, see below) that template has no
 //! data anchor, so the trigger's rising edge (false → true) renders + sends
 //! it once; it fires again only after a `false` (O23). Anti-spam (fixed window "max N / D s"): the first send opens the
@@ -89,7 +89,7 @@ struct TemplateSnapshot {
     /// (« détectées + déclarées ») — non vide ⇒ mode accumulation « set
     /// complet puis clear » : chaque message remplit les vars (topic = nom
     /// via les taggers, sinon clés du payload objet), le rendu + envoi
-    /// n'ont lieu qu'au set complet, puis reset. Vide ⇒ sémantique legacy
+    /// n'ont lieu qu'au set complet, puis reset. Vide ⇒ mode immédiat
     /// (rendu + envoi à chaque message, vieux flows inchangés).
     #[serde(default)]
     vars: Vec<String>,
@@ -126,7 +126,7 @@ struct PnexNotifyNodeConfig {
     /// Anti-spam — fenêtre fixe « max N envois / fenêtre de D secondes » :
     /// le premier envoi ouvre la fenêtre, le surplus est bloqué (warn,
     /// l'envoi est différé — pas perdu — quand des vars sont accumulées ;
-    /// jeté en mode legacy). `None` = pas de limite.
+    /// jeté en mode immédiat). `None` = pas de limite.
     #[serde(default)]
     anti_spam: Option<pnex_core::AntiSpamConfig>,
     /// Boolean gate input, deploy-derived (true iff a wire is annotated on
@@ -481,7 +481,7 @@ impl PnexNotifyNode {
         };
 
         // 2) Render context. Three paths: a trigger update (gate only, the
-        // commit itself is deferred to the commit task), the legacy mode (no
+        // commit itself is deferred to the commit task), the immediate mode (no
         // template vars: render+send on every message), and accumulation
         // (fill until the stamped set is complete).
         let context_payload =
@@ -520,7 +520,7 @@ impl PnexNotifyNode {
                 }
                 return Ok(());
             } else if self.config.template.vars.is_empty() {
-                // Legacy mode — gated by the armed flag when the trigger input
+                // Immediate mode — gated by the armed flag when the trigger input
                 // is wired (a disarmed message passes through, unsent).
                 if !trigger_allows_send(
                     self.state.lock().expect("pnex-notify state").armed,
@@ -1049,7 +1049,7 @@ mod tests {
 
     #[test]
     fn trigger_gate_permet_envoi_seulement_arme() {
-        // Unwired: legacy always-send.
+        // Unwired: immediate always-send.
         assert!(trigger_allows_send(false, false));
         assert!(trigger_allows_send(true, false));
         // Wired: only an armed gate lets data messages through.
@@ -1256,8 +1256,8 @@ mod tests {
     }
 
     #[test]
-    fn fill_legacy_complet_des_le_premier_msg() {
-        // Sans var stampée, pas d'accumulation (le mode legacy est géré en
+    fn fill_immediate_mode_complete_on_first_msg() {
+        // Sans var stampée, pas d'accumulation (le mode immédiat est géré en
         // amont par la branche vars.is_empty() — ici on vérifie que fill
         // sur un set vide est trivialement complet).
         let mut filled = BTreeMap::new();

@@ -5,7 +5,7 @@ use super::*;
 /// nommés** (une clé = un port, la valeur de `payload[key]` sort sur son
 /// port). Le fil suit sa clé (rename/remove via `rewire_split_keys`) ;
 /// « importer les clés » pré-remplit depuis un Value amont statique-objet
-/// (one-shot, pas d'auto-sync). Zéro clé = comportement legacy (1 port).
+/// (one-shot, pas d'auto-sync). Zero keys = single-port mode (one message per key).
 #[component]
 pub(super) fn JsonSplitForm(
     mut cx: EditorCx,
@@ -209,14 +209,13 @@ pub(super) fn JsonMergeForm(
     let mut inputs = use_signal(move || initial.inputs.clone());
 
     let input_rows = inputs.read().clone();
-    // La clé par défaut n'a de sens qu'en mode legacy (aucune entrée
-    // nommée) : avec des lignes, tout fil est taggué par sa ligne et le
-    // câblage nu est refusé à la sauvegarde — le champ serait mort et
-    // incompréhensible affiché.
-    let legacy_mode = input_rows.is_empty();
+    // The default key only matters in single-input mode (no named entry):
+    // with rows, every wire is tagged by its row and bare wiring is refused
+    // on save, so the field would be dead and confusing.
+    let single_input = input_rows.is_empty();
     rsx! {
         div { class: "space-y-3",
-            if legacy_mode {
+            if single_input {
                 {
                     text_field(
                         t!("flows-json-merge-key"),
