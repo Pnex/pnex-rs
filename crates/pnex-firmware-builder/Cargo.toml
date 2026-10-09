@@ -7,7 +7,6 @@ description = "Orchestration des builds firmware (shell-out toolchain PlatformIO
 
 [dependencies]
 pnex-core = { workspace = true }
-serde_json = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 async-trait = "0.1"

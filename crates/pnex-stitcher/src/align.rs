@@ -97,7 +97,7 @@ fn render_gray_strip(f: &PreparedFrame, work_width: u32) -> GrayStrip {
         .saturating_add(1)
         .min(h as usize - 1);
     for j in rows_top..=rows_bot {
-        let lat = lat_of(j as u32, w, h);
+        let lat = lat_of(j as u32, h);
         if lat < f.lat_min || lat > f.lat_max {
             continue;
         }
@@ -681,7 +681,7 @@ pub fn estimate_local_warp(frames: &mut [PreparedFrame]) {
             if m.ncc < WARP_MIN_NCC || m.dlon_deg.abs() > 2.0 || m.dlat_deg.abs() > 2.0 {
                 continue;
             }
-            let lat_c = lat_of(((slab.start + slab.end) / 2) as u32, work, work / 2);
+            let lat_c = lat_of(((slab.start + slab.end) / 2) as u32, work / 2);
             let w = m.ncc * m.ncc;
             let Some(ia) = cell_of(&frames[a], lon_c, lat_c) else {
                 continue;

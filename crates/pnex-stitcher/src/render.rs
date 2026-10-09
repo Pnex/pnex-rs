@@ -309,7 +309,7 @@ pub fn render(frames: &[PreparedFrame], out_width: u32) -> (Vec<u8>, Vec<u32>, V
     // Pré-filtre par ligne : indices de frames éligibles, calculés une fois.
     let eligible: Vec<Vec<usize>> = (0..out_h)
         .map(|j| {
-            let lat = lat_of(j, out_width, out_h);
+            let lat = lat_of(j, out_h);
             frames
                 .iter()
                 .enumerate()
@@ -326,7 +326,7 @@ pub fn render(frames: &[PreparedFrame], out_width: u32) -> (Vec<u8>, Vec<u32>, V
         .chunks_mut(row_len)
         .enumerate()
         .map(|(j, row)| {
-            let lat = lat_of(j as u32, out_width, out_h);
+            let lat = lat_of(j as u32, out_h);
             let elig = &eligible[j];
             let mut sum = vec![0.0_f32; (out_width * 3) as usize];
             let mut wsum = vec![0.0_f32; out_width as usize];
@@ -636,7 +636,7 @@ pub(crate) fn mirror_mask(mask: &mut [bool], out_width: u32) {
 }
 
 /// Latitude (degrés) du centre de la ligne de sortie `j`.
-pub(crate) fn lat_of(j: u32, _out_width: u32, out_h: u32) -> f32 {
+pub(crate) fn lat_of(j: u32, out_h: u32) -> f32 {
     90.0 - (j as f32 + 0.5) * 180.0 / out_h as f32
 }
 
@@ -703,8 +703,8 @@ mod tests {
     /// sonde `rendu_handedness`).
     #[test]
     fn conventions_sphere() {
-        assert!((lat_of(0, 2048, 1024) - 89.9).abs() < 0.1);
-        assert!((lat_of(1023, 2048, 1024) + 89.9).abs() < 0.1);
+        assert!((lat_of(0, 1024) - 89.9).abs() < 0.1);
+        assert!((lat_of(1023, 1024) + 89.9).abs() < 0.1);
         assert!((lon_of(0, 2048) + 180.0).abs() < 0.1);
         assert!((lon_of(2047, 2048) - 180.0).abs() < 0.1);
         assert!((lon_of(1023, 2048)).abs() < 0.2);

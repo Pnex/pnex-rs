@@ -32,7 +32,6 @@ serde_json = { workspace = true }
 anyhow = "1"
 rquickjs = { version = "0.11", default-features = false, features = ["futures"] }
 tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "macros", "signal", "time", "fs", "sync"] }
-tokio-util = "0.7"
 log = "0.4"
 # Hash des tabs (diff de reload) et de l'artefact (flow_rev santé process).
 sha2 = "0.10"

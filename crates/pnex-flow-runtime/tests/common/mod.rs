@@ -58,25 +58,6 @@ impl RuntimeProc {
         RuntimeProc { child, lines: rx }
     }
 
-    /// Attend la fin du process avec un code non nul (graphe rejeté).
-    pub fn wait_for_exit_failure(&mut self, timeout: Duration) {
-        let deadline = Instant::now() + timeout;
-        while Instant::now() < deadline {
-            match self.child.try_wait() {
-                Ok(Some(status)) => {
-                    assert!(
-                        !status.success(),
-                        "le runtime devait échouer, code : {status}"
-                    );
-                    return;
-                }
-                Ok(None) => std::thread::sleep(Duration::from_millis(50)),
-                Err(e) => panic!("try_wait : {e}"),
-            }
-        }
-        panic!("le runtime ne s'est pas arrêté après {timeout:?}");
-    }
-
     /// Attend (avec délai global) qu'une ligne satisfasse le prédicat.
     pub fn wait_for(
         &self,
