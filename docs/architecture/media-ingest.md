@@ -454,8 +454,10 @@ impossible sans audio, D161 — c'est assumé et affiché).
   accepte un audio).
 - Licence affichée à l'import (champ obligatoire, liste SPDX) ; la
   palette signale les licences non commerciales.
-- Runtime (crate `pnex-asr`, à créer) : adaptateurs derrière un trait
-  unique `Transcriber`. Candidats à départager par le POC (§12, lot 0) :
+- Runtime (crate `pnex-asr`, créé au lot 0) : adaptateurs derrière un
+  trait unique `Transcriber`. **Lot 0 mesuré** (`media-asr-bench.md`) :
+  sherpa-onnx = runtime par défaut (CPU), whisper.cpp = option de build
+  pour le GPU Vulkan ; aucun modèle imposé. Candidats évalués :
   **sherpa-onnx** (bindings Rust, ONNX, CPU/ARM et CUDA, couvre Whisper,
   Parakeet, SenseVoice, Silero VAD et la diarisation) et **whisper.cpp**
   via `whisper-rs` (GGUF, CPU/Vulkan/CUDA). Licences des deux à vérifier
@@ -742,7 +744,7 @@ clés de stockage et noms de streams O2 construits côté serveur (R18).
 | Segments par jour (30 s) | ~43 000 |
 | Débit entrant (PCM 16 kHz mono s16) | ~0,25 Mbit/s par flux, transitoire |
 | Texte stocké | quelques centaines de Mo par mois (ordre de grandeur, à mesurer au lot 1) |
-| Calcul ASR | dépend du modèle : RTF mesuré à l'import (D167) ; cible = ≥ 15 flux temps réel sur un GPU grand public, à confirmer au lot 0 |
+| Calcul ASR | dépend du modèle : RTF mesuré à l'import (D167) ; cible ≥ 15 flux temps réel sur un GPU grand public **atteinte au lot 0** : ≈ 30 flux radio (whisper.cpp Vulkan, large-v3-turbo, GPU portable 6 Go) et ≈ 32 flux en CPU seul (Parakeet v3) — `media-asr-bench.md` |
 | Queue | ~43 000 jobs/jour sur 15 flux : worker dédié `asr` obligatoire à cette échelle (D166) ; l'all-in-one vise 1–3 flux |
 
 ## 11. Cadre juridique (rappel, non un avis juridique)
@@ -761,7 +763,7 @@ clés de stockage et noms de streams O2 construits côté serveur (R18).
 
 | Lot | Contenu | Critère de sortie |
 |---|---|---|
-| **0 — POC ASR** | crate `pnex-asr` (trait `Transcriber`) ; benchmark sherpa-onnx vs whisper.cpp ; 3–4 modèles FR sur 1 h de radio annotée ; licences vérifiées | tableau WER / noms propres / RTF sur le GPU cible et sur Pi ; runtime retenu |
+| **0 — POC ASR** ✅ (2026-10-09, `media-asr-bench.md`) | crate `pnex-asr` (trait `Transcriber`) ; benchmark sherpa-onnx vs whisper.cpp, CPU/CUDA/Vulkan, 6 modèles sur FLEURS fr + 10 min de radio ; licences (sherpa-onnx Apache-2.0, whisper-rs Unlicense, whisper.cpp MIT) | tableau WER / noms propres / RTF ; runtimes supportés et mesurés, aucun modèle imposé. Restent : Pi réel, radio annotée à la main |
 | **1 — Capture + transcription** | ffmpeg dans les images ; fetcher filtré + superviseur sous bwrap (D160, `server` et `worker`) ; D159 (+ quotas), D161, D162, D164, D165 (+ endpoint transcripts), D166 (tag configurable, équité par org), D167 (import + check audio par porteur) ; D171 partie écriture (helper de remote-write à labels libres) ; D172 (avertissement TDM) ; page /media minimale | France Inter capté 24 h, texte dans O2, couverture ≥ 99 %, zéro audio résiduel ; tests SSRF : loopback, 169.254.169.254, `*.svc.cluster.local` et redirection / sous-URL HLS / `EXT-X-KEY` vers ces cibles refusés en `lan`, RFC 1918 refusé en `public` |
 | **2 — Flows + séries** | D163 (`media_source`), D168 (taxonomie de sujets v1), D171 (option `labels` du nœud `metric`, `SourceRef` à labels), NodeDoc + KB | dashboard « mentions par heure » sur 3 flux |
 | **3 — Plages + métadonnées** | D169, D170 (`range_upsert`, EPG TNT, grilles via `http_fetch`, recalage par annonces) ; agrégation par plage (primitive D182) | stats par émission sur une semaine, écart annoncé/recalé visible |
@@ -841,8 +843,10 @@ fournie par l'utilisateur, qui reste responsable de ses sources.
 
 ## 14. Questions ouvertes
 
-1. Runtime ASR : sherpa-onnx seul, whisper.cpp seul, ou les deux derrière
-   `Transcriber` ? (tranché par le lot 0)
+1. ~~Runtime ASR~~ — **tranché au lot 0** : les deux derrière
+   `Transcriber` ; sherpa-onnx par défaut, whisper.cpp en option de
+   build (meilleur chemin GPU) ; cohabitation dans un binaire seulement
+   avec sherpa en bibliothèque partagée (`media-asr-bench.md` §4).
 2. ~~Tags de worker Loco 1.1 suffisants ou queue dédiée ?~~ — **tranché
    à la relecture** : `queue()` est ignoré par la queue PG, les tags sont
    le seul routage et suffisent, avec un tag ASR configurable (D166).

@@ -1,0 +1,22 @@
+[package]
+name = "pnex-asr"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "PNeX speech-to-text — Transcriber trait and runtime adapters (media-ingest.md D167, lot 0 POC)"
+
+# Both runtimes link native code (prebuilt sherpa-onnx, whisper.cpp built by
+# cmake): opt-in features, so a plain workspace build stays pure Rust.
+[features]
+default = []
+sherpa = ["dep:sherpa-onnx", "sherpa-onnx/static"]
+# Links a local shared build instead (SHERPA_ONNX_LIB_DIR), e.g. the CUDA one.
+sherpa-shared = ["dep:sherpa-onnx", "sherpa-onnx/shared"]
+whisper = ["dep:whisper-rs"]
+whisper-vulkan = ["whisper", "whisper-rs/vulkan"]
+
+[dependencies]
+thiserror = { workspace = true }
+hound = "3.5"
+sherpa-onnx = { version = "1.13.8", optional = true, default-features = false }
+whisper-rs = { version = "0.16", optional = true }
