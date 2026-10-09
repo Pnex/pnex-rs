@@ -10,9 +10,9 @@
 #   queued state, submit was synchronous) | running (Running) | succeeded
 #   (Succeeded) | failed (Failed) ; Deleted dropped (no more k8s job) ;
 # - build-records paginé (D14, enveloppe {count,next,previous,results}) ;
-# - `insecure`/`server_port`/`force_rebuild`/`metadata` acceptés, ignorés ;
-# - `ws_ssl` (bool, défaut true) : firmware en wss:// (TLS, industriel) ou
-#   ws:// (déploiement local / Raspberry Pi sans TLS) ;
+# - corps strict (2026-10-09) : tout champ inconnu est refusé (plus de
+#   `ws_ssl`, `wifi_ssid`/`wifi_password`, `predefined_device_name` — le
+#   modèle est celui du device ; le firmware est toujours wss) ;
 # - erreurs forme héritée {"error": "..."} ; validation champ {"<champ>": "..."}.
 #
 # Runtime secrets: WiFi + host go through the PG queue (visible to the
@@ -30,37 +30,24 @@ Content-Type: application/json
 Authorization: Bearer {{token}}
 X-Org-Id: 4
 
-# WiFi : de préférence une entrée du référentiel de l'org
-# (`wifi_credential_id`) — le mot de passe reste dans le coffre et le worker
-# le déchiffre (secrets.md S6). `wifi_ssid` + `wifi_password` restent
-# acceptés : l'entrée est alors créée ou mise à jour dans le référentiel
-# (valeur saisie = owner/admin), rien n'entre en clair dans la file.
+# WiFi : une entrée du référentiel de l'org (`wifi_credential_id`) — le mot
+# de passe reste dans le coffre et le worker le déchiffre (secrets.md S6).
 {
   "wifi_credential_id": 7,
   "device_id": "capteur-jardin",
-  "predefined_device_name": "soil_sensor",
-  "pnex_host": "dev1.pnex.io",
-  "ws_ssl": true
+  "pnex_host": "dev1.pnex.io"
 }
 
 # → 201
 # {
-#   "build_record_created": true,
 #   "build_id": 12,
 #   "status": "queued",
 #   "message": "Firmware build job created successfully"
 # }
 
 ### Records de l'org — paginés D14, filtres device_id (exact) et
-### success=true|false ; tri id DESC (plus récent d'abord).
+### build_phase=queued|running|succeeded|failed ; tri id DESC.
 GET {{host}}/api/v1/build-records?limit=10&offset=0
-Authorization: Bearer {{token}}
-X-Org-Id: 4
-
-### Supprimer un record — 400 si build réussi, 400 si le device existe
-### encore, 204 sinon (l'artefact n'est PAS supprimé — rétention D6) ;
-### 404 si le record a déjà été nettoyé avec son device.
-DELETE {{host}}/api/v1/build-records/12
 Authorization: Bearer {{token}}
 X-Org-Id: 4
 
