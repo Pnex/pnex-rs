@@ -34,6 +34,8 @@ members = [
     # Vision inference (tract ONNX, YOLOX) — backend test endpoint + flow node.
     "crates/pnex-vision",
     "crates/pnex-node-vision",
+    # Speech-to-text (media-ingest.md D167): Transcriber trait, lot 0 POC.
+    "crates/pnex-asr",
     "crates/pnex-node-memory",
     # Predictive telemetry (augurs): anomaly + forecast flow nodes.
     "crates/pnex-node-predict",
