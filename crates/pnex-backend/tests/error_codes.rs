@@ -7,12 +7,6 @@
 
 use std::path::PathBuf;
 
-/// Generic loco codes deliberately NOT translated: they carry specific
-/// descriptions, so resolving a generic code key would lose information.
-/// Migrate sites away from them (specific codes) as controllers are touched;
-/// verbatim display covers them meanwhile.
-const GENERIC_ALLOWED: &[&str] = &["bad_request", "forbidden", "conflict", "not_found"];
-
 /// Existing dynamic-detail codes (message embeds the actual runtime/engine
 /// error) — verbatim display is the contract until they are re-coined with
 /// structured args. Do not grow this list with new sites: coin a specific
@@ -37,7 +31,7 @@ fn error_detail_codes_are_registered() {
             let Some(code) = literal_error_detail_code(line) else {
                 continue;
             };
-            if GENERIC_ALLOWED.contains(&code) || DYNAMIC_ALLOWED.contains(&code) {
+            if DYNAMIC_ALLOWED.contains(&code) {
                 continue;
             }
             if !pnex_core::err_codes::exists(code) {

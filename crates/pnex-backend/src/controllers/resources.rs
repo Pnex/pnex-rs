@@ -9,7 +9,7 @@
 //!   → 404) ;
 //! - writes gated by `can_write()` (owner|admin|member);
 //! - routes statiques avant paramétriques (école pois `cluster`) :
-//!   `labels/catalog`, `edges`, `folders` avant `{kind}/{id}/…`.
+//!   `labels/batch`, `edges`, `folders` avant `{kind}/{id}/…`.
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -125,29 +125,6 @@ struct InheritedFrom {
     kind: String,
     id: String,
     labels: pnex_core::resources::LabelSet,
-}
-
-#[derive(Serialize)]
-struct CatalogEntryDto {
-    name: String,
-    values: Vec<String>,
-    count: i64,
-}
-
-/// `GET /api/v1/resources/labels/catalog` — autocomplétion (tous kinds).
-async fn labels_catalog(ctx: State<AppContext>, org: OrgContext) -> Result<Response> {
-    let rows = svc::labels::catalog(&ctx.db, org.org.id)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
-    let results: Vec<CatalogEntryDto> = rows
-        .into_iter()
-        .map(|(name, values, count)| CatalogEntryDto {
-            name,
-            values,
-            count,
-        })
-        .collect();
-    format::json(serde_json::json!({ "count": results.len(), "results": results }))
 }
 
 /// `GET /api/v1/resources/{kind}/{id}/labels` — propres uniquement.
@@ -856,7 +833,6 @@ pub fn routes() -> Routes {
     Routes::new()
         .prefix("/api/v1/resources")
         // Statiques avant paramétriques (matchit — école pois).
-        .add("/labels/catalog", get(labels_catalog))
         .add("/labels/batch", post(labels_batch))
         .add("/edges", get(list_edges).post(create_edge))
         .add(

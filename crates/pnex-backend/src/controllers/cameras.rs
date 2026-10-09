@@ -52,11 +52,7 @@ pub fn routes() -> Routes {
         .add("/segments", get(list_segments))
         .add("/segments/{id}/content", get(segment_content))
         .add("/segments/{id}", get(segment_detail).delete(delete_segment))
-        .add(
-            "/{device}/settings",
-            get(get_settings).patch(patch_settings),
-        )
-        .add("/{device}/snapshot", get(snapshot))
+        .add("/{device}/settings", patch(patch_settings))
 }
 
 /// Camera row + device of the org, else None (masking 404).
@@ -115,17 +111,6 @@ async fn list(State(ctx): State<AppContext>, org: OrgContext) -> Result<Response
         .collect();
     views.sort_by(|a, b| a.device_id.cmp(&b.device_id));
     format::json(views)
-}
-
-async fn get_settings(
-    State(ctx): State<AppContext>,
-    org: OrgContext,
-    Path(device): Path<i64>,
-) -> Result<Response> {
-    let Some((cam, _)) = find_camera(&ctx.db, &org, device).await? else {
-        return Err(Error::NotFound);
-    };
-    format::json(camera::settings_of(&cam))
 }
 
 /// Partial settings update — every field optional.
@@ -201,36 +186,6 @@ async fn patch_settings(
         .remove(&dev.id)
         .unwrap_or_default();
     format::json(view_of(&saved, &dev, live))
-}
-
-async fn snapshot(
-    State(ctx): State<AppContext>,
-    org: OrgContext,
-    Path(device): Path<i64>,
-) -> Result<Response> {
-    let Some((_, dev)) = find_camera(&ctx.db, &org, device).await? else {
-        return Err(Error::NotFound);
-    };
-    // Local frame, else the last frame on the cluster bus (uplink on
-    // another pod).
-    let Some(frame) = camera::latest_anywhere(dev.org_id, dev.id, &dev.device_id).await else {
-        return Err(Error::CustomError(
-            StatusCode::NOT_FOUND,
-            loco_rs::controller::ErrorDetail::new(
-                "camera-no-frame",
-                "No image received from this camera yet",
-            ),
-        ));
-    };
-    Ok((
-        StatusCode::OK,
-        [
-            ("content-type", "image/jpeg".to_string()),
-            ("cache-control", "no-store".to_string()),
-        ],
-        frame.jpeg.clone(),
-    )
-        .into_response())
 }
 
 // ───────────────────────────── Segments ─────────────────────────────

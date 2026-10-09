@@ -153,9 +153,13 @@ async fn camera_uplink_live_and_settings() {
     with_app(|server, alice, _ctx| async move {
         let org = personal_org(&server, &alice).await;
         let dev = create_device(&server, &alice, org, "cam-one").await;
-        // When a previous test enabled the cluster state, stale viewer
-        // presence of a recycled device id must not wake the camera.
-        if let Ok(url) = std::env::var("PNEX_TEST_VALKEY_URL") {
+        // Stale viewer presence of a recycled device id (left by an earlier
+        // run of the cluster test) must not wake the camera: clear it in the
+        // app's Valkey (test.yaml default when not overridden).
+        {
+            let url = std::env::var("PNEX_TEST_VALKEY_URL")
+                .or_else(|_| std::env::var("PNEX_TEST_APP_VALKEY_URL"))
+                .unwrap_or_else(|_| "redis://127.0.0.1:6379/14".to_string());
             let mut kv =
                 redis::aio::ConnectionManager::new(redis::Client::open(url.as_str()).unwrap())
                     .await
@@ -188,14 +192,6 @@ async fn camera_uplink_live_and_settings() {
         assert_eq!(list[0]["device_id"], "cam-one");
         assert_eq!(list[0]["settings"]["capture_mode"], "on_demand");
 
-        // No frame yet → 404 with the machine code.
-        let snap = server
-            .get(&format!("/api/v1/cameras/{}/snapshot", dev.id))
-            .add_header("Authorization", format!("Bearer {alice}"))
-            .add_header("X-Org-Id", org.to_string())
-            .await;
-        snap.assert_status(axum_test::http::StatusCode::NOT_FOUND);
-
         // A live viewer wakes the on_demand camera.
         let mut viewer = server
             .get_websocket(&format!(
@@ -225,14 +221,6 @@ async fn camera_uplink_live_and_settings() {
         // A forged frame is dropped, never forwarded (the link stays up).
         cam.send_message(axum_test::WsMessage::Binary(vec![7u8; 64].into()))
             .await;
-
-        let snap = server
-            .get(&format!("/api/v1/cameras/{}/snapshot", dev.id))
-            .add_header("Authorization", format!("Bearer {alice}"))
-            .add_header("X-Org-Id", org.to_string())
-            .await;
-        snap.assert_status_ok();
-        assert_eq!(&snap.as_bytes()[..], &frame(1)[16..]);
 
         // A second uplink for the same camera is refused (anti-clone).
         let mut clone = common::DevWs::connect_binary(
@@ -587,14 +575,6 @@ async fn camera_cluster_state_crosses_pods() {
         };
         remote_frame(1).await;
 
-        // Snapshot and list are served from the cluster state.
-        let snap = server
-            .get(&format!("/api/v1/cameras/{}/snapshot", dev.id))
-            .add_header("Authorization", format!("Bearer {alice}"))
-            .add_header("X-Org-Id", org.to_string())
-            .await;
-        snap.assert_status_ok();
-        assert_eq!(&snap.as_bytes()[..], &frame(1)[16..]);
         let _: () = kv
             .hset(camera::VIEWERS_KEY, &viewer_field, format!("2|{future}"))
             .await
