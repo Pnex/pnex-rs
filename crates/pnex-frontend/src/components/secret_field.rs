@@ -135,6 +135,15 @@ pub fn SecretField(
         _ => Mode::Pick,
     };
     let mut mode = use_signal(|| initial);
+    // Per-instance ids: several secret fields can share a page, so the
+    // label/control pair is keyed on a process-wide counter.
+    let base_id = use_hook(|| {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        format!("secret-field-{}", NEXT.fetch_add(1, Ordering::Relaxed))
+    });
+    let label_id = format!("{base_id}-label");
+    let control_id = format!("{base_id}-input");
     // A reference set from outside (a save stored the typed value) shows
     // as "set".
     use_effect(move || {
@@ -180,9 +189,17 @@ pub fn SecretField(
 
     rsx! {
         div { class: "space-y-2",
-            label { class: "block text-sm font-medium text-gray-700", {label} }
+            label {
+                id: "{label_id}",
+                r#for: "{control_id}",
+                class: "block text-sm font-medium text-gray-700",
+                {label}
+            }
             if mode() == Mode::Show {
-                div { class: "flex items-center gap-2",
+                div {
+                    class: "flex items-center gap-2",
+                    role: "group",
+                    aria_labelledby: "{label_id}",
                     span { class: "inline-flex items-center gap-1 rounded bg-green-50 border border-green-200 px-2 py-1 text-xs text-green-800",
                         icons::Key { class: "h-3.5 w-3.5" }
                         {t!("secret-field-set")}
@@ -222,6 +239,7 @@ pub fn SecretField(
                 }
                 if mode() == Mode::Type {
                     input {
+                        id: "{control_id}",
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono bg-white",
                         r#type: "password",
                         autocomplete: "new-password",
@@ -231,6 +249,7 @@ pub fn SecretField(
                     }
                 } else {
                     select {
+                        id: "{control_id}",
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                         onchange: move |e| {
                             let id = e.value().parse::<Uuid>().ok();

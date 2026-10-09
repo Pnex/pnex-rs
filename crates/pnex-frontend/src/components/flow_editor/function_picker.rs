@@ -72,7 +72,9 @@ pub(crate) fn FunctionPicker(
     let has_selection = rows_value.iter().any(|s| s.id == selected_id());
     rsx! {
         div { class: "space-y-1",
-            label { class: "text-xs font-medium text-gray-500 mb-1 block",
+            label {
+                r#for: "function-picker-select",
+                class: "text-xs font-medium text-gray-500 mb-1 block",
                 {t!("flows-inspector-function-pick")}
             }
             // Remount the select once the rows arrive (keyed on their
@@ -81,6 +83,7 @@ pub(crate) fn FunctionPicker(
             for generation_key in [rows_value.len()] {
                 select {
                     key: "{generation_key}",
+                    id: "function-picker-select",
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm disabled:bg-gray-50 disabled:text-gray-400",
                     disabled: !can_write || loading(),
                     onchange: move |event| {

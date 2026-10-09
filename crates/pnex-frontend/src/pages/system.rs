@@ -259,7 +259,7 @@ fn RetentionCard(info: RetentionInfo) -> Element {
                     " "
                     Link {
                         to: crate::app::Route::AdminStatus {},
-                        class: "text-blue-600 hover:underline",
+                        class: "text-blue-600 underline",
                         {t!("system-retention-change-in-admin")}
                     }
                 }
@@ -335,8 +335,9 @@ fn DataCard(
 
     let mut columns = Vec::new();
     if can_write {
+        let selection_header = t!("crud-col-selection").to_string();
         columns.push(
-            Column::new(String::new(), move |s: &O2StreamInfo| {
+            Column::new(selection_header, move |s: &O2StreamInfo| {
                 let name = s.name.clone();
                 let stream_label = s.name.clone();
                 let checked = selected.read().contains(&name);
@@ -358,7 +359,8 @@ fn DataCard(
                     }
                 }
             })
-            .with_td_class("w-8"),
+            .with_td_class("w-8")
+            .header_sr_only(),
         );
     }
     columns.extend([

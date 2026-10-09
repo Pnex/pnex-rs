@@ -270,8 +270,15 @@ pub fn Visualisation() -> Element {
                                     }
                                 }
                                 div {
-                                    label { class: "block text-xs font-medium text-gray-500 uppercase mb-1", {t!("vis-window")} }
-                                    div { class: "flex rounded-lg border border-gray-300 overflow-hidden",
+                                    p {
+                                        id: "visualisation-window-label",
+                                        class: "block text-xs font-medium text-gray-500 uppercase mb-1",
+                                        {t!("vis-window")}
+                                    }
+                                    div {
+                                        class: "flex rounded-lg border border-gray-300 overflow-hidden",
+                                        role: "group",
+                                        aria_labelledby: "visualisation-window-label",
                                         for (key, label, secs) in WINDOWS {
                                             button {
                                                 key: "{key}",

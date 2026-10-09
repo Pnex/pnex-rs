@@ -306,7 +306,9 @@ pub fn FluidMixtures() -> Element {
 
                     div {
                         div { class: "flex items-center justify-between mb-2",
-                            label { class: "block text-sm font-medium text-gray-700",
+                            p {
+                                id: "fluid-mixtures-components-label",
+                                class: "block text-sm font-medium text-gray-700",
                                 {t!("mixtures-components")}
                             }
                             button {
@@ -315,7 +317,10 @@ pub fn FluidMixtures() -> Element {
                                 {t!("mixtures-add-component")}
                             }
                         }
-                        div { class: "space-y-2",
+                        div {
+                            class: "space-y-2",
+                            role: "group",
+                            aria_labelledby: "fluid-mixtures-components-label",
                             {
                                 let indexed: Vec<(usize, DraftRow)> =
                                     rows().into_iter().enumerate().collect();

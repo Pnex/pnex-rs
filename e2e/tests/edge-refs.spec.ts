@@ -11,7 +11,8 @@ test.describe('edge referentials', { tag: '@edge' }, () => {
     await page.getByRole('main').getByRole('button', { name: app.t('edgerefs-new-wifi') }).click();
     const dlg = dialog(page, app.t('edgerefs-new-wifi'));
     await dlg.getByRole('textbox', { name: app.t('builds-field-ssid') }).fill(ssid);
-    await dlg.getByRole('textbox', { name: app.t('secret-field-type-placeholder') }).fill(password);
+    // The secret field is named by its label (O21), not by its placeholder.
+    await dlg.getByRole('textbox', { name: app.t('builds-field-wifi-password') }).fill(password);
     await dlg.getByRole('button', { name: app.t('common-save'), exact: true }).click();
     await expect(dlg).toBeHidden();
     const row = page.locator('main tr').filter({ hasText: ssid });

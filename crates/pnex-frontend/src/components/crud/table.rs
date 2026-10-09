@@ -48,6 +48,8 @@ pub struct Column<T: 'static> {
     pub cell: Rc<dyn Fn(&T) -> Element>,
     /// Mobile behaviour of the column (desktop rendering is unchanged).
     pub kind: ColumnKind,
+    /// Header kept for screen readers only (visually empty `<th>`).
+    pub header_sr_only: bool,
 }
 
 /// Mobile behaviour of a [`Column`]. Below the `md` breakpoint the table
@@ -96,7 +98,15 @@ impl<T: 'static> Column<T> {
             td_class: "",
             cell: Rc::new(cell),
             kind: ColumnKind::Normal,
+            header_sr_only: false,
         }
+    }
+
+    /// Hides the header text visually but keeps it for assistive
+    /// technologies (columns of row actions or selection checkboxes).
+    pub fn header_sr_only(mut self) -> Self {
+        self.header_sr_only = true;
+        self
     }
 
     /// Pose les classes additionnelles du `<td>`.
@@ -127,6 +137,7 @@ impl<T> PartialEq for Column<T> {
         self.header == other.header
             && self.td_class == other.td_class
             && self.kind == other.kind
+            && self.header_sr_only == other.header_sr_only
             && Rc::ptr_eq(&self.cell, &other.cell)
     }
 }
@@ -190,7 +201,13 @@ pub fn DataTable<T: Clone + PartialEq + 'static>(
                             }
                         }
                         for col in columns.iter() {
-                            th { class: "th {col.kind.th_class()}", {col.header.clone()} }
+                            th { class: "th {col.kind.th_class()}",
+                                if col.header_sr_only {
+                                    span { class: "sr-only", {col.header.clone()} }
+                                } else {
+                                    {col.header.clone()}
+                                }
+                            }
                         }
                     }
                 }

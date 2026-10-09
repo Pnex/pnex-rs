@@ -70,10 +70,16 @@ pub(super) fn PoiFormModal(
                     }
                 }
                 div {
-                    label { class: "block text-sm font-medium text-gray-700 mb-1",
+                    label {
+                        id: "form-field-emoji-label",
+                        r#for: "form-field-emoji",
+                        class: "block text-sm font-medium text-gray-700 mb-1",
                         {t!("poi-field-emoji")}
                     }
-                    div { class: "flex flex-wrap gap-1 mb-1.5",
+                    div {
+                        class: "flex flex-wrap gap-1 mb-1.5",
+                        role: "group",
+                        aria_labelledby: "form-field-emoji-label",
                         for e in PALETTE {
                             button {
                                 class: if emoji() == e { "w-9 h-9 text-xl rounded-lg border-2 border-blue-500 bg-blue-50" } else { "w-9 h-9 text-xl rounded-lg border border-gray-200 hover:border-blue-300" },
@@ -83,6 +89,7 @@ pub(super) fn PoiFormModal(
                         }
                     }
                     input {
+                        id: "form-field-emoji",
                         class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
                         placeholder: t!("poi-field-emoji"),
                         value: "{emoji}",

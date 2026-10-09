@@ -14,7 +14,7 @@ test.describe('media', { tag: '@media' }, () => {
       mimeType: 'image/png',
       buffer: await makePng(browser, 'PNeX E2E'),
     });
-    await dlg.getByRole('textbox', { name: app.t('media-upload-name-placeholder') }).fill(name);
+    await dlg.getByRole('textbox', { name: app.t('media-upload-name') }).fill(name);
     await dlg.getByRole('button', { name: app.t('media-upload'), exact: true }).click();
     await expect(dlg).toBeHidden({ timeout: 30_000 });
 

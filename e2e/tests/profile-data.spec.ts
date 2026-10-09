@@ -29,7 +29,7 @@ test.describe('mixtures', { tag: '@mixtures' }, () => {
     await app.goto('/mixtures');
     await page.getByRole('main').getByRole('button', { name: app.t('mixtures-new') }).click();
     const dlg = dialog(page, app.t('mixtures-new-title'));
-    await dlg.getByRole('textbox', { name: app.t('mixtures-name-placeholder') }).fill(name);
+    await dlg.getByRole('textbox', { name: app.t('mixtures-name') }).fill(name);
     const save = dlg.getByRole('button', { name: app.t('mixtures-save'), exact: true });
     await expect(save).toBeEnabled();
     await capture('mixture-form', { caption: 'Propane / ethane mixture' });

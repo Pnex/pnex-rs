@@ -125,7 +125,7 @@ pub fn Cameras() -> Element {
             },
         )
         .secondary(),
-        Column::new(String::new(), move |c: &CameraView| {
+        Column::new(t!("common-actions").to_string(), move |c: &CameraView| {
             // One clone per button: each `move` closure consumes its own.
             let cam_live = c.clone();
             let cam_rec = c.clone();
@@ -157,7 +157,8 @@ pub fn Cameras() -> Element {
                 }
             }
         })
-        .actions(),
+        .actions()
+        .header_sr_only(),
     ];
 
     rsx! {

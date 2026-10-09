@@ -204,11 +204,17 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                         }
                         {t!("sym-show-value")}
                     }
-                    label { class: "block text-[10px] font-medium uppercase text-gray-400",
+                    p {
+                        id: "symbol-options-states-label",
+                        class: "block text-[10px] font-medium uppercase text-gray-400",
                         {t!("sym-states")}
                     }
                     for (i, th) in thresholds.iter().cloned().enumerate() {
-                        div { key: "th-{i}", class: "flex items-center gap-2",
+                        div {
+                            key: "th-{i}",
+                            class: "flex items-center gap-2",
+                            role: "group",
+                            aria_labelledby: "symbol-options-states-label",
                             span { class: "text-xs text-gray-500", "≥" }
                             input {
                                 class: "w-24 rounded border border-gray-300 px-2 py-1 text-sm",
