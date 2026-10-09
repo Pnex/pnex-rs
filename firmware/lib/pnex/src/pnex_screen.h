@@ -4,7 +4,7 @@
 //   PNEX_SCREEN_SSD1306=1 → 0.96" OLED, I2C (U8g2, HW I2C on
 //   PNEX_SCREEN_SDA/SCL) — simple text pages, no animation.
 //   PNEX_SCREEN_ST7735=1  → 1.77" TFT, SPI (Adafruit ST7735, canvas gerbe
-//   animation ported from tft_st7735_demo; degraded direct-draw path on
+//   animation (the former TFT demo sketch); degraded direct-draw path on
 //   ESP8266 — the 40 KB GFXcanvas16 does not fit the heap there).
 //
 // Both gates are 0 → everything is a no-op and no display library gets

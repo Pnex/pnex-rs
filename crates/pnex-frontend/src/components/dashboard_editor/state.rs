@@ -225,17 +225,6 @@ pub fn delete_wire(layout: &mut DashboardLayout, id: &str) {
     layout.wires.retain(|t| t.id != id);
 }
 
-/// Redimensionne le canvas (inspecteur) — branché en V2 (l'édition des
-/// dimensions du canvas n'a pas été retenue pour la V1 de l'inspecteur).
-#[allow(dead_code)]
-pub fn resize_canvas(layout: &mut DashboardLayout, width: i64, height: i64) {
-    layout.canvas = CanvasSpec {
-        width,
-        height,
-        background: layout.canvas.background.clone(),
-    };
-}
-
 // ─────────────────────────── Mobile composer (D124) ───────────────────────────
 
 /// Next free section id (`s-N`, max + 1 of the existing ones).

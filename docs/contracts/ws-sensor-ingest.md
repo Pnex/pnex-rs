@@ -128,6 +128,6 @@ Valeurs non numériques écartées. Requêtable via
 
 ## 7. Client de référence
 
-`cargo run -p pnex-backend --example ingest_client -- --url … --token …
---device-id … --key … [--hold]` (mimique firmware : PING + key=value
-chiffrés, affiche les close codes).
+Le client miroir des tests d'intégration (`crates/pnex-backend/tests/
+ws_ingest.rs`, `common::DevWs`) : poignée de main Noise, PING + key=value
+scellés, close codes. Le firmware `soil_sensor` est le client réel.

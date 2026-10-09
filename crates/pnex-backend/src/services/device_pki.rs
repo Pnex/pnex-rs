@@ -17,8 +17,6 @@
 //! device of org B (the chain is checked against the org of the device the
 //! fingerprint belongs to).
 
-use base64::engine::general_purpose::STANDARD as B64;
-use base64::Engine as _;
 use rcgen::{
     BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair,
     KeyUsagePurpose, SanType, SerialNumber,
@@ -317,13 +315,4 @@ fn chains_to(cert: &CertificateDer<'_>, ca_pem: &str) -> bool {
         None,
     )
     .is_ok()
-}
-
-/// Build env values: base64 of the PEMs (no quote or newline can break
-/// the `-D` flag; the firmware decodes them).
-pub fn firmware_env(issued: &IssuedCert) -> (String, String) {
-    (
-        B64.encode(issued.cert_pem.as_bytes()),
-        B64.encode(issued.key_pem.as_bytes()),
-    )
 }

@@ -92,22 +92,6 @@ pub struct NotifyChannel {
     pub updated_at: String,
 }
 
-/// Création / édition de canal. Les champs `secret` absents ou `null`
-/// valent « inchangé » (merge au niveau registre, D54).
-///
-/// A `secret` field otherwise takes a [`crate::SecretFieldInput`]:
-/// `{"secret_id": …}` (pick a vault secret) or `{"value": …}` (typed,
-/// owner/admin; a bare string is accepted too). Empty string = cleared.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct NotifyChannelInput {
-    pub kind: String,
-    pub name: String,
-    #[serde(default)]
-    pub enabled: bool,
-    #[serde(default)]
-    pub config: serde_json::Value,
-}
-
 /// Template minijinja (sujet optionnel + corps) — DTO API.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NotifyTemplate {

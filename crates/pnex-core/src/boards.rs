@@ -306,17 +306,6 @@ impl BoardDetails {
         Some(format!("board-reserved-screen:{gpio}"))
     }
 
-    /// Gpio by silkscreen label.
-    pub fn gpio_by_label(&self, label: &str) -> Option<u16> {
-        match self {
-            BoardDetails::V2(p) => p
-                .pins
-                .iter()
-                .find(|p| p.label == label)
-                .and_then(|p| p.gpio),
-        }
-    }
-
     /// Screens of the v2 profile effectively ENABLED for this device:
     /// every `builtin` screen (soldered — forced on) plus the single
     /// external screen chosen by the user, if any. Unknown kind → fail

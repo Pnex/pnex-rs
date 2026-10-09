@@ -128,8 +128,6 @@ pub async fn update(
 }
 
 /// `DELETE /api/v1/annotation-layers/{id}` — couche + versions (cascade).
-/// Pas encore d'UI de purge (les couches implicites sont invisibles).
-#[allow(dead_code)]
 pub async fn delete(id: &str) -> Result<(), ApiError> {
     client::request_opt::<serde_json::Value>(
         reqwest::Method::DELETE,

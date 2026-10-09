@@ -983,7 +983,7 @@ constexpr uint16_t COLOR_GREEN = 0x4FE0;
 constexpr uint16_t COLOR_ORANGE = 0xEB85;
 constexpr uint16_t COLOR_DIM_AZURE = dimmer(COLOR_AZURE);
 
-// ── Gerbe geometry (ported from tft_st7735_demo) ──
+// ── Gerbe geometry ──
 
 struct Segment {
     float head;

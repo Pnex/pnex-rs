@@ -18,16 +18,11 @@
 //     (GotPong) rearment le compteur ; le timeout est configurable
 //     (0 = désactivé — soil_sensor n'en a pas).
 //
-// Consommateurs : generic_esp8266 (profil pin_slave) et soil_sensor.
-// 4_chan_relay (nanopb, déprécié D20) et tft_dev restent hors F1.
+// Consumers: the generic firmwares (pin_slave profile) and soil_sensor.
 //
-// ⚠ Règle de linkage : config.h définit `host`/`token`/`device_id`…
-// comme des pointeurs GLOBAUX NON const (linkage externe). Ce header est
-// le SEUL endroit avec pnex_crypto.cpp où config.h peut être inclus par
-// une lib : pnex_transport.cpp est l'unique unité de traduction qui
-// l'inclut — les mains passent par les getters (pnex_host(),
-// pnex_device_id(), …) et n'incluent plus config.h. Deux TU avec
-// config.h = symboles dupliqués au link.
+// pnex_config.h is private to the lib: pnex_transport.cpp is the only
+// translation unit that includes it; sketches use the getters
+// (pnex_host(), pnex_device_id(), pnex_token()…).
 //
 #ifndef PNEX_TRANSPORT_H
 #define PNEX_TRANSPORT_H

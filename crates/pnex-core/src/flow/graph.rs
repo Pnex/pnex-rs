@@ -22,7 +22,6 @@ pub fn flow_tab_id(flow_id: i64) -> String {
 pub const FLOW_STATUS_DRAFT: &str = "draft";
 pub const FLOW_STATUS_DEPLOYED: &str = "deployed";
 pub const FLOW_STATUS_STOPPED: &str = "stopped";
-pub const FLOW_STATUS_ERROR: &str = "error";
 
 /// Types de nœuds modélisés côté PNEX. Le tag serde est `"kind"` et la config
 /// de chaque variante est portée par un champ `config` (pas de `flatten`

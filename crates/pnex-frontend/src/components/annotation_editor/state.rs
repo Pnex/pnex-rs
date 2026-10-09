@@ -24,16 +24,6 @@ pub fn next_item_id(doc: &AnnotationDoc) -> String {
     format!("a{}", max + 1)
 }
 
-/// Ids des items ancrés sur un média (ordre du doc).
-#[allow(dead_code)]
-pub fn item_ids_for_asset(doc: &AnnotationDoc, media_asset_id: &str) -> Vec<String> {
-    doc.items
-        .iter()
-        .filter(|it| it.media_asset_id == media_asset_id)
-        .map(|it| it.id.clone())
-        .collect()
-}
-
 /// Item résumé pour la liste du panneau.
 #[derive(Clone)]
 pub struct EditorItemRow {
@@ -460,7 +450,6 @@ mod tests {
         remove_item(&mut doc, &first);
         assert!(doc.items.iter().all(|it| it.media_asset_id != "asset-1"));
         assert_eq!(item_rows(&doc, "asset-2").len(), 1);
-        assert!(item_ids_for_asset(&doc, "asset-1").is_empty());
         assert!(!has_item(&doc, "a9"));
         assert!(has_item(&doc, &doc.items[0].id));
     }

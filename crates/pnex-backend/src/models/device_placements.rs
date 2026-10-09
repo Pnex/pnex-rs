@@ -1,6 +1,5 @@
 pub use super::_entities::device_placements::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
-pub type DevicePlacements = Entity;
 
 #[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {

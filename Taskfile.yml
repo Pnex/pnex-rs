@@ -4,14 +4,6 @@ env:
   FRONT_DIST: crates/pnex-frontend/dist
   DX_OUT: target/dx/pnex-frontend
 
-includes:
-  # Tâches propres au firmware (image Docker pio-builder, requirements) —
-  # `task firmware:build-docker`, `task firmware:gen-requirements`.
-  # dir explicite : docker build doit avoir firmware/ comme context.
-  firmware:
-    taskfile: ./firmware/Taskfile.yml
-    dir: ./firmware
-
 # Firmware convergé dans le monorepo (firmware/) + toolchain épinglée sur
 # son venv quand il existe (sinon `pio` du PATH — installation
 # potentiellement divergente : cf. docs/observations.md O7). Utilisée par

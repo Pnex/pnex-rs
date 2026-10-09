@@ -13,7 +13,6 @@ use serde_json::Value;
 use crate::models::_entities::resource_edges;
 use crate::services::resources::registry;
 use crate::services::resources::ResourceError;
-use pnex_core::resources::REL_PLACED_ON;
 
 /// Cap de taille du placement (JSON sérialisé) — une coordonnée/hotspot,
 /// pas un document.
@@ -171,6 +170,3 @@ pub async fn delete_edge(
         .map(|_| ())?;
     Ok(true)
 }
-
-/// Relation canonique du POI → média/dashboard (rebranchement D39).
-pub const POI_PLACED_ON: &str = REL_PLACED_ON;

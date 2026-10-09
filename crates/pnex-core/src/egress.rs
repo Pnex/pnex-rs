@@ -58,12 +58,6 @@ pub fn init(policy: EgressPolicy) {
 
 static ALLOW_HOSTS: OnceLock<Vec<String>> = OnceLock::new();
 
-/// Sets the host names allowed despite the name rule (first call wins;
-/// without a call, `PNEX_EGRESS_ALLOW_HOSTS` is read).
-pub fn init_allow_hosts(hosts: &str) {
-    let _ = ALLOW_HOSTS.set(parse_hosts(hosts));
-}
-
 fn parse_hosts(v: &str) -> Vec<String> {
     v.split(',')
         .map(|h| h.trim().trim_end_matches('.').to_ascii_lowercase())

@@ -1,5 +1,5 @@
 //! ESP32 DevKit V1 30 pins wired to a 1.77" ST7735 TFT (wiring of
-//! firmware/tft_st7735_demo: SCK 18, MOSI 23, CS 5, DC 2 — strapping, Hi-Z
+//! the reference TFT wiring: SCK 18, MOSI 23, CS 5, DC 2 — strapping, Hi-Z
 //! at reset —, RST 4, 160x128). The screen pins are reserved once the screen
 //! is picked for the device.
 

@@ -141,11 +141,6 @@ impl WorkerNode {
         self.stopped.load(Ordering::SeqCst)
     }
 
-    /// Orgs currently projected in the runtime of this worker.
-    pub async fn owned_orgs(&self) -> Vec<i64> {
-        self.state.lock().await.frags.keys().copied().collect()
-    }
-
     /// Flow ids currently in the artifact of this worker.
     pub async fn running_flows(&self) -> HashSet<i64> {
         let st = self.state.lock().await;

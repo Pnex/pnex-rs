@@ -280,18 +280,3 @@ pub async fn device_positions() -> Result<Vec<DevicePosition>, ApiError> {
         client::request(reqwest::Method::GET, "/api/v1/device-positions", None).await?;
     Ok(env.results)
 }
-
-/// `PUT /api/v1/device-positions/{device_id}` — position manuelle (POC/tests).
-#[allow(dead_code)]
-pub async fn set_device_position(
-    device_id: &str,
-    latitude: f64,
-    longitude: f64,
-) -> Result<Option<()>, ApiError> {
-    client::request_opt(
-        reqwest::Method::PUT,
-        &format!("/api/v1/device-positions/{device_id}"),
-        Some(serde_json::json!({ "latitude": latitude, "longitude": longitude })),
-    )
-    .await
-}
