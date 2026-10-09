@@ -24,7 +24,7 @@ pub(super) async fn update_peripherals(
     // modèle prédéfini lui-même (boîtes noires à écran).
     let profile_screens = crate::services::provisioning::load_board_details(&ctx.db, &device)
         .await?
-        .and_then(|d| d.v2().map(|p| p.peripherals.screens.clone()))
+        .map(|p| p.peripherals.screens)
         .unwrap_or_default();
     let predefined = predefined_devices::Entity::find_by_id(device.predefined_device_id)
         .one(&ctx.db)

@@ -121,7 +121,7 @@ pub(crate) fn screen_for_build(
 }
 
 /// Détails board du device (device → variante figée ou défaut modèle →
-/// `mcu_boards.details`), parse tolérant v1/v2. `Ok(None)` si détails
+/// `mcu_boards.details`, profil de board). `Ok(None)` si détails
 /// absents ou illisibles (warn) — jamais d'erreur : l'appelant décide
 /// (admission, pinout, editor).
 pub(crate) async fn load_board_details(
@@ -170,16 +170,12 @@ pub(crate) async fn load_overlay(
     let details: pnex_core::BoardDetails = serde_json::from_value(details.clone())
         .map_err(|e| Error::string(&format!("overlay board invalide : {e}")))?;
     let peripherals = device_peripherals(device);
-    let overlay = match &details {
-        pnex_core::BoardDetails::V2(p) => {
-            let mut pins = details.admission_pins(soc);
-            let reserved: HashSet<u16> = details.reserved_gpios(&peripherals).into_iter().collect();
-            pins.retain(|pin| !reserved.contains(&pin.gpio));
-            pnex_core::BoardOverlay {
-                board: p.board.clone(),
-                pins,
-            }
-        }
+    let mut pins = details.admission_pins(soc);
+    let reserved: HashSet<u16> = details.reserved_gpios(&peripherals).into_iter().collect();
+    pins.retain(|pin| !reserved.contains(&pin.gpio));
+    let overlay = pnex_core::BoardOverlay {
+        board: details.board.clone(),
+        pins,
     };
     Ok((overlay, soc))
 }

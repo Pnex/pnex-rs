@@ -156,10 +156,9 @@ mod tests {
             let p = profile();
             let per_side = p.layout.per_side;
 
-            // Stored JSON parses back as v2 (never falls back to the v1 overlay).
+            // Stored JSON parses back as a board profile.
             let json = serde_json::to_value(&p).unwrap();
             let details: BoardDetails = serde_json::from_value(json).unwrap();
-            assert!(details.v2().is_some(), "{}: not parsed as v2", b.name);
             assert!(
                 !details.admission_pins(soc).is_empty(),
                 "{}: nothing admitted",

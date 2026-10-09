@@ -239,26 +239,13 @@ impl From<ScreenChoice> for Option<String> {
     }
 }
 
-/// Content of `mcu_boards.details` — a v2 board profile.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum BoardDetails {
-    V2(BoardProfileV2),
-}
+/// Content of `mcu_boards.details`: the v2 board profile.
+pub type BoardDetails = BoardProfileV2;
 
-impl BoardDetails {
-    /// v2 profile, if this is one.
-    pub fn v2(&self) -> Option<&BoardProfileV2> {
-        match self {
-            BoardDetails::V2(p) => Some(p),
-        }
-    }
-
+impl BoardProfileV2 {
     /// Wire id of the board (« nodemcu », « xiao_esp32c3 »…).
     pub fn board_id_str(&self) -> &str {
-        match self {
-            BoardDetails::V2(p) => &p.board,
-        }
+        &self.board
     }
 
     /// Tier-1 admission pins: gpio-carrying pins legal per the chip-caps
@@ -267,25 +254,22 @@ impl BoardDetails {
     /// Peripheral-reserved gpios are NOT filtered here —
     /// callers combine with `reserved_gpios`.
     pub fn admission_pins(&self, soc: caps::Soc) -> Vec<BoardPin> {
-        match self {
-            BoardDetails::V2(p) => p
-                .pins
-                .iter()
-                .filter_map(|pin| {
-                    let gpio = pin.gpio?;
-                    let legal = caps::validate(soc, gpio, Mode::DigitalIn, &ModeOpts::default())
-                        .is_ok()
-                        || caps::validate(soc, gpio, Mode::AdcIn, &ModeOpts::default()).is_ok();
-                    legal.then_some(BoardPin {
-                        label: pin.label.clone(),
-                        gpio,
-                        kind: PinKind::Digital,
-                        default_mode: pin.default_mode,
-                        safe_state: pin.safe_state,
-                    })
+        self.pins
+            .iter()
+            .filter_map(|pin| {
+                let gpio = pin.gpio?;
+                let legal = caps::validate(soc, gpio, Mode::DigitalIn, &ModeOpts::default())
+                    .is_ok()
+                    || caps::validate(soc, gpio, Mode::AdcIn, &ModeOpts::default()).is_ok();
+                legal.then_some(BoardPin {
+                    label: pin.label.clone(),
+                    gpio,
+                    kind: PinKind::Digital,
+                    default_mode: pin.default_mode,
+                    safe_state: pin.safe_state,
                 })
-                .collect(),
-        }
+            })
+            .collect()
     }
 
     /// Gpios consumed by the ENABLED peripherals of this device.
@@ -306,19 +290,14 @@ impl BoardDetails {
         Some(format!("board-reserved-screen:{gpio}"))
     }
 
-    /// Screens of the v2 profile effectively ENABLED for this device:
-    /// every `builtin` screen (soldered — forced on) plus the single
-    /// external screen chosen by the user, if any. Unknown kind → fail
-    /// closed (nothing enabled).
+    /// Screens effectively ENABLED for this device: every `builtin` screen
+    /// (soldered — forced on) plus the single external screen chosen by
+    /// the user, if any. Unknown kind → fail closed (nothing enabled).
     fn enabled_screens(
         &self,
         peripherals: &DevicePeripherals,
     ) -> impl Iterator<Item = &ScreenPeripheral> {
-        let empty: &[ScreenPeripheral] = &[];
-        let screens: &[ScreenPeripheral] = match self.v2() {
-            Some(p) => &p.peripherals.screens,
-            None => empty,
-        };
+        let screens = &self.peripherals.screens;
         let chosen: Option<&ScreenPeripheral> = match &peripherals.screen {
             ScreenChoice::None => None,
             ScreenChoice::Kind(kind) => screens.iter().find(|s| s.kind == *kind),
@@ -332,14 +311,11 @@ impl BoardDetails {
     /// screen wins over the user's pick; otherwise the chosen external
     /// screen. Unknown kind / no screen → `None` (fail closed).
     pub fn resolved_screen(&self, peripherals: &DevicePeripherals) -> Option<&ScreenPeripheral> {
-        let profile = self.v2()?;
-        if let Some(b) = profile.peripherals.screens.iter().find(|s| s.builtin) {
+        if let Some(b) = self.peripherals.screens.iter().find(|s| s.builtin) {
             return Some(b);
         }
         match &peripherals.screen {
-            ScreenChoice::Kind(kind) => {
-                profile.peripherals.screens.iter().find(|s| s.kind == *kind)
-            }
+            ScreenChoice::Kind(kind) => self.peripherals.screens.iter().find(|s| s.kind == *kind),
             ScreenChoice::None => None,
         }
     }
@@ -392,7 +368,7 @@ mod tests {
     #[test]
     fn board_details_v2_parse_et_roundtrip() {
         let d: BoardDetails = serde_json::from_str(&v2_json()).unwrap();
-        let profile = d.v2().expect("v2 attendu");
+        let profile = &d;
         assert_eq!(profile.board, "nodemcu_oled");
         assert_eq!(profile.layout.per_side, 8);
         assert_eq!(profile.peripherals.screens.len(), 1);
@@ -537,8 +513,7 @@ mod tests {
         let mut d: BoardDetails = serde_json::from_str(&v2_json()).unwrap();
         // The v2_json helper declares the ssd1306 non-builtin — flip it to
         // cover the forced path.
-        let BoardDetails::V2(ref mut p) = d;
-        p.peripherals.screens[0].builtin = true;
+        d.peripherals.screens[0].builtin = true;
         let none = DevicePeripherals {
             screen: ScreenChoice::None,
         };
@@ -576,7 +551,7 @@ mod tests {
             ]
         }"#;
         let d: BoardDetails = serde_json::from_str(json).unwrap();
-        let v2 = d.v2().expect("v2 profile");
+        let v2 = &d;
         assert!(v2.pins[1].active_low && !v2.pins[0].active_low);
         let pins = d.admission_pins(caps::Soc::Esp32);
         let by_gpio = |g: u16| pins.iter().find(|p| p.gpio == g).unwrap().clone();

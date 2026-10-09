@@ -101,14 +101,11 @@ async fn list(
         let Some(parsed) = b
             .details
             .as_ref()
-            .map(|d| serde_json::from_value::<pnex_core::BoardDetails>(d.clone()).ok())
-            .flatten()
+            .and_then(|d| serde_json::from_value::<pnex_core::BoardDetails>(d.clone()).ok())
         else {
             continue;
         };
-        let Some(p) = parsed.v2() else {
-            continue;
-        };
+        let p = &parsed;
         let Some(soc) = pnex_core::Soc::from_board_soc(&b.soc) else {
             continue;
         };
