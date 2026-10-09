@@ -31,7 +31,7 @@ use crate::components::labels_editor::LabelsEditor;
 use crate::components::modal::Modal;
 use crate::state::media::OPEN_MEDIA;
 use crate::state::{org, session, toasts};
-use crate::util::{media_blob_url, sleep, trigger_download};
+use crate::util::{media_blob_url_tracked, sleep, trigger_download};
 
 /// User role in the current org (devices.rs school).
 fn current_role() -> Option<String> {

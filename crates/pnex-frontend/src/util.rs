@@ -248,35 +248,107 @@ pub fn trigger_download(filename: &str, mime: &str, bytes: &[u8]) -> bool {
 /// la webview, CORS interdirait le fetch JS cross-origin — limitation V1,
 /// cf. docs/architecture/media.md).
 pub async fn media_blob_url(path: &str, content_type: Option<&str>) -> Option<String> {
-    let bytes = crate::api::client::request_bytes(reqwest::Method::GET, path)
-        .await
-        .ok()?;
-    // Native : data URI base64 (école save_blob) — le blob JS n'est pas
-    // jouable cross-origin depuis la webview ; les photos deviennent
-    // visualisables sur Android.
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        use base64::Engine as _;
-        let mime = content_type.unwrap_or("application/octet-stream");
-        Some(format!(
-            "data:{mime};base64,{}",
-            base64::engine::general_purpose::STANDARD.encode(&bytes)
-        ))
-    }
+    media_blob_url_tracked(path, content_type, None).await
+}
+
+/// Download progress of a media: (received bytes, total bytes if known).
+pub type DownloadProgress = (u64, Option<u64>);
+
+/// [`media_blob_url`] reporting its download in `progress` (back to `None`
+/// once done). On the web the bytes come from the browser media cache when
+/// the server confirms (304) they are still current — see `media_cache`.
+pub async fn media_blob_url_tracked(
+    path: &str,
+    content_type: Option<&str>,
+    progress: Option<dioxus::prelude::Signal<Option<DownloadProgress>>>,
+) -> Option<String> {
+    use crate::api::client::{request_bytes_conditional, ConditionalBytes};
+    use dioxus::prelude::{ReadableExt, WritableExt};
+
     #[cfg(target_arch = "wasm32")]
-    {
-        let _ = content_type;
-        bytes_to_blob_url(&bytes)
+    let key = format!("{}{}", crate::api::config::api_base(), path);
+    #[cfg(target_arch = "wasm32")]
+    let cached = crate::media_cache::lookup(&key).await;
+    #[cfg(target_arch = "wasm32")]
+    let if_none_match = cached.as_ref().map(|c| c.etag.clone());
+    #[cfg(not(target_arch = "wasm32"))]
+    let if_none_match: Option<String> = None;
+
+    let mut last = 0u64;
+    let mut report = progress;
+    let outcome =
+        request_bytes_conditional(path, if_none_match.as_deref(), move |received, total| {
+            let Some(signal) = report.as_mut() else {
+                return;
+            };
+            // Re-render about every percent (every MB without a length).
+            let step = total.map_or(1 << 20, |t| (t / 100).max(1));
+            if received == 0 || received - last >= step || Some(received) == total {
+                last = received;
+                signal.set(Some((received, total)));
+            }
+        })
+        .await;
+    if let Some(mut signal) = progress {
+        if signal.peek().is_some() {
+            signal.set(None);
+        }
+    }
+    match outcome.ok()? {
+        ConditionalBytes::NotModified => {
+            #[cfg(target_arch = "wasm32")]
+            {
+                cached?.blob_url().await
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                None
+            }
+        }
+        ConditionalBytes::Body { bytes, etag } => {
+            // Native: base64 data URI (save_blob school) — a JS blob cannot
+            // be played cross-origin from the webview; photos stay viewable
+            // on Android.
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                use base64::Engine as _;
+                let _ = etag;
+                let mime = content_type.unwrap_or("application/octet-stream");
+                Some(format!(
+                    "data:{mime};base64,{}",
+                    base64::engine::general_purpose::STANDARD.encode(&bytes)
+                ))
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                let _ = content_type;
+                let blob = bytes_to_blob(&bytes)?;
+                if let Some(etag) = etag {
+                    // Stored in the background: the viewer does not wait
+                    // for the disk write.
+                    let blob = blob.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        crate::media_cache::store(&key, &blob, &etag).await;
+                    });
+                }
+                web_sys::Url::create_object_url_with_blob(&blob).ok()
+            }
+        }
     }
 }
 
 /// Convertit des octets en URL blob: (wasm uniquement).
 #[cfg(target_arch = "wasm32")]
 fn bytes_to_blob_url(bytes: &[u8]) -> Option<String> {
+    web_sys::Url::create_object_url_with_blob(&bytes_to_blob(bytes)?).ok()
+}
+
+/// JS `Blob` holding a copy of `bytes` (wasm only).
+#[cfg(target_arch = "wasm32")]
+fn bytes_to_blob(bytes: &[u8]) -> Option<web_sys::Blob> {
     let array = js_sys::Uint8Array::from(bytes);
     let seq = js_sys::Array::of1(&array);
-    let blob = web_sys::Blob::new_with_u8_array_sequence(&seq).ok()?;
-    web_sys::Url::create_object_url_with_blob(&blob).ok()
+    web_sys::Blob::new_with_u8_array_sequence(&seq).ok()
 }
 
 /// Rect d'un élément DOM par id — (left, top, width, height). Wasm :

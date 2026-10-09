@@ -136,6 +136,93 @@ pub async fn request_bytes(method: reqwest::Method, path: &str) -> Result<Vec<u8
     }
 }
 
+/// Outcome of [`request_bytes_conditional`].
+pub enum ConditionalBytes {
+    /// 304: the copy named by `if_none_match` is still the current one.
+    NotModified,
+    /// Full body, with the server validator when it sent one.
+    Body {
+        bytes: Vec<u8>,
+        etag: Option<String>,
+    },
+}
+
+/// Streamed GET of a byte endpoint (large media): `on_progress(received,
+/// total)` after every chunk (`total` = Content-Length when known);
+/// `if_none_match` makes it a revalidation of a cached copy (304 →
+/// [`ConditionalBytes::NotModified`]). Same auth/refresh as [`request_bytes`].
+pub async fn request_bytes_conditional(
+    path: &str,
+    if_none_match: Option<&str>,
+    mut on_progress: impl FnMut(u64, Option<u64>),
+) -> Result<ConditionalBytes, ApiError> {
+    let get = || async {
+        let mut req = authed(reqwest::Method::GET, path);
+        if let Some(tag) = if_none_match {
+            req = req.header(reqwest::header::IF_NONE_MATCH, tag);
+        }
+        req.send().await.map_err(|err| ApiError::network(&err))
+    };
+    let mut response = get().await?;
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED && !is_auth_exempt(path) {
+        ensure_refresh().await?;
+        response = get().await?;
+    }
+    let status = response.status().as_u16();
+    if status == 304 {
+        return Ok(ConditionalBytes::NotModified);
+    }
+    if !(200..300).contains(&status) {
+        let text = response.text().await.unwrap_or_default();
+        return Err(ApiError::http(status, &text));
+    }
+    let etag = response
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    let total = response.content_length().filter(|n| *n > 0);
+    // Capacity capped: a lying Content-Length must not reserve gigabytes.
+    let mut bytes = Vec::with_capacity(total.unwrap_or(0).min(512 * 1024 * 1024) as usize);
+    on_progress(0, total);
+    #[cfg(target_arch = "wasm32")]
+    {
+        use futures::StreamExt;
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|err| ApiError::network(&err))?;
+            bytes.extend_from_slice(&chunk);
+            on_progress(bytes.len() as u64, total);
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|err| ApiError::network(&err))?
+    {
+        bytes.extend_from_slice(&chunk);
+        on_progress(bytes.len() as u64, total);
+    }
+    Ok(ConditionalBytes::Body { bytes, etag })
+}
+
+/// Request builder with the API base URL and, outside the auth-exempt
+/// routes, the bearer token and the current org.
+fn authed(method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
+    let url = format!("{}{}", crate::api::config::api_base(), path);
+    let mut req = http().request(method, &url);
+    if !is_auth_exempt(path) {
+        if let Some(token) = storage::local().get(KEY_ACCESS_TOKEN) {
+            req = req.bearer_auth(token);
+        }
+        if let Some(org) = crate::state::org::current() {
+            req = req.header("X-Org-Id", org.to_string());
+        }
+    }
+    req
+}
+
 async fn send(
     method: reqwest::Method,
     path: &str,

@@ -321,6 +321,89 @@ async fn isolation_org_et_derniere_version() {
     .await;
 }
 
+/// Browser media cache: content carries a per-version ETag; a matching
+/// `If-None-Match` gets a bodiless 304, but only after the org scoping
+/// (another org never learns the asset exists) and never across versions.
+#[tokio::test]
+#[serial]
+async fn content_etag_revalidation() {
+    with_app(|server, env| async move {
+        let org1 = personal_org(&server, &env.alice).await;
+        let org2 = personal_org(&server, &env.bob).await;
+        let res = upload(
+            &server,
+            &env.alice,
+            org1,
+            "?filename=a.jpg&content_type=image%2Fjpeg",
+            plain_jpeg(),
+        )
+        .await;
+        assert_eq!(res.status_code(), 201);
+        let asset_id = res.json::<serde_json::Value>()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let path = format!("/api/v1/media/{asset_id}/content");
+
+        let res = server
+            .get(&path)
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org1.to_string())
+            .await;
+        assert_eq!(res.status_code(), 200);
+        let etag = res.header("etag").to_str().unwrap().to_string();
+        assert!(
+            etag.starts_with('"') && etag.ends_with('"'),
+            "strong etag: {etag}"
+        );
+        assert_eq!(
+            res.header("cache-control").to_str().unwrap(),
+            "private, no-cache"
+        );
+
+        // Same version → 304 without body.
+        let res = server
+            .get(&path)
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org1.to_string())
+            .add_header("If-None-Match", etag.clone())
+            .await;
+        assert_eq!(res.status_code(), 304);
+        assert!(res.into_bytes().is_empty());
+
+        // Other org with the validator → still the masked 404.
+        let res = server
+            .get(&path)
+            .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", org2.to_string())
+            .add_header("If-None-Match", etag.clone())
+            .await;
+        assert_eq!(res.status_code(), 404);
+
+        // New version → the old validator gets the new bytes.
+        let res = server
+            .post(&format!(
+                "/api/v1/media/{asset_id}/versions?filename=b.jpg&content_type=image%2Fjpeg"
+            ))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org1.to_string())
+            .add_header("Content-Type", "application/octet-stream")
+            .bytes(gpano_jpeg().into())
+            .await;
+        assert_eq!(res.status_code(), 201, "{}", res.text());
+        let res = server
+            .get(&path)
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org1.to_string())
+            .add_header("If-None-Match", etag.clone())
+            .await;
+        assert_eq!(res.status_code(), 200);
+        assert_ne!(res.header("etag").to_str().unwrap(), etag);
+        assert_eq!(res.into_bytes(), gpano_jpeg());
+    })
+    .await;
+}
+
 #[tokio::test]
 #[serial]
 async fn roles_et_pagination() {

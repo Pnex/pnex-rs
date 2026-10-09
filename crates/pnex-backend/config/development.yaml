@@ -35,6 +35,10 @@ server:
         - "Content-Type"
         - "Authorization"
         - "X-Org-Id"
+        # Media cache revalidation (util::media_blob_url).
+        - "If-None-Match"
+      expose_headers:
+        - "ETag"
       allow_methods:
         - "GET"
         - "POST"
