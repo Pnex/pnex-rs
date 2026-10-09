@@ -819,11 +819,25 @@ Ce que ces cas demandent en plus du PRD :
   produit) au lieu des seules personnalités/organisations ;
 - des sources de type podcast/RSS et page web, en plus des flux continus.
 
-Sources à écarter : téléchargement YouTube (conditions d'utilisation ;
-l'API officielle ne donne pas les sous-titres d'une vidéo tierce) et
-chaînes protégées ou géobloquées (CNBC, Bloomberg TV — non-objectif §2).
-Sources propres : RSS, podcasts, sites des banques centrales, webcasts
-publics, API publiques.
+Sources — position du produit (rappel, pas un avis juridique) : PNEX
+est un outil générique, comme un lecteur ou ffmpeg. Il capte toute URL
+fournie par l'utilisateur, qui reste responsable de ses sources.
+
+- PNEX **ne fournit** aucun moyen de contournement (connecteur, script,
+  préréglage de téléchargeur YouTube ou de déverrouillage de flux à
+  DRM) : fournir un tel moyen est en soi un délit (CPI L335-3-1 s.,
+  DMCA), indépendamment de l'usage.
+- PNEX **n'encourage** pas ces pratiques : documentation, tutoriels,
+  site et démos n'utilisent que des sources propres (radio en clair,
+  BFM Business par la TNT, podcasts, RSS, banques centrales, webcasts
+  publics, API publiques).
+- En **hébergé**, l'opérateur est hébergeur (LCEN) : clause des CGU
+  (l'utilisateur garantit son droit d'accès aux sources) et retrait sur
+  signalement d'un usage manifestement illicite ; pas de surveillance
+  générale.
+- Les obligations d'usage restent celles de l'utilisateur et sont
+  rappelées par le produit : pas de redistribution, respect de
+  l'opposition TDM (D172).
 
 ## 14. Questions ouvertes
 
