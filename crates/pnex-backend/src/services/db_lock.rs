@@ -36,6 +36,8 @@ pub mod ns {
     pub const OTA_SIGNING_KEY: i32 = 0x504e_0007;
     /// First-use creation of the device CA of one org (key = org id).
     pub const DEVICE_CA: i32 = 0x504e_0008;
+    /// Media stream quota (count + insert) of one org (media-ingest.md D159).
+    pub const MEDIA_STREAM_QUOTA: i32 = 0x504e_0009;
 }
 
 /// Advisory lock key used by the boot migration (single int8 form).

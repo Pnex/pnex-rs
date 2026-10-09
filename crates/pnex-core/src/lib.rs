@@ -113,6 +113,10 @@ pub mod weather;
 /// `vision-detect` node config.
 pub mod vision;
 
+/// Media ingest (media-ingest.md P2.13): streams, segments, ASR profiles,
+/// transcript records, server-built names.
+pub mod media_ingest;
+
 /// Predictive telemetry (ml-vision.md step 3): `anomaly` / `forecast` node
 /// configs, validation, port counts.
 pub mod predictive;

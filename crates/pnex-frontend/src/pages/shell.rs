@@ -460,6 +460,7 @@ fn NavDataGroup(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
     let in_media = route == Route::Media {}
         || route == Route::Cameras {}
         || route == Route::Models {}
+        || route == Route::Streams {}
         || route == Route::Studio {}
         || route == Route::Annotations {}
         || route == Route::Controls {};
@@ -521,6 +522,13 @@ fn NavDataGroup(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                         onclick: close_drawer,
                         crate::components::icons::Eye { class: "h-5 w-5" }
                         span { {t!("nav-models")} }
+                    }
+                    Link {
+                        to: Route::Streams {},
+                        class: nav_class(route == Route::Streams {}, false),
+                        onclick: close_drawer,
+                        crate::components::icons::Radio { class: "h-5 w-5" }
+                        span { {t!("nav-streams")} }
                     }
                     Link {
                         to: Route::Studio {},

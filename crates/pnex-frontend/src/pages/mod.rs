@@ -39,6 +39,7 @@ pub mod share;
 pub mod shell;
 /// Vitrine du socle CRUD (/_showcase) — fixtures locales, hors nav.
 pub mod showcase;
+pub mod streams;
 pub mod studio;
 pub mod system;
 /// Trust-on-first-use dialog for a self-hosted server root CA (D70).
@@ -69,6 +70,7 @@ pub use profile::Profile;
 pub use secrets::Secrets;
 pub use share::ShareTour;
 pub use showcase::Showcase;
+pub use streams::Streams;
 pub use studio::Studio;
 pub use system::System;
 pub use visualisation::Visualisation;
