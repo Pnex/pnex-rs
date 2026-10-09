@@ -217,6 +217,7 @@ impl Hooks for App {
         // Cross-pod device command bus (D107; no-op without Valkey).
         crate::services::device_bus::spawn(ctx).await;
         crate::services::video::spawn_pruner(ctx);
+        crate::services::media_ingest::capture::spawn_supervisor(ctx);
         // Hourly O2 retention reconcile (D72): new streams get the value.
         crate::services::retention::spawn_reconciler(ctx);
         // Erasure of inactive assistant conversations (D145).
