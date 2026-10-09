@@ -44,7 +44,6 @@ use state::History;
 
 use actions::*;
 use canvas::*;
-use geometry::GRID;
 use library::TemplateList;
 use symbol_panel::SymbolPanel;
 use versions::VersionsDrawer;
@@ -545,11 +544,6 @@ fn ToolsPill(mut cx: EditorCx, mobile: bool) -> Element {
         }
     }
 }
-
-// GRID sert au snap côté gestes ; import gardé explicite pour la lisibilité
-// des constantes partagées avec geometry.
-#[allow(unused)]
-const _GRID: f64 = GRID;
 
 #[component]
 fn ViolationLine(v: VizViolation) -> Element {

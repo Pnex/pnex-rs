@@ -128,11 +128,6 @@ impl JwksVerifier {
         }
     }
 
-    /// Number of JWKS fetches attempted so far.
-    pub fn fetch_count(&self) -> u64 {
-        self.fetches.load(std::sync::atomic::Ordering::Relaxed)
-    }
-
     /// Valide un access token : signature RS256 (JWKS), `iss`, `aud`, `exp`.
     pub async fn verify(&self, token: &str) -> Result<Claims, VerifyError> {
         let header = jsonwebtoken::decode_header(token).map_err(|_| VerifyError::Malformed)?;

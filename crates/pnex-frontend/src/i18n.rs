@@ -14,13 +14,6 @@ use dioxus_i18n::unic_langid::{langid, LanguageIdentifier};
 
 use crate::storage::KeyValueStorage;
 
-/// Tags de locale persistés/échangés avec le backend (`profile.language`).
-/// Deviennent utilisés au branchement session/profil.
-#[allow(dead_code)]
-pub const LOCALE_EN: &str = "en-US";
-#[allow(dead_code)]
-pub const LOCALE_FR: &str = "fr-FR";
-
 /// Initialise le provider i18n — à appeler une seule fois, à la racine de
 /// l'app (hook).
 pub fn init() -> I18n {
@@ -149,14 +142,11 @@ pub fn locale_from_tag(tag: &str) -> Option<LanguageIdentifier> {
 }
 
 /// Tag courant ("fr-FR" / "en-US") — pour l'affichage et la persistance.
-/// Devient utilisé au branchement session/profil.
-#[allow(dead_code)]
 pub fn current_tag() -> String {
     i18n().language().to_string()
 }
 
 /// Change la langue courante (no-op si tag inconnu) et persiste le choix.
-#[allow(dead_code)]
 pub fn set_locale(tag: &str) {
     let Some(id) = locale_from_tag(tag) else {
         return;

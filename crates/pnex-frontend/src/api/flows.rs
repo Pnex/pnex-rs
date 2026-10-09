@@ -276,28 +276,6 @@ pub enum SaveError {
     Other(String),
 }
 
-/// Messages de violations d'un 400 `{"violations":[...]}` — pré-flight
-/// `engine_load` (deploy) ou validation de graphe : extraits du corps de
-/// l'`ApiError`, joints par « ; ». `None` si le corps n'en contient pas.
-/// (Display now goes through `error_i18n::localize`, which resolves each
-/// violation; this raw composition helper remains for body tests.)
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn violations_message(err: &ApiError) -> Option<String> {
-    let messages = err
-        .body
-        .as_ref()?
-        .get("violations")?
-        .as_array()?
-        .iter()
-        .filter_map(|v| v.get("message").and_then(|m| m.as_str()))
-        .collect::<Vec<_>>();
-    if messages.is_empty() {
-        None
-    } else {
-        Some(messages.join(" ; "))
-    }
-}
-
 /// Classe une `ApiError` issue de `update()` — uniquement un 409 ou un 400
 /// à champ `violations` a une sémantique exploitable.
 pub fn classify_save_error(err: &ApiError) -> SaveError {
@@ -366,28 +344,6 @@ mod tests {
             }
             other => panic!("violations attendues, reçu {other:?}"),
         }
-        // Le même corps, vu par le helper du toast deploy : message joint.
-        assert_eq!(
-            violations_message(&err).as_deref(),
-            Some("mot-clé interdit en lecture seule : DELETE")
-        );
-        // Pré-flight : message moteur réel, sans nœud localisé.
-        let engine = ApiError::http(
-            400,
-            r#"{"violations":[{"node_id":null,"code":"engine_load","message":"Flow #12 : Invalid 'flows.json': Referenced node not found"}]}"#,
-        );
-        assert_eq!(
-            violations_message(&engine).as_deref(),
-            Some("Flow #12 : Invalid 'flows.json': Referenced node not found")
-        );
-        // Corps sans violations → None (le toast retombera sur err.message).
-        assert_eq!(
-            violations_message(&ApiError::http(
-                503,
-                r#"{"error":"flow_runtime","description":"x"}"#
-            )),
-            None
-        );
     }
 
     #[test]

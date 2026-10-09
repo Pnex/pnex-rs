@@ -2,7 +2,7 @@
 //!
 //! External screens, one picked per device: I2C OLED on 21/22 (default
 //! Wire), SPI TFT on VSPI (18/23/5/2/4 — wiring proven by
-//! firmware/tft_st7735_demo, DC 2 = strapping, Hi-Z at reset).
+//! the reference TFT wiring, DC 2 = strapping, Hi-Z at reset).
 
 use crate::boards::BoardProfileV2;
 use crate::caps::Soc;

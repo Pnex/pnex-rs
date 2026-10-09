@@ -202,28 +202,6 @@ async fn chain_has(
     }
 }
 
-/// Sous-arbre (descendants, BFS borné par l'org) avec profondeur.
-pub async fn subtree(
-    db: &DatabaseConnection,
-    org_id: i64,
-    kind: &str,
-    id: &str,
-) -> Result<Vec<((String, String), u32)>, DbErr> {
-    let mut out = Vec::new();
-    let mut frontier = vec![((kind.to_string(), id.to_string()), 0u32)];
-    let mut seen = std::collections::HashSet::new();
-    seen.insert((kind.to_string(), id.to_string()));
-    while let Some(((pk, pi), depth)) = frontier.pop() {
-        for (ck, ci, _) in children_of(db, org_id, &pk, &pi).await? {
-            if seen.insert((ck.clone(), ci.clone())) {
-                out.push(((ck.clone(), ci.clone()), depth + 1));
-                frontier.push(((ck, ci), depth + 1));
-            }
-        }
-    }
-    Ok(out)
-}
-
 /// Convention « racine détachée » : la ligne existe avec parent vide
 /// (`("", "")`) — on n'utilise jamais `""` comme kind réel. Garde les
 /// lignes stables (sort_key conservé) et distingue « jamais placé »

@@ -174,24 +174,3 @@ pub async fn run_turn(
         usage: usage_total,
     })
 }
-
-/// Constructeur de la trace pour le contrôleur (name/arguments/ok/summary/
-/// flow_id) — le front n'a pas besoin du JSON complet des résultats.
-pub fn trace_entry(
-    name: String,
-    arguments: serde_json::Value,
-    ok: bool,
-    summary: String,
-    flow_id: Option<i64>,
-) -> ToolTrace {
-    ToolTrace {
-        name,
-        arguments,
-        ok,
-        summary,
-        summary_key: None,
-        flow_id,
-        code: None,
-        args: None,
-    }
-}

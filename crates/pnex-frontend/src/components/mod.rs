@@ -35,7 +35,6 @@ pub mod edge_refs_picker;
 /// Coquille d'éditeur unifiée (flows/dashboards/studio) — barre 3 zones,
 /// palette à la demande, inspecteur divulgatif, invitation d'état vide.
 pub mod editor_shell;
-pub mod empty_state;
 pub mod flash_modal;
 pub mod flow_editor;
 pub mod function_analysis;

@@ -98,7 +98,7 @@
 Le firmware est un workspace **PlatformIO** (ESP8266 + ESP32-C3, framework
 Arduino) : projets `soil_sensor`, `generic_esp8266`, `generic_esp32c3`
 (Seeed XIAO), `generic_esp32`, `generic_esp32s3`, `generic_esp32c6`
-(Waveshare C6-Zero), `tft_dev` + lib PneX `lib/pnex` (transport, crypto, config)
+(Waveshare C6-Zero) + lib PneX `lib/pnex` (transport, crypto, config)
 + libs partagées `common_libs` (display, pnex-core-cpp). Le mock Python
 `ws-server` est supprimé (2026-10-09 : il parlait en clair, sans TLS).
 `4_chan_relay` (nanopb, D20) supprimé le 2026-09-13.
@@ -155,7 +155,7 @@ pousse **toujours** les 9 vars (PIO `${sysenv.*}` échoue sur var absente) :
 | `PNEX_SCREEN_SDA` `SCL` `SCK` `MOSI` `CS` `DC` `RST` | gpio décimal ou `-1` | câblage rôle→gpio du profil board |
 
 `pnex_screen` (lib PneX) : OLED = U8g2 HW I2C, pages texte simples ;
-TFT = port de `tft_st7735_demo` (gerbe animée, canvas plein cadre sur
+TFT = gerbe animée (ex-démo TFT supprimée, canvas plein cadre sur
 ESP32/C3/S3 ; chemin dégradé direct-draw sur ESP8266 — canvas 40 Ko inadapté).
 Choix UI : picker dans l'éditeur de pinout (`BoardHeader`), builtin verrouillé.
 
@@ -176,11 +176,10 @@ la structure du workspace complet).
 
 ### 2.3 Image de build
 
-`firmware/Dockerfile` : `python:3.12` + pio + AWS CLI + protobuf-compiler,
-**pré-build** des deps de `soil_sensor` (`RUN cd … && pio
-run`) pour chauffer le cache d'images layers. Tag de référence :
-`192.168.1.100/pnex/pio-builder:latest` (build via `task
-firmware:build-docker`).
+Le builder vit dans l'image `pnex-server` (`deploy/docker/Dockerfile`) :
+cores PlatformIO et bibliothèques préchargés, builds hors ligne. L'ancienne
+image `pio-builder` (`firmware/Dockerfile`, k8s) est supprimée
+(2026-10-09).
 
 ## 3. Implications pour pnex-rust (Phase 6)
 

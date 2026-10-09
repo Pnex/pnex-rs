@@ -114,7 +114,7 @@ path = "src/bin/main.rs"
 [dev-dependencies]
 loco-rs = { version = "1.0", default-features = false, features = ["testing"] }
 axum-test = { version = "17", features = ["ws"] }
-# Client WS de l'exemple ingest_client (rôle firmware en e2e manuel)
+# WebSocket client of the integration tests (firmware role)
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 serial_test = { version = "3.1" }

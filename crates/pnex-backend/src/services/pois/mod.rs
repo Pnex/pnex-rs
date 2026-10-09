@@ -28,7 +28,7 @@
 //!   par device upsertée au tap du sink (`GpsTapSink`) ; l'historique
 //!   complet reste dans OpenObserve (séries métriques par org).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 

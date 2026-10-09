@@ -15,8 +15,7 @@
 #include <ESP8266WiFi.h>
 #endif
 
-// SEULE unité de traduction incluant config.h à côté des projets qui
-// n'utilisent PAS pnex-transport (tft_dev).
+// The only translation unit that includes pnex_config.h.
 #include "pnex_config.h"
 #include "pnex_crypto.h"
 #include "pnex_tls.h"

@@ -253,29 +253,6 @@ pub async fn add_version(
     .await
 }
 
-/// `PATCH /api/v1/media/{id}` — rename/description (UI V2 ; l'API client
-/// est posée complète d'un bloc, école icons.rs).
-#[allow(dead_code)]
-pub async fn rename(
-    id: &str,
-    name: Option<String>,
-    description: Option<String>,
-) -> Result<MediaAsset, ApiError> {
-    let mut body = serde_json::Map::new();
-    if let Some(name) = name {
-        body.insert("name".into(), serde_json::json!(name));
-    }
-    if let Some(description) = description {
-        body.insert("description".into(), serde_json::json!(description));
-    }
-    client::request(
-        reqwest::Method::PATCH,
-        &format!("/api/v1/media/{}", urlencode(id)),
-        Some(serde_json::Value::Object(body)),
-    )
-    .await
-}
-
 /// `DELETE /api/v1/media/{id}` — purge l'asset et ses blobs.
 pub async fn delete(id: &str) -> Result<Option<()>, ApiError> {
     client::request_opt(

@@ -19,11 +19,3 @@ pub fn open_dashboard(id: Option<String>, edit: bool) {
     OPEN_DASHBOARD.with_mut(|v| *v = id);
     VIZ_EDIT.with_mut(|v| *v = edit);
 }
-
-/// Sortie de page : évite qu'un prochain mount hérite de l'état précédent
-/// (consommé par les futures navs croisées viz, école `state/flows.rs`).
-#[allow(dead_code)]
-pub fn clear_dashboard() {
-    OPEN_DASHBOARD.with_mut(|v| *v = None);
-    VIZ_EDIT.with_mut(|v| *v = false);
-}

@@ -112,13 +112,3 @@ pub async fn delete_folder(db: &DatabaseConnection, org_id: i64, id: i64) -> Res
     .await?;
     Ok(true)
 }
-
-/// Résout un `ResourceRef` folder (kind `folder`, id numérique stringifié).
-pub fn folder_ref(org_id: i64, id: i64) -> pnex_core::resources::ResourceRef {
-    pnex_core::resources::ResourceRef::new(org_id, pnex_core::resources::KIND_FOLDER, id)
-}
-
-/// Id numérique depuis un `ResourceRef` folder (string → i64).
-pub fn parse_folder_id(id: &str) -> Option<i64> {
-    id.parse::<i64>().ok()
-}

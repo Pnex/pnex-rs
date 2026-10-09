@@ -50,9 +50,6 @@ pub use jpeg::{decode_jpeg_rgb, decode_jpeg_rgb_capped, encode_jpeg, JpegError};
 /// grand-angle arrière des téléphones actuels.
 pub const FALLBACK_HFOV_DEG: f32 = 65.0;
 
-/// Largeur de sortie « spec » (qualité maximale visée).
-pub const SPEC_OUT_WIDTH: u32 = 4096;
-
 /// Largeur de sortie par défaut (device) — knob perf : 1024 = complétion
 /// garantie sur un téléphone sous pression mémoire (constat 2026-09-09 :
 /// 2048 + swap → stitch jamais terminé) ; monter vers [`SPEC_OUT_WIDTH`]

@@ -6,7 +6,7 @@
 
 use pnex_core::{
     CreateDashboard, CreateVizWidget, Paginated, SeriesBatchRequest, SeriesBatchResponse,
-    UpdateDashboard, UpdateVizWidget, VizDashboard, VizDashboardSummary, VizDashboardVersion,
+    UpdateDashboard, VizDashboard, VizDashboardSummary, VizDashboardVersion,
     VizDashboardVersionDetail, VizWidget,
 };
 use serde::{Deserialize, Serialize};
@@ -186,18 +186,6 @@ pub async fn create_widget(params: CreateVizWidget) -> Result<VizWidget, ApiErro
     client::request(
         reqwest::Method::POST,
         "/api/v1/viz/widgets",
-        Some(serde_json::to_value(params).unwrap_or_default()),
-    )
-    .await
-}
-
-/// `PATCH /api/v1/viz/widgets/{id}` — renomme et/ou remplace la config
-/// (miroir du contrat ; l'édition de template arrive en V2 UI).
-#[allow(dead_code)]
-pub async fn update_widget(id: &str, params: UpdateVizWidget) -> Result<VizWidget, ApiError> {
-    client::request(
-        reqwest::Method::PATCH,
-        &format!("/api/v1/viz/widgets/{id}"),
         Some(serde_json::to_value(params).unwrap_or_default()),
     )
     .await

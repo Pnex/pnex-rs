@@ -73,13 +73,6 @@ pub fn zoom_pan_towards(
     (new_zoom, new_pan)
 }
 
-/// Le point est-il dans le widget ? (réservé au hit-test mathématique si
-/// les widgets passent en rendu SVG pur — V1 : le hit est le DOM).
-#[allow(dead_code)]
-pub fn hit_test(w: &Widget, p: (f64, f64)) -> bool {
-    p.0 >= w.x as f64 && p.0 <= (w.x + w.w) as f64 && p.1 >= w.y as f64 && p.1 <= (w.y + w.h) as f64
-}
-
 /// Distance au handle de resize (coin bas-droit), `None` au-delà.
 pub fn resize_handle_at(w: &Widget, p: (f64, f64), tolerance: f64) -> bool {
     let corner = ((w.x + w.w) as f64, (w.y + w.h) as f64);
@@ -209,8 +202,6 @@ mod tests {
     #[test]
     fn hit_et_resize() {
         let w = widget(100, 100, 240, 200);
-        assert!(hit_test(&w, (110.0, 120.0)));
-        assert!(!hit_test(&w, (90.0, 120.0)));
         assert!(resize_handle_at(&w, (340.0, 300.0), 6.0));
         assert!(!resize_handle_at(&w, (300.0, 300.0), 6.0));
     }

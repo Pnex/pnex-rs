@@ -374,15 +374,3 @@ pub async fn list_positions(
         .all(db)
         .await
 }
-
-/// Slugs des devices de l'org ayant une position (filtre `has_position`).
-pub async fn positioned_device_slugs(
-    db: &DatabaseConnection,
-    org_id: i64,
-) -> Result<HashSet<String>, DbErr> {
-    Ok(list_positions(db, org_id)
-        .await?
-        .into_iter()
-        .map(|p| p.device_id)
-        .collect())
-}

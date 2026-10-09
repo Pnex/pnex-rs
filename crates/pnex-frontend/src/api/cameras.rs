@@ -17,17 +17,6 @@ pub async fn list() -> Result<Vec<CameraView>, ApiError> {
     client::request(reqwest::Method::GET, "/api/v1/cameras", None).await
 }
 
-/// `GET /api/v1/cameras/{device}/settings`.
-#[allow(dead_code)]
-pub async fn settings(device: i64) -> Result<CameraSettings, ApiError> {
-    client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/cameras/{device}/settings"),
-        None,
-    )
-    .await
-}
-
 /// Partial settings update — `None` fields are left untouched server-side.
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct SettingsPatch {

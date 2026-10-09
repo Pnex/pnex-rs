@@ -37,17 +37,6 @@ pub async fn create_fluid_mixture(body: &FluidMixtureInput) -> Result<FluidMixtu
     client::request(reqwest::Method::POST, "/api/v1/fluid-mixtures", Some(value)).await
 }
 
-/// `GET /api/v1/fluid-mixtures/{id}`.
-#[allow(dead_code)]
-pub async fn fluid_mixture_detail(id: &str) -> Result<FluidMixture, ApiError> {
-    client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/fluid-mixtures/{id}"),
-        None,
-    )
-    .await
-}
-
 /// `PUT /api/v1/fluid-mixtures/{id}` — remplacement complet.
 pub async fn update_fluid_mixture(
     id: &str,
