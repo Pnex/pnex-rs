@@ -3,7 +3,7 @@ name = "pnex-node-value"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Flow node PNeX — fixed or uniform-random (min/max) payload"
+description = "Flow node PNeX — fixed JSON payload"
 
 [dependencies]
 edgelink-core = { path = "../../vendor/edgelinkd/crates/core", default-features = false, features = ["core", "js"] }
@@ -19,7 +19,6 @@ tokio = { version = "1", default-features = false, features = ["time", "sync"] }
 async-trait = "0.1"
 tokio-util = "0.7"
 log = "0.4"
-rand = "0.10"
 # The `#[flow_node]` macro emits unqualified `inventory::submit!` — direct dep required
 inventory = "0.3"
 

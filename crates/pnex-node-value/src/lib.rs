@@ -1,5 +1,4 @@
-//! `pnex-value` node — replaces `msg.payload` with a fixed JSON value
-//! (mode `static`) or a uniform random number in [min, max] (mode `random`).
+//! `pnex-value` node — replaces `msg.payload` with a fixed JSON value.
 //!
 //! The node is a **transformer**, not an autonomous source: the trigger stays
 //! upstream (inject). The config + structural check come from
@@ -61,14 +60,7 @@ impl PnexValueNode {
     }
 
     async fn execute(&self, msg: MsgHandle, cancel: CancellationToken) -> Result<()> {
-        let json = match self.config.config.mode {
-            pnex_core::ValueMode::Static => self.config.config.value.clone(),
-            pnex_core::ValueMode::Random => {
-                use rand::RngExt;
-                let mut rng = rand::rng();
-                serde_json::json!(rng.random_range(self.config.config.min..=self.config.config.max))
-            }
-        };
+        let json = self.config.config.value.clone();
         let payload: Variant = serde_json::from_value(json).map_err(|e| {
             EdgelinkError::InvalidOperation(format!("pnex-value : non-convertible payload : {e}"))
         })?;

@@ -896,18 +896,15 @@ fn node_subtitle(node: &FlowNode) -> String {
                 "—".into()
             }
         }
-        pnex_core::FlowNodeKind::Value { config } => match config.mode {
-            pnex_core::ValueMode::Static => {
-                // Truncation safe (chars, not bytes — accented values).
-                let short: String = config.value.to_string().chars().take(22).collect();
-                if config.value.to_string().chars().count() > 22 {
-                    format!("{short}…")
-                } else {
-                    short
-                }
+        pnex_core::FlowNodeKind::Value { config } => {
+            // Truncation safe (chars, not bytes — accented values).
+            let short: String = config.value.to_string().chars().take(22).collect();
+            if config.value.to_string().chars().count() > 22 {
+                format!("{short}…")
+            } else {
+                short
             }
-            pnex_core::ValueMode::Random => format!("{} – {}", config.min, config.max),
-        },
+        }
         pnex_core::FlowNodeKind::DeviceRead { config } => {
             let n = config.pins.len();
             if config.device_id.is_empty() {

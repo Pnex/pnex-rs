@@ -6,7 +6,7 @@ use pnex_core::{
     CalcConfig, CameraSourceConfig, CoolPropConfig, DebugConfig, DeviceReadConfig,
     DeviceWriteConfig, DisplayConfig, FlowGraph, FlowNode, FlowNodeKind, FlowWiring,
     FunctionNodeConfig, HttpFetchNodeConfig, InjectConfig, JsonMergeConfig, JsonSplitConfig,
-    MetricConfig, NotifyNodeConfig, Position, RegPidConfig, RegTtConfig, ValueConfig, ValueMode,
+    MetricConfig, NotifyNodeConfig, Position, RegPidConfig, RegTtConfig, ValueConfig,
     VideoRecordConfig,
 };
 
@@ -89,10 +89,7 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             // too often mistaken for a variable holder).
             PaletteKind::Value => FlowNodeKind::Value {
                 config: ValueConfig {
-                    mode: ValueMode::Static,
                     value: serde_json::json!({"key": "value"}),
-                    min: 0.0,
-                    max: 10.0,
                 },
             },
             PaletteKind::Metric => FlowNodeKind::Metric {
@@ -326,9 +323,7 @@ pub fn upstream_split_keys(graph: &FlowGraph, split_id: &str) -> Option<Vec<Stri
             .iter()
             .any(|w| w.targets.iter().any(|t| t == split_id))
             && match &n.kind {
-                FlowNodeKind::Value { config } => {
-                    config.mode == ValueMode::Static && config.value.as_object().is_some()
-                }
+                FlowNodeKind::Value { config } => config.value.as_object().is_some(),
                 FlowNodeKind::JsonMerge { config } => {
                     config.inputs.iter().any(|i| !i.trim().is_empty())
                 }

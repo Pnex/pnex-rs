@@ -135,15 +135,11 @@ pub enum AnnotationTarget {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         kind: Option<crate::ui_control::ControlKind>,
     },
-    /// Same read binding as the dashboard widgets (D129); `spark` draws the
-    /// history of the series window under the value.
+    /// Same read binding as the dashboard widgets (D129).
     Reading {
         source: crate::viz::SourceRef,
-        #[serde(default)]
-        spark: bool,
         /// Mini chart drawn for the value: `stat`, `line`, `gauge` or
-        /// `indicator` (`READING_DISPLAYS`). Absent = legacy rule: `line`
-        /// when `spark`, else `stat` (see [`reading_display`]).
+        /// `indicator` (`READING_DISPLAYS`). Absent = `stat`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         display: Option<String>,
         /// Gauge range (dashboard default 0..100 when absent).
@@ -157,14 +153,10 @@ pub enum AnnotationTarget {
 /// Mini charts a reading item can draw (dashboard widget types).
 pub const READING_DISPLAYS: [&str; 4] = ["stat", "line", "gauge", "indicator"];
 
-/// Effective mini chart of a reading: the explicit `display`, else the
-/// legacy `spark` flag (`line`) or a plain value (`stat`).
-pub fn reading_display(display: Option<&str>, spark: bool) -> &str {
-    match display {
-        Some(d) => d,
-        None if spark => "line",
-        None => "stat",
-    }
+/// Effective mini chart of a reading: the explicit `display`, else a
+/// plain value (`stat`).
+pub fn reading_display(display: Option<&str>) -> &str {
+    display.unwrap_or("stat")
 }
 
 // Manual `Deserialize` (same reason as `AnnotationGeometry`): the derived
@@ -198,8 +190,6 @@ impl<'de> Deserialize<'de> for AnnotationTarget {
         #[derive(Deserialize)]
         struct ReadingRepr {
             source: crate::viz::SourceRef,
-            #[serde(default)]
-            spark: bool,
             #[serde(default)]
             display: Option<String>,
             #[serde(default)]
@@ -237,7 +227,6 @@ impl<'de> Deserialize<'de> for AnnotationTarget {
             }),
             "reading" => part::<ReadingRepr, D::Error>(v).map(|r| Self::Reading {
                 source: r.source,
-                spark: r.spark,
                 display: r.display,
                 min: r.min,
                 max: r.max,
@@ -394,12 +383,11 @@ pub fn validate_annotation_doc(doc: &AnnotationDoc) -> Vec<AnnotationViolation> 
             }
             AnnotationTarget::Reading {
                 source,
-                spark,
                 display,
                 min,
                 max,
             } => {
-                let shape = reading_display(display.as_deref(), *spark);
+                let shape = reading_display(display.as_deref());
                 if !READING_DISPLAYS.contains(&shape) {
                     v.push(violation(
                         Some(&item.id),
@@ -643,7 +631,7 @@ mod tests {
             yaw: 10.0,
             pitch: -5.0,
         };
-        let reading = |metric: &str, spark: bool| AnnotationTarget::Reading {
+        let reading = |metric: &str, line: bool| AnnotationTarget::Reading {
             source: crate::viz::SourceRef {
                 role: "primary".into(),
                 metric: metric.into(),
@@ -651,8 +639,7 @@ mod tests {
                 window: "1h".into(),
                 memory: None,
             },
-            spark,
-            display: None,
+            display: line.then(|| "line".to_string()),
             min: None,
             max: None,
         };
@@ -998,17 +985,15 @@ mod tests {
 
     #[test]
     fn reading_display_rules() {
-        assert_eq!(reading_display(None, false), "stat");
-        assert_eq!(reading_display(None, true), "line");
-        assert_eq!(reading_display(Some("gauge"), true), "gauge");
+        assert_eq!(reading_display(None), "stat");
+        assert_eq!(reading_display(Some("gauge")), "gauge");
 
-        // Legacy documents (spark only) still parse; the new fields are
-        // additive and omitted when unset.
-        let legacy = serde_json::json!({
-            "type": "reading", "spark": true,
+        // Unset optional fields are omitted.
+        let plain = serde_json::json!({
+            "type": "reading",
             "source": {"metric": "temp", "device_id": "d1", "window": "1h"}
         });
-        let t: AnnotationTarget = serde_json::from_value(legacy).unwrap();
+        let t: AnnotationTarget = serde_json::from_value(plain).unwrap();
         let out = serde_json::to_value(&t).unwrap();
         assert!(out.get("display").is_none() && out.get("min").is_none());
 
@@ -1024,7 +1009,6 @@ mod tests {
                         window: "1h".into(),
                         memory: None,
                     },
-                    spark: false,
                     display: Some(display.into()),
                     min,
                     max,

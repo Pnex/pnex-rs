@@ -82,10 +82,7 @@ pub fn to_red_flows_json_with(
             }),
             FlowNodeKind::Value { config } => serde_json::json!({
                 "type": "pnex-value",
-                "mode": config.mode,
                 "value": config.value,
-                "min": config.min,
-                "max": config.max,
                 "pnex_flow_id": meta.flow_id,
                 "pnex_version": meta.version_number,
             }),
