@@ -173,6 +173,8 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           submodules: true
+          # Tags are needed: the APK versionCode derives from the last v* tag.
+          fetch-depth: 0
       - name: Free disk space
         run: sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
       - uses: actions/setup-java@v5
@@ -206,13 +208,34 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: cargo-bins/cargo-binstall@main
       - run: cargo binstall -y --locked "dioxus-cli@${DIOXUS_CLI_VERSION}"
+      # Signed release APK when the release key is configured (P1.2,
+      # SEC-10); debug-signed and debuggable otherwise (forks, before the
+      # key exists). Secrets: ANDROID_KEYSTORE_B64 (base64 of the .jks),
+      # ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.
       - name: Build
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          PNEX_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          PNEX_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          PNEX_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           (cd crates/pnex-frontend && bun install --frozen-lockfile)
-          task build:frontend:android
-          mkdir -p target/dist
-          cp target/dx/pnex-frontend/release/android/app/app/build/outputs/apk/debug/app-debug.apk \
-            target/dist/pnex-android-arm64.apk
+          if [ -n "$ANDROID_KEYSTORE_B64" ]; then
+            export PNEX_ANDROID_KEYSTORE="$RUNNER_TEMP/release.jks"
+            printf '%s' "$ANDROID_KEYSTORE_B64" | base64 -d > "$PNEX_ANDROID_KEYSTORE"
+            # Tag builds name their own version; main builds take the last tag.
+            if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+              export PNEX_ANDROID_VERSION_NAME="${GITHUB_REF_NAME#v}"
+            fi
+            task build:frontend:android:release
+            rm -f "$PNEX_ANDROID_KEYSTORE"
+          else
+            echo "::warning::ANDROID_KEYSTORE_B64 not set: debug-signed, debuggable APK"
+            task build:frontend:android
+            mkdir -p target/dist
+            cp target/dx/pnex-frontend/release/android/app/app/build/outputs/apk/debug/app-debug.apk \
+              target/dist/pnex-android-arm64.apk
+          fi
       - uses: actions/upload-artifact@v6
         with:
           name: pnex-android-arm64

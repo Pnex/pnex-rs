@@ -17,6 +17,10 @@ includes:
 # potentiellement divergente : cf. docs/observations.md O7). Utilisée par
 # dev:backend et les tâches fw:*.
 vars:
+  # Every heavy build (cargo, dx, docker buildx) runs through the guard:
+  # own memory-capped scope, low priority, disk check, one at a time across
+  # sessions (scripts/guarded.sh — a build OOM no longer kills the terminal).
+  G: '{{.ROOT_DIR}}/scripts/guarded.sh'
   FW_DIR: firmware
   # Chemins ABSOLUS ({{.ROOT_DIR}} = racine du monorepo) : le worker de
   # build tourne avec cwd = crates/pnex-backend — un chemin relatif résolu
@@ -72,7 +76,7 @@ tasks:
     cmds:
       # Vide la sortie dx (les assets hashés des builds précédents s'y accumulent)
       - rm -rf {{.DX_OUT}}/release/web/public
-      - cd crates/pnex-frontend && dx build --platform web --release
+      - cd crates/pnex-frontend && {{.G}} dx build --platform web --release
       - rm -rf {{.FRONT_DIST}}
       - cp -r {{.DX_OUT}}/release/web/public {{.FRONT_DIST}}
 
@@ -108,6 +112,32 @@ tasks:
       - task: android:apk
         vars: { ANDROID_FEATURES: mobile }
 
+  # Signed release APK (P1.2, SEC-10): not debuggable, signed with the
+  # release key instead of the dx debug key. The key never touches the repo:
+  # PNEX_ANDROID_KEYSTORE (path), PNEX_ANDROID_KEYSTORE_PASSWORD,
+  # PNEX_ANDROID_KEY_ALIAS, PNEX_ANDROID_KEY_PASSWORD come from the
+  # environment (CI secrets). versionCode derives from the last v* tag
+  # (override: PNEX_ANDROID_VERSION_NAME / PNEX_ANDROID_VERSION_CODE).
+  # An APK signed by another key cannot upgrade in place: testers who
+  # installed a debug-signed APK uninstall it first.
+  build:frontend:android:release:
+    desc: Build the signed release APK arm64 → target/dist/pnex-android-arm64.apk (keystore from env, see Taskfile)
+    deps: [css:build, js:build]
+    preconditions:
+      - sh: test -n "$PNEX_ANDROID_KEYSTORE" && test -f "$PNEX_ANDROID_KEYSTORE"
+        msg: "PNEX_ANDROID_KEYSTORE must point to the release keystore"
+      - sh: test -n "$PNEX_ANDROID_KEYSTORE_PASSWORD" && test -n "$PNEX_ANDROID_KEY_ALIAS" && test -n "$PNEX_ANDROID_KEY_PASSWORD"
+        msg: "PNEX_ANDROID_KEYSTORE_PASSWORD, PNEX_ANDROID_KEY_ALIAS and PNEX_ANDROID_KEY_PASSWORD must be set"
+    vars:
+      VERSION_NAME:
+        sh: echo "${PNEX_ANDROID_VERSION_NAME:-$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null | sed 's/^v//')}"
+    cmds:
+      - task: android:apk
+        vars: { ANDROID_FEATURES: mobile, GRADLE_TASK: assembleRelease, VERSION_NAME: "{{.VERSION_NAME}}" }
+      - mkdir -p target/dist
+      - cp {{.DX_OUT}}/release/android/app/app/build/outputs/apk/release/app-release.apk target/dist/pnex-android-arm64.apk
+      - echo "target/dist/pnex-android-arm64.apk (release {{.VERSION_NAME}})"
+
   build:frontend:android:e2e:
     desc: Build the e2e APK (feature `e2e` = harness hooks; never distributed) → target/dx/pnex-frontend/pnex-e2e.apk
     deps: [css:build, js:build]
@@ -124,6 +154,8 @@ tasks:
     internal: true
     requires:
       vars: [ANDROID_FEATURES]
+    vars:
+      GRADLE_TASK: '{{.GRADLE_TASK | default "assembleDebug"}}'
     cmds:
       # dx accumule les jniLibs des builds précédents dans le projet gradle
       # généré (vu le 2026-09-08 : l'arm64 s'est AJOUTÉ aux x86_64 d'un build
@@ -141,14 +173,19 @@ tasks:
           # lancement — Rauthy blackliste instantanément toute IP demandant
           # un chemin /_* (« suspicious API scan ») → blocages de login en
           # série (constat 2026-09-08, une demi-journée de debug).
-          dx build --platform android --release --target aarch64-linux-android --no-default-features --features "{{.ANDROID_FEATURES}}"
+          {{.G}} dx build --platform android --release --target aarch64-linux-android --no-default-features --features "{{.ANDROID_FEATURES}}"
           # dx régénère le manifest à chaque build (impossible d'injecter un
           # intent-filter via Dioxus.toml) : patch deep link `pnex` après coup
           # puis ré-assemblage gradle (rapide à chaud). Chemins en
           # {{.ROOT_DIR}} : le cd ci-dessus invalide le DX_OUT relatif.
           python3 "{{.ROOT_DIR}}/crates/pnex-frontend/patch-android-manifest.py" \
             "{{.ROOT_DIR}}/{{.DX_OUT}}/release/android/app/app/src/main/AndroidManifest.xml"
-          cd "{{.ROOT_DIR}}/{{.DX_OUT}}/release/android/app" && ./gradlew assembleDebug
+          cd "{{.ROOT_DIR}}/{{.DX_OUT}}/release/android/app"
+          if [ "{{.GRADLE_TASK}}" = "assembleRelease" ]; then
+            PNEX_ANDROID_VERSION_NAME="{{.VERSION_NAME}}" \
+              python3 "{{.ROOT_DIR}}/crates/pnex-frontend/patch-android-release.py" app/build.gradle.kts
+          fi
+          ./gradlew {{.GRADLE_TASK}}
 
   # Native desktop UI (Dioxus desktop: webkit2gtk on Linux, WebView2 on
   # Windows). The webviews have no Web Serial: firmware flashing runs the
@@ -167,7 +204,7 @@ tasks:
     cmds:
       - task: esptool:fetch
         vars: { ESPTOOL_PLATFORM: '{{.ESPTOOL_PLATFORM}}' }
-      - cd crates/pnex-frontend && dx build --linux --release --no-default-features --features desktop
+      - cd crates/pnex-frontend && {{.G}} dx build --linux --release --no-default-features --features desktop
       - rm -rf {{.DX_OUT}}/release/linux/app/esptool
       - cp -r target/esptool/{{.ESPTOOL_PLATFORM}} {{.DX_OUT}}/release/linux/app/esptool
       - mkdir -p target/dist
@@ -177,7 +214,7 @@ tasks:
     desc: Build the Linux e2e app (feature `e2e` = harness hooks + WebKitWebDriver automation; never distributed) → target/dx/pnex-frontend/linux-e2e/
     deps: [css:build, js:build]
     cmds:
-      - cd crates/pnex-frontend && dx build --linux --release --no-default-features --features "desktop,e2e"
+      - cd crates/pnex-frontend && {{.G}} dx build --linux --release --no-default-features --features "desktop,e2e"
       # Copied out of the dx output: build:frontend:linux reruns dx (no
       # sources check), the e2e app can never end up in its tarball.
       - rm -rf {{.DX_OUT}}/linux-e2e
@@ -197,7 +234,7 @@ tasks:
       - cmd: |
           export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER="{{.ROOT_DIR}}/crates/pnex-frontend/win-linker.sh"
           cd crates/pnex-frontend
-          dx build --windows --target x86_64-pc-windows-gnu --release --no-default-features --features desktop
+          {{.G}} dx build --windows --target x86_64-pc-windows-gnu --release --no-default-features --features desktop
       - cmd: |
           app={{.DX_OUT}}/release/windows/app
           loader=$(ls -d "$HOME"/.cargo/registry/src/*/webview2-com-sys-*/x64/WebView2Loader.dll | sort -V | tail -1)
@@ -354,8 +391,8 @@ tasks:
     vars:
       TAG: '{{.TAG | default "dev"}}'
     cmds:
-      - docker buildx build -f deploy/docker/Dockerfile --target server -t pnex-server:{{.TAG}} --load .
-      - docker buildx build -f deploy/docker/Dockerfile --target builder -t pnex-builder:{{.TAG}} --load .
+      - '{{.G}} docker buildx build -f deploy/docker/Dockerfile --target server -t pnex-server:{{.TAG}} --load .'
+      - '{{.G}} docker buildx build -f deploy/docker/Dockerfile --target builder -t pnex-builder:{{.TAG}} --load .'
 
   changelog:
     desc: Release notes from the Conventional Commits (cliff.toml) — unreleased commits by default; `-- --latest` = last tag, `-- -o CHANGELOG.md` = whole history
@@ -374,8 +411,8 @@ tasks:
         # arm64 runs only the builder image's PlatformIO prewarm under QEMU
         # (Rust is cross-compiled): register the emulator when missing.
         [ -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ] || docker run --privileged --rm tonistiigi/binfmt --install arm64
-      - docker buildx build -f deploy/docker/Dockerfile --platform {{.PLATFORMS}} --target server -t {{.REGISTRY}}/pnex-server-rs:{{.TAG}} --push .
-      - docker buildx build -f deploy/docker/Dockerfile --platform {{.PLATFORMS}} --target builder -t {{.REGISTRY}}/pnex-builder-rs:{{.TAG}} --push .
+      - '{{.G}} docker buildx build -f deploy/docker/Dockerfile --platform {{.PLATFORMS}} --target server -t {{.REGISTRY}}/pnex-server-rs:{{.TAG}} --push .'
+      - '{{.G}} docker buildx build -f deploy/docker/Dockerfile --platform {{.PLATFORMS}} --target builder -t {{.REGISTRY}}/pnex-builder-rs:{{.TAG}} --push .'
       - echo "Published {{.REGISTRY}}/pnex-server-rs:{{.TAG}} and {{.REGISTRY}}/pnex-builder-rs:{{.TAG}}"
 
   app:up:
@@ -430,20 +467,20 @@ tasks:
     desc: Build complet (front + workspace natif)
     deps: [build:frontend]
     cmds:
-      - cargo build --workspace
+      - '{{.G}} cargo build --workspace'
 
   check:
     desc: cargo check natif + wasm32 (garde-fou « jamais de rouge »)
     deps: [css:ensure, js:ensure]
     cmds:
-      - cargo check --workspace
-      - cargo check -p pnex-core -p pnex-api-contract -p pnex-frontend --target wasm32-unknown-unknown
+      - '{{.G}} cargo check --workspace'
+      - '{{.G}} cargo check -p pnex-core -p pnex-api-contract -p pnex-frontend --target wasm32-unknown-unknown'
 
   test:
     desc: Tests du workspace
     deps: [css:ensure, js:ensure]
     cmds:
-      - cargo test --workspace
+      - '{{.G}} cargo test --workspace'
 
   # ---------- Dev ----------
 
@@ -484,7 +521,7 @@ tasks:
       - "{{.FRONT_DIST}}/**/*"
     cmds:
       - rm -rf {{.DX_OUT}}/debug/web/public
-      - cd crates/pnex-frontend && dx build --platform web
+      - cd crates/pnex-frontend && {{.G}} dx build --platform web
       - rm -rf {{.FRONT_DIST}}
       - cp -r {{.DX_OUT}}/debug/web/public {{.FRONT_DIST}}
 
@@ -517,17 +554,19 @@ tasks:
       # development.yaml (RAUTHY_ISSUER_URL), aligné sur PUB_URL du compose.
       RAUTHY_URL: "http://localhost:8080"
     cmds:
-      - cd crates/pnex-backend && cargo run --bin pnex-server -- start --server-and-worker
+      - '{{.G}} cargo build -p pnex-backend --bin pnex-server'
+      - cd crates/pnex-backend && PNEX_GUARD_NO_LOCK=1 {{.G}} cargo run --bin pnex-server -- start --server-and-worker
 
   flow:build:
     desc: Compile le runtime de flows ETL (pnex-flow-runtime) — lancé par dev:backend
     cmds:
-      - cargo build -p pnex-flow-runtime
+      - '{{.G}} cargo build -p pnex-flow-runtime'
 
   dev:backend:server-only:
     desc: Backend Loco serveur seul (sans worker — la queue pg_loco_queue n'est pas drivée)
     cmds:
-      - cd crates/pnex-backend && cargo run --bin pnex-server -- start
+      - '{{.G}} cargo build -p pnex-backend --bin pnex-server'
+      - cd crates/pnex-backend && PNEX_GUARD_NO_LOCK=1 {{.G}} cargo run --bin pnex-server -- start
 
   dev:hot:
     desc: Dev front hot-reload (dx :5151 + Tailwind watch) — API Loco sur :5150 à part
@@ -543,7 +582,7 @@ tasks:
       # côté Loco cf. config/development.yaml.
       PNEX_API_BASE_URL: http://localhost:5150
     cmds:
-      - cd crates/pnex-frontend && dx serve --platform web --port 5151
+      - cd crates/pnex-frontend && PNEX_GUARD_NO_LOCK=1 {{.G}} dx serve --platform web --port 5151
 
   # ---------- Firmware IoT (debug USB) ----------
   # Les identifiants WiFi/HOST/TOKEN/DEVICE_ID sont compilés dans le firmware
@@ -704,7 +743,7 @@ tasks:
     desc: Clippy sur tout le workspace
     deps: [css:ensure]
     cmds:
-      - cargo clippy --workspace -- -D warnings
+      - '{{.G}} cargo clippy --workspace -- -D warnings'
 
   security:deps:
     desc: Dependency gate — RustSec advisories + crate sources (deny.toml, same gate as CI job `deny`)
