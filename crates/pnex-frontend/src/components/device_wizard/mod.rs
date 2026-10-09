@@ -96,7 +96,6 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
     let mut created = use_signal(|| None::<pnex_core::Device>);
     let mut build_record = use_signal(|| None::<pnex_core::BuildRecord>);
     let mut build_launch_error = use_signal(|| None::<String>);
-    let mut reactivation_msg = use_signal(String::new);
     // Polling : un seul minuteur à la fois (pattern page Builds).
     let mut polling = use_signal(|| false);
     // Flash navigateur du firmware fraîchement buildé (Web Serial).
@@ -151,12 +150,6 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                         }
                         None => {
                             // 200 = reactivation of a known inactive device.
-                            reactivation_msg.set(
-                                body.get("detail")
-                                    .and_then(|d| d.as_str())
-                                    .unwrap_or_default()
-                                    .to_string(),
-                            );
                             on_changed.call(());
                             step.set(Step::Reactivated);
                         }
@@ -204,9 +197,8 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
             creating.set(false);
             match outcome {
                 Ok(body) => {
-                    // 200 → réactivation : pas de nouveau token ni de build auto.
-                    if let Some(detail) = body.get("detail").and_then(|d| d.as_str()) {
-                        reactivation_msg.set(detail.to_string());
+                    // 200 → reactivation: no new token, no automatic build.
+                    if body.get("reactivated").and_then(|r| r.as_bool()) == Some(true) {
                         step.set(Step::Reactivated);
                         on_changed.call(());
                         return;
@@ -679,7 +671,6 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                 icons::Info { class: "h-5 w-5 shrink-0" }
                                 div {
                                     p { {t!("wizard-reactivated")} }
-                                    p { class: "mt-1 text-blue-600", {reactivation_msg()} }
                                 }
                             }
                             div { class: "flex justify-end",

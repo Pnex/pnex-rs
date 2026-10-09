@@ -13,8 +13,8 @@
 //!   (legacy parity, no presigned URL), attachment
 //!   `{device_id}-firmware.bin`.
 //!
-//! Build errors use the legacy `{"error": "..."}` shape (the devices
-//! endpoints use `{"detail": ...}` — respective contracts).
+//! Errors: machine code + English description (`coded_error`); field
+//! validation `{"<field>": "<token>"}`.
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -46,12 +46,7 @@ use pnex_core::err_codes;
 
 // ─────────────────────────── Aides ───────────────────────────
 
-/// Error response of the legacy build views: `{"error": "..."}`.
-fn error_status(status: StatusCode, msg: &str) -> Response {
-    (status, format::json(serde_json::json!({ "error": msg }))).into_response()
-}
-
-/// Field-by-field error, legacy shape: `{"<field>": "..."}`.
+/// Field-by-field error: `{"<field>": "<token>"}`.
 fn field_status(status: StatusCode, field: &str, msg: &str) -> Response {
     (status, format::json(serde_json::json!({ field: msg }))).into_response()
 }
@@ -196,9 +191,11 @@ async fn create(
         .await
         .map_err(|_| Error::InternalServerError)?
     else {
-        return Ok(error_status(
+        return Err(crate::controllers::coded_error(
             StatusCode::NOT_FOUND,
-            &format!("Device with ID '{device_id}' not found"),
+            err_codes::DEVICE_NOT_FOUND,
+            format!("Device with ID '{device_id}' not found"),
+            Some(serde_json::json!({ "device_id": device_id })),
         ));
     };
     let predefined = predefined_devices::Entity::find_by_id(device.predefined_device_id)
@@ -273,12 +270,14 @@ async fn create(
         if count_devices_of_type(&ctx.db, org.org.id, predefined.device_type_id).await?
             > i64::from(limit)
         {
-            return Ok(error_status(
+            return Err(crate::controllers::coded_error(
                 StatusCode::FORBIDDEN,
-                &format!(
+                err_codes::DEVICE_QUOTA_REACHED,
+                format!(
                     "Device limit reached for {} devices in your subscription tier.",
                     type_name.to_ascii_lowercase()
                 ),
+                Some(serde_json::json!({ "type": type_name.to_ascii_lowercase() })),
             ));
         }
     }
@@ -315,9 +314,11 @@ async fn create(
                 .signed_duration_since(last.created_at)
                 .num_seconds();
             if elapsed < min_secs {
-                return Ok(error_status(
+                return Err(crate::controllers::coded_error(
                     StatusCode::TOO_MANY_REQUESTS,
+                    err_codes::BUILD_INTERVAL_NOT_MET,
                     "Build interval not met for your subscription tier. Please wait before next build",
+                    None,
                 ));
             }
         }
@@ -334,9 +335,11 @@ async fn create(
             .await
             .map_err(|_| Error::InternalServerError)?;
         if in_flight.is_some() {
-            return Ok(error_status(
+            return Err(crate::controllers::coded_error(
                 StatusCode::TOO_MANY_REQUESTS,
+                err_codes::BUILD_INTERVAL_NOT_MET,
                 "Build interval not met for your subscription tier. Please wait before next build",
+                None,
             ));
         }
     }
@@ -404,9 +407,11 @@ async fn create(
         .await
         .is_err()
     {
-        return Ok(error_status(
+        return Err(crate::controllers::coded_error(
             StatusCode::INTERNAL_SERVER_ERROR,
+            err_codes::BUILD_SUBMIT_FAILED,
             "Failed to submit firmware build job",
+            None,
         ));
     }
 

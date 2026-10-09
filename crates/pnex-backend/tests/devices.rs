@@ -169,10 +169,7 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
         // Device inactif connu → réactivation 200 (pas de nouvelle création).
         let res = create_device(&server, &env.alice, org, "esp-001", "soil_sensor").await;
         assert_eq!(res.status_code(), 200);
-        assert_eq!(
-            res.json::<serde_json::Value>()["detail"],
-            "Device reactivated successfully."
-        );
+        assert_eq!(res.json::<serde_json::Value>()["reactivated"], true);
         let list: serde_json::Value = server
             .get("/api/v1/devices")
             .add_header("Authorization", bearer(&env.alice))
@@ -220,8 +217,8 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
         let res = create_device(&server, &env.alice, org, "esp-001", "soil_sensor").await;
         assert_eq!(res.status_code(), 400);
         assert_eq!(
-            res.json::<serde_json::Value>()["detail"],
-            "This device is already registered and active."
+            res.json::<serde_json::Value>()["error"],
+            "device-already-active"
         );
 
         // Predefined inconnu → 400 champ-par-champ.
@@ -357,10 +354,9 @@ async fn quotas_tier_par_type() {
         }
         let res = create_device(&server, &env.alice, org, "esp-s4", "soil_sensor").await;
         assert_eq!(res.status_code(), 400, "4e capteur refusé");
-        assert_eq!(
-            res.json::<serde_json::Value>()["detail"],
-            "Device limit reached for sensor devices in your subscription tier."
-        );
+        let body = res.json::<serde_json::Value>();
+        assert_eq!(body["error"], "device-quota-reached");
+        assert_eq!(body["errors"]["args"]["type"], "sensor");
 
         // Inactive devices count toward the quota (legacy parity):
         // un seul actuator créé inactif → le 2e est déjà au-dessus du quota.
@@ -368,10 +364,9 @@ async fn quotas_tier_par_type() {
         assert_eq!(res.status_code(), 201);
         let res = create_device(&server, &env.alice, org, "esp-a2", "relay_1ch").await;
         assert_eq!(res.status_code(), 400);
-        assert_eq!(
-            res.json::<serde_json::Value>()["detail"],
-            "Device limit reached for actuator devices in your subscription tier."
-        );
+        let body = res.json::<serde_json::Value>();
+        assert_eq!(body["error"], "device-quota-reached");
+        assert_eq!(body["errors"]["args"]["type"], "actuator");
 
         // mixed : 1 autorisé (Brick 0 — device générique prototypable en Free),
         // le 2e est refusé.
@@ -379,10 +374,9 @@ async fn quotas_tier_par_type() {
         assert_eq!(res.status_code(), 201);
         let res = create_device(&server, &env.alice, org, "esp-m2", "mixed_hub_v1").await;
         assert_eq!(res.status_code(), 400);
-        assert_eq!(
-            res.json::<serde_json::Value>()["detail"],
-            "Device limit reached for mixed devices in your subscription tier."
-        );
+        let body = res.json::<serde_json::Value>();
+        assert_eq!(body["error"], "device-quota-reached");
+        assert_eq!(body["errors"]["args"]["type"], "mixed");
     })
     .await;
 }

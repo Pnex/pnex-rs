@@ -59,3 +59,21 @@ pub mod ws_ingest;
 /// Bus WS des notifications (canal `websocket`, D51).
 pub mod ws_notify;
 pub mod ws_ticket;
+
+/// Error answer of the API: machine `code` (resolved by the frontend to
+/// `err-<code>`), canonical English `description`, optional fluent `args`.
+pub(crate) fn coded_error(
+    status: axum::http::StatusCode,
+    code: &str,
+    description: impl Into<String>,
+    args: Option<serde_json::Value>,
+) -> loco_rs::Error {
+    loco_rs::Error::CustomError(
+        status,
+        loco_rs::controller::ErrorDetail {
+            error: Some(code.to_string()),
+            description: Some(description.into()),
+            errors: args.map(|a| serde_json::json!({ "args": a })),
+        },
+    )
+}

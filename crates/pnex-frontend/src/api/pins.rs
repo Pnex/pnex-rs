@@ -57,7 +57,7 @@ pub struct Command {
     pub value: Option<serde_json::Value>,
     pub interval_ms: Option<u32>,
     /// set_mode seulement — `true` après confirmation UI « arrêter les
-    /// flows puis appliquer » (garde 409 `pin_flow_conflict`).
+    /// flows puis appliquer » (garde 409 `pin-flow-conflict`).
     pub confirm_stop_flows: Option<bool>,
 }
 
@@ -225,7 +225,7 @@ pub enum CommandOutcome {
     /// Commande envoyée (contient `flow_impacts` quand un set_mode a arrêté
     /// des flows déployés).
     Sent(serde_json::Value),
-    /// 409 `pin_flow_conflict` : flows déployés touchés, arrêt à confirmer.
+    /// 409 `pin-flow-conflict` : flows déployés touchés, arrêt à confirmer.
     Conflict { flows: Vec<(i64, String)> },
 }
 

@@ -598,8 +598,6 @@ async fn commands(
                     StatusCode::CONFLICT,
                     axum::Json(serde_json::json!({
                         "error": "pin-flow-conflict",
-                        // Legacy marker kept for pre-i18n consumers.
-                        "code": "pin_flow_conflict",
                         "description": "This device is used by deployed flow(s) — stop them before changing the config.",
                         "errors": { "args": { "count": impacted.len().to_string() } },
                         "flows": impacted

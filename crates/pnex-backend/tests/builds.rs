@@ -221,10 +221,7 @@ async fn build_intervalle_429() {
         let second = post_build(&server, &env.alice, org, "dev-b", "coloc").await;
         second.assert_status(axum_test::http::StatusCode::TOO_MANY_REQUESTS);
         let body: serde_json::Value = second.json();
-        assert_eq!(
-            body["error"],
-            "Build interval not met for your subscription tier. Please wait before next build"
-        );
+        assert_eq!(body["error"], "build-interval-not-met", "{body}");
 
         let list = records(&server, &env.alice, org, "").await;
         assert_eq!(list["count"], 1, "pas de record pour le build refusé");
@@ -262,10 +259,8 @@ async fn build_quota_403() {
         set_free_sensors(3).await;
         res.assert_status(axum_test::http::StatusCode::FORBIDDEN);
         let body: serde_json::Value = res.json();
-        assert_eq!(
-            body["error"],
-            "Device limit reached for sensor devices in your subscription tier."
-        );
+        assert_eq!(body["error"], "device-quota-reached", "{body}");
+        assert_eq!(body["errors"]["args"]["type"], "sensor");
     })
     .await;
 }
@@ -299,7 +294,8 @@ async fn build_device_inconnu_404() {
         let res = post_build(&server, &env.alice, org, "fantome", "coloc").await;
         res.assert_status(axum_test::http::StatusCode::NOT_FOUND);
         let body: serde_json::Value = res.json();
-        assert_eq!(body["error"], "Device with ID 'fantome' not found");
+        assert_eq!(body["error"], "device-not-found");
+        assert_eq!(body["errors"]["args"]["device_id"], "fantome");
     })
     .await;
 }

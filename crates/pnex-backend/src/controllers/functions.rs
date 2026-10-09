@@ -183,11 +183,13 @@ fn write_error_response(e: FunctionWriteError) -> Response {
             field_status("code", &format!("ligne {} : {}", e.line, e.message))
         }
         FunctionWriteError::Db(_) => Error::InternalServerError.into_response(),
-        FunctionWriteError::Conflict { .. } => (
+        FunctionWriteError::Conflict { .. } => crate::controllers::coded_error(
             StatusCode::CONFLICT,
-            format::json(serde_json::json!({"error": "version_conflict"})),
+            pnex_core::err_codes::FUNCTION_VERSION_CONFLICT,
+            "The function changed since it was read.",
+            None,
         )
-            .into_response(),
+        .into_response(),
     }
 }
 
@@ -249,11 +251,12 @@ async fn save_version(
         .map(|v| v.version_number)
         .unwrap_or(0);
     if input.expected_version_number != current {
-        return Ok((
+        return Err(crate::controllers::coded_error(
             StatusCode::CONFLICT,
-            format::json(serde_json::json!({"error": "version_conflict"})),
-        )
-            .into_response());
+            pnex_core::err_codes::FUNCTION_VERSION_CONFLICT,
+            "The function changed since it was read.",
+            None,
+        ));
     }
     let (f, new_version) = match save_new_version(&ctx.db, f, &input).await {
         Ok(pair) => pair,

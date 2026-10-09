@@ -548,9 +548,8 @@ mod tests {
         let mut d: BoardDetails = serde_json::from_str(&v2_json()).unwrap();
         // The v2_json helper declares the ssd1306 non-builtin — flip it to
         // cover the forced path.
-        if let BoardDetails::V2(ref mut p) = d {
-            p.peripherals.screens[0].builtin = true;
-        }
+        let BoardDetails::V2(ref mut p) = d;
+        p.peripherals.screens[0].builtin = true;
         let none = DevicePeripherals {
             screen: ScreenChoice::None,
         };
