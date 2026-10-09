@@ -113,8 +113,7 @@ pub fn sign_image(
 }
 
 /// Signature for an OTA order, logged and `None` on any failure: the order
-/// still goes out and the device refuses it ("unsigned image"), visible on
-/// the assignment.
+/// is then not sent (the device would refuse an unsigned image anyway).
 pub async fn sign_for_order(
     db: &DatabaseConnection,
     config: &loco_rs::config::Config,

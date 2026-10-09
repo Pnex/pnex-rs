@@ -9,8 +9,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context, Result};
-use base64::engine::general_purpose::STANDARD;
-use base64::Engine as _;
 use futures_util::{SinkExt, StreamExt};
 use pnex_core::frame::{Initiator, Link as NoiseLink};
 use pnex_core::{BatchPoint, DeviceMsg, ServerMsg};
@@ -47,10 +45,7 @@ pub fn target_id() -> String {
 
 /// rustls client config: the pinned local CA only when given, public web
 /// roots otherwise. ring provider (portable cross builds).
-pub fn tls_config(
-    ca_pem: Option<&str>,
-    client: Option<(&str, &str)>,
-) -> Result<Arc<rustls::ClientConfig>> {
+pub fn tls_config(ca_pem: Option<&str>, client: (&str, &str)) -> Result<Arc<rustls::ClientConfig>> {
     use rustls_pki_types::pem::PemObject;
     use rustls_pki_types::CertificateDer;
     let mut roots = rustls::RootCertStore::empty();
@@ -73,20 +68,15 @@ pub fn tls_config(
         .context("TLS protocol setup")?
         .with_root_certificates(roots);
     // D153: the agent's org-CA certificate on the device endpoint.
-    let cfg = match client {
-        Some((cert_pem, key_pem)) => {
-            use rustls_pki_types::PrivateKeyDer;
-            let chain = CertificateDer::pem_slice_iter(cert_pem.as_bytes())
-                .collect::<Result<Vec<_>, _>>()
-                .context("invalid client certificate PEM")?;
-            let key = PrivateKeyDer::from_pem_slice(key_pem.as_bytes())
-                .context("invalid client key PEM")?;
-            builder
-                .with_client_auth_cert(chain, key)
-                .context("client certificate rejected by rustls")?
-        }
-        None => builder.with_no_client_auth(),
-    };
+    let (cert_pem, key_pem) = client;
+    let chain = CertificateDer::pem_slice_iter(cert_pem.as_bytes())
+        .collect::<Result<Vec<_>, _>>()
+        .context("invalid client certificate PEM")?;
+    let key = rustls_pki_types::PrivateKeyDer::from_pem_slice(key_pem.as_bytes())
+        .context("invalid client key PEM")?;
+    let cfg = builder
+        .with_client_auth_cert(chain, key)
+        .context("client certificate rejected by rustls")?;
     Ok(Arc::new(cfg))
 }
 
@@ -100,7 +90,7 @@ enum End {
 fn close_end(code: CloseCode, reason: &str) -> End {
     let code = u16::from(code);
     match code {
-        4001 | 4005 | 4006 | 4007 | 4008 | 4011 => {
+        4001 | 4005 | 4007 | 4011 | 4014 => {
             End::Revoked(format!("server refused the credentials ({code} {reason})"))
         }
         4003 => End::Retry(format!("another agent uses these credentials ({code})")),
@@ -119,23 +109,17 @@ pub async fn run(shared: Arc<Shared>, cfg: Config, secrets: Secrets, ca_pem: Opt
             return;
         }
     };
-    let url = match cfg.ws_base(
-        &secrets.ws_path,
-        secrets.device_host.as_deref(),
-        secrets.device_port,
-    ) {
-        // The token travels in the Authorization header, never in the
-        // URL (D154).
-        Ok(base) => format!("{base}?device_id={}", STANDARD.encode(&secrets.device_id)),
-        Err(e) => {
-            shared.set_link(Link::Revoked, Some(e.to_string()));
-            return;
-        }
-    };
-    let client = secrets
-        .client_cert_pem
-        .as_deref()
-        .zip(secrets.client_key_pem.as_deref());
+    // The token travels in the Authorization header, never in the URL
+    // (D154); the link goes to the device endpoint (D158).
+    if let Err(e) = cfg.https_server() {
+        shared.set_link(Link::Revoked, Some(e.to_string()));
+        return;
+    }
+    let url = format!("wss://{}{}", secrets.device_host.trim(), secrets.ws_path);
+    let client = (
+        secrets.client_cert_pem.as_str(),
+        secrets.client_key_pem.as_str(),
+    );
     let tls = match tls_config(ca_pem.as_deref(), client) {
         Ok(t) => t,
         Err(e) => {
@@ -400,10 +384,9 @@ mod tests {
     }
 
     #[test]
-    fn tls_config_accepts_public_roots_and_rejects_empty_pem() {
-        assert!(tls_config(None, None).is_ok());
-        assert!(tls_config(Some("not a pem"), None).is_err());
-        assert!(tls_config(None, Some(("not a pem", "nor a key"))).is_err());
+    fn tls_config_rejects_bad_pems() {
+        assert!(tls_config(Some("not a pem"), ("x", "y")).is_err());
+        assert!(tls_config(None, ("not a pem", "nor a key")).is_err());
     }
 
     #[test]
@@ -414,7 +397,7 @@ mod tests {
 }
 
 /// Upgrade request carrying the device token as `Authorization: Bearer
-/// <b64>` (D154: never in the URL, so never in an access log).
+/// <token>` (D154: never in the URL, so never in an access log).
 fn authorized_request(
     url: &str,
     token: &str,
@@ -423,7 +406,7 @@ fn authorized_request(
     let mut request = url
         .into_client_request()
         .map_err(|e| format!("invalid server URL: {e}"))?;
-    let value = format!("Bearer {}", STANDARD.encode(token))
+    let value = format!("Bearer {token}")
         .parse()
         .map_err(|_| "device token is not a valid header value".to_string())?;
     request.headers_mut().insert("Authorization", value);

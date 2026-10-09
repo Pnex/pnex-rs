@@ -227,7 +227,7 @@ void try_connect(unsigned long now) {
     if ((long)(now - s_next_connect_ms) < 0) {
         return;
     }
-    Serial.printf("[CAM] connecting camera WS (%s)\n", pnex_use_tls() ? "wss" : "ws");
+    Serial.println("[CAM] connecting camera WS (wss)");
     // Modem sleep off: with power save on, the radio only wakes on DTIM
     // beacons and every TCP round trip costs 100 ms to 2 s (measured RTT
     // avg 650 ms on an AI-Thinker) — the stream crawls below 1 fps.
@@ -446,15 +446,13 @@ void pnex_camera_loop() {
     if (!s_cam_ok) {
         return;
     }
-    // Camera WS URL: same scheme / host / b64 credentials / TLS posture as
-    // /ws/device. Built on the first turn: pnex_host() and the CA are only
+    // Camera WS URL: same host / token / TLS posture as /ws/device. Built on the first turn: pnex_host() and the CA are only
     // decoded by pnex.begin() (transport setup), after pnex_camera_begin().
     static bool url_ready = false;
     if (!url_ready) {
         // Token in the Authorization header, never in the URL (D154).
-        snprintf(s_url, sizeof(s_url), "%s://%s/ws/camera?device_id=%s",
-                 pnex_use_tls() ? "wss" : "ws", pnex_host(), pnex_device_id_b64());
-        s_ws.setAuthToken(pnex_token_b64());
+        snprintf(s_url, sizeof(s_url), "wss://%s/ws/camera", pnex_host());
+        s_ws.setAuthToken(pnex_token());
         url_ready = true;
     }
 

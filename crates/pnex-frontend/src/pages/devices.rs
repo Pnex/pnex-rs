@@ -163,7 +163,7 @@ pub fn Devices() -> Element {
             device.ota.is_some()
                 || device.latest_build.as_ref().is_some_and(|build| {
                     matches!(
-                        build.build_phase.as_deref(),
+                        Some(build.build_phase.as_str()),
                         Some("queued") | Some("running")
                     )
                 })
@@ -250,8 +250,8 @@ pub fn Devices() -> Element {
                 }
                 // Badge + date du dernier build, téléchargement si succès.
                 let firmware = device.latest_build.as_ref().map(|build| {
-                    let (class, label) = phase_badge(build.build_phase.as_deref());
-                    (class, label, date_label(&build.updated_at), build.success)
+                    let (class, label) = phase_badge(Some(build.build_phase.as_str()));
+                    (class, label, date_label(&build.updated_at), build.build_phase == "succeeded")
                 });
                 // Failed build: its reason as the badge tooltip (O4).
                 let failure_hint = device
@@ -734,7 +734,6 @@ fn RebuildModal(
     // Captures par valeur pour la closure 'static du spawn (les props
     // restent utilisées par le rendu).
     let submit_device = device_id.clone();
-    let submit_model = model.clone();
     let submit = move |_| {
         // Résolution référentiel avant le spawn — entrée manquante = garde
         // (théorique : les pickers présélectionnent).
@@ -749,14 +748,9 @@ fn RebuildModal(
         launching.set(true);
         let params = pnex_core::CreateBuild {
             device_id: submit_device.clone(),
-            predefined_device_name: submit_model.clone(),
-            wifi_ssid: creds.ssid,
             // The build references the entry's vault secret (secrets.md S6).
-            wifi_credential_id: Some(creds.id),
-            wifi_password: String::new(),
+            wifi_credential_id: creds.id,
             pnex_host: srv.host,
-            // Always wss (D70).
-            ws_ssl: true,
         };
         spawn(async move {
             // 1. Écran — appliqué AVANT le build si le choix a changé (les
@@ -916,17 +910,13 @@ fn BulkModal(
             .cloned()
             .collect();
         spawn(async move {
-            for (pk, device_id, model, plan) in todo {
+            for (pk, device_id, _model, plan) in todo {
                 let outcome = match (&connectivity, plan) {
                     (Some((creds, srv)), _) => {
                         let params = pnex_core::CreateBuild {
                             device_id,
-                            predefined_device_name: model,
-                            wifi_ssid: creds.ssid.clone(),
-                            wifi_credential_id: Some(creds.id),
-                            wifi_password: String::new(),
+                            wifi_credential_id: creds.id,
                             pnex_host: srv.host.clone(),
-                            ws_ssl: true,
                         };
                         match api::builds::create(params).await {
                             Ok(_) => BulkOutcome::BuildQueued,
@@ -1177,7 +1167,7 @@ fn fw_status(device: &Device) -> Option<FwStatus> {
         return None;
     }
     let build = device.latest_build.as_ref()?;
-    match build.build_phase.as_deref() {
+    match Some(build.build_phase.as_str()) {
         Some("queued") | Some("running") => return Some(FwStatus::Building),
         Some("failed") => return Some(FwStatus::BuildFailed),
         _ => {}
@@ -1255,10 +1245,12 @@ fn build_plan(device: &Device) -> BulkPlan {
     {
         return BulkPlan::SkipNotBuildable;
     }
-    let building = device
-        .latest_build
-        .as_ref()
-        .is_some_and(|b| matches!(b.build_phase.as_deref(), Some("queued") | Some("running")));
+    let building = device.latest_build.as_ref().is_some_and(|b| {
+        matches!(
+            Some(b.build_phase.as_str()),
+            Some("queued") | Some("running")
+        )
+    });
     if building {
         BulkPlan::SkipBuilding
     } else {
@@ -1393,14 +1385,14 @@ fn DeviceDetail(
             let is_agent = device.predefined_device_name == pnex_core::EDGE_AGENT_PREDEF;
             // Dernier build (colonne Firmware en détail).
             let firmware_badge = device.latest_build.as_ref().map(|build| {
-                let (class, label) = phase_badge(build.build_phase.as_deref());
+                let (class, label) = phase_badge(Some(build.build_phase.as_str()));
                 (class, label, date_label(&build.updated_at))
             });
             // Why the last build failed (O4), under the header.
             let build_failure = device
                 .latest_build
                 .as_ref()
-                .filter(|b| b.build_phase.as_deref() == Some("failed"))
+                .filter(|b| Some(b.build_phase.as_str()) == Some("failed"))
                 .map(|b| (b.failure_code.clone(), b.failure_detail.clone()));
             rsx! {
                 div { class: "space-y-4",
@@ -1497,7 +1489,7 @@ fn DeviceDetail(
                     if let Some(enc_key) = token
                         .as_ref()
                         .filter(|_| !is_agent)
-                        .and_then(|t| t.encryption_key.clone())
+                        .map(|t| t.encryption_key.clone())
                     {
                         SecretCard {
                             title: t!("devices-encryption-key"),

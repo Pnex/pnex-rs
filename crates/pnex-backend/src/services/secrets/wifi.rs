@@ -8,15 +8,11 @@
 //! the value rebuilds nothing, flashed devices keep the old one).
 
 use pnex_core::{SecretConsumerKind, SecretFieldInput};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    Set, TransactionTrait,
-};
+use sea_orm::ConnectionTrait;
 use uuid::Uuid;
 
 use super::crypto::Keyring;
 use super::store::{self, StoreError, Writer};
-use crate::models::_entities::wifi_credentials;
 
 /// Field name of the password in `secret_usages`.
 const FIELD: &str = "password";
@@ -85,56 +81,4 @@ pub async fn reveal<C: ConnectionTrait>(
     secret_id: Uuid,
 ) -> Result<String, StoreError> {
     store::reveal(db, ring, Some(org_id), secret_id).await
-}
-
-/// Upserts the org's entry `ssid` with a typed password (legacy build
-/// requests that send SSID + password): the value lands in the vault, the
-/// build then references it. Returns the entry's secret.
-pub async fn upsert_typed(
-    db: &DatabaseConnection,
-    ring: &Keyring,
-    writer: Writer,
-    can_write_secrets: bool,
-    ssid: &str,
-    password: &str,
-) -> Result<Uuid, StoreError> {
-    let org_id = writer.org_id.unwrap_or_default();
-    let txn = db.begin().await?;
-    let row = match wifi_credentials::Entity::find()
-        .filter(wifi_credentials::Column::OrgId.eq(org_id))
-        .filter(wifi_credentials::Column::Ssid.eq(ssid))
-        .one(&txn)
-        .await?
-    {
-        Some(row) => row,
-        None => {
-            wifi_credentials::ActiveModel {
-                org_id: Set(org_id),
-                ssid: Set(ssid.to_string()),
-                ..Default::default()
-            }
-            .insert(&txn)
-            .await?
-        }
-    };
-    let secret = save(
-        &txn,
-        ring,
-        writer,
-        can_write_secrets,
-        row.id,
-        ssid,
-        None,
-        row.secret_id,
-        Some(&SecretFieldInput::Value {
-            value: password.to_string(),
-        }),
-    )
-    .await?
-    .unwrap_or_default();
-    let mut am: wifi_credentials::ActiveModel = row.into();
-    am.secret_id = Set(Some(secret));
-    am.update(&txn).await?;
-    txn.commit().await?;
-    Ok(secret)
 }

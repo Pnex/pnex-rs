@@ -6,8 +6,6 @@
 
 mod common;
 
-use base64::engine::general_purpose::STANDARD;
-use base64::Engine as _;
 use loco_rs::testing::request::{RequestConfig, RequestConfigBuilder};
 use pnex_backend::app::App;
 use pnex_backend::services::telemetry::{self, TelemetryPoint, TelemetrySink};
@@ -100,11 +98,7 @@ async fn create_device(
 async fn connect(server: &axum_test::TestServer, a: &Agent) -> common::DevWs {
     common::DevWs::connect(
         server,
-        &format!(
-            "/ws/device?token={}&device_id={}",
-            STANDARD.encode(&a.token),
-            STANDARD.encode(&a.device_id),
-        ),
+        &format!("/ws/device?token={}", &a.token,),
         &a.key,
         &a.device_id,
     )
@@ -403,8 +397,10 @@ async fn enrollment_is_single_use_and_rotates_credentials() {
         assert_eq!(creds.ws_path, "/ws/device");
         assert_ne!(creds.token, a.token, "token rotated");
         // D153: an org-CA certificate identifies the agent on its link.
-        let cert = creds.client_cert_pem.as_deref().expect("client certificate");
-        assert!(creds.client_key_pem.as_deref().is_some_and(|k| k.contains("PRIVATE KEY")));
+        let cert = creds.client_cert_pem.as_str();
+        assert!(creds.client_key_pem.contains("PRIVATE KEY"));
+        // D158: without PNEX_DEVICE_HOST, the host the agent enrolled on.
+        assert_eq!(creds.device_host, "localhost");
         assert_eq!(
             pnex_backend::services::device_pki::verify_client_cert(&ctx.db, cert)
                 .await
@@ -479,15 +475,22 @@ async fn enrollment_is_single_use_and_rotates_credentials() {
 async fn agent_guards_reject_firmware_actions_and_non_agents() {
     with_app(|server, alice, _ctx| async move {
         let a = create_device(&server, &alice, "agent-guard", "edge_agent").await;
+        let wifi = server
+            .post("/api/v1/edge/wifi-credentials")
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .add_header("X-Org-Id", a.org.to_string())
+            .json(&serde_json::json!({ "ssid": "x", "password": { "value": "y" } }))
+            .await
+            .json::<serde_json::Value>()["id"]
+            .as_i64()
+            .expect("wifi entry");
         let res = server
             .post("/api/v1/build-firmware")
             .add_header("Authorization", format!("Bearer {alice}"))
             .add_header("X-Org-Id", a.org.to_string())
             .json(&serde_json::json!({
                 "device_id": a.device_id,
-                "predefined_device_name": "edge_agent",
-                "wifi_ssid": "x",
-                "wifi_password": "y",
+                "wifi_credential_id": wifi,
                 "pnex_host": "h"
             }))
             .await;

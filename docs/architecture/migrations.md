@@ -1,12 +1,29 @@
 # Migrations de schéma — règles à partir de la première release
 
-> Date : 2026-10-01 (première release). Décision D120.
+> Date : 2026-10-01 (première coupe, D120) ; **recoupée le 2026-10-09** :
+> la 0.1.0 n'est pas publiée (bêta), la base est refaite jusqu'à elle.
+
+## 0. Recoupe du 2026-10-09 (avant 0.1.0)
+
+Les 6 migrations ajoutées depuis la première coupe (`controls`, `origin`,
+conversations de l'assistant, rétention IA d'org, raison d'échec de build,
+PKI devices) sont **fondues dans la base**, renommée
+`m20261009_000001_baseline`. Au passage, colonnes de compatibilité
+supprimées : `device_registries.metadata` (et la route `PUT/PATCH
+/devices/{id}`), `pnex_hosts.ws_ssl` (toujours wss), `build_records.success`
+(doublon de `build_phase`, désormais NOT NULL) ; `device_tokens.encryption_key`
+passe NOT NULL (clé Noise obligatoire).
+
+Une base créée avant est **refusée au démarrage** (ses migrations
+appliquées n'existent plus) : `task db:reset`. Tant que la 0.1.0 n'est pas
+publiée, une rupture de schéma se fait dans la base, pas par migration ;
+les règles du §2 s'appliquent à partir de la 0.1.0.
 
 ## 1. Point de départ : une base unique
 
 Les 50 migrations de la phase de développement (août → octobre 2026) sont
-remplacées par **une seule migration de base**,
-`m20261001_000001_baseline`, qui exécute un script SQL par moteur :
+remplacées par **une seule migration de base** (aujourd'hui
+`m20261009_000001_baseline`, voir §0), qui exécute un script SQL par moteur :
 
 - `crates/pnex-backend/migration/src/baseline/postgres.sql`
 - `crates/pnex-backend/migration/src/baseline/sqlite.sql`
@@ -33,8 +50,8 @@ les données OpenObserve et RustFS ne sont pas concernées.
 
 ## 2. Règles pour chaque nouvelle migration
 
-1. **Un fichier par changement**, nommé `mAAAAMMJJ_NNNNNN_sujet.rs`,
-   numéro strictement croissant après `000001`. Jamais de modification
+1. **Un fichier par changement** (à partir de la 0.1.0), nommé
+   `mAAAAMMJJ_NNNNNN_sujet.rs`, numéro strictement croissant après `000001`. Jamais de modification
    d'une migration déjà publiée : on corrige par une nouvelle migration.
 2. **Additive d'abord (expand/contract).** Ajouter une colonne nullable
    ou avec défaut, une table, un index : une migration. Retirer ou

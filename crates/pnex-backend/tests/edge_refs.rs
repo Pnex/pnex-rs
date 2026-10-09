@@ -144,7 +144,7 @@ async fn wifi_cycle_upsert_et_delete() {
             &server,
             &env.alice,
             org,
-            json!({ "ssid": "Maison", "wifi_password": "secret1" }),
+            json!({ "ssid": "Maison", "password": { "value": "secret1" } }),
         )
         .await;
         assert_eq!(status, 201, "{body}");
@@ -156,7 +156,7 @@ async fn wifi_cycle_upsert_et_delete() {
             &server,
             &env.alice,
             org,
-            json!({ "ssid": "Maison", "wifi_password": "secret2" }),
+            json!({ "ssid": "Maison", "password": { "value": "secret2" } }),
         )
         .await;
         assert_eq!(status, 200, "{body}");
@@ -194,7 +194,7 @@ async fn wifi_validations_400() {
             &server,
             &env.alice,
             org,
-            json!({ "ssid": "  ", "wifi_password": "x" }),
+            json!({ "ssid": "  ", "password": { "value": "x" } }),
         )
         .await;
         assert_eq!(status, 400, "{body}");
@@ -205,7 +205,7 @@ async fn wifi_validations_400() {
             &server,
             &env.alice,
             org,
-            json!({ "ssid": "a".repeat(33), "wifi_password": "x" }),
+            json!({ "ssid": "a".repeat(33), "password": { "value": "x" } }),
         )
         .await;
         assert_eq!(status, 400, "{body}");
@@ -216,11 +216,11 @@ async fn wifi_validations_400() {
             &server,
             &env.alice,
             org,
-            json!({ "ssid": "Maison", "wifi_password": "" }),
+            json!({ "ssid": "Maison", "password": { "value": "" } }),
         )
         .await;
         assert_eq!(status, 400, "{body}");
-        assert!(body.get("wifi_password").is_some());
+        assert!(body.get("password").is_some());
     })
     .await;
 }
@@ -236,33 +236,31 @@ async fn hosts_cycle_upsert_et_validation() {
             &server,
             &env.alice,
             org,
-            json!({ "host": "192.168.1.16:5150", "ws_ssl": false }),
+            json!({ "host": "192.168.1.16:5150" }),
         )
         .await;
         assert_eq!(status, 201, "{body}");
         let id = body["id"].as_i64().expect("id renvoyé");
-        // D70: devices always use wss — a client-sent `ws_ssl: false` is
-        // overridden server-side.
-        assert_eq!(body["ws_ssl"], true, "{body}");
+        // Devices always use wss: a host carries no scheme flag.
+        assert!(body.get("ws_ssl").is_none(), "{body}");
 
-        // Upsert même host, ws_ssl inversé → 200, même id, flag remplacé.
+        // Upsert same host → 200, same id.
         let (status, body) = post_host(
             &server,
             &env.alice,
             org,
-            json!({ "host": "192.168.1.16:5150", "ws_ssl": true }),
+            json!({ "host": "192.168.1.16:5150" }),
         )
         .await;
         assert_eq!(status, 200, "{body}");
         assert_eq!(body["id"].as_i64(), Some(id));
-        assert_eq!(body["ws_ssl"], true);
 
         // Validation : schéma interdit (contrat CreateBuild.pnex_host = hôte
         // nu), espace interdit, vide interdit.
         for payload in [
-            json!({ "host": "ws://192.168.1.16:5150", "ws_ssl": false }),
-            json!({ "host": "192.168.1.16 5150", "ws_ssl": false }),
-            json!({ "host": "   ", "ws_ssl": false }),
+            json!({ "host": "ws://192.168.1.16:5150" }),
+            json!({ "host": "192.168.1.16 5150" }),
+            json!({ "host": "   " }),
         ] {
             let (status, body) = post_host(&server, &env.alice, org, payload).await;
             assert_eq!(status, 400, "{body}");
@@ -288,7 +286,7 @@ async fn isolation_org_et_auth_401() {
         assert_eq!(anon.status_code(), 401);
         let anon = server
             .post("/api/v1/edge/hosts")
-            .json(&json!({ "host": "h:1", "ws_ssl": false }))
+            .json(&json!({ "host": "h:1" }))
             .await;
         assert_eq!(anon.status_code(), 401);
 
@@ -297,7 +295,7 @@ async fn isolation_org_et_auth_401() {
             &server,
             &env.alice,
             org_a,
-            json!({ "ssid": "Maison", "wifi_password": "s" }),
+            json!({ "ssid": "Maison", "password": { "value": "s" } }),
         )
         .await;
         assert_eq!(status, 201, "{body}");
@@ -318,13 +316,7 @@ async fn isolation_org_et_auth_401() {
             .await;
         let rows = list_edge(&server, &env.alice, org_a, "/api/v1/edge/wifi-credentials").await;
         assert_eq!(rows.len(), 1, "viewer lit le référentiel");
-        let (status, _) = post_host(
-            &server,
-            &env.bob,
-            org_a,
-            json!({ "host": "h:1", "ws_ssl": false }),
-        )
-        .await;
+        let (status, _) = post_host(&server, &env.bob, org_a, json!({ "host": "h:1" })).await;
         assert_eq!(status, 403, "viewer ne peut pas écrire");
     })
     .await;

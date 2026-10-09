@@ -612,30 +612,6 @@ tasks:
     cmds:
       - "{{.PIO_CMD}} device monitor{{if .PORT}} --port {{.PORT}}{{end}}"
 
-  fw:flash:
-    desc: Recompile + flash USB puis monitor — identifiants passés en env (WIFI_SSID, WIFI_PASSWORD, HOST, TOKEN, DEVICE_ID, ENCRYPTION_KEY — les 6 en base64, WS_SSL true/false)
-    dir: "{{.FW_DIR}}/{{.FIRMWARE}}"
-    vars:
-      FIRMWARE: soil_sensor
-    cmds:
-      - |
-        missing=0
-        for v in WIFI_SSID WIFI_PASSWORD HOST TOKEN DEVICE_ID ENCRYPTION_KEY; do
-          eval "val=\${$v}"
-          [ -n "$val" ] || { echo "MANQUANT : $v"; missing=1; }
-        done
-        if [ "$missing" -ne 0 ]; then
-          echo "Les identifiants sont compilés dans le firmware ; sans eux l'SSID est vide et le WiFi ne se connecte jamais."
-          echo "Les 6 variables sont en BASE64 (un SSID littéral avec espaces casserait le flag -D). Exemple :"
-          echo '  export WIFI_SSID=$(echo -n "Chez Shan" | base64) WIFI_PASSWORD=$(echo -n <mdp> | base64)'
-          echo '  export HOST=$(echo -n dev1.pnex.io | base64) TOKEN=$(echo -n <token> | base64) DEVICE_ID=$(echo -n <device_id> | base64)'
-          echo '  export ENCRYPTION_KEY=$(psql "postgres://pnex:pnex@localhost:5432/pnex" -t -A -c "SELECT encryption_key FROM device_tokens WHERE device_registry_id=(SELECT id FROM device_registries WHERE device_id='"'"'<device_id>'"'"') AND is_active")'
-          echo '  export WS_SSL=false  # ws:// en local, true pour wss://'
-          echo 'Sans ENCRYPTION_KEY, les frames partent en clair et le serveur les rejette (device jamais actif).'
-          exit 1
-        fi
-        {{.PIO_CMD}} run --target upload
-        {{.PIO_CMD}} device monitor
   # ---------- Base de données ----------
 
   db:up:

@@ -475,11 +475,7 @@ fn HostForm(existing: Option<PnexHost>, on_close: Callback<()>, on_saved: Callba
         }
         busy.set(true);
         spawn(async move {
-            let input = pnex_core::PnexHostInput {
-                host: host_value,
-                // Always wss (D70) — the server enforces it anyway.
-                ws_ssl: true,
-            };
+            let input = pnex_core::PnexHostInput { host: host_value };
             // Édition = PUT in-place (id conservé, renommage possible, 409
             // si l'hôte visé existe ailleurs) ; création = upsert POST.
             let outcome = match edit_id {

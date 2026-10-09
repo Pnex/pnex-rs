@@ -5,8 +5,8 @@
 //! `-D WIFI_SSID="${sysenv.WIFI_SSID}"`…) — WIFI_SSID, WIFI_PASSWORD,
 //! HOST, TOKEN et DEVICE_ID **en base64** (le firmware les décode ; le
 //! base64 ne contient ni espace ni quote, un SSID littéral comme
-//! « Chez Shan » casserait le flag `-D`), WS_SSL en true/false (schéma
-//! wss/ws). Jamais en argv : `ps` expose les arguments.
+//! « Chez Shan » casserait le flag `-D`). Always wss (D154): no scheme
+//! variable. Jamais en argv : `ps` expose les arguments.
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
@@ -20,25 +20,21 @@ pub struct BuildSecrets {
     pub wifi_password: String,
     /// Hôte du serveur PNEX (tel que saisi, ex. `dev1.pnex.io`).
     pub host: String,
-    /// WebSocket en `wss://` (TLS) ou `ws://` (local sans TLS) — pas un
-    /// secret, injecté par le même canal que le WiFi.
-    pub ws_ssl: bool,
     /// Token du device (`device_tokens.token`).
     pub token: String,
     pub device_id: String,
-    /// Clé ChaCha20 b64 (`device_tokens.encryption_key`), passée telle
-    /// quelle — le firmware décodera lui-même.
-    pub encryption_key: Option<String>,
+    /// Noise pre-shared key, base64 (`device_tokens.encryption_key`), passed
+    /// as is — the firmware decodes it.
+    pub encryption_key: String,
     /// Root CA (PEM) the firmware pins for wss + OTA https (`pnex_tls`) —
-    /// the TLS edge's device root (D70). `None` = no pinning (setInsecure,
-    /// on both cores).
+    /// the TLS edge's device root (D70). `None` = a firmware that never
+    /// connects (no setInsecure): refused by the server outside tests.
     pub ca_cert_pem: Option<String>,
-    /// Ed25519 public key (hex) of the instance OTA signer (SEC-18):
-    /// `None` = the firmware refuses every OTA.
-    pub ota_pubkey: Option<String>,
+    /// Ed25519 public key (hex) of the instance OTA signer (SEC-18).
+    pub ota_pubkey: String,
     /// Device client certificate + private key (PEM), issued by the org CA
-    /// for this build (D153). `None` = no client certificate compiled.
-    pub client_cert: Option<(String, String)>,
+    /// for this build (D153).
+    pub client_cert: (String, String),
 }
 
 fn b64(v: &str) -> String {
@@ -55,39 +51,29 @@ pub fn child_env(secrets: &BuildSecrets) -> Vec<(String, String)> {
         ("HOST".into(), b64(&secrets.host)),
         ("TOKEN".into(), b64(&secrets.token)),
         ("DEVICE_ID".into(), b64(&secrets.device_id)),
-        // Schéma WebSocket du firmware : "true" → wss, "false" → ws.
-        ("WS_SSL".into(), secrets.ws_ssl.to_string()),
+        ("ENCRYPTION_KEY".into(), secrets.encryption_key.clone()),
     ];
-    if let Some(key) = &secrets.encryption_key {
-        vars.push(("ENCRYPTION_KEY".into(), key.clone()));
-    }
     // Always set (empty = no pin) so `${sysenv.PNEX_CA_CERT}` never leaks
-    // an unrelated value; only meaningful over TLS.
+    // an unrelated value.
     let ca = secrets
         .ca_cert_pem
         .as_deref()
-        .filter(|pem| secrets.ws_ssl && !pem.trim().is_empty())
+        .filter(|pem| !pem.trim().is_empty())
         .map(b64)
         .unwrap_or_default();
     vars.push(("PNEX_CA_CERT".into(), ca));
     // Always set too (PIO fails on a missing `${sysenv.*}`); a public key,
     // not a secret. Hex only, so it can never break the `-D` flag.
-    let ota_pubkey = secrets
-        .ota_pubkey
-        .as_deref()
+    let ota_pubkey = Some(secrets.ota_pubkey.as_str())
         .filter(|k| k.len() == 64 && k.bytes().all(|b| b.is_ascii_hexdigit()))
         .unwrap_or_default()
         .to_string();
     vars.push(("PNEX_OTA_PUBKEY".into(), ota_pubkey));
     // Client certificate + key in base64 (no quote or newline can break the
-    // `-D` flag); always set, empty without one.
-    let (cert, key) = secrets
-        .client_cert
-        .as_ref()
-        .map(|(c, k)| (b64(c), b64(k)))
-        .unwrap_or_default();
-    vars.push(("PNEX_CLIENT_CERT".into(), cert));
-    vars.push(("PNEX_CLIENT_KEY".into(), key));
+    // `-D` flag).
+    let (cert, key) = &secrets.client_cert;
+    vars.push(("PNEX_CLIENT_CERT".into(), b64(cert)));
+    vars.push(("PNEX_CLIENT_KEY".into(), b64(key)));
     vars
 }
 
@@ -99,12 +85,12 @@ pub fn child_env(secrets: &BuildSecrets) -> Vec<(String, String)> {
 pub fn scrub_secrets(text: &str, secrets: &BuildSecrets) -> String {
     let mut out = text.to_string();
     let values = [
-        Some(secrets.wifi_password.as_str()),
-        Some(secrets.token.as_str()),
-        secrets.encryption_key.as_deref(),
-        secrets.client_cert.as_ref().map(|(_, key)| key.as_str()),
+        secrets.wifi_password.as_str(),
+        secrets.token.as_str(),
+        secrets.encryption_key.as_str(),
+        secrets.client_cert.1.as_str(),
     ];
-    for v in values.into_iter().flatten().filter(|v| v.len() >= 4) {
+    for v in values.into_iter().filter(|v| v.len() >= 4) {
         out = out.replace(&b64(v), "***").replace(v, "***");
     }
     out
@@ -140,18 +126,16 @@ mod tests {
             wifi_ssid: "coloc".into(),
             wifi_password: "p@ss w0rd".into(),
             host: "dev1.pnex.io".into(),
-            ws_ssl: true,
             token: "tok-secret".into(),
             device_id: "capteur-jardin".into(),
-            encryption_key: Some("Y2xlLWI2NC1zMk8=".into()),
+            encryption_key: "Y2xlLWI2NC1zMk8=".into(),
             ca_cert_pem: None,
-            ota_pubkey: None,
-            client_cert: None,
+            ota_pubkey: String::new(),
+            client_cert: ("CERT PEM".into(), "KEY PEM".into()),
         }
     }
 
-    /// Les 5 vars device en base64 (round-trip), WS_SSL en true/false,
-    /// clé telle quelle, absente si `None`.
+    /// The 5 device vars in base64 (round trip), the key as is.
     #[test]
     fn env_conforme_au_contrat_firmware() {
         let vars = child_env(&secrets());
@@ -171,7 +155,7 @@ mod tests {
             let decoded = STANDARD.decode(get(name)).expect("b64");
             assert_eq!(String::from_utf8(decoded).expect("utf8"), expected);
         }
-        assert_eq!(get("WS_SSL"), "true");
+        assert!(vars.iter().all(|(n, _)| n != "WS_SSL"));
         assert_eq!(get("ENCRYPTION_KEY"), "Y2xlLWI2NC1zMk8=");
     }
 
@@ -192,20 +176,6 @@ mod tests {
         assert_eq!(String::from_utf8(decoded).expect("utf8"), "Chez Shan");
     }
 
-    /// WS_SSL=false → ws:// (déploiement local sans TLS).
-    #[test]
-    fn ws_ssl_false_pour_local() {
-        let mut s = secrets();
-        s.ws_ssl = false;
-        let vars = child_env(&s);
-        let ssl = vars
-            .iter()
-            .find(|(n, _)| n == "WS_SSL")
-            .map(|(_, v)| v.as_str())
-            .unwrap_or_default();
-        assert_eq!(ssl, "false");
-    }
-
     fn get_var(vars: &[(String, String)], name: &str) -> String {
         vars.iter()
             .find(|(n, _)| n == name)
@@ -213,10 +183,10 @@ mod tests {
             .unwrap_or_default()
     }
 
-    /// The CA travels base64-encoded over TLS, and is always present (empty
-    /// without a CA or over plain ws).
+    /// The CA travels base64-encoded, and is always present (empty without
+    /// a CA).
     #[test]
-    fn ca_cert_is_base64_over_tls_only() {
+    fn ca_cert_is_base64_and_always_set() {
         let pem = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n";
         let mut s = secrets();
         s.ca_cert_pem = Some(pem.into());
@@ -225,22 +195,11 @@ mod tests {
             .expect("b64");
         assert_eq!(String::from_utf8(decoded).expect("utf8"), pem);
 
-        s.ws_ssl = false;
-        assert_eq!(get_var(&child_env(&s), "PNEX_CA_CERT"), "");
-
-        s.ws_ssl = true;
         s.ca_cert_pem = None;
         let vars = child_env(&s);
         assert!(vars
             .iter()
             .any(|(n, v)| n == "PNEX_CA_CERT" && v.is_empty()));
-    }
-
-    #[test]
-    fn cle_absente_si_none() {
-        let mut s = secrets();
-        s.encryption_key = None;
-        assert!(!child_env(&s).iter().any(|(n, _)| n == "ENCRYPTION_KEY"));
     }
 
     #[test]
@@ -253,10 +212,10 @@ mod tests {
         };
         let mut s = secrets();
         assert_eq!(get(&s).as_deref(), Some(""));
-        s.ota_pubkey = Some("ab".repeat(32));
+        s.ota_pubkey = "ab".repeat(32);
         assert_eq!(get(&s), Some("ab".repeat(32)));
         // Anything else never reaches the `-D` flag.
-        s.ota_pubkey = Some("\"; rm -rf /".into());
+        s.ota_pubkey = "\"; rm -rf /".into();
         assert_eq!(get(&s).as_deref(), Some(""));
     }
 }

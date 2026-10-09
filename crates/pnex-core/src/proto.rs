@@ -466,10 +466,8 @@ pub enum ServerMsg {
     /// RPC: an OTA payload is available for this device — download `url`
     /// over HTTP(S), verify `sha256`, write the inactive slot, reboot;
     /// progress flows back via `DeviceMsg::OtaState{cmd_id}`. `url` is a
-    /// **path**: the device prefixes scheme+host from its compiled config
-    /// (HOST/WS_SSL — plain-http LAN is the on-prem reference path).
-    /// `size` is advisory (8266 staging-space guard). Additive: legacy
-    /// firmware answers "unknown message" and does nothing (no breakage).
+    /// **path**: the device prefixes `https://` + its compiled HOST.
+    /// `size` is advisory (8266 staging-space guard).
     OtaAvailable {
         cmd_id: String,
         version: String,
@@ -479,10 +477,9 @@ pub enum ServerMsg {
         size: Option<u64>,
         /// Ed25519 signature (hex, 128 chars) of
         /// [`crate::ota_sig::signed_message`] by the instance OTA key
-        /// (SEC-18). Firmware built with a public key refuses an image
-        /// without a valid one.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        sig: Option<String>,
+        /// (SEC-18). The firmware refuses an image without a valid one; the
+        /// server never sends an unsigned order.
+        sig: String,
     },
     /// RPC: camera capture settings (camera-video.md D76) — pushed after the
     /// announce of a device carrying the `camera` cap, on every settings
@@ -586,7 +583,7 @@ impl<'de> Deserialize<'de> for ServerMsg {
                     url: req_str(&v, "url")?,
                     sha256: req_str(&v, "sha256")?,
                     size: opt_u64(&v, "size")?,
-                    sig: opt_str(&v, "sig"),
+                    sig: req_str(&v, "sig")?,
                 }),
                 "camera_config" => Ok(Self::CameraConfig {
                     cmd_id: req_str(&v, "cmd_id")?,
@@ -703,7 +700,7 @@ mod tests {
     #[test]
     fn roundtrip_ota_variants() {
         let s: ServerMsg = serde_json::from_str(
-            r#"{"t":"ota_available","cmd_id":"c1","version":"42","url":"/api/v1/ota/firmware/d/42.bin","sha256":"ab12","size":450000}"#,
+            r#"{"t":"ota_available","cmd_id":"c1","version":"42","url":"/api/v1/ota/firmware/d/42.bin","sha256":"ab12","size":450000,"sig":"00"}"#,
         )
         .unwrap();
         assert!(

@@ -41,7 +41,7 @@ pub(super) async fn ensure_token(
     }
     device_tokens::ActiveModel {
         token: Set(generate_token()),
-        encryption_key: Set(Some(generate_device_key())),
+        encryption_key: Set(generate_device_key()),
         is_active: Set(true),
         device_registry_id: Set(device.id),
         ..Default::default()

@@ -53,8 +53,6 @@ pub struct BuildFirmwareArgs {
     /// Vault secret of the WiFi password (decrypted by the worker).
     pub wifi_secret_id: uuid::Uuid,
     pub pnex_host: String,
-    /// WebSocket `wss://` (TLS) ou `ws://` (local) — figé à la demande.
-    pub ws_ssl: bool,
 }
 
 pub struct BuildFirmwareWorker {
@@ -149,7 +147,6 @@ async fn set_phase(
     db: &sea_orm::DatabaseConnection,
     id: i64,
     phase: &str,
-    success: bool,
     artifact_key: Option<String>,
 ) -> Result<()> {
     let model = build_records::Entity::find_by_id(id)
@@ -157,8 +154,7 @@ async fn set_phase(
         .await?
         .ok_or_else(|| Error::Message(format!("build record {id} introuvable")))?;
     let mut record: build_records::ActiveModel = model.into();
-    record.build_phase = Set(Some(phase.to_string()));
-    record.success = Set(success);
+    record.build_phase = Set(phase.to_string());
     record.firmware_bin_s3_key = Set(artifact_key);
     record.update(db).await?;
     Ok(())
@@ -175,7 +171,7 @@ impl BackgroundWorker<BuildFirmwareArgs> for BuildFirmwareWorker {
     }
 
     async fn perform(&self, args: BuildFirmwareArgs) -> Result<()> {
-        set_phase(&self.db, args.build_record_id, PHASE_RUNNING, false, None).await?;
+        set_phase(&self.db, args.build_record_id, PHASE_RUNNING, None).await?;
         match self.run(&args).await {
             Ok((artifact, revision_id)) => {
                 tracing::info!(
@@ -187,7 +183,6 @@ impl BackgroundWorker<BuildFirmwareArgs> for BuildFirmwareWorker {
                     &self.db,
                     args.build_record_id,
                     PHASE_SUCCEEDED,
-                    true,
                     Some(artifact.key),
                 )
                 .await?;
@@ -241,7 +236,7 @@ impl BackgroundWorker<BuildFirmwareArgs> for BuildFirmwareWorker {
                     erreur = %failure.log,
                     "build firmware échoué"
                 );
-                set_phase(&self.db, args.build_record_id, PHASE_FAILED, false, None).await?;
+                set_phase(&self.db, args.build_record_id, PHASE_FAILED, None).await?;
                 set_failure(&self.db, args.build_record_id, &failure).await;
             }
         }
@@ -307,7 +302,7 @@ impl BuildFirmwareWorker {
             )
         })?;
         let ca_cert_pem = device_ca_pem();
-        if args.ws_ssl && ca_cert_pem.is_none() && self.settings.require_device_ca {
+        if ca_cert_pem.is_none() && self.settings.require_device_ca {
             return Err(Failure::new(
                 "build_no_ca",
                 "no device CA to pin (PNEX_CA_CERT_FILE): wss build refused",
@@ -337,13 +332,12 @@ impl BuildFirmwareWorker {
             wifi_ssid: args.wifi_ssid.clone(),
             wifi_password,
             host: crate::services::firmware::device_endpoint_env(&args.pnex_host),
-            ws_ssl: args.ws_ssl,
             token,
             device_id: args.device_id.clone(),
             encryption_key,
             ca_cert_pem,
-            ota_pubkey: Some(crate::services::ota_signing::public_key_hex(&ota_key)),
-            client_cert: Some((client.cert_pem.clone(), client.key_pem.clone())),
+            ota_pubkey: crate::services::ota_signing::public_key_hex(&ota_key),
+            client_cert: (client.cert_pem.clone(), client.key_pem.clone()),
         };
         let mut device = DeviceSpec {
             org_id: args.org_id,
@@ -479,7 +473,6 @@ mod tests {
             wifi_ssid: "ssid".into(),
             wifi_secret_id: uuid::Uuid::from_u128(3),
             pnex_host: "h".into(),
-            ws_ssl: true,
         };
         let json = serde_json::to_value(&args).unwrap();
         assert!(json.get("wifi_password").is_none(), "{json}");

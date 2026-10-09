@@ -78,10 +78,7 @@ pub async fn prune_device_builds(
         .collect();
     let mut doomed = Vec::new();
     for record in older {
-        let in_flight = matches!(
-            record.build_phase.as_deref(),
-            Some(PHASE_QUEUED) | Some(PHASE_RUNNING)
-        );
+        let in_flight = matches!(record.build_phase.as_str(), PHASE_QUEUED | PHASE_RUNNING);
         let is_protected = record
             .fw_version
             .as_ref()

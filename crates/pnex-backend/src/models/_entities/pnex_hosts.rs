@@ -15,11 +15,9 @@ pub struct Model {
     /// Org propriétaire (référentiel org-scoped, FK CASCADE).
     pub org_id: i64,
     #[sea_orm(unique_key = "uniq_pnex_hosts_org_host")]
-    /// Hôte NU sans schéma (`192.168.1.16:5150`, `dev1.pnex.io`) —
-    /// le schéma websocket (`ws://` vs `wss://`) suit `ws_ssl`.
+    /// Bare host without scheme (`192.168.1.16`, `dev1.pnex.io`): devices
+    /// always connect over wss (D154).
     pub host: String,
-    /// Vrai = `wss://` (TLS), faux = `ws://` (LAN local).
-    pub ws_ssl: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -126,18 +126,11 @@ pub struct AgentEnrollResponse {
     pub ca_pem: Option<String>,
     /// TLS client certificate + PKCS#8 key (PEM) issued by the org CA
     /// (D153). Every enrollment revokes the previous ones.
-    #[serde(default)]
-    pub client_cert_pem: Option<String>,
-    #[serde(default)]
-    pub client_key_pem: Option<String>,
-    /// Port of the device endpoint (D158) on the server's host; `None` =
-    /// the server URL's own port.
-    #[serde(default)]
-    pub device_port: Option<u16>,
-    /// Own host name of the device endpoint (`host[:port]`), when the
-    /// deployment has one (cloud: `devices.<host>`); wins over `device_port`.
-    #[serde(default)]
-    pub device_host: Option<String>,
+    pub client_cert_pem: String,
+    pub client_key_pem: String,
+    /// Device endpoint (`host[:port]`, D158) the agent connects to over
+    /// wss.
+    pub device_host: String,
 }
 
 #[cfg(test)]

@@ -136,7 +136,6 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                 let outcome = api::devices::create(pnex_core::CreateDevice {
                     device_id: id,
                     predefined_device_name: model.name.clone(),
-                    metadata: None,
                     board_id: None,
                     firmware_project_id: None,
                 })
@@ -198,7 +197,6 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
             let outcome = api::devices::create(pnex_core::CreateDevice {
                 device_id: id.clone(),
                 predefined_device_name: model.name.clone(),
-                metadata: None,
                 board_id: variant_board_id(),
                 firmware_project_id: firmware_pick(),
             })
@@ -241,16 +239,9 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                 step.set(Step::BuildProgress);
                                 let params = pnex_core::CreateBuild {
                                     device_id: id,
-                                    predefined_device_name: model.name.clone(),
-                                    // Résolu depuis les entrées du référentiel
-                                    // (voir le match en tête de submit).
-                                    wifi_ssid: creds.ssid,
                                     // The build references the entry's vault secret (secrets.md S6).
-                                    wifi_credential_id: Some(creds.id),
-                                    wifi_password: String::new(),
+                                    wifi_credential_id: creds.id,
                                     pnex_host: srv.host,
-                                    // Always wss (D70).
-                                    ws_ssl: true,
                                 };
                                 if let Err(err) = api::builds::create(params).await {
                                     build_launch_error.set(Some(err.message));
@@ -270,7 +261,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
         let in_flight = match build_record() {
             None => true,
             Some(record) => !matches!(
-                record.build_phase.as_deref(),
+                Some(record.build_phase.as_str()),
                 Some("succeeded") | Some("failed")
             ),
         };
@@ -283,7 +274,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                 // Un record par (org, device_id) : limit=1 = build courant.
                 let filters = api::builds::BuildFilters {
                     device_id: Some(polled_id),
-                    success: None,
+                    build_phase: None,
                     limit: Some(1),
                     offset: None,
                 };
@@ -622,12 +613,12 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                     Some(record) => rsx! {
                                         div { class: "space-y-2",
                                             div { class: "flex items-center justify-between",
-                                                span { class: phase_badge(record.build_phase.as_deref()).0,
-                                                    {phase_badge(record.build_phase.as_deref()).1}
+                                                span { class: phase_badge(Some(record.build_phase.as_str())).0,
+                                                    {phase_badge(Some(record.build_phase.as_str())).1}
                                                 }
                                                 span { class: "text-xs text-gray-400", {date_label(&record.updated_at)} }
                                             }
-                                            if record.success {
+                                            if record.succeeded() {
                                                 div { class: "space-y-2",
                                                     // Flash direct en Web Serial (Chromium —
                                                     // le modal avertit sinon). Le binaire reste
@@ -645,7 +636,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                                         p { class: "text-sm text-gray-600", {t!("wizard-flash-from-computer")} }
                                                     }
                                                 }
-                                            } else if record.build_phase.as_deref() == Some("failed") {
+                                            } else if Some(record.build_phase.as_str()) == Some("failed") {
                                                 div { class: "space-y-2",
                                                     crate::components::build_failure::BuildFailureNote {
                                                         code: record.failure_code.clone(),

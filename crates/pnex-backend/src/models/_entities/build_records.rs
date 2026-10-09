@@ -11,8 +11,7 @@ pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
     pub device_id: Option<String>,
-    pub success: bool,
-    pub build_phase: Option<String>,
+    pub build_phase: String,
     pub firmware_bin_s3_key: Option<String>,
     pub org_id: i64,
     #[sea_orm(column_type = "Text", nullable)]

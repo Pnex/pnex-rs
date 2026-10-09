@@ -1,7 +1,8 @@
--- PNeX baseline schema, PostgreSQL (first release, 2026-10-01).
--- Generated from the 50 pre-release migrations, then cleaned: legacy
--- plaintext/AI-connector leftovers removed. Every later change goes in a
--- new additive migration (docs/architecture/migrations.md).
+-- PNeX baseline schema, PostgreSQL (0.1.0, cut 2026-10-09).
+-- Generated from the pre-release migrations, then cleaned: legacy
+-- plaintext/AI-connector leftovers removed, compatibility columns dropped
+-- (device metadata, host ws_ssl, build success flag). Every later change
+-- goes in a new migration (docs/architecture/migrations.md).
 
 -- ===== Enum types =====
 
@@ -112,15 +113,16 @@ CREATE TABLE build_records (
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     id bigint NOT NULL,
     device_id character varying(255),
-    success boolean DEFAULT false NOT NULL,
-    build_phase character varying(255),
+    build_phase character varying(255) DEFAULT 'queued' NOT NULL,
     firmware_bin_s3_key character varying(255),
     org_id bigint NOT NULL,
     fw_version text,
     ota_sha256 text,
     ota_size_bytes bigint,
     sources_fingerprint text,
-    firmware_revision_id bigint
+    firmware_revision_id bigint,
+    failure_code text,
+    failure_detail text
 );
 
 CREATE TABLE dashboard_versions (
@@ -210,7 +212,6 @@ CREATE TABLE device_registries (
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     id bigint NOT NULL,
     device_id character varying(255) NOT NULL,
-    metadata jsonb,
     active boolean DEFAULT false NOT NULL,
     allow_dynamic_measurements boolean DEFAULT true NOT NULL,
     discovered_measurements jsonb,
@@ -239,7 +240,7 @@ CREATE TABLE device_tokens (
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     id bigint NOT NULL,
     token character varying NOT NULL,
-    encryption_key character varying(64),
+    encryption_key character varying(64) NOT NULL,
     is_active boolean DEFAULT true NOT NULL,
     device_registry_id bigint NOT NULL
 );
@@ -571,7 +572,8 @@ CREATE TABLE organizations (
     id bigint NOT NULL,
     name character varying(255) NOT NULL,
     subscription_tier_id bigint,
-    data_retention_days integer
+    data_retention_days integer,
+    ai_retention_days integer
 );
 
 CREATE TABLE ota_assignments (
@@ -595,8 +597,7 @@ CREATE TABLE pnex_hosts (
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     id bigint NOT NULL,
     org_id bigint NOT NULL,
-    host character varying(255) NOT NULL,
-    ws_ssl boolean DEFAULT false NOT NULL
+    host character varying(255) NOT NULL
 );
 
 CREATE TABLE predefined_device_capabilities (
@@ -1831,3 +1832,86 @@ ALTER TABLE ONLY wifi_credentials
 
 ALTER TABLE ONLY device_registries
     ADD CONSTRAINT fk_device_registries_board_id FOREIGN KEY (board_id) REFERENCES mcu_boards(id) ON DELETE SET NULL;
+
+-- ===== Controls, assistant conversations, device PKI =====
+
+CREATE TABLE controls (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    org_id bigint NOT NULL,
+    key character varying(64) NOT NULL,
+    label character varying(255) NOT NULL,
+    kind character varying(16) NOT NULL,
+    spec jsonb NOT NULL,
+    created_by bigint,
+    origin character varying(255),
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT controls_pkey PRIMARY KEY (id),
+    CONSTRAINT "fk-controls-org_id-to-organizations" FOREIGN KEY (org_id)
+        REFERENCES organizations(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX uniq_controls_org_key ON controls USING btree (org_id, key);
+CREATE UNIQUE INDEX uniq_controls_org_origin ON controls USING btree (org_id, origin);
+
+CREATE TABLE ai_conversations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    org_id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    title character varying(200) NOT NULL,
+    busy_until timestamp with time zone,
+    last_message_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT ai_conversations_pkey PRIMARY KEY (id),
+    CONSTRAINT "fk-ai_conversations-org_id" FOREIGN KEY (org_id)
+        REFERENCES organizations(id) ON DELETE CASCADE,
+    CONSTRAINT "fk-ai_conversations-user_id" FOREIGN KEY (user_id)
+        REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_ai_conversations_user_org_last ON ai_conversations USING btree (user_id, org_id, last_message_at DESC);
+CREATE INDEX idx_ai_conversations_last_message_at ON ai_conversations USING btree (last_message_at);
+
+CREATE TABLE ai_messages (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    conversation_id uuid NOT NULL,
+    seq integer NOT NULL,
+    role character varying(16) NOT NULL,
+    content text NOT NULL,
+    tool_trace jsonb,
+    page character varying(255),
+    tokens_in integer,
+    tokens_out integer,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT ai_messages_pkey PRIMARY KEY (id),
+    CONSTRAINT "fk-ai_messages-conversation_id" FOREIGN KEY (conversation_id)
+        REFERENCES ai_conversations(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX uniq_ai_messages_conversation_seq ON ai_messages USING btree (conversation_id, seq);
+
+CREATE TABLE org_device_cas (
+    org_id bigint NOT NULL,
+    cert_pem text NOT NULL,
+    key_secret_id uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT org_device_cas_pkey PRIMARY KEY (org_id),
+    CONSTRAINT "fk-org_device_cas-org_id" FOREIGN KEY (org_id)
+        REFERENCES organizations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE device_certificates (
+    id bigint GENERATED BY DEFAULT AS IDENTITY NOT NULL,
+    org_id bigint NOT NULL,
+    device_registry_id bigint NOT NULL,
+    serial character varying(64) NOT NULL,
+    fingerprint_sha256 character varying(64) NOT NULL,
+    not_after timestamp with time zone NOT NULL,
+    revoked_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT device_certificates_pkey PRIMARY KEY (id),
+    CONSTRAINT "fk-device_certificates-org_id" FOREIGN KEY (org_id)
+        REFERENCES organizations(id) ON DELETE CASCADE,
+    CONSTRAINT "fk-device_certificates-device_registry_id" FOREIGN KEY (device_registry_id)
+        REFERENCES device_registries(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX uniq_device_certificates_fingerprint ON device_certificates USING btree (fingerprint_sha256);
+CREATE INDEX idx_device_certificates_device ON device_certificates USING btree (device_registry_id);

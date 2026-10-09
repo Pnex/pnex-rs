@@ -15,7 +15,7 @@
 
 #include <time.h>
 
-// Optional CA, base64 PEM (empty default = setInsecure posture).
+// CA, base64 PEM (empty = no trust anchor: every handshake refused).
 #ifndef PNEX_CA_CERT
 #define PNEX_CA_CERT ""
 #endif
@@ -138,11 +138,13 @@ void pnex_tls_apply(WiFiClientSecure& client) {
         Serial.println("[TLS] no usable CA — connection refused (rebuild the firmware)");
         return;
     }
-    apply_client_identity(client);
     if (!pnex_tls_pinned() || s_ca_pem[0] == '\0') {
-        client.setInsecure();
+        // No setInsecure (D154): without a CA the handshake cannot verify
+        // the server, so it is refused.
+        Serial.println("[TLS] no CA compiled in — connection refused (rebuild the firmware)");
         return;
     }
+    apply_client_identity(client);
 #if defined(ESP32)
     client.setCACert(s_ca_pem);
 #else

@@ -7,7 +7,7 @@
 //! vs notify : le POST est un **upsert** (200/201, jamais 409) — le (org,
 //! ssid) / (org, host) est la clé naturelle et l'ajout inline depuis le
 //! wizard ne doit jamais confler : re-sauver = mettre à jour le mot de
-//! passe / le flag ws_ssl.
+//! passe (a host is returned as is).
 //!
 //! The WiFi password lives in the secrets vault (secrets.md S6): only its
 //! reference is returned, never the value.
@@ -141,16 +141,12 @@ async fn wifi_view(
     ))
 }
 
-/// Password part of an input: a pick, a typed value (`wifi_password` is
-/// the legacy typed form), or `None` = unchanged.
+/// Password part of an input: a pick, a typed value, or `None` =
+/// unchanged.
 fn password_input(input: &WifiCredentialInput) -> Option<SecretFieldInput> {
     match &input.password {
         Some(SecretFieldInput::Value { value }) if value.is_empty() => None,
-        Some(p) => Some(p.clone()),
-        None if !input.wifi_password.is_empty() => Some(SecretFieldInput::Value {
-            value: input.wifi_password.clone(),
-        }),
-        None => None,
+        other => other.clone(),
     }
 }
 
@@ -171,7 +167,7 @@ fn validate_ssid(input: &WifiCredentialInput) -> Option<Response> {
 
 /// Réseaux ouverts hors scope v1 : a saved entry always has a password.
 fn password_required() -> Response {
-    field_status("wifi_password", err_codes::FIELD_REQUIRED)
+    field_status("password", err_codes::FIELD_REQUIRED)
 }
 
 fn vault_error(e: crate::services::secrets::store::StoreError) -> Result<Response> {
@@ -425,15 +421,14 @@ async fn delete_wifi(
 
 // ─────────────────────────────── Hosts ───────────────────────────────
 
-// Devices always connect over TLS through the edge (D70): `ws_ssl` is
-// forced to true on every write, whatever the client sends.
+// Devices always connect over wss through the edge (D154): a host has no
+// scheme flag.
 
 fn host_dto(m: &pnex_hosts::Model) -> PnexHost {
     PnexHost {
         id: m.id,
         org_id: m.org_id,
         host: m.host.clone(),
-        ws_ssl: m.ws_ssl,
         created_at: m.created_at.to_rfc3339(),
         updated_at: m.updated_at.to_rfc3339(),
     }
@@ -451,7 +446,7 @@ fn validate_host(input: &PnexHostInput) -> Option<Response> {
         ));
     }
     // Le contrat `CreateBuild.pnex_host` est un hôte nu : pas d'espace
-    // (école builds.rs) ni de schéma (`ws://` est porté par ws_ssl).
+    // (école builds.rs) ni de schéma (always wss).
     if host.contains(char::is_whitespace) {
         return Some(field_status("host", "Aucun espace autorisé."));
     }
@@ -498,8 +493,8 @@ async fn locked_host(_org: OrgContext) -> Result<Response> {
     })
 }
 
-/// `POST /api/v1/edge/hosts` — **upsert** sur (org, host) : existe → 200
-/// (ws_ssl mis à jour), absent → 201.
+/// `POST /api/v1/edge/hosts` — **upsert** on (org, host): exists → 200
+/// (unchanged), absent → 201.
 async fn create_host(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -525,18 +520,11 @@ async fn create_host(
         .await
         .map_err(|_| Error::InternalServerError)?;
     if let Some(m) = existing {
-        let mut am: pnex_hosts::ActiveModel = m.into();
-        am.ws_ssl = Set(true);
-        let saved = am
-            .update(&ctx.db)
-            .await
-            .map_err(|_| Error::InternalServerError)?;
-        return Ok((StatusCode::OK, format::json(host_dto(&saved))).into_response());
+        return Ok((StatusCode::OK, format::json(host_dto(&m))).into_response());
     }
     let am = pnex_hosts::ActiveModel {
         org_id: Set(org.org.id),
         host: Set(host.to_string()),
-        ws_ssl: Set(true),
         ..Default::default()
     };
     match am.insert(&ctx.db).await {
@@ -550,20 +538,14 @@ async fn create_host(
                 .await
                 .map_err(|_| Error::InternalServerError)?
                 .ok_or(Error::InternalServerError)?;
-            let mut am: pnex_hosts::ActiveModel = m.into();
-            am.ws_ssl = Set(true);
-            let saved = am
-                .update(&ctx.db)
-                .await
-                .map_err(|_| Error::InternalServerError)?;
-            Ok((StatusCode::OK, format::json(host_dto(&saved))).into_response())
+            Ok((StatusCode::OK, format::json(host_dto(&m))).into_response())
         }
         Err(_) => Err(Error::InternalServerError),
     }
 }
 
 /// `PUT /api/v1/edge/hosts/{id}` — mise à jour in-place (id conservé) :
-/// renommage d'hôte et/ou flag ws_ssl. Conflit (org, host) avec une AUTRE
+/// renommage d'hôte. Conflit (org, host) avec une AUTRE
 /// entrée → 409.
 async fn update_host(
     State(ctx): State<AppContext>,
@@ -608,7 +590,6 @@ async fn update_host(
     }
     let mut am: pnex_hosts::ActiveModel = m.into();
     am.host = Set(host.to_string());
-    am.ws_ssl = Set(true);
     am.updated_at = Set(chrono::Utc::now().fixed_offset());
     let saved = am
         .update(&ctx.db)

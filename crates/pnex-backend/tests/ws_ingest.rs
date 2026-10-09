@@ -17,11 +17,6 @@ use std::sync::{Arc, Mutex};
 
 // ─────────────────── Client miroir (rôle firmware) ───────────────────
 
-/// Paramètre query tel que le firmware l'envoie (base64 du texte).
-fn b64_param(raw: &str) -> String {
-    STANDARD.encode(raw)
-}
-
 fn key_bytes(b64: &str) -> [u8; 32] {
     STANDARD
         .decode(b64)
@@ -140,11 +135,7 @@ async fn connect_raw(
 ) -> common::DevWs {
     common::DevWs::connect(
         server,
-        &format!(
-            "/ws/sensor/ingest?token={}&device_id={}",
-            b64_param(token),
-            b64_param(device_id),
-        ),
+        &format!("/ws/sensor/ingest?token={}", token,),
         key,
         device_id.trim(),
     )
@@ -286,11 +277,8 @@ async fn noise_handshake_failures_close_4011() {
         assert_eq!(close_code(ws.receive_message().await), Some(4011));
 
         let mut old = server
-            .get_websocket(&format!(
-                "/ws/sensor/ingest?device_id={}",
-                b64_param(&dev.device_id),
-            ))
-            .add_header("Authorization", format!("Bearer {}", b64_param(&dev.token)))
+            .get_websocket("/ws/sensor/ingest")
+            .add_header("Authorization", format!("Bearer {}", dev.token))
             .await
             .into_websocket()
             .await;
@@ -301,16 +289,15 @@ async fn noise_handshake_failures_close_4011() {
     .await;
 }
 
-/// Close codes d'auth : 4002 sans token, 4001 token inconnu, 4006 mismatch,
-/// 4008 sans clé. Paramètre `\n` trailing (encodage firmware) trimé.
+/// Auth close codes: 4002 without a token, 4001 for an unknown token. The
+/// device is the token's own: no claimed id to mismatch.
 #[tokio::test]
 #[serial]
 async fn close_codes_authentification() {
-    with_app(|server, auth, ctx| async move {
+    with_app(|server, auth, _ctx| async move {
         let dev = create_device(&server, &auth, "dev-a", "soil_sensor").await;
-        let other = create_device(&server, &auth, "dev-b", "soil_sensor").await;
 
-        // 4002 : pas de token.
+        // 4002: no token.
         let mut ws = server
             .get_websocket("/ws/sensor/ingest")
             .await
@@ -318,41 +305,9 @@ async fn close_codes_authentification() {
             .await;
         assert_eq!(close_code(ws.receive_message().await), Some(4002));
 
-        // 4001 : token inconnu.
+        // 4001: unknown token.
         let mut ws = connect_raw(&server, "inconnu", "dev-a", &dev.key).await;
         assert_eq!(close_code(ws.receive_message().await), Some(4001));
-
-        // 4006 : token de dev-a, device_id de dev-b.
-        let mut ws = connect_raw(&server, &dev.token, &other.device_id, &dev.key).await;
-        assert_eq!(close_code(ws.receive_message().await), Some(4006));
-
-        // 4008 : clé absente.
-        use pnex_backend::models::_entities::device_tokens;
-        use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
-        let mut row: device_tokens::ActiveModel = device_tokens::Entity::find()
-            .filter(device_tokens::Column::DeviceRegistryId.eq(other.id))
-            .one(&ctx.db)
-            .await
-            .expect("tok")
-            .expect("tok")
-            .into();
-        row.encryption_key = Set(None);
-        row.update(&ctx.db).await.expect("key null");
-        let mut ws = connect_raw(&server, &other.token, &other.device_id, &other.key).await;
-        assert_eq!(close_code(ws.receive_message().await), Some(4008));
-
-        // Trim `\n` : le firmware encode `echo | base64` (newline final)
-        // — le serveur trime après décodage.
-        let mut ws = connect_raw(
-            &server,
-            &format!("{}\n", dev.token),
-            &dev.device_id,
-            &dev.key,
-        )
-        .await;
-        ws.send_plain("PING").await;
-        assert_eq!(ws.recv_plain().await, "PONG");
-        ws.close().await;
     })
     .await;
 }

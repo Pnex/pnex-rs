@@ -63,24 +63,21 @@ struct PnexTransportInit {
     PnexOnClosedFn on_closed;
 };
 
-/// Décodage de la config compilée (base64 WIFI_SSID/WIFI_PASSWORD/HOST/
-/// DEVICE_ID, TOKEN/DEVICE_ID gardés en b64 pour l'URL — contrat
-/// `decode_param`), loading of the Noise pre-shared key (ENCRYPTION_KEY), build de
-/// l'URL (ws/wss selon WS_SSL), setInsecure si TLS, enregistrement des
-/// callbacks. À appeler une fois au setup().
+/// Decodes the compiled config (base64 WIFI_SSID/WIFI_PASSWORD/HOST/
+/// TOKEN/DEVICE_ID), loads the Noise pre-shared key (ENCRYPTION_KEY), the
+/// CA pin and the TLS client identity, builds the wss URL and registers
+/// the callbacks. Call once from setup().
 void pnex_transport_setup(const PnexTransportInit& init);
 
 // Config décodée (les mains n'incluent plus config.h — cf. règle supra).
 const char* pnex_host();
 const char* pnex_device_id();
 const char* pnex_conn_string();  // Connection URL for logs, token masked (SEC-W7)
-bool pnex_use_tls();             // WS_SSL actif
 bool pnex_crypto_ready();        // valid Noise pre-shared key loaded
 
-// Raw base64 credentials (OTA download URL — same wire posture as the WS
-// query auth; decoded by the server exactly like /ws/device params).
-const char* pnex_token_b64();
-const char* pnex_device_id_b64();
+// Device token (decoded), sent as `Authorization: Bearer` by every
+// device client (WS, camera, OTA download — D154).
+const char* pnex_token();
 
 // Ed25519 public key (hex) that OTA images must be signed with (SEC-18);
 // empty when the firmware was built without one.

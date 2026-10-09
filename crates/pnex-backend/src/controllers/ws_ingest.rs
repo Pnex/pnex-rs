@@ -1,10 +1,9 @@
 //! Ingestion télémétrie — WS `/ws/sensor/ingest`.
 //!
 //! Protocol (soil_sensor firmware):
-//! - auth: `Authorization: Bearer <b64(token)>` + `?device_id=<b64(device_id)>`
-//!   (D154: the token is never in the URL), TLS edge required (4013)
-//!   (both decoded and trimmed server-side — firmware values encoded with
-//!   `echo | base64` carry a trailing `\n`);
+//! - auth (`authenticate_device`): `Authorization: Bearer <token>` (D154:
+//!   never in the URL; the device is the token's own), TLS edge required
+//!   (4013), client certificate of that device (4014);
 //! - then a Noise NNpsk0 handshake (D156, `FrameCodec::accept`): the
 //!   device's first text frame is the base64 first Noise message, the
 //!   server answers the second; every later frame, both ways, is a base64
@@ -13,8 +12,8 @@
 //!   frame, no JSON, no device timestamp) → `ok`; encrypted errors
 //!   `error:*` / `ERROR:decryption_failed`;
 //! - close codes: 4001 auth failed, 4002 no token, 4003 already connected,
-//!   4005 token revoked during the session, 4006 token/device mismatch,
-//!   4008 no key, 4011 handshake failed.
+//!   4005 token revoked during the session, 4011 handshake failed, 4013
+//!   TLS required, 4014 client certificate refused.
 //!
 //! Deliberate hardenings over the legacy implementation:
 //! - **anti-clone double étage** : map des sessions ouvertes en-process
@@ -34,13 +33,12 @@ use std::time::{Duration, Instant};
 use tokio::sync::{oneshot, OwnedSemaphorePermit, Semaphore};
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::response::{IntoResponse, Response};
-use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
+use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use loco_rs::prelude::*;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
-use serde::Deserialize;
 
 use crate::models::_entities::{device_registries, device_tokens, predefined_devices};
 use crate::services::device_liveness;
@@ -209,8 +207,7 @@ pub(crate) struct Snapshot {
 
 impl Snapshot {
     /// Charge le device d'un token actif + son contexte de validation.
-    /// `Ok(None)` = token inconnu/inactif (→ 4001) ; le mismatch device_id
-    /// est départagé par l'appelant (→ 4006) sur la ligne registre.
+    /// `Ok(None)` = unknown or inactive token (→ 4001).
     pub(crate) async fn load(
         db: &DatabaseConnection,
         token: &str,
@@ -266,11 +263,6 @@ impl Snapshot {
 }
 
 // ─────────────────────────── Handler ───────────────────────────
-
-#[derive(Debug, Deserialize)]
-pub struct IngestQuery {
-    device_id: Option<String>,
-}
 
 pub fn routes() -> Routes {
     Routes::new()
@@ -384,20 +376,68 @@ pub async fn client_cert_matches(
 /// Close code of a device link refused because it did not arrive over TLS.
 pub(crate) const CLOSE_TLS_REQUIRED: u16 = 4013;
 
-/// Décode un paramètre query base64 → texte (trim : les valeurs encodées
-/// côté firmware avec `echo | base64` portent un `\n`).
-pub(crate) fn decode_param(raw: &str) -> Option<String> {
-    let trimmed = raw.trim();
-    let bytes = STANDARD
-        .decode(trimmed)
-        .or_else(|_| URL_SAFE_NO_PAD.decode(trimmed))
-        .ok()?;
-    String::from_utf8(bytes).ok().map(|s| s.trim().to_string())
+/// Refused device admission: websocket close code + reason.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Refusal {
+    pub code: u16,
+    pub reason: &'static str,
+}
+
+const AUTH_FAILED: Refusal = Refusal {
+    code: 4001,
+    reason: "Authentication failed",
+};
+
+/// Authenticated device link (D153/D154): the token, its device and the
+/// Noise pre-shared key.
+pub(crate) struct DeviceAuth {
+    pub token: String,
+    pub device: device_registries::Model,
+    pub key: [u8; 32],
+}
+
+/// Authenticates a device link, the same way on every device route: the
+/// raw token in `Authorization: Bearer` (the device is the token's own, no
+/// claimed id to cross-check), the TLS client certificate of that device,
+/// and its Noise key. Close codes: 4002 no token, 4001 unknown or inactive
+/// token, 4014 client certificate refused.
+pub(crate) async fn authenticate_device(
+    db: &DatabaseConnection,
+    headers: &axum::http::HeaderMap,
+    settings: &IngestSettings,
+) -> std::result::Result<DeviceAuth, Refusal> {
+    let Some(token) = device_token(headers) else {
+        return Err(Refusal {
+            code: 4002,
+            reason: "No token provided",
+        });
+    };
+    let Ok(Some((token_row, device))) = Snapshot::load(db, token).await else {
+        return Err(AUTH_FAILED);
+    };
+    if !matches!(
+        client_cert_matches(db, headers, settings, device.id).await,
+        Ok(true)
+    ) {
+        return Err(Refusal {
+            code: CLOSE_CLIENT_CERT,
+            reason: "Client certificate required",
+        });
+    }
+    let key = STANDARD
+        .decode(token_row.encryption_key.trim())
+        .ok()
+        .and_then(|k| <[u8; 32]>::try_from(k).ok())
+        .ok_or(AUTH_FAILED)?;
+    Ok(DeviceAuth {
+        token: token.to_string(),
+        device,
+        key,
+    })
 }
 
 async fn ws_ingest(
     State(ctx): State<AppContext>,
-    Query(q): Query<IngestQuery>,
     headers: axum::http::HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
@@ -410,46 +450,15 @@ async fn ws_ingest(
         return reject(ws, 1013, "Try again later");
     };
 
-    // Auth (historic order: 4002 without token, 4001 decode/lookup,
-    // 4006 mismatch, 4008 without key, 4003 already connected).
-    let Some(raw_token) = device_token(&headers) else {
-        return reject(ws, 4002, "No token provided");
-    };
-    let token = match decode_param(raw_token) {
-        Some(t) if !t.is_empty() => t,
-        _ => return reject(ws, 4001, "Authentication failed"),
-    };
-    // Legacy behavior: missing device_id → str != None comparison → 4006 mismatch.
-    let device_id = match q.device_id.as_deref().map(decode_param) {
-        Some(Some(d)) if !d.is_empty() => d,
-        _ => return reject(ws, 4006, "Token device mismatch"),
-    };
-
-    let (tok, device) = match Snapshot::load(&ctx.db, &token).await {
-        Ok(Some(found)) => found,
-        _ => return reject(ws, 4001, "Authentication failed"),
-    };
-    if device.device_id != device_id {
-        return reject(ws, 4006, "Token device mismatch");
-    }
-    // D153 (L4): the TLS client certificate must be this device's.
-    if !matches!(
-        client_cert_matches(&ctx.db, &headers, &settings, device.id).await,
-        Ok(true)
-    ) {
-        return reject(ws, CLOSE_CLIENT_CERT, "Client certificate required");
-    }
+    let DeviceAuth { token, device, key } =
+        match authenticate_device(&ctx.db, &headers, &settings).await {
+            Ok(auth) => auth,
+            Err(refusal) => return reject(ws, refusal.code, refusal.reason),
+        };
+    let device_id = device.device_id.clone();
     let snap = match Snapshot::from_device(&ctx.db, device).await {
         Ok(s) => s,
         Err(_) => return reject(ws, 4001, "Authentication failed"),
-    };
-    let Some(key) = tok
-        .encryption_key
-        .as_deref()
-        .and_then(|k| STANDARD.decode(k.trim()).ok())
-        .and_then(|k| <[u8; 32]>::try_from(k).ok())
-    else {
-        return reject(ws, 4008, "No encryption key");
     };
 
     drop(permit);

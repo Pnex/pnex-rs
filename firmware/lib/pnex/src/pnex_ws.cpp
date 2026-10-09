@@ -496,14 +496,17 @@ void PnexWsClient::poll() {
 // ───────────────────────── URL helper ─────────────────────────
 
 bool pnex_ws_open(PnexWsClient& client, const char* url) {
-    // "ws[s]://host[:port]/path?query" — default port 80 / 443.
-    const bool tls = strncmp(url, "wss://", 6) == 0;
-    const char* rest = url + (tls ? 6 : (strncmp(url, "ws://", 5) == 0 ? 5 : 0));
+    // "wss://host[:port]/path" — default port 443. wss only (D154).
+    if (strncmp(url, "wss://", 6) != 0) {
+        Serial.println("[WS] refused: not a wss:// URL");
+        return false;
+    }
+    const char* rest = url + 6;
     const char* slash = strchr(rest, '/');
     const size_t hostport_len = slash ? (size_t)(slash - rest) : strlen(rest);
     char host[96];
     snprintf(host, sizeof(host), "%.*s", (int)hostport_len, rest);
-    int port = tls ? 443 : 80;
+    int port = 443;
     char* colon = strrchr(host, ':');
     if (colon) {
         *colon = '\0';
@@ -511,20 +514,14 @@ bool pnex_ws_open(PnexWsClient& client, const char* url) {
     }
     const char* path = slash ? slash : "/";
 
-    Client* tcp;
-    if (tls) {
-        // Shared trust posture: CA when pinned, insecure otherwise (on the
-        // ESP8266 a pin also brings the lean MFLN buffers, as for OTA).
-        auto* secured = new WiFiClientSecure();
-        pnex_tls_apply(*secured);
-        tcp = secured;
-    } else {
-        tcp = new WiFiClient();
-    }
-    const bool ok = client.connect(tcp, host, (uint16_t)port, path);
+    // Shared trust posture: CA pin + client identity (on the ESP8266 the
+    // pin also brings the lean MFLN buffers, as for OTA).
+    auto* secured = new WiFiClientSecure();
+    pnex_tls_apply(*secured);
+    const bool ok = client.connect(secured, host, (uint16_t)port, path);
 #if !defined(ESP32)
-    if (!ok && tls) {
-        pnex_tls_log_error(*static_cast<WiFiClientSecure*>(tcp));
+    if (!ok) {
+        pnex_tls_log_error(*secured);
     }
 #endif
     return ok;

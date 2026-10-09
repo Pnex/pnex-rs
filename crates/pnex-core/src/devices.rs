@@ -117,8 +117,7 @@ pub struct PredefinedDevice {
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceTokenInfo {
     pub token: String,
-    #[serde(default)]
-    pub encryption_key: Option<String>,
+    pub encryption_key: String,
     pub is_active: bool,
     /// RFC 3339.
     #[serde(default)]
@@ -129,10 +128,8 @@ pub struct DeviceTokenInfo {
 /// (upsert au rebuild), hydraté dans le DTO pour l'UI (colonne Firmware).
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct LatestBuild {
-    pub success: bool,
     /// « queued » | « running » | « succeeded » | « failed ».
-    #[serde(default)]
-    pub build_phase: Option<String>,
+    pub build_phase: String,
     /// Version stampée du build (id record) — absente des records pré-OTA.
     #[serde(default)]
     pub fw_version: Option<String>,
@@ -181,8 +178,6 @@ pub struct Device {
     pub org_id: i64,
     /// Identifiant déclaré par le firmware (MAC, hostname…).
     pub device_id: String,
-    #[serde(default)]
-    pub metadata: Option<serde_json::Value>,
     pub predefined_device_name: String,
     /// Nom du type (sensor / actuator / mixed).
     pub device_type: String,
@@ -233,8 +228,6 @@ pub struct Device {
 pub struct CreateDevice {
     pub device_id: String,
     pub predefined_device_name: String,
-    #[serde(default)]
-    pub metadata: Option<serde_json::Value>,
     /// Board variante figée à l'enregistrement (`mcu_boards.id`) — absent =
     /// board par défaut du modèle. Validé : existence + soc compatible avec
     /// le board par défaut du modèle.
@@ -260,15 +253,6 @@ pub struct UpdateDevicePeripherals {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateDeviceBoard {
     pub board_id: i64,
-}
-
-/// Body of `PUT/PATCH /api/v1/devices/{id}` — **metadata only**
-/// (legacy contract: any other field → 400 "Only metadata updates are
-/// allowed.", enforced by the controller since the payload is rejected upstream).
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct UpdateDevice {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<serde_json::Value>,
 }
 
 #[cfg(test)]
@@ -298,7 +282,6 @@ mod tests {
             "id": 42,
             "org_id": 7,
             "device_id": "4-chan-dev-shan",
-            "metadata": { "location": "serre" },
             "predefined_device_name": "relay_1ch",
             "device_type": "actuator",
             "capabilities": [{ "id": 1, "name": "relay", "mode": "output" }],
@@ -312,7 +295,6 @@ mod tests {
                 "created": "2026-08-16T10:00:00+00:00"
             },
             "latest_build": {
-                "success": true,
                 "build_phase": "succeeded",
                 "fw_version": "42",
                 "sources_stale": null,
@@ -337,8 +319,7 @@ mod tests {
         assert_eq!(device.fw_version.as_deref(), Some("42"));
         assert!(device.ota_ready);
         let build = device.latest_build.as_ref().unwrap();
-        assert!(build.success);
-        assert_eq!(build.build_phase.as_deref(), Some("succeeded"));
+        assert_eq!(build.build_phase, "succeeded");
         assert_eq!(build.fw_version.as_deref(), Some("42"));
         assert_eq!(build.deployable_version.as_deref(), Some("42"));
         let back = serde_json::to_value(&device).unwrap();
@@ -355,7 +336,6 @@ mod tests {
             "id": 42,
             "org_id": 7,
             "device_id": "d",
-            "metadata": null,
             "predefined_device_name": "soil_sensor",
             "device_type": "sensor",
             "capabilities": [],
@@ -377,7 +357,7 @@ mod tests {
             r#"{ "device_id": "4-chan-dev-shan", "predefined_device_name": "relay_1ch" }"#,
         )
         .unwrap();
-        assert!(payload.metadata.is_none());
+        assert!(payload.board_id.is_none());
     }
 
     #[test]
