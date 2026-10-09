@@ -519,7 +519,7 @@ de l'org). Lots 0 → 6 :
 3. **Plages + métadonnées** (D169, D170) : stats par émission sur une
    semaine — dépend du parseur XML de P2.11.
 4. **Consultation** (D173) : stats par plage dans les dashboards PNEX et
-   `/media` — pas de publication de rapport (décision user 2026-10-09),
+   `/streams` — pas de publication de rapport (décision user 2026-10-09),
    studio de rapports en tranche ultérieure.
 5. **Diarisation** (D166) : temps de parole par plage.
 6. **Boîtier de capture** (D160, D175) : agent edge `media_capture` sur

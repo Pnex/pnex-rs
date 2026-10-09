@@ -131,6 +131,8 @@ pub enum SecretConsumerKind {
     Flow,
     Wifi,
     LlmProvider,
+    /// Credential of a captured media stream (media-ingest.md D159).
+    MediaStream,
 }
 
 impl SecretConsumerKind {
@@ -140,6 +142,7 @@ impl SecretConsumerKind {
             Self::Flow => "flow",
             Self::Wifi => "wifi",
             Self::LlmProvider => "llm-provider",
+            Self::MediaStream => "media-stream",
         }
     }
 
@@ -149,6 +152,7 @@ impl SecretConsumerKind {
             "flow" => Self::Flow,
             "wifi" => Self::Wifi,
             "llm-provider" => Self::LlmProvider,
+            "media-stream" => Self::MediaStream,
             _ => return None,
         })
     }

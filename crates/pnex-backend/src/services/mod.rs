@@ -33,6 +33,7 @@ pub mod functions;
 /// acceleration).
 pub mod last_cache;
 pub mod media;
+pub mod media_ingest;
 pub mod media_sniff;
 pub mod memory;
 /// Notifications (D49–D54) — broker WS, journal, pruner, livraison.

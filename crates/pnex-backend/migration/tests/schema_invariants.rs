@@ -72,6 +72,10 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
         // versionnées ; org_id dénormalisé sur les versions (école media).
         "functions",
         "function_versions",
+        // P2.13: media streams, their segments and ASR profiles are org data.
+        "media_streams",
+        "media_segments",
+        "asr_profiles",
     ] {
         assert_eq!(
             nullable_of(&db, t, "org_id").await,
@@ -116,6 +120,11 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
         ("functions", "org_id"),
         ("function_versions", "function_id"),
         ("function_versions", "org_id"),
+        // P2.13: segments follow their stream; streams and profiles the org.
+        ("media_streams", "org_id"),
+        ("media_segments", "org_id"),
+        ("media_segments", "stream_id"),
+        ("asr_profiles", "org_id"),
     ] {
         assert_eq!(
             fk_del_type(&db, t, col).await,

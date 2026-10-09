@@ -2,6 +2,7 @@
 
 pub use super::ai_conversations::Entity as AiConversations;
 pub use super::ai_messages::Entity as AiMessages;
+pub use super::asr_profiles::Entity as AsrProfiles;
 pub use super::build_records::Entity as BuildRecords;
 pub use super::controls::Entity as Controls;
 pub use super::dashboard_versions::Entity as DashboardVersions;
@@ -32,6 +33,8 @@ pub use super::llm_providers::Entity as LlmProviders;
 pub use super::map_pins::Entity as MapPins;
 pub use super::mcu_boards::Entity as McuBoards;
 pub use super::media_assets::Entity as MediaAssets;
+pub use super::media_segments::Entity as MediaSegments;
+pub use super::media_streams::Entity as MediaStreams;
 pub use super::media_versions::Entity as MediaVersions;
 pub use super::ml_models::Entity as MlModels;
 pub use super::openobserve_orgs::Entity as OpenobserveOrgs;

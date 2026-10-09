@@ -386,6 +386,27 @@ pub const BUILD_SUBMIT_FAILED: &str = "build-submit-failed";
 /// Function saved against a stale version.
 pub const FUNCTION_VERSION_CONFLICT: &str = "function-version-conflict";
 
+// ── Media ingest (media-ingest.md P2.13) ─────────────────────────────────
+
+/// Media stream not found (or not in the org).
+pub const MEDIA_STREAM_NOT_FOUND: &str = "media-stream-not-found";
+/// Viewer role: media streams and ASR profiles are read-only.
+pub const MEDIA_STREAM_WRITE_FORBIDDEN: &str = "media-stream-write-forbidden";
+/// Org already has the maximum number of media streams.
+pub const MEDIA_STREAM_LIMIT: &str = "media-stream-limit";
+/// Stream URL carries a credential; use the stream secret instead.
+pub const MEDIA_URL_HAS_CREDENTIALS: &str = "media-url-has-credentials";
+/// Stream refused or unreachable (no detail on purpose, D160).
+pub const MEDIA_STREAM_UNREACHABLE: &str = "media-stream-unreachable";
+/// Profile model is not a valid audio model.
+pub const MEDIA_ASR_MODEL_INVALID: &str = "media-asr-model-invalid";
+/// Capture carrier not available yet (worker/device: later lots).
+pub const MEDIA_CAPTURE_UNSUPPORTED: &str = "media-capture-unsupported";
+/// ASR profile not found (or not in the org).
+pub const ASR_PROFILE_NOT_FOUND: &str = "asr-profile-not-found";
+/// An ASR profile of the org already has this name.
+pub const ASR_PROFILE_NAME_TAKEN: &str = "asr-profile-name-taken";
+
 // ── Registered codes ─────────────────────────────────────────────────────
 
 /// All registered codes. A code not listed here falls back to the verbatim
@@ -594,6 +615,15 @@ pub const ALL: &[&str] = &[
     AI_WRITE_FORBIDDEN,
     CONTROL_UNKNOWN,
     CONTROL_STORE_UNAVAILABLE,
+    MEDIA_STREAM_NOT_FOUND,
+    MEDIA_STREAM_WRITE_FORBIDDEN,
+    MEDIA_STREAM_LIMIT,
+    MEDIA_URL_HAS_CREDENTIALS,
+    MEDIA_STREAM_UNREACHABLE,
+    MEDIA_ASR_MODEL_INVALID,
+    MEDIA_CAPTURE_UNSUPPORTED,
+    ASR_PROFILE_NOT_FOUND,
+    ASR_PROFILE_NAME_TAKEN,
 ];
 
 /// True when the code is registered (translatable through `err-<kebab>`).

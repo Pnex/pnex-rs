@@ -13,7 +13,7 @@ use crate::pages::{
     self, AdminStatus, Annotations, AuthCallback, Cameras, Catalog, Controls, Dashboard,
     Dashboards, Devices, Events, Firmware, Flows, FluidMixtures, Functions, Map, Media, Models,
     NotFound, Notifications, Orgs, OrgsCurrent, Profile, Secrets, ShareTour, Showcase, Sites,
-    Studio, System, Visualisation,
+    Streams, Studio, System, Visualisation,
 };
 use dioxus::prelude::*;
 
@@ -57,6 +57,10 @@ pub enum Route {
         // Vision model registry (camera-video.md D81).
         #[route("/models")]
         Models {},
+
+        // Captured audio streams, transcribed by the queue (media-ingest.md P2.13).
+        #[route("/streams")]
+        Streams {},
 
         // JSON events stored in OpenObserve (camera-video.md D84).
         #[route("/events")]

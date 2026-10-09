@@ -107,7 +107,7 @@ flowchart TB
   FETCH["http_fetch (grilles, EPG)<br/>annonces détectées"] --> RANGES["Plages (PG, type système)"]
   MX --> RANGES
   TX --> RANGES
-  RANGES --> DASH["Dashboards PNEX + /media"]
+  RANGES --> DASH["Dashboards PNEX + /streams"]
   MET --> DASH
 ```
 
@@ -142,7 +142,8 @@ reçoit du **texte** et des événements, et fait l'ETL léger.
   `secret-destination-locked` (R9, liaison existante des secrets).
 - Références vérifiées à l'écriture : `capture_on = device:<id>`,
   `notify_channel_id` et `asr_profile_id` appartiennent à l'org (R1),
-  404 sinon.
+  sinon 400 de champ `invalid` (même réponse qu'un id inexistant : pas
+  d'oracle inter-org).
 - **Quotas** (école `horizontal-scaling.md` : `COUNT` sous verrou
   advisory par org) : `PNEX_MEDIA_MAX_STREAMS_PER_ORG` (défaut 3),
   plafond global de captures actives par porteur ; bornes de config :
@@ -593,7 +594,7 @@ moment**. Les données restent dans l'org, consultées dans PNEX.
 - Les séries (D171) et les transcriptions (D165) vivent dans O2 ; on les
   lit avec les **dashboards PNEX existants** (format `desktop` ou
   `mobile`, D123 inchangée), widgets à liaison par labels (D171), et
-  avec la page `/media` (recherche de transcriptions, frise des plages).
+  avec la page `/streams` (recherche de transcriptions, frise des plages).
 - **D3 n'est pas amendée** et aucun studio de rapports n'est créé : pas
   de format `document`, pas de rapport figé, pas d'export, pas de lien
   public, pas de kind média `report`. Remarque : le Report Server d'O2
@@ -691,7 +692,7 @@ clés de stockage et noms de streams O2 construits côté serveur (R18).
 
 ## 7. UI
 
-- **/media** : liste des flux (état de capture, retard ASR, couverture
+- **/streams** (`/media` est déjà la médiathèque D21) : liste des flux (état de capture, retard ASR, couverture
   24 h), création avec test de l'URL (premier segment capté et transcrit
   sous les yeux), onglet transcriptions (recherche plein texte, lecture
   du texte horodaté), onglet plages (frise annoncé vs recalé).
@@ -713,7 +714,7 @@ clés de stockage et noms de streams O2 construits côté serveur (R18).
 
 - `NodeDoc` pour `media_source` et `range_upsert` (+ pièges : pas
   d'audio dans le flow, `taxonomy_version` en label).
-- Fiches `assistant-kb` : `/media`, modèles audio, plages, dépannage (« flux muet », « retard de transcription »,
+- Fiches `assistant-kb` : `/streams`, modèles audio, plages, dépannage (« flux muet », « retard de transcription »,
   « modèle trop lent pour ce worker »).
 - Outils (règle d'extension `ai-assistant.md` §9.3) : lecture des flux
   et des plages ; écriture limitée aux taxonomies (service partagé,
@@ -725,7 +726,7 @@ clés de stockage et noms de streams O2 construits côté serveur (R18).
 ## 9. Mesure de la qualité (ce qui rend les chiffres défendables)
 
 - **Couverture** : `media_coverage_ratio` par flux et par période (temps
-  capté et transcrit / temps de la période) ; affichée sur `/media` et
+  capté et transcrit / temps de la période) ; affichée sur `/streams` et
   disponible comme série pour les dashboards.
 - **Confiance** : distribution des scores ASR par période ; les segments
   sous `min_confidence` sont comptés à part, jamais silencieusement jetés
@@ -764,10 +765,10 @@ clés de stockage et noms de streams O2 construits côté serveur (R18).
 | Lot | Contenu | Critère de sortie |
 |---|---|---|
 | **0 — POC ASR** ✅ (2026-10-09, `media-asr-bench.md`) | crate `pnex-asr` (trait `Transcriber`) ; benchmark sherpa-onnx vs whisper.cpp, CPU/CUDA/Vulkan, 6 modèles sur FLEURS fr + 10 min de radio ; licences (sherpa-onnx Apache-2.0, whisper-rs Unlicense, whisper.cpp MIT) | tableau WER / noms propres / RTF ; runtimes supportés et mesurés, aucun modèle imposé. Restent : Pi réel, radio annotée à la main |
-| **1 — Capture + transcription** | ffmpeg dans les images ; fetcher filtré + superviseur sous bwrap (D160, `server` et `worker`) ; D159 (+ quotas), D161, D162, D164, D165 (+ endpoint transcripts), D166 (tag configurable, équité par org), D167 (import + check audio par porteur) ; D171 partie écriture (helper de remote-write à labels libres) ; D172 (avertissement TDM) ; page /media minimale | France Inter capté 24 h, texte dans O2, couverture ≥ 99 %, zéro audio résiduel ; tests SSRF : loopback, 169.254.169.254, `*.svc.cluster.local` et redirection / sous-URL HLS / `EXT-X-KEY` vers ces cibles refusés en `lan`, RFC 1918 refusé en `public` |
+| **1 — Capture + transcription** | ffmpeg dans les images ; fetcher filtré + superviseur sous bwrap (D160, `server` et `worker`) ; D159 (+ quotas), D161, D162, D164, D165 (+ endpoint transcripts), D166 (tag configurable, équité par org), D167 (import + check audio par porteur) ; D171 partie écriture (helper de remote-write à labels libres) ; D172 (avertissement TDM) ; page `/streams` minimale | France Inter capté 24 h, texte dans O2, couverture ≥ 99 %, zéro audio résiduel ; tests SSRF : loopback, 169.254.169.254, `*.svc.cluster.local` et redirection / sous-URL HLS / `EXT-X-KEY` vers ces cibles refusés en `lan`, RFC 1918 refusé en `public` |
 | **2 — Flows + séries** | D163 (`media_source`), D168 (taxonomie de sujets v1), D171 (option `labels` du nœud `metric`, `SourceRef` à labels), NodeDoc + KB | dashboard « mentions par heure » sur 3 flux |
 | **3 — Plages + métadonnées** | D169, D170 (`range_upsert`, EPG TNT, grilles via `http_fetch`, recalage par annonces) ; agrégation par plage (primitive D182) | stats par émission sur une semaine, écart annoncé/recalé visible |
-| **4 — Consultation** | D173 : dashboards « par plage » et « par tranche horaire » sur les séries média, onglets transcriptions et plages de `/media` | une semaine de stats par émission lisible dans PNEX, sans export |
+| **4 — Consultation** | D173 : dashboards « par plage » et « par tranche horaire » sur les séries média, onglets transcriptions et plages de `/streams` | une semaine de stats par émission lisible dans PNEX, sans export |
 | **5 — Diarisation** | D166 diarisation, temps de parole par locuteur local ; nommage par sources externes (grilles, annonces) | temps de parole par plage avec taux d'erreur mesuré |
 | **6 — Boîtier de capture** | `media_capture` dans l'`Announce` de l'agent, canal d'upload device mTLS + Noise (D160) ; D175 (caméras IP sur le bus) | Pi + tuner TNT capte 24 h sans jeton de service ni secret de stockage |
 
@@ -919,3 +920,30 @@ Seconde passe (relecture sécurité adversariale, même jour) :
 | §7 | `egress_*` présentés comme codes enregistrés | rendus sous `media-stream-unreachable` |
 | §10 | 0,5 Mbit/s | PCM 16 kHz mono s16 = 0,25 Mbit/s |
 | §12 | D164, D172 sans lot ; métriques du lot 1 dépendantes du lot 2 | ajoutés au lot 1, D171 scindé |
+
+## 16. Avancement du lot 1
+
+Le lot 1 avance par tranches, chacune testée et commitée seule.
+
+| Tranche | Contenu | État |
+|---|---|---|
+| 1a — Schéma + API + page | tables `media_streams`, `media_segments`, `asr_profiles`, colonne `ml_models.audio_meta` (base 0.1.0, PG + SQLite) ; contrat `pnex_core::media_ingest` ; CRUD `/api/v1/media/streams` (+ `segments`) et `/api/v1/asr/profiles` ; quota par verrou advisory ; secret `media-stream` lié à l'origine de l'URL ; page `/streams` ; fiche KB `streams` | ✅ 2026-10-10 |
+| 1b — Capture `server` | fetcher filtré (icecast, http_file, HLS), ffmpeg sous bwrap, superviseur par flux avec bail, écriture des segments | à faire |
+| 1c — Transcription | worker `transcribe_segment` (pnex-asr), `tx_<slug>`, PUBLISH, purge D161, `GET /api/v1/media/transcripts` | à faire |
+| 1d — Modèles audio | registre D167 (tâches/familles audio, import archive, check par porteur, test par dépôt d'audio) | à faire |
+| 1e — Images + porteur `worker` | ffmpeg et bwrap dans les images, `/internal/media/segment` | à faire |
+
+Écarts au PRD décidés en implémentant :
+
+- La page s'appelle `/streams` : `/media` est la médiathèque (D21).
+- Une référence d'une autre org (profil, canal, modèle) répond un 400 de
+  champ `invalid`, comme un id inexistant, et non un 404.
+- `capture_on` n'accepte que `server` tant que les chemins d'upload
+  `worker` et `device` n'existent pas (`media-capture-unsupported`).
+- Les kinds acceptés sont ceux dont la capture existe : `icecast`, `hls`,
+  `http_file` ; `dash`, `rtsp`, `dvb` arrivent avec leur fetcher.
+- Un slug supprimé peut être réattribué : la vérification « streams O2
+  `tx_<slug>` encore en rétention » de D159 n'est pas faite. À traiter
+  avant la tranche 1c (sinon un nouveau flux hérite de l'historique d'un
+  ancien du même nom).
+

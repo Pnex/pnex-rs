@@ -28,9 +28,10 @@ pub mod internal_flow;
 /// Endpoint interne de livraison websocket (runtime de flows / loopback).
 pub mod internal_notify;
 pub mod media;
+/// Vision model registry (D81) + internal model fetch for the flow runtime.
+pub mod media_ingest;
 pub mod memory;
 pub mod meta;
-/// Vision model registry (D81) + internal model fetch for the flow runtime.
 pub mod ml_models;
 /// Notifications (D49–D54) — CRUD canaux/templates + test/preview/journal.
 pub mod notify;

@@ -507,7 +507,8 @@ CREATE TABLE ml_models (
     check_status character varying(16) DEFAULT 'unchecked'::character varying NOT NULL,
     check_error text,
     infer_ms bigint,
-    checked_at timestamp with time zone
+    checked_at timestamp with time zone,
+    audio_meta jsonb
 );
 
 CREATE TABLE notify_channels (
@@ -1915,3 +1916,92 @@ CREATE TABLE device_certificates (
 );
 CREATE UNIQUE INDEX uniq_device_certificates_fingerprint ON device_certificates USING btree (fingerprint_sha256);
 CREATE INDEX idx_device_certificates_device ON device_certificates USING btree (device_registry_id);
+
+-- ===== Media ingest (P2.13, D159-D164) =====
+
+CREATE TABLE asr_profiles (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    org_id bigint NOT NULL,
+    name character varying(200) NOT NULL,
+    asr_model_id uuid NOT NULL,
+    vad_model_id uuid,
+    diarization_model_id uuid,
+    language character varying(16) DEFAULT 'fr'::character varying NOT NULL,
+    beam integer DEFAULT 1 NOT NULL,
+    word_timestamps boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT asr_profiles_pkey PRIMARY KEY (id),
+    CONSTRAINT "fk-asr_profiles-org_id" FOREIGN KEY (org_id)
+        REFERENCES organizations(id) ON DELETE CASCADE,
+    CONSTRAINT "fk-asr_profiles-asr_model_id" FOREIGN KEY (asr_model_id)
+        REFERENCES ml_models(id) ON DELETE CASCADE,
+    CONSTRAINT "fk-asr_profiles-vad_model_id" FOREIGN KEY (vad_model_id)
+        REFERENCES ml_models(id) ON DELETE SET NULL,
+    CONSTRAINT "fk-asr_profiles-diarization_model_id" FOREIGN KEY (diarization_model_id)
+        REFERENCES ml_models(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX uniq_asr_profiles_org_name ON asr_profiles USING btree (org_id, name);
+
+CREATE TABLE media_streams (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    org_id bigint NOT NULL,
+    name character varying(200) NOT NULL,
+    slug character varying(48) NOT NULL,
+    kind character varying(16) NOT NULL,
+    url character varying(2048) NOT NULL,
+    secret_id uuid,
+    enabled boolean DEFAULT false NOT NULL,
+    capture_on character varying(64) DEFAULT 'server'::character varying NOT NULL,
+    asr_profile_id uuid,
+    tracks character varying(16) DEFAULT 'audio'::character varying NOT NULL,
+    segment_secs integer DEFAULT 30 NOT NULL,
+    overlap_secs integer DEFAULT 1 NOT NULL,
+    audio_retention character varying(16) DEFAULT 'none'::character varying NOT NULL,
+    notify_channel_id uuid,
+    timezone character varying(64) DEFAULT 'Europe/Paris'::character varying NOT NULL,
+    tdm_checked_at timestamp with time zone,
+    tdm_note text,
+    capture_state character varying(16) DEFAULT 'stopped'::character varying NOT NULL,
+    capture_error character varying(64),
+    capture_changed_at timestamp with time zone,
+    created_by bigint,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT media_streams_pkey PRIMARY KEY (id),
+    CONSTRAINT "fk-media_streams-org_id" FOREIGN KEY (org_id)
+        REFERENCES organizations(id) ON DELETE CASCADE,
+    CONSTRAINT "fk-media_streams-asr_profile_id" FOREIGN KEY (asr_profile_id)
+        REFERENCES asr_profiles(id) ON DELETE SET NULL,
+    CONSTRAINT "fk-media_streams-notify_channel_id" FOREIGN KEY (notify_channel_id)
+        REFERENCES notify_channels(id) ON DELETE SET NULL,
+    CONSTRAINT "fk-media_streams-created_by" FOREIGN KEY (created_by)
+        REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX uniq_media_streams_org_slug ON media_streams USING btree (org_id, slug);
+
+CREATE TABLE media_segments (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    org_id bigint NOT NULL,
+    stream_id uuid NOT NULL,
+    seq bigint NOT NULL,
+    started_at timestamp with time zone NOT NULL,
+    ended_at timestamp with time zone NOT NULL,
+    clock_source character varying(16) NOT NULL,
+    storage_key character varying(512),
+    size_bytes bigint NOT NULL,
+    state character varying(24) NOT NULL,
+    asr_model_id uuid,
+    asr_model_version bigint,
+    asr_ms bigint,
+    error character varying(64),
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT media_segments_pkey PRIMARY KEY (id),
+    CONSTRAINT "fk-media_segments-org_id" FOREIGN KEY (org_id)
+        REFERENCES organizations(id) ON DELETE CASCADE,
+    CONSTRAINT "fk-media_segments-stream_id" FOREIGN KEY (stream_id)
+        REFERENCES media_streams(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_media_segments_org_id_stream_id_started_at ON media_segments USING btree (org_id, stream_id, started_at DESC);
+CREATE INDEX idx_media_segments_state_updated_at ON media_segments USING btree (state, updated_at);
