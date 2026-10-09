@@ -366,12 +366,15 @@ pub const AI_TOOL_INTERNAL: &str = "ai-tool-internal";
 /// A viewer asked the assistant for a change (writes need owner, admin or
 /// member, R2).
 pub const AI_WRITE_FORBIDDEN: &str = "ai-write-forbidden";
+/// A one-time websocket ticket could not be issued (Valkey unreachable).
+pub const WS_TICKET_UNAVAILABLE: &str = "ws-ticket-unavailable";
 
 // ── Registered codes ─────────────────────────────────────────────────────
 
 /// All registered codes. A code not listed here falls back to the verbatim
 /// `description`/`message` on the frontend (never panics).
 pub const ALL: &[&str] = &[
+    WS_TICKET_UNAVAILABLE,
     AGENT_NOT_AN_AGENT,
     AGENT_UNSUPPORTED_ACTION,
     AGENT_QUOTA_INVALID,

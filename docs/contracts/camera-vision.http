@@ -6,7 +6,7 @@
 ###   Noise NNpsk0 en binaire (D156), puis frames binaires = lien Noise scellant
 ###   ("PXC1" seq u32 uptime u32 w u16 h u16 (LE) ‖ JPEG) ; PING/PONG texte
 ###   scellés ; close 4001/4002/4003/4011/4013/4014.
-### - navigateur : GET /ws/camera/live?token=<JWT>&org=<id>&device=<pk> —
+### - navigateur : POST /api/v1/ws-ticket puis GET /ws/camera/live?ticket=<ticket>&device=<pk> —
 ###   JPEG bruts en binaire, dernière frame d'abord ; close 4004 caméra inconnue.
 ### Contrôle : ServerMsg::CameraConfig sur /ws/device
 ###   {"t":"camera_config","cmd_id","enabled","framesize","quality","fps","vflip","hmirror"}.

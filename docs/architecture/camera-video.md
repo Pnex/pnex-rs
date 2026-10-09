@@ -104,8 +104,9 @@ panique.
 
 ### D75 — Live navigateur `/ws/camera/live` (sans stockage, sans cron)
 
-`GET /ws/camera/live?token=<JWT>&org=<id>&device=<pk>` (auth école
-`/ws/notify`) : à la connexion, envoi immédiat de la dernière frame, puis
+`GET /ws/camera/live?ticket=<ticket>&device=<pk>` (ticket à usage unique
+de `POST /api/v1/ws-ticket`, 60 s, org du ticket — comme `/ws/notify`
+depuis le 2026-10-09 : plus de JWT dans l'URL) : à la connexion, envoi immédiat de la dernière frame, puis
 chaque frame du broadcast en **binaire JPEG brut** (TLS de l'edge pour le
 chiffrement). Côté front : module JS `pnexViewers.camera` (pattern
 viewers — marche web + webview Android via le pont eval) qui pose

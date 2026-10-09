@@ -66,3 +66,4 @@ pub mod video;
 pub mod video_annotations;
 pub mod vision;
 pub mod visualization;
+pub mod ws_ticket;

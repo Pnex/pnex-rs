@@ -166,6 +166,7 @@ impl Hooks for App {
             // endpoint interne de livraison (nœud flow / loopback Test).
             .add_route(controllers::notify::routes())
             .add_route(controllers::ws_notify::routes())
+            .add_route(controllers::ws_ticket::routes())
             .add_route(controllers::internal_notify::routes())
             // Écriture device depuis le runtime (nœud pnex-device-write) —
             // token interne settings.flow.runtime_token.

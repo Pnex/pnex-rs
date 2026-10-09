@@ -443,3 +443,16 @@ pub fn split_token(url: &str) -> (String, Option<String>) {
     };
     (url, token)
 }
+
+/// One-time ticket opening a browser websocket for `token` in `org`.
+pub async fn ws_ticket(server: &axum_test::TestServer, token: &str, org: i64) -> String {
+    server
+        .post("/api/v1/ws-ticket")
+        .add_header("Authorization", format!("Bearer {token}"))
+        .add_header("X-Org-Id", org.to_string())
+        .await
+        .json::<serde_json::Value>()["ticket"]
+        .as_str()
+        .expect("ws ticket")
+        .to_string()
+}

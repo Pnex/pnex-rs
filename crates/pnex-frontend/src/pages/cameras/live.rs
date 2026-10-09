@@ -7,8 +7,9 @@ use dioxus_i18n::t;
 
 use crate::api;
 
-/// Period at which the live viewer receives the current WebSocket URL.
-const TOKEN_REFRESH_SECS: u64 = 20;
+/// Period at which the live viewer receives a fresh WebSocket URL (one-time
+/// ticket valid 60 s, for its next reconnect).
+const TICKET_REFRESH_SECS: u64 = 20;
 
 /// Live view: host div + `pnexViewers.camera` mount after the first render,
 /// unmount on drop (closes the socket — the server then lets an on-demand
@@ -23,7 +24,7 @@ pub(super) fn LiveView(device: i64) -> Element {
     use_effect(move || {
         let host = host_for_mount.clone();
         spawn(async move {
-            let Some(url) = api::cameras::live_ws_url(device) else {
+            let Some(url) = api::cameras::live_ws_url(device).await else {
                 failed.set(true);
                 return;
             };
@@ -32,16 +33,15 @@ pub(super) fn LiveView(device: i64) -> Element {
             }
         });
     });
-    // Token freshness: the page re-fetches the camera list every few
-    // seconds (the HTTP client refreshes an expired access token on 401);
-    // push the current URL so a reconnect never replays a stale token.
+    // A ticket opens one socket: push a fresh URL regularly so a reconnect
+    // never replays a used or expired ticket.
     let host_for_refresh = host_id.clone();
     use_future(move || {
         let host = host_for_refresh.clone();
         async move {
             loop {
-                crate::util::sleep(std::time::Duration::from_secs(TOKEN_REFRESH_SECS)).await;
-                if let Some(url) = api::cameras::live_ws_url(device) {
+                crate::util::sleep(std::time::Duration::from_secs(TICKET_REFRESH_SECS)).await;
+                if let Some(url) = api::cameras::live_ws_url(device).await {
                     crate::media_viewer::camera_set_url(&host, &url);
                 }
             }

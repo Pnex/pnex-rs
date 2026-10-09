@@ -58,3 +58,4 @@ pub mod ws_device;
 pub mod ws_ingest;
 /// Bus WS des notifications (canal `websocket`, D51).
 pub mod ws_notify;
+pub mod ws_ticket;

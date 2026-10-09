@@ -1,10 +1,11 @@
-//! Bus WS des notifications — `GET /ws/notify?token=<JWT>&org=<org_id>`
+//! Bus WS des notifications — `GET /ws/notify?ticket=<one-time ticket>`
 //! (D51, canal `websocket`).
 //!
-//! Auth **query-param** (école `ws_device`/`ws_ingest` : un navigateur ne
-//! peut pas poser de header sur `new WebSocket()`) — JWT Rauthy validé par
-//! JWKS puis membership org vérifié ; refus par close codes 4xxx :
-//! 4002 token absent, 4001 JWT invalide, 4006 non membre de l'org.
+//! Auth: a one-time ticket from `POST /api/v1/ws-ticket` (a browser cannot
+//! set a header on `new WebSocket()`, and a JWT in the URL would reach the
+//! access logs); the org is the ticket's, membership re-checked. Close
+//! codes: 4002 no ticket, 4001 unknown/used/expired ticket, 4006 no longer
+//! a member of the org.
 //!
 //! Downlink : frames texte JSON `pnex_core::NotifyItem` poussées par le
 //! broker (`services::notify::publish`, alimenté par l'endpoint interne et
@@ -23,7 +24,6 @@ use serde::Deserialize;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use crate::auth::{jwks, provisioning, settings::RauthySettings};
 use crate::models::_entities::organization_members;
 use crate::services::notify::{self, SessionGuard};
 
@@ -35,8 +35,7 @@ const WATCHDOG_SECS: u64 = 60;
 
 #[derive(Debug, Deserialize)]
 pub struct NotifyWsQuery {
-    token: Option<String>,
-    org: Option<i64>,
+    ticket: Option<String>,
 }
 
 pub fn routes() -> Routes {
@@ -48,37 +47,17 @@ async fn ws_notify(
     Query(q): Query<NotifyWsQuery>,
     ws: WebSocketUpgrade,
 ) -> Response {
-    // Auth (ordre : 4002 token absent → 4001 JWT invalide → 4006 org).
-    let Some(token) = q.token.as_deref().map(str::trim).filter(|t| !t.is_empty()) else {
-        return reject(ws, 4002, "No token provided");
+    let Some(ticket) = q.ticket.as_deref().filter(|t| !t.trim().is_empty()) else {
+        return reject(ws, 4002, "No ticket provided");
     };
-    let Some(org_id) = q.org else {
-        return reject(ws, 4006, "No org provided");
+    let Some(owner) = crate::services::ws_ticket::redeem(&ctx.config, ticket).await else {
+        return reject(ws, 4001, "Invalid ticket");
     };
-
-    let settings = match RauthySettings::from_config(&ctx.config) {
-        Ok(s) => s,
-        Err(_) => return reject(ws, 1011, "Server config error"),
-    };
-    let verifier = jwks::verifier_for(&settings).await;
-    let claims = match verifier.verify(token).await {
-        Ok(c) => c,
-        Err(err) => {
-            tracing::warn!(%err, "ws/notify : rejet JWT");
-            return reject(ws, 4001, "Invalid token");
-        }
-    };
-    let user = match provisioning::get_or_create_user(&ctx.db, &claims).await {
-        Ok(u) => u,
-        Err(err) => {
-            tracing::error!(%err, "ws/notify : provisioning échoué");
-            return reject(ws, 1011, "Server error");
-        }
-    };
+    let org_id = owner.org_id;
     let member = organization_members::Entity::find()
         .filter(
             organization_members::Column::UserId
-                .eq(user.id)
+                .eq(owner.user_id)
                 .and(organization_members::Column::OrgId.eq(org_id)),
         )
         .one(&ctx.db)
