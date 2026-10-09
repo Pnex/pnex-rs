@@ -15,16 +15,16 @@ use redis::aio::ConnectionManager;
 
 use crate::services::telemetry::{TelemetryPoint, TelemetrySink};
 
-/// `settings.valkey` — absent or blank `url` = feature off (legacy O2-only
-/// path). Tolerant of absent sections, same school as IngestSettings
-/// (partial yaml must never fail config parsing).
+/// `settings.valkey` — Valkey is mandatory (D108: the server refuses to boot
+/// without it). Parsing stays tolerant of partial yaml; callers treat
+/// `None` like an unreachable Valkey (degraded path, logged).
 #[derive(Clone, Debug)]
 pub struct ValkeySettings {
     pub url: Option<String>,
 }
 
 impl ValkeySettings {
-    /// Reads `settings.valkey.url` — blank counts as absent (feature off).
+    /// Reads `settings.valkey.url` — blank counts as absent.
     pub fn from_config(config: &Config) -> Option<Self> {
         let url = config
             .settings
@@ -41,7 +41,7 @@ impl ValkeySettings {
 /// Connects to Valkey when `settings.valkey.url` is set. Eager connect at
 /// boot; on failure, degrades to a lazy manager that self-heals when Valkey
 /// comes up (the compose container may race the backend boot). `None` =
-/// feature off.
+/// no usable url.
 pub async fn connect_opt(config: &Config) -> Option<ConnectionManager> {
     let settings = ValkeySettings::from_config(config)?;
     connect_url(settings.url.as_deref().unwrap_or_default()).await
@@ -215,7 +215,7 @@ pub enum GpioOp {
 static GPIO_TX: crate::services::runtime_local::PerRuntime<Option<mpsc::Sender<GpioOp>>> =
     crate::services::runtime_local::PerRuntime::new();
 
-/// Process-wide Valkey connection (`None` = feature off), established once.
+/// Process-wide Valkey connection (`None` = unreachable), established once.
 pub async fn shared(config: &Config) -> Option<ConnectionManager> {
     crate::services::shared_valkey::conn(config).await
 }
