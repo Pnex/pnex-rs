@@ -627,17 +627,17 @@ tasks:
   db:migrate:
     desc: Applique les migrations SeaORM (développement)
     cmds:
-      - cd crates/pnex-backend && cargo loco db migrate
+      - cd crates/pnex-backend && {{.G}} cargo loco db migrate
 
   db:entities:
     desc: Régénère les entities SeaORM depuis le schéma (après migration)
     cmds:
-      - cd crates/pnex-backend && cargo loco db entities
+      - cd crates/pnex-backend && {{.G}} cargo loco db entities
 
   db:seed:
     desc: Idempotent seed of the global catalog (reuses the YAML fixtures)
     cmds:
-      - cd crates/pnex-backend && cargo loco task seed
+      - cd crates/pnex-backend && {{.G}} cargo loco task seed
 
   db:reset:
     desc: "Recrée la base from scratch : drop, migrate, seed"
