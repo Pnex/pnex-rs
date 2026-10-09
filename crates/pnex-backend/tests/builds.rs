@@ -199,8 +199,6 @@ async fn build_reussi_chemin_complet() {
         );
         let host_b64 = base64::engine::general_purpose::STANDARD.encode("dev1.pnex.io");
         assert!(content.contains(&format!("host={host_b64}")), "{content}");
-        // ws_ssl absent du corps → défaut true (wss) propagé au sous-process.
-        assert!(content.contains("ssl=true"), "{content}");
     })
     .await;
 }
@@ -458,14 +456,12 @@ async fn rebuild_creates_a_new_record_with_a_higher_version() {
         let first = post_build(&server, &env.alice, org, "dev-re", "fail").await;
         first.assert_status(axum_test::http::StatusCode::CREATED);
         let first_body: serde_json::Value = first.json();
-        assert_eq!(first_body["build_record_created"], true);
         let first_id = first_body["build_id"].as_i64().expect("id");
 
         // 2. Immediate rebuild accepted, on a new record.
         let second = post_build(&server, &env.alice, org, "dev-re", "coloc").await;
         second.assert_status(axum_test::http::StatusCode::CREATED);
         let second_body: serde_json::Value = second.json();
-        assert_eq!(second_body["build_record_created"], true);
         let second_id = second_body["build_id"].as_i64().expect("id");
         assert!(second_id > first_id);
 

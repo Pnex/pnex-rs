@@ -44,4 +44,7 @@ windows-service = "0.8"
 
 [dev-dependencies]
 tempfile = "3"
+# TLS fake server of the resilience tests (the agent speaks wss only).
+rcgen = "0.14"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 reqwest = { version = "0.12", default-features = false, features = ["json"] }

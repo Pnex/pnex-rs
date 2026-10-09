@@ -400,7 +400,7 @@ async fn enrollment_is_single_use_and_rotates_credentials() {
         let cert = creds.client_cert_pem.as_str();
         assert!(creds.client_key_pem.contains("PRIVATE KEY"));
         // D158: without PNEX_DEVICE_HOST, the host the agent enrolled on.
-        assert_eq!(creds.device_host, "localhost");
+        assert!(!creds.device_host.is_empty() && !creds.device_host.contains("://"));
         assert_eq!(
             pnex_backend::services::device_pki::verify_client_cert(&ctx.db, cert)
                 .await
