@@ -16,10 +16,11 @@ use crate::api;
 use crate::api::media::MediaKind;
 use crate::components::annotated_media::AnnotatedMediaView;
 use crate::components::dashboard_live::DashboardLive;
+use crate::components::download_progress::MediaDownloadProgress;
 use crate::components::icons;
 use crate::components::poi_tree::KindIcon;
 use crate::components::tour_viewer::{TourViewer, ViewerSource};
-use crate::util::media_blob_url;
+use crate::util::media_blob_url_tracked;
 
 /// Cible d'aperçu : (kind, id, nom) d'un objet attaché au POI.
 #[derive(Clone, Debug, PartialEq)]
@@ -168,6 +169,7 @@ fn MediaAssetView(asset: api::media::MediaAsset) -> Element {
     let mut mount_failed = use_signal(|| false);
     let mut ready = use_signal(|| false);
     let mut image_url = use_signal(|| None::<String>);
+    let progress = use_signal(|| None::<crate::util::DownloadProgress>);
     let is_image_for_effect = is_image;
     let kind_for_effect = asset_kind.as_str();
 
@@ -176,7 +178,8 @@ fn MediaAssetView(asset: api::media::MediaAsset) -> Element {
         let host = host_for_effect.clone();
         let mime = mime_for_effect.clone();
         spawn(async move {
-            let url = media_blob_url(&api::media::content_path(&id), mime.as_deref()).await;
+            let path = api::media::content_path(&id);
+            let url = media_blob_url_tracked(&path, mime.as_deref(), Some(progress)).await;
             match url {
                 Some(url) if is_image_for_effect => image_url.set(Some(url)),
                 Some(url) => {
@@ -207,6 +210,7 @@ fn MediaAssetView(asset: api::media::MediaAsset) -> Element {
             } else {
                 div { id: "{host_id}", class: "absolute inset-0" }
             }
+            MediaDownloadProgress { progress: progress() }
             if ready() && mount_failed() {
                 div { class: "absolute inset-0 flex items-center justify-center pointer-events-none",
                     span { class: "text-sm text-gray-400", {t!("poi-media-unavailable")} }

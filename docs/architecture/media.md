@@ -98,6 +98,18 @@ vieux clients).
   `util::media_blob_url` fetch en Rust (Bearer/X-Org-Id/refresh gérés) puis
   `URL.createObjectURL` (web-sys features `Blob`/`Url`). **Les octets
   transitent en mémoire du webview** (V1, acceptable aux plafonds choisis).
+- **Progression + cache navigateur** (2026-10-08) : le téléchargement est
+  streamé (`client::request_bytes_conditional`) et affiche
+  `MediaDownloadProgress` (Mo reçus / total, %) sur les viewers splat/pano
+  (bibliothèque, Annotations, Visualisation, aperçu POI) ; gsplat montre un
+  spinner pendant le parsing jusqu'à la 1re frame. Les octets sont gardés en
+  **Cache Storage** (`media_cache.rs`, web seulement, budget 1,5 Go, plus
+  ancien évincé d'abord, purgé au logout) sous l'`ETag` = id de version
+  (immuable). Chaque vue **revalide** (`If-None-Match`) : le serveur re-scope
+  l'org avant de répondre 304 sans corps — aucune lecture sans autorisation,
+  nouvelle version vue immédiatement (`Cache-Control: private, no-cache`).
+  Pas le cache HTTP : les navigateurs y refusent les entrées de plusieurs
+  dizaines de Mo (justement les splats).
 - **Limites V1** : `.ksplat`/`.spz` stockables sans aperçu (**Spark.js** couvre
   les 4 formats — plan B documenté) ; pas de vignettes en liste (fetch complet
   par carte) ; previews **web-only** en natif (le fetch JS cross-origin de la

@@ -59,6 +59,8 @@ pub fn logout() {
     // directement (l'auto-POST n'a lieu que si un hint est présent).
     let id_token = api::auth::stored_id_token();
     api::auth::clear_tokens();
+    // No media of this account left in the browser after logout.
+    crate::media_cache::clear();
     crate::state::org::clear();
     SESSION.with_mut(|s| *s = SessionState::LoggedOut);
     api::auth::end_session(id_token);

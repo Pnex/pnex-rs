@@ -11,12 +11,13 @@ use pnex_core::{AnnotationGeometry, ResolvedAnnotationItem, TourDoc};
 
 use crate::api;
 use crate::components::annotation_editor::popover::{annot_dot_color, AnnotationPopover};
+use crate::components::download_progress::MediaDownloadProgress;
 use crate::components::surface::annotation::{
     effective_mode, is_surface_item, AnnotMode, AnnotModeToggle, AnnotationCardsOverlay,
 };
 use crate::components::tour_viewer::{TourViewer, ViewerSource};
 use crate::tour_viewer::SplatMarkerView;
-use crate::util::media_blob_url;
+use crate::util::{media_blob_url, media_blob_url_tracked, DownloadProgress};
 
 /// One-scene tour doc: lets the tour viewer act as the pannellum viewer of
 /// a single panorama, without any tour chrome.
@@ -223,13 +224,15 @@ fn FlatAnnotatedImage(asset_id: String, compact: bool) -> Element {
 #[component]
 pub fn SplatHost(asset_id: String, host_id: String) -> Element {
     let mut failed = use_signal(|| false);
+    let progress = use_signal(|| None::<DownloadProgress>);
     let host_for_mount = host_id.clone();
     let host_for_drop = host_id.clone();
     use_effect(move || {
         let id = asset_id.clone();
         let host = host_for_mount.clone();
         spawn(async move {
-            let ok = match media_blob_url(&api::media::content_path(&id), None).await {
+            let path = api::media::content_path(&id);
+            let ok = match media_blob_url_tracked(&path, None, Some(progress)).await {
                 Some(url) => crate::media_viewer::mount("splat", &host, &url).await,
                 None => false,
             };
@@ -241,6 +244,7 @@ pub fn SplatHost(asset_id: String, host_id: String) -> Element {
     });
     rsx! {
         div { id: "{host_id}", style: "position: absolute; inset: 0;" }
+        MediaDownloadProgress { progress: progress() }
         if failed() {
             div { class: "absolute inset-0 flex items-center justify-center pointer-events-none",
                 span { class: "text-sm text-gray-400", {dioxus_i18n::t!("poi-media-unavailable")} }

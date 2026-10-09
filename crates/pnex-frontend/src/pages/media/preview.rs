@@ -16,6 +16,7 @@ pub(super) fn MediaPreview(
     let mut blob_url = use_signal(|| None::<String>);
     let mut preview_done = use_signal(|| false);
     let mut mount_ok = use_signal(|| true);
+    let progress = use_signal(|| None::<crate::util::DownloadProgress>);
     let asset_id = asset.id.clone();
     let host_id = format!("media-preview-{}", asset.id.replace('-', ""));
     let host_id_for_drop = host_id.clone();
@@ -46,7 +47,7 @@ pub(super) fn MediaPreview(
             blob_url.set(None);
             mount_ok.set(true);
             preview_done.set(false);
-            let url = media_blob_url(&path, mime.as_deref()).await;
+            let url = media_blob_url_tracked(&path, mime.as_deref(), Some(progress)).await;
             blob_url.set(url);
             preview_done.set(true);
         });
@@ -167,6 +168,7 @@ pub(super) fn MediaPreview(
                     class: "w-full h-[420px]",
                     style: "height: 420px",
                 }
+                crate::components::download_progress::MediaDownloadProgress { progress: progress() }
                 if is_panorama && show_hd_overlay {
                     // Take 360 V2: the displayed preview is the phone's
                     // fast render (v1) — the real 360° HD (v2) is being

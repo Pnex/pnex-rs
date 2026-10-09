@@ -127,8 +127,20 @@ function mountSplat(hostId, url) {
     overlay.style.position = 'absolute';
     overlay.style.inset = '0';
     overlay.style.pointerEvents = 'none';
+    // Busy indicator while the downloaded cloud is parsed and uploaded to
+    // the GPU (seconds for a 100 MB splat); removed at the first frame.
+    var busy = document.createElement('div');
+    busy.className = 'pnex-splat-busy';
+    busy.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;' +
+      'justify-content:center;pointer-events:none;background:rgba(17,24,39,0.6)';
+    var ring = document.createElement('span');
+    ring.className = 'animate-spin';
+    ring.style.cssText = 'display:inline-block;width:32px;height:32px;border-radius:9999px;' +
+      'border:2px solid #fff;border-top-color:transparent';
+    busy.appendChild(ring);
     wrap.appendChild(canvas);
     wrap.appendChild(overlay);
+    wrap.appendChild(busy);
     host.appendChild(wrap);
     var st = {
       host: host,
@@ -228,6 +240,7 @@ function mountSplat(hostId, url) {
             renderer.resize();
             controls.update();
             renderer.render(scene, camera);
+            if (!st.rendered && busy.parentNode) busy.parentNode.removeChild(busy);
             st.rendered = true;
             projectSplatMarkers(st);
           } catch (e) {
@@ -237,6 +250,7 @@ function mountSplat(hostId, url) {
         };
         host._pnexRaf = requestAnimationFrame(loop);
       } catch (e) {
+        if (busy.parentNode) busy.parentNode.removeChild(busy);
         if (host._pnexSplat === st) warn('splat load failed', e);
       }
     })();
