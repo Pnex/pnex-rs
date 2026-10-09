@@ -32,14 +32,13 @@ pub struct WifiCredential {
 ///
 /// `password`: pick a vault secret or type a value (owner/admin, stored in
 /// the dedicated secret `wifi/<ssid>/password`). Absent on an update =
-/// unchanged. `wifi_password` = legacy typed value, same as `{"value"}`.
+/// unchanged. Unknown fields are refused.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WifiCredentialInput {
     pub ssid: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub password: Option<crate::SecretFieldInput>,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub wifi_password: String,
 }
 
 /// Host serveur PNeX enregistré — `GET /api/v1/edge/hosts`.
@@ -54,24 +53,20 @@ pub struct LockedHost {
 pub struct PnexHost {
     pub id: i64,
     pub org_id: i64,
-    /// Hôte NU sans schéma (`192.168.1.16:5150`, `dev1.pnex.io`) — le
-    /// schéma websocket suit [`PnexHost::ws_ssl`].
+    /// Bare host without scheme (`192.168.1.16`, `dev1.pnex.io`): devices
+    /// always connect over wss (D154).
     pub host: String,
-    /// Always true since D70: devices connect over `wss://` through the TLS
-    /// edge (kept in the contract for compatibility).
-    pub ws_ssl: bool,
     /// RFC 3339.
     pub created_at: String,
     /// RFC 3339.
     pub updated_at: String,
 }
 
-/// Corps du `POST /api/v1/edge/hosts` (upsert sur (org, host)).
+/// Body of `POST /api/v1/edge/hosts` (upsert on (org, host)).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PnexHostInput {
     pub host: String,
-    /// Ignored since D70 — the server stores `true` (wss only).
-    pub ws_ssl: bool,
 }
 
 /// Un serveur PNeX détecté par le scan LAN côté serveur —

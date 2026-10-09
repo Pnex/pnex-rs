@@ -1,8 +1,9 @@
-//! Baseline schema of the first release (2026-10-01): the 50 pre-release
-//! migrations collapsed into one plain-SQL script per backend, with the
-//! pre-vault leftovers removed (`ai_connectors`, plaintext
-//! `wifi_credentials.wifi_password`) and the SQLite drift fixed (dead
-//! tables dropped, missing columns and foreign keys restored).
+//! Baseline schema of 0.1.0 (cut 2026-10-09): every pre-release migration
+//! collapsed into one plain-SQL script per backend, with the pre-vault
+//! leftovers removed (`ai_connectors`, plaintext
+//! `wifi_credentials.wifi_password`), the compatibility columns dropped
+//! and the SQLite drift fixed (dead tables dropped, missing columns and
+//! foreign keys restored).
 
 use sea_orm_migration::prelude::*;
 use sea_orm_migration::sea_orm::DatabaseBackend;

@@ -111,30 +111,22 @@ bool pnex_ota_run(const char* url_path,
         if (hooks.progress) hooks.progress("failed", 0, err);
         return false;
     }
-    // URL = scheme://host + path + device_id; the token goes in the
-    // Authorization header like /ws/device (D154: never in a URL).
+    // URL = https://host + path; the token goes in the Authorization
+    // header like /ws/device (D154: never in a URL, https only).
     char url[256];
-    snprintf(url, sizeof(url), "%s://%s%s?device_id=%s",
-             pnex_use_tls() ? "https" : "http",
-             pnex_host(), url_path, pnex_device_id_b64());
+    snprintf(url, sizeof(url), "https://%s%s", pnex_host(), url_path);
     Serial.printf("[OTA] %s\n", url);
 
-    // Both clients live for the whole download: HTTPClient keeps a
-    // reference (the plain one used to die at the end of its else block).
+    // The client lives for the whole download: HTTPClient keeps a
+    // reference.
     WiFiClientSecure tls;
-    WiFiClient plain;
 
     HTTPClient http;
-    if (pnex_use_tls()) {
-        pnex_tls_apply(tls);
-        http.begin(tls, url);
-    } else {
-        // Plain HTTP (LAN/on-prem reference path).
-        http.begin(plain, url);
-    }
+    pnex_tls_apply(tls);
+    http.begin(tls, url);
     {
         char auth[192];
-        snprintf(auth, sizeof(auth), "Bearer %s", pnex_token_b64());
+        snprintf(auth, sizeof(auth), "Bearer %s", pnex_token());
         http.addHeader("Authorization", auth);
     }
     const int code = http.GET();

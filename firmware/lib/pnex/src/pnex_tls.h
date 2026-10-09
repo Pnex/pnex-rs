@@ -2,12 +2,11 @@
 // pnex-tls — single TLS trust configuration point, shared by the WS
 // transport and the OTA download client (docs/architecture/ota.md).
 //
-// Posture: the optional PNEX_CA_CERT (-D, base64 PEM — same injection
-// school as the other config vars) pins the server chain; empty (default)
-// keeps the current setInsecure() posture unchanged. When the real PNeX
-// wss certificate lands, build with its ISSUING CA — renewals under the
-// same CA need no device update, and both WS + OTA switch to real
-// verification with no firmware rework.
+// Posture: PNEX_CA_CERT (-D, base64 PEM — same injection school as the
+// other config vars) pins the server chain. It is required: there is no
+// setInsecure() posture, a build without a CA never connects. Build with
+// the ISSUING CA of the device endpoint — renewals under the same CA need
+// no device update.
 //
 // CA rotation needs one rebuild+OTA (or USB for the first hop) — same
 // chicken-and-egg as any pinning; documented in ota.md.
@@ -53,7 +52,7 @@ void pnex_tls_set_client_identity(const char* cert_pem_b64, const char* key_pem_
 bool pnex_tls_has_client_identity();
 
 // Apply the shared trust posture to a client.
-// - unpinned  → setInsecure() (both cores).
+// - unpinned  → nothing applied: the handshake fails (no setInsecure).
 // - ESP32 pinned → setCACert.
 // - ESP8266 pinned → BearSSL X509List trust anchor + MFLN buffers
 //   (setBufferSizes 2048/512 — the ~40 KB heap budget), plus a heap log.

@@ -101,10 +101,7 @@ pub fn routes() -> Routes {
     Routes::new()
         .prefix("/api/v1/devices")
         .add("", get(list).post(create))
-        .add(
-            "/{id}",
-            get(detail).put(update).patch(update).delete(delete),
-        )
+        .add("/{id}", get(detail).delete(delete))
         .add("/{id}/peripherals", put(update_peripherals))
         .add("/{id}/board", put(update_board))
 }

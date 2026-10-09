@@ -154,7 +154,10 @@ pub async fn build_stats(db: &DatabaseConnection, org_id: i64) -> Result<BuildSt
         .await
         .map_err(|_| Error::InternalServerError)?;
     let total = rows.len() as u64;
-    let succeeded = rows.iter().filter(|r| r.success).count() as u64;
+    let succeeded = rows
+        .iter()
+        .filter(|r| r.build_phase == crate::services::firmware::PHASE_SUCCEEDED)
+        .count() as u64;
     Ok(BuildStats {
         total,
         succeeded,

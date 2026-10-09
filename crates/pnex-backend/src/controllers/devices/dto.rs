@@ -54,9 +54,10 @@ pub(super) fn latest_builds_by_device(
         let Some(device_id) = record.device_id.clone() else {
             continue;
         };
-        let deployable = (record.success && record.ota_sha256.is_some())
-            .then(|| record.fw_version.clone())
-            .flatten();
+        let deployable = (record.build_phase == crate::services::firmware::PHASE_SUCCEEDED
+            && record.ota_sha256.is_some())
+        .then(|| record.fw_version.clone())
+        .flatten();
         match out.get_mut(&device_id) {
             Some(latest) => {
                 if latest.deployable_version.is_none() {
@@ -78,7 +79,6 @@ pub(super) fn latest_builds_by_device(
 pub(super) fn latest_build_dto(record: build_records::Model) -> pnex_core::LatestBuild {
     pnex_core::LatestBuild {
         deployable_version: None,
-        success: record.success,
         build_phase: record.build_phase,
         fw_version: record.fw_version,
         // Staleness tripwire: the build's stamped fingerprint vs the one of
@@ -131,7 +131,6 @@ pub(super) fn device_dto(
         id: device.id,
         org_id: device.org_id,
         device_id: device.device_id,
-        metadata: device.metadata,
         predefined_device_name: predefined.name.clone(),
         device_type: type_name.to_string(),
         capabilities: capabilities

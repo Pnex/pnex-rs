@@ -317,8 +317,16 @@ fn clip(v: Option<String>, max: usize) -> Option<String> {
 
 async fn enroll(
     State(ctx): State<AppContext>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<AgentEnrollRequest>,
 ) -> Result<Response> {
+    // Host the agent reached the server on: the device endpoint defaults
+    // to it (D158).
+    let request_host = headers
+        .get(axum::http::header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
     // Per-client attempts are bounded cross-pod by the rate-limit layer
     // (`services::rate_limit`, rule `agent-enroll`).
     let invalid = || {
@@ -384,7 +392,7 @@ async fn enroll(
         Some(row) => {
             let mut active: device_tokens::ActiveModel = row.into();
             active.token = Set(token.clone());
-            active.encryption_key = Set(Some(key.clone()));
+            active.encryption_key = Set(key.clone());
             active.is_active = Set(true);
             active
                 .update(&txn)
@@ -394,7 +402,7 @@ async fn enroll(
         None => {
             device_tokens::ActiveModel {
                 token: Set(token.clone()),
-                encryption_key: Set(Some(key.clone())),
+                encryption_key: Set(key.clone()),
                 is_active: Set(true),
                 device_registry_id: Set(device.id),
                 ..Default::default()
@@ -431,15 +439,9 @@ async fn enroll(
         encryption_key: key,
         ws_path: "/ws/device".to_string(),
         ca_pem: super::meta::local_ca_pem(),
-        client_cert_pem: Some(client.cert_pem),
-        client_key_pem: Some(client.key_pem),
-        device_port: std::env::var("PNEX_DEVICE_PORT")
-            .ok()
-            .and_then(|p| p.trim().parse().ok()),
-        device_host: std::env::var("PNEX_DEVICE_HOST")
-            .ok()
-            .map(|h| h.trim().to_string())
-            .filter(|h| !h.is_empty()),
+        client_cert_pem: client.cert_pem,
+        client_key_pem: client.key_pem,
+        device_host: crate::services::firmware::device_endpoint_env(&request_host),
     })
 }
 

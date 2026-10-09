@@ -192,7 +192,6 @@ task dev          # front build + server on http://localhost:5150
 | `task test` | Workspace tests (PostgreSQL required) |
 | `task lint` | clippy, warnings as errors |
 | `task db:reset` | Drop, migrate and seed the dev database |
-| `task fw:flash` | Build and flash a firmware on a USB-connected board |
 | `task docker:build` | Build the `server` and `builder` images locally |
 
 Schema changes follow [`docs/architecture/migrations.md`](docs/architecture/migrations.md):

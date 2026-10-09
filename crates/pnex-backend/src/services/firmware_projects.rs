@@ -277,13 +277,12 @@ pub fn check_secrets() -> pnex_firmware_builder::BuildSecrets {
         wifi_ssid: "check".into(),
         wifi_password: "check".into(),
         host: "localhost".into(),
-        ws_ssl: false,
         token: "check".into(),
         device_id: "check".into(),
-        encryption_key: None,
+        encryption_key: String::new(),
         ca_cert_pem: None,
-        ota_pubkey: None,
-        client_cert: None,
+        ota_pubkey: String::new(),
+        client_cert: (String::new(), String::new()),
     }
 }
 

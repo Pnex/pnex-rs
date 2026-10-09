@@ -388,35 +388,29 @@ mod tests {
     }
 }
 
-/// Device endpoint of the deployment (D158), from the environment:
-/// `PNEX_DEVICE_HOST` (its own name, e.g. `devices.dev.pnex.io` in the
-/// cloud) wins over `PNEX_DEVICE_PORT` (same host, own port — LAN edge).
+/// Device endpoint of the deployment (D158), from `PNEX_DEVICE_HOST`.
 pub fn device_endpoint_env(host: &str) -> String {
-    match std::env::var("PNEX_DEVICE_HOST")
-        .ok()
-        .map(|h| h.trim().to_string())
-        .filter(|h| !h.is_empty())
-    {
-        Some(device_host) => device_host,
-        None => device_endpoint(host, std::env::var("PNEX_DEVICE_PORT").ok().as_deref()),
-    }
+    device_endpoint(host, std::env::var("PNEX_DEVICE_HOST").ok().as_deref())
 }
 
-/// Host compiled into a firmware (D158): the device endpoint. When the
-/// deployment exposes it on its own port (`PNEX_DEVICE_PORT`, e.g. 4443 on
-/// a LAN edge where the host is a bare IP) and the host names no port, the
-/// port is appended. A host with an explicit port is kept as is.
-pub fn device_endpoint(host: &str, device_port: Option<&str>) -> String {
+/// Device endpoint (D158) compiled into firmware and handed to edge
+/// agents, from the `PNEX_DEVICE_HOST` setting: `name[:port]` = its own
+/// name (cloud: `devices.dev.pnex.io`); `:port` = the instance host on its
+/// own port (LAN edge, where the host is a bare IP: `:4443`); unset = the
+/// instance host itself. The instance host's own port, if any, is dropped
+/// by `:port`.
+pub fn device_endpoint(host: &str, setting: Option<&str>) -> String {
     let host = host.trim();
-    let has_port = host
-        .rsplit_once(':')
-        .is_some_and(|(_, p)| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()));
-    match device_port
-        .map(str::trim)
-        .filter(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
-    {
-        Some(port) if !has_port => format!("{host}:{port}"),
-        _ => host.to_string(),
+    match setting.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(port) if port.starts_with(':') => {
+            let bare = match host.rsplit_once(':') {
+                Some((h, p)) if p.bytes().all(|b| b.is_ascii_digit()) && !h.ends_with(':') => h,
+                _ => host,
+            };
+            format!("{bare}{port}")
+        }
+        Some(own) => own.to_string(),
+        None => host.to_string(),
     }
 }
 
@@ -425,17 +419,17 @@ mod device_endpoint_tests {
     use super::device_endpoint;
 
     #[test]
-    fn device_port_is_appended_only_when_the_host_has_none() {
+    fn setting_names_the_host_the_port_or_nothing() {
         assert_eq!(
-            device_endpoint("192.168.1.185", Some("4443")),
+            device_endpoint("192.168.1.185", Some(":4443")),
             "192.168.1.185:4443"
         );
+        assert_eq!(device_endpoint("host:8443", Some(":4443")), "host:4443");
         assert_eq!(
-            device_endpoint("devices.dev.pnex.io", None),
+            device_endpoint("dev.pnex.io", Some("devices.dev.pnex.io")),
             "devices.dev.pnex.io"
         );
-        assert_eq!(device_endpoint("host:8443", Some("4443")), "host:8443");
-        assert_eq!(device_endpoint("host", Some("")), "host");
-        assert_eq!(device_endpoint("host", Some("44a3")), "host");
+        assert_eq!(device_endpoint("host", Some(" ")), "host");
+        assert_eq!(device_endpoint("host", None), "host");
     }
 }

@@ -1,16 +1,14 @@
 //! Firmware builds — parity with the legacy `firmware_builder` views (Phase 6),
 //! org scoping (D2):
 //!
-//! - `POST /build-firmware`: legacy verification order — field validation
-//!   → unknown model (400) → device not found (404) → type quota
+//! - `POST /build-firmware`: field validation → WiFi entry (400) → device
+//!   not found (404) → type quota
 //!   (403) → min interval between builds (429) → `queued` record → enqueue
 //!   (PostgreSQL queue worker). Adapted 201 response: no more
 //!   `backend`/`job_name` (no k8s), `build_id` instead;
-//! - `GET /build-records`: org-scoped list, paginated (D14 — the legacy
-//!   implementation returned a bare list, deliberate divergence), `device_id`/`success` filters;
-//! - `DELETE /build-records/{id}` : 400 si build réussi, 400 si le device
-//!   existe encore, sinon 204 sans body — l'artefact n'est PAS supprimé
-//!   (rétention différée D6) ;
+//! - `GET /build-records`: org-scoped list, paginated (D14), `device_id` /
+//!   `build_phase` filters (old records are pruned by the worker,
+//!   `build_retention`);
 //! - `GET /download/firmware/{device_id}`: proxies the artifact bytes
 //!   (legacy parity, no presigned URL), attachment
 //!   `{device_id}-firmware.bin`.
@@ -20,7 +18,7 @@
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::routing::{delete, get, post};
+use axum::routing::{get, post};
 use axum::Json;
 use loco_rs::bgworker::BackgroundWorker;
 use loco_rs::controller::format;
@@ -37,7 +35,12 @@ use crate::models::_entities::{
     build_records, device_registries, device_types, mcu_boards, predefined_devices,
     subscription_tiers,
 };
-use crate::services::firmware::{FirmwareSettings, PHASE_QUEUED};
+use crate::services::firmware::{
+    FirmwareSettings, PHASE_FAILED, PHASE_QUEUED, PHASE_RUNNING, PHASE_SUCCEEDED,
+};
+
+/// Build phases accepted by the `?build_phase=` filter.
+const PHASES: [&str; 4] = [PHASE_QUEUED, PHASE_RUNNING, PHASE_SUCCEEDED, PHASE_FAILED];
 use crate::workers::build_firmware::{BuildFirmwareArgs, BuildFirmwareWorker};
 use pnex_core::err_codes;
 
@@ -68,7 +71,6 @@ fn record_dto(r: build_records::Model) -> pnex_core::BuildRecord {
         id: r.id,
         org_id: r.org_id,
         device_id: r.device_id,
-        success: r.success,
         build_phase: r.build_phase,
         firmware_bin_s3_key: r.firmware_bin_s3_key,
         fw_version: r.fw_version,
@@ -131,25 +133,11 @@ async fn create(
     let prod_host = crate::app::prod_host();
     let requested_host = prod_host.as_deref().unwrap_or(params.pnex_host.as_str());
 
-    // Validation champs (le mot de passe WiFi n'est PAS trimé — il peut
-    // contenir des espaces significatifs). WiFi fields only matter without
-    // a referential entry (legacy requests).
-    let legacy_wifi = params.wifi_credential_id.is_none();
-    let wifi_checks = [
-        ("wifi_ssid", params.wifi_ssid.trim(), 100),
-        ("wifi_password", params.wifi_password.as_str(), 100),
-    ];
     let checks = [
-        (
-            "predefined_device_name",
-            params.predefined_device_name.trim(),
-            100,
-        ),
         ("pnex_host", requested_host.trim(), 200),
         ("device_id", params.device_id.trim(), 100),
     ];
-    let wifi_checks = if legacy_wifi { &wifi_checks[..] } else { &[] };
-    for &(field, value, max) in wifi_checks.iter().chain(checks.iter()) {
+    for (field, value, max) in checks {
         if value.is_empty() {
             return Ok(field_status(
                 StatusCode::BAD_REQUEST,
@@ -173,74 +161,34 @@ async fn create(
         ));
     }
     // WiFi: the build references the vault secret of a referential entry
-    // (secrets.md S6), the password never enters the queue. A legacy
-    // request (typed SSID + password) first saves its entry.
-    let (wifi_ssid, wifi_secret_id) = match params.wifi_credential_id {
-        Some(cid) => {
-            let Some(cred) = crate::models::_entities::wifi_credentials::Entity::find()
-                .filter(crate::models::_entities::wifi_credentials::Column::OrgId.eq(org.org.id))
-                .filter(crate::models::_entities::wifi_credentials::Column::Id.eq(cid))
-                .one(&ctx.db)
-                .await
-                .map_err(|_| Error::InternalServerError)?
-            else {
-                return Ok(field_status(
-                    StatusCode::BAD_REQUEST,
-                    "wifi_credential_id",
-                    "WiFi entry not found in this organization.",
-                ));
-            };
-            let Some(secret) = cred.secret_id else {
-                return Ok(field_status(
-                    StatusCode::BAD_REQUEST,
-                    "wifi_password",
-                    err_codes::FIELD_REQUIRED,
-                ));
-            };
-            (cred.ssid, secret)
-        }
-        None => {
-            let ring = match crate::controllers::secrets::keyring(&ctx) {
-                Ok(ring) => ring,
-                Err(e) => return crate::controllers::secrets::store_error(e),
-            };
-            // Le mot de passe passe tel quel (espaces significatifs).
-            match crate::services::secrets::wifi::upsert_typed(
-                &ctx.db,
-                &ring,
-                crate::controllers::secrets::writer(&org),
-                org.can_manage_secrets(),
-                params.wifi_ssid.trim(),
-                &params.wifi_password,
-            )
-            .await
-            {
-                Ok(secret) => (params.wifi_ssid.trim().to_string(), secret),
-                Err(e) => return crate::controllers::secrets::store_error(e),
-            }
-        }
-    };
-    let device_id = params.device_id.trim().to_string();
-    let pnex_host = requested_host.trim().to_string();
-
-    // Modèle : sert de sous-répertoire projet du workspace firmware.
-    let Some(predefined) = predefined_devices::Entity::find()
-        .filter(predefined_devices::Column::Name.eq(params.predefined_device_name.trim()))
+    // (secrets.md S6), the password never enters the queue.
+    let Some(cred) = crate::models::_entities::wifi_credentials::Entity::find()
+        .filter(crate::models::_entities::wifi_credentials::Column::OrgId.eq(org.org.id))
+        .filter(
+            crate::models::_entities::wifi_credentials::Column::Id.eq(params.wifi_credential_id),
+        )
         .one(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?
     else {
         return Ok(field_status(
             StatusCode::BAD_REQUEST,
-            "predefined_device_name",
-            &format!(
-                "PredefinedDevice with name {} does not exist.",
-                params.predefined_device_name.trim()
-            ),
+            "wifi_credential_id",
+            "WiFi entry not found in this organization.",
         ));
     };
-    // Device known to the org (legacy: the user's registry) — model kept
-    // (screen peripherals state + frozen board).
+    let Some(wifi_secret_id) = cred.secret_id else {
+        return Ok(field_status(
+            StatusCode::BAD_REQUEST,
+            "wifi_credential_id",
+            err_codes::FIELD_REQUIRED,
+        ));
+    };
+    let wifi_ssid = cred.ssid;
+    let device_id = params.device_id.trim().to_string();
+    let pnex_host = requested_host.trim().to_string();
+
+    // Device of the org; its model is the firmware workspace project.
     let Some(device) = device_registries::Entity::find()
         .filter(device_registries::Column::OrgId.eq(org.org.id))
         .filter(device_registries::Column::DeviceId.eq(&device_id))
@@ -253,6 +201,11 @@ async fn create(
             &format!("Device with ID '{device_id}' not found"),
         ));
     };
+    let predefined = predefined_devices::Entity::find_by_id(device.predefined_device_id)
+        .one(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?
+        .ok_or(Error::InternalServerError)?;
     // Edge agent (D95): no firmware to build.
     if super::edge_agents::is_agent(&ctx.db, &device).await {
         return Err(super::edge_agents::unsupported_action());
@@ -352,7 +305,7 @@ async fn create(
     if let Some(min_secs) = min_interval {
         if let Some(last) = build_records::Entity::find()
             .filter(build_records::Column::OrgId.eq(org.org.id))
-            .filter(build_records::Column::Success.eq(true))
+            .filter(build_records::Column::BuildPhase.eq(PHASE_SUCCEEDED))
             .order_by_desc(build_records::Column::Id)
             .one(&txn)
             .await
@@ -375,10 +328,7 @@ async fn create(
             (chrono::Utc::now() - chrono::Duration::seconds(min_secs)).into();
         let in_flight = build_records::Entity::find()
             .filter(build_records::Column::OrgId.eq(org.org.id))
-            .filter(
-                build_records::Column::BuildPhase
-                    .is_in([PHASE_QUEUED, crate::services::firmware::PHASE_RUNNING]),
-            )
+            .filter(build_records::Column::BuildPhase.is_in([PHASE_QUEUED, PHASE_RUNNING]))
             .filter(build_records::Column::UpdatedAt.gte(since))
             .one(&txn)
             .await
@@ -404,10 +354,7 @@ async fn create(
     let device_in_flight = build_records::Entity::find()
         .filter(build_records::Column::OrgId.eq(org.org.id))
         .filter(build_records::Column::DeviceId.eq(&device_id))
-        .filter(
-            build_records::Column::BuildPhase
-                .is_in([PHASE_QUEUED, crate::services::firmware::PHASE_RUNNING]),
-        )
+        .filter(build_records::Column::BuildPhase.is_in([PHASE_QUEUED, PHASE_RUNNING]))
         .filter(build_records::Column::UpdatedAt.gte(fresh_since))
         .one(&txn)
         .await
@@ -428,8 +375,7 @@ async fn create(
     // are pruned by the worker after a successful build (build_retention).
     let record = build_records::ActiveModel {
         device_id: Set(Some(device_id.clone())),
-        success: Set(false),
-        build_phase: Set(Some(PHASE_QUEUED.to_string())),
+        build_phase: Set(PHASE_QUEUED.to_string()),
         firmware_bin_s3_key: Set(None),
         org_id: Set(org.org.id),
         ..Default::default()
@@ -453,8 +399,6 @@ async fn create(
         wifi_ssid,
         wifi_secret_id,
         pnex_host,
-        // Always wss through the TLS edge (D70), whatever the client sends.
-        ws_ssl: true,
     };
     if BuildFirmwareWorker::perform_later(&ctx, args)
         .await
@@ -469,7 +413,6 @@ async fn create(
     Ok((
         StatusCode::CREATED,
         format::json(pnex_core::CreateBuildResponse {
-            build_record_created: true,
             build_id: record.id,
             status: PHASE_QUEUED.to_string(),
             message: "Firmware build job created successfully".to_string(),
@@ -484,7 +427,7 @@ async fn create(
 struct ListBuildsQuery {
     device_id: Option<String>,
     /// « true » | « false » ; autre/absent = tous.
-    success: Option<String>,
+    build_phase: Option<String>,
     limit: Option<String>,
     offset: Option<String>,
 }
@@ -502,12 +445,8 @@ async fn list(
     if let Some(device_id) = q.device_id.as_deref().filter(|d| !d.is_empty()) {
         query = query.filter(build_records::Column::DeviceId.eq(device_id));
     }
-    if let Some(success) = q.success.as_deref() {
-        match success {
-            "true" => query = query.filter(build_records::Column::Success.eq(true)),
-            "false" => query = query.filter(build_records::Column::Success.eq(false)),
-            _ => {}
-        }
+    if let Some(phase) = q.build_phase.as_deref().filter(|p| PHASES.contains(p)) {
+        query = query.filter(build_records::Column::BuildPhase.eq(phase));
     }
     // COUNT + LIMIT/OFFSET in SQL.
     let (count, rows) = pagination::sql_page(&ctx.db, query, page)
@@ -521,10 +460,8 @@ async fn list(
             filters.push(("device_id".to_string(), d.to_string()));
         }
     }
-    if let Some(s) = q.success.as_deref() {
-        if s == "true" || s == "false" {
-            filters.push(("success".to_string(), s.to_string()));
-        }
+    if let Some(phase) = q.build_phase.as_deref().filter(|p| PHASES.contains(p)) {
+        filters.push(("build_phase".to_string(), phase.to_string()));
     }
     Ok(format::json(pagination::envelope(
         "/api/v1/build-records",
@@ -534,55 +471,6 @@ async fn list(
         results,
     ))
     .into_response())
-}
-
-// ─────────────────────────── DELETE /build-records/{id} ───────────────────────────
-
-/// `DELETE /api/v1/build-records/{id}` — legacy rules; 204 with no body,
-/// artifact kept (D6).
-async fn delete_record(
-    State(ctx): State<AppContext>,
-    org: OrgContext,
-    Path(id): Path<i64>,
-) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "build-delete-forbidden",
-            "Owner, admin or member role required to manage builds.",
-        ));
-    }
-    let Some(record) = build_records::Entity::find_by_id(id)
-        .filter(build_records::Column::OrgId.eq(org.org.id))
-        .one(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?
-    else {
-        return Err(Error::NotFound);
-    };
-    if record.success {
-        return Ok(error_status(
-            StatusCode::BAD_REQUEST,
-            "Cannot delete successful firmware builds",
-        ));
-    }
-    let device_exists = device_registries::Entity::find()
-        .filter(device_registries::Column::OrgId.eq(org.org.id))
-        .filter(device_registries::Column::DeviceId.eq(record.device_id.clone()))
-        .one(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?
-        .is_some();
-    if device_exists {
-        return Ok(error_status(
-            StatusCode::BAD_REQUEST,
-            "Cannot delete firmware record while device still exists",
-        ));
-    }
-    build_records::Entity::delete_by_id(record.id)
-        .exec(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
-    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 // ─────────────────────────── GET /download/firmware/{device_id} ───────────────────────────
@@ -606,7 +494,7 @@ async fn download(
     let Some(record) = build_records::Entity::find()
         .filter(build_records::Column::OrgId.eq(org.org.id))
         .filter(build_records::Column::DeviceId.eq(device_id.trim()))
-        .filter(build_records::Column::Success.eq(true))
+        .filter(build_records::Column::BuildPhase.eq(PHASE_SUCCEEDED))
         .order_by_desc(build_records::Column::Id)
         .one(&ctx.db)
         .await
@@ -647,6 +535,5 @@ pub fn routes() -> Routes {
         .prefix("/api/v1")
         .add("/build-firmware", post(create))
         .add("/build-records", get(list))
-        .add("/build-records/{id}", delete(delete_record))
         .add("/download/firmware/{device_id}", get(download))
 }

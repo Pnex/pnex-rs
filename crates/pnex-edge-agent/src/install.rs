@@ -136,7 +136,6 @@ pub async fn install(dir: &Path, args: InstallArgs) -> Result<()> {
         ws_path: creds.ws_path,
         client_cert_pem: creds.client_cert_pem,
         client_key_pem: creds.client_key_pem,
-        device_port: creds.device_port,
         device_host: creds.device_host,
     };
     config::write_private(

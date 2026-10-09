@@ -99,8 +99,8 @@ Le firmware est un workspace **PlatformIO** (ESP8266 + ESP32-C3, framework
 Arduino) : projets `soil_sensor`, `generic_esp8266`, `generic_esp32c3`
 (Seeed XIAO), `generic_esp32`, `generic_esp32s3`, `generic_esp32c6`
 (Waveshare C6-Zero), `tft_dev` + lib PneX `lib/pnex` (transport, crypto, config)
-+ libs partagées `common_libs` (display, pnex-core-cpp) + outils dev
-`ws-server` (Python).
++ libs partagées `common_libs` (display, pnex-core-cpp). Le mock Python
+`ws-server` est supprimé (2026-10-09 : il parlait en clair, sans TLS).
 `4_chan_relay` (nanopb, D20) supprimé le 2026-09-13.
 
 ### 2.1 Les build args = variables d'environnement → `-D` defines
@@ -115,7 +115,9 @@ build_flags =
     -D TOKEN=\"${sysenv.TOKEN}\"
     -D DEVICE_ID=\"${sysenv.DEVICE_ID}\"
     -D ENCRYPTION_KEY=\"${sysenv.ENCRYPTION_KEY}\"
-    -D WS_SSL=\"${sysenv.WS_SSL}\"
+    -D PNEX_CA_CERT=\"${sysenv.PNEX_CA_CERT}\"
+    -D PNEX_CLIENT_CERT=\"${sysenv.PNEX_CLIENT_CERT}\"
+    -D PNEX_CLIENT_KEY=\"${sysenv.PNEX_CLIENT_KEY}\"
 ```
 
 → **le worker doit transmettre la config device en variables d'environnement
@@ -129,10 +131,12 @@ du sous-process `pio run`**, pas en argv. Valeurs consommées par
 | `HOST` | **base64** | `ZGV2MS5wbmV4Lmlv` = `dev1.pnex.io` |
 | `TOKEN` | **base64** | token du device (cf. `device_tokens`) |
 | `DEVICE_ID` | **base64** | `cHN5Y2hvbG9naWNhbC10ZQo=` = `psychological-te` |
-| `WS_SSL` | clair `true`/`false` | **toujours `true` depuis D70** (2026-09-27) : le serveur force `wss://` via l'edge TLS nginx, port 443 implicite, hôte = domaine de l'edge (ex. `shan-hapster.home`) ; `false` ne sert plus qu'aux builds manuels contre le mock `ws-server/` |
+| ~~`WS_SSL`~~ | — | **supprimée le 2026-10-09** (D154) : le firmware ne parle que `wss://`/`https://`, sans `setInsecure` ; il n'existe plus de build en clair |
 | `ENCRYPTION_KEY` | **base64** | `device_tokens.encryption_key` (32 octets) = clé partagée du lien Noise (D156) ; vide ou invalide → le device ne se connecte jamais (plus de mode en clair, SEC-19). Consommée par `lib/pnex/src/pnex_crypto.cpp` |
 | `PNEX_FW_VERSION` | clair (id de build) | version stampée dans le binaire, annoncée à l'announce, sert de clé à l'artefact OTA versionné (2026-09-22, OTA — cf. ota.md) |
-| `PNEX_CA_CERT` | **base64** (PEM) | racine épinglée WS+OTA (`pnex_tls`), **injectée automatiquement depuis D70** : le worker lit `PNEX_CA_CERT_FILE` (= `deploy/edge/pki-data/device-ca.pem` : CA locale, ou ISRG Root X1 en cloud) à chaque build ; toujours posée (vide si pas de CA ou `ws://`). Vide = `setInsecure` (WS maison `pnex_ws` depuis 2026-10-03 ; avant, ArduinoWebsockets rendait ce cas inopérant sur ESP32) |
+| `PNEX_CA_CERT` | **base64** (PEM) | racine épinglée WS+OTA (`pnex_tls`), **injectée automatiquement depuis D70** : le worker lit `PNEX_CA_CERT_FILE` (= `deploy/edge/pki-data/device-ca.pem` : CA locale, ou ISRG Root X1 en cloud) à chaque build ; toujours posée. **Obligatoire depuis le 2026-10-09** : vide = aucune poignée de main TLS n'aboutit (plus de `setInsecure`), le serveur refuse un tel build hors tests (`build_no_ca`) |
+| `PNEX_CLIENT_CERT` / `PNEX_CLIENT_KEY` | **base64** (PEM) | identité TLS client du device (D153), émise par la CA de l'org à chaque build ; sans elle le serveur ferme en 4014 |
+| `PNEX_OTA_PUBKEY` | hex (64) | clé publique Ed25519 de l'instance (SEC-18) : toute image OTA non signée par elle est refusée |
 | `PNEX_OTA_ENABLE` | clair `0`/`1` | 1 sur les 4 génériques : cap `ota` à l'announce + dispatch `ota_available` |
 
 `4_chan_relay` ajoutait des flags fixes nanopb (`PB_FIELD_16BIT=1`,
@@ -160,9 +164,9 @@ Choix UI : picker dans l'éditeur de pinout (`BoardHeader`), builtin verrouillé
 ```bash
 export WIFI_SSID=$(echo -n "Chez Shan" | base64) WIFI_PASSWORD=$(echo -n <mdp> | base64)
 export HOST=$(echo -n dev1.pnex.io | base64) TOKEN=$(echo -n <token> | base64) DEVICE_ID=$(echo -n <device_id> | base64)
-export ENCRYPTION_KEY=<clé_chacha20_b64>   # device_tokens.encryption_key, déjà en base64 : telle quelle
-export WS_SSL=true    # wss via l'edge TLS (D70) ; false = mock ws-server/ seulement
-uv run pio "$@"       # pio run | pio run --target upload | pio device monitor
+export ENCRYPTION_KEY=<clé_noise_b64>   # device_tokens.encryption_key, déjà en base64 : telle quelle
+export PNEX_CA_CERT=… PNEX_CLIENT_CERT=… PNEX_CLIENT_KEY=… PNEX_OTA_PUBKEY=…   # émis par le serveur
+uv run pio "$@"       # pio run | pio run --target upload --upload-port <port> | pio device monitor
 ```
 
 Le worker réplique ce pattern : spawn `pio run` (dans l'image Docker

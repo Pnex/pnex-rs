@@ -576,7 +576,6 @@ pub(super) async fn create(
 
     let device = device_registries::ActiveModel {
         device_id: Set(device_id),
-        metadata: Set(params.metadata),
         active: Set(false),
         allow_dynamic_measurements: Set(allow_dynamic),
         discovered_measurements: Set(None),
@@ -616,44 +615,6 @@ pub(super) async fn detail(
         dto.device_token = None;
     }
     format::json(dto)
-}
-
-/// `PUT|PATCH /api/v1/devices/{id}` — metadata only (legacy contract: any
-/// other key, or a missing `metadata`, → 400 "Only metadata updates
-/// are allowed."). The payload is read as raw JSON to detect forbidden
-/// keys before deserialization.
-pub(super) async fn update(
-    State(ctx): State<AppContext>,
-    org: OrgContext,
-    Path(id): Path<i64>,
-    Json(body): Json<serde_json::Value>,
-) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "device-write-forbidden",
-            "Owner, admin or member role required to manage devices.",
-        ));
-    }
-    let Some(device) = find_device(&ctx.db, &org, id).await? else {
-        return Err(Error::NotFound);
-    };
-    let only_metadata = body
-        .as_object()
-        .is_some_and(|obj| obj.len() == 1 && obj.contains_key("metadata"));
-    if !only_metadata {
-        return Ok(detail_status(
-            StatusCode::BAD_REQUEST,
-            "Only metadata updates are allowed.",
-        ));
-    }
-    let metadata = body.get("metadata").cloned();
-    let mut active: device_registries::ActiveModel = device.into();
-    active.metadata = Set(metadata);
-    let updated = active
-        .update(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
-    format::json(device_full(&ctx.db, updated).await?)
 }
 
 /// `DELETE /api/v1/devices/{id}` — device + token + build_records.

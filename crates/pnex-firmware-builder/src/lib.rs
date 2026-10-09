@@ -12,7 +12,7 @@
 //! `docs/architecture/firmware-build.md` §2) : la config device passe en
 //! **variables d'environnement** du sous-process `pio run` — WIFI_SSID,
 //! WIFI_PASSWORD, HOST, TOKEN et DEVICE_ID en base64 (un SSID littéral
-//! avec espaces casserait le flag `-D`), WS_SSL en true/false (wss/ws) —
+//! avec espaces casserait le flag `-D`), always wss (D154) —
 //! jamais en argv (lisible via `ps`). Le workspace est un tmp par job,
 //! effacé au drop (secrets compilés dans les artefacts intermédiaires).
 

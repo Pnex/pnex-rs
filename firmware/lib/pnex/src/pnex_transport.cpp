@@ -33,6 +33,8 @@ static char s_ssid[101];
 static char s_password[101];
 static char s_host[65];
 static char s_device_id[65];
+// Device token, decoded at setup: sent raw in `Authorization: Bearer`.
+static char s_token[96];
 static char s_conn[256];
 // Same URL with the token masked: the only form ever printed (serial logs
 // get pasted into forums and tickets — SEC-W7).
@@ -99,11 +101,9 @@ static bool lean_wss_connect(bool& ok) {
     split_host_port(s_host, host, sizeof(host), port);
     // Fresh TCP client per attempt, owned by s_client from here on.
     auto* tcp = new WiFiClientSecure();
-    pnex_tls_apply(*tcp);  // CA pin when provided, insecure otherwise
+    pnex_tls_apply(*tcp);  // CA pin + client identity
     tcp->setBufferSizes(LEAN_TLS_RX, LEAN_TLS_TX);
-    char path[224];
-    snprintf(path, sizeof(path), "%s?device_id=%s", s_init.ws_path, device_id);
-    ok = s_client.connect(tcp, host, (uint16_t)port, path);
+    ok = s_client.connect(tcp, host, (uint16_t)port, s_init.ws_path);
     if (!ok) {
         pnex_tls_log_error(*tcp);
     }
@@ -137,12 +137,10 @@ void pnex_transport_setup(const PnexTransportInit& init) {
         Serial.println("[pnex] WIFI_PASSWORD too long, ignored");
     if (cryptoB64DecodeBounded(HOST, s_host, sizeof(s_host)) == PNEX_B64_TOO_LONG)
         Serial.println("[pnex] HOST too long, ignored");
-    // TOKEN et DEVICE_ID restent en base64 : le contrat d'auth des routes WS
-    // (`decode_param`) est « paramètre b64 → décodage serveur → lookup » —
-    // l'URL porte les macros telles quelles (envoyés en clair, le rejet
-    // 4002 arrive avant l'annonce — leçon du 2026-09-02).
     if (cryptoB64DecodeBounded(DEVICE_ID, s_device_id, sizeof(s_device_id)) == PNEX_B64_TOO_LONG)
         Serial.println("[pnex] DEVICE_ID too long, ignored");
+    if (cryptoB64DecodeBounded(TOKEN, s_token, sizeof(s_token)) == PNEX_B64_TOO_LONG)
+        Serial.println("[pnex] TOKEN too long, ignored");
 
     // Pre-shared key of the Noise link: without a valid one the device
     // never connects (no clear-text fallback, SEC-19).
@@ -150,18 +148,16 @@ void pnex_transport_setup(const PnexTransportInit& init) {
         Serial.println("[CRYPTO] ENCRYPTION_KEY missing or invalid — the device will not connect");
     }
 
-    // Shared TLS posture (WS + future OTA client): decode the optional CA
-    // pin once — empty macro = setInsecure posture, unchanged behavior.
+    // Shared TLS posture (WS + OTA client): decode the CA pin and the
+    // client identity once — without a CA every handshake is refused.
     pnex_tls_init(PNEX_CA_CERT);
     pnex_tls_set_client_identity(PNEX_CLIENT_CERT, PNEX_CLIENT_KEY);
 
-    // URL selon WS_SSL compilé (port implicite : 443/80, comme le custom).
-    // The token never travels in the URL (D154): Authorization header.
-    snprintf(s_conn, sizeof(s_conn), "%s://%s%s?device_id=%s",
-             pnex_use_tls() ? "wss" : "ws", s_host, init.ws_path, device_id);
-    s_client.setAuthToken(token);
-    snprintf(s_conn_log, sizeof(s_conn_log), "%s://%s%s?device_id=%s",
-             pnex_use_tls() ? "wss" : "ws", s_host, init.ws_path, device_id);
+    // Always wss (D154); the token never travels in the URL: Authorization
+    // header, and the device is the token's own (no id in the URL).
+    snprintf(s_conn, sizeof(s_conn), "wss://%s%s", s_host, init.ws_path);
+    s_client.setAuthToken(s_token);
+    snprintf(s_conn_log, sizeof(s_conn_log), "%s", s_conn);
 
     // TLS posture is applied per connect (pnex_ws_open builds the client).
     s_client.onMessage(on_frame);
@@ -174,15 +170,9 @@ const char* pnex_host() { return s_host; }
 const char* pnex_device_id() { return s_device_id; }
 const char* pnex_conn_string() { return s_conn_log; }
 
-// Raw base64 credentials for the OTA download URL (see pnex_transport.h).
-const char* pnex_token_b64() { return token; }
-const char* pnex_device_id_b64() { return device_id; }
+const char* pnex_token() { return s_token; }
 
 const char* pnex_ota_pubkey() { return PNEX_OTA_PUBKEY; }
-
-bool pnex_use_tls() {
-    return ws_use_tls();
-}
 
 bool pnex_crypto_ready() {
     return cryptoReady();
@@ -267,7 +257,7 @@ bool pnex_ws_connect() {
     }
     bool ok = false;
 #if defined(ESP8266)
-    if (!(pnex_use_tls() && lean_wss_connect(ok))) {
+    if (!lean_wss_connect(ok)) {
         ok = pnex_ws_open(s_client, s_conn);
     }
 #else

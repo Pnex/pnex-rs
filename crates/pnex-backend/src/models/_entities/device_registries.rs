@@ -12,8 +12,6 @@ pub struct Model {
     pub id: i64,
     #[sea_orm(unique_key = "uniq_device_registries_org_device_id")]
     pub device_id: String,
-    #[sea_orm(column_type = "JsonBinary", nullable)]
-    pub metadata: Option<Json>,
     pub active: bool,
     pub allow_dynamic_measurements: bool,
     #[sea_orm(column_type = "JsonBinary", nullable)]

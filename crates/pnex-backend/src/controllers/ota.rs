@@ -4,10 +4,10 @@
 //!   offline-safe (delivered at the next announce, not a 409 like pins
 //!   commands);
 //! - the device-token download route — same auth posture as `/ws/device`
-//!   (b64 token+device_id query), works on the `db` ArtifactStore backend
+//!   (`authenticate_device`), works on the `db` ArtifactStore backend
 //!   (sqlite-on-Pi reference) and on `s3`, no presigned URLs.
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use loco_rs::prelude::*;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
@@ -16,7 +16,6 @@ use uuid::Uuid;
 
 use pnex_core::ServerMsg;
 
-use super::ws_ingest::{decode_param, Snapshot};
 use crate::auth::OrgContext;
 use crate::controllers::ws_device;
 use crate::models::_entities::{build_records, device_registries, ota_assignments};
@@ -92,7 +91,7 @@ async fn resolve_target(
     let record = build_records::Entity::find()
         .filter(build_records::Column::OrgId.eq(org_id))
         .filter(build_records::Column::DeviceId.eq(&device.device_id))
-        .filter(build_records::Column::Success.eq(true))
+        .filter(build_records::Column::BuildPhase.eq(crate::services::firmware::PHASE_SUCCEEDED))
         .filter(build_records::Column::FwVersion.is_not_null())
         .filter(build_records::Column::OtaSha256.is_not_null())
         .order_by_desc(build_records::Column::Id)
@@ -240,22 +239,24 @@ async fn deploy(
             &row.sha256,
         )
         .await;
-        ws_device::push_command(
-            device.id,
-            ServerMsg::OtaAvailable {
-                cmd_id: row.cmd_id.clone().unwrap_or_default(),
-                version: row.target_version.clone(),
-                url: format!(
-                    "/api/v1/ota/firmware/{}/{}",
-                    device.device_id, row.target_version
-                ),
-                sha256: row.sha256.clone(),
-                size: row.size_bytes.map(|s| s as u64),
-                sig,
-            },
-        )
-        .await;
-        payload["pushed"] = serde_json::json!(true);
+        if let Some(sig) = sig {
+            ws_device::push_command(
+                device.id,
+                ServerMsg::OtaAvailable {
+                    cmd_id: row.cmd_id.clone().unwrap_or_default(),
+                    version: row.target_version.clone(),
+                    url: format!(
+                        "/api/v1/ota/firmware/{}/{}",
+                        device.device_id, row.target_version
+                    ),
+                    sha256: row.sha256.clone(),
+                    size: row.size_bytes.map(|s| s as u64),
+                    sig,
+                },
+            )
+            .await;
+            payload["pushed"] = serde_json::json!(true);
+        }
     }
     Ok((StatusCode::CREATED, format::json(payload)).into_response())
 }
@@ -345,45 +346,23 @@ async fn cancel(
 
 // ─────────────────── GET /ota/firmware/{device_id}/{version} ───────────────────
 
-#[derive(Debug, Deserialize)]
-struct DeviceAuthQuery {
-    device_id: Option<String>,
-}
-
 /// Device-token authenticated download (same posture as /ws/device auth).
 /// Byte-proxy of the versioned OTA artifact.
 async fn download_firmware(
     State(ctx): State<AppContext>,
     Path((device_id_str, version)): Path<(String, String)>,
-    Query(q): Query<DeviceAuthQuery>,
     headers: axum::http::HeaderMap,
 ) -> Result<Response> {
     let ingest = crate::services::settings::IngestSettings::from_config(&ctx.config);
     if !super::ws_ingest::arrived_over_tls(&headers, &ingest) {
         return Err(not_found_code("auth_failed", "authentication failed"));
     }
-    let token = super::ws_ingest::device_token(&headers)
-        .map(decode_param)
-        .flatten()
-        .ok_or_else(|| not_found_code("auth_failed", "authentication failed"))?;
-    let claimed = q
-        .device_id
-        .as_deref()
-        .map(decode_param)
-        .flatten()
-        .ok_or_else(|| not_found_code("auth_failed", "authentication failed"))?;
-    if claimed != device_id_str {
-        return Err(not_found_code("auth_failed", "authentication failed"));
-    }
-    let (_, device) = Snapshot::load(&ctx.db, &token)
+    // The token designates the device; the path must name that same one.
+    let device = super::ws_ingest::authenticate_device(&ctx.db, &headers, &ingest)
         .await
-        .map_err(|_| Error::InternalServerError)?
-        .ok_or_else(|| not_found_code("auth_failed", "authentication failed"))?;
-    // D153 (L4): downloaded over the device's own certificate.
-    if !super::ws_ingest::client_cert_matches(&ctx.db, &headers, &ingest, device.id)
-        .await
-        .map_err(|_| Error::InternalServerError)?
-    {
+        .map_err(|_| not_found_code("auth_failed", "authentication failed"))?
+        .device;
+    if device.device_id != device_id_str {
         return Err(not_found_code("auth_failed", "authentication failed"));
     }
     // Artifact key is org-scoped: the authenticated device's own org.

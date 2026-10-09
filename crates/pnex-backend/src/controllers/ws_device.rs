@@ -1,7 +1,7 @@
 //! Canal device bidirectionnel — WS `/ws/device` (Brick 0, brick0.md §3).
 //!
-//! Framing identique à `/ws/sensor/ingest` (auth query b64, frames texte
-//! `base64(nonce‖ChaCha20-nu)`, PING/PONG) ; messages métier JSON tagué `t`
+//! Same auth and framing as `/ws/sensor/ingest` (`authenticate_device`,
+//! Noise NNpsk0 transport frames, PING/PONG); messages métier JSON tagué `t`
 //! (`pnex_core::proto` — miroir firmware C++). Sémantique RPC à la
 //! ThingsBoard : toute commande porte un `cmd_id`, le device répond `Ack`.
 //!
@@ -13,22 +13,20 @@
 //!   commandes REST (`controllers/pins.rs`) ; le loop `select` interleaving
 //!   uplink/downlink ;
 //! - anti-clone : mêmes mécanismes que l'ingest (4003 immédiat en-process,
-//!   fallback PG frais, close codes 4001/4002/4003/4005/4006/4008).
+//!   fallback PG frais, close codes 4001/4002/4003/4005/4011/4013/4014).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::response::Response;
-use base64::Engine as _;
 use loco_rs::prelude::*;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-use serde::Deserialize;
 use tokio::sync::mpsc;
 
-use super::ws_ingest::{close_socket, decode_param, reject, FrameCodec, Snapshot};
+use super::ws_ingest::{close_socket, reject, FrameCodec, Snapshot};
 use crate::models::_entities::{
     device_capability_instances, device_registries, predefined_devices,
 };
@@ -136,18 +134,12 @@ impl DeviceSnapshot {
 
 // ─────────────────────────────── Handler ───────────────────────────────
 
-#[derive(Debug, Deserialize)]
-pub struct DeviceQuery {
-    device_id: Option<String>,
-}
-
 pub fn routes() -> Routes {
     Routes::new().prefix("/ws").add("/device", get(ws_device))
 }
 
 async fn ws_device(
     State(ctx): State<AppContext>,
-    Query(q): Query<DeviceQuery>,
     headers: axum::http::HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
@@ -160,49 +152,12 @@ async fn ws_device(
     let Some(permit) = super::ws_ingest::admission_permit(&settings).await else {
         return reject(ws, 1013, "Try again later");
     };
-    // Auth (ordre ingest : 4002 → 4001 → 4006 → 4008 → 4003).
-    let Some(raw_token) = super::ws_ingest::device_token(&headers) else {
-        return reject(ws, 4002, "No token provided");
-    };
-    let token = match decode_param(raw_token) {
-        Some(t) if !t.is_empty() => t,
-        _ => return reject(ws, 4001, "Authentication failed"),
-    };
-    let device_id = match q.device_id.as_deref().map(decode_param) {
-        Some(Some(d)) if !d.is_empty() => d,
-        _ => return reject(ws, 4006, "Token device mismatch"),
-    };
-
-    let (tok, device) = match Snapshot::load(&ctx.db, &token).await {
-        Ok(Some(found)) => found,
-        _ => return reject(ws, 4001, "Authentication failed"),
-    };
-    if device.device_id != device_id {
-        return reject(ws, 4006, "Token/device mismatch");
-    }
-    // D153 (L4): the TLS client certificate must be this device's.
-    if !matches!(
-        super::ws_ingest::client_cert_matches(&ctx.db, &headers, &settings, device.id).await,
-        Ok(true)
-    ) {
-        return reject(
-            ws,
-            super::ws_ingest::CLOSE_CLIENT_CERT,
-            "Client certificate required",
-        );
-    }
-    let Some(key) = tok
-        .encryption_key
-        .as_deref()
-        .and_then(|k| {
-            base64::engine::general_purpose::STANDARD
-                .decode(k.trim())
-                .ok()
-        })
-        .and_then(|k| <[u8; 32]>::try_from(k).ok())
-    else {
-        return reject(ws, 4008, "No encryption key");
-    };
+    let super::ws_ingest::DeviceAuth { token, device, key } =
+        match super::ws_ingest::authenticate_device(&ctx.db, &headers, &settings).await {
+            Ok(auth) => auth,
+            Err(refusal) => return reject(ws, refusal.code, refusal.reason),
+        };
+    let device_id = device.device_id.clone();
 
     // Snapshot at connect: a generic model takes its labels from the board
     // overlay, a custom firmware device from the instances persisted at
@@ -927,23 +882,25 @@ async fn handle_announce(
                         &row.sha256,
                     )
                     .await;
-                    send_server_msg(
-                        socket,
-                        codec,
-                        &ServerMsg::OtaAvailable {
-                            cmd_id: cmd_id.clone(),
-                            version: row.target_version.clone(),
-                            url: format!(
-                                "/api/v1/ota/firmware/{}/{}",
-                                snap.device_id, row.target_version
-                            ),
-                            sha256: row.sha256.clone(),
-                            size: row.size_bytes.map(|s| s as u64),
-                            sig,
-                        },
-                    )
-                    .await;
-                    offered = Some(cmd_id);
+                    if let Some(sig) = sig {
+                        send_server_msg(
+                            socket,
+                            codec,
+                            &ServerMsg::OtaAvailable {
+                                cmd_id: cmd_id.clone(),
+                                version: row.target_version.clone(),
+                                url: format!(
+                                    "/api/v1/ota/firmware/{}/{}",
+                                    snap.device_id, row.target_version
+                                ),
+                                sha256: row.sha256.clone(),
+                                size: row.size_bytes.map(|s| s as u64),
+                                sig,
+                            },
+                        )
+                        .await;
+                        offered = Some(cmd_id);
+                    }
                 }
             }
         }

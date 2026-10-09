@@ -1,6 +1,6 @@
 //! Endpoints builds firmware (Phase 6) — `POST /build-firmware`,
-//! `GET /build-records` (paginé D14), `DELETE /build-records/{id}`,
-//! `GET /download/firmware/{device_id}` (octets proxifiés).
+//! `GET /build-records` (paginé D14), `GET /download/firmware/{device_id}`
+//! (octets proxifiés).
 
 use pnex_core::{BuildRecord, CreateBuild, CreateBuildResponse, Paginated};
 
@@ -12,7 +12,8 @@ use crate::api::error::ApiError;
 pub struct BuildFilters {
     /// Correspondance exacte sur l'identifiant firmware.
     pub device_id: Option<String>,
-    pub success: Option<bool>,
+    /// `queued` | `running` | `succeeded` | `failed`.
+    pub build_phase: Option<&'static str>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -23,8 +24,8 @@ impl BuildFilters {
         if let Some(v) = &self.device_id {
             parts.push(format!("device_id={}", urlencode(v)));
         }
-        if let Some(v) = self.success {
-            parts.push(format!("success={v}"));
+        if let Some(v) = self.build_phase {
+            parts.push(format!("build_phase={v}"));
         }
         if let Some(v) = self.limit {
             parts.push(format!("limit={v}"));
@@ -76,10 +77,6 @@ pub async fn create(params: CreateBuild) -> Result<CreateBuildResponse, ApiError
 /// `GET /api/v1/download/firmware/{device_id}` — octets du binaire (proxy
 /// serveur). L'appelant déclenche le téléchargement navigateur
 /// (`util::save_blob`).
-///
-/// (`DELETE /build-records/{id}` is still served by the backend — legacy
-/// contract parity — but has no UI entry anymore: a record is only
-/// deletable there if the build failed AND the device is gone.)
 pub async fn download(device_id: &str) -> Result<Vec<u8>, ApiError> {
     client::request_bytes(
         reqwest::Method::GET,

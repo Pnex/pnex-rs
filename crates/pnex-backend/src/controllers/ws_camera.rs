@@ -1,12 +1,12 @@
 //! Camera WebSockets (camera-video.md D73/D75).
 //!
-//! - `GET /ws/camera?device_id=<b64>` + `Authorization: Bearer <b64>`
-//!   (D154) — device uplink, binary
+//! - `GET /ws/camera` + `Authorization: Bearer <token>` (D154) — device
+//!   uplink, binary
 //!   Noise NNpsk0 link (D156, same key as `/ws/device`) in raw bytes: the
 //!   device's first binary frame is the first Noise message, the server
 //!   answers the second, then each binary frame is the sealed
 //!   `PXC1 header ‖ JPEG` (chunked Noise messages when larger than 64 KiB). Auth and close codes identical to
-//!   `/ws/device` (4002/4001/4006/4008), anti-clone through a dedicated
+//!   `/ws/device` (`authenticate_device`), anti-clone through a dedicated
 //!   `CAMERA_SESSIONS` registry (4003) plus a cross-pod Valkey claim
 //!   (`camera::claim_uplink`, refreshed by the session; a lost claim closes
 //!   with 4003). The token is revalidated periodically like `/ws/device`
@@ -23,13 +23,12 @@ use axum::body::Bytes;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
 use axum::response::Response;
-use base64::Engine as _;
 use loco_rs::prelude::*;
 use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, QueryFilter};
 use serde::Deserialize;
 use tokio::sync::broadcast::error::RecvError;
 
-use super::ws_ingest::{decode_param, reject, FrameCodec, Snapshot};
+use super::ws_ingest::{reject, FrameCodec, Snapshot};
 use crate::auth::{jwks, provisioning, settings::RauthySettings};
 use crate::models::_entities::{device_registries, organization_members};
 use crate::services::camera;
@@ -85,14 +84,8 @@ fn max_frame_bytes() -> usize {
 
 // ───────────────────────────── Device uplink ─────────────────────────────
 
-#[derive(Debug, Deserialize)]
-pub struct CameraQuery {
-    device_id: Option<String>,
-}
-
 async fn ws_camera(
     State(ctx): State<AppContext>,
-    Query(q): Query<CameraQuery>,
     headers: axum::http::HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
@@ -100,47 +93,11 @@ async fn ws_camera(
     if !super::ws_ingest::arrived_over_tls(&headers, &ingest) {
         return reject(ws, super::ws_ingest::CLOSE_TLS_REQUIRED, "TLS required");
     }
-    let Some(raw_token) = super::ws_ingest::device_token(&headers) else {
-        return reject(ws, 4002, "No token provided");
-    };
-    let token = match decode_param(raw_token) {
-        Some(t) if !t.is_empty() => t,
-        _ => return reject(ws, 4001, "Authentication failed"),
-    };
-    let device_id = match q.device_id.as_deref().map(decode_param) {
-        Some(Some(d)) if !d.is_empty() => d,
-        _ => return reject(ws, 4006, "Token device mismatch"),
-    };
-    let (tok, device) = match Snapshot::load(&ctx.db, &token).await {
-        Ok(Some(found)) => found,
-        _ => return reject(ws, 4001, "Authentication failed"),
-    };
-    if device.device_id != device_id {
-        return reject(ws, 4006, "Token/device mismatch");
-    }
-    // D153 (L4): the TLS client certificate must be this device's.
-    if !matches!(
-        super::ws_ingest::client_cert_matches(&ctx.db, &headers, &ingest, device.id).await,
-        Ok(true)
-    ) {
-        return reject(
-            ws,
-            super::ws_ingest::CLOSE_CLIENT_CERT,
-            "Client certificate required",
-        );
-    }
-    let Some(key) = tok
-        .encryption_key
-        .as_deref()
-        .and_then(|k| {
-            base64::engine::general_purpose::STANDARD
-                .decode(k.trim())
-                .ok()
-        })
-        .and_then(|k| <[u8; 32]>::try_from(k).ok())
-    else {
-        return reject(ws, 4008, "No encryption key");
-    };
+    let super::ws_ingest::DeviceAuth { token, device, key } =
+        match super::ws_ingest::authenticate_device(&ctx.db, &headers, &ingest).await {
+            Ok(auth) => auth,
+            Err(refusal) => return reject(ws, refusal.code, refusal.reason),
+        };
     let settings = IngestSettings::from_config(&ctx.config);
     let max = max_frame_bytes();
     let session = UplinkSession {

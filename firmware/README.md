@@ -14,7 +14,6 @@ Firmware ESP8266 et ESP32-C3 du projet pnex, convergé dans le monorepo —
 | `lib/pnex/` | **Lib PIO `PneX`** — toute la mécanique (transport WiFi+WS+ChaCha, config -D b64, profil pin_slave, déclaration de pins sketch → `Announce.pins` pour le firmware custom). Embarquée dans le serveur et compilée avec l'IDE firmware. Exemple : `examples/CustomMetrics/` |
 | `common_libs/` | Libs partagées — `lib_extra_dirs = ../common_libs` impose la structure frère : `display`, `pnex-core-cpp` (miroir de `pnex_core::control`, golden vectors Rust = C++) |
 | `core-cpp-tests/` | Rejoue les golden vectors de `pnex-core-cpp` sur l'hôte (Unity) — `uv run pio test -d core-cpp-tests -e native` ; regen des vecteurs : `PNEX_REGEN_GOLDENS=1 cargo test -p pnex-core --test golden_vectors` |
-| `ws-server/` | Mock Python du serveur WS — **obsolète depuis D156** (il parle en clair, le firmware n'a plus de mode en clair) : à supprimer ou à porter en Noise |
 
 > **PneX (2026-09-14)** : `pnex-transport`, `crypto` et `config` sont
 > **déplacés dans `lib/pnex/`** — la lib est autonome pour la publication

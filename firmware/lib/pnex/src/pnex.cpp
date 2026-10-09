@@ -378,8 +378,8 @@ void PnexDevice::begin() {
     if (!pnex_crypto_ready()) {
         Serial.println("[CRYPTO] ENCRYPTION_KEY invalid — the device will not connect");
     }
-    Serial.printf("[pnex] config ok : device_id=%s host=%s ssl=%d\n",
-                  pnex_device_id(), pnex_host(), pnex_use_tls());
+    Serial.printf("[pnex] config ok : device_id=%s host=%s\n",
+                  pnex_device_id(), pnex_host());
     pnex_screen::set_device_id(pnex_device_id());
 
 #if defined(ESP8266)

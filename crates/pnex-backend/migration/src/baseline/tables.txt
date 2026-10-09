@@ -61,3 +61,8 @@ users
 video_segments
 viz_widget_library
 wifi_credentials
+controls
+ai_conversations
+ai_messages
+org_device_cas
+device_certificates

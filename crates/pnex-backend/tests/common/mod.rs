@@ -293,13 +293,13 @@ impl DevWs {
     pub async fn connect_with_header(
         server: &axum_test::TestServer,
         url: &str,
-        token_b64: &str,
+        token: &str,
         key: &[u8; 32],
         device_id: &str,
     ) -> Self {
         let ws = server
             .get_websocket(url)
-            .add_header("Authorization", format!("Bearer {token_b64}"))
+            .add_header("Authorization", format!("Bearer {token}"))
             .await
             .into_websocket()
             .await;

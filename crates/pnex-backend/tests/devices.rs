@@ -311,9 +311,11 @@ async fn filtres_de_liste() {
     .await;
 }
 
+/// No device update route: a device's identity and model are fixed at
+/// registration (board and screen have their own routes).
 #[tokio::test]
 #[serial]
-async fn update_metadata_uniquement() {
+async fn device_has_no_generic_update_route() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let created: serde_json::Value =
@@ -321,33 +323,16 @@ async fn update_metadata_uniquement() {
                 .await
                 .json();
         let id = created["id"].as_i64().expect("id");
-
-        // metadata seul : OK, renvoyé tel quel.
+        assert!(created.get("metadata").is_none(), "{created}");
         let res = patch_device(
             &server,
             &env.alice,
             org,
             id,
-            serde_json::json!({ "metadata": { "location": "serre", "row": 3 } }),
+            serde_json::json!({ "metadata": { "location": "serre" } }),
         )
         .await;
-        assert_eq!(res.status_code(), 200);
-        let body: serde_json::Value = res.json();
-        assert_eq!(body["metadata"]["location"], "serre");
-
-        // Any other key → exact 400 (legacy contract).
-        for bad in [
-            serde_json::json!({ "active": true }),
-            serde_json::json!({ "metadata": {}, "device_id": "hack" }),
-            serde_json::json!({}),
-        ] {
-            let res = patch_device(&server, &env.alice, org, id, bad.clone()).await;
-            assert_eq!(res.status_code(), 400, "payload {bad:?}");
-            assert_eq!(
-                res.json::<serde_json::Value>()["detail"],
-                "Only metadata updates are allowed."
-            );
-        }
+        assert_eq!(res.status_code(), 405, "{}", res.text());
     })
     .await;
 }
@@ -547,8 +532,7 @@ async fn suppression_nettoie_token_et_build_records() {
         for phase in ["compile", "link"] {
             build_records::ActiveModel {
                 device_id: Set(Some("esp-001".into())),
-                success: Set(true),
-                build_phase: Set(Some(phase.into())),
+                build_phase: Set(phase.into()),
                 org_id: Set(org),
                 ..Default::default()
             }
@@ -604,8 +588,7 @@ async fn latest_build_hydrate_liste_et_detail() {
         // un record par (org, device_id), upsert côté contrôleur builds).
         build_records::ActiveModel {
             device_id: Set(Some("esp-s1".into())),
-            success: Set(true),
-            build_phase: Set(Some("succeeded".into())),
+            build_phase: Set("succeeded".into()),
             org_id: Set(org),
             ..Default::default()
         }
@@ -621,7 +604,7 @@ async fn latest_build_hydrate_liste_et_detail() {
             .find(|d| d["device_id"] == "esp-s1")
             .expect("esp-s1 en liste");
         let build = s1_row["latest_build"].as_object().expect("latest_build");
-        assert_eq!(build["success"], true);
+        assert!(build.get("success").is_none());
         assert_eq!(build["build_phase"], "succeeded");
         assert!(build["updated_at"].as_str().is_some(), "RFC 3339");
         let a1_row = results

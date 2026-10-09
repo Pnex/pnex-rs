@@ -597,7 +597,7 @@ mod tests {
         let pio = dir.join("fake_pio.sh");
         std::fs::write(
             &pio,
-            "#!/bin/sh\nmkdir -p .pio/build/stub\necho \"pio ssid=$WIFI_SSID host=$HOST ssl=$WS_SSL\" > .pio/build/stub/firmware.bin\necho boot > .pio/build/stub/bootloader.bin\necho part > .pio/build/stub/partitions.bin\n",
+            "#!/bin/sh\nmkdir -p .pio/build/stub\necho \"pio ssid=$WIFI_SSID host=$HOST\" > .pio/build/stub/firmware.bin\necho boot > .pio/build/stub/bootloader.bin\necho part > .pio/build/stub/partitions.bin\n",
         )
         .expect("pio");
         let esptool = dir.join("fake_esptool.sh");
@@ -618,13 +618,12 @@ mod tests {
             wifi_ssid: "coloc".into(),
             wifi_password: "w0rd".into(),
             host: "dev1.pnex.io".into(),
-            ws_ssl: true,
             token: "tok".into(),
             device_id: "capteur-jardin".into(),
-            encryption_key: None,
+            encryption_key: "a2V5".into(),
             ca_cert_pem: None,
-            ota_pubkey: None,
-            client_cert: None,
+            ota_pubkey: String::new(),
+            client_cert: ("cert".into(), "key".into()),
         }
     }
 
@@ -780,8 +779,6 @@ mod tests {
         use base64::engine::general_purpose::STANDARD;
         use base64::Engine as _;
         assert!(text.contains(&format!("host={}", STANDARD.encode("dev1.pnex.io"))));
-        // Le schéma WebSocket transite aussi en env du sous-process.
-        assert!(text.contains("ssl=true"), "{text}");
         // Le merge a bien concaténé bootloader + partitions + firmware.
         assert!(text.contains("boot") && text.contains("part"));
     }
@@ -920,13 +917,12 @@ mod real_pio_tests {
             wifi_ssid: "check".into(),
             wifi_password: "check".into(),
             host: "localhost:5150".into(),
-            ws_ssl: false,
             token: "check".into(),
             device_id: "check".into(),
-            encryption_key: None,
+            encryption_key: "a2V5".into(),
             ca_cert_pem: None,
-            ota_pubkey: None,
-            client_cert: None,
+            ota_pubkey: String::new(),
+            client_cert: ("cert".into(), "key".into()),
         };
         let device = DeviceSpec {
             org_id: 1,
@@ -992,13 +988,12 @@ mod real_pio_tests {
             wifi_ssid: "test-wifi".into(),
             wifi_password: "test-pass".into(),
             host: "localhost:5150".into(),
-            ws_ssl: false,
             token: "fake-token".into(),
             device_id: "young-walrus".into(),
-            encryption_key: None,
+            encryption_key: "a2V5".into(),
             ca_cert_pem: None,
-            ota_pubkey: None,
-            client_cert: None,
+            ota_pubkey: String::new(),
+            client_cert: ("cert".into(), "key".into()),
         };
         let device = DeviceSpec {
             org_id: 1,
@@ -1035,13 +1030,12 @@ mod real_pio_tests {
             wifi_ssid: "test-wifi".into(),
             wifi_password: "test-pass".into(),
             host: "localhost:5150".into(),
-            ws_ssl: false,
             token: "fake-token".into(),
             device_id: "young-walrus".into(),
-            encryption_key: None,
+            encryption_key: "a2V5".into(),
             ca_cert_pem: None,
-            ota_pubkey: None,
-            client_cert: None,
+            ota_pubkey: String::new(),
+            client_cert: ("cert".into(), "key".into()),
         };
         let device = DeviceSpec {
             org_id: 1,

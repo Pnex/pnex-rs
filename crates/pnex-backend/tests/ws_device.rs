@@ -15,10 +15,6 @@ use std::sync::{Arc, Mutex};
 
 // ─────────────────── Client miroir (rôle firmware générique) ───────────────────
 
-fn b64_param(raw: &str) -> String {
-    STANDARD.encode(raw)
-}
-
 fn key_bytes(b64: &str) -> [u8; 32] {
     STANDARD
         .decode(b64)
@@ -177,11 +173,7 @@ async fn announce_and_expect_provision(ws: &mut common::DevWs) -> Vec<pnex_core:
 async fn connect(server: &axum_test::TestServer, d: &Dev) -> common::DevWs {
     common::DevWs::connect(
         server,
-        &format!(
-            "/ws/device?token={}&device_id={}",
-            b64_param(&d.token),
-            b64_param(&d.device_id),
-        ),
+        &format!("/ws/device?token={}", &d.token,),
         &d.key,
         &d.device_id,
     )
@@ -1101,14 +1093,21 @@ async fn post_build(
         )
         .await
         .expect("tier bump");
+    let wifi = server
+        .post("/api/v1/edge/wifi-credentials")
+        .add_header("Authorization", format!("Bearer {auth}"))
+        .add_header("X-Org-Id", org.to_string())
+        .json(&serde_json::json!({ "ssid": "net", "password": { "value": "pw" } }))
+        .await
+        .json::<serde_json::Value>()["id"]
+        .as_i64()
+        .expect("wifi entry");
     let res = server
         .post("/api/v1/build-firmware")
         .add_header("Authorization", format!("Bearer {auth}"))
         .add_header("X-Org-Id", org.to_string())
         .json(&serde_json::json!({
-            "wifi_ssid": "net", "wifi_password": "pw",
-            "device_id": device_id, "predefined_device_name": "generic_esp8266",
-            "pnex_host": "h", "ws_ssl": false
+            "wifi_credential_id": wifi, "device_id": device_id, "pnex_host": "h"
         }))
         .await;
     res.assert_status(axum_test::http::StatusCode::CREATED);
@@ -1159,7 +1158,7 @@ async fn ota_cycle_complet_en_ligne() {
                     .await
                     .unwrap();
                 assert_eq!(
-                    sig.as_deref(),
+                    Some(sig.as_str()),
                     pnex_backend::services::ota_signing::sign_image(
                         &key,
                         &dev.device_id,
@@ -1168,7 +1167,6 @@ async fn ota_cycle_complet_en_ligne() {
                     )
                     .as_deref()
                 );
-                assert!(sig.is_some());
                 cmd_id.clone()
             }
             other => panic!("OtaAvailable attendu, reçu : {other:?}"),
@@ -1382,22 +1380,17 @@ async fn ota_gardes_et_refus_device() {
         // Download route: valid device-token auth + bad token rejected.
         let dl = server
             .get(&format!(
-                "/api/v1/ota/firmware/{}/{}?device_id={}",
-                dev.device_id,
-                build_id,
-                b64_param(&dev.device_id),
+                "/api/v1/ota/firmware/{}/{}",
+                dev.device_id, build_id,
             ))
-            .add_header("Authorization", format!("Bearer {}", b64_param(&dev.token)))
+            .add_header("Authorization", format!("Bearer {}", dev.token))
             .await;
         dl.assert_status(axum_test::http::StatusCode::OK);
         // D154: a token in the URL is no longer read.
         let in_url = server
             .get(&format!(
-                "/api/v1/ota/firmware/{}/{}?token={}&device_id={}",
-                dev.device_id,
-                build_id,
-                b64_param(&dev.token),
-                b64_param(&dev.device_id),
+                "/api/v1/ota/firmware/{}/{}?token={}",
+                dev.device_id, build_id, dev.token,
             ))
             .await;
         in_url.assert_status(axum_test::http::StatusCode::NOT_FOUND);
@@ -1609,8 +1602,8 @@ async fn flow_device_write_sends_announced_commands() {
     unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
 }
 
-/// D154: the device token travels in the `Authorization` header; the URL
-/// carries only the (non-secret) device id.
+/// D154: the device token travels, raw, in the `Authorization` header;
+/// the URL carries nothing.
 #[tokio::test]
 #[serial]
 async fn token_in_the_authorization_header_opens_the_link() {
@@ -1618,8 +1611,8 @@ async fn token_in_the_authorization_header_opens_the_link() {
         let dev = create_generic(&server, &auth, "gen-hdr-auth").await;
         let mut ws = common::DevWs::connect_with_header(
             &server,
-            &format!("/ws/device?device_id={}", b64_param(&dev.device_id)),
-            &b64_param(&dev.token),
+            "/ws/device",
+            &dev.token,
             &dev.key,
             &dev.device_id,
         )

@@ -165,11 +165,7 @@ async fn camera_uplink_live_and_settings() {
 
         let mut ctl = common::DevWs::connect(
             &server,
-            &format!(
-                "/ws/device?token={}&device_id={}",
-                STANDARD.encode(&dev.token),
-                STANDARD.encode(&dev.device_id),
-            ),
+            &format!("/ws/device?token={}", &dev.token,),
             &dev.key,
             &dev.device_id,
         )
@@ -214,11 +210,7 @@ async fn camera_uplink_live_and_settings() {
         // Uplink: an encrypted frame reaches the viewer as raw JPEG.
         let mut cam = common::DevWs::connect_binary(
             &server,
-            &format!(
-                "/ws/camera?token={}&device_id={}",
-                STANDARD.encode(&dev.token),
-                STANDARD.encode(&dev.device_id),
-            ),
+            &format!("/ws/camera?token={}", &dev.token,),
             &dev.key,
             &dev.device_id,
         )
@@ -244,11 +236,7 @@ async fn camera_uplink_live_and_settings() {
         // A second uplink for the same camera is refused (anti-clone).
         let mut clone = common::DevWs::connect_binary(
             &server,
-            &format!(
-                "/ws/camera?token={}&device_id={}",
-                STANDARD.encode(&dev.token),
-                STANDARD.encode(&dev.device_id),
-            ),
+            &format!("/ws/camera?token={}", &dev.token,),
             &dev.key,
             &dev.device_id,
         )
@@ -495,11 +483,7 @@ async fn camera_cluster_state_crosses_pods() {
             .unwrap();
         let mut ctl = common::DevWs::connect(
             &server,
-            &format!(
-                "/ws/device?token={}&device_id={}",
-                STANDARD.encode(&dev.token),
-                STANDARD.encode(&dev.device_id),
-            ),
+            &format!("/ws/device?token={}", &dev.token,),
             &dev.key,
             &dev.device_id,
         )
@@ -559,11 +543,7 @@ async fn camera_cluster_state_crosses_pods() {
             .unwrap();
         let mut clone = common::DevWs::connect_binary(
             &server,
-            &format!(
-                "/ws/camera?token={}&device_id={}",
-                STANDARD.encode(&dev.token),
-                STANDARD.encode(&dev.device_id),
-            ),
+            &format!("/ws/camera?token={}", &dev.token,),
             &dev.key,
             &dev.device_id,
         )
@@ -691,11 +671,7 @@ async fn camera_cluster_state_crosses_pods() {
         let _: () = kv.del(camera::uplink_key(dev.id)).await.unwrap();
         let mut cam = common::DevWs::connect_binary(
             &server,
-            &format!(
-                "/ws/camera?token={}&device_id={}",
-                STANDARD.encode(&dev.token),
-                STANDARD.encode(&dev.device_id),
-            ),
+            &format!("/ws/camera?token={}", &dev.token,),
             &dev.key,
             &dev.device_id,
         )

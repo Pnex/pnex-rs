@@ -17,50 +17,28 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Corps du `POST /api/v1/build-firmware`.
-///
-/// `insecure`, `server_port`, `force_rebuild` and `metadata` from the
-/// legacy contract are accepted and ignored (serde tolerates unknown
-/// fields): the current firmware only reads WiFi, host and WS scheme.
+/// Body of `POST /api/v1/build-firmware`. Unknown fields are refused.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CreateBuild {
-    /// WiFi entry of the org's referential (secrets.md S6): the build
-    /// references its vault secret, the password never travels. When set,
-    /// `wifi_ssid` / `wifi_password` are ignored.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub wifi_credential_id: Option<i64>,
-    /// Legacy: typed SSID + password, saved into the referential (and the
-    /// vault) before the build.
-    #[serde(default)]
-    pub wifi_ssid: String,
-    #[serde(default)]
-    pub wifi_password: String,
-    /// Doit correspondre au modèle d'un device enregistré dans l'org (le
-    /// contrôleur vérifie la cohérence avec le device).
-    pub predefined_device_name: String,
-    /// Hôte du serveur PNEX (ex. `dev1.pnex.io`) — passé au firmware en
-    /// base64. Deviation from the legacy stack: passed as-is, no `_extract_hostname`.
-    pub pnex_host: String,
+    /// Registered device of the org; its model and frozen board drive the
+    /// build.
     pub device_id: String,
-    /// Ignored by the server since D70: every firmware is built for
-    /// `wss://` through the TLS edge. Kept in the contract for compatibility.
-    #[serde(default = "default_ws_ssl")]
-    pub ws_ssl: bool,
+    /// WiFi entry of the org's referential (secrets.md S6): the build
+    /// references its vault secret, the password never travels.
+    pub wifi_credential_id: i64,
+    /// PneX server host (e.g. `dev1.pnex.io`), passed to the firmware in
+    /// base64. An imposed production host (`PNEX_PROD_HOST`) wins.
+    #[serde(default)]
+    pub pnex_host: String,
 }
 
-fn default_ws_ssl() -> bool {
-    true
-}
-
-/// Réponse 201 du `POST /api/v1/build-firmware`.
+/// 201 answer of `POST /api/v1/build-firmware`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateBuildResponse {
-    /// Always true: every build request inserts a new record (its id is
-    /// the new firmware version). Kept for API compatibility.
-    pub build_record_created: bool,
-    /// Id du `build_records`.
+    /// Id of the new `build_records` row (also the firmware version).
     pub build_id: i64,
-    /// Phase au moment de la soumission — `"queued"`.
+    /// Phase at submission — `"queued"`.
     pub status: String,
     pub message: String,
 }
@@ -72,10 +50,8 @@ pub struct BuildRecord {
     /// D2: owning org instead of the legacy `user`.
     pub org_id: i64,
     pub device_id: Option<String>,
-    /// Vrai ssi `build_phase == "succeeded"` (le binaire est prêt).
-    pub success: bool,
     /// `queued` | `running` | `succeeded` | `failed` (cf. doc module).
-    pub build_phase: Option<String>,
+    pub build_phase: String,
     /// Clé de l'artefact dans l'`ArtifactStore` (absente si échec/en cours).
     #[serde(default)]
     pub firmware_bin_s3_key: Option<String>,
@@ -96,6 +72,13 @@ pub struct BuildRecord {
     pub created_at: String,
     /// RFC 3339 — dernier changement de phase.
     pub updated_at: String,
+}
+
+impl BuildRecord {
+    /// The binary is ready (`build_phase == "succeeded"`).
+    pub fn succeeded(&self) -> bool {
+        self.build_phase == "succeeded"
+    }
 }
 
 /// Failure reasons of a firmware build (O4), stored on the record by the
@@ -157,15 +140,13 @@ pub fn device_ca_max_pem_bytes(soc: &str) -> usize {
 mod tests {
     use super::*;
 
-    /// Forme de sortie exacte d'un record (parité BuildRecordSerializer,
-    /// org_id à la place de user, plus d'argo_wf_job_name).
+    /// Exact output shape of a record.
     #[test]
     fn build_record_shape_roundtrip() {
         let json = r#"{
             "id": 12,
             "org_id": 4,
             "device_id": "capteur-jardin",
-            "success": true,
             "build_phase": "succeeded",
             "firmware_bin_s3_key": "org_4/firmware/capteur-jardin-firmware.bin",
             "fw_version": "12",
@@ -174,23 +155,8 @@ mod tests {
         }"#;
         let record: BuildRecord = serde_json::from_str(json).unwrap();
         assert_eq!(record.org_id, 4);
-        assert!(record.success);
-        assert_eq!(record.build_phase.as_deref(), Some("succeeded"));
+        assert!(record.succeeded());
         assert_eq!(record.fw_version.as_deref(), Some("12"));
-        // Legacy payload without fw_version still deserializes (serde default).
-        let legacy: BuildRecord = serde_json::from_str(
-            r#"{
-            "id": 12,
-            "org_id": 4,
-            "device_id": "capteur-jardin",
-            "success": true,
-            "build_phase": "succeeded",
-            "created_at": "2026-08-16T12:00:00+00:00",
-            "updated_at": "2026-08-16T12:03:00+00:00"
-        }"#,
-        )
-        .unwrap();
-        assert_eq!(legacy.fw_version, None);
         let back = serde_json::to_value(&record).unwrap();
         assert_eq!(
             back,
@@ -198,52 +164,32 @@ mod tests {
         );
     }
 
-    /// Minimal POST payload; inherited legacy fields are tolerated.
+    /// Minimal POST payload; any other field is refused.
     #[test]
-    fn create_build_minimal_et_champs_herites_ignores() {
+    fn create_build_refuses_unknown_fields() {
         let payload: CreateBuild = serde_json::from_str(
-            r#"{
-                "wifi_ssid": "coloc",
-                "wifi_password": "ZaFjX9",
-                "device_id": "dev-11",
-                "predefined_device_name": "soil_sensor",
-                "pnex_host": "dev1.pnex.io",
-                "ws_ssl": false,
-                "insecure": 1,
-                "server_port": 443,
-                "force_rebuild": true,
-                "metadata": ""
-            }"#,
+            r#"{"device_id": "dev-11", "wifi_credential_id": 3, "pnex_host": "dev1.pnex.io"}"#,
         )
         .unwrap();
-        assert_eq!(payload.wifi_ssid, "coloc");
+        assert_eq!(payload.wifi_credential_id, 3);
         assert_eq!(payload.pnex_host, "dev1.pnex.io");
-        // ws_ssl explicite dans la charge.
-        assert!(!payload.ws_ssl);
-    }
-
-    /// ws_ssl absent du corps → défaut true (parité firmware qui parlait
-    /// toujours wss ; le front local envoie explicitement false).
-    #[test]
-    fn create_build_ws_ssl_defaut_true() {
-        let payload: CreateBuild = serde_json::from_str(
-            r#"{
-                "wifi_ssid": "coloc",
-                "wifi_password": "ZaFjX9",
-                "device_id": "dev-11",
-                "predefined_device_name": "soil_sensor",
-                "pnex_host": "dev1.pnex.io"
-            }"#,
-        )
-        .unwrap();
-        assert!(payload.ws_ssl);
+        for legacy in [
+            r#""ws_ssl": true"#,
+            r#""wifi_password": "x""#,
+            r#""insecure": 1"#,
+        ] {
+            let body = format!(r#"{{"device_id": "d", "wifi_credential_id": 3, {legacy}}}"#);
+            assert!(
+                serde_json::from_str::<CreateBuild>(&body).is_err(),
+                "{legacy}"
+            );
+        }
     }
 
     /// Réponse de création : sans backend/job_name (adaptation Rust).
     #[test]
     fn create_response_sans_champs_k8s() {
         let res = CreateBuildResponse {
-            build_record_created: true,
             build_id: 5,
             status: "queued".into(),
             message: "Build firmware job created".into(),

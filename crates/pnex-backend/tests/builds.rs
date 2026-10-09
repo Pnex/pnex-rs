@@ -92,19 +92,32 @@ async fn post_build(
     device_id: &str,
     wifi_ssid: &str,
 ) -> axum_test::TestResponse {
+    let wifi_credential_id = wifi_entry(server, token, org_id, wifi_ssid).await;
     server
         .post("/api/v1/build-firmware")
         .add_header("Authorization", bearer(token))
         .add_header("X-Org-Id", org_id.to_string())
         .add_header("Content-Type", "application/json")
         .json(&serde_json::json!({
-            "wifi_ssid": wifi_ssid,
-            "wifi_password": "pass-wifi",
-            "predefined_device_name": "soil_sensor",
+            "wifi_credential_id": wifi_credential_id,
             "pnex_host": "dev1.pnex.io",
             "device_id": device_id,
         }))
         .await
+}
+
+/// WiFi entry `ssid` of the org's referential (upsert), password in the
+/// vault: its id.
+async fn wifi_entry(server: &axum_test::TestServer, token: &str, org_id: i64, ssid: &str) -> i64 {
+    server
+        .post("/api/v1/edge/wifi-credentials")
+        .add_header("Authorization", bearer(token))
+        .add_header("X-Org-Id", org_id.to_string())
+        .json(&serde_json::json!({ "ssid": ssid, "password": { "value": "pass-wifi" } }))
+        .await
+        .json::<serde_json::Value>()["id"]
+        .as_i64()
+        .expect("wifi entry id")
 }
 
 async fn records(
@@ -134,7 +147,6 @@ async fn build_reussi_chemin_complet() {
         let res = post_build(&server, &env.alice, org, "capteur-jardin", "coloc").await;
         res.assert_status(axum_test::http::StatusCode::CREATED);
         let body: serde_json::Value = res.json();
-        assert_eq!(body["build_record_created"], true);
         assert_eq!(body["status"], "queued");
         let build_id = body["build_id"].as_i64().expect("build_id");
 
@@ -144,7 +156,6 @@ async fn build_reussi_chemin_complet() {
         assert_eq!(list["count"], 1);
         let record = &list["results"][0];
         assert_eq!(record["id"], build_id);
-        assert_eq!(record["success"], true);
         assert_eq!(record["build_phase"], "succeeded");
         assert_eq!(
             record["firmware_bin_s3_key"],
@@ -295,50 +306,43 @@ async fn build_device_inconnu_404() {
     .await;
 }
 
-/// Field-by-field validation (errors keyed by field name): required,
-/// length, unknown model.
+/// Field-by-field validation (errors keyed by field name), unknown WiFi
+/// entry, and the strict contract: any legacy field is refused.
 #[tokio::test]
 #[serial]
 async fn validation_400() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         create_device(&server, &env.alice, org, "dev-val").await;
+        let wifi = wifi_entry(&server, &env.alice, org, "coloc").await;
 
-        // Requis (chaîne vide) + trop long + modèle inconnu + hôte avec
-        // espaces.
         let cases = [
             (
                 serde_json::json!({
-                    "wifi_ssid": "",
-                    "wifi_password": "p",
-                    "predefined_device_name": "soil_sensor",
+                    "wifi_credential_id": wifi,
                     "pnex_host": "dev1.pnex.io",
-                    "device_id": "dev-val",
+                    "device_id": "",
                 }),
-                "wifi_ssid",
+                "device_id",
                 "required",
             ),
             (
                 serde_json::json!({
-                    "wifi_ssid": "x".repeat(101),
-                    "wifi_password": "p",
-                    "predefined_device_name": "soil_sensor",
+                    "wifi_credential_id": wifi,
                     "pnex_host": "dev1.pnex.io",
-                    "device_id": "dev-val",
+                    "device_id": "x".repeat(101),
                 }),
-                "wifi_ssid",
+                "device_id",
                 "max_length:100",
             ),
             (
                 serde_json::json!({
-                    "wifi_ssid": "coloc",
-                    "wifi_password": "p",
-                    "predefined_device_name": "inconnu_modele",
+                    "wifi_credential_id": 999_999,
                     "pnex_host": "dev1.pnex.io",
                     "device_id": "dev-val",
                 }),
-                "predefined_device_name",
-                "PredefinedDevice with name inconnu_modele does not exist.",
+                "wifi_credential_id",
+                "WiFi entry not found in this organization.",
             ),
         ];
         for (body, field, msg) in cases {
@@ -353,6 +357,21 @@ async fn validation_400() {
             let out: serde_json::Value = res.json();
             assert_eq!(out[field], msg, "{out}");
         }
+
+        // Legacy typed WiFi / scheme fields: refused, not ignored.
+        let legacy = server
+            .post("/api/v1/build-firmware")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&serde_json::json!({
+                "wifi_ssid": "coloc",
+                "wifi_password": "p",
+                "pnex_host": "dev1.pnex.io",
+                "device_id": "dev-val",
+                "ws_ssl": true,
+            }))
+            .await;
+        assert!(legacy.status_code().is_client_error(), "{}", legacy.text());
     })
     .await;
 }
@@ -372,7 +391,6 @@ async fn build_echec_outil() {
         let list = records(&server, &env.alice, org, "").await;
         let record = &list["results"][0];
         assert_eq!(record["build_phase"], "failed");
-        assert_eq!(record["success"], false);
         // Failure reason (O4): code + compiler output, token masked.
         assert_eq!(record["failure_code"], "build_compile", "{record}");
         let detail = record["failure_detail"].as_str().unwrap_or_default();
@@ -517,8 +535,7 @@ async fn successful_build_prunes_old_records_and_artifacts() {
         for _ in 0..7 {
             let row = build_records::ActiveModel {
                 device_id: Set(Some("dev-ret".into())),
-                success: Set(true),
-                build_phase: Set(Some("succeeded".into())),
+                build_phase: Set("succeeded".into()),
                 firmware_bin_s3_key: Set(Some(serial_key.clone())),
                 org_id: Set(org),
                 ota_sha256: Set(Some("0".repeat(64))),
@@ -619,8 +636,7 @@ async fn second_build_while_one_is_in_flight_is_refused() {
         lift_build_interval(&ctx, org).await;
         build_records::ActiveModel {
             device_id: Set(Some("dev-busy".into())),
-            success: Set(false),
-            build_phase: Set(Some("running".into())),
+            build_phase: Set("running".into()),
             org_id: Set(org),
             ..Default::default()
         }
@@ -638,39 +654,26 @@ async fn second_build_while_one_is_in_flight_is_refused() {
     .await;
 }
 
-/// Deletion rules: succeeded → 400, device still present → 400,
-/// device gone → 204.
+/// Deleting the device cleans its build records; there is no record
+/// deletion route.
 #[tokio::test]
 #[serial]
-async fn suppression_regles() {
+async fn device_deletion_cleans_its_records() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         create_device(&server, &env.alice, org, "dev-del").await;
-
-        // Build raté (record non réussi, supprimable une fois le device parti).
         let res = post_build(&server, &env.alice, org, "dev-del", "fail").await;
         res.assert_status(axum_test::http::StatusCode::CREATED);
         let id = res.json::<serde_json::Value>()["build_id"]
             .as_i64()
             .expect("id");
-
-        // Device encore présent → 400.
-        let blocked = server
+        let no_route = server
             .delete(&format!("/api/v1/build-records/{id}"))
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await;
-        blocked.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
-        let body: serde_json::Value = blocked.json();
-        assert_eq!(
-            body["error"],
-            "Cannot delete firmware record while device still exists"
-        );
+        assert!(no_route.status_code().is_client_error());
 
-        // Device deleted → the device DELETE cleans up the records (legacy
-        // parity, set in Phase 4): the record is already gone, the endpoint
-        // answers 404. The 204 branch (orphan record of a missing device)
-        // remains covered by the rules above.
         let devices: serde_json::Value = server
             .get("/api/v1/devices")
             .add_header("Authorization", bearer(&env.alice))
@@ -684,38 +687,13 @@ async fn suppression_regles() {
             .add_header("X-Org-Id", org.to_string())
             .await
             .assert_status(axum_test::http::StatusCode::NO_CONTENT);
-
-        let gone = server
-            .delete(&format!("/api/v1/build-records/{id}"))
-            .add_header("Authorization", bearer(&env.alice))
-            .add_header("X-Org-Id", org.to_string())
-            .await;
-        gone.assert_status(axum_test::http::StatusCode::NOT_FOUND);
         let after: serde_json::Value = records(&server, &env.alice, org, "").await;
-        assert_eq!(after["count"], 0, "le record a été nettoyé avec le device");
-
-        // Un build RÉUSSI n'est jamais supprimable — même device encore
-        // présent, la règle « successful » passe avant (nouveau cycle :
-        // l'intervalle du précédent échec ne bloque pas).
-        create_device(&server, &env.alice, org, "dev-del2").await;
-        let res = post_build(&server, &env.alice, org, "dev-del2", "coloc").await;
-        res.assert_status(axum_test::http::StatusCode::CREATED);
-        let success_id = res.json::<serde_json::Value>()["build_id"]
-            .as_i64()
-            .expect("id");
-        let refused = server
-            .delete(&format!("/api/v1/build-records/{success_id}"))
-            .add_header("Authorization", bearer(&env.alice))
-            .add_header("X-Org-Id", org.to_string())
-            .await;
-        refused.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
-        let body: serde_json::Value = refused.json();
-        assert_eq!(body["error"], "Cannot delete successful firmware builds");
+        assert_eq!(after["count"], 0, "records cleaned with the device");
     })
     .await;
 }
 
-/// Liste : enveloppe D14 + filtres device_id/success. (Deux builds en
+/// Liste : enveloppe D14 + filtres device_id/build_phase. (Deux builds en
 /// échec : un succès bloquerait le second via l'intervalle 429.)
 #[tokio::test]
 #[serial]
@@ -740,9 +718,9 @@ async fn liste_enveloppe_et_filtres() {
         assert_eq!(by_device["count"], 1);
         assert_eq!(by_device["results"][0]["device_id"], "dev-f1");
 
-        let by_failed = records(&server, &env.alice, org, "?success=false").await;
+        let by_failed = records(&server, &env.alice, org, "?build_phase=failed").await;
         assert_eq!(by_failed["count"], 2);
-        let by_success = records(&server, &env.alice, org, "?success=true").await;
+        let by_success = records(&server, &env.alice, org, "?build_phase=succeeded").await;
         assert_eq!(by_success["count"], 0);
     })
     .await;
@@ -759,20 +737,13 @@ async fn isolation_org_et_auth() {
         create_device(&server, &env.alice, alice_org, "dev-iso").await;
         post_build(&server, &env.alice, alice_org, "dev-iso", "coloc").await;
 
-        // Bob : liste vide, download 404, delete 404, build sur le device
+        // Bob : liste vide, download 404, build sur le device
         // d'alice → 404 (le device n'existe pas dans SON org).
         let bob_list = records(&server, &env.bob, bob_org, "").await;
         assert_eq!(bob_list["count"], 0);
 
         server
             .get("/api/v1/download/firmware/dev-iso")
-            .add_header("Authorization", bearer(&env.bob))
-            .add_header("X-Org-Id", bob_org.to_string())
-            .await
-            .assert_status(axum_test::http::StatusCode::NOT_FOUND);
-
-        server
-            .delete("/api/v1/build-records/1")
             .add_header("Authorization", bearer(&env.bob))
             .add_header("X-Org-Id", bob_org.to_string())
             .await
@@ -823,7 +794,6 @@ async fn build_with_a_wifi_entry_uses_the_vault_password() {
             .add_header("X-Org-Id", org.to_string())
             .json(&serde_json::json!({
                 "wifi_credential_id": entry_id,
-                "predefined_device_name": "soil_sensor",
                 "pnex_host": "dev1.pnex.io",
                 "device_id": "capteur-vault",
             }))
@@ -854,14 +824,13 @@ async fn build_with_a_wifi_entry_uses_the_vault_password() {
             .add_header("X-Org-Id", other.to_string())
             .json(&serde_json::json!({
                 "wifi_credential_id": entry_id,
-                "predefined_device_name": "soil_sensor",
                 "pnex_host": "dev1.pnex.io",
                 "device_id": "capteur-vault",
             }))
             .await;
         res.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
 
-        // Typed request: saved into the referential, value in the vault.
+        // Every entry holds its value in the vault.
         let row = pnex_backend::models::_entities::wifi_credentials::Entity::find()
             .all(&ctx.db)
             .await

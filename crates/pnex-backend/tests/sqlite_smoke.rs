@@ -118,15 +118,22 @@ async fn sqlite_boot_build_download() {
             }
 
             // Build inline (ForegroundBlocking) → succeeded.
+            let wifi = server
+                .post("/api/v1/edge/wifi-credentials")
+                .add_header("Authorization", format!("Bearer {alice}"))
+                .add_header("X-Org-Id", org.to_string())
+                .json(&serde_json::json!({ "ssid": "coloc", "password": { "value": "pass-wifi" } }))
+                .await
+                .json::<serde_json::Value>()["id"]
+                .as_i64()
+                .expect("wifi entry");
             let res = server
                 .post("/api/v1/build-firmware")
                 .add_header("Authorization", format!("Bearer {alice}"))
                 .add_header("X-Org-Id", org.to_string())
                 .add_header("Content-Type", "application/json")
                 .json(&serde_json::json!({
-                    "wifi_ssid": "coloc",
-                    "wifi_password": "pass-wifi",
-                    "predefined_device_name": "soil_sensor",
+                    "wifi_credential_id": wifi,
                     "pnex_host": "dev1.pnex.io",
                     "device_id": "capteur-jardin",
                 }))

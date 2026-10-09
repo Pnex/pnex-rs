@@ -84,11 +84,9 @@ void setup() {
     Serial.begin(115200);
     delay(1000);
 
-    // Config compilée décodée + clé ChaCha + URL + callbacks par
-    // pnex-transport (F1) — sans clé valide les frames circulent EN CLAIR,
-    // réservé au mock local ws-server/ : le serveur réel répondrait
-    // ERROR:decryption_failed à tout et le device ne passerait jamais
-    // « actif ».
+    // Compiled config, Noise key, CA pin, client identity and wss URL set
+    // up by pnex-transport (F1): without a valid key the device never
+    // connects (no clear-text mode).
     PnexTransportInit ti;
     ti.ws_path = "/ws/sensor/ingest";
     ti.pong_timeout_ms = 0;     // pas de timeout PONG dans ce firmware
@@ -151,8 +149,8 @@ void setup() {
         delay(1000);
     }
 
-    // Build the connection string (déjà faite par pnex-transport au setup —
-    // schéma selon WS_SSL, token/device_id en base64, contrat decode_param).
+    // Connection string, built by pnex-transport at setup (wss, token in
+    // the Authorization header).
     Serial.print("[WS] Connection string: ");
     Serial.println(pnex_conn_string());
 

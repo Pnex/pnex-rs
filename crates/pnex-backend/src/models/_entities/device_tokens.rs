@@ -12,7 +12,7 @@ pub struct Model {
     pub id: i64,
     #[sea_orm(unique)]
     pub token: String,
-    pub encryption_key: Option<String>,
+    pub encryption_key: String,
     pub is_active: bool,
     #[sea_orm(unique)]
     pub device_registry_id: i64,

@@ -487,10 +487,8 @@ rien de poussé. Le firmware compile, n'a jamais été flashé.
 2. Flash : l'AI-Thinker n'a **pas d'USB** → carrier ESP32-CAM-MB (USB) ou
    FTDI 3,3 V/5 V (TX↔U0R, RX↔U0T), **GPIO0 à la masse au reset** pour
    le mode download, puis retirer GPIO0 + reset pour démarrer.
-   Build manuel possible : `task fw:flash FIRMWARE=generic_esp32cam` avec
-   les 6 variables base64 + `PNEX_PIO_BOARD=esp32cam
-   PNEX_BOARD_NAME=esp32cam-ai-thinker PNEX_FW_VERSION=1` et les 9
-   `PNEX_SCREEN_*` à 0/-1.
+   Le binaire se télécharge depuis l'UI (pas de build manuel : la CA,
+   le certificat client et la clé OTA sont émis par le serveur).
 3. Monitor : `task fw:monitor FIRMWARE=generic_esp32cam PORT=/dev/ttyUSB0`
    (rappel : ouvrir le port série = reset ; zombie anti-clone 4003 possible
    juste après un reset série → attendre le watchdog 45 s).

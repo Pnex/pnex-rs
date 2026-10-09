@@ -234,7 +234,6 @@ fn LockedHostView(host: String, mut selected: Signal<Option<pnex_core::PnexHost>
                 id: 0,
                 org_id: 0,
                 host: imposed.clone(),
-                ws_ssl: true,
                 created_at: String::new(),
                 updated_at: String::new(),
             }));
@@ -288,7 +287,7 @@ fn FreeHostPicker(mut selected: Signal<Option<pnex_core::PnexHost>>) -> Element 
     let register_host = move |host: String| {
         spawn(async move {
             // Always wss (D70) — the server enforces it anyway.
-            let input = pnex_core::PnexHostInput { host, ws_ssl: true };
+            let input = pnex_core::PnexHostInput { host };
             match api::hosts::create(input).await {
                 Ok(created) => {
                     selected.set(Some(created));
