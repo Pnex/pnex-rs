@@ -49,12 +49,15 @@ tardive `fw ≥ cible` rattrape un `failed(timeout)`.
 
 ## 4. Sécurité
 
-- Auth téléchargement = token device en query (posture `/ws/device`,
-  b64), org déduite du device ; le sha256 annoncé dans `OtaAvailable`
+- Auth téléchargement (depuis 2026-10-09) = token brut en
+  `Authorization: Bearer` + certificat client du device, en `https` sur le
+  point d'entrée devices (même `authenticate_device` que `/ws/device`) ;
+  le chemin doit nommer le device du jeton ; le sha256 annoncé dans `OtaAvailable`
   est recalculé côté device (mbedtls ESP32 / BearSSL 8266) et comparé
   avant le basculement de slot.
-- TLS : point unique `pnex_tls` — `PNEX_CA_CERT` (b64 PEM) présent →
-  vérification réelle ; absent → `setInsecure()`. Depuis D70 la racine
+- TLS : point unique `pnex_tls` — `PNEX_CA_CERT` (b64 PEM) obligatoire
+  (sans CA, aucune connexion : plus de `setInsecure()` depuis le
+  2026-10-09). Depuis D70 la racine
   de l'edge est **injectée automatiquement** au build (cf. tls-edge.md) →
   WS et OTA vérifient ensemble ; renouvellement sous la même CA =
   transparent ; rotation de CA = un rebuild+OTA (ou USB).
