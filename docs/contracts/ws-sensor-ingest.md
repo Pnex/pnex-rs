@@ -86,7 +86,7 @@ l'enregistrement), prologue `PNEX-NOISE-1|<device_id>`.
 | 4001 | jeton inconnu/inactif, clé invalide, erreur inattendue        |
 | 4002 | en-tête `Authorization: Bearer` absent                        |
 | 4003 | device déjà connecté (bail tenu — cf. §5)                     |
-| 4005 | token invalidé en cours de session (revalidation ~10 s)       |
+| 4005 | token invalidé en cours de session (revalidation ~30 s)       |
 | 4011 | poignée de main Noise refusée                                 |
 | 4013 | arrivé hors de l'edge TLS                                     |
 | 4014 | certificat client absent ou d'un autre device                 |
