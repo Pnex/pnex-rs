@@ -29,7 +29,7 @@ concurrency:
 
 jobs:
   compile:
-    name: pio run (soil_sensor + generic_esp8266 + generic_esp32c3)
+    name: pio run (generic_esp8266 + generic_esp32c3)
     runs-on: ubuntu-latest
     # The generic_* projects read their board and screen pins from the build
     # env (injected per device by the builder). CI compiles a screenless
@@ -56,9 +56,6 @@ jobs:
         with:
           path: ~/.platformio
           key: pio-${{ runner.os }}-${{ hashFiles('firmware/*/platformio.ini') }}
-      - name: Compile soil_sensor
-        working-directory: firmware
-        run: uv run pio run -d soil_sensor
       # Brick 0 : le .bin générique (config device compilée dans le .bin,
       # secrets vides en CI — même régime que le pre-build du Dockerfile).
       - name: Compile generic_esp8266

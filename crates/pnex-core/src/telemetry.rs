@@ -96,7 +96,7 @@ mod tests {
                 {
                     "metric": "soil_moisture",
                     "device_id": "fuzzy-zebra",
-                    "pred_dev": "soil_sensor",
+                    "pred_dev": "temp_sensor",
                     "last_value": 100.0,
                     "last_seen": "2026-08-19T10:00:30+00:00"
                 },

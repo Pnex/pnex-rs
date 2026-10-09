@@ -87,7 +87,7 @@ async fn sqlite_boot_build_download() {
                 .add_header("Content-Type", "application/json")
                 .json(&serde_json::json!({
                     "device_id": "capteur-jardin",
-                    "predefined_device_name": "soil_sensor",
+                    "predefined_device_name": "generic_esp8266",
                 }))
                 .await
                 .assert_status(axum_test::http::StatusCode::CREATED);

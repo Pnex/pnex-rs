@@ -42,7 +42,7 @@ pub struct IngestSettings {
     pub batch_max: usize,
     /// Batch télémétrie : délai max avant flush.
     pub batch_flush_secs: u64,
-    /// D154: device links (`/ws/device`, `/ws/sensor/ingest`, `/ws/camera`,
+    /// D154: device links (`/ws/device`, `/ws/camera`,
     /// OTA download) are accepted only through the TLS edge, which sets
     /// `X-Forwarded-Proto: https` (overwriting the client's value). Off in
     /// the test config only (tests talk to the server directly).

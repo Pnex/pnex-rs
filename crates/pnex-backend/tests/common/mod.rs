@@ -206,7 +206,7 @@ pub async fn seed_catalogue(db: &sea_orm::DatabaseConnection) {
     .expect("board esp8266");
 
     for (name, type_name, caps) in [
-        ("soil_sensor", "sensor", vec!["read_temperature"]),
+        ("temp_sensor", "sensor", vec!["read_temperature"]),
         ("relay_1ch", "actuator", vec!["relay"]),
         // Generic ESP32 on the overlay-less board: custom firmware
         // admission (the sketch owns the pins).
@@ -255,7 +255,7 @@ pub struct DevWs {
 }
 
 impl DevWs {
-    /// Text link (`/ws/device`, `/ws/sensor/ingest`).
+    /// Text link (`/ws/device`).
     pub async fn connect(
         server: &axum_test::TestServer,
         url: &str,

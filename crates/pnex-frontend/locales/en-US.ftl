@@ -1727,7 +1727,6 @@ err-max-length = This field cannot exceed { $value } characters.
 err-invalid-uuid = Expected a UUID.
 flows-inspector-var-value-placeholder = {"{{"} msg.x {"}}"} or a literal
 media-upload-no-file = no file selected
-device-predef-soil-sensor-desc = Soil moisture and temperature sensor
 device-predef-edge-agent-desc = Rust agent running on a computer (Linux, Windows, Raspberry Pi): any script pushes free-form values to a local HTTP API; the agent buffers them on disk and forwards them securely to PNeX.
 device-predef-generic-esp8266-desc = ESP8266 dev board on the generic firmware: pins driven from the UI (modes, write, subscribe), no code to write.
 device-predef-generic-esp32c3-desc = ESP32-C3 (Seeed XIAO) dev board on the generic firmware: pins driven from the UI (modes, write, subscribe), D0–D10 overlay admission, ADC1 (D0–D2) and strapping-safe outputs.

@@ -90,15 +90,6 @@ pub const RULES: &[Rule] = &[
         message: "Too many requests, retry later.",
     },
     Rule {
-        name: "ws-ingest",
-        path: "/ws/sensor/ingest",
-        exact: true,
-        limit: 300,
-        window: MINUTE,
-        code: pnex_core::err_codes::RATE_LIMITED,
-        message: "Too many requests, retry later.",
-    },
-    Rule {
         name: "ws-camera",
         path: "/ws/camera",
         exact: false,

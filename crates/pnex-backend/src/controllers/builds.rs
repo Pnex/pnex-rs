@@ -208,8 +208,7 @@ async fn create(
         return Err(super::edge_agents::unsupported_action());
     }
     // Board figée du device : soc merge-bin + pio_board +
-    // PNEX_BOARD_NAME. pio_board absent de la board → fallback par projet
-    // (compatibilité ini hardcodés ; soil_sensor/custom inchangés).
+    // PNEX_BOARD_NAME. No pio_board on the board → per-project fallback.
     let frozen_board = if let Some(bid) = device.board_id {
         mcu_boards::Entity::find_by_id(bid)
             .one(&ctx.db)

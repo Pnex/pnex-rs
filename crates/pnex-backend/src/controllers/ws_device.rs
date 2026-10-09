@@ -1,19 +1,19 @@
 //! Canal device bidirectionnel — WS `/ws/device` (Brick 0, brick0.md §3).
 //!
-//! Same auth and framing as `/ws/sensor/ingest` (`authenticate_device`,
-//! Noise NNpsk0 transport frames, PING/PONG); messages métier JSON tagué `t`
+//! Auth and framing from `device_link` (`authenticate_device`, Noise
+//! NNpsk0 transport frames), PING/PONG; messages métier JSON tagué `t`
 //! (`pnex_core::proto` — miroir firmware C++). Sémantique RPC à la
 //! ThingsBoard : toute commande porte un `cmd_id`, le device répond `Ack`.
 //!
 //! - `Announce` → `services::provisioning::admit` (policy Validated) →
 //!   `ProvisionAck` avec la pin map complète ;
-//! - `StateReport` → sortie metrics OpenObserve (même chemin que l'ingest,
-//!   séries `<label normalisé>{device_id, pred_dev, source_type=generic_gpio}`) ;
+//! - `StateReport` → OpenObserve metrics (telemetry sink,
+//!   series `<label normalisé>{device_id, pred_dev, source_type=generic_gpio}`) ;
 //! - downlink : registre `DEVICE_SESSIONS` (mpsc par device) où poussent les
 //!   commandes REST (`controllers/pins.rs`) ; le loop `select` interleaving
 //!   uplink/downlink ;
-//! - anti-clone : mêmes mécanismes que l'ingest (4003 immédiat en-process,
-//!   fallback PG frais, close codes 4001/4002/4003/4005/4011/4013/4014).
+//! - anti-clone: Valkey lease (4003 while a live session holds it),
+//!   close codes 4001/4002/4003/4005/4011/4013/4014).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{LazyLock, Mutex};
@@ -26,7 +26,7 @@ use loco_rs::prelude::*;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use tokio::sync::mpsc;
 
-use super::ws_ingest::{close_socket, reject, FrameCodec, Snapshot};
+use super::device_link::{active_token, close_socket, reject, FrameCodec};
 use crate::models::_entities::{
     device_capability_instances, device_registries, predefined_devices,
 };
@@ -144,16 +144,16 @@ async fn ws_device(
     ws: WebSocketUpgrade,
 ) -> Response {
     let settings = IngestSettings::from_config(&ctx.config);
-    if !super::ws_ingest::arrived_over_tls(&headers, &settings) {
-        return reject(ws, super::ws_ingest::CLOSE_TLS_REQUIRED, "TLS required");
+    if !super::device_link::arrived_over_tls(&headers, &settings) {
+        return reject(ws, super::device_link::CLOSE_TLS_REQUIRED, "TLS required");
     }
     // Reconnect storm guard: bounded concurrent admissions per pod; a
     // device that cannot get a slot in time is told to retry (1013).
-    let Some(permit) = super::ws_ingest::admission_permit(&settings).await else {
+    let Some(permit) = super::device_link::admission_permit(&settings).await else {
         return reject(ws, 1013, "Try again later");
     };
-    let super::ws_ingest::DeviceAuth { token, device, key } =
-        match super::ws_ingest::authenticate_device(&ctx.db, &headers, &settings).await {
+    let super::device_link::DeviceAuth { token, device, key } =
+        match super::device_link::authenticate_device(&ctx.db, &headers, &settings).await {
             Ok(auth) => auth,
             Err(refusal) => return reject(ws, refusal.code, refusal.reason),
         };
@@ -331,7 +331,7 @@ async fn session_loop(
                 };
                 let Some(Ok(msg)) = incoming else { break };
                 let Message::Text(text) = msg else { continue };
-                // Revalidation périodique du token (4005, parité ingest).
+                // Periodic token revalidation (4005).
                 if last_validation.elapsed() >= cache {
                     let force = last_rebuild.elapsed() >= rebuild_every;
                     match revalidate(&ctx.db, &token, &snap, &mut fingerprint, force).await {
@@ -356,7 +356,7 @@ async fn session_loop(
                     Some(p) => p,
                     None => { tracing::warn!(device = %snap.device_id, "frame device indéchiffrable"); continue; }
                 };
-                // PING/PONG au niveau frame (parité ingest) — le firmware
+                // Frame-level PING/PONG — le firmware
                 // pingue toutes les 5 s ; sans réponse il ferme après 15 s
                 // (PONG timeout) et boucle reconnexion. Manquait sur /ws/device
                 // (leçon 2026-09-02 : sessions de 15 s, device « actif » mais
@@ -395,7 +395,7 @@ async fn session_loop(
                         Ok(DeviceMsg::Announce { chip, board, fw, caps, pins }) => {
                             // Provisioning is DB heavy: bounded per pod like
                             // the handshake (waits, never rejects).
-                            let _slot = super::ws_ingest::admission_slot(&settings).await;
+                            let _slot = super::device_link::admission_slot(&settings).await;
                             if let Some(cmd_id) = handle_announce(&ctx, &mut socket, &mut codec, &mut snap, &chip, &board, &fw, caps.as_deref(), pins.as_deref()).await {
                                 ota.note(cmd_id);
                             }
@@ -665,7 +665,7 @@ async fn revalidate(
     fingerprint: &mut Option<SnapshotFingerprint>,
     force: bool,
 ) -> Revalidation {
-    let Ok(Some((_, device))) = Snapshot::load(db, token).await else {
+    let Ok(Some((_, device))) = active_token(db, token).await else {
         return Revalidation::Invalid;
     };
     if device.device_id != snap.device_id {
@@ -946,8 +946,8 @@ async fn handle_state_report(
     // d'un cap_id ne crée JAMAIS une série « à côté » de l'UI : LAST_VALUES
     // reste alimenté par gpio (bascule douce §7).
     let name = match cap_id {
-        Some(cap) if !cap.is_empty() => super::ws_ingest::normalize_measurement_name(cap),
-        _ => super::ws_ingest::normalize_measurement_name(&label),
+        Some(cap) if !cap.is_empty() => super::device_link::normalize_measurement_name(cap),
+        _ => super::device_link::normalize_measurement_name(&label),
     };
     if name.is_empty() {
         return;
@@ -1014,7 +1014,7 @@ fn handle_metric_report(snap: &DeviceSnapshot, cap_id: Option<&str>, value: serd
             return;
         }
     };
-    let name = super::ws_ingest::normalize_measurement_name(cap);
+    let name = super::device_link::normalize_measurement_name(cap);
     if name.is_empty() {
         return;
     }
@@ -1039,7 +1039,7 @@ fn handle_metric_report(snap: &DeviceSnapshot, cap_id: Option<&str>, value: serd
 /// (trou, jamais de donnée inventée) ; sortie/cycles toujours finis.
 fn handle_reg_diag(snap: &DeviceSnapshot, e: &pnex_core::RegDiag) {
     let push = |suffix: &str, value: serde_json::Value| {
-        let name = super::ws_ingest::normalize_measurement_name(&format!(
+        let name = super::device_link::normalize_measurement_name(&format!(
             "{node_id}_{suffix}",
             node_id = e.node_id
         ));

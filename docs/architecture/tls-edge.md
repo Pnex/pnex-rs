@@ -125,7 +125,7 @@ Le backend limite le débit des routes non authentifiées / sensibles
 (`services/rate_limit.rs`, couche axum posée dans `after_routes`) :
 `/api/v1/oauth2/*` (60/min, sondage du pont natif 240/min),
 `/api/v1/agent/enroll` (10/min, code historique `agent-enroll-rate-limited`),
-`/ws/device`, `/ws/sensor/ingest`, `/ws/camera*` (300/min),
+`/ws/device`, `/ws/camera*` (300/min),
 `/api/v1/public/tours/*` (600/min). Fenêtre fixe, compteurs **dans Valkey**
 (script Lua `INCR`+`PEXPIRE`, partagés entre pods) ; sans Valkey ou en cas
 de panne, compteurs locaux par pod. Refus = **429** `rate-limited` +

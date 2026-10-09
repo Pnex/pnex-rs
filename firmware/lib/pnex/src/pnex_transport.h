@@ -5,7 +5,7 @@
 // La lib contient la MÉCANIQUE partagée ; la POLICY reste dans le main de
 // chaque firmware (backoff, safe-states, announce proto, affichage) :
 //   - pnex_wifi_connect()  : boucle d'attente WiFi (nombre d'essais en
-//     paramètre — 40 pour le générique, 20 pour soil_sensor), wdtFeed dans
+//     paramètre — 40 pour le générique), wdtFeed dans
 //     l'attente ;
 //   - pnex_ws_connect()    : une tentative WS (fermeture propre si déjà
 //     ouvert, last_pong réarmé) — le backoff/les retries sont du main ;
@@ -16,9 +16,9 @@
 //     (close ; les safe-states restent du main au tour suivant) ;
 //   - bookkeeping PONG interne : text « PONG » (serveur) ET pong WS
 //     (GotPong) rearment le compteur ; le timeout est configurable
-//     (0 = désactivé — soil_sensor n'en a pas).
+//     (0 = disabled).
 //
-// Consumers: the generic firmwares (pin_slave profile) and soil_sensor.
+// Consumers: the generic firmwares (pin_slave profile) and custom sketches.
 //
 // pnex_config.h is private to the lib: pnex_transport.cpp is the only
 // translation unit that includes it; sketches use the getters
@@ -40,8 +40,7 @@ typedef void (*PnexOnClosedFn)();                      // event ConnectionClosed
 typedef void (*PnexWaitTickFn)();
 
 struct PnexTransportInit {
-    // Chemin WS du dialecte : « /ws/device » (générique, brick0) ou
-    // « /ws/sensor/ingest » (soil_sensor). Le schéma (ws/wss) et les
+    // WebSocket path, `/ws/device`. Le schéma (ws/wss) et les
     // params token/device_id (base64, contrat decode_param) sont internes.
     const char* ws_path;
 
@@ -49,7 +48,7 @@ struct PnexTransportInit {
     unsigned long pong_timeout_ms;
 
     // GotPing (ping WS protocole) → réponse pong automatique. Vrai pour le
-    // générique (client.ping() sur GotPing), faux pour soil_sensor.
+    // générique (client.ping() sur GotPing).
     bool reply_ws_ping;
 
     PnexOnMessageFn on_message;

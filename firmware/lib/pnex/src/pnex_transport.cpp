@@ -354,9 +354,7 @@ static void on_frame(const char* data, size_t, bool) {
     }
     msg.trim();
     if (msg == "PONG") {
-        // Signe de vie : bookkeeping interne + hook (le générique n'a rien
-        // à faire — compteur interne ; soil_sensor y branche son « premier
-        // PONG » du boot).
+        // Sign of life: internal bookkeeping + optional hook.
         s_last_pong_ms = millis();
         if (s_init.on_pong) {
             s_init.on_pong();
@@ -379,8 +377,8 @@ static void on_event(PnexWsEvent event) {
             s_init.on_closed();
         }
     } else if (event == PnexWsEvent::GotPing) {
-        // Le générique répond au ping WS ; soil_sensor ne le fait pas
-        // (comportements d'origine préservés — knob reply_ws_ping).
+        // Protocol ping answered only when the sketch asks for it
+        // (reply_ws_ping).
         if (s_init.reply_ws_ping) {
             s_client.ping();
         }

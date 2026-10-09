@@ -140,7 +140,7 @@ PUT/PATCH devices = metadata only ; suffixes .json ; 3 schémas d'auth actifs.
 
 | Élément | Cible | Phase |
 |---|---|---|
-| ws/sensor/ingest (ChaCha20, key=value, PING/PONG, capabilities, dynamic measurements) | **FAIT (Phase 5)** — `controllers/ws_ingest.rs`, contrat `docs/contracts/ws-sensor-ingest.md` : anti-clone par bail (4003), reaper `active`, sortie metrics OpenObserve (D15) | ✅ 5 |
+| ws/sensor/ingest (ChaCha20, key=value, PING/PONG, capabilities, dynamic measurements) | **SUPPRIMÉ le 2026-10-10** avec le firmware `soil_sensor` (à refaire) ; l'auth et le framing partagés vivent dans `controllers/device_link.rs`. Historique — FAIT (Phase 5) : anti-clone par bail (4003), reaper `active`, sortie metrics OpenObserve (D15) | ✅ 5 |
 | ws/actuator/cast — **partie CONFIG** (send_initial_config, push Protobuf chiffré) | **Chantier M2M différé (D13)** — les actionneurs ingèrent leur config eux-mêmes ; mécanisme de distribution conçu avec le chantier M2M, pas avant | différé |
 | ws/actuator/cast — **partie STATE** (réception ActuatorState → docs unifiés) | À décider dans le chantier M2M (D13) : si l'actuateur rapporte encore son état au serveur pour la capture, ou si tout passe par le canal capteurs | différé |
 | ws/actuator/cast — **flux sensor_data agrégée** (on_nats_sensor_data) | **SUPPRIMÉ** — dépendait des pods de contrôle ; actuateurs ↔ capteurs en direct (D13) | — |

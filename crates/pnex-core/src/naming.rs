@@ -93,9 +93,8 @@ pub fn etl_metric_name(name: &str) -> String {
     format!("etl_{}", sanitize_metric_name(stripped))
 }
 
-/// Normalisation des labels de mesures (D16) — déplacée de
-/// `pnex-backend/src/controllers/ws_ingest.rs` (une seule vérité : l'ingest
-/// et la lecture device du runtime doivent produire le même nom de série).
+/// Measurement label normalization (D16): one source of truth, so the
+/// device link and the runtime's device reads produce the same series name.
 ///
 /// Trim, pliage des accents (deunicode), minuscules, tout non
 /// `[a-z0-9_:]` → `_` (répétitions fondues, `_` de bord supprimés).
@@ -175,7 +174,7 @@ mod tests {
     fn normalisation_mesures() {
         assert_eq!(normalize_measurement_name("Soil-Moisture"), "soil_moisture");
         assert_eq!(normalize_measurement_name("soil moisture"), "soil_moisture");
-        // Pliage des accents (contrat D16 hérité de ws_ingest.rs) : é→e,
+        // Accent folding (D16 contract): é→e,
         // °C→degc — pas un filtrage naïf des caractères non-ASCII.
         assert_eq!(
             normalize_measurement_name("Température Extérieure"),

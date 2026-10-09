@@ -89,7 +89,6 @@ mod tests {
     fn extraction_preserve_le_layout() {
         let tmp = tempfile::tempdir().expect("tmp");
         extract(tmp.path()).expect("extraction");
-        assert!(tmp.path().join("soil_sensor/platformio.ini").is_file());
         assert!(tmp.path().join("generic_esp8266/platformio.ini").is_file());
         assert!(tmp.path().join("lib/pnex/library.json").is_file());
         assert!(tmp.path().join("lib/pnex/src/Pnex.h").is_file());
@@ -100,8 +99,8 @@ mod tests {
             .path()
             .join("lib/pnex/src/monocypher/monocypher.c")
             .is_file());
-        assert!(tmp.path().join("common_libs/display").is_dir());
+        assert!(tmp.path().join("common_libs/pnex-core-cpp").is_dir());
         assert!(!tmp.path().join(".venv").exists());
-        assert!(!tmp.path().join("soil_sensor/.pio").exists());
+        assert!(!tmp.path().join("generic_esp8266/.pio").exists());
     }
 }

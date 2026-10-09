@@ -585,9 +585,9 @@ fn graph_adc_metric() -> serde_json::Value {
             {"id": "n1", "kind": "inject", "config": {"repeat_secs": 2},
              "outputs": [{"port": 0, "targets": ["n2"]}]},
             {"id": "n2", "kind": "device_read",
-             "config": {"device_id": "soil_sensor", "pins": ["A0"]},
+             "config": {"device_id": "probe-1", "pins": ["A0"]},
              "outputs": [{"port": 0, "targets": ["n3"]}, {"port": 1, "targets": []}]},
-            {"id": "n3", "kind": "calc", "config": {"expression": "soil_sensor_A0 * 0.01"},
+            {"id": "n3", "kind": "calc", "config": {"expression": "probe_1_A0 * 0.01"},
              "outputs": [{"port": 0, "targets": ["n4"]}]},
             {"id": "n4", "kind": "metric", "config": {"metric_name": "soil_volts"},
              "outputs": [{"port": 0, "targets": []}]}

@@ -3,7 +3,8 @@
 > **Statut : IMPLÉMENTÉ (tranches 1-4, 2026-09-02) — e2e carte réelle restante.**
 > Le PRD d'origine (revue conversationnelle) est résolu par les décisions
 > ci-dessous ; ce document fait foi. Docs liés :
-> `docs/contracts/ws-sensor-ingest.md` (patterns WS réutilisés tels quels),
+> `controllers/device_link.rs` (auth et framing partagés ; le contrat
+> `/ws/sensor/ingest` d'origine est supprimé le 2026-10-10),
 > `docs/architecture/firmware-build.md` (pipeline de build),
 > `docs/inventory.md` D13/D15/D16/D17.
 

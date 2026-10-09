@@ -51,6 +51,14 @@ where
         config,
         move |server, ctx| async move {
             common::seed_catalogue(&ctx.db).await;
+            // Buildable devices are generic (mixed) ones: room for three.
+            use sea_orm::ConnectionTrait;
+            ctx.db
+                .execute_unprepared(
+                    "UPDATE subscription_tiers SET max_mixed_devices = 3 WHERE name = 'Free'",
+                )
+                .await
+                .expect("tier quota");
             f(server, env, ctx).await;
         },
     )
@@ -79,7 +87,7 @@ async fn create_device(server: &axum_test::TestServer, token: &str, org_id: i64,
         .add_header("Content-Type", "application/json")
         .json(&serde_json::json!({
             "device_id": device_id,
-            "predefined_device_name": "soil_sensor",
+            "predefined_device_name": "generic_esp8266",
         }))
         .await;
     res.assert_status(axum_test::http::StatusCode::CREATED);
@@ -229,7 +237,7 @@ async fn build_intervalle_429() {
     .await;
 }
 
-/// Device-type quota (Free: 3 sensors). The device being built is already
+/// Device-type quota (Free: 3 mixed devices here). The device being built is already
 /// registered: an org AT its quota builds normally (O36), an org OVER it
 /// (tier lowered since) gets the exact legacy 403.
 #[tokio::test]
@@ -244,23 +252,23 @@ async fn build_quota_403() {
         res.assert_status(axum_test::http::StatusCode::CREATED);
 
         use sea_orm::ConnectionTrait;
-        let set_free_sensors = |n: i32| {
+        let set_free_mixed = |n: i32| {
             let db = ctx.db.clone();
             async move {
                 db.execute_unprepared(&format!(
-                    "UPDATE subscription_tiers SET max_sensor_devices = {n} WHERE name = 'Free'"
+                    "UPDATE subscription_tiers SET max_mixed_devices = {n} WHERE name = 'Free'"
                 ))
                 .await
                 .expect("tier quota");
             }
         };
-        set_free_sensors(2).await;
+        set_free_mixed(2).await;
         let res = post_build(&server, &env.alice, org, "dev-2", "coloc").await;
-        set_free_sensors(3).await;
+        set_free_mixed(3).await;
         res.assert_status(axum_test::http::StatusCode::FORBIDDEN);
         let body: serde_json::Value = res.json();
         assert_eq!(body["error"], "device-quota-reached", "{body}");
-        assert_eq!(body["errors"]["args"]["type"], "sensor");
+        assert_eq!(body["errors"]["args"]["type"], "mixed");
     })
     .await;
 }

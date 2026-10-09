@@ -600,7 +600,7 @@ tasks:
     desc: Monitor série de l'ESP branché en USB (115200 + filtres de platformio.ini) — ex. task fw:monitor FIRMWARE=generic_esp8266 PORT=/dev/ttyUSB0
     dir: "{{.FW_DIR}}/{{.FIRMWARE}}"
     vars:
-      FIRMWARE: soil_sensor
+      FIRMWARE: generic_esp8266
     cmds:
       - "{{.PIO_CMD}} device monitor{{if .PORT}} --port {{.PORT}}{{end}}"
 
