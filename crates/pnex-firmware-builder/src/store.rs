@@ -102,15 +102,28 @@ pub fn artifact_key(org_id: i64, device_id: &str) -> String {
 /// per-device upsert for USB flashing; this one keeps the history of
 /// deployable versions): `org_{org_id}/ota/{device_id}/{version}.bin`.
 pub fn ota_artifact_key(org_id: i64, device_id: &str, version: &str) -> String {
+    // Both segments sanitized (SEC-W4, R18): a version is a build id today,
+    // but the key must never depend on that.
     format!(
-        "org_{org_id}/ota/{}/{version}.bin",
-        sanitize_segment(device_id)
+        "org_{org_id}/ota/{}/{}.bin",
+        sanitize_segment(device_id),
+        sanitize_segment(version)
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ota_key_sanitizes_every_segment() {
+        assert_eq!(ota_artifact_key(3, "dev-1", "42"), "org_3/ota/dev-1/42.bin");
+        assert_eq!(
+            ota_artifact_key(3, "dev-1", "../../org_9/ota/x/1"),
+            "org_3/ota/dev-1/.._.._org_9_ota_x_1.bin"
+        );
+        assert_eq!(ota_artifact_key(3, "..", ".."), "org_3/ota/_/_.bin");
+    }
 
     /// Put/get/exists/delete sur le backend mémoire, sémantique des backends réels.
     #[tokio::test]

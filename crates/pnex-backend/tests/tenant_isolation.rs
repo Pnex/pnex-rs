@@ -414,3 +414,47 @@ async fn roles_viewer_owner_et_garde_fous() {
     })
     .await;
 }
+
+/// SEC-W5: an unknown `sub` claiming the email of an existing account is
+/// relinked only when the IdP verified that email.
+#[tokio::test]
+#[serial]
+async fn relink_by_email_requires_a_verified_email() {
+    with_app(|server, env| async move {
+        let owner = common::valid_token(
+            &env.base,
+            "00000000-0000-0000-0000-0000000000c1",
+            "alice",
+            "verified-relink@example.com",
+        );
+        let first: serde_json::Value = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", bearer(&owner))
+            .await
+            .json();
+        let intruder = common::mint_token(&common::TokenSpec {
+            sub: "00000000-0000-0000-0000-0000000000c2".into(),
+            email: "verified-relink@example.com".into(),
+            issuer: format!("{}/auth/v1/", env.base),
+            email_verified: false,
+            ..Default::default()
+        });
+        let res = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", bearer(&intruder))
+            .await;
+        assert_eq!(
+            res.status_code(),
+            401,
+            "unverified email never takes an account over"
+        );
+        // The owner keeps their account.
+        let again: serde_json::Value = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", bearer(&owner))
+            .await
+            .json();
+        assert_eq!(again["id"], first["id"]);
+    })
+    .await;
+}
