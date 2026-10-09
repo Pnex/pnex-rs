@@ -1,0 +1,19 @@
+# Workspace-wide cargo defaults (2026-10-09). They apply to EVERY cargo
+# invocation — Taskfile, IDE, scripts, agents — not only to the guarded
+# wrapper (scripts/guarded.sh).
+
+[build]
+# A 16-thread machine running terminals, browsers and the Docker stack: 6
+# parallel rustc/linker jobs keep the peak memory of a workspace build well
+# under the guard's ceiling. Override per run with CARGO_BUILD_JOBS.
+jobs = 6
+
+# Debug builds keep line tables only (file:line in backtraces and panics,
+# no variable info for a debugger). Full debuginfo made every backend test
+# binary 1.2 GB (51 of them) and its link the memory peak that got the
+# terminal OOM-killed; line tables cut both by about 3x.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false

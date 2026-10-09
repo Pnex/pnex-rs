@@ -47,6 +47,15 @@ Ajouter un nœud de flow ou une fonctionnalité utilisateur **sans mettre l'assi
 - Interdits : l'ancien style `Fix (scope): …` (majuscule + espace), un sujet sans type, `wip`, `misc`, `update`.
 - **Les notes de release en dépendent** : `cliff.toml` (git-cliff) groupe les commits par type entre deux tags `v*` ; le job `release` de `apps.yml` les publie comme corps de la release GitHub. Aperçu local : `task changelog` (non publiés) / `task changelog -- --latest` (dernier tag). Un commit mal formé finit dans « Other ».
 
+## Builds lourds : jamais nus (règle permanente, 2026-10-09)
+
+Cause réelle, 5ᵉ fois : un build Rust lancé depuis un terminal vit dans le cgroup du terminal ; quand il sature la mémoire, `systemd-oomd` tue **tout le scope Warp** — tous les onglets, toutes les sessions (`journalctl --user | grep oomd`). Le même jour, le disque plein a fait planter le linker et affamé Postgres.
+
+- **Tout `cargo build|check|test|clippy|run`, `dx build|serve`, `docker buildx`, `pio run` passe par `scripts/guarded.sh <commande>`** (ou par une tâche `task` qui l'utilise déjà). Le garde : scope systemd dédié plafonné (`MemoryMax` 24G, sans swap) → seul le build est tué, jamais le terminal ; `nice`/`ionice` + score OOM élevé ; refus sous 25 Go de disque libre ; **un seul build lourd à la fois sur la machine** (verrou partagé entre sessions et worktrees, attente automatique).
+- Processus longs (serveur de dev, `dx serve`) : `PNEX_GUARD_NO_LOCK=1 scripts/guarded.sh …` après avoir compilé sous verrou.
+- `.cargo/config.toml` impose `jobs = 6` et `debug = "line-tables-only"` (binaires de test ÷ 3, link moins gourmand). Ne pas monter `CARGO_BUILD_JOBS` au-delà de 6.
+- **Agents/sous-agents : jamais deux compilations en parallèle** (pas de sous-agent qui compile pendant qu'on compile) ; vérifier `df -h` avant une passe complète, nettoyer avec `task clean:incremental` puis `task clean:size`.
+
 ## Formatage (hygiène, bloquant en CI)
 
 - **`task fmt` avant chaque commit, `task fmt:check` = job CI `fmt`.** Rust → `cargo fmt` ; intérieur des `rsx!` → `dx fmt` via le wrapper gardé `crates/pnex-frontend/scripts/rsx_fmt.py`.
