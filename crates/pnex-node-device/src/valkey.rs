@@ -22,8 +22,9 @@ pub struct ValkeyLastClient {
 }
 
 impl ValkeyLastClient {
-    /// `Ok(None)` when `VALKEY_URL` is absent or blank (feature off - the
-    /// legacy OpenObserve path). `Err` when set but unparseable - the node
+    /// `Ok(None)` when `VALKEY_URL` is absent or blank (the runtime child
+    /// always gets it from the backend; tests run without). `Err` when set
+    /// but unparseable - the node
     /// is rejected at build, school of `O2Client::from_env` (fail loud at
     /// deploy, visible cause). The connection is established lazily on the
     /// first command: `build()` is sync, deploy preflight must never block

@@ -21,7 +21,7 @@ const VALKEY_TIMEOUT: Duration = Duration::from_secs(2);
 /// Max keys returned by one listing (picker, not an export).
 pub const MEMORY_KEYS_CAP: usize = 500;
 
-/// Shared connection, established on first use (`None` = feature off).
+/// Shared connection, established on first use (`None` = Valkey unreachable).
 async fn conn(config: &Config) -> Option<ConnectionManager> {
     crate::services::shared_valkey::conn(config).await
 }
@@ -98,8 +98,8 @@ pub async fn values(config: &Config, org_id: i64, refs: &[MemoryRef]) -> MemoryV
     values_with(conn(config).await, org_id, refs).await
 }
 
-/// [`values`] over an explicit connection, `None` = feature off (test entry
-/// point).
+/// [`values`] over an explicit connection, `None` = no connection (test
+/// entry point).
 pub async fn values_with(
     conn: Option<ConnectionManager>,
     org_id: i64,

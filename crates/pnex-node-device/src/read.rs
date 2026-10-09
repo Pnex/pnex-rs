@@ -141,7 +141,7 @@ impl DeviceReadNode {
         // Live last-value cache first (single MGET, bounded at 1 s): the
         // freshness window applies to the exact age of the last received
         // sample, not to the data age in OpenObserve (ingestion batcher
-        // latency). Cache absent or failing -> legacy O2 loop below.
+        // latency). Cache absent or failing -> OpenObserve loop below.
         let mut cache_served = false;
         if let Some(vk) = &self.valkey {
             let now_ms = chrono::Utc::now().timestamp_millis();
