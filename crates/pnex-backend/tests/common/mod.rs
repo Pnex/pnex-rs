@@ -198,9 +198,7 @@ pub async fn seed_catalogue(db: &sea_orm::DatabaseConnection) {
     let board8266 = mcu_boards::ActiveModel {
         name: Set("esp8266".into()),
         soc: Set("esp8266".into()),
-        details: Set(Some(
-            serde_json::to_value(pnex_core::BoardDetails::V2(profile)).expect("profile json"),
-        )),
+        details: Set(Some(serde_json::to_value(profile).expect("profile json"))),
         ..Default::default()
     }
     .insert(db)

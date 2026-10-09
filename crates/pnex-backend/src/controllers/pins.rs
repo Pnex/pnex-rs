@@ -110,7 +110,7 @@ async fn pinout(
     let soc: Option<pnex_core::Soc> = provisioning::device_soc(&ctx.db, &device).await.ok();
     let details = provisioning::load_board_details(&ctx.db, &device).await?;
     let peripherals = provisioning::device_peripherals(&device);
-    let v2 = details.as_ref().and_then(|d| d.v2());
+    let v2 = details.as_ref();
 
     // Géométrie du profil v2 : gpio → (label, pos, kind, note) — enrichit
     // les instances ET les pins du profil sans instance (y compris l'écran
@@ -283,8 +283,8 @@ async fn pinout(
     }
 
     pins.sort_by_key(|(label, _)| pin_sort_key(label));
-    // Board section (v2 profile) — `null` without a profile (v1): the
-    // front then falls back to the legacy card grid.
+    // Board section (profile) — `null` for a board without a profile (custom
+    // firmware on a bare board): the front shows the announced pins as cards.
     let board_json = match v2 {
         Some(p) => {
             let board = provisioning::device_board(&ctx.db, &device).await.ok();

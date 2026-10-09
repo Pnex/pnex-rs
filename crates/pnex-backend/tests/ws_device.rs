@@ -720,9 +720,7 @@ async fn admission_et_chip_caps_esp32c3() {
         let board = mcu_boards::ActiveModel {
             name: Set("esp32-c3".into()),
             soc: Set("esp32-c3".into()),
-            details: Set(Some(
-                serde_json::to_value(pnex_core::BoardDetails::V2(profile)).expect("profile json"),
-            )),
+            details: Set(Some(serde_json::to_value(profile).expect("profile json"))),
             ..Default::default()
         }
         .insert(&ctx.db)

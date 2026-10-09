@@ -68,14 +68,12 @@ pub(super) async fn update_board(
             .details
             .clone()
             .and_then(|d| serde_json::from_value::<pnex_core::BoardDetails>(d).ok())
-            .and_then(|d| {
-                d.v2().and_then(|p| {
-                    p.peripherals
-                        .screens
-                        .iter()
-                        .find(|s| s.builtin)
-                        .map(|s| s.kind.clone())
-                })
+            .and_then(|p| {
+                p.peripherals
+                    .screens
+                    .iter()
+                    .find(|s| s.builtin)
+                    .map(|s| s.kind.clone())
             })
     };
     // A custom firmware owns every pin: no screen is ever seeded for it.

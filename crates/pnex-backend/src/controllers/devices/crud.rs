@@ -567,14 +567,12 @@ pub(super) async fn create(
             .map_err(|_| Error::InternalServerError)?
             .and_then(|b| b.details)
             .and_then(|d| serde_json::from_value::<pnex_core::BoardDetails>(d).ok())
-            .and_then(|d| {
-                d.v2().and_then(|p| {
-                    p.peripherals
-                        .screens
-                        .iter()
-                        .find(|s| s.builtin)
-                        .map(|s| s.kind.clone())
-                })
+            .and_then(|p| {
+                p.peripherals
+                    .screens
+                    .iter()
+                    .find(|s| s.builtin)
+                    .map(|s| s.kind.clone())
             }),
         None => None,
     };

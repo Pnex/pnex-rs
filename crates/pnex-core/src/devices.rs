@@ -241,8 +241,8 @@ pub struct CreateDevice {
 }
 
 /// Corps du `PUT /api/v1/devices/{id}/peripherals` — écran choisi par
-/// l'utilisateur (`null` = aucun, kind string = écran externe, `true` =
-/// compat rows legacy) : pins réservées + define au build.
+/// l'utilisateur (`null` = aucun, kind string = écran du profil) : pins
+/// réservées + define au build.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateDevicePeripherals {
     pub screen: crate::boards::ScreenChoice,

@@ -31,7 +31,7 @@ pub struct PinInfo {
     #[serde(default)]
     pub last_value: Option<serde_json::Value>,
     /// Modes the UI may offer for this gpio (chip caps, base naming —
-    /// `analog_in`; empty when the SoC is unknown → legacy UI fallback).
+    /// `analog_in`; empty when the SoC is unknown → the current mode only).
     #[serde(default)]
     pub available_modes: Vec<String>,
     /// Flows holding the WRITE claim on this pin (empty = free). All owners
