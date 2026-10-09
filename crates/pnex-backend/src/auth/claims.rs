@@ -34,6 +34,10 @@ pub struct Claims {
     /// Rauthy ne l'émet pas dans l'access token (claim du profil/id_token).
     pub preferred_username: Option<String>,
     pub email: Option<String>,
+    /// The IdP verified `email` (Rauthy emits it in the access token).
+    /// Required to relink an existing account by email (SEC-W5).
+    #[serde(default)]
+    pub email_verified: Option<bool>,
     pub given_name: Option<String>,
     pub family_name: Option<String>,
     pub iss: String,

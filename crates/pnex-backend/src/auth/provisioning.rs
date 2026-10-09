@@ -27,6 +27,11 @@ use super::claims::Claims;
 pub enum ProvisionError {
     #[error("le token ne contient pas d'email — requis à la première connexion")]
     MissingEmail,
+    /// An account already uses this email, and the IdP did not verify it:
+    /// relinking would let anyone claiming the address take the account
+    /// over (SEC-W5).
+    #[error("email already used by another account and not verified by the identity provider")]
+    UnverifiedEmailRelink,
     #[error(transparent)]
     Db(#[from] sea_orm::DbErr),
 }
@@ -98,6 +103,7 @@ async fn find_or_create_user(
 
     let email = claims.email.clone().ok_or(ProvisionError::MissingEmail)?;
     let full_name = claims.display_name();
+    let email_verified = claims.email_verified == Some(true);
 
     db.transaction(|txn| {
         Box::pin(async move {
@@ -120,6 +126,9 @@ async fn find_or_create_user(
                 .one(txn)
                 .await?
             {
+                if !email_verified {
+                    return Err(ProvisionError::UnverifiedEmailRelink);
+                }
                 let mut active: users::ActiveModel = existing.into();
                 active.idp_sub = Set(Some(idp_sub.clone()));
                 if !full_name.is_empty() {

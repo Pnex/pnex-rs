@@ -81,7 +81,8 @@ impl FromRequestParts<AppContext> for AuthUser {
             .map_err(|err| {
                 tracing::error!(%err, "JIT provisioning échoué");
                 match err {
-                    provisioning::ProvisionError::MissingEmail => {
+                    provisioning::ProvisionError::MissingEmail
+                    | provisioning::ProvisionError::UnverifiedEmailRelink => {
                         loco_rs::Error::Unauthorized(err.to_string())
                     }
                     _ => loco_rs::Error::InternalServerError,
