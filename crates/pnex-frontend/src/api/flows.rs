@@ -21,6 +21,8 @@ pub struct FlowFilters {
     pub search: Option<String>,
     /// `draft | deployed | stopped | error` — valeur inconnue ignorée côté serveur.
     pub status: Option<String>,
+    /// D42 effective label filter (`name` or `name:value`).
+    pub label: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -33,6 +35,9 @@ impl FlowFilters {
         }
         if let Some(v) = &self.status {
             parts.push(format!("status={}", urlencode(v)));
+        }
+        if let Some(v) = self.label.as_deref().filter(|v| !v.is_empty()) {
+            parts.push(format!("label={}", urlencode(v)));
         }
         if let Some(v) = self.limit {
             parts.push(format!("limit={v}"));

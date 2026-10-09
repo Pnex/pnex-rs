@@ -22,6 +22,7 @@ use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
+use crate::components::labels_editor::{use_row_labels, LabelChips};
 use crate::components::loading_overlay::LoadingOverlay;
 use crate::state::{org, session, toasts};
 
@@ -59,6 +60,8 @@ pub fn Flows(id: String) -> Element {
     });
     let mut filter_status = use_signal(|| "all".to_string());
     let search = use_signal(String::new);
+    // D42: effective label filter ("name" or "name:value").
+    let filter_label = use_signal(String::new);
     let mut page = use_signal(|| 0i64);
     // Cible de suppression (id, nom) — confirmation à la demande.
     let mut delete_target = use_signal(|| None::<(i64, String)>);
@@ -82,12 +85,24 @@ pub fn Flows(id: String) -> Element {
                 "all" => None,
                 other => Some(other.to_string()),
             },
+            label: {
+                let value = filter_label().trim().to_string();
+                (!value.is_empty()).then_some(value)
+            },
             limit: Some(PAGE_SIZE),
             offset: Some(page() * PAGE_SIZE),
         };
         async move {
             let _ = reload();
             api::flows::list(&filters).await
+        }
+    });
+
+    // D42: own labels of the page rows, one batch per list (re)load.
+    let row_labels = use_row_labels(pnex_core::resources::KIND_FLOW, move || {
+        match &*list.value().read() {
+            Some(Ok(paged)) => paged.results.iter().map(|f| f.id.to_string()).collect(),
+            _ => Vec::new(),
         }
     });
 
@@ -107,8 +122,12 @@ pub fn Flows(id: String) -> Element {
     // Colonnes de la table — les closures d'action capturent les signaux
     // (Copy) de la page ; les classes td historiques via with_td_class.
     let columns = vec![
-        Column::new(t!("flows-col-name").to_string(), |flow: &FlowSummary| {
-            rsx! { {flow.name.clone()} }
+        Column::new(t!("flows-col-name").to_string(), move |flow: &FlowSummary| {
+            let labels = row_labels.get(&flow.id.to_string()).cloned().unwrap_or_default();
+            rsx! {
+                {flow.name.clone()}
+                LabelChips { labels }
+            }
         })
         .with_td_class("font-medium text-gray-900"),
         Column::new(t!("flows-col-status").to_string(), |flow: &FlowSummary| {
@@ -261,6 +280,15 @@ pub fn Flows(id: String) -> Element {
                         SearchInput {
                             placeholder: t!("flows-search-placeholder").to_string(),
                             value: search,
+                            on_submit: move |_| {
+                                page.set(0);
+                                reload.with_mut(|r| *r += 1);
+                            },
+                        }
+                        // D42: effective label filter (inheritance included).
+                        SearchInput {
+                            placeholder: t!("resources-label-filter-placeholder").to_string(),
+                            value: filter_label,
                             on_submit: move |_| {
                                 page.set(0);
                                 reload.with_mut(|r| *r += 1);

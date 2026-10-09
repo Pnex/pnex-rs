@@ -12,7 +12,7 @@ The Flows page (Automation menu) lists the organization's flows: visual pipeline
 
 ## What you can do
 
-- **New flow** creates and opens a flow; **Open** edits one, **Delete** removes it with all its versions. Filter by status: Draft, Deployed, Stopped, Error.
+- **New flow** creates and opens a flow; **Open** edits one, **Delete** removes it with all its versions. Filter by status (Draft, Deployed, Stopped, Error) or by label (**Filter by label (site:serre)**).
 - In the editor, click **+** (Add a node) to pick a node from the palette (Triggers, Devices, Data & math, Code, Storage & series, AI & predictive, Integrations, Debug…), drag from an output port to the next node to wire it, and configure the selected node in the inspector.
 - **Save Changes** stores a new version. **Deploy** runs the saved version; the editor proposes "Deploy vN?" right after a save.
 - **Stop** pauses a deployed flow, **Start** resumes its last deployed version, **Restart** reloads the engine as-is.
@@ -26,4 +26,5 @@ The Flows page (Automation menu) lists the organization's flows: visual pipeline
 - An output pin has one writer: deploy is refused if another deployed flow already writes that pin.
 - If another user saved a newer version, choose **Reload from server** or **Overwrite with my version**.
 - The assistant can draft flows and edit only stopped flows; deploying, stopping and deleting stay human actions in the editor.
+- **Labels** are the single organization-wide labelling mechanism: chips `name` or `name:value` (lowercase letters, digits, `_`, `-`), the same on devices, media, dashboards, flows, 3D tours, map POIs and their folders. Labels set on a folder are inherited by everything stored in it. In the flow editor, the **Labels** button of the toolbar edits the flow's labels (type `name:value`, Enter, then **Save**).
 - Viewers see flows read-only.

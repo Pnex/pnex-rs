@@ -260,6 +260,11 @@ pub fn Map() -> Element {
                     // En-tête + repli.
                     div { class: "flex items-center justify-between px-4 py-3 border-b border-gray-200",
                         h1 { class: "text-base font-semibold text-gray-900", {t!("viz-map-title")} }
+                        Link {
+                            to: Route::Sites {},
+                            class: "ml-auto mr-1 text-xs font-medium text-blue-700 hover:underline",
+                            {t!("map-open-sites")}
+                        }
                         button {
                             class: "p-1.5 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors",
                             title: t!("poi-collapse"),
@@ -451,6 +456,9 @@ pub fn Map() -> Element {
 mod detail;
 mod filters;
 mod form;
+mod sites;
+
+pub use sites::Sites;
 
 use detail::PoiDetail;
 use filters::{current_filters, handle_click, redraw_with, PoiRow};

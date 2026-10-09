@@ -13,6 +13,7 @@ use pnex_core::{DashboardFormat, TelemetryPoint, VizDashboard, VizDashboardSumma
 use crate::api;
 use crate::components::badges::date_label;
 use crate::components::confirm::ConfirmDialog;
+use crate::components::crud::filters::{FilterBar, SearchInput};
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
@@ -21,6 +22,7 @@ use crate::components::dashboard_editor::state::HomeTemplate;
 use crate::components::dashboard_editor::DashboardEditor;
 use crate::components::dashboard_live::live_layout;
 use crate::components::icons;
+use crate::components::labels_editor::{use_row_labels, LabelChips};
 use crate::components::modal::Modal;
 use crate::components::refresh_rate::{use_auto_refresh, RefreshRateControl};
 use crate::state::viz::{OPEN_DASHBOARD, VIZ_EDIT};
@@ -141,7 +143,9 @@ fn ListView(
     can_write: bool,
     on_open: EventHandler<(String, bool)>,
 ) -> Element {
-    let page = use_signal(|| 0i64);
+    let mut page = use_signal(|| 0i64);
+    // D42: effective label filter ("name" or "name:value").
+    let filter_label = use_signal(String::new);
     let mut delete_target = use_signal(|| None::<(String, String)>);
     let mut choosing = use_signal(|| false);
 
@@ -151,6 +155,10 @@ fn ListView(
     // câblée mais inerte (compteur changeant sans refetch).
     let list = use_resource(move || {
         let offset = page() * PAGE_SIZE;
+        let label = {
+            let value = filter_label().trim().to_string();
+            (!value.is_empty()).then_some(value)
+        };
         let has_org = org::current().is_some();
         async move {
             let _ = reload();
@@ -160,11 +168,20 @@ fn ListView(
             Some(
                 api::dashboards::list(&api::dashboards::DashboardFilters {
                     search: None,
+                    label,
                     limit: Some(PAGE_SIZE),
                     offset: Some(offset),
                 })
                 .await,
             )
+        }
+    });
+
+    // D42: own labels of the page rows, one batch per list (re)load.
+    let row_labels = use_row_labels(pnex_core::resources::KIND_DASHBOARD, move || {
+        match &*list.value().read() {
+            Some(Some(Ok(paged))) => paged.results.iter().map(|d| d.id.clone()).collect(),
+            _ => Vec::new(),
         }
     });
 
@@ -186,8 +203,10 @@ fn ListView(
     // tokens du socle (th.th / td.td).
     let columns = vec![
         Column::new(t!("db-name").to_string(), move |d: &VizDashboardSummary| {
+            let labels = row_labels.get(&d.id).cloned().unwrap_or_default();
             rsx! {
                 div { class: "text-sm font-medium text-gray-900", "{d.name}" }
+                LabelChips { labels }
                 if let Some(desc) = &d.description {
                     div { class: "text-xs text-gray-500", "{desc}" }
                 }
@@ -264,8 +283,8 @@ fn ListView(
             subtitle: Some(t!("db-subtitle").to_string()),
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
             can_write,
-            // Harmonisation socle : rafraîchissement manuel dans l'en-tête
-            // (la page n'a pas de barre de filtres).
+            // Socle harmonisation: manual refresh lives in the header; the
+            // filter bar only holds the D42 label filter.
             add_label: Some(t!("db-create").to_string()),
             on_add: move |_| choosing.set(true),
             // D123: the format is picked once, at creation — the modal
@@ -282,6 +301,17 @@ fn ListView(
             if org::current().is_none() {
                 p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
             } else {
+                FilterBar {
+                    // D42: effective label filter (inheritance included).
+                    SearchInput {
+                        placeholder: t!("resources-label-filter-placeholder").to_string(),
+                        value: filter_label,
+                        on_submit: move |_| {
+                            page.set(0);
+                            reload.with_mut(|r| *r += 1);
+                        },
+                    }
+                }
                 ListStates {
                     state: list_state,
                     is_empty,

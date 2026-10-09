@@ -83,7 +83,8 @@ export class FlowEditor {
 
   /** Title button of the editor shell (click → inline rename). */
   get titleButton(): Locator {
-    return this.page.getByRole('main').getByRole('button').nth(1);
+    // Tooltip "Rename", not a toolbar position (buttons get added).
+    return this.page.getByRole('main').getByTitle(this.app.t('eshell-rename')).first();
   }
 
   async rename(name: string): Promise<void> {

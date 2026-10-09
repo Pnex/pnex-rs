@@ -49,6 +49,8 @@ pub(super) struct ListDevicesQuery {
     /// Recherche OU sur device_id, modèle (nom/pretty/description), type et
     /// capacités.
     search: Option<String>,
+    /// D42: effective label (`name` or `name:value`, inherited included).
+    label: Option<String>,
     limit: Option<String>,
     offset: Option<String>,
 }
@@ -164,6 +166,27 @@ pub(super) async fn list(
                         )),
                     )),
             );
+    }
+    // D42: effective label filter.
+    match crate::services::resources::labels::list_filter(
+        &ctx.db,
+        org.org.id,
+        q.label.as_deref(),
+        pnex_core::resources::KIND_DEVICE,
+    )
+    .await
+    {
+        Ok(None) => {}
+        Ok(Some(ids)) => {
+            let ids: Vec<i64> = ids.iter().filter_map(|id| id.parse().ok()).collect();
+            select = select.filter(device_registries::Column::Id.is_in(ids));
+        }
+        Err(crate::services::resources::labels::ListLabelFilterError::Invalid(reason)) => {
+            return Ok(field_status(StatusCode::BAD_REQUEST, "label", &reason));
+        }
+        Err(crate::services::resources::labels::ListLabelFilterError::Db(_)) => {
+            return Err(Error::InternalServerError);
+        }
     }
     // Newest first: a freshly registered device (wizard) shows up on
     // page 1 — deliberate divergence from the legacy behavior (no explicit sort).
@@ -295,6 +318,9 @@ pub(super) async fn list(
     }
     if let Some(v) = &q.search {
         filters.push(("search".to_string(), v.clone()));
+    }
+    if let Some(v) = q.label.as_ref().filter(|v| !v.is_empty()) {
+        filters.push(("label".to_string(), v.clone()));
     }
     format::json(pagination::envelope(
         "/api/v1/devices",

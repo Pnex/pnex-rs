@@ -23,6 +23,7 @@ pub mod containment;
 pub mod edges;
 pub mod folders;
 pub mod labels;
+pub mod location;
 pub mod registry;
 
 use sea_orm::DatabaseConnection;

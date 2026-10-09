@@ -104,6 +104,8 @@ pub fn TourEditor(
     let mut reload_meta = use_signal(|| 0u32);
     // Prop String : un clone local nommé par closure (école CanvasNode).
     let tour_id_detail = tour_id.clone();
+    // D42 labels button target.
+    let tour_id_labels = tour_id.clone();
     let detail = use_resource(move || {
         let _ = reload_meta();
         let tour_id = tour_id_detail.clone();
@@ -427,6 +429,20 @@ pub fn TourEditor(
                     onclick: move |_| versions_open.set(true),
                     icons::History { class: "h-4 w-4 sm:mr-1" }
                     span { class: "hidden sm:inline", {t!("studio-versions")} }
+                }
+                // Site breadcrumb (nothing while the tour is not placed).
+                div { class: "hidden md:block",
+                    crate::components::location_breadcrumb::LocationBreadcrumb {
+                        kind: pnex_core::resources::KIND_TOUR.to_string(),
+                        id: tour_id_labels.clone(),
+                        compact: true,
+                    }
+                }
+                // D42 labels of the tour (same editor as every resource).
+                crate::components::labels_editor::LabelsButton {
+                    kind: pnex_core::resources::KIND_TOUR.to_string(),
+                    id: tour_id_labels.clone(),
+                    can_write,
                 }
             },
             banner: rsx! {

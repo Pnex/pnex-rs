@@ -14,7 +14,7 @@ Events (Automation › Events) searches the JSON events written by your flows wi
 - Pick the **Stream** (each Event log node writes to a named stream, "events" by default).
 - Filter by level (**All levels**, **Debug**, **Info**, **Warning**, **Error**) and **Period**: **Last hour**, **Last 24 hours**, **Last 7 days** or **Custom period** (**From** / **To**).
 - **Search in events…** for any text.
-- Each row shows **Time**, **Level**, **Message**, **Topic**, **Flow** and **Node**; expand it to read the payload.
+- Each row shows **Time**, **Level**, **Message**, **Topic**, **Flow** and **Node**; expand it to read the payload as a list of fields (nested fields shown as `parent.child`, lists joined).
 
 ## Good to know
 - Nothing appears until a deployed flow contains an **Event log** node that receives messages. Typical chain: **Object detection** → **Event log** to keep who/what was seen.

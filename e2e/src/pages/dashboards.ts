@@ -86,7 +86,8 @@ export class DashboardEditor {
   }
 
   async rename(name: string): Promise<void> {
-    await this.main.getByRole('button').nth(1).click();
+    // Title button (tooltip "Rename"), not a toolbar position.
+    await this.main.getByTitle(this.app.t('eshell-rename')).first().click();
     const input = this.main.locator('input:not([placeholder])').first();
     await input.fill(name);
     await input.press('Enter');

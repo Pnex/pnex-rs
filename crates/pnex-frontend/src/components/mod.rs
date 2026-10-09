@@ -47,12 +47,12 @@ pub mod functions_reference;
 pub mod home_icons;
 pub mod icons;
 /// Éditeur de labels transverse (D42) — réutilisable sur tout kind.
-pub mod kv_pills_editor;
 pub mod labels_editor;
 pub mod lan_detect;
 /// Secret input shared by every functional form (secrets.md D113).
 pub mod llm_providers;
 pub mod loading_overlay;
+pub mod location_breadcrumb;
 pub mod markdown;
 pub mod modal;
 /// Notifications (D49–D54) — formulaires canal (field_spec) et template.

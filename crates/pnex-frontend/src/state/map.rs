@@ -5,3 +5,7 @@
 use dioxus::prelude::*;
 
 pub static OPEN_POI: GlobalSignal<Option<String>> = GlobalSignal::new(|| None);
+
+/// Folders to unfold in the opened site's tree (location breadcrumb: the
+/// path down to the clicked folder). Consumed once by the tree.
+pub static OPEN_POI_FOLDERS: GlobalSignal<Vec<String>> = GlobalSignal::new(Vec::new);

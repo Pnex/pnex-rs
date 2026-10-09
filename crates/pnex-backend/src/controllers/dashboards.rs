@@ -209,6 +209,8 @@ pub fn routes() -> Routes {
 #[derive(Debug, Default, Deserialize)]
 struct ListDashboardsQuery {
     search: Option<String>,
+    /// D42: effective label (`name` or `name:value`, inherited included).
+    label: Option<String>,
     limit: Option<String>,
     offset: Option<String>,
 }
@@ -231,6 +233,27 @@ async fn list(
             &pat,
         ));
     }
+    // D42: effective label filter.
+    match crate::services::resources::labels::list_filter(
+        &ctx.db,
+        org.org.id,
+        q.label.as_deref(),
+        pnex_core::resources::KIND_DASHBOARD,
+    )
+    .await
+    {
+        Ok(None) => {}
+        Ok(Some(ids)) => {
+            let ids: Vec<Uuid> = ids.iter().filter_map(|id| id.parse().ok()).collect();
+            query = query.filter(dashboards::Column::Id.is_in(ids));
+        }
+        Err(crate::services::resources::labels::ListLabelFilterError::Invalid(reason)) => {
+            return Ok(field_status("label", &reason));
+        }
+        Err(crate::services::resources::labels::ListLabelFilterError::Db(_)) => {
+            return Err(Error::InternalServerError);
+        }
+    }
     let (count, rows) = pagination::sql_page(&ctx.db, query, page)
         .await
         .map_err(|_| Error::InternalServerError)?;
@@ -246,6 +269,9 @@ async fn list(
     let mut filters = Vec::new();
     if let Some(s) = q.search.as_deref().filter(|s| !s.is_empty()) {
         filters.push(("search".to_string(), s.to_string()));
+    }
+    if let Some(l) = q.label.as_deref().filter(|l| !l.is_empty()) {
+        filters.push(("label".to_string(), l.to_string()));
     }
     Ok(format::json(pagination::envelope(
         "/api/v1/dashboards",

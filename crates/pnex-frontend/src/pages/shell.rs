@@ -572,7 +572,8 @@ fn NavVizGroup(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
     // quel tableau ouvert.
     let in_viz = route == Route::Visualisation {}
         || matches!(route, Route::Dashboards { .. })
-        || route == Route::Map {};
+        || route == Route::Map {}
+        || route == Route::Sites {};
     let mut open = use_signal(|| in_viz);
 
     let close_drawer = move |_| {
@@ -630,6 +631,13 @@ fn NavVizGroup(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                         onclick: close_drawer,
                         crate::components::icons::Map { class: "h-5 w-5" }
                         span { {t!("nav-map")} }
+                    }
+                    Link {
+                        to: Route::Sites {},
+                        class: nav_class(route == Route::Sites {}, false),
+                        onclick: close_drawer,
+                        crate::components::icons::Building { class: "h-5 w-5" }
+                        span { {t!("nav-sites")} }
                     }
                 }
             }
@@ -953,7 +961,7 @@ fn open_hit(
         "poi" => {
             let id = hit.id.clone();
             crate::state::map::OPEN_POI.with_mut(|v| *v = Some(id));
-            navigator.push(Route::Map {});
+            navigator.push(Route::Sites {});
         }
         "tour" => {
             let id = hit.id.clone();

@@ -17,6 +17,8 @@ use crate::api::error::ApiError;
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct DashboardFilters {
     pub search: Option<String>,
+    /// D42 effective label filter (`name` or `name:value`).
+    pub label: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -26,6 +28,9 @@ impl DashboardFilters {
         let mut parts: Vec<String> = Vec::new();
         if let Some(v) = &self.search {
             parts.push(format!("search={}", urlencode(v)));
+        }
+        if let Some(v) = self.label.as_deref().filter(|v| !v.is_empty()) {
+            parts.push(format!("label={}", urlencode(v)));
         }
         if let Some(v) = self.limit {
             parts.push(format!("limit={v}"));

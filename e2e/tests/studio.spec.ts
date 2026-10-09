@@ -21,13 +21,16 @@ test.describe('studio', { tag: '@studio' }, () => {
     await app.goto('/studio');
     const main = page.getByRole('main');
     await main.getByRole('button', { name: app.t('studio-new') }).click();
-    await main.getByRole('button', { name: app.t('studio-floors-title') }).click();
-    // Rename through the editor shell title.
-    await main.getByRole('button').nth(1).click();
+    // Rename through the editor shell title (its tooltip says "Rename"),
+    // never a position in the toolbar: buttons are added there over time.
+    await main.getByTitle(app.t('eshell-rename')).first().click();
     const title = main.locator('input:not([placeholder])').first();
     await title.fill(name);
     await title.press('Enter');
     await expect(main.getByRole('button', { name })).toBeVisible();
+    // The floors panel is a popover: open it after the rename (a click
+    // elsewhere closes it).
+    await main.getByRole('button', { name: app.t('studio-floors-title') }).click();
 
     // Floor plan of the ground floor.
     await main.getByRole('button', { name: /^Ground floor|^Rez/ }).first().click();

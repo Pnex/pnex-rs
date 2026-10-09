@@ -74,7 +74,9 @@ pub fn ListLayout(
         div { class: "p-4 pb-24 md:p-6",
             if header {
                 div { class: "mb-4 md:mb-8 flex items-center justify-between flex-wrap gap-3",
-                    div { class: "flex items-center gap-3",
+                    // The title block takes the free width and wraps a long
+                    // subtitle, so the buttons stay on the right.
+                    div { class: "flex min-w-0 flex-1 basis-72 items-center gap-3",
                         if let Some(back) = on_back {
                             button {
                                 class: "inline-flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
@@ -87,7 +89,7 @@ pub fn ListLayout(
                     }
                     // One right-aligned group: extra actions sit next to
                     // the add button, never floating mid-header.
-                    div { class: "flex items-center gap-2 flex-wrap",
+                    div { class: "ml-auto flex shrink-0 items-center gap-2 flex-wrap",
                         if let Some(actions) = actions {
                             {actions}
                         }

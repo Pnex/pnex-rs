@@ -17,6 +17,8 @@ use crate::api::error::ApiError;
 pub struct TourFilters {
     pub search: Option<String>,
     pub mode: Option<String>,
+    /// D42 effective label filter (`name` or `name:value`).
+    pub label: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -29,6 +31,9 @@ impl TourFilters {
         }
         if let Some(v) = &self.mode {
             parts.push(format!("mode={}", urlencode(v)));
+        }
+        if let Some(v) = self.label.as_deref().filter(|v| !v.is_empty()) {
+            parts.push(format!("label={}", urlencode(v)));
         }
         if let Some(v) = self.limit {
             parts.push(format!("limit={v}"));

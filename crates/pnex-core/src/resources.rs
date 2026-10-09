@@ -152,6 +152,32 @@ pub struct KindSpec {
 
 // ─────────────────────────── tests ───────────────────────────
 
+/// One step of a location breadcrumb: a site (`map_pin`) or a folder.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LocationNode {
+    pub kind: String,
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub emoji: Option<String>,
+}
+
+/// Where a resource sits in the sites tree: its site, then the folders from
+/// the site down to the resource. An object attached to several sites
+/// (media, tour, dashboard) has one entry per site.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResourceLocation {
+    pub site: LocationNode,
+    #[serde(default)]
+    pub folders: Vec<LocationNode>,
+}
+
+/// `GET /api/v1/resources/{kind}/{id}/location`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub struct ResourceLocations {
+    pub locations: Vec<ResourceLocation>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

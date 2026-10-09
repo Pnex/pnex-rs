@@ -12,8 +12,8 @@ use crate::pages::edge_refs::EdgeRefs;
 use crate::pages::{
     self, AdminStatus, Annotations, AuthCallback, Cameras, Catalog, Controls, Dashboard,
     Dashboards, Devices, Events, Firmware, Flows, FluidMixtures, Functions, Map, Media, Models,
-    NotFound, Notifications, Orgs, OrgsCurrent, Profile, Secrets, ShareTour, Showcase, Studio,
-    System, Visualisation,
+    NotFound, Notifications, Orgs, OrgsCurrent, Profile, Secrets, ShareTour, Showcase, Sites,
+    Studio, System, Visualisation,
 };
 use dioxus::prelude::*;
 
@@ -40,6 +40,9 @@ pub enum Route {
 
         #[route("/map")]
         Map {},
+
+        #[route("/sites")]
+        Sites {},
 
         #[route("/dashboards?:id&:mode")]
         Dashboards { id: String, mode: String },

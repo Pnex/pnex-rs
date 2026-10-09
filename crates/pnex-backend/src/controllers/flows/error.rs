@@ -29,7 +29,7 @@ pub(super) fn forbidden(code: &str, msg: &str) -> Error {
 }
 
 /// 400 per-field error shape: `{"<field>": "..."}`.
-fn field_status(field: &str, msg: &str) -> Response {
+pub(super) fn field_status(field: &str, msg: &str) -> Response {
     (
         StatusCode::BAD_REQUEST,
         format::json(serde_json::json!({ field: msg })),

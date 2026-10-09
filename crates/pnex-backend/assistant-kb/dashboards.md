@@ -18,6 +18,7 @@ Dashboards (Visualization › Dashboards) are live screens built from widgets bo
 - Mobile layout: **+ Page**, **+ Add a section**, section style **Cards**, **Room (summary + all off)** or **Chips (header summary)**; **Show only when the value is…** hides a card conditionally; **Details and history** shows the last 24 hours.
 - **From a device** proposes widgets for a device: outputs become **+ Switch**, **+ Slider** or **+ Light**, metrics become readings or a **Suggested home card**.
 - Desktop: **Process symbols** library, **Wire** tool, undo/redo, **Library** of saved templates (**Save as template**).
+- The list filters by label (**Filter by label (site:serre)**); the **Labels** button of the editor toolbar edits the dashboard's labels.
 - **Save** creates a version; **History** can **Restore this version**. In Live, choose **Refresh every** 1 to 60 s.
 
 ## Good to know
@@ -25,4 +26,5 @@ Dashboards (Visualization › Dashboards) are live screens built from widgets bo
 - **All off** in a room writes the "off" value of each of its power controls, through the same flows.
 - The Weather card reads memory keys written by a flow (**Weather** node → **Memory write**).
 - "Stale version" on save: **Reload** or **Overwrite**.
+- **Labels** are the single organization-wide labelling mechanism: chips `name` or `name:value` (lowercase letters, digits, `_`, `-`), the same on devices, media, dashboards, flows, 3D tours, map POIs and their folders. Labels set on a folder are inherited by everything stored in it.
 - Viewers see dashboards read-only with controls disabled.

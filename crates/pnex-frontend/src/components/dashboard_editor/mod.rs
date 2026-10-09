@@ -389,6 +389,20 @@ pub fn DashboardEditor(
                     icons::History { class: "h-4 w-4 sm:mr-1" }
                     span { class: "hidden sm:inline", {t!("ver-title")} }
                 }
+                // Site breadcrumb (nothing while the dashboard is not placed).
+                div { class: "hidden md:block",
+                    crate::components::location_breadcrumb::LocationBreadcrumb {
+                        kind: pnex_core::resources::KIND_DASHBOARD.to_string(),
+                        id: cx.dashboard_id.cloned(),
+                        compact: true,
+                    }
+                }
+                // D42 labels of the dashboard (same editor as every resource).
+                crate::components::labels_editor::LabelsButton {
+                    kind: pnex_core::resources::KIND_DASHBOARD.to_string(),
+                    id: cx.dashboard_id.cloned(),
+                    can_write,
+                }
             },
             banner: rsx! {
                 if has_violations {

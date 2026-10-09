@@ -231,6 +231,59 @@ async fn get_effective_labels(
     })
 }
 
+// ─────────────────────────── labels batch ───────────────────────────
+
+/// Most ids per batch (a list page is 20–100 rows).
+const LABELS_BATCH_MAX: usize = 200;
+
+#[derive(Deserialize)]
+struct LabelsBatchBody {
+    kind: String,
+    ids: Vec<String>,
+}
+
+/// `POST /resources/labels/batch` — own labels of a page of resources of
+/// one kind, in one query (list rows). Org-scoped: ids of another org
+/// simply come back without labels (R1). Read-only, any member.
+async fn labels_batch(
+    ctx: State<AppContext>,
+    org: OrgContext,
+    Json(body): Json<LabelsBatchBody>,
+) -> Result<Response> {
+    if !valid_kind(&body.kind) {
+        return Ok(field_status(
+            "kind",
+            "kind inconnu de la couche d'organisation.",
+        ));
+    }
+    if body.ids.len() > LABELS_BATCH_MAX {
+        return Ok(field_status(
+            "ids",
+            &format!("{}:{LABELS_BATCH_MAX}", err_codes::FIELD_MAX_LENGTH),
+        ));
+    }
+    let labels = svc::labels::labels_for_many(&ctx.db, org.org.id, &body.kind, &body.ids)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    format::json(serde_json::json!({ "labels": labels }))
+}
+
+// ─────────────────────────── location ───────────────────────────
+
+/// `GET /resources/{kind}/{id}/location` — site breadcrumb(s) of a
+/// resource (read-only, any member; resource checked in the org, R1).
+async fn get_location(
+    ctx: State<AppContext>,
+    org: OrgContext,
+    Path((kind, id)): Path<(String, String)>,
+) -> Result<Response> {
+    require_resource(&ctx, &org, &kind, &id).await?;
+    let locations = svc::location::locations_of(&ctx.db, org.org.id, &kind, &id)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    format::json(pnex_core::resources::ResourceLocations { locations })
+}
+
 // ─────────────────────────── containment ───────────────────────────
 
 #[derive(Serialize)]
@@ -804,6 +857,7 @@ pub fn routes() -> Routes {
         .prefix("/api/v1/resources")
         // Statiques avant paramétriques (matchit — école pois).
         .add("/labels/catalog", get(labels_catalog))
+        .add("/labels/batch", post(labels_batch))
         .add("/edges", get(list_edges).post(create_edge))
         .add(
             "/edges/{id}",
@@ -817,6 +871,7 @@ pub fn routes() -> Routes {
         .add("/search", post(search))
         .add("/{kind}/{id}/labels", get(get_labels).put(put_labels))
         .add("/{kind}/{id}/labels/effective", get(get_effective_labels))
+        .add("/{kind}/{id}/location", get(get_location))
         .add(
             "/{kind}/{id}/containment",
             get(get_containment)
