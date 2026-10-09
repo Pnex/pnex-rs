@@ -3,7 +3,7 @@
 
 use pnex_core::{
     O2DeleteRangeRequest, O2DeleteResult, O2PurgeRequest, O2StreamList, OrgSystemRow,
-    RetentionInfo, RetentionUpdate, SystemStatus,
+    OrgTierUpdate, RetentionInfo, RetentionUpdate, SystemStatus, TierOption,
 };
 
 use crate::api::client;
@@ -89,4 +89,19 @@ pub async fn orgs_overview() -> Result<Vec<OrgSystemRow>, ApiError> {
 /// vault secret with the write key (secrets.md S8).
 pub async fn rekey_secrets() -> Result<pnex_core::SecretsRekeyReport, ApiError> {
     client::request(reqwest::Method::POST, "/api/v1/system/secrets/rekey", None).await
+}
+
+/// `GET /api/v1/system/tiers` — platform admin.
+pub async fn tiers() -> Result<Vec<TierOption>, ApiError> {
+    client::request(reqwest::Method::GET, "/api/v1/system/tiers", None).await
+}
+
+/// `PUT /api/v1/system/orgs/{id}/tier` — platform admin; `None` removes it.
+pub async fn set_org_tier(org_id: i64, tier_id: Option<i64>) -> Result<OrgTierUpdate, ApiError> {
+    client::request(
+        reqwest::Method::PUT,
+        &format!("/api/v1/system/orgs/{org_id}/tier"),
+        Some(serde_json::to_value(OrgTierUpdate { tier_id }).unwrap_or_default()),
+    )
+    .await
 }

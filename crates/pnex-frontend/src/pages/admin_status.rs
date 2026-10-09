@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::{ComponentStatus, OrgSystemRow, StatusMetric};
+use pnex_core::{ComponentStatus, OrgSystemRow, StatusMetric, TierOption};
 
 use crate::api;
 use crate::api::error_i18n::resolve;
@@ -327,6 +327,11 @@ fn OrgsOverview() -> Element {
         let _ = reload();
         api::system::retention().await
     });
+    let tiers = use_resource(move || async move { api::system::tiers().await });
+    let tier_options = match &*tiers.value().read() {
+        Some(Ok(list)) => list.clone(),
+        _ => Vec::new(),
+    };
     let platform_default = match &*retention.value().read() {
         Some(Ok(info)) if info.deployment_mode != "saas" => Some(info.global_default_days),
         _ => None,
@@ -359,7 +364,7 @@ fn OrgsOverview() -> Element {
                             thead {
                                 tr { class: "text-left text-xs uppercase text-gray-500 border-b",
                                     th { class: "py-2 pr-4", {t!("admin-orgs-col-org")} }
-                                    th { class: "py-2 pr-4 hidden md:table-cell", {t!("admin-orgs-col-tier")} }
+                                    th { class: "py-2 pr-4", {t!("admin-orgs-col-tier")} }
                                     th { class: "py-2 pr-4", {t!("admin-orgs-col-retention")} }
                                     th { class: "py-2 pr-4", {t!("admin-orgs-col-override")} }
                                     th { class: "py-2 pr-4", {t!("admin-orgs-col-usage")} }
@@ -370,6 +375,7 @@ fn OrgsOverview() -> Element {
                                     OrgRow {
                                         key: "{row.org_id}",
                                         row,
+                                        tiers: tier_options.clone(),
                                         on_saved: move |_| reload.with_mut(|r| *r += 1),
                                     }
                                 }
@@ -407,9 +413,14 @@ fn PlatformDefaultRetention(days: Option<u32>, on_saved: Callback<()>) -> Elemen
     };
     rsx! {
         div { class: "space-y-2 pb-4 border-b border-gray-100",
-            label { class: "block text-sm font-medium text-gray-700", {t!("system-retention-global")} }
+            label {
+                r#for: "admin-retention-global",
+                class: "block text-sm font-medium text-gray-700",
+                {t!("system-retention-global")}
+            }
             div { class: "flex gap-2",
                 input {
+                    id: "admin-retention-global",
                     class: "w-24 px-2 py-1 border border-gray-300 rounded",
                     r#type: "number",
                     min: "1",
@@ -440,7 +451,7 @@ fn PlatformDefaultRetention(days: Option<u32>, on_saved: Callback<()>) -> Elemen
 }
 
 #[component]
-fn OrgRow(row: OrgSystemRow, on_saved: Callback<()>) -> Element {
+fn OrgRow(row: OrgSystemRow, tiers: Vec<TierOption>, on_saved: Callback<()>) -> Element {
     let mut input = use_signal(|| {
         row.org_override_days
             .map(|d| d.to_string())
@@ -465,6 +476,22 @@ fn OrgRow(row: OrgSystemRow, on_saved: Callback<()>) -> Element {
             busy.set(false);
         });
     };
+    let mut save_tier = move |raw: String| {
+        let tier_id = raw.parse::<i64>().ok();
+        busy.set(true);
+        spawn(async move {
+            match api::system::set_org_tier(org_id, tier_id).await {
+                Ok(_) => {
+                    toasts::success("toast-saved");
+                    on_saved.call(());
+                }
+                Err(err) => toasts::error(err),
+            }
+            busy.set(false);
+        });
+    };
+    let tier_label = t!("admin-orgs-tier-label", org : row.name.clone());
+    let override_label = t!("admin-orgs-override-label", org : row.name.clone());
     let source = resolve(
         &format!("system-retention-source-{}", row.retention_source),
         None,
@@ -480,14 +507,23 @@ fn OrgRow(row: OrgSystemRow, on_saved: Callback<()>) -> Element {
     let over = matches!((row.used_bytes, row.quota_bytes), (Some(u), Some(q)) if u > q);
     rsx! {
         tr { class: "border-b last:border-0",
-            td { class: "py-2 pr-4 font-medium text-gray-900",
-                {row.name.clone()}
-                p { class: "text-xs font-normal text-gray-500 md:hidden",
-                    {row.tier_name.clone().unwrap_or_else(|| "—".into())}
+            td { class: "py-2 pr-4 font-medium text-gray-900", {row.name.clone()} }
+            td { class: "py-2 pr-4",
+                select {
+                    class: "px-2 py-1 border border-gray-300 rounded bg-white text-gray-700",
+                    aria_label: "{tier_label}",
+                    disabled: busy(),
+                    onchange: move |e| save_tier(e.value()),
+                    option { value: "", selected: row.tier_id.is_none(), {t!("admin-orgs-tier-none")} }
+                    for tier in tiers.iter() {
+                        option {
+                            key: "{tier.id}",
+                            value: "{tier.id}",
+                            selected: row.tier_id == Some(tier.id),
+                            {tier.name.clone()}
+                        }
+                    }
                 }
-            }
-            td { class: "py-2 pr-4 hidden text-gray-600 md:table-cell",
-                {row.tier_name.clone().unwrap_or_else(|| "—".into())}
             }
             td { class: "py-2 pr-4 text-gray-900 whitespace-nowrap",
                 {t!("system-days-short", count : row.retention_days)}
@@ -497,6 +533,7 @@ fn OrgRow(row: OrgSystemRow, on_saved: Callback<()>) -> Element {
                 div { class: "flex gap-2",
                     input {
                         class: "w-24 px-2 py-1 border border-gray-300 rounded",
+                        aria_label: "{override_label}",
                         r#type: "number",
                         min: "1",
                         max: "3650",

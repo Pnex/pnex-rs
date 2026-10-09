@@ -97,6 +97,10 @@ pub const ANNOT_VERSION_CONFLICT: &str = "annot-version-conflict";
 // ── Controller codes (batch devices/pins/flows/resources/edge_refs/builds/stitch/fluid/viz/ai/notify) + board/caps display codes ──
 
 pub const DEVICE_WRITE_FORBIDDEN: &str = "device-write-forbidden";
+/// Board change (O39): the board does not exist.
+pub const DEVICE_BOARD_UNKNOWN: &str = "device-board-unknown";
+/// Board change (O39): the board carries another chip than the device.
+pub const DEVICE_BOARD_SOC_MISMATCH: &str = "device-board-soc-mismatch";
 pub const PIN_COMMANDS_FORBIDDEN: &str = "pin-commands-forbidden";
 pub const PIN_INVALID_BODY: &str = "pin-invalid-body";
 pub const PIN_GPIO_NOT_ADMITTED: &str = "pin-gpio-not-admitted";
@@ -187,6 +191,8 @@ pub const PLATFORM_ADMIN_REQUIRED: &str = "platform-admin-required";
 pub const RETENTION_OUT_OF_RANGE: &str = "retention-out-of-range";
 /// SaaS mode: retention follows the subscription and cannot be changed here.
 pub const RETENTION_LOCKED_BY_PLAN: &str = "retention-locked-by-plan";
+/// The subscription tier asked for an org does not exist.
+pub const TIER_UNKNOWN: &str = "tier-unknown";
 /// OpenObserve is not configured on this server (no `settings.openobserve`).
 pub const O2_NOT_CONFIGURED: &str = "o2-not-configured";
 /// OpenObserve rejected or failed a data deletion.
@@ -424,6 +430,8 @@ pub const ALL: &[&str] = &[
     ANNOT_PUBLISH_FORBIDDEN,
     ANNOT_VERSION_CONFLICT,
     DEVICE_WRITE_FORBIDDEN,
+    DEVICE_BOARD_UNKNOWN,
+    DEVICE_BOARD_SOC_MISMATCH,
     PIN_COMMANDS_FORBIDDEN,
     PIN_INVALID_BODY,
     PIN_GPIO_NOT_ADMITTED,
@@ -496,6 +504,7 @@ pub const ALL: &[&str] = &[
     PLATFORM_ADMIN_REQUIRED,
     RETENTION_OUT_OF_RANGE,
     RETENTION_LOCKED_BY_PLAN,
+    TIER_UNKNOWN,
     O2_NOT_CONFIGURED,
     O2_DELETE_FAILED,
     O2_TIME_RANGE_UNSUPPORTED,
