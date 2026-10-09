@@ -494,8 +494,8 @@ async fn notify_channel_secrets_live_in_the_vault() {
     with_app(|server, ctx, alice, _bob| async move {
         let (_, org) = provision(&server, &alice).await;
 
-        // Typed as a bare string (legacy API shape): lands in the
-        // dedicated secret, the row only keeps a reference.
+        // Typed value: lands in the dedicated secret, the row only keeps a
+        // reference.
         let (s, created) = call(
             &server,
             "POST",
@@ -504,7 +504,7 @@ async fn notify_channel_secrets_live_in_the_vault() {
             org,
             Some(json!({
                 "kind": "telegram", "name": "oncall", "enabled": true,
-                "config": { "bot_token": "123:FIRST", "chat_id": "@oncall" }
+                "config": { "bot_token": { "value": "123:FIRST" }, "chat_id": "@oncall" }
             })),
         )
         .await;
@@ -706,7 +706,7 @@ async fn runtime_reads_a_secret_only_through_a_deployed_flow() {
             org,
             Some(json!({
                 "kind": "telegram", "name": "alerts", "enabled": true,
-                "config": { "bot_token": "123:RUNTIME", "chat_id": "@alerts" }
+                "config": { "bot_token": { "value": "123:RUNTIME" }, "chat_id": "@alerts" }
             })),
         )
         .await;
@@ -840,7 +840,7 @@ async fn http_fetch_secrets_never_stay_in_the_graph() {
             org,
             Some(json!({
                 "name": "collect",
-                "graph": http_fetch_graph(json!({"mode": "bearer", "token": "tok-PLAIN-1"})),
+                "graph": http_fetch_graph(json!({"mode": "bearer", "token": { "value": "tok-PLAIN-1" }})),
             })),
         )
         .await;
@@ -874,7 +874,7 @@ async fn http_fetch_secrets_never_stay_in_the_graph() {
             org,
             Some(json!({
                 "expected_version_number": 1,
-                "graph": http_fetch_graph(json!({"mode": "bearer", "token": "tok-PLAIN-2"})),
+                "graph": http_fetch_graph(json!({"mode": "bearer", "token": { "value": "tok-PLAIN-2" }})),
             })),
         )
         .await;

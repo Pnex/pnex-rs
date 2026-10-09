@@ -113,7 +113,7 @@ tâche).
 | **Devices / pins** | Consolidé — CRUD, catalogue, quotas, pinout SVG v2, board variants, placements D43 | E2E matériel (write/PWM, fraîcheur read via Valkey) |
 | **TFT / écrans** | V2 livré — barre dès boot, timeline OTA, panneau 21 pins (8e69519) | E2E matériel (tft_dev) |
 | **Média (D21) + Take 360** | Couche 1 livrée ; Take 360 V2 serveur + V3 guidage device-validé + auto-cal focale | Capture portrait 2 anneaux, résolution 1080+, iOS/web, calibration par device |
-| **Viz** (carte POI-first D35–D39, dashboards D40/D41, surfaces pilotables D123–D129) | Mergés ; dashboards mobile + contrôles d'org + nœud `control-source` livrés 2026-10-04 ; tables dormantes supprimées (migration de base D120, 2026-10-01) | Décisions §9 : style de tuiles configurable, widget psychrométrique/Mollier ; E2E interactif + Android |
+| **Viz** (carte POI-first D35–D39, dashboards D40/D41, surfaces pilotables D123–D129) | Mergés ; dashboards mobile + contrôles d'org + nœud `control-source` livrés 2026-10-04 ; tables dormantes supprimées (migration de base D120, 2026-10-01) | Décisions §9 : style de tuiles configurable, diagramme de Mollier (log(p)-h, T-s et psychrométrique livrés dans le widget « Diagramme thermo ») ; E2E interactif + Android |
 | **Studio** (tours + annotations) | Mergés (0aae2ad, 9e78241) | Maquette 3D, LRU panoramas, éditeur vue initiale, export offline ; annotations : reste couche ETL/device |
 | **Assistant IA** (v1 + v2 D142–D145) | Livré — 35 outils fermés, base de connaissance embarquée + diagnostics, dashboards (D144), conversations privées en base + rétention (D145), LLM apporté par l'org (D119) ; finalisation i18n/audit 2026-10-07 (`ai-assistant.md` §10) | SEC-14 (filtrage d'URL du fournisseur, avec SEC-W3) |
 | **Collection C1a** | http_fetch livré (2026-09-15) | — |
@@ -590,7 +590,10 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   anti-rejeu, OTA signée, anti-downgrade logiciel) ; V2–V3 profils
   industriel et critique, logiciels ; **V4 eFuses seulement après 1 à 2
   ans de validation communautaire du firmware** ; V5 souverain sur
-  demande client. Rien d'implémenté. Décision #15.
+  demande client. **V1 livrée le 2026-10-09** (Noise AEAD + anti-rejeu,
+  OTA signée Ed25519 + anti-downgrade, TLS obligatoire, X.509/mTLS par
+  device, secret d'edge — D153–D158, banc 8266 + C6) ; V2–V5 non
+  commencées. Décision #15.
 - **Ouvertures** : palette flow par capacité (au moment où l'éditeur
   touche aux formulaires D20), compression du fil MCU (jamais un
   prérequis), sous-titres/tours offline.

@@ -83,18 +83,6 @@ pub fn destination(kind: &str, config: &serde_json::Value) -> Option<String> {
     }
 }
 
-/// `(field, value)` of every legacy plaintext secret of a channel config
-/// (boot takeover input).
-pub fn plaintext_secrets(kind: &str, config: &serde_json::Value) -> Vec<(String, String)> {
-    secret_fields(kind)
-        .into_iter()
-        .filter_map(|f| {
-            let v = config.get(&f)?.as_str()?.to_string();
-            (!v.is_empty()).then_some((f, v))
-        })
-        .collect()
-}
-
 /// `config` with the given fields replaced by plain string values (the
 /// sendable config, memory only).
 pub fn with_values(config: &serde_json::Value, values: &[(String, String)]) -> serde_json::Value {
@@ -196,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn refs_and_plaintext_are_told_apart() {
+    fn refs_are_read_from_secret_fields_only() {
         let id = Uuid::from_u128(7);
         let cfg = json!({
             "url": "https://e.com",
@@ -206,14 +194,6 @@ mod tests {
         assert_eq!(
             secret_refs("webhook", &cfg),
             [("secret_value".to_string(), id)]
-        );
-        assert!(plaintext_secrets("webhook", &cfg).is_empty());
-
-        let legacy = json!({"bot_token": "123:ABC", "chat_id": "@c"});
-        assert!(secret_refs("telegram", &legacy).is_empty());
-        assert_eq!(
-            plaintext_secrets("telegram", &legacy),
-            [("bot_token".to_string(), "123:ABC".to_string())]
         );
         // Non-secret fields are never treated as secrets.
         assert!(secret_refs("webhook", &json!({"url": {"secret_id": id.to_string()}})).is_empty());

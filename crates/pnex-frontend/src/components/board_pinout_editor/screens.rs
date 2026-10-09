@@ -13,19 +13,10 @@ pub(crate) struct ScreenOptionView {
     pub(crate) locked: bool,
 }
 
-/// État écran résolu d'une board (kind ou `None`) — tolérant au legacy
-/// bool des caches périmés.
+/// Resolved screen state of a board (kind or `None`).
 pub(crate) fn screen_state_kind(board: &api::pins::BoardSummary) -> Option<String> {
     match board.peripherals_state.get("screen") {
         Some(serde_json::Value::String(k)) => Some(k.clone()),
-        Some(serde_json::Value::Bool(true)) => board
-            .peripherals
-            .get("screens")
-            .and_then(|s| s.as_array())
-            .and_then(|a| a.first())
-            .and_then(|s| s.get("kind"))
-            .and_then(|k| k.as_str())
-            .map(String::from),
         _ => None,
     }
 }
@@ -92,8 +83,7 @@ pub(crate) fn ScreenWiring(name: String, rows: Vec<ScreenWiringRow>) -> Element 
 }
 
 /// Options du picker depuis le profil board + l'état résolu du device.
-/// L'état serveur (`peripherals_state.screen`) est un kind, avec tolérance
-/// legacy bool (caches périmés).
+/// The server state (`peripherals_state.screen`) is a kind.
 pub(crate) fn screen_options(board: &api::pins::BoardSummary) -> Vec<ScreenOptionView> {
     let screens = board
         .peripherals
@@ -103,11 +93,6 @@ pub(crate) fn screen_options(board: &api::pins::BoardSummary) -> Vec<ScreenOptio
         .unwrap_or_default();
     let current: Option<String> = match board.peripherals_state.get("screen") {
         Some(serde_json::Value::String(k)) => Some(k.clone()),
-        Some(serde_json::Value::Bool(true)) => screens
-            .first()
-            .and_then(|s| s.get("kind"))
-            .and_then(|k| k.as_str())
-            .map(String::from),
         _ => None,
     };
     let mut options = vec![ScreenOptionView {

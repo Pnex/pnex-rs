@@ -112,10 +112,9 @@ pub(crate) fn screen_for_build(
         }
     }
     // 2. Model declaration fallback (black boxes): `{"screen": {"kind": …}}`.
-    let screen = predefined_peripherals?.get("screen")?;
+    predefined_peripherals?.get("screen")?;
     let kind = match &peripherals.screen {
         pnex_core::boards::ScreenChoice::None => return None,
-        pnex_core::boards::ScreenChoice::LegacyAny => screen.get("kind")?.as_str()?.to_string(),
         pnex_core::boards::ScreenChoice::Kind(k) => k.clone(),
     };
     Some(pnex_firmware_builder::ScreenSpec { kind, pins: vec![] })

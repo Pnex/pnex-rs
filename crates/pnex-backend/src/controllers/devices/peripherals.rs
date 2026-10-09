@@ -51,7 +51,6 @@ pub(super) async fn update_peripherals(
     let kind: Option<String> = if !profile_screens.is_empty() {
         match &body.screen {
             ScreenChoice::None => None,
-            ScreenChoice::LegacyAny => profile_screens.first().map(|s| s.kind.clone()),
             ScreenChoice::Kind(k) => match profile_screens.iter().find(|s| s.kind == *k) {
                 Some(_) => Some(k.clone()),
                 None => {
@@ -70,11 +69,10 @@ pub(super) async fn update_peripherals(
     } else if let Some(model_kind) = model_screen_kind {
         let requested = match &body.screen {
             ScreenChoice::None => None,
-            ScreenChoice::LegacyAny => Some(model_kind.clone()),
             ScreenChoice::Kind(k) => Some(k.clone()),
         };
         match requested {
-            // Legacy `true` = the model's screen; kind must match exactly.
+            // The model's screen; kind must match exactly.
             Some(k) if k == model_kind => Some(model_kind),
             Some(k) => {
                 return Ok(detail_status(
