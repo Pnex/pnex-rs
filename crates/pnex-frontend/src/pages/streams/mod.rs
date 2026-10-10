@@ -17,8 +17,24 @@ use crate::components::icons;
 use crate::state::{org, session, toasts};
 
 mod form;
+mod models;
+mod transcripts;
 
 use form::StreamFormModal;
+use models::ModelsTab;
+use transcripts::TranscriptsTab;
+
+/// Tabs of the page.
+#[derive(Clone, Copy, PartialEq)]
+enum Tab {
+    Streams,
+    Transcripts,
+    Models,
+}
+
+const TAB: &str = "px-3 py-1.5 text-sm rounded-lg border";
+const TAB_ON: &str = "bg-blue-50 border-blue-300 text-blue-800";
+const TAB_OFF: &str = "border-transparent text-gray-600 hover:bg-gray-100";
 
 /// User role in the current org.
 fn current_role() -> Option<String> {
@@ -43,6 +59,8 @@ pub fn Streams() -> Element {
     let page = use_signal(|| 0i64);
     let mut reload = use_signal(|| 0u32);
     let mut dialog = use_signal(|| None::<Dialog>);
+    let mut tab = use_signal(|| Tab::Streams);
+    let mut importing = use_signal(|| false);
     let can_write = current_role().is_some_and(|role| org::role_can_write(&role));
 
     let streams = use_resource(move || {
@@ -71,46 +89,83 @@ pub fn Streams() -> Element {
             subtitle: Some(t!("streams-subtitle").to_string()),
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
             can_write,
-            add_label: Some(t!("streams-add").to_string()),
-            on_add: move |_| dialog.set(Some(Dialog::Create)),
-            ListStates {
-                state: list_state,
-                is_empty,
-                empty_message: t!("streams-empty-title").to_string(),
-                empty_icon: rsx! {
-                    icons::Radio { class: "h-8 w-8 text-gray-400" }
-                },
-                empty_detail: rsx! {
-                    p { class: "text-gray-600 mt-2 max-w-xl mx-auto", {t!("streams-empty-message")} }
-                },
-                div { class: "space-y-4",
-                    div { class: "overflow-x-auto bg-white rounded-lg shadow border border-gray-200",
-                        table { class: "min-w-full divide-y divide-gray-200 text-sm",
-                            thead { class: "bg-gray-50",
-                                tr {
-                                    th { class: "th", {t!("streams-col-name")} }
-                                    th { class: "th hidden md:table-cell", {t!("streams-col-kind")} }
-                                    th { class: "th", {t!("streams-col-capture")} }
-                                    th { class: "th hidden md:table-cell",
-                                        {t!("streams-col-retention")}
+            add_label: match tab() {
+                Tab::Streams => Some(t!("streams-add").to_string()),
+                Tab::Models => Some(t!("asr-models-import").to_string()),
+                Tab::Transcripts => None,
+            },
+            on_add: move |_| match tab() {
+                Tab::Streams => dialog.set(Some(Dialog::Create)),
+                Tab::Models => importing.set(true),
+                Tab::Transcripts => {}
+            },
+            filters: rsx! {
+                div { class: "flex flex-wrap gap-2", role: "tablist",
+                    for (t, label) in [
+                        (Tab::Streams, t!("streams-tab-streams")),
+                        (Tab::Transcripts, t!("streams-tab-transcripts")),
+                        (Tab::Models, t!("streams-tab-models")),
+                    ]
+                    {
+                        button {
+                            class: if tab() == t { "{TAB} {TAB_ON}" } else { "{TAB} {TAB_OFF}" },
+                            r#type: "button",
+                            role: "tab",
+                            aria_selected: tab() == t,
+                            onclick: move |_| tab.set(t),
+                            {label}
+                        }
+                    }
+                }
+            },
+            if tab() == Tab::Transcripts {
+                TranscriptsTab { streams: rows.clone(), reload }
+            }
+            if tab() == Tab::Models {
+                ModelsTab { can_write, reload, importing }
+            }
+            if tab() == Tab::Streams {
+                ListStates {
+                    state: list_state,
+                    is_empty,
+                    empty_message: t!("streams-empty-title").to_string(),
+                    empty_icon: rsx! {
+                        icons::Radio { class: "h-8 w-8 text-gray-400" }
+                    },
+                    empty_detail: rsx! {
+                        p { class: "text-gray-600 mt-2 max-w-xl mx-auto", {t!("streams-empty-message")} }
+                    },
+                    div { class: "space-y-4",
+                        div { class: "overflow-x-auto bg-white rounded-lg shadow border border-gray-200",
+                            table { class: "min-w-full divide-y divide-gray-200 text-sm",
+                                thead { class: "bg-gray-50",
+                                    tr {
+                                        th { class: "th", {t!("streams-col-name")} }
+                                        th { class: "th hidden md:table-cell",
+                                            {t!("streams-col-kind")}
+                                        }
+                                        th { class: "th", {t!("streams-col-capture")} }
+                                        th { class: "th hidden md:table-cell",
+                                            {t!("streams-col-retention")}
+                                        }
+                                        th { class: "th {ACTIONS_TH_CLASS}" }
                                     }
-                                    th { class: "th {ACTIONS_TH_CLASS}" }
                                 }
-                            }
-                            tbody { class: "divide-y divide-gray-100",
-                                for s in rows {
-                                    StreamRow {
-                                        key: "{s.id}",
-                                        stream: s.clone(),
-                                        can_write,
-                                        on_action: move |d: Dialog| dialog.set(Some(d)),
-                                        on_changed: move |_| reload.with_mut(|r| *r += 1),
+                                tbody { class: "divide-y divide-gray-100",
+                                    for s in rows {
+                                        StreamRow {
+                                            key: "{s.id}",
+                                            stream: s.clone(),
+                                            can_write,
+                                            on_action: move |d: Dialog| dialog.set(Some(d)),
+                                            on_changed: move |_| reload.with_mut(|r| *r += 1),
+                                        }
                                     }
                                 }
                             }
                         }
+                        ListPager { count, page }
                     }
-                    ListPager { count, page }
                 }
             }
         }
