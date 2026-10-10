@@ -220,6 +220,7 @@ impl Hooks for App {
         crate::services::video::spawn_pruner(ctx);
         crate::services::media_ingest::capture::spawn_supervisor(ctx);
         crate::services::media_ingest::segments::spawn_pruner(ctx);
+        crate::services::media_ingest::health::spawn(ctx);
         // Hourly O2 retention reconcile (D72): new streams get the value.
         crate::services::retention::spawn_reconciler(ctx);
         // Erasure of inactive assistant conversations (D145).

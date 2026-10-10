@@ -223,3 +223,91 @@ async fn worker_segment_upload() {
     .await;
     unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
 }
+
+/// Health sample from real segment rows (D160): gap since the last
+/// segment, lag of the oldest pending one, coverage over the hour.
+#[tokio::test]
+#[serial]
+async fn health_sample_reads_segment_rows() {
+    use pnex_backend::services::media_ingest::{health, segments};
+    use pnex_core::media_ingest::ClockSource;
+    let base = common::spawn_mock_rauthy().await;
+    unsafe { std::env::set_var("RAUTHY_URL", &base) };
+    let alice = common::valid_token(
+        &base,
+        "00000000-0000-0000-0000-00000000000a",
+        "alice",
+        "alice@example.com",
+    );
+    let config: RequestConfig = RequestConfigBuilder::new().build();
+    loco_rs::testing::request::request_with_config::<App, _, _>(
+        config,
+        move |server, ctx| async move {
+            common::seed_catalogue(&ctx.db).await;
+            let org = server
+                .get("/api/v1/user-info")
+                .add_header("Authorization", format!("Bearer {alice}"))
+                .await
+                .json::<Value>()["orgs"][0]["id"]
+                .as_i64()
+                .unwrap();
+            let created = server
+                .post("/api/v1/media/streams")
+                .add_header("Authorization", format!("Bearer {alice}"))
+                .add_header("X-Org-Id", org.to_string())
+                .json(&json!({ "name": "Health", "kind": "icecast",
+                "url": "https://icecast.radio.example/live.mp3" }))
+                .await;
+            let id: uuid::Uuid = created.json::<Value>()["id"]
+                .as_str()
+                .unwrap()
+                .parse()
+                .unwrap();
+            let stream = media_streams::Entity::find_by_id(id)
+                .one(&ctx.db)
+                .await
+                .unwrap()
+                .unwrap();
+            let store = MediaSettings::from_config(&ctx.config).store().unwrap();
+            let now = chrono::Utc::now();
+            let at = |secs: i64| now - chrono::Duration::seconds(secs);
+            for (seq, start) in [(0, 400), (1, 100)] {
+                segments::write(
+                    &ctx.db,
+                    &store,
+                    &stream,
+                    segments::NewSegment {
+                        seq,
+                        started_at: at(start),
+                        ended_at: at(start - 30),
+                        clock_source: ClockSource::Host,
+                        wav: capture::segmenter::wav_bytes(&[0i16; 16]),
+                    },
+                )
+                .await
+                .unwrap();
+            }
+            let first = media_segments::Entity::find()
+                .filter(media_segments::Column::Seq.eq(0))
+                .one(&ctx.db)
+                .await
+                .unwrap()
+                .unwrap();
+            let mut done: media_segments::ActiveModel = first.into();
+            done.state = sea_orm::Set("transcribed".into());
+            sea_orm::ActiveModelTrait::update(done, &ctx.db)
+                .await
+                .unwrap();
+
+            // Configured long ago: the gap counts from the last segment.
+            let mut stream = stream;
+            stream.updated_at = at(7200).into();
+            let h = health::sample(&ctx.db, &stream, now).await.unwrap();
+            assert!(!h.up);
+            assert!((60..=72).contains(&h.gap_secs), "{h:?}");
+            assert!((100..=112).contains(&h.lag_secs), "{h:?}");
+            assert!((h.coverage - 30.0 / 3600.0).abs() < 1e-9, "{h:?}");
+        },
+    )
+    .await;
+}
