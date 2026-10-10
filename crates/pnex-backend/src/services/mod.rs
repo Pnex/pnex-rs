@@ -29,6 +29,7 @@ pub mod flow;
 pub mod flow_cluster;
 pub mod flow_supervisor;
 pub mod functions;
+pub mod geo;
 /// Live last-value telemetry cache (Valkey) — write side (pnex-device-read
 /// acceleration).
 pub mod last_cache;

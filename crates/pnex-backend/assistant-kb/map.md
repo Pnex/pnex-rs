@@ -8,7 +8,7 @@ err_codes: poi-write-forbidden, poi-link-write-forbidden, poi-position-write-for
 tools: 
 tags: map, carte, poi, point of interest, location, gps, emplacement, site, attach, cluster, géolocalisation
 ---
-The Map (Visualization › Map) places the organization's points of interest (POIs) on a world map. A POI has a label, a pictogram, a free location text and coordinates; devices, media, 3D tours and dashboards are attached to it, so the map is the geographic entry point to everything installed somewhere. **List view** (top of the panel) opens Sites, the same tree without the map.
+The Map (Visualization › Map) places the organization's points of interest (POIs) on a world map. A POI has a label, a pictogram, a free location text and coordinates; devices, media, 3D tours and dashboards are attached to it, so the map is the geographic entry point to everything installed somewhere. The basemap under the points comes from the organization's geo providers (see the geo-providers card); with several basemaps, a selector at the top right switches between them. **List view** (top of the panel) opens Sites, the same tree without the map.
 
 ## What you can do
 - **＋ Add POI**, then click on the map to place it; fill **Label**, **Pictogram**, **Location (building, floor, room…)**, **Latitude** and **Longitude**. **Cancel adding** leaves the placing mode.

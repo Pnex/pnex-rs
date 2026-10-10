@@ -133,6 +133,8 @@ pub enum SecretConsumerKind {
     LlmProvider,
     /// Credential of a captured media stream (media-ingest.md D159).
     MediaStream,
+    /// Credential of an org geo provider (geo-layers.md L19).
+    GeoProvider,
 }
 
 impl SecretConsumerKind {
@@ -143,6 +145,7 @@ impl SecretConsumerKind {
             Self::Wifi => "wifi",
             Self::LlmProvider => "llm-provider",
             Self::MediaStream => "media-stream",
+            Self::GeoProvider => "geo-provider",
         }
     }
 
@@ -153,6 +156,7 @@ impl SecretConsumerKind {
             "wifi" => Self::Wifi,
             "llm-provider" => Self::LlmProvider,
             "media-stream" => Self::MediaStream,
+            "geo-provider" => Self::GeoProvider,
             _ => return None,
         })
     }

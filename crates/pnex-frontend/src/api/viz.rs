@@ -8,8 +8,6 @@ use crate::api::client;
 use crate::api::error::ApiError;
 use crate::api::media::urlencode;
 
-pub const MAP_STYLE_URL: &str = "https://map.alpine-box.com/style/light-en";
-
 // ─────────────────────────── DTO ───────────────────────────
 
 /// Arête POI→cible (D42 : `resource_edges`, `viz_links` absorbé) —

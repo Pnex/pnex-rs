@@ -259,15 +259,15 @@ qu'offre un Pi).
 | L16 | **Table `geo_providers` par org** (pas de repli plateforme, D119) : nom, `kind` (adaptateur), `capabilities` (`basemap`, `geocode`, `reverse`, `autocomplete`, `route`, `isochrone`, `matrix`), `base_url`, `auth`, `headers` non secrets, `params` (langue, pays, profil), `rate_limit`, `timeout_ms`, `store_allowed` ; **un défaut par capability** (index partiel) | Même modèle que les fournisseurs LLM, déjà compris par l'utilisateur ; un Nominatim pour le geocoding et un Valhalla pour le routage coexistent |
 | L17 | **Adaptateurs natifs** : Nominatim, Pelias, Photon (geocoding) ; Valhalla, OSRM, GraphHopper (routage) ; plus un adaptateur **`generic-http`** (gabarit de requête + mapping de réponse par chemins JSON) comme échappatoire | Couvre les moteurs OSS courants sans code par fournisseur exotique |
 | L18 | **DTO normalisés dans `pnex-core`** : `GeocodeResult` (libellé, lat/lon, bbox, type, confiance, parties d'adresse) et `Route` (géométrie GeoJSON décodée des polylines, distance, durée, étapes, manœuvres) | L'UI, l'import et les flows ne connaissent jamais le format d'un fournisseur ; changer de moteur ne casse rien |
-| L19 | **Auth en références de coffre** (D110) : `none`, `header` (nom + `SecretRef`), `bearer`, `basic` (utilisateur + `SecretRef`), `query` (nom de paramètre + `SecretRef`, ex. clé d'API Pelias hébergé) ; en-têtes non secrets libres (`User-Agent` exigé par Nominatim) ; usages tracés dans `secret_usages` | Mêmes modes que le nœud http-fetch (S5) ; aucune valeur secrète en config ni renvoyée au client |
+| L19 | **Une clé d'API facultative, en paramètre d'URL** (révisée 2026-10-10, décision user : « comme Google et tous les fournisseurs de carte classiques ») : la clé vit au coffre (D110, `secret_usages`), elle est ajoutée aux URLs du fournisseur sous le paramètre `key_param` (`key` par défaut, `access_token` pour Mapbox). Plus de modes `header`/`bearer`/`basic` ni d'en-têtes libres | Le modèle que tout le monde connaît (Google, MapTiler, LocationIQ) ; un formulaire à un champ |
 | L20 | **Proxy serveur obligatoire** : le navigateur n'appelle jamais un fournisseur ; endpoints `/api/v1/geo/geocode`, `/reverse`, `/autocomplete`, `/route`, `/isochrone` | Les secrets restent côté serveur ; un seul point pour le cache, le rate limit et l'audit |
 | L21 | **Cache Valkey** des réponses, clé = fournisseur + hash de config + requête normalisée ; TTL par capability (geocoding long, routage court) ; **rate limit par fournisseur** en token bucket Valkey (politique publique Nominatim : 1 req/s) | Évite de se faire bannir d'un service public ; l'autocomplete coûte sinon une requête par frappe |
 | L22 | **`store_allowed`** : si faux, les résultats ne sont **ni persistés en features ni cachés au-delà d'un TTL court** ; si vrai, provenance enregistrée (fournisseur + date) et attribution affichée | Certains fournisseurs commerciaux interdisent le stockage ; OSM impose l'attribution ODbL |
 | L23 | **Bouton « Tester »** dans l'UI (geocoder une adresse connue, router entre deux points) ; statut remonté dans l'état système | L'erreur de config (URL, clé, en-tête) se voit au moment où on la fait |
 | L24 | **Fond de carte = fournisseur `basemap`** : style MapLibre (spec v8) par URL, ou gabarit de tuiles (`{z}/{x}/{y}` vecteur ou raster), ou archive PMTiles ; variante sombre optionnelle (`style_url_dark`) ; attribution obligatoire | Supprime l'URL `map.alpine-box.com` codée en dur (D27) ; l'org choisit son fond (Martin maison, MapTiler, IGN, OSM raster…) |
 | L25 | **Fond par défaut de l'org + sélecteur** : la carte s'ouvre sur le défaut de l'org ; l'utilisateur bascule entre les fonds disponibles depuis la carte (choix mémorisé par utilisateur, préférence locale) | « L'org choisit le défaut, l'utilisateur garde la main » |
-| L26 | **Fond semé à la création d'org** : l'instance déclare son fond (`PNEX_BASEMAP_STYLE_URL`, le Martin livré) ; chaque nouvelle org reçoit un fournisseur `basemap` correspondant, **par défaut, modifiable et supprimable**. Sans aucun fond : carte vide + message « aucun fond configuré » | Une carte sans fond est inutilisable dès le premier lancement ; contrairement au LLM (D119), un fond auto-hébergé ne coûte rien et ne porte pas de clé |
-| L27 | **Deux modes de diffusion d'un fond** : `direct` (le navigateur charge style et tuiles lui-même ; refusé si l'auth contient un secret, sauf clé explicitement marquée « publiable » côté navigateur) ou `proxied` (Loco relaie style et tuiles, injecte les secrets, cache en Valkey, réécrit les URLs du style) | Une clé MapTiler posée dans l'URL du style finit sinon en clair chez chaque visiteur ; le proxy coûte de la bande passante, donc opt-in |
+| L26 | **Aucun fond semé** (révisée 2026-10-10, décision user) : comme les fournisseurs LLM (D119), PNEX ne fournit aucun fond ; tant que l'org n'en a pas ajouté, la carte affiche un fond neutre et le message « ajoutez un fournisseur de fond (avec sa clé d'API s'il en demande une) » avec un lien vers la page de l'org. Les POI restent utilisables | Un seul modèle « l'org apporte ses moteurs » ; pas de rattrapage des orgs existantes à gérer |
+| L27 | **Fond en mode `direct` seulement (phase F)** : la clé d'un fond est une **clé navigateur** (comme une clé Google Maps), ajoutée à l'URL du style que charge le navigateur, donc visible des membres ; elle se restreint par référent chez le fournisseur. Les clés de géocodage et de routage ne quittent jamais le serveur. Le mode `proxied` (Loco relaie style et tuiles) reste une évolution | Le cas courant des fournisseurs de fond ; le proxy de tuiles coûte de la bande passante |
 | L28 | **« Tester » un fond** : chargement du style, contrôle `version: 8`, résolution des sources, première tuile récupérée, compatibilité WebGL1 (maplibre 4.x épinglé, D27) signalée | Un style v5-only ou une source injoignable se voit avant d'être mis par défaut |
 
 ### Usages dans PNEX
@@ -292,7 +292,7 @@ qu'offre un Pi).
 
 ### Sans fournisseur configuré
 
-Fond de carte : voir L26. La recherche, le reverse et le routage
+Fond de carte : voir L26 (fond neutre + message). La recherche, le reverse et le routage
 s'affichent comme **non configurés**, avec un lien vers la page de l'org. Le reste de la carte
 fonctionne normalement.
 
@@ -357,7 +357,7 @@ fonctionne normalement.
 | **C — Cache & seed** | Cache Valkey, anti-stampede, seed PMTiles, GC des dérivés | Republier ne laisse aucun dérivé orphelin (S3, Valkey, staging) |
 | **D — Upsert** | Case « Vider avant import », clé d'identité, diff, `_op = delete`, invalidation ciblée, set dirty | Un fichier partiel met à jour 3 features sans toucher le reste du cache |
 | **E — Style & formats** | Éditeur de style Dioxus (catégorisé, gradué, étiquettes), formats restants (FlatGeobuf, KML, GPX, CSV, DXF) | Une layer se style par attribut sans écrire de JSON |
-| **F — Fournisseurs géo** | `geo_providers`, **fond de carte configurable (retrait de l'URL en dur, fond semé à la création d'org, sélecteur)**, adaptateurs Nominatim + Valhalla d'abord, auth en références, proxy, cache, rate limit, bouton Tester, recherche et reverse sur /map, colonne adresse à l'import | Une org change son fond par défaut, branche son Nominatim et son Valhalla, cherche une adresse, crée un POI à partir d'elle et trace un itinéraire, sans qu'aucun secret ne quitte le serveur |
+| **F — Fournisseurs géo** | `geo_providers`, **fond de carte configurable (retrait de l'URL en dur, aucun fond semé : message « ajoutez un fournisseur », sélecteur)**, adaptateurs Nominatim + Valhalla d'abord, clé d'API en paramètre d'URL (coffre), proxy, cache, rate limit, bouton Tester, recherche et reverse sur /map, colonne adresse à l'import | Une org ajoute son fond (avec sa clé), change son fond par défaut, branche son Nominatim et son Valhalla, cherche une adresse, crée un POI à partir d'elle et trace un itinéraire, sans qu'aucun secret ne quitte le serveur |
 
 À chaque phase : clés i18n (deux `.ftl`), codes d'erreur dans
 `err_codes::ALL`, revue de sécurité `security.md` §6, fiches assistant —
@@ -394,6 +394,7 @@ Corrections apportées à la v0.1 à l'intégration :
   rollback reste une nouvelle génération recalculée (L14).
 - Restent ouvertes : raster (Q2), OGC API – Features (Q3), plafonds par
   tier (Q4), lien ontologie (Q5), lecteurs en nœud de flow (Q6).
+- **Fournisseurs (2026-10-10, phase F)** : aucun fond semé, l'org ajoute ses fournisseurs comme ses LLM (L26 révisée) ; une seule clé d'API facultative en paramètre d'URL (L19 révisée) ; la clé d'un fond est une clé navigateur (L27). Hors ontologie (configuration, pas un objet du monde), migration `m20261011_000005_geo_providers`.
 - **Image Postgres** (2026-10-10, `ontology.md` annexe A3) : la 0.2.0
   reste sur PostgreSQL 18 (SQL/PGQ absent de 19) ; l'image étendue de L1
   se construit sur 18. La phase F n'en dépend pas.

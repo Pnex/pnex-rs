@@ -3,6 +3,7 @@
 pub mod binding;
 pub mod crypto;
 pub mod flow;
+pub mod geo;
 pub mod llm;
 pub mod media;
 pub mod notify;

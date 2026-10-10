@@ -115,6 +115,9 @@ pub fn Map() -> Element {
     let mut preview = use_signal(|| None::<PreviewTarget>);
     let mut pinned = use_signal(|| None::<PreviewTarget>);
     let mut map_failed = use_signal(|| false);
+    // Basemaps of the org (geo-layers.md L24–L26) and the one shown.
+    let mut basemaps = use_signal(Vec::<pnex_core::geo::Basemap>::new);
+    let mut basemap = use_signal(|| None::<uuid::Uuid>);
     // Compteur d'événements (création/édition) → refetch liste.
     let mut reload = use_signal(|| 0u32);
     // Compteur de changements de filtres → refetch cluster.
@@ -142,8 +145,13 @@ pub fn Map() -> Element {
     use_effect(move || {
         MAP_POLL_ACTIVE.store(true, Ordering::Relaxed);
         spawn(async move {
+            let maps = crate::api::geo::basemaps().await.unwrap_or_default();
+            let chosen = pick_basemap(&maps);
+            basemap.set(chosen.map(|b| b.id));
+            let style_url = chosen.map(|b| b.style_url.clone()).unwrap_or_default();
+            basemaps.set(maps);
             let opts = MapOpts {
-                style_url: viz::MAP_STYLE_URL.to_string(),
+                style_url,
                 center: DEFAULT_CENTER,
                 zoom: DEFAULT_ZOOM,
                 items: vec![],
@@ -371,6 +379,9 @@ pub fn Map() -> Element {
                 if map_failed() {
                     MapErrorBadge {}
                 }
+                if !map_failed() {
+                    BasemapControl { basemaps, basemap }
+                }
                 // Boutons flottants (repli sidebar + mode ajout).
                 div { class: "absolute top-3 left-3 z-10 flex gap-2",
                     if !sidebar_open() {
@@ -485,4 +496,94 @@ pub(super) fn MapErrorBadge() -> Element {
             }
         }
     }
+}
+
+/// Storage key of the basemap chosen in the current org.
+fn basemap_key() -> String {
+    let org = crate::state::org::current().unwrap_or_default();
+    format!("{}{org}", crate::storage::KEY_BASEMAP_PREFIX)
+}
+
+/// The user's stored choice if it still exists, else the org default,
+/// else the first basemap (L25).
+fn pick_basemap(maps: &[pnex_core::geo::Basemap]) -> Option<&pnex_core::geo::Basemap> {
+    use crate::storage::KeyValueStorage;
+    let stored = crate::storage::local()
+        .get(&basemap_key())
+        .and_then(|s| s.parse::<uuid::Uuid>().ok());
+    stored
+        .and_then(|id| maps.iter().find(|b| b.id == id))
+        .or_else(|| maps.iter().find(|b| b.is_default))
+        .or_else(|| maps.first())
+}
+
+/// Basemap switcher (more than one basemap) or "no basemap configured"
+/// notice linking to the org page (none).
+#[component]
+fn BasemapControl(
+    basemaps: Signal<Vec<pnex_core::geo::Basemap>>,
+    basemap: Signal<Option<uuid::Uuid>>,
+) -> Element {
+    let maps = basemaps();
+    if maps.is_empty() {
+        return rsx! {
+            div { class: "absolute bottom-8 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white/95 rounded-full shadow border border-gray-200",
+                {t!("geo-basemap-none")}
+                " "
+                Link {
+                    to: Route::OrgsCurrent {},
+                    class: "text-blue-600 hover:underline",
+                    {t!("geo-basemap-configure")}
+                }
+            }
+        };
+    }
+    if maps.len() < 2 {
+        return rsx! {};
+    }
+    // `selected` per option: a `value` on the select alone shows the first
+    // option (dioxus).
+    let current = basemap();
+    rsx! {
+        select {
+            class: "absolute top-3 right-3 z-10 px-2 py-1.5 text-sm bg-white rounded-lg shadow border border-gray-200",
+            aria_label: t!("geo-basemap-label"),
+            onchange: move |e| switch_basemap(basemaps, basemap, &e.value()),
+            for b in maps {
+                option { value: "{b.id}", selected: current == Some(b.id), "{b.name}" }
+            }
+        }
+    }
+}
+
+/// Stores the chosen basemap and remounts the map on its style (markers
+/// come back with the first viewport event of the new map).
+fn switch_basemap(
+    basemaps: Signal<Vec<pnex_core::geo::Basemap>>,
+    mut basemap: Signal<Option<uuid::Uuid>>,
+    value: &str,
+) {
+    use crate::storage::KeyValueStorage;
+    let Ok(id) = value.parse::<uuid::Uuid>() else {
+        return;
+    };
+    let Some(style) = basemaps
+        .read()
+        .iter()
+        .find(|b| b.id == id)
+        .map(|b| b.style_url.clone())
+    else {
+        return;
+    };
+    crate::storage::local().set(&basemap_key(), &id.to_string());
+    basemap.set(Some(id));
+    spawn(async move {
+        let opts = MapOpts {
+            style_url: style,
+            center: DEFAULT_CENTER,
+            zoom: DEFAULT_ZOOM,
+            items: vec![],
+        };
+        map_viewer::mount(MAP_HOST, &opts).await;
+    });
 }
