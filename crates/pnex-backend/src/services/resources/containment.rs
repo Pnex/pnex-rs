@@ -90,7 +90,9 @@ pub async fn set_parent(
     parent: Option<(&str, &str)>,
     sort_key: Option<&str>,
 ) -> Result<(), ResourceError> {
-    let reg = registry::global();
+    let reg = registry::for_org(db, org_id)
+        .await
+        .map_err(|_| ResourceError::Db)?;
 
     // Le kind enfant doit pouvoir être contenu (tous les kinds vivants oui,
     // sauf évolution future — chemin unique par la spec).
@@ -98,7 +100,7 @@ pub async fn set_parent(
         return Err(ResourceError::KindInvalid);
     }
     if let Some((pk, pi)) = parent {
-        if !pnex_core::resources::valid_kind(pk) || reg.entry(pk).is_none() {
+        if reg.entry(pk).is_none() {
             return Err(ResourceError::KindInvalid);
         }
         // Existence+tenancy des deux bouts (registre).

@@ -20,6 +20,7 @@ pub async fn links_for_pins(
     resource_edges::Entity::find()
         .filter(resource_edges::Column::OrgId.eq(org_id))
         .filter(resource_edges::Column::Relation.eq(LINK_RELATION))
+        .filter(resource_edges::Column::ValidTo.is_null())
         .filter(resource_edges::Column::SourceKind.eq("map_pin"))
         .filter(
             resource_edges::Column::SourceId

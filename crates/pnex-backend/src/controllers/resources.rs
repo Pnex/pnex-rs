@@ -21,10 +21,7 @@ use serde_json::Value;
 
 use crate::auth::OrgContext;
 use crate::services::resources as svc;
-use pnex_core::{
-    err_codes,
-    resources::{parse_label_filter, valid_kind},
-};
+use pnex_core::{err_codes, resources::parse_label_filter};
 
 // ─────────────────────────── erreurs ───────────────────────────
 
@@ -76,10 +73,10 @@ fn error_response(e: svc::ResourceError) -> Response {
 /// Préambule commun des routes `{kind}/{id}/…` : kind inconnu → 400,
 /// ressource absente / cross-org → 404 (résolution via le registre).
 async fn require_resource(ctx: &AppContext, org: &OrgContext, kind: &str, id: &str) -> Result<()> {
-    if !valid_kind(kind) {
-        return Err(Error::BadRequest("unknown kind".into()));
-    }
-    let Some(entry) = svc::registry::global().entry(kind) else {
+    let reg = svc::registry::for_org(&ctx.db, org.org.id)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    let Some(entry) = reg.entry(kind) else {
         return Err(Error::BadRequest("unknown kind".into()));
     };
     let ok = entry
@@ -227,7 +224,10 @@ async fn labels_batch(
     org: OrgContext,
     Json(body): Json<LabelsBatchBody>,
 ) -> Result<Response> {
-    if !valid_kind(&body.kind) {
+    let reg = svc::registry::for_org(&ctx.db, org.org.id)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    if reg.entry(&body.kind).is_none() {
         return Ok(field_status(
             "kind",
             "kind inconnu de la couche d'organisation.",
@@ -361,12 +361,15 @@ async fn get_containment(
             refs.push((k.as_str(), i.as_str()));
         }
     }
+    let reg = svc::registry::for_org(&ctx.db, org.org.id)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     for (k, i) in refs {
         let key = format!("{k}:{i}");
         if display.contains_key(&key) {
             continue;
         }
-        if let Some(entry) = svc::registry::global().entry(k) {
+        if let Some(entry) = reg.entry(k) {
             if let Ok(Some(name)) = entry.resolver.display_name(&ctx.db, org.org.id, i).await {
                 display.insert(key, name);
             }
@@ -796,20 +799,19 @@ async fn search(
             err.as_deref().unwrap_or("label invalide"),
         ));
     };
+    let reg = svc::registry::for_org(&ctx.db, org.org.id)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     let kinds: Vec<String> = match p.kinds {
         Some(kinds) if !kinds.is_empty() => {
             for k in &kinds {
-                if !valid_kind(k) {
+                if reg.entry(k).is_none() {
                     return Ok(field_status("kinds", "kind inconnu"));
                 }
             }
             kinds
         }
-        _ => svc::registry::global()
-            .kinds()
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
+        _ => reg.kinds().into_iter().map(str::to_string).collect(),
     };
     let mut results = Vec::new();
     for kind in &kinds {

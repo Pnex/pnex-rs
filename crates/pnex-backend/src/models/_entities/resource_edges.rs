@@ -8,7 +8,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "resource_edges")]
 pub struct Model {
     #[sea_orm(primary_key)]
@@ -21,6 +21,17 @@ pub struct Model {
     pub target_id: String,
     #[sea_orm(column_type = "JsonBinary", nullable)]
     pub placement: Option<Json>,
+    /// Link attributes, validated by the link type (D179).
+    #[sea_orm(column_type = "JsonBinary")]
+    pub attributes: Json,
+    /// Validity: a closed link (`valid_to` set) is history, never deleted.
+    pub valid_from: DateTimeWithTimeZone,
+    pub valid_to: Option<DateTimeWithTimeZone>,
+    /// Provenance (D184).
+    pub source_ref: Option<String>,
+    /// Identities of both ends, resolved by a trigger on insert.
+    pub source_object_id: Option<Uuid>,
+    pub target_object_id: Option<Uuid>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

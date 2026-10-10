@@ -1,0 +1,71 @@
+# Reference pack "Maintenance augmentée" (ontology.md D190, use-cases.md):
+# sites, production lines, machines and pumps, with their sensors bound to
+# object series (D181). Installing it creates org types: they stay editable
+# by the org; a newer pack version appends new type versions.
+key: maintenance
+name: Augmented maintenance
+version: "1.0.0"
+description: Sites, lines, machines and pumps; sensors bound to equipment series survive sensor replacements.
+types:
+  - key: site
+    name: Site
+    icon: map-pin
+    may_contain: [line]
+    may_be_contained_in: [folder]
+    properties:
+      - { key: address, name: Address, kind: text, max_len: 500 }
+      - { key: location, name: Location, kind: geo_point }
+  - key: line
+    name: Production line
+    icon: workflow
+    may_contain: [machine, pump]
+    may_be_contained_in: [site, folder]
+    properties:
+      - { key: code, name: Code, kind: text, max_len: 64, indexed: true }
+      - key: shift_pattern
+        name: Shift pattern
+        kind: enum
+        values: ["1x8", "2x8", "3x8", "continuous"]
+  - key: machine
+    name: Machine
+    icon: cog
+    may_be_contained_in: [line, folder]
+    properties:
+      - { key: serial, name: Serial number, kind: text, max_len: 64, required: true, indexed: true }
+      - { key: manufacturer, name: Manufacturer, kind: text, max_len: 255 }
+      - { key: commissioned, name: Commissioned on, kind: date }
+      - key: status
+        name: Status
+        kind: enum
+        values: [running, stopped, maintenance, retired]
+        indexed: true
+      - { key: manual, name: Manual, kind: url }
+      - { key: power, name: Power, kind: series, unit: kW }
+  - key: pump
+    name: Pump
+    icon: droplet
+    may_be_contained_in: [line, folder]
+    properties:
+      - { key: serial, name: Serial number, kind: text, max_len: 64, required: true, indexed: true }
+      - { key: rated_flow, name: Rated flow, kind: number, unit: m3/h, min: 0 }
+      - key: status
+        name: Status
+        kind: enum
+        values: [running, stopped, maintenance, retired]
+        indexed: true
+      - { key: last_service, name: Last service, kind: date }
+      - { key: temperature, name: Temperature, kind: series, unit: "°C" }
+      - { key: vibration, name: Vibration, kind: series, unit: mm/s }
+      - { key: pressure, name: Pressure, kind: series, unit: bar }
+link_types:
+  - key: feeds
+    name: feeds
+    inverse_name: is fed by
+    from_types: [pump, machine]
+    to_types: [pump, machine, line]
+  - key: backup_of
+    name: is the backup of
+    inverse_name: is backed up by
+    from_types: [pump, machine]
+    to_types: [pump, machine]
+    one_target: true

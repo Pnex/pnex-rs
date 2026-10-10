@@ -3795,3 +3795,14 @@ asr-profiles-language = Language (fr, en… or auto)
 asr-profiles-add = Add the profile
 asr-profiles-saved = Profile saved
 asr-profiles-delete-message = Delete the profile “{ $name }”? Its streams stop being transcribed.
+
+## Ontology errors (D176–D191)
+err-ontology-not-found = Not found in the organization's ontology: it may have been archived or deleted.
+err-ontology-already-exists = This already exists (same type key, or the same link is already open).
+err-ontology-version-conflict = Someone changed it in the meantime (version { $current }): reload, then redo your change.
+err-ontology-type-in-use = This type is still in use (live objects, references or links): archive them or remove the references first.
+err-ontology-write-forbidden = Your role cannot change objects of this type.
+err-ontology-admin-required = Only an organization owner or admin can change the ontology schema.
+err-ontology-system-read-only = System types and objects are edited from their own pages (devices, media, flows…).
+err-ontology-link-not-allowed = This link type does not connect objects of these types.
+err-ontology-link-cardinality = An open link already takes this place: close it first (for example when replacing a sensor).

@@ -3794,3 +3794,14 @@ asr-profiles-language = Langue (fr, en… ou auto)
 asr-profiles-add = Ajouter le profil
 asr-profiles-saved = Profil enregistré
 asr-profiles-delete-message = Supprimer le profil « { $name } » ? Ses flux cessent d'être transcrits.
+
+## Ontology errors (D176–D191)
+err-ontology-not-found = Introuvable dans l'ontologie de l'organisation : l'élément a peut-être été archivé ou supprimé.
+err-ontology-already-exists = Cet élément existe déjà (même clé de type, ou même lien déjà ouvert).
+err-ontology-version-conflict = Quelqu'un l'a modifié entre-temps (version { $current }) : rechargez puis refaites votre modification.
+err-ontology-type-in-use = Ce type est encore utilisé (objets actifs, références ou liens) : archivez-les ou retirez les références d'abord.
+err-ontology-write-forbidden = Votre rôle ne permet pas de modifier les objets de ce type.
+err-ontology-admin-required = Seul un propriétaire ou un administrateur de l'organisation modifie le schéma de l'ontologie.
+err-ontology-system-read-only = Les types et objets système se modifient depuis leur page dédiée (appareils, médias, flows…).
+err-ontology-link-not-allowed = Ce type de lien ne relie pas des objets de ces types.
+err-ontology-link-cardinality = Un lien ouvert occupe déjà cette place : fermez-le d'abord (par exemple au remplacement d'un capteur).

@@ -181,6 +181,7 @@ impl Hooks for App {
             .add_route(controllers::media_ingest::internal_routes())
             .add_route(controllers::taxonomies::routes())
             .add_route(controllers::time_ranges::routes())
+            .add_route(controllers::ontology::routes())
             .add_route(controllers::ml_models::routes())
             .add_route(controllers::ml_models::internal_routes())
             .add_route(controllers::pins::routes())
@@ -210,6 +211,7 @@ impl Hooks for App {
         crate::services::device_liveness::spawn_reaper(ctx);
         // Notify delivery journal → O2 (D86): background writer.
         crate::services::notify_journal::spawn_writer(ctx);
+        crate::services::ontology::changes::spawn_writer(ctx);
         crate::services::notify::warn_missing_token(ctx);
         // Cross-pod fan-out of /ws/notify frames (no-op without Valkey).
         crate::services::notify::spawn_bus(ctx).await;

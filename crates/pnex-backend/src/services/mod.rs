@@ -40,6 +40,7 @@ pub mod memory;
 pub mod notify;
 pub mod notify_journal;
 pub mod notify_templates;
+pub mod ontology;
 pub mod openobserve;
 pub mod ota;
 pub mod ota_signing;

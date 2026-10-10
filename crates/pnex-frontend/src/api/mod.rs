@@ -40,6 +40,7 @@ pub mod memory;
 pub mod ml_models;
 /// Notifications (D49–D54) — canaux/templates/journal/tests.
 pub mod notify;
+pub mod ontology;
 pub mod orgs;
 pub mod ota;
 pub mod pins;

@@ -68,6 +68,9 @@ pub const VIZ_WINDOW_PRESETS: &[(&str, i64)] = &[
     ("1h", 3_600),
     ("6h", 21_600),
     ("24h", 86_400),
+    // Object series span sensor replacements (ontology D181).
+    ("7d", 604_800),
+    ("30d", 2_592_000),
 ];
 
 /// Clé de preset valide ?
