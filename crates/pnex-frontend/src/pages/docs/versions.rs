@@ -39,10 +39,20 @@ pub fn VersionsPanel(id: Uuid, host: String, can_write: bool) -> Element {
         _ => Vec::new(),
     };
 
+    let save_host = host.clone();
+    let mut save_notice = notice;
     let save = move |_| {
         let name = label().trim().to_string();
+        let host = save_host.clone();
         busy.set(true);
         spawn(async move {
+            // The version is frozen from the server: last keystrokes first.
+            if !doc_editor::flush(&host).await {
+                save_notice.set(Some(t!("docs-version-not-flushed").to_string()));
+                busy.set(false);
+                return;
+            }
+            save_notice.set(None);
             match api::docs::create_version(id, name).await {
                 Ok(_) => {
                     label.set(String::new());
@@ -149,11 +159,7 @@ fn VersionRow(
             }
             // Freeze it only once the server has it (a refused or too large
             // edit must not produce a mislabelled version).
-            crate::util::sleep(std::time::Duration::from_millis(800)).await;
-            let synced = doc_editor::state(&host)
-                .await
-                .is_some_and(|s| s.status == "synced" && s.close_code.is_none());
-            if !synced {
+            if !doc_editor::flush(&host).await {
                 notice.set(Some(t!("docs-restore-failed").to_string()));
                 return;
             }

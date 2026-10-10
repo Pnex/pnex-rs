@@ -4107,6 +4107,7 @@ docs-version-restore = Restore
 docs-version-view-title = Version { $n }
 docs-version-diff-title = Changes in version { $n }
 docs-version-load-failed = This version could not be loaded.
+docs-version-not-flushed = Your latest edits are not saved yet, so no version was created. Check the connection and try again.
 docs-restore-failed = The restore failed.
 docs-restored-label = Restored from v{ $n }
 docs-comments = Comments

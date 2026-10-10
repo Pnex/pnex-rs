@@ -4106,6 +4106,7 @@ docs-version-restore = Restaurer
 docs-version-view-title = Version { $n }
 docs-version-diff-title = Changements de la version { $n }
 docs-version-load-failed = Cette version n'a pas pu être chargée.
+docs-version-not-flushed = Les dernières modifications ne sont pas encore enregistrées : version non créée. Vérifiez la connexion et réessayez.
 docs-restore-failed = La restauration a échoué.
 docs-restored-label = Restaurée depuis la v{ $n }
 docs-comments = Commentaires
