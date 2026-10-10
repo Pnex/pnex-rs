@@ -33,6 +33,7 @@ pub fn routes() -> Routes {
             "/media/streams/{id}",
             get(stream_get).patch(stream_update).delete(stream_delete),
         )
+        .add("/media/streams/{id}/test", post(stream_test))
         .add("/media/streams/{id}/segments", get(segment_list))
         .add("/media/streams/{id}/segments/retry", post(segment_retry))
         .add("/media/transcripts", get(transcript_search))
@@ -450,6 +451,74 @@ async fn stream_delete(
         }
     }
     Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Longest wait for the first extract of a stream test.
+const STREAM_TEST_LIMIT: std::time::Duration = std::time::Duration::from_secs(45);
+
+/// `POST /api/v1/media/streams/{id}/test` — `can_write`: captures a first
+/// extract of the saved stream (same filtered fetcher and confined decoder
+/// as the capture, nothing stored, capture state untouched) and transcribes
+/// it with the stream's profile (§7).
+async fn stream_test(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    use crate::models::_entities::{asr_profiles, ml_models};
+    use crate::services::media_ingest::{asr, capture};
+    use pnex_core::media_ingest::StreamTestResult;
+    use pnex_core::vision::ModelCheckStatus;
+    require_write(&org)?;
+    let stream = match streams::find(&ctx.db, org.org.id, id).await {
+        Ok(s) => s,
+        Err(e) => return stream_error(e),
+    };
+    let seg = match capture::probe(&ctx, &stream, STREAM_TEST_LIMIT).await {
+        Ok(seg) => seg,
+        Err(e) => {
+            return format::json(StreamTestResult {
+                capture_error: Some(e.code().to_string()),
+                ..Default::default()
+            })
+        }
+    };
+    let mut out = StreamTestResult {
+        audio_ms: (seg.ended_at - seg.started_at).num_milliseconds().max(0) as u64,
+        ..Default::default()
+    };
+    let profile = match stream.asr_profile_id {
+        Some(p) => asr_profiles::Entity::find_by_id(p)
+            .filter(asr_profiles::Column::OrgId.eq(org.org.id))
+            .one(&ctx.db)
+            .await
+            .ok()
+            .flatten(),
+        None => None,
+    };
+    let Some(profile) = profile else {
+        out.transcribe_error = Some("no-profile".into());
+        return format::json(out);
+    };
+    let model = ml_models::Entity::find_by_id(profile.asr_model_id)
+        .filter(ml_models::Column::OrgId.eq(org.org.id))
+        .one(&ctx.db)
+        .await
+        .ok()
+        .flatten()
+        .filter(|m| m.check_status == ModelCheckStatus::Valid.wire());
+    let Some(model) = model else {
+        out.transcribe_error = Some("model-invalid".into());
+        return format::json(out);
+    };
+    match asr::test_clip(&ctx, &model, &seg.wav, &profile.language, false).await {
+        Ok(r) => out.text = Some(r.text),
+        Err(e) => {
+            tracing::warn!(stream = %stream.slug, error = %e, "stream test transcription failed");
+            out.transcribe_error = Some("asr-failed".into());
+        }
+    }
+    format::json(out)
 }
 
 /// `GET /api/v1/media/streams/{id}/segments` — every member, newest

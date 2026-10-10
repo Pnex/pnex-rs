@@ -204,3 +204,14 @@ pub async fn retry_segments(id: &str) -> Result<i64, ApiError> {
     .await?;
     Ok(v["requeued"].as_i64().unwrap_or(0))
 }
+
+/// `POST /api/v1/media/streams/{id}/test` — first extract captured and
+/// transcribed, nothing stored (up to ~45 s).
+pub async fn test_stream(id: &str) -> Result<pnex_core::media_ingest::StreamTestResult, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/media/streams/{id}/test"),
+        None,
+    )
+    .await
+}

@@ -145,6 +145,8 @@ pub enum Sink {
     Direct(Arc<dyn MediaStore>),
     /// `worker` carrier: segments posted to the control plane.
     Remote(Arc<RemoteSink>),
+    /// URL test: segments handed to the caller, nothing stored.
+    Probe(tokio::sync::mpsc::Sender<NewSegment>),
 }
 
 /// Upload target of a mesh worker (`PNEX_MEDIA_SEGMENT_URL` + the service
@@ -520,6 +522,48 @@ pub async fn decode_clip(
     Ok((segmenter::wav_bytes(&samples), truncated))
 }
 
+/// Length of the extract captured by a stream test.
+pub const PROBE_SEGMENT_SECS: i32 = 10;
+
+/// Captures the first [`PROBE_SEGMENT_SECS`] of `stream` without storing
+/// anything (stream test, §7), within `limit`.
+pub async fn probe(
+    ctx: &AppContext,
+    stream: &media_streams::Model,
+    limit: Duration,
+) -> Result<NewSegment, CaptureError> {
+    let settings = CaptureSettings::from_env();
+    let ffmpeg = decoder::resolve(&settings.ffmpeg).ok_or(CaptureError::DecoderMissing)?;
+    let mut stream = stream.clone();
+    stream.segment_secs = PROBE_SEGMENT_SECS;
+    stream.overlap_secs = 0;
+    let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+    let sink = Sink::Probe(tx);
+    let (stop_tx, stop) = watch::channel(false);
+    let ctx2 = ctx.clone();
+    let run = tokio::spawn(async move {
+        let mut seq = 0i64;
+        run_once(&ctx2, &settings, &ffmpeg, &sink, &stream, &mut seq, stop).await
+    });
+    let outcome = tokio::time::timeout(limit, rx.recv()).await;
+    let _ = stop_tx.send(true);
+    match outcome {
+        Ok(Some(seg)) => {
+            run.abort();
+            Ok(seg)
+        }
+        // The capture ended before a full extract: its error says why.
+        Ok(None) => match run.await {
+            Ok(Err(e)) => Err(e),
+            _ => Err(CaptureError::Stalled),
+        },
+        Err(_) => {
+            run.abort();
+            Err(CaptureError::Stalled)
+        }
+    }
+}
+
 async fn auth_of(
     ctx: &AppContext,
     stream: &media_streams::Model,
@@ -618,7 +662,10 @@ async fn run_once(
         };
         if !running {
             running = true;
-            set_state(&ctx.db, stream.id, CaptureState::Running, None).await;
+            // A test never touches the state of the stream's own capture.
+            if !matches!(sink, Sink::Probe(_)) {
+                set_state(&ctx.db, stream.id, CaptureState::Running, None).await;
+            }
         }
         for cut in cutter.push(&buf[..n]) {
             store_cut(ctx, sink, stream, seq, cut, clock).await?;
@@ -664,6 +711,10 @@ async fn store_cut(
     let store = match sink {
         Sink::Direct(store) => store,
         Sink::Remote(remote) => return post_segment(remote, stream, seg).await,
+        Sink::Probe(tx) => {
+            let _ = tx.try_send(seg);
+            return Ok(());
+        }
     };
     let row = segments::write(&ctx.db, store, stream, seg)
         .await

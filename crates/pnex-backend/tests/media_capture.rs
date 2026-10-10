@@ -79,6 +79,19 @@ async fn http_file_is_cut_into_overlapping_segments() {
         let id: uuid::Uuid = created.json::<Value>()["id"].as_str().unwrap().parse().unwrap();
         let stream = media_streams::Entity::find_by_id(id).one(&ctx.db).await.unwrap().unwrap();
 
+        // Stream test without a profile: captured, not transcribed.
+        let tested = server
+            .post(&format!("/api/v1/media/streams/{id}/test"))
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert_eq!(tested.status_code(), 200, "{}", tested.text());
+        let t = tested.json::<Value>();
+        assert_eq!(t["audio_ms"], 10_000, "{t}");
+        assert_eq!(t["transcribe_error"], "no-profile");
+        let state = media_streams::Entity::find_by_id(id).one(&ctx.db).await.unwrap().unwrap();
+        assert_eq!(state.capture_state, "stopped", "a test leaves the capture state alone");
+
         let stored = capture::capture_once(&ctx, &stream, Duration::from_secs(60))
             .await
             .expect("capture");

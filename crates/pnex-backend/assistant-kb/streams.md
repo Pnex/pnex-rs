@@ -17,6 +17,7 @@ Audio streams (Data › Audio streams) lists the radios and live streams the org
 - **Capture location**: this server (default), or a capture worker, a separate machine run by the platform. A stream set to a capture worker stays idle until the platform starts one.
 - **Alert channel**: when an enabled stream brings no audio for 2 minutes, the organization gets an in-app notification, and a message on this channel when one is picked (email, ntfy, Slack…). One alert per silence; it re-arms once audio is back.
 - **Segment length** (10 to 120 s) and **Audio retention**: none (audio deleted once transcribed, the default), a number of days, or kept (only when the organization holds the rights).
+- **Test** (writers): the server captures the first 10 seconds of the stream and transcribes them with its profile, nothing stored, to check the URL and the profile before enabling.
 - **Enable / Disable** capture, **Edit**, **Delete** (pending segments are erased; transcriptions already written stay in the history).
 - **Segments** (on each stream, every member): every captured slice with its state (captured, queued, transcribing, transcribed, failed, silence or too late), newest first, filterable by state. **Retry failed segments** sends back to transcription the failed ones whose audio is still kept.
 - Under the state of an enabled stream: how long ago the last audio arrived, how old the oldest segment waiting for transcription is, and the share of the last hour that was transcribed.
