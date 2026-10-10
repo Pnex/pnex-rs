@@ -467,15 +467,21 @@ fn LinkForm(
         None => (String::new(), true),
     };
     let lt = link_types.iter().find(|l| l.def.key == key).cloned();
-    let other_types = lt.as_ref().map(|l| {
-        if outgoing {
-            l.def.to_types.clone()
-        } else {
-            l.def.from_types.clone()
-        }
-    });
+    // The other end's types are read from `choice()` inside the resource:
+    // a value captured at render time is not a tracked dependency.
+    let lts = link_types.clone();
     let candidates = use_resource(move || {
-        let set = other_types.clone();
+        let (k, out) = match choice().split_once(':') {
+            Some((k, d)) => (k.to_string(), d == "out"),
+            None => (String::new(), true),
+        };
+        let set = lts.iter().find(|l| l.def.key == k).map(|l| {
+            if out {
+                l.def.to_types.clone()
+            } else {
+                l.def.from_types.clone()
+            }
+        });
         async move {
             let Some(set) = set else { return Vec::new() };
             let q = OntologyQuery {
