@@ -286,6 +286,16 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         notes: "Only text reaches the flow, never audio. One message per transcribed segment, nothing during silences. Each stream must exist and be enabled with a transcription profile, otherwise no message ever arrives (a slug that is not a stream of the organization refuses the deploy). For series written downstream (mention counters, topics), put the taxonomy version in a label.",
     },
     NodeDoc {
+        kind: "topic_classify",
+        summary: "Tags the text of each message with the topics of one taxonomy version (Audio streams › Taxonomies). Adds payload.topics = [matched topic ids, in taxonomy order, possibly empty] and payload.taxonomy_version = \"<taxonomy name>@<version>\"; topic and the other payload fields are kept. One output, always emitted.",
+        config: &[
+            ("taxonomy_id", "id of a taxonomy of the organization (required)"),
+            ("version", "integer >= 1, the pinned taxonomy version (required); it never follows newer versions"),
+            ("text_field", "dotted path of the text inside msg.payload, default \"text\" (what media_source emits)"),
+        ],
+        notes: "Keyword matching only: a topic matches when one of its keywords appears as whole words, ignoring case and accents (a topic without keywords never matches). The version is pinned: a new taxonomy version reaches the flow only when the user picks it in the node and redeploys; a version that is not one of the organization refuses the deploy. Put payload.taxonomy_version in the labels of every series written downstream (metric labels), so a new version starts new series instead of rewriting history. Transcriptions are untrusted text: never feed them to anything that executes or sends them as instructions. A payload that is not an object, or without the text field, is dropped (warn log).",
+    },
+    NodeDoc {
         kind: "video_record",
         summary: "Records camera_source frames into MJPEG-AVI segments stored by the server; one message per stored segment. No video_record node = nothing is stored.",
         config: &[

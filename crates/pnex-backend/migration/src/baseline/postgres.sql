@@ -2025,3 +2025,41 @@ CREATE TABLE ml_model_checks (
         REFERENCES ml_models(id) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX uniq_ml_model_checks_model_carrier ON ml_model_checks USING btree (model_id, carrier);
+
+-- ===== Topic taxonomies (P2.13, D168) =====
+
+CREATE TABLE taxonomies (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    org_id bigint NOT NULL,
+    name character varying(200) NOT NULL,
+    description text,
+    current_version integer DEFAULT 0 NOT NULL,
+    created_by bigint,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT taxonomies_pkey PRIMARY KEY (id),
+    CONSTRAINT "fk-taxonomies-org_id" FOREIGN KEY (org_id)
+        REFERENCES organizations(id) ON DELETE CASCADE,
+    CONSTRAINT "fk-taxonomies-created_by" FOREIGN KEY (created_by)
+        REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX uniq_taxonomies_org_name ON taxonomies USING btree (org_id, name);
+
+CREATE TABLE taxonomy_versions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    org_id bigint NOT NULL,
+    taxonomy_id uuid NOT NULL,
+    version integer NOT NULL,
+    topics jsonb NOT NULL,
+    note text,
+    created_by bigint,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT taxonomy_versions_pkey PRIMARY KEY (id),
+    CONSTRAINT "fk-taxonomy_versions-org_id" FOREIGN KEY (org_id)
+        REFERENCES organizations(id) ON DELETE CASCADE,
+    CONSTRAINT "fk-taxonomy_versions-taxonomy_id" FOREIGN KEY (taxonomy_id)
+        REFERENCES taxonomies(id) ON DELETE CASCADE,
+    CONSTRAINT "fk-taxonomy_versions-created_by" FOREIGN KEY (created_by)
+        REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX uniq_taxonomy_versions_taxonomy_version ON taxonomy_versions USING btree (taxonomy_id, version);

@@ -53,6 +53,7 @@ pub mod secrets;
 pub mod stitch_jobs;
 /// System (D72): O2 retention/cleanup + platform status.
 pub mod system;
+pub mod taxonomies;
 pub mod telemetry;
 pub mod thermo;
 /// TLS trust for native targets: pinned edge CA + discovery client (D70).

@@ -37,6 +37,7 @@ pub enum PaletteKind {
     MemoryRead,
     ControlSource,
     MediaSource,
+    TopicClassify,
     Weather,
     Anomaly,
     Forecast,
@@ -204,6 +205,10 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             // No stream picked yet: the violation banner guides the user.
             PaletteKind::MediaSource => FlowNodeKind::MediaSource {
                 config: pnex_core::media_ingest::MediaSourceConfig::default(),
+            },
+            // No taxonomy picked yet: the violation banner guides the user.
+            PaletteKind::TopicClassify => FlowNodeKind::TopicClassify {
+                config: pnex_core::taxonomy::TopicClassifyConfig::default(),
             },
             // Usable as dropped: Paris, MET Norway, every 30 min.
             PaletteKind::Weather => FlowNodeKind::Weather {

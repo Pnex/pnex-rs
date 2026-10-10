@@ -117,6 +117,10 @@ pub mod vision;
 /// transcript records, server-built names.
 pub mod media_ingest;
 
+/// Topic taxonomies (media-ingest.md D168): versioned topics, keyword
+/// classifier, `topic_classify` node config.
+pub mod taxonomy;
+
 /// Predictive telemetry (ml-vision.md step 3): `anomaly` / `forecast` node
 /// configs, validation, port counts.
 pub mod predictive;

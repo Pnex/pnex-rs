@@ -328,6 +328,41 @@ pub(crate) async fn unknown_media_streams_for_deploy(
     Ok(violations)
 }
 
+/// Taxonomy gate (D168, R1): every `topic_classify` must pin an existing
+/// version of a taxonomy of the org — another org's id reads as unknown.
+pub(crate) async fn unknown_taxonomies_for_deploy(
+    ctx: &AppContext,
+    org_id: i64,
+    candidate_graph: &FlowGraph,
+) -> Result<Vec<pnex_core::FlowViolation>> {
+    let mut violations = Vec::new();
+    for n in &candidate_graph.nodes {
+        let pnex_core::FlowNodeKind::TopicClassify { config } = &n.kind else {
+            continue;
+        };
+        let Ok(id) = uuid::Uuid::parse_str(config.taxonomy_id.trim()) else {
+            continue; // the node check reports it
+        };
+        let found = crate::services::media_ingest::taxonomies::find_version(
+            &ctx.db,
+            org_id,
+            id,
+            config.version,
+        )
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+        if found.is_none() {
+            violations.push(pnex_core::FlowViolation::with_args(
+                Some(n.id.as_str()),
+                pnex_core::err_codes::TAXONOMY_UNKNOWN,
+                "topic-classify pins a taxonomy version that does not exist in the organization",
+                serde_json::json!({ "version": config.version.to_string() }),
+            ));
+        }
+    }
+    Ok(violations)
+}
+
 /// Dry-run, WRITE usage only: deployed flows of the org whose graph WRITES
 /// this (device slug, pin label). Reads never count — a flow reading a pin
 /// leaves it manually writable. Feeds the manual-write 409 guard.
@@ -481,6 +516,7 @@ async fn deploy_version(
         conflicts.extend(unknown_controls_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         conflicts
             .extend(unknown_media_streams_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
+        conflicts.extend(unknown_taxonomies_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         if !conflicts.is_empty() {
             return Ok((
                 StatusCode::BAD_REQUEST,

@@ -169,6 +169,9 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::MediaSource { config } => rsx! {
             MediaSourceForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::TopicClassify { config } => rsx! {
+            TopicClassifyForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::Weather { config } => rsx! {
             WeatherForm { cx, initial: config.clone(), can_write }
         },
@@ -238,6 +241,7 @@ mod predict;
 mod red;
 mod reg;
 mod simple;
+mod topic_classify;
 mod value;
 mod video_record;
 mod vision_detect;
@@ -260,6 +264,7 @@ use predict::{AnomalyForm, ForecastForm};
 use red::RedForm;
 use reg::{RegPidForm, RegTtForm};
 use simple::{DebugForm, DisplayForm, MetricForm};
+use topic_classify::TopicClassifyForm;
 use value::{CalcForm, ValueForm};
 use video_record::VideoRecordForm;
 use vision_detect::VisionDetectForm;

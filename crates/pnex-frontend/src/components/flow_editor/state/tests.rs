@@ -921,3 +921,25 @@ fn make_node_media_source_guides_stream_pick() {
         "{codes:?}"
     );
 }
+
+#[test]
+fn make_node_topic_classify_guides_taxonomy_pick() {
+    // No taxonomy yet: the banner asks for one; text read from payload.text.
+    let node = make_node(
+        "t1",
+        PaletteKind::TopicClassify,
+        Position { x: 0.0, y: 0.0 },
+    );
+    let FlowNodeKind::TopicClassify { config } = &node.kind else {
+        panic!("topic_classify expected, got {:?}", node.kind);
+    };
+    assert_eq!(config.text_field, "text");
+    let codes: Vec<String> = pnex_core::validate_graph(&FlowGraph { nodes: vec![node] })
+        .into_iter()
+        .map(|v| v.code)
+        .collect();
+    assert!(
+        codes.contains(&"topic_classify_no_taxonomy".to_string()),
+        "{codes:?}"
+    );
+}

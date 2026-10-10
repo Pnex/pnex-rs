@@ -6,6 +6,8 @@
 //! - [`health`]: capture metrics and the "silent stream" alert;
 //! - [`streams`] / [`profiles`]: CRUD services shared by the HTTP
 //!   controller (and later the assistant tools, D142 §9.3);
+//! - [`taxonomies`]: versioned topic taxonomies (D168), shared by the HTTP
+//!   controller and the assistant tools;
 //! - [`MediaIngestSettings`]: platform settings (`settings.media_ingest`,
 //!   `PNEX_MEDIA_*` overrides); [`asr_queue_tags`]: queue routing (D166).
 
@@ -16,6 +18,7 @@ pub mod models;
 pub mod profiles;
 pub mod segments;
 pub mod streams;
+pub mod taxonomies;
 pub mod transcripts;
 
 use loco_rs::config::Config;

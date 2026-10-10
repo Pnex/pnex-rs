@@ -176,6 +176,19 @@ pub fn to_red_flows_json_with(
                 "pnex_version": meta.version_number,
                 "pnex_org_id": meta.org_id,
             }),
+            // `topics` and `taxonomy_version` are stamped by the backend
+            // after projection (pinned version of the org, D168): the
+            // runtime never reads the database.
+            FlowNodeKind::TopicClassify { config } => serde_json::json!({
+                "type": "pnex-topic-classify",
+                "taxonomy_id": config.taxonomy_id,
+                "version": config.version,
+                "text_field": config.text_field,
+                "pnex_node_id": n.id,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+                "pnex_org_id": meta.org_id,
+            }),
             FlowNodeKind::Weather { config } => {
                 // Ports: current, daily, hourly.
                 padded_ports = Some(crate::weather::WEATHER_PORT_COUNT);

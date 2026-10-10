@@ -57,6 +57,8 @@ pub use super::secret_usages::Entity as SecretUsages;
 pub use super::stitch_jobs::Entity as StitchJobs;
 pub use super::subscription_tiers::Entity as SubscriptionTiers;
 pub use super::system_settings::Entity as SystemSettings;
+pub use super::taxonomies::Entity as Taxonomies;
+pub use super::taxonomy_versions::Entity as TaxonomyVersions;
 pub use super::tour_versions::Entity as TourVersions;
 pub use super::tours::Entity as Tours;
 pub use super::unit_conversions::Entity as UnitConversions;

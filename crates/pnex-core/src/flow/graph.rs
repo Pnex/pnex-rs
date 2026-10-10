@@ -143,6 +143,11 @@ pub enum FlowNodeKind {
     MediaSource {
         config: crate::media_ingest::MediaSourceConfig,
     },
+    /// Topic classifier (media-ingest.md D168): tags the text of each
+    /// message with the topics of one pinned taxonomy version.
+    TopicClassify {
+        config: crate::taxonomy::TopicClassifyConfig,
+    },
     /// Timed weather source (D140): no input, three outputs (current,
     /// daily, hourly) normalized from an allowlisted provider.
     Weather {
@@ -273,6 +278,9 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "media_source" => Ok(Self::MediaSource {
+                    config: req_config(config)?,
+                }),
+                "topic_classify" => Ok(Self::TopicClassify {
                     config: req_config(config)?,
                 }),
                 "weather" => Ok(Self::Weather {
