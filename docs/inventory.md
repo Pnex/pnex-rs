@@ -2,7 +2,9 @@
 
 > Phase 0. Source de vérité d'origine : le repo `pnex-server` (l'ancienne
 > stack, aujourd'hui retirée — les rapports d'exploration ont été supprimés).
-> Pilotage : `PROGRESS.md` (journal des phases et des décisions).
+> Pilotage : registres de décisions de `docs/architecture/*.md` et
+> `docs/architecture/roadmap.md` (l'ancien journal `PROGRESS.md` est supprimé
+> le 2026-10-10).
 > **Tout ce qui est marqué « SUPPRIMÉ » ne doit pas être réintroduit.**
 
 ## 0. Décisions structurantes ajoutées en Phase 0 (à valider en revue)

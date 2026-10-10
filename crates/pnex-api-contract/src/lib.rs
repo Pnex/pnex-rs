@@ -19,9 +19,8 @@ use serde::{Deserialize, Serialize};
 /// `PATCH /pois/placements/{id}` (plus de PATCH `device_id` sur le POI).
 pub const CONTRACT: u32 = 2;
 
-/// Identité annoncée par le endpoint meta — alignée sur
-/// `pnex_core::SERVICE_NAME` (convention.md : le service s'appelle
-/// `pnex-server`). Le scan LAN compare ce champ pour distinguer un serveur
+/// Identité annoncée par le endpoint meta — aligned with
+/// `pnex_core::SERVICE_NAME` (the service is `pnex-server`). Le scan LAN compare ce champ pour distinguer un serveur
 /// PNEX de toute autre chose répondant sur :5150.
 pub const SERVICE: &str = "pnex-server";
 
