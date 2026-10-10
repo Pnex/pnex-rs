@@ -156,6 +156,9 @@ pub struct SourceRef {
     /// telemetry series: `metric`/`device_id`/`window` are then ignored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory: Option<crate::memory::MemoryRef>,
+    /// Free label selector (D171): with labels, `device_id` may be empty.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub labels: std::collections::BTreeMap<String, String>,
 }
 
 impl SourceRef {
@@ -163,7 +166,7 @@ impl SourceRef {
     pub fn series_key(&self) -> String {
         match &self.memory {
             Some(m) => m.series_key(),
-            None => format!("{}|{}", self.metric, self.device_id),
+            None => crate::telemetry::series_key(&self.metric, &self.device_id, &self.labels),
         }
     }
 }
@@ -552,7 +555,10 @@ impl SourceRef {
     /// home card may keep one for a role until the user picks it (D141
     /// templates); it is skipped by the validation and the live fetch.
     pub fn is_unset(&self) -> bool {
-        self.memory.is_none() && self.device_id.is_empty() && self.metric.is_empty()
+        self.memory.is_none()
+            && self.device_id.is_empty()
+            && self.labels.is_empty()
+            && self.metric.is_empty()
     }
 }
 
@@ -1157,7 +1163,12 @@ pub(crate) fn check_sources<F: FnMut(&str, String)>(
                 format!("nom de métrique invalide : « {} »", s.metric),
             );
         }
-        if !naming::valid_device_label(&s.device_id) {
+        if let Some((code, message)) = naming::check_series_selector_labels(&s.labels) {
+            push(code, message);
+        }
+        // A label selector may stand without a device (D171).
+        let device_optional = !s.labels.is_empty() && s.device_id.is_empty();
+        if !device_optional && !naming::valid_device_label(&s.device_id) {
             push(
                 "bad_device",
                 format!("device_id invalide : « {} »", s.device_id),
@@ -1354,6 +1365,7 @@ mod tests {
                 device_id: "soil-01".into(),
                 window: "1h".into(),
                 memory: None,
+                labels: Default::default(),
             }],
             options: WidgetOptions::default(),
         }
@@ -1411,6 +1423,7 @@ mod tests {
             device_id: "soil-02".into(),
             window: "5m".into(),
             memory: None,
+            labels: Default::default(),
         });
         l.wires.push(Wire {
             id: "t1".into(),
@@ -1499,6 +1512,7 @@ mod tests {
                 device_id: "dev-1".into(),
                 window: "5m".into(),
                 memory: None,
+                labels: Default::default(),
             },
             SourceRef {
                 role: "cycle0.v2".into(),
@@ -1506,6 +1520,7 @@ mod tests {
                 device_id: "dev-1".into(),
                 window: "5m".into(),
                 memory: None,
+                labels: Default::default(),
             },
         ];
         let v = validate_layout(&layout(vec![w.clone()]));
@@ -1618,6 +1633,26 @@ mod tests {
         w.source[0].device_id = "soil;01".into(); // injection PromQL
         let v = validate_layout(&layout(vec![w]));
         assert!(v.iter().any(|x| x.code == "bad_window"));
+        assert!(v.iter().any(|x| x.code == "bad_device"));
+    }
+
+    #[test]
+    fn label_sources_need_no_device_and_are_checked() {
+        let mut w = widget("w1", "stat");
+        w.source[0].device_id = String::new();
+        w.source[0]
+            .labels
+            .insert("stream".into(), "france-inter".into());
+        assert_eq!(validate_layout(&layout(vec![w.clone()])), vec![]);
+        assert!(!w.source[0].is_unset());
+        w.source[0].labels.insert("entity".into(), "x\"}".into());
+        let v = validate_layout(&layout(vec![w.clone()]));
+        assert!(
+            v.iter().any(|x| x.code == "series_label_value_invalid"),
+            "{v:?}"
+        );
+        w.source[0].labels.clear();
+        let v = validate_layout(&layout(vec![w]));
         assert!(v.iter().any(|x| x.code == "bad_device"));
     }
 
@@ -1925,6 +1960,7 @@ mod tests {
             device_id: String::new(),
             window: "1h".into(),
             memory: None,
+            labels: Default::default(),
         }];
         assert!(w.source[0].is_unset());
         w.options.home = Some(crate::home::HomeCardOptions::new(

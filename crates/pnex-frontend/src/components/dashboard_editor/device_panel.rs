@@ -68,6 +68,7 @@ pub fn suggested_sources(
             "1h".into()
         },
         memory: None,
+        labels: Default::default(),
     };
     let mut sources = vec![source(role, metric)];
     if card == HomeCard::ThermoHygro {
@@ -134,6 +135,7 @@ fn state_source(device: &str, pin: &str, metrics: &[String]) -> Option<SourceRef
             device_id: device.to_owned(),
             window: "1h".into(),
             memory: None,
+            labels: Default::default(),
         })
 }
 
@@ -436,6 +438,7 @@ fn ReadingButton(
                                 device_id: d,
                                 window: "1h".into(),
                                 memory: None,
+                                labels: Default::default(),
                             },
                         ];
                     },

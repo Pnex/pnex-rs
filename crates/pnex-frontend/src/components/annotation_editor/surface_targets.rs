@@ -331,6 +331,7 @@ pub fn ReadingTargetEditor(
                                     .and_then(|f| f.first().cloned())
                                     .unwrap_or_default(),
                             }),
+                            labels: Default::default(),
                         }
                     } else { // A memory value has no history: no sparkline.
                         SourceRef {
@@ -342,6 +343,7 @@ pub fn ReadingTargetEditor(
                             device_id: v,
                             window: "1h".into(),
                             memory: None,
+                            labels: Default::default(),
                         }
                     };
                     set_target(cx, &id_src, reading_target(next, &sh_src, min, max));

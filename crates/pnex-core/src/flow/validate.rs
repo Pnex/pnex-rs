@@ -105,12 +105,8 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
                 }
             }
             FlowNodeKind::Metric { config } => {
-                if config.metric_name.trim().is_empty() {
-                    v.push(FlowViolation::new(
-                        Some(&n.id),
-                        "metric_name_missing",
-                        "the metric name is required",
-                    ));
+                if let Some((code, message)) = config.check() {
+                    v.push(FlowViolation::new(Some(&n.id), code, message));
                 }
             }
             FlowNodeKind::CoolProp { config } => validate_coolprop(&n.id, config, &mut v),

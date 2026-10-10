@@ -230,6 +230,7 @@ pub fn to_red_flows_json_with(
             FlowNodeKind::Metric { config } => serde_json::json!({
                 "type": "pnex-metric",
                 "metric_name": config.metric_name,
+                "labels": config.labels,
                 "pnex_flow_id": meta.flow_id,
                 "pnex_version": meta.version_number,
                 "pnex_org_id": meta.org_id,

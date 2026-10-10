@@ -364,6 +364,7 @@ fn set_role_source(w: &mut Widget, role: &str, v: &str) {
             device_id: String::new(),
             window: "1h".into(),
             memory: None,
+            labels: Default::default(),
         });
     }
     if let Some(s) = w.source.iter_mut().find(|s| s.role == role) {
@@ -480,6 +481,7 @@ fn bind_weather(w: &mut Widget, key: &str, roles: &[String]) {
                 key: key.to_string(),
                 field: role.clone(),
             }),
+            labels: Default::default(),
         });
     }
 }
@@ -559,6 +561,7 @@ mod tests {
             device_id: device.into(),
             window: "1h".into(),
             memory: None,
+            labels: Default::default(),
         }
     }
 
