@@ -619,6 +619,68 @@ pub struct TranscriptRecord {
     pub asr_model: String,
 }
 
+/// Emission granularity of the `media_source` flow node (D163).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaSourceEmit {
+    /// One message per transcribed segment.
+    #[default]
+    Segment,
+    /// One message per sentence of each segment (split by the node).
+    Sentence,
+}
+
+/// Configuration of the `media_source` flow node (D163): event source of
+/// the transcribed segments of one or more streams of the org.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct MediaSourceConfig {
+    /// Stream slugs. Existence in the org is checked at deploy.
+    #[serde(default)]
+    pub streams: Vec<String>,
+    #[serde(default)]
+    pub emit: MediaSourceEmit,
+    /// Drop segments below this confidence (0..=1). Only applies when the
+    /// segment carries a confidence: a segment without one passes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_confidence: Option<f64>,
+}
+
+impl MediaSourceConfig {
+    /// Structural check shared by the save validation and the runtime build.
+    pub fn check(&self) -> Option<(&'static str, String)> {
+        if self.streams.is_empty() {
+            return Some((
+                "media_source_no_stream",
+                "select at least one stream".into(),
+            ));
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        for slug in &self.streams {
+            if !is_valid_slug(slug) {
+                return Some((
+                    "media_source_stream_invalid",
+                    format!("invalid stream slug `{slug}`"),
+                ));
+            }
+            if !seen.insert(slug) {
+                return Some((
+                    "media_source_stream_duplicate",
+                    format!("stream `{slug}` is listed twice"),
+                ));
+            }
+        }
+        if let Some(c) = self.min_confidence {
+            if !(0.0..=1.0).contains(&c) {
+                return Some((
+                    "media_source_confidence_invalid",
+                    "min confidence must be between 0 and 1".into(),
+                ));
+            }
+        }
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -670,5 +732,33 @@ mod tests {
         assert_eq!(transcript_stream("inter"), "tx_inter");
         assert_eq!(metadata_stream("inter"), "mx_inter");
         assert_eq!(transcript_channel(7, "inter"), "pnex:media:v1:7:inter:tx");
+    }
+
+    #[test]
+    fn media_source_check() {
+        let cfg = |streams: &[&str], c: Option<f64>| MediaSourceConfig {
+            streams: streams.iter().map(|s| s.to_string()).collect(),
+            emit: MediaSourceEmit::Segment,
+            min_confidence: c,
+        };
+        let code = |c: &MediaSourceConfig| c.check().map(|(code, _)| code);
+        assert_eq!(code(&cfg(&["inter", "rfi"], Some(0.5))), None);
+        assert_eq!(code(&cfg(&[], None)), Some("media_source_no_stream"));
+        assert_eq!(
+            code(&cfg(&["A b"], None)),
+            Some("media_source_stream_invalid")
+        );
+        assert_eq!(
+            code(&cfg(&["x", "x"], None)),
+            Some("media_source_stream_duplicate")
+        );
+        assert_eq!(
+            code(&cfg(&["x"], Some(1.5))),
+            Some("media_source_confidence_invalid")
+        );
+        assert_eq!(
+            code(&cfg(&["x"], Some(f64::NAN))),
+            Some("media_source_confidence_invalid")
+        );
     }
 }

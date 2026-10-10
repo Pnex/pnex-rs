@@ -3248,3 +3248,65 @@ fn metric_payload_object_writes_one_series_per_numeric_field() {
     assert!(metric_values_from_payload(Some(&none)).is_err());
     assert!(metric_values_from_payload(Some(&serde_json::json!("x"))).is_err());
 }
+
+#[test]
+fn media_source_validates_and_projects() {
+    let g: FlowGraph = serde_json::from_value(serde_json::json!({
+        "nodes": [
+            {"id": "tx", "kind": "media_source",
+             "config": {"streams": ["inter", "rfi"], "emit": "sentence", "min_confidence": 0.4},
+             "outputs": [{"port": 0, "targets": ["dbg"]}]},
+            {"id": "dbg", "kind": "debug"}
+        ]
+    }))
+    .expect("graph");
+    assert!(validate_graph(&g).is_empty(), "{:?}", validate_graph(&g));
+    let meta = FlowArtifactMeta {
+        flow_id: 4,
+        version_number: 2,
+        org_id: 9,
+        o2_org: String::new(),
+    };
+    let red = to_red_flows_json(&g, &meta);
+    let node = red
+        .as_array()
+        .expect("entries")
+        .iter()
+        .find(|e| e["type"] == "pnex-media-source")
+        .expect("media source")
+        .clone();
+    assert_eq!(node["streams"], serde_json::json!(["inter", "rfi"]));
+    assert_eq!(node["emit"], "sentence");
+    assert_eq!(node["min_confidence"], 0.4);
+    assert_eq!(node["pnex_org_id"], 9);
+    assert_eq!(node["pnex_node_id"], "tx");
+
+    // Round trip keeps the kind tag; default emit is `segment`.
+    let back: FlowGraph = serde_json::from_value(serde_json::to_value(&g).unwrap()).unwrap();
+    assert_eq!(back, g);
+    let bad: FlowGraph = serde_json::from_value(serde_json::json!({
+        "nodes": [
+            {"id": "a", "kind": "media_source", "config": {"streams": []}},
+            {"id": "b", "kind": "media_source", "config": {"streams": ["Bad Slug"]}},
+            {"id": "c", "kind": "media_source", "config": {"streams": ["x"], "min_confidence": 2.0}}
+        ]
+    }))
+    .expect("graph");
+    let FlowNodeKind::MediaSource { config } = &bad.nodes[0].kind else {
+        panic!("media_source expected");
+    };
+    assert_eq!(config.emit, crate::media_ingest::MediaSourceEmit::Segment);
+    let codes: Vec<String> = validate_graph(&bad).into_iter().map(|v| v.code).collect();
+    for code in [
+        "media_source_no_stream",
+        "media_source_stream_invalid",
+        "media_source_confidence_invalid",
+    ] {
+        assert!(codes.contains(&code.to_string()), "{code}: {codes:?}");
+    }
+    // An unknown emit value is a parse error, never a silent default.
+    assert!(serde_json::from_value::<FlowGraph>(serde_json::json!({
+        "nodes": [{"id": "a", "kind": "media_source", "config": {"streams": ["x"], "emit": "word"}}]
+    }))
+    .is_err());
+}

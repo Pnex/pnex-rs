@@ -9,7 +9,10 @@
 //!   buffer per camera) and uploads each segment to the backend
 //!   (`/internal/flow/video-segment`), which owns the MediaStore (fs | s3)
 //!   and the `video_segments` rows. The runtime holds no storage secret.
+//! - `pnex-media-source` — event source of transcribed media segments
+//!   (media-ingest.md D163); lives here to share the Valkey bus plumbing.
 
+mod media;
 mod record;
 mod source;
 pub mod status;
@@ -20,8 +23,8 @@ use edgelink_core::runtime::model::Variant;
 /// drop the `inventory` submissions (same guard as the runtime binary calls).
 pub fn registered() {}
 
-/// Reads the `VALKEY_URL` injected by the supervisor — camera nodes need the
-/// frame bus: absent = explicit build error (deploy preflight fails loud).
+/// Reads the `VALKEY_URL` injected by the supervisor — camera and media
+/// nodes need the bus: absent = explicit build error (deploy preflight fails loud).
 fn valkey_client(node: &str) -> edgelink_core::Result<redis::Client> {
     let url = std::env::var("VALKEY_URL")
         .ok()
@@ -29,7 +32,7 @@ fn valkey_client(node: &str) -> edgelink_core::Result<redis::Client> {
         .ok_or_else(|| {
             edgelink_core::EdgelinkError::InvalidOperation(format!(
                 "{node} [camera_bus_unavailable] : VALKEY_URL is not set in the runtime \
-                 environment (the camera frame bus needs Valkey)"
+                 environment (the camera / media event bus needs Valkey)"
             ))
         })?;
     redis::Client::open(url.as_str()).map_err(|e| {

@@ -3,7 +3,7 @@ name = "pnex-node-camera"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Flow nodes PNeX — camera frame source (Valkey bus) and MJPEG-AVI video recorder"
+description = "Flow nodes PNeX — camera frame source (Valkey bus), MJPEG-AVI video recorder and media transcript source"
 
 [dependencies]
 edgelink-core = { path = "../../vendor/edgelinkd/crates/core", default-features = false, features = ["core", "js"] }

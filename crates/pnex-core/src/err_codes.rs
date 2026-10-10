@@ -402,6 +402,9 @@ pub const MEDIA_STREAM_UNREACHABLE: &str = "media-stream-unreachable";
 pub const MEDIA_ASR_MODEL_INVALID: &str = "media-asr-model-invalid";
 /// Capture carrier not available yet (worker/device: later lots).
 pub const MEDIA_CAPTURE_UNSUPPORTED: &str = "media-capture-unsupported";
+/// Deploy refused: a `media-source` lists a slug that is not a stream of
+/// the org; `args.stream` = the slug.
+pub const MEDIA_STREAM_UNKNOWN: &str = "media-stream-unknown";
 /// ASR profile not found (or not in the org).
 pub const ASR_PROFILE_NOT_FOUND: &str = "asr-profile-not-found";
 /// An ASR profile of the org already has this name.
@@ -635,6 +638,7 @@ pub const ALL: &[&str] = &[
     MEDIA_STREAM_UNREACHABLE,
     MEDIA_ASR_MODEL_INVALID,
     MEDIA_CAPTURE_UNSUPPORTED,
+    MEDIA_STREAM_UNKNOWN,
     ASR_PROFILE_NOT_FOUND,
     ASR_PROFILE_NAME_TAKEN,
     ASR_MODEL_NOT_FOUND,

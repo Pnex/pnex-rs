@@ -31,7 +31,7 @@ pub const FLOW_AUTHORING_RULES: &[(&str, &str)] = &[
     ),
     (
         "canonical_pipeline",
-        "inject (trigger) → device_read → calc → metric. A flow runs continuously: a periodic inject (repeat_secs) is the default idiom. Event sources (camera_source, control_source) need no inject.",
+        "inject (trigger) → device_read → calc → metric. A flow runs continuously: a periodic inject (repeat_secs) is the default idiom. Event sources (camera_source, control_source, media_source) need no inject.",
     ),
     (
         "payload_key_rule",
@@ -271,6 +271,16 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("max_fps", "sampling, 0 = every frame (default), max 25"),
         ],
         notes: "Live view needs no flow.",
+    },
+    NodeDoc {
+        kind: "media_source",
+        summary: "Event source (no inject needed): one message per transcribed segment of the listed media streams (Media page). payload = {stream, segment_id, started_at, ended_at, text, lang, asr_model, words_ref, speakers}, topic = stream slug. words_ref names the OpenObserve logs stream (tx_<slug>) holding the word timings.",
+        config: &[
+            ("streams", "[stream slug] — one or more streams of the organization (required)"),
+            ("emit", "\"segment\" (default) = one message per segment | \"sentence\" = one message per sentence, payload.text = the sentence"),
+            ("min_confidence", "optional 0..=1; only applies when a segment carries a confidence (segments without one pass)"),
+        ],
+        notes: "Only text reaches the flow, never audio. One message per transcribed segment, nothing during silences. Each stream must exist and be enabled with a transcription profile, otherwise no message ever arrives (a slug that is not a stream of the organization refuses the deploy). For series written downstream (mention counters, topics), put the taxonomy version in a label.",
     },
     NodeDoc {
         kind: "video_record",

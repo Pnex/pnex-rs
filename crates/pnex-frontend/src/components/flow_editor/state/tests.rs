@@ -899,3 +899,25 @@ fn saved_graph_secret_references_replace_typed_values() {
     adopt_stored_secrets(&mut edited, &stored);
     assert_eq!(edited, before);
 }
+
+#[test]
+fn make_node_media_source_guides_stream_pick() {
+    // No stream yet: the banner asks for one; segment mode by default.
+    let node = make_node("m1", PaletteKind::MediaSource, Position { x: 0.0, y: 0.0 });
+    let FlowNodeKind::MediaSource { config } = &node.kind else {
+        panic!("media_source expected, got {:?}", node.kind);
+    };
+    assert!(config.streams.is_empty());
+    assert_eq!(
+        config.emit,
+        pnex_core::media_ingest::MediaSourceEmit::Segment
+    );
+    let codes: Vec<String> = pnex_core::validate_graph(&FlowGraph { nodes: vec![node] })
+        .into_iter()
+        .map(|v| v.code)
+        .collect();
+    assert!(
+        codes.contains(&"media_source_no_stream".to_string()),
+        "{codes:?}"
+    );
+}

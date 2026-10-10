@@ -166,6 +166,9 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::ControlSource { config } => rsx! {
             ControlSourceForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::MediaSource { config } => rsx! {
+            MediaSourceForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::Weather { config } => rsx! {
             WeatherForm { cx, initial: config.clone(), can_write }
         },
@@ -228,6 +231,7 @@ mod helpers;
 mod http_fetch;
 mod inject;
 mod json;
+mod media_source;
 mod memory;
 mod notify;
 mod predict;
@@ -249,6 +253,7 @@ use helpers::{patch_selected, remove_selected};
 use http_fetch::HttpFetchForm;
 use inject::InjectForm;
 use json::{JsonMergeForm, JsonSplitForm};
+use media_source::MediaSourceForm;
 use memory::{MemoryReadForm, MemoryWriteForm};
 use notify::NotifyForm;
 use predict::{AnomalyForm, ForecastForm};
