@@ -33,6 +33,9 @@ pub struct Model {
     pub capture_state: String,
     pub capture_error: Option<String>,
     pub capture_changed_at: Option<DateTimeWithTimeZone>,
+    /// Tombstone (D159): a deleted stream keeps its row so its slug — the
+    /// name of its O2 streams — is never given to another stream.
+    pub deleted_at: Option<DateTimeWithTimeZone>,
     pub created_by: Option<i64>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

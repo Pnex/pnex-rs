@@ -1965,6 +1965,7 @@ CREATE TABLE media_streams (
     capture_state character varying(16) DEFAULT 'stopped'::character varying NOT NULL,
     capture_error character varying(64),
     capture_changed_at timestamp with time zone,
+    deleted_at timestamp with time zone,
     created_by bigint,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,

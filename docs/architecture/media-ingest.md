@@ -991,8 +991,10 @@ Le lot 1 avance par tranches, chacune testée et commitée seule.
   chargement : il est enregistré `invalid` avec le diagnostic (re-vérifiable
   après installation de `pnex-asr`) ; seul un fichier qui n'est pas un
   modèle est refusé (`asr-model-unsupported`).
-- Un slug supprimé peut être réattribué : la vérification « streams O2
-  `tx_<slug>` encore en rétention » de D159 n'est pas faite. À traiter
-  avant la tranche 1c (sinon un nouveau flux hérite de l'historique d'un
-  ancien du même nom).
+- Un flux supprimé reste en base comme pierre tombale (`deleted_at`) :
+  ses segments, son audio, son secret et sa capture disparaissent, mais son
+  slug — le nom de ses streams O2 `tx_<slug>` — n'est jamais redonné à un
+  autre flux de l'org (un nouveau « France Inter » devient
+  `france_inter_3`). Remplace la vérification « streams O2 encore en
+  rétention » de D159, qui aurait exigé O2 à la création.
 
