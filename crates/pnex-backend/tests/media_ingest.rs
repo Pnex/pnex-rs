@@ -3,6 +3,9 @@
 //! isolation (R1) and viewer read-only (R2). Egress refusals are unit
 //! tested in `services::media_ingest::streams` (tests run with `open`).
 //!
+//! Also the `media-source` deploy gate (D163): engine OFF, a deploy
+//! answers 503 only AFTER the gates, so 503 = "the gates let it through".
+//!
 //! Needs PostgreSQL (TEST_DATABASE_URL), database emptied between tests.
 
 mod common;
@@ -25,6 +28,13 @@ where
     let base = common::spawn_mock_rauthy().await;
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     unsafe { std::env::set_var("RAUTHY_URL", &base) };
+    unsafe { std::env::set_var("PNEX_FLOW_ENABLED", "false") };
+    unsafe {
+        std::env::set_var(
+            "PNEX_FLOW_STATE_DIR",
+            format!("/tmp/pnex-media-ingest-tests-{}", std::process::id()),
+        )
+    };
     let config: RequestConfig = RequestConfigBuilder::new().build();
     let env = Env {
         alice: common::valid_token(
@@ -494,6 +504,78 @@ async fn org_isolation_and_viewer_read_only() {
             assert_eq!(s, 403, "{m} {p}");
             assert_eq!(e["error"], "media-stream-write-forbidden");
         }
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn media_source_deploy_needs_streams_of_the_org() {
+    with_app(|server, env| async move {
+        let alice_org = personal_org(&server, &env.alice).await;
+        let bob_org = personal_org(&server, &env.bob).await;
+        let url = "https://icecast.radio.example/inter.mp3";
+        for (token, org, name) in [
+            (&env.alice, alice_org, "France Inter"),
+            (&env.bob, bob_org, "Bob Radio"),
+        ] {
+            let (s, b) = call(
+                &server,
+                "POST",
+                "/api/v1/media/streams",
+                token,
+                org,
+                Some(stream(name, url)),
+            )
+            .await;
+            assert_eq!(s, 201, "{b}");
+        }
+        let flow = |streams: Value| {
+            json!({ "name": "tx", "graph": { "nodes": [
+                { "id": "ms", "kind": "media_source", "config": { "streams": streams },
+                  "outputs": [{ "port": 0, "targets": ["dbg"] }] },
+                { "id": "dbg", "kind": "debug" }
+            ]}})
+        };
+        let deploy = |body: Value| {
+            let server = &server;
+            let token = env.alice.clone();
+            async move {
+                let (s, created) = call(
+                    server,
+                    "POST",
+                    "/api/v1/flows",
+                    &token,
+                    alice_org,
+                    Some(body),
+                )
+                .await;
+                assert_eq!(s, 201, "{created}");
+                let id = created["id"].as_i64().expect("flow id");
+                call(
+                    server,
+                    "POST",
+                    &format!("/api/v1/flows/{id}/deploy"),
+                    &token,
+                    alice_org,
+                    Some(json!({})),
+                )
+                .await
+            }
+        };
+
+        // Another org's slug is unknown here (R1/R3): refused, slug named.
+        let (s, body) = deploy(flow(json!(["france_inter", "bob_radio"]))).await;
+        assert_eq!(s, 400, "{body}");
+        let violations = body["violations"].as_array().expect("violations");
+        assert_eq!(violations.len(), 1, "{body}");
+        assert_eq!(violations[0]["code"], "media-stream-unknown");
+        assert_eq!(violations[0]["args"]["stream"], "bob_radio");
+        assert_eq!(violations[0]["node_id"], "ms");
+
+        // Own stream: the gate lets it through (503 = engine off).
+        let (s, body) = deploy(flow(json!(["france_inter"]))).await;
+        assert_eq!(s, 503, "{body}");
     })
     .await;
 }

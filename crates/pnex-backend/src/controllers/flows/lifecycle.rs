@@ -298,6 +298,36 @@ pub(crate) async fn unknown_controls_for_deploy(
     Ok(violations)
 }
 
+/// Media streams gate (D163, R3): every slug listed by a `media-source`
+/// must be a live stream of the org, otherwise the node would listen to a
+/// channel nobody publishes on. One violation per (node, unknown slug).
+pub(crate) async fn unknown_media_streams_for_deploy(
+    ctx: &AppContext,
+    org_id: i64,
+    candidate_graph: &FlowGraph,
+) -> Result<Vec<pnex_core::FlowViolation>> {
+    let mut violations = Vec::new();
+    for n in &candidate_graph.nodes {
+        let pnex_core::FlowNodeKind::MediaSource { config } = &n.kind else {
+            continue;
+        };
+        for slug in &config.streams {
+            let found = crate::services::media_ingest::streams::find_by_slug(&ctx.db, org_id, slug)
+                .await
+                .map_err(|_| Error::InternalServerError)?;
+            if found.is_none() {
+                violations.push(pnex_core::FlowViolation::with_args(
+                    Some(n.id.as_str()),
+                    pnex_core::err_codes::MEDIA_STREAM_UNKNOWN,
+                    "media-source lists a stream that does not exist in the organization",
+                    serde_json::json!({ "stream": slug }),
+                ));
+            }
+        }
+    }
+    Ok(violations)
+}
+
 /// Dry-run, WRITE usage only: deployed flows of the org whose graph WRITES
 /// this (device slug, pin label). Reads never count — a flow reading a pin
 /// leaves it manually writable. Feeds the manual-write 409 guard.
@@ -449,6 +479,8 @@ async fn deploy_version(
             video_record_conflicts_for_deploy(&ctx, org.org.id, flow.id, &candidate_graph).await?,
         );
         conflicts.extend(unknown_controls_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
+        conflicts
+            .extend(unknown_media_streams_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         if !conflicts.is_empty() {
             return Ok((
                 StatusCode::BAD_REQUEST,

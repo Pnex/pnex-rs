@@ -138,6 +138,11 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::ui_control::ControlSourceConfig,
     },
+    /// Event source of transcribed media segments (media-ingest.md D163):
+    /// one message per segment (or sentence) of the listed streams.
+    MediaSource {
+        config: crate::media_ingest::MediaSourceConfig,
+    },
     /// Timed weather source (D140): no input, three outputs (current,
     /// daily, hourly) normalized from an allowlisted provider.
     Weather {
@@ -266,6 +271,9 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                 }),
                 "control_source" => Ok(Self::ControlSource {
                     config: opt_config(config)?,
+                }),
+                "media_source" => Ok(Self::MediaSource {
+                    config: req_config(config)?,
                 }),
                 "weather" => Ok(Self::Weather {
                     config: opt_config(config)?,

@@ -36,6 +36,7 @@ pub enum PaletteKind {
     MemoryWrite,
     MemoryRead,
     ControlSource,
+    MediaSource,
     Weather,
     Anomaly,
     Forecast,
@@ -201,6 +202,10 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             // No control picked yet: the violation banner guides the user.
             PaletteKind::ControlSource => FlowNodeKind::ControlSource {
                 config: pnex_core::ui_control::ControlSourceConfig::default(),
+            },
+            // No stream picked yet: the violation banner guides the user.
+            PaletteKind::MediaSource => FlowNodeKind::MediaSource {
+                config: pnex_core::media_ingest::MediaSourceConfig::default(),
             },
             // Usable as dropped: Paris, MET Norway, every 30 min.
             PaletteKind::Weather => FlowNodeKind::Weather {

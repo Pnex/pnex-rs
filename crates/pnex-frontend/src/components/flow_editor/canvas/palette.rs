@@ -1,7 +1,7 @@
 use super::*;
 
 /// Liste canonique des kinds proposés à l'ajout (ordre de la maquette).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 28] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 29] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::Weather,
@@ -21,6 +21,7 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 28] = [
     PaletteKind::JsonSplit,
     PaletteKind::JsonMerge,
     PaletteKind::CameraSource,
+    PaletteKind::MediaSource,
     PaletteKind::VideoRecord,
     PaletteKind::VisionDetect,
     PaletteKind::EventLog,
@@ -53,6 +54,7 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::JsonSplit => "json-split",
         PaletteKind::JsonMerge => "json-merge",
         PaletteKind::CameraSource => "camera-source",
+        PaletteKind::MediaSource => "media-source",
         PaletteKind::VideoRecord => "video-record",
         PaletteKind::VisionDetect => "vision-detect",
         PaletteKind::EventLog => "event-log",
@@ -97,6 +99,7 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::JsonSplit => (PaletteIcon::Layers, "bg-cyan-50 text-cyan-700"),
         PaletteKind::JsonMerge => (PaletteIcon::Layers, "bg-teal-50 text-teal-700"),
         PaletteKind::CameraSource => (PaletteIcon::Camera, "bg-rose-50 text-rose-600"),
+        PaletteKind::MediaSource => (PaletteIcon::Activity, "bg-indigo-50 text-indigo-600"),
         PaletteKind::VideoRecord => (PaletteIcon::Video, "bg-red-50 text-red-600"),
         PaletteKind::VisionDetect => (PaletteIcon::Eye, "bg-fuchsia-50 text-fuchsia-600"),
         PaletteKind::EventLog => (PaletteIcon::History, "bg-slate-100 text-slate-600"),
@@ -134,6 +137,7 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::JsonSplit { .. } => PaletteKind::JsonSplit,
         FlowNodeKind::JsonMerge { .. } => PaletteKind::JsonMerge,
         FlowNodeKind::CameraSource { .. } => PaletteKind::CameraSource,
+        FlowNodeKind::MediaSource { .. } => PaletteKind::MediaSource,
         FlowNodeKind::VideoRecord { .. } => PaletteKind::VideoRecord,
         FlowNodeKind::VisionDetect { .. } => PaletteKind::VisionDetect,
         FlowNodeKind::EventLog { .. } => PaletteKind::EventLog,
@@ -183,6 +187,7 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         PaletteKind::Inject
         | PaletteKind::ControlSource
         | PaletteKind::CameraSource
+        | PaletteKind::MediaSource
         | PaletteKind::Weather => PaletteCategory::Triggers,
         PaletteKind::DeviceRead | PaletteKind::DeviceWrite | PaletteKind::Display => {
             PaletteCategory::Devices
@@ -348,6 +353,10 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::ControlSource => (
             t!("flows-palette-control-source").to_string(),
             t!("flows-palette-control-source-help").to_string(),
+        ),
+        PaletteKind::MediaSource => (
+            t!("flows-palette-media-source").to_string(),
+            t!("flows-palette-media-source-help").to_string(),
         ),
         PaletteKind::Weather => (
             t!("flows-palette-weather").to_string(),

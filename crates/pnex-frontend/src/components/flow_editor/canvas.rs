@@ -307,6 +307,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::JsonSplit { .. } => kind_labels(PaletteKind::JsonSplit),
         pnex_core::FlowNodeKind::JsonMerge { .. } => kind_labels(PaletteKind::JsonMerge),
         pnex_core::FlowNodeKind::CameraSource { .. } => kind_labels(PaletteKind::CameraSource),
+        pnex_core::FlowNodeKind::MediaSource { .. } => kind_labels(PaletteKind::MediaSource),
         pnex_core::FlowNodeKind::VideoRecord { .. } => kind_labels(PaletteKind::VideoRecord),
         pnex_core::FlowNodeKind::VisionDetect { .. } => kind_labels(PaletteKind::VisionDetect),
         pnex_core::FlowNodeKind::EventLog { .. } => kind_labels(PaletteKind::EventLog),
@@ -387,12 +388,12 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::MemoryRead { .. } => {
             (geometry::MEMORY_READ_FILL, geometry::MEMORY_READ_STROKE)
         }
-        pnex_core::FlowNodeKind::ControlSource { .. } | pnex_core::FlowNodeKind::Weather { .. } => {
-            (
-                geometry::CONTROL_SOURCE_FILL,
-                geometry::CONTROL_SOURCE_STROKE,
-            )
-        }
+        pnex_core::FlowNodeKind::ControlSource { .. }
+        | pnex_core::FlowNodeKind::Weather { .. }
+        | pnex_core::FlowNodeKind::MediaSource { .. } => (
+            geometry::CONTROL_SOURCE_FILL,
+            geometry::CONTROL_SOURCE_STROKE,
+        ),
         pnex_core::FlowNodeKind::Debug { .. } => (geometry::DEBUG_FILL, geometry::DEBUG_STROKE),
         pnex_core::FlowNodeKind::Red { .. } => (geometry::RED_FILL, geometry::RED_STROKE),
     };
@@ -1059,6 +1060,11 @@ fn node_subtitle(node: &FlowNode) -> String {
             [first, rest @ ..] => {
                 format!("{} +{}", crate::api::controls::key_of(first), rest.len())
             }
+        },
+        pnex_core::FlowNodeKind::MediaSource { config } => match config.streams.as_slice() {
+            [] => "—".into(),
+            [one] => one.clone(),
+            [first, rest @ ..] => format!("{first} +{}", rest.len()),
         },
         pnex_core::FlowNodeKind::Weather { config } => format!(
             "{:.2}, {:.2} · {} min",

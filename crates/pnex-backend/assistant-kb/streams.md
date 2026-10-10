@@ -3,8 +3,8 @@ id: streams
 title: Audio streams
 kind: feature
 pages: /streams
-nodes: 
-err_codes: asr-test-audio-unsupported, asr-test-failed, media-stream-not-found, media-stream-write-forbidden, media-stream-limit, media-url-has-credentials, media-stream-unreachable, media-asr-model-invalid, media-capture-unsupported, asr-profile-not-found, asr-profile-name-taken, asr-model-not-found, asr-model-name-taken, asr-model-unsupported, media-transcripts-unavailable
+nodes: media_source
+err_codes: asr-test-audio-unsupported, asr-test-failed, media-stream-not-found, media-stream-write-forbidden, media-stream-limit, media-url-has-credentials, media-stream-unreachable, media-asr-model-invalid, media-capture-unsupported, asr-profile-not-found, asr-profile-name-taken, asr-model-not-found, asr-model-name-taken, asr-model-unsupported, media-transcripts-unavailable, media-stream-unknown
 tools: 
 tags: streams, flux, radio, audio, icecast, hls, podcast, transcription, transcriptions, asr, speech to text, parole, capture, retention, tdm, parakeet, canary, whisper, sherpa, profile, profil, search, recherche
 ---
@@ -35,3 +35,4 @@ Audio streams (Data › Audio streams) lists the radios and live streams the org
 - Large models (Parakeet, Whisper turbo) can exceed the platform's upload size limit: the platform raises it.
 - Deleting a model deletes the profiles that use it; their streams stop being transcribed until another profile is set.
 - Only the text is kept: once transcribed, audio is deleted unless the stream keeps it.
+- A flow can read the transcriptions with the **Media source** node: one message per transcribed segment (or per sentence) of the streams it lists, nothing during silences. A stream must exist and be enabled with a transcription profile; a stream that is not in the organization refuses the deploy.

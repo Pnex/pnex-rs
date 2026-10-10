@@ -1014,3 +1014,9 @@ Le lot 1 avance par tranches, chacune testée et commitée seule.
   `france_inter_3`). Remplace la vérification « streams O2 encore en
   rétention » de D159, qui aurait exigé O2 à la création.
 
+
+## 17. Avancement du lot 2
+
+| Tranche | Contenu | État |
+|---|---|---|
+| `media_source` (D163) | kind `media_source` (`MediaSourceConfig` dans `pnex_core::media_ingest` : `streams` slugs valides et distincts, `emit` `segment` \| `sentence`, `min_confidence` 0..=1 optionnel), validation au save, projection `pnex-media-source` (org tamponnée) ; nœud runtime dans `pnex-node-camera` (même client Valkey) : `SUBSCRIBE` exact sur `transcript_channel(org, slug)` par flux, un message par segment (`topic` = slug, `payload` = événement du worker + `words_ref` = `tx_<slug>` + `speakers: []`), mode phrase découpé sur `.`/`!`/`?`/`…` suivis d'un blanc, `min_confidence` appliqué seulement si le segment porte une confiance (aucune aujourd'hui) ; garde de deploy `media-stream-unknown` (slug absent de l'org via `find_by_slug`, test d'intégration avec le flux d'une autre org) ; palette (déclencheurs) + inspecteur (flux cochés, émission, confiance) ; `NodeDoc` et fiche KB `streams` | ✅ 2026-10-10 |
