@@ -125,6 +125,10 @@ pub mod taxonomy;
 /// realigned; `range_upsert` node config.
 pub mod time_range;
 
+/// Aggregation by time range or time-of-day slice (ontology.md D182): the
+/// `telemetry/aggregate` read primitive and the `range_bars` widget options.
+pub mod aggregate;
+
 /// Predictive telemetry (ml-vision.md step 3): `anomaly` / `forecast` node
 /// configs, validation, port counts.
 pub mod predictive;

@@ -36,6 +36,7 @@ pub fn kind_label(kind: &str) -> String {
         "indicator" => t!("lib-kind-indicator").to_string(),
         "text" => t!("lib-kind-text").to_string(),
         "thermo_chart" => t!("lib-kind-thermo_chart").to_string(),
+        "range_bars" => t!("lib-kind-range_bars").to_string(),
         "symbol" => t!("lib-kind-symbol").to_string(),
         "switch" => t!("lib-kind-switch").to_string(),
         "slider" => t!("lib-kind-slider").to_string(),
@@ -58,6 +59,7 @@ pub fn kind_icon(kind: &str) -> (PaletteIcon, &'static str) {
         "indicator" => (PaletteIcon::CheckCircle, "bg-emerald-50 text-emerald-600"),
         "text" => (PaletteIcon::Info, "bg-gray-100 text-gray-600"),
         "thermo_chart" => (PaletteIcon::Thermometer, "bg-amber-50 text-amber-600"),
+        "range_bars" => (PaletteIcon::LineChart, "bg-green-50 text-green-600"),
         "symbol" => (PaletteIcon::Shapes, "bg-violet-50 text-violet-600"),
         "switch" => (PaletteIcon::ToggleRight, "bg-teal-50 text-teal-600"),
         "slider" => (PaletteIcon::SlidersHorizontal, "bg-teal-50 text-teal-600"),
@@ -117,7 +119,7 @@ const PALETTE_GROUPS: [(&str, &[&str]); 4] = [
         ],
     ),
     ("display", &["stat", "gauge", "indicator", "text"]),
-    ("charts", &["line"]),
+    ("charts", &["line", "range_bars"]),
     ("industrial", &["thermo_chart"]),
 ];
 

@@ -22,6 +22,7 @@ mod home_panel;
 pub mod inspector;
 pub mod library;
 mod mobile;
+mod range_bars_panel;
 pub mod state;
 mod symbol_options;
 mod symbol_panel;

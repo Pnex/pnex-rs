@@ -1041,3 +1041,21 @@ Hors périmètre de ce lot :
 - **agrégation par plage** (primitive D182) et **frise** annoncé / recalé : lot 4 ;
 - métadonnées ICY du porteur `worker` : écrites par le worker s'il a la configuration O2, sinon perdues (journal `warn`) ; pas de canal dédié vers le serveur ;
 - heures ICS « flottantes » (sans `Z` ni `TZID`) lues en UTC.
+
+## 19. Avancement du lot 4
+
+| Tranche | Contenu | État |
+|---|---|---|
+| Agrégation par seau (D182) | `POST /api/v1/telemetry/aggregate` (tout membre lit) : primitive générique (média et IoT), contrat `pnex_core::aggregate` ; sélecteur `metric` + `device_id` et/ou `labels` aux règles de `series-batch` (validé avant toute construction de PromQL, `series_selector` partagé) ; `op` `sum` \| `avg` \| `max` \| `min` \| `increase` ; seaux `ranges` (plages de la portée résolue dans l'org de l'appelant, R1 ; `actual_*` complet sinon `planned_*`, `basis` exposé par ligne avec `range_id` / `external_id` ; 200 plages au plus, sinon 400 `buckets: max_length:200`) ou `slices` (bornes `HH:MM` croissantes, 24 au plus, la dernière tranche va jusqu'à la première borne du lendemain ; fuseau validé par `chrono-tz` ; heure ambiguë = la plus tôt, heure inexistante = +1 h ; tranches répétées sur les jours de la fenêtre, coupées à la fenêtre, combinées par tranche : somme, max, min, moyenne pondérée par la durée ; `days` = jours avec données) ; fenêtre ≤ 31 jours ; entrée invalide = 400 jeton de champ (`metric`, `device_id`, `labels`, `from`, `to`, `bounds`, `timezone`, `scope_id`, `body`). **Lecture O2** : PromQL `outer(op_over_time(sel[durée]))` (`sum(increase(…))` pour un compteur) ; les seaux de même durée dont la fin tombe à la même heure UTC partagent UNE `query_range` au pas d'un jour : O2 aligne `start` sur le pas (constaté sur v1.0.0), les évaluations tombent donc à minuit UTC et un `offset` ramène chaque fenêtre sur son seau (vérifié contre O2 réel : mêmes valeurs qu'en requêtes instantanées) ; une tranche quotidienne coûte une requête (deux de part et d'autre d'un changement d'heure) ; cache TTL, concurrence (6) et budget global (8 s) de `series-batch` ; échec ou budget dépassé = `available: false`, valeurs non lues à `null`, jamais de 500 | ✅ 2026-10-10 |
+| Widget « barres par plage / tranche » | type de widget `range_bars` (groupe Graphiques) : une source (métrique × device ou labels, D171) + `options.aggregate` (`op`, fenêtre relative `24h` \| `7d`, seaux `ranges` d'un flux ou `slices` bornes + fuseau, défaut `Europe/Paris`) ; validation du layout (`range_bars_source`, `aggregate_missing`, `aggregate_unexpected`, `aggregate_bad_*`) ; rendu commun desktop / mobile / éditeur : ligne = libellé, début–fin, barre proportionnelle au max, valeur ; infobulle « heure recalée » / « heure annoncée » / « tranche, N jours avec données » ; lecture toutes les 15 s sur son propre minuteur (hors `series-batch`) ; inspecteur dédié (agrégation, fenêtre, découpage, flux, bornes, fuseau) | ✅ 2026-10-10 |
+| Frise annoncé / réel | onglet « Plages » de `/streams` : au-dessus du tableau, deux barres par plage (prévu en clair, réel en foncé) sur l'axe des heures locales du jour (graduation toutes les 3 h, longueur réelle du jour), divs positionnées sans bibliothèque JS ; écart début / fin en minutes en infobulle | ✅ 2026-10-10 |
+| Onglet transcriptions | livré au lot 1f, inchangé | ✅ |
+| Assistant | fiches KB `dashboards` (widget), `ranges` (frise, statistiques par plage), puce dans `streams` ; pas d'outil | ✅ 2026-10-10 |
+
+Hors périmètre / écarts :
+
+- la frise montre les plages de la page courante du tableau (50 par page) ;
+- le widget lit aussi sa source via `series-batch` comme les autres widgets (une requête de plus par cycle, sans effet sur le rendu) ;
+- `avg` sans device = moyenne des moyennes par série ; une tranche `avg` combine les jours en moyenne pondérée par la durée ;
+- fuseau par défaut `Europe/Paris` (pas de détection du fuseau du navigateur) ;
+- le widget n'a pas de mode « plages de l'organisation » (flux seulement) ; l'endpoint, lui, accepte `scope_kind: org`.

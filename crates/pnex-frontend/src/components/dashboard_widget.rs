@@ -105,6 +105,9 @@ pub fn WidgetBody(
                 "thermo_chart" => rsx! {
                     ThermoChart { widget: widget.clone(), values }
                 },
+                "range_bars" => rsx! {
+                    crate::components::range_bars::RangeBarsBody { widget: widget.clone() }
+                },
                 _ => rsx! {
                     p { class: "p-2 text-xs text-gray-400", "{w.widget_type}" }
                 },

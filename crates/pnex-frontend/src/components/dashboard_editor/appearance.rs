@@ -27,7 +27,8 @@ pub fn has_states(widget_type: &str) -> bool {
 
 /// Widget types reading a live value (staleness applies).
 pub fn has_staleness(widget: &Widget) -> bool {
-    !widget.source.is_empty() && widget.widget_type != "thermo_chart"
+    !widget.source.is_empty()
+        && !matches!(widget.widget_type.as_str(), "thermo_chart" | "range_bars")
 }
 
 fn edit_widget(mut cx: EditorCx, f: impl FnOnce(&mut Widget)) {

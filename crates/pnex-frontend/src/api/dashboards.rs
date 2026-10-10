@@ -216,3 +216,16 @@ pub async fn series_batch(body: SeriesBatchRequest) -> Result<SeriesBatchRespons
     )
     .await
 }
+
+/// `POST /api/v1/telemetry/aggregate` (D182) — one value per time range or
+/// time-of-day slice; `available: false` when O2 is out of reach.
+pub async fn aggregate(
+    body: &pnex_core::aggregate::AggregateRequest,
+) -> Result<pnex_core::aggregate::AggregateResponse, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        "/api/v1/telemetry/aggregate",
+        Some(serde_json::to_value(body).unwrap_or_default()),
+    )
+    .await
+}

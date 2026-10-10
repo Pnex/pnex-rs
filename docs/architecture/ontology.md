@@ -186,6 +186,14 @@ requête.
 d'une machine, mandat d'une personne. L'agrégation « par plage » (D171)
 devient une primitive de lecture du noyau, pas une fonction média.
 
+> Livré pour les séries temporelles (2026-10-10, media-ingest.md §19) :
+> `POST /api/v1/telemetry/aggregate` agrège une série O2 (`sum`, `avg`,
+> `max`, `min`, `increase`) par plage d'une portée (heure recalée si elle
+> existe, sinon annoncée, la base est exposée par ligne) ou par tranche
+> horaire répétée sur les jours d'une fenêtre ; le widget de dashboard
+> `range_bars` le consomme. Les propriétés `series` des objets (D185) le
+> réutiliseront.
+
 ### D183 — Actions déclarées sur les types, exécutées par des flows, tracées
 
 - Une action est déclarée dans le schéma de type : `key`, `name`,
