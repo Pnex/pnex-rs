@@ -122,6 +122,13 @@ dans le même modèle.
 - Garde-fou anti-EAV : les propriétés sont un **document JSONB validé
   par schéma**, pas une table ligne-par-propriété ; index GIN (PG) sur
   les propriétés déclarées `indexed`.
+- **Amendé le 2026-10-10 (annexe A2) — identité universelle** : `objects`
+  porte une ligne d'**identité** pour *tout* objet, système compris
+  (UUID, `org_id`, `type_id`, titre, `valid_from` / `valid_to`) ; le
+  contenu natif des types système reste dans sa table, en 1:1 avec FK
+  vers `objects.id`. Les liens (D179) ont de vraies FK vers `objects.id`.
+  Les objets sont **temporels** comme les liens : `archived_at` devient
+  la fermeture de validité (`valid_to`).
 
 ### D178 — Propriétés typées, y compris les propriétés temporelles
 
@@ -233,6 +240,10 @@ textuel en V1) :
   plage (D182) des propriétés `series`.
 
 Implémentation : CTE récursives bornées en PostgreSQL ; les agrégats temporels sont délégués à O2.
+**Amendé le 2026-10-10 (annexe A3)** : l'API reste bornée (≤ 4) ; en
+interne, l'interface graphe de `pnex-core` couvre profondeur variable,
+plus court chemin et impact en cascade (CTE, timeout et plafond de
+lignes), et SQL/PGQ (PostgreSQL 19) pour les parcours à profondeur fixe.
 La recherche globale (D69) s'étend aux objets. Le schéma de la requête
 vit dans `pnex-core` : l'UI, l'assistant et les flows (nœud
 `ontology-query`) parlent le même langage.
@@ -358,7 +369,7 @@ migration destructrice »), la 0.2.0 **migre les données**.
 | **L1** | D176–D178 : types, objets, propriétés scalaires, éditeur de types, YAML | créer « Pompe » et 100 objets en UI et en YAML |
 | **L2** | D179–D180 : types de liens, validité temporelle, migration `placed_on` / `placed_at` | requête `as_of` correcte sur liens fermés |
 | **L3** | D178 temporel + D181 : propriétés `series`/`events`, liaisons device → objet | remplacement de capteur sans rupture de courbe |
-| **L4** | D185–D187 : API de requête, explorateur, dashboards de type | dashboard de type Pompe, recherche globale sur objets |
+| **L4** | D185–D187 : API de requête, interface graphe (CTE + SQL/PGQ), explorateur, **vue graphe Dioxus**, dashboards de type, verrou par type (D188) | dashboard de type Pompe, recherche globale sur objets |
 | **L5** | D184, D189, D191 : provenance, assistant, migration 0.1 → 0.2 | migration d'une base 0.1 réelle, onglet provenance |
 | **0.2.0** | L0–L5 + pack « Maintenance augmentée » | release |
 | **0.3** | D183 actions, packs Maison et Couverture médiatique, ACL par objet (décision) | |
@@ -386,9 +397,11 @@ implémentation commence après L1.
 
 ## 9. Questions ouvertes
 
-1. Faut-il un identifiant d'objet global unique (UUID pour tous, y
+1. ~~Faut-il un identifiant d'objet global unique (UUID pour tous, y
    compris les objets système aux PK `i64`), ou garder `ResourceRef`
-   stringifiée (D42) ?
+   stringifiée (D42) ?~~ **Tranché 2026-10-10** : UUID pour tous via la
+   table d'identité universelle (D177 amendé, annexe A2) ; `ResourceRef`
+   reste une forme d'affichage et d'API.
 2. Le schéma de propriétés : format maison dans `pnex-core`, ou JSON
    Schema (outillage existant, mais plus lourd à valider en wasm) ?
 3. Liaison device → objet : lien temporel générique (D179) ou table
@@ -401,3 +414,111 @@ implémentation commence après L1.
 6. Gouvernance du noyau en vue d'une fondation (CNCF, Apache) : les
    types système et le format des packs sont-ils une spécification
    publique versionnée à part ?
+
+## Annexe — Ontologie & stockage graphe (2026-10-10)
+
+Synthèse de la discussion du 2026-10-10, intégrée et arbitrée le même
+jour. Ne remplace pas les décisions D176–D191 : les amende là où c'est
+indiqué.
+
+### A1. Principes
+
+- L'ontologie est **le chantier prioritaire de la 0.2.0** : socle de la
+  recherche globale, du graphe de relations, du time travel, des
+  permissions fines et du hub de kits (`hub.md`, gelé jusque-là).
+- **Ontologie optionnelle** : un device sans objet rattaché fonctionne
+  normalement ; l'ontologie s'ajoute par-dessus, elle ne s'impose pas aux
+  makers (cohérent avec D186, D190).
+- POI + placements = première ontologie existante, **migrés** en types
+  intégrés, jamais dupliqués (D191).
+- Les données restent où elles sont : télémétrie dans OpenObserve, octets
+  dans le MediaStore (fs / S3 RustFS, D21) ; l'ontologie les référence
+  par identifiant.
+- Le **méta-modèle** (format des schémas, types et liens système,
+  interface graphe) vit dans `pnex-core` ; les types d'org sont des
+  données (D176).
+
+### A2. Stockage : identité universelle (tranché)
+
+Trois options pesées pour la sérénité à long terme :
+
+| Option | Verdict |
+|---|---|
+| Tout dans des tables `object` / `link` génériques | Écarté : chemins chauds (`/ws/device`, présence, OTA, build) en JSONB, perte des FK typées et des entités SeaORM, chaque fonctionnalité système revalidée à la main |
+| D177 tel qu'écrit (`ResourceRef` chaîne) | Écarté : pas de FK sur les liens, intégrité par purge applicative |
+| **Table d'identité pour tout objet, contenu natif en place** | **Retenu** |
+
+Conséquences : une ligne `objects` par entité, système ou utilisateur
+(UUID, org, type, titre, `valid_from` / `valid_to`) ; tables système en
+1:1 avec FK ; liens avec FK réelles ; création et suppression système
+écrivent l'identité dans la même transaction ; la migration 0.1 → 0.2
+(D191) crée une ligne d'identité par entité existante. Objets **et**
+liens sont temporels (temps de validité). Un déplacement = fermeture
+d'un lien + ouverture d'un autre, rien n'est écrasé. Contraintes pour
+toute projection graphe future : identifiants stables, un seul type par
+lien, source et destination explicites.
+
+### A3. Accès graphe
+
+| Besoin | Mécanisme |
+|---|---|
+| Parcours à profondeur fixe | **SQL/PGQ** (`CREATE PROPERTY GRAPH` / `GRAPH_TABLE`), PostgreSQL 19 — vue réécrite en SQL relationnel, lecture seule |
+| Profondeur variable, plus court chemin, impact en cascade | **CTE récursives** générées par le cœur Rust, timeout et plafond de lignes |
+| Filtre temporel | SQL classique sur `valid_from` / `valid_to` |
+
+Toutes les requêtes graphe passent par **une seule interface** (trait
+Rust dans `pnex-core`) ; implémentation 1 = SQL/PGQ + CTE. L'API D185
+reste bornée à 4 sauts ; l'illimité est réservé aux usages internes.
+
+**PostgreSQL 19 visé pour la 0.2.0** (tranché 2026-10-10) : l'image
+Postgres étendue (PostGIS de `geo-layers.md`, pgvector de
+`doc-search.md`) passe directement en 19, multi-arch arm64. À vérifier
+au spike L0 : PG 19 en GA, PostGIS et pgvector disponibles pour 19 sur
+arm64 ; sinon repli jointures + CTE sur 18 derrière la même interface.
+
+### A4. Apache AGE : réserve, pas départ
+
+- Extension PostgreSQL (Apache-2.0) : openCypher, chemins de longueur
+  variable. Cible éventuelle : **projection en lecture alimentée par
+  triggers**, Postgres relationnel restant la source de vérité ; feature
+  optionnelle (2ᵉ implémentation de l'interface graphe), PNEX
+  fonctionne sans.
+- **Pas dans la 0.2.0.** Déclencheur d'adoption : parcours profonds
+  (5+ sauts, plus courts chemins) sur des millions d'objets en temps
+  interactif, devenus un vrai goulot.
+- Pas AGE seul : perte des jointures avec les tables Loco, `agtype` sans
+  schéma (ni FK ni `NOT NULL`), temporel verbeux en Cypher, ni SeaORM ni
+  migrations Loco, retard possible sur les majeures de Postgres, rare en
+  Postgres managé.
+- Coût de la projection : stockage négligeable (~1–2 Go pour 1 M objets
+  + 1 M liens, estimation), écriture rare ; le vrai coût est la
+  cohérence de deux modèles. Écrire une extension Cypher sur les tables
+  existantes : écarté (SQL/PGQ le fait nativement).
+
+### A5. Alternatives écartées
+
+| Option | Raison |
+|---|---|
+| Base graphe dédiée (Neo4j…) | Brique en plus, synchronisation, contraire à l'objectif Pi / 2 briques de stockage |
+| SurrealDB | Licence BSL (incompatible MIT et fondation), maturité, réécriture complète de la couche données |
+| XTDB | Bitemporel natif, mais JVM : trop lourd pour le Pi |
+| AGE seul | Voir A4 |
+
+### A6. Positionnement
+
+- 0.2.0 : « **plateforme open source de données industrielles et IoT,
+  pilotée par une ontologie** » (du firmware au jumeau numérique).
+- Pas « alternative open source à Palantir / ArgonOS » tant que
+  manquent : intégration massive de sources, gouvernance de niveau
+  défense (classification, permissions ligne/colonne, lignage, audit),
+  actions / writeback, apps par des non-devs, déploiement déconnecté.
+- Plus tard (actions + gouvernance + connecteurs) : « plateforme
+  opérationnelle ontologique open source ».
+
+### A7. Questions ouvertes
+
+- Types libres par org ou base fixe étendue : **déjà répondu par D176**
+  (types système + types d'org en données + packs) — à reconfirmer.
+- Introduction du **bitemporel** (temps système pour l'audit) : plus
+  tard, sans casser le modèle (O2 `object_changes` couvre l'historique
+  en attendant).

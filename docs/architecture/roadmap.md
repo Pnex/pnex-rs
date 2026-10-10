@@ -612,6 +612,14 @@ destructive**.
 | 0.2.0 | L0–L5 + pack « Maintenance augmentée » | release |
 | 0.3 | D183 actions, packs Maison et Couverture médiatique, ACL par objet | — |
 
+**Annexe stockage graphe** (2026-10-10, `ontology.md` annexe) :
+ontologie optionnelle ; **identité universelle** (une ligne `objects` UUID
++ temps de validité pour tout objet, contenu natif en place, liens à FK
+réelles — amende D177, tranche Q1) ; interface graphe unique dans
+`pnex-core` (CTE + SQL/PGQ) ; API bornée à 4 sauts, illimité en interne ;
+**PostgreSQL 19 visé** (image étendue PostGIS + pgvector, à vérifier au
+L0) ; vue graphe Dioxus et verrou par type ajoutés au L4.
+
 **Risque de dispersion acté** : pendant la 0.2.0, aucun nouveau pilier
 fonctionnel ne démarre (correctifs et finition seulement) — à arbitrer
 avec P2.13 et P2.1. Décision #17 — **exception P2.13** (2026-10-09) : le
@@ -713,6 +721,10 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   OTA signée Ed25519 + anti-downgrade, TLS obligatoire, X.509/mTLS par
   device, secret d'edge — D153–D158, banc 8266 + C6) ; V2–V5 non
   commencées. Décision #15.
+- **Apache AGE** (`ontology.md` annexe A4, ajout 2026-10-10) :
+  projection graphe en lecture par triggers, optionnelle, Postgres
+  restant la source de vérité. Déclencheur : parcours profonds (5+
+  sauts, plus courts chemins) sur des millions d'objets en interactif.
 - **Hub de kits** (`hub.md`, ajout 2026-10-10) — **gelé jusqu'à la
   0.2.0** : partage communautaire de flows, dashboards, synoptiques,
   fonctions et variantes de cartes en kits (Git + CI + index statique,
@@ -744,7 +756,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 | 15 | Profils de sécurité : date de lancement de V1 (correctifs protocole, SEC-17 à SEC-19) ; socle de V4 (ESP-IDF C++ ou firmware Rust) ; statut CRA de PneX (avis juridique) | V1 : prochaine passe sécurité ; V4 : après 1 à 2 ans de communauté |
 | 14 | ~~Version firmware par rebuild~~ — tranché 2026-10-03 : 1 build = 1 enregistrement = 1 version, OTA en lot manuelle (O22) | ✅ |
 | 16 | Flux média : runtime ASR (sherpa-onnx, whisper.cpp ou les deux), ~~tags Loco ou queue dédiée~~ (tranché à la relecture du 2026-10-09 : tags, ASR configurable), superviseur de capture in-process (proposé), agrégation « par plage » (primitive D182), ~~plafond des extraits, amendement de D3~~ (sans objet : pas de publication), ordre vis-à-vis de l'ontologie (`media-ingest.md` §14) | Lot 0 (POC ASR) ; ordre à la validation |
-| 17 | Ontologie 0.2.0 : identifiant d'objet global (UUID vs `ResourceRef`), format du schéma de propriétés (maison vs JSON Schema), liaison device → objet (lien générique vs table dédiée), packs forkables ou surcouche, langage de requête textuel, spécification publique du noyau ; ordre P2.13 / P2.14 / P2.1 vu le gel des nouveaux piliers (`ontology.md` §9) | À la validation du PRD |
+| 17 | Ontologie 0.2.0 : ~~identifiant d'objet global (UUID vs `ResourceRef`)~~ (tranché 2026-10-10 : UUID par table d'identité universelle), moment du bitemporel, format du schéma de propriétés (maison vs JSON Schema), liaison device → objet (lien générique vs table dédiée), packs forkables ou surcouche, langage de requête textuel, spécification publique du noyau ; ordre P2.13 / P2.14 / P2.1 vu le gel des nouveaux piliers (`ontology.md` §9) | À la validation du PRD |
 | 19 | ~~Garder SQLite à côté de PostgreSQL~~ — tranché 2026-10-10 : **PostgreSQL obligatoire, SQLite abandonné**. La parité coûte à chaque migration et chaque requête (`ilike`, FK par reconstruction de table, pas de PostGIS) et pèse de plus en plus lourd à mesure que le produit grandit ; l'argument Raspberry Pi ne tient pas, Postgres reste léger sur un Pi. Les nouveaux développements ne gèrent plus SQLite | ✅ |
 | 18 | Media & Vision Studio : pose humaine ou poste de travail, tract vs `ort`, entraînement CPU, D174 en usage interne, détection → `device_write`, version cible (après 0.2.0 ou exception) (`media-vision-studio.md` §10) | À la validation du PRD |
 | 20 | Couches géographiques : ~~gel 0.2.0~~ (tranché 2026-10-10 : phase F avant, A–E après), ~~rétention des seeds~~ (génération courante), raster, OGC API – Features, plafonds par tier, lien ontologie (`geo-layers.md` §10) ; image Postgres étendue PostGIS + pgvector commune avec #22 | À la validation du PRD |
@@ -897,3 +909,10 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   embeddings en tract. Hub : kit = pack D190, identité GitHub seule.
   Restent ouverts : choix techniques à trancher au spike ou au jeu de
   test (Loro/yrs, BM25, rerank, DataFusion, raster, OGC).
+- **2026-10-10 (annexe ontologie & stockage graphe)** — Intégrée dans
+  `ontology.md` : objets temporels comme les liens, identité universelle
+  (D177 amendé, Q1 tranchée), interface graphe unique (CTE + SQL/PGQ),
+  API bornée à 4 sauts et illimité en interne, PostgreSQL 19 visé pour la
+  0.2.0, vue graphe au L4, Apache AGE en réserve (P3), alternatives
+  écartées (Neo4j, SurrealDB, XTDB), positionnement 0.2.0. « MinIO »
+  corrigé en MediaStore.
