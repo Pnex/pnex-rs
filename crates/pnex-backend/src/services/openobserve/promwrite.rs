@@ -57,6 +57,43 @@ pub fn encode(points: &[TelemetryPoint]) -> Option<Vec<u8>> {
     Some(WriteRequest { timeseries }.encode_to_vec())
 }
 
+/// A sample with free labels (D171). Label keys are code constants, so
+/// the key set is a whitelist by construction; the caller bounds the
+/// cardinality of the values.
+pub struct LabelledPoint {
+    pub name: &'static str,
+    pub labels: Vec<(&'static str, String)>,
+    pub value: f64,
+    pub timestamp_ms: i64,
+}
+
+/// Encodes free-label samples (non-finite values dropped; `None` if none).
+pub fn encode_labelled(points: &[LabelledPoint]) -> Option<Vec<u8>> {
+    let timeseries: Vec<TimeSeries> = points
+        .iter()
+        .filter(|p| p.value.is_finite())
+        .map(|p| TimeSeries {
+            labels: std::iter::once(Label {
+                name: "__name__".into(),
+                value: sanitize_metric_name(p.name),
+            })
+            .chain(p.labels.iter().map(|(k, v)| Label {
+                name: (*k).into(),
+                value: v.clone(),
+            }))
+            .collect(),
+            samples: vec![Sample {
+                value: p.value,
+                timestamp: p.timestamp_ms,
+            }],
+        })
+        .collect();
+    if timeseries.is_empty() {
+        return None;
+    }
+    Some(WriteRequest { timeseries }.encode_to_vec())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,6 +141,40 @@ mod tests {
         assert_eq!(ts.samples[0].value, 42.5);
 
         assert!(encode(&[point("x", "n/a")]).is_none());
+    }
+
+    #[test]
+    fn labelled_points_keep_their_labels() {
+        let pb = encode_labelled(&[
+            LabelledPoint {
+                name: "media_capture_up",
+                labels: vec![("stream", "inter".into())],
+                value: 1.0,
+                timestamp_ms: 5,
+            },
+            LabelledPoint {
+                name: "media_capture_gap_seconds",
+                labels: vec![],
+                value: f64::NAN,
+                timestamp_ms: 5,
+            },
+        ])
+        .unwrap();
+        let req = WriteRequest::decode(pb.as_slice()).unwrap();
+        assert_eq!(req.timeseries.len(), 1, "NaN dropped");
+        let labels: Vec<(String, String)> = req.timeseries[0]
+            .labels
+            .iter()
+            .map(|l| (l.name.clone(), l.value.clone()))
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                ("__name__".into(), "media_capture_up".into()),
+                ("stream".into(), "inter".into())
+            ]
+        );
+        assert!(encode_labelled(&[]).is_none());
     }
 
     /// Noms de métriques invalides assainis (tirets, espace, préfixe

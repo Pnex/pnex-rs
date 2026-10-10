@@ -49,6 +49,11 @@ pub fn StreamFormModal(
             .map(|s| s.capture_on.clone())
             .unwrap_or_else(|| "server".into())
     });
+    let mut alert_channel = use_signal(|| {
+        init.as_ref()
+            .and_then(|s| s.notify_channel_id.clone())
+            .unwrap_or_default()
+    });
     let mut segment_secs = use_signal(|| init.as_ref().map(|s| s.segment_secs).unwrap_or(30));
     let mut retention = use_signal(|| {
         init.as_ref()
@@ -72,6 +77,15 @@ pub fn StreamFormModal(
         _ => Vec::new(),
     };
 
+    let channels = use_resource(|| async move {
+        api::notify::list_channels()
+            .await
+            .ok()
+            .map(|p| p.results)
+            .unwrap_or_default()
+    });
+    let channel_rows = channels.value().read().clone().unwrap_or_default();
+
     let editing_id = existing.as_ref().map(|s| s.id.clone());
     let had_secret = existing.as_ref().is_some_and(|s| s.has_secret);
     let was_checked = existing
@@ -92,6 +106,7 @@ pub fn StreamFormModal(
             clear_secret: had_secret && draft == SecretDraft::Empty,
             asr_profile_id: Some(profile()),
             capture_on: Some(capture_on()),
+            notify_channel_id: Some(alert_channel()),
             segment_secs: Some(segment_secs()),
             audio_retention: Some(retention()),
             tdm_checked: (tdm_checked() != was_checked).then_some(tdm_checked()),
@@ -238,6 +253,25 @@ pub fn StreamFormModal(
                     }
                     p { class: "text-xs text-gray-500 mt-1", {t!("streams-capture-help")} }
                 }
+            }
+            div {
+                label { r#for: "stream-alert-channel", class: LABEL, {t!("streams-alert-channel")} }
+                select {
+                    id: "stream-alert-channel",
+                    class: INPUT,
+                    onchange: move |e| alert_channel.set(e.value()),
+                    option { value: "", selected: alert_channel().is_empty(),
+                        {t!("streams-alert-channel-none")}
+                    }
+                    for c in channel_rows {
+                        option {
+                            value: "{c.id}",
+                            selected: alert_channel() == c.id.to_string(),
+                            "{c.name}"
+                        }
+                    }
+                }
+                p { class: "text-xs text-gray-500 mt-1", {t!("streams-alert-channel-help")} }
             }
             div { class: "rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2",
                 label { class: "inline-flex items-center gap-2 text-sm text-gray-800",
