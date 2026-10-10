@@ -62,6 +62,9 @@ pub fn DashboardLive(dashboard_id: String) -> Element {
     // qu'au premier tick (15 s d'écran vide en vue/plan) — lire `detail`
     // ici garantit le re-run dès qu'il se résout. Un SEUL timer 15 s
     // pour tout le dashboard (D31).
+    // shortcut: no object picker here, so a type dashboard (D187) embedded
+    // in a POI preview reads its object sources as no data; add the picker
+    // if type dashboards get placed on POIs.
     let batch = use_resource(move || {
         let sources: Vec<pnex_core::SourceRef> = detail
             .read()
@@ -360,6 +363,7 @@ mod window_tests {
 
     fn src(metric: &str, window: &str) -> pnex_core::SourceRef {
         pnex_core::SourceRef {
+            object_property: None,
             role: "primary".into(),
             metric: metric.into(),
             device_id: "dev".into(),

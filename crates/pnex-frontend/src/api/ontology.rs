@@ -150,6 +150,11 @@ pub async fn series(id: &str, property: &str, window: &str) -> Result<SeriesView
     .await
 }
 
+/// Current sensor of each bound series property (type dashboards, D187).
+pub async fn bindings(id: &str) -> Result<Vec<pnex_core::SeriesBinding>, ApiError> {
+    client::request(Method::GET, &format!("{BASE}/objects/{id}/bindings"), None).await
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct Changes {
     pub available: bool,

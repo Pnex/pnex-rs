@@ -166,6 +166,11 @@ pub struct SourceRef {
     /// Free label selector (D171): with labels, `device_id` may be empty.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub labels: std::collections::BTreeMap<String, String>,
+    /// Type dashboard (ontology D187): a `series` property of the object
+    /// shown, resolved to its current sensor at read time; `metric` and
+    /// `device_id` are then filled by [`bind_object`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_property: Option<String>,
 }
 
 impl SourceRef {
@@ -567,6 +572,7 @@ impl SourceRef {
     /// templates); it is skipped by the validation and the live fetch.
     pub fn is_unset(&self) -> bool {
         self.memory.is_none()
+            && self.object_property.is_none()
             && self.device_id.is_empty()
             && self.labels.is_empty()
             && self.metric.is_empty()
@@ -693,6 +699,45 @@ pub struct DashboardLayout {
     /// page (D139).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pages: Vec<MobilePage>,
+    /// Type dashboard (ontology D187): drawn for any object of this type,
+    /// picked by the viewer; sources may then read `object_property`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_type: Option<String>,
+}
+
+/// Current sensor of a `series` property: telemetry `device_id` label and
+/// metric (ontology D181).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeriesBinding {
+    pub property: String,
+    pub device_id: String,
+    pub metric: String,
+}
+
+/// The layout with every `object_property` source resolved through
+/// `bindings` (the object's open `measures` links). A property without a
+/// sensor stays unresolved: empty metric and device, read as no data.
+pub fn bind_object(layout: &DashboardLayout, bindings: &[SeriesBinding]) -> DashboardLayout {
+    let mut out = layout.clone();
+    for w in &mut out.widgets {
+        for s in &mut w.source {
+            let Some(p) = &s.object_property else {
+                continue;
+            };
+            match bindings.iter().find(|b| &b.property == p) {
+                Some(b) => {
+                    s.device_id = b.device_id.clone();
+                    s.metric = b.metric.clone();
+                }
+                None => {
+                    s.device_id.clear();
+                    s.metric.clear();
+                }
+            }
+            s.object_property = None;
+        }
+    }
+    out
 }
 
 // ─────────────────────────────── Validation ───────────────────────────────
@@ -776,6 +821,29 @@ fn validate_thermo(
 /// (l'API les renvoie en 400, le front les affiche avant save).
 pub fn validate_layout(l: &DashboardLayout) -> Vec<VizViolation> {
     let mut v = Vec::new();
+    // Type dashboard (D187): object sources need the type they read from.
+    let reads_object = l
+        .widgets
+        .iter()
+        .flat_map(|w| &w.source)
+        .any(|s| s.object_property.is_some());
+    match &l.object_type {
+        Some(t) if !crate::ontology::schema::valid_key(t) => {
+            v.push(VizViolation::new(
+                None,
+                "bad_object_type",
+                "invalid object type",
+            ));
+        }
+        None if reads_object => {
+            v.push(VizViolation::new(
+                None,
+                "object_source_without_type",
+                "an object property source needs the dashboard object type",
+            ));
+        }
+        _ => {}
+    }
     let desktop = l.format == DashboardFormat::Desktop;
     // The canvas only exists on desktop: a mobile layout is a card stack.
     if desktop
@@ -1178,6 +1246,23 @@ pub(crate) fn check_sources<F: FnMut(&str, String)>(
     push: &mut F,
 ) {
     for s in source {
+        if let Some(p) = &s.object_property {
+            // Resolved at read time: only the key and the window are known.
+            let key_ok = !p.is_empty()
+                && p.len() <= 64
+                && p.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
+            if !key_ok {
+                push(
+                    "bad_object_property",
+                    format!("invalid object property \"{p}\""),
+                );
+            }
+            if !valid_window(&s.window) {
+                push("bad_window", format!("unknown window \"{}\"", s.window));
+            }
+            continue;
+        }
         if let Some(m) = &s.memory {
             // A memory value is a single live number: no history.
             if !m.is_valid() {
@@ -1397,6 +1482,7 @@ mod tests {
             w: 240,
             h: 160,
             source: vec![SourceRef {
+                object_property: None,
                 role: "primary".into(),
                 metric: "soil_moisture".into(),
                 device_id: "soil-01".into(),
@@ -1432,6 +1518,7 @@ mod tests {
 
     fn mobile(widgets: Vec<Widget>, sections: Vec<MobileSection>) -> DashboardLayout {
         DashboardLayout {
+            object_type: None,
             format: DashboardFormat::Mobile,
             // A mobile layout carries no meaningful canvas.
             canvas: CanvasSpec::default(),
@@ -1455,6 +1542,7 @@ mod tests {
     fn layout_valide_passe() {
         let mut l = layout(vec![widget("w1", "gauge"), widget("w2", "line")]);
         l.widgets[1].source.push(SourceRef {
+            object_property: None,
             role: "secondary".into(),
             metric: "soil_moisture".into(),
             device_id: "soil-02".into(),
@@ -1544,6 +1632,7 @@ mod tests {
         // Sources répliquées dans widget.source → vert (hors autres codes).
         w.source = vec![
             SourceRef {
+                object_property: None,
                 role: "cycle0.v1".into(),
                 metric: "pressure".into(),
                 device_id: "dev-1".into(),
@@ -1552,6 +1641,7 @@ mod tests {
                 labels: Default::default(),
             },
             SourceRef {
+                object_property: None,
                 role: "cycle0.v2".into(),
                 metric: "temperature".into(),
                 device_id: "dev-1".into(),
@@ -1992,6 +2082,7 @@ mod tests {
     fn home_card_keeps_unset_role_sources() {
         let mut w = widget("w1", crate::home::HOME_WIDGET_TYPE);
         w.source = vec![SourceRef {
+            object_property: None,
             role: "state".into(),
             metric: String::new(),
             device_id: String::new(),

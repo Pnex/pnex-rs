@@ -359,6 +359,7 @@ fn with_saved_memory(
 fn set_role_source(w: &mut Widget, role: &str, v: &str) {
     if !w.source.iter().any(|s| s.role == role) {
         w.source.push(SourceRef {
+            object_property: None,
             role: role.to_string(),
             metric: String::new(),
             device_id: String::new(),
@@ -473,6 +474,7 @@ fn bind_weather(w: &mut Widget, key: &str, roles: &[String]) {
     }
     for role in roles {
         w.source.push(SourceRef {
+            object_property: None,
             role: role.clone(),
             metric: String::new(),
             device_id: String::new(),
@@ -556,6 +558,7 @@ mod tests {
 
     fn telemetry(device: &str, metric: &str) -> SourceRef {
         SourceRef {
+            object_property: None,
             role: "temperature".into(),
             metric: metric.into(),
             device_id: device.into(),

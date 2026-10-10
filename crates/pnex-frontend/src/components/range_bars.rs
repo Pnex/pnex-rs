@@ -187,6 +187,7 @@ mod tests {
             w: 100,
             h: 100,
             source: vec![pnex_core::SourceRef {
+                object_property: None,
                 role: "primary".into(),
                 metric: "etl_mentions".into(),
                 device_id: String::new(),

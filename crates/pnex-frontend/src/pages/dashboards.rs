@@ -650,14 +650,27 @@ fn LiveSubView(
     // qu'au premier tick (15 s d'écran vide en vue) — lire `detail` ici
     // garantit le re-run dès qu'il se résout. Un SEUL timer 15 s pour
     // tout le dashboard (D31).
+    // Type dashboard (D187): the object shown, and the current sensor of
+    // each of its series properties.
+    let object_id = use_signal(String::new);
+    let bindings = use_resource(move || {
+        let id = object_id();
+        async move {
+            if id.is_empty() {
+                return Vec::new();
+            }
+            api::ontology::bindings(&id).await.unwrap_or_default()
+        }
+    });
     let batch = use_resource(move || {
+        let b = bindings.read().clone().unwrap_or_default();
         let sources: Vec<pnex_core::SourceRef> = detail
             .read()
             .as_ref()
             .cloned()
             .flatten()
             .map(|d| {
-                d.layout
+                pnex_core::bind_object(&d.layout, &b)
                     .widgets
                     .iter()
                     .flat_map(|w| w.source.iter().cloned())
@@ -672,6 +685,10 @@ fn LiveSubView(
             Some(crate::components::dashboard_live::fetch_live_values(sources).await)
         }
     });
+    let bound = bindings.read().clone().unwrap_or_default();
+    let object_type = detail_loaded
+        .as_ref()
+        .and_then(|d| d.layout.object_type.clone());
     let values: HashMap<String, Option<Vec<TelemetryPoint>>> =
         batch.read().as_ref().cloned().flatten().unwrap_or_default();
     // Dégradé = dérivé au rendu, JAMAIS un set de signal (boucle infinie,
@@ -748,6 +765,11 @@ fn LiveSubView(
                     }
                 }
             }
+            if let Some(t) = object_type {
+                div { class: "mb-4",
+                    crate::components::ontology::ObjectPicker { type_key: t, selected: object_id }
+                }
+            }
             if any_degraded {
                 p { class: "mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-500",
                     {t!("vis-unavailable")}
@@ -757,7 +779,7 @@ fn LiveSubView(
             {
                 match detail_loaded {
                     Some(d) => rsx! {
-                        {live_layout(&d.layout, &values)}
+                        {live_layout(&pnex_core::bind_object(&d.layout, &bound), &values)}
                     },
                     None => rsx! {
                         p { class: "text-gray-500 text-center py-12", "…" }

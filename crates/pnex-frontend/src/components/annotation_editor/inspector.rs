@@ -44,6 +44,7 @@ fn target_for_kind(new_kind: &str, current: &AnnotationTarget) -> AnnotationTarg
         },
         ANNOTATION_KIND_READING => AnnotationTarget::Reading {
             source: pnex_core::SourceRef {
+                object_property: None,
                 role: "primary".into(),
                 metric: String::new(),
                 device_id: slug.unwrap_or_default(),

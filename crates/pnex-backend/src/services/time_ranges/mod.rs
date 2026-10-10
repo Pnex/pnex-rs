@@ -82,6 +82,20 @@ pub async fn resolve_scope<C: ConnectionTrait>(
                 Err(e) => Err(RangeError::Db(DbErr::Custom(e.to_string()))),
             }
         }
+        // Any live object of the org (D182); the id is its identity UUID.
+        ScopeKind::Object => {
+            let uuid = Uuid::parse_str(id).map_err(|_| RangeError::ScopeUnknown)?;
+            match crate::services::ontology::objects::find(db, org_id, uuid).await {
+                Ok(o) if o.valid_to.is_none() => Ok(Scope {
+                    kind,
+                    id: o.id.to_string(),
+                }),
+                Ok(_) | Err(crate::services::ontology::OntologyError::NotFound) => {
+                    Err(RangeError::ScopeUnknown)
+                }
+                Err(e) => Err(RangeError::Db(DbErr::Custom(e.to_string()))),
+            }
+        }
         ScopeKind::Org => {
             let own = org_id.to_string();
             if !id.is_empty() && id != own {

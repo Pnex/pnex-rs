@@ -195,6 +195,7 @@ pub(super) fn ControlPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Ele
                                 if on && w.source.is_empty() {
                                     w.source
                                         .push(SourceRef {
+                                            object_property: None,
                                             role: "state".into(),
                                             metric: String::new(),
                                             device_id: String::new(),

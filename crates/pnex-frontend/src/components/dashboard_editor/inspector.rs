@@ -15,6 +15,7 @@ use pnex_core::{SourceRef, VIZ_WINDOW_PRESETS};
 use super::appearance::AppearancePanel;
 use super::control_panel::ControlPanel;
 use super::home_panel::HomePanel;
+use super::object_panel::ObjectSourcePanel;
 use super::range_bars_panel::RangeBarsPanel;
 use super::symbol_options::SymbolOptionsPanel;
 use super::thermo_panel::ThermoPanel;
@@ -112,6 +113,7 @@ fn widget_panel(
     };
 
     let primary = w.source.first().cloned().unwrap_or(SourceRef {
+        object_property: None,
         role: "primary".into(),
         metric: String::new(),
         device_id: String::new(),
@@ -444,6 +446,9 @@ fn widget_panel(
                     }
                 }
             }
+            if reads_series(&w.widget_type) {
+                ObjectSourcePanel { cx, widget: w.clone(), can_write }
+            }
             if w.widget_type == pnex_core::RANGE_BARS {
                 RangeBarsPanel { cx, widget: w.clone(), can_write }
             }
@@ -742,10 +747,16 @@ fn selected_widget_id(cx: &EditorCx) -> Option<String> {
 }
 
 /// Met à jour la source primaire du widget (crée la source si absente).
+/// Widgets reading one telemetry series that a type dashboard can bind.
+fn reads_series(widget_type: &str) -> bool {
+    matches!(widget_type, "gauge" | "stat" | "line" | "indicator")
+}
+
 fn set_source(l: &mut pnex_core::DashboardLayout, widget_id: &str, f: impl FnOnce(&mut SourceRef)) {
     if let Some(w) = l.widgets.iter_mut().find(|w| w.id == widget_id) {
         if w.source.is_empty() {
             w.source.push(SourceRef {
+                object_property: None,
                 role: "primary".into(),
                 metric: String::new(),
                 device_id: String::new(),
