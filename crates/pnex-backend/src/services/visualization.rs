@@ -194,6 +194,56 @@ fn series_info(
     })
 }
 
+/// Max label sets offered per metric in the catalog (D171).
+const LABEL_SETS_PER_METRIC: usize = 50;
+
+/// Free label set of a catalog sample (platform labels dropped), `None`
+/// when it has none or one that a selector could not carry safely.
+fn label_set_of(sample: &PromQuerySample) -> Option<pnex_core::TelemetryLabelSet> {
+    let metric = sample.metric.get("__name__")?.clone();
+    let labels: std::collections::BTreeMap<String, String> = sample
+        .metric
+        .iter()
+        .filter(|(k, _)| {
+            !k.starts_with("__") && !pnex_core::RESERVED_SERIES_LABELS.contains(&k.as_str())
+        })
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    if labels.is_empty() || pnex_core::check_series_selector_labels(&labels).is_some() {
+        return None;
+    }
+    Some(pnex_core::TelemetryLabelSet { metric, labels })
+}
+
+/// PromQL of one series spec, `None` when it is not safe to query: every
+/// interpolated piece passes a closed charset first (injection boundary).
+/// Without a device the matching series are summed (D171).
+fn series_query(
+    metric: &str,
+    device_id: &str,
+    labels: &std::collections::BTreeMap<String, String>,
+) -> Option<String> {
+    if !valid_metric_name(metric) || pnex_core::check_series_selector_labels(labels).is_some() {
+        return None;
+    }
+    let mut matchers: Vec<String> = Vec::new();
+    if !device_id.is_empty() {
+        if !valid_device_label(device_id) {
+            return None;
+        }
+        matchers.push(format!(r#"device_id="{device_id}""#));
+    } else if labels.is_empty() {
+        return None;
+    }
+    matchers.extend(labels.iter().map(|(k, v)| format!(r#"{k}="{v}""#)));
+    let selector = format!("{metric}{{{}}}", matchers.join(","));
+    Some(if device_id.is_empty() {
+        format!("sum({selector})")
+    } else {
+        selector
+    })
+}
+
 /// Cached instant query (`last_over_time` of the catalog).
 async fn cached_prom_query(
     client: &Client,
@@ -303,6 +353,7 @@ pub async fn series_catalog(
     let degraded = TelemetryCatalog {
         available: false,
         series: vec![],
+        label_sets: vec![],
     };
     let Some(client) = client else {
         return degraded;
@@ -321,6 +372,7 @@ pub async fn series_catalog(
             .metric_streams(&creds.o2_org, &creds.email_passcode)
             .await?;
         let mut series = Vec::new();
+        let mut label_sets: Vec<pnex_core::TelemetryLabelSet> = Vec::new();
         // One query per metric, a bounded number in flight (cached and
         // coalesced per pod for a few seconds).
         let mut jobs = Vec::new();
@@ -349,17 +401,31 @@ pub async fn series_catalog(
             });
             // Une métrique injoignable n'emporte pas les autres.
             match res {
-                Ok(samples) => series.extend(samples.iter().filter_map(|s| series_info(s, &seen))),
+                Ok(samples) => {
+                    // Labelled series (D171) are offered by label set, the
+                    // others by device.
+                    let mut sets = 0;
+                    for s in samples.iter() {
+                        if let Some(set) = label_set_of(s) {
+                            if sets < LABEL_SETS_PER_METRIC {
+                                sets += 1;
+                                label_sets.push(set);
+                            }
+                        } else if let Some(info) = series_info(s, &seen) {
+                            series.push(info);
+                        }
+                    }
+                }
                 Err(e) => {
                     tracing::debug!(org_id, metric = %name, error = %e, "metric not queried")
                 }
             }
         }
-        Ok::<_, String>(series)
+        Ok::<_, String>((series, label_sets))
     })
     .await;
-    let mut catalog = match fetch {
-        Ok(Ok(series)) => series,
+    let (mut catalog, mut label_sets) = match fetch {
+        Ok(Ok(found)) => found,
         Ok(Err(e)) => {
             tracing::warn!(org_id, erreur = %e, "catalogue : O2 en échec, télémétrie dégradée");
             return degraded;
@@ -378,9 +444,11 @@ pub async fn series_catalog(
             .cmp(&b.metric)
             .then_with(|| a.device_id.cmp(&b.device_id))
     });
+    label_sets.sort_by(|a, b| (&a.metric, &a.labels).cmp(&(&b.metric, &b.labels)));
     TelemetryCatalog {
         available: true,
         series: catalog,
+        label_sets,
     }
 }
 
@@ -485,15 +553,17 @@ pub async fn series_batch(
     };
     // Forme valide ? (charset + preset) — l'ordre de la réponse suit
     // l'ordre des specs.
-    let valid: Vec<bool> = specs
+    let queries: Vec<Option<String>> = specs
         .iter()
         .map(|s| {
-            valid_metric_name(&s.metric)
-                && valid_device_label(&s.device_id)
-                && WINDOWS.iter().any(|(key, _)| key == &s.window)
+            WINDOWS
+                .iter()
+                .any(|(key, _)| key == &s.window)
+                .then(|| series_query(&s.metric, &s.device_id, &s.labels))
+                .flatten()
         })
         .collect();
-    let any_valid = valid.iter().any(|v| *v);
+    let any_valid = queries.iter().any(Option::is_some);
     let mut results: Vec<TelemetrySeriesResponse> = specs.iter().map(degraded_item).collect();
     if !any_valid {
         // Tout invalide (ou batch vide) : pas de provisioning ni de
@@ -526,13 +596,12 @@ pub async fn series_batch(
     let fetch = tokio::time::timeout(BATCH_TIMEOUT, async move {
         let mut jobs = Vec::new();
         for (i, s) in specs.iter().enumerate() {
-            if !valid[i] {
+            let Some(query) = queries[i].clone() else {
                 continue; // item already degraded
-            }
+            };
             let Some(&(_, window_secs)) = WINDOWS.iter().find(|(key, _)| key == &s.window) else {
                 continue;
             };
-            let query = format!(r#"{}{{device_id="{}"}}"#, s.metric, s.device_id);
             let (o2_org, passcode) = (creds.o2_org.clone(), creds.email_passcode.clone());
             jobs.push(async move {
                 let res =
@@ -679,5 +748,87 @@ mod last_seen_tests {
             last_seen_sql("soil_moisture"),
             r#"SELECT device_id, max(_timestamp) AS last_ts FROM "soil_moisture" GROUP BY device_id"#
         );
+    }
+}
+
+#[cfg(test)]
+mod label_query_tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn labels(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn query_by_device_and_by_labels() {
+        assert_eq!(
+            series_query("t", "dev-1", &labels(&[])).as_deref(),
+            Some(r#"t{device_id="dev-1"}"#)
+        );
+        assert_eq!(
+            series_query("etl_m", "flow_3", &labels(&[("stream", "inter")])).as_deref(),
+            Some(r#"etl_m{device_id="flow_3",stream="inter"}"#)
+        );
+        assert_eq!(
+            series_query(
+                "media_capture_up",
+                "",
+                &labels(&[("stream", "inter"), ("entity", "x:1")])
+            )
+            .as_deref(),
+            Some(r#"sum(media_capture_up{entity="x:1",stream="inter"})"#)
+        );
+        // Neither a device nor labels: nothing to select.
+        assert_eq!(series_query("t", "", &labels(&[])), None);
+    }
+
+    #[test]
+    fn injection_attempts_are_refused() {
+        for (k, v) in [
+            ("stream", r#"x"}"#),
+            ("stream", "x\n"),
+            ("stream", r#"a\"#),
+            ("stream", "a b"),
+            ("stream", ""),
+            ("stream", "a\",device_id=\"x"),
+            ("x\"}", "a"),
+            ("device_id", "x"),
+            ("__name__", "x"),
+        ] {
+            assert_eq!(series_query("m", "", &labels(&[(k, v)])), None, "{k}={v:?}");
+        }
+        assert_eq!(series_query("m}or{", "", &labels(&[("a", "b")])), None);
+        assert_eq!(series_query("m", "d\"}", &labels(&[("a", "b")])), None);
+        let six: Vec<(String, String)> = (0..6).map(|i| (format!("l{i}"), "v".into())).collect();
+        let six: BTreeMap<String, String> = six.into_iter().collect();
+        assert_eq!(series_query("m", "", &six), None);
+    }
+
+    #[test]
+    fn catalog_label_sets_skip_platform_labels() {
+        let sample = |pairs: &[(&str, &str)]| PromQuerySample {
+            metric: pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            value: (0.0, "1".into()),
+        };
+        let set = label_set_of(&sample(&[
+            ("__name__", "etl_mentions"),
+            ("device_id", "flow_2"),
+            ("source_type", "etl"),
+            ("stream", "inter"),
+        ]))
+        .expect("label set");
+        assert_eq!(set.metric, "etl_mentions");
+        assert_eq!(set.labels, labels(&[("stream", "inter")]));
+        // A plain device series has no free label.
+        assert!(label_set_of(&sample(&[("__name__", "t"), ("device_id", "d")])).is_none());
+        // A value a selector cannot carry is not offered.
+        assert!(label_set_of(&sample(&[("__name__", "t"), ("stream", "a b")])).is_none());
     }
 }

@@ -38,6 +38,8 @@ pub struct SourceCatalog {
     /// Org shared memory live keys → numeric fields (`""` = scalar value),
     /// written by the flow `memory-write` nodes.
     pub memory: BTreeMap<String, Vec<String>>,
+    /// Series read by label set rather than by device (D171).
+    pub labelled: Vec<pnex_core::TelemetryLabelSet>,
 }
 
 /// Corps de l'inspecteur — monté seulement sur sélection (principe 4).
@@ -114,6 +116,7 @@ fn widget_panel(
         device_id: String::new(),
         window: "1h".into(),
         memory: None,
+        labels: Default::default(),
     });
     // Memory source: the "metric" select lists the numeric fields of the
     // key (the stored field stays visible even when not live anymore).
@@ -150,6 +153,7 @@ fn widget_panel(
     // Copie pour la closure du select source (piège FnMut/Fn captures :
     // `catalog` sert aussi au rendu, jamais de move partagé).
     let cat_for_source = catalog.clone();
+    let label_options = label_source_options(&catalog, &primary);
 
     rsx! {
         div { class: "space-y-3",
@@ -227,6 +231,26 @@ fn widget_panel(
                     onchange: move |e| {
                         let v = e.value();
                         let Some(widget_id) = selected_widget_id(&cx) else { return };
+                        if let Some(index) = v.strip_prefix("lbl:") {
+                            let picked = index
+                                .parse::<usize>()
+                                .ok()
+                                .and_then(|i| cat_for_source.labelled.get(i).cloned());
+                            if let Some(set) = picked {
+                                cx.layout
+                                    .with_mut(|l| set_source(
+                                        l,
+                                        &widget_id,
+                                        |s| {
+                                            s.memory = None;
+                                            s.device_id.clear();
+                                            s.metric = set.metric.clone();
+                                            s.labels = set.labels.clone();
+                                        },
+                                    ));
+                            }
+                            return;
+                        }
                         if let Some(key) = v.strip_prefix("mem:") {
                             let field = cat_for_source
                                 .memory
@@ -245,6 +269,7 @@ fn widget_panel(
                                         });
                                         s.device_id.clear();
                                         s.metric.clear();
+                                        s.labels.clear();
                                     },
                                 ));
                             return;
@@ -262,10 +287,11 @@ fn widget_panel(
                                     s.memory = None;
                                     s.device_id = v.clone();
                                     s.metric = first_metric.clone();
+                                    s.labels.clear();
                                 },
                             ));
                     },
-                    if primary.device_id.is_empty() && memory_key.is_none() {
+                    if primary.device_id.is_empty() && memory_key.is_none() && primary.labels.is_empty() {
                         option { value: "", selected: true, disabled: true, {t!("insp-pick-source")} }
                     }
                     if !devices_of(&catalog, &primary.device_id).is_empty() {
@@ -288,6 +314,18 @@ fn widget_panel(
                                     value: "{d}",
                                     selected: primary.device_id == d,
                                     "{d}"
+                                }
+                            }
+                        }
+                    }
+                    if !label_options.is_empty() {
+                        optgroup { label: t!("insp-labelled").to_string(),
+                            for (value, text, selected) in label_options.clone() {
+                                option {
+                                    key: "{value}",
+                                    value: "{value}",
+                                    selected,
+                                    "{text}"
                                 }
                             }
                         }
@@ -356,7 +394,7 @@ fn widget_panel(
                             let Some(widget_id) = selected_widget_id(&cx) else { return };
                             cx.layout.with_mut(|l| set_source(l, &widget_id, |s| s.metric = v.clone()));
                         },
-                        if primary.device_id.is_empty() {
+                        if primary.device_id.is_empty() && primary.labels.is_empty() {
                             option { value: "", selected: true, disabled: true,
                                 {t!("insp-pick-source-metric")}
                             }
@@ -380,7 +418,7 @@ fn widget_panel(
                     }
                     // Série enregistrée absente du catalogue (source
                     // disparue depuis le save) : affichée telle quelle.
-                    if catalog.ready && catalog.by_source.is_empty() {
+                    if catalog.ready && catalog.by_source.is_empty() && catalog.labelled.is_empty() {
                         p { class: "text-[10px] text-gray-400 mt-1", {t!("insp-no-series")} }
                     }
                     field_label {
@@ -612,6 +650,37 @@ fn field_label(label_key: String, label: String) -> Element {
     }
 }
 
+/// Label-set sources (D171) as `(option value, text, selected)`; the saved
+/// set stays listed when the catalog no longer has it.
+fn label_source_options(
+    catalog: &SourceCatalog,
+    primary: &SourceRef,
+) -> Vec<(String, String, bool)> {
+    let text = |metric: &str, labels: &BTreeMap<String, String>| {
+        let pairs: Vec<String> = labels.iter().map(|(k, v)| format!("{k}={v}")).collect();
+        format!("{metric} · {}", pairs.join(", "))
+    };
+    let mut out: Vec<(String, String, bool)> = catalog
+        .labelled
+        .iter()
+        .enumerate()
+        .map(|(i, set)| {
+            let selected = primary.memory.is_none()
+                && set.metric == primary.metric
+                && set.labels == primary.labels;
+            (format!("lbl:{i}"), text(&set.metric, &set.labels), selected)
+        })
+        .collect();
+    if primary.memory.is_none() && !primary.labels.is_empty() && !out.iter().any(|o| o.2) {
+        out.push((
+            "lbl:saved".into(),
+            text(&primary.metric, &primary.labels),
+            true,
+        ));
+    }
+    out
+}
+
 /// Sources réelles (hors devices virtuels de flows), triées — plus the
 /// stored device when it published nothing in the catalog window (kept
 /// visible and selected, like a stale memory key).
@@ -676,6 +745,7 @@ fn set_source(l: &mut pnex_core::DashboardLayout, widget_id: &str, f: impl FnOnc
                 device_id: String::new(),
                 window: "1h".into(),
                 memory: None,
+                labels: Default::default(),
             });
         }
         f(&mut w.source[0]);

@@ -603,6 +603,11 @@ flows-calc-functions-help = Functions: abs round floor ceil sqrt pow min max log
 flows-metric-name = Metric name
 flows-metric-preview = Written series:
 flows-metric-labels-help = Written with device_id=flow_{ $id } · source_type=etl — appears in Visualization like a sensor.
+flows-metric-labels = Series labels
+flows-metric-label-name = name
+flows-metric-label-source = msg.topic, payload.x or fixed value
+flows-metric-label-add = + Add a label
+flows-metric-label-sources-help = At most 5 labels. Source: msg.topic (the message topic), payload.x or payload.x.y (a payload field), otherwise a fixed value. A dashboard reads the series by its labels. Put a taxonomy version in a label; use stable values (stream, entity), never free text: past 200 combinations, new ones are not written.
 
 # ─────────────── Mixed control cards (reg_*) — on-device embedded control (D13/D17) ───────────────
 flows-palette-reg-tt-heat = TT heating control
@@ -986,6 +991,7 @@ insp-source = Source
 insp-devices = Devices
 insp-flows = Flows
 insp-memory = Memory (flows)
+insp-labelled = Labelled series
 insp-memory-badge = memory
 insp-memory-field = Field
 insp-memory-whole-value = (value)
@@ -3470,6 +3476,13 @@ err-media-source-no-stream = Select at least one stream
 err-media-source-stream-invalid = Invalid stream name
 err-media-source-stream-duplicate = This stream is listed twice
 err-media-source-confidence-invalid = Minimum confidence must be between 0 and 1
+err-metric-labels-too-many = At most 5 labels
+err-metric-label-name-invalid = Invalid or reserved label name (lowercase, digits, _; not device_id, pred_dev, source_type, ts_source)
+err-metric-label-source-invalid = Invalid payload path (payload.x or payload.x.y)
+err-metric-label-value-invalid = Invalid fixed label value (1 to 64 characters among letters, digits, _ . : -)
+err-series-labels-too-many = At most 5 labels
+err-series-label-name-invalid = Invalid label name
+err-series-label-value-invalid = Invalid label value
 err-asr-profile-not-found = Transcription profile not found.
 err-asr-profile-name-taken = A transcription profile with this name already exists.
 

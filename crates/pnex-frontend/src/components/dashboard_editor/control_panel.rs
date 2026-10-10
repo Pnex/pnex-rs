@@ -200,6 +200,7 @@ pub(super) fn ControlPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Ele
                                             device_id: String::new(),
                                             window: "1h".into(),
                                             memory: None,
+                                            labels: Default::default(),
                                         });
                                 } else if !on {
                                     w.source.clear();

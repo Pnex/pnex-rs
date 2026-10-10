@@ -35,6 +35,7 @@ fn sync_thermo_sources(w: &mut Widget) {
                     device_id: p.v1.device_id.clone(),
                     window: "1h".into(),
                     memory: p.v1.memory.clone(),
+                    labels: Default::default(),
                 },
                 SourceRef {
                     role: format!("cycle{i}.v2"),
@@ -42,6 +43,7 @@ fn sync_thermo_sources(w: &mut Widget) {
                     device_id: p.v2.device_id.clone(),
                     window: "1h".into(),
                     memory: p.v2.memory.clone(),
+                    labels: Default::default(),
                 },
             ]
         })

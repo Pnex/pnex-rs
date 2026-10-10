@@ -89,6 +89,7 @@ pub fn new_widget(layout: &mut DashboardLayout, id: String, widget_type: &str, x
                 device_id: String::new(),
                 window: "1h".into(),
                 memory: None,
+                labels: Default::default(),
             }],
             None,
         )
@@ -133,6 +134,7 @@ pub fn new_home_card(
                 "1h".into()
             },
             memory: None,
+            labels: Default::default(),
         })
         .collect();
     layout.widgets.push(Widget {

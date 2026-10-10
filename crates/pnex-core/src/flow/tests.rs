@@ -1737,6 +1737,7 @@ fn calc_et_metric_valides() {
             kind: FlowNodeKind::Metric {
                 config: MetricConfig {
                     metric_name: "  ".into(),
+                    ..Default::default()
                 },
             },
         }],
@@ -1774,6 +1775,7 @@ fn projection_noeuds_phase6_estampilles() {
                 kind: FlowNodeKind::Metric {
                     config: MetricConfig {
                         metric_name: "moyenne".into(),
+                        ..Default::default()
                     },
                 },
             },
@@ -3309,4 +3311,96 @@ fn media_source_validates_and_projects() {
         "nodes": [{"id": "a", "kind": "media_source", "config": {"streams": ["x"], "emit": "word"}}]
     }))
     .is_err());
+}
+
+#[test]
+fn metric_labels_are_checked_and_resolved() {
+    let cfg = |pairs: &[(&str, &str)]| MetricConfig {
+        metric_name: "mentions".into(),
+        labels: pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+    };
+    assert_eq!(
+        cfg(&[
+            ("stream", "msg.topic"),
+            ("entity", "payload.entity.id"),
+            ("taxonomy_version", "v1")
+        ])
+        .check(),
+        None
+    );
+    let code = |c: MetricConfig| c.check().map(|x| x.0);
+    assert_eq!(
+        code(cfg(&[("device_id", "x")])),
+        Some("metric_label_name_invalid")
+    );
+    assert_eq!(
+        code(cfg(&[("__x", "x")])),
+        Some("metric_label_name_invalid")
+    );
+    assert_eq!(
+        code(cfg(&[("Stream", "x")])),
+        Some("metric_label_name_invalid")
+    );
+    assert_eq!(
+        code(cfg(&[("a", "payload.a.b.c")])),
+        Some("metric_label_source_invalid")
+    );
+    assert_eq!(
+        code(cfg(&[("a", "payload.")])),
+        Some("metric_label_source_invalid")
+    );
+    assert_eq!(
+        code(cfg(&[("a", "x\"}")])),
+        Some("metric_label_value_invalid")
+    );
+    assert_eq!(code(cfg(&[("a", "")])), Some("metric_label_value_invalid"));
+    let six: Vec<(String, String)> = (0..6).map(|i| (format!("l{i}"), "v".into())).collect();
+    let six: Vec<(&str, &str)> = six.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    assert_eq!(code(cfg(&six)), Some("metric_labels_too_many"));
+
+    let topic = json!("France Inter");
+    let payload = json!({"entity": {"id": "macron", "n": 3}, "ok": true});
+    let r = |src: &str| {
+        MetricLabelSource::parse(src)
+            .unwrap()
+            .resolve(Some(&topic), Some(&payload))
+    };
+    assert_eq!(r("msg.topic"), "France_Inter");
+    assert_eq!(r("msg.payload.entity.id"), "macron");
+    assert_eq!(r("payload.entity.n"), "3");
+    assert_eq!(r("payload.ok"), "true");
+    assert_eq!(r("payload.missing"), "unknown");
+    assert_eq!(r("payload.entity"), "unknown");
+    assert_eq!(r("v1"), "v1");
+
+    // The projection carries the label sources to the runtime.
+    let g = FlowGraph {
+        nodes: vec![FlowNode {
+            id: "m1".into(),
+            name: None,
+            position: None,
+            outputs: vec![],
+            inputs: vec![],
+            kind: FlowNodeKind::Metric {
+                config: cfg(&[("stream", "msg.topic")]),
+            },
+        }],
+    };
+    let meta = FlowArtifactMeta {
+        flow_id: 1,
+        version_number: 1,
+        org_id: 1,
+        o2_org: "o".into(),
+    };
+    let out = to_red_flows_json(&g, &meta);
+    let node = out
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["type"] == "pnex-metric")
+        .unwrap();
+    assert_eq!(node["labels"], json!({"stream": "msg.topic"}));
 }

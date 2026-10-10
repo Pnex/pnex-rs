@@ -155,7 +155,9 @@ pub async fn fetch_live_values(
         .map(|s| (s.series_key(), None))
         .collect();
     let mut specs = series_specs(&sources);
-    specs.sort_by(|a, b| (&a.metric, &a.device_id).cmp(&(&b.metric, &b.device_id)));
+    specs.sort_by(|a, b| {
+        (&a.metric, &a.device_id, &a.labels).cmp(&(&b.metric, &b.device_id, &b.labels))
+    });
     let mut memory = Vec::new();
     for s in sources {
         if let Some(m) = s.memory {
@@ -165,14 +167,14 @@ pub async fn fetch_live_values(
     memory.sort();
     memory.dedup();
     if !specs.is_empty() {
+        // Results come back in spec order: the spec gives the key (labels
+        // included, D171).
+        let keys: Vec<String> = specs.iter().map(|s| s.series_key()).collect();
         if let Ok(resp) =
             api::dashboards::series_batch(pnex_core::SeriesBatchRequest { specs }).await
         {
-            for r in resp.results {
-                map.insert(
-                    format!("{}|{}", r.metric, r.device_id),
-                    if r.available { Some(r.points) } else { None },
-                );
+            for (key, r) in keys.into_iter().zip(resp.results) {
+                map.insert(key, if r.available { Some(r.points) } else { None });
             }
         }
     }
@@ -319,7 +321,8 @@ fn series_specs(sources: &[pnex_core::SourceRef]) -> Vec<pnex_core::SeriesSpec> 
             .find(|(k, _)| *k == w)
             .map(|(_, s)| *s)
     };
-    let mut by_series: HashMap<(String, String), String> = HashMap::new();
+    type SeriesId = (String, String, std::collections::BTreeMap<String, String>);
+    let mut by_series: HashMap<SeriesId, String> = HashMap::new();
     for s in sources
         .iter()
         .filter(|s| s.memory.is_none() && !s.is_unset())
@@ -330,7 +333,7 @@ fn series_specs(sources: &[pnex_core::SourceRef]) -> Vec<pnex_core::SeriesSpec> 
             "1h".to_string()
         };
         by_series
-            .entry((s.metric.clone(), s.device_id.clone()))
+            .entry((s.metric.clone(), s.device_id.clone(), s.labels.clone()))
             .and_modify(|cur| {
                 if secs(&window) > secs(cur) {
                     *cur = window.clone();
@@ -340,11 +343,14 @@ fn series_specs(sources: &[pnex_core::SourceRef]) -> Vec<pnex_core::SeriesSpec> 
     }
     by_series
         .into_iter()
-        .map(|((metric, device_id), window)| pnex_core::SeriesSpec {
-            metric,
-            device_id,
-            window,
-        })
+        .map(
+            |((metric, device_id, labels), window)| pnex_core::SeriesSpec {
+                metric,
+                device_id,
+                window,
+                labels,
+            },
+        )
         .collect()
 }
 
@@ -359,6 +365,7 @@ mod window_tests {
             device_id: "dev".into(),
             window: window.into(),
             memory: None,
+            labels: Default::default(),
         }
     }
 

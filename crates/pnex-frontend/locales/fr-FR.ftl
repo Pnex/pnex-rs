@@ -630,6 +630,11 @@ flows-reg-tt-heat-hint = Chauffage : relais ON sous (consigne − hystérésis),
 flows-reg-tt-cool-hint = Clim : relais ON au-dessus de (consigne + hystérésis), OFF au retour à la consigne.
 flows-reg-pid-hint = PID : le duty % est réparti sur le cycle relais (anti-windup, dérivée sur la mesure).
 flows-metric-labels-help = Écrite avec device_id=flow_{ $id } · source_type=etl — apparaît dans Visualisation comme un capteur.
+flows-metric-labels = Labels de la série
+flows-metric-label-name = nom
+flows-metric-label-source = msg.topic, payload.x ou valeur fixe
+flows-metric-label-add = + Ajouter un label
+flows-metric-label-sources-help = 5 labels au plus. Source : msg.topic (le topic du message), payload.x ou payload.x.y (un champ du payload), sinon une valeur fixe. Un dashboard lit la série par ses labels. Mettez la version d'une taxonomie dans un label ; utilisez des valeurs stables (flux, entité), jamais du texte libre : au-delà de 200 combinaisons, les nouvelles ne sont pas écrites.
 
 # ── Assistant IA ──
 ai-title = Assistant IA
@@ -985,6 +990,7 @@ insp-source = Source
 insp-devices = Appareils
 insp-flows = Flows
 insp-memory = Mémoire (flows)
+insp-labelled = Séries à labels
 insp-memory-badge = mémoire
 insp-memory-field = Champ
 insp-memory-whole-value = (valeur)
@@ -3469,6 +3475,13 @@ err-media-source-no-stream = Choisissez au moins un flux
 err-media-source-stream-invalid = Nom de flux invalide
 err-media-source-stream-duplicate = Ce flux est listé deux fois
 err-media-source-confidence-invalid = La confiance minimale doit être entre 0 et 1
+err-metric-labels-too-many = 5 labels au plus
+err-metric-label-name-invalid = Nom de label invalide ou réservé (minuscules, chiffres, _ ; pas device_id, pred_dev, source_type, ts_source)
+err-metric-label-source-invalid = Chemin de payload invalide (payload.x ou payload.x.y)
+err-metric-label-value-invalid = Valeur fixe de label invalide (1 à 64 caractères parmi lettres, chiffres, _ . : -)
+err-series-labels-too-many = 5 labels au plus
+err-series-label-name-invalid = Nom de label invalide
+err-series-label-value-invalid = Valeur de label invalide
 err-asr-profile-not-found = Profil de transcription introuvable.
 err-asr-profile-name-taken = Un profil de transcription porte déjà ce nom.
 

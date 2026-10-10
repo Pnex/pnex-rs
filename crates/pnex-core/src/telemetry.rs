@@ -20,6 +20,33 @@ pub struct TelemetryCatalog {
     /// Faux : pas de credentials O2 pour l'org, erreur ou timeout (5 s).
     pub available: bool,
     pub series: Vec<TelemetrySeriesInfo>,
+    /// Series without a device, read by label set (D171): platform
+    /// `media_*` series and labelled `etl_` series. Bounded per metric.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub label_sets: Vec<TelemetryLabelSet>,
+}
+
+/// One label set of a metric offered to the dashboard pickers (D171).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TelemetryLabelSet {
+    pub metric: String,
+    pub labels: std::collections::BTreeMap<String, String>,
+}
+
+/// Key of a series in the live-values map: `metric|device_id`, plus the
+/// labels in their sorted order when there are any (D171).
+pub fn series_key(
+    metric: &str,
+    device_id: &str,
+    labels: &std::collections::BTreeMap<String, String>,
+) -> String {
+    let mut key = format!("{metric}|{device_id}");
+    if !labels.is_empty() {
+        let pairs: Vec<String> = labels.iter().map(|(k, v)| format!("{k}={v}")).collect();
+        key.push('|');
+        key.push_str(&pairs.join(","));
+    }
+    key
 }
 
 /// Une série disponible = une métrique sur un device (dernière valeur
@@ -67,6 +94,17 @@ pub struct SeriesSpec {
     pub device_id: String,
     /// Preset de fenêtre (`viz::VIZ_WINDOW_PRESETS`).
     pub window: String,
+    /// Free label selector (D171); with labels, `device_id` may be empty
+    /// (the read then sums the matching series).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub labels: std::collections::BTreeMap<String, String>,
+}
+
+impl SeriesSpec {
+    /// Key of this series in the live-values map (same as `SourceRef`).
+    pub fn series_key(&self) -> String {
+        series_key(&self.metric, &self.device_id, &self.labels)
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -86,6 +124,15 @@ pub struct SeriesBatchResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn labels_change_the_series_key() {
+        let mut labels = std::collections::BTreeMap::new();
+        assert_eq!(series_key("m", "d", &labels), "m|d");
+        labels.insert("b".to_string(), "2".to_string());
+        labels.insert("a".to_string(), "1".to_string());
+        assert_eq!(series_key("m", "", &labels), "m||a=1,b=2");
+    }
 
     /// Forme complète telle que sérialisée par le backend.
     #[test]

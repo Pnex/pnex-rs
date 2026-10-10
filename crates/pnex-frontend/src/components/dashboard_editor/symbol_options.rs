@@ -177,6 +177,7 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                                                 device_id: String::new(),
                                                 window: "5m".into(),
                                                 memory: None,
+                                                labels: Default::default(),
                                             });
                                     } else if !on {
                                         w.source.clear();

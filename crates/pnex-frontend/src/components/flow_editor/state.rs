@@ -94,9 +94,7 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
                 },
             },
             PaletteKind::Metric => FlowNodeKind::Metric {
-                config: MetricConfig {
-                    metric_name: String::new(),
-                },
+                config: MetricConfig::default(),
             },
             // Config typée mais volontairement incomplète : les violations
             // `coolprop_*` du bandeau guident la saisie (école device/calc).

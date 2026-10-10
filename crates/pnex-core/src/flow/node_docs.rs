@@ -117,8 +117,11 @@ pub const NODE_DOCS: &[NodeDoc] = &[
     NodeDoc {
         kind: "metric",
         summary: "Writes the payload to OpenObserve as a metric (series etl_<name>, virtual device flow_<id>), visible on the visualization pages.",
-        config: &[("metric_name", "string — the etl_ prefix and sanitization are automatic")],
-        notes: "",
+        config: &[
+            ("metric_name", "string — the etl_ prefix and sanitization are automatic"),
+            ("labels", "optional {label_name: source}, at most 5: source = \"msg.topic\", \"payload.<field>\" or \"msg.payload.<a>.<b>\" (one or two levels), anything else is a literal ([A-Za-z0-9_.:-], 1..=64 chars). Names match ^[a-z_][a-z0-9_]{0,31}$; device_id, pred_dev, source_type, ts_source and __* are reserved"),
+        ],
+        notes: "Labels let a dashboard read the series by label set instead of by device (e.g. {\"stream\": \"msg.topic\", \"taxonomy_version\": \"v1\"}). Resolved values are sanitized (other chars become _, cut to 64), a missing path gives \"unknown\". Pitfall: one node writes at most 200 distinct label-value combinations; past that, new combinations are silently dropped (known ones keep being written). Use stable values (a stream slug, an entity id, a taxonomy version), never free text.",
     },
     NodeDoc {
         kind: "cool_prop",

@@ -11,6 +11,27 @@ pub(super) fn MetricForm(
     flow_id: i64,
 ) -> Element {
     let mut name = use_signal(move || initial.metric_name.clone());
+    // Label rows kept in entry order; the graph stores them as a map.
+    let mut label_rows = use_signal(move || {
+        let rows: Vec<(String, String)> = initial
+            .labels
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        rows
+    });
+    let mut sync_labels = move |rows: Vec<(String, String)>| {
+        label_rows.set(rows.clone());
+        patch_selected(&mut cx, move |node: &mut FlowNode| {
+            if let FlowNodeKind::Metric { config } = &mut node.kind {
+                config.labels = rows
+                    .into_iter()
+                    .filter(|(k, _)| !k.trim().is_empty())
+                    .collect();
+            }
+        });
+    };
+    let can_add_label = can_write && label_rows.read().len() < pnex_core::SERIES_LABELS_MAX;
     let preview = use_memo(move || {
         let raw = name.cloned();
         if raw.trim().is_empty() {
@@ -48,6 +69,89 @@ pub(super) fn MetricForm(
                 }
             }
             p { class: "text-xs text-gray-400", {t!("flows-metric-labels-help", id : flow_id)} }
+            div { class: "space-y-1",
+                span { class: "text-xs font-medium text-gray-500 block", {t!("flows-metric-labels")} }
+                for (index, (label, source)) in label_rows.read().iter().enumerate() {
+                    MetricLabelRow {
+                        key: "{index}",
+                        index,
+                        name: label.clone(),
+                        source: source.clone(),
+                        can_write,
+                        on_change: move |(i, new_name, new_source): (usize, String, String)| {
+                            let mut rows = label_rows.read().clone();
+                            if let Some(row) = rows.get_mut(i) {
+                                *row = (new_name, new_source);
+                            }
+                            sync_labels(rows);
+                        },
+                        on_remove: move |i: usize| {
+                            let mut rows = label_rows.read().clone();
+                            if i < rows.len() {
+                                rows.remove(i);
+                            }
+                            sync_labels(rows);
+                        },
+                    }
+                }
+                if can_add_label {
+                    button {
+                        class: "text-xs text-blue-600 hover:text-blue-700",
+                        onclick: move |_| {
+                            let mut rows = label_rows.read().clone();
+                            rows.push((String::new(), String::new()));
+                            sync_labels(rows);
+                        },
+                        {t!("flows-metric-label-add")}
+                    }
+                }
+                p { class: "text-xs text-gray-400", {t!("flows-metric-label-sources-help")} }
+            }
+        }
+    }
+}
+
+/// One label row of the metric node: name + source, removable.
+#[component]
+fn MetricLabelRow(
+    index: usize,
+    name: String,
+    source: String,
+    can_write: bool,
+    on_change: EventHandler<(usize, String, String)>,
+    on_remove: EventHandler<usize>,
+) -> Element {
+    let name_edit = name.clone();
+    let source_edit = source.clone();
+    rsx! {
+        div { class: "flex gap-1 items-center",
+            input {
+                class: "w-28 px-2 py-1 border border-gray-300 rounded text-xs font-mono",
+                placeholder: t!("flows-metric-label-name"),
+                value: "{name}",
+                disabled: !can_write,
+                oninput: move |event| {
+                    let new_name = event.value();
+                    on_change.call((index, new_name, source_edit.clone()));
+                },
+            }
+            input {
+                class: "flex-1 px-2 py-1 border border-gray-300 rounded text-xs font-mono",
+                placeholder: t!("flows-metric-label-source"),
+                value: "{source}",
+                disabled: !can_write,
+                oninput: move |event| {
+                    let new_source = event.value();
+                    on_change.call((index, name_edit.clone(), new_source));
+                },
+            }
+            if can_write {
+                button {
+                    class: "text-xs text-red-500 hover:text-red-700",
+                    onclick: move |_| on_remove.call(index),
+                    "✕"
+                }
+            }
         }
     }
 }

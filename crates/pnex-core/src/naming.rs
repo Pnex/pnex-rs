@@ -119,6 +119,145 @@ pub fn normalize_measurement_name(raw: &str) -> String {
     out
 }
 
+// ───────────── Free series labels (D171): shared write/read rules ─────────────
+
+/// Max free labels on one series (metric node config and dashboard source).
+pub const SERIES_LABELS_MAX: usize = 5;
+/// Max length of a free label value.
+pub const SERIES_LABEL_VALUE_MAX: usize = 64;
+/// Labels owned by the platform: a free label never overrides them.
+pub const RESERVED_SERIES_LABELS: &[&str] = &[
+    "__name__",
+    "device_id",
+    "pred_dev",
+    "source_type",
+    "ts_source",
+];
+
+/// Free label name: `^[a-z_][a-z0-9_]{0,31}$`, not reserved, no `__` prefix.
+pub fn valid_series_label_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    name.len() <= 32
+        && (first.is_ascii_lowercase() || first == '_')
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        && !name.starts_with("__")
+        && !RESERVED_SERIES_LABELS.contains(&name)
+}
+
+/// Free label value safe to interpolate in a PromQL selector: 1..=64 chars
+/// of `[A-Za-z0-9_.:-]` (no quote, brace, backslash or newline possible).
+pub fn valid_series_label_value(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= SERIES_LABEL_VALUE_MAX
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-'))
+}
+
+/// Runtime label value: trimmed, every char outside the value charset
+/// becomes `_`, cut to 64 chars; empty → `unknown`. Always passes
+/// [`valid_series_label_value`].
+pub fn sanitize_series_label_value(raw: &str) -> String {
+    let out: String = raw
+        .trim()
+        .chars()
+        .take(SERIES_LABEL_VALUE_MAX)
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if out.is_empty() {
+        "unknown".into()
+    } else {
+        out
+    }
+}
+
+/// Selector check of a dashboard label set (read side): count, names and
+/// values. `Some((code, message))` = refused before any query.
+pub fn check_series_selector_labels(
+    labels: &std::collections::BTreeMap<String, String>,
+) -> Option<(&'static str, String)> {
+    if labels.len() > SERIES_LABELS_MAX {
+        return Some((
+            "series_labels_too_many",
+            format!("at most {SERIES_LABELS_MAX} labels"),
+        ));
+    }
+    for (k, v) in labels {
+        if !valid_series_label_name(k) {
+            return Some((
+                "series_label_name_invalid",
+                format!("invalid label name `{k}`"),
+            ));
+        }
+        if !valid_series_label_value(v) {
+            return Some((
+                "series_label_value_invalid",
+                format!("invalid value for label `{k}`"),
+            ));
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod label_tests {
+    use super::*;
+
+    #[test]
+    fn label_names_and_values() {
+        for ok in ["stream", "_x", "entity_1", "taxonomy_version"] {
+            assert!(valid_series_label_name(ok), "{ok}");
+        }
+        let long_name = "a".repeat(33);
+        for bad in [
+            "",
+            "Stream",
+            "1a",
+            "__x",
+            "device_id",
+            "pred_dev",
+            "a-b",
+            "a\"",
+            long_name.as_str(),
+        ] {
+            assert!(!valid_series_label_name(bad), "{bad}");
+        }
+        assert!(valid_series_label_value("france-inter:v1.2_x"));
+        let long_value = "x".repeat(65);
+        for bad in [
+            "",
+            "a\"}",
+            "a\nb",
+            "a b",
+            "a\\",
+            "a{b}",
+            long_value.as_str(),
+        ] {
+            assert!(!valid_series_label_value(bad), "{bad:?}");
+        }
+        assert_eq!(sanitize_series_label_value("  Le Monde\"} "), "Le_Monde__");
+        assert_eq!(sanitize_series_label_value("   "), "unknown");
+        assert_eq!(sanitize_series_label_value(&"é".repeat(70)).len(), 64);
+        let mut m = std::collections::BTreeMap::new();
+        m.insert("stream".to_string(), "inter".to_string());
+        assert_eq!(check_series_selector_labels(&m), None);
+        m.insert("x".into(), "a\"}".into());
+        assert_eq!(
+            check_series_selector_labels(&m).map(|c| c.0),
+            Some("series_label_value_invalid")
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

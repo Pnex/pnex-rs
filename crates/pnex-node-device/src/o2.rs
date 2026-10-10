@@ -131,8 +131,19 @@ pub fn etl_series(
     value: f64,
     ts_ms: i64,
 ) -> pnex_core::TimeSeries {
+    etl_series_labelled(metric, virtual_device, value, ts_ms, &Default::default())
+}
+
+/// [`etl_series`] plus free labels (D171), already validated by the caller.
+pub fn etl_series_labelled(
+    metric: String,
+    virtual_device: String,
+    value: f64,
+    ts_ms: i64,
+    extra: &std::collections::BTreeMap<String, String>,
+) -> pnex_core::TimeSeries {
     use pnex_core::{Label, Sample};
-    pnex_core::TimeSeries {
+    let mut series = pnex_core::TimeSeries {
         labels: vec![
             Label {
                 name: "__name__".into(),
@@ -159,7 +170,14 @@ pub fn etl_series(
             value,
             timestamp: ts_ms,
         }],
-    }
+    };
+    series
+        .labels
+        .extend(extra.iter().map(|(name, value)| Label {
+            name: name.clone(),
+            value: value.clone(),
+        }));
+    series
 }
 
 /// Parse la réponse de l'API query instantanée : les samples vivent sous

@@ -49,6 +49,7 @@ fn target_for_kind(new_kind: &str, current: &AnnotationTarget) -> AnnotationTarg
                 device_id: slug.unwrap_or_default(),
                 window: "1h".into(),
                 memory: None,
+                labels: Default::default(),
             },
             display: None,
             min: None,

@@ -25,6 +25,7 @@ Dashboards (Visualization › Dashboards) are live screens built from widgets bo
 - Switches, sliders, buttons, lists, steppers, commands and colours you place become org **controls** once the dashboard is saved. Operating them only stores a value: a deployed flow with a **Control source** node → **Device (write)** makes something happen. Use **Create the flow…** in the inspector (save first). A card marked **No effect** has no deployed flow listening.
 - **All off** in a room writes the "off" value of each of its power controls, through the same flows.
 - The Weather card reads memory keys written by a flow (**Weather** node → **Memory write**).
+- Series without a device (audio stream supervision, or a **metric** node with **Series labels** such as `stream` = `msg.topic`) appear in the **Source** list under **Labelled series**, shown as `metric · stream=inter`: the widget reads (and sums) the series matching those labels.
 - "Stale version" on save: **Reload** or **Overwrite**.
 - **Labels** are the single organization-wide labelling mechanism: chips `name` or `name:value` (lowercase letters, digits, `_`, `-`), the same on devices, media, dashboards, flows, 3D tours, map POIs and their folders. Labels set on a folder are inherited by everything stored in it.
 - Viewers see dashboards read-only with controls disabled.

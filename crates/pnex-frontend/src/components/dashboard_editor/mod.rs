@@ -304,6 +304,11 @@ pub fn DashboardEditor(
             .unwrap_or_default(),
         ready: cat.is_some(),
         memory: memory_catalog,
+        labelled: cat
+            .as_ref()
+            .filter(|c| c.available)
+            .map(|c| c.label_sets.clone())
+            .unwrap_or_default(),
     };
 
     let device_metrics = sources_catalog.by_source.clone();

@@ -177,18 +177,25 @@ async fn series_batch_degrade_par_item_sans_o2() {
                 "specs": [
                     { "metric": "soil_moisture", "device_id": "esp-001", "window": "5m" },
                     { "metric": "x\"}or up{", "device_id": "esp-001", "window": "1h" },
-                    { "metric": "soil_temperature", "device_id": "esp-002", "window": "24h" }
+                    { "metric": "soil_temperature", "device_id": "esp-002", "window": "24h" },
+                    // D171 label selectors: device-less valid, hostile value isolated.
+                    { "metric": "media_capture_up", "device_id": "", "window": "1h",
+                      "labels": { "stream": "inter" } },
+                    { "metric": "media_capture_up", "device_id": "", "window": "1h",
+                      "labels": { "stream": "x\"}or up{" } }
                 ]
             }))
             .await;
         assert_eq!(res.status_code(), 200, "jamais de 400 sur spec invalide");
         let body: serde_json::Value = res.json();
         let results = body["results"].as_array().expect("results");
-        assert_eq!(results.len(), 3, "un item par spec, même ordre");
+        assert_eq!(results.len(), 5, "un item par spec, même ordre");
         assert_eq!(results[0]["available"], false);
         assert_eq!(results[0]["metric"], "soil_moisture");
         assert_eq!(results[1]["available"], false, "spec hostile isolée");
         assert_eq!(results[2]["available"], false);
+        assert_eq!(results[3]["metric"], "media_capture_up");
+        assert_eq!(results[4]["available"], false, "hostile label isolated");
 
         // Sans specs : batch vide mais 200 (dashboard sans source).
         let res = server

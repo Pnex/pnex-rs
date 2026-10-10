@@ -375,11 +375,12 @@ fn DetailSheet(widget: Widget, values: Values, on_close: EventHandler<()>) -> El
     let specs: Vec<pnex_core::SeriesSpec> = widget
         .source
         .iter()
-        .filter(|s| s.memory.is_none() && !s.device_id.is_empty())
+        .filter(|s| s.memory.is_none() && !s.is_unset())
         .map(|s| pnex_core::SeriesSpec {
             metric: s.metric.clone(),
             device_id: s.device_id.clone(),
             window: "24h".into(),
+            labels: s.labels.clone(),
         })
         .collect();
     let history = use_resource(move || {
@@ -433,9 +434,9 @@ fn DetailSheet(widget: Widget, values: Values, on_close: EventHandler<()>) -> El
                         values: Some(values.clone()),
                     }
                 }
-                for c in curves {
+                for (i, c) in curves.iter().enumerate() {
                     HistoryCurve {
-                        key: "{c.metric}|{c.device_id}",
+                        key: "{i}-{c.metric}|{c.device_id}",
                         label: format!("{} · {}", c.metric, c.device_id),
                         points: c.points.clone(),
                     }

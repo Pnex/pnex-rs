@@ -239,6 +239,7 @@ mod tests {
             device_id: "d".into(),
             window: "1h".into(),
             memory: None,
+            labels: Default::default(),
         };
     }
 }

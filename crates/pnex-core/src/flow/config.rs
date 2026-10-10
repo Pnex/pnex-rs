@@ -208,6 +208,109 @@ pub struct MetricConfig {
     /// Nom saisi par l'utilisateur — préfixé `etl_` et sanitisé à l'écriture
     /// (`etl_metric_name`), prévisualisé à l'identique dans l'éditeur.
     pub metric_name: String,
+    /// Free series labels (D171): label name → source (`msg.topic`,
+    /// `msg.payload.<field>` / `payload.<field>` with one or two levels, or
+    /// a literal), resolved per message by the runtime.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub labels: std::collections::BTreeMap<String, String>,
+}
+
+/// Max distinct label-value tuples one `metric` node writes; new tuples
+/// past it are dropped while known ones keep being written (D171).
+pub const METRIC_LABEL_TUPLES_MAX: usize = 200;
+
+/// Where a `metric` label value comes from (D171).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MetricLabelSource<'a> {
+    /// `msg.topic`.
+    Topic,
+    /// Dotted path under `msg.payload` (one or two levels).
+    Payload(Vec<&'a str>),
+    /// Fixed value.
+    Literal(&'a str),
+}
+
+impl<'a> MetricLabelSource<'a> {
+    /// Parses a label source; `None` = a malformed payload path.
+    pub fn parse(raw: &'a str) -> Option<Self> {
+        let raw = raw.trim();
+        if raw == "msg.topic" {
+            return Some(Self::Topic);
+        }
+        let Some(path) = raw
+            .strip_prefix("msg.payload.")
+            .or_else(|| raw.strip_prefix("payload."))
+        else {
+            return Some(Self::Literal(raw));
+        };
+        let parts: Vec<&str> = path.split('.').collect();
+        (parts.len() <= 2 && parts.iter().all(|p| !p.is_empty())).then_some(Self::Payload(parts))
+    }
+
+    /// Label value for one message: numbers, booleans and strings are
+    /// stringified then sanitized; a missing path gives `unknown`.
+    pub fn resolve(
+        &self,
+        topic: Option<&serde_json::Value>,
+        payload: Option<&serde_json::Value>,
+    ) -> String {
+        let found = match self {
+            Self::Literal(v) => return crate::naming::sanitize_series_label_value(v),
+            Self::Topic => topic,
+            Self::Payload(parts) => parts
+                .iter()
+                .try_fold(payload, |cur, key| Some(cur?.get(*key)))
+                .flatten(),
+        };
+        let text = match found {
+            Some(serde_json::Value::String(s)) => s.clone(),
+            Some(serde_json::Value::Number(n)) => n.to_string(),
+            Some(serde_json::Value::Bool(b)) => b.to_string(),
+            _ => String::new(),
+        };
+        crate::naming::sanitize_series_label_value(&text)
+    }
+}
+
+impl MetricConfig {
+    /// Label check shared by the save validation and the runtime build.
+    pub fn check(&self) -> Option<(&'static str, String)> {
+        if self.metric_name.trim().is_empty() {
+            return Some(("metric_name_missing", "the metric name is required".into()));
+        }
+        if self.labels.len() > crate::naming::SERIES_LABELS_MAX {
+            return Some((
+                "metric_labels_too_many",
+                format!("at most {} labels", crate::naming::SERIES_LABELS_MAX),
+            ));
+        }
+        for (name, source) in &self.labels {
+            if !crate::naming::valid_series_label_name(name) {
+                return Some((
+                    "metric_label_name_invalid",
+                    format!("invalid or reserved label name `{name}`"),
+                ));
+            }
+            match MetricLabelSource::parse(source) {
+                None => {
+                    return Some((
+                        "metric_label_source_invalid",
+                        format!("invalid payload path for label `{name}`"),
+                    ))
+                }
+                Some(MetricLabelSource::Literal(v))
+                    if !crate::naming::valid_series_label_value(v) =>
+                {
+                    return Some((
+                        "metric_label_value_invalid",
+                        format!("invalid value for label `{name}`"),
+                    ))
+                }
+                Some(_) => {}
+            }
+        }
+        None
+    }
 }
 
 /// Configuration du nœud custom `pnex-coolprop` — propriétés
