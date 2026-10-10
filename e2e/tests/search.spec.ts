@@ -12,7 +12,7 @@ test.describe('search', { tag: ['@search', '@i18n'] }, () => {
     });
 
     await app.goto('/');
-    const search = page.getByRole('textbox', { name: app.t('common-search') }).first();
+    const search = page.getByPlaceholder(app.t('search-placeholder')).first();
     await search.fill(name);
     // Result buttons read "<name> <kind>".
     const hit = page.getByRole('button', { name: new RegExp(`^${escapeRe(name)}`) });
