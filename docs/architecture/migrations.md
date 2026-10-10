@@ -57,7 +57,11 @@ les données OpenObserve et RustFS ne sont pas concernées.
    ou avec défaut, une table, un index : une migration. Retirer ou
    renommer : en deux releases — (a) le code cesse de lire/écrire
    l'ancien élément, (b) une migration ultérieure le supprime.
-3. **Les deux moteurs, toujours.** Chaque `up()` est écrit pour
+3. ~~**Les deux moteurs, toujours.**~~ **Caduque depuis le 2026-10-10**
+   (décision #19 de `roadmap.md`) : PostgreSQL seul, SQLite abandonné ;
+   une nouvelle migration n'écrit plus de branche SQLite. Le retrait du
+   script SQLite et du test de parité passe donc avant la prochaine
+   migration. Règle d'origine : chaque `up()` est écrit pour
    PostgreSQL **et** SQLite. SQLite ne sait ni ajouter une FK ni modifier
    une colonne par `ALTER` : reconstruire la table (créer la nouvelle,
    copier, supprimer, renommer) plutôt que de sauter l'étape sur SQLite.

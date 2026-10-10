@@ -89,6 +89,55 @@ passe par les surfaces existantes.
 - Ouverture (après G1/G2) : geofencing — un nœud flow lit la position,
   calc entre dans zone/hors zone → notify.
 
+#### Geofencing : références et architecture pressentie (non développé, à trancher au PRD)
+
+Rien n'est implémenté ; D38 (`device_positions` + séries O2) est le seul
+socle existant. Références à étudier (idées reprises, aucun code copié) :
+
+- **Tile38** (Go, MIT) — modèle d'événements :
+  - événements typés `enter` / `exit` / `inside` / `outside` / `cross`
+    (`cross` = traversée entre deux points jamais vus dedans, utile à
+    faible fréquence GPS) ;
+  - fences **statiques** et **roaming** (deux objets mobiles qui se
+    rapprochent : camion ↔ dépôt mobile) ;
+  - hooks déclaratifs : une fence = requête persistante (NEARBY / WITHIN
+    / INTERSECTS) attachée à une sortie → chez PNEX, un nœud de flow.
+- **Traccar** (Java, Apache-2.0) — modèle de domaine « suivi d'asset » :
+  geofences en WKT (cercle, polygone, polyligne) rattachées à des devices
+  ou groupes ; **polyligne + tolérance = corridor d'itinéraire** (alerte
+  sortie de trajet) ; événements `geofenceEnter`/`geofenceExit` →
+  notifications ; schéma et API REST comme plan du modèle Postgres.
+- **ThingsBoard** (nœud action « GPS geofencing ») — anti-rebond :
+  durée minimale dans la zone / hors zone avant de confirmer l'événement.
+- **Home Assistant / OwnTracks** — UX grand public : zones cercle +
+  rayon, point trop imprécis ignoré (`gps_accuracy_m`, D38), états de
+  présence ; inspiration pour l'éditeur de zones sur /map.
+- **PostGIS** — stockage, pas temps réel : `geography` + index GiST,
+  `ST_Contains`, `ST_DWithin`, `ST_Buffer` (corridors). Jamais une requête
+  SQL par point de télémétrie. Licence GPL-2 acceptée (2026-10-10) :
+  extension de la base, programme séparé non modifié, PNEX ne lui parle
+  qu'en SQL (aucun lien avec le code PNEX) ; si une image livrée l'embarque,
+  notice + lien sources upstream (école ffmpeg). PostgreSQL est le seul
+  moteur (décision #19) : pas de repli SQLite à prévoir.
+- **Crates Rust** (évaluation in-process, licences à vérifier au LICENSE
+  réel) : `geo` / `geo-types` (point-dans-polygone, distance, buffer),
+  `rstar` (R-tree, fences candidates parmi des milliers), `h3o` (H3 pur
+  Rust, pré-filtrage O(1) par cellules), `geozero` / `wkt` (échange WKT ↔
+  GeoJSON MapLibre).
+
+Architecture pressentie :
+
+1. Fences définies en base et **versionnées comme les flows** ; une fence
+   = un POI avec une géométrie et des règles d'événements (cohérent avec
+   POI-first D35–D39 et les placements D43).
+2. **Projection en mémoire** (R-tree ou H3) au déploiement.
+3. **Machine à états par couple (device, fence)** : `outside → entering →
+   inside → exiting`, avec dwell time et seuil de précision GPS. État à
+   placer en Valkey (cluster D106 : un device peut changer de pod).
+4. **Événements typés** (`enter`, `exit`, `cross`, `roaming`) vers le
+   moteur de flows (nouveau nœud = `NodeDoc` + fiche assistant, D142) et
+   l'alerting (nœud notify, journal `event_log`).
+
 ### Axe X — Extension navigateur (C1b → C3) : élevé
 
 La spec est écrite (`extension-collector.md`, 10 décisions tranchées) ;
@@ -122,7 +171,7 @@ tâche).
 | **M2M résilient (M1–M3)** | PRD posé (`m2m-resilient.md`) | M1 POC zenoh-pico WiFi (zéro achat), M2 6LoWPAN à prototyper avant engagement |
 | **Android** | Build + login PKCE E2E validé ; storage persistant ; scan LAN ; APK arm64 publié à chaque `main` vert (CI Apps, pré-release `nightly`, signé debug → sideload) ; bouton Flash masqué (`flash::offered()`), package `io.pnex.app` (`[bundle]` Dioxus.toml) | Keystore de release (Play Store) ; libellé de l'app encore dérivé du nom du crate |
 | **Desktop natif** | **Livré 2026-10-01** — Linux x86_64 / aarch64 et Windows x86_64 (cross mingw) : login, flash USB par esptool embarqué ; validé mainteneur sur Linux et Windows ; publié à chaque `main` vert (CI Apps, pré-release `nightly`), smoke test de démarrage sur un runner Windows | Paquets installables (.deb/.msi), signature de code, macOS |
-| **Schéma de base** (D120) | **Livré 2026-10-01** — une migration de base (SQL PG + SQLite), reliquats pré-coffre retirés, dérive SQLite corrigée (tables mortes, `map_pins`, FK manquantes), test de parité PG/SQLite bloquant (`migrations.md`) | Palier SQLite : E2E réel de bout en bout (jamais déroulé sur une install SQLite) |
+| **Schéma de base** (D120) | **Livré 2026-10-01** — une migration de base (SQL PG + SQLite), reliquats pré-coffre retirés, dérive SQLite corrigée (tables mortes, `map_pins`, FK manquantes), test de parité PG/SQLite bloquant (`migrations.md`) | **SQLite abandonné** (décision #19) : retirer le script SQLite de la base, le test de parité et les branches SQLite du code |
 | **Organisations (D42)** | Backend livré (labels, containment, edges) | **UI arbre** (couches org dans l'UI) |
 | **Auth (D19)** | Rauthy livré, branding API, password grant, OIDC natif | — |
 | **CoolProp** | In-process mergé (d126225) | — |
@@ -643,6 +692,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 | 14 | ~~Version firmware par rebuild~~ — tranché 2026-10-03 : 1 build = 1 enregistrement = 1 version, OTA en lot manuelle (O22) | ✅ |
 | 16 | Flux média : runtime ASR (sherpa-onnx, whisper.cpp ou les deux), ~~tags Loco ou queue dédiée~~ (tranché à la relecture du 2026-10-09 : tags, ASR configurable), superviseur de capture in-process (proposé), agrégation « par plage » (primitive D182), ~~plafond des extraits, amendement de D3~~ (sans objet : pas de publication), ordre vis-à-vis de l'ontologie (`media-ingest.md` §14) | Lot 0 (POC ASR) ; ordre à la validation |
 | 17 | Ontologie 0.2.0 : identifiant d'objet global (UUID vs `ResourceRef`), format du schéma de propriétés (maison vs JSON Schema), liaison device → objet (lien générique vs table dédiée), packs forkables ou surcouche, langage de requête textuel, spécification publique du noyau ; ordre P2.13 / P2.14 / P2.1 vu le gel des nouveaux piliers (`ontology.md` §9) | À la validation du PRD |
+| 19 | ~~Garder SQLite à côté de PostgreSQL~~ — tranché 2026-10-10 : **PostgreSQL obligatoire, SQLite abandonné**. La parité coûte à chaque migration et chaque requête (`ilike`, FK par reconstruction de table, pas de PostGIS) et pèse de plus en plus lourd à mesure que le produit grandit ; l'argument Raspberry Pi ne tient pas, Postgres reste léger sur un Pi. Les nouveaux développements ne gèrent plus SQLite | ✅ |
 | 18 | Media & Vision Studio : pose humaine ou poste de travail, tract vs `ort`, entraînement CPU, D174 en usage interne, détection → `device_write`, version cible (après 0.2.0 ou exception) (`media-vision-studio.md` §10) | À la validation du PRD |
 
 ## Journal de la roadmap
@@ -766,3 +816,9 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   d'implémenté : P2.15 (`media-vision-studio.md`, décision #18), relu
   contre la doc (RustFS au lieu de MinIO, tract, kinds existants, LLM
   d'org D119, conflits D173/D174 et gel 0.2.0 signalés).
+- **2026-10-10 (PostgreSQL seul)** — Décision #19 : SQLite abandonné,
+  PostgreSQL obligatoire ; plus aucune parité à écrire dans les nouveaux
+  développements, retrait du code SQLite existant à planifier. Axe G :
+  références et architecture pressentie du geofencing (Tile38, Traccar,
+  ThingsBoard, Home Assistant, PostGIS accepté en extension malgré la
+  GPL-2, crates `geo`/`rstar`/`h3o`/`geozero`).
