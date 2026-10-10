@@ -944,7 +944,7 @@ Le lot 1 avance par tranches, chacune testée et commitée seule.
 | 1b — Capture `server` | fetcher filtré (icecast, http_file, HLS ; redirections suivies à la main, secret à l'origine exacte, débit et tailles bornés), ffmpeg confiné (seccomp + Landlock + rlimits), découpage PCM en Rust avec chevauchement, superviseur par flux avec bail `task:media-capture:<id>` et backoff, segments `captured` ; capté et transcrit à la main sur France Inter (icecast et HLS) | ✅ 2026-10-10 |
 | 1c — Transcription | worker `transcribe_segment` (claim idempotent, `skipped_backlog` au-delà de `PNEX_ASR_MAX_LAG_SECS`, échec = `failed` + code court, audio gardé), document `tx_<slug>` (écriture O2 réessayée 3 fois), PUBLISH sur `pnex:media:v1:{org}:{slug}:tx`, purge D161, `GET /api/v1/media/transcripts` (slugs résolus en flux de l'org, `match_all` échappé, borné) ; bout-en-bout réel validé (Canary 180M → O2 → recherche « croûte » → Valkey), test `media_live` ignoré par défaut | ✅ 2026-10-10 (backend) |
 | 1d — Modèles audio | `ml_models` de tâche `asr` (les chemins vision filtrent `detection`), import d'une archive sherpa-onnx (`.tar`, `.tar.bz2`, `.tar.gz`, `.zip`) ou d'un GGML (sniffé par sa signature), extraction bornée et aplatie, famille lue dans les fichiers, licence SPDX obligatoire, check sur l'échantillon FLEURS fr embarqué (CC BY 4.0) → `load_ms`, RTF, WER ; `/api/v1/asr/models` | ✅ 2026-10-10 (backend) ; check par porteur (`ml_model_checks`) et test par dépôt d'audio : à faire |
-| 1f — UI | `/streams` en trois onglets : flux, transcriptions (recherche plein texte, filtre par flux), modèles et profils (import par téléversement ou depuis la médiathèque, licence, vérification avec débit soutenable et WER, profils) ; fiche KB complétée | ✅ 2026-10-10 (sans vérification navigateur) |
+| 1f — UI | `/streams` en trois onglets : flux, transcriptions (recherche plein texte, filtre par flux), modèles et profils (import par téléversement ou depuis la médiathèque, licence, vérification avec débit soutenable et WER, profils) ; fiche KB complétée | ✅ 2026-10-10 |
 | 1e — Images + porteur `worker` | ffmpeg et bwrap dans les images, `/internal/media/segment` | à faire |
 
 Écarts au PRD décidés en implémentant :
@@ -975,6 +975,15 @@ Le lot 1 avance par tranches, chacune testée et commitée seule.
   contrôle ; un build de release fournit `SHERPA_ONNX_ARCHIVE_DIR` (archive
   téléchargée et vérifiée contre une sha256 épinglée) — à câbler avec les
   images (tranche 1e).
+- Plafond mémoire du runtime ASR : `PNEX_ASR_MAX_MEMORY_MB` (8 Gio par
+  défaut) ; mesuré : Parakeet TDT 0.6B int8 se bloque **sans erreur** sous
+  1 Gio d'espace d'adressage et charge à partir de 2 Gio (onnxruntime
+  réserve bien plus qu'il ne touche). Le décodeur ffmpeg garde 1 Gio.
+- Vérification navigateur faite (2026-10-10, serveur du worktree sur un
+  port à part) : onglets, liste, transcriptions, modèles avec débit
+  soutenable, formulaire avec secret et TDM ; capture HLS de France Inter
+  par le superviseur en tâche de fond, 3 segments de 30 s transcrits par
+  Parakeet en ~0,8 s chacun, horloge `pdt`.
 - Le texte est stocké dans le champ O2 `message` (champ plein texte par
   défaut, comme les événements D84) : `match_all` refuse un champ `text`
   sans réglage du stream. Le DTO l'expose sous `text`.

@@ -7,6 +7,9 @@
 //!   (sherpa CPU, whisper.cpp Vulkan…);
 //! - `PNEX_ASR_MODELS_DIR` (temp dir): extracted models, rebuilt on demand;
 //! - `PNEX_ASR_THREADS` (4), `PNEX_ASR_PROVIDER` (`cpu` | `cuda`);
+//! - `PNEX_ASR_MAX_MEMORY_MB` (8192, 0 = none): address-space cap of a
+//!   runtime process. Measured: Parakeet TDT 0.6B int8 hangs silently at
+//!   1 GiB and loads from 2 GiB;
 //! - `PNEX_ASR_SANDBOX` (`kernel` | `none`): GPU providers open device
 //!   files read-write, which the kernel confinement refuses.
 
@@ -37,6 +40,8 @@ pub struct AsrSettings {
     pub threads: u32,
     pub provider: String,
     pub sandbox: SandboxMode,
+    /// Bytes, 0 = none.
+    pub max_memory: u64,
 }
 
 impl AsrSettings {
@@ -52,6 +57,11 @@ impl AsrSettings {
                 .unwrap_or(4)
                 .clamp(1, 64),
             provider: var("PNEX_ASR_PROVIDER").unwrap_or_else(|| "cpu".into()),
+            max_memory: var("PNEX_ASR_MAX_MEMORY_MB")
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(8192)
+                * 1024
+                * 1024,
             sandbox: match var("PNEX_ASR_SANDBOX").as_deref() {
                 Some("none") => SandboxMode::None,
                 _ => SandboxMode::Kernel,
@@ -154,6 +164,7 @@ pub fn launch(
         },
         threads: settings.threads,
         provider: settings.provider.clone(),
+        max_memory: settings.max_memory,
     })
 }
 
