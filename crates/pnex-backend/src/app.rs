@@ -278,6 +278,12 @@ impl Hooks for App {
                 ctx,
             ))
             .await?;
+        // Document search indexing (doc-search.md P1).
+        queue
+            .register(crate::workers::index_document::IndexDocumentWorker::build(
+                ctx,
+            ))
+            .await?;
         // Capture of `capture_on = worker` streams on a mesh worker (D160),
         // opt-in by PNEX_MEDIA_CAPTURE_WORKER.
         crate::services::media_ingest::capture::spawn_worker_supervisor(ctx);

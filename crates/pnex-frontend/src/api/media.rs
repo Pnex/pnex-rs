@@ -19,6 +19,10 @@ pub enum MediaKind {
     Floorplan,
     /// ONNX model backing a vision registry entry (camera-video.md D81).
     Model,
+    /// Text document (txt, md, docx, pdf) indexed for search (doc-search.md).
+    Document,
+    /// Spreadsheet (csv, xlsx, ods) indexed for search (doc-search.md).
+    Table,
 }
 
 impl MediaKind {
@@ -29,6 +33,8 @@ impl MediaKind {
             MediaKind::Splat => "splat",
             MediaKind::Floorplan => "floorplan",
             MediaKind::Model => "model",
+            MediaKind::Document => "document",
+            MediaKind::Table => "table",
         }
     }
 }
@@ -76,6 +82,8 @@ impl MediaAsset {
             "splat" => MediaKind::Splat,
             "floorplan" => MediaKind::Floorplan,
             "model" => MediaKind::Model,
+            "document" => MediaKind::Document,
+            "table" => MediaKind::Table,
             _ => MediaKind::Photo,
         }
     }
@@ -177,6 +185,80 @@ pub async fn versions(id: &str) -> Result<Vec<MediaVersion>, ApiError> {
     )
     .await?;
     Ok(page.results)
+}
+
+/// One document search hit (`GET /api/v1/media/search`). The snippet wraps
+/// matches in ⟦ and ⟧; it is user data, render it as text only.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct SearchHit {
+    pub chunk_id: String,
+    pub asset_id: String,
+    pub asset_name: String,
+    pub kind: String,
+    pub filename: String,
+    pub page: Option<i64>,
+    pub heading: Option<String>,
+    pub snippet: String,
+    pub score: f64,
+}
+
+/// `GET /api/v1/media/search?q=&kind=&k=` — lexical search over the
+/// current versions of documents and tables.
+pub async fn search(
+    q: &str,
+    kind: Option<MediaKind>,
+    k: Option<u32>,
+) -> Result<Vec<SearchHit>, ApiError> {
+    #[derive(serde::Deserialize)]
+    struct Hits {
+        hits: Vec<SearchHit>,
+    }
+
+    let mut path = format!("/api/v1/media/search?q={}", urlencode(q));
+    if let Some(kind) = kind {
+        path.push_str(&format!("&kind={}", kind.as_str()));
+    }
+    if let Some(k) = k {
+        path.push_str(&format!("&k={k}"));
+    }
+    let hits: Hits = client::request(reqwest::Method::GET, &path, None).await?;
+    Ok(hits.hits)
+}
+
+/// Index state of an asset's current version (`GET /api/v1/media/{id}/index`).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct IndexState {
+    /// `pending | extracting | indexed | error | needs_ocr`.
+    pub status: String,
+    pub error_code: Option<String>,
+    pub page_count: Option<i64>,
+    pub chunk_count: i64,
+}
+
+/// `GET /api/v1/media/{id}/index` — `None` when never indexed.
+pub async fn index_state(id: &str) -> Result<Option<IndexState>, ApiError> {
+    #[derive(serde::Deserialize)]
+    struct Envelope {
+        index: Option<IndexState>,
+    }
+
+    let env: Envelope = client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/media/{}/index", urlencode(id)),
+        None,
+    )
+    .await?;
+    Ok(env.index)
+}
+
+/// `POST /api/v1/media/{id}/index` — queue a reindex (202, empty body).
+pub async fn reindex(id: &str) -> Result<Option<()>, ApiError> {
+    client::request_opt(
+        reqwest::Method::POST,
+        &format!("/api/v1/media/{}/index", urlencode(id)),
+        None,
+    )
+    .await
 }
 
 /// Paramètres d'upload (métadonnées en query, octets en corps).

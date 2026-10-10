@@ -195,6 +195,9 @@ pub use resources::*;
 /// Ontology meta-model (D176–D191): object and link types as data.
 pub mod ontology;
 
+/// Document extraction + chunking of the media library search (doc-search.md).
+pub mod doc_extract;
+
 /// Machine error codes shared backend ↔ frontend (i18n) — doctrine and
 /// `ALL` registry; `err-<kebab>` resolution happens client-side at render
 /// time.

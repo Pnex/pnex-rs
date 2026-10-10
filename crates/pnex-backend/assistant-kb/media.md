@@ -4,7 +4,7 @@ title: Media library
 kind: feature
 pages: /media
 nodes: 
-err_codes: media-write-forbidden, media-last-version, media-file-too-large
+err_codes: media-write-forbidden, media-last-version, media-file-too-large, media-format-unsupported
 tools: 
 tags: media, médias, library, bibliothèque, photo, panorama, 360, splat, floor plan, plan, upload, version, take 360, onnx
 ---
@@ -23,3 +23,4 @@ The Media library (Data › Library) stores the organization's versioned files: 
 - Previews of some formats are only available in the web interface.
 - **Labels** are the single organization-wide labelling mechanism: chips `name` or `name:value` (lowercase letters, digits, `_`, `-`), the same on devices, media, dashboards, flows, 3D tours, map POIs and their folders. Labels set on a folder are inherited by everything stored in it. Edit them in the **Labels** card of a media.
 - Only Owners, Admins and Members can upload, version and delete.
+- Only known formats are accepted, and the file's extension must match its content: images (JPEG, PNG, WebP, GIF, AVIF, HEIC), splats (.ply, .splat, .ksplat, .spz), models (.onnx, GGML/GGUF, sherpa-onnx .tar/.tar.gz/.tar.bz2/.zip archives) and documents or tables (PDF, Word, text, Markdown, CSV, Excel, ODS). Anything else, a renamed file or a format that does not fit the chosen kind is refused (*media-format-unsupported*).

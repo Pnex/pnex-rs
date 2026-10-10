@@ -127,11 +127,11 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
 /// Asset média (UUID) inséré via l'API upload.
 async fn create_media(server: &axum_test::TestServer, token: &str, org: i64, name: &str) -> String {
     let res = server
-        .post("/api/v1/media?name=Test&filename=loop.bin&kind=photo&content_type=application/octet-stream")
+        .post("/api/v1/media?name=Test&filename=loop.jpg&kind=photo&content_type=application/octet-stream")
         .add_header("Content-Type", "application/octet-stream")
         .add_header("Authorization", bearer(token))
         .add_header("X-Org-Id", org.to_string())
-        .bytes("bytes-stub".into())
+        .bytes(vec![0xFF, 0xD8, 0xFF, 0xD9].into())
         .await;
     assert_eq!(res.status_code(), 201, "upload média : {}", res.text());
     let _ = name;

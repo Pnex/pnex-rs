@@ -430,6 +430,21 @@ pub fn tool_specs() -> Vec<ToolSpec> {
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"def":{"type":"object"},"expected_version":{"type":"integer"}},"required":["def"]}"#).expect("static schema"),
         },
         ToolSpec {
+            name: "search_docs",
+            description: "Searches the organization's documents and tables (media library: PDF, Word, text, Markdown, CSV, Excel/ODS) by words or exact codes (fault codes, part numbers). Returns passages (chunk_id, document, page or section, excerpt with matches between ⟦ ⟧). Cite the document and page/section of every fact you use; if nothing relevant comes back, say so instead of guessing. Read-only.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"query":{"type":"string"},"kind":{"type":"string","enum":["document","table"]},"k":{"type":"integer","minimum":1,"maximum":50}},"required":["query"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "read_chunk",
+            description: "Reads a passage found by search_docs with its neighbours (context = passages on each side, 0 to 3, default 1). Read-only.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"chunk_id":{"type":"string"},"context":{"type":"integer","minimum":0,"maximum":3}},"required":["chunk_id"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "open_page",
+            description: "Full text of one page of a PDF (or one sheet of a spreadsheet, numbered from 1) of a document found by search_docs (asset_id). Read-only.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"asset_id":{"type":"string"},"page":{"type":"integer","minimum":1}},"required":["asset_id","page"]}"#).expect("static schema"),
+        },
+        ToolSpec {
             name: "validate_flow_graph",
             description: "Valide un graphe de flow (structure, nœuds, câblage) SANS le sauvegarder — renvoie les violations à corriger. À appeler avant chaque create_flow/update_flow.",
             input_schema: json!({
@@ -568,6 +583,9 @@ pub async fn execute(
         "open_link" => super::ontology_tools::open_link(deps, args).await,
         "close_link" => super::ontology_tools::close_link(deps, args).await,
         "save_object_type" => super::ontology_tools::save_object_type(deps, args).await,
+        "search_docs" => super::doc_tools::search_docs(deps, args).await,
+        "read_chunk" => super::doc_tools::read_chunk(deps, args).await,
+        "open_page" => super::doc_tools::open_page(deps, args).await,
         _ => Err(format!(
             "unknown tool: {name} — only the tools listed in this conversation are available"
         )
@@ -990,6 +1008,22 @@ pub fn summarize(name: &str, out: &ToolOutcome) -> TraceSummary {
                 "ai-trace-ontology-type-saved",
                 json!({"key": k, "version": ver}),
                 format!("type {k} v{ver}"),
+            )
+        }
+        "search_docs" => {
+            let n = count(&v["hits"]);
+            s(
+                "ai-trace-doc-hits",
+                json!({"count": n}),
+                format!("{n} document passage(s)"),
+            )
+        }
+        "read_chunk" | "open_page" => {
+            let nm = shown(&v["chunks"][0]["asset_name"]);
+            s(
+                "ai-trace-doc-read",
+                json!({"name": nm}),
+                format!("read \"{nm}\""),
             )
         }
         _ => s("ai-trace-ok", json!({}), "ok".into()),
@@ -1539,6 +1573,9 @@ mod tests {
                 "open_link",
                 "close_link",
                 "save_object_type",
+                "search_docs",
+                "read_chunk",
+                "open_page",
                 "validate_flow_graph",
                 "validate_calc_expression",
                 "create_flow",

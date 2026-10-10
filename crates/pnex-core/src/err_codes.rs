@@ -88,6 +88,19 @@ pub const DASHBOARD_VERSION_CONFLICT: &str = "dashboard-version-conflict";
 pub const MEDIA_WRITE_FORBIDDEN: &str = "media-write-forbidden";
 pub const MEDIA_LAST_VERSION: &str = "media-last-version";
 pub const MEDIA_FILE_TOO_LARGE: &str = "media-file-too-large";
+/// Upload refused: content not an allowed format, extension not matching
+/// it, or format not fitting the asset's kind (media_sniff allowlist).
+pub const MEDIA_FORMAT_UNSUPPORTED: &str = "media-format-unsupported";
+/// Document indexing (doc-search.md P1): format not indexable.
+pub const MEDIA_INDEX_UNSUPPORTED: &str = "media-index-unsupported";
+/// Document indexing: container or page count over the extraction limits.
+pub const MEDIA_INDEX_TOO_LARGE: &str = "media-index-too-large";
+/// Document indexing: file corrupt or unparsable.
+pub const MEDIA_INDEX_MALFORMED: &str = "media-index-malformed";
+/// Document indexing: bytes missing from the media store.
+pub const MEDIA_INDEX_UNREADABLE: &str = "media-index-unreadable";
+/// Reindex asked on an asset that is not a document or a table.
+pub const MEDIA_INDEX_NOT_A_DOCUMENT: &str = "media-index-not-a-document";
 pub const FUNCTIONS_WRITE_FORBIDDEN: &str = "functions-write-forbidden";
 pub const FUNCTIONS_RUNTIME_DISABLED: &str = "functions-runtime-disabled";
 pub const ANNOT_WRITE_FORBIDDEN: &str = "annot-write-forbidden";
@@ -556,6 +569,12 @@ pub const ALL: &[&str] = &[
     MEDIA_WRITE_FORBIDDEN,
     MEDIA_LAST_VERSION,
     MEDIA_FILE_TOO_LARGE,
+    MEDIA_FORMAT_UNSUPPORTED,
+    MEDIA_INDEX_UNSUPPORTED,
+    MEDIA_INDEX_TOO_LARGE,
+    MEDIA_INDEX_MALFORMED,
+    MEDIA_INDEX_UNREADABLE,
+    MEDIA_INDEX_NOT_A_DOCUMENT,
     FUNCTIONS_WRITE_FORBIDDEN,
     FUNCTIONS_RUNTIME_DISABLED,
     ANNOT_WRITE_FORBIDDEN,

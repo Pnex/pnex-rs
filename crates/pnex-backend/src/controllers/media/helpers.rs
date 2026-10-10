@@ -12,6 +12,18 @@ pub(super) fn conflict(code: &str, msg: &str) -> Error {
     )
 }
 
+/// 400 of a file whose content is not an allowed format, whose extension
+/// lies about it, or that does not fit the asset's kind.
+pub(crate) fn format_unsupported() -> Error {
+    Error::CustomError(
+        StatusCode::BAD_REQUEST,
+        loco_rs::controller::ErrorDetail::new(
+            pnex_core::err_codes::MEDIA_FORMAT_UNSUPPORTED,
+            "File format not allowed, or its extension does not match its content".to_string(),
+        ),
+    )
+}
+
 pub(super) fn forbidden(code: &str, msg: &str) -> Error {
     Error::CustomError(
         StatusCode::FORBIDDEN,

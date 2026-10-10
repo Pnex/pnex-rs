@@ -18,6 +18,7 @@ pub mod context;
 pub mod conversations;
 pub mod dashboard_tools;
 pub mod diagnose;
+pub mod doc_tools;
 pub mod error;
 pub mod knowledge;
 pub mod more_tools;

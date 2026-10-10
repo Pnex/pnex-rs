@@ -80,6 +80,8 @@ pub(super) fn UploadModal(on_close: Callback<()>, on_uploaded: Callback<()>) -> 
                         option { value: "splat", {t!("media-kind-splat")} }
                         option { value: "floorplan", {t!("media-kind-floorplan")} }
                         option { value: "model", {t!("media-kind-model")} }
+                        option { value: "document", {t!("media-kind-document")} }
+                        option { value: "table", {t!("media-kind-table")} }
                     }
                 }
                 div { class: crate::components::modal::MODAL_FOOTER,
@@ -103,6 +105,8 @@ pub(super) fn UploadModal(on_close: Callback<()>, on_uploaded: Callback<()>) -> 
                                         "splat" => Some(MediaKind::Splat),
                                         "floorplan" => Some(MediaKind::Floorplan),
                                         "model" => Some(MediaKind::Model),
+                                        "document" => Some(MediaKind::Document),
+                                        "table" => Some(MediaKind::Table),
                                         _ => None,
                                     },
                                     content_type: {

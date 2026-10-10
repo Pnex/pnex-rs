@@ -76,7 +76,7 @@ async fn registry_validation_and_broken_model() {
             &alice,
             org,
             "broken.onnx",
-            b"not a real onnx".to_vec(),
+            b"\x08\x07not a real onnx".to_vec(),
         )
         .await;
         assert_eq!(onnx["kind"], "model");

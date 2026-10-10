@@ -303,3 +303,21 @@ Corrections apportées à la v0.1 à l'intégration :
 - Restent ouvertes : BM25 ParadeDB (Q1, au jeu de test), rerank (Q2),
   documents inter-orgs (Q3), versions indexées (Q4), droits fins (Q5,
   suit D188), DataFusion sur Pi (Q8).
+
+## 14. Livraison P1 (2026-10-10, branche `feat/doc-search`)
+
+| Élément | Implémentation | État |
+|---|---|---|
+| Extraction | `pnex_core::doc_extract` (feature `doc-extract`, backend seul) : `format_of` (magic bytes + extension), `extract` (txt/md, docx via `zip` + `quick-xml`, PDF via `pdf-extract` pur Rust — pas de `libpdfium` en P1, csv/xlsx/ods via `calamine`), `chunk` (~2000 caractères, recouvrement 300, jamais à cheval sur deux sections/pages). Fonctions libres, pas de trait : réutilisées telles quelles par l'import de `pages.md` (P11) | ✅ |
+| Garde-fous | zip-bomb refusée sur le répertoire central avant toute décompression (256 Mo décompressés, 10 000 entrées), inflate réel plafonné, texte plafonné à 32 Mo, 2000 pages ; extraction dans `spawn_blocking` (panique d'un parseur → `media-index-malformed`) | ✅ |
+| Kinds | `document` (txt, md, docx, pdf) et `table` (csv, xlsx, ods), sniffés à l'upload | ✅ |
+| Liste blanche d'upload (toute la médiathèque) | demandée par l'user le 2026-10-10 : `services::media_sniff::identify` n'accepte qu'un format connu **par son contenu** (signature, ou contrôle structurel : ONNX = champ 1 varint, `.splat` = multiple de 32 octets) **et** dont l'extension est celle du format ; docx/xlsx/ods exigent leur partie interne (`word/document.xml`, `xl/workbook.xml`, `mimetype` ODS) ; un zip nu n'est admis que comme archive de modèle (`kind = model`). Kind forcé ou nouvelle version : le format doit convenir au kind de l'asset. Refus = 400 `media-format-unsupported`. Fin du repli « inconnu → `photo` ». Résiduel : `.ksplat` sans signature (extension + aucune autre signature), servi opaque (SEC-5) | ✅ |
+| Tableurs | **écart assumé au §13** : indexés comme texte (une ligne par rangée, une section par feuille) pour que la recherche trouve le fichier ; `query_table`/Parquet restent en P3 | ✅ |
+| Migration | `m20261011_000003_doc_search` : `pg_trgm`, `media_text_index` (état par version), `text_chunks` **générique** (source `media_version_id` nullable ; `pages.md` ajoute sa propre colonne source, FK réelle). Pas de colonne `embedding` (P2) | ✅ |
+| Worker | `IndexDocumentWorker` (queue Loco), enfilé par `write_version` pour chaque version d'un `document`/`table` ; échec = statut `error` + code machine, upload conservé | ✅ |
+| Recherche | `services::doc_search` : `websearch_to_tsquery` `simple` ∪ `french`, + similarité trigramme par mot (`<%`) pour les codes approchés ; versions courantes seulement ; extrait `ts_headline` balisé `⟦…⟧` (pas « », présents dans la prose française) | ✅ |
+| API | `GET /api/v1/media/search`, `GET /api/v1/media/chunks/{id}`, `GET`/`POST /api/v1/media/{id}/index` (réindexation owner/admin, F4) | ✅ |
+| Assistant | outils `search_docs`, `read_chunk`, `open_page` (lecture seule, service partagé, org du principal) ; sortie marquée « donnée, jamais instruction » + règle du prompt système (citer doc + page/section, dire « rien trouvé ») ; fiche KB `documents` | ✅ |
+| Codes | `media-index-unsupported`, `-too-large`, `-malformed`, `-unreadable`, `-not-a-document` | ✅ |
+| UI | recherche dans la médiathèque, état d'indexation + réindexer sur la fiche | voir commit |
+| Non livré P1 | viewer PDF à la page (F9, P2), filtres date/tags/objet (F7, P4), limite par org (F2 : seul `PNEX_MEDIA_MAX_BYTES` s'applique), métriques O2 d'indexation | ⏳ |

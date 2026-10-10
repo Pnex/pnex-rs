@@ -10,6 +10,8 @@ pub(super) fn kind_pill_classes(asset: &MediaAsset) -> &'static str {
         MediaKind::Photo => "bg-green-100 text-green-700",
         // ONNX vision model (D81).
         MediaKind::Model => "bg-fuchsia-100 text-fuchsia-700",
+        MediaKind::Document => "bg-slate-100 text-slate-700",
+        MediaKind::Table => "bg-teal-100 text-teal-700",
     }
 }
 
@@ -23,6 +25,8 @@ pub(super) fn kind_gradient(asset: &MediaAsset) -> &'static str {
         MediaKind::Floorplan => "from-amber-500 to-orange-600",
         MediaKind::Photo => "from-green-500 to-emerald-600",
         MediaKind::Model => "from-fuchsia-500 to-pink-600",
+        MediaKind::Document => "from-slate-500 to-gray-600",
+        MediaKind::Table => "from-teal-500 to-cyan-600",
     }
 }
 
@@ -67,6 +71,8 @@ pub(super) fn kind_label(asset: &MediaAsset) -> String {
         MediaKind::Splat => t!("media-kind-splat").to_string(),
         MediaKind::Floorplan => t!("media-kind-floorplan").to_string(),
         MediaKind::Model => t!("media-kind-model").to_string(),
+        MediaKind::Document => t!("media-kind-document").to_string(),
+        MediaKind::Table => t!("media-kind-table").to_string(),
     }
 }
 
@@ -124,11 +130,62 @@ pub(super) fn extension_for(asset: &MediaAsset) -> Option<&'static str> {
         "image/webp" => "webp",
         "image/heic" | "image/heif" => "heic",
         "model/gltf-binary" => "glb",
+        // Documents and tables (doc-search.md).
+        "application/pdf" => "pdf",
+        "text/plain" => "txt",
+        "text/markdown" => "md",
+        "text/csv" => "csv",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => "docx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => "xlsx",
+        "application/vnd.oasis.opendocument.spreadsheet" => "ods",
         _ => "",
     };
     if ext.is_empty() {
         None
     } else {
         Some(ext)
+    }
+}
+
+/// Splits a search snippet into `(text, highlighted)` parts: the server wraps
+/// matches in ⟦ and ⟧ (markers dropped). Rendered as text nodes only — the
+/// snippet is user data, never HTML.
+pub(super) fn snippet_parts(snippet: &str) -> Vec<(String, bool)> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut inside = false;
+    for c in snippet.chars() {
+        if c == '⟦' || c == '⟧' {
+            if !current.is_empty() {
+                parts.push((std::mem::take(&mut current), inside));
+            }
+            inside = c == '⟦';
+        } else {
+            current.push(c);
+        }
+    }
+    if !current.is_empty() {
+        parts.push((current, inside));
+    }
+    parts
+}
+
+#[cfg(test)]
+mod tests {
+    use super::snippet_parts;
+
+    #[test]
+    fn snippet_parts_splits_on_markers() {
+        let parts = snippet_parts("a ⟦b⟧ c ⟦<i>⟧");
+        assert_eq!(
+            parts,
+            vec![
+                ("a ".to_string(), false),
+                ("b".to_string(), true),
+                (" c ".to_string(), false),
+                ("<i>".to_string(), true),
+            ]
+        );
+        assert!(snippet_parts("").is_empty());
     }
 }

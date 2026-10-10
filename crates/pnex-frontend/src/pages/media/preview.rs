@@ -123,6 +123,12 @@ pub(super) fn MediaPreview(
                         MediaKind::Model => rsx! {
                             icons::Eye { class: "h-3 w-3" }
                         },
+                        MediaKind::Document => rsx! {
+                            icons::BookOpen { class: "h-3 w-3" }
+                        },
+                        MediaKind::Table => rsx! {
+                            icons::Database { class: "h-3 w-3" }
+                        },
                     }
                     {kind_label(&asset)}
                 }

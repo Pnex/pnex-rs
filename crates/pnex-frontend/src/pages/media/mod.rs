@@ -106,6 +106,8 @@ pub fn Media() -> Element {
                 "panorama" => vec![MediaKind::Panorama],
                 "floorplan" => vec![MediaKind::Floorplan],
                 "model" => vec![MediaKind::Model],
+                "document" => vec![MediaKind::Document],
+                "table" => vec![MediaKind::Table],
                 _ => vec![MediaKind::Splat],
             },
             search: {
@@ -122,6 +124,27 @@ pub fn Media() -> Element {
         async move {
             let _ = reload();
             api::media::list(&filters).await
+        }
+    });
+
+    // Document search (doc-search.md P1): typed live, run on Enter; a
+    // non-empty submitted query swaps the table for the hit list.
+    let doc_query = use_signal(String::new);
+    let mut doc_submitted = use_signal(String::new);
+    let doc_search = use_resource(move || {
+        let q = doc_submitted().trim().to_string();
+        let kind = match filter_kind().as_str() {
+            "document" => Some(MediaKind::Document),
+            "table" => Some(MediaKind::Table),
+            _ => None,
+        };
+        async move {
+            let _ = reload();
+            if q.is_empty() {
+                Ok(Vec::new())
+            } else {
+                api::media::search(&q, kind, Some(20)).await
+            }
         }
     });
 
@@ -187,6 +210,13 @@ pub fn Media() -> Element {
             paged.results.clone(),
         ),
         Some(Err(err)) => (Some(Err(err.clone())), false, 0, Vec::new()),
+    };
+
+    let show_doc_hits = !doc_submitted().trim().is_empty() && !doc_query().trim().is_empty();
+    let (doc_state, doc_hits) = match &*doc_search.value().read() {
+        None => (None, Vec::new()),
+        Some(Ok(hits)) => (Some(Ok(())), hits.clone()),
+        Some(Err(err)) => (Some(Err(err.clone())), Vec::new()),
     };
 
     // Table columns — the whole row is clickable (detail). No thumbnails:
@@ -308,12 +338,22 @@ pub fn Media() -> Element {
                         option { value: "splat", {t!("media-kind-splat")} }
                         option { value: "floorplan", {t!("media-kind-floorplan")} }
                         option { value: "model", {t!("media-kind-model")} }
+                        option { value: "document", {t!("media-kind-document")} }
+                        option { value: "table", {t!("media-kind-table")} }
                     }
                     SearchInput {
                         placeholder: t!("media-search-placeholder").to_string(),
                         value: search,
                         on_submit: move |_| {
                             page.set(0);
+                        },
+                    }
+                    SearchInput {
+                        placeholder: t!("media-doc-search-placeholder").to_string(),
+                        value: doc_query,
+                        on_submit: move |_| {
+                            let q = doc_query();
+                            doc_submitted.set(q);
                         },
                     }
                     // D42: effective label filter (inheritance included).
@@ -326,24 +366,41 @@ pub fn Media() -> Element {
                     }
                 }
 
-                ListStates {
-                    state: list_state,
-                    is_empty,
-                    empty_message: t!("media-empty-title").to_string(),
-                    empty_icon: rsx! {
-                        icons::Image { class: "h-8 w-8 text-gray-400" }
-                    },
-                    empty_detail: rsx! {
-                        p { class: "text-gray-600 mt-2", {t!("media-empty-message")} }
-                    },
-                    div { class: "space-y-4",
-                        DataTable {
-                            columns,
-                            rows,
-                            row_key: RowKey::new(|asset: &MediaAsset| asset.id.clone()),
-                            on_row_click: Callback::new(move |id: String| selected.set(Some(id))),
+                if show_doc_hits {
+                    ListStates {
+                        state: doc_state,
+                        is_empty: doc_hits.is_empty(),
+                        empty_message: t!("media-doc-search-empty").to_string(),
+                        div { class: "divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white",
+                            for hit in doc_hits {
+                                DocHitRow {
+                                    key: "{hit.chunk_id}",
+                                    hit,
+                                    on_open: move |id: String| selected.set(Some(id)),
+                                }
+                            }
                         }
-                        ListPager { count, page }
+                    }
+                } else {
+                    ListStates {
+                        state: list_state,
+                        is_empty,
+                        empty_message: t!("media-empty-title").to_string(),
+                        empty_icon: rsx! {
+                            icons::Image { class: "h-8 w-8 text-gray-400" }
+                        },
+                        empty_detail: rsx! {
+                            p { class: "text-gray-600 mt-2", {t!("media-empty-message")} }
+                        },
+                        div { class: "space-y-4",
+                            DataTable {
+                                columns,
+                                rows,
+                                row_key: RowKey::new(|asset: &MediaAsset| asset.id.clone()),
+                                on_row_click: Callback::new(move |id: String| selected.set(Some(id))),
+                            }
+                            ListPager { count, page }
+                        }
                     }
                 }
             }
@@ -372,6 +429,40 @@ pub fn Media() -> Element {
                     take360_open.set(false);
                     reload.with_mut(|r| *r += 1);
                 },
+            }
+        }
+    }
+}
+
+/// One document search hit — asset name (opens the detail), filename,
+/// page or heading, and the snippet with matches highlighted as `<mark>`
+/// text nodes (never raw HTML: the content is user data).
+#[component]
+fn DocHitRow(hit: api::media::SearchHit, on_open: Callback<String>) -> Element {
+    let parts = snippet_parts(&hit.snippet);
+    let asset_id = hit.asset_id.clone();
+    rsx! {
+        button {
+            class: "block w-full px-4 py-3 text-left hover:bg-gray-50",
+            r#type: "button",
+            onclick: move |_| on_open.call(asset_id.clone()),
+            div { class: "flex flex-wrap items-baseline gap-x-2 text-sm",
+                span { class: "font-medium text-blue-700", "{hit.asset_name}" }
+                span { class: "text-gray-500", "{hit.filename}" }
+                if let Some(heading) = hit.heading.clone() {
+                    span { class: "text-gray-500", "· {heading}" }
+                } else if let Some(n) = hit.page {
+                    span { class: "text-gray-500", {t!("media-doc-search-page", n : n)} }
+                }
+            }
+            p { class: "mt-1 text-sm text-gray-700",
+                for (text, highlighted) in parts {
+                    if highlighted {
+                        mark { class: "rounded bg-yellow-100 px-0.5 text-gray-900", "{text}" }
+                    } else {
+                        span { "{text}" }
+                    }
+                }
             }
         }
     }
