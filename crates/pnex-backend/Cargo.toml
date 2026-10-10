@@ -79,7 +79,8 @@ pnex-asr = { workspace = true }
 # Audio model archives (sherpa-onnx releases are .tar.bz2; .tar.gz / .zip
 # accepted), extracted to the model cache (D167).
 tar = "0.4"
-bzip2 = "0.5"
+# Static: the Chainguard runtime image ships no libbz2.
+bzip2 = { version = "0.5", features = ["static"] }
 flate2 = "1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 base64 = "0.22"
