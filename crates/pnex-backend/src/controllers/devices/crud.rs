@@ -39,7 +39,7 @@ pub(crate) async fn tier_limit_for(
 
 #[derive(Debug, Default, Deserialize)]
 pub(super) struct ListDevicesQuery {
-    /// Type name; "all" = no-op (legacy parity).
+    /// Type name; "all" = no-op.
     device_type: Option<String>,
     capability: Option<String>,
     /// Correspondance exacte sur l'identifiant firmware.
@@ -189,7 +189,7 @@ pub(super) async fn list(
         }
     }
     // Newest first: a freshly registered device (wizard) shows up on
-    // page 1 — deliberate divergence from the legacy behavior (no explicit sort).
+    // page 1.
     let select = select.order_by_desc(device_registries::Column::Id);
     let (count, rows) = pagination::sql_page(&ctx.db, select, page)
         .await
@@ -502,7 +502,7 @@ pub(super) async fn create(
             .into_response());
     }
 
-    // Tier quota: all states combined (legacy parity).
+    // Tier quota: all states combined.
     let type_name = device_types::Entity::find_by_id(predefined.device_type_id)
         .one(&ctx.db)
         .await

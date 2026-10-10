@@ -1,9 +1,7 @@
 //! Pagination + search for the lists — decision D14 (docs/inventory.md):
 //! **all** API lists return the `{count, next, previous, results}` envelope
-//! (the legacy `LimitOffsetPagination` shape) and accept a multi-field
-//! `search` parameter. Loco has no built-in mechanism equivalent to the
-//! legacy filter backend classes: the idiom is the Axum `Query<T>` extractor
-//! for filters + the SeaORM paginator (`count()` /
+//! and accept a multi-field `search` parameter. Filters use the Axum
+//! `Query<T>` extractor + the SeaORM paginator (`count()` /
 //! `.offset().limit()`) on the SQL side when the filters push down there;
 //! otherwise filter in Rust then slice.
 //!

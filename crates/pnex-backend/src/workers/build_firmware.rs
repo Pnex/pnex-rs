@@ -1,9 +1,8 @@
 //! Worker de build firmware (Phase 6) — consomme la queue PostgreSQL.
 //!
-//! Adapted from the legacy `update_build_record` poll job: the
-//! worker runs the pipeline ([`pnex_firmware_builder::run_build`]) and
+//! The worker runs the pipeline ([`pnex_firmware_builder::run_build`]) and
 //! writes the `running → succeeded|failed` transitions directly to
-//! `build_records` (no more 30 s poll: the worker IS the executor).
+//! `build_records` (no polling: the worker IS the executor).
 //!
 //! Secrets: the queue args carry the WiFi SSID and the **vault id** of its
 //! password (secrets.md lot S6), decrypted here at `perform` time; the

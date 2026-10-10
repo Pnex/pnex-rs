@@ -1,6 +1,6 @@
-//! Device registration wizard — port of the React POC `DeviceWizard.tsx`:
-//! stepper, identifier + random generator, optional D42 labels, model cards,
-//! board variant, firmware (generic PneX or a custom firmware project),
+//! Device registration wizard: stepper, identifier + random generator,
+//! optional D42 labels, model cards, board variant, firmware (generic PneX
+//! or a custom firmware project),
 //! debug screen (generic firmware only), WiFi, review; then the server
 //! build is followed **inside the modal** (polling ~5 s).
 //!

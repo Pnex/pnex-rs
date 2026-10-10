@@ -1,8 +1,7 @@
-//! Health probes — inspired by the legacy POC, but the Rust version is now
-//! the reference (no cosmetic parity, e.g. trailing slashes).
+//! Health probes (no trailing-slash route variants).
 //!
 //! `/health/ready` runs a real `SELECT 1` on the SeaORM pool (Phase 2)
-//! and an OpenObserve check (Phase 5, replaces the legacy Redis check):
+//! and an OpenObserve check (Phase 5):
 //! `ok` / `error` / `not-configured` (missing settings.openobserve
 //! section — tests, deployments without telemetry).
 

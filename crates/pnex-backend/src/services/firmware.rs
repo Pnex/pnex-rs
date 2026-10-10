@@ -23,8 +23,6 @@ use serde::Deserialize;
 use crate::services::artifact_store::{DbStore, S3Config, S3Store};
 
 /// Phases canoniques d'un build (colonne `build_phase`, minuscules).
-/// Legacy mapping: Pending→queued, Running→running, Succeeded→succeeded,
-/// Failed→failed (Deleted removed — no k8s job left to reclaim).
 pub const PHASE_QUEUED: &str = "queued";
 pub const PHASE_RUNNING: &str = "running";
 pub const PHASE_SUCCEEDED: &str = "succeeded";

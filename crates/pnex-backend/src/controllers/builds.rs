@@ -1,5 +1,4 @@
-//! Firmware builds — parity with the legacy `firmware_builder` views (Phase 6),
-//! org scoping (D2):
+//! Firmware builds (Phase 6), org scoping (D2):
 //!
 //! - `POST /build-firmware`: field validation → WiFi entry (400) → device
 //!   not found (404) → type quota
@@ -10,7 +9,7 @@
 //!   `build_phase` filters (old records are pruned by the worker,
 //!   `build_retention`);
 //! - `GET /download/firmware/{device_id}`: proxies the artifact bytes
-//!   (legacy parity, no presigned URL), attachment
+//!   (no presigned URL), attachment
 //!   `{device_id}-firmware.bin`.
 //!
 //! Errors: machine code + English description (`coded_error`); field
@@ -92,8 +91,8 @@ async fn min_build_interval(db: &DatabaseConnection, org: &OrgContext) -> Result
         .filter(|s| *s > 0))
 }
 
-/// Number of devices of the given type in the org (all states — quota parity
-/// with the legacy implementation, cf. devices create).
+/// Number of devices of the given type in the org (all states, same
+/// counting as devices create).
 async fn count_devices_of_type(db: &DatabaseConnection, org_id: i64, type_id: i64) -> Result<i64> {
     let rows = device_registries::Entity::find()
         .filter(device_registries::Column::OrgId.eq(org_id))
@@ -253,7 +252,7 @@ async fn create(
         )
     };
 
-    // Device count quota per type (legacy parity: 403 here, 400 on /devices).
+    // Device count quota per type (403 here, 400 on /devices).
     // The device being built is already registered (and counted): the build
     // is refused only when the org is OVER its quota (tier lowered since),
     // never at it (O36: a Free org could not build its single mixed device).
@@ -480,7 +479,7 @@ async fn list(
 // ─────────────────────────── GET /download/firmware/{device_id} ───────────────────────────
 
 /// `GET /api/v1/download/firmware/{device_id}` — proxies the bytes of the
-/// device's last successful build (legacy parity), attachment
+/// device's last successful build, attachment
 /// `{device_id}-firmware.bin`.
 async fn download(
     State(ctx): State<AppContext>,

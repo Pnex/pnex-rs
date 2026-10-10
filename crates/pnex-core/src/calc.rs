@@ -1,6 +1,5 @@
-//! Expression evaluator of the `calc` node (Phase 6 ETL) — Rust equivalent
-//! of the legacy `safe_eval` (contract: operator/function/constant
-//! whitelist, ternary, everything else rejected).
+//! Expression evaluator of the `calc` node (Phase 6 ETL) — contract:
+//! operator/function/constant whitelist, ternary, everything else rejected.
 //! Pur, wasm-safe, **zéro dépendance**, jamais de panic : toute
 //! erreur remonte en [`CalcError`] (message en français affiché tel quel,
 //! règle PRD « violations jamais traduites »).
@@ -119,7 +118,7 @@ fn lex(src: &str) -> Result<Vec<Token>, CalcError> {
             i += 1;
             continue;
         }
-        // Nombre : `12`, `12.5`, `.5` (héritage Python).
+        // Number: `12`, `12.5`, `.5` (leading-dot form accepted).
         if c.is_ascii_digit() || c == '.' {
             let start = i;
             let mut seen_dot = false;

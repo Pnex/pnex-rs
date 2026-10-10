@@ -11,16 +11,14 @@
 //! - `PUT/PATCH /{id}` : **metadata uniquement** (toute autre clé → 400) ;
 //! - `DELETE /{id}` : nettoie build_records + device_token → 204.
 //!
-//! Deliberate hardenings over the legacy POC (multi-tenant D2 + deny by default):
-//! - **org** scoping (`X-Org-Id`) instead of the legacy per-user scoping;
+//! Access rules (multi-tenant D2 + deny by default):
+//! - **org** scoping (`X-Org-Id`), never per-user;
 //! - writes (create/update/delete) for owner/admin/member, reads for every
 //!   member;
-//! - `DELETE` answers 204 **with no body** — the legacy implementation
-//!   returned a body on 204, unreadable in the browser (the cleaned-records
-//!   count goes to the logs);
-//! - `predefined-devices` catalog requires authentication (legacy: AllowAny);
-//! - working `revision` filter (the legacy implementation filtered `version=`,
-//!   a nonexistent field → 500);
+//! - `DELETE` answers 204 **with no body** (a body on 204 is unreadable in
+//!   the browser; the cleaned-records count goes to the logs);
+//! - `predefined-devices` catalog requires authentication;
+//! - the `revision` filter matches the `revision` field;
 //! - **pagination obligatoire** (D14) : listes paginées en SQL (catalogue :
 //!   SeaORM `count`/`offset`/`limit` ; registre org : filtre puis découpage,
 //!   ensemble borné par les quotas tier).

@@ -121,7 +121,7 @@ fn yaml_files(dir: &std::path::Path) -> Result<Vec<std::path::PathBuf>> {
     Ok(files)
 }
 
-/// Same behavior as the legacy bootstrap_db: parse the UUID, else derive a
+/// Parses the UUID, else derives a
 /// deterministic DNS uuid5 (stable across runs → idempotent update_or_create).
 fn parse_global_id(raw: &str) -> Result<uuid::Uuid> {
     uuid::Uuid::parse_str(raw).or_else(|_| {
@@ -133,7 +133,7 @@ fn parse_global_id(raw: &str) -> Result<uuid::Uuid> {
 }
 
 /// "15 minutes" / "1 day" / "6 months" → seconds (month = 30 d,
-/// year = 365 d — approximating the legacy DurationField).
+/// year = 365 d).
 fn parse_duration_secs(s: &str) -> Result<i64> {
     let s = s.trim().to_lowercase();
     let mut parts = s.split_whitespace();

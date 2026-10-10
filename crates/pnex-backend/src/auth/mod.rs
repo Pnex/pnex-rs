@@ -5,8 +5,7 @@
 //!   personnelle). Refus par défaut : sans token valide → 401.
 //! - [`OrgContext`] : [`AuthUser`] + sélection d'org via l'en-tête
 //!   `X-Org-Id`, vérifiée contre le membership → 403 si non membre.
-//!   This is the anchor of multi-tenant scoping (replaces the legacy
-//!   per-viewset filtering, Phase 0 report §3).
+//!   This is the anchor of multi-tenant scoping (Phase 0 report §3).
 //! - [`PlatformAdmin`]: [`AuthUser`] with `users.platform_admin = true`
 //!   (infra status, global retention) → 403 `platform-admin-required`.
 
@@ -30,7 +29,7 @@ use crate::models::_entities::{
 
 use claims::Claims;
 
-/// `WWW-Authenticate` challenge (parity with the legacy `authenticate_header`).
+/// `WWW-Authenticate` challenge.
 const WWW_AUTHENTICATE: &str = "Bearer realm=\"api\"";
 
 pub struct AuthUser {

@@ -1,6 +1,6 @@
 //! Claims IdP attendus dans les access tokens.
 //!
-//! Continuity with the legacy JWT auth: JIT provisioning reads
+//! JIT provisioning reads
 //! `email`, `given_name`, `family_name`, `preferred_username`. **All identity
 //! fields are optional**: Rauthy emits lean access tokens (no
 //! `preferred_username`/`given_name`/`family_name` — those claims live in the

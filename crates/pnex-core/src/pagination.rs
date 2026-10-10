@@ -1,9 +1,8 @@
 //! List pagination — single envelope (decision D14): every API list
 //! returns `{count, next, previous, results}` (LimitOffsetPagination
-//! shape), driven by `limit` (default 20, max 100) and `offset`. The
-//! legacy scaffold returned bare arrays; Rust improves the contract
-//! (user decision 2026-08-16: without bounded pagination, the database
-//! and the responses would suffer at scale).
+//! shape), driven by `limit` (default 20, max 100) and `offset`. Bounded
+//! pagination keeps the database and the responses sane at scale (user
+//! decision 2026-08-16).
 
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +22,7 @@ pub struct Paginated<T> {
 mod tests {
     use super::*;
 
-    /// Exact wire shape (legacy field names, null next/previous at list edges).
+    /// Exact wire shape (null next/previous at list edges).
     #[test]
     fn paginated_shape_roundtrip() {
         let json = r#"{

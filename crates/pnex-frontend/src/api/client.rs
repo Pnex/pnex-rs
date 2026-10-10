@@ -1,12 +1,11 @@
-//! Client HTTP partagé — porté du `ApiService` React (`api.ts`).
+//! Client HTTP partagé.
 //!
 //! - URLs relatives (same-origin, cf. `config::api_base`) ;
 //! - `Authorization: Bearer` + `X-Org-Id` (jamais sur `/oauth2/*` ni
 //!   `/api/v1/public/*`) lus depuis
 //!   le stockage à chaque requête (le stockage est la source de vérité) ;
-//! - sur 401 : refresh du token **single-flight** (une seule requête de
-//!   refresh, les appelants en attente partagent le même futur — parité
-//!   `tokenRefreshPromise` React), puis **une** retry de la requête ;
+//! - on 401: **single-flight** token refresh (one refresh request, waiting
+//!   callers share the same future), then **one** retry of the request;
 //! - refresh impossible/échoué → session expirée (purge + signal) ;
 //! - error messages: server body kept + machine code; local errors carry
 //!   an `err_codes` code + English fallback, i18n-resolved at render time;

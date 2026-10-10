@@ -1,6 +1,6 @@
-//! Tests de parité du domaine devices (Phase 4) : CRUD scopé org, filtres,
-//! réactivation implicite, quotas tier, update metadata-only, catalogue
-//! global partagé.
+//! Devices domain tests (Phase 4): org-scoped CRUD, filters, implicit
+//! reactivation, tier quotas, metadata-only update, shared global
+//! catalog.
 //!
 //! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
 
@@ -147,7 +147,7 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
         assert_eq!(res.status_code(), 201, "création → 201");
         let body: serde_json::Value = res.json();
         let device_pk = body["id"].as_i64().expect("id");
-        assert_eq!(body["active"], false, "created inactive (legacy parity)");
+        assert_eq!(body["active"], false, "created inactive");
         assert_eq!(body["org_id"], org);
         assert_eq!(body["device_type"], "sensor");
         assert_eq!(body["predefined_device_name"], "temp_sensor");
@@ -250,7 +250,7 @@ async fn filtres_de_liste() {
         assert_eq!(sensors["results"].as_array().unwrap().len(), 1);
         assert_eq!(sensors["results"][0]["device_id"], "esp-s1");
 
-        // "all" = no-op (legacy parity).
+        // "all" = no-op.
         assert_eq!(
             get("?device_type=all").await["results"]
                 .as_array()
@@ -358,7 +358,7 @@ async fn quotas_tier_par_type() {
         assert_eq!(body["error"], "device-quota-reached");
         assert_eq!(body["errors"]["args"]["type"], "sensor");
 
-        // Inactive devices count toward the quota (legacy parity):
+        // Inactive devices count toward the quota:
         // un seul actuator créé inactif → le 2e est déjà au-dessus du quota.
         let res = create_device(&server, &env.alice, org, "esp-a1", "relay_1ch").await;
         assert_eq!(res.status_code(), 201);

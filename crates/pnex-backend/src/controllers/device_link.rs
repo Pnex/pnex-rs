@@ -165,8 +165,8 @@ pub(crate) async fn active_token(
     Ok(Some((tok, device)))
 }
 
-/// Accepts the upgrade then closes immediately with the code — legacy
-/// `close(code=…)`; an HTTP status cannot carry a WS 4xxx close code.
+/// Accepts the upgrade then closes immediately with the code: an HTTP
+/// status cannot carry a WS 4xxx close code.
 pub(crate) fn reject(ws: WebSocketUpgrade, code: u16, reason: &'static str) -> Response {
     ws.on_upgrade(move |mut socket| async move {
         let _ = socket

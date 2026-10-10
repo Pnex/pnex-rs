@@ -1,5 +1,4 @@
-//! Devices domain DTOs — parity with the legacy `devices/serializers.py`
-//! contracts (Phase 4), org scoping (D2) instead of the legacy `user`.
+//! Devices domain DTOs (Phase 4), scoped by org (D2).
 //!
 //! Deux familles :
 //! - le **catalogue global** (lecture seule, partagé entre orgs) :
@@ -64,7 +63,7 @@ impl DeviceFamily {
 
 // ─────────────────────── Catalogue global ───────────────────────
 
-/// `GET /api/v1/device-capabilities` — parité `DeviceCapabilitySerializer`.
+/// `GET /api/v1/device-capabilities`.
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceCapability {
     pub id: i64,
@@ -73,8 +72,7 @@ pub struct DeviceCapability {
     pub mode: String,
 }
 
-/// `GET /api/v1/predefined-devices` — parité `PredefinedDeviceSerializer`
-/// (no id in the legacy contract: the unique `name` acts as the key).
+/// `GET /api/v1/predefined-devices` (no id: the unique `name` acts as the key).
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct PredefinedDevice {
     pub name: String,
@@ -97,7 +95,7 @@ pub struct PredefinedDevice {
     #[serde(default)]
     pub revision: String,
     pub device_type: String,
-    /// Capability names (legacy SlugRelatedField → list of strings).
+    /// Capability names (list of strings).
     pub capabilities: Vec<String>,
     /// Nom du board MCU.
     pub board: String,
@@ -113,7 +111,7 @@ pub struct PredefinedDevice {
 // ─────────────────────── Registre devices (org) ───────────────────────
 
 /// Token d'un device — renvoyé au porteur pour le provisioning (chiffré côté
-/// device avec `encryption_key`). Parité `get_device_token`.
+/// device avec `encryption_key`).
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceTokenInfo {
     pub token: String,
@@ -170,11 +168,11 @@ pub struct OtaAssignmentState {
 }
 
 /// Device du registre — `GET /api/v1/devices` et détail (même forme en liste
-/// et en détail, parité `DeviceRegistrySerializer`).
+/// et en détail).
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
 pub struct Device {
     pub id: i64,
-    /// D2: owning org instead of the legacy `user`.
+    /// D2: owning org.
     pub org_id: i64,
     /// Identifiant déclaré par le firmware (MAC, hostname…).
     pub device_id: String,
@@ -195,7 +193,7 @@ pub struct Device {
     #[serde(default)]
     pub device_token: Option<DeviceTokenInfo>,
     /// Statut du dernier build firmware (`null` si jamais compilé) —
-    /// Rust-side enrichment, no legacy equivalent.
+    /// server-side enrichment.
     #[serde(default)]
     pub latest_build: Option<LatestBuild>,
     /// Firmware version announced by the device ("who runs where",
@@ -274,8 +272,7 @@ mod tests {
 
     use super::*;
 
-    /// Forme de sortie exacte d'un device (parité DeviceRegistrySerializer,
-    /// org_id à la place de user).
+    /// Exact output shape of a device (scoped by `org_id`).
     #[test]
     fn device_shape_roundtrip() {
         let json = r#"{
@@ -362,7 +359,7 @@ mod tests {
 
     #[test]
     fn predefined_device_capabilities_are_names() {
-        // Legacy SlugRelatedField: capabilities = list of strings.
+        // Capabilities = list of strings.
         let json = r#"{
             "name": "relay_1ch",
             "pretty_name": null,
@@ -381,7 +378,7 @@ mod tests {
             pd.capabilities,
             vec!["relay".to_string(), "pwm".to_string()]
         );
-        // No id in the legacy contract.
+        // No id in the contract.
         let back = serde_json::to_value(&pd).unwrap();
         assert!(back.get("id").is_none());
     }

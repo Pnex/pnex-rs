@@ -13,7 +13,7 @@
 //! Postgres only receives transitions: `device_states.last_seen_at` on a
 //! clean disconnect and when the reaper retires a silent device from the
 //! sorted set, and `device_registries.active` flips (the reaper remains its
-//! sole writer, same contract as the legacy `handle_sensors` job). Reads
+//! sole writer). Reads
 //! merge both sources (freshest wins), so a Valkey restart loses no history.
 //!
 //! Valkey is mandatory: [`init`] fails the boot when `settings.valkey.url`

@@ -1,11 +1,10 @@
-//! Local validation of Rauthy JWTs via JWKS (RS256), no introspection —
-//! continuity with the legacy implementation, **with the hardenings** decided
-//! in Phase 3 (Phase 0 report §3.4-3.5): explicit `iss` check, audience
-//! restricted to `{client_id, "account"}`, RS256 algorithm only.
+//! Local validation of Rauthy JWTs via JWKS (RS256), no introspection,
+//! **with the hardenings** decided in Phase 3 (Phase 0 report §3.4-3.5):
+//! explicit `iss` check, audience restricted to `{client_id, "account"}`,
+//! RS256 algorithm only.
 //!
 //! JWKS are cached in memory and refreshed when an unknown `kid` shows up
-//! (Rauthy key rotation) — the legacy implementation cached for 1 h without
-//! refresh on unknown `kid`.
+//! (Rauthy key rotation).
 //!
 //! Refresh discipline (a JWKS fetch must never be per-request):
 //! - **single-flight**: concurrent misses share one fetch (async mutex held
@@ -88,8 +87,8 @@ struct KeyState {
 
 pub struct JwksVerifier {
     issuer: String,
-    /// Audience acceptée : le client PNEX + "account" (héritage Keycloak,
-    /// conservé par prudence). Un token émis pour un autre client est rejeté.
+    /// Accepted audiences: the PNEX client + "account" (kept out of caution).
+    /// A token issued for another client is rejected.
     audiences: Vec<String>,
     jwks_url: String,
     http: reqwest::Client,

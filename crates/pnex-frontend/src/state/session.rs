@@ -1,9 +1,8 @@
 //! Session utilisateur — signal global + restauration au boot.
 //!
 //! `SessionState` : `Booting` (restauration en cours) → `LoggedOut` |
-//! `Authenticated`. Le shell rend la page de login en place de l'Outlet tant
-//! que la session n'est pas établie (parité `AuthWrapper` React — pas de
-//! route `/login`).
+//! `Authenticated`. The shell renders the login page in place of the Outlet
+//! until the session is established (no `/login` route).
 
 use dioxus::prelude::*;
 use pnex_core::UserInfo;
