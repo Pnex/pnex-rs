@@ -184,6 +184,8 @@ async fn scan(
         .filter(media_streams::Column::Enabled.eq(true))
         .filter(media_streams::Column::CaptureOn.eq(CaptureOn::Server.wire()))
         .filter(media_streams::Column::DeletedAt.is_null())
+        // No profile, no capture: the audio would never be transcribed.
+        .filter(media_streams::Column::AsrProfileId.is_not_null())
         .all(&ctx.db)
         .await?
         .into_iter()

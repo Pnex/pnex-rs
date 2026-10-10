@@ -34,6 +34,7 @@ pub fn routes() -> Routes {
             get(stream_get).patch(stream_update).delete(stream_delete),
         )
         .add("/media/streams/{id}/segments", get(segment_list))
+        .add("/media/streams/{id}/segments/retry", post(segment_retry))
         .add("/media/transcripts", get(transcript_search))
         .add("/asr/models", get(model_list).post(model_create))
         .add(
@@ -307,6 +308,39 @@ async fn segment_list(
         count,
         results,
     ))
+}
+
+/// `POST /api/v1/media/streams/{id}/segments/retry` — `can_write`:
+/// re-queues the failed segments whose audio is still kept (D161: a failed
+/// job is never replayed by the queue itself).
+async fn segment_retry(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    require_write(&org)?;
+    let stream = match streams::find(&ctx.db, org.org.id, id).await {
+        Ok(s) => s,
+        Err(e) => return stream_error(e),
+    };
+    if stream.asr_profile_id.is_none() {
+        return stream_error(StreamError::AsrModelInvalid);
+    }
+    let failed = media_segments::Entity::find()
+        .filter(media_segments::Column::OrgId.eq(org.org.id))
+        .filter(media_segments::Column::StreamId.eq(id))
+        .filter(media_segments::Column::State.eq(SegmentState::Failed.wire()))
+        .filter(media_segments::Column::StorageKey.is_not_null())
+        .all(&ctx.db)
+        .await;
+    let failed = match failed {
+        Ok(rows) => rows,
+        Err(e) => return db_error(e),
+    };
+    for seg in &failed {
+        crate::services::media_ingest::segments::enqueue(&ctx, seg).await;
+    }
+    format::json(serde_json::json!({ "requeued": failed.len() }))
 }
 
 fn segment_view(s: &media_segments::Model) -> MediaSegment {
