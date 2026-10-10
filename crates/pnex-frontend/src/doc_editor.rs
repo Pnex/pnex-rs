@@ -216,6 +216,16 @@ pub async fn restore(host: &str, state_b64: &str) -> bool {
     .await
 }
 
+/// Waits until the server has persisted every local edit of the live page
+/// in `host`; false when offline, refused or after 10 s.
+pub async fn flush(host: &str) -> bool {
+    eval_bool(&format!(
+        "return (await window.pnexDoc?.flush({})) === true",
+        lit(host)
+    ))
+    .await
+}
+
 /// Block diff between two frozen versions (`a` older, `b` newer).
 pub async fn diff(a_b64: &str, b_b64: &str) -> Option<Vec<DiffBlock>> {
     let v = eval(&format!(

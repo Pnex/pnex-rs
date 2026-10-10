@@ -237,6 +237,9 @@ class Provider {
     this.doc = doc;
     this.awareness = awareness;
     this.ws = null;
+    this.synced = false;
+    // Pending flush() calls, answered in order by the server's SyncStep2.
+    this.flushes = [];
     this.onUpdate = (update, origin) => {
       if (origin !== this) this.send(MSG_SYNC, (e) => syncProtocol.writeUpdate(e, update));
     };
@@ -257,8 +260,33 @@ class Provider {
     this.ws.send(encoding.toUint8Array(e));
   }
 
+  // Resolves true once the server has persisted every edit sent before the
+  // call: it handles a socket's messages in order and persists an update
+  // before reading the next one, so the reply to this SyncStep1 comes last.
+  flush() {
+    if (!this.synced || !this.ws || this.ws.readyState !== WebSocket.OPEN) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const w = { resolve };
+      w.timer = setTimeout(() => {
+        this.flushes = this.flushes.filter((x) => x !== w);
+        resolve(false);
+      }, 10000);
+      this.flushes.push(w);
+      this.send(MSG_SYNC, (e) => syncProtocol.writeSyncStep1(e, this.doc));
+    });
+  }
+
+  settleFlushes(ok, all) {
+    const done = all ? this.flushes.splice(0) : this.flushes.splice(0, 1);
+    for (const w of done) {
+      clearTimeout(w.timer);
+      w.resolve(ok);
+    }
+  }
+
   connect(url) {
     if (this.ws) this.ws.close();
+    this.synced = false;
     const ws = new WebSocket(url);
     ws.binaryType = 'arraybuffer';
     this.ws = ws;
@@ -276,7 +304,11 @@ class Provider {
         const reply = encoding.createEncoder();
         encoding.writeVarUint(reply, MSG_SYNC);
         const kind = syncProtocol.readSyncMessage(dec, reply, this.doc, this);
-        if (kind === syncProtocol.messageYjsSyncStep2) report(this.host, { status: 'synced', closeCode: null });
+        if (kind === syncProtocol.messageYjsSyncStep2) {
+          if (this.synced) this.settleFlushes(true, false);
+          this.synced = true;
+          report(this.host, { status: 'synced', closeCode: null });
+        }
         if (encoding.length(reply) > 1) ws.send(encoding.toUint8Array(reply));
       } else if (type === MSG_AWARENESS) {
         awarenessProtocol.applyAwarenessUpdate(this.awareness, decoding.readVarUint8Array(dec), this);
@@ -290,6 +322,8 @@ class Provider {
     ws.onclose = (ev) => {
       if (this.ws !== ws) return;
       this.ws = null;
+      this.synced = false;
+      this.settleFlushes(false, true);
       const others = Array.from(this.awareness.getStates().keys()).filter((id) => id !== this.doc.clientID);
       awarenessProtocol.removeAwarenessStates(this.awareness, others, this);
       const final = FINAL.has(ev.code);
@@ -358,9 +392,17 @@ function pmDocOf(ydoc) {
   return yXmlFragmentToProseMirrorRootNode(ydoc.getXmlFragment('prosemirror'), schema);
 }
 
+// Leaf blocks (paragraphs, headings, list item lines, rules), so a change in
+// one list item shows as that item, not as the whole list.
 function blocksOf(pm) {
   const out = [];
-  pm.forEach((n) => out.push(n.type.name + '\u0000' + n.textContent));
+  pm.descendants((n) => {
+    if (n.isTextblock || n.isLeaf) {
+      out.push(n.type.name + '\u0000' + n.textContent);
+      return false;
+    }
+    return true;
+  });
   return out;
 }
 
@@ -514,6 +556,11 @@ window.pnexDoc = {
       console.error('[pnexDoc] restore', e);
       return false;
     }
+  },
+  // Waits until the server has persisted the local edits → Promise<bool>.
+  flush(host) {
+    const ed = editors[host];
+    return ed ? ed.provider.flush() : Promise.resolve(false);
   },
   // Diff of two frozen versions (b64 states), block level.
   diff(b64a, b64b) {
