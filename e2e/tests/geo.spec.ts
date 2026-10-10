@@ -1,10 +1,12 @@
 // Geo providers (geo-layers.md phase F): nothing until the org adds a
 // basemap, the org page form + Test, the map on the default basemap and its
 // switcher; with a live Photon + GraphHopper (PNEX_E2E_GEO_BASE), geocode,
-// reverse and route through the server proxy.
+// reverse and route through the server proxy, the address search of the map
+// and the address prefilled in a new POI.
 import { expect, test } from '../src/fixtures.ts';
 import { BASEMAP_DARK_URL, BASEMAP_URL, GEO_BASE } from '../src/env.ts';
 import { MapPage } from '../src/pages/map.ts';
+import { dialog, fieldAfterLabel } from '../src/pages/shell.ts';
 
 interface Provider {
   id: string;
@@ -81,7 +83,12 @@ test.describe('geo providers', { tag: '@geo' }, () => {
     await expect(app.page.getByText(app.t('viz-map-unavailable'))).toHaveCount(0);
   });
 
-  test('geocode, reverse and route through the proxy', { tag: '@geo-live' }, async ({ app, api, prefix }) => {
+  test('geocode, reverse, route, address search and POI prefill', { tag: '@geo-live' }, async ({
+    app,
+    api,
+    prefix,
+    capture,
+  }) => {
     test.skip(!GEO_BASE, 'PNEX_E2E_GEO_BASE not set (live Photon + GraphHopper)');
     const photon = await api.post<Provider>('/geo/providers', {
       name: `${prefix} photon`,
@@ -129,5 +136,37 @@ test.describe('geo providers', { tag: '@geo' }, () => {
       await app.expectToast(app.tr('geo-test-ok'));
       await app.clearToasts();
     }
+
+    // Map: address search → « + POI » → form prefilled with the address.
+    const map = new MapPage(app);
+    await map.open();
+    const search = app.page.getByRole('searchbox', { name: app.t('geo-search-placeholder') });
+    await search.fill('place bellecour lyon');
+    await search.press('Enter');
+    const addHere = app.page.getByRole('button', { name: app.t('geo-search-add-poi'), exact: true }).first();
+    await expect(addHere).toBeVisible();
+    await capture('geo-address-search', { caption: 'Address search on the map' });
+    await addHere.click();
+    const form = dialog(app.page, app.t('poi-add-title'));
+    await expect(fieldAfterLabel(form, app.t('poi-field-label'))).toHaveValue(/Bellecour/);
+    await expect(fieldAfterLabel(form, app.t('poi-field-location'))).toHaveValue(/Lyon/);
+    const label = `${prefix} bellecour`;
+    await fieldAfterLabel(form, app.t('poi-field-label')).fill(label);
+    await form.getByRole('button', { name: app.t('poi-save'), exact: true }).click();
+    await expect(form).toBeHidden();
+    const poi = (await api.list<{ id: string; label: string; latitude: number }>('/pois')).find(
+      (p) => p.label === label,
+    );
+    expect(poi?.latitude).toBeCloseTo(45.757, 2);
+    await api.delete(`/pois/${poi!.id}`);
+
+    // Add mode: a click on the map prefills the location by reverse geocoding.
+    await app.page.getByRole('button', { name: app.t('poi-add') }).click();
+    const box = (await map.map.boundingBox())!;
+    await app.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    const created = dialog(app.page, app.t('poi-add-title'));
+    await expect(fieldAfterLabel(created, app.t('poi-field-location'))).not.toHaveValue('');
+    await created.getByRole('button', { name: app.t('common-close') }).click();
+    await expect(created).toBeHidden();
   });
 });

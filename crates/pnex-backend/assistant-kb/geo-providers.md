@@ -21,6 +21,8 @@ In the **Geo providers** section of the organization detail (Owner or Admin):
 The first provider of a use becomes its default; ★ marks the defaults in the table.
 
 ## On the map
+- **Search an address…** (top left of the map) geocodes through the organization's default geocoder: click a result to recentre the map, or **+ POI** to create a point of interest prefilled with that address and its coordinates.
+- In **Add POI** mode, clicking the map prefills the location field with the address of that point when a reverse geocoder is configured.
 - The map opens on the organization's default basemap. With several basemaps, a selector at the top right switches between them; your choice is remembered on this device.
 
 ## Good to know
