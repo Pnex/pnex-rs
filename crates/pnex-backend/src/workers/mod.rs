@@ -5,5 +5,6 @@
 pub mod build_firmware;
 pub mod check_asr_model;
 pub mod firmware_check;
+pub mod index_document;
 pub mod stitch_panorama;
 pub mod transcribe_segment;

@@ -19,6 +19,7 @@ pub mod db_lock;
 pub mod device_bus;
 pub mod device_liveness;
 pub mod device_pki;
+pub mod doc_search;
 /// Graceful drain of buffered background writers at shutdown.
 pub mod drain;
 pub mod edge_agent;

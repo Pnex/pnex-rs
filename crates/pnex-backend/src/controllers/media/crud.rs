@@ -13,7 +13,16 @@ pub(super) struct UploadQuery {
 /// Kinds applicatifs — extension sans migration (kind = string). Studio :
 /// `floorplan` = plan d'étage importé (référencé par `tour_versions.doc`).
 /// `model` = ONNX model of the vision registry (camera-video.md D81).
-const KINDS: [&str; 5] = ["photo", "panorama", "splat", "floorplan", "model"];
+/// `document` / `table` = indexed for search (doc-search.md P1).
+const KINDS: [&str; 7] = [
+    "photo",
+    "panorama",
+    "splat",
+    "floorplan",
+    "model",
+    "document",
+    "table",
+];
 
 /// `POST /api/v1/media` — upload octet-stream, crée asset + version 1.
 pub(super) async fn upload(
@@ -48,15 +57,21 @@ pub(super) async fn upload(
         .map(str::trim)
         .filter(|n| !n.is_empty())
         .map_or_else(|| filename.clone(), str::to_string);
-    // Kind : client > sniff > photo — validation stricte.
-    let sniff = media_sniff::detect(&content_type_of(&q), &filename, &body);
+    // Kind: client > sniff; the content must be an allowed format whose
+    // extension agrees, and fit the forced kind (media_sniff).
+    let Some(sniff) = media_sniff::detect(&filename, &body) else {
+        return Err(format_unsupported());
+    };
     let kind = q.kind.as_deref().map(str::trim).filter(|k| !k.is_empty());
     if let Some(k) = kind {
         if !KINDS.contains(&k) {
             return Ok(field_status(
                 "kind",
-                "kind inconnu (photo | panorama | splat | floorplan | model)",
+                "unknown kind (photo | panorama | splat | floorplan | model | document | table)",
             ));
+        }
+        if !media_sniff::accepts(k, &filename, &body) {
+            return Err(format_unsupported());
         }
     }
     let kind = kind.map_or_else(|| sniff.kind.to_string(), str::to_string);

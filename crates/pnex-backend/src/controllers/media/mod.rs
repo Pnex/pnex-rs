@@ -48,6 +48,7 @@ mod content;
 mod crud;
 mod dto;
 mod helpers;
+mod search;
 mod store;
 mod versions;
 
@@ -58,6 +59,7 @@ use content::*;
 use crud::*;
 use dto::*;
 use helpers::*;
+use search::*;
 use versions::*;
 
 // Disambiguate our `delete` handler from `loco_rs::prelude::delete`
@@ -88,6 +90,9 @@ pub fn routes() -> Routes {
                 .layer(DefaultBodyLimit::max(max))
                 .layer(axum::middleware::from_fn(compute_limits::upload_gate)),
         )
+        .add("/search", get(search))
+        .add("/chunks/{chunk_id}", get(chunk))
+        .add("/{id}/index", get(index_state).post(reindex))
         .add("/{id}", get(detail).patch(update).delete(delete))
         .add("/{id}/content", get(content))
         .add(

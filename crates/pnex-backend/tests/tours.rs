@@ -537,7 +537,7 @@ async fn kind_floorplan_et_plan_d_etage() {
             &server,
             &env.alice,
             org,
-            "?filename=plan.png&kind=floorplan&content_type=image%2Fpng",
+            "?filename=plan.jpg&kind=floorplan&content_type=image%2Fpng",
             gpano_jpeg(),
         )
         .await;
@@ -631,7 +631,7 @@ async fn endpoint_public_et_cache() {
             &server,
             &env.alice,
             org,
-            "?filename=plan.html&kind=floorplan&content_type=text%2Fhtml",
+            "?filename=plan.jpg&kind=floorplan&content_type=text%2Fhtml",
             plain_jpeg(),
         )
         .await;

@@ -148,7 +148,7 @@ async fn model_import_check_and_transcription_chain() {
             let asset = upload("parakeet.tar.bz2", parakeet_archive()).await;
             assert!(asset.status_code().is_success(), "{}", asset.text());
             let asset_id = asset.json::<Value>()["id"].as_str().unwrap().to_string();
-            let junk = upload("junk.tar.bz2", b"not an archive".to_vec()).await;
+            let junk = upload("junk.tar.bz2", b"BZh9 not an archive".to_vec()).await;
             let junk_id = junk.json::<Value>()["id"].as_str().unwrap().to_string();
 
             // Import: license required, junk refused, the family is read.

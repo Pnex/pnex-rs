@@ -34,8 +34,10 @@ pub(crate) async fn write_version(
         note,
         bytes,
     } = incoming;
-    // Sniff des métadonnées (GPano/EXIF) — par version.
-    let sniff = media_sniff::detect(&content_type, &filename, &bytes);
+    // Per-version metadata (GPano); the content must fit the asset's kind.
+    let sniff = media_sniff::detect(&filename, &bytes)
+        .filter(|_| media_sniff::accepts(&asset.kind, &filename, &bytes))
+        .ok_or_else(super::helpers::format_unsupported)?;
     let sha = sha256_hex(&bytes);
     // Version n+1 (école flow_versions : incrémental par asset).
     let next: i64 = media_versions::Entity::find()
@@ -97,5 +99,11 @@ pub(crate) async fn write_version(
         let _ = e;
         Error::InternalServerError
     })?;
+    if crate::services::doc_search::is_indexed_kind(&asset.kind) {
+        // The upload stands even if queuing fails: reindex recovers it (F4).
+        if let Err(e) = crate::services::doc_search::enqueue(ctx, org_id, version.id).await {
+            tracing::warn!(version = %version.id, error = %e, "document index not queued");
+        }
+    }
     Ok(version)
 }

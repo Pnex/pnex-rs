@@ -146,7 +146,7 @@ fn annotatable(asset: &api::media::MediaAsset) -> bool {
             .and_then(|m| m.get("format"))
             .and_then(|f| f.as_str())
             .is_none_or(|f| f == "splat" || f == "ply"),
-        MediaKind::Model => false,
+        MediaKind::Model | MediaKind::Document | MediaKind::Table => false,
     }
 }
 

@@ -18,6 +18,8 @@ frame-crypto = ["dep:snow", "dep:base64"]
 # Guarded reqwest resolver + redirect policy for outbound requests to
 # user-chosen hosts (R8) — backend, notify and http-fetch only.
 egress = ["dep:reqwest", "dep:tokio"]
+# Document text extraction (doc-search.md P1) — backend worker only.
+doc-extract = ["dep:zip", "dep:quick-xml", "dep:pdf-extract", "dep:calamine"]
 
 [dependencies]
 serde = { workspace = true }
@@ -36,6 +38,11 @@ url = "2"
 # Ontology graph algorithms (annex A3), MIT/Apache-2.0, wasm-safe.
 petgraph = { version = "0.6", default-features = false, features = ["graphmap", "stable_graph"] }
 tokio = { version = "1", default-features = false, features = ["net"], optional = true }
+# Document extraction (all MIT): docx/xlsx containers, docx XML, PDF text, sheets.
+zip = { version = "2", default-features = false, features = ["deflate"], optional = true }
+quick-xml = { version = "0.41", optional = true }
+pdf-extract = { version = "0.12", optional = true }
+calamine = { version = "0.36", optional = true }
 
 [dev-dependencies]
 # roundtrip serde du graphe + projection flows.json.
