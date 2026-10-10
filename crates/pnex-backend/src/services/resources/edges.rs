@@ -34,7 +34,7 @@ pub fn validate_placement(placement: &Value) -> Result<(), ResourceError> {
     Ok(())
 }
 
-/// Arête de l'org par id.
+/// Open edge of the org by id (closed links are history, D179).
 pub async fn find_edge(
     db: &DatabaseConnection,
     org_id: i64,
@@ -42,6 +42,7 @@ pub async fn find_edge(
 ) -> Result<Option<resource_edges::Model>, DbErr> {
     resource_edges::Entity::find_by_id(edge_id)
         .filter(resource_edges::Column::OrgId.eq(org_id))
+        .filter(resource_edges::Column::ValidTo.is_null())
         .one(db)
         .await
 }
@@ -57,6 +58,7 @@ pub async fn list_edges(
 ) -> Result<Vec<resource_edges::Model>, DbErr> {
     let mut q = resource_edges::Entity::find()
         .filter(resource_edges::Column::OrgId.eq(org_id))
+        .filter(resource_edges::Column::ValidTo.is_null())
         .order_by_desc(resource_edges::Column::CreatedAt);
     if let Some(relation) = relation {
         q = q.filter(resource_edges::Column::Relation.eq(relation));
@@ -88,7 +90,9 @@ pub async fn create_edge(
     target_id: &str,
     placement: Option<&Value>,
 ) -> Result<resource_edges::Model, ResourceError> {
-    let reg = registry::global();
+    let reg = registry::for_org(db, org_id)
+        .await
+        .map_err(|_| ResourceError::Db)?;
     // La validité est UNE question posée au registre — jamais de match ici.
     if !reg.allows_relation(relation, source_kind, target_kind) {
         return Err(ResourceError::RelationInvalid);
@@ -155,7 +159,8 @@ pub async fn update_placement(
     Ok(Some(am.update(db).await.map_err(|_| ResourceError::Db)?))
 }
 
-/// Supprime ; `false` = arête introuvable dans l'org (→ 404 masqué).
+/// Closes an open edge (D179: the link stays as history); `false` = no
+/// open edge with this id in the org (→ masked 404).
 pub async fn delete_edge(
     db: &DatabaseConnection,
     org_id: i64,
@@ -164,9 +169,28 @@ pub async fn delete_edge(
     let Some(edge) = find_edge(db, org_id, edge_id).await? else {
         return Ok(false);
     };
-    resource_edges::Entity::delete_by_id(edge.id)
+    close_edges(db, resource_edges::Column::Id.eq(edge.id)).await?;
+    Ok(true)
+}
+
+/// Closes every open edge matching `filter` (`valid_to = now()`).
+pub async fn close_edges(
+    db: &impl sea_orm::ConnectionTrait,
+    filter: impl sea_orm::sea_query::IntoCondition,
+) -> Result<(), DbErr> {
+    let now = sea_orm::prelude::DateTimeWithTimeZone::from(chrono::Utc::now());
+    resource_edges::Entity::update_many()
+        .col_expr(
+            resource_edges::Column::ValidTo,
+            sea_orm::sea_query::Expr::value(now),
+        )
+        .col_expr(
+            resource_edges::Column::UpdatedAt,
+            sea_orm::sea_query::Expr::value(now),
+        )
+        .filter(resource_edges::Column::ValidTo.is_null())
+        .filter(filter)
         .exec(db)
         .await
-        .map(|_| ())?;
-    Ok(true)
+        .map(|_| ())
 }

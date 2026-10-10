@@ -449,11 +449,41 @@ pub const TIME_RANGE_IMPORT_INVALID: &str = "time-range-import-invalid";
 /// org (also the internal endpoint's answer for a foreign scope).
 pub const TIME_RANGE_SCOPE_UNKNOWN: &str = "time-range-scope-unknown";
 
+// ── Ontology (ontology.md D176–D191) ─────────────────────────────────────
+
+/// Object, type or link not found in the org ontology.
+pub const ONTOLOGY_NOT_FOUND: &str = "ontology-not-found";
+/// A type, link type or open link with this key already exists.
+pub const ONTOLOGY_ALREADY_EXISTS: &str = "ontology-already-exists";
+/// Optimistic concurrency: written over a stale version; `args.current`.
+pub const ONTOLOGY_VERSION_CONFLICT: &str = "ontology-version-conflict";
+/// The type still has live objects, references or links.
+pub const ONTOLOGY_TYPE_IN_USE: &str = "ontology-type-in-use";
+/// The caller's role cannot write objects of this type (D188) or is a viewer.
+pub const ONTOLOGY_WRITE_FORBIDDEN: &str = "ontology-write-forbidden";
+/// Schema writes (types, link types, packs) need an org owner or admin.
+pub const ONTOLOGY_ADMIN_REQUIRED: &str = "ontology-admin-required";
+/// System types and objects are edited from their own pages.
+pub const ONTOLOGY_SYSTEM_READ_ONLY: &str = "ontology-system-read-only";
+/// The link type does not connect objects of these types.
+pub const ONTOLOGY_LINK_NOT_ALLOWED: &str = "ontology-link-not-allowed";
+/// An open link already takes this place (one-to-one, or a series already bound).
+pub const ONTOLOGY_LINK_CARDINALITY: &str = "ontology-link-cardinality";
+
 // ── Registered codes ─────────────────────────────────────────────────────
 
 /// All registered codes. A code not listed here falls back to the verbatim
 /// `description`/`message` on the frontend (never panics).
 pub const ALL: &[&str] = &[
+    ONTOLOGY_NOT_FOUND,
+    ONTOLOGY_ALREADY_EXISTS,
+    ONTOLOGY_VERSION_CONFLICT,
+    ONTOLOGY_TYPE_IN_USE,
+    ONTOLOGY_WRITE_FORBIDDEN,
+    ONTOLOGY_ADMIN_REQUIRED,
+    ONTOLOGY_SYSTEM_READ_ONLY,
+    ONTOLOGY_LINK_NOT_ALLOWED,
+    ONTOLOGY_LINK_CARDINALITY,
     WS_TICKET_UNAVAILABLE,
     DEVICE_NOT_FOUND,
     DEVICE_QUOTA_REACHED,

@@ -104,19 +104,27 @@ pub async fn purge_for(
         .exec(db)
         .await?;
 
-    // 3. Arêtes — les deux bouts (cascade symétrique, D42).
-    resource_edges::Entity::delete_many()
-        .filter(resource_edges::Column::OrgId.eq(org_id))
-        .filter(resource_edges::Column::SourceKind.eq(kind))
-        .filter(resource_edges::Column::SourceId.eq(id))
-        .exec(db)
-        .await?;
-    resource_edges::Entity::delete_many()
-        .filter(resource_edges::Column::OrgId.eq(org_id))
-        .filter(resource_edges::Column::TargetKind.eq(kind))
-        .filter(resource_edges::Column::TargetId.eq(id))
-        .exec(db)
-        .await?;
+    // 3. Edges, both ends (symmetric, D42): closed, never deleted — the
+    //    link history outlives the entity like its identity does (D179).
+    edges::close_edges(
+        db,
+        sea_orm::Condition::all()
+            .add(resource_edges::Column::OrgId.eq(org_id))
+            .add(
+                sea_orm::Condition::any()
+                    .add(
+                        sea_orm::Condition::all()
+                            .add(resource_edges::Column::SourceKind.eq(kind))
+                            .add(resource_edges::Column::SourceId.eq(id)),
+                    )
+                    .add(
+                        sea_orm::Condition::all()
+                            .add(resource_edges::Column::TargetKind.eq(kind))
+                            .add(resource_edges::Column::TargetId.eq(id)),
+                    ),
+            ),
+    )
+    .await?;
 
     // 4. Le kind `folder` est lui-même une entité — sa ligne part avec lui.
     if kind == pnex_core::resources::KIND_FOLDER {

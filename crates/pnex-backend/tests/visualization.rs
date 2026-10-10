@@ -132,7 +132,7 @@ async fn telemetry_degrade_et_validation_sans_o2() {
         )
         .await;
         assert_eq!(res.status_code(), 400, "device_id hostile rejeté");
-        let res = series(&server, &env.alice, org, "soil_moisture", "esp-001", "7d").await;
+        let res = series(&server, &env.alice, org, "soil_moisture", "esp-001", "90d").await;
         assert_eq!(res.status_code(), 400, "fenêtre non preset rejetée");
         let res = series(&server, &env.alice, org, "", "esp-001", "24h").await;
         assert_eq!(res.status_code(), 400, "métrique vide rejetée");

@@ -36,6 +36,7 @@ pub mod ml_models;
 /// Notifications (D49–D54) — CRUD canaux/templates + test/preview/journal.
 pub mod notify;
 pub mod oauth2;
+pub mod ontology;
 pub mod orgs;
 pub mod ota;
 pub mod pagination;

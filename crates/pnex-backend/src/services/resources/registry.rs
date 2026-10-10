@@ -9,20 +9,19 @@
 //! le firmware ni sur le contrat `pnex_api_contract::CONTRACT`.
 
 use std::collections::HashMap;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::models::_entities::{
-    dashboards, device_registries, flows, map_pins, media_assets, resource_folders, tours,
+    dashboards, device_registries, flows, map_pins, media_assets, objects, resource_folders, tours,
 };
 
-use pnex_core::ontology::{system_link_types, system_object_types, LinkTypeDef, ObjectTypeDef};
+use pnex_core::ontology::{LinkTypeDef, ObjectTypeDef};
 use pnex_core::resources::{
     KIND_DASHBOARD, KIND_DEVICE, KIND_FLOW, KIND_FOLDER, KIND_MAP_PIN, KIND_MEDIA_ASSET, KIND_TOUR,
-    REL_PLACED_ON,
 };
 
 // ─────────────────────────── résolveurs ───────────────────────────
@@ -160,6 +159,36 @@ impl KindResolver for FlowKind {
     }
 }
 
+/// Resolver of org-type objects: identity rows of `objects` (D177).
+struct ObjectKind(String);
+#[async_trait]
+impl KindResolver for ObjectKind {
+    async fn resolve(
+        &self,
+        db: &DatabaseConnection,
+        org_id: i64,
+        id: &str,
+    ) -> Result<bool, sea_orm::DbErr> {
+        Ok(self.display_name(db, org_id, id).await?.is_some())
+    }
+
+    async fn display_name(
+        &self,
+        db: &DatabaseConnection,
+        org_id: i64,
+        id: &str,
+    ) -> Result<Option<String>, sea_orm::DbErr> {
+        Ok(objects::Entity::find()
+            .filter(objects::Column::OrgId.eq(org_id))
+            .filter(objects::Column::TypeKey.eq(self.0.as_str()))
+            .filter(objects::Column::NativeId.eq(id))
+            .filter(objects::Column::ValidTo.is_null())
+            .one(db)
+            .await?
+            .map(|o| o.title))
+    }
+}
+
 struct FolderKind;
 #[async_trait]
 impl KindResolver for FolderKind {
@@ -262,19 +291,40 @@ impl Registry {
     }
 }
 
-/// Global registry, derived from the system types. A new system type adds
-/// its resolver here, its definition goes in `pnex_core::ontology`.
+fn system_resolvers() -> HashMap<&'static str, Arc<dyn KindResolver>> {
+    HashMap::from([
+        (KIND_DEVICE, Arc::new(DeviceKind) as Arc<dyn KindResolver>),
+        (KIND_MEDIA_ASSET, Arc::new(MediaAssetKind)),
+        (KIND_DASHBOARD, Arc::new(DashboardKind)),
+        (KIND_TOUR, Arc::new(TourKind)),
+        (KIND_MAP_PIN, Arc::new(MapPinKind)),
+        (KIND_FLOW, Arc::new(FlowKind)),
+        (KIND_FOLDER, Arc::new(FolderKind)),
+    ])
+}
+
+/// Registry of an org: the system types plus the org's types (D176), whose
+/// objects resolve through their identity rows.
+pub async fn for_org(db: &DatabaseConnection, org_id: i64) -> Result<Registry, sea_orm::DbErr> {
+    let s = crate::services::ontology::schema(db, org_id).await?;
+    let mut resolvers: HashMap<&str, Arc<dyn KindResolver>> = system_resolvers();
+    for (t, _, _) in &s.types {
+        if !t.system {
+            resolvers.insert(t.key.as_str(), Arc::new(ObjectKind(t.key.clone())));
+        }
+    }
+    let types = s.types.iter().map(|(t, _, _)| t.clone()).collect();
+    let links = s.links.iter().map(|(l, _, _)| l.clone()).collect();
+    Ok(Registry::derive(types, links, resolvers))
+}
+
+/// Registry of the system types alone (the D42 truth table of the tests).
+#[cfg(test)]
 pub fn global() -> &'static Registry {
+    use pnex_core::ontology::{system_link_types, system_object_types};
+    use std::sync::LazyLock;
     static REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
-        let resolvers: HashMap<&str, Arc<dyn KindResolver>> = HashMap::from([
-            (KIND_DEVICE, Arc::new(DeviceKind) as Arc<dyn KindResolver>),
-            (KIND_MEDIA_ASSET, Arc::new(MediaAssetKind)),
-            (KIND_DASHBOARD, Arc::new(DashboardKind)),
-            (KIND_TOUR, Arc::new(TourKind)),
-            (KIND_MAP_PIN, Arc::new(MapPinKind)),
-            (KIND_FLOW, Arc::new(FlowKind)),
-            (KIND_FOLDER, Arc::new(FolderKind)),
-        ]);
+        let resolvers = system_resolvers();
         Registry::derive(system_object_types(), system_link_types(), resolvers)
     });
     &REGISTRY
@@ -283,7 +333,7 @@ pub fn global() -> &'static Registry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pnex_core::resources::KINDS;
+    use pnex_core::resources::{KINDS, REL_PLACED_ON};
 
     /// L0 exit criterion: the derived registry answers exactly like the
     /// hand-written D42 registry it replaces (truth table frozen below).
