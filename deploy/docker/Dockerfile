@@ -7,7 +7,8 @@
 #
 #   server   Chainguard glibc-dynamic: no shell, no package manager, non-root.
 #            pnex-server (HTTP + websockets, `start` = server only) + the
-#            flow runtime it supervises + the web front.
+#            flow runtime it supervises + the web front + the media ingest
+#            helpers (ffmpeg decoder, pnex-asr speech-to-text).
 #   builder  Chainguard Wolfi (glibc): the same binary as a queue worker
 #            (`start --worker`) — firmware builds need PlatformIO/esptool
 #            (Python + toolchains, pre-installed), panorama stitching needs
@@ -22,6 +23,15 @@ ARG BUN_VERSION=1.4
 ARG DIOXUS_CLI_VERSION=0.7.10
 ARG PLATFORMIO_VERSION=6.2.0
 ARG ESPTOOL_VERSION=5.4.0
+# Media ingest (media-ingest.md D160, D166). Pinned by sha256 (R20): the
+# ffmpeg tarball is checked against the FFmpeg release signing key when the
+# pin moves; the sherpa-onnx digests are the ones GitHub publishes for the
+# release assets.
+ARG FFMPEG_VERSION=8.1.3
+ARG FFMPEG_SHA256=7138d28c96d9d3e3af4ee3d8cad72741f8ffb40da90c1112235dea3ecd3178a3
+ARG SHERPA_ONNX_VERSION=1.13.8
+ARG SHERPA_ONNX_X64_SHA256=e1fdc5b67530e15741ef897fa5ffff297056f3bf0c6d829a27af9225a4c4b5a6
+ARG SHERPA_ONNX_AARCH64_SHA256=77983e3cf29aa60f2e531d249dbd01d15596530550c8db2e9e02fc6a655da6bb
 
 # ── Front assets: Tailwind CSS + esbuild bundles ──────────────────────────
 # Arch-independent stages run on the build host ($BUILDPLATFORM): a
@@ -112,9 +122,63 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pnex-cargo-registry-$
     cargo build --release --locked --target "$triple" \
       -p pnex-backend -p pnex-flow-runtime --bin pnex-server --bin pnex-flow-runtime; \
     mv target/.src-manifest.new target/.src-manifest; \
-    mkdir -p /out/bin /out/data/flow-state /out/data/media; \
+    mkdir -p /out/bin /out/data/flow-state /out/data/media /out/data/asr-models; \
     cp "target/$triple/release/pnex-server" "target/$triple/release/pnex-flow-runtime" /out/bin/
 COPY --from=web /dist /out/dist
+
+# ── ffmpeg: minimal LGPL decoder, cross-compiled for $TARGETPLATFORM ─────
+FROM toolchain-base AS ffmpeg
+ARG TARGETARCH
+ARG FFMPEG_VERSION
+ARG FFMPEG_SHA256
+ADD --checksum=sha256:${FFMPEG_SHA256} \
+    https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz /tmp/
+COPY deploy/docker/build-ffmpeg.sh /tmp/
+RUN set -eux; \
+    case "$TARGETARCH" in amd64) arch= ;; arm64) arch=aarch64 ;; \
+      *) echo "unsupported TARGETARCH=$TARGETARCH" >&2; exit 1 ;; esac; \
+    sh /tmp/build-ffmpeg.sh /tmp/ffmpeg-${FFMPEG_VERSION}.tar.xz \
+      "$FFMPEG_SHA256" /opt/ffmpeg $arch
+
+# ── pnex-asr: speech-to-text process, sherpa-onnx linked statically ───────
+# Its own cargo invocation: the `sherpa` feature must not reach pnex-server
+# through feature unification (the server stays pure Rust, D166). The
+# prebuilt sherpa-onnx archives come from SHERPA_ONNX_ARCHIVE_DIR, never
+# from the build script's unchecked download.
+FROM toolchain AS asr
+ARG TARGETARCH
+ARG SHERPA_ONNX_VERSION
+ARG SHERPA_ONNX_X64_SHA256
+ARG SHERPA_ONNX_AARCH64_SHA256
+ADD --checksum=sha256:${SHERPA_ONNX_X64_SHA256} \
+    https://github.com/k2-fsa/sherpa-onnx/releases/download/v${SHERPA_ONNX_VERSION}/sherpa-onnx-v${SHERPA_ONNX_VERSION}-linux-x64-static-lib.tar.bz2 \
+    /opt/sherpa-onnx/
+ADD --checksum=sha256:${SHERPA_ONNX_AARCH64_SHA256} \
+    https://github.com/k2-fsa/sherpa-onnx/releases/download/v${SHERPA_ONNX_VERSION}/sherpa-onnx-v${SHERPA_ONNX_VERSION}-linux-aarch64-static-lib.tar.bz2 \
+    /opt/sherpa-onnx/
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pnex-cargo-registry-asr-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=pnex-cargo-git-asr-${TARGETARCH} \
+    --mount=type=cache,target=/src/target,id=pnex-target-asr-${TARGETARCH} \
+    set -eux; \
+    case "$TARGETARCH" in \
+      amd64) triple=x86_64-unknown-linux-gnu ;; \
+      arm64) triple=aarch64-unknown-linux-gnu ;; \
+      *) echo "unsupported TARGETARCH=$TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    deploy/docker/touch-changed.sh target/.src-manifest; \
+    SHERPA_ONNX_ARCHIVE_DIR=/opt/sherpa-onnx \
+      cargo build --release --locked --target "$triple" \
+        -p pnex-asr --features sherpa --bin pnex-asr; \
+    mv target/.src-manifest.new target/.src-manifest; \
+    mkdir -p /out/bin; \
+    cp "target/$triple/release/pnex-asr" /out/bin/
+
+# The media ingest helpers, as one layer for both images (and for
+# `--target media-tools --output type=local` when checking them).
+FROM scratch AS media-tools
+COPY --from=ffmpeg /opt/ffmpeg/bin/ffmpeg /usr/local/bin/
+COPY --from=ffmpeg /opt/ffmpeg/share/licenses/ /usr/share/licenses/
+COPY --from=asr /out/bin/pnex-asr /usr/local/bin/
 
 # ── Edge agent distribution (D95): built once on the build host ──────────
 # Static musl Linux (x86_64/aarch64/armv7, linked through zig) + Windows
@@ -140,6 +204,7 @@ FROM cgr.dev/chainguard/glibc-dynamic:latest AS server
 COPY --from=build /out/bin/ /usr/local/bin/
 COPY --from=build /out/dist/ /app/pnex-frontend/dist/
 COPY --from=agent-dist /agent-dist/ /opt/pnex/agent-dist/
+COPY --from=media-tools / /
 COPY crates/pnex-backend/config/ /app/pnex-backend/config/
 # Catalog fixtures: seeded idempotently at API boot (PNEX_AUTO_SEED).
 COPY crates/pnex-backend/fixtures/ /app/pnex-backend/fixtures/
@@ -153,7 +218,10 @@ ENV PATH=/usr/local/bin:/usr/bin:/bin \
     PNEX_FLOW_RUNTIME_CMD=pnex-flow-runtime \
     PNEX_AGENT_DIST_DIR=/opt/pnex/agent-dist \
     PNEX_FLOW_STATE_DIR=/data/flow-state \
-    PNEX_MEDIA_DIR=/data/media
+    PNEX_MEDIA_DIR=/data/media \
+    PNEX_FFMPEG=/usr/local/bin/ffmpeg \
+    PNEX_ASR_BIN=/usr/local/bin/pnex-asr \
+    PNEX_ASR_MODELS_DIR=/data/asr-models
 USER 65532:65532
 EXPOSE 5150
 VOLUME ["/data"]
@@ -217,13 +285,19 @@ RUN sh /tmp/prewarm/seed_libdeps.sh /tmp/fw \
  && find /opt/platformio $PNEX_PIO_CORE_DIR_PIOARDUINO ! -user 65532 \
       -exec chown -h 65532:65532 {} +
 COPY --from=build /out/bin/pnex-server /usr/local/bin/
+# Transcription jobs (transcribe_segment) run in the worker; ffmpeg is there
+# for captures moved off the server (D160).
+COPY --from=media-tools / /
 COPY crates/pnex-backend/config/ /app/pnex-backend/config/
 COPY deploy/models/ /app/models/
 COPY --from=build --chown=65532:65532 /out/data/ /data/
 WORKDIR /app/pnex-backend
 ENV LOCO_ENV=production \
     PNEX_MEDIA_DIR=/data/media \
-    PNEX_STITCH_MODELS_DIR=/app/models
+    PNEX_STITCH_MODELS_DIR=/app/models \
+    PNEX_FFMPEG=/usr/local/bin/ffmpeg \
+    PNEX_ASR_BIN=/usr/local/bin/pnex-asr \
+    PNEX_ASR_MODELS_DIR=/data/asr-models
 USER 65532:65532
 VOLUME ["/data"]
 ENTRYPOINT ["pnex-server"]

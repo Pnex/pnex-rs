@@ -152,6 +152,12 @@ mod linux {
             .ok()
     }
 
+    /// Whether this kernel (and the container's seccomp profile) lets the
+    /// process create a Landlock ruleset.
+    pub fn landlock_available() -> bool {
+        landlock_ruleset().is_some()
+    }
+
     /// Installs the confinement on `cmd`, applied in the child right
     /// before `exec`. `max_memory`: `RLIMIT_AS` in bytes, 0 = none (an
     /// ONNX runtime reserves far more address space than it touches).
@@ -219,10 +225,15 @@ mod linux {
 }
 
 #[cfg(target_os = "linux")]
-pub use linux::confine;
+pub use linux::{confine, landlock_available};
 
 #[cfg(not(target_os = "linux"))]
 pub fn confine(_cmd: &mut tokio::process::Command, _mode: &SandboxMode, _max_memory: u64) {}
+
+#[cfg(not(target_os = "linux"))]
+pub fn landlock_available() -> bool {
+    false
+}
 
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
@@ -284,6 +295,14 @@ mod tests {
         assert!(!String::from_utf8_lossy(&out.stdout).contains("wrote"));
         let written = std::fs::read_to_string(&target).unwrap_or_default();
         assert!(written.is_empty(), "file must stay empty or absent");
+        // An empty file escapes RLIMIT_FSIZE: only Landlock refuses it.
+        let empty = dir.join("empty");
+        run_confined(&format!(": > {}", empty.display())).await;
+        if landlock_available() {
+            assert!(!empty.exists(), "Landlock must refuse file creation");
+        } else {
+            eprintln!("Landlock unavailable: creation check skipped");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
