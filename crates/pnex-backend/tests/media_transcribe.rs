@@ -236,6 +236,40 @@ async fn model_import_check_and_transcription_chain() {
                     "failed segments keep their audio (D161)"
                 );
             }
+
+            // Replay: failed segments with audio go back to the queue (run
+            // inline here, they fail again at the O2 write).
+            let res = post(
+                &format!("/api/v1/media/streams/{stream_id}/segments/retry"),
+                json!({}),
+            )
+            .await;
+            assert_eq!(res.status_code(), 200, "{}", res.text());
+            assert_eq!(res.json::<Value>()["requeued"], 2);
+
+            // Past the replay window, the pruner deletes their audio.
+            let store = pnex_backend::services::media::MediaSettings::from_config(&ctx.config)
+                .store()
+                .unwrap();
+            let prune =
+                || pnex_backend::services::media_ingest::segments::prune_audio(&ctx.db, &store);
+            assert_eq!(prune().await.unwrap(), 0, "inside the window");
+            let old: sea_orm::prelude::DateTimeWithTimeZone =
+                (chrono::Utc::now() - chrono::Duration::hours(1)).into();
+            media_segments::Entity::update_many()
+                .col_expr(
+                    media_segments::Column::UpdatedAt,
+                    sea_orm::sea_query::Expr::value(old),
+                )
+                .filter(media_segments::Column::StreamId.eq(stream_id))
+                .exec(&ctx.db)
+                .await
+                .unwrap();
+            let keys: Vec<String> = segs.iter().filter_map(|s| s.storage_key.clone()).collect();
+            assert_eq!(prune().await.unwrap(), 2);
+            for k in keys {
+                assert!(!store.exists(&k).await.unwrap(), "{k}");
+            }
         },
     )
     .await;
