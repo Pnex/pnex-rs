@@ -13,6 +13,7 @@ pub use sea_orm_migration::prelude::*;
 
 mod m20261009_000001_baseline;
 pub mod m20261011_000002_ontology;
+mod m20261011_000010_placed_at_links;
 
 pub struct Migrator;
 
@@ -22,6 +23,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m20261009_000001_baseline::Migration),
             Box::new(m20261011_000002_ontology::Migration),
+            Box::new(m20261011_000010_placed_at_links::Migration),
         ]
     }
 }

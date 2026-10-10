@@ -1,6 +1,6 @@
 # PRD — PNEX 0.2.0 : noyau ontologique (objets, liens, temps, actions) (D176–D191)
 
-**Statut :** Proposé (2026-10-09) — cible de la version **0.2.0**, première
+**Statut :** Implémenté L0–L5 (2026-10-10, §10) — PRD proposé le 2026-10-09, cible de la version **0.2.0**, première
 version réécrite autour de ce noyau. Zéro code avant validation.
 **Portée :** transverse — modèle de domaine, API, UI, assistant, flows,
 dashboards. Tous les domaines existants deviennent des vues spécialisées
@@ -366,11 +366,11 @@ migration destructrice »), la 0.2.0 **migre les données**.
 | Lot | Contenu | Sortie |
 |---|---|---|
 | **L0** ✅ | Spike : types en données dérivant le `KindSpec` existant, sans changement fonctionnel | registre généré identique au registre codé (test d'égalité) — **livré 2026-10-10** : `pnex_core::ontology` (`ObjectTypeDef`, `LinkTypeDef`, `TypeSet`), `KindSpec` supprimé, garde `derived_registry_matches_d42_rules` |
-| **L1** | D176–D178 : types, objets, propriétés scalaires, éditeur de types, YAML | créer « Pompe » et 100 objets en UI et en YAML |
-| **L2** | D179–D180 : types de liens, validité temporelle, migration `placed_on` / `placed_at` | requête `as_of` correcte sur liens fermés |
-| **L3** | D178 temporel + D181 : propriétés `series`/`events`, liaisons device → objet | remplacement de capteur sans rupture de courbe |
-| **L4** | D185–D187 : API de requête, interface graphe (CTE + `petgraph`), explorateur, **vue graphe Dioxus**, dashboards de type, verrou par type (D188) | dashboard de type Pompe, recherche globale sur objets |
-| **L5** | D184, D189, D191 : provenance, assistant, migration 0.1 → 0.2 | migration d'une base 0.1 réelle, onglet provenance |
+| **L1** ✅ | D176–D178 : types, objets, propriétés scalaires, éditeur de types, YAML | créer « Pompe » et 100 objets en UI et en YAML — **livré 2026-10-10** (18af2f9d, 21375662) |
+| **L2** ✅ | D179–D180 : types de liens, validité temporelle, migration `placed_on` / `placed_at` | requête `as_of` correcte sur liens fermés — **livré 2026-10-10** |
+| **L3** ✅ | D178 temporel + D181 : propriétés `series`/`events`, liaisons device → objet | remplacement de capteur sans rupture de courbe — **livré 2026-10-10** |
+| **L4** ✅ | D185–D187 : API de requête, interface graphe (CTE + `petgraph`), explorateur, **vue graphe Dioxus**, dashboards de type, verrou par type (D188) | dashboard de type Pompe, recherche globale sur objets — **livré 2026-10-10** (7318940c) |
+| **L5** ✅ | D184, D189, D191 : provenance, assistant, migration 0.1 → 0.2 | migration d'une base 0.1 réelle, onglet provenance — **livré 2026-10-10** (e0298159) |
 | **0.2.0** | L0–L5 + pack « Maintenance augmentée » | release |
 | **0.3** | D183 actions, packs Maison et Couverture médiatique, ACL par objet (décision) | |
 
@@ -402,13 +402,16 @@ implémentation commence après L1.
    stringifiée (D42) ?~~ **Tranché 2026-10-10** : UUID pour tous via la
    table d'identité universelle (D177 amendé, annexe A2) ; `ResourceRef`
    reste une forme d'affichage et d'API.
-2. Le schéma de propriétés : format maison dans `pnex-core`, ou JSON
-   Schema (outillage existant, mais plus lourd à valider en wasm) ?
-3. Liaison device → objet : lien temporel générique (D179) ou table
-   dédiée pour les performances de recomposition des séries ?
-4. Les packs installés sont-ils modifiables par l'org (fork local) ou
-   seulement extensibles (surcouche), pour garder les mises à jour du
-   pack ?
+2. ~~Le schéma de propriétés : format maison dans `pnex-core`, ou JSON
+   Schema ?~~ **Tranché 2026-10-10** : format maison (§10.2), validation
+   identique front/back, aucun outillage JSON Schema à embarquer en wasm.
+3. ~~Liaison device → objet : lien temporel générique (D179) ou table
+   dédiée ?~~ **Tranché 2026-10-10** : lien système générique `measures`
+   (§10.3) ; une table dédiée seulement si la recomposition devient un
+   goulot mesuré.
+4. ~~Les packs installés sont-ils modifiables par l'org ?~~ **Tranché
+   2026-10-10** : fork local — les types installés appartiennent à l'org
+   et restent éditables ; une mise à jour du pack ajoute une version (§10.5).
 5. Un langage de requête textuel (type Cypher/GQL réduit) en 0.3, ou
    jamais ?
 6. Gouvernance du noyau en vue d'une fondation (CNCF, Apache) : les
@@ -542,3 +545,102 @@ changement, testé sur 19beta4).
 - Introduction du **bitemporel** (temps système pour l'audit) : plus
   tard, sans casser le modèle (O2 `object_changes` couvre l'historique
   en attendant).
+
+## 10. Mise en œuvre (2026-10-10)
+
+L0 à L5 livrés le 2026-10-10 (commits fbf5f952 → e0298159, poussés sur
+`main`). Ce qui suit consigne les choix d'implémentation pris en route,
+sans revenir sur les décisions D176–D191.
+
+### 10.1 Identité tenue par la base
+
+- Une ligne `objects` par objet, système ou d'org (annexe A2). Pour les
+  types système, l'identité est écrite par des **triggers PostgreSQL**
+  (`pnex_object_identity`, `pnex_object_close`) : toute écriture native,
+  seeds et chemins chauds compris, reçoit son identité dans la même
+  transaction, sans code applicatif. Le trigger de mise à jour ne porte que
+  sur la colonne de titre (`UPDATE OF`) : les écritures de présence ou
+  d'état ne le déclenchent jamais.
+- La table native porte `object_id` (FK, unique) ; `objects.native_id` est
+  la clé native stringifiée (l'id de l'objet lui-même pour un type d'org).
+  `resource_edges` reçoit ses deux identités par trigger à l'insertion.
+- Supprimer une ligne native **ferme** l'identité (`valid_to`) ; la purge
+  D42 (`purge_for`) **ferme** les liens au lieu de les supprimer.
+- Les types système restent du code (`pnex_core::ontology`) ; les types
+  d'org sont des données (`object_types` + `object_type_versions`
+  append-only). Une ligne d'org sous une clé système = **extension** du
+  type système (propriétés seulement, D176).
+- Migrations : `m20261011_000002_ontology` (identité, types, liens
+  temporels, packs, reprise 0.1 → 0.2) et `m20261011_000010_placed_at_links`
+  (D191 : `device_placements` reste l'index matérialisé, un trigger tient
+  les liens `placed_at` ; déplacer un device ferme puis rouvre).
+
+### 10.2 Propriétés (D178)
+
+Format maison sérialisé (`PropertyDef`, `kind` à plat) : `text`, `number`
+(unité, bornes), `bool`, `date`, `date_time`, `enum`, `geo_point`, `url`
+(http(s) seulement, R11), `ref`, `series`, `events`. Erreurs = jetons de
+champ (`required`, `max_length:N`, `invalid`, `unknown`, `duplicate`).
+`PropertyDef` se désérialise à la main via `Value` (piège
+`arbitrary_precision` des enums taggés). `TypeSet` = `"*"` ou une liste de
+clés, lisible en YAML.
+
+### 10.3 Temps (D181, D182)
+
+- Lien système `measures` (device → tout type), attributs `{metric,
+  property}` ; une propriété `series` n'a qu'un capteur ouvert à la fois
+  (409 `ontology-link-cardinality`). La série d'un objet est recomposée
+  segment par segment, chaque segment découpé à la validité de son lien.
+- `as_of` : les liens sont filtrés sur `valid_from`/`valid_to` ; les
+  objets seulement sur leur fermeture (`valid_from` d'un objet = date
+  d'enregistrement, pas date du monde réel).
+- Plages : `scope_kind = object` (D182) ; fenêtres 7 j et 30 j ajoutées
+  aux préréglages.
+
+### 10.4 Requête, graphe, UI (D185–D188)
+
+- `POST /api/v1/ontology/query` : une requête SQL paramétrée (CTE par
+  saut, ≤ 4), clés de propriété contrôlées par jeu de caractères, valeurs
+  toujours liées ; filtres `@>` (GIN) pour l'égalité.
+- Graphe : CTE récursive bornée (5 000 liens, 3 s via `SET LOCAL
+  statement_timeout`) puis `petgraph` dans `pnex_core::ontology::graph`
+  (plus court chemin, impact en cascade, cycles). Le trait de stockage
+  vit côté backend (asynchrone) ; les algorithmes, purs, dans `pnex-core`.
+- UI : `/ontology` (objets, schéma, packs), `/ontology/object/:id`
+  (propriétés, liens à date / historique, graphe radial SVG, temps,
+  provenance), `/ontology/types/:type_key` (éditeur). Devices, médias et
+  POI gagnent un bouton « Page objet ».
+- Dashboards de type (D187) : `layout.object_type` + `source.object_property`,
+  résolus au capteur courant (`/objects/{id}/bindings`) avant le pipeline
+  `series-batch` inchangé. Raccourci : l'aperçu POI (`DashboardLive`) n'a
+  pas de sélecteur d'objet.
+- D188 : `write_role` par type (membre / admin / propriétaire) ; le schéma
+  (types, types de liens, packs, import) exige un admin d'org.
+
+### 10.5 Provenance, packs, assistant (D184, D189, D190)
+
+- `source_ref` : `manual:<user>`, `assistant:<user>`, `device_placements` ;
+  journal O2 `object_changes` (écriture en file, lecture sans
+  provisionner), onglet Provenance.
+- Packs : YAML embarqués (`crates/pnex-backend/packs/`, pack
+  `maintenance`) ; installation = types créés puis versionnés, refus si une
+  clé appartient à l'org hors pack ; export / import YAML du schéma d'org.
+- Assistant : schéma de l'org injecté dans le prompt système et outil
+  `describe_ontology` ; `query_ontology`, `get_object`, `create_object`,
+  `update_object`, `open_link`, `close_link`, `save_object_type` via les
+  services du contrôleur ; jamais d'archivage ni de suppression ; fiche
+  `assistant-kb/ontology.md`.
+
+### 10.6 Reste ouvert
+
+- **D183 actions** : non livrées (lot 0.3 du tableau §7 ; question #17
+  de la roadmap toujours ouverte). Le pack Maintenance n'a donc pas
+  l'action « Mettre en maintenance ».
+- Étiquetage d'ingestion `object=<kind>/<id>` (D181, dernier point) : non
+  fait ; la liaison `measures` couvre le besoin.
+- Mesures de performance sur 100 k objets (§8) : non faites.
+- Deep-link de la trace assistant vers l'objet écrit : non fait (la trace
+  nomme l'objet).
+- `/api/v1/resources/*` reste servi tel quel (pas encore marqué
+  déprécié), `CONTRACT` inchangé : les routes `/ontology/*` sont
+  additives.
