@@ -17,6 +17,7 @@ pub struct Model {
     pub asr_model_id: Uuid,
     pub vad_model_id: Option<Uuid>,
     pub diarization_model_id: Option<Uuid>,
+    pub diarization_embedding_model_id: Option<Uuid>,
     pub language: String,
     pub beam: i32,
     pub word_timestamps: bool,

@@ -104,6 +104,9 @@ pub(crate) fn payloads_of(
     seg.insert("words_ref".into(), transcript_stream(slug).into());
     seg.entry("speakers")
         .or_insert_with(|| serde_json::json!([]));
+    // Word timings stay in O2 (`words_ref`); the event carries them only to
+    // give each sentence its speaker.
+    let words = seg.remove("words");
     match emit {
         MediaSourceEmit::Segment => vec![serde_json::Value::Object(seg)],
         MediaSourceEmit::Sentence => {
@@ -112,16 +115,57 @@ pub(crate) fn payloads_of(
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or_default()
                 .to_string();
-            split_sentences(&text)
+            let sentences = split_sentences(&text);
+            let speakers = sentence_speakers(&sentences, words.as_ref());
+            sentences
                 .into_iter()
-                .map(|s| {
+                .zip(speakers)
+                .map(|(s, speaker)| {
                     let mut one = seg.clone();
                     one.insert("text".into(), s.into());
+                    if let Some(l) = speaker {
+                        one.insert("speaker".into(), l.into());
+                    }
                     serde_json::Value::Object(one)
                 })
                 .collect()
         }
     }
+}
+
+/// Stream-local speaker label of each sentence: the label holding most of
+/// its words' duration. Sentences take the words in order, one per
+/// whitespace-separated token (the transcript is the words joined by
+/// spaces); `None` without labelled words.
+fn sentence_speakers(
+    sentences: &[String],
+    words: Option<&serde_json::Value>,
+) -> Vec<Option<String>> {
+    let words = words.and_then(serde_json::Value::as_array);
+    let mut at = 0usize;
+    sentences
+        .iter()
+        .map(|s| {
+            let n = s.split_whitespace().count();
+            let slice = words
+                .map(|w| &w[at.min(w.len())..(at + n).min(w.len())])
+                .unwrap_or_default();
+            at += n;
+            let mut by: BTreeMap<&str, u64> = BTreeMap::new();
+            for w in slice {
+                if let Some(spk) = w.get("spk").and_then(serde_json::Value::as_str) {
+                    let d = w["e"]
+                        .as_u64()
+                        .unwrap_or(0)
+                        .saturating_sub(w["s"].as_u64().unwrap_or(0));
+                    *by.entry(spk).or_default() += d.max(1);
+                }
+            }
+            by.into_iter()
+                .max_by_key(|(_, d)| *d)
+                .map(|(l, _)| l.to_string())
+        })
+        .collect()
 }
 
 impl MediaSourceNode {
@@ -264,6 +308,24 @@ mod tests {
         assert_eq!(p["lang"], "fr");
         assert!(p.get("confidence").is_none());
         assert!(payloads_of("inter", "not json", MediaSourceEmit::Segment, None).is_empty());
+    }
+
+    #[test]
+    fn sentences_get_the_speaker_of_their_words() {
+        let raw = r#"{"text":"Bonjour à tous. Merci !","speakers":[{"label":"S1","start_ms":0,"end_ms":900},{"label":"S2","start_ms":900,"end_ms":1500}],
+            "words":[{"w":"Bonjour","s":0,"e":300,"spk":"S1"},{"w":"à","s":300,"e":400,"spk":"S1"},{"w":"tous.","s":400,"e":900,"spk":"S1"},
+                     {"w":"Merci","s":900,"e":1300,"spk":"S2"},{"w":"!","s":1300,"e":1400,"spk":"S2"}]}"#;
+        let out = payloads_of("inter", raw, MediaSourceEmit::Sentence, None);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0]["speaker"], "S1");
+        assert_eq!(out[1]["speaker"], "S2");
+        assert!(out[0].get("words").is_none(), "words stay in O2");
+        assert_eq!(out[0]["speakers"][1]["label"], "S2");
+        let seg = payloads_of("inter", raw, MediaSourceEmit::Segment, None);
+        assert!(seg[0].get("words").is_none() && seg[0].get("speaker").is_none());
+        // Without labelled words: no speaker field.
+        let plain = payloads_of("inter", RAW, MediaSourceEmit::Sentence, None);
+        assert!(plain.iter().all(|p| p.get("speaker").is_none()));
     }
 
     #[test]

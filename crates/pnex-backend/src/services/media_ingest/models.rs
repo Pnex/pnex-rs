@@ -1,5 +1,6 @@
 //! Audio models of the registry (media-ingest.md D167): `ml_models` rows of
-//! task `asr`, next to the vision ones. What the files dictate (family,
+//! tasks `asr`, `vad`, `diarization_segmentation` and `speaker_embedding`,
+//! next to the vision ones. What the files dictate (family,
 //! runtime) is read, never typed; the check measures load time, real-time
 //! factor and WER on the reference sample.
 
@@ -13,7 +14,9 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use super::asr::{self, AsrError, AsrSettings, ASR_TASK};
+use pnex_asr::protocol::AUDIO_TASKS;
+
+use super::asr::{self, AsrError, AsrSettings};
 use crate::models::_entities::{media_assets, ml_models};
 
 const NAME_MAX: usize = 200;
@@ -60,6 +63,7 @@ pub fn view(m: &ml_models::Model) -> AsrModel {
         id: m.id.to_string(),
         name: m.name.clone(),
         description: m.description.clone().unwrap_or_default(),
+        task: m.task.clone(),
         family: m.family.clone(),
         asset_id: m.asset_id.to_string(),
         asset_version: m.asset_version,
@@ -129,7 +133,7 @@ pub async fn save_carrier_check<C: ConnectionTrait>(
             None,
             Some(r.load_ms as i64),
             Some(r.rtf),
-            Some(r.wer),
+            r.wer,
         ),
         Err(e) => (
             ModelCheckStatus::Invalid,
@@ -175,7 +179,7 @@ pub async fn save_carrier_check<C: ConnectionTrait>(
 pub async fn list<C: ConnectionTrait>(db: &C, org_id: i64) -> Result<Vec<ml_models::Model>, DbErr> {
     ml_models::Entity::find()
         .filter(ml_models::Column::OrgId.eq(org_id))
-        .filter(ml_models::Column::Task.eq(ASR_TASK))
+        .filter(ml_models::Column::Task.is_in(AUDIO_TASKS))
         .order_by_asc(ml_models::Column::Name)
         .all(db)
         .await
@@ -188,7 +192,7 @@ pub async fn find<C: ConnectionTrait>(
 ) -> Result<ml_models::Model, ModelError> {
     ml_models::Entity::find_by_id(id)
         .filter(ml_models::Column::OrgId.eq(org_id))
-        .filter(ml_models::Column::Task.eq(ASR_TASK))
+        .filter(ml_models::Column::Task.is_in(AUDIO_TASKS))
         .one(db)
         .await?
         .ok_or(ModelError::NotFound)
@@ -269,6 +273,7 @@ pub async fn run_check(
                     ("rtf", serde_json::json!(r.rtf)),
                     ("wer", serde_json::json!(r.wer)),
                     ("check_transcript", serde_json::json!(r.transcript)),
+                    ("speech_ms", serde_json::json!(r.speech_ms)),
                 ] {
                     obj.insert(k.into(), v);
                 }
@@ -345,7 +350,7 @@ pub async fn create(
         org_id: Set(org_id),
         name: Set(name),
         description: Set(description),
-        task: Set(ASR_TASK.into()),
+        task: Set(local.inspection.family.task().into()),
         family: Set(local.inspection.family.wire().into()),
         asset_id: Set(asset_id),
         asset_version: Set(input.asset_version),

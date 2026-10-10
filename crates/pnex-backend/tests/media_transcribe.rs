@@ -2,7 +2,8 @@
 //! with a fake `pnex-asr` (tests/fixtures/asr): import of a sherpa-style
 //! archive, family read from the files, check on the reference sample,
 //! profile, enabled stream, capture → queued → transcribed by the worker
-//! (run inline: `ForegroundBlocking`). O2 is not configured in the tests,
+//! (run inline: `ForegroundBlocking`); VAD and diarization models (single
+//! ONNX files), a silent stream skipped by the VAD. O2 is not configured in the tests,
 //! so the chain stops at the transcript write with `o2-failed`: every step
 //! before it ran.
 //!
@@ -53,6 +54,22 @@ fn parakeet_archive() -> Vec<u8> {
     out
 }
 
+/// A single ONNX file as sherpa-onnx exports it: `ir_version`, then one
+/// metadata entry saying what the model is (dummy weights).
+fn onnx_with_meta(key: &str, value: &str) -> Vec<u8> {
+    let mut entry = vec![0x0a, key.len() as u8];
+    entry.extend_from_slice(key.as_bytes());
+    entry.extend_from_slice(&[0x12, value.len() as u8]);
+    entry.extend_from_slice(value.as_bytes());
+    let mut out = vec![0x08, 0x07, 0x72, entry.len() as u8];
+    out.extend(entry);
+    out
+}
+
+fn silent_wav() -> Vec<u8> {
+    capture::segmenter::wav_bytes(&vec![0i16; 12 * 16_000])
+}
+
 fn tone_server_wav() -> Vec<u8> {
     let samples: Vec<i16> = (0..12 * 16_000)
         .map(|i| ((i as f32 * 440.0 * std::f32::consts::TAU / 16_000.0).sin() * 8_000.0) as i16)
@@ -61,7 +78,10 @@ fn tone_server_wav() -> Vec<u8> {
 }
 
 async fn serve_tone() -> String {
-    let wav = tone_server_wav();
+    serve_wav(tone_server_wav()).await
+}
+
+async fn serve_wav(wav: Vec<u8>) -> String {
     let app = axum::Router::new().route(
         "/ep.wav",
         axum::routing::get(move || {
@@ -94,6 +114,7 @@ async fn model_import_check_and_transcription_chain() {
     );
     let has_ffmpeg = decoder::resolve(&CaptureSettings::from_env().ffmpeg).is_some();
     let url = serve_tone().await;
+    let silent_url = serve_wav(silent_wav()).await;
     let config: RequestConfig = RequestConfigBuilder::new().build();
     loco_rs::testing::request::request_with_config::<App, _, _>(
         config,
@@ -220,6 +241,111 @@ async fn model_import_check_and_transcription_chain() {
                 assert_eq!(r["truncated"], false);
             }
 
+            // VAD and diarization models (D166, lot 5): single ONNX files,
+            // task and family read from their metadata.
+            let side = |name: &'static str, key: &'static str, value: &'static str| {
+                let up = upload(&format!("{name}.onnx"), onnx_with_meta(key, value));
+                let post = &post;
+                async move {
+                    let asset = up.await;
+                    assert!(asset.status_code().is_success(), "{}", asset.text());
+                    let id = asset.json::<Value>()["id"].as_str().unwrap().to_string();
+                    post(
+                        "/api/v1/asr/models",
+                        json!({ "name": name, "asset_id": id, "license": "MIT" }),
+                    )
+                    .await
+                }
+            };
+            let res = side("vad", "model_type", "silero-vad").await;
+            assert_eq!(res.status_code(), 201, "{}", res.text());
+            let vad = res.json::<Value>();
+            assert_eq!(vad["task"], "vad");
+            assert_eq!(vad["family"], "silero");
+            assert_eq!(vad["check"]["status"], "valid", "{vad}");
+            assert!(vad["check"].get("wer").is_none(), "no WER for a VAD");
+            let vad_id = vad["id"].as_str().unwrap().to_string();
+            // A segmentation model is checked with an embedding model: none yet.
+            let res = side("seg", "model_type", "pyannote-segmentation-3.0").await;
+            assert_eq!(res.status_code(), 201, "{}", res.text());
+            let seg = res.json::<Value>();
+            assert_eq!(seg["task"], "diarization_segmentation");
+            assert_eq!(seg["check"]["status"], "invalid", "{seg}");
+            let seg_id = seg["id"].as_str().unwrap().to_string();
+            let res = side("emb", "framework", "3d-speaker").await;
+            assert_eq!(res.status_code(), 201, "{}", res.text());
+            let emb = res.json::<Value>();
+            assert_eq!(emb["task"], "speaker_embedding");
+            assert_eq!(emb["check"]["status"], "valid", "{emb}");
+            let emb_id = emb["id"].as_str().unwrap().to_string();
+            let check = post(&format!("/api/v1/asr/models/{seg_id}/check"), json!({})).await;
+            assert_eq!(check.status_code(), 200, "{}", check.text());
+            assert_eq!(check.json::<Value>()["check"]["status"], "valid");
+            let all = server
+                .get("/api/v1/asr/models")
+                .add_header("Authorization", auth.clone())
+                .add_header("X-Org-Id", org.to_string())
+                .await
+                .json::<Value>();
+            let mut tasks: Vec<&str> = all
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|m| m["task"].as_str().unwrap())
+                .collect();
+            tasks.sort_unstable();
+            assert_eq!(
+                tasks,
+                ["asr", "diarization_segmentation", "speaker_embedding", "vad"]
+            );
+            let res = server
+                .post(&format!("/api/v1/asr/models/{vad_id}/test?name=a.wav"))
+                .add_header("Authorization", auth.clone())
+                .add_header("X-Org-Id", org.to_string())
+                .add_header("Content-Type", "application/octet-stream")
+                .bytes(tone_server_wav().into())
+                .await;
+            assert_eq!(res.status_code(), 400);
+            assert_eq!(res.json::<Value>()["error"], "asr-model-unsupported");
+
+            // Profile validation: right task per field, diarization = both.
+            for (body, field, token) in [
+                (json!({ "name": "X", "asr_model_id": vad_id }), "asr_model_id", "invalid"),
+                (
+                    json!({ "name": "X", "asr_model_id": model_id, "vad_model_id": model_id }),
+                    "vad_model_id",
+                    "invalid",
+                ),
+                (
+                    json!({ "name": "X", "asr_model_id": model_id, "diarization_model_id": seg_id }),
+                    "diarization_embedding_model_id",
+                    "required",
+                ),
+                (
+                    json!({ "name": "X", "asr_model_id": model_id,
+                            "diarization_model_id": emb_id, "diarization_embedding_model_id": emb_id }),
+                    "diarization_model_id",
+                    "invalid",
+                ),
+            ] {
+                let res = post("/api/v1/asr/profiles", body).await;
+                assert_eq!(res.status_code(), 400, "{}", res.text());
+                assert_eq!(res.json::<Value>()[field], token, "{field}");
+            }
+            let res = post(
+                "/api/v1/asr/profiles",
+                json!({
+                    "name": "FR diarized", "asr_model_id": model_id, "vad_model_id": vad_id,
+                    "diarization_model_id": seg_id, "diarization_embedding_model_id": emb_id
+                }),
+            )
+            .await;
+            assert_eq!(res.status_code(), 201, "{}", res.text());
+            let full = res.json::<Value>();
+            assert_eq!(full["vad_model_id"], vad_id.as_str());
+            assert_eq!(full["diarization_embedding_model_id"], emb_id.as_str());
+            let full_id = full["id"].as_str().unwrap().to_string();
+
             // Profile + enabled stream.
             let res = post(
                 "/api/v1/asr/profiles",
@@ -303,6 +429,70 @@ async fn model_import_check_and_transcription_chain() {
                     s.storage_key.is_some(),
                     "failed segments keep their audio (D161)"
                 );
+            }
+
+            // VAD (D166): a silent stream is never transcribed, its
+            // segments end `skipped_silence` and their audio is purged
+            // (retention `none`).
+            let res = post(
+                "/api/v1/media/streams",
+                json!({
+                    "name": "Silence", "kind": "http_file", "url": silent_url,
+                    "segment_secs": 10, "asr_profile_id": full_id, "enabled": true
+                }),
+            )
+            .await;
+            assert_eq!(res.status_code(), 201, "{}", res.text());
+            let silent_id: uuid::Uuid = res.json::<Value>()["id"].as_str().unwrap().parse().unwrap();
+            let row = media_streams::Entity::find_by_id(silent_id)
+                .one(&ctx.db)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                capture::capture_once(&ctx, &row, Duration::from_secs(60))
+                    .await
+                    .expect("capture"),
+                2
+            );
+            let quiet = media_segments::Entity::find()
+                .filter(media_segments::Column::StreamId.eq(silent_id))
+                .all(&ctx.db)
+                .await
+                .unwrap();
+            assert_eq!(quiet.len(), 2);
+            for s in &quiet {
+                assert_eq!(s.state, "skipped_silence", "{s:?}");
+                assert!(s.storage_key.is_none(), "audio purged: {s:?}");
+            }
+            // Speech with the same profile: VAD, transcription and
+            // diarization ran; the chain stops at the O2 write as above.
+            let res = post(
+                "/api/v1/media/streams",
+                json!({
+                    "name": "Diarized", "kind": "http_file", "url": url,
+                    "segment_secs": 10, "asr_profile_id": full_id, "enabled": true
+                }),
+            )
+            .await;
+            assert_eq!(res.status_code(), 201, "{}", res.text());
+            let diar_id: uuid::Uuid = res.json::<Value>()["id"].as_str().unwrap().parse().unwrap();
+            let row = media_streams::Entity::find_by_id(diar_id)
+                .one(&ctx.db)
+                .await
+                .unwrap()
+                .unwrap();
+            capture::capture_once(&ctx, &row, Duration::from_secs(60))
+                .await
+                .expect("capture");
+            let spoken = media_segments::Entity::find()
+                .filter(media_segments::Column::StreamId.eq(diar_id))
+                .all(&ctx.db)
+                .await
+                .unwrap();
+            assert_eq!(spoken.len(), 2);
+            for s in &spoken {
+                assert_eq!(s.error.as_deref(), Some("o2-failed"), "{s:?}");
             }
 
             // Replay: failed segments with audio go back to the queue (run

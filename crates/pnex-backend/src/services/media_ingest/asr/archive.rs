@@ -1,6 +1,8 @@
 //! Audio model archives → model directory (media-ingest.md D167).
 //!
-//! An uploaded model is a single GGML/GGUF file or an archive (`.tar`,
+//! An uploaded model is a single GGML/GGUF file, a single ONNX file that
+//! states what it is in its metadata (Silero VAD, pyannote segmentation,
+//! speaker embedding exports of sherpa-onnx), or an archive (`.tar`,
 //! `.tar.bz2`, `.tar.gz`, `.zip`, as published by sherpa-onnx). The archive
 //! is untrusted: only regular files with a model extension are written,
 //! flattened to their base name (no path from the archive is ever joined,
@@ -29,6 +31,7 @@ pub enum ArchiveError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
     Ggml,
+    Onnx,
     Tar,
     TarBz2,
     TarGz,
@@ -42,6 +45,15 @@ fn kind_of(bytes: &[u8]) -> Option<Kind> {
         [0x1f, 0x8b, ..] => Some(Kind::TarGz),
         [b'P', b'K', 3, 4, ..] => Some(Kind::Zip),
         _ if bytes.len() > 262 && &bytes[257..262] == b"ustar" => Some(Kind::Tar),
+        // ONNX = protobuf starting with `ir_version`; only one that says
+        // what it is is taken.
+        [0x08, ..]
+            if ["model_type", "framework"]
+                .iter()
+                .any(|k| pnex_asr::protocol::onnx_meta(bytes, k).is_some()) =>
+        {
+            Some(Kind::Onnx)
+        }
         _ => None,
     }
 }
@@ -103,6 +115,7 @@ pub fn extract(bytes: &[u8], dir: &Path) -> Result<(), ArchiveError> {
     let mut w = Writer { dir, total: 0 };
     match kind_of(bytes).ok_or(ArchiveError::Unsupported)? {
         Kind::Ggml => w.write("model.bin", bytes),
+        Kind::Onnx => w.write("model.onnx", bytes),
         Kind::Tar => untar(bytes, &mut w),
         Kind::TarBz2 => untar(bzip2::read::BzDecoder::new(bytes), &mut w),
         Kind::TarGz => untar(flate2::read::GzDecoder::new(bytes), &mut w),
@@ -193,6 +206,14 @@ mod tests {
         extract(b"lmgg\x00\x01\x02", &d).unwrap();
         assert!(d.join("model.bin").exists());
         assert_eq!(extract(b"<html>", &d), Err(ArchiveError::Unsupported));
+        assert_eq!(
+            extract(b"\x08\x07 no metadata", &d),
+            Err(ArchiveError::Unsupported)
+        );
+        let mut onnx = vec![0x08, 0x07, 0x72, 0x16, 0x0a, 0x0a];
+        onnx.extend_from_slice(b"model_type\x12\x0asilero-vad");
+        extract(&onnx, &d).unwrap();
+        assert!(d.join("model.onnx").exists());
         let _ = std::fs::remove_dir_all(d);
     }
 }

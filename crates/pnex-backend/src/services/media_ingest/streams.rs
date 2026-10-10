@@ -334,8 +334,9 @@ async fn apply<C: ConnectionTrait>(
     Ok(())
 }
 
-/// An enabled stream needs a profile whose ASR model passed its check
-/// (D167 guard, school of D101).
+/// An enabled stream needs a profile whose models (ASR, and the VAD and
+/// diarization ones when set) passed their check (D167 guard, school of
+/// D101).
 async fn check_runnable<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
@@ -351,11 +352,21 @@ async fn check_runnable<C: ConnectionTrait>(
     else {
         return Err(StreamError::AsrModelInvalid);
     };
-    let valid = ml_models::Entity::find_by_id(p.asr_model_id)
+    let ids: Vec<Uuid> = std::iter::once(p.asr_model_id)
+        .chain(p.vad_model_id)
+        .chain(p.diarization_model_id)
+        .chain(p.diarization_embedding_model_id)
+        .collect();
+    let valid = ml_models::Entity::find()
+        .filter(ml_models::Column::Id.is_in(ids.clone()))
         .filter(ml_models::Column::OrgId.eq(org_id))
-        .one(db)
+        .filter(
+            ml_models::Column::CheckStatus.eq(pnex_core::vision::ModelCheckStatus::Valid.wire()),
+        )
+        .all(db)
         .await?
-        .is_some_and(|m| m.check_status == pnex_core::vision::ModelCheckStatus::Valid.wire());
+        .len()
+        == ids.len();
     if valid {
         Ok(())
     } else {

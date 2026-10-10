@@ -1,8 +1,10 @@
 //! ASR profiles (media-ingest.md D164): which registry models a stream
 //! transcribes with. Changing a profile only affects new segments.
 
+use pnex_asr::protocol::{TASK_ASR, TASK_EMBEDDING, TASK_SEGMENTATION, TASK_VAD};
 use pnex_core::err_codes;
 use pnex_core::media_ingest::{is_valid_language, AsrProfile, AsrProfileInput};
+use pnex_core::vision::ModelCheckStatus;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
     QueryFilter, QueryOrder, Set, TransactionTrait,
@@ -40,6 +42,7 @@ pub fn view(r: &asr_profiles::Model) -> AsrProfile {
         asr_model_id: r.asr_model_id.to_string(),
         vad_model_id: r.vad_model_id.map(|v| v.to_string()),
         diarization_model_id: r.diarization_model_id.map(|v| v.to_string()),
+        diarization_embedding_model_id: r.diarization_embedding_model_id.map(|v| v.to_string()),
         language: r.language.clone(),
         beam: r.beam,
         word_timestamps: r.word_timestamps,
@@ -71,8 +74,8 @@ pub async fn find<C: ConnectionTrait>(
         .ok_or(ProfileError::NotFound)
 }
 
-/// A model of the org with the expected task; anything else is the same
-/// field error (no cross-org oracle, R1).
+/// A model of the org with the expected task that passed its check;
+/// anything else is the same field error (no cross-org oracle, R1).
 async fn model_of<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
@@ -85,6 +88,7 @@ async fn model_of<C: ConnectionTrait>(
     ml_models::Entity::find_by_id(id)
         .filter(ml_models::Column::OrgId.eq(org_id))
         .filter(ml_models::Column::Task.eq(task))
+        .filter(ml_models::Column::CheckStatus.eq(ModelCheckStatus::Valid.wire()))
         .one(db)
         .await?
         .map(|m| m.id)
@@ -120,6 +124,21 @@ fn clean_name(raw: &str) -> Result<String, ProfileError> {
     Ok(name.to_string())
 }
 
+/// An optional model field: empty clears it, otherwise a checked model of
+/// the org with `task`.
+async fn optional_model<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    field: &'static str,
+    raw: &str,
+    task: &str,
+) -> Result<Option<Uuid>, ProfileError> {
+    if raw.trim().is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(model_of(db, org_id, field, raw, task).await?))
+}
+
 /// Applies `input` on `am` (absent fields keep their value).
 async fn apply<C: ConnectionTrait>(
     db: &C,
@@ -131,14 +150,32 @@ async fn apply<C: ConnectionTrait>(
         am.name = Set(clean_name(name)?);
     }
     if let Some(raw) = &input.asr_model_id {
-        am.asr_model_id = Set(model_of(db, org_id, "asr_model_id", raw, "asr").await?);
+        am.asr_model_id = Set(model_of(db, org_id, "asr_model_id", raw, TASK_ASR).await?);
     }
     if let Some(raw) = &input.vad_model_id {
-        am.vad_model_id = Set(if raw.trim().is_empty() {
-            None
-        } else {
-            Some(model_of(db, org_id, "vad_model_id", raw, "vad").await?)
-        });
+        am.vad_model_id = Set(optional_model(db, org_id, "vad_model_id", raw, TASK_VAD).await?);
+    }
+    if let Some(raw) = &input.diarization_model_id {
+        let field = "diarization_model_id";
+        am.diarization_model_id =
+            Set(optional_model(db, org_id, field, raw, TASK_SEGMENTATION).await?);
+    }
+    if let Some(raw) = &input.diarization_embedding_model_id {
+        let field = "diarization_embedding_model_id";
+        am.diarization_embedding_model_id =
+            Set(optional_model(db, org_id, field, raw, TASK_EMBEDDING).await?);
+    }
+    // Diarization runs with both models or not at all.
+    let seg = am.diarization_model_id.clone().unwrap().is_some();
+    let emb = am.diarization_embedding_model_id.clone().unwrap().is_some();
+    if seg && !emb {
+        return Err(invalid(
+            "diarization_embedding_model_id",
+            err_codes::FIELD_REQUIRED,
+        ));
+    }
+    if emb && !seg {
+        return Err(invalid("diarization_model_id", err_codes::FIELD_REQUIRED));
     }
     if let Some(lang) = &input.language {
         let lang = lang.trim().to_ascii_lowercase();
@@ -179,6 +216,7 @@ pub async fn create(
         name: Set(name),
         vad_model_id: Set(None),
         diarization_model_id: Set(None),
+        diarization_embedding_model_id: Set(None),
         language: Set("fr".into()),
         beam: Set(1),
         word_timestamps: Set(true),

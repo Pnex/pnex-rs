@@ -277,13 +277,13 @@ pub const NODE_DOCS: &[NodeDoc] = &[
     },
     NodeDoc {
         kind: "media_source",
-        summary: "Event source (no inject needed): one message per transcribed segment of the listed media streams (Media page). payload = {stream, segment_id, started_at, ended_at, text, lang, asr_model, words_ref, speakers}, topic = stream slug. words_ref names the OpenObserve logs stream (tx_<slug>) holding the word timings.",
+        summary: "Event source (no inject needed): one message per transcribed segment of the listed media streams (Media page). payload = {stream, segment_id, started_at, ended_at, text, lang, asr_model, words_ref, speakers, speech_ms?}, topic = stream slug. words_ref names the OpenObserve logs stream (tx_<slug>) holding the word timings. speakers = [{label, start_ms, end_ms}] when the stream's profile has diarization, else []; speech_ms = speech found by the VAD when the profile has one.",
         config: &[
             ("streams", "[stream slug] — one or more streams of the organization (required)"),
-            ("emit", "\"segment\" (default) = one message per segment | \"sentence\" = one message per sentence, payload.text = the sentence"),
+            ("emit", "\"segment\" (default) = one message per segment | \"sentence\" = one message per sentence, payload.text = the sentence, payload.speaker = its speaker label when diarized"),
             ("min_confidence", "optional 0..=1; only applies when a segment carries a confidence (segments without one pass)"),
         ],
-        notes: "Only text reaches the flow, never audio. One message per transcribed segment, nothing during silences. Each stream must exist and be enabled with a transcription profile, otherwise no message ever arrives (a slug that is not a stream of the organization refuses the deploy). For series written downstream (mention counters, topics), put the taxonomy version in a label.",
+        notes: "Only text reaches the flow, never audio. One message per transcribed segment, nothing during silences. Each stream must exist and be enabled with a transcription profile, otherwise no message ever arrives (a slug that is not a stream of the organization refuses the deploy). For series written downstream (mention counters, topics), put the taxonomy version in a label. Speaker labels (S1, S2…) are local to the stream and to the transcription worker: they are never a person's identity, and they restart from S1 after a worker restart or 30 min without that voice — name speakers from external sources (schedules, announcements), never from the voice. Silent segments (VAD) emit nothing. Speaking time is already written as series media_speech_seconds{stream} and media_speaker_seconds{stream, speaker}.",
     },
     NodeDoc {
         kind: "topic_classify",

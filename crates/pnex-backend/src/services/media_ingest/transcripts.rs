@@ -28,6 +28,11 @@ pub struct Doc<'a> {
     pub text: &'a str,
     /// Word timings, serialized (O2 flattens nested objects, D84).
     pub words_json: String,
+    /// Speaker turns `[{label, start_ms, end_ms}]`, serialized; `[]`
+    /// without diarization. Labels are stream-local, never identities.
+    pub speakers_json: String,
+    /// Speech found by the VAD, ms; `None` when the profile has none.
+    pub speech_ms: Option<u32>,
     pub lang: &'a str,
     pub asr_model: &'a str,
     pub asr_model_version: Option<i64>,
@@ -43,6 +48,8 @@ pub fn document_of(d: &Doc<'_>) -> serde_json::Value {
         // without stream settings (same field as the event streams, D84).
         "message": d.text,
         "words": d.words_json,
+        "speakers": d.speakers_json,
+        "speech_ms": d.speech_ms,
         "lang": d.lang,
         "asr_model": d.asr_model,
         "asr_model_version": d.asr_model_version,
@@ -144,6 +151,7 @@ fn record_of(hit: &serde_json::Value) -> TranscriptRecord {
             .unwrap_or_default()
             .to_string(),
         words: hit["words"].as_str().unwrap_or_default().to_string(),
+        speakers: hit["speakers"].as_str().unwrap_or_default().to_string(),
         lang: hit["lang"].as_str().unwrap_or_default().to_string(),
         asr_model: hit["asr_model"].as_str().unwrap_or_default().to_string(),
     }

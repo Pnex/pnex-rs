@@ -186,6 +186,14 @@ async fn model_test(
         Ok(row) => row,
         Err(e) => return model_error(e),
     };
+    if row.task != asr::ASR_TASK {
+        // VAD and diarization models have no transcript to show.
+        return Err(detail(
+            StatusCode::BAD_REQUEST,
+            err_codes::ASR_MODEL_UNSUPPORTED,
+            "Only a speech-to-text model can be tested with a clip.",
+        ));
+    }
     if row.check_status != ModelCheckStatus::Valid.wire() {
         return Err(detail(
             StatusCode::CONFLICT,

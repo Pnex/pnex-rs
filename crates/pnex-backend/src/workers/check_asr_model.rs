@@ -13,8 +13,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::models::_entities::ml_models;
-use crate::services::media_ingest::asr::{self, ASR_TASK};
+use crate::services::media_ingest::asr;
 use crate::services::media_ingest::models::save_carrier_check;
+use pnex_asr::protocol::AUDIO_TASKS;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckAsrModelArgs {
@@ -56,7 +57,7 @@ impl BackgroundWorker<CheckAsrModelArgs> for CheckAsrModelWorker {
     async fn perform(&self, args: CheckAsrModelArgs) -> Result<()> {
         let Some(model) = ml_models::Entity::find_by_id(args.model_id)
             .filter(ml_models::Column::OrgId.eq(args.org_id))
-            .filter(ml_models::Column::Task.eq(ASR_TASK))
+            .filter(ml_models::Column::Task.is_in(AUDIO_TASKS))
             .one(&self.ctx.db)
             .await?
         else {
