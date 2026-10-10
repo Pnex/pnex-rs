@@ -102,4 +102,5 @@ sans stack Python côté plateforme. Les capacités sont exposées comme
 - Quel est le besoin réel de fine-tuning sur des données client ? (le
   « Model Lab » de la roadmap — fabrication de modèles — démarre par le
   ML classique linfa, entraînable en Rust ; le fine-tuning de détecteurs
-  est une décision explicite ultérieure)
+  est une décision explicite ultérieure — proposée par
+  `media-vision-studio.md`, Vision Lab, 2026-10-10)
