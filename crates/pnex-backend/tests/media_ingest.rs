@@ -250,6 +250,30 @@ async fn stream_crud_slug_and_quota() {
         )
         .await;
         assert_eq!(s, 404);
+
+        // The deleted stream is a tombstone: it frees its quota slot, but
+        // its slug (the name of its O2 streams) is never given again.
+        let (s, again) = call(
+            &server,
+            "POST",
+            "/api/v1/media/streams",
+            &env.alice,
+            org,
+            Some(stream("France Inter", url)),
+        )
+        .await;
+        assert_eq!(s, 201, "{again}");
+        assert_eq!(again["slug"], "france_inter_3");
+        let (_, list) = call(
+            &server,
+            "GET",
+            "/api/v1/media/streams",
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(list["count"], 3);
     })
     .await;
 }

@@ -15,7 +15,9 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::models::_entities::{asr_profiles, media_streams, ml_models, notify_channels};
+use crate::models::_entities::{
+    asr_profiles, media_segments, media_streams, ml_models, notify_channels,
+};
 use crate::services::db_lock;
 use crate::services::secrets::store::{self, StoreError, Writer};
 use crate::services::secrets::{media as media_secret, Keyring};
@@ -115,10 +117,11 @@ pub fn view(r: &media_streams::Model) -> MediaStream {
     }
 }
 
-/// Streams of the org, by name.
+/// Live streams of the org (tombstones excluded), by name.
 pub fn select(org_id: i64) -> Select<media_streams::Entity> {
     media_streams::Entity::find()
         .filter(media_streams::Column::OrgId.eq(org_id))
+        .filter(media_streams::Column::DeletedAt.is_null())
         .order_by_asc(media_streams::Column::Name)
 }
 
@@ -129,6 +132,7 @@ pub async fn find<C: ConnectionTrait>(
 ) -> Result<media_streams::Model, StreamError> {
     media_streams::Entity::find_by_id(id)
         .filter(media_streams::Column::OrgId.eq(org_id))
+        .filter(media_streams::Column::DeletedAt.is_null())
         .one(db)
         .await?
         .ok_or(StreamError::NotFound)
@@ -144,8 +148,19 @@ pub async fn find_by_slug<C: ConnectionTrait>(
     media_streams::Entity::find()
         .filter(media_streams::Column::OrgId.eq(org_id))
         .filter(media_streams::Column::Slug.eq(slug))
+        .filter(media_streams::Column::DeletedAt.is_null())
         .one(db)
         .await
+}
+
+/// A slug ever given in the org, tombstones included: never reused.
+async fn slug_taken<C: ConnectionTrait>(db: &C, org_id: i64, slug: &str) -> Result<bool, DbErr> {
+    Ok(media_streams::Entity::find()
+        .filter(media_streams::Column::OrgId.eq(org_id))
+        .filter(media_streams::Column::Slug.eq(slug))
+        .one(db)
+        .await?
+        .is_some())
 }
 
 fn clean_name(raw: &str) -> Result<String, StreamError> {
@@ -356,7 +371,7 @@ async fn free_slug<C: ConnectionTrait>(
             b.truncate(SLUG_MAX_LEN - suffix.len());
             format!("{}{suffix}", b.trim_end_matches('_'))
         };
-        if find_by_slug(db, org_id, &candidate).await?.is_none() {
+        if !slug_taken(db, org_id, &candidate).await? {
             return Ok(candidate);
         }
     }
@@ -387,6 +402,7 @@ pub async fn create(
     db_lock::xact_lock(&txn, db_lock::ns::MEDIA_STREAM_QUOTA, org_id).await?;
     let count = media_streams::Entity::find()
         .filter(media_streams::Column::OrgId.eq(org_id))
+        .filter(media_streams::Column::DeletedAt.is_null())
         .count(&txn)
         .await?;
     if count >= max_per_org {
@@ -417,6 +433,7 @@ pub async fn create(
         capture_state: Set(CaptureState::Stopped.wire().into()),
         capture_error: Set(None),
         capture_changed_at: Set(None),
+        deleted_at: Set(None),
         created_by: Set(by.user_id),
         created_at: Set(now),
         updated_at: Set(now),
@@ -501,8 +518,10 @@ pub async fn update(
     Ok(row)
 }
 
-/// Deletes a stream, its segments (cascade) and its dedicated secret.
-/// Audio blobs still in the store are removed by the caller after commit.
+/// Deletes a stream: its segments, its dedicated secret and its capture
+/// go; the row stays as a tombstone so its slug (the name of its O2
+/// streams) is never given to another stream (D159). Audio blobs still in
+/// the store are removed by the caller after commit.
 pub async fn delete(
     db: &DatabaseConnection,
     org_id: i64,
@@ -511,7 +530,20 @@ pub async fn delete(
     let txn = db.begin().await?;
     let row = find(&txn, org_id, id).await?;
     media_secret::release(&txn, org_id, id, &row.slug).await?;
-    media_streams::Entity::delete_by_id(id).exec(&txn).await?;
+    media_segments::Entity::delete_many()
+        .filter(media_segments::Column::StreamId.eq(id))
+        .exec(&txn)
+        .await?;
+    let now: sea_orm::prelude::DateTimeWithTimeZone = chrono::Utc::now().into();
+    let mut am: media_streams::ActiveModel = row.clone().into();
+    am.deleted_at = Set(Some(now));
+    am.enabled = Set(false);
+    am.secret_id = Set(None);
+    am.asr_profile_id = Set(None);
+    am.notify_channel_id = Set(None);
+    am.capture_state = Set(CaptureState::Stopped.wire().into());
+    am.updated_at = Set(now);
+    am.update(&txn).await?;
     txn.commit().await?;
     Ok(row)
 }
