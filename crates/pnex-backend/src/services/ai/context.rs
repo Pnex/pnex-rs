@@ -162,6 +162,28 @@ RÈGLES FLOW :
             flows_line
         }
     ));
+    // Ontology schema of the org, generated from its registry (D189).
+    if let Ok(schema) = crate::services::ontology::schema(db, org_id).await {
+        let org_types: Vec<String> = schema
+            .types
+            .iter()
+            .filter(|(t, _, _)| !t.system || !t.properties.is_empty())
+            .map(|(t, _, _)| {
+                let props: Vec<&str> = t.properties.iter().map(|p| p.key.as_str()).collect();
+                format!("{}({})", t.key, props.join(","))
+            })
+            .collect();
+        let links: Vec<&str> = schema
+            .links
+            .iter()
+            .map(|(l, _, _)| l.key.as_str())
+            .collect();
+        p.push_str(&format!(
+            "ONTOLOGY: object types {}; link types {}. Full schema: describe_ontology; objects: query_ontology / get_object.\n\n",
+            if org_types.is_empty() { "system only".to_string() } else { org_types.join(", ") },
+            links.join(", ")
+        ));
+    }
     // ── 4. Page courante ──
     if let Some(page) = page {
         if let Some(flow_id) = page.flow_id {

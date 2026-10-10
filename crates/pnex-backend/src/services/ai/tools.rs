@@ -33,6 +33,9 @@ pub struct ToolDeps<'a> {
     pub o2: Option<&'a crate::services::openobserve::client::Client>,
     /// App config (live caches, flow cluster); `None` in unit tests.
     pub config: Option<&'a loco_rs::config::Config>,
+    /// Who writes through the ontology tools (role for D188, provenance
+    /// `assistant:<user>` for D184); `None` in unit tests.
+    pub actor: Option<crate::services::ontology::Actor>,
 }
 
 /// Résultat d'exécution : la valeur JSON vue par le modèle + l'id du flow
@@ -387,6 +390,46 @@ pub fn tool_specs() -> Vec<ToolSpec> {
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"taxonomy_id":{"type":"string"},"expected_version":{"type":"integer"},"topics":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"label":{"type":"string"},"definition":{"type":"string"},"keywords":{"type":"array","items":{"type":"string"}}},"required":["id","label"]}},"note":{"type":"string"}},"required":["taxonomy_id","expected_version","topics"]}"#).expect("static schema"),
         },
         ToolSpec {
+            name: "describe_ontology",
+            description: "The organization's ontology schema: object types (key, name, typed properties, containment, write role, object count; system types are devices, media, dashboards, tours, POIs, flows, folders) and link types (key, from/to types, attributes, cardinality). Read it before any ontology query or write. Read-only.",
+            input_schema: json!({"type": "object", "properties": {}}),
+        },
+        ToolSpec {
+            name: "query_ontology",
+            description: "Declarative ontology query: start set (type_key, ids, text in titles, property filters {key, op: eq|ne|lt|lte|gt|gte|contains|exists, value}, label 'name' or 'name:value', within = descendants of an object) then up to 4 traversals [{link_type, direction: out|in}], evaluated as_of an RFC 3339 instant (default now); latest = series properties whose last value is joined. At most 50 rows. Read-only.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"query":{"type":"object","properties":{"type_key":{"type":"string"},"ids":{"type":"array","items":{"type":"string"}},"text":{"type":"string"},"filters":{"type":"array","items":{"type":"object","properties":{"key":{"type":"string"},"op":{"type":"string"},"value":{}},"required":["key","op"]}},"label":{"type":"string"},"within":{"type":"string"},"traverse":{"type":"array","items":{"type":"object","properties":{"link_type":{"type":"string"},"direction":{"type":"string"}},"required":["link_type"]}},"as_of":{"type":"string"},"latest":{"type":"array","items":{"type":"string"}},"limit":{"type":"integer"}}}},"required":["query"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "get_object",
+            description: "One ontology object (properties, version) with its links valid now. Read it before update_object.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"object_id":{"type":"string"}},"required":["object_id"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "create_object",
+            description: "Creates an object of an organization type (not a system type: devices, media… are created from their own pages). properties must follow the type's schema (describe_ontology); series and events properties hold no value.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"type_key":{"type":"string"},"title":{"type":"string"},"properties":{"type":"object"}},"required":["type_key","title"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "update_object",
+            description: "Saves the title and the COMPLETE property document of an object (properties left out are cleared) on top of the version read with get_object (expected_version). For a system object only its organization properties change.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"object_id":{"type":"string"},"expected_version":{"type":"integer"},"title":{"type":"string"},"properties":{"type":"object"}},"required":["object_id","expected_version","properties"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "open_link",
+            description: "Opens a typed link between two objects (link types from describe_ontology), optionally valid_from a past RFC 3339 instant. To bind a sensor to an object's series property: link_type 'measures', source = the device object, target = the object, attributes {metric, property}.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"link_type":{"type":"string"},"source_id":{"type":"string"},"target_id":{"type":"string"},"attributes":{"type":"object"},"valid_from":{"type":"string"}},"required":["link_type","source_id","target_id"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "close_link",
+            description: "Closes an open link at valid_to (default now). The link stays in the history; nothing is deleted. Replacing a sensor = close its 'measures' link, then open one from the new device.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"link_id":{"type":"integer"},"valid_to":{"type":"string"}},"required":["link_id"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "save_object_type",
+            description: "Creates an organization object type (no expected_version) or saves a new version of one on top of expected_version (from describe_ontology). def = {key [a-z][a-z0-9_]*, name, icon, properties: [{key, name, kind: text|number|bool|date|date_time|enum|geo_point|url|ref|series|events, required, indexed, unit, min, max, values, to_type, stream, max_len}], may_contain / may_be_contained_in: '*' or a list of type keys or null, write_role: member|admin|owner}. For a system type only properties are taken. Organization owners and admins only.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"def":{"type":"object"},"expected_version":{"type":"integer"}},"required":["def"]}"#).expect("static schema"),
+        },
+        ToolSpec {
             name: "validate_flow_graph",
             description: "Valide un graphe de flow (structure, nœuds, câblage) SANS le sauvegarder — renvoie les violations à corriger. À appeler avant chaque create_flow/update_flow.",
             input_schema: json!({
@@ -517,6 +560,14 @@ pub async fn execute(
         "list_taxonomies" => super::more_tools::list_taxonomies(deps).await,
         "get_taxonomy" => super::more_tools::get_taxonomy(deps, args).await,
         "create_taxonomy_version" => super::more_tools::create_taxonomy_version(deps, args).await,
+        "describe_ontology" => super::ontology_tools::describe_ontology(deps).await,
+        "query_ontology" => super::ontology_tools::query_ontology(deps, args).await,
+        "get_object" => super::ontology_tools::get_object(deps, args).await,
+        "create_object" => super::ontology_tools::create_object(deps, args).await,
+        "update_object" => super::ontology_tools::update_object(deps, args).await,
+        "open_link" => super::ontology_tools::open_link(deps, args).await,
+        "close_link" => super::ontology_tools::close_link(deps, args).await,
+        "save_object_type" => super::ontology_tools::save_object_type(deps, args).await,
         _ => Err(format!(
             "unknown tool: {name} — only the tools listed in this conversation are available"
         )
@@ -882,6 +933,63 @@ pub fn summarize(name: &str, out: &ToolOutcome) -> TraceSummary {
                 "ai-trace-taxonomy-saved",
                 json!({"name": nm, "version": ver}),
                 format!("taxonomy \"{nm}\": version {ver}"),
+            )
+        }
+        "describe_ontology" => {
+            let n = count(&v["types"]);
+            s(
+                "ai-trace-ontology-schema",
+                json!({"count": n}),
+                format!("{n} object type(s)"),
+            )
+        }
+        "query_ontology" => {
+            let n = shown(&v["count"]);
+            s(
+                "ai-trace-ontology-query",
+                json!({"count": n}),
+                format!("{n} object(s)"),
+            )
+        }
+        "get_object" => {
+            let t = shown(&v["object"]["title"]);
+            s(
+                "ai-trace-ontology-object",
+                json!({"title": t}),
+                format!("object \"{t}\""),
+            )
+        }
+        "create_object" | "update_object" => {
+            let (t, ver) = (shown(&v["title"]), shown(&v["version"]));
+            s(
+                "ai-trace-ontology-object-saved",
+                json!({"title": t, "version": ver}),
+                format!("object \"{t}\" v{ver}"),
+            )
+        }
+        "open_link" | "close_link" => {
+            let (a, b, k) = (
+                shown(&v["source"]),
+                shown(&v["target"]),
+                shown(&v["link_type"]),
+            );
+            let key = if name == "open_link" {
+                "ai-trace-ontology-link-opened"
+            } else {
+                "ai-trace-ontology-link-closed"
+            };
+            s(
+                key,
+                json!({"source": a, "target": b, "link": k}),
+                format!("{a} —{k}→ {b}"),
+            )
+        }
+        "save_object_type" => {
+            let (k, ver) = (shown(&v["type_key"]), shown(&v["version"]));
+            s(
+                "ai-trace-ontology-type-saved",
+                json!({"key": k, "version": ver}),
+                format!("type {k} v{ver}"),
             )
         }
         _ => s("ai-trace-ok", json!({}), "ok".into()),
@@ -1423,6 +1531,14 @@ mod tests {
                 "list_taxonomies",
                 "get_taxonomy",
                 "create_taxonomy_version",
+                "describe_ontology",
+                "query_ontology",
+                "get_object",
+                "create_object",
+                "update_object",
+                "open_link",
+                "close_link",
+                "save_object_type",
                 "validate_flow_graph",
                 "validate_calc_expression",
                 "create_flow",
@@ -1462,6 +1578,7 @@ mod tests {
             author: None,
             o2: None,
             config: None,
+            actor: None,
         };
         for name in [
             "deploy_flow",
