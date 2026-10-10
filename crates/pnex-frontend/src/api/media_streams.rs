@@ -120,6 +120,26 @@ pub async fn check_model(id: &str) -> Result<AsrModel, ApiError> {
     .await
 }
 
+/// `POST /api/v1/asr/models/{id}/test` — transcribes a dropped clip; the
+/// file name gives the demuxer (the body goes as octet-stream).
+pub async fn test_model(
+    id: &str,
+    file_name: &str,
+    language: &str,
+    bytes: Vec<u8>,
+) -> Result<pnex_core::media_ingest::AsrTestResult, ApiError> {
+    client::request_upload(
+        reqwest::Method::POST,
+        &format!(
+            "/api/v1/asr/models/{id}/test?name={}&language={}",
+            crate::api::media::urlencode(file_name),
+            crate::api::media::urlencode(language)
+        ),
+        bytes,
+    )
+    .await
+}
+
 /// `DELETE /api/v1/asr/models/{id}`.
 pub async fn delete_model(id: &str) -> Result<Option<()>, ApiError> {
     client::request_opt(

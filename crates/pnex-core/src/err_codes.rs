@@ -413,6 +413,10 @@ pub const ASR_MODEL_NOT_FOUND: &str = "asr-model-not-found";
 pub const ASR_MODEL_NAME_TAKEN: &str = "asr-model-name-taken";
 /// The file is not a supported audio model.
 pub const ASR_MODEL_UNSUPPORTED: &str = "asr-model-unsupported";
+/// The audio dropped on a model test cannot be read.
+pub const ASR_TEST_AUDIO_UNSUPPORTED: &str = "asr-test-audio-unsupported";
+/// The model test could not transcribe (runtime missing or crashed).
+pub const ASR_TEST_FAILED: &str = "asr-test-failed";
 /// Transcription search failed on OpenObserve.
 pub const MEDIA_TRANSCRIPTS_UNAVAILABLE: &str = "media-transcripts-unavailable";
 
@@ -636,6 +640,8 @@ pub const ALL: &[&str] = &[
     ASR_MODEL_NOT_FOUND,
     ASR_MODEL_NAME_TAKEN,
     ASR_MODEL_UNSUPPORTED,
+    ASR_TEST_AUDIO_UNSUPPORTED,
+    ASR_TEST_FAILED,
     MEDIA_TRANSCRIPTS_UNAVAILABLE,
 ];
 

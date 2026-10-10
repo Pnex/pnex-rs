@@ -460,6 +460,66 @@ pub async fn capture_once(
     res.map(|_| seq)
 }
 
+/// Decodes an uploaded clip with the confined decoder (D160 regime) into
+/// a 16 kHz mono WAV of at most `max_secs`; the flag says it was cut.
+pub async fn decode_clip(
+    bytes: Vec<u8>,
+    format: decoder::InputFormat,
+    max_secs: u32,
+) -> Result<(Vec<u8>, bool), CaptureError> {
+    let settings = CaptureSettings::from_env();
+    let ffmpeg = decoder::resolve(&settings.ffmpeg).ok_or(CaptureError::DecoderMissing)?;
+    let argv = sandbox::wrap_argv(&settings.sandbox, decoder::argv(&ffmpeg, format));
+    let mut cmd = tokio::process::Command::new(&argv[0]);
+    cmd.args(&argv[1..])
+        .env_clear()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    sandbox::confine(&mut cmd, &settings.sandbox, sandbox::DECODER_MAX_MEMORY);
+    let mut child = cmd.spawn().map_err(|_| CaptureError::DecoderMissing)?;
+    let mut stdin = child.stdin.take().ok_or(CaptureError::DecoderFailed)?;
+    let mut stdout = child.stdout.take().ok_or(CaptureError::DecoderFailed)?;
+    let feeder = tokio::spawn(async move {
+        let _ = stdin.write_all(&bytes).await;
+    });
+    let max_bytes = max_secs as usize * pnex_core::media_ingest::SAMPLE_RATE as usize * 2;
+    let mut pcm = Vec::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut truncated = false;
+    let read = tokio::time::timeout(SILENT_INPUT, async {
+        loop {
+            let n = stdout
+                .read(&mut buf)
+                .await
+                .map_err(|_| CaptureError::DecoderFailed)?;
+            if n == 0 {
+                return Ok::<(), CaptureError>(());
+            }
+            pcm.extend_from_slice(&buf[..n]);
+            if pcm.len() >= max_bytes {
+                pcm.truncate(max_bytes);
+                truncated = true;
+                return Ok(());
+            }
+        }
+    })
+    .await;
+    feeder.abort();
+    let _ = child.start_kill();
+    read.map_err(|_| CaptureError::Stalled)??;
+    pcm.truncate(pcm.len() & !1);
+    if pcm.is_empty() {
+        return Err(CaptureError::FormatUnsupported);
+    }
+    let samples: Vec<i16> = pcm
+        .chunks_exact(2)
+        .map(|b| i16::from_le_bytes([b[0], b[1]]))
+        .collect();
+    Ok((segmenter::wav_bytes(&samples), truncated))
+}
+
 async fn auth_of(
     ctx: &AppContext,
     stream: &media_streams::Model,

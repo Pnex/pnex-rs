@@ -524,6 +524,32 @@ pub struct AsrModelInput {
     pub license: Option<String>,
 }
 
+/// Longest clip transcribed by the model test (D167), seconds.
+pub const TEST_CLIP_MAX_SECS: u32 = 120;
+
+/// One timed word of a test transcription.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AsrTestWord {
+    pub word: String,
+    pub start_ms: u32,
+    pub end_ms: u32,
+}
+
+/// Result of `POST /api/v1/asr/models/{id}/test`: an uploaded clip
+/// transcribed by the model (first [`TEST_CLIP_MAX_SECS`] only).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AsrTestResult {
+    pub text: String,
+    #[serde(default)]
+    pub words: Vec<AsrTestWord>,
+    /// Audio actually transcribed.
+    pub audio_ms: u64,
+    pub infer_ms: u64,
+    /// True when the clip was longer and was cut.
+    #[serde(default)]
+    pub truncated: bool,
+}
+
 /// Licenses offered at import (SPDX). Non-commercial ones are flagged.
 pub const ASR_LICENSES: [&str; 6] = [
     "Apache-2.0",

@@ -3547,6 +3547,8 @@ streams-error-store-failed = Stockage des segments indisponible
 err-asr-model-not-found = Modèle de transcription introuvable.
 err-asr-model-name-taken = Un modèle porte déjà ce nom.
 err-asr-model-unsupported = Ce fichier n'est pas un modèle de transcription pris en charge (archive sherpa-onnx ou fichier GGML whisper.cpp attendu).
+err-asr-test-audio-unsupported = Ce fichier audio est illisible (MP3, AAC, Ogg/Opus, FLAC, WAV ou audio MP4 attendu).
+err-asr-test-failed = Le modèle n'a pas pu transcrire l'extrait (moteur de transcription absent ou arrêté).
 err-media-transcripts-unavailable = Les transcriptions sont indisponibles pour le moment.
 
 # Transcription models, profiles and search (media-ingest.md D164–D167)
@@ -3566,6 +3568,14 @@ asr-models-col-check = Vérification
 asr-models-measure = ≈ { $streams } flux en temps réel · { $wer } % d'erreur sur l'extrait
 asr-models-license-nc = { $license } — usage non commercial seulement
 asr-models-check = Vérifier
+asr-models-test = Tester
+asr-test-title = Tester { $name }
+asr-test-help = Déposez un fichier audio (MP3, AAC, Ogg/Opus, FLAC, WAV ou le son d'un MP4) : ses 2 premières minutes sont transcrites par ce modèle sur le serveur.
+asr-test-file = Fichier audio
+asr-test-run = Transcrire
+asr-test-summary = { $audio } s d'audio transcrites en { $infer } s
+asr-test-truncated = Le fichier est plus long : seules ses 2 premières minutes ont été transcrites.
+asr-test-no-speech = Aucune parole reconnue.
 asr-models-checking = Vérification…
 asr-models-import = Importer un modèle
 asr-models-import-title = Importer un modèle de transcription

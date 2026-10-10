@@ -42,6 +42,10 @@ pub fn routes() -> Routes {
             get(model_get).patch(model_update).delete(model_delete),
         )
         .add("/asr/models/{id}/check", post(model_check))
+        .add(
+            "/asr/models/{id}/test",
+            post(model_test).layer(axum::extract::DefaultBodyLimit::max(TEST_CLIP_MAX_BYTES)),
+        )
         .add("/asr/profiles", get(profile_list).post(profile_create))
         .add(
             "/asr/profiles/{id}",
@@ -147,6 +151,84 @@ async fn internal_segment(
         segments::enqueue(&ctx, &row, true).await;
     }
     Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Upload cap of a model test clip (a few minutes of compressed audio).
+const TEST_CLIP_MAX_BYTES: usize = 25 * 1024 * 1024;
+
+#[derive(Debug, Deserialize)]
+pub struct TestQuery {
+    /// File name of the clip: its extension picks the demuxer when the
+    /// content type does not.
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    language: Option<String>,
+}
+
+/// `POST /api/v1/asr/models/{id}/test` — `can_write`: transcribes a dropped
+/// audio clip (first 120 s) with a checked model (D167).
+async fn model_test(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Query(q): Query<TestQuery>,
+    headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
+) -> Result<Response> {
+    use crate::services::media_ingest::{asr, capture};
+    use pnex_core::media_ingest::{is_valid_language, TEST_CLIP_MAX_SECS};
+    use pnex_core::vision::ModelCheckStatus;
+    require_write(&org)?;
+    let row = match models::find(&ctx.db, org.org.id, id).await {
+        Ok(row) => row,
+        Err(e) => return model_error(e),
+    };
+    if row.check_status != ModelCheckStatus::Valid.wire() {
+        return Err(detail(
+            StatusCode::CONFLICT,
+            err_codes::MEDIA_ASR_MODEL_INVALID,
+            "The model has not passed its check.",
+        ));
+    }
+    let language = q.language.unwrap_or_else(|| "fr".into());
+    if !is_valid_language(&language) {
+        return field("language", err_codes::FIELD_INVALID);
+    }
+    let unsupported = || {
+        detail(
+            StatusCode::BAD_REQUEST,
+            err_codes::ASR_TEST_AUDIO_UNSUPPORTED,
+            "The audio file cannot be read.",
+        )
+    };
+    let content_type = headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok());
+    let format = capture::decoder::input_format(content_type, &q.name).ok_or_else(unsupported)?;
+    let (wav, truncated) =
+        match capture::decode_clip(body.to_vec(), format, TEST_CLIP_MAX_SECS).await {
+            Ok(v) => v,
+            Err(capture::CaptureError::DecoderMissing) => {
+                return Err(detail(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    err_codes::ASR_TEST_FAILED,
+                    "ffmpeg is missing on the server.",
+                ))
+            }
+            Err(_) => return Err(unsupported()),
+        };
+    match asr::test_clip(&ctx, &row, &wav, &language, truncated).await {
+        Ok(result) => format::json(result),
+        Err(e) => {
+            tracing::warn!(model = %row.id, error = %e, "asr model test failed");
+            Err(detail(
+                StatusCode::BAD_GATEWAY,
+                err_codes::ASR_TEST_FAILED,
+                "The model could not transcribe the clip.",
+            ))
+        }
+    }
 }
 
 fn detail(status: StatusCode, code: &str, msg: &str) -> Error {
