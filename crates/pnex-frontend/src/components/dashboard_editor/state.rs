@@ -82,12 +82,19 @@ pub fn new_widget(layout: &mut DashboardLayout, id: String, widget_type: &str, x
         // inspector), the control itself is picked there.
         (vec![], None)
     } else {
+        // Range bars aggregate over their own window: the source keeps a
+        // valid preset only.
+        let window = if widget_type == pnex_core::RANGE_BARS {
+            "24h"
+        } else {
+            "1h"
+        };
         (
             vec![SourceRef {
                 role: "primary".into(),
                 metric: String::new(),
                 device_id: String::new(),
-                window: "1h".into(),
+                window: window.into(),
                 memory: None,
                 labels: Default::default(),
             }],
@@ -105,6 +112,7 @@ pub fn new_widget(layout: &mut DashboardLayout, id: String, widget_type: &str, x
         source,
         options: WidgetOptions {
             thermo,
+            aggregate: (widget_type == pnex_core::RANGE_BARS).then(Default::default),
             ..Default::default()
         },
     });

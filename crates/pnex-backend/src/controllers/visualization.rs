@@ -23,6 +23,7 @@ pub fn routes() -> Routes {
         .add("/catalog", get(catalog))
         .add("/series", get(series))
         .add("/series-batch", post(series_batch))
+        .add("/aggregate", post(aggregate))
 }
 
 async fn catalog(org: OrgContext, State(ctx): State<AppContext>) -> Result<Response> {
@@ -75,4 +76,35 @@ async fn series_batch(
     let response =
         visualization::series_batch(&ctx.db, client.as_ref(), org.org.id, &body.specs).await;
     format::json(response)
+}
+
+/// `POST /api/v1/telemetry/aggregate` (D182) — one value per time range or
+/// time-of-day slice; every member reads. Invalid input = 400 with a field
+/// token, O2 trouble = `available: false`, never a 500 from O2.
+async fn aggregate(
+    org: OrgContext,
+    State(ctx): State<AppContext>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Response> {
+    use crate::services::telemetry_aggregate::{self, AggregateError};
+    let field = |f: &str, token: &str| {
+        Ok((
+            axum::http::StatusCode::BAD_REQUEST,
+            format::json(serde_json::json!({ f: token })),
+        )
+            .into_response())
+    };
+    // Parsed by hand: a bad shape answers 400 like the other field errors.
+    let Ok(req) = serde_json::from_value::<pnex_core::aggregate::AggregateRequest>(body) else {
+        return field("body", pnex_core::err_codes::FIELD_INVALID);
+    };
+    let client = OpenobserveSettings::from_config(&ctx.config).map(|s| Client::new(&s));
+    match telemetry_aggregate::aggregate(&ctx.db, client.as_ref(), org.org.id, &req).await {
+        Ok(response) => format::json(response),
+        Err(AggregateError::Invalid { field: f, token }) => field(&f, &token),
+        Err(AggregateError::Db(e)) => {
+            tracing::error!(error = %e, "aggregate: database error");
+            Err(Error::InternalServerError)
+        }
+    }
 }

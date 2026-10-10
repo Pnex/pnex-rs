@@ -41,7 +41,11 @@ pub const VIZ_WIDGET_TYPES: &[&str] = &[
     "command",
     "color",
     "home_card",
+    "range_bars",
 ];
+
+/// Per range / per time slice bars widget (D182).
+pub const RANGE_BARS: &str = "range_bars";
 
 /// Control widget types (D125): each drives one org control
 /// (`WidgetOptions.control`, provisioned at save when absent, D131) and may
@@ -231,6 +235,10 @@ pub struct WidgetOptions {
     /// rule (D139: "leak detected", "window open"). No data = shown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visible_when: Option<StateRule>,
+    /// Per range / per time slice bars (present iff type is `range_bars`,
+    /// D182).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aggregate: Option<crate::aggregate::AggregateWidgetOptions>,
 }
 
 /// Options of the `symbol` widget — a shape of the front-end symbol
@@ -1019,6 +1027,12 @@ pub fn validate_widget(
     // A control widget without a control is valid: the server provisions
     // its own control when the dashboard is saved (D131).
     let is_control = CONTROL_WIDGET_TYPES.contains(&widget_type);
+    if widget_type != RANGE_BARS && options.aggregate.is_some() {
+        push(
+            "aggregate_unexpected",
+            "only range bars widgets carry aggregation options".into(),
+        );
+    }
     if widget_type != crate::home::HOME_WIDGET_TYPE && options.home.is_some() {
         push(
             "home_unexpected",
@@ -1081,6 +1095,26 @@ pub fn validate_widget(
         }
     } else if widget_type == "thermo_chart" {
         extra_violations = validate_thermo(widget_id, source, options);
+    } else if widget_type == RANGE_BARS {
+        // One series, aggregated server side per bucket: no memory value.
+        if source.len() != 1 || source.iter().any(|s| s.memory.is_some()) {
+            push(
+                "range_bars_source",
+                "a range bars widget reads exactly one telemetry series".into(),
+            );
+        }
+        check_sources(widget_type, source, &mut push);
+        match &options.aggregate {
+            None => push(
+                "aggregate_missing",
+                "range bars options are required".into(),
+            ),
+            Some(a) => {
+                if let Some((code, message)) = a.check() {
+                    push(code, message);
+                }
+            }
+        }
     } else if widget_type == "symbol" && source.is_empty() {
         // A symbol without source is a static drawing element.
         extra_violations = validate_symbol(widget_id, options);

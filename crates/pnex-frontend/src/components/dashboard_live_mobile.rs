@@ -41,6 +41,7 @@ pub fn mobile_card_classes(w: &Widget) -> &'static str {
     }
     match (w.widget_type.as_str(), half) {
         ("thermo_chart", _) => "col-span-2 h-80",
+        ("range_bars", _) => "col-span-2 h-72",
         ("gauge", true) => "col-span-1 h-40",
         ("gauge", false) => "col-span-2 h-48",
         ("line", true) => "col-span-1 h-36",

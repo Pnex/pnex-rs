@@ -15,6 +15,7 @@ use pnex_core::{SourceRef, VIZ_WINDOW_PRESETS};
 use super::appearance::AppearancePanel;
 use super::control_panel::ControlPanel;
 use super::home_panel::HomePanel;
+use super::range_bars_panel::RangeBarsPanel;
 use super::symbol_options::SymbolOptionsPanel;
 use super::thermo_panel::ThermoPanel;
 use crate::components::icons;
@@ -421,25 +422,30 @@ fn widget_panel(
                     if catalog.ready && catalog.by_source.is_empty() && catalog.labelled.is_empty() {
                         p { class: "text-[10px] text-gray-400 mt-1", {t!("insp-no-series")} }
                     }
-                    field_label {
-                        label_key: "window",
-                        label: t!("insp-window").to_string(),
-                    }
-                    select {
-                        id: "insp-window",
-                        class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",
-                        disabled: !can_write,
-                        value: "{primary.window}",
-                        onchange: move |e| {
-                            let v = e.value();
-                            let Some(widget_id) = selected_widget_id(&cx) else { return };
-                            cx.layout.with_mut(|l| set_source(l, &widget_id, |s| s.window = v.clone()));
-                        },
-                        for (key, _) in VIZ_WINDOW_PRESETS {
-                            option { key: "{key}", value: "{key}", "{key}" }
+                    if w.widget_type != pnex_core::RANGE_BARS {
+                        field_label {
+                            label_key: "window",
+                            label: t!("insp-window").to_string(),
+                        }
+                        select {
+                            id: "insp-window",
+                            class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",
+                            disabled: !can_write,
+                            value: "{primary.window}",
+                            onchange: move |e| {
+                                let v = e.value();
+                                let Some(widget_id) = selected_widget_id(&cx) else { return };
+                                cx.layout.with_mut(|l| set_source(l, &widget_id, |s| s.window = v.clone()));
+                            },
+                            for (key, _) in VIZ_WINDOW_PRESETS {
+                                option { key: "{key}", value: "{key}", "{key}" }
+                            }
                         }
                     }
                 }
+            }
+            if w.widget_type == pnex_core::RANGE_BARS {
+                RangeBarsPanel { cx, widget: w.clone(), can_write }
             }
             // Options par type
             // Empty branches below: thermo_chart options live in ThermoPanel

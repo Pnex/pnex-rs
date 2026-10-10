@@ -1,7 +1,7 @@
 //! "Ranges" tab of /streams (media-ingest.md D169): time ranges of a stream
 //! (or of the org) for one local day — planned vs actual, origin, source
 //! link — with create / edit / delete and CSV / ICS import for writers.
-//! The timeline view is lot 4; a table is enough here.
+//! A planned-vs-actual timeline of the day sits above the table (lot 4).
 
 use chrono::TimeZone;
 use dioxus::prelude::*;
@@ -223,6 +223,7 @@ pub fn RangesTab(
                 p { class: "text-sm text-gray-500", {t!("ranges-empty")} }
             }
             if !rows.is_empty() {
+                RangesTimeline { rows: rows.clone(), day: current_day }
                 div { class: "overflow-x-auto bg-white rounded-lg shadow border border-gray-200",
                     table { class: "min-w-full divide-y divide-gray-200 text-sm",
                         thead { class: "bg-gray-50",
@@ -305,6 +306,129 @@ pub fn RangesTab(
                 }
             },
             None => rsx! {},
+        }
+    }
+}
+
+/// Position of `[start, end)` on the day axis `[t0, t0 + len)` (seconds),
+/// as `(left %, width %)`, clipped to the day; `None` when unset or outside.
+fn timeline_bar(t0: i64, len: i64, start: Option<&str>, end: Option<&str>) -> Option<(f64, f64)> {
+    let at = |ts: Option<&str>| {
+        let t = chrono::DateTime::parse_from_rfc3339(ts?).ok()?.timestamp();
+        Some(((t - t0) as f64 / len.max(1) as f64 * 100.0).clamp(0.0, 100.0))
+    };
+    let (left, right) = (at(start)?, at(end)?);
+    (right > left).then_some((left, right - left))
+}
+
+/// Signed minutes from `planned` to `actual` (`+2` = two minutes late).
+fn gap_minutes(planned: Option<&str>, actual: Option<&str>) -> Option<String> {
+    let t = |s: Option<&str>| chrono::DateTime::parse_from_rfc3339(s?).ok();
+    let m = (t(actual)? - t(planned)?).num_minutes();
+    Some(format!("{m:+}"))
+}
+
+/// Planned vs actual timeline of the day: two bars per range (planned on
+/// top, actual below) on a local-hours axis, as positioned divs.
+#[component]
+fn RangesTimeline(rows: Vec<TimeRange>, day: chrono::NaiveDate) -> Element {
+    let Some((from, to)) = day_window(day) else {
+        return rsx! {};
+    };
+    let (Some(start), Some(end)) = (local(&from), local(&to)) else {
+        return rsx! {};
+    };
+    let (t0, len) = (start.timestamp(), (end - start).num_seconds());
+    // A tick every 3 local hours (positions follow the real day length).
+    let ticks: Vec<(String, f64)> = (0..24)
+        .step_by(3)
+        .filter_map(|h| {
+            let t = chrono::Local
+                .from_local_datetime(&day.and_hms_opt(h, 0, 0)?)
+                .earliest()?;
+            Some((
+                format!("{h:02}h"),
+                (t.timestamp() - t0) as f64 / len as f64 * 100.0,
+            ))
+        })
+        .collect();
+    rsx! {
+        div { class: "bg-white rounded-lg shadow border border-gray-200 p-3 space-y-1",
+            div { class: "flex items-center gap-4 text-[10px] text-gray-500",
+                span { class: "inline-flex items-center gap-1",
+                    span { class: "inline-block h-2 w-4 rounded bg-sky-300" }
+                    {t!("ranges-col-planned")}
+                }
+                span { class: "inline-flex items-center gap-1",
+                    span { class: "inline-block h-2 w-4 rounded bg-teal-600" }
+                    {t!("ranges-col-actual")}
+                }
+            }
+            div { class: "flex",
+                div { class: "w-28 shrink-0" }
+                div { class: "relative h-4 flex-1 text-[10px] text-gray-400",
+                    for (label, left) in ticks.iter() {
+                        span {
+                            key: "{label}",
+                            class: "absolute -translate-x-1/2",
+                            style: "left: {left}%;",
+                            "{label}"
+                        }
+                    }
+                }
+            }
+            for r in rows.iter() {
+                TimelineRow {
+                    key: "{r.id}",
+                    range: r.clone(),
+                    t0,
+                    len,
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn TimelineRow(range: TimeRange, t0: i64, len: i64) -> Element {
+    let planned = timeline_bar(
+        t0,
+        len,
+        range.planned_start.as_deref(),
+        range.planned_end.as_deref(),
+    );
+    let actual = timeline_bar(
+        t0,
+        len,
+        range.actual_start.as_deref(),
+        range.actual_end.as_deref(),
+    );
+    let start_gap = gap_minutes(
+        range.planned_start.as_deref(),
+        range.actual_start.as_deref(),
+    );
+    let end_gap = gap_minutes(range.planned_end.as_deref(), range.actual_end.as_deref());
+    let title = match (start_gap, end_gap) {
+        (Some(start), Some(end)) => t!("ranges-timeline-gap", start : start, end : end).to_string(),
+        _ => range.label.clone(),
+    };
+    rsx! {
+        div { class: "flex items-center", title: "{title}",
+            p { class: "w-28 shrink-0 truncate pr-2 text-xs text-gray-700", "{range.label}" }
+            div { class: "relative h-6 flex-1 rounded bg-gray-50",
+                if let Some((left, width)) = planned {
+                    div {
+                        class: "absolute top-0.5 h-2 rounded bg-sky-300",
+                        style: "left: {left}%; width: {width}%;",
+                    }
+                }
+                if let Some((left, width)) = actual {
+                    div {
+                        class: "absolute bottom-0.5 h-2 rounded bg-teal-600",
+                        style: "left: {left}%; width: {width}%;",
+                    }
+                }
+            }
         }
     }
 }
@@ -699,5 +823,40 @@ mod tests {
         assert_eq!(span_label(Some(&start), Some(&end), d), "07:00–09:30");
         assert_eq!(input_value(Some(&start)), "2026-10-12T07:00");
         assert_eq!(input_value(None), "");
+    }
+
+    #[test]
+    fn timeline_bars_and_gaps() {
+        let t0 = chrono::DateTime::parse_from_rfc3339("2026-10-12T00:00:00Z")
+            .unwrap()
+            .timestamp();
+        let bar = timeline_bar(
+            t0,
+            86_400,
+            Some("2026-10-12T06:00:00Z"),
+            Some("2026-10-12T12:00:00Z"),
+        );
+        assert_eq!(bar, Some((25.0, 25.0)));
+        // Clipped to the day, unset or empty spans are not drawn.
+        let late = timeline_bar(
+            t0,
+            86_400,
+            Some("2026-10-12T18:00:00Z"),
+            Some("2026-10-13T06:00:00Z"),
+        );
+        assert_eq!(late, Some((75.0, 25.0)));
+        assert_eq!(
+            timeline_bar(t0, 86_400, None, Some("2026-10-12T06:00:00Z")),
+            None
+        );
+        assert_eq!(
+            gap_minutes(Some("2026-10-12T07:00:00Z"), Some("2026-10-12T07:02:00Z")).as_deref(),
+            Some("+2")
+        );
+        assert_eq!(
+            gap_minutes(Some("2026-10-12T09:00:00Z"), Some("2026-10-12T08:59:00Z")).as_deref(),
+            Some("-1")
+        );
+        assert_eq!(gap_minutes(Some("2026-10-12T09:00:00Z"), None), None);
     }
 }

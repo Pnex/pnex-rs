@@ -537,3 +537,140 @@ async fn range_upsert_deploy_needs_a_stream_of_the_org() {
     })
     .await;
 }
+
+/// `POST /api/v1/telemetry/aggregate` (D182) without O2: bucket shapes,
+/// planned / actual basis, the org's ranges only, 400 on invalid input.
+#[tokio::test]
+#[serial]
+async fn aggregate_by_range_and_slice_degrades_without_o2() {
+    with_app(|server, env| async move {
+        let org_a = personal_org(&server, &env.alice).await;
+        let org_b = personal_org(&server, &env.bob).await;
+        let s = stream(&server, &env.alice, org_a, "Inter").await;
+        let mut realigned = range(&s, "7-9", "Le 7/9");
+        realigned["actual_start"] = json!("2026-10-12T07:02:00+02:00");
+        realigned["actual_end"] = json!("2026-10-12T09:01:00+02:00");
+        for body in [realigned, {
+            let mut r = range(&s, "13", "Le 13h");
+            r["planned_start"] = json!("2026-10-12T13:00:00+02:00");
+            r["planned_end"] = json!("2026-10-12T13:30:00+02:00");
+            r
+        }] {
+            let (st, v) = call(
+                &server,
+                "POST",
+                "/api/v1/time-ranges",
+                &env.alice,
+                org_a,
+                Some(body),
+            )
+            .await;
+            assert_eq!(st, 201, "{v}");
+        }
+        // Bob's own stream has a range in the same window.
+        let sb = stream(&server, &env.bob, org_b, "Bob FM").await;
+        let (st, _) = call(
+            &server,
+            "POST",
+            "/api/v1/time-ranges",
+            &env.bob,
+            org_b,
+            Some(range(&sb, "b", "Bob")),
+        )
+        .await;
+        assert_eq!(st, 201);
+
+        let by_range = |scope: &str| {
+            json!({
+                "metric": "etl_mentions", "labels": { "stream": "inter" }, "op": "increase",
+                "buckets": { "ranges": { "scope_kind": "stream", "scope_id": scope,
+                    "from": "2026-10-12T00:00:00+02:00", "to": "2026-10-13T00:00:00+02:00" } }
+            })
+        };
+        let path = "/api/v1/telemetry/aggregate";
+        let (st, v) = call(&server, "POST", path, &env.alice, org_a, Some(by_range(&s))).await;
+        assert_eq!(st, 200, "{v}");
+        assert_eq!(v["available"], false, "{v}");
+        let rows = v["rows"].as_array().unwrap();
+        assert_eq!(rows.len(), 2, "{v}");
+        assert_eq!(rows[0]["label"], "Le 7/9");
+        assert_eq!(rows[0]["basis"], "actual");
+        assert_eq!(rows[0]["external_id"], "7-9");
+        assert!(
+            rows[0]["start"]
+                .as_str()
+                .unwrap()
+                .starts_with("2026-10-12T05:02:00"),
+            "{v}"
+        );
+        assert!(rows[0]["range_id"].as_str().is_some());
+        assert_eq!(rows[0]["value"], Value::Null);
+        assert_eq!(rows[1]["basis"], "planned");
+
+        // Ranges are the caller's org only: alice's stream is not Bob's scope.
+        let (st, e) = call(&server, "POST", path, &env.bob, org_b, Some(by_range(&s))).await;
+        assert_eq!(st, 400, "{e}");
+        assert_eq!(e["scope_id"], "invalid");
+        let (st, v) = call(&server, "POST", path, &env.bob, org_b, Some(by_range(&sb))).await;
+        assert_eq!(st, 200);
+        assert_eq!(v["rows"].as_array().unwrap().len(), 1, "{v}");
+        assert_eq!(v["rows"][0]["label"], "Bob");
+
+        // Slices: one row per slice, the last one wraps.
+        let slices = json!({
+            "metric": "temperature", "device_id": "dev-1", "op": "avg",
+            "buckets": { "slices": { "from": "2026-10-24T22:00:00Z", "to": "2026-10-26T23:00:00Z",
+                "bounds": ["00:00", "06:00", "09:00"], "timezone": "Europe/Paris" } }
+        });
+        let (st, v) = call(
+            &server,
+            "POST",
+            path,
+            &env.alice,
+            org_a,
+            Some(slices.clone()),
+        )
+        .await;
+        assert_eq!(st, 200, "{v}");
+        assert_eq!(v["available"], false);
+        let labels: Vec<&str> = v["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["label"].as_str().unwrap())
+            .collect();
+        assert_eq!(labels, vec!["00:00–06:00", "06:00–09:00", "09:00–00:00"]);
+        assert_eq!(v["rows"][2]["basis"], "slice");
+        assert_eq!(v["rows"][2]["days"], 0);
+
+        // Invalid input: 400 with a field token, before any query.
+        for (patch, field) in [
+            (json!({ "metric": "m}or{" }), "metric"),
+            (
+                json!({ "labels": { "stream": "x\"}" }, "device_id": "" }),
+                "labels",
+            ),
+            (json!({ "op": "median" }), "body"),
+        ] {
+            let mut body = slices.clone();
+            for (k, val) in patch.as_object().unwrap() {
+                body[k] = val.clone();
+            }
+            let (st, e) = call(&server, "POST", path, &env.alice, org_a, Some(body)).await;
+            assert_eq!(st, 400, "{e}");
+            assert!(e.get(field).is_some(), "{field}: {e}");
+        }
+        for (key, val, field) in [
+            ("timezone", json!("Mars/Olympus"), "timezone"),
+            ("bounds", json!(["09:00", "06:00"]), "bounds"),
+            ("to", json!("2026-12-31T00:00:00Z"), "to"),
+        ] {
+            let mut body = slices.clone();
+            body["buckets"]["slices"][key] = val;
+            let (st, e) = call(&server, "POST", path, &env.alice, org_a, Some(body)).await;
+            assert_eq!(st, 400, "{e}");
+            assert!(e.get(field).is_some(), "{field}: {e}");
+        }
+    })
+    .await;
+}

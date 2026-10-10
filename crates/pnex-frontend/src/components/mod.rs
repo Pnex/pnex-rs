@@ -66,6 +66,7 @@ pub mod pins_panel;
 pub mod poi_preview;
 /// Arbre de dossiers du drawer POI (containment D42 + drag & drop).
 pub mod poi_tree;
+pub mod range_bars;
 pub mod refresh_rate;
 /// Sélecteur générique d'objets attachables (map drawer, D42) —
 /// généralisation du MediaPicker.

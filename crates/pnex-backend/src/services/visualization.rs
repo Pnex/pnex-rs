@@ -32,7 +32,7 @@ use crate::services::openobserve::{self, client::Client, valid_metric_name};
 
 /// Max O2 queries in flight for one catalog / batch request (they used to
 /// run strictly one after the other: 24 widgets = 24 round-trips).
-const O2_CONCURRENCY: usize = 6;
+pub(crate) const O2_CONCURRENCY: usize = 6;
 
 /// Per-pod TTL of the read cache (`PNEX_VIZ_CACHE_TTL_MS`, default 3 s,
 /// 0 disables). Dashboards poll every few seconds and many viewers watch
@@ -215,10 +215,10 @@ fn label_set_of(sample: &PromQuerySample) -> Option<pnex_core::TelemetryLabelSet
     Some(pnex_core::TelemetryLabelSet { metric, labels })
 }
 
-/// PromQL of one series spec, `None` when it is not safe to query: every
-/// interpolated piece passes a closed charset first (injection boundary).
-/// Without a device the matching series are summed (D171).
-fn series_query(
+/// Bare PromQL selector of one series (`m{device_id="…",k="v"}`), `None`
+/// when it is not safe to query: every interpolated piece passes a closed
+/// charset first (injection boundary). Needs a device or labels (D171).
+pub(crate) fn series_selector(
     metric: &str,
     device_id: &str,
     labels: &std::collections::BTreeMap<String, String>,
@@ -236,12 +236,45 @@ fn series_query(
         return None;
     }
     matchers.extend(labels.iter().map(|(k, v)| format!(r#"{k}="{v}""#)));
-    let selector = format!("{metric}{{{}}}", matchers.join(","));
+    Some(format!("{metric}{{{}}}", matchers.join(",")))
+}
+
+/// PromQL of one series spec ([`series_selector`]); without a device the
+/// matching series are summed (D171).
+fn series_query(
+    metric: &str,
+    device_id: &str,
+    labels: &std::collections::BTreeMap<String, String>,
+) -> Option<String> {
+    let selector = series_selector(metric, device_id, labels)?;
     Some(if device_id.is_empty() {
         format!("sum({selector})")
     } else {
         selector
     })
+}
+
+/// Cached range query over explicit bounds (epoch seconds), same cache
+/// as the dashboard reads.
+pub(crate) async fn cached_prom_range_at(
+    client: &Client,
+    o2_org: &str,
+    query: &str,
+    (start, end, step): (i64, i64, i64),
+    passcode: &str,
+) -> Result<Arc<Vec<PromRangeSample>>, String> {
+    let key = format!(
+        "{}|{o2_org}|{query}|at|{start}|{end}|{step}",
+        client.base_url()
+    );
+    RANGE_CACHE
+        .get_or_fetch(key, cache_ttl(), || async {
+            client
+                .prom_query_range(o2_org, query, start, end, step, passcode)
+                .await
+                .map(|r| r.data.result)
+        })
+        .await
 }
 
 /// Cached instant query (`last_over_time` of the catalog).
@@ -333,7 +366,7 @@ pub const WINDOWS: &[(&str, i64)] = pnex_core::VIZ_WINDOW_PRESETS;
 /// Budget global d'un batch (toutes specs) — au-delà, les items restants
 /// sont dégradés (le front garde un dashboard réactif plutôt qu'une page
 /// qui traîne).
-const BATCH_TIMEOUT: Duration = Duration::from_secs(8);
+pub(crate) const BATCH_TIMEOUT: Duration = Duration::from_secs(8);
 
 /// Valeur de label `device_id` sûre à interpoler dans un sélecteur
 /// PromQL : charset fermé (nos device_id sont des slugs), aucune
