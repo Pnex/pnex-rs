@@ -19,11 +19,13 @@ use crate::state::{org, session, toasts};
 mod form;
 mod models;
 mod segments;
+mod test;
 mod transcripts;
 
 use form::StreamFormModal;
 use models::ModelsTab;
 use segments::SegmentsDialog;
+use test::StreamTestDialog;
 use transcripts::TranscriptsTab;
 
 /// Tabs of the page.
@@ -55,6 +57,7 @@ enum Dialog {
     Edit(MediaStream),
     Delete(MediaStream),
     Segments(MediaStream),
+    Test(MediaStream),
 }
 
 #[component]
@@ -194,6 +197,13 @@ pub fn Streams() -> Element {
                     },
                 }
             },
+            Some(Dialog::Test(s)) => rsx! {
+                StreamTestDialog {
+                    key: "test-{s.id}",
+                    stream: s.clone(),
+                    on_close: move |_| dialog.set(None),
+                }
+            },
             Some(Dialog::Segments(s)) => rsx! {
                 SegmentsDialog {
                     key: "segments-{s.id}",
@@ -234,7 +244,7 @@ pub fn Streams() -> Element {
 
 /// Capture failure code (`media_streams.capture_error`) → sentence;
 /// unknown codes stay verbatim.
-fn capture_error_label(code: &str) -> String {
+pub(super) fn capture_error_label(code: &str) -> String {
     match code {
         "unreachable" => t!("streams-error-unreachable").to_string(),
         "format-unsupported" => t!("streams-error-format-unsupported").to_string(),
@@ -318,6 +328,7 @@ fn StreamRow(
     let s_edit = stream.clone();
     let s_delete = stream.clone();
     let s_segments = stream.clone();
+    let s_test = stream.clone();
     let health_line = stream.health.as_ref().map(|h| {
         let gap = short_duration(h.gap_secs);
         let lag = short_duration(h.lag_secs);
@@ -359,6 +370,12 @@ fn StreamRow(
                         {t!("streams-segments")}
                     }
                     if can_write {
+                        button {
+                            class: "px-2 py-1 text-xs border border-gray-300 rounded-lg hover:bg-gray-50",
+                            r#type: "button",
+                            onclick: move |_| on_action.call(Dialog::Test(s_test.clone())),
+                            {t!("streams-test")}
+                        }
                         button {
                             class: "px-2 py-1 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40",
                             r#type: "button",

@@ -261,6 +261,25 @@ async fn model_import_check_and_transcription_chain() {
                 eprintln!("ffmpeg not installed: capture part skipped");
                 return;
             }
+
+            // Stream test: a first 10 s extract captured and transcribed,
+            // nothing stored, the capture state untouched.
+            let res = post(
+                &format!("/api/v1/media/streams/{stream_id}/test"),
+                json!({}),
+            )
+            .await;
+            assert_eq!(res.status_code(), 200, "{}", res.text());
+            let t = res.json::<Value>();
+            assert!(t.get("capture_error").is_none(), "{t}");
+            assert_eq!(t["audio_ms"], 10_000);
+            assert!(t["text"].as_str().unwrap().contains("lune"), "{t}");
+            let none = media_segments::Entity::find()
+                .filter(media_segments::Column::StreamId.eq(stream_id))
+                .all(&ctx.db)
+                .await
+                .unwrap();
+            assert!(none.is_empty(), "a test stores nothing");
             let row = media_streams::Entity::find_by_id(stream_id)
                 .one(&ctx.db)
                 .await

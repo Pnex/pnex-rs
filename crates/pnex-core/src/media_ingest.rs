@@ -537,6 +537,24 @@ pub struct AsrModelInput {
     pub license: Option<String>,
 }
 
+/// Result of `POST /api/v1/media/streams/{id}/test` (§7): a first extract
+/// captured, then transcribed when the stream has a usable profile.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct StreamTestResult {
+    /// Capture failure code (same codes as `capture_error`); `None` = an
+    /// extract was captured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capture_error: Option<String>,
+    pub audio_ms: u64,
+    /// Text of the extract; `None` when it was not transcribed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// Why the extract was not transcribed: `no-profile`, `model-invalid`,
+    /// `asr-failed`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcribe_error: Option<String>,
+}
+
 /// Longest clip transcribed by the model test (D167), seconds.
 pub const TEST_CLIP_MAX_SECS: u32 = 120;
 
