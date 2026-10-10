@@ -84,7 +84,7 @@ seeds et staging sont des **dérivés** jetables, rattachés à
 
 | # | Décision | Pourquoi |
 |---|----------|----------|
-| L1 | **PostGIS dans le Postgres existant** — extension, pas une brique de plus. L'image `postgres:18-alpine` passe à une image PostGIS **multi-arch (arm64 obligatoire)** | Spatial en SQL (`ST_*`, GiST) sans service supplémentaire ; GPL-2 déjà accepté (roadmap) ; l'image arm64 est un risque à valider (§9) |
+| L1 | **PostGIS dans le Postgres existant** — extension, pas une brique de plus. L'image `postgres:19beta4-alpine` passe à une image PostGIS **multi-arch (arm64 obligatoire)** | Spatial en SQL (`ST_*`, GiST) sans service supplémentaire ; GPL-2 déjà accepté (roadmap) ; l'image arm64 est un risque à valider (§9) |
 | L2 | **Un fichier géo est un média** : nouveaux kinds `vector` et `raster` (strings, sans migration de kind) ; sniff par magic bytes + inspection d'archive | Réutilise upload, versions, stockage, purge et UI de la bibliothèque (D21) ; un fichier peut alimenter plusieurs layers |
 | L3 | **Stockage des octets = MediaStore existant** (`fs` / `s3`), choisi par config d'instance ; **pas de backend `db`** | D21 maintenue : des fichiers géo de plusieurs centaines de Mo en base gonfleraient les sauvegardes Postgres et la mémoire sur Pi ; `fs` couvre déjà le cas « tout sur une machine » |
 | L4 | **Registre `geo_layers`** (ligne mutable, D24) avec `generation` BIGINT ; style **MapLibre Style Spec** en JSONB, appliqué côté client | Le style ne fait pas partie de la clé de cache : le changer n'invalide aucune tuile |
@@ -300,7 +300,7 @@ fonctionne normalement.
 
 | Risque | Parade |
 |---|---|
-| Image PostGIS arm64 absente ou en retard sur PG 18 | Construire l'image depuis `postgres:18-alpine` + paquet `postgis` Alpine ; CI multi-arch ; mesure sur Pi en DoD. Même image que pgvector (`doc-search.md`) : une seule image Postgres étendue |
+| Image PostGIS arm64 absente ou en retard sur PG 19 | Construire l'image depuis `postgres:19-alpine` + paquet `postgis` Alpine ; CI multi-arch ; mesure sur Pi en DoD. Même image que pgvector (`doc-search.md`) : une seule image Postgres étendue |
 | Webview Android : requêtes de tuiles cross-origin / en-têtes | Même problème déjà noté en `media.md` ; protocole custom MapLibre (`addProtocol`) qui délègue le fetch au pont Rust |
 | Gros polygones (communes, réseaux) → tuiles lourdes | Simplification par zoom, plafond de features et d'octets par tuile, attributs filtrés par zoom |
 | Mémoire Pi pendant l'import | Streaming de bout en bout, lots `COPY` bornés, un seul worker d'import, priorité basse |
@@ -396,4 +396,4 @@ Corrections apportées à la v0.1 à l'intégration :
   tier (Q4), lien ontologie (Q5), lecteurs en nœud de flow (Q6).
 - **Image Postgres** (2026-10-10, `ontology.md` annexe A3) : la 0.2.0
   vise PostgreSQL 19 ; l'image étendue de L1 se construit donc sur 19
-  (repli 18 si PostGIS arm64 manque). La phase F n'en dépend pas.
+  (la stack tourne déjà sur 19beta4). La phase F n'en dépend pas.
