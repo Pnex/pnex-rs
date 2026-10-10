@@ -58,6 +58,19 @@ export const FIXED_PREFIX = process.env.PNEX_E2E_PREFIX;
 /** When set, `capture()` writes annotated screenshots + a manifest there. */
 export const CAPTURE_DIR = process.env.PNEX_E2E_CAPTURE_DIR;
 
+/** MapLibre style URLs used as test basemaps (public, no key). */
+export const BASEMAP_URL =
+  process.env.PNEX_E2E_BASEMAP_URL ?? 'https://map.alpine-box.com/style/light-en';
+export const BASEMAP_DARK_URL =
+  process.env.PNEX_E2E_BASEMAP_DARK_URL ?? 'https://map.alpine-box.com/style/dark-en';
+
+/**
+ * Root of a live Photon + GraphHopper pair (`<root>/photon`,
+ * `<root>/graphhopper`), e.g. the alpine-box ingress with its secret path
+ * segment. Tests tagged `@geo-live` are skipped when unset; never commit it.
+ */
+export const GEO_BASE = process.env.PNEX_E2E_GEO_BASE?.replace(/\/+$/, '');
+
 /** Name of a live device for tests tagged `@hardware` (skipped when unset). */
 export const DEVICE = process.env.PNEX_E2E_DEVICE;
 

@@ -27,6 +27,8 @@ cd e2e && bun run report         # HTML report of the last run (traces on failur
 | `PNEX_E2E_KEEP=1` | skip the start-of-run sweep (keep what the last run left) |
 | `PNEX_E2E_WORKERS` | `2` |
 | `PNEX_E2E_DPR` | `2` (device scale factor; `1` = faster runs) |
+| `PNEX_E2E_BASEMAP_URL` / `PNEX_E2E_BASEMAP_DARK_URL` | `https://map.alpine-box.com/style/light-en` / `…/dark-en` (public MapLibre styles used as test basemaps) |
+| `PNEX_E2E_GEO_BASE` | unset — root of a live Photon + GraphHopper (`<root>/photon`, `<root>/graphhopper`); `@geo-live` tests are skipped without it. Holds a secret path segment: CI secret, never committed |
 
 No test logs in through the Rauthy pages except `auth.spec.ts`: a password
 grant gives the tokens, injected into `localStorage` before the app boots
@@ -93,6 +95,7 @@ Rules:
 | `settings` | `@settings` | secrets (value never shown back), organizations create/delete |
 | `search` | `@search @i18n` | sidebar search finds a function and deep-links to its editor |
 | `map` | `@map` | POI placed by clicking the map, drawer, delete |
+| `geo` | `@geo` (`@geo-live`) | no basemap → notice; basemap added from the org page form, Test, default on the map, switcher remembered; with `PNEX_E2E_GEO_BASE`: geocode, reverse and route through the server proxy against Photon + GraphHopper, Test of each provider |
 | `media` | `@media` | photo upload (browser-rendered PNG), delete |
 | `studio` | `@studio` | virtual tour: floor plan + two labelled 360° scenes, start scene, stored doc, delete |
 | `profile-data` | `@profile @mixtures` | language preference switch, CoolProp mixture |

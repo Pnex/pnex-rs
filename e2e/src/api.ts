@@ -137,6 +137,11 @@ export async function sweep(api: Api, prefix: string): Promise<void> {
       for (const it of items) await api.delete(`${path}/${it.id}`).catch(() => {});
     }
   }
+  // Geo providers: a plain array (bounded per org), not a paginated list.
+  const geo = await api.get<{ id: string; name: string }[]>('/geo/providers').catch(() => []);
+  for (const p of geo.filter((g) => g.name.startsWith(prefix))) {
+    await api.delete(`/geo/providers/${p.id}`).catch(() => {});
+  }
   for (const path of SWEPT_COLLECTIONS) {
     let items: { id: number | string; name: string }[];
     try {
