@@ -195,7 +195,7 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: oven-sh/setup-bun@v2
-      - name: CSS Tailwind v4 + bundles JS (flasher, viewers, map)
+      - name: CSS Tailwind v4 + bundles JS (flasher, viewers, map, doc)
         working-directory: crates/pnex-frontend
         run: |
           bun install --frozen-lockfile
@@ -203,6 +203,7 @@ jobs:
           bun run js:build
           bun run js:viewers
           bun run js:map
+          bun run js:doc
       # Prebuilt dx, same version as deploy/docker/Dockerfile.
       - uses: cargo-bins/cargo-binstall@main
       - name: Installer dx
