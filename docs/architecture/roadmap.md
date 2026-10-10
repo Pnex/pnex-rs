@@ -134,7 +134,7 @@ tâche).
 | **Coffre de secrets** (D110–D119) | **Livré 2026-10-01** — S1–S8 (`secrets.md`) : XChaCha20-Poly1305, trousseau en env, références typées, runtime qui résout par id, rôle `member`, rotation + rechiffrement | Clés device et tokens agent hors coffre (chiffrement au repos possible plus tard) |
 | **API publique** | **Rien** — aucune API destinée aux programmes tiers en dehors de l'agent edge (push de valeurs) | Horizon P3 (abonnements live, jetons à portée, REST documentée) |
 | **Mémoire d'org** (Valkey) | Livré — `memory-write`/`memory-read` par org, source « Mémoire » des widgets | — |
-| **Flux média entrants** (D159–D175) | **PRD proposé** 2026-10-09 (`media-ingest.md`) — rien d'implémenté | Validation du PRD, puis lot 0 (POC ASR) — P2.13 |
+| **Flux média entrants** (D159–D175) | **Lots 0 et 1 livrés** 2026-10-10 (`media-ingest.md` §16) : capture `server` confinée (icecast, HLS, `http_file`, audio des flux vidéo), `pnex-asr`, transcription → O2 + recherche, modèles audio, rétention, `/streams` | Porteur `worker` (1h), métriques D160 + alerte « flux muet », run 24 h ; puis lot 2 (`media_source`) — P2.13 |
 | **Ontologie / 0.2.0** (D176–D191) | **PRD proposé** 2026-10-09 (`ontology.md`) ; graine existante = couche Resource D42 | Validation du PRD, puis spike L0 — P2.14 |
 | **Media & Vision Studio** (D192+) | **PRD proposé** 2026-10-10 (`media-vision-studio.md`) — étend D73–D105 et D159–D175 : tracking, zones, Vision Lab (entraînement YOLOX), VLM, fusion | Validation du PRD (Q1–Q11) — P2.15 |
 
@@ -498,7 +498,7 @@ Jardin. Lots A → E.
 - **REP-2 — Code PIN serrure/alarme** : écriture protégée vérifiée côté
   serveur ; d'ici là, simple confirmation.
 
-### P2.13 — Ingestion de flux média : transcription, plages (ajout 2026-10-09) — **PRD proposé**
+### P2.13 — Ingestion de flux média : transcription, plages (ajout 2026-10-09) — **lots 0 et 1 livrés** (2026-10-10, sauf porteur `worker`)
 
 PRD `media-ingest.md` (D159–D175), zéro code avant validation. Capter
 des flux continus (Icecast, HLS, DASH, RTSP, DVB-T via Tvheadend) en

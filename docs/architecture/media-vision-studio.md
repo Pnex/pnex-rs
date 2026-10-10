@@ -30,8 +30,8 @@ Ce PRD **étend** deux chantiers existants, il ne les remplace pas :
 
 | Besoin du PRD | Déjà décidé / livré | Ce que ce PRD ajoute |
 |---|---|---|
-| Sources média (RTSP, HLS, radio) | `media_streams` (D159), capture ffmpeg derrière fetcher filtré (D160), caméras IP sur le bus caméra (D175) — PRD proposé, lot 1 en cours | Source « fichier uploadé » rejouée depuis la bibliothèque média (D21) |
-| Transcription horodatée | `pnex-asr` (sherpa-onnx par défaut, whisper.cpp en option, lot 0 ✅), worker `transcribe_segment` (D166), O2 `tx_<slug>` (D165), nœud `media_source` (D163) | Rien côté ASR |
+| Sources média (RTSP, HLS, radio) | `media_streams` (D159), capture ffmpeg confinée derrière fetcher filtré (D160 : icecast, HLS, `http_file` ; piste audio extraite des flux vidéo) — **livré** (lot 1, porteur `server`) ; RTSP/DASH/DVB, porteur `worker` (1h) et caméras IP sur le bus (D175, lot 6) à faire | Source « fichier uploadé » rejouée depuis la bibliothèque média (D21) |
+| Transcription horodatée | `pnex-asr serve` (process confiné, sherpa-onnx par défaut, whisper.cpp en option), worker `transcribe_segment` (D166), O2 `tx_<slug>` + recherche, registre de modèles audio (D167), rétention D161, UI `/streams` — **livré** ; nœud `media_source` (D163, lot 2) à faire | Rien côté ASR |
 | Détection d'objets | `ml_models` + `pnex-vision` (tract, YOLOX Apache-2.0), nœud `vision_detect`, test image/live, validation à l'enregistrement (D81–D83, D100–D104) — **livré** | Tracking, zones, modèles custom |
 | Événements interrogeables | Nœud `event_log` → O2 `ev_*` (D84), calques `camera_detections` (D105), notifications (D85) | Événements dérivés (zone, présence, comptage) |
 | Registre de modèles | Bibliothèque média `kind=model` + versions (D21, D81), check par porteur (D167) | Lien modèle → dataset figé + run d'entraînement |
@@ -455,7 +455,7 @@ Les lots audio sont ceux de `media-ingest.md` ; ce PRD ne les duplique pas.
 
 | Phase | Contenu | Livrable |
 |---|---|---|
-| **M0 — Socle média** | = P2.13 lots 1 et 6 (`media_streams`, ffmpeg, ASR, O2, D175 caméras IP sur le bus) + source « fichier uploadé » | Transcription horodatée d'une vidéo ou d'une caméra IP |
+| **M0 — Socle média** | P2.13 lot 1 **livré** (capture flux/vidéo/audio → texte : `media_streams`, ffmpeg, ASR, O2) ; reste lot 6 (D175 caméras IP sur le bus) + source « fichier uploadé » | Transcription horodatée d'une vidéo ou d'une caméra IP |
 | **M1 — Détection** | `vision_track` (ByteTrack Rust), `vision_zone` (éditeur de polygones sur l'image), événements dérivés via `event_log` + alerting (`vision_detect` existe déjà) | Événements objets en zone + alertes |
 | **M2 — Vision Lab v1** | Projets, import images/vidéos, annotation boîtes, interpolation vidéo, split par source, `lab_datasets` versionnés, job `train_detector` (image YOLOX figée), export ONNX → registre existant + check D100 | Modèle custom créé de bout en bout dans PNEX |
 | **M3 — Description** | `vision_caption` (VLM de l'org), `media_fuse`, résumé global, provenance D184 ; décision sur D174 (usage interne) | Description vidéo horodatée |
@@ -463,8 +463,8 @@ Les lots audio sont ceux de `media-ingest.md` ; ce PRD ne les duplique pas.
 | **M5 — Studio rapports** | Décision D173/D174/D3 rouverte, puis rapports intégrés, corrélation IoT, export | Rapport généré sans sortir de PNEX |
 
 Dépendances : fabric de workers P2.7 (GPU distant ; contournable par un
-process `--worker=train` joint en mesh, comme D166) ; P2.13 lot 1 pour
-M0 ; ontologie L4 (D182 plages, D187 rapports) pour M5.
+process `--worker=train` joint en mesh, comme D166) ; P2.13 lot 6 pour
+M0 (lot 1 livré) ; ontologie L4 (D182 plages, D187 rapports) pour M5.
 
 ---
 
