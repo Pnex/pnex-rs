@@ -243,7 +243,7 @@ Implémentation : CTE récursives bornées en PostgreSQL ; les agrégats tempore
 **Amendé le 2026-10-10 (annexe A3)** : l'API reste bornée (≤ 4) ; en
 interne, l'interface graphe de `pnex-core` couvre profondeur variable,
 plus court chemin et impact en cascade (CTE, timeout et plafond de
-lignes), et SQL/PGQ (PostgreSQL 19) pour les parcours à profondeur fixe.
+lignes) ; SQL/PGQ quand PostgreSQL l'intègre (absent de PG 19, annexe A3).
 La recherche globale (D69) s'étend aux objets. Le schéma de la requête
 vit dans `pnex-core` : l'UI, l'assistant et les flows (nœud
 `ontology-query`) parlent le même langage.
@@ -369,7 +369,7 @@ migration destructrice »), la 0.2.0 **migre les données**.
 | **L1** | D176–D178 : types, objets, propriétés scalaires, éditeur de types, YAML | créer « Pompe » et 100 objets en UI et en YAML |
 | **L2** | D179–D180 : types de liens, validité temporelle, migration `placed_on` / `placed_at` | requête `as_of` correcte sur liens fermés |
 | **L3** | D178 temporel + D181 : propriétés `series`/`events`, liaisons device → objet | remplacement de capteur sans rupture de courbe |
-| **L4** | D185–D187 : API de requête, interface graphe (CTE + SQL/PGQ), explorateur, **vue graphe Dioxus**, dashboards de type, verrou par type (D188) | dashboard de type Pompe, recherche globale sur objets |
+| **L4** | D185–D187 : API de requête, interface graphe (CTE), explorateur, **vue graphe Dioxus**, dashboards de type, verrou par type (D188) | dashboard de type Pompe, recherche globale sur objets |
 | **L5** | D184, D189, D191 : provenance, assistant, migration 0.1 → 0.2 | migration d'une base 0.1 réelle, onglet provenance |
 | **0.2.0** | L0–L5 + pack « Maintenance augmentée » | release |
 | **0.3** | D183 actions, packs Maison et Couverture médiatique, ACL par objet (décision) | |
@@ -462,19 +462,25 @@ lien, source et destination explicites.
 
 | Besoin | Mécanisme |
 |---|---|
-| Parcours à profondeur fixe | **SQL/PGQ** (`CREATE PROPERTY GRAPH` / `GRAPH_TABLE`), PostgreSQL 19 — vue réécrite en SQL relationnel, lecture seule |
+| Parcours à profondeur fixe | Jointures SQL générées par le cœur Rust ; **SQL/PGQ** (`CREATE PROPERTY GRAPH` / `GRAPH_TABLE`) le jour où PostgreSQL l'intègre — **absent de PG 19** (vérifié sur 19beta4, 2026-10-10 : erreur de syntaxe) |
 | Profondeur variable, plus court chemin, impact en cascade | **CTE récursives** générées par le cœur Rust, timeout et plafond de lignes |
 | Filtre temporel | SQL classique sur `valid_from` / `valid_to` |
 
 Toutes les requêtes graphe passent par **une seule interface** (trait
-Rust dans `pnex-core`) ; implémentation 1 = SQL/PGQ + CTE. L'API D185
+Rust dans `pnex-core`) ; implémentation 1 = jointures + CTE, SQL/PGQ en
+implémentation interchangeable quand il arrive. L'API D185
 reste bornée à 4 sauts ; l'illimité est réservé aux usages internes.
 
-**PostgreSQL 19 visé pour la 0.2.0** (tranché 2026-10-10) : l'image
-Postgres étendue (PostGIS de `geo-layers.md`, pgvector de
-`doc-search.md`) passe directement en 19, multi-arch arm64. À vérifier
-au spike L0 : PG 19 en GA, PostGIS et pgvector disponibles pour 19 sur
-arm64 ; sinon repli jointures + CTE sur 18 derrière la même interface.
+**PostgreSQL 19 adopté dès maintenant, en bêta** (tranché 2026-10-10) :
+`compose.yaml` et la CI tournent sur `postgres:19beta4-alpine` (amd64 +
+arm64) ; la base de référence s'applique sans changement (75 tables).
+Pari assumé : la stabilisation en mode industriel prend ~1 an, PG 19
+sera en GA bien avant. Bêtas suivies jusqu'à la GA, puis tag
+`19-alpine`. Pas de mise à jour en place entre bêtas garantie : une base
+de dev se recrée (`db:reset`). L'image étendue (PostGIS de
+`geo-layers.md`, pgvector de `doc-search.md`) se construit sur 19 ;
+disponibilité des deux extensions pour 19 sur arm64 à vérifier quand
+elle sera montée.
 
 ### A4. Apache AGE : réserve, pas départ
 
@@ -493,7 +499,7 @@ arm64 ; sinon repli jointures + CTE sur 18 derrière la même interface.
 - Coût de la projection : stockage négligeable (~1–2 Go pour 1 M objets
   + 1 M liens, estimation), écriture rare ; le vrai coût est la
   cohérence de deux modèles. Écrire une extension Cypher sur les tables
-  existantes : écarté (SQL/PGQ le fait nativement).
+  existantes : écarté (SQL/PGQ le fera nativement).
 
 ### A5. Alternatives écartées
 

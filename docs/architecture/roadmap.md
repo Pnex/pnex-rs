@@ -616,9 +616,9 @@ destructive**.
 ontologie optionnelle ; **identité universelle** (une ligne `objects` UUID
 + temps de validité pour tout objet, contenu natif en place, liens à FK
 réelles — amende D177, tranche Q1) ; interface graphe unique dans
-`pnex-core` (CTE + SQL/PGQ) ; API bornée à 4 sauts, illimité en interne ;
-**PostgreSQL 19 visé** (image étendue PostGIS + pgvector, à vérifier au
-L0) ; vue graphe Dioxus et verrou par type ajoutés au L4.
+`pnex-core` (jointures + CTE ; SQL/PGQ absent de PG 19) ; API bornée à 4 sauts, illimité en interne ;
+**PostgreSQL 19 bêta adopté** (`19beta4`, GA attendue avant la
+stabilisation industrielle) ; vue graphe Dioxus et verrou par type ajoutés au L4.
 
 **Risque de dispersion acté** : pendant la 0.2.0, aucun nouveau pilier
 fonctionnel ne démarre (correctifs et finition seulement) — à arbitrer
@@ -911,7 +911,11 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   test (Loro/yrs, BM25, rerank, DataFusion, raster, OGC).
 - **2026-10-10 (annexe ontologie & stockage graphe)** — Intégrée dans
   `ontology.md` : objets temporels comme les liens, identité universelle
-  (D177 amendé, Q1 tranchée), interface graphe unique (CTE + SQL/PGQ),
+  (D177 amendé, Q1 tranchée), interface graphe unique (CTE),
   API bornée à 4 sauts et illimité en interne, PostgreSQL 19 visé pour la
   0.2.0, vue graphe au L4, Apache AGE en réserve (P3), alternatives
   écartées (Neo4j, SurrealDB, XTDB), positionnement 0.2.0.
+- **2026-10-10 (PostgreSQL 19 bêta)** — Stack de dev et CI passées sur
+  `postgres:19beta4-alpine` (base de référence appliquée sans
+  changement). Constat : **SQL/PGQ n'est pas dans PG 19** ; l'interface
+  graphe de l'ontologie démarre en jointures + CTE.
