@@ -183,6 +183,7 @@ async fn scan(
     let wanted: HashMap<Uuid, media_streams::Model> = media_streams::Entity::find()
         .filter(media_streams::Column::Enabled.eq(true))
         .filter(media_streams::Column::CaptureOn.eq(CaptureOn::Server.wire()))
+        .filter(media_streams::Column::DeletedAt.is_null())
         .all(&ctx.db)
         .await?
         .into_iter()
