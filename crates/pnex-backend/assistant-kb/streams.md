@@ -4,9 +4,9 @@ title: Audio streams
 kind: feature
 pages: /streams
 nodes: 
-err_codes: media-stream-not-found, media-stream-write-forbidden, media-stream-limit, media-url-has-credentials, media-stream-unreachable, media-asr-model-invalid, media-capture-unsupported, asr-profile-not-found, asr-profile-name-taken
+err_codes: media-stream-not-found, media-stream-write-forbidden, media-stream-limit, media-url-has-credentials, media-stream-unreachable, media-asr-model-invalid, media-capture-unsupported, asr-profile-not-found, asr-profile-name-taken, asr-model-not-found, asr-model-name-taken, asr-model-unsupported, media-transcripts-unavailable
 tools: 
-tags: streams, flux, radio, audio, icecast, hls, podcast, transcription, asr, speech to text, parole, capture, retention, tdm
+tags: streams, flux, radio, audio, icecast, hls, podcast, transcription, transcriptions, asr, speech to text, parole, capture, retention, tdm, parakeet, canary, whisper, sherpa, profile, profil, search, recherche
 ---
 Audio streams (Data › Audio streams) lists the radios and live streams the organization captures around the clock. Each stream is cut into short audio segments, transcribed into timestamped text, and only the text is kept for good.
 
@@ -16,6 +16,8 @@ Audio streams (Data › Audio streams) lists the radios and live streams the org
 - **Transcription profile**: the speech-to-text model used for new segments. A stream cannot be enabled without a profile whose model passed its check.
 - **Segment length** (10 to 120 s) and **Audio retention**: none (audio deleted once transcribed, the default), a number of days, or kept (only when the organization holds the rights).
 - **Enable / Disable** capture, **Edit**, **Delete** (pending segments are erased; transcriptions already written stay in the history).
+- **Transcriptions** tab: search the text of every stream (or one), newest first.
+- **Models and profiles** tab: **Import a model** (upload a sherpa-onnx `.tar.bz2` archive or a whisper.cpp GGML file, or pick a `model` file from the media library) with its **Model license**; the server reads the family from the files, loads the model and transcribes a French reference clip: the row shows how many real-time streams it sustains and its error rate on the clip. **Check** runs it again. Then **Add the profile** (name, model, language) and pick that profile in the stream.
 
 ## Good to know
 - The URL never contains a token or a password: such a URL is refused, use the access secret instead.
@@ -24,3 +26,7 @@ Audio streams (Data › Audio streams) lists the radios and live streams the org
 - The short name under the stream (its slug) never changes, even when the stream is renamed: it names the stored transcriptions.
 - Before capturing a third-party stream, check that the publisher did not opt out of text and data mining (terms, robots.txt, notices) and tick **Text and data mining opt-out checked**; until then the list shows a warning.
 - Each organization has a limited number of streams (3 by default, set by the platform).
+- A model that does not load (transcription runtime missing on the server, unsupported layout) is kept as **Error** with the reason; once the platform installs the runtime, **Check** it again.
+- Large models (Parakeet, Whisper turbo) can exceed the platform's upload size limit: the platform raises it.
+- Deleting a model deletes the profiles that use it; their streams stop being transcribed until another profile is set.
+- Only the text is kept: once transcribed, audio is deleted unless the stream keeps it.

@@ -1,8 +1,11 @@
 //! Media ingest API (media-ingest.md P2.13) — client of
-//! `/api/v1/media/streams` (D14 list, create, update, delete)
-//! and `/api/v1/asr/profiles`.
+//! `/api/v1/media/streams` (D14 list, create, update, delete),
+//! `/api/v1/media/transcripts`, `/api/v1/asr/models` and `/api/v1/asr/profiles`.
 
-use pnex_core::media_ingest::{AsrProfile, MediaStream, MediaStreamInput};
+use pnex_core::media_ingest::{
+    AsrModel, AsrModelInput, AsrProfile, AsrProfileInput, MediaStream, MediaStreamInput,
+    TranscriptRecord,
+};
 use pnex_core::Paginated;
 
 use crate::api::client;
@@ -69,4 +72,83 @@ pub async fn delete(id: &str) -> Result<Option<()>, ApiError> {
 /// `GET /api/v1/asr/profiles`.
 pub async fn profiles() -> Result<Vec<AsrProfile>, ApiError> {
     client::request(reqwest::Method::GET, "/api/v1/asr/profiles", None).await
+}
+
+/// `POST /api/v1/asr/profiles`.
+pub async fn create_profile(input: &AsrProfileInput) -> Result<AsrProfile, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        "/api/v1/asr/profiles",
+        Some(serde_json::to_value(input).unwrap_or_default()),
+    )
+    .await
+}
+
+/// `DELETE /api/v1/asr/profiles/{id}`.
+pub async fn delete_profile(id: &str) -> Result<Option<()>, ApiError> {
+    client::request_opt(
+        reqwest::Method::DELETE,
+        &format!("/api/v1/asr/profiles/{id}"),
+        None,
+    )
+    .await
+}
+
+/// `GET /api/v1/asr/models`.
+pub async fn models() -> Result<Vec<AsrModel>, ApiError> {
+    client::request(reqwest::Method::GET, "/api/v1/asr/models", None).await
+}
+
+/// `POST /api/v1/asr/models` — reads the files and checks the model
+/// before answering (can take a while for a large model).
+pub async fn create_model(input: &AsrModelInput) -> Result<AsrModel, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        "/api/v1/asr/models",
+        Some(serde_json::to_value(input).unwrap_or_default()),
+    )
+    .await
+}
+
+/// `POST /api/v1/asr/models/{id}/check`.
+pub async fn check_model(id: &str) -> Result<AsrModel, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/asr/models/{id}/check"),
+        None,
+    )
+    .await
+}
+
+/// `DELETE /api/v1/asr/models/{id}`.
+pub async fn delete_model(id: &str) -> Result<Option<()>, ApiError> {
+    client::request_opt(
+        reqwest::Method::DELETE,
+        &format!("/api/v1/asr/models/{id}"),
+        None,
+    )
+    .await
+}
+
+/// `GET /api/v1/media/transcripts` — newest first; `stream` empty = every
+/// stream of the org.
+pub async fn transcripts(
+    stream: &str,
+    q: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<Paginated<TranscriptRecord>, ApiError> {
+    let mut pairs = vec![format!("limit={limit}"), format!("offset={offset}")];
+    if !stream.is_empty() {
+        pairs.push(format!("stream={}", crate::api::media::urlencode(stream)));
+    }
+    if !q.trim().is_empty() {
+        pairs.push(format!("q={}", crate::api::media::urlencode(q.trim())));
+    }
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/media/transcripts?{}", pairs.join("&")),
+        None,
+    )
+    .await
 }
