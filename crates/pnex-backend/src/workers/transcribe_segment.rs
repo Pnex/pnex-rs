@@ -64,6 +64,36 @@ impl Failure {
     }
 }
 
+/// Concurrent transcriptions of one org in this process (D166 fairness).
+const DEFAULT_MAX_PER_ORG: usize = 2;
+/// Pause before a job of a saturated org goes back to the queue.
+const REQUEUE_AFTER: std::time::Duration = std::time::Duration::from_secs(2);
+
+fn max_per_org() -> usize {
+    std::env::var("PNEX_ASR_MAX_PER_ORG")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_MAX_PER_ORG)
+}
+
+static ORG_SLOTS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<i64, std::sync::Arc<tokio::sync::Semaphore>>>,
+> = std::sync::LazyLock::new(Default::default);
+
+/// A transcription slot of `org_id`, `None` when the org already runs
+/// `max` transcriptions in this process: one org never fills every queue
+/// worker while the others wait.
+fn org_slot(org_id: i64, max: usize) -> Option<tokio::sync::OwnedSemaphorePermit> {
+    let sem = ORG_SLOTS
+        .lock()
+        .expect("asr org slots")
+        .entry(org_id)
+        .or_insert_with(|| std::sync::Arc::new(tokio::sync::Semaphore::new(max)))
+        .clone();
+    sem.try_acquire_owned().ok()
+}
+
 fn max_lag_secs() -> i64 {
     std::env::var("PNEX_ASR_MAX_LAG_SECS")
         .ok()
@@ -289,6 +319,25 @@ impl TranscribeSegmentWorker {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn org_slots_cap_one_org_only() {
+        let a1 = org_slot(-11, 2);
+        let a2 = org_slot(-11, 2);
+        assert!(a1.is_some() && a2.is_some());
+        assert!(org_slot(-11, 2).is_none(), "third slot of the org refused");
+        assert!(org_slot(-12, 2).is_some(), "another org is not affected");
+        drop(a1);
+        assert!(
+            org_slot(-11, 2).is_some(),
+            "a slot comes back when released"
+        );
+    }
+}
+
 #[async_trait]
 impl BackgroundWorker<TranscribeSegmentArgs> for TranscribeSegmentWorker {
     fn build(ctx: &AppContext) -> Self {
@@ -306,6 +355,18 @@ impl BackgroundWorker<TranscribeSegmentArgs> for TranscribeSegmentWorker {
             .await?
         else {
             return Ok(()); // stream deleted meanwhile
+        };
+        let Some(_slot) = org_slot(args.org_id, max_per_org()) else {
+            // Back to the queue: the worker slot goes to another org's job.
+            tokio::time::sleep(REQUEUE_AFTER).await;
+            let live = seg.state == SegmentState::Queued.wire();
+            Self::perform_later_with_priority(
+                &self.ctx,
+                args,
+                crate::services::media_ingest::segments::priority(live),
+            )
+            .await?;
+            return Ok(());
         };
         if !Self::claim(&self.ctx.db, seg.id, args.org_id).await? {
             tracing::debug!(segment = %seg.id, state = %seg.state, "segment already handled");

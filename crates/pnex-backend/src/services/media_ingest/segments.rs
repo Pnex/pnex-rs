@@ -81,9 +81,17 @@ pub async fn write(
     }
 }
 
+/// Queue priority of a transcription (D166): on a dedicated `asr` queue,
+/// live segments go before replays; the shared untagged queue keeps
+/// priority 0 so transcriptions never overtake the other jobs.
+pub fn priority(live: bool) -> Option<i32> {
+    (live && !super::asr_queue_tags().is_empty()).then_some(1)
+}
+
 /// Marks the segment `queued` and enqueues its transcription (D166). A
-/// failed enqueue leaves it `captured` (visible, replayable).
-pub async fn enqueue(ctx: &loco_rs::app::AppContext, seg: &media_segments::Model) {
+/// failed enqueue leaves it `captured` (visible, replayable). `live` = a
+/// segment just captured, `false` = a replay.
+pub async fn enqueue(ctx: &loco_rs::app::AppContext, seg: &media_segments::Model, live: bool) {
     use crate::workers::transcribe_segment::{TranscribeSegmentArgs, TranscribeSegmentWorker};
     use loco_rs::bgworker::BackgroundWorker;
     use sea_orm::sea_query::Expr;
@@ -103,7 +111,9 @@ pub async fn enqueue(ctx: &loco_rs::app::AppContext, seg: &media_segments::Model
         segment_id: seg.id,
         org_id: seg.org_id,
     };
-    if let Err(e) = TranscribeSegmentWorker::perform_later(ctx, args).await {
+    if let Err(e) =
+        TranscribeSegmentWorker::perform_later_with_priority(ctx, args, priority(live)).await
+    {
         tracing::warn!(segment = %seg.id, error = %e, "transcription not enqueued");
         let _ = media_segments::Entity::update_many()
             .col_expr(
