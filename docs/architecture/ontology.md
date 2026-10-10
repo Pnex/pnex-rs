@@ -365,7 +365,7 @@ migration destructrice »), la 0.2.0 **migre les données**.
 
 | Lot | Contenu | Sortie |
 |---|---|---|
-| **L0** | Spike : types en données dérivant le `KindSpec` existant, sans changement fonctionnel | registre généré identique au registre codé (test d'égalité) |
+| **L0** ✅ | Spike : types en données dérivant le `KindSpec` existant, sans changement fonctionnel | registre généré identique au registre codé (test d'égalité) — **livré 2026-10-10** : `pnex_core::ontology` (`ObjectTypeDef`, `LinkTypeDef`, `TypeSet`), `KindSpec` supprimé, garde `derived_registry_matches_d42_rules` |
 | **L1** | D176–D178 : types, objets, propriétés scalaires, éditeur de types, YAML | créer « Pompe » et 100 objets en UI et en YAML |
 | **L2** | D179–D180 : types de liens, validité temporelle, migration `placed_on` / `placed_at` | requête `as_of` correcte sur liens fermés |
 | **L3** | D178 temporel + D181 : propriétés `series`/`events`, liaisons device → objet | remplacement de capteur sans rupture de courbe |

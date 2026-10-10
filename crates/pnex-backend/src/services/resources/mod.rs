@@ -4,12 +4,12 @@
 //! École `services/pois.rs` : contrôleurs (et futurs outils IA) passent par
 //! ici, jamais par les entités directement. Le moteur ne fait **jamais** de
 //! `match` sur les kinds : existence+tenancy passent par le registre
-//! ([`registry`]), la validité relation×kinds est déclarée par kind
-//! (`pnex_core::resources::KindSpec`).
+//! ([`registry`]), containment and relation validity come from the type
+//! definitions (`pnex_core::ontology`).
 //!
 //! Sous-modules :
-//! - [`registry`] — kinds vivants + résolveurs (1 entrée par concept ;
-//!   un concept futur = 1 fonction `*_entry()` + 1 ligne dans `build()`) ;
+//! - [`registry`] — registry derived from the system types + one resolver
+//!   per type;
 //! - [`labels`] — classification requêtable (GIN `@>` sur PG) + labels
 //!   effectifs (héritage ancêtres, résolu **au read**) ;
 //! - [`containment`] — arbre à parent unique (cycle → `CycleDetected`) ;

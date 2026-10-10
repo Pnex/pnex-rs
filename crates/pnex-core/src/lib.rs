@@ -191,6 +191,9 @@ pub use telemetry::*;
 pub mod resources;
 pub use resources::*;
 
+/// Ontology meta-model (D176–D191): object and link types as data.
+pub mod ontology;
+
 /// Machine error codes shared backend ↔ frontend (i18n) — doctrine and
 /// `ALL` registry; `err-<kebab>` resolution happens client-side at render
 /// time.
