@@ -88,7 +88,12 @@ pub fn to_red_flows_json_with(
             }),
             FlowNodeKind::CameraSource { config } => serde_json::json!({
                 "type": "pnex-camera-source",
-                "device_id": config.device_id,
+                "source": config.source,
+                // Only the selected source is projected: a stream node never
+                // creates device demand (D76), a device node subscribes to
+                // no stream.
+                "device_id": if config.source.is_device() { config.device_id.as_str() } else { "" },
+                "stream": if config.source.is_device() { "" } else { config.stream.as_str() },
                 "max_fps": config.max_fps,
                 "pnex_node_id": n.id,
                 "pnex_flow_id": meta.flow_id,

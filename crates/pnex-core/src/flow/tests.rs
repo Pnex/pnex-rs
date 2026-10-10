@@ -2920,6 +2920,62 @@ fn camera_nodes_roundtrip_validate_and_project() {
 }
 
 #[test]
+fn camera_source_stream_validates_projects_and_claims() {
+    // A stream source (D175): slug required, only the stream is projected,
+    // the recorder claim never collides with a device slug.
+    let g: FlowGraph = serde_json::from_value(serde_json::json!({
+        "nodes": [
+            {"id": "cam", "kind": "camera_source",
+             "config": {"source": "stream", "stream": "lobby_cam", "device_id": "stale"},
+             "outputs": [{"port": 0, "targets": ["rec"]}]},
+            {"id": "rec", "kind": "video_record", "config": {}}
+        ]
+    }))
+    .expect("graph");
+    assert!(validate_graph(&g).is_empty(), "{:?}", validate_graph(&g));
+    let meta = FlowArtifactMeta {
+        flow_id: 4,
+        version_number: 2,
+        org_id: 9,
+        o2_org: String::new(),
+    };
+    let red = to_red_flows_json(&g, &meta);
+    let cam = red
+        .as_array()
+        .expect("entries")
+        .iter()
+        .find(|e| e["type"] == "pnex-camera-source")
+        .expect("cam")
+        .clone();
+    assert_eq!(cam["source"], "stream");
+    assert_eq!(cam["stream"], "lobby_cam");
+    assert_eq!(cam["device_id"], "", "no device demand from a stream node");
+    let claims = video_record_claims_of(&g);
+    assert_eq!(claims[0].device_id, "stream:lobby_cam");
+
+    // A device node keeps its old shape (no `source` written).
+    let dev = CameraSourceConfig {
+        device_id: "cam-one".into(),
+        ..Default::default()
+    };
+    let json = serde_json::to_value(&dev).unwrap();
+    assert!(json.get("source").is_none() && json.get("stream").is_none());
+
+    for bad in ["", "Bad Slug"] {
+        let g: FlowGraph = serde_json::from_value(serde_json::json!({
+            "nodes": [{"id": "cam", "kind": "camera_source",
+                       "config": {"source": "stream", "stream": bad}}]
+        }))
+        .expect("graph");
+        let codes: Vec<String> = validate_graph(&g).into_iter().map(|v| v.code).collect();
+        assert!(
+            codes.contains(&"camera_stream_missing".to_string()),
+            "{codes:?}"
+        );
+    }
+}
+
+#[test]
 fn one_video_record_per_camera() {
     // Direct and through a vision node: both reach cam-one → duplicate.
     let g: FlowGraph = serde_json::from_value(serde_json::json!({

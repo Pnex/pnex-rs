@@ -381,6 +381,24 @@ l'uplink ouvert (recalcul au boot, à chaque deploy/stop/suppression).
 - Reste : la rétention du stream `camera_detections` suit la rétention O2
   de l'org (D72), pas celle des segments.
 
+### Note 2026-10-10 — sources « flux » (D175, `media-ingest.md` §21)
+
+Une caméra IP (RTSP, ou tout flux HLS / MPEG-TS / MP4 avec vidéo) n'est
+pas un device : c'est un `media_streams` dont `tracks` contient `video`.
+Son superviseur de capture publie des JPEG (≤ 1 280 px, `fps` 1–5) au
+**format du bus caméra** (`SET` TTL 15 s + `PUBLISH` d'un `BusFrameMeta`)
+dans un espace de clés propre, `pnex:media:v1:{org}:{slug}:cam`
+(+ `:cam:f:{seq}`), jamais `pnex:cam:v1:…`. `camera-source` choisit sa
+source (`source: device | stream`, défaut `device`) et s'abonne au canal
+exact construit depuis l'org tamponnée ; le déploiement refuse un slug qui
+n'est pas un flux vidéo de l'org (`camera-stream-unknown`). Les nœuds aval
+(`video-record`, `vision-detect`) suivent la source portée par le message
+(`payload.device_id` ou `payload.stream`) et ne lisent qu'une clé de frame
+de leur org (SEC-26). `video_segments` porte `device_registry_id` **ou**
+`stream_id` (contrainte « exactement un ») ; le réveil D76/D102 ne
+s'applique pas à un flux (capté en continu tant qu'il est activé) ; les
+calques de détection (D105) restent réservés aux devices.
+
 ## 5. Phases
 
 | Phase | Contenu | Critère de sortie |

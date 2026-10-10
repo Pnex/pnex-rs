@@ -1022,12 +1022,17 @@ fn node_subtitle(node: &FlowNode) -> String {
             format!("key \"{}\"", config.default_key)
         }
         pnex_core::FlowNodeKind::CameraSource { config } => {
-            if config.device_id.is_empty() {
+            let slug = if config.source.is_device() {
+                &config.device_id
+            } else {
+                &config.stream
+            };
+            if slug.is_empty() {
                 "—".into()
             } else if config.max_fps > 0.0 {
-                format!("{} · ≤{} fps", config.device_id, config.max_fps)
+                format!("{slug} · ≤{} fps", config.max_fps)
             } else {
-                config.device_id.clone()
+                slug.clone()
             }
         }
         pnex_core::FlowNodeKind::VideoRecord { config } => {

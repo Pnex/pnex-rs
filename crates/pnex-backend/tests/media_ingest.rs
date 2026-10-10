@@ -579,3 +579,100 @@ async fn media_source_deploy_needs_streams_of_the_org() {
     })
     .await;
 }
+
+/// Video streams (D175, D160): RTSP needs an rtsp URL, fps is bounded, a
+/// video-only stream is enabled without a transcription profile, and a
+/// `camera-source` deploys only on a video stream of its own org.
+#[tokio::test]
+#[serial]
+async fn camera_stream_source_needs_a_video_stream_of_the_org() {
+    with_app(|server, env| async move {
+        let alice_org = personal_org(&server, &env.alice).await;
+        let bob_org = personal_org(&server, &env.bob).await;
+        let cam = |name: &str| {
+            json!({ "name": name, "kind": "rtsp", "url": "rtsp://cam.example.org/h264",
+                    "tracks": "video", "enabled": true })
+        };
+        let post = |token: String, org: i64, body: Value| {
+            let server = &server;
+            async move {
+                call(
+                    server,
+                    "POST",
+                    "/api/v1/media/streams",
+                    &token,
+                    org,
+                    Some(body),
+                )
+                .await
+            }
+        };
+        // Scheme follows the kind; fps within 1..=5.
+        let mut bad = cam("Bad");
+        bad["url"] = json!("https://cam.example.org/live");
+        let (s, b) = post(env.alice.clone(), alice_org, bad).await;
+        assert_eq!(s, 400, "{b}");
+        let mut fast = cam("Fast");
+        fast["fps"] = json!(9);
+        let (s, b) = post(env.alice.clone(), alice_org, fast).await;
+        assert_eq!(s, 400, "{b}");
+
+        let (s, b) = post(env.alice.clone(), alice_org, cam("Lobby cam")).await;
+        assert_eq!(s, 201, "{b}");
+        assert_eq!(b["enabled"], true);
+        assert_eq!(b["fps"], 1);
+        let (s, b) = post(
+            env.alice.clone(),
+            alice_org,
+            stream("Radio", "https://icecast.radio.example/inter.mp3"),
+        )
+        .await;
+        assert_eq!(s, 201, "{b}");
+        let (s, b) = post(env.bob.clone(), bob_org, cam("Bob cam")).await;
+        assert_eq!(s, 201, "{b}");
+
+        let deploy = |slug: &str| {
+            let server = &server;
+            let token = env.alice.clone();
+            let body = json!({ "name": format!("cam {slug}"), "graph": { "nodes": [
+                { "id": "cs", "kind": "camera_source",
+                  "config": { "source": "stream", "stream": slug, "max_fps": 1 },
+                  "outputs": [{ "port": 0, "targets": ["dbg"] }] },
+                { "id": "dbg", "kind": "debug" }
+            ]}});
+            async move {
+                let (s, created) = call(
+                    server,
+                    "POST",
+                    "/api/v1/flows",
+                    &token,
+                    alice_org,
+                    Some(body),
+                )
+                .await;
+                assert_eq!(s, 201, "{created}");
+                let id = created["id"].as_i64().expect("flow id");
+                call(
+                    server,
+                    "POST",
+                    &format!("/api/v1/flows/{id}/deploy"),
+                    &token,
+                    alice_org,
+                    Some(json!({})),
+                )
+                .await
+            }
+        };
+        // Another org's stream, or an audio-only one: refused, slug named.
+        for slug in ["bob_cam", "radio"] {
+            let (s, body) = deploy(slug).await;
+            assert_eq!(s, 400, "{body}");
+            assert_eq!(body["violations"][0]["code"], "camera-stream-unknown");
+            assert_eq!(body["violations"][0]["args"]["stream"], slug);
+        }
+        // Own video stream: the gate lets it through (503 = engine off).
+        let (s, body) = deploy("lobby_cam").await;
+        assert_eq!(s, 503, "{body}");
+    })
+    .await;
+}

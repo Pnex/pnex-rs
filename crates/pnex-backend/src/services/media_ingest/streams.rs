@@ -6,8 +6,9 @@ use pnex_core::egress;
 use pnex_core::err_codes;
 use pnex_core::media_ingest::{
     stream_slug, url_has_credentials, AudioRetention, CaptureOn, CaptureState, MediaStream,
-    MediaStreamInput, MediaStreamKind, OVERLAP_SECS_DEFAULT, OVERLAP_SECS_MAX,
-    SEGMENT_SECS_DEFAULT, SEGMENT_SECS_MAX, SEGMENT_SECS_MIN, SLUG_MAX_LEN, URL_MAX_LEN,
+    MediaStreamInput, MediaStreamKind, MediaTracks, FPS_DEFAULT, FPS_MAX, FPS_MIN,
+    OVERLAP_SECS_DEFAULT, OVERLAP_SECS_MAX, SEGMENT_SECS_DEFAULT, SEGMENT_SECS_MAX,
+    SEGMENT_SECS_MIN, SLUG_MAX_LEN, URL_MAX_LEN,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
@@ -112,6 +113,8 @@ pub fn view(r: &media_streams::Model) -> MediaStream {
         enabled: r.enabled,
         capture_on: r.capture_on.clone(),
         asr_profile_id: r.asr_profile_id.map(|v| v.to_string()),
+        tracks: MediaTracks::from_wire(&r.tracks).unwrap_or_default(),
+        fps: r.fps,
         segment_secs: r.segment_secs,
         overlap_secs: r.overlap_secs,
         audio_retention: r.audio_retention.clone(),
@@ -187,7 +190,8 @@ fn clean_name(raw: &str) -> Result<String, StreamError> {
     Ok(name.to_string())
 }
 
-/// Parses and checks a stream URL: http(s) only, no credential, host
+/// Parses and checks a stream URL: http(s) or rtsp only (the kind picks
+/// one, [`check_kind_url`]), no credential, host
 /// allowed by the egress policy. Every refusal of the policy is the same
 /// `media-stream-unreachable` (no scan oracle, D160). Address checks
 /// happen again at each connection (DNS rebinding).
@@ -207,7 +211,7 @@ fn clean_url_under(raw: &str, policy: egress::EgressPolicy) -> Result<reqwest::U
         ));
     }
     let url = reqwest::Url::parse(raw).map_err(|_| invalid("url", err_codes::FIELD_INVALID))?;
-    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+    if !matches!(url.scheme(), "http" | "https" | "rtsp") || url.host_str().is_none() {
         return Err(invalid("url", err_codes::FIELD_INVALID));
     }
     if url_has_credentials(&url) {
@@ -217,6 +221,17 @@ fn clean_url_under(raw: &str, policy: egress::EgressPolicy) -> Result<reqwest::U
         return Err(StreamError::Unreachable);
     }
     Ok(url)
+}
+
+/// The URL scheme must match the stream kind (rtsp ⇔ `rtsp`).
+fn check_kind_url(am: &media_streams::ActiveModel) -> Result<(), StreamError> {
+    let kind = MediaStreamKind::from_wire(am.kind.as_ref()).unwrap_or_default();
+    let ok = reqwest::Url::parse(am.url.as_ref()).is_ok_and(|u| kind.scheme_ok(u.scheme()));
+    if ok {
+        Ok(())
+    } else {
+        Err(invalid("url", err_codes::FIELD_INVALID))
+    }
 }
 
 /// `(scheme, host, port)` of a URL: the destination a secret is bound to.
@@ -291,6 +306,15 @@ async fn apply<C: ConnectionTrait>(
         }
         am.notify_channel_id = Set(id);
     }
+    if let Some(t) = input.tracks {
+        am.tracks = Set(t.wire().to_string());
+    }
+    if let Some(v) = input.fps {
+        if !(FPS_MIN..=FPS_MAX).contains(&v) {
+            return Err(invalid("fps", err_codes::FIELD_INVALID));
+        }
+        am.fps = Set(v);
+    }
     if let Some(v) = input.segment_secs {
         if !(SEGMENT_SECS_MIN..=SEGMENT_SECS_MAX).contains(&v) {
             return Err(invalid("segment_secs", err_codes::FIELD_INVALID));
@@ -334,15 +358,19 @@ async fn apply<C: ConnectionTrait>(
     Ok(())
 }
 
-/// An enabled stream needs a profile whose models (ASR, and the VAD and
-/// diarization ones when set) passed their check (D167 guard, school of
-/// D101).
+/// An enabled stream with an audio track needs a profile whose models
+/// (ASR, and the VAD and diarization ones when set) passed their check
+/// (D167 guard, school of D101). A video-only stream needs none (D175).
 async fn check_runnable<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
-    profile: Option<Uuid>,
+    am: &media_streams::ActiveModel,
 ) -> Result<(), StreamError> {
-    let Some(profile) = profile else {
+    let tracks = MediaTracks::from_wire(am.tracks.as_ref()).unwrap_or_default();
+    if !tracks.has_audio() {
+        return Ok(());
+    }
+    let Some(profile) = am.asr_profile_id.clone().unwrap() else {
         return Err(StreamError::AsrModelInvalid);
     };
     let Some(p) = asr_profiles::Entity::find_by_id(profile)
@@ -442,7 +470,8 @@ pub async fn create(
         enabled: Set(false),
         capture_on: Set(CaptureOn::Server.wire()),
         asr_profile_id: Set(None),
-        tracks: Set("audio".into()),
+        tracks: Set(MediaTracks::Audio.wire().into()),
+        fps: Set(FPS_DEFAULT),
         segment_secs: Set(SEGMENT_SECS_DEFAULT),
         overlap_secs: Set(OVERLAP_SECS_DEFAULT),
         audio_retention: Set(AudioRetention::None.wire()),
@@ -459,9 +488,9 @@ pub async fn create(
         updated_at: Set(now),
     };
     apply(&txn, org_id, &mut am, input).await?;
+    check_kind_url(&am)?;
     if input.enabled == Some(true) {
-        let profile = am.asr_profile_id.clone().unwrap();
-        check_runnable(&txn, org_id, profile).await?;
+        check_runnable(&txn, org_id, &am).await?;
     }
     if let Some(secret) = input.auth_secret.as_ref() {
         let held = media_secret::save(
@@ -527,10 +556,10 @@ pub async fn update(
         .await?;
         am.secret_id = Set(held);
     }
+    check_kind_url(&am)?;
     let enabled = am.enabled.clone().unwrap();
     if enabled {
-        let profile = am.asr_profile_id.clone().unwrap();
-        check_runnable(&txn, org_id, profile).await?;
+        check_runnable(&txn, org_id, &am).await?;
     }
     am.updated_at = Set(chrono::Utc::now().into());
     let row = am.update(&txn).await?;
@@ -597,6 +626,11 @@ mod tests {
             );
         }
         assert!(clean_url("https://icecast.radiofrance.fr/franceinter-midfi.mp3").is_ok());
+        assert!(clean_url("rtsp://cam.example/stream1").is_ok());
+        assert!(matches!(
+            clean_url("rtsp://admin:pw@cam.example/stream1"),
+            Err(StreamError::UrlHasCredentials)
+        ));
     }
 
     #[test]

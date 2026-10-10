@@ -137,6 +137,10 @@ pub async fn tick(ctx: &AppContext, alerted: &mut HashSet<Uuid>) -> Result<(), D
         .filter(media_streams::Column::Enabled.eq(true))
         .filter(media_streams::Column::DeletedAt.is_null())
         .filter(media_streams::Column::AsrProfileId.is_not_null())
+        // Audio health only: a video-only stream has no audio to miss.
+        .filter(
+            media_streams::Column::Tracks.ne(pnex_core::media_ingest::MediaTracks::Video.wire()),
+        )
         .all(&ctx.db)
         .await?;
     let mut by_org: std::collections::BTreeMap<i64, Vec<LabelledPoint>> = Default::default();
@@ -353,6 +357,7 @@ mod tests {
             capture_on: "server".into(),
             asr_profile_id: Some(Uuid::nil()),
             tracks: "audio".into(),
+            fps: 1,
             segment_secs: 30,
             overlap_secs: 1,
             audio_retention: "none".into(),

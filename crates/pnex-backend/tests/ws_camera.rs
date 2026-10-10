@@ -332,6 +332,81 @@ async fn segments_written_listed_and_deleted() {
     .await;
 }
 
+/// IP stream recordings (D175): a segment names a media stream instead of
+/// a device, is resolved in the stamped org and listed by `stream_id`.
+#[tokio::test]
+#[serial]
+async fn stream_segments_written_and_listed() {
+    with_app(|server, alice, _ctx| async move {
+        let dir = tempfile::tempdir().expect("tmp");
+        unsafe { std::env::set_var("PNEX_MEDIA_DIR", dir.path()) };
+        unsafe { std::env::set_var("PNEX_MEDIA_BACKEND", "fs") };
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-cam") };
+        let org = personal_org(&server, &alice).await;
+        let created = server
+            .post("/api/v1/media/streams")
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&serde_json::json!({
+                "name": "Lobby cam", "kind": "rtsp",
+                "url": "rtsp://cam.example.org/h264", "tracks": "video", "fps": 2
+            }))
+            .await;
+        created.assert_status(axum_test::http::StatusCode::CREATED);
+        let stream: serde_json::Value = created.json();
+        assert_eq!(stream["tracks"], "video");
+        assert_eq!(stream["fps"], 2);
+        let stream_id = stream["id"].as_str().expect("id").to_string();
+
+        let mut w = pnex_core::avi::AviWriter::new(320, 240);
+        w.push(vec![0xFF, 0xD8, 1, 2, 0xFF, 0xD9]);
+        let avi = w.finish(1.0);
+        let path = |source: &str| {
+            format!(
+                "/internal/flow/video-segment?org_id={org}&{source}&node_id=n1&stream=lobby\
+                 &started_ms=1790000000000&ended_ms=1790000001000&frames=1&width=320&height=240"
+            )
+        };
+        let post = |p: String| {
+            server
+                .post(&p)
+                .add_header("x-pnex-flow-token", "tok-cam")
+                .bytes(avi.clone().into())
+        };
+        // Unknown slug in this org, or two sources at once: refused.
+        post(path("media_stream=nope"))
+            .await
+            .assert_status(axum_test::http::StatusCode::NOT_FOUND);
+        post(path("media_stream=lobby_cam&device_id=x"))
+            .await
+            .assert_status(axum_test::http::StatusCode::BAD_REQUEST);
+        let res = post(path("media_stream=lobby_cam")).await;
+        res.assert_status_ok();
+        let seg: serde_json::Value = res.json();
+        assert_eq!(seg["stream_id"], stream_id.as_str());
+        assert_eq!(seg["device"], 0);
+
+        let list: serde_json::Value = server
+            .get(&format!("/api/v1/cameras/segments?stream_id={stream_id}"))
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .add_header("X-Org-Id", org.to_string())
+            .await
+            .json();
+        assert_eq!(list["count"], 1);
+        let id = list["results"][0]["id"].as_str().expect("id").to_string();
+        server
+            .get(&format!("/api/v1/cameras/segments/{id}/content"))
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .add_header("X-Org-Id", org.to_string())
+            .await
+            .assert_status_ok();
+        unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
+        unsafe { std::env::remove_var("PNEX_MEDIA_DIR") };
+        unsafe { std::env::remove_var("PNEX_MEDIA_BACKEND") };
+    })
+    .await;
+}
+
 /// Query-safe RFC 3339 (`:` and `+` escaped).
 fn enc(ts: &str) -> String {
     ts.replace(':', "%3A").replace('+', "%2B")

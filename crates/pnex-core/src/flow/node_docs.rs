@@ -268,12 +268,14 @@ pub const NODE_DOCS: &[NodeDoc] = &[
     },
     NodeDoc {
         kind: "camera_source",
-        summary: "Event source (no inject needed): one message per frame of a camera device. payload = {device_id, seq, ts_ms, width, height, size, frame_key} — a reference to the JPEG, never the bytes.",
+        summary: "Event source (no inject needed): one message per frame of a camera device or of the video track of a media stream (IP camera). payload = {device_id, seq, ts_ms, width, height, size, frame_key} for a device, {stream, seq, ts_ms, width, height, size, frame_key} for a stream (topic = the device or stream slug) — a reference to the JPEG, never the bytes.",
         config: &[
-            ("device_id", "camera device slug (required)"),
+            ("source", "\"device\" (default) | \"stream\""),
+            ("device_id", "camera device slug (required when source = device)"),
+            ("stream", "media stream slug (required when source = stream): a stream of the organization whose tracks include video"),
             ("max_fps", "sampling, 0 = every frame (default), max 25"),
         ],
-        notes: "Live view needs no flow.",
+        notes: "Live view needs no flow. A stream source delivers what the stream samples (its fps setting, 1 to 5 frames per second, frames at most 1280 px wide), and only while the stream is enabled; a slug that is not a stream of the organization with a video track refuses the deploy. Waking a device camera does not apply to streams: an enabled stream is captured continuously.",
     },
     NodeDoc {
         kind: "media_source",
@@ -314,9 +316,9 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("gap_secs", "flush after this many seconds without frames, 1..=600 (default 10)"),
             ("max_fps", "recording rate cap, 0 = every frame (default)"),
             ("retention_days", "0 = forever, default 7, max 3650"),
-            ("stream", "logical stream name (default: camera slug)"),
+            ("stream", "recording label shown as \"Label\" in the editor (default: camera or stream slug)"),
         ],
-        notes: "",
+        notes: "Follows the source of the incoming camera_source messages: device frames are recorded under the camera, media stream frames under the stream (listed in the Recordings tab of the stream page). One recorder per camera or stream across the organization's deployed flows.",
     },
     NodeDoc {
         kind: "event_log",
@@ -330,7 +332,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
     },
     NodeDoc {
         kind: "vision_detect",
-        summary: "Object detection with a registry model (e.g. YOLOX COCO: person, car, dog…) on camera_source frames. payload = {device_id, ts_ms, count, labels, detections: [{label, score, bbox}], frame_key}.",
+        summary: "Object detection with a registry model (e.g. YOLOX COCO: person, car, dog…) on camera_source frames. payload = {device_id or stream, ts_ms, count, labels, detections: [{label, score, bbox}], frame_key}.",
         config: &[
             ("model_id", "ml_models id (UUID, required) — Models page"),
             ("labels", "keep only these labels (empty = all)"),
@@ -338,7 +340,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("emit", "\"on_detection\" (default) | \"always\""),
             ("max_fps", "inference rate per camera, default 1, 0 = every frame"),
         ],
-        notes: "",
+        notes: "Works on device and stream frames alike; the annotation layer (record_layer) is stored for device cameras only.",
     },
     NodeDoc {
         kind: "memory_write",

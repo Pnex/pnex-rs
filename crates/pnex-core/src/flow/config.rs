@@ -1022,11 +1022,36 @@ where
 /// 15 s), never the bytes (camera-video.md D74).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CameraSourceConfig {
-    /// Camera device slug.
+    /// Where the frames come from (D175); `device` by default.
+    #[serde(default, skip_serializing_if = "CameraSourceKind::is_device")]
+    pub source: CameraSourceKind,
+    /// Camera device slug (`source: device`).
+    #[serde(default)]
     pub device_id: String,
+    /// Media stream slug (`source: stream`): a stream of the org whose
+    /// `tracks` has video, checked at deploy.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub stream: String,
     /// Sampling: at most this many messages per second (0 = every frame).
     #[serde(default)]
     pub max_fps: f64,
+}
+
+/// Frame source of a `camera-source` node (D175).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CameraSourceKind {
+    /// A camera device (`pnex:cam:v1:{org}:{device}`).
+    #[default]
+    Device,
+    /// The video track of a media stream (`pnex:media:v1:{org}:{slug}:cam`).
+    Stream,
+}
+
+impl CameraSourceKind {
+    pub fn is_device(&self) -> bool {
+        *self == Self::Device
+    }
 }
 
 /// Upper bound of `max_fps` on camera nodes (the camera itself caps at 25).
@@ -1035,8 +1060,14 @@ pub const CAMERA_NODE_MAX_FPS: f64 = 25.0;
 impl CameraSourceConfig {
     /// Structural check shared by the save validation and the runtime build.
     pub fn check(&self) -> Option<(&'static str, String)> {
-        if !crate::naming::valid_device_label(&self.device_id) {
-            return Some(("camera_device_missing", "select a camera".into()));
+        match self.source {
+            CameraSourceKind::Device if !crate::naming::valid_device_label(&self.device_id) => {
+                return Some(("camera_device_missing", "select a camera".into()));
+            }
+            CameraSourceKind::Stream if !crate::media_ingest::is_valid_slug(&self.stream) => {
+                return Some(("camera_stream_missing", "select a media stream".into()));
+            }
+            _ => {}
         }
         if !self.max_fps.is_finite() || self.max_fps < 0.0 || self.max_fps > CAMERA_NODE_MAX_FPS {
             return Some((
@@ -1198,7 +1229,11 @@ pub fn video_record_claims_of(g: &FlowGraph) -> Vec<VideoRecordClaim> {
                 if let Some(FlowNodeKind::CameraSource { config: src }) =
                     by_id.get(p).map(|n| &n.kind)
                 {
-                    let cam = src.device_id.trim().to_string();
+                    // A stream never shares a claim key with a device slug.
+                    let cam = match src.source {
+                        CameraSourceKind::Device => src.device_id.trim().to_string(),
+                        CameraSourceKind::Stream => format!("stream:{}", src.stream.trim()),
+                    };
                     if !cam.is_empty() && !cameras.contains(&cam) {
                         cameras.push(cam);
                     }

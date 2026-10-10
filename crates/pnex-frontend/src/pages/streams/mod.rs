@@ -19,6 +19,7 @@ use crate::state::{org, session, toasts};
 mod form;
 mod models;
 mod ranges;
+mod recordings;
 mod segments;
 mod taxonomies;
 mod test;
@@ -28,6 +29,7 @@ use form::StreamFormModal;
 use models::ModelsTab;
 pub(crate) use ranges::origin_label;
 use ranges::RangesTab;
+use recordings::RecordingsDialog;
 use segments::SegmentsDialog;
 use taxonomies::TaxonomiesTab;
 use test::StreamTestDialog;
@@ -64,6 +66,7 @@ enum Dialog {
     Edit(MediaStream),
     Delete(MediaStream),
     Segments(MediaStream),
+    Recordings(MediaStream),
     Test(MediaStream),
 }
 
@@ -238,6 +241,13 @@ pub fn Streams() -> Element {
                     on_close: move |_| dialog.set(None),
                 }
             },
+            Some(Dialog::Recordings(s)) => rsx! {
+                RecordingsDialog {
+                    key: "recordings-{s.id}",
+                    stream: s.clone(),
+                    on_close: move |_| dialog.set(None),
+                }
+            },
             Some(Dialog::Delete(s)) => rsx! {
                 ConfirmDialog {
                     title: t!("streams-delete-title"),
@@ -354,6 +364,8 @@ fn StreamRow(
     let s_edit = stream.clone();
     let s_delete = stream.clone();
     let s_segments = stream.clone();
+    let s_recordings = stream.clone();
+    let has_video = stream.tracks.has_video();
     let s_test = stream.clone();
     let health_line = stream.health.as_ref().map(|h| {
         let gap = short_duration(h.gap_secs);
@@ -394,6 +406,14 @@ fn StreamRow(
                         r#type: "button",
                         onclick: move |_| on_action.call(Dialog::Segments(s_segments.clone())),
                         {t!("streams-segments")}
+                    }
+                    if has_video {
+                        button {
+                            class: "px-2 py-1 text-xs border border-gray-300 rounded-lg hover:bg-gray-50",
+                            r#type: "button",
+                            onclick: move |_| on_action.call(Dialog::Recordings(s_recordings.clone())),
+                            {t!("streams-recordings")}
+                        }
                     }
                     if can_write {
                         button {

@@ -1,7 +1,8 @@
 //! `pnex-video-record` — MJPEG-AVI segment recorder (see crate docs).
 //!
 //! One buffer per camera (`payload.device_id` of the incoming
-//! `camera-source` message). A segment is flushed when its duration reaches
+//! `camera-source` message, or `payload.stream` for the video track of a
+//! media stream, D175). A segment is flushed when its duration reaches
 //! `segment_secs`, its payload reaches `max_segment_mb`, the frame size
 //! changes, no frame arrived for `gap_secs`, or the node stops. Upload is
 //! lenient: a failed segment is logged and dropped, the flow never stops.
@@ -65,6 +66,37 @@ fn d_retention() -> u32 {
     pnex_core::VideoRecordConfig::default().retention_days
 }
 
+/// Where a frame comes from (D175): a device camera or a media stream.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum Source {
+    Device(String),
+    Stream(String),
+}
+
+impl Source {
+    /// Source of a `camera-source` payload.
+    pub(crate) fn of(payload: &serde_json::Value) -> Option<Self> {
+        let get = |k: &str| payload.get(k).and_then(|v| v.as_str()).map(str::to_string);
+        get("device_id")
+            .map(Self::Device)
+            .or_else(|| get("stream").map(Self::Stream))
+    }
+
+    pub(crate) fn slug(&self) -> &str {
+        match self {
+            Self::Device(s) | Self::Stream(s) => s,
+        }
+    }
+
+    /// Query parameter naming the source on the segment upload.
+    fn query_key(&self) -> &'static str {
+        match self {
+            Self::Device(_) => "device_id",
+            Self::Stream(_) => "media_stream",
+        }
+    }
+}
+
 /// Segment being accumulated for one camera.
 struct Segment {
     writer: AviWriter,
@@ -76,7 +108,7 @@ struct Segment {
 
 /// A finished segment ready for upload.
 struct Finished {
-    device_id: String,
+    source: Source,
     first_ms: i64,
     last_ms: i64,
     width: u16,
@@ -86,7 +118,7 @@ struct Finished {
 }
 
 impl Segment {
-    fn finish(self, device_id: String) -> Finished {
+    fn finish(self, source: Source) -> Finished {
         let frames = self.writer.frame_count();
         let (width, height) = self.writer.dims();
         let span_s = (self.last_ms - self.first_ms) as f64 / 1000.0;
@@ -98,7 +130,7 @@ impl Segment {
             1.0
         };
         Finished {
-            device_id,
+            source,
             first_ms: self.first_ms,
             last_ms: self.last_ms,
             width,
@@ -117,8 +149,8 @@ struct VideoRecordNode {
     http: reqwest::Client,
     url: String,
     token: String,
-    segments: Mutex<HashMap<String, Segment>>,
-    last_accepted: Mutex<HashMap<String, i64>>,
+    segments: Mutex<HashMap<Source, Segment>>,
+    last_accepted: Mutex<HashMap<Source, i64>>,
 }
 
 impl VideoRecordNode {
@@ -191,8 +223,8 @@ impl VideoRecordNode {
                 None => serde_json::Value::Null,
             }
         };
-        let (Some(device_id), Some(key), Some(ts_ms)) = (
-            payload.get("device_id").and_then(|v| v.as_str()),
+        let (Some(source), Some(key), Some(ts_ms)) = (
+            Source::of(&payload),
             payload.get("frame_key").and_then(|v| v.as_str()),
             payload.get("ts_ms").and_then(|v| v.as_i64()),
         ) else {
@@ -202,14 +234,21 @@ impl VideoRecordNode {
             );
             return Ok(());
         };
+        if !pnex_core::camera::frame_key_in_org(self.config.pnex_org_id, key) {
+            log::warn!(
+                "{NODE} [{}] : message ignored — frame key outside the organization",
+                self.name()
+            );
+            return Ok(());
+        }
         let width = payload.get("width").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
         let height = payload.get("height").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
         {
             let mut last = self.last_accepted.lock().await;
-            if !crate::sample_ok(self.config.max_fps, last.get(device_id).copied(), ts_ms) {
+            if !crate::sample_ok(self.config.max_fps, last.get(&source).copied(), ts_ms) {
                 return Ok(());
             }
-            last.insert(device_id.to_string(), ts_ms);
+            last.insert(source.clone(), ts_ms);
         }
         let mut conn = self.valkey.clone();
         let jpeg: Option<Vec<u8>> = match redis::AsyncCommands::get(&mut conn, key).await {
@@ -228,20 +267,18 @@ impl VideoRecordNode {
         {
             let mut segs = self.segments.lock().await;
             // Resolution change: close the current segment first.
-            if let Some(seg) = segs.get(device_id) {
+            if let Some(seg) = segs.get(&source) {
                 if seg.writer.dims() != (width, height) {
-                    let seg = segs.remove(device_id).expect("present");
-                    ready.push(seg.finish(device_id.to_string()));
+                    let seg = segs.remove(&source).expect("present");
+                    ready.push(seg.finish(source.clone()));
                 }
             }
-            let seg = segs
-                .entry(device_id.to_string())
-                .or_insert_with(|| Segment {
-                    writer: AviWriter::new(width, height),
-                    first_ms: ts_ms,
-                    last_ms: ts_ms,
-                    last_arrival: std::time::Instant::now(),
-                });
+            let seg = segs.entry(source.clone()).or_insert_with(|| Segment {
+                writer: AviWriter::new(width, height),
+                first_ms: ts_ms,
+                last_ms: ts_ms,
+                last_arrival: std::time::Instant::now(),
+            });
             seg.writer.push(jpeg);
             seg.last_ms = ts_ms;
             seg.last_arrival = std::time::Instant::now();
@@ -250,8 +287,8 @@ impl VideoRecordNode {
             let full_size =
                 seg.writer.payload_bytes() >= self.config.max_segment_mb as usize * 1024 * 1024;
             if full_time || full_size {
-                let seg = segs.remove(device_id).expect("present");
-                ready.push(seg.finish(device_id.to_string()));
+                let seg = segs.remove(&source).expect("present");
+                ready.push(seg.finish(source));
             }
         }
         for f in ready {
@@ -265,7 +302,7 @@ impl VideoRecordNode {
         let gap = Duration::from_secs(u64::from(self.config.gap_secs));
         let ready: Vec<Finished> = {
             let mut segs = self.segments.lock().await;
-            let idle: Vec<String> = segs
+            let idle: Vec<Source> = segs
                 .iter()
                 .filter(|(_, s)| all || s.last_arrival.elapsed() >= gap)
                 .map(|(k, _)| k.clone())
@@ -284,13 +321,13 @@ impl VideoRecordNode {
             return;
         }
         let stream = if self.config.stream.trim().is_empty() {
-            f.device_id.clone()
+            f.source.slug().to_string()
         } else {
             self.config.stream.trim().to_string()
         };
         let mut query: Vec<(&str, String)> = vec![
             ("org_id", self.config.pnex_org_id.to_string()),
-            ("device_id", f.device_id.clone()),
+            (f.source.query_key(), f.source.slug().to_string()),
             ("node_id", self.config.pnex_node_id.clone()),
             ("stream", stream),
             ("started_ms", f.first_ms.to_string()),
@@ -341,18 +378,21 @@ impl VideoRecordNode {
             "{NODE} [{}] : segment stored ({} frames, {size} bytes, {})",
             self.name(),
             f.frames,
-            f.device_id
+            f.source.slug()
         );
         let payload = dto.unwrap_or_else(|| {
             serde_json::json!({
-                "device_id": f.device_id,
+                f.source.query_key(): f.source.slug(),
                 "frame_count": f.frames,
                 "size_bytes": size,
             })
         });
         let mut body = std::collections::BTreeMap::new();
         body.insert("payload".to_string(), crate::variant_of(payload));
-        body.insert("topic".to_string(), Variant::from(f.device_id));
+        body.insert(
+            "topic".to_string(),
+            Variant::from(f.source.slug().to_string()),
+        );
         let envelope = Envelope {
             port: 0,
             msg: MsgHandle::with_properties(body),
@@ -399,5 +439,20 @@ impl FlowNodeBehavior for VideoRecordNode {
         // Stop / redeploy: keep what was recorded (best effort, fresh token
         // — the stop token is already cancelled).
         self.flush_idle(true, CancellationToken::new()).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn source_of_payload() {
+        let dev = Source::of(&serde_json::json!({"device_id": "cam", "frame_key": "k"}));
+        assert_eq!(dev, Some(Source::Device("cam".into())));
+        let st = Source::of(&serde_json::json!({"stream": "lobby"})).unwrap();
+        assert_eq!(st, Source::Stream("lobby".into()));
+        assert_eq!((st.query_key(), st.slug()), ("media_stream", "lobby"));
+        assert_eq!(Source::of(&serde_json::json!({"x": 1})), None);
     }
 }

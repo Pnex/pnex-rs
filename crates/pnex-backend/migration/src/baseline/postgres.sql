@@ -802,7 +802,8 @@ CREATE TABLE users (
 CREATE TABLE video_segments (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     org_id bigint NOT NULL,
-    device_registry_id bigint NOT NULL,
+    device_registry_id bigint,
+    stream_id uuid,
     flow_id bigint,
     node_id character varying(64) NOT NULL,
     stream character varying(128) NOT NULL,
@@ -1958,6 +1959,7 @@ CREATE TABLE media_streams (
     capture_on character varying(64) DEFAULT 'server'::character varying NOT NULL,
     asr_profile_id uuid,
     tracks character varying(16) DEFAULT 'audio'::character varying NOT NULL,
+    fps integer DEFAULT 1 NOT NULL,
     segment_secs integer DEFAULT 30 NOT NULL,
     overlap_secs integer DEFAULT 1 NOT NULL,
     audio_retention character varying(16) DEFAULT 'none'::character varying NOT NULL,
@@ -1983,6 +1985,12 @@ CREATE TABLE media_streams (
         REFERENCES users(id) ON DELETE SET NULL
 );
 CREATE UNIQUE INDEX uniq_media_streams_org_slug ON media_streams USING btree (org_id, slug);
+-- D175: a recording comes from a device or from an IP stream, never both.
+ALTER TABLE ONLY video_segments
+    ADD CONSTRAINT "fk-video_segments-stream_id" FOREIGN KEY (stream_id) REFERENCES media_streams(id) ON DELETE CASCADE;
+ALTER TABLE ONLY video_segments
+    ADD CONSTRAINT chk_video_segments_one_source CHECK (num_nonnulls(device_registry_id, stream_id) = 1);
+CREATE INDEX idx_video_segments_org_stream_started ON video_segments USING btree (org_id, stream_id, started_at);
 
 CREATE TABLE media_segments (
     id uuid DEFAULT gen_random_uuid() NOT NULL,

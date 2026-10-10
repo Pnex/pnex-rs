@@ -328,6 +328,42 @@ pub(crate) async fn unknown_media_streams_for_deploy(
     Ok(violations)
 }
 
+/// Camera stream gate (D175, R1/R3): a `camera-source` reading a stream
+/// must name a live stream of the org whose tracks include video,
+/// otherwise it would listen to a channel nobody publishes on.
+pub(crate) async fn unknown_camera_streams_for_deploy(
+    ctx: &AppContext,
+    org_id: i64,
+    candidate_graph: &FlowGraph,
+) -> Result<Vec<pnex_core::FlowViolation>> {
+    let mut violations = Vec::new();
+    for n in &candidate_graph.nodes {
+        let pnex_core::FlowNodeKind::CameraSource { config } = &n.kind else {
+            continue;
+        };
+        if config.source != pnex_core::CameraSourceKind::Stream {
+            continue;
+        }
+        let found =
+            crate::services::media_ingest::streams::find_by_slug(&ctx.db, org_id, &config.stream)
+                .await
+                .map_err(|_| Error::InternalServerError)?;
+        let has_video = found.is_some_and(|s| {
+            pnex_core::media_ingest::MediaTracks::from_wire(&s.tracks)
+                .is_some_and(|t| t.has_video())
+        });
+        if !has_video {
+            violations.push(pnex_core::FlowViolation::with_args(
+                Some(n.id.as_str()),
+                pnex_core::err_codes::CAMERA_STREAM_UNKNOWN,
+                "camera-source reads a stream that is not a stream of the organization with a video track",
+                serde_json::json!({ "stream": config.stream }),
+            ));
+        }
+    }
+    Ok(violations)
+}
+
 /// Taxonomy gate (D168, R1): every `topic_classify` must pin an existing
 /// version of a taxonomy of the org — another org's id reads as unknown.
 pub(crate) async fn unknown_taxonomies_for_deploy(
@@ -545,6 +581,8 @@ async fn deploy_version(
         conflicts.extend(unknown_controls_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         conflicts
             .extend(unknown_media_streams_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
+        conflicts
+            .extend(unknown_camera_streams_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         conflicts.extend(unknown_taxonomies_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         conflicts
             .extend(unknown_range_scopes_for_deploy(&ctx, org.org.id, &candidate_graph).await?);

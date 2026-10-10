@@ -405,6 +405,9 @@ pub const MEDIA_CAPTURE_UNSUPPORTED: &str = "media-capture-unsupported";
 /// Deploy refused: a `media-source` lists a slug that is not a stream of
 /// the org; `args.stream` = the slug.
 pub const MEDIA_STREAM_UNKNOWN: &str = "media-stream-unknown";
+/// Deploy refused: a `camera-source` reads a stream that is not a stream
+/// of the org with a video track (D175); `args.stream` = the slug.
+pub const CAMERA_STREAM_UNKNOWN: &str = "camera-stream-unknown";
 /// ASR profile not found (or not in the org).
 pub const ASR_PROFILE_NOT_FOUND: &str = "asr-profile-not-found";
 /// An ASR profile of the org already has this name.
@@ -662,6 +665,7 @@ pub const ALL: &[&str] = &[
     MEDIA_ASR_MODEL_INVALID,
     MEDIA_CAPTURE_UNSUPPORTED,
     MEDIA_STREAM_UNKNOWN,
+    CAMERA_STREAM_UNKNOWN,
     ASR_PROFILE_NOT_FOUND,
     ASR_PROFILE_NAME_TAKEN,
     ASR_MODEL_NOT_FOUND,

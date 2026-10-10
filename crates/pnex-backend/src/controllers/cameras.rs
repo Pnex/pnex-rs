@@ -193,6 +193,8 @@ async fn patch_settings(
 #[derive(Debug, Deserialize)]
 pub struct SegmentQuery {
     device: Option<i64>,
+    /// Recordings of one IP stream (`media_streams.id`, D175).
+    stream_id: Option<Uuid>,
     /// RFC 3339 lower bound on `started_at`.
     from: Option<String>,
     /// RFC 3339 upper bound on `started_at`.
@@ -208,8 +210,9 @@ fn parse_ts(raw: Option<&str>) -> Option<chrono::DateTime<chrono::FixedOffset>> 
 pub(crate) fn segment_dto(m: &video_segments::Model, device_id: &str) -> VideoSegment {
     VideoSegment {
         id: m.id.to_string(),
-        device: m.device_registry_id,
+        device: m.device_registry_id.unwrap_or_default(),
         device_id: device_id.to_string(),
+        stream_id: m.stream_id.map(|s| s.to_string()),
         stream: m.stream.clone(),
         flow_id: m.flow_id,
         node_id: m.node_id.clone(),
@@ -235,6 +238,10 @@ async fn list_segments(
     if let Some(d) = q.device {
         query = query.filter(video_segments::Column::DeviceRegistryId.eq(d));
         filters.push(("device".to_string(), d.to_string()));
+    }
+    if let Some(sid) = q.stream_id {
+        query = query.filter(video_segments::Column::StreamId.eq(sid));
+        filters.push(("stream_id".to_string(), sid.to_string()));
     }
     if let Some(from) = parse_ts(q.from.as_deref()) {
         query = query.filter(video_segments::Column::StartedAt.gte(from));
@@ -319,7 +326,11 @@ async fn segment_content(
         .get(&seg.storage_key)
         .await
         .map_err(|_| Error::NotFound)?;
-    let device_id = dev.map(|d| d.device_id).unwrap_or_default();
+    // A stream recording is named after its stream id (no device).
+    let device_id = dev
+        .map(|d| d.device_id)
+        .or_else(|| seg.stream_id.map(|s| s.to_string()))
+        .unwrap_or_default();
     let filename = pnex_firmware_builder::sanitize_segment(&format!(
         "{device_id}_{}.avi",
         seg.started_at.format("%Y%m%dT%H%M%S")

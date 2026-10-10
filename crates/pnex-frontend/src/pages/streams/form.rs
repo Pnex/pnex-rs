@@ -4,7 +4,9 @@
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::media_ingest::{MediaStream, MediaStreamInput, MediaStreamKind};
+use pnex_core::media_ingest::{
+    MediaStream, MediaStreamInput, MediaStreamKind, MediaTracks, FPS_DEFAULT, FPS_MAX, FPS_MIN,
+};
 
 use crate::api;
 use crate::components::crud::form::FormDialog;
@@ -17,6 +19,14 @@ const LABEL: &str = "block text-xs text-gray-600 mb-1";
 /// Retention choices offered by the form (any `days:N` stays valid on
 /// the server).
 const RETENTIONS: [&str; 5] = ["none", "days:1", "days:7", "days:30", "keep"];
+
+pub(super) fn tracks_label(t: MediaTracks) -> String {
+    match t {
+        MediaTracks::Audio => t!("streams-tracks-audio").to_string(),
+        MediaTracks::Video => t!("streams-tracks-video").to_string(),
+        MediaTracks::AudioVideo => t!("streams-tracks-audio-video").to_string(),
+    }
+}
 
 pub(super) fn retention_label(wire: &str) -> String {
     match wire {
@@ -39,6 +49,8 @@ pub fn StreamFormModal(
     let mut name = use_signal(|| init.as_ref().map(|s| s.name.clone()).unwrap_or_default());
     let mut kind = use_signal(|| init.as_ref().map(|s| s.kind).unwrap_or_default());
     let mut url = use_signal(|| init.as_ref().map(|s| s.url.clone()).unwrap_or_default());
+    let mut tracks = use_signal(|| init.as_ref().map(|s| s.tracks).unwrap_or_default());
+    let mut fps = use_signal(|| init.as_ref().map(|s| s.fps).unwrap_or(FPS_DEFAULT));
     let mut profile = use_signal(|| {
         init.as_ref()
             .and_then(|s| s.asr_profile_id.clone())
@@ -105,6 +117,8 @@ pub fn StreamFormModal(
             auth_secret,
             clear_secret: had_secret && draft == SecretDraft::Empty,
             asr_profile_id: Some(profile()),
+            tracks: Some(tracks()),
+            fps: Some(fps()),
             capture_on: Some(capture_on()),
             notify_channel_id: Some(alert_channel()),
             segment_secs: Some(segment_secs()),
@@ -178,12 +192,51 @@ pub fn StreamFormModal(
                         class: INPUT,
                         r#type: "url",
                         value: "{url}",
-                        placeholder: "https://…",
+                        placeholder: "https://… | rtsp://…",
                         oninput: move |e| url.set(e.value()),
                     }
                 }
             }
             p { class: "text-xs text-gray-500", {t!("streams-url-help")} }
+            if kind() == MediaStreamKind::Rtsp {
+                p { class: "text-xs text-gray-500", {t!("streams-rtsp-help")} }
+            }
+            div { class: "grid grid-cols-1 sm:grid-cols-3 gap-3",
+                div { class: "sm:col-span-2",
+                    label { r#for: "stream-tracks", class: LABEL, {t!("streams-tracks")} }
+                    select {
+                        id: "stream-tracks",
+                        class: INPUT,
+                        onchange: move |e| {
+                            if let Some(v) = MediaTracks::from_wire(&e.value()) {
+                                tracks.set(v);
+                            }
+                        },
+                        for v in MediaTracks::ALL {
+                            option { value: v.wire(), selected: tracks() == v, {tracks_label(v)} }
+                        }
+                    }
+                    p { class: "text-xs text-gray-500 mt-1", {t!("streams-tracks-help")} }
+                }
+                if tracks().has_video() {
+                    div {
+                        label { r#for: "stream-fps", class: LABEL, {t!("streams-fps")} }
+                        input {
+                            id: "stream-fps",
+                            class: INPUT,
+                            r#type: "number",
+                            min: "{FPS_MIN}",
+                            max: "{FPS_MAX}",
+                            value: "{fps}",
+                            oninput: move |e| {
+                                if let Ok(v) = e.value().parse::<i32>() {
+                                    fps.set(v);
+                                }
+                            },
+                        }
+                    }
+                }
+            }
             SecretField {
                 label: t!("streams-secret").to_string(),
                 draft: secret,

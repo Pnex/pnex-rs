@@ -39,16 +39,27 @@ pub enum MediaStreamKind {
     Hls,
     /// A finite audio file over HTTP (podcast episode, replay).
     HttpFile,
+    /// IP camera over RTSP (TCP interleaved only, D160).
+    Rtsp,
 }
 
 impl MediaStreamKind {
-    pub const ALL: [MediaStreamKind; 3] = [Self::Icecast, Self::Hls, Self::HttpFile];
+    pub const ALL: [MediaStreamKind; 4] = [Self::Icecast, Self::Hls, Self::HttpFile, Self::Rtsp];
 
     pub fn wire(self) -> &'static str {
         match self {
             Self::Icecast => "icecast",
             Self::Hls => "hls",
             Self::HttpFile => "http_file",
+            Self::Rtsp => "rtsp",
+        }
+    }
+
+    /// URL scheme(s) a stream of this kind accepts.
+    pub fn scheme_ok(self, scheme: &str) -> bool {
+        match self {
+            Self::Rtsp => scheme == "rtsp",
+            _ => matches!(scheme, "http" | "https"),
         }
     }
 
@@ -56,6 +67,50 @@ impl MediaStreamKind {
         Self::ALL.into_iter().find(|k| k.wire() == s)
     }
 }
+
+/// Tracks captured from a stream (D175): audio goes to the ASR path,
+/// video frames to the camera bus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum MediaTracks {
+    #[default]
+    #[serde(rename = "audio")]
+    Audio,
+    #[serde(rename = "video")]
+    Video,
+    #[serde(rename = "audio+video")]
+    AudioVideo,
+}
+
+impl MediaTracks {
+    pub const ALL: [MediaTracks; 3] = [Self::Audio, Self::Video, Self::AudioVideo];
+
+    pub fn wire(self) -> &'static str {
+        match self {
+            Self::Audio => "audio",
+            Self::Video => "video",
+            Self::AudioVideo => "audio+video",
+        }
+    }
+
+    pub fn from_wire(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|t| t.wire() == s)
+    }
+
+    pub fn has_audio(self) -> bool {
+        self != Self::Video
+    }
+
+    pub fn has_video(self) -> bool {
+        self != Self::Audio
+    }
+}
+
+/// Bounds of the video sampling rate of a stream (D159, D175).
+pub const FPS_MIN: i32 = 1;
+pub const FPS_MAX: i32 = 5;
+pub const FPS_DEFAULT: i32 = 1;
+/// Widest frame published on the bus (larger frames are scaled down).
+pub const FRAME_MAX_WIDTH: u32 = 1280;
 
 /// Where the capture runs (D160).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -281,6 +336,19 @@ pub fn transcript_channel(org_id: i64, slug: &str) -> String {
     format!("pnex:media:v1:{org_id}:{slug}:tx")
 }
 
+/// Valkey channel of the video frames of a stream (D175), in the camera
+/// bus format. Own key space: never collides with a device camera
+/// (`pnex:cam:v1:{org}:{device}`). Built from the stamped org and a
+/// validated slug, never from a config string (R3).
+pub fn frame_channel(org_id: i64, slug: &str) -> String {
+    format!("pnex:media:v1:{org_id}:{slug}:cam")
+}
+
+/// Valkey key of one frame of a stream (TTL `camera::FRAME_TTL_SECS`).
+pub fn frame_key(org_id: i64, slug: &str, seq: u32) -> String {
+    format!("pnex:media:v1:{org_id}:{slug}:cam:f:{seq}")
+}
+
 /// Query parameter names that carry a credential.
 const CREDENTIAL_PARAMS: [&str; 12] = [
     "token",
@@ -331,6 +399,11 @@ pub struct MediaStream {
     pub capture_on: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub asr_profile_id: Option<String>,
+    #[serde(default)]
+    pub tracks: MediaTracks,
+    /// Video frames per second (D175), used when `tracks` has video.
+    #[serde(default = "default_fps")]
+    pub fps: i32,
     pub segment_secs: i32,
     pub overlap_secs: i32,
     /// `none` | `days:N` | `keep`.
@@ -353,6 +426,10 @@ pub struct MediaStream {
     pub health: Option<StreamHealth>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+fn default_fps() -> i32 {
+    FPS_DEFAULT
 }
 
 /// Capture health of an enabled stream, computed when read (D160, §9).
@@ -389,6 +466,10 @@ pub struct MediaStreamInput {
     /// Empty string clears the profile.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub asr_profile_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tracks: Option<MediaTracks>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fps: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub segment_secs: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -733,6 +814,26 @@ mod tests {
         for bad in ["", "_x", "x_", "a__b", "A", "a-b", "a:b"] {
             assert!(!is_valid_slug(bad), "{bad}");
         }
+    }
+
+    #[test]
+    fn tracks_and_frame_keys() {
+        for t in MediaTracks::ALL {
+            assert_eq!(MediaTracks::from_wire(t.wire()), Some(t));
+            assert_eq!(
+                serde_json::to_string(&t).unwrap(),
+                format!("\"{}\"", t.wire())
+            );
+        }
+        assert!(MediaTracks::AudioVideo.has_audio() && MediaTracks::AudioVideo.has_video());
+        assert!(!MediaTracks::Video.has_audio() && !MediaTracks::Audio.has_video());
+        assert_eq!(frame_channel(7, "cam_1"), "pnex:media:v1:7:cam_1:cam");
+        assert_eq!(frame_key(7, "cam_1", 3), "pnex:media:v1:7:cam_1:cam:f:3");
+        // Never in the device camera key space.
+        assert!(!frame_key(7, "cam_1", 3).starts_with("pnex:cam:"));
+        assert!(MediaStreamKind::Rtsp.scheme_ok("rtsp"));
+        assert!(!MediaStreamKind::Rtsp.scheme_ok("http"));
+        assert!(!MediaStreamKind::Hls.scheme_ok("rtsp"));
     }
 
     #[test]

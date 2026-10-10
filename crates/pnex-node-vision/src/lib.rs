@@ -416,9 +416,15 @@ impl VisionDetectNode {
                 .map(|v| serde_json::to_value(v).unwrap_or(serde_json::Value::Null))
                 .unwrap_or(serde_json::Value::Null)
         };
+        // A device camera, or the video track of a media stream (D175).
+        let source_field = if payload.get("device_id").is_some() {
+            "device_id"
+        } else {
+            "stream"
+        };
         let (Some(device_id), Some(key), Some(ts_ms)) = (
             payload
-                .get("device_id")
+                .get(source_field)
                 .and_then(|v| v.as_str())
                 .map(str::to_string),
             payload
@@ -433,13 +439,21 @@ impl VisionDetectNode {
             );
             return Ok(());
         };
+        if !pnex_core::camera::frame_key_in_org(self.config.pnex_org_id, &key) {
+            log::warn!(
+                "{NODE} [{}] : message ignored — frame key outside the organization",
+                self.name()
+            );
+            return Ok(());
+        }
         if chrono::Utc::now().timestamp_millis() - ts_ms > STALE_FRAME_MS {
             self.stats.stale.fetch_add(1, Ordering::Relaxed);
             return Ok(());
         }
         {
             let mut last = self.last_accepted.lock().await;
-            let prev = last.get(&device_id).copied();
+            let rate_key = format!("{source_field}:{device_id}");
+            let prev = last.get(&rate_key).copied();
             if self.config.max_fps > 0.0 {
                 let gap = (1000.0 / self.config.max_fps) as i64;
                 if prev.is_some_and(|p| ts_ms - p < gap - gap / 10) {
@@ -447,7 +461,7 @@ impl VisionDetectNode {
                     return Ok(());
                 }
             }
-            last.insert(device_id.clone(), ts_ms);
+            last.insert(rate_key, ts_ms);
         }
         let mut conn = self.valkey.clone();
         let jpeg: Option<Vec<u8>> = match redis::AsyncCommands::get(&mut conn, &key).await {
@@ -491,7 +505,8 @@ impl VisionDetectNode {
         if detections.is_empty() && !below.is_empty() {
             self.stats.below_threshold.fetch_add(1, Ordering::Relaxed);
         }
-        if self.layer_url.is_some() && !detections.is_empty() {
+        // Annotation layers are stored per device camera only.
+        if self.layer_url.is_some() && source_field == "device_id" && !detections.is_empty() {
             let full = {
                 let mut buf = self.layer_buf.lock().await;
                 let anns = buf.entry(device_id.clone()).or_default();
@@ -531,7 +546,7 @@ impl VisionDetectNode {
             .collect();
         let out = serde_json::json!({
             "summary": summary_of(&detections),
-            "device_id": device_id,
+            source_field: device_id,
             "seq": payload.get("seq").cloned().unwrap_or(serde_json::Value::Null),
             "ts_ms": ts_ms,
             "width": res.width,

@@ -22,6 +22,8 @@ pub struct Model {
     pub capture_on: String,
     pub asr_profile_id: Option<Uuid>,
     pub tracks: String,
+    /// Video frames sampled per second when `tracks` has video (D175).
+    pub fps: i32,
     pub segment_secs: i32,
     pub overlap_secs: i32,
     pub audio_retention: String,
