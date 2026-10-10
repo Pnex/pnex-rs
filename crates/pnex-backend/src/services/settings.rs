@@ -13,12 +13,12 @@ use serde::Deserialize;
 pub struct IngestSettings {
     /// Bail de vie : silence au-delà duquel un device est considéré parti
     /// (reaper → `active=false`, anti-clone). 10 s = 2 PING manqués à 5 s
-    /// (legacy: 12 s — user value 2026-08-16).
+    /// (user value 2026-08-16).
     pub silence_ttl_secs: i64,
     /// Cadence du reaper.
     pub reaper_interval_secs: u64,
     /// Cache de revalidation token/device par frame (§7.8 ws-channels-crypto :
-    /// the legacy design queried the DB on every frame; 0 = always revalidate).
+    /// 0 = always revalidate).
     /// Each revalidation is a cheap token + fingerprint check; the full
     /// session snapshot is rebuilt only when the fingerprint changed (or
     /// every `snapshot_rebuild_secs`). Revocation semantics: a deactivated
@@ -38,7 +38,7 @@ pub struct IngestSettings {
     /// Max wait for an admission slot at handshake before the socket is
     /// closed with 1013 (try again later — the firmware reconnects).
     pub admission_wait_ms: u64,
-    /// Batch télémétrie : nb max de points avant flush (parité ES 500/10 s).
+    /// Telemetry batch: max number of points before a flush.
     pub batch_max: usize,
     /// Batch télémétrie : délai max avant flush.
     pub batch_flush_secs: u64,

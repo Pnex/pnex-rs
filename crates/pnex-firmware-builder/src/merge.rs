@@ -1,7 +1,7 @@
-//! esptool merge-bin fusion (parity with the legacy script): produces the
-//! single flashable image at a given base address.
+//! esptool merge-bin fusion: produces the single flashable image at a given
+//! base address.
 //!
-//! Per-SoC offsets (literals from the legacy k8s script):
+//! Per-SoC offsets:
 //! - esp8266 : image unique `firmware.bin` @0x0 — le `.bin` de pio est déjà
 //!   flashable tel quel, **pas de merge** ;
 //! - esp32/esp32-s2 : bootloader @0x1000, partitions @0x8000, firmware
@@ -42,7 +42,7 @@ pub fn merge_offsets(soc: &str) -> Option<&'static [(&'static str, &'static str)
     }
 }
 
-/// Full argv of the esptool merge-bin command (legacy parity). Input
+/// Full argv of the esptool merge-bin command. Input
 /// paths are passed as-is (absolute within the workspace).
 pub fn merge_args(
     esptool_cmd: &str,

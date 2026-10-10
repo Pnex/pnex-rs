@@ -1,7 +1,7 @@
-//! Random device identifier generation (POC shuffle, unique-names-generator
-//! school) and the catalog multi-field search matcher.
+//! Random device identifier generation (adjective-noun shuffle, in the style
+//! of unique-names-generator) and the catalog multi-field search matcher.
 
-// ── Générateur d'identifiants (shuffle du POC, unique-names-generator) ──
+// ── Identifier generator (adjective-noun shuffle) ──
 
 const ADJECTIVES: [&str; 24] = [
     "amber", "brave", "calm", "dusk", "eager", "fuzzy", "gentle", "happy", "icy", "jolly", "keen",

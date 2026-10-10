@@ -38,7 +38,7 @@ pub struct LivenessSummary {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceLiveness {
     pub id: i64,
-    /// Business `device_id` (legacy `DeviceRegistry` PK preserved = `id`).
+    /// Business `device_id` declared by the firmware (the numeric PK is `id`).
     pub device_id: String,
     /// Modèle prédéfini (`generic_esp8266`, …).
     pub predefined_device_name: String,

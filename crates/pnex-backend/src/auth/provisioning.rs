@@ -1,11 +1,10 @@
-//! JIT provisioning (parity with the legacy `_get_or_create_user`, extended multi-tenant):
+//! JIT provisioning (multi-tenant):
 //! à la première requête authentifiée d'un utilisateur IdP inconnu, on
 //! crée en une transaction :
 //!
 //! 1. `users` (idp_sub = `sub` de l'IdP, email, full_name)
-//! 2. `user_profiles` (default values — equivalent of the legacy signal)
+//! 2. `user_profiles` (default values)
 //! 3. son **organisation personnelle** (owner) sur le tier **Free**
-//!    (équivalent multi-tenant du signal UserProfile)
 //!
 //! Un utilisateur déjà connu est resynchronisé si son email/nom change côté
 //! Rauthy. Idempotent et sûr en concurrence (re-vérification dans la tx).
@@ -173,7 +172,7 @@ async fn find_or_create_user(
     })
 }
 
-/// Resyncs email/name from the IdP when they diverge (legacy parity).
+/// Resyncs email/name from the IdP when they diverge.
 async fn sync_user(
     db: &DatabaseConnection,
     user: users::Model,

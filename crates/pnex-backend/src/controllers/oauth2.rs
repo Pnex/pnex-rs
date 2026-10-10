@@ -1,5 +1,4 @@
-//! OAuth2 proxy to Rauthy (full-Rust OIDC IdP, D10) — continuity with the
-//! legacy contract (`authent/oauth2_views.py`):
+//! OAuth2 proxy to Rauthy (full-Rust OIDC IdP, D10):
 //!
 //! - `POST /api/v1/oauth2/token` : grants `password` (dev/tests) et
 //!   `authorization_code` + PKCE ; les erreurs Rauthy sont relayées telles

@@ -1,5 +1,4 @@
-//! Organizations and their members management — new API (the multi-tenant
-//! concept was absent from the legacy POC, decision D2 validated).
+//! Organizations and their members management (multi-tenant, decision D2).
 //!
 //! Règles d'accès :
 //! - lecture (org, membres) : tout membre ;

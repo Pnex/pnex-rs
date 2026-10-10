@@ -187,11 +187,10 @@ pub use err_codes::*;
 
 use serde::{Deserialize, Serialize};
 
-/// Service name. The legacy stack answered `og-device-hub` — obsolete, the
-/// service is now named `pnex-server` (rename confirmed 2026-08-15).
+/// Service name reported by the health endpoints.
 pub const SERVICE_NAME: &str = "pnex-server";
 
-/// Responses of the `/health/live` endpoint (parity with the legacy `health/views.py`).
+/// Responses of the `/health/live` endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthLive {
     pub status: String,
@@ -210,7 +209,7 @@ pub struct HealthReady {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct OrgId(pub i64);
 
-/// Device identifier (legacy `DeviceRegistry` PK, preserved on the target side).
+/// Device identifier (numeric primary key of the device registry).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DeviceId(pub i64);
 

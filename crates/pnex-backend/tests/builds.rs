@@ -1,7 +1,7 @@
-//! Tests de parité du domaine builds firmware (Phase 6) : POST build-firmware
-//! (verification order inherited from the legacy stack: 404 device, 403 quota, 429 interval),
-//! worker inline (ForegroundBlocking — le build est terminal au 201),
-//! échec/timeout de toolchain via les fixtures, download proxifié — cf.
+//! Firmware builds domain tests (Phase 6): POST build-firmware
+//! (verification order: 404 device, 403 quota, 429 interval),
+//! inline worker (ForegroundBlocking — the build is terminal at the 201),
+//! toolchain failure/timeout via the fixtures, proxied download — cf.
 //! `docs/contracts/build.http`.
 //!
 //! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
@@ -211,8 +211,8 @@ async fn build_reussi_chemin_complet() {
     .await;
 }
 
-/// Min interval: a 2nd build right after a success → 429 (exact legacy
-/// error string), no extra record.
+/// Min interval: a 2nd build right after a success → 429 (exact error
+/// string), no extra record.
 #[tokio::test]
 #[serial]
 async fn build_intervalle_429() {
@@ -239,7 +239,7 @@ async fn build_intervalle_429() {
 
 /// Device-type quota (Free: 3 mixed devices here). The device being built is already
 /// registered: an org AT its quota builds normally (O36), an org OVER it
-/// (tier lowered since) gets the exact legacy 403.
+/// (tier lowered since) gets the exact 403.
 #[tokio::test]
 #[serial]
 async fn build_quota_403() {
@@ -293,7 +293,7 @@ async fn self_hosted_ignores_subscription_tiers() {
     .await;
 }
 
-/// Device not found in the org → 404, exact legacy error string.
+/// Device not found in the org → 404, exact error string.
 #[tokio::test]
 #[serial]
 async fn build_device_inconnu_404() {

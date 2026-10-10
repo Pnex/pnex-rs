@@ -25,9 +25,8 @@
 
 static PnexWsClient s_client;
 
-// Buffers de la config décodée (bornes = validation API : 100 caractères
-// SSID/pass, hôte et device_id 64 — parité avec les buffers des mains
-// d'origine).
+// Decoded config buffers (bounds = API validation: 100 characters for
+// SSID/pass, 64 for host and device_id).
 static char s_ssid[101];
 static char s_password[101];
 static char s_host[65];
@@ -126,8 +125,8 @@ static bool lean_wss_connect(bool& ok) {
 void pnex_transport_setup(const PnexTransportInit& init) {
     s_init = init;
 
-    // Décodage base64 de la config compilée — les macros WIFI_SSID/HOST/…
-    // arrivent en base64 depuis child_env (env.rs), parité build.sh.
+    // Base64 decoding of the compiled-in config — the WIFI_SSID/HOST/…
+    // macros arrive base64-encoded from child_env (env.rs).
     // Bounded decodes: an oversized value is dropped (empty), never written
     // past its buffer.
     if (cryptoB64DecodeBounded(WIFI_SSID, s_ssid, sizeof(s_ssid)) == PNEX_B64_TOO_LONG)

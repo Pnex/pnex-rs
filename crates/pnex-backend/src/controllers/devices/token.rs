@@ -7,18 +7,17 @@ fn random_bytes(n: usize) -> Vec<u8> {
     bytes
 }
 
-/// Parité `secrets.token_urlsafe(32)`.
+/// 32 random bytes, URL-safe base64 without padding.
 pub(crate) fn generate_token() -> String {
     URL_SAFE_NO_PAD.encode(random_bytes(32))
 }
 
-/// Parité `crypto_utils.generate_device_key` — base64 standard (44 chars).
+/// 32 random bytes, standard base64 (44 chars).
 pub(crate) fn generate_device_key() -> String {
     STANDARD.encode(random_bytes(32))
 }
 
-/// Device token: reactivated if it exists inactive, generated if missing
-/// (parity with the legacy `get_or_create` on reactivation).
+/// Device token: reactivated if it exists inactive, generated if missing.
 pub(super) async fn ensure_token(
     db: &sea_orm::DatabaseTransaction,
     device: &device_registries::Model,

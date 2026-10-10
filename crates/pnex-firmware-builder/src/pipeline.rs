@@ -196,8 +196,7 @@ fn stage_source(workspace: &Path) -> Result<(), BuildError> {
 
 // ─────────────────── Artefacts pio ───────────────────
 
-/// Looks for `.pio/build/{env}/{name}` in the project (first match —
-/// parity with the legacy script, which globs `**/firmware.bin`).
+/// Looks for `.pio/build/{env}/{name}` in the project (first match).
 fn find_artifact(project: &Path, name: &str) -> Result<PathBuf, BuildError> {
     let build = project.join(".pio").join("build");
     let entries = std::fs::read_dir(&build)

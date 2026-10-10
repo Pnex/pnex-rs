@@ -1,4 +1,4 @@
-//! Telemetry batcher → OpenObserve (500 points / 10 s, as in the legacy ES batching):
+//! Telemetry batcher → OpenObserve (500 points / 10 s):
 //! le WS pousse ses points dans un canal (jamais bloqué), une tâche les
 //! groupe par org et flushe en **Prometheus remote-write**
 //! (`/api/{org}/prometheus/api/v1/write`, cf. promwrite.rs — les points

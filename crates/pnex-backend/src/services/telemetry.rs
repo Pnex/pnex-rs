@@ -2,9 +2,8 @@
 //!
 //! Le WS d'ingestion pousse ses points dans le sink global sans jamais
 //! bloquer : l'implémentation réelle (batcher OpenObserve, Phase 5) bufferise
-//! et flushe par lots ; les tests injectent un sink enregistreur. Forme du
-//! point = the unified document shape of the legacy ES pipeline,
-//! org-scoped (D2) — `user_id` became `org_id`.
+//! et flushe par lots ; les tests injectent un sink enregistreur.
+//! Points are org-scoped (D2).
 
 use std::sync::{Arc, RwLock};
 
@@ -18,8 +17,7 @@ pub struct TelemetryPoint {
     /// Nom du predefined device (dimension `pred_dev`).
     pub pred_dev: String,
     pub metric_name: String,
-    /// Raw text value — cast to float at the edge (OpenObserve) like the
-    /// legacy ES consumer used to do.
+    /// Raw text value — cast to float at the edge (OpenObserve).
     pub value: String,
     /// Horodatage serveur à la réception (v1 ; D12 : `ts_source` prêt pour
     /// un timestamp device en protocole v2).

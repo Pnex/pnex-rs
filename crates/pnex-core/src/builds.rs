@@ -1,16 +1,12 @@
-//! Firmware builds domain DTOs — parity with the legacy `firmware_builder`
-//! contracts (Phase 6), org scoping (D2) instead of the `user`.
+//! Firmware builds domain DTOs (Phase 6), scoped by org (D2).
 //!
-//! Deliberate adaptations vs the legacy stack (recorded in
-//! `docs/contracts/build.http`):
+//! Contract notes (recorded in `docs/contracts/build.http`):
 //! - plus de champs `backend`/`job_name`/`argo_wf_job_name` (pas de k8s/Argo
 //!   en Rust : queue PostgreSQL + worker in-process) — la réponse de
 //!   création expose `build_id` + `status` ;
-//! - `build_phase` in canonical lowercase: `queued` (new — the legacy
-//!   stack had no queued state, submit was synchronous) | `running`
-//!   (legacy `Running`) | `succeeded` (`Succeeded`) | `failed`
-//!   (`Failed`); `Deleted` dropped (no job left to claim);
-//! - paginated list (D14) — the legacy stack returned a bare list.
+//! - `build_phase` in canonical lowercase: `queued` (waiting for a worker)
+//!   | `running` | `succeeded` | `failed`;
+//! - paginated list (D14).
 //!
 //! Champs dates en chaînes RFC 3339 (sérialisation SeaORM), pas de chrono
 //! dans le core (wasm32).
@@ -47,7 +43,7 @@ pub struct CreateBuildResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildRecord {
     pub id: i64,
-    /// D2: owning org instead of the legacy `user`.
+    /// D2: owning org.
     pub org_id: i64,
     pub device_id: Option<String>,
     /// `queued` | `running` | `succeeded` | `failed` (cf. doc module).

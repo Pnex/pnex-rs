@@ -1,5 +1,4 @@
-//! `GET /api/v1/user-info` — functional parity with the legacy contract,
-//! adapted to the multi-tenant model: the profile stays per user, the
+//! `GET /api/v1/user-info` — multi-tenant model: the profile stays per user, the
 //! subscription is carried by the organizations (D11). `device_count`
 //! aggregates over the orgs the user is a member of (devices are org-scoped
 //! since Phase 2).

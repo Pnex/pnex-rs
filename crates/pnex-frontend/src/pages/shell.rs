@@ -1,10 +1,9 @@
-//! Layout racine — porté du `Layout.tsx` React : sidebar grise-900 fixe en
-//! desktop, drawer mobile + garde de session (rend `Login` à la place de
-//! l'`Outlet` tant que l'utilisateur n'est pas authentifié — parité
-//! `AuthWrapper` React, pas de route `/login`).
+//! Root layout: fixed gray-900 sidebar on desktop, mobile drawer + session
+//! guard (renders `Login` instead of the `Outlet` while the user is not
+//! authenticated, no `/login` route).
 //!
-//! Le pied de sidebar porte le sélecteur d'org (tenant actif), l'identité et
-//! la déconnexion — concepts multi-tenant absents de l'UI d'origine.
+//! The sidebar footer holds the org selector (active tenant), the identity
+//! and logout.
 
 use crate::app::Route;
 use crate::components::assistant::AssistantPanel;

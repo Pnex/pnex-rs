@@ -44,8 +44,8 @@ fn b64(v: &str) -> String {
 /// Variables injectées au sous-process `pio run` (par-dessus l'env réduite).
 pub fn child_env(secrets: &BuildSecrets) -> Vec<(String, String)> {
     let mut vars = vec![
-        // Tout en base64 côté serveur, décodé par le firmware (parité
-        // build.sh) — espaces/quotes des SSID impossibles pour le flag -D.
+        // Everything is base64 on the server side and decoded by the
+        // firmware — SSID spaces/quotes cannot go through a -D flag.
         ("WIFI_SSID".into(), b64(&secrets.wifi_ssid)),
         ("WIFI_PASSWORD".into(), b64(&secrets.wifi_password)),
         ("HOST".into(), b64(&secrets.host)),
