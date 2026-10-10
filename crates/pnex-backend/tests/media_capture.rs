@@ -109,3 +109,117 @@ async fn http_file_is_cut_into_overlapping_segments() {
     })
     .await;
 }
+
+/// `POST /internal/media/segment` (D160, `capture_on = worker`): service
+/// token, stream owned by the org and captured by a worker, WAV bounded by
+/// the stream's segment length, re-sent `seq` acknowledged once.
+#[tokio::test]
+#[serial]
+async fn worker_segment_upload() {
+    let base = common::spawn_mock_rauthy().await;
+    unsafe { std::env::set_var("RAUTHY_URL", &base) };
+    unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-media-worker") };
+    let alice = common::valid_token(
+        &base,
+        "00000000-0000-0000-0000-00000000000a",
+        "alice",
+        "alice@example.com",
+    );
+    let config: RequestConfig = RequestConfigBuilder::new().build();
+    loco_rs::testing::request::request_with_config::<App, _, _>(
+        config,
+        move |server, ctx| async move {
+            common::seed_catalogue(&ctx.db).await;
+            let org = server
+                .get("/api/v1/user-info")
+                .add_header("Authorization", format!("Bearer {alice}"))
+                .await
+                .json::<Value>()["orgs"][0]["id"]
+                .as_i64()
+                .unwrap();
+            let auth = |r: axum_test::TestRequest| {
+                r.add_header("Authorization", format!("Bearer {alice}"))
+                    .add_header("X-Org-Id", org.to_string())
+            };
+            let created = auth(server.post("/api/v1/media/streams"))
+                .json(&json!({ "name": "Remote", "kind": "icecast",
+                "url": "https://icecast.radio.example/live.mp3", "segment_secs": 10 }))
+                .await;
+            assert_eq!(created.status_code(), 201, "{}", created.text());
+            let id = created.json::<Value>()["id"].as_str().unwrap().to_string();
+
+            let wav = capture::segmenter::wav_bytes(&vec![0i16; 11 * 16_000]);
+            let path = |org: i64, seq: i64| {
+                format!(
+                    "/internal/media/segment?stream_id={id}&org_id={org}&seq={seq}\
+                 &started_ms=1760000000000&ended_ms=1760000011000&clock=host"
+                )
+            };
+            let post = |p: String, token: &'static str, body: Vec<u8>| {
+                server
+                    .post(&p)
+                    .add_header("x-pnex-flow-token", token)
+                    .bytes(body.into())
+            };
+
+            assert_eq!(
+                post(path(org, 0), "wrong", wav.clone()).await.status_code(),
+                401
+            );
+            // Still a server capture: no worker upload.
+            assert_eq!(
+                post(path(org, 0), "tok-media-worker", wav.clone())
+                    .await
+                    .status_code(),
+                404
+            );
+            let patched = auth(server.patch(&format!("/api/v1/media/streams/{id}")))
+                .json(&json!({ "capture_on": "worker" }))
+                .await;
+            assert_eq!(patched.status_code(), 200, "{}", patched.text());
+            assert_eq!(
+                post(path(org + 1000, 0), "tok-media-worker", wav.clone())
+                    .await
+                    .status_code(),
+                404
+            );
+            assert_eq!(
+                post(path(org, 0), "tok-media-worker", b"not a wav".to_vec())
+                    .await
+                    .status_code(),
+                400
+            );
+            let too_long = capture::segmenter::wav_bytes(&vec![0i16; 30 * 16_000]);
+            assert_eq!(
+                post(path(org, 0), "tok-media-worker", too_long)
+                    .await
+                    .status_code(),
+                400
+            );
+
+            assert_eq!(
+                post(path(org, 0), "tok-media-worker", wav.clone())
+                    .await
+                    .status_code(),
+                204
+            );
+            assert_eq!(
+                post(path(org, 0), "tok-media-worker", wav.clone())
+                    .await
+                    .status_code(),
+                204
+            );
+            let rows = media_segments::Entity::find()
+                .filter(media_segments::Column::StreamId.eq(id.parse::<uuid::Uuid>().unwrap()))
+                .all(&ctx.db)
+                .await
+                .unwrap();
+            assert_eq!(rows.len(), 1, "a re-sent segment is stored once");
+            assert_eq!(rows[0].org_id, org);
+            assert_eq!(rows[0].state, "captured", "no profile: not queued");
+            assert_eq!(rows[0].size_bytes, wav.len() as i64);
+        },
+    )
+    .await;
+    unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
+}

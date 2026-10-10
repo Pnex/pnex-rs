@@ -253,10 +253,9 @@ async fn apply<C: ConnectionTrait>(
     }
     if let Some(raw) = &input.capture_on {
         match CaptureOn::from_wire(raw.trim()) {
-            Some(CaptureOn::Server) => am.capture_on = Set(CaptureOn::Server.wire()),
-            // Mesh workers and capture boxes arrive with their upload
-            // paths (D160, lots 1b and 6).
-            Some(_) => return Err(StreamError::CaptureUnsupported),
+            Some(c @ (CaptureOn::Server | CaptureOn::Worker)) => am.capture_on = Set(c.wire()),
+            // Capture boxes arrive with their device upload channel (lot 6).
+            Some(CaptureOn::Device(_)) => return Err(StreamError::CaptureUnsupported),
             None => return Err(invalid("capture_on", err_codes::FIELD_INVALID)),
         }
     }

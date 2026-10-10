@@ -69,7 +69,7 @@ pub fn routes() -> Routes {
 const SEGMENT_MAX_BYTES: usize = 260 * 1024 * 1024;
 
 /// Fail-closed service-token check shared by the internal flow endpoints.
-fn flow_token_ok(ctx: &AppContext, headers: &HeaderMap) -> bool {
+pub(crate) fn flow_token_ok(ctx: &AppContext, headers: &HeaderMap) -> bool {
     let Some(expected) = FlowSettings::from_config(&ctx.config)
         .device_write
         .map(|(_, t)| t)
