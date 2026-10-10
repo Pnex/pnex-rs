@@ -207,3 +207,34 @@ pub async fn check(ctx: &AppContext, model: &ml_models::Model) -> Result<CheckRe
         transcript: text,
     })
 }
+
+/// Transcribes an uploaded clip (already a 16 kHz mono WAV) with the warm
+/// process of `model` (D167 "test by dropping an audio").
+pub async fn test_clip(
+    ctx: &AppContext,
+    model: &ml_models::Model,
+    wav: &[u8],
+    language: &str,
+    truncated: bool,
+) -> Result<pnex_core::media_ingest::AsrTestResult, AsrError> {
+    let settings = AsrSettings::from_env();
+    let local = local_model(ctx, &settings, model.asset_id, model.asset_version).await?;
+    let family = Family::from_wire(&model.family).unwrap_or(local.inspection.family);
+    let launch = launch(&settings, &local, family, language)?;
+    let resp = process::transcribe(&launch, &settings.sandbox, wav).await?;
+    Ok(pnex_core::media_ingest::AsrTestResult {
+        text: resp.text.unwrap_or_default(),
+        words: resp
+            .words
+            .into_iter()
+            .map(|w| pnex_core::media_ingest::AsrTestWord {
+                word: w.w,
+                start_ms: w.s,
+                end_ms: w.e,
+            })
+            .collect(),
+        audio_ms: (wav.len().saturating_sub(44) / 32) as u64,
+        infer_ms: resp.ms,
+        truncated,
+    })
+}

@@ -4,7 +4,7 @@ title: Audio streams
 kind: feature
 pages: /streams
 nodes: 
-err_codes: media-stream-not-found, media-stream-write-forbidden, media-stream-limit, media-url-has-credentials, media-stream-unreachable, media-asr-model-invalid, media-capture-unsupported, asr-profile-not-found, asr-profile-name-taken, asr-model-not-found, asr-model-name-taken, asr-model-unsupported, media-transcripts-unavailable
+err_codes: asr-test-audio-unsupported, asr-test-failed, media-stream-not-found, media-stream-write-forbidden, media-stream-limit, media-url-has-credentials, media-stream-unreachable, media-asr-model-invalid, media-capture-unsupported, asr-profile-not-found, asr-profile-name-taken, asr-model-not-found, asr-model-name-taken, asr-model-unsupported, media-transcripts-unavailable
 tools: 
 tags: streams, flux, radio, audio, icecast, hls, podcast, transcription, transcriptions, asr, speech to text, parole, capture, retention, tdm, parakeet, canary, whisper, sherpa, profile, profil, search, recherche
 ---
@@ -21,7 +21,7 @@ Audio streams (Data › Audio streams) lists the radios and live streams the org
 - **Segments** (on each stream, every member): every captured slice with its state (captured, queued, transcribing, transcribed, failed, silence or too late), newest first, filterable by state. **Retry failed segments** sends back to transcription the failed ones whose audio is still kept.
 - Under the state of an enabled stream: how long ago the last audio arrived, how old the oldest segment waiting for transcription is, and the share of the last hour that was transcribed.
 - **Transcriptions** tab: search the text of every stream (or one), newest first.
-- **Models and profiles** tab: **Import a model** (upload a sherpa-onnx `.tar.bz2` archive or a whisper.cpp GGML file, or pick a `model` file from the media library) with its **Model license**; the server reads the family from the files, loads the model and transcribes a French reference clip: the row shows how many real-time streams it sustains and its error rate on the clip. **Check** runs it again. Then **Add the profile** (name, model, language) and pick that profile in the stream.
+- **Models and profiles** tab: **Import a model** (upload a sherpa-onnx `.tar.bz2` archive or a whisper.cpp GGML file, or pick a `model` file from the media library) with its **Model license**; the server reads the family from the files, loads the model and transcribes a French reference clip: the row shows how many real-time streams it sustains and its error rate on the clip. **Check** runs it again. **Test** (on a checked model) transcribes an audio file you drop (MP3, AAC, Ogg/Opus, FLAC, WAV or the sound of an MP4; the first 2 minutes) and shows the text and how long it took. Then **Add the profile** (name, model, language) and pick that profile in the stream.
 
 ## Good to know
 - The URL never contains a token or a password: such a URL is refused, use the access secret instead.

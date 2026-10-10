@@ -33,6 +33,7 @@ pub fn ModelsTab(can_write: bool, reload: Signal<u32>, importing: Signal<bool>) 
     let mut importing = importing;
     let mut pending = use_signal(|| None::<Pending>);
     let mut checking = use_signal(|| None::<String>);
+    let mut testing = use_signal(|| None::<AsrModel>);
     let models = use_resource(move || async move {
         let _ = reload();
         api::media_streams::models().await
@@ -97,6 +98,7 @@ pub fn ModelsTab(can_write: bool, reload: Signal<u32>, importing: Signal<bool>) 
                                             });
                                         },
                                         on_delete: move |m: AsrModel| pending.set(Some(Pending::Model(m))),
+                                        on_test: move |m: AsrModel| testing.set(Some(m)),
                                     }
                                 }
                             }
@@ -153,6 +155,13 @@ pub fn ModelsTab(can_write: bool, reload: Signal<u32>, importing: Signal<bool>) 
                 },
             }
         }
+        if let Some(m) = testing() {
+            TestModel {
+                key: "test-{m.id}",
+                model: m,
+                on_close: move |_| testing.set(None),
+            }
+        }
         if let Some(p) = pending() {
             ConfirmDialog {
                 title: t!("asr-delete-title"),
@@ -190,6 +199,7 @@ fn ModelRow(
     checking: bool,
     on_check: Callback<String>,
     on_delete: Callback<AsrModel>,
+    on_test: Callback<AsrModel>,
 ) -> Element {
     let check = model.check.clone();
     let (badge_class, badge) = match check.status.as_str() {
@@ -207,6 +217,8 @@ fn ModelRow(
     let nc = license_is_non_commercial(&model.license);
     let id = model.id.clone();
     let m_delete = model.clone();
+    let m_test = model.clone();
+    let valid = check.status == "valid";
     rsx! {
         tr {
             td { class: "td",
@@ -234,6 +246,14 @@ fn ModelRow(
             td { class: "td text-right",
                 if can_write {
                     div { class: "flex justify-end gap-2",
+                        if valid {
+                            button {
+                                class: BTN,
+                                r#type: "button",
+                                onclick: move |_| on_test.call(m_test.clone()),
+                                {t!("asr-models-test")}
+                            }
+                        }
                         button {
                             class: BTN,
                             r#type: "button",
@@ -482,6 +502,98 @@ fn ImportModel(on_close: Callback<()>, on_saved: Callback<()>) -> Element {
                     onchange: move |e| license.set(e.value()),
                     for l in ASR_LICENSES {
                         option { value: l, selected: license() == l, {l} }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Test of a checked model on a dropped clip (D167): transcription,
+/// timings and how long it took.
+#[component]
+fn TestModel(model: AsrModel, on_close: Callback<()>) -> Element {
+    let mut file_name = use_signal(String::new);
+    let mut file_bytes = use_signal(|| None::<Vec<u8>>);
+    let mut language = use_signal(|| "fr".to_string());
+    let mut busy = use_signal(|| false);
+    let mut result = use_signal(|| None::<pnex_core::media_ingest::AsrTestResult>);
+    let id = model.id.clone();
+    let run = move |_| {
+        let Some(bytes) = file_bytes.peek().clone() else {
+            return;
+        };
+        let id = id.clone();
+        let name = file_name();
+        let lang = language();
+        busy.set(true);
+        result.set(None);
+        spawn(async move {
+            let res = api::media_streams::test_model(&id, &name, &lang, bytes).await;
+            busy.set(false);
+            match res {
+                Ok(r) => result.set(Some(r)),
+                Err(err) => toasts::error(err),
+            }
+        });
+    };
+    let summary = result().map(|r| {
+        let audio = format!("{:.1}", r.audio_ms as f64 / 1000.0);
+        let infer = format!("{:.1}", r.infer_ms as f64 / 1000.0);
+        t!("asr-test-summary", audio: audio, infer: infer).to_string()
+    });
+    rsx! {
+        FormDialog {
+            title: t!("asr-test-title", name : model.name.clone()).to_string(),
+            submit_label: t!("asr-test-run").to_string(),
+            on_close,
+            on_submit: run,
+            busy: busy(),
+            valid: file_bytes.read().is_some(),
+            max_width: "max-w-2xl".to_string(),
+            p { class: "text-xs text-gray-500", {t!("asr-test-help")} }
+            div { class: "grid grid-cols-1 sm:grid-cols-3 gap-3",
+                div { class: "sm:col-span-2",
+                    label { r#for: "asr-test-file", class: LABEL, {t!("asr-test-file")} }
+                    input {
+                        id: "asr-test-file",
+                        class: INPUT,
+                        r#type: "file",
+                        accept: "audio/*,video/mp4,.mp3,.aac,.ogg,.opus,.flac,.wav,.m4a,.mp4,.ts",
+                        onchange: move |evt| async move {
+                            if let Some(file) = evt.files().first().cloned() {
+                                file_name.set(file.name());
+                                if let Ok(bytes) = file.read_bytes().await {
+                                    file_bytes.set(Some(bytes.to_vec()));
+                                }
+                            }
+                        },
+                    }
+                }
+                div {
+                    label { r#for: "asr-test-language", class: LABEL, {t!("asr-profiles-language")} }
+                    input {
+                        id: "asr-test-language",
+                        class: INPUT,
+                        r#type: "text",
+                        maxlength: "4",
+                        value: "{language}",
+                        oninput: move |e| language.set(e.value()),
+                    }
+                }
+            }
+            if let Some(r) = result() {
+                div { class: "rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2",
+                    if let Some(sum) = summary {
+                        p { class: "text-xs text-gray-600", "{sum}" }
+                    }
+                    if r.truncated {
+                        p { class: "text-xs text-amber-700", {t!("asr-test-truncated")} }
+                    }
+                    if r.text.trim().is_empty() {
+                        p { class: "text-sm text-gray-500", {t!("asr-test-no-speech")} }
+                    } else {
+                        p { class: "text-sm text-gray-900 whitespace-pre-wrap", "{r.text}" }
                     }
                 }
             }

@@ -171,6 +171,29 @@ async fn model_import_check_and_transcription_chain() {
             let check = post(&format!("/api/v1/asr/models/{model_id}/check"), json!({})).await;
             assert_eq!(check.status_code(), 200);
 
+            // Test by dropping a clip: unknown format refused; a WAV is
+            // decoded (ffmpeg) and transcribed by the warm runtime.
+            let clip = |name: &str, bytes: Vec<u8>| {
+                server
+                    .post(&format!("/api/v1/asr/models/{model_id}/test?name={name}"))
+                    .add_header("Authorization", auth.clone())
+                    .add_header("X-Org-Id", org.to_string())
+                    .add_header("Content-Type", "application/octet-stream")
+                    .bytes(bytes.into())
+            };
+            let res = clip("notes.txt", b"hello".to_vec()).await;
+            assert_eq!(res.status_code(), 400);
+            assert_eq!(res.json::<Value>()["error"], "asr-test-audio-unsupported");
+            if has_ffmpeg {
+                let res = clip("tone.wav", tone_server_wav()).await;
+                assert_eq!(res.status_code(), 200, "{}", res.text());
+                let r = res.json::<Value>();
+                assert!(r["text"].as_str().unwrap().contains("lune"), "{r}");
+                assert_eq!(r["words"][1]["word"], "surface");
+                assert_eq!(r["audio_ms"], 12_000);
+                assert_eq!(r["truncated"], false);
+            }
+
             // Profile + enabled stream.
             let res = post(
                 "/api/v1/asr/profiles",

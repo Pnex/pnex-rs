@@ -3548,6 +3548,8 @@ streams-error-store-failed = Segment storage unavailable
 err-asr-model-not-found = Transcription model not found.
 err-asr-model-name-taken = A model with this name already exists.
 err-asr-model-unsupported = This file is not a supported transcription model (expected a sherpa-onnx archive or a whisper.cpp GGML file).
+err-asr-test-audio-unsupported = This audio file cannot be read (MP3, AAC, Ogg/Opus, FLAC, WAV or MP4 audio expected).
+err-asr-test-failed = The model could not transcribe the clip (transcription runtime missing or stopped).
 err-media-transcripts-unavailable = Transcriptions are unavailable right now.
 
 # Transcription models, profiles and search (media-ingest.md D164–D167)
@@ -3567,6 +3569,14 @@ asr-models-col-check = Check
 asr-models-measure = ≈ { $streams } real-time streams · { $wer } % errors on the clip
 asr-models-license-nc = { $license } — non-commercial use only
 asr-models-check = Check
+asr-models-test = Test
+asr-test-title = Test { $name }
+asr-test-help = Drop an audio file (MP3, AAC, Ogg/Opus, FLAC, WAV or the sound of an MP4): its first 2 minutes are transcribed by this model on the server.
+asr-test-file = Audio file
+asr-test-run = Transcribe
+asr-test-summary = { $audio } s of audio transcribed in { $infer } s
+asr-test-truncated = The file is longer: only its first 2 minutes were transcribed.
+asr-test-no-speech = No speech recognized.
 asr-models-checking = Checking…
 asr-models-import = Import a model
 asr-models-import-title = Import a transcription model
