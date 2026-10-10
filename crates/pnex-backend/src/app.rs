@@ -135,6 +135,7 @@ impl Hooks for App {
             // test en live via le binaire runtime.
             .add_route(controllers::functions::routes())
             .add_route(controllers::docs::routes())
+            .add_route(controllers::doc_comments::routes())
             .add_route(controllers::firmware_projects::routes())
             .add_route(controllers::flows::routes())
             .add_route(controllers::media::routes())

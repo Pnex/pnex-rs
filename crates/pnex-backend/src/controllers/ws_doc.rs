@@ -7,7 +7,7 @@
 //! A viewer joins read-only: the server drops its updates (R2). Close
 //! codes: 4002 no ticket, 4001 bad ticket, 4006 not a member, 4004 page
 //! not found in the org, 4400 unreadable message, 4413 too large, 4422
-//! content refused by the schema, 1011 not saved.
+//! content refused by the schema, 4429 too many messages, 1011 not saved.
 
 use std::time::Duration;
 
@@ -25,6 +25,10 @@ use crate::models::_entities::sea_orm_active_enums::OrgMemberRole;
 use crate::services::pages::room::{self, Outcome};
 
 const HEARTBEAT_SECS: u64 = 30;
+/// Per-connection rate (SEC-28): bursts of 200 messages, 50 per second
+/// sustained — fast typing with presence stays far below.
+const RATE_BURST: f64 = 200.0;
+const RATE_PER_SEC: f64 = 50.0;
 const WATCHDOG_SECS: u64 = 60;
 
 #[derive(Debug, Deserialize)]
@@ -63,12 +67,12 @@ async fn ws_doc(
     {
         return reject(ws, 4004, "Page not found");
     }
-    let valkey_url = crate::services::last_cache::ValkeySettings::from_config(&ctx.config)
-        .and_then(|s| s.url)
-        .filter(|u| !u.trim().is_empty());
+    let valkey_url = crate::services::pages::valkey_url(&ctx.config);
     let db = ctx.db.clone();
+    // Frames over the update limit are refused by axum before buffering.
+    let ws = ws.max_message_size(pnex_core::pages::MAX_UPDATE_BYTES + 1024);
     ws.on_upgrade(move |socket| async move {
-        let (tx, rx) = mpsc::unbounded_channel::<Vec<u8>>();
+        let (tx, rx) = mpsc::channel::<Vec<u8>>(room::DOWNLINK_CAPACITY);
         let session = Uuid::new_v4();
         let room = match room::join(&db, valkey_url, id, session, tx).await {
             Ok(room) => room,
@@ -78,10 +82,27 @@ async fn ws_doc(
                 return;
             }
         };
+        // Leaves the room on every exit path, a panic included.
+        let _guard = LeaveGuard {
+            db: db.clone(),
+            room: room.clone(),
+            session,
+        };
         session_loop(socket, rx, &db, &room, session, owner.user_id, can_write).await;
-        room::leave(&db, &room, session);
     })
     .into_response()
+}
+
+struct LeaveGuard {
+    db: DatabaseConnection,
+    room: std::sync::Arc<room::Room>,
+    session: Uuid,
+}
+
+impl Drop for LeaveGuard {
+    fn drop(&mut self) {
+        room::leave(&self.db, &self.room, self.session);
+    }
 }
 
 fn reject(ws: WebSocketUpgrade, code: u16, reason: &'static str) -> Response {
@@ -100,13 +121,18 @@ async fn close(mut socket: WebSocket, code: u16, reason: &'static str) {
 
 async fn session_loop(
     mut socket: WebSocket,
-    mut rx: mpsc::UnboundedReceiver<Vec<u8>>,
+    mut rx: mpsc::Receiver<Vec<u8>>,
     db: &DatabaseConnection,
     room: &room::Room,
     session: Uuid,
     user_id: i64,
     can_write: bool,
 ) {
+    let mut tokens = RATE_BURST;
+    let mut refilled = std::time::Instant::now();
+    // Last inbound frame (Pong included): the heartbeat tick closes a
+    // session silent for longer than the watchdog (half-open socket).
+    let mut last_rx = tokio::time::Instant::now();
     let mut heartbeat = tokio::time::interval(Duration::from_secs(HEARTBEAT_SECS));
     heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
@@ -118,16 +144,28 @@ async fn session_loop(
                 }
             }
             _ = heartbeat.tick() => {
+                if last_rx.elapsed() > Duration::from_secs(WATCHDOG_SECS) {
+                    tracing::debug!(%session, "ws/doc: silent session closed");
+                    break;
+                }
                 if socket.send(Message::Ping(vec![].into())).await.is_err() {
                     break;
                 }
             }
-            incoming = tokio::time::timeout(Duration::from_secs(WATCHDOG_SECS), socket.recv()) => {
+            incoming = socket.recv() => {
+                last_rx = tokio::time::Instant::now();
                 let raw = match incoming {
-                    Ok(Some(Ok(Message::Binary(raw)))) => raw,
-                    Ok(Some(Ok(Message::Close(_)))) | Ok(Some(Err(_))) | Ok(None) | Err(_) => break,
-                    Ok(Some(Ok(_))) => continue,
+                    Some(Ok(Message::Binary(raw))) => raw,
+                    Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
+                    Some(Ok(_)) => continue,
                 };
+                tokens = (tokens + refilled.elapsed().as_secs_f64() * RATE_PER_SEC).min(RATE_BURST);
+                refilled = std::time::Instant::now();
+                if tokens < 1.0 {
+                    close(socket, 4429, "Too many messages").await;
+                    return;
+                }
+                tokens -= 1.0;
                 if let Outcome::Close(code, reason) = room.handle(db, session, user_id, can_write, &raw).await {
                     close(socket, code, reason).await;
                     return;

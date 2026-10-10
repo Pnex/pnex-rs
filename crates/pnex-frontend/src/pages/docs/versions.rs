@@ -147,8 +147,16 @@ fn VersionRow(
                 notice.set(Some(t!("docs-restore-failed").to_string()));
                 return;
             }
-            // Let the restored content reach the server before freezing it.
+            // Freeze it only once the server has it (a refused or too large
+            // edit must not produce a mislabelled version).
             crate::util::sleep(std::time::Duration::from_millis(800)).await;
+            let synced = doc_editor::state(&host)
+                .await
+                .is_some_and(|s| s.status == "synced" && s.close_code.is_none());
+            if !synced {
+                notice.set(Some(t!("docs-restore-failed").to_string()));
+                return;
+            }
             let label = t!("docs-restored-label", n : n).to_string();
             if api::docs::create_version(id, label).await.is_ok() {
                 reload.with_mut(|r| *r += 1);

@@ -40,10 +40,11 @@ fn check_node<T: ReadTxn>(txn: &T, node: XmlOut, depth: usize) -> Result<(), Inv
         XmlOut::Element(el) => {
             let tag = el.tag();
             let allowed = node_attrs(tag).ok_or_else(|| Invalid(format!("node `{tag}`")))?;
-            for (key, _) in el.attributes(txn) {
+            for (key, value) in el.attributes(txn) {
                 if !allowed.contains(&key) {
                     return Err(Invalid(format!("attribute `{key}` on `{tag}`")));
                 }
+                check_attr(key, &value)?;
             }
             for child in el.children(txn) {
                 check_node(txn, child, depth + 1)?;
@@ -51,6 +52,9 @@ fn check_node<T: ReadTxn>(txn: &T, node: XmlOut, depth: usize) -> Result<(), Inv
             Ok(())
         }
         XmlOut::Text(text) => {
+            if text.attributes(txn).next().is_some() {
+                return Err(Invalid("attribute on text".into()));
+            }
             for chunk in text.diff(txn, YChange::identity) {
                 if !matches!(chunk.insert, Out::Any(Any::String(_))) {
                     return Err(Invalid("embedded value in text".into()));
@@ -62,6 +66,28 @@ fn check_node<T: ReadTxn>(txn: &T, node: XmlOut, depth: usize) -> Result<(), Inv
             Ok(())
         }
         XmlOut::Fragment(_) => Err(Invalid("nested fragment".into())),
+    }
+}
+
+/// Typed node attributes: ProseMirror drops a node whose number attribute
+/// is not a number, so a bad value would make every editor delete it.
+fn check_attr(key: &str, value: &Out) -> Result<(), Invalid> {
+    let n = match value {
+        Out::Any(Any::Number(n)) => match (*n).as_i64() {
+            Some(n) => n,
+            None => return Err(Invalid(format!("attribute `{key}` is not an integer"))),
+        },
+        _ => return Err(Invalid(format!("attribute `{key}` is not an integer"))),
+    };
+    let ok = match key {
+        "level" => (1..=6).contains(&n),
+        "order" => (1..=1_000_000).contains(&n),
+        _ => false,
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(Invalid(format!("attribute `{key}` out of range")))
     }
 }
 
@@ -134,6 +160,16 @@ mod tests {
             root.push_back(txn, XmlElementPrelim::empty("script"));
         });
         assert!(validate(&script).is_err());
+        let level = page(|txn, root| {
+            let h = root.push_back(txn, XmlElementPrelim::empty("heading"));
+            h.insert_attribute(txn, "level", "1");
+        });
+        assert!(validate(&level).is_err(), "string level");
+        let deep = page(|txn, root| {
+            let h = root.push_back(txn, XmlElementPrelim::empty("heading"));
+            h.insert_attribute(txn, "level", 9);
+        });
+        assert!(validate(&deep).is_err(), "level 9");
         let onclick = page(|txn, root| {
             let p = root.push_back(txn, XmlElementPrelim::empty("paragraph"));
             p.insert_attribute(txn, "onclick", "x");

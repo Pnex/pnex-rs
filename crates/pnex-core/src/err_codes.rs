@@ -497,6 +497,8 @@ pub const ONTOLOGY_LINK_CARDINALITY: &str = "ontology-link-cardinality";
 
 /// Viewer role: pages are read-only.
 pub const DOCS_WRITE_FORBIDDEN: &str = "docs-write-forbidden";
+/// Only the author edits a comment; the author or an admin deletes it.
+pub const DOC_COMMENT_NOT_AUTHOR: &str = "doc-comment-not-author";
 
 // ── Registered codes ─────────────────────────────────────────────────────
 
@@ -756,6 +758,7 @@ pub const ALL: &[&str] = &[
     TIME_RANGE_SCOPE_UNKNOWN,
     // Pages
     DOCS_WRITE_FORBIDDEN,
+    DOC_COMMENT_NOT_AUTHOR,
 ];
 
 /// True when the code is registered (translatable through `err-<kebab>`).

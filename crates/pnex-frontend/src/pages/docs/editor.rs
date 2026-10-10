@@ -44,8 +44,10 @@ pub fn DocEditor(id: Uuid) -> Element {
     let mut mounted = use_signal(|| Option::<bool>::None);
     let mut title = use_signal(String::new);
     let mut show_versions = use_signal(|| false);
+    let mut show_comments = use_signal(|| false);
+    let mut draft = use_signal(|| Option::<doc_editor::SelectionAnchor>::None);
     let mut link_href = use_signal(|| Option::<String>::None);
-    let notice = use_signal(|| Option::<String>::None);
+    let mut notice = use_signal(|| Option::<String>::None);
 
     let detail = use_resource(move || async move { api::docs::detail(id).await });
     use_effect(move || {
@@ -75,17 +77,35 @@ pub fn DocEditor(id: Uuid) -> Element {
             if !ok {
                 return;
             }
+            // Reconnection: a ticket per attempt, exponential backoff
+            // (0.5 s → 30 s), reset once synced; a failed ticket fetch is
+            // retried, never given up.
             let mut served = 0u64;
+            let mut failures = 0u32;
+            let mut clock_ms = 0u64;
+            let mut next_try_ms = 0u64;
             loop {
                 crate::util::sleep(Duration::from_millis(300)).await;
+                clock_ms += 300;
                 let Some(s) = doc_editor::state(&host).await else {
                     continue;
                 };
-                if s.need_ticket > served {
-                    served = s.need_ticket;
+                if s.status == "synced" {
+                    failures = 0;
+                }
+                if s.need_ticket > served && clock_ms >= next_try_ms {
                     if let Some(url) = api::docs::live_ws_url(id).await {
                         doc_editor::reconnect(&host, &url).await;
+                        served = s.need_ticket;
                     }
+                    failures += 1;
+                    next_try_ms = clock_ms + (500u64 << failures.min(6)).min(30_000);
+                }
+                let clicked = s.active_comment.as_ref().map(|a| a.seq);
+                if clicked.is_some()
+                    && clicked != state.peek().active_comment.as_ref().map(|a| a.seq)
+                {
+                    show_comments.set(true);
                 }
                 if *state.peek() != s {
                     state.set(s);
@@ -106,12 +126,27 @@ pub fn DocEditor(id: Uuid) -> Element {
         }
     };
 
+    let host_comment = host.clone();
+    let comment = move |_| {
+        let host = host_comment.clone();
+        spawn(async move {
+            match doc_editor::selection_anchor(&host).await {
+                Some(a) => {
+                    draft.set(Some(a));
+                    show_comments.set(true);
+                }
+                None => notice.set(Some(t!("docs-comment-select-first").to_string())),
+            }
+        });
+    };
+
     let s = state();
     let status_label = match s.status.as_str() {
         "synced" => t!("docs-status-synced"),
         "offline" => t!("docs-status-offline"),
         "refused" => t!("docs-status-refused"),
         "closed" => t!("docs-status-closed"),
+        "toolarge" => t!("docs-status-toolarge"),
         _ => t!("docs-status-connecting"),
     };
     let status_dot = match s.status.as_str() {
@@ -148,6 +183,12 @@ pub fn DocEditor(id: Uuid) -> Element {
                         title: title(),
                         can_write,
                         notice,
+                    }
+                    button {
+                        class: "px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50",
+                        onclick: move |_| show_comments.toggle(),
+                        icons::MessageCircle { class: "h-4 w-4 inline mr-1" }
+                        {t!("docs-comments")}
                     }
                     button {
                         class: "px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50",
@@ -196,6 +237,7 @@ pub fn DocEditor(id: Uuid) -> Element {
                         onclick: move |_| link_href.set(Some(String::new())),
                         {t!("docs-cmd-link")}
                     }
+                    button { class: TOOL_BTN, onclick: comment, {t!("docs-cmd-comment")} }
                     span { class: "mx-1 h-5 w-px bg-gray-200" }
                     for (cmd, key) in BLOCKS.iter().copied() {
                         button {
@@ -241,6 +283,16 @@ pub fn DocEditor(id: Uuid) -> Element {
                 div {
                     id: "{host}",
                     class: "prose max-w-none flex-1 min-w-0 rounded-lg border border-gray-200 bg-white p-4 md:p-8",
+                }
+                if show_comments() {
+                    super::comments::CommentsPanel {
+                        id,
+                        host: host.clone(),
+                        can_write,
+                        comments_seq: s.comments_seq,
+                        active: s.active_comment.as_ref().map(|a| a.id),
+                        draft,
+                    }
                 }
                 if show_versions() {
                     super::versions::VersionsPanel { id, host: host.clone(), can_write }

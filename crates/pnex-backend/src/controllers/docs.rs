@@ -8,7 +8,9 @@ use axum::http::StatusCode;
 use axum::Json;
 use base64::Engine as _;
 use loco_rs::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{
+    ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -63,7 +65,28 @@ fn checked_text(field: &str, raw: &str, max: usize) -> std::result::Result<Strin
     Ok(text)
 }
 
-fn summary(d: &docs::Model) -> DocSummary {
+/// A page without its content: lists and lookups never load the (up to
+/// 8 MiB) snapshot.
+#[derive(Debug, Clone, sea_orm::FromQueryResult)]
+pub(crate) struct DocHead {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub title: String,
+    pub created_at: sea_orm::prelude::DateTimeWithTimeZone,
+    pub updated_at: sea_orm::prelude::DateTimeWithTimeZone,
+}
+
+fn heads() -> sea_orm::Select<docs::Entity> {
+    docs::Entity::find().select_only().columns([
+        docs::Column::Id,
+        docs::Column::OrgId,
+        docs::Column::Title,
+        docs::Column::CreatedAt,
+        docs::Column::UpdatedAt,
+    ])
+}
+
+fn summary(d: &DocHead) -> DocSummary {
     DocSummary {
         id: d.id,
         title: d.title.clone(),
@@ -73,13 +96,11 @@ fn summary(d: &docs::Model) -> DocSummary {
 }
 
 /// Page of the caller's org, else 404 (cross-org masked).
-pub(crate) async fn find_doc(
-    db: &DatabaseConnection,
-    org_id: i64,
-    id: Uuid,
-) -> Result<docs::Model> {
-    docs::Entity::find_by_id(id)
+pub(crate) async fn find_doc(db: &DatabaseConnection, org_id: i64, id: Uuid) -> Result<DocHead> {
+    heads()
+        .filter(docs::Column::Id.eq(id))
         .filter(docs::Column::OrgId.eq(org_id))
+        .into_model::<DocHead>()
         .one(db)
         .await
         .map_err(|_| Error::InternalServerError)?
@@ -99,15 +120,21 @@ async fn list(
     Query(q): Query<ListQuery>,
 ) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let rows = docs::Entity::find()
+    let count = docs::Entity::find()
+        .filter(docs::Column::OrgId.eq(org.org.id))
+        .count(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    let rows = heads()
         .filter(docs::Column::OrgId.eq(org.org.id))
         .order_by_desc(docs::Column::UpdatedAt)
+        .limit(page.limit as u64)
+        .offset(page.offset as u64)
+        .into_model::<DocHead>()
         .all(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    let count = rows.len();
-    let (skip, take) = page.slice(count);
-    let results: Vec<DocSummary> = rows.iter().skip(skip).take(take).map(summary).collect();
+    let results: Vec<DocSummary> = rows.iter().map(summary).collect();
     Ok(format::json(pagination::envelope(
         "/api/v1/docs",
         &[],
@@ -142,7 +169,14 @@ async fn create(
     .insert(&ctx.db)
     .await
     .map_err(|_| Error::InternalServerError)?;
-    Ok((StatusCode::CREATED, format::json(summary(&row))).into_response())
+    let head = DocHead {
+        id: row.id,
+        org_id: row.org_id,
+        title: row.title,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    };
+    Ok((StatusCode::CREATED, format::json(summary(&head))).into_response())
 }
 
 /// `GET /api/v1/docs/{id}`.
@@ -170,13 +204,17 @@ async fn rename(
         Ok(t) => t,
         Err(resp) => return Ok(*resp),
     };
-    let mut active: docs::ActiveModel = d.into();
-    active.title = Set(title);
-    active.updated_at = Set(chrono::Utc::now().into());
-    let row = active
-        .update(&ctx.db)
+    docs::Entity::update_many()
+        .col_expr(docs::Column::Title, sea_orm::sea_query::Expr::value(title))
+        .col_expr(
+            docs::Column::UpdatedAt,
+            sea_orm::sea_query::Expr::current_timestamp(),
+        )
+        .filter(docs::Column::Id.eq(d.id))
+        .exec(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?;
+    let row = find_doc(&ctx.db, org.org.id, d.id).await?;
     Ok(format::json(summary(&row)).into_response())
 }
 
@@ -212,9 +250,18 @@ async fn versions(
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
     let d = find_doc(&ctx.db, org.org.id, id).await?;
+    // Labels only: the frozen states stay in the database.
     let rows = doc_versions::Entity::find()
+        .select_only()
+        .columns([
+            doc_versions::Column::VersionNumber,
+            doc_versions::Column::Label,
+            doc_versions::Column::CreatedBy,
+            doc_versions::Column::CreatedAt,
+        ])
         .filter(doc_versions::Column::DocId.eq(d.id))
         .order_by_desc(doc_versions::Column::VersionNumber)
+        .into_model::<VersionHead>()
         .all(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?;
@@ -246,6 +293,14 @@ async fn versions(
     )
 }
 
+#[derive(sea_orm::FromQueryResult)]
+struct VersionHead {
+    version_number: i64,
+    label: String,
+    created_by: Option<i64>,
+    created_at: sea_orm::prelude::DateTimeWithTimeZone,
+}
+
 /// `POST /api/v1/docs/{id}/versions` — freezes the current content.
 async fn create_version(
     State(ctx): State<AppContext>,
@@ -261,7 +316,7 @@ async fn create_version(
         Ok(t) => t,
         Err(resp) => return Ok(*resp),
     };
-    let v = pages::create_version(&ctx.db, &d, &label, org.auth.user.id)
+    let v = pages::create_version(&ctx.db, d.id, d.org_id, &label, org.auth.user.id)
         .await
         .map_err(|e| {
             tracing::warn!(doc_id = %d.id, error = %e, "pages: version not created");

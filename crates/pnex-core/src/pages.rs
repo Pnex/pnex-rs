@@ -38,14 +38,22 @@ pub const LINK_ATTRS: &[&str] = &["href", "title"];
 /// URL schemes a link may use (R11–R13); relative app paths start with `/`.
 pub const LINK_SCHEMES: &[&str] = &["http:", "https:", "mailto:"];
 
-/// Largest single update accepted on the websocket.
-pub const MAX_UPDATE_BYTES: usize = 256 * 1024;
+/// Largest single update accepted on the websocket (a version restore or
+/// a Markdown import of a large page is one update).
+pub const MAX_UPDATE_BYTES: usize = 2 * 1024 * 1024;
 /// Largest encoded page state accepted (all history included).
 pub const MAX_DOC_BYTES: usize = 8 * 1024 * 1024;
 /// Title length (column `docs.title`).
 pub const MAX_TITLE_CHARS: usize = 255;
 /// Named version label length (column `doc_versions.label`).
 pub const MAX_VERSION_LABEL_CHARS: usize = 255;
+
+/// Comment body length (P12).
+pub const MAX_COMMENT_CHARS: usize = 4000;
+/// Encoded anchor (two Yjs relative positions, base64) length.
+pub const MAX_ANCHOR_CHARS: usize = 1024;
+/// Quoted text kept with a thread (longer selections are cut).
+pub const MAX_QUOTE_CHARS: usize = 300;
 
 /// Is `href` an allowed link target?
 pub fn link_allowed(href: &str) -> bool {
@@ -106,6 +114,48 @@ pub struct DocVersionState {
     pub version_number: i64,
     pub label: String,
     pub state_b64: String,
+}
+
+/// One comment (P12). A thread root has `parent_id = None` and carries the
+/// anchor; replies point to their root.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DocComment {
+    pub id: i64,
+    pub parent_id: Option<i64>,
+    /// Opaque anchor written by the editor (Yjs relative positions).
+    pub anchor: Option<String>,
+    pub quote: Option<String>,
+    pub body: String,
+    /// Display name of the author, if still known.
+    pub author: Option<String>,
+    /// The caller wrote it (may edit and delete it).
+    pub mine: bool,
+    pub resolved: bool,
+    /// Named version current when the comment was posted.
+    pub version_number: Option<i64>,
+    pub created_at: String,
+}
+
+/// `POST /api/v1/docs/{id}/comments`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CreateDocComment {
+    pub body: String,
+    #[serde(default)]
+    pub parent_id: Option<i64>,
+    #[serde(default)]
+    pub anchor: Option<String>,
+    #[serde(default)]
+    pub quote: Option<String>,
+}
+
+/// `PATCH /api/v1/docs/{id}/comments/{cid}`: new body (author only) and/or
+/// resolved state (thread roots).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PatchDocComment {
+    #[serde(default)]
+    pub body: Option<String>,
+    #[serde(default)]
+    pub resolved: Option<bool>,
 }
 
 #[cfg(test)]

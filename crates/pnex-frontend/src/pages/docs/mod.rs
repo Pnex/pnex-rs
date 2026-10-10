@@ -1,6 +1,7 @@
 //! Pages (pages.md #21): collaborative documents of the org. `/pages`
 //! lists them; `/pages?id=<uuid>` opens the live editor ([`editor`]).
 
+mod comments;
 mod editor;
 mod versions;
 
