@@ -50,14 +50,12 @@ pub async fn seed_catalog(
     with_tiers: bool,
 ) -> Result<()> {
     let txn = db.begin().await?;
-    if txn.get_database_backend() == DatabaseBackend::Postgres {
-        txn.execute_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT pg_advisory_xact_lock($1)",
-            [SEED_LOCK_KEY.into()],
-        ))
-        .await?;
-    }
+    txn.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT pg_advisory_xact_lock($1)",
+        [SEED_LOCK_KEY.into()],
+    ))
+    .await?;
     seed_catalog_in(&txn, base, with_tiers).await?;
     txn.commit().await?;
     Ok(())

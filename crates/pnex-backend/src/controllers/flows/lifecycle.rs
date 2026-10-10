@@ -12,7 +12,7 @@ const ORG_DEPLOY_LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_s
 /// applies the candidate, then the database is marked — without this lock
 /// two pods could both pass the gate and deploy two writers of one pin.
 /// The lock is a transaction-scoped Postgres advisory lock carried by a
-/// dedicated connection (no-op on sqlite); the holder releases it when
+/// dedicated connection; the holder releases it when
 /// done, a crashed pod releases it with its connection.
 pub(crate) async fn lock_org_deploys(ctx: &AppContext, org_id: i64) -> Result<TenantLock> {
     TenantLock::acquire(

@@ -92,8 +92,7 @@ pub async fn init(config: &Config) -> Result<()> {
 fn namespace(uri: &str) -> String {
     let path = uri.split(['?', '#']).next().unwrap_or_default();
     let last = path.rsplit('/').next().unwrap_or_default();
-    let db = last.rsplit_once('.').map_or(last, |(stem, _)| stem);
-    let db = if db.is_empty() { "default" } else { db };
+    let db = if last.is_empty() { "default" } else { last };
     format!("pnex:{db}:live:")
 }
 
@@ -549,7 +548,7 @@ mod tests {
         assert!(!is_fresh(now - TimeDelta::seconds(ttl), ttl));
     }
 
-    /// The key namespace follows the database name (postgres or sqlite).
+    /// The key namespace follows the database name.
     #[test]
     fn namespace_follows_database_name() {
         assert_eq!(
@@ -559,10 +558,6 @@ mod tests {
         assert_eq!(
             namespace("postgres://u:p@h/pnex?sslmode=disable"),
             "pnex:pnex:live:"
-        );
-        assert_eq!(
-            namespace("sqlite:///tmp/x/smoke.sqlite?mode=rwc"),
-            "pnex:smoke:live:"
         );
     }
 }

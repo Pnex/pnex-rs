@@ -68,8 +68,6 @@ Principe : la base est la source de vérité ; aucune garde « lire puis écrire
 | Worker stitch 360 | claim conditionnel (`queued`, ou `running` périmé) : une double livraison est un no-op ; timeout par job (`PNEX_STITCH_TIMEOUT_SECS`, 1 500 s par défaut, < âge du reaper 30 min). |
 | Purge O2 après suppression d'org | réessais avec backoff (5 s → 10 min) puis erreur journalisée avec l'org O2 pour purge manuelle (non durable à travers un redémarrage). |
 
-Sur sqlite (tests, mono-nœud) les verrous advisory sont des no-op.
-
 ## 6. Ce qui reste
 
 - Heartbeats des workers de flows et `is_alive` comparés avec l'horloge des pods (dérive tolérée = TTL 10 s) ; seuls les baux sont passés à l'horloge base.

@@ -93,9 +93,8 @@ pub fn rust_search_match(search: &Option<String>, haystacks: &[&str]) -> bool {
 // ───────────────────────── SQL-side variant ─────────────────────────
 //
 // Hot lists push filters + LIMIT/OFFSET + COUNT into SQL and hydrate only
-// the page. Portable across PG and sqlite: never `PgExpr::ilike` (panics on
-// sqlite) — `lower(col) LIKE pattern ESCAPE '\'` with a lowercased,
-// wildcard-escaped pattern (sqlite folds ASCII only).
+// the page: `lower(col) LIKE pattern ESCAPE '\'` with a lowercased,
+// wildcard-escaped pattern.
 
 /// LIKE escape character shared by every SQL search.
 pub const LIKE_ESCAPE: char = '\\';

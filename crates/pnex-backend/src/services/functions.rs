@@ -142,8 +142,7 @@ pub async fn create_function(
     .await
     .map_err(|e| FunctionWriteError::Db(format!("insert version : {e}")))?;
 
-    // FK circulaire : la version courante est posée après l'insert des deux
-    // lignes (intégrité portée par le contrôleur sur sqlite).
+    // Circular FK: the current version is set once both rows exist.
     let mut active: functions::ActiveModel = created.clone().into();
     active.current_version_id = Set(Some(version.id));
     let created = active

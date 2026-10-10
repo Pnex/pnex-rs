@@ -144,9 +144,8 @@ pub async fn liveness(
     })
 }
 
-/// Agrégat des builds de l'org — borné par construction (upsert 1/device),
-/// réduction en Rust plutôt qu'un GROUP BY pour rester dialect-free
-/// (sqlite/PG, D5 v2).
+/// Build aggregate of the org, bounded by construction (one upsert per
+/// device), reduced in Rust.
 pub async fn build_stats(db: &DatabaseConnection, org_id: i64) -> Result<BuildStats> {
     let rows = build_records::Entity::find()
         .filter(build_records::Column::OrgId.eq(org_id))

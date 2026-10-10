@@ -1,6 +1,5 @@
 //! Database side of the flow cluster (D106): worker registry, placements,
-//! row-based leases. Portable Postgres/sqlite (sea-orm only, no advisory
-//! lock, no `NOTIFY`). Every write that can race is **conditional** (a
+//! row-based leases (no advisory lock, no `NOTIFY`). Every write that can race is **conditional** (a
 //! `WHERE` on the expected state) so two controllers or two workers can
 //! never both win.
 
@@ -273,9 +272,9 @@ pub async fn org_weight(db: &DatabaseConnection, org_id: i64) -> Result<u64, DbE
 
 /// Acquires or renews the lease `name` for `holder` for `ttl_ms`.
 /// Conditional update (held by me, or expired) then insert-if-absent: at
-/// most one holder at a time, portable, no session state.
+/// most one holder at a time, no session state.
 ///
-/// On Postgres the expiry is computed AND compared with the database clock
+/// The expiry is computed AND compared with the database clock
 /// (`now()`), never with the pod clocks: a pod whose clock runs ahead would
 /// otherwise see live leases as expired and steal them.
 pub async fn try_lease(
@@ -285,60 +284,34 @@ pub async fn try_lease(
     ttl_ms: u64,
 ) -> Result<bool, DbErr> {
     use sea_orm::ConnectionTrait;
-    let pg = db.get_database_backend() == sea_orm::DatabaseBackend::Postgres;
     let ttl_secs = ttl_ms as f64 / 1000.0;
-    let expires = (Utc::now() + chrono::Duration::milliseconds(ttl_ms as i64)).fixed_offset();
-    let (expires_expr, now_expr) = if pg {
-        (
-            Expr::cust_with_values("now() + make_interval(secs => $1)", [ttl_secs]),
-            Expr::cust("now()"),
-        )
-    } else {
-        (Expr::value(expires), Expr::value(now()))
-    };
     let res = flow_leases::Entity::update_many()
         .col_expr(flow_leases::Column::Holder, Expr::value(holder))
-        .col_expr(flow_leases::Column::ExpiresAt, expires_expr)
+        .col_expr(
+            flow_leases::Column::ExpiresAt,
+            Expr::cust_with_values("now() + make_interval(secs => $1)", [ttl_secs]),
+        )
         .filter(flow_leases::Column::Name.eq(name))
         .filter(
             sea_orm::Condition::any()
                 .add(flow_leases::Column::Holder.eq(holder))
-                .add(Expr::col(flow_leases::Column::ExpiresAt).lt(now_expr)),
+                .add(Expr::col(flow_leases::Column::ExpiresAt).lt(Expr::cust("now()"))),
         )
         .exec(db)
         .await?;
     if res.rows_affected == 1 {
         return Ok(true);
     }
-    if pg {
-        let ins = db
-            .execute_raw(sea_orm::Statement::from_sql_and_values(
-                sea_orm::DatabaseBackend::Postgres,
-                "INSERT INTO flow_leases (name, holder, expires_at) \
-                 VALUES ($1, $2, now() + make_interval(secs => $3)) \
-                 ON CONFLICT (name) DO NOTHING",
-                [name.into(), holder.into(), ttl_secs.into()],
-            ))
-            .await?;
-        return Ok(ins.rows_affected() == 1);
-    }
-    let ins = flow_leases::Entity::insert(flow_leases::ActiveModel {
-        name: Set(name.to_string()),
-        holder: Set(holder.to_string()),
-        expires_at: Set(expires),
-    })
-    .on_conflict(
-        OnConflict::column(flow_leases::Column::Name)
-            .do_nothing()
-            .to_owned(),
-    )
-    .exec_without_returning(db)
-    .await;
-    match ins {
-        Ok(n) => Ok(n == 1),
-        Err(DbErr::RecordNotInserted) => Ok(false),
-        Err(e) => Err(e),
-    }
+    let ins = db
+        .execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "INSERT INTO flow_leases (name, holder, expires_at) \
+             VALUES ($1, $2, now() + make_interval(secs => $3)) \
+             ON CONFLICT (name) DO NOTHING",
+            [name.into(), holder.into(), ttl_secs.into()],
+        ))
+        .await?;
+    Ok(ins.rows_affected() == 1)
 }
 
 /// Releases every `task:*` singleton lease held by `holder` (graceful

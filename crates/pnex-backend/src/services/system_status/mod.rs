@@ -137,22 +137,12 @@ async fn probe_database(ctx: &AppContext) -> ComponentStatus {
     }
     let backend_name = match backend {
         DatabaseBackend::Postgres => "postgres",
-        DatabaseBackend::Sqlite => "sqlite",
         _ => "other",
     };
     out.metrics.push(text_metric("db_backend", backend_name));
     let size = match backend {
         DatabaseBackend::Postgres => {
             scalar_i64(ctx, "SELECT pg_database_size(current_database())::bigint").await
-        }
-        DatabaseBackend::Sqlite => {
-            match (
-                scalar_i64(ctx, "PRAGMA page_count").await,
-                scalar_i64(ctx, "PRAGMA page_size").await,
-            ) {
-                (Some(count), Some(size)) => Some(count * size),
-                _ => None,
-            }
         }
         _ => None,
     };

@@ -62,8 +62,7 @@ integrated AI assistant.
 
 - **One platform, one language.** Server, web app, flow runtime, firmware tooling and the
   thermophysics engine are all Rust, in a single workspace.
-- **Self-hosted, two tiers.** A single SQLite file for a workshop, or PostgreSQL with
-  S3-compatible object storage for a plant.
+- **Self-hosted.** PostgreSQL, with S3-compatible object storage when a plant needs it.
 - **Connected today, autonomous next.** Flows drive devices through the server today;
   devices that keep regulating through outages and a device-to-device mesh are on the
   [roadmap](https://pnex.io/roadmap).
@@ -134,7 +133,7 @@ flowchart TB
 
     subgraph storage["Storage"]
         direction LR
-        db[("PostgreSQL<br/>or SQLite")]
+        db[("PostgreSQL")]
         valkey[("Valkey<br/>live state")]
         o2[("OpenObserve<br/>telemetry")]
         s3[("RustFS / disk<br/>firmware · media")]
@@ -195,7 +194,7 @@ task dev          # front build + server on http://localhost:5150
 | `task docker:build` | Build the `server` and `builder` images locally |
 
 Schema changes follow [`docs/architecture/migrations.md`](docs/architecture/migrations.md):
-additive first, written for both PostgreSQL and SQLite (a parity test enforces it).
+additive first, PostgreSQL only.
 
 ## Contributing
 

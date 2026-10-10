@@ -7,10 +7,6 @@
 //! transaction-scoped advisory lock instead: `pg_advisory_xact_lock(ns, key)`
 //! is released on commit/rollback and when the connection dies, so a
 //! crashed pod never leaves a lock behind.
-//!
-//! On sqlite (tests, single node) every helper is a no-op: there is one
-//! process, and the test pools may hold a single connection — opening a
-//! second transaction there would deadlock the caller.
 
 use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction, DbErr, SqlErr,
@@ -50,11 +46,8 @@ fn key32(key: i64) -> i32 {
 }
 
 /// Takes `pg_advisory_xact_lock(ns, key)` on `conn`, which must be a
-/// transaction (the lock lives until it ends). No-op off Postgres.
+/// transaction (the lock lives until it ends).
 pub async fn xact_lock<C: ConnectionTrait>(conn: &C, ns: i32, key: i64) -> Result<(), DbErr> {
-    if conn.get_database_backend() != DatabaseBackend::Postgres {
-        return Ok(());
-    }
     conn.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "SELECT pg_advisory_xact_lock($1, $2)",
@@ -67,9 +60,9 @@ pub async fn xact_lock<C: ConnectionTrait>(conn: &C, ns: i32, key: i64) -> Resul
 /// A held tenant lock: a dedicated transaction whose only purpose is to
 /// carry the advisory lock while the caller works on its usual
 /// connections (long operations such as a runtime acknowledgement can run
-/// under it without pinning the business rows). `None` off Postgres.
+/// under it without pinning the business rows).
 pub struct TenantLock {
-    txn: Option<DatabaseTransaction>,
+    txn: DatabaseTransaction,
 }
 
 impl TenantLock {
@@ -82,9 +75,6 @@ impl TenantLock {
         key: i64,
         timeout: std::time::Duration,
     ) -> Result<Self, DbErr> {
-        if db.get_database_backend() != DatabaseBackend::Postgres {
-            return Ok(Self { txn: None });
-        }
         let txn = db.begin().await?;
         // SET LOCAL does not take bind parameters.
         txn.execute_unprepared(&format!(
@@ -93,21 +83,19 @@ impl TenantLock {
         ))
         .await?;
         xact_lock(&txn, ns, key).await?;
-        Ok(Self { txn: Some(txn) })
+        Ok(Self { txn })
     }
 
     /// Releases the lock (commits the empty carrier transaction). Dropping
     /// the guard also releases it (rollback), this is just explicit.
     pub async fn release(self) {
-        if let Some(txn) = self.txn {
-            if let Err(e) = txn.commit().await {
-                tracing::warn!("tenant lock release failed (rolled back by the pool): {e}");
-            }
+        if let Err(e) = self.txn.commit().await {
+            tracing::warn!("tenant lock release failed (rolled back by the pool): {e}");
         }
     }
 }
 
-/// True when `e` is a unique constraint violation (Postgres or sqlite).
+/// True when `e` is a unique constraint violation.
 pub fn is_unique_violation(e: &DbErr) -> bool {
     matches!(e.sql_err(), Some(SqlErr::UniqueConstraintViolation(_)))
 }
@@ -120,17 +108,11 @@ pub fn is_lock_timeout(e: &DbErr) -> bool {
 /// Runs the boot migration (`M::up`) under a SESSION advisory lock held on
 /// a dedicated single-connection pool, so N pods booting together migrate
 /// one at a time: the first applies the pending migrations, the others
-/// wait, then find nothing left to do. Returns `Ok(false)` off Postgres
-/// (the caller keeps the framework's own migration path).
+/// wait, then find nothing left to do.
 ///
 /// Loco runs `auto_migrate` inside `create_app`, before any hook: the app
 /// `boot` hook calls this first, then disables `auto_migrate` for loco.
-pub async fn migrate_under_lock<M: pnex_migration::MigratorTrait>(
-    uri: &str,
-) -> Result<bool, DbErr> {
-    if !(uri.starts_with("postgres://") || uri.starts_with("postgresql://")) {
-        return Ok(false);
-    }
+pub async fn migrate_under_lock<M: pnex_migration::MigratorTrait>(uri: &str) -> Result<(), DbErr> {
     let mut opts = sea_orm::ConnectOptions::new(uri.to_string());
     // One connection: every statement (lock, migrations, unlock) runs in
     // the same session, which owns the lock.
@@ -157,5 +139,5 @@ pub async fn migrate_under_lock<M: pnex_migration::MigratorTrait>(
         ))
         .await;
     let _ = db.close().await;
-    res.map(|()| true)
+    res
 }

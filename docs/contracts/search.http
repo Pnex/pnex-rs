@@ -9,8 +9,7 @@
 ### groups omitted, canonical group order (device, poi, tour, media, layer,
 ### function, flow, dashboard, edge_ref).
 ### Matching: case-insensitive containment, `lower(col) LIKE pattern
-### ESCAPE '\'` — portable PG/sqlite (never PgExpr::ilike, which panics on
-### sqlite). Wildcards `%`, `_`, `\` in the term are escaped (literal).
+### ESCAPE '\'`. Wildcards `%`, `_`, `\` in the term are escaped (literal).
 ### Tokenization: the term is split on whitespace; each token is stripped
 ### of EDGE punctuation ("esp---" → "esp" — search noise, not literals) and
 ### tokens are ANDed ("esp32 relay" matches "esp32-relay-1"). Internal

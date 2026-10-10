@@ -780,19 +780,16 @@ async fn media_annotations(
         if pub_ids.is_empty() {
             Default::default()
         } else {
-            let mut q = annotation_layer_versions::Entity::find()
-                .filter(annotation_layer_versions::Column::Id.is_in(pub_ids));
-            // PG: only the published docs that anchor an item on this asset
+            // Only the published docs that anchor an item on this asset
             // (jsonb containment) instead of loading every published doc of
-            // the org. The Rust filter below stays the source of truth
-            // (sqlite keeps the full scan).
-            if ctx.db.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
-                let probe = serde_json::json!({ "items": [{ "media_asset_id": asset_str }] });
-                q = q.filter(sea_orm::sea_query::Expr::cust_with_values(
+            // the org. The Rust filter below stays the source of truth.
+            let probe = serde_json::json!({ "items": [{ "media_asset_id": asset_str }] });
+            let q = annotation_layer_versions::Entity::find()
+                .filter(annotation_layer_versions::Column::Id.is_in(pub_ids))
+                .filter(sea_orm::sea_query::Expr::cust_with_values(
                     r#""annotation_layer_versions"."doc" @> $1"#,
                     [sea_orm::Value::Json(Some(Box::new(probe)))],
                 ));
-            }
             q.all(&ctx.db)
                 .await
                 .map_err(|_| Error::InternalServerError)?
@@ -803,7 +800,7 @@ async fn media_annotations(
     let mut items: Vec<pnex_core::ResolvedAnnotationItem> = Vec::new();
     for l in &layers {
         let Some(published) = l.published_version_id.and_then(|id| versions_map.get(&id)) else {
-            continue; // pointeur pendant (sqlite : intégrité par le contrôleur)
+            continue; // dangling pointer: tolerated
         };
         let Ok(doc) = serde_json::from_value::<pnex_core::AnnotationDoc>(published.doc.clone())
         else {

@@ -35,17 +35,13 @@
 >   zéro artefact orphelin, plafond défensif 50 Mo). Backend `local` (FS)
 >   **supprimé**. `s3` = tier industriel **implémenté** (Phase C, opendal —
 >   cf. ci-dessous), sélection `PNEX_STORAGE_BACKEND=db|s3` (env) surchargeant
->   la config. Trois tiers de déploiement :
->   - **sqlite** (hobbyiste) : tout (données + artefacts + queue loco
->     `sqlt_loco_queue`) dans un seul fichier — `DATABASE_URL=sqlite://…?mode=rwc`,
->     bascule one-knob (le `queue.kind` des yaml suit le schéma de l'URI via
->     Tera). Mono-pod uniquement, jamais `sqlite::memory:` (pools db et queue
->     distincts) ;
+>   la config. Deux tiers de déploiement (le tier sqlite hobbyiste a été
+>   retiré le 2026-10-10, décision #19) :
 >   - **postgres** (scalable) : tout en PG — pods API **stateless**, n'importe
 >     quel réplica sert le download (le pod worker reste stateful : toolchain
 >     pio + cache `~/.platformio`, inhérent à la compilation) ;
 >   - **s3** (industriel) : artefacts sur S3-compatible (AWS, RustFS,
->     Scaleway…) via opendal 0.57 — data/queue restent en PG ou sqlite. Config
+>     Scaleway…) via opendal 0.57 — data/queue restent en PG. Config
 >     `PNEX_S3_{ENDPOINT,BUCKET,REGION,ACCESS_KEY,SECRET_KEY,PATH_STYLE}` ;
 >     path-style = défaut (RustFS/auto-hébergé ; `PATH_STYLE=false` = host virtuel
 >     AWS), région défaut `us-east-1`, validation à la construction (config
@@ -75,8 +71,7 @@
 ## 1. Architecture cible (Appendice X, résumé)
 
 - Le build est un **job asynchrone** : `POST /builds` → enregistrement
-  `Build` (status=queued) → enqueue **queue loco** (PostgreSQL `SKIP LOCKED`,
-  ou sqlite selon le tier) → réponse immédiate `{build_id}`. Le handler HTTP
+  `Build` (status=queued) → enqueue **queue loco** (PostgreSQL `SKIP LOCKED`) → réponse immédiate `{build_id}`. Le handler HTTP
   **ne compile jamais**.
 - Un **worker Loco** (`cargo loco start --worker`, ou `--server-and-worker` en
   self-hosted) claim le job, passe status=running, pilote la toolchain en

@@ -592,15 +592,15 @@ définis par l'utilisateur (données versionnées, `KindSpec` dérivé),
 propriétés typées dont temporelles (désignent une série ou un stream
 O2, ne copient rien), liens typés à validité temporelle, **le temps
 appartient aux objets** (un capteur remplacé ne casse plus la courbe de
-la pompe), provenance sur chaque fait, API de requête JSON portable
-PG/sqlite, explorateur générique, packs métier. Les types système
+la pompe), provenance sur chaque fait, API de requête JSON,
+explorateur générique, packs métier. Les types système
 restent dans leurs tables (adaptateurs) ; migration 0.1 → 0.2 **non
 destructive**.
 
 | Lot | Contenu | Sortie |
 |---|---|---|
 | L0 | Spike : types en données dérivant le `KindSpec` | registre généré == registre codé |
-| L1 | D176–D178 : types, objets, propriétés scalaires, YAML | « Pompe » + 100 objets, PG + sqlite |
+| L1 | D176–D178 : types, objets, propriétés scalaires, YAML | « Pompe » + 100 objets |
 | L2 | D179–D180 : types de liens, validité temporelle, migration `placed_on`/`placed_at` | requête `as_of` correcte |
 | L3 | D178 temporel + D181 : liaisons device → objet | remplacement de capteur sans rupture |
 | L4 | D185–D187 : requête, explorateur, dashboards de type | dashboard de type Pompe |
@@ -818,7 +818,8 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   d'org D119, conflits D173/D174 et gel 0.2.0 signalés).
 - **2026-10-10 (PostgreSQL seul)** — Décision #19 : SQLite abandonné,
   PostgreSQL obligatoire ; plus aucune parité à écrire dans les nouveaux
-  développements, retrait du code SQLite existant à planifier. Axe G :
+  développements ; retrait du code SQLite existant le jour même (branche
+  `refactor/postgres-only`). Axe G :
   références et architecture pressentie du geofencing (Tile38, Traccar,
   ThingsBoard, Home Assistant, PostGIS accepté en extension malgré la
   GPL-2, crates `geo`/`rstar`/`h3o`/`geozero`).

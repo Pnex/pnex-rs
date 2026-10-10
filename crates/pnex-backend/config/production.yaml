@@ -28,13 +28,11 @@ workers:
   # --worker-only`).
   mode: BackgroundQueue
 
-# Queue : le backend suit le schéma de DATABASE_URL (one-knob). Tier
-# scalable = postgres (pods API stateless, artefacts servis par tout
-# réplica) ; tier hobbyist = sqlite (mono-pod uniquement). Jamais
-# `sqlite::memory:` en mode app.
+# Worker job queue on the app's PostgreSQL database (pods stay stateless,
+# artifacts served by any replica).
 # <% set db_url = get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex") %>
 queue:
-  kind: <% if db_url is starting_with(pat="sqlite") %>Sqlite<% else %>Postgres<% endif %>
+  kind: Postgres
   uri: <%= db_url %>
   num_workers: <%= get_env(name="PNEX_QUEUE_NUM_WORKERS", default="1") %>
   poll_interval_sec: 1

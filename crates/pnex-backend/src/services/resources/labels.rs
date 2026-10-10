@@ -7,8 +7,7 @@
 //! (les propres écrasent l'héritage, l'ancêtre proche écrase le lointain) :
 //! on fusionne racine → feuille puis les propres en dernier.
 //!
-//! PG : `WITH RECURSIVE` + `@>` / `?` JSONB (GIN). sqlite (smoke tests) :
-//! fallback scan + calcul Rust — ensembles org-scopés bornés.
+//! `WITH RECURSIVE` + `@>` / `?` JSONB (GIN).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -215,8 +214,7 @@ async fn ancestor_chain(
 /// candidats (propres + descendants des porteurs) sont donc re-vérifiés
 /// via la fusion [`effective`] (résolution au read, même règle partout).
 ///
-/// PG : 2 CTE récursives (tagged → descendants) + GIN pour la découverte.
-/// sqlite : scan Rust. Ensembles org-scopés bornés.
+/// Two recursive CTEs (tagged → descendants) + GIN for discovery.
 pub async fn ids_with_effective_label(
     db: &DatabaseConnection,
     org_id: i64,
@@ -225,9 +223,7 @@ pub async fn ids_with_effective_label(
 ) -> Result<Vec<(String, String)>, DbErr> {
     let (name, value) = filter;
 
-    let candidates: Vec<(String, String)> = if db.get_database_backend()
-        == sea_orm::DatabaseBackend::Postgres
-    {
+    let candidates: Vec<(String, String)> = {
         // tagged = porte le label (valeur exacte ou tag nu `?`) ;
         // down   = tagged + tous leurs descendants (containment).
         let (predicate, params) = match value {
@@ -264,51 +260,6 @@ pub async fn ids_with_effective_label(
             }
         }
         out
-    } else {
-        // ── fallback sqlite : scan org-scopé + calcul Rust ──
-        let mut candidates: Vec<(String, String)> = Vec::new();
-        let label_rows = resource_labels::Entity::find()
-            .filter(resource_labels::Column::OrgId.eq(org_id))
-            .all(db)
-            .await?;
-        for r in label_rows {
-            let Some(v) = r.labels.as_ref().and_then(|j| j.get(name)) else {
-                continue;
-            };
-            let hit = match value {
-                Some(want) => v.as_str() == Some(want.as_str()),
-                None => !v.is_null(),
-            };
-            if hit {
-                candidates.push((r.resource_kind.clone(), r.resource_id.clone()));
-            }
-        }
-        // Descendants des porteurs (BFS sur containment).
-        let rows = containment::Entity::find()
-            .filter(containment::Column::OrgId.eq(org_id))
-            .all(db)
-            .await?;
-        let mut children_of: HashMap<(String, String), Vec<(String, String)>> = HashMap::new();
-        for r in &rows {
-            children_of
-                .entry((r.parent_kind.clone(), r.parent_id.clone()))
-                .or_default()
-                .push((r.child_kind.clone(), r.child_id.clone()));
-        }
-        let mut frontier: Vec<(String, String)> = candidates.clone();
-        while let Some(cur) = frontier.pop() {
-            if let Some(children) = children_of.get(&cur) {
-                for c in children {
-                    if (kind.is_none() || kind.is_some_and(|want| want == c.0))
-                        && !candidates.contains(c)
-                    {
-                        candidates.push(c.clone());
-                        frontier.push(c.clone());
-                    }
-                }
-            }
-        }
-        candidates
     };
 
     // ── Post-filtre « le plus proche gagne » : la fusion effective décide ──
