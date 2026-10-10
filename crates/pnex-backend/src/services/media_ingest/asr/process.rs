@@ -48,6 +48,12 @@ pub struct Launch {
     pub provider: String,
     /// `RLIMIT_AS` of the process, bytes (0 = none).
     pub max_memory: u64,
+    /// VAD run before the transcription (D166).
+    pub vad_dir: Option<PathBuf>,
+    /// Diarization: segmentation model; needs `emb_dir`.
+    pub seg_dir: Option<PathBuf>,
+    /// Speaker embedding model (diarization, or a segmentation check).
+    pub emb_dir: Option<PathBuf>,
 }
 
 pub struct AsrProcess {
@@ -79,6 +85,16 @@ impl AsrProcess {
         ];
         if launch.provider != "cpu" {
             argv.push("--gpu".into());
+        }
+        for (flag, dir) in [
+            ("--vad-dir", &launch.vad_dir),
+            ("--seg-dir", &launch.seg_dir),
+            ("--emb-dir", &launch.emb_dir),
+        ] {
+            if let Some(d) = dir {
+                argv.push(flag.into());
+                argv.push(d.display().to_string());
+            }
         }
         let argv = sandbox::wrap_argv(mode, argv);
         let mut cmd = tokio::process::Command::new(&argv[0]);

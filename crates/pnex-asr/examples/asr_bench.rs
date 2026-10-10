@@ -84,6 +84,7 @@ fn load(spec: &str, a: &Args) -> Result<Box<dyn Transcriber>, String> {
                 provider: a.provider.clone(),
                 num_threads: a.threads,
                 language: "fr".into(),
+                ..Default::default()
             };
             SherpaTranscriber::load(family, Path::new(dir), &opts)
                 .map(|t| Box::new(t) as Box<dyn Transcriber>)

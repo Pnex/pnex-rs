@@ -31,7 +31,7 @@ use crate::services::media_ingest::capture::decoder;
 use crate::services::media_ingest::capture::sandbox::SandboxMode;
 
 /// `ml_models.task` of speech-to-text models.
-pub const ASR_TASK: &str = "asr";
+pub const ASR_TASK: &str = protocol::TASK_ASR;
 
 #[derive(Debug, Clone)]
 pub struct AsrSettings {
@@ -165,6 +165,9 @@ pub fn launch(
         threads: settings.threads,
         provider: settings.provider.clone(),
         max_memory: settings.max_memory,
+        vad_dir: None,
+        seg_dir: None,
+        emb_dir: None,
     })
 }
 
@@ -178,23 +181,73 @@ pub struct CheckReport {
     pub infer_ms: u64,
     /// Inference time / audio time.
     pub rtf: f64,
-    /// Word error rate on the reference sample.
-    pub wer: f64,
-    pub transcript: String,
+    /// Word error rate on the reference sample (speech-to-text only).
+    pub wer: Option<f64>,
+    pub transcript: Option<String>,
+    /// Speech the VAD found on the sample (VAD only).
+    pub speech_ms: Option<u32>,
 }
 
-/// Loads the model in a fresh process (load time measured) and
-/// transcribes the reference sample.
+/// The newest valid speaker embedding model of the org: a segmentation
+/// model only runs with one (sherpa-onnx diarization needs both).
+async fn embedding_partner(
+    ctx: &AppContext,
+    settings: &AsrSettings,
+    org_id: i64,
+) -> Result<LocalModel, AsrError> {
+    use pnex_core::vision::ModelCheckStatus;
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+    let partner = ml_models::Entity::find()
+        .filter(ml_models::Column::OrgId.eq(org_id))
+        .filter(ml_models::Column::Task.eq(protocol::TASK_EMBEDDING))
+        .filter(ml_models::Column::CheckStatus.eq(ModelCheckStatus::Valid.wire()))
+        .order_by_desc(ml_models::Column::CheckedAt)
+        .one(&ctx.db)
+        .await
+        .map_err(|e| AsrError::Internal(e.to_string()))?
+        .ok_or_else(|| {
+            AsrError::Process(process::AsrProcessError::Load(
+                "a segmentation model is checked with a valid speaker embedding model: import one first".into(),
+            ))
+        })?;
+    local_model(ctx, settings, partner.asset_id, partner.asset_version).await
+}
+
+/// Loads the model in a fresh process (load time measured) and runs it on
+/// the reference sample: transcription (+ WER) for speech-to-text, speech
+/// detected for a VAD, turns for a segmentation model, a vector for an
+/// embedding model.
 pub async fn check(ctx: &AppContext, model: &ml_models::Model) -> Result<CheckReport, AsrError> {
     let settings = AsrSettings::from_env();
     let local = local_model(ctx, &settings, model.asset_id, model.asset_version).await?;
     let family = local.inspection.family;
-    let launch = launch(&settings, &local, family, "fr")?;
+    let mut launch = launch(&settings, &local, family, "fr")?;
+    if family == Family::PyannoteSegmentation {
+        launch.emb_dir = Some(embedding_partner(ctx, &settings, model.org_id).await?.dir);
+    }
     let mut proc = AsrProcess::start(&launch, &settings.sandbox).await?;
     let resp = proc.transcribe(protocol::CHECK_WAV_FR).await?;
-    let text = resp.text.unwrap_or_default();
-    let mut wer = WerAccumulator::default();
-    wer.add(protocol::CHECK_TEXT_FR, &text);
+    let fail = |m: &str| AsrError::Process(process::AsrProcessError::Inference(m.into()));
+    let (mut wer, mut transcript) = (None, None);
+    match family.task() {
+        protocol::TASK_VAD if resp.speech_ms.unwrap_or(0) == 0 => {
+            return Err(fail("no speech detected on the reference sample"))
+        }
+        protocol::TASK_SEGMENTATION if resp.turns.is_empty() => {
+            return Err(fail("no speaker turn on the reference sample"))
+        }
+        protocol::TASK_EMBEDDING if resp.voices.first().is_none_or(|v| v.v.is_empty()) => {
+            return Err(fail("no embedding computed on the reference sample"))
+        }
+        protocol::TASK_ASR => {
+            let text = resp.text.clone().unwrap_or_default();
+            let mut acc = WerAccumulator::default();
+            acc.add(protocol::CHECK_TEXT_FR, &text);
+            wer = Some(acc.wer());
+            transcript = Some(text);
+        }
+        _ => {}
+    }
     let audio_ms = ((protocol::CHECK_WAV_FR.len().saturating_sub(44)) / 32) as f64;
     Ok(CheckReport {
         family: family.wire().to_string(),
@@ -203,8 +256,9 @@ pub async fn check(ctx: &AppContext, model: &ml_models::Model) -> Result<CheckRe
         load_ms: proc.load_ms,
         infer_ms: resp.ms,
         rtf: resp.ms as f64 / audio_ms.max(1.0),
-        wer: wer.wer(),
-        transcript: text,
+        wer,
+        transcript,
+        speech_ms: resp.speech_ms,
     })
 }
 
@@ -217,6 +271,9 @@ pub async fn test_clip(
     language: &str,
     truncated: bool,
 ) -> Result<pnex_core::media_ingest::AsrTestResult, AsrError> {
+    if model.task != ASR_TASK {
+        return Err(AsrError::Unsupported("not a speech-to-text model".into()));
+    }
     let settings = AsrSettings::from_env();
     let local = local_model(ctx, &settings, model.asset_id, model.asset_version).await?;
     let family = Family::from_wire(&model.family).unwrap_or(local.inspection.family);

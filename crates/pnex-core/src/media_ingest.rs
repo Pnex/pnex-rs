@@ -433,8 +433,12 @@ pub struct AsrProfile {
     pub asr_model_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vad_model_id: Option<String>,
+    /// Diarization = a segmentation model (`diarization_model_id`) and a
+    /// speaker embedding model, both set or both absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diarization_model_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diarization_embedding_model_id: Option<String>,
     /// ISO 639-1 code, or `auto`.
     pub language: String,
     pub beam: i32,
@@ -453,6 +457,12 @@ pub struct AsrProfileInput {
     /// Empty string clears the model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vad_model_id: Option<String>,
+    /// Segmentation model of the diarization; empty string clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diarization_model_id: Option<String>,
+    /// Speaker embedding model of the diarization; empty string clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diarization_embedding_model_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -504,8 +514,13 @@ pub struct AsrModel {
     pub name: String,
     #[serde(default)]
     pub description: String,
+    /// `asr` | `vad` | `diarization_segmentation` | `speaker_embedding`,
+    /// read from the files like the family.
+    #[serde(default)]
+    pub task: String,
     /// Read from the files (`parakeet_tdt`, `canary`, `whisper`,
-    /// `whisper_ggml`), never typed.
+    /// `whisper_ggml`, `silero`, `pyannote_segmentation`,
+    /// `speaker_embedding`), never typed.
     pub family: String,
     pub asset_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -613,6 +628,10 @@ pub struct TranscriptRecord {
     /// Word timings as a JSON string (O2 flattens nested objects).
     #[serde(default)]
     pub words: String,
+    /// Speaker turns as a JSON string, `[{label, start_ms, end_ms}]`;
+    /// labels are local to the stream (`S1`…), never identities.
+    #[serde(default)]
+    pub speakers: String,
     #[serde(default)]
     pub lang: String,
     #[serde(default)]

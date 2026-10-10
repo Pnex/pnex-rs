@@ -11,6 +11,7 @@
 
 use std::path::Path;
 
+pub mod diarize;
 pub mod protocol;
 pub mod wer;
 
@@ -57,6 +58,30 @@ pub trait Transcriber: Send {
     fn name(&self) -> &str;
     /// Transcribes 16 kHz mono samples.
     fn transcribe(&mut self, samples: &[f32]) -> Result<Transcript, AsrError>;
+}
+
+/// A loaded voice activity detector (task `vad`).
+pub trait VoiceDetector: Send {
+    /// Speech found in the samples, ms; 0 = silent.
+    fn speech_ms(&mut self, samples: &[f32]) -> Result<u32, AsrError>;
+}
+
+/// Speaker turns of one segment: local speaker indexes (0, 1…) and one
+/// ephemeral embedding per speaker that has enough audio for one.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Diarization {
+    pub turns: Vec<protocol::WireTurn>,
+    pub voices: Vec<protocol::WireVoice>,
+}
+
+/// A loaded intra-segment diarizer (segmentation + embedding + clustering).
+pub trait Diarizer: Send {
+    fn diarize(&mut self, samples: &[f32]) -> Result<Diarization, AsrError>;
+}
+
+/// A loaded speaker embedding extractor (task `speaker_embedding`).
+pub trait Embedder: Send {
+    fn embed(&mut self, samples: &[f32]) -> Result<Vec<f32>, AsrError>;
 }
 
 /// Reads a 16 kHz WAV file as mono `f32`; stereo is downmixed, any other

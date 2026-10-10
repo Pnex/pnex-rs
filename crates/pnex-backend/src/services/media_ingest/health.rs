@@ -159,26 +159,33 @@ pub async fn tick(ctx: &AppContext, alerted: &mut HashSet<Uuid>) -> Result<(), D
         }
     }
     alerted.retain(|id| live.contains(id));
-    if let Some(settings) = OpenobserveSettings::from_config(&ctx.config) {
-        let client = Client::new(&settings);
-        for (org_id, pts) in by_org {
-            let Some(pb) = encode_labelled(&pts) else {
-                continue;
-            };
-            let res = match ensure_org_credentials(&ctx.db, &client, org_id).await {
-                Ok(creds) => {
-                    client
-                        .ingest_prometheus(&creds.o2_org, &pb, &creds.email_passcode)
-                        .await
-                }
-                Err(e) => Err(e),
-            };
-            if let Err(e) = res {
-                tracing::debug!(org_id, error = %e, "media health metrics not written");
-            }
-        }
+    for (org_id, pts) in by_org {
+        ingest_points(ctx, org_id, &pts).await;
     }
     Ok(())
+}
+
+/// Writes free-label samples to the org's O2 metrics, best effort (O2 not
+/// configured or refusing = logged at debug, nothing else).
+pub async fn ingest_points(ctx: &AppContext, org_id: i64, points: &[LabelledPoint]) {
+    let Some(settings) = OpenobserveSettings::from_config(&ctx.config) else {
+        return;
+    };
+    let Some(pb) = encode_labelled(points) else {
+        return;
+    };
+    let client = Client::new(&settings);
+    let res = match ensure_org_credentials(&ctx.db, &client, org_id).await {
+        Ok(creds) => {
+            client
+                .ingest_prometheus(&creds.o2_org, &pb, &creds.email_passcode)
+                .await
+        }
+        Err(e) => Err(e),
+    };
+    if let Err(e) = res {
+        tracing::debug!(org_id, error = %e, "media metrics not written");
+    }
 }
 
 /// Canonical English text (no language context here, like OTA); the

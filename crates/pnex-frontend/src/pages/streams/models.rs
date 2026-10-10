@@ -1,6 +1,6 @@
 //! "Models and profiles" tab of /streams (media-ingest.md D164, D167):
-//! speech-to-text models of the org (import, check, delete) and the
-//! transcription profiles that streams point at.
+//! audio models of the org (speech-to-text, VAD, diarization: import,
+//! check, delete) and the transcription profiles that streams point at.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -120,7 +120,7 @@ pub fn ModelsTab(can_write: bool, reload: Signal<u32>, importing: Signal<bool>) 
                                 div {
                                     p { class: "font-medium text-gray-900", "{p.name}" }
                                     p { class: "text-xs text-gray-500",
-                                        {format!("{} · {}", model_name(&p.asr_model_id), p.language)}
+                                        {profile_line(&p, &model_name)}
                                     }
                                 }
                                 if can_write {
@@ -207,12 +207,13 @@ fn ModelRow(
         "invalid" => ("bg-red-100 text-red-800", t!("models-check-invalid")),
         _ => ("bg-gray-100 text-gray-700", t!("models-check-unchecked")),
     };
-    let measure = check.streams().zip(check.wer).map(|(streams, wer)| {
-        t!(
+    let measure = check.streams().map(|streams| match check.wer {
+        Some(wer) => t!(
             "asr-models-measure",
             streams: format!("{streams:.0}"),
             wer: format!("{:.1}", wer * 100.0)
-        )
+        ),
+        None => t!("asr-models-measure-rt", streams: format!("{streams:.0}")),
     });
     let carrier_lines: Vec<String> = model
         .carriers
@@ -231,7 +232,8 @@ fn ModelRow(
     let id = model.id.clone();
     let m_delete = model.clone();
     let m_test = model.clone();
-    let valid = check.status == "valid";
+    // Only a speech-to-text model has a transcript to show.
+    let testable = check.status == "valid" && model.task == "asr";
     rsx! {
         tr {
             td { class: "td",
@@ -244,7 +246,10 @@ fn ModelRow(
                     }
                 }
             }
-            td { class: "td hidden text-gray-600 md:table-cell", "{model.family}" }
+            td { class: "td hidden text-gray-600 md:table-cell",
+                p { {task_label(&model.task)} }
+                p { class: "text-xs text-gray-500", "{model.family}" }
+            }
             td { class: "td",
                 span { class: "inline-flex px-2 py-0.5 rounded text-xs font-medium {badge_class}",
                     {badge}
@@ -262,7 +267,7 @@ fn ModelRow(
             td { class: "td text-right",
                 if can_write {
                     div { class: "flex justify-end gap-2",
-                        if valid {
+                        if testable {
                             button {
                                 class: BTN,
                                 r#type: "button",
@@ -294,18 +299,64 @@ fn ModelRow(
     }
 }
 
+/// "model · language · VAD · diarization" of a profile row.
+fn profile_line(
+    p: &pnex_core::media_ingest::AsrProfile,
+    model_name: &dyn Fn(&str) -> String,
+) -> String {
+    let mut parts = vec![model_name(&p.asr_model_id), p.language.clone()];
+    if p.vad_model_id.is_some() {
+        parts.push(t!("asr-profiles-tag-vad").to_string());
+    }
+    if p.diarization_model_id.is_some() {
+        parts.push(t!("asr-profiles-tag-diarization").to_string());
+    }
+    parts.join(" · ")
+}
+
+/// Translated registry task of an audio model.
+fn task_label(task: &str) -> String {
+    match task {
+        "vad" => t!("asr-task-vad"),
+        "diarization_segmentation" => t!("asr-task-segmentation"),
+        "speaker_embedding" => t!("asr-task-embedding"),
+        _ => t!("asr-task-asr"),
+    }
+    .to_string()
+}
+
+/// Models of `task` that passed their check, for a profile select.
+fn usable(models: &[AsrModel], task: &str) -> Vec<AsrModel> {
+    models
+        .iter()
+        .filter(|m| m.task == task && m.check.status == "valid")
+        .cloned()
+        .collect()
+}
+
 /// Inline profile creation: name, model, language.
 #[component]
 fn NewProfile(models: Vec<AsrModel>, on_saved: Callback<()>) -> Element {
-    let first = models.first().map(|m| m.id.clone()).unwrap_or_default();
+    let asr_models = usable(&models, "asr");
+    let vads = usable(&models, "vad");
+    let segs = usable(&models, "diarization_segmentation");
+    let embs = usable(&models, "speaker_embedding");
+    // Preselected: a select shows its first option, the signal must agree.
+    let first = asr_models.first().map(|m| m.id.clone()).unwrap_or_default();
     let mut name = use_signal(String::new);
     let mut model = use_signal(move || first.clone());
+    let mut vad = use_signal(String::new);
+    let mut seg = use_signal(String::new);
+    let mut emb = use_signal(String::new);
     let mut language = use_signal(|| "fr".to_string());
     let mut busy = use_signal(|| false);
     let save = move |_| {
         let input = AsrProfileInput {
             name: Some(name()),
             asr_model_id: Some(model()),
+            vad_model_id: Some(vad()),
+            diarization_model_id: Some(seg()),
+            diarization_embedding_model_id: Some(emb()),
             language: Some(language()),
             ..Default::default()
         };
@@ -340,8 +391,44 @@ fn NewProfile(models: Vec<AsrModel>, on_saved: Callback<()>) -> Element {
                     id: "profile-model",
                     class: INPUT,
                     onchange: move |e| model.set(e.value()),
-                    for m in models {
+                    for m in asr_models {
                         option { value: "{m.id}", selected: model() == m.id, "{m.name}" }
+                    }
+                }
+            }
+            div {
+                label { r#for: "profile-vad", class: LABEL, {t!("asr-profiles-vad")} }
+                select {
+                    id: "profile-vad",
+                    class: INPUT,
+                    onchange: move |e| vad.set(e.value()),
+                    option { value: "", selected: vad().is_empty(), {t!("asr-profiles-none")} }
+                    for m in vads {
+                        option { value: "{m.id}", selected: vad() == m.id, "{m.name}" }
+                    }
+                }
+            }
+            div {
+                label { r#for: "profile-seg", class: LABEL, {t!("asr-profiles-segmentation")} }
+                select {
+                    id: "profile-seg",
+                    class: INPUT,
+                    onchange: move |e| seg.set(e.value()),
+                    option { value: "", selected: seg().is_empty(), {t!("asr-profiles-none")} }
+                    for m in segs {
+                        option { value: "{m.id}", selected: seg() == m.id, "{m.name}" }
+                    }
+                }
+            }
+            div {
+                label { r#for: "profile-emb", class: LABEL, {t!("asr-profiles-embedding")} }
+                select {
+                    id: "profile-emb",
+                    class: INPUT,
+                    onchange: move |e| emb.set(e.value()),
+                    option { value: "", selected: emb().is_empty(), {t!("asr-profiles-none")} }
+                    for m in embs {
+                        option { value: "{m.id}", selected: emb() == m.id, "{m.name}" }
                     }
                 }
             }

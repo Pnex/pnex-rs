@@ -1926,6 +1926,7 @@ CREATE TABLE asr_profiles (
     asr_model_id uuid NOT NULL,
     vad_model_id uuid,
     diarization_model_id uuid,
+    diarization_embedding_model_id uuid,
     language character varying(16) DEFAULT 'fr'::character varying NOT NULL,
     beam integer DEFAULT 1 NOT NULL,
     word_timestamps boolean DEFAULT true NOT NULL,
@@ -1939,6 +1940,8 @@ CREATE TABLE asr_profiles (
     CONSTRAINT "fk-asr_profiles-vad_model_id" FOREIGN KEY (vad_model_id)
         REFERENCES ml_models(id) ON DELETE SET NULL,
     CONSTRAINT "fk-asr_profiles-diarization_model_id" FOREIGN KEY (diarization_model_id)
+        REFERENCES ml_models(id) ON DELETE SET NULL,
+    CONSTRAINT "fk-asr_profiles-diarization_embedding_model_id" FOREIGN KEY (diarization_embedding_model_id)
         REFERENCES ml_models(id) ON DELETE SET NULL
 );
 CREATE UNIQUE INDEX uniq_asr_profiles_org_name ON asr_profiles USING btree (org_id, name);
