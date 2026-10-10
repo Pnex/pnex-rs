@@ -119,7 +119,7 @@ services:
 
   # One-shot : crée les buckets au premier démarrage (retente tant que
   # rustfs n'écoute pas — pas de healthcheck sur l'image). AWS CLI plutôt
-  # que mc : aucun produit MinIO dans la stack (licence).
+  # que mc.
   rustfs-init:
     image: amazon/aws-cli:2.27.49
     container_name: pnex-rustfs-init

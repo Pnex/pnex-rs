@@ -167,7 +167,7 @@ PUT/PATCH devices = metadata only ; suffixes .json ; 3 schémas d'auth actifs.
 | k8s_ctl + pods compute par actuateur + run_compute_controller | **SUPPRIMÉ** — régulation à l'edge (M2M) | — |
 | Argo Workflows + backend argowf | **SUPPRIMÉ** | — |
 | firmware build (k8s_job script : git clone → pio run → esptool merge-bin → S3) | **FAIT (Phase 6)** — crate `pnex-firmware-builder` (pipeline subprocess : source locale ou git clone → pio run → merge-bin → ArtifactStore), worker Loco `BuildFirmwareWorker`, timeout dur + kill, workspace tmp par job (secrets effacés au drop), env du child réduite | ✅ 6 |
-| MinIO/S3 (firmware binaires + rapports) | Rapports : **SUPPRIMÉ (D3)**. Firmware : **FAIT (Phase 6, D5 v2 + Phase C)** — `ArtifactStore` backend `db` par défaut (table `firmware_artifacts`, upsert par device — tiers sqlite tout-en-un / postgres pods stateless), `local` supprimé ; S3 = tier industriel **implémenté** (opendal, e2e RustFS — MinIO écarté, licence) ; pas de rétention (D6 clos — artefacts conservés pour re-flash) | ✅ 6 |
+| S3 (firmware binaires + rapports) | Rapports : **SUPPRIMÉ (D3)**. Firmware : **FAIT (Phase 6, D5 v2 + Phase C)** — `ArtifactStore` backend `db` par défaut (table `firmware_artifacts`, upsert par device — tiers sqlite tout-en-un / postgres pods stateless), `local` supprimé ; S3 = tier industriel **implémenté** (opendal, e2e RustFS) ; pas de rétention (D6 clos — artefacts conservés pour re-flash) | ✅ 6 |
 | CoolProp in-process (5 points d'injection) | **service FastAPI externe conservé**, appelé par host fn WASM + validation catalogue | 8 |
 | Rapports matplotlib/WeasyPrint (génération planifiée) | **SUPPRIMÉ (D3)** — OpenObserve Report Server + SMTP + cron | — |
 
@@ -194,7 +194,7 @@ Les points ouverts de la première passe ont été résolus (décisions D4-D11 e
    existantes (parité `safe_eval`), WASM pour les fonctions custom multi-langages ;
    format de distribution des modules (upload, versioning, signature) à définir
    en Phase 8.
-5. ~~MinIO~~ → **D5 v2** : artefacts firmware en base par défaut
+5. **D5 v2** : artefacts firmware en base par défaut
    (`firmware_artifacts`), S3 = tier industriel derrière `ArtifactStore` ;
    **D6 clos** : pas de rétention — l'upsert par device borne le volume
    (1 artefact/device, 1–4 Mo), le binaire reste toujours re-flashable.
@@ -227,7 +227,7 @@ Les points ouverts de la première passe ont été résolus (décisions D4-D11 e
    (expressions type `safe_eval`) vont dans l'évaluateur Rust à parité stricte ;
    le WASM est pour les fonctions custom multi-langages futures. Format de
    distribution des modules WASM utilisateur (upload, versioning, signature) à définir.
-5. ~~**MinIO** pour firmware uniquement~~ **Résolu (D5 v2, Phases 6+C)** :
+5. Stockage firmware **Résolu (D5 v2, Phases 6+C)** :
    abstraction `ArtifactStore`, backends réels `db` (défaut) et `s3`
    (opendal, tier industriel), sélection `STORAGE_BACKEND` ; `local`
    (FS) supprimé.

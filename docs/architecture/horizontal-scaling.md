@@ -18,7 +18,7 @@ Tous les pods partagent :
 - `PNEX_FLOW_CLUSTER_TOKEN` : **le même** secret partout (routes internes `/internal/flow-cluster/*`, fail-closed).
 - `PNEX_FLOW_ADVERTISE_URL=http://$(POD_IP):5150` sur chaque pod worker (adresse joignable par les autres pods ; `POD_IP` via l'API downward k8s).
 - `VALKEY_URL` / `settings.valkey.url` : **obligatoire dans tous les déploiements, mono-pod compris** (D108 : baux de présence device ; sans URL le serveur refuse de démarrer). Sert aussi au bus de commandes device D107, au cache live, à la mémoire d'org et au bus caméra. Politique d'éviction : `volatile-lru` (jamais `allkeys-lru`, qui peut évincer le ZSET de présence).
-- **Stockage S3-compatible obligatoire en cluster** (`PNEX_STORAGE_BACKEND=s3`, `PNEX_S3_*` ; RustFS de référence, jamais MinIO) : un stockage `fs` local à un pod rend les artefacts firmware, médias et frames de stitch invisibles des autres pods. Le démarrage en cluster le vérifie (workstream E).
+- **Stockage S3-compatible obligatoire en cluster** (`PNEX_STORAGE_BACKEND=s3`, `PNEX_S3_*` ; RustFS de référence) : un stockage `fs` local à un pod rend les artefacts firmware, médias et frames de stitch invisibles des autres pods. Le démarrage en cluster le vérifie (workstream E).
 
 ## 2. Arrêt propre : `terminationGracePeriodSeconds ≥ 40`
 

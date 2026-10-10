@@ -269,7 +269,7 @@ Changer de modèle = réindexation (détectée via `embed_model`). La dimension 
 
 Corrections apportées à la v0.1 à l'intégration :
 
-1. **MinIO → MediaStore** (fs / S3 RustFS) : MinIO est banni (licence).
+1. **Stockage → MediaStore** (fs / S3 RustFS, D21).
 2. **Pas de table `document`** : le fichier est un média (D21), comme dans
    `geo-layers.md` L2 ; l'index s'accroche à `media_versions` (`media_text_index`,
    `media_text_chunks`). Évite aussi la collision avec la table `docs` de

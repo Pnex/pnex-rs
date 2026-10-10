@@ -97,7 +97,7 @@ sans stack Python côté plateforme. Les capacités sont exposées comme
 - Où tourne l'inférence vidéo : sur le serveur central, sur un nœud edge
   dédié, ou sur les deux selon la charge ?
 - Où stocker et versionner les modèles (**RustFS** — le S3-compatible de
-  référence du projet, MinIO étant banni — ou Postgres) ? L'école
+  référence du projet — ou Postgres) ? L'école
   `media_assets` (média D21) est candidate pour le registre de modèles.
 - Quel est le besoin réel de fine-tuning sur des données client ? (le
   « Model Lab » de la roadmap — fabrication de modèles — démarre par le
