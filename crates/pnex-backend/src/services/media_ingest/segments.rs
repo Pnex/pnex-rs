@@ -81,6 +81,41 @@ pub async fn write(
     }
 }
 
+/// Marks the segment `queued` and enqueues its transcription (D166). A
+/// failed enqueue leaves it `captured` (visible, replayable).
+pub async fn enqueue(ctx: &loco_rs::app::AppContext, seg: &media_segments::Model) {
+    use crate::workers::transcribe_segment::{TranscribeSegmentArgs, TranscribeSegmentWorker};
+    use loco_rs::bgworker::BackgroundWorker;
+    use sea_orm::sea_query::Expr;
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+    let queued = media_segments::Entity::update_many()
+        .col_expr(
+            media_segments::Column::State,
+            Expr::value(SegmentState::Queued.wire()),
+        )
+        .filter(media_segments::Column::Id.eq(seg.id))
+        .exec(&ctx.db)
+        .await;
+    if queued.is_err() {
+        return;
+    }
+    let args = TranscribeSegmentArgs {
+        segment_id: seg.id,
+        org_id: seg.org_id,
+    };
+    if let Err(e) = TranscribeSegmentWorker::perform_later(ctx, args).await {
+        tracing::warn!(segment = %seg.id, error = %e, "transcription not enqueued");
+        let _ = media_segments::Entity::update_many()
+            .col_expr(
+                media_segments::Column::State,
+                Expr::value(SegmentState::Captured.wire()),
+            )
+            .filter(media_segments::Column::Id.eq(seg.id))
+            .exec(&ctx.db)
+            .await;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

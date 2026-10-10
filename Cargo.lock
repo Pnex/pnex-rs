@@ -7897,7 +7897,10 @@ dependencies = [
 name = "pnex-asr"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "hound",
+ "serde",
+ "serde_json",
  "sherpa-onnx",
  "thiserror 2.0.21",
  "whisper-rs",
@@ -7911,9 +7914,11 @@ dependencies = [
  "axum",
  "axum-test",
  "base64 0.22.1",
+ "bzip2 0.5.2",
  "chacha20poly1305",
  "chrono",
  "ed25519-dalek",
+ "flate2",
  "form_urlencoded",
  "futures-util",
  "if-addrs",
@@ -7925,6 +7930,7 @@ dependencies = [
  "opendal",
  "percent-encoding",
  "pnex-api-contract",
+ "pnex-asr",
  "pnex-coolprop",
  "pnex-core",
  "pnex-firmware-builder",
@@ -7948,6 +7954,7 @@ dependencies = [
  "sha2 0.10.9",
  "snap",
  "subtle",
+ "tar",
  "tempfile",
  "thiserror 2.0.21",
  "time",
@@ -7956,6 +7963,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "zip",
 ]
 
 [[package]]

@@ -3,7 +3,7 @@ name = "pnex-asr"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "PNeX speech-to-text — Transcriber trait and runtime adapters (media-ingest.md D167, lot 0 POC)"
+description = "PNeX speech-to-text — Transcriber trait, runtime adapters and the pnex-asr process (media-ingest.md D166–D167)"
 
 # Both runtimes link native code (prebuilt sherpa-onnx, whisper.cpp built by
 # cmake): opt-in features, so a plain workspace build stays pure Rust.
@@ -18,5 +18,8 @@ whisper-vulkan = ["whisper", "whisper-rs/vulkan"]
 [dependencies]
 thiserror = { workspace = true }
 hound = "3.5"
+serde = { workspace = true }
+serde_json = { workspace = true }
+base64 = "0.22"
 sherpa-onnx = { version = "1.13.8", optional = true, default-features = false }
 whisper-rs = { version = "0.16", optional = true }

@@ -312,6 +312,7 @@ async fn vision_model_violations(
         };
         let model = ml_models::Entity::find_by_id(id)
             .filter(ml_models::Column::OrgId.eq(org_id))
+            .filter(ml_models::Column::Task.eq(crate::services::vision::VISION_TASK))
             .one(db)
             .await
             .map_err(|_| Error::InternalServerError)?;

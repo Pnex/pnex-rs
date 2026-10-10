@@ -407,6 +407,15 @@ pub const ASR_PROFILE_NOT_FOUND: &str = "asr-profile-not-found";
 /// An ASR profile of the org already has this name.
 pub const ASR_PROFILE_NAME_TAKEN: &str = "asr-profile-name-taken";
 
+/// Audio model not found (or not in the org).
+pub const ASR_MODEL_NOT_FOUND: &str = "asr-model-not-found";
+/// A model of the org already has this name.
+pub const ASR_MODEL_NAME_TAKEN: &str = "asr-model-name-taken";
+/// The file is not a supported audio model.
+pub const ASR_MODEL_UNSUPPORTED: &str = "asr-model-unsupported";
+/// Transcription search failed on OpenObserve.
+pub const MEDIA_TRANSCRIPTS_UNAVAILABLE: &str = "media-transcripts-unavailable";
+
 // ── Registered codes ─────────────────────────────────────────────────────
 
 /// All registered codes. A code not listed here falls back to the verbatim
@@ -624,6 +633,10 @@ pub const ALL: &[&str] = &[
     MEDIA_CAPTURE_UNSUPPORTED,
     ASR_PROFILE_NOT_FOUND,
     ASR_PROFILE_NAME_TAKEN,
+    ASR_MODEL_NOT_FOUND,
+    ASR_MODEL_NAME_TAKEN,
+    ASR_MODEL_UNSUPPORTED,
+    MEDIA_TRANSCRIPTS_UNAVAILABLE,
 ];
 
 /// True when the code is registered (translatable through `err-<kebab>`).

@@ -90,6 +90,7 @@ pnex-node-http-fetch = { path = "crates/pnex-node-http-fetch" }
 pnex-node-camera = { path = "crates/pnex-node-camera" }
 pnex-node-events = { path = "crates/pnex-node-events" }
 pnex-vision = { path = "crates/pnex-vision" }
+pnex-asr = { path = "crates/pnex-asr" }
 pnex-node-vision = { path = "crates/pnex-node-vision" }
 pnex-node-memory = { path = "crates/pnex-node-memory" }
 pnex-node-predict = { path = "crates/pnex-node-predict" }

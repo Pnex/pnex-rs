@@ -527,12 +527,15 @@ async fn store_cut(
         wav: cut.wav,
     };
     *seq += 1;
-    segments::write(&ctx.db, store, stream, seg)
+    let row = segments::write(&ctx.db, store, stream, seg)
         .await
         .map_err(|e| {
             tracing::warn!(stream = %stream.slug, error = %e, "media segment not stored");
             CaptureError::StoreFailed
         })?;
+    if stream.asr_profile_id.is_some() {
+        segments::enqueue(ctx, &row).await;
+    }
     Ok(())
 }
 

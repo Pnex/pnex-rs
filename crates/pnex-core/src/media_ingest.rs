@@ -441,6 +441,84 @@ pub struct AsrProfileInput {
     pub word_timestamps: Option<bool>,
 }
 
+/// Check of an audio model on the server (D167): load + transcription of
+/// the reference sample.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct AsrModelCheck {
+    /// `unchecked` | `valid` | `invalid` (same values as vision).
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load_ms: Option<u64>,
+    /// Inference time / audio time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rtf: Option<f64>,
+    /// Word error rate on the French reference sample.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wer: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checked_at: Option<String>,
+}
+
+impl AsrModelCheck {
+    /// Real-time streams one process sustains (`≈ 1 / rtf`).
+    pub fn streams(&self) -> Option<f64> {
+        self.rtf.filter(|r| *r > 0.0).map(|r| 1.0 / r)
+    }
+}
+
+/// Audio model of the registry (D167): a `model` media asset (archive or
+/// GGML file) read by the `pnex-asr` runtime.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AsrModel {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// Read from the files (`parakeet_tdt`, `canary`, `whisper`,
+    /// `whisper_ggml`), never typed.
+    pub family: String,
+    pub asset_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asset_version: Option<i64>,
+    /// SPDX identifier stated at import.
+    pub license: String,
+    pub check: AsrModelCheck,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Create / update body of an audio model; absent fields keep their value.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct AsrModelInput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asset_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asset_version: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub license: Option<String>,
+}
+
+/// Licenses offered at import (SPDX). Non-commercial ones are flagged.
+pub const ASR_LICENSES: [&str; 6] = [
+    "Apache-2.0",
+    "MIT",
+    "CC-BY-4.0",
+    "CC-BY-SA-4.0",
+    "CC-BY-NC-4.0",
+    "other",
+];
+
+/// A license that forbids commercial use.
+pub fn license_is_non_commercial(spdx: &str) -> bool {
+    spdx.contains("-NC")
+}
+
 /// True for `auto` or a two/three-letter lowercase language code.
 pub fn is_valid_language(s: &str) -> bool {
     s == "auto" || ((2..=3).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_lowercase()))

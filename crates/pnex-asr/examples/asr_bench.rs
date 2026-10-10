@@ -66,6 +66,7 @@ fn parse_args() -> Args {
     a
 }
 
+#[allow(unused_variables)] // a build without runtimes uses none of them
 fn load(spec: &str, a: &Args) -> Result<Box<dyn Transcriber>, String> {
     let (runtime, rest) = spec.split_once(':').ok_or("model spec: runtime:…")?;
     match runtime {
