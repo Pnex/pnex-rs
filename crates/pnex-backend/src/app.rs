@@ -266,6 +266,11 @@ impl Hooks for App {
         queue
             .register(crate::workers::transcribe_segment::TranscribeSegmentWorker::build(ctx))
             .await?;
+        queue
+            .register(crate::workers::check_asr_model::CheckAsrModelWorker::build(
+                ctx,
+            ))
+            .await?;
         // Capture of `capture_on = worker` streams on a mesh worker (D160),
         // opt-in by PNEX_MEDIA_CAPTURE_WORKER.
         crate::services::media_ingest::capture::spawn_worker_supervisor(ctx);

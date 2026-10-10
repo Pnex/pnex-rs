@@ -39,6 +39,7 @@ pub mod media_assets;
 pub mod media_segments;
 pub mod media_streams;
 pub mod media_versions;
+pub mod ml_model_checks;
 pub mod ml_models;
 pub mod notify_channels;
 pub mod notify_templates;

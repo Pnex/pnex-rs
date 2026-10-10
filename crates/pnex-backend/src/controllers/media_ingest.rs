@@ -624,10 +624,25 @@ fn model_error(e: ModelError) -> Result<Response> {
     }
 }
 
+/// One model with its per-carrier checks.
+async fn model_view(
+    ctx: &AppContext,
+    row: &crate::models::_entities::ml_models::Model,
+    status: StatusCode,
+) -> Result<Response> {
+    match models::views(&ctx.db, std::slice::from_ref(row)).await {
+        Ok(mut v) => Ok((status, format::json(v.remove(0))).into_response()),
+        Err(e) => db_error(e),
+    }
+}
+
 /// `GET /api/v1/asr/models` — every member.
 async fn model_list(State(ctx): State<AppContext>, org: OrgContext) -> Result<Response> {
     match models::list(&ctx.db, org.org.id).await {
-        Ok(rows) => format::json(rows.iter().map(models::view).collect::<Vec<_>>()),
+        Ok(rows) => match models::views(&ctx.db, &rows).await {
+            Ok(v) => format::json(v),
+            Err(e) => db_error(e),
+        },
         Err(e) => db_error(e),
     }
 }
@@ -639,7 +654,7 @@ async fn model_get(
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
     match models::find(&ctx.db, org.org.id, id).await {
-        Ok(row) => format::json(models::view(&row)),
+        Ok(row) => model_view(&ctx, &row, StatusCode::OK).await,
         Err(e) => model_error(e),
     }
 }
@@ -653,7 +668,7 @@ async fn model_create(
 ) -> Result<Response> {
     require_write(&org)?;
     match models::create(&ctx, org.org.id, &input).await {
-        Ok(row) => Ok((StatusCode::CREATED, format::json(models::view(&row))).into_response()),
+        Ok(row) => model_view(&ctx, &row, StatusCode::CREATED).await,
         Err(e) => model_error(e),
     }
 }
@@ -668,7 +683,7 @@ async fn model_update(
 ) -> Result<Response> {
     require_write(&org)?;
     match models::update(&ctx, org.org.id, id, &input).await {
-        Ok(row) => format::json(models::view(&row)),
+        Ok(row) => model_view(&ctx, &row, StatusCode::OK).await,
         Err(e) => model_error(e),
     }
 }
@@ -699,7 +714,7 @@ async fn model_check(
         Err(e) => return model_error(e),
     };
     match models::run_check(&ctx, row).await {
-        Ok(row) => format::json(models::view(&row)),
+        Ok(row) => model_view(&ctx, &row, StatusCode::OK).await,
         Err(e) => model_error(e),
     }
 }

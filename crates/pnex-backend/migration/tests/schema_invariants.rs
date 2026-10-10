@@ -76,6 +76,7 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
         "media_streams",
         "media_segments",
         "asr_profiles",
+        "ml_model_checks",
     ] {
         assert_eq!(
             nullable_of(&db, t, "org_id").await,
@@ -125,6 +126,9 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
         ("media_segments", "org_id"),
         ("media_segments", "stream_id"),
         ("asr_profiles", "org_id"),
+        // D167: a per-carrier check follows its model.
+        ("ml_model_checks", "org_id"),
+        ("ml_model_checks", "model_id"),
     ] {
         assert_eq!(
             fk_del_type(&db, t, col).await,

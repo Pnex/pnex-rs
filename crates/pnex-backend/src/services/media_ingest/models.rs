@@ -72,9 +72,104 @@ pub fn view(m: &ml_models::Model) -> AsrModel {
             wer: meta_f64(m, "wer"),
             checked_at: m.checked_at.map(|t| t.to_rfc3339()),
         },
+        carriers: Vec::new(),
         created_at: m.created_at.to_rfc3339(),
         updated_at: m.updated_at.to_rfc3339(),
     }
+}
+
+/// [`view`] with the per-carrier checks of the models (one query).
+pub async fn views<C: ConnectionTrait>(
+    db: &C,
+    rows: &[ml_models::Model],
+) -> Result<Vec<AsrModel>, DbErr> {
+    use crate::models::_entities::ml_model_checks;
+    let ids: Vec<Uuid> = rows.iter().map(|m| m.id).collect();
+    let checks = ml_model_checks::Entity::find()
+        .filter(ml_model_checks::Column::ModelId.is_in(ids))
+        .order_by_asc(ml_model_checks::Column::Carrier)
+        .all(db)
+        .await?;
+    Ok(rows
+        .iter()
+        .map(|m| {
+            let mut v = view(m);
+            v.carriers = checks
+                .iter()
+                .filter(|c| c.model_id == m.id)
+                .map(|c| pnex_core::media_ingest::AsrCarrierCheck {
+                    carrier: c.carrier.clone(),
+                    check: AsrModelCheck {
+                        status: c.check_status.clone(),
+                        error: c.check_error.clone(),
+                        load_ms: c.load_ms.map(|v| v as u64),
+                        rtf: c.rtf,
+                        wer: c.wer,
+                        checked_at: Some(c.checked_at.to_rfc3339()),
+                    },
+                })
+                .collect();
+            v
+        })
+        .collect())
+}
+
+/// Stores the outcome of a check run on `carrier` (insert or replace).
+pub async fn save_carrier_check<C: ConnectionTrait>(
+    db: &C,
+    model: &ml_models::Model,
+    carrier: &str,
+    report: &Result<asr::CheckReport, AsrError>,
+) -> Result<(), DbErr> {
+    use crate::models::_entities::ml_model_checks;
+    use sea_orm::sea_query::OnConflict;
+    let (status, error, load_ms, rtf, wer) = match report {
+        Ok(r) => (
+            ModelCheckStatus::Valid,
+            None,
+            Some(r.load_ms as i64),
+            Some(r.rtf),
+            Some(r.wer),
+        ),
+        Err(e) => (
+            ModelCheckStatus::Invalid,
+            Some(e.to_string()),
+            None,
+            None,
+            None,
+        ),
+    };
+    let row = ml_model_checks::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        org_id: Set(model.org_id),
+        model_id: Set(model.id),
+        carrier: Set(carrier.chars().take(64).collect()),
+        check_status: Set(status.wire().into()),
+        check_error: Set(error),
+        load_ms: Set(load_ms),
+        rtf: Set(rtf),
+        wer: Set(wer),
+        checked_at: Set(chrono::Utc::now().into()),
+    };
+    ml_model_checks::Entity::insert(row)
+        .on_conflict(
+            OnConflict::columns([
+                ml_model_checks::Column::ModelId,
+                ml_model_checks::Column::Carrier,
+            ])
+            .update_columns([
+                ml_model_checks::Column::CheckStatus,
+                ml_model_checks::Column::CheckError,
+                ml_model_checks::Column::LoadMs,
+                ml_model_checks::Column::Rtf,
+                ml_model_checks::Column::Wer,
+                ml_model_checks::Column::CheckedAt,
+            ])
+            .to_owned(),
+        )
+        .exec(db)
+        .await?;
+    Ok(())
 }
 
 pub async fn list<C: ConnectionTrait>(db: &C, org_id: i64) -> Result<Vec<ml_models::Model>, DbErr> {
@@ -193,7 +288,20 @@ pub async fn run_check(
     }
     am.audio_meta = Set(Some(meta));
     am.checked_at = Set(Some(now));
-    Ok(am.update(&ctx.db).await?)
+    let row = am.update(&ctx.db).await?;
+    // A dedicated transcription queue: check where the model will run too.
+    if !super::asr_queue_tags().is_empty() {
+        use crate::workers::check_asr_model::{CheckAsrModelArgs, CheckAsrModelWorker};
+        use loco_rs::bgworker::BackgroundWorker;
+        let args = CheckAsrModelArgs {
+            model_id: row.id,
+            org_id: row.org_id,
+        };
+        if let Err(e) = CheckAsrModelWorker::perform_later(ctx, args).await {
+            tracing::warn!(model = %row.id, error = %e, "worker model check not enqueued");
+        }
+    }
+    Ok(row)
 }
 
 pub async fn create(

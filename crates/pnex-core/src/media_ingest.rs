@@ -488,6 +488,14 @@ impl AsrModelCheck {
     }
 }
 
+/// Check of a model on one carrier (`worker:<host>` or a name set by the
+/// platform).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AsrCarrierCheck {
+    pub carrier: String,
+    pub check: AsrModelCheck,
+}
+
 /// Audio model of the registry (D167): a `model` media asset (archive or
 /// GGML file) read by the `pnex-asr` runtime.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -504,7 +512,12 @@ pub struct AsrModel {
     pub asset_version: Option<i64>,
     /// SPDX identifier stated at import.
     pub license: String,
+    /// Check on the server (where `ml_models.check_status` comes from).
     pub check: AsrModelCheck,
+    /// Checks on the dedicated transcription workers (D167), one per
+    /// carrier.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub carriers: Vec<AsrCarrierCheck>,
     pub created_at: String,
     pub updated_at: String,
 }

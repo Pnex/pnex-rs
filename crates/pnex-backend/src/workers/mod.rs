@@ -3,6 +3,7 @@
 //! par `loco start --server-and-worker` (même binaire, flag différent).
 
 pub mod build_firmware;
+pub mod check_asr_model;
 pub mod firmware_check;
 pub mod stitch_panorama;
 pub mod transcribe_segment;

@@ -36,6 +36,7 @@ pub use super::media_assets::Entity as MediaAssets;
 pub use super::media_segments::Entity as MediaSegments;
 pub use super::media_streams::Entity as MediaStreams;
 pub use super::media_versions::Entity as MediaVersions;
+pub use super::ml_model_checks::Entity as MlModelChecks;
 pub use super::ml_models::Entity as MlModels;
 pub use super::openobserve_orgs::Entity as OpenobserveOrgs;
 pub use super::org_device_cas::Entity as OrgDeviceCas;
