@@ -276,7 +276,7 @@ On **réutilise** le registre existant au lieu de créer des tables
 `model` / `model_version` :
 
 - les octets ONNX sont une **nouvelle version** du média `kind=model`
-  (D21 : versioning, stockage fs/S3 **RustFS** — MinIO est banni —,
+  (D21 : versioning, stockage fs/S3 **RustFS**,
   purge) ; `ml_models` porte la spec d'inférence (labels, taille,
   seuils) et peut épingler une version (D81) ;
 - nouvelles tables append-only (école `flow_versions`, D18) :
@@ -519,8 +519,8 @@ M0 (lot 1 livré) ; ontologie L4 (D182 plages, D187 rapports) pour M5.
 
 Corrections apportées à la v0.1 après lecture de la doc existante :
 
-1. **MinIO → RustFS** : MinIO est banni (licence) ; le stockage passe
-   par la bibliothèque média D21 (fs ou S3 RustFS).
+1. **Stockage** : le stockage passe par la bibliothèque média D21
+   (fs ou S3 RustFS).
 2. **`ort` → tract** : l'inférence YOLOX tourne déjà avec tract dans
    `pnex-vision` (D82) ; `ort` n'est qu'un repli (Q2).
 3. **Nœuds** : `media.source` / `vision.detect` renommés selon les kinds

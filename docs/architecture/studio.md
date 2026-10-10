@@ -11,7 +11,7 @@
 > `inventory.md` (D2 org-tenant, D14 pagination). Contraintes transverses :
 > Dioxus **CSR pur**, endpoints **additifs** — ne jamais bumper
 > `pnex_api_contract::CONTRACT`, octets **jamais en base** (MediaStore
-> fs/RustFS — MinIO banni).
+> fs/RustFS).
 
 ## 0. Décisions (espace Sx — la numérotation D est partagée avec
 `viz-bases.md` de la branche non fusionnée `worktree-viz-concept`, on ne

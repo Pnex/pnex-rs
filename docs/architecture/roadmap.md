@@ -493,7 +493,7 @@ capabilities sur la queue PG existante ; **un seul** archetype distant
 single-use + enregistrement par capabilities ; lease/heartbeat/reaper ;
 360 et firmware repliés dans la fabric **sans changement fonctionnel**.
 Plancher GPU = **Vulkan** (Brush/wgpu), CUDA jamais un gate ; split des
-plans ⇒ un endpoint S3 (RustFS par défaut, jamais MinIO, jamais une
+plans ⇒ un endpoint S3 (RustFS par défaut, jamais une
 dépendance dure) ; all-in-one = FS + DB locaux. La progression live
 (SSIM/steps) passe par O2, pas par la queue. Débloque la feature Gaussian
 Splatting et les jobs GPU du pilier ML/Vision (P2.3). v2 (générateur de
@@ -788,8 +788,8 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   ffmpeg/gstreamer (décodage, seule dépendance native). Capacités
   exposées en **nœuds natifs du moteur de flows** (schéma pnex-core).
   Détail : `ml-vision.md` (4 étapes : POC YOLOX ONNX → pipeline RTSP →
-  nœuds augurs → linfa + registre). MinIO rappelé banni : stockage
-  modèles = RustFS ou Postgres.
+  nœuds augurs → linfa + registre). Stockage des modèles = RustFS
+  ou Postgres.
 - **2026-09-25 (fabric de workers)** — Ajout du PRD `worker-fabric.md`
   (proposé) : un seul runtime worker, routage par capabilities,
   enregistrement join-by-token façon runner GitLab CI, polling sortant,
@@ -883,7 +883,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   l'intégration (D148–D158 déjà pris par `security-tiers.md`).
 - **2026-10-10 (Media & Vision Studio)** — PRD proposé, rien
   d'implémenté : P2.15 (`media-vision-studio.md`, décision #18), relu
-  contre la doc (RustFS au lieu de MinIO, tract, kinds existants, LLM
+  contre la doc (stockage RustFS, tract, kinds existants, LLM
   d'org D119, conflits D173/D174 et gel 0.2.0 signalés).
 - **2026-10-10 (PostgreSQL seul)** — Décision #19 : SQLite abandonné,
   PostgreSQL obligatoire ; plus aucune parité à écrire dans les nouveaux
@@ -896,7 +896,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   d'implémenté : P2.16 couches géographiques + fournisseurs géo
   (`geo-layers.md`, décision #20), P2.17 pages collaboratives
   (`pages.md`, #21), P2.18 documents & recherche IA (`doc-search.md`,
-  #22 ; MinIO → MediaStore, pas de table `document`, pas de LLM
+  #22 ; stockage = MediaStore, pas de table `document`, pas de LLM
   plateforme), hub de kits gelé jusqu'à la 0.2.0 en P3 (`hub.md`, #23 ;
   pas de WASM ni de Python dans la stack, UI = interface utilisateur).
   Numéros D attribués à la validation, après la réserve D192+ de
@@ -914,5 +914,4 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   (D177 amendé, Q1 tranchée), interface graphe unique (CTE + SQL/PGQ),
   API bornée à 4 sauts et illimité en interne, PostgreSQL 19 visé pour la
   0.2.0, vue graphe au L4, Apache AGE en réserve (P3), alternatives
-  écartées (Neo4j, SurrealDB, XTDB), positionnement 0.2.0. « MinIO »
-  corrigé en MediaStore.
+  écartées (Neo4j, SurrealDB, XTDB), positionnement 0.2.0.
