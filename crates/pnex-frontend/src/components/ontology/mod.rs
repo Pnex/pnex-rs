@@ -89,6 +89,9 @@ pub fn TypeIcon(icon: String, class: Option<String>) -> Element {
         "layers" => rsx! {
             icons::Layers { class: c }
         },
+        "book" => rsx! {
+            icons::BookOpen { class: c }
+        },
         "tag" => rsx! {
             icons::Tag { class: c }
         },
@@ -113,7 +116,7 @@ pub fn TypeIcon(icon: String, class: Option<String>) -> Element {
 /// Icon names offered by the type editor.
 pub const ICON_NAMES: &[&str] = &[
     "cube", "map-pin", "building", "workflow", "cog", "droplet", "cpu", "user", "folder", "image",
-    "layers", "tag", "radio", "camera", "server", "globe",
+    "layers", "tag", "radio", "camera", "server", "globe", "book",
 ];
 
 /// Icon of a system type key.
@@ -125,6 +128,7 @@ pub fn system_icon(key: &str) -> &'static str {
         "dashboard" => "layers",
         "tour" => "camera",
         "flow" => "workflow",
+        "doc" => "book",
         "folder" => "folder",
         _ => "cube",
     }

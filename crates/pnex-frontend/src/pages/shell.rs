@@ -213,6 +213,17 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
             // Groupe « Visualisation » : Quick charts + Tableaux de bord +
             // Carte (les trois vues de télémétrie).
             NavVizGroup { on_navigate, rail }
+            // Collaborative pages (pages.md #21).
+            Link {
+                to: Route::Docs { id: String::new() },
+                class: nav_class(matches!(route, Route::Docs { .. }), rail),
+                title: t!("nav-docs"),
+                onclick: close_drawer,
+                crate::components::icons::BookOpen { class: "h-5 w-5" }
+                if !rail {
+                    span { {t!("nav-docs")} }
+                }
+            }
             // Groupe « Data » : Library (médias + futurs documents / base de
             // connaissances agent) + Tour studio + futur Plan (placeholder
             // « bientôt », aucune route).

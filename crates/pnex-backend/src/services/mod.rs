@@ -46,6 +46,7 @@ pub mod ontology;
 pub mod openobserve;
 pub mod ota;
 pub mod ota_signing;
+pub mod pages;
 pub mod pois;
 pub mod provisioning;
 /// Cross-pod rate limiting of unauthenticated / sensitive routes.

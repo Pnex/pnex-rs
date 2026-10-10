@@ -45,17 +45,20 @@ pub const KIND_DASHBOARD: &str = "dashboard";
 pub const KIND_TOUR: &str = "tour";
 pub const KIND_MAP_PIN: &str = "map_pin";
 pub const KIND_FLOW: &str = "flow";
+/// Collaborative page (pages.md #21).
+pub const KIND_DOC: &str = "doc";
 /// Conteneur d'organisation pur (nom + emoji), contient tous les kinds.
 pub const KIND_FOLDER: &str = "folder";
 
 /// Kinds vivants, pour `valid_kind` et l'enumération du registre.
-pub const KINDS: [&str; 7] = [
+pub const KINDS: [&str; 8] = [
     KIND_DEVICE,
     KIND_MEDIA_ASSET,
     KIND_DASHBOARD,
     KIND_TOUR,
     KIND_MAP_PIN,
     KIND_FLOW,
+    KIND_DOC,
     KIND_FOLDER,
 ];
 

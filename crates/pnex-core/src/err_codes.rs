@@ -493,6 +493,11 @@ pub const ONTOLOGY_LINK_NOT_ALLOWED: &str = "ontology-link-not-allowed";
 /// An open link already takes this place (one-to-one, or a series already bound).
 pub const ONTOLOGY_LINK_CARDINALITY: &str = "ontology-link-cardinality";
 
+// ── Pages (pages.md #21) ─────────────────────────────────────────────────
+
+/// Viewer role: pages are read-only.
+pub const DOCS_WRITE_FORBIDDEN: &str = "docs-write-forbidden";
+
 // ── Registered codes ─────────────────────────────────────────────────────
 
 /// All registered codes. A code not listed here falls back to the verbatim
@@ -749,6 +754,8 @@ pub const ALL: &[&str] = &[
     TIME_RANGE_IMPORT_TOO_LARGE,
     TIME_RANGE_IMPORT_INVALID,
     TIME_RANGE_SCOPE_UNKNOWN,
+    // Pages
+    DOCS_WRITE_FORBIDDEN,
 ];
 
 /// True when the code is registered (translatable through `err-<kebab>`).

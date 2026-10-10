@@ -14,6 +14,7 @@ mod auth;
 mod capture;
 mod capture360;
 mod components;
+mod doc_editor;
 #[cfg(not(target_arch = "wasm32"))]
 mod download;
 mod flash;
@@ -131,6 +132,9 @@ fn App() -> Element {
         script { src: asset!("/assets/viewers.js") }
         // Carte géo (D27) — maplibre-gl 4.x, style Protomaps auto-hébergé.
         script { src: asset!("/assets/map.js") }
+        // Pages editor (pages.md #21) — ProseMirror + Yjs, IIFE exposing
+        // window.pnexDoc (see doc_editor.rs).
+        script { src: asset!("/assets/doc.js") }
         style { {VIEWERS_CSS_INLINE} }
         link { rel: "stylesheet", href: asset!("/assets/viewers.css") }
         style { {MAP_CSS_INLINE} }

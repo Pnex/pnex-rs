@@ -13,6 +13,8 @@ pub mod controls;
 pub mod dashboard;
 pub mod dashboards;
 pub mod devices;
+// Pages (pages.md #21)
+pub mod docs;
 /// Référentiels Edge (WiFi / serveurs PNeX) — CRUD consommé par le wizard
 /// device et la file de build firmware.
 pub mod edge_refs;
@@ -57,6 +59,7 @@ pub use controls::Controls;
 pub use dashboard::Dashboard;
 pub use dashboards::Dashboards;
 pub use devices::Devices;
+pub use docs::Docs;
 pub use events::Events;
 pub use firmware::Firmware;
 pub use flows::Flows;
