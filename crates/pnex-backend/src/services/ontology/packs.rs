@@ -92,6 +92,21 @@ pub async fn install(
     user_id: Option<i64>,
     pack: &Pack,
 ) -> Result<PackView> {
+    // Same version already installed: nothing to do (no duplicate versions).
+    let installed = packs::Entity::find()
+        .filter(packs::Column::OrgId.eq(org_id))
+        .filter(packs::Column::Key.eq(&pack.key))
+        .one(db)
+        .await?;
+    if installed.is_some_and(|p| p.version == pack.version) {
+        return Ok(PackView {
+            key: pack.key.clone(),
+            name: pack.name.clone(),
+            version: pack.version.clone(),
+            description: pack.description.clone(),
+            installed_version: Some(pack.version.clone()),
+        });
+    }
     let s = schema(db, org_id).await?;
     check(&s, pack)?;
     let owned_by_other = |key: &str, pk: Option<&String>| {
