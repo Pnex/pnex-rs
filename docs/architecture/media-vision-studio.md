@@ -380,7 +380,7 @@ flowchart LR
   GPU["Worker GPU (fabric P2.7)<br/>VLM, LLM local, ASR large, entraînement"] -.-> TRAIN
 ```
 
-- **Cœur** : Loco (API, orchestration, queue Loco PG/SQLite) et Dioxus
+- **Cœur** : Loco (API, orchestration, queue Loco sur PostgreSQL) et Dioxus
   (UI Lab, lecteur, annotation, studio).
 - **Stockage** :
   - Postgres : config, sources, projets Lab, annotations, runs ;
