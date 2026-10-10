@@ -80,7 +80,9 @@ dans le même modèle.
 - Une base graphe dédiée : tout reste dans PostgreSQL (CTE récursives,
   JSONB).
 - Un environnement de code de type notebook ou workbook : le calcul
-  passe par les flows et les fonctions existants.
+  passe par les flows et les fonctions existants. Amendé le 2026-10-10
+  (`pages.md` P7b, décision #21) : le tableau local d'une page est admis
+  car une formule ne fait que **lire** (jamais d'écriture ni de code).
 - La fédération inter-orgs (partage d'objets entre organisations) : plus
   tard.
 - La prise de décision par l'IA : l'assistant propose, l'humain ou un
