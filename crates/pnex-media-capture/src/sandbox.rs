@@ -78,6 +78,9 @@ mod linux {
         0xC000_003E
     } else if cfg!(target_arch = "aarch64") {
         0xC000_00B7
+    } else if cfg!(target_arch = "arm") {
+        // 32-bit Raspberry Pi OS (capture boxes, lot 6b).
+        0x4000_0028
     } else {
         0
     };

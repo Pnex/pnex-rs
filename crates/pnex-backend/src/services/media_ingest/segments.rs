@@ -19,14 +19,8 @@ pub fn storage_key(org_id: i64, stream_id: Uuid, started_at: DateTime<Utc>, id: 
     )
 }
 
-/// A cut segment to store.
-pub struct NewSegment {
-    pub seq: i64,
-    pub started_at: DateTime<Utc>,
-    pub ended_at: DateTime<Utc>,
-    pub clock_source: ClockSource,
-    pub wav: Vec<u8>,
-}
+/// A cut segment to store (numbered by the capture run).
+pub use pnex_media_capture::Segment as NewSegment;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SegmentError {
@@ -79,6 +73,77 @@ pub async fn write(
             Err(e.into())
         }
     }
+}
+
+/// Byte cap of one uploaded segment of `stream`: its length + overlap +
+/// 1 s slack.
+pub fn segment_cap(stream: &media_streams::Model) -> usize {
+    let secs = (stream.segment_secs.max(0) + stream.overlap_secs.max(0) + 1) as usize;
+    44 + secs * pnex_core::media_ingest::SAMPLE_RATE as usize * 2
+}
+
+/// Why an uploaded segment was not stored.
+#[derive(Debug)]
+pub enum UploadError {
+    /// Bad times, sequence, size or not a WAV.
+    Invalid,
+    /// Store or database unavailable: the uploader may resend.
+    Unavailable,
+}
+
+/// A segment captured remotely (mesh worker, capture box) for `stream`,
+/// already resolved in the uploader's org and carrier: checked (RIFF/WAVE,
+/// size bounded by [`segment_cap`]), stored once per `(seq, started_at)`
+/// (a resend is acknowledged without a second row), then queued for
+/// transcription. `Ok(false)` = duplicate.
+pub async fn accept_upload(
+    ctx: &loco_rs::app::AppContext,
+    stream: &media_streams::Model,
+    seq: i64,
+    started_ms: i64,
+    ended_ms: i64,
+    clock_source: ClockSource,
+    wav: &[u8],
+) -> Result<bool, UploadError> {
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+    let (Some(started_at), Some(ended_at)) = (
+        DateTime::from_timestamp_millis(started_ms),
+        DateTime::from_timestamp_millis(ended_ms),
+    ) else {
+        return Err(UploadError::Invalid);
+    };
+    let wav_ok = wav.len() > 44 && &wav[0..4] == b"RIFF" && &wav[8..12] == b"WAVE";
+    if !wav_ok || seq < 0 || ended_at <= started_at || wav.len() > segment_cap(stream) {
+        return Err(UploadError::Invalid);
+    }
+    let dup = media_segments::Entity::find()
+        .filter(media_segments::Column::StreamId.eq(stream.id))
+        .filter(media_segments::Column::Seq.eq(seq))
+        .filter(media_segments::Column::StartedAt.eq(started_at))
+        .one(&ctx.db)
+        .await
+        .map_err(|_| UploadError::Unavailable)?;
+    if dup.is_some() {
+        return Ok(false);
+    }
+    let store = crate::services::media::MediaSettings::from_config(&ctx.config)
+        .store()
+        .map_err(|_| UploadError::Unavailable)?;
+    let seg = NewSegment {
+        seq,
+        started_at,
+        ended_at,
+        clock_source,
+        wav: wav.to_vec(),
+    };
+    let row = write(&ctx.db, &store, stream, seg).await.map_err(|e| {
+        tracing::warn!(stream = %stream.slug, error = %e, "uploaded media segment not stored");
+        UploadError::Unavailable
+    })?;
+    if stream.asr_profile_id.is_some() {
+        enqueue(ctx, &row, true).await;
+    }
+    Ok(true)
 }
 
 /// Queue priority of a transcription (D166): on a dedicated `asr` queue,

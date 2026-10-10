@@ -144,9 +144,9 @@ server {
 
     set $pnex_backend ${PNEX_BACKEND_UPSTREAM};
 
-    # Device links only: the control, ingest and camera sockets, and the OTA
+    # Device links only: the control, ingest, camera and media sockets, and the OTA
     # download.
-    location ~ ^/ws/(device|camera)$ {
+    location ~ ^/ws/(device|camera|media)$ {
         error_log /dev/stderr crit;
         proxy_pass http://$pnex_backend;
         proxy_buffering off;

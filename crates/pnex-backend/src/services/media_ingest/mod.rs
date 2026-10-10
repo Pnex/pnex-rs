@@ -3,6 +3,7 @@
 //!
 //! - [`capture`]: supervisor of `server` / `worker` captures (fetcher,
 //!   confined ffmpeg, segmenter), [`segments`]: segment blobs and rows;
+//! - [`boxes`]: capture boxes (`capture_on = device:<id>`, lot 6b);
 //! - [`health`]: capture metrics and the "silent stream" alert;
 //! - [`streams`] / [`profiles`]: CRUD services shared by the HTTP
 //!   controller (and later the assistant tools, D142 §9.3);
@@ -12,6 +13,7 @@
 //!   `PNEX_MEDIA_*` overrides); [`asr_queue_tags`]: queue routing (D166).
 
 pub mod asr;
+pub mod boxes;
 pub mod capture;
 pub mod health;
 pub mod metadata;

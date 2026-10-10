@@ -3,7 +3,7 @@ name = "pnex-edge-agent"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "PNeX edge agent (D95): local HTTP ingestion API, durable disk queue, encrypted uplink over /ws/device"
+description = "PNeX edge agent (D95): local HTTP ingestion API, durable disk queue, encrypted uplink over /ws/device, optional media capture box (/ws/media)"
 
 [lib]
 path = "src/lib.rs"
@@ -14,6 +14,8 @@ path = "src/main.rs"
 
 [dependencies]
 pnex-core = { workspace = true, features = ["frame-crypto"] }
+# Capture box (media-ingest.md lot 6b): the server's capture chain.
+pnex-media-capture = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }

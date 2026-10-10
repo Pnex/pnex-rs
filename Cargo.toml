@@ -36,6 +36,9 @@ members = [
     "crates/pnex-node-vision",
     # Speech-to-text (media-ingest.md D167): Transcriber trait, lot 0 POC.
     "crates/pnex-asr",
+    # Media stream capture chain (D160), shared by the backend and the edge
+    # agent's capture boxes (lot 6b).
+    "crates/pnex-media-capture",
     "crates/pnex-node-memory",
     # Predictive telemetry (augurs): anomaly + forecast flow nodes.
     "crates/pnex-node-predict",
@@ -91,6 +94,7 @@ pnex-node-camera = { path = "crates/pnex-node-camera" }
 pnex-node-events = { path = "crates/pnex-node-events" }
 pnex-vision = { path = "crates/pnex-vision" }
 pnex-asr = { path = "crates/pnex-asr" }
+pnex-media-capture = { path = "crates/pnex-media-capture" }
 pnex-node-vision = { path = "crates/pnex-node-vision" }
 pnex-node-memory = { path = "crates/pnex-node-memory" }
 pnex-node-predict = { path = "crates/pnex-node-predict" }

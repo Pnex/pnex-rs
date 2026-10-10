@@ -702,8 +702,10 @@ index `idx_<table>_<cols>`, après la base `m20261009_000001_baseline`
 - `GET /api/v1/media/transcripts` (recherche plein texte, D165).
 - `POST /internal/media/segment` (jeton de service, workers du mesh
   seulement, non routé par nginx, R7).
-- Canal device d'upload pour les boîtiers de capture (endpoint device
-  mTLS + Noise, D160) — spécifié au lot 6.
+- Canal device des boîtiers de capture : `GET /ws/media` (endpoint device
+  mTLS + Noise, D160 ; livré au lot 6b, §21) ;
+  `GET /api/v1/media/capture-devices` (boîtiers de l'org, sélecteur du
+  formulaire).
 - `GET|POST /api/v1/asr/profiles`, `PATCH|DELETE …/{id}`.
 - `ml_models` : `task`/`family` étendus ; `POST /api/v1/ml/models/{id}/test`
   accepte un audio ; `check` renvoie `rtf` + débit soutenable par porteur.
@@ -969,7 +971,8 @@ Le lot 1 avance par tranches, chacune testée et commitée seule.
 - Une référence d'une autre org (profil, canal, modèle) répond un 400 de
   champ `invalid`, comme un id inexistant, et non un 404.
 - `capture_on` accepte `server` et `worker` ; `device:<id>` attend le
-  canal d'upload device du lot 6 (`media-capture-unsupported`).
+  canal d'upload device du lot 6 (`media-capture-unsupported`) — livré au
+  lot 6b (§21).
 - Les kinds acceptés sont ceux dont la capture existe : `icecast`, `hls`,
   `http_file` ; `dash`, `rtsp`, `dvb` arrivent avec leur fetcher.
 - Horodatage icecast : `host` au premier octet reçu ; le serveur envoie
@@ -1112,3 +1115,49 @@ Non fait / écarts :
 - la page `/cameras` ne liste pas les caméras IP (enregistrements sur la page des flux, sans frise ni lecteur chaîné) ; pas d'aperçu live d'un flux ;
 - le test de flux (§7) ne vérifie que l'audio ;
 - `capture_on = device:<id>` (agent edge, `media_capture` dans l'`Announce`, canal d'upload mTLS + Noise) : lot 6b.
+
+### 6b — Boîtier de capture (`capture_on = device:<id>`, 2026-10-10)
+
+| Tranche | Contenu | État |
+|---|---|---|
+| Crate partagée | la chaîne de capture quitte le backend pour **`pnex-media-capture`** : fetcher filtré (HTTP, HLS, ICY), client RTSP, décodeur et confinement (seccomp + Landlock + rlimits ; ABI `arm` 32 bits ajoutée au filtre seccomp pour Raspberry Pi OS 32 bits), découpeur PCM, découpeur JPEG, et la boucle `run_once` générique sur un trait `Host` (segment, image, métadonnées, passage à `running`). Le backend garde la glue (superviseur, bail, base, O2, bus caméra, `Sink`) et ré-exporte les modules sous `capture::*` (chemins inchangés). Extraction **complète** : rien d'un crate « backend » n'est tiré par l'agent (ni loco, ni sea-orm, ni redis) | ✅ |
+| Lieu de capture | `capture_on = device:<id>` accepté si le device est un **agent de l'org qui a annoncé `media_capture`** (sinon 400 de champ `invalid`, comme un id inexistant : pas d'oracle) ; l'annonce de l'agent persiste désormais ses `caps` dans `announced_caps`. Un boîtier capte l'**audio seulement** (`tracks` ≠ `audio` → `tracks: invalid` : le bus caméra vit sur le Valkey du serveur). URL d'un flux de boîtier jugée sous `lan` même sur un serveur `public` (le serveur ne la lit jamais : pas de test d'URL — `media-capture-unsupported` —, pas de capture serveur). Le superviseur serveur ne scanne que `capture_on = server | worker` (filtre d'égalité, vérifié) ; l'alerte « flux muet » scanne tous les flux actifs, boîtiers compris (vérifié) | ✅ |
+| Lien `/ws/media` | admission de `/ws/camera` (edge TLS, certificat client du device, jeton, Noise NNpsk0 binaire), agents seulement (4004) ; org et device tirés de l'identité (R1). Serveur → boîtier (texte scellé) : `streams` (id, slug, kind, url, `segment_secs`, `overlap_secs`, `tracks`, `fps`, `enabled`, `auth_secret`) à la connexion puis à chaque changement (relu toutes les 15 s, secrets compris : une rotation du coffre arrive sans reconnexion), `ack` par segment. Boîtier → serveur : binaire scellé `u16 ‖ SegmentHeader JSON ‖ WAV`, texte `state` (état + code d'erreur **connu** seulement, un code inconnu est écrit vide), `PING`. Upload = mêmes contrôles que `/internal/media/segment` (factorisés dans `segments::accept_upload` : RIFF/WAVE, `segment_cap`, dédup `(stream_id, seq, started_at)`, `write` + `enqueue(live)`) ; un flux qui n'est pas `device:<ce device>` de l'org du device → `not-found` (le 404 du lien) ; débit borné à 60 segments/min par device, compteur Valkey partagé entre pods (`RateLimiter`). Fin du lien → flux actifs du boîtier en `backoff` + `device-offline` (libellé UI). Route ajoutée au bloc device de l'edge nginx | ✅ |
+| Agent | `media_capture = true` dans `config.toml` (opt-in), Linux seulement (le confinement du décodeur est Linux), ffmpeg trouvé (`PNEX_FFMPEG` ou `PATH`), `PNEX_MEDIA_CAPTURE` non coupé → l'`Announce` porte `{id: "media_capture", family: "feature"}` et le module `media` ouvre `/ws/media` (reconnexion à backoff + gigue, comme l'uplink). Une tâche par flux actif (même backoff que le serveur, `seq` amorcé sur l'horloge), relancée si sa définition change. Segments dans une file **mémoire** bornée (32 segments ≈ 16 min à 30 s), un envoi à la fois acquitté (le non-acquitté est renvoyé après reconnexion, le serveur déduplique) ; file pleine ou refus serveur = compteur `media_segments_dropped` de `GET /v1/status`. Aucun fichier durable, aucun secret de stockage ; egress du boîtier = `PNEX_EGRESS` local (`lan` par défaut : Tvheadend du LAN joignable, loopback et link-local refusés) | ✅ |
+| UI / KB | « Lieu de capture » : ce serveur, un worker, puis « Boîtier de capture : <nom> » par boîtier de l'org (`GET /api/v1/media/capture-devices`) ; ligne « Capté par <nom> » dans la liste (`MediaStream.capture_device`) ; bouton « Tester » masqué pour un flux de boîtier ; code `device-offline` traduit. Fiches `streams` (boîtiers) et `troubleshooting-stream-silent` (boîtier hors ligne = flux muet + alerte) | ✅ |
+
+**Décision : le secret du flux est remis au boîtier (SEC-27).** Le PRD dit
+« le boîtier ne détient aucun secret de **stockage** » : c'est tenu (ni clé
+RustFS, ni jeton de service, ni identifiant d'écriture : le serveur écrit
+le blob après ses propres contrôles). Le secret **d'accès à la source**
+(en-tête, identifiants Tvheadend ou RTSP) est d'une autre nature : il est
+déjà destiné à l'hôte de l'URL, que seul le boîtier atteint ; sans lui un
+flux protégé ne peut pas être capté par un boîtier. Il part donc avec la
+liste des flux, au seul boîtier désigné par le flux, sur son lien mTLS +
+Noise, jamais dans un DTO de lecture (R4, R16) ni dans un journal, et
+l'agent ne le garde qu'en mémoire. Garde R9 ajoutée : déplacer un flux qui
+porte un secret vers un boîtier est un acte owner/admin
+(`secret-destination-locked`), sinon un membre pourrait se faire livrer
+le secret par un agent qu'il contrôle. Exposition résiduelle (boîtier
+compromis) consignée en SEC-27.
+
+Non fait / non mesuré :
+
+- **Critère de sortie du lot 6 non mesuré** : la capture de 24 h sur un
+  vrai Pi + tuner TNT (Tvheadend) est une campagne opérationnelle ; rien
+  n'a tourné sur un Pi ici. Testé : le protocole `/ws/media` de bout en bout
+  côté serveur (`tests/media_box.rs` : liste, secret livré, upload accepté,
+  doublon stocké une fois, flux serveur et flux d'une autre org = `not-found`,
+  surtaille et non-WAV refusés, états filtrés, non-agent → 4004) et la
+  réconciliation des tâches côté agent (unitaire) ; **pas** de test
+  agent ↔ serveur réel avec ffmpeg, ni de build croisé `armv7`/`aarch64`
+  musl de l'agent avec la nouvelle crate ;
+- pas de vidéo ni de métadonnées en bande (ICY) depuis un boîtier ;
+- pas de test d'URL depuis le boîtier (le bouton est masqué) ;
+- `device-offline` posé par le pod qui voit tomber le lien : un boîtier
+  reconnecté entre-temps sur un autre pod reste affiché hors ligne jusqu'à
+  son prochain rapport d'état (pas de bail inter-pods du lien média) ;
+- le chart Helm de l'edge device (dépôt `pnex-deploy`) doit router
+  `/ws/media` comme le template nginx de ce dépôt ;
+- l'activation se fait dans `config.toml` du boîtier (pas d'option
+  `pnex-agent install --media-capture`).

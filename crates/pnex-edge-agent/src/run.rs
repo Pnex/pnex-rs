@@ -34,6 +34,19 @@ pub async fn run(dir: &Path, shutdown: impl Future<Output = ()> + Send + 'static
         "pnex-agent starting"
     );
 
+    // Capture box (lot 6b): announced on the uplink, own `/ws/media` link.
+    let media = crate::media::available(&cfg).map(|ffmpeg| {
+        shared.media_capture.store(true, Ordering::Relaxed);
+        tracing::info!(ffmpeg = %ffmpeg.display(), "media capture enabled");
+        tokio::spawn(crate::media::run(
+            shared.clone(),
+            cfg.clone(),
+            secrets.clone(),
+            ca.clone(),
+            ffmpeg,
+        ))
+    });
+
     // Uplink (reconnects forever).
     let uplink = tokio::spawn(crate::uplink::run(shared.clone(), cfg.clone(), secrets, ca));
 
@@ -88,6 +101,9 @@ pub async fn run(dir: &Path, shutdown: impl Future<Output = ()> + Send + 'static
     .context("local API server failed")?;
     uplink.abort();
     trimmer.abort();
+    if let Some(media) = media {
+        media.abort();
+    }
     let _ = uplink.await;
     let _ = trimmer.await;
     // Last strong handle: dropping it closes the writer channel, the writer

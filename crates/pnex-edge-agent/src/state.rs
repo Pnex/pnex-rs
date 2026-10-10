@@ -42,6 +42,12 @@ pub struct Shared {
     pub max_batch: AtomicU64,
     pub server_max_keys: AtomicU64,
     pub shutting_down: AtomicBool,
+    /// This agent is a capture box (announces `media_capture`, lot 6b).
+    pub media_capture: AtomicBool,
+    /// Media segments acknowledged by the server / dropped (queue full or
+    /// refused).
+    pub media_sent: AtomicU64,
+    pub media_dropped: AtomicU64,
     /// Keys accepted locally since start → (unit, last value kind).
     pub keys: Mutex<BTreeMap<String, Option<String>>>,
 }
@@ -62,6 +68,9 @@ impl Shared {
             max_batch: AtomicU64::new(500),
             server_max_keys: AtomicU64::new(0),
             shutting_down: AtomicBool::new(false),
+            media_capture: AtomicBool::new(false),
+            media_sent: AtomicU64::new(0),
+            media_dropped: AtomicU64::new(0),
             keys: Mutex::new(BTreeMap::new()),
         })
     }
@@ -92,6 +101,8 @@ pub struct Status {
     /// Epoch milliseconds of the last server acknowledgement (0 = never).
     pub last_ack_ms: i64,
     pub epoch: String,
+    pub media_segments_sent: u64,
+    pub media_segments_dropped: u64,
 }
 
 impl Status {
@@ -107,6 +118,8 @@ impl Status {
             acked_up_to: s.acked_up_to.load(Ordering::Relaxed),
             last_ack_ms: s.last_ack_ms.load(Ordering::Relaxed),
             epoch: s.queue.epoch().to_string(),
+            media_segments_sent: s.media_sent.load(Ordering::Relaxed),
+            media_segments_dropped: s.media_dropped.load(Ordering::Relaxed),
         }
     }
 }

@@ -80,14 +80,14 @@ pub fn tls_config(ca_pem: Option<&str>, client: (&str, &str)) -> Result<Arc<rust
     Ok(Arc::new(cfg))
 }
 
-enum End {
+pub(crate) enum End {
     /// Normal end (network, server restart…): reconnect with backoff.
     Retry(String),
     /// Credentials refused: long backoff, surfaced as `revoked`.
     Revoked(String),
 }
 
-fn close_end(code: CloseCode, reason: &str) -> End {
+pub(crate) fn close_end(code: CloseCode, reason: &str) -> End {
     let code = u16::from(code);
     match code {
         4001 | 4005 | 4007 | 4011 | 4014 => {
@@ -171,7 +171,7 @@ pub async fn run(shared: Arc<Shared>, cfg: Config, secrets: Secrets, ca_pem: Opt
     }
 }
 
-fn rand_u16() -> u16 {
+pub(crate) fn rand_u16() -> u16 {
     let n = uuid::Uuid::new_v4();
     u16::from_le_bytes([n.as_bytes()[0], n.as_bytes()[1]])
 }
@@ -239,7 +239,14 @@ async fn session(shared: &Arc<Shared>, ws: Ws, key: &[u8; 32], device_id: &str) 
         chip: pnex_core::EDGE_AGENT_CHIP.into(),
         board: target_id(),
         fw: env!("CARGO_PKG_VERSION").into(),
-        caps: None,
+        caps: shared.media_capture.load(Ordering::Relaxed).then(|| {
+            vec![pnex_core::CapDesc {
+                id: pnex_core::media_ingest::MEDIA_CAPTURE_CAP.into(),
+                family: "feature".into(),
+                unit: None,
+                version: 1,
+            }]
+        }),
         pins: None,
     };
     if let Err(e) = send_msg(&mut sink, codec, &announce).await {
@@ -398,7 +405,7 @@ mod tests {
 
 /// Upgrade request carrying the device token as `Authorization: Bearer
 /// <token>` (D154: never in the URL, so never in an access log).
-fn authorized_request(
+pub(crate) fn authorized_request(
     url: &str,
     token: &str,
 ) -> Result<tokio_tungstenite::tungstenite::handshake::client::Request, String> {

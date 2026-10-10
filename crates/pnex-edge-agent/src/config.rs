@@ -31,6 +31,11 @@ pub struct Config {
     /// Points older than this are dropped from the queue (seconds).
     #[serde(default = "default_max_age_secs")]
     pub max_age_secs: u64,
+    /// Capture box (media-ingest.md D159, lot 6b): announce `media_capture`
+    /// and capture the streams the server assigns to this agent. Linux
+    /// only, needs ffmpeg (`PNEX_FFMPEG` or `ffmpeg` in `PATH`).
+    #[serde(default)]
+    pub media_capture: bool,
 }
 
 fn default_listen() -> String {
@@ -212,6 +217,7 @@ mod tests {
             allow: vec!["192.168.1.0/24".into(), "10.0.0.7".into()],
             max_queue_points: 10,
             max_age_secs: 10,
+            media_capture: false,
         }
     }
 
@@ -237,5 +243,6 @@ mod tests {
         let c: Config = toml::from_str("server = \"https://h\"").unwrap();
         assert_eq!(c.listen, "127.0.0.1:7070");
         assert!(c.allow.is_empty());
+        assert!(!c.media_capture, "capture box is opt-in");
     }
 }

@@ -13,7 +13,7 @@
 
 use std::time::Duration;
 
-use axum::body::Bytes;
+use bytes::Bytes;
 use futures_util::StreamExt;
 use pnex_core::egress::{self, EgressPolicy};
 use reqwest::Url;
@@ -23,8 +23,8 @@ use retina::client::{
 use retina::codec::{CodecItem, FrameFormat};
 use tokio::sync::mpsc;
 
-use super::decoder::{self, InputFormat};
-use super::{CaptureError, Track};
+use crate::decoder::{self, InputFormat};
+use crate::{CaptureError, Track};
 
 const DEFAULT_PORT: u16 = 554;
 /// DNS, DESCRIBE, SETUP and PLAY each get this long.

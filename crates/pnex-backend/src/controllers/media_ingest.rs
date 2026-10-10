@@ -34,6 +34,7 @@ pub fn routes() -> Routes {
             get(stream_get).patch(stream_update).delete(stream_delete),
         )
         .add("/media/streams/{id}/test", post(stream_test))
+        .add("/media/capture-devices", get(capture_device_list))
         .add("/media/streams/{id}/segments", get(segment_list))
         .add("/media/streams/{id}/segments/retry", post(segment_retry))
         .add("/media/transcripts", get(transcript_search))
@@ -79,12 +80,6 @@ pub struct SegmentUpload {
     clock: String,
 }
 
-/// Byte cap of one segment of `stream`: its length + overlap + 1 s slack.
-fn segment_cap(stream: &crate::models::_entities::media_streams::Model) -> usize {
-    let secs = (stream.segment_secs.max(0) + stream.overlap_secs.max(0) + 1) as usize;
-    44 + secs * pnex_core::media_ingest::SAMPLE_RATE as usize * 2
-}
-
 /// `POST /internal/media/segment` — a WAV segment captured by a mesh
 /// worker. The stream must belong to `org_id` and be captured by a worker;
 /// a re-sent `seq` is acknowledged without a second row.
@@ -95,7 +90,7 @@ async fn internal_segment(
     body: axum::body::Bytes,
 ) -> Result<Response> {
     use crate::models::_entities::media_streams;
-    use crate::services::media_ingest::segments::{self, NewSegment};
+    use crate::services::media_ingest::segments::{self, UploadError};
     use pnex_core::media_ingest::{CaptureOn, ClockSource};
     if !crate::controllers::internal_flow::flow_token_ok(&ctx, &headers) {
         return Ok(StatusCode::UNAUTHORIZED.into_response());
@@ -111,48 +106,16 @@ async fn internal_segment(
         Ok(None) => return Ok(StatusCode::NOT_FOUND.into_response()),
         Err(e) => return db_error(e),
     };
-    let started = chrono::DateTime::from_timestamp_millis(q.started_ms);
-    let ended = chrono::DateTime::from_timestamp_millis(q.ended_ms);
-    let clock = ClockSource::from_wire(&q.clock);
-    let (Some(started_at), Some(ended_at), Some(clock_source)) = (started, ended, clock) else {
+    let Some(clock) = ClockSource::from_wire(&q.clock) else {
         return field("segment", err_codes::FIELD_INVALID);
     };
-    let wav_ok = body.len() > 44 && &body[0..4] == b"RIFF" && &body[8..12] == b"WAVE";
-    if !wav_ok || q.seq < 0 || ended_at <= started_at || body.len() > segment_cap(&stream) {
-        return field("segment", err_codes::FIELD_INVALID);
+    match segments::accept_upload(&ctx, &stream, q.seq, q.started_ms, q.ended_ms, clock, &body)
+        .await
+    {
+        Ok(_) => Ok(StatusCode::NO_CONTENT.into_response()),
+        Err(UploadError::Invalid) => field("segment", err_codes::FIELD_INVALID),
+        Err(UploadError::Unavailable) => Ok(StatusCode::SERVICE_UNAVAILABLE.into_response()),
     }
-    let dup = media_segments::Entity::find()
-        .filter(media_segments::Column::StreamId.eq(stream.id))
-        .filter(media_segments::Column::Seq.eq(q.seq))
-        .filter(media_segments::Column::StartedAt.eq(started_at))
-        .one(&ctx.db)
-        .await;
-    match dup {
-        Ok(Some(_)) => return Ok(StatusCode::NO_CONTENT.into_response()),
-        Ok(None) => {}
-        Err(e) => return db_error(e),
-    }
-    let Ok(store) = crate::services::media::MediaSettings::from_config(&ctx.config).store() else {
-        return Ok(StatusCode::SERVICE_UNAVAILABLE.into_response());
-    };
-    let seg = NewSegment {
-        seq: q.seq,
-        started_at,
-        ended_at,
-        clock_source,
-        wav: body.to_vec(),
-    };
-    let row = match segments::write(&ctx.db, &store, &stream, seg).await {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!(stream = %stream.slug, error = %e, "uploaded media segment not stored");
-            return Ok(StatusCode::SERVICE_UNAVAILABLE.into_response());
-        }
-    };
-    if stream.asr_profile_id.is_some() {
-        segments::enqueue(&ctx, &row, true).await;
-    }
-    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 /// Upload cap of a model test clip (a few minutes of compressed audio).
@@ -291,7 +254,7 @@ fn stream_error(e: StreamError) -> Result<Response> {
         StreamError::CaptureUnsupported => Err(detail(
             StatusCode::BAD_REQUEST,
             err_codes::MEDIA_CAPTURE_UNSUPPORTED,
-            "Capture carrier not available yet.",
+            "This action is not available for this capture location.",
         )),
         StreamError::AsrModelInvalid => Err(detail(
             StatusCode::CONFLICT,
@@ -376,6 +339,16 @@ async fn stream_list(
         count,
         results,
     ))
+}
+
+/// `GET /api/v1/media/capture-devices` — every member: the org's capture
+/// boxes (agents that announced `media_capture`, lot 6b), for the
+/// "capture location" picker. Names and ids only (R4).
+async fn capture_device_list(State(ctx): State<AppContext>, org: OrgContext) -> Result<Response> {
+    match crate::services::media_ingest::boxes::list(&ctx.db, org.org.id).await {
+        Ok(v) => format::json(v),
+        Err(e) => db_error(e),
+    }
 }
 
 /// `GET /api/v1/media/streams/{id}` — every member.
@@ -483,6 +456,10 @@ async fn stream_test(
         Ok(s) => s,
         Err(e) => return stream_error(e),
     };
+    // The test runs on the server: it cannot reach what a capture box sees.
+    if stream.capture_on.starts_with("device:") {
+        return stream_error(StreamError::CaptureUnsupported);
+    }
     let seg = match capture::probe(&ctx, &stream, STREAM_TEST_LIMIT).await {
         Ok(seg) => seg,
         Err(e) => {

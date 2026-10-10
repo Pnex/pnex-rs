@@ -291,6 +291,7 @@ pub(super) fn capture_error_label(code: &str) -> String {
         "decoder-missing" => t!("streams-error-decoder-missing").to_string(),
         "secret-unreadable" => t!("streams-error-secret-unreadable").to_string(),
         "store-failed" => t!("streams-error-store-failed").to_string(),
+        "device-offline" => t!("streams-error-device-offline").to_string(),
         other => other.to_string(),
     }
 }
@@ -367,6 +368,7 @@ fn StreamRow(
     let s_recordings = stream.clone();
     let has_video = stream.tracks.has_video();
     let s_test = stream.clone();
+    let on_box = stream.capture_on.starts_with("device:");
     let health_line = stream.health.as_ref().map(|h| {
         let gap = short_duration(h.gap_secs);
         let lag = short_duration(h.lag_secs);
@@ -378,6 +380,9 @@ fn StreamRow(
             td { class: "td",
                 p { class: "font-medium text-gray-900", "{stream.name}" }
                 p { class: "text-xs text-gray-500 font-mono", "{stream.slug}" }
+                if let Some(name) = stream.capture_device.as_deref() {
+                    p { class: "text-xs text-gray-500", {t!("streams-captured-by", name : name)} }
+                }
                 if stream.tdm_checked_at.is_none() {
                     p { class: "text-xs text-amber-700 mt-0.5", {t!("streams-tdm-unchecked")} }
                 }
@@ -415,13 +420,16 @@ fn StreamRow(
                             {t!("streams-recordings")}
                         }
                     }
-                    if can_write {
+                    // The URL test runs on the server, never on a box.
+                    if can_write && !on_box {
                         button {
                             class: "px-2 py-1 text-xs border border-gray-300 rounded-lg hover:bg-gray-50",
                             r#type: "button",
                             onclick: move |_| on_action.call(Dialog::Test(s_test.clone())),
                             {t!("streams-test")}
                         }
+                    }
+                    if can_write {
                         button {
                             class: "px-2 py-1 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40",
                             r#type: "button",
