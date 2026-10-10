@@ -14,6 +14,7 @@
 pub mod decoder;
 pub mod fetch;
 pub mod hls;
+pub mod icy;
 pub mod sandbox;
 pub mod segmenter;
 
@@ -593,10 +594,26 @@ async fn run_once(
     let url = super::streams::clean_url(&stream.url).map_err(|_| CaptureError::Unreachable)?;
     let kind = MediaStreamKind::from_wire(&stream.kind).ok_or(CaptureError::FormatUnsupported)?;
     let auth = auth_of(ctx, stream, &url).await?;
-    let opened = tokio::select! {
+    let mut opened = tokio::select! {
         r = Fetcher::new(auth)?.open(kind, &url) => r?,
         _ = stop.changed() => return Ok(RunEnd::Stopped),
     };
+    // In-band metadata → O2 `mx_<slug>` (D170); a stream test stores nothing.
+    // The task ends with the fetcher (its sender is dropped).
+    if let Some(mut events) = opened
+        .metadata
+        .take()
+        .filter(|_| !matches!(sink, Sink::Probe(_)))
+    {
+        let (ctx, slug, org_id) = (ctx.clone(), stream.slug.clone(), stream.org_id);
+        tokio::spawn(async move {
+            while let Some(ev) = events.recv().await {
+                if let Err(e) = super::metadata::write(&ctx, org_id, &slug, &ev).await {
+                    tracing::warn!(stream = %slug, error = %e, "media metadata event not written");
+                }
+            }
+        });
+    }
 
     let argv = sandbox::wrap_argv(&settings.sandbox, decoder::argv(ffmpeg, opened.format));
     let mut cmd = tokio::process::Command::new(&argv[0]);

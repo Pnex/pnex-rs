@@ -1,7 +1,9 @@
 //! Filtered fetcher (media-ingest.md D160): the only component that talks
 //! to the stream's host. Redirects are followed by hand so each hop is
 //! re-checked (R8) and the credential only ever goes to the stream's exact
-//! origin; HLS playlists are read here, never by ffmpeg.
+//! origin; HLS playlists are read here, never by ffmpeg. Icecast streams
+//! are asked for ICY metadata (D170): the interleaved blocks are stripped
+//! here and their titles handed to the capture task, never to ffmpeg.
 
 use std::time::{Duration, Instant};
 
@@ -15,6 +17,7 @@ use tokio::sync::mpsc;
 
 use super::decoder::{input_format, InputFormat};
 use super::hls::{self, Playlist};
+use super::icy;
 use super::CaptureError;
 use crate::services::media_ingest::streams::origin;
 
@@ -30,6 +33,18 @@ const MAX_BYTES_PER_SEC: u64 = 2 * 1024 * 1024;
 const STALL_TARGETS: u32 = 6;
 /// Chunks buffered between the fetcher and the decoder.
 const CHANNEL_DEPTH: usize = 32;
+/// In-band metadata events buffered for the capture task; beyond, new
+/// events are dropped (audio never waits for metadata).
+const METADATA_DEPTH: usize = 8;
+/// At most one metadata event per second per stream (D170).
+const METADATA_MIN_GAP: Duration = Duration::from_secs(1);
+
+/// One in-band metadata event (`StreamTitle` change), stamped at reception.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MetadataEvent {
+    pub at: DateTime<Utc>,
+    pub title: String,
+}
 
 /// Credential of a stream, sent to its origin only.
 #[derive(Clone)]
@@ -70,6 +85,8 @@ pub struct Opened {
     pub format: InputFormat,
     pub first_pdt: Option<DateTime<Utc>>,
     pub chunks: mpsc::Receiver<Result<Bytes, CaptureError>>,
+    /// ICY title changes, when the server interleaves metadata.
+    pub metadata: Option<mpsc::Receiver<MetadataEvent>>,
 }
 
 pub struct Fetcher {
@@ -94,12 +111,25 @@ impl Fetcher {
         url: &Url,
         timeout: Option<Duration>,
     ) -> Result<reqwest::Response, CaptureError> {
+        self.get_with(url, timeout, false).await
+    }
+
+    /// [`Self::get`], asking for ICY metadata when `icy` is set.
+    async fn get_with(
+        &self,
+        url: &Url,
+        timeout: Option<Duration>,
+        icy: bool,
+    ) -> Result<reqwest::Response, CaptureError> {
         let mut url = url.clone();
         for _ in 0..=MAX_REDIRECTS {
             if !matches!(url.scheme(), "http" | "https") || egress::check_url(&url).is_some() {
                 return Err(CaptureError::Unreachable);
             }
             let mut req = self.client.get(url.clone());
+            if icy {
+                req = req.header("Icy-MetaData", "1");
+            }
             if let Some(t) = timeout {
                 req = req.timeout(t);
             }
@@ -158,7 +188,25 @@ impl Fetcher {
     }
 
     async fn open_http(self, kind: MediaStreamKind, url: &Url) -> Result<Opened, CaptureError> {
-        let mut res = self.get(url, None).await?;
+        let icy_wanted = kind == MediaStreamKind::Icecast;
+        let mut res = self.get_with(url, None, icy_wanted).await?;
+        // Without a usable `icy-metaint` the body is plain audio, as before.
+        let metaint = icy_wanted
+            .then(|| {
+                icy::metaint(
+                    res.headers()
+                        .get("icy-metaint")
+                        .and_then(|v| v.to_str().ok()),
+                )
+            })
+            .flatten();
+        let (meta_tx, meta_rx) = match metaint {
+            Some(_) => {
+                let (tx, rx) = mpsc::channel(METADATA_DEPTH);
+                (Some(tx), Some(rx))
+            }
+            None => (None, None),
+        };
         let format = input_format(content_type(&res).as_deref(), res.url().path())
             .ok_or(CaptureError::FormatUnsupported)?;
         let limit = (kind == MediaStreamKind::HttpFile).then_some(MAX_FILE_BYTES);
@@ -169,6 +217,8 @@ impl Fetcher {
         tokio::spawn(async move {
             let mut rate = RateCap::new();
             let mut total = 0u64;
+            let mut demux = metaint.map(icy::Demuxer::new);
+            let mut gate = icy::TitleGate::new(METADATA_MIN_GAP);
             loop {
                 let chunk = match tokio::time::timeout(Duration::from_secs(30), res.chunk()).await {
                     Ok(Ok(Some(c))) => c,
@@ -184,6 +234,26 @@ impl Fetcher {
                     return;
                 }
                 rate.consume(chunk.len()).await;
+                let chunk = match demux.as_mut() {
+                    None => chunk,
+                    Some(d) => {
+                        let mut audio = Vec::with_capacity(chunk.len());
+                        let titles = d.push(&chunk, &mut audio);
+                        if let (Some(title), Some(meta)) =
+                            (gate.offer(titles, Instant::now()), meta_tx.as_ref())
+                        {
+                            // Full or closed: the event is dropped, audio goes on.
+                            let _ = meta.try_send(MetadataEvent {
+                                at: Utc::now(),
+                                title,
+                            });
+                        }
+                        if audio.is_empty() {
+                            continue;
+                        }
+                        Bytes::from(audio)
+                    }
+                };
                 if tx.send(Ok(chunk)).await.is_err() {
                     return;
                 }
@@ -193,6 +263,7 @@ impl Fetcher {
             format,
             first_pdt: None,
             chunks: rx,
+            metadata: meta_rx,
         })
     }
 
@@ -302,6 +373,7 @@ impl Fetcher {
             format,
             first_pdt,
             chunks: rx,
+            metadata: None,
         })
     }
 }

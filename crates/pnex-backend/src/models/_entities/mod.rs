@@ -70,6 +70,7 @@ pub mod subscription_tiers;
 pub mod system_settings;
 pub mod taxonomies;
 pub mod taxonomy_versions;
+pub mod time_ranges;
 pub mod tour_versions;
 pub mod tours;
 pub mod unit_conversions;

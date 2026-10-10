@@ -72,3 +72,4 @@ media_segments
 ml_model_checks
 taxonomies
 taxonomy_versions
+time_ranges

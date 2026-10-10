@@ -80,6 +80,8 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
         // D168: topic taxonomies and their append-only versions are org data.
         "taxonomies",
         "taxonomy_versions",
+        // D169: time ranges are org data.
+        "time_ranges",
     ] {
         assert_eq!(
             nullable_of(&db, t, "org_id").await,
@@ -136,6 +138,8 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
         ("taxonomies", "org_id"),
         ("taxonomy_versions", "org_id"),
         ("taxonomy_versions", "taxonomy_id"),
+        // D169: time ranges follow the org.
+        ("time_ranges", "org_id"),
     ] {
         assert_eq!(
             fk_del_type(&db, t, col).await,

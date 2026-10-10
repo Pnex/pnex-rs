@@ -37,6 +37,7 @@ pub fn routes() -> Routes {
         .add("/media/streams/{id}/segments", get(segment_list))
         .add("/media/streams/{id}/segments/retry", post(segment_retry))
         .add("/media/transcripts", get(transcript_search))
+        .add("/media/metadata", get(metadata_list))
         .add("/asr/models", get(model_list).post(model_create))
         .add(
             "/asr/models/{id}",
@@ -891,6 +892,60 @@ async fn transcript_search(
                 StatusCode::BAD_GATEWAY,
                 err_codes::MEDIA_TRANSCRIPTS_UNAVAILABLE,
                 "Transcription search failed on OpenObserve.",
+            ))
+        }
+    }
+}
+
+/// `GET /api/v1/media/metadata?stream=<slug>` — every member: in-band
+/// metadata events of one stream of the org (D170), newest first. The slug
+/// is resolved to a stream row of the org; the O2 stream name is built
+/// server side.
+async fn metadata_list(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<TranscriptQuery>,
+) -> Result<Response> {
+    let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let Some(slug) = q.stream.as_deref().map(str::trim).filter(|s| !s.is_empty()) else {
+        return field("stream", err_codes::FIELD_REQUIRED);
+    };
+    let (from_us, to_us) = match (
+        parse_time("from", q.from.as_deref()),
+        parse_time("to", q.to.as_deref()),
+    ) {
+        (Ok(f), Ok(t)) => (f, t),
+        (Err(f), _) | (_, Err(f)) => return field(f, err_codes::FIELD_INVALID),
+    };
+    let row = match streams::find_by_slug(&ctx.db, org.org.id, slug).await {
+        Ok(Some(row)) => row,
+        Ok(None) => return stream_error(StreamError::NotFound),
+        Err(e) => return db_error(e),
+    };
+    match crate::services::media_ingest::metadata::list(
+        &ctx,
+        org.org.id,
+        &row.slug,
+        from_us,
+        to_us,
+        page.offset,
+        page.limit,
+    )
+    .await
+    {
+        Ok((count, results)) => format::json(pagination::envelope(
+            "/api/v1/media/metadata",
+            &[("stream".to_string(), row.slug.clone())],
+            page,
+            count,
+            results,
+        )),
+        Err(e) => {
+            tracing::warn!(error = %e, "metadata read failed");
+            Err(detail(
+                StatusCode::BAD_GATEWAY,
+                err_codes::MEDIA_TRANSCRIPTS_UNAVAILABLE,
+                "In-band metadata is unavailable on OpenObserve.",
             ))
         }
     }

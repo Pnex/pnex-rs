@@ -619,6 +619,21 @@ pub struct TranscriptRecord {
     pub asr_model: String,
 }
 
+/// One in-band metadata event as stored in `mx_<slug>` (D170) and
+/// returned by `GET /api/v1/media/metadata`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MetadataRecord {
+    /// Reception time, RFC 3339.
+    pub ts: String,
+    pub stream: String,
+    /// `icy_title` for now.
+    pub kind: String,
+    pub text: String,
+}
+
+/// `kind` of an ICY `StreamTitle` change.
+pub const METADATA_KIND_ICY_TITLE: &str = "icy_title";
+
 /// Emission granularity of the `media_source` flow node (D163).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

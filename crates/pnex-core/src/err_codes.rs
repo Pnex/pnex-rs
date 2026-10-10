@@ -434,6 +434,17 @@ pub const TAXONOMY_WRITE_FORBIDDEN: &str = "taxonomy-write-forbidden";
 /// Deploy refused: a `topic_classify` pins a taxonomy version that is not
 /// one of the org; `args.version` = the pinned version.
 pub const TAXONOMY_UNKNOWN: &str = "taxonomy-unknown";
+/// Time range not found (or not in the org).
+pub const TIME_RANGE_NOT_FOUND: &str = "time-range-not-found";
+/// Viewer role: time ranges are read-only.
+pub const TIME_RANGE_WRITE_FORBIDDEN: &str = "time-range-write-forbidden";
+/// Import body over 1 MiB or over 5000 rows; `args.max_kib`, `args.max_rows`.
+pub const TIME_RANGE_IMPORT_TOO_LARGE: &str = "time-range-import-too-large";
+/// Import body is not a readable CSV (header with `label`) or iCalendar file.
+pub const TIME_RANGE_IMPORT_INVALID: &str = "time-range-import-invalid";
+/// Deploy refused: a `range_upsert` targets a stream that is not one of the
+/// org (also the internal endpoint's answer for a foreign scope).
+pub const TIME_RANGE_SCOPE_UNKNOWN: &str = "time-range-scope-unknown";
 
 // ── Registered codes ─────────────────────────────────────────────────────
 
@@ -664,6 +675,11 @@ pub const ALL: &[&str] = &[
     TAXONOMY_VERSION_CONFLICT,
     TAXONOMY_WRITE_FORBIDDEN,
     TAXONOMY_UNKNOWN,
+    TIME_RANGE_NOT_FOUND,
+    TIME_RANGE_WRITE_FORBIDDEN,
+    TIME_RANGE_IMPORT_TOO_LARGE,
+    TIME_RANGE_IMPORT_INVALID,
+    TIME_RANGE_SCOPE_UNKNOWN,
 ];
 
 /// True when the code is registered (translatable through `err-<kebab>`).

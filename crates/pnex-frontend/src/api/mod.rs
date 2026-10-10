@@ -56,6 +56,7 @@ pub mod system;
 pub mod taxonomies;
 pub mod telemetry;
 pub mod thermo;
+pub mod time_ranges;
 /// TLS trust for native targets: pinned edge CA + discovery client (D70).
 pub mod tls;
 pub mod tours;

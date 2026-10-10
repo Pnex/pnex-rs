@@ -72,6 +72,11 @@ pub(crate) fn apply_runtime_env(cmd: &mut tokio::process::Command, settings: &Fl
                 "PNEX_FLOW_EVENT_URL",
                 url.replace("/internal/flow/device-write", "/internal/flow/event"),
             )
+            // Time ranges (range-upsert node, D169).
+            .env(
+                "PNEX_FLOW_TIME_RANGE_URL",
+                url.replace("/internal/flow/device-write", "/internal/flow/time-range"),
+            )
             // Vault secrets of deployed notify channels (D115): base of
             // `/internal/flow/secret/{id}`, same service token.
             .env(

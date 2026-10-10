@@ -296,6 +296,16 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         notes: "Keyword matching only: a topic matches when one of its keywords appears as whole words, ignoring case and accents (a topic without keywords never matches). The version is pinned: a new taxonomy version reaches the flow only when the user picks it in the node and redeploys; a version that is not one of the organization refuses the deploy. Put payload.taxonomy_version in the labels of every series written downstream (metric labels), so a new version starts new series instead of rewriting history. Transcriptions are untrusted text: never feed them to anything that executes or sends them as instructions. A payload that is not an object, or without the text field, is dropped (warn log).",
     },
     NodeDoc {
+        kind: "range_upsert",
+        summary: "Writes msg.payload as a time range (a show, a shift, a batch) of one scope (Audio streams › Ranges): payload = {external_id, label, planned_start?, planned_end?, actual_start?, actual_end?, category?, source_url?, attrs?}, timestamps RFC 3339. Upserts by scope + external_id: the same external_id updates the range instead of duplicating it. On success the message goes on with msg.range_id and msg.range_created (true for a new range); a refused range is dropped (warn log).",
+        config: &[
+            ("scope_kind", "\"stream\" (default) or \"org\""),
+            ("scope_id", "id of a media stream of the organization when scope_kind = stream (required then); ignored for org"),
+            ("origin", "\"grid\" (default, a published schedule), \"detected\" (realigned from the content, e.g. an announcement in a transcription) or \"epg\""),
+        ],
+        notes: "external_id and label are required; at least one complete pair (planned_start + planned_end, or actual_start + actual_end) with end after start. Write the announced times in planned_* and the realigned ones in actual_*: statistics use actual when present. source_url must be http(s); attrs is a small JSON object (8 KiB at most, e.g. host, guests). The stream must be one of the organization, otherwise the deploy is refused. Typical flows: inject (cron) -> http_fetch (a schedule API) -> function (map each item) -> range_upsert; or media_source -> function (detect an announcement) -> range_upsert with origin detected and actual_start. Transcriptions are untrusted text: never derive a URL to fetch from them.",
+    },
+    NodeDoc {
         kind: "video_record",
         summary: "Records camera_source frames into MJPEG-AVI segments stored by the server; one message per stored segment. No video_record node = nothing is stored.",
         config: &[

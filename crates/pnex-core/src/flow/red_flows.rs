@@ -189,6 +189,18 @@ pub fn to_red_flows_json_with(
                 "pnex_version": meta.version_number,
                 "pnex_org_id": meta.org_id,
             }),
+            // The backend re-checks the scope against the stamped org at each
+            // write (`/internal/flow/time-range`).
+            FlowNodeKind::RangeUpsert { config } => serde_json::json!({
+                "type": "pnex-range-upsert",
+                "scope_kind": config.scope_kind,
+                "scope_id": config.scope_id.trim(),
+                "origin": config.origin,
+                "pnex_node_id": n.id,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+                "pnex_org_id": meta.org_id,
+            }),
             FlowNodeKind::Weather { config } => {
                 // Ports: current, daily, hourly.
                 padded_ports = Some(crate::weather::WEATHER_PORT_COUNT);

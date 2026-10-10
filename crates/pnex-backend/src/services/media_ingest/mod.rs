@@ -14,6 +14,7 @@
 pub mod asr;
 pub mod capture;
 pub mod health;
+pub mod metadata;
 pub mod models;
 pub mod profiles;
 pub mod segments;

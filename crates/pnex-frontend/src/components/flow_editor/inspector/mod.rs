@@ -172,6 +172,9 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::TopicClassify { config } => rsx! {
             TopicClassifyForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::RangeUpsert { config } => rsx! {
+            RangeUpsertForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::Weather { config } => rsx! {
             WeatherForm { cx, initial: config.clone(), can_write }
         },
@@ -238,6 +241,7 @@ mod media_source;
 mod memory;
 mod notify;
 mod predict;
+mod range_upsert;
 mod red;
 mod reg;
 mod simple;
@@ -261,6 +265,7 @@ use media_source::MediaSourceForm;
 use memory::{MemoryReadForm, MemoryWriteForm};
 use notify::NotifyForm;
 use predict::{AnomalyForm, ForecastForm};
+use range_upsert::RangeUpsertForm;
 use red::RedForm;
 use reg::{RegPidForm, RegTtForm};
 use simple::{DebugForm, DisplayForm, MetricForm};
