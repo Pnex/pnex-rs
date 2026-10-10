@@ -124,6 +124,7 @@ pub async fn install(dir: &Path, args: InstallArgs) -> Result<()> {
         allow: args.allow,
         max_queue_points: 5_000_000,
         max_age_secs: 7 * 24 * 3600,
+        media_capture: false,
     };
     cfg.listen_addr()?;
     cfg.allow_nets()?;

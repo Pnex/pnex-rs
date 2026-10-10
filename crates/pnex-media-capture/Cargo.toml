@@ -1,0 +1,36 @@
+[package]
+name = "pnex-media-capture"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Media stream capture chain (media-ingest.md D160): filtered fetcher, RTSP client, confined ffmpeg, PCM segmenter — shared by the server and the edge agent"
+
+[dependencies]
+pnex-core = { workspace = true, features = ["egress"] }
+bytes = "1"
+chrono = { workspace = true }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+# rustls (ring provider) only: the edge agent cross-builds without cmake/NASM.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+# RTSP client of IP cameras (D160): session opened on the egress-validated
+# IP, TCP interleaved only, redirects refused. MIT OR Apache-2.0.
+retina = "=0.4.20"
+tokio = { version = "1.45", default-features = false, features = [
+  "rt",
+  "macros",
+  "time",
+  "io-util",
+  "sync",
+  "process",
+  "net",
+] }
+tracing = "0.1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+# Unprivileged filesystem/TCP confinement of the decoder (D160), works
+# where user namespaces (bwrap) are refused. MIT OR Apache-2.0.
+landlock = "0.4"
+
+[dev-dependencies]
+tokio = { version = "1.45", features = ["rt-multi-thread", "macros"] }

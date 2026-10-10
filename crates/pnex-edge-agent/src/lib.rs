@@ -4,6 +4,7 @@
 pub mod api;
 pub mod config;
 pub mod install;
+pub mod media;
 pub mod queue;
 pub mod run;
 pub mod service;

@@ -9,38 +9,33 @@
 //!
 //! The `server` carrier writes segments itself; a mesh `worker` posts them
 //! to the control plane (`POST /internal/media/segment`), so it holds no
-//! storage write credential.
+//! storage write credential. `device:<id>` streams are never scanned here:
+//! their capture box runs the same chain ([`pnex_media_capture`]) and
+//! uploads over `/ws/media` (lot 6b).
 
-pub mod decoder;
-pub mod fetch;
-pub mod hls;
-pub mod icy;
-pub mod rtsp;
-pub mod sandbox;
-pub mod segmenter;
 pub mod video;
+
+pub use pnex_media_capture::{
+    decode_clip, decoder, fetch, hls, icy, rtsp, sandbox, segmenter, CaptureError, CaptureSettings,
+    RunEnd, Track,
+};
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use loco_rs::app::AppContext;
 use pnex_core::media_ingest::{
-    CaptureOn, CaptureState, ClockSource, MediaStreamKind, MediaTracks, FPS_MAX, FPS_MIN,
-    FRAME_MAX_WIDTH,
+    CaptureOn, CaptureState, MediaStreamKind, MediaTracks, FPS_MAX, FPS_MIN,
 };
+use pnex_media_capture::{Host, Spec, BACKOFF_MAX, BACKOFF_MIN, HEALTHY_RUN};
 use sea_orm::sea_query::Expr;
 use sea_orm::{ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::watch;
 use uuid::Uuid;
 
-use self::fetch::{Auth, Fetcher};
-use self::sandbox::SandboxMode;
-use self::segmenter::Segmenter;
 use super::segments::{self, NewSegment};
 use crate::models::_entities::{media_segments, media_streams};
 use crate::services::media::{MediaSettings, MediaStore};
@@ -48,101 +43,6 @@ use crate::services::secrets::{store as secret_store, Keyring};
 
 /// Period of the supervisor scan (and lease renewal).
 const SCAN_EVERY: Duration = Duration::from_secs(10);
-const BACKOFF_MIN: Duration = Duration::from_secs(5);
-const BACKOFF_MAX: Duration = Duration::from_secs(300);
-/// A run longer than this resets the backoff.
-const HEALTHY_RUN: Duration = Duration::from_secs(300);
-/// No decoded audio for this long = stalled stream.
-const SILENT_INPUT: Duration = Duration::from_secs(60);
-
-/// Why a capture run ended. The wire codes land in
-/// `media_streams.capture_error` (short machine codes, no detail: D160).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CaptureError {
-    Unreachable,
-    FormatUnsupported,
-    Encrypted,
-    TooLarge,
-    Stalled,
-    DecoderFailed,
-    DecoderMissing,
-    SecretUnreadable,
-    StoreFailed,
-}
-
-impl CaptureError {
-    pub fn code(self) -> &'static str {
-        match self {
-            Self::Unreachable => "unreachable",
-            Self::FormatUnsupported => "format-unsupported",
-            Self::Encrypted => "encrypted",
-            Self::TooLarge => "too-large",
-            Self::Stalled => "stalled",
-            Self::DecoderFailed => "decoder-failed",
-            Self::DecoderMissing => "decoder-missing",
-            Self::SecretUnreadable => "secret-unreadable",
-            Self::StoreFailed => "store-failed",
-        }
-    }
-}
-
-impl From<hls::HlsError> for CaptureError {
-    fn from(e: hls::HlsError) -> Self {
-        match e {
-            hls::HlsError::Encrypted => Self::Encrypted,
-            hls::HlsError::Empty => Self::Stalled,
-            hls::HlsError::NotAPlaylist => Self::FormatUnsupported,
-        }
-    }
-}
-
-/// Process-level capture settings (`PNEX_MEDIA_*`).
-#[derive(Debug, Clone)]
-pub struct CaptureSettings {
-    pub enabled: bool,
-    pub ffmpeg: String,
-    pub sandbox: SandboxMode,
-}
-
-impl CaptureSettings {
-    pub fn from_env() -> Self {
-        let enabled = !matches!(
-            std::env::var("PNEX_MEDIA_CAPTURE")
-                .unwrap_or_default()
-                .trim()
-                .to_ascii_lowercase()
-                .as_str(),
-            "0" | "false" | "off" | "no"
-        );
-        let ffmpeg = std::env::var("PNEX_FFMPEG")
-            .ok()
-            .filter(|v| !v.trim().is_empty())
-            .unwrap_or_else(|| "ffmpeg".into());
-        let sandbox = match std::env::var("PNEX_MEDIA_SANDBOX")
-            .unwrap_or_default()
-            .trim()
-            .to_ascii_lowercase()
-            .as_str()
-        {
-            "none" => SandboxMode::None,
-            "bwrap" => SandboxMode::Bwrap {
-                program: std::env::var("PNEX_MEDIA_BWRAP").unwrap_or_else(|_| "bwrap".into()),
-                ro_binds: std::env::var("PNEX_MEDIA_SANDBOX_RO_BINDS")
-                    .unwrap_or_default()
-                    .split(':')
-                    .filter(|d| !d.is_empty())
-                    .map(str::to_string)
-                    .collect(),
-            },
-            _ => SandboxMode::Kernel,
-        };
-        Self {
-            enabled,
-            ffmpeg,
-            sandbox,
-        }
-    }
-}
 
 /// Where the segments of a capture go.
 #[derive(Clone)]
@@ -371,14 +271,6 @@ async fn set_state(
     }
 }
 
-/// How a run ended without error.
-enum RunEnd {
-    /// The source finished (finite file, HLS `ENDLIST`).
-    Finished,
-    /// Asked to stop.
-    Stopped,
-}
-
 async fn run_stream(
     ctx: AppContext,
     settings: CaptureSettings,
@@ -473,66 +365,6 @@ pub async fn capture_once(
     res.map(|_| seq)
 }
 
-/// Decodes an uploaded clip with the confined decoder (D160 regime) into
-/// a 16 kHz mono WAV of at most `max_secs`; the flag says it was cut.
-pub async fn decode_clip(
-    bytes: Vec<u8>,
-    format: decoder::InputFormat,
-    max_secs: u32,
-) -> Result<(Vec<u8>, bool), CaptureError> {
-    let settings = CaptureSettings::from_env();
-    let ffmpeg = decoder::resolve(&settings.ffmpeg).ok_or(CaptureError::DecoderMissing)?;
-    let argv = sandbox::wrap_argv(&settings.sandbox, decoder::argv(&ffmpeg, format));
-    let mut cmd = tokio::process::Command::new(&argv[0]);
-    cmd.args(&argv[1..])
-        .env_clear()
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true);
-    sandbox::confine(&mut cmd, &settings.sandbox, sandbox::DECODER_MAX_MEMORY);
-    let mut child = cmd.spawn().map_err(|_| CaptureError::DecoderMissing)?;
-    let mut stdin = child.stdin.take().ok_or(CaptureError::DecoderFailed)?;
-    let mut stdout = child.stdout.take().ok_or(CaptureError::DecoderFailed)?;
-    let feeder = tokio::spawn(async move {
-        let _ = stdin.write_all(&bytes).await;
-    });
-    let max_bytes = max_secs as usize * pnex_core::media_ingest::SAMPLE_RATE as usize * 2;
-    let mut pcm = Vec::new();
-    let mut buf = vec![0u8; 64 * 1024];
-    let mut truncated = false;
-    let read = tokio::time::timeout(SILENT_INPUT, async {
-        loop {
-            let n = stdout
-                .read(&mut buf)
-                .await
-                .map_err(|_| CaptureError::DecoderFailed)?;
-            if n == 0 {
-                return Ok::<(), CaptureError>(());
-            }
-            pcm.extend_from_slice(&buf[..n]);
-            if pcm.len() >= max_bytes {
-                pcm.truncate(max_bytes);
-                truncated = true;
-                return Ok(());
-            }
-        }
-    })
-    .await;
-    feeder.abort();
-    let _ = child.start_kill();
-    read.map_err(|_| CaptureError::Stalled)??;
-    pcm.truncate(pcm.len() & !1);
-    if pcm.is_empty() {
-        return Err(CaptureError::FormatUnsupported);
-    }
-    let samples: Vec<i16> = pcm
-        .chunks_exact(2)
-        .map(|b| i16::from_le_bytes([b[0], b[1]]))
-        .collect();
-    Ok((segmenter::wav_bytes(&samples), truncated))
-}
-
 /// Length of the extract captured by a stream test.
 pub const PROBE_SEGMENT_SECS: i32 = 10;
 
@@ -592,94 +424,64 @@ async fn secret_of(
         .map_err(|_| CaptureError::SecretUnreadable)
 }
 
-/// One input of a decoder: its format and its bytes.
-pub struct Track {
-    pub format: decoder::InputFormat,
-    pub chunks: tokio::sync::mpsc::Receiver<Result<axum::body::Bytes, CaptureError>>,
+/// Carrier side of a server/worker run: segments to the [`Sink`], frames
+/// to the stream's camera bus, metadata to O2, state to the row.
+struct BackendHost<'a> {
+    ctx: &'a AppContext,
+    sink: &'a Sink,
+    stream: &'a media_streams::Model,
+    probe: bool,
+    /// Valkey of the frames, connected on the first frame.
+    valkey: Option<Option<redis::aio::ConnectionManager>>,
+    /// Frame sequence from the clock: a restart never reuses a live key.
+    frame_seq: u32,
 }
 
-/// Duplicates a muxed input for the audio and the video decoders. A side
-/// that stops reading is dropped; the other goes on.
-fn tee(t: Track) -> (Track, Track) {
-    let (a_tx, a_rx) = tokio::sync::mpsc::channel(4);
-    let (v_tx, v_rx) = tokio::sync::mpsc::channel(4);
-    let mut src = t.chunks;
-    tokio::spawn(async move {
-        while let Some(item) = src.recv().await {
-            let a = a_tx.send(item.clone()).await.is_ok();
-            let v = v_tx.send(item).await.is_ok();
-            if !a && !v {
-                return;
+impl Host for BackendHost<'_> {
+    async fn running(&mut self) {
+        // A test never touches the state of the stream's own capture.
+        if !self.probe {
+            set_state(&self.ctx.db, self.stream.id, CaptureState::Running, None).await;
+        }
+    }
+
+    async fn segment(&mut self, seg: NewSegment) -> Result<(), CaptureError> {
+        store_segment(self.ctx, self.sink, self.stream, seg).await
+    }
+
+    async fn frame(&mut self, frame: video::Jpeg) {
+        if self.valkey.is_none() {
+            let conn = crate::services::shared_valkey::conn(&self.ctx.config).await;
+            if conn.is_none() {
+                tracing::warn!(stream = %self.stream.slug, "valkey not configured: video frames are not published");
+            }
+            self.valkey = Some(conn);
+        }
+        let (org, slug, seq) = (self.stream.org_id, &self.stream.slug, self.frame_seq);
+        if let Some(Some(conn)) = self.valkey.as_mut() {
+            if let Err(e) = video::publish(conn, org, slug, seq, &frame).await {
+                tracing::debug!(stream = %slug, error = %e, "video frame not published");
             }
         }
-    });
-    (
-        Track {
-            format: t.format,
-            chunks: a_rx,
-        },
-        Track {
-            format: t.format,
-            chunks: v_rx,
-        },
-    )
-}
+        self.frame_seq = self.frame_seq.wrapping_add(1);
+    }
 
-/// A confined decoder fed by `track`; the feeder returns the fetch error
-/// that ended the input, if any (a decoder that stops reading is judged by
-/// its exit status, not here).
-struct Decoder {
-    child: tokio::process::Child,
-    feeder: tokio::task::JoinHandle<Result<(), CaptureError>>,
-}
-
-fn spawn_decoder(
-    settings: &CaptureSettings,
-    argv: Vec<String>,
-    slug: &str,
-    track: Track,
-) -> Result<(Decoder, tokio::process::ChildStdout), CaptureError> {
-    let argv = sandbox::wrap_argv(&settings.sandbox, argv);
-    let mut cmd = tokio::process::Command::new(&argv[0]);
-    cmd.args(&argv[1..])
-        .env_clear()
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    sandbox::confine(&mut cmd, &settings.sandbox, sandbox::DECODER_MAX_MEMORY);
-    let mut child = cmd.spawn().map_err(|e| {
-        tracing::warn!(error = %e, "media decoder spawn failed");
-        CaptureError::DecoderMissing
-    })?;
-    let mut stdin = child.stdin.take().ok_or(CaptureError::DecoderFailed)?;
-    let stdout = child.stdout.take().ok_or(CaptureError::DecoderFailed)?;
-    if let Some(stderr) = child.stderr.take() {
-        let slug = slug.to_string();
+    fn metadata(&mut self, mut events: tokio::sync::mpsc::Receiver<fetch::MetadataEvent>) {
+        // In-band metadata → O2 `mx_<slug>` (D170). The task ends with the
+        // fetcher (its sender is dropped).
+        let (ctx, slug, org_id) = (
+            self.ctx.clone(),
+            self.stream.slug.clone(),
+            self.stream.org_id,
+        );
         tokio::spawn(async move {
-            use tokio::io::AsyncBufReadExt;
-            let mut lines = tokio::io::BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                tracing::debug!(stream = %slug, "ffmpeg: {line}");
+            while let Some(ev) = events.recv().await {
+                if let Err(e) = super::metadata::write(&ctx, org_id, &slug, &ev).await {
+                    tracing::warn!(stream = %slug, error = %e, "media metadata event not written");
+                }
             }
         });
     }
-    let mut chunks = track.chunks;
-    let feeder = tokio::spawn(async move {
-        while let Some(chunk) = chunks.recv().await {
-            if stdin.write_all(&chunk?).await.is_err() {
-                return Ok(());
-            }
-        }
-        Ok::<(), CaptureError>(())
-    });
-    Ok((Decoder { child, feeder }, stdout))
-}
-
-/// What the decoder readers hand to the capture loop.
-enum Decoded {
-    Pcm(Vec<u8>),
-    Frame(video::Jpeg),
 }
 
 async fn run_once(
@@ -689,228 +491,46 @@ async fn run_once(
     sink: &Sink,
     stream: &media_streams::Model,
     seq: &mut i64,
-    mut stop: watch::Receiver<bool>,
+    stop: watch::Receiver<bool>,
 ) -> Result<RunEnd, CaptureError> {
     let url = super::streams::clean_url(&stream.url).map_err(|_| CaptureError::Unreachable)?;
     let kind = MediaStreamKind::from_wire(&stream.kind).ok_or(CaptureError::FormatUnsupported)?;
     let tracks = MediaTracks::from_wire(&stream.tracks).unwrap_or_default();
     let probe = matches!(sink, Sink::Probe(_));
+    let secret = secret_of(ctx, stream).await?;
     // A stream with video captures its audio only when it gets transcribed
     // (an audio-only stream without profile is never scanned); a test
-    // never publishes frames (D175).
-    let want_audio = tracks.has_audio()
-        && (tracks == MediaTracks::Audio || probe || stream.asr_profile_id.is_some());
-    let want_video = tracks.has_video() && !probe;
-    let secret = secret_of(ctx, stream).await?;
-    let mut first_pdt = None;
-    let (audio, video) = if kind == MediaStreamKind::Rtsp {
-        let creds = match secret.as_deref() {
-            Some(s) => Some(rtsp::credentials(s).ok_or(CaptureError::SecretUnreadable)?),
-            None => None,
-        };
-        let opened = tokio::select! {
-            r = rtsp::open(&url, creds, want_audio, want_video) => r?,
-            _ = stop.changed() => return Ok(RunEnd::Stopped),
-        };
-        (opened.audio, opened.video)
-    } else {
-        let auth = match secret.as_deref() {
-            Some(s) => Some(Auth::parse(s, &url).ok_or(CaptureError::SecretUnreadable)?),
-            None => None,
-        };
-        let mut opened = tokio::select! {
-            r = Fetcher::new(auth)?.open(kind, &url) => r?,
-            _ = stop.changed() => return Ok(RunEnd::Stopped),
-        };
-        // In-band metadata → O2 `mx_<slug>` (D170); a stream test stores
-        // nothing. The task ends with the fetcher (its sender is dropped).
-        if let Some(mut events) = opened.metadata.take().filter(|_| !probe) {
-            let (ctx, slug, org_id) = (ctx.clone(), stream.slug.clone(), stream.org_id);
-            tokio::spawn(async move {
-                while let Some(ev) = events.recv().await {
-                    if let Err(e) = super::metadata::write(&ctx, org_id, &slug, &ev).await {
-                        tracing::warn!(stream = %slug, error = %e, "media metadata event not written");
-                    }
-                }
-            });
-        }
-        first_pdt = opened.first_pdt;
-        let format = opened.format;
-        let track = Track {
-            format,
-            chunks: opened.chunks,
-        };
-        match (
-            want_audio && format.has_audio(),
-            want_video && format.has_video(),
-        ) {
-            (true, true) => {
-                let (a, v) = tee(track);
-                (Some(a), Some(v))
-            }
-            (true, false) => (Some(track), None),
-            (false, true) => (None, Some(track)),
-            (false, false) => (None, None),
-        }
+    // never publishes frames nor stores metadata (D175).
+    let spec = Spec {
+        slug: &stream.slug,
+        kind,
+        url: &url,
+        secret: secret.as_deref(),
+        want_audio: tracks.has_audio()
+            && (tracks == MediaTracks::Audio || probe || stream.asr_profile_id.is_some()),
+        want_video: tracks.has_video() && !probe,
+        fps: stream.fps.clamp(FPS_MIN, FPS_MAX) as u32,
+        segment_secs: stream.segment_secs.max(1) as u32,
+        overlap_secs: stream.overlap_secs.max(0) as u32,
+        metadata: !probe,
     };
-    if audio.is_none() && video.is_none() {
-        return Err(CaptureError::FormatUnsupported);
-    }
-
-    // Decoders → one event channel; it closes when every reader ended.
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<Decoded>(8);
-    let mut decoders: Vec<(Decoder, &'static str)> = Vec::new();
-    if let Some(track) = audio {
-        let argv = decoder::argv(ffmpeg, track.format);
-        let (d, mut out) = spawn_decoder(settings, argv, &stream.slug, track)?;
-        let tx = tx.clone();
-        tokio::spawn(async move {
-            let mut buf = vec![0u8; 64 * 1024];
-            while let Ok(n) = out.read(&mut buf).await {
-                if n == 0 || tx.send(Decoded::Pcm(buf[..n].to_vec())).await.is_err() {
-                    return;
-                }
-            }
-        });
-        decoders.push((d, "audio"));
-    }
-    if let Some(track) = video {
-        let fps = stream.fps.clamp(FPS_MIN, FPS_MAX) as u32;
-        let argv = decoder::video_argv(ffmpeg, track.format, fps, FRAME_MAX_WIDTH);
-        let (d, mut out) = spawn_decoder(settings, argv, &stream.slug, track)?;
-        let tx = tx.clone();
-        let slug = stream.slug.clone();
-        tokio::spawn(async move {
-            let mut buf = vec![0u8; 64 * 1024];
-            let mut splitter = video::JpegSplitter::default();
-            while let Ok(n) = out.read(&mut buf).await {
-                if n == 0 {
-                    return;
-                }
-                let Ok(frames) = splitter.push(&buf[..n]) else {
-                    tracing::warn!(stream = %slug, "video decoder output is not a JPEG stream");
-                    return;
-                };
-                for f in frames {
-                    if tx.send(Decoded::Frame(f)).await.is_err() {
-                        return;
-                    }
-                }
-            }
-        });
-        decoders.push((d, "video"));
-    }
-    drop(tx);
-    let mut valkey = None;
-    if decoders.iter().any(|(_, t)| *t == "video") {
-        valkey = crate::services::shared_valkey::conn(&ctx.config).await;
-        if valkey.is_none() {
-            tracing::warn!(stream = %stream.slug, "valkey not configured: video frames are not published");
-        }
-    }
-    // Frame sequence from the clock: a restart never reuses a live key.
-    let mut frame_seq = Utc::now().timestamp_millis() as u32;
-
-    let (t0, clock) = match first_pdt {
-        Some(pdt) => (pdt, ClockSource::Pdt),
-        None => (Utc::now(), ClockSource::Host),
+    let mut host = BackendHost {
+        ctx,
+        sink,
+        stream,
+        probe,
+        valkey: None,
+        frame_seq: Utc::now().timestamp_millis() as u32,
     };
-    let mut cutter = Segmenter::new(
-        t0,
-        stream.segment_secs.max(1) as u32,
-        stream.overlap_secs.max(0) as u32,
-    );
-    let (mut got_audio, mut got_video) = (false, false);
-    let outcome = loop {
-        let ev = tokio::select! {
-            r = tokio::time::timeout(SILENT_INPUT, rx.recv()) => r,
-            _ = stop.changed() => break Ok(RunEnd::Stopped),
-        };
-        let ev = match ev {
-            Err(_) => break Err(CaptureError::Stalled),
-            Ok(None) => break Ok(RunEnd::Finished),
-            Ok(Some(ev)) => ev,
-        };
-        if !got_audio && !got_video && !probe {
-            // A test never touches the state of the stream's own capture.
-            set_state(&ctx.db, stream.id, CaptureState::Running, None).await;
-        }
-        match ev {
-            Decoded::Pcm(bytes) => {
-                got_audio = true;
-                for cut in cutter.push(&bytes) {
-                    store_cut(ctx, sink, stream, seq, cut, clock).await?;
-                }
-            }
-            Decoded::Frame(frame) => {
-                got_video = true;
-                if let Some(conn) = valkey.as_mut() {
-                    if let Err(e) =
-                        video::publish(conn, stream.org_id, &stream.slug, frame_seq, &frame).await
-                    {
-                        tracing::debug!(stream = %stream.slug, error = %e, "video frame not published");
-                    }
-                }
-                frame_seq = frame_seq.wrapping_add(1);
-            }
-        }
-    };
-    if matches!(outcome, Ok(RunEnd::Finished)) {
-        if let Some(cut) = cutter.finish() {
-            store_cut(ctx, sink, stream, seq, cut, clock).await?;
-        }
-    }
-    let mut fed = Ok(());
-    let mut failed = Vec::new();
-    for (mut d, track) in decoders {
-        let _ = d.child.start_kill();
-        let r = d.feeder.await.unwrap_or(Err(CaptureError::DecoderFailed));
-        if fed.is_ok() {
-            fed = r;
-        }
-        let ok = d.child.wait().await.is_ok_and(|s| s.success());
-        let produced = if track == "audio" {
-            got_audio
-        } else {
-            got_video
-        };
-        failed.push((produced, ok));
-    }
-    match outcome {
-        Ok(RunEnd::Finished) => {
-            // The decoders ended: a fetch error explains it better.
-            fed?;
-            // A decoder that never produced anything next to one that did
-            // is a missing track (a camera without audio), not a failure.
-            let any = got_audio || got_video;
-            if failed
-                .iter()
-                .any(|&(produced, ok)| !ok && (produced || !any))
-            {
-                return Err(CaptureError::DecoderFailed);
-            }
-            Ok(RunEnd::Finished)
-        }
-        other => other,
-    }
+    pnex_media_capture::run_once(&mut host, settings, ffmpeg, &spec, seq, stop).await
 }
 
-async fn store_cut(
+async fn store_segment(
     ctx: &AppContext,
     sink: &Sink,
     stream: &media_streams::Model,
-    seq: &mut i64,
-    cut: segmenter::Cut,
-    clock: ClockSource,
+    seg: NewSegment,
 ) -> Result<(), CaptureError> {
-    let seg = NewSegment {
-        seq: *seq,
-        started_at: cut.started_at,
-        ended_at: cut.ended_at,
-        clock_source: clock,
-        wav: cut.wav,
-    };
-    *seq += 1;
     let store = match sink {
         Sink::Direct(store) => store,
         Sink::Remote(remote) => return post_segment(remote, stream, seg).await,
@@ -930,7 +550,6 @@ async fn store_cut(
     }
     Ok(())
 }
-
 /// Posts a segment to the control plane (`POST /internal/media/segment`).
 async fn post_segment(
     remote: &RemoteSink,
@@ -970,6 +589,11 @@ mod live_tests {
     //! Real streams, real ffmpeg: `cargo test -- --ignored live_` with
     //! network access and `PNEX_FFMPEG` (or ffmpeg in `PATH`).
     use super::*;
+    use fetch::Fetcher;
+    use sandbox::SandboxMode;
+    use segmenter::Segmenter;
+    use std::process::Stdio;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     async fn capture_one_segment(kind: MediaStreamKind, url: &str) -> segmenter::Cut {
         let ffmpeg = decoder::resolve(&CaptureSettings::from_env().ffmpeg).expect("ffmpeg");
@@ -1035,33 +659,5 @@ mod live_tests {
         });
         let cut = capture_one_segment(MediaStreamKind::Hls, &url).await;
         assert_eq!(cut.wav.len(), 44 + 11 * 16_000 * 2);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn tee_feeds_both_sides_and_survives_one_leaving() {
-        let (tx, rx) = tokio::sync::mpsc::channel(4);
-        let (mut a, v) = tee(Track {
-            format: decoder::H264,
-            chunks: rx,
-        });
-        tx.send(Ok(axum::body::Bytes::from_static(b"one")))
-            .await
-            .unwrap();
-        let mut v = v.chunks;
-        assert_eq!(&a.chunks.recv().await.unwrap().unwrap()[..], b"one");
-        assert_eq!(&v.recv().await.unwrap().unwrap()[..], b"one");
-        // The video decoder goes away: audio keeps flowing.
-        drop(v);
-        tx.send(Ok(axum::body::Bytes::from_static(b"two")))
-            .await
-            .unwrap();
-        assert_eq!(&a.chunks.recv().await.unwrap().unwrap()[..], b"two");
-        drop(tx);
-        assert!(a.chunks.recv().await.is_none());
     }
 }

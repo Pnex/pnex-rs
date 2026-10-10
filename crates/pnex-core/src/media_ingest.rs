@@ -424,6 +424,10 @@ pub struct MediaStream {
     /// Capture health, enabled streams only (D160).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub health: Option<StreamHealth>,
+    /// Name (`device_id`) of the capture box when `capture_on` is
+    /// `device:<id>` (lot 6b).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capture_device: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -796,6 +800,102 @@ impl MediaSourceConfig {
     }
 }
 
+// ───────────── Capture boxes (`capture_on = device:<id>`, lot 6b) ─────────────
+
+/// Capability id an edge agent announces when it can capture streams
+/// (D159: `Announce.caps`, family `feature`).
+pub const MEDIA_CAPTURE_CAP: &str = "media_capture";
+
+/// `capture_error` written by the server when a box drops its media link.
+pub const CAPTURE_ERROR_DEVICE_OFFLINE: &str = "device-offline";
+
+/// A capture box of the org (stream form picker).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MediaCaptureDevice {
+    /// `device_registries.id` (`capture_on = device:<id>`).
+    pub id: i64,
+    /// Device name (`device_id`).
+    pub name: String,
+}
+
+/// One stream a box captures, pushed over `/ws/media` (D160). `auth_secret`
+/// is the stream's own access credential, sent to that box only over its
+/// authenticated link (media-ingest.md §21, SEC-27); never a storage secret.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DeviceStream {
+    pub id: String,
+    pub slug: String,
+    pub kind: MediaStreamKind,
+    pub url: String,
+    pub segment_secs: i32,
+    pub overlap_secs: i32,
+    #[serde(default)]
+    pub tracks: MediaTracks,
+    #[serde(default = "default_fps")]
+    pub fps: i32,
+    pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_secret: Option<String>,
+}
+
+/// Server → box messages of `/ws/media` (sealed text frames).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "t", rename_all = "snake_case")]
+pub enum MediaDownMsg {
+    /// Full list of the box's streams (on connect and on every change).
+    Streams { streams: Vec<DeviceStream> },
+    /// Outcome of one uploaded segment; `code` is a short refusal reason.
+    Ack {
+        stream_id: String,
+        seq: i64,
+        ok: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        code: Option<String>,
+    },
+}
+
+/// Box → server messages of `/ws/media` (sealed text frames).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "t", rename_all = "snake_case")]
+pub enum MediaUpMsg {
+    /// Capture state of one stream; `error` is a capture error code.
+    State {
+        stream_id: String,
+        state: CaptureState,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+}
+
+/// Header of an uploaded segment. Binary frame (sealed):
+/// `u16 BE header length ‖ header JSON ‖ WAV bytes`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SegmentHeader {
+    pub stream_id: String,
+    pub seq: i64,
+    pub started_ms: i64,
+    pub ended_ms: i64,
+    pub clock: ClockSource,
+}
+
+/// Builds the binary frame of a segment upload.
+pub fn encode_segment(header: &SegmentHeader, wav: &[u8]) -> Vec<u8> {
+    let head = serde_json::to_vec(header).unwrap_or_default();
+    let mut out = Vec::with_capacity(2 + head.len() + wav.len());
+    out.extend_from_slice(&(head.len() as u16).to_be_bytes());
+    out.extend_from_slice(&head);
+    out.extend_from_slice(wav);
+    out
+}
+
+/// Splits a segment upload frame; `None` when malformed.
+pub fn decode_segment(frame: &[u8]) -> Option<(SegmentHeader, &[u8])> {
+    let len = u16::from_be_bytes([*frame.first()?, *frame.get(1)?]) as usize;
+    let head = frame.get(2..2 + len)?;
+    let header = serde_json::from_slice(head).ok()?;
+    Some((header, &frame[2 + len..]))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -895,5 +995,25 @@ mod tests {
             code(&cfg(&["x"], Some(f64::NAN))),
             Some("media_source_confidence_invalid")
         );
+    }
+
+    #[test]
+    fn segment_frame_round_trip() {
+        let h = SegmentHeader {
+            stream_id: "s".into(),
+            seq: 7,
+            started_ms: 1,
+            ended_ms: 2,
+            clock: ClockSource::Host,
+        };
+        let frame = encode_segment(&h, b"RIFFdata");
+        let (back, wav) = decode_segment(&frame).unwrap();
+        assert_eq!(back, h);
+        assert_eq!(wav, b"RIFFdata");
+        assert!(decode_segment(&frame[..5]).is_none());
+        assert!(decode_segment(&[0, 2, b'{', b'}']).is_none());
+        let msg: MediaDownMsg =
+            serde_json::from_str(r#"{"t":"ack","stream_id":"s","seq":1,"ok":true}"#).unwrap();
+        assert!(matches!(msg, MediaDownMsg::Ack { ok: true, .. }));
     }
 }

@@ -212,7 +212,8 @@ async fn stream_crud_slug_and_quota() {
         )
         .await;
         assert_eq!(s, 400);
-        assert_eq!(e["error"], "media-capture-unsupported");
+        // Not a capture box of the org: same answer as an unknown id.
+        assert_eq!(e["capture_on"], "invalid");
 
         // Enabling needs a profile with a valid ASR model.
         let (s, e) = call(

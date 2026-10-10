@@ -172,6 +172,8 @@ impl Hooks for App {
             .add_route(controllers::ws_device::routes())
             // Camera & video (D73–D80): uplink + live WS, settings/segments API.
             .add_route(controllers::ws_camera::routes())
+            // Capture boxes (media-ingest.md D160, lot 6b).
+            .add_route(controllers::ws_media::routes())
             .add_route(controllers::cameras::routes())
             .add_route(controllers::camera_recordings::routes())
             .add_route(controllers::events::routes())

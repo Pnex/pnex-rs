@@ -39,7 +39,7 @@ pub enum StreamError {
     UrlHasCredentials,
     #[error("stream unreachable")]
     Unreachable,
-    #[error("capture carrier not supported yet")]
+    #[error("not available for this capture location")]
     CaptureUnsupported,
     #[error("ASR model invalid")]
     AsrModelInvalid,
@@ -77,10 +77,14 @@ pub async fn views<C: ConnectionTrait>(
 ) -> Result<Vec<MediaStream>, StoreError> {
     let ids: Vec<Uuid> = rows.iter().filter_map(|r| r.secret_id).collect();
     let names = store::names_of(db, Some(org_id), &ids).await?;
+    let boxes = super::boxes::names(db, org_id, rows).await?;
     let now = chrono::Utc::now();
     let mut out = Vec::with_capacity(rows.len());
     for r in rows {
         let mut v = view(r);
+        if let Some(CaptureOn::Device(id)) = CaptureOn::from_wire(&r.capture_on) {
+            v.capture_device = boxes.get(&id).cloned();
+        }
         v.auth_secret = r.secret_id.and_then(|id| {
             Some(pnex_core::SecretFieldView {
                 secret_id: id,
@@ -125,6 +129,7 @@ pub fn view(r: &media_streams::Model) -> MediaStream {
         capture_state: CaptureState::from_wire(&r.capture_state).unwrap_or_default(),
         capture_error: r.capture_error.clone(),
         health: None,
+        capture_device: None,
         created_at: r.created_at.to_rfc3339(),
         updated_at: r.updated_at.to_rfc3339(),
     }
@@ -199,6 +204,18 @@ pub fn clean_url(raw: &str) -> Result<reqwest::Url, StreamError> {
     clean_url_under(raw, egress::policy())
 }
 
+/// [`clean_url`] for a stream captured on `carrier`. A capture box fetches
+/// from the user's own LAN (Tvheadend, IP cameras): its URL is judged
+/// under `lan` even on a `public` server, which never fetches it (no
+/// server-side test, no server capture of a `device:` stream).
+fn clean_url_for(raw: &str, carrier: Option<CaptureOn>) -> Result<reqwest::Url, StreamError> {
+    let policy = match (carrier, egress::policy()) {
+        (Some(CaptureOn::Device(_)), egress::EgressPolicy::Public) => egress::EgressPolicy::Lan,
+        (_, p) => p,
+    };
+    clean_url_under(raw, policy)
+}
+
 fn clean_url_under(raw: &str, policy: egress::EgressPolicy) -> Result<reqwest::Url, StreamError> {
     let raw = raw.trim();
     if raw.is_empty() {
@@ -223,6 +240,19 @@ fn clean_url_under(raw: &str, policy: egress::EgressPolicy) -> Result<reqwest::U
     Ok(url)
 }
 
+/// A capture box captures audio only: its frames would have no camera bus
+/// to reach (the bus lives on the server's Valkey).
+fn check_box_tracks(am: &media_streams::ActiveModel) -> Result<(), StreamError> {
+    let on_box = matches!(
+        CaptureOn::from_wire(am.capture_on.as_ref()),
+        Some(CaptureOn::Device(_))
+    );
+    if on_box && am.tracks.as_ref() != MediaTracks::Audio.wire() {
+        return Err(invalid("tracks", err_codes::FIELD_INVALID));
+    }
+    Ok(())
+}
+
 /// The URL scheme must match the stream kind (rtsp ⇔ `rtsp`).
 fn check_kind_url(am: &media_streams::ActiveModel) -> Result<(), StreamError> {
     let kind = MediaStreamKind::from_wire(am.kind.as_ref()).unwrap_or_default();
@@ -235,13 +265,7 @@ fn check_kind_url(am: &media_streams::ActiveModel) -> Result<(), StreamError> {
 }
 
 /// `(scheme, host, port)` of a URL: the destination a secret is bound to.
-pub fn origin(url: &reqwest::Url) -> (String, String, Option<u16>) {
-    (
-        url.scheme().to_string(),
-        url.host_str().unwrap_or_default().to_ascii_lowercase(),
-        url.port_or_known_default(),
-    )
-}
+pub use pnex_media_capture::fetch::origin;
 
 fn valid_timezone(tz: &str) -> bool {
     !tz.is_empty()
@@ -279,8 +303,14 @@ async fn apply<C: ConnectionTrait>(
     if let Some(raw) = &input.capture_on {
         match CaptureOn::from_wire(raw.trim()) {
             Some(c @ (CaptureOn::Server | CaptureOn::Worker)) => am.capture_on = Set(c.wire()),
-            // Capture boxes arrive with their device upload channel (lot 6).
-            Some(CaptureOn::Device(_)) => return Err(StreamError::CaptureUnsupported),
+            // A capture box of the org (an agent that announced
+            // `media_capture`); any other id reads like an unknown one.
+            Some(c @ CaptureOn::Device(id)) => {
+                if !super::boxes::is_capture_box(db, org_id, id).await? {
+                    return Err(invalid("capture_on", err_codes::FIELD_INVALID));
+                }
+                am.capture_on = Set(c.wire());
+            }
             None => return Err(invalid("capture_on", err_codes::FIELD_INVALID)),
         }
     }
@@ -445,7 +475,11 @@ pub async fn create(
     let Some(kind) = input.kind else {
         return Err(invalid("kind", err_codes::FIELD_REQUIRED));
     };
-    let url = clean_url(input.url.as_deref().unwrap_or_default())?;
+    let carrier = input
+        .capture_on
+        .as_deref()
+        .and_then(|c| CaptureOn::from_wire(c.trim()));
+    let url = clean_url_for(input.url.as_deref().unwrap_or_default(), carrier)?;
     let txn = db.begin().await?;
     db_lock::xact_lock(&txn, db_lock::ns::MEDIA_STREAM_QUOTA, org_id).await?;
     let count = media_streams::Entity::find()
@@ -489,6 +523,7 @@ pub async fn create(
     };
     apply(&txn, org_id, &mut am, input).await?;
     check_kind_url(&am)?;
+    check_box_tracks(&am)?;
     if input.enabled == Some(true) {
         check_runnable(&txn, org_id, &am).await?;
     }
@@ -522,8 +557,13 @@ pub async fn update(
     let txn = db.begin().await?;
     let row = find(&txn, org_id, id).await?;
     let mut am: media_streams::ActiveModel = row.clone().into();
+    let carrier = input
+        .capture_on
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or(&row.capture_on);
     if let Some(raw) = &input.url {
-        let url = clean_url(raw)?;
+        let url = clean_url_for(raw, CaptureOn::from_wire(carrier))?;
         let before = reqwest::Url::parse(&row.url).ok();
         let moved = before.as_ref().map(origin) != Some(origin(&url));
         // R9: a stream holding a secret keeps its origin unless an
@@ -537,6 +577,22 @@ pub async fn update(
         am.url = Set(url.to_string());
     }
     apply(&txn, org_id, &mut am, input).await?;
+    // R9: the secret of a stream goes to its capture box (SEC-27), so
+    // moving a secret-holding stream onto a box is an owner/admin act.
+    let to_box = matches!(
+        CaptureOn::from_wire(am.capture_on.as_ref()),
+        Some(CaptureOn::Device(_))
+    );
+    if to_box
+        && am.capture_on.as_ref() != &row.capture_on
+        && row.secret_id.is_some()
+        && !by.can_manage_secrets
+    {
+        return Err(StoreError::DestinationLocked {
+            field: "auth".into(),
+        }
+        .into());
+    }
     if input.clear_secret {
         if row.secret_id.is_some() {
             media_secret::release(&txn, org_id, id, &row.slug).await?;
@@ -557,6 +613,7 @@ pub async fn update(
         am.secret_id = Set(held);
     }
     check_kind_url(&am)?;
+    check_box_tracks(&am)?;
     let enabled = am.enabled.clone().unwrap();
     if enabled {
         check_runnable(&txn, org_id, &am).await?;

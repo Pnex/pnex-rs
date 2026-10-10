@@ -368,11 +368,11 @@ async fn session_loop(
                         .await;
                 } else {
                     match serde_json::from_str::<DeviceMsg>(&plain) {
-                        Ok(DeviceMsg::Announce { fw, .. }) if agent.is_some() => {
+                        Ok(DeviceMsg::Announce { fw, caps, .. }) if agent.is_some() => {
                             // Edge agent (D95): no pins, no manifest — the
                             // registration (token) is the admission.
                             if let Some(sess) = agent.as_mut() {
-                                handle_agent_announce(&ctx, &mut socket, &mut codec, &snap, sess, &fw).await;
+                                handle_agent_announce(&ctx, &mut socket, &mut codec, &snap, sess, &fw, caps.as_deref()).await;
                             }
                         }
                         Ok(DeviceMsg::Batch { epoch, points }) => {
@@ -571,8 +571,9 @@ impl OtaCache {
     }
 }
 
-/// Edge agent announce (D95): stamps the agent version, answers the
-/// runtime parameters. No admission step — pins and firmware do not apply.
+/// Edge agent announce (D95): stamps the agent version and its announced
+/// capabilities (`media_capture`, lot 6b), answers the runtime parameters.
+/// No admission step — pins and firmware do not apply.
 async fn handle_agent_announce(
     ctx: &AppContext,
     socket: &mut WebSocket,
@@ -580,15 +581,21 @@ async fn handle_agent_announce(
     snap: &DeviceSnapshot,
     sess: &mut crate::services::edge_agent::AgentSession,
     fw: &str,
+    caps: Option<&[pnex_core::CapDesc]>,
 ) {
     if let Ok(Some(dev)) = device_registries::Entity::find_by_id(snap.device_registry_id)
         .one(&ctx.db)
         .await
     {
         let max_keys = dev.max_unique_measurements;
-        if dev.fw_version.as_deref() != Some(fw) {
+        // Bounded: an agent announces a handful of feature ids.
+        let caps_json = caps
+            .map(|cs| &cs[..cs.len().min(16)])
+            .and_then(|cs| serde_json::to_value(cs).ok());
+        if dev.fw_version.as_deref() != Some(fw) || dev.announced_caps != caps_json {
             let mut active: device_registries::ActiveModel = dev.into();
             active.fw_version = sea_orm::Set(Some(fw.chars().take(64).collect()));
+            active.announced_caps = sea_orm::Set(caps_json);
             let _ = sea_orm::ActiveModelTrait::update(active, &ctx.db).await;
         }
         *sess = crate::services::edge_agent::AgentSession::new(snap.device_registry_id, max_keys);

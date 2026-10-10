@@ -335,6 +335,16 @@ serveur pourrait orchestrer du fetch massif, on change de catégorie
 > **Livré** (2026-09-30) : `edge-agent.md`, D95–D99. L'implémentation passe
 > par le modèle device (comme l'extension) : un agent = un device
 > `edge_agent`, ingestion libre, Valkey toujours, O2 en opt-in par clé.
+>
+> **Boîtier de capture média** (2026-10-10, `media-ingest.md` D159/D160,
+> lot 6b) : un agent Linux avec `media_capture = true` dans son
+> `config.toml` et ffmpeg présent annonce la capability `media_capture`
+> (famille `feature`, persistée dans `announced_caps`). Il devient un lieu
+> de capture (`capture_on = device:<id>`) : il reçoit ses flux et envoie
+> ses segments sur un second lien device, `/ws/media` (mêmes certificat
+> client, jeton et clé Noise que `/ws/device`, binaire comme
+> `/ws/camera`), avec la chaîne de capture du serveur (crate
+> `pnex-media-capture`). Egress du boîtier : politique `lan` par défaut.
 
 - Binaire **Rust** (réutilise `pnex-core`), serveur HTTP **127.0.0.1** pour
   les producteurs locaux (scripts, LAN) ; bind LAN = opt-in avec token

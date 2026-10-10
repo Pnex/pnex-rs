@@ -71,13 +71,8 @@ regex = { version = "1.11" }
 rand = "0.10"
 # Superviseur du runtime de flows (D18) : SIGUSR1 + test de vie du pid
 libc = "0.2"
-# Unprivileged filesystem/TCP confinement of the media decoder (media-ingest.md
-# D160): works where user namespaces (bwrap) are refused. MIT OR Apache-2.0.
-landlock = "0.4"
-# RTSP client of IP cameras (media-ingest.md D160): session opened on the
-# egress-validated IP, TCP interleaved only, redirects refused; the
-# elementary stream is piped to the confined decoder. MIT OR Apache-2.0.
-retina = "=0.4.20"
+# Media capture chain (D160), shared with the edge agent (lot 6b).
+pnex-media-capture = { workspace = true }
 # Speech-to-text protocol, family detection and WER (pure Rust: the runtime
 # runs in the separate pnex-asr process, media-ingest.md D166).
 pnex-asr = { workspace = true }

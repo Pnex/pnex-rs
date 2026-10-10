@@ -7,7 +7,7 @@
 
 use std::time::{Duration, Instant};
 
-use axum::body::Bytes;
+use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use pnex_core::egress;
 use pnex_core::media_ingest::MediaStreamKind;
@@ -15,11 +15,19 @@ use reqwest::header::{HeaderName, HeaderValue, CONTENT_TYPE, LOCATION};
 use reqwest::Url;
 use tokio::sync::mpsc;
 
-use super::decoder::{input_format, InputFormat};
-use super::hls::{self, Playlist};
-use super::icy;
-use super::CaptureError;
-use crate::services::media_ingest::streams::origin;
+use crate::decoder::{input_format, InputFormat};
+use crate::hls::{self, Playlist};
+use crate::icy;
+use crate::CaptureError;
+
+/// `(scheme, host, port)` of a URL: the destination a secret is bound to.
+pub fn origin(url: &Url) -> (String, String, Option<u16>) {
+    (
+        url.scheme().to_string(),
+        url.host_str().unwrap_or_default().to_ascii_lowercase(),
+        url.port_or_known_default(),
+    )
+}
 
 const MAX_REDIRECTS: usize = 5;
 /// Largest HLS segment (or init section) accepted.

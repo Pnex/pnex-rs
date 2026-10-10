@@ -61,6 +61,8 @@ pub mod viz_widgets;
 /// Camera uplink + browser live view (camera-video.md D73/D75).
 pub mod ws_camera;
 pub mod ws_device;
+/// Media link of capture boxes (media-ingest.md D160, lot 6b).
+pub mod ws_media;
 /// Bus WS des notifications (canal `websocket`, D51).
 pub mod ws_notify;
 pub mod ws_ticket;

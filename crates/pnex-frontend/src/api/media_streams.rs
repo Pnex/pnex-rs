@@ -3,8 +3,8 @@
 //! `/api/v1/media/transcripts`, `/api/v1/asr/models` and `/api/v1/asr/profiles`.
 
 use pnex_core::media_ingest::{
-    AsrModel, AsrModelInput, AsrProfile, AsrProfileInput, MediaSegment, MediaStream,
-    MediaStreamInput, TranscriptRecord,
+    AsrModel, AsrModelInput, AsrProfile, AsrProfileInput, MediaCaptureDevice, MediaSegment,
+    MediaStream, MediaStreamInput, TranscriptRecord,
 };
 use pnex_core::Paginated;
 
@@ -37,6 +37,11 @@ pub async fn list(
         None,
     )
     .await
+}
+
+/// `GET /api/v1/media/capture-devices` — the org's capture boxes (lot 6b).
+pub async fn capture_devices() -> Result<Vec<MediaCaptureDevice>, ApiError> {
+    client::request(reqwest::Method::GET, "/api/v1/media/capture-devices", None).await
 }
 
 /// `POST /api/v1/media/streams` — 400 body = field tokens.

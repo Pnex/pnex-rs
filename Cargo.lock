@@ -8002,7 +8002,6 @@ dependencies = [
  "if-addrs",
  "include_dir",
  "jsonwebtoken",
- "landlock",
  "libc",
  "loco-rs",
  "opendal",
@@ -8012,6 +8011,7 @@ dependencies = [
  "pnex-coolprop",
  "pnex-core",
  "pnex-firmware-builder",
+ "pnex-media-capture",
  "pnex-migration",
  "pnex-notify",
  "pnex-stitcher",
@@ -8022,7 +8022,6 @@ dependencies = [
  "redis",
  "regex",
  "reqwest 0.12.28",
- "retina",
  "rustls-pki-types",
  "rustls-webpki",
  "sea-orm",
@@ -8091,6 +8090,7 @@ dependencies = [
  "hostname",
  "ipnet",
  "pnex-core",
+ "pnex-media-capture",
  "rcgen",
  "redb",
  "reqwest 0.12.28",
@@ -8199,6 +8199,22 @@ dependencies = [
  "web-sys",
  "webbrowser",
  "wry",
+]
+
+[[package]]
+name = "pnex-media-capture"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "chrono",
+ "futures-util",
+ "landlock",
+ "libc",
+ "pnex-core",
+ "reqwest 0.12.28",
+ "retina",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

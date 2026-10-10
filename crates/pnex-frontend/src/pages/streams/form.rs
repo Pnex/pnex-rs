@@ -89,6 +89,34 @@ pub fn StreamFormModal(
         _ => Vec::new(),
     };
 
+    let boxes = use_resource(|| async move {
+        api::media_streams::capture_devices()
+            .await
+            .unwrap_or_default()
+    });
+    let mut box_rows = boxes.value().read().clone().unwrap_or_default();
+    // The current box stays listed even when it no longer announces capture.
+    if let Some(s) = init
+        .as_ref()
+        .filter(|s| s.capture_on.starts_with("device:"))
+    {
+        if !box_rows
+            .iter()
+            .any(|b| format!("device:{}", b.id) == s.capture_on)
+        {
+            let id = s
+                .capture_on
+                .trim_start_matches("device:")
+                .parse()
+                .unwrap_or_default();
+            let name = s
+                .capture_device
+                .clone()
+                .unwrap_or_else(|| s.capture_on.clone());
+            box_rows.push(pnex_core::media_ingest::MediaCaptureDevice { id, name });
+        }
+    }
+
     let channels = use_resource(|| async move {
         api::notify::list_channels()
             .await
@@ -302,6 +330,13 @@ pub fn StreamFormModal(
                             value: "worker",
                             selected: capture_on() == "worker",
                             {t!("streams-capture-worker")}
+                        }
+                        for b in box_rows {
+                            option {
+                                value: "device:{b.id}",
+                                selected: capture_on() == format!("device:{}", b.id),
+                                {t!("streams-capture-device", name : b.name.clone())}
+                            }
                         }
                     }
                     p { class: "text-xs text-gray-500 mt-1", {t!("streams-capture-help")} }
