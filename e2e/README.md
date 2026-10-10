@@ -95,6 +95,7 @@ Rules:
 | `settings` | `@settings` | secrets (value never shown back), organizations create/delete |
 | `search` | `@search @i18n` | sidebar search finds a function and deep-links to its editor |
 | `ontology` | `@ontology @i18n` | maintenance pack; pump created from the typed form (required field refused locally), `feeds` link opened, graph, link closed then found in the history; type editor saves a new version; packs tab; global search opens an object page; type dashboard drawn for a picked object |
+| `pages` | `@pages` | page written with Markdown shortcuts, live sync with a second tab, reload, named versions (diff, restore), anchored comment + reply + resolve, Markdown export, delete |
 | `map` | `@map` | POI placed by clicking the map, drawer, delete |
 | `geo` | `@geo` (`@geo-live`) | no basemap → notice; basemap added from the org page form, Test, default on the map, switcher remembered; with `PNEX_E2E_GEO_BASE`: geocode, reverse and route through the server proxy against Photon + GraphHopper, Test of each provider |
 | `media` | `@media` | photo upload (browser-rendered PNG), delete |
