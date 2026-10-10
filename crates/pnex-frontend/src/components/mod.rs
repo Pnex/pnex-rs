@@ -42,13 +42,14 @@ pub mod function_node_preview;
 pub mod function_ports;
 pub mod function_templates;
 pub mod functions_reference;
+/// Secret input shared by every functional form (secrets.md D113).
+pub mod geo_providers;
 /// Home icon catalog of the dashboard cards (D136).
 pub mod home_icons;
 pub mod icons;
 /// Éditeur de labels transverse (D42) — réutilisable sur tout kind.
 pub mod labels_editor;
 pub mod lan_detect;
-/// Secret input shared by every functional form (secrets.md D113).
 pub mod llm_providers;
 pub mod loading_overlay;
 pub mod location_breadcrumb;

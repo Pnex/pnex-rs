@@ -32,6 +32,7 @@ pub mod formula_data_sources;
 pub mod formulas;
 pub mod function_versions;
 pub mod functions;
+pub mod geo_providers;
 pub mod link_types;
 pub mod llm_providers;
 pub mod map_pins;

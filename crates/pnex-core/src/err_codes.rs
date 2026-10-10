@@ -160,6 +160,16 @@ pub const LLM_PROVIDER_NAME_TAKEN: &str = "llm-provider-name-taken";
 pub const LLM_PROVIDER_NO_KEY: &str = "llm-provider-no-key";
 /// Provider test: its API key could not be read from the vault.
 pub const LLM_PROVIDER_KEY_UNREADABLE: &str = "llm-provider-key-unreadable";
+// Geo providers (geo-layers.md §8, phase F).
+pub const GEO_PROVIDER_FORBIDDEN: &str = "geo-provider-forbidden";
+pub const GEO_PROVIDER_NOT_FOUND: &str = "geo-provider-not-found";
+pub const GEO_PROVIDER_NAME_TAKEN: &str = "geo-provider-name-taken";
+/// No default provider for the capability (args: `capability`).
+pub const GEO_NOT_CONFIGURED: &str = "geo-not-configured";
+/// The provider's rate limit is reached (args: `retry_after_s`).
+pub const GEO_RATE_LIMITED: &str = "geo-rate-limited";
+/// The provider failed or answered unexpectedly (detail verbatim).
+pub const GEO_PROVIDER_FAILED: &str = "geo-provider-failed";
 pub const NOTIFY_WRITE_FORBIDDEN: &str = "notify-write-forbidden";
 pub const NOTIFY_CHANNEL_NAME_CONFLICT: &str = "notify-channel-name-conflict";
 pub const NOTIFY_TEMPLATE_NAME_CONFLICT: &str = "notify-template-name-conflict";
@@ -603,6 +613,12 @@ pub const ALL: &[&str] = &[
     LLM_PROVIDER_NAME_TAKEN,
     LLM_PROVIDER_NO_KEY,
     LLM_PROVIDER_KEY_UNREADABLE,
+    GEO_PROVIDER_FORBIDDEN,
+    GEO_PROVIDER_NOT_FOUND,
+    GEO_PROVIDER_NAME_TAKEN,
+    GEO_NOT_CONFIGURED,
+    GEO_RATE_LIMITED,
+    GEO_PROVIDER_FAILED,
     NOTIFY_WRITE_FORBIDDEN,
     NOTIFY_CHANNEL_NAME_CONFLICT,
     NOTIFY_TEMPLATE_NAME_CONFLICT,

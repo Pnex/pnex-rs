@@ -159,6 +159,7 @@ impl Hooks for App {
             // Org shared memory (flow memory-write) for dashboards.
             .add_route(controllers::memory::routes())
             .add_route(controllers::ai::routes())
+            .add_route(controllers::geo::routes())
             // Notifications (D49–D54) : canaux/templates/journal + bus WS +
             // endpoint interne de livraison (nœud flow / loopback Test).
             .add_route(controllers::notify::routes())

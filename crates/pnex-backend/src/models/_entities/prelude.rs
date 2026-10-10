@@ -29,6 +29,8 @@ pub use super::formula_data_sources::Entity as FormulaDataSources;
 pub use super::formulas::Entity as Formulas;
 pub use super::function_versions::Entity as FunctionVersions;
 pub use super::functions::Entity as Functions;
+pub use super::geo_provider_defaults::Entity as GeoProviderDefaults;
+pub use super::geo_providers::Entity as GeoProviders;
 pub use super::link_types::Entity as LinkTypes;
 pub use super::llm_providers::Entity as LlmProviders;
 pub use super::map_pins::Entity as MapPins;

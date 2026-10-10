@@ -22,6 +22,8 @@ pub const KEY_ORG: &str = "pnex.org";
 pub const KEY_LOCALE: &str = "pnex.locale";
 /// Sidebar desktop repliée en rail d'icônes (préférence UI, cf. `state::ui`).
 pub const KEY_SIDEBAR_RAIL: &str = "pnex.sidebar_rail";
+/// Basemap chosen on the map, per org: `pnex.basemap.<org id>` (geo-layers.md L25).
+pub const KEY_BASEMAP_PREFIX: &str = "pnex.basemap.";
 /// URL du serveur auto-hébergé — cible desktop/mobile uniquement (le web est
 /// same-origin, la clé n'est jamais écrite).
 pub const KEY_API_BASE: &str = "pnex.api_base";

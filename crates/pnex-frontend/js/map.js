@@ -2,9 +2,8 @@
 //! maplibre-gl 6.x, mounted on `window.pnexMap` (viewers.js / flasher.js
 //! pattern). Loaded by `main.rs`.
 //!
-//! Le style de tuiles est le style Protomaps auto-hébergé fourni par
-//! l'utilisateur (`map.alpine-box.com/style/light-en` — vectoriel, glyphes
-//! sans suffixe .pbf, CORS réfléchi).
+//! The basemap style is the org's default geo provider (geo-layers.md
+//! L24–L26), chosen by the page; empty = plain background.
 //!
 //! Les items sont des **markers HTML** (pas des layers symbol) : le texte
 //! maplibre est rendu en SDF monochrome — un emoji couleur n'y passe pas ;
@@ -159,15 +158,21 @@ maplibreGl.setWorkerUrl(
         api.unmount(hostId);
         var map = new ml.Map({
           container: host,
-          style: opts.styleUrl,
+          // No basemap configured (L26): plain background, POIs still usable.
+          style: opts.styleUrl || {
+            version: 8, sources: {},
+            layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#e9ecef' } }],
+          },
           center: opts.center || [2.35, 48.85],
           zoom: typeof opts.zoom === 'number' ? opts.zoom : 4,
           attributionControl: { compact: true },
         });
         host._pnexMap = map;
         host._pnexMapMarkers = [];
-        host._pnexMapClickSeq = 0;
-        host._pnexMapViewSeq = 0;
+        // Sequences survive a remount (basemap switch): the page polls for
+        // a seq greater than the last one it saw.
+        host._pnexMapClickSeq = host._pnexMapClickSeq || 0;
+        host._pnexMapViewSeq = host._pnexMapViewSeq || 0;
         map.on('error', function (e) {
           setErr(host, (e && e.error && e.error.message) || 'map');
         });

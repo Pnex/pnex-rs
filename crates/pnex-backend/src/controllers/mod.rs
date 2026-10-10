@@ -21,6 +21,7 @@ pub mod flow_cluster;
 pub mod flows;
 pub mod fluid_mixtures;
 pub mod functions;
+pub mod geo;
 /// Global typeahead across the org's objects (D69).
 pub mod global_search;
 pub mod health;

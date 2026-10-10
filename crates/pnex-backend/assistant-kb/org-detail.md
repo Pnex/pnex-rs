@@ -8,7 +8,7 @@ err_codes: org-rename-forbidden, org-delete-forbidden, org-not-empty, org-member
 tools: 
 tags: members, invite, add member, team, role, rename organization, delete organization, membres, inviter, owner, admin, viewer
 ---
-The organization detail page (Organizations → **Manage**, or directly the active organization) shows one organization: its members and their roles, its LLM providers for the assistant, and the rename and delete actions.
+The organization detail page (Organizations → **Manage**, or directly the active organization) shows one organization: its members and their roles, its LLM providers for the assistant, its geo providers for the map, and the rename and delete actions.
 
 ## What you can do
 - **Rename** (Owner or Admin): type the new name and click **Rename**.
@@ -16,6 +16,7 @@ The organization detail page (Organizations → **Manage**, or directly the acti
 - **Change a role** (Owner or Admin): use the role selector on the member row.
 - **Remove member** (Owner or Admin): trash button on the member row.
 - **LLM providers**: configure the organization's own LLM for the assistant (see the LLM providers card).
+- **Geo providers**: basemaps, geocoding and routing engines of the organization (see the geo-providers card).
 - **Delete** (Owner only): button at the top right, confirmed by a dialog. It is irreversible and deletes the organization's data.
 
 Users with the Member or Viewer role see the member list and role badges, without the editing controls.
@@ -24,5 +25,5 @@ Users with the Member or Viewer role see the member list and role badges, withou
 - Only an Owner can grant the Owner role, modify another Owner or remove an Owner.
 - An organization must keep at least one Owner: the last one cannot be demoted or removed.
 - Deletion is refused while other members remain: remove them first.
-- A legend under **Members** summarizes the four roles: Owner (everything, incl. deleting the organization and managing owners), Admin (members, secrets, LLM providers, telemetry data, plus all content), Member (edits flows, devices, dashboards and channels; picks existing secrets without seeing them), Viewer (read-only).
+- A legend under **Members** summarizes the four roles: Owner (everything, incl. deleting the organization and managing owners), Admin (members, secrets, LLM and geo providers, telemetry data, plus all content), Member (edits flows, devices, dashboards and channels; picks existing secrets without seeing them), Viewer (read-only).
 - **Back to organizations** returns to the list.
