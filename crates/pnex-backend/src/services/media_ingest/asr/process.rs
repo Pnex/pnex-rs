@@ -17,7 +17,7 @@ use tokio::sync::Mutex;
 use crate::services::media_ingest::capture::sandbox::{self, SandboxMode};
 
 /// Model load bound (large Whisper on a Pi).
-const LOAD_TIMEOUT: Duration = Duration::from_secs(300);
+const LOAD_TIMEOUT: Duration = Duration::from_secs(120);
 /// One segment bound.
 const INFER_TIMEOUT: Duration = Duration::from_secs(300);
 /// A process unused this long is stopped.
@@ -46,6 +46,8 @@ pub struct Launch {
     pub language: String,
     pub threads: u32,
     pub provider: String,
+    /// `RLIMIT_AS` of the process, bytes (0 = none).
+    pub max_memory: u64,
 }
 
 pub struct AsrProcess {
@@ -60,6 +62,7 @@ pub struct AsrProcess {
 
 impl AsrProcess {
     pub async fn start(launch: &Launch, mode: &SandboxMode) -> Result<Self, AsrProcessError> {
+        let max_memory = launch.max_memory;
         let mut argv = vec![
             launch.bin.display().to_string(),
             "serve".into(),
@@ -85,7 +88,7 @@ impl AsrProcess {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .kill_on_drop(true);
-        sandbox::confine(&mut cmd, mode);
+        sandbox::confine(&mut cmd, mode, max_memory);
         let mut child = cmd.spawn().map_err(|_| AsrProcessError::Missing)?;
         let stdin = child.stdin.take().ok_or(AsrProcessError::Died)?;
         let mut stdout = BufReader::new(child.stdout.take().ok_or(AsrProcessError::Died)?);

@@ -30,8 +30,8 @@ pub enum SandboxMode {
     None,
 }
 
-/// Memory cap of the decoder process.
-const DECODER_MAX_MEMORY: u64 = 1024 * 1024 * 1024;
+/// Address-space cap of the decoder process (ffmpeg needs little).
+pub const DECODER_MAX_MEMORY: u64 = 1024 * 1024 * 1024;
 /// Open file cap of the decoder process.
 const DECODER_MAX_FILES: u64 = 64;
 
@@ -69,7 +69,7 @@ pub fn wrap_argv(mode: &SandboxMode, argv: Vec<String>) -> Vec<String> {
 
 #[cfg(target_os = "linux")]
 mod linux {
-    use super::{SandboxMode, DECODER_MAX_FILES, DECODER_MAX_MEMORY};
+    use super::{SandboxMode, DECODER_MAX_FILES};
     use landlock::{
         Access, AccessFs, AccessNet, Ruleset, RulesetAttr, RulesetCreated, RulesetCreatedAttr, ABI,
     };
@@ -153,8 +153,9 @@ mod linux {
     }
 
     /// Installs the confinement on `cmd`, applied in the child right
-    /// before `exec`.
-    pub fn confine(cmd: &mut tokio::process::Command, mode: &SandboxMode) {
+    /// before `exec`. `max_memory`: `RLIMIT_AS` in bytes, 0 = none (an
+    /// ONNX runtime reserves far more address space than it touches).
+    pub fn confine(cmd: &mut tokio::process::Command, mode: &SandboxMode, max_memory: u64) {
         let kernel = !matches!(mode, SandboxMode::None);
         let program = seccomp_program();
         let mut landlock = if kernel { landlock_ruleset() } else { None };
@@ -172,11 +173,14 @@ mod linux {
                     return Err(std::io::Error::last_os_error());
                 }
                 for (res, val) in [
-                    (libc::RLIMIT_AS, DECODER_MAX_MEMORY),
+                    (libc::RLIMIT_AS, max_memory),
                     (libc::RLIMIT_NOFILE, DECODER_MAX_FILES),
                     (libc::RLIMIT_FSIZE, 0),
                     (libc::RLIMIT_CORE, 0),
                 ] {
+                    if res == libc::RLIMIT_AS && val == 0 {
+                        continue;
+                    }
                     let lim = libc::rlimit {
                         rlim_cur: val as libc::rlim_t,
                         rlim_max: val as libc::rlim_t,
@@ -218,7 +222,7 @@ mod linux {
 pub use linux::confine;
 
 #[cfg(not(target_os = "linux"))]
-pub fn confine(_cmd: &mut tokio::process::Command, _mode: &SandboxMode) {}
+pub fn confine(_cmd: &mut tokio::process::Command, _mode: &SandboxMode, _max_memory: u64) {}
 
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
@@ -233,7 +237,7 @@ mod tests {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         if let Some(mode) = mode {
-            confine(&mut cmd, mode);
+            confine(&mut cmd, mode, DECODER_MAX_MEMORY);
         }
         cmd.output().await.expect("spawn bash")
     }

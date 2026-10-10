@@ -317,7 +317,9 @@ fn StreamRow(
                     }
                 }
             }
-            td { class: "td hidden text-gray-600 md:table-cell", "{stream.audio_retention}" }
+            td { class: "td hidden text-gray-600 md:table-cell",
+                {form::retention_label(&stream.audio_retention)}
+            }
             td { class: "td {ACTIONS_TD_CLASS}",
                 if can_write {
                     div { class: "flex justify-end gap-2",

@@ -18,7 +18,7 @@ const LABEL: &str = "block text-xs text-gray-600 mb-1";
 /// the server).
 const RETENTIONS: [&str; 5] = ["none", "days:1", "days:7", "days:30", "keep"];
 
-fn retention_label(wire: &str) -> String {
+pub(super) fn retention_label(wire: &str) -> String {
     match wire {
         "none" => t!("streams-retention-none").to_string(),
         "keep" => t!("streams-retention-keep").to_string(),

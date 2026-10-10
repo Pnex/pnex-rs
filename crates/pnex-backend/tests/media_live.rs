@@ -11,6 +11,10 @@
 //! The stream is the reference sample served as an HTTP file: one segment,
 //! transcribed, stored in `tx_<slug>`, found by the transcript search, and
 //! announced on the stream's Valkey channel.
+//!
+//! The test org gets id 1, so it writes into the O2 org `pnex_org_1`, the
+//! same one as org 1 of a `task dev` database on the same O2: delete the
+//! `tx_lune` logs stream afterwards on a shared dev O2.
 
 mod common;
 

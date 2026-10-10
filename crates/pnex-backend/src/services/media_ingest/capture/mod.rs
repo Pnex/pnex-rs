@@ -428,7 +428,7 @@ async fn run_once(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    sandbox::confine(&mut cmd, &settings.sandbox);
+    sandbox::confine(&mut cmd, &settings.sandbox, sandbox::DECODER_MAX_MEMORY);
     let mut child = cmd.spawn().map_err(|e| {
         tracing::warn!(error = %e, "media decoder spawn failed");
         CaptureError::DecoderMissing
@@ -561,7 +561,7 @@ mod live_tests {
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .kill_on_drop(true);
-        sandbox::confine(&mut cmd, &SandboxMode::Kernel);
+        sandbox::confine(&mut cmd, &SandboxMode::Kernel, sandbox::DECODER_MAX_MEMORY);
         let mut child = cmd.spawn().unwrap();
         let mut stdin = child.stdin.take().unwrap();
         let mut stdout = child.stdout.take().unwrap();
