@@ -31,6 +31,8 @@ pub mod media;
 pub mod models;
 pub mod not_found;
 pub mod notifications;
+/// Ontology explorer, object page, type editor (ontology.md D186).
+pub mod ontology;
 pub mod orgs;
 pub mod profile;
 pub mod secrets;
@@ -65,6 +67,7 @@ pub use media::Media;
 pub use models::Models;
 pub use not_found::NotFound;
 pub use notifications::Notifications;
+pub use ontology::{Ontology, OntologyObject, OntologyType};
 pub use orgs::{Orgs, OrgsCurrent};
 pub use profile::Profile;
 pub use secrets::Secrets;

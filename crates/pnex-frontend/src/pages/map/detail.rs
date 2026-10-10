@@ -265,6 +265,10 @@ pub(super) fn PoiDetail(
                                     id: p.id.clone(),
                                     can_write: crate::state::org::current_can_write(),
                                 }
+                                crate::components::ontology::object_link::ObjectPageLink {
+                                    kind: pnex_core::resources::KIND_MAP_PIN.to_string(),
+                                    native_id: p.id.clone(),
+                                }
                             }
                             // ── Objets attachés : arbre de dossiers ──
                             div { class: "space-y-1.5",

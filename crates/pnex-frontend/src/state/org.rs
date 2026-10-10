@@ -70,6 +70,17 @@ pub fn role_can_administer(role: &str) -> bool {
     matches!(role, "owner" | "admin")
 }
 
+/// The signed-in user administers the current org (owner or admin).
+pub fn current_can_administer() -> bool {
+    let (Some(user), Some(org_id)) = (crate::state::session::user(), current()) else {
+        return false;
+    };
+    user.orgs
+        .iter()
+        .find(|m| m.id == org_id)
+        .is_some_and(|m| role_can_administer(&m.role))
+}
+
 /// Désélectionne l'org courante.
 pub fn clear() {
     ORG.with_mut(|v| *v = None);

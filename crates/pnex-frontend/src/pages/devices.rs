@@ -1511,6 +1511,12 @@ fn DeviceDetail(
                                 can_write,
                                 on_changed: refresh,
                             }
+                            div { class: "mt-3",
+                                crate::components::ontology::object_link::ObjectPageLink {
+                                    kind: pnex_core::resources::KIND_DEVICE.to_string(),
+                                    native_id: device_pk.to_string(),
+                                }
+                            }
                         }
                     }
                 }

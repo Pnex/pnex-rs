@@ -1,9 +1,9 @@
 //! Ontology API (ontology.md D176–D191): `/api/v1/ontology/*`.
 
 use pnex_core::ontology::api::{
-    ChangeView, LinkClose, LinkInput, LinkTypeInput, LinkTypeView, LinkView, Neighborhood,
-    ObjectInput, ObjectRef, ObjectTypeInput, ObjectTypeVersionView, ObjectTypeView, ObjectView,
-    OntologyQuery, PackView, QueryResult, SeriesView,
+    ChangeView, LinkClose, LinkInput, LinkTypeView, LinkView, Neighborhood, ObjectInput, ObjectRef,
+    ObjectTypeInput, ObjectTypeVersionView, ObjectTypeView, ObjectView, OntologyQuery, PackView,
+    QueryResult, SeriesView,
 };
 use pnex_core::ontology::LinkTypeDef;
 use reqwest::Method;
@@ -60,15 +60,6 @@ pub async fn link_types() -> Result<Vec<LinkTypeView>, ApiError> {
 
 pub async fn create_link_type(def: &LinkTypeDef) -> Result<LinkTypeView, ApiError> {
     client::request(Method::POST, &format!("{BASE}/link-types"), body(def)).await
-}
-
-pub async fn update_link_type(key: &str, input: &LinkTypeInput) -> Result<LinkTypeView, ApiError> {
-    client::request(
-        Method::PUT,
-        &format!("{BASE}/link-types/{}", urlencode(key)),
-        body(input),
-    )
-    .await
 }
 
 pub async fn delete_link_type(key: &str) -> Result<Option<()>, ApiError> {

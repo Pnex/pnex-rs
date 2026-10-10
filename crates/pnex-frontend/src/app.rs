@@ -12,8 +12,8 @@ use crate::pages::edge_refs::EdgeRefs;
 use crate::pages::{
     self, AdminStatus, Annotations, AuthCallback, Cameras, Catalog, Controls, Dashboard,
     Dashboards, Devices, Events, Firmware, Flows, FluidMixtures, Functions, Map, Media, Models,
-    NotFound, Notifications, Orgs, OrgsCurrent, Profile, Secrets, ShareTour, Showcase, Sites,
-    Streams, Studio, System, Visualisation,
+    NotFound, Notifications, Ontology, OntologyObject, OntologyType, Orgs, OrgsCurrent, Profile,
+    Secrets, ShareTour, Showcase, Sites, Streams, Studio, System, Visualisation,
 };
 use dioxus::prelude::*;
 
@@ -74,6 +74,16 @@ pub enum Route {
 
         #[route("/controls")]
         Controls {},
+
+        // Ontology explorer, object page and type editor (ontology.md D186).
+        #[route("/ontology?:tab&:type_key")]
+        Ontology { tab: String, type_key: String },
+
+        #[route("/ontology/object/:id")]
+        OntologyObject { id: String },
+
+        #[route("/ontology/types/:type_key")]
+        OntologyType { type_key: String },
 
         #[route("/devices")]
         Devices {},
