@@ -14,6 +14,7 @@ Audio streams (Data › Audio streams) lists the radios and live streams the org
 - **Add a stream**: give it a **Name**, a **Kind** (`icecast` for a continuous radio stream, `hls` for an `.m3u8` playlist, `http_file` for a single file such as a podcast episode) and the **Stream URL**.
 - **Access secret**: when the stream needs a header or credentials, put them in the secret (typed or picked from the vault). It is sent only to the host of the URL. Only owners and admins can set it.
 - **Transcription profile**: the speech-to-text model used for new segments. A stream cannot be enabled without a profile whose model passed its check.
+- **Capture location**: this server (default), or a capture worker, a separate machine run by the platform. A stream set to a capture worker stays idle until the platform starts one.
 - **Segment length** (10 to 120 s) and **Audio retention**: none (audio deleted once transcribed, the default), a number of days, or kept (only when the organization holds the rights).
 - **Enable / Disable** capture, **Edit**, **Delete** (pending segments are erased; transcriptions already written stay in the history).
 - **Transcriptions** tab: search the text of every stream (or one), newest first.

@@ -198,7 +198,7 @@ async fn stream_crud_slug_and_quota() {
             &format!("/api/v1/media/streams/{id}"),
             &env.alice,
             org,
-            Some(json!({ "capture_on": "worker" })),
+            Some(json!({ "capture_on": "device:1" })),
         )
         .await;
         assert_eq!(s, 400);

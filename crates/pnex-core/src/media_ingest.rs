@@ -197,6 +197,12 @@ impl ClockSource {
             Self::Host => "host",
         }
     }
+
+    pub fn from_wire(s: &str) -> Option<Self> {
+        [Self::Pdt, Self::Tdt, Self::Host]
+            .into_iter()
+            .find(|k| k.wire() == s)
+    }
 }
 
 /// Capture supervisor state of a stream, shown on /media.

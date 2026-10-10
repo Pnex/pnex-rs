@@ -179,6 +179,7 @@ impl Hooks for App {
             .add_route(controllers::camera_recordings::routes())
             .add_route(controllers::events::routes())
             .add_route(controllers::media_ingest::routes())
+            .add_route(controllers::media_ingest::internal_routes())
             .add_route(controllers::ml_models::routes())
             .add_route(controllers::ml_models::internal_routes())
             .add_route(controllers::pins::routes())
@@ -267,6 +268,9 @@ impl Hooks for App {
         queue
             .register(crate::workers::transcribe_segment::TranscribeSegmentWorker::build(ctx))
             .await?;
+        // Capture of `capture_on = worker` streams on a mesh worker (D160),
+        // opt-in by PNEX_MEDIA_CAPTURE_WORKER.
+        crate::services::media_ingest::capture::spawn_worker_supervisor(ctx);
         // Custom firmware compile-only checks (custom-firmware.md D90):
         // must run where PlatformIO lives (pnex-builder in containers).
         queue

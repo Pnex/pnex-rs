@@ -44,6 +44,11 @@ pub fn StreamFormModal(
             .and_then(|s| s.asr_profile_id.clone())
             .unwrap_or_default()
     });
+    let mut capture_on = use_signal(|| {
+        init.as_ref()
+            .map(|s| s.capture_on.clone())
+            .unwrap_or_else(|| "server".into())
+    });
     let mut segment_secs = use_signal(|| init.as_ref().map(|s| s.segment_secs).unwrap_or(30));
     let mut retention = use_signal(|| {
         init.as_ref()
@@ -86,6 +91,7 @@ pub fn StreamFormModal(
             auth_secret,
             clear_secret: had_secret && draft == SecretDraft::Empty,
             asr_profile_id: Some(profile()),
+            capture_on: Some(capture_on()),
             segment_secs: Some(segment_secs()),
             audio_retention: Some(retention()),
             tdm_checked: (tdm_checked() != was_checked).then_some(tdm_checked()),
@@ -200,17 +206,38 @@ pub fn StreamFormModal(
                     }
                 }
             }
-            div {
-                label { r#for: "stream-retention", class: LABEL, {t!("streams-retention")} }
-                select {
-                    id: "stream-retention",
-                    class: INPUT,
-                    onchange: move |e| retention.set(e.value()),
-                    for r in RETENTIONS {
-                        option { value: r, selected: retention() == r, {retention_label(r)} }
+            div { class: "grid grid-cols-1 sm:grid-cols-2 gap-3",
+                div {
+                    label { r#for: "stream-retention", class: LABEL, {t!("streams-retention")} }
+                    select {
+                        id: "stream-retention",
+                        class: INPUT,
+                        onchange: move |e| retention.set(e.value()),
+                        for r in RETENTIONS {
+                            option { value: r, selected: retention() == r, {retention_label(r)} }
+                        }
                     }
+                    p { class: "text-xs text-gray-500 mt-1", {t!("streams-retention-help")} }
                 }
-                p { class: "text-xs text-gray-500 mt-1", {t!("streams-retention-help")} }
+                div {
+                    label { r#for: "stream-capture-on", class: LABEL, {t!("streams-capture-on")} }
+                    select {
+                        id: "stream-capture-on",
+                        class: INPUT,
+                        onchange: move |e| capture_on.set(e.value()),
+                        option {
+                            value: "server",
+                            selected: capture_on() == "server",
+                            {t!("streams-capture-server")}
+                        }
+                        option {
+                            value: "worker",
+                            selected: capture_on() == "worker",
+                            {t!("streams-capture-worker")}
+                        }
+                    }
+                    p { class: "text-xs text-gray-500 mt-1", {t!("streams-capture-help")} }
+                }
             }
             div { class: "rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2",
                 label { class: "inline-flex items-center gap-2 text-sm text-gray-800",

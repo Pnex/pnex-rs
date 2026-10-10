@@ -1,11 +1,15 @@
-//! Capture of `capture_on = server` streams (media-ingest.md D160).
+//! Capture of `capture_on = server | worker` streams (media-ingest.md D160).
 //!
-//! One supervisor per process scans the enabled streams every
-//! [`SCAN_EVERY`]; each stream gets one capture task, guarded by the lease
-//! `task:media-capture:<id>` so a single pod captures it. A task runs
-//! fetcher → confined ffmpeg → segmenter → segment store, and restarts
+//! One supervisor per process scans the enabled streams of its carrier
+//! every [`SCAN_EVERY`]; each stream gets one capture task, guarded by the
+//! lease `task:media-capture:<id>` so a single process captures it. A task
+//! runs fetcher → confined ffmpeg → segmenter → [`Sink`], and restarts
 //! with a bounded exponential backoff; one stream failing never touches
 //! the others. Config changes (`updated_at`) restart the task.
+//!
+//! The `server` carrier writes segments itself; a mesh `worker` posts them
+//! to the control plane (`POST /internal/media/segment`), so it holds no
+//! storage write credential.
 
 pub mod decoder;
 pub mod fetch;
@@ -134,9 +138,83 @@ impl CaptureSettings {
     }
 }
 
-/// Starts the capture supervisor (server process, never in the
+/// Where the segments of a capture go.
+#[derive(Clone)]
+pub enum Sink {
+    /// `server` carrier: blob and row written by this process.
+    Direct(Arc<dyn MediaStore>),
+    /// `worker` carrier: segments posted to the control plane.
+    Remote(Arc<RemoteSink>),
+}
+
+/// Upload target of a mesh worker (`PNEX_MEDIA_SEGMENT_URL` + the service
+/// token of the internal endpoints).
+pub struct RemoteSink {
+    client: reqwest::Client,
+    url: String,
+    token: String,
+}
+
+/// Header of the internal service token (shared with `/internal/flow/*`).
+pub const SERVICE_TOKEN_HEADER: &str = "x-pnex-flow-token";
+
+impl RemoteSink {
+    /// `None` when the URL or the token is not configured.
+    pub fn from_config(config: &loco_rs::config::Config) -> Option<Self> {
+        let url = std::env::var("PNEX_MEDIA_SEGMENT_URL")
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())?;
+        let (_, token) = crate::services::flow::FlowSettings::from_config(config).device_write?;
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .ok()?;
+        Some(Self { client, url, token })
+    }
+}
+
+/// Starts the capture supervisor of the server carrier (never in the
 /// `ForegroundBlocking` test mode).
 pub fn spawn_supervisor(ctx: &AppContext) {
+    let store = match MediaSettings::from_config(&ctx.config).store() {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!(error = %e, "media capture: media store unavailable");
+            return;
+        }
+    };
+    spawn(ctx, CaptureOn::Server, Sink::Direct(store));
+}
+
+/// Starts the capture supervisor of a mesh worker (`--worker` process with
+/// `PNEX_MEDIA_CAPTURE_WORKER=1`): captures the `capture_on = worker`
+/// streams and posts their segments to `PNEX_MEDIA_SEGMENT_URL`.
+pub fn spawn_worker_supervisor(ctx: &AppContext) {
+    if !env_flag("PNEX_MEDIA_CAPTURE_WORKER") {
+        return;
+    }
+    let Some(remote) = RemoteSink::from_config(&ctx.config) else {
+        tracing::error!(
+            "worker media capture needs PNEX_MEDIA_SEGMENT_URL and PNEX_FLOW_RUNTIME_TOKEN"
+        );
+        return;
+    };
+    spawn(ctx, CaptureOn::Worker, Sink::Remote(Arc::new(remote)));
+}
+
+fn env_flag(key: &str) -> bool {
+    matches!(
+        std::env::var(key)
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "1" | "true" | "on" | "yes"
+    )
+}
+
+fn spawn(ctx: &AppContext, carrier: CaptureOn, sink: Sink) {
     use loco_rs::config::WorkerMode;
     if matches!(ctx.config.workers.mode, WorkerMode::ForegroundBlocking) {
         return;
@@ -157,7 +235,8 @@ pub fn spawn_supervisor(ctx: &AppContext) {
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             tick.tick().await;
-            if let Err(e) = scan(&ctx, &settings, ffmpeg.as_ref(), &mut tasks).await {
+            if let Err(e) = scan(&ctx, &settings, carrier, &sink, ffmpeg.as_ref(), &mut tasks).await
+            {
                 tracing::warn!(error = %e, "media capture scan failed");
             }
         }
@@ -177,12 +256,14 @@ fn lease_name(id: Uuid) -> String {
 async fn scan(
     ctx: &AppContext,
     settings: &CaptureSettings,
+    carrier: CaptureOn,
+    sink: &Sink,
     ffmpeg: Option<&PathBuf>,
     tasks: &mut HashMap<Uuid, Running>,
 ) -> Result<(), sea_orm::DbErr> {
     let wanted: HashMap<Uuid, media_streams::Model> = media_streams::Entity::find()
         .filter(media_streams::Column::Enabled.eq(true))
-        .filter(media_streams::Column::CaptureOn.eq(CaptureOn::Server.wire()))
+        .filter(media_streams::Column::CaptureOn.eq(carrier.wire()))
         .filter(media_streams::Column::DeletedAt.is_null())
         // No profile, no capture: the audio would never be transcribed.
         .filter(media_streams::Column::AsrProfileId.is_not_null())
@@ -230,6 +311,7 @@ async fn scan(
             ctx.clone(),
             settings.clone(),
             ffmpeg.clone(),
+            sink.clone(),
             stream,
             stop_rx,
         ));
@@ -288,23 +370,10 @@ async fn run_stream(
     ctx: AppContext,
     settings: CaptureSettings,
     ffmpeg: PathBuf,
+    sink: Sink,
     stream: media_streams::Model,
     mut stop: watch::Receiver<bool>,
 ) {
-    let store = match MediaSettings::from_config(&ctx.config).store() {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::error!(error = %e, "media capture: media store unavailable");
-            set_state(
-                &ctx.db,
-                stream.id,
-                CaptureState::Backoff,
-                Some(CaptureError::StoreFailed),
-            )
-            .await;
-            return;
-        }
-    };
     let mut backoff = BACKOFF_MIN;
     // Sequence numbers continue across restarts of the process.
     let mut seq = media_segments::Entity::find()
@@ -322,7 +391,7 @@ async fn run_stream(
             &ctx,
             &settings,
             &ffmpeg,
-            &store,
+            &sink,
             &stream,
             &mut seq,
             stop.clone(),
@@ -375,16 +444,18 @@ pub async fn capture_once(
 ) -> Result<i64, CaptureError> {
     let settings = CaptureSettings::from_env();
     let ffmpeg = decoder::resolve(&settings.ffmpeg).ok_or(CaptureError::DecoderMissing)?;
-    let store = MediaSettings::from_config(&ctx.config)
-        .store()
-        .map_err(|_| CaptureError::StoreFailed)?;
+    let sink = Sink::Direct(
+        MediaSettings::from_config(&ctx.config)
+            .store()
+            .map_err(|_| CaptureError::StoreFailed)?,
+    );
     let (stop_tx, stop) = watch::channel(false);
     let mut seq = 0i64;
     let timer = tokio::spawn(async move {
         tokio::time::sleep(limit).await;
         let _ = stop_tx.send(true);
     });
-    let res = run_once(ctx, &settings, &ffmpeg, &store, stream, &mut seq, stop).await;
+    let res = run_once(ctx, &settings, &ffmpeg, &sink, stream, &mut seq, stop).await;
     timer.abort();
     res.map(|_| seq)
 }
@@ -410,7 +481,7 @@ async fn run_once(
     ctx: &AppContext,
     settings: &CaptureSettings,
     ffmpeg: &std::path::Path,
-    store: &Arc<dyn MediaStore>,
+    sink: &Sink,
     stream: &media_streams::Model,
     seq: &mut i64,
     mut stop: watch::Receiver<bool>,
@@ -490,12 +561,12 @@ async fn run_once(
             set_state(&ctx.db, stream.id, CaptureState::Running, None).await;
         }
         for cut in cutter.push(&buf[..n]) {
-            store_cut(ctx, store, stream, seq, cut, clock).await?;
+            store_cut(ctx, sink, stream, seq, cut, clock).await?;
         }
     };
     if matches!(outcome, Ok(RunEnd::Finished)) {
         if let Some(cut) = cutter.finish() {
-            store_cut(ctx, store, stream, seq, cut, clock).await?;
+            store_cut(ctx, sink, stream, seq, cut, clock).await?;
         }
     }
     let _ = child.start_kill();
@@ -516,7 +587,7 @@ async fn run_once(
 
 async fn store_cut(
     ctx: &AppContext,
-    store: &Arc<dyn MediaStore>,
+    sink: &Sink,
     stream: &media_streams::Model,
     seq: &mut i64,
     cut: segmenter::Cut,
@@ -530,6 +601,10 @@ async fn store_cut(
         wav: cut.wav,
     };
     *seq += 1;
+    let store = match sink {
+        Sink::Direct(store) => store,
+        Sink::Remote(remote) => return post_segment(remote, stream, seg).await,
+    };
     let row = segments::write(&ctx.db, store, stream, seg)
         .await
         .map_err(|e| {
@@ -540,6 +615,40 @@ async fn store_cut(
         segments::enqueue(ctx, &row).await;
     }
     Ok(())
+}
+
+/// Posts a segment to the control plane (`POST /internal/media/segment`).
+async fn post_segment(
+    remote: &RemoteSink,
+    stream: &media_streams::Model,
+    seg: NewSegment,
+) -> Result<(), CaptureError> {
+    let res = remote
+        .client
+        .post(&remote.url)
+        .header(SERVICE_TOKEN_HEADER, &remote.token)
+        .query(&[
+            ("stream_id", stream.id.to_string()),
+            ("org_id", stream.org_id.to_string()),
+            ("seq", seg.seq.to_string()),
+            ("started_ms", seg.started_at.timestamp_millis().to_string()),
+            ("ended_ms", seg.ended_at.timestamp_millis().to_string()),
+            ("clock", seg.clock_source.wire().to_string()),
+        ])
+        .body(seg.wav)
+        .send()
+        .await;
+    match res {
+        Ok(r) if r.status().is_success() => Ok(()),
+        Ok(r) => {
+            tracing::warn!(stream = %stream.slug, status = %r.status(), "media segment upload refused");
+            Err(CaptureError::StoreFailed)
+        }
+        Err(e) => {
+            tracing::warn!(stream = %stream.slug, error = %e, "media segment upload failed");
+            Err(CaptureError::StoreFailed)
+        }
+    }
 }
 
 #[cfg(test)]

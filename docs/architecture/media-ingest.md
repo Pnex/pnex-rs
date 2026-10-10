@@ -958,15 +958,15 @@ Le lot 1 avance par tranches, chacune testée et commitée seule.
 | 1f — UI | `/streams` en trois onglets : flux, transcriptions (recherche plein texte, filtre par flux), modèles et profils (import par téléversement ou depuis la médiathèque, licence, vérification avec débit soutenable et WER, profils) ; fiche KB complétée | ✅ 2026-10-10 |
 | 1g — Rétention (D161) | pruner d'audio toutes les 15 min (singleton `task:media-audio-pruner`) : `days:N` par âge de l'audio, `none` après transcription ou fenêtre de rejeu de 15 min pour les `failed`/`captured`, `keep` jamais ; `POST /api/v1/media/streams/{id}/segments/retry` remet en queue les échecs dont l'audio est encore là ; pas de capture sans profil (l'audio ne serait jamais transcrit) | ✅ 2026-10-10 (bouton de rejeu dans l'UI : avec la vue des segments) |
 | 1e — Images | stage `ffmpeg` (minimal, LGPL, épinglé) et stage `asr` (`pnex-asr` lié statiquement à sherpa-onnx, archives épinglées en sha256 via `SHERPA_ONNX_ARCHIVE_DIR`, cargo séparé pour que la feature `sherpa` n'atteigne pas `pnex-server`), réunis dans `media-tools` et copiés dans les images serveur et worker avec `PNEX_FFMPEG`, `PNEX_ASR_BIN`, `PNEX_ASR_MODELS_DIR=/data/asr-models` ; pas de bwrap (le confinement noyau suffit et marche sans user namespaces) | ✅ 2026-10-10 |
-| 1h — Porteur `worker` | capture sur un worker du mesh, `/internal/media/segment` | à faire |
+| 1h — Porteur `worker` | superviseur démarré par `connect_workers` si `PNEX_MEDIA_CAPTURE_WORKER=1` (process `--worker` du mesh), même boucle que `server` mais segments postés à `PNEX_MEDIA_SEGMENT_URL` (`POST /internal/media/segment`, jeton `PNEX_FLOW_RUNTIME_TOKEN`) : flux de l'org en `capture_on = worker`, WAV borné par `segment_secs`, `seq` renvoyé acquitté une fois ; le worker ne détient aucun identifiant d'écriture du stockage ; choix « lieu de capture » dans le formulaire | ✅ 2026-10-10 |
 
 Écarts au PRD décidés en implémentant :
 
 - La page s'appelle `/streams` : `/media` est la médiathèque (D21).
 - Une référence d'une autre org (profil, canal, modèle) répond un 400 de
   champ `invalid`, comme un id inexistant, et non un 404.
-- `capture_on` n'accepte que `server` tant que les chemins d'upload
-  `worker` et `device` n'existent pas (`media-capture-unsupported`).
+- `capture_on` accepte `server` et `worker` ; `device:<id>` attend le
+  canal d'upload device du lot 6 (`media-capture-unsupported`).
 - Les kinds acceptés sont ceux dont la capture existe : `icecast`, `hls`,
   `http_file` ; `dash`, `rtsp`, `dvb` arrivent avec leur fetcher.
 - Horodatage icecast : `host` au premier octet reçu ; le serveur envoie

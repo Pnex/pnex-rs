@@ -51,6 +51,104 @@ pub fn routes() -> Routes {
         )
 }
 
+/// Segments uploaded by mesh workers (D160, `capture_on = worker`).
+/// Service token, never routed by the public edge (R7, internal guard).
+pub fn internal_routes() -> Routes {
+    Routes::new().add(
+        "/internal/media/segment",
+        post(internal_segment).layer(axum::extract::DefaultBodyLimit::max(SEGMENT_BODY_MAX)),
+    )
+}
+
+/// Largest possible segment: `(120 + 3) s` of 16 kHz mono s16 + header.
+const SEGMENT_BODY_MAX: usize = 4 * 1024 * 1024;
+
+#[derive(Debug, Deserialize)]
+pub struct SegmentUpload {
+    stream_id: Uuid,
+    org_id: i64,
+    seq: i64,
+    started_ms: i64,
+    ended_ms: i64,
+    clock: String,
+}
+
+/// Byte cap of one segment of `stream`: its length + overlap + 1 s slack.
+fn segment_cap(stream: &crate::models::_entities::media_streams::Model) -> usize {
+    let secs = (stream.segment_secs.max(0) + stream.overlap_secs.max(0) + 1) as usize;
+    44 + secs * pnex_core::media_ingest::SAMPLE_RATE as usize * 2
+}
+
+/// `POST /internal/media/segment` — a WAV segment captured by a mesh
+/// worker. The stream must belong to `org_id` and be captured by a worker;
+/// a re-sent `seq` is acknowledged without a second row.
+async fn internal_segment(
+    State(ctx): State<AppContext>,
+    headers: axum::http::HeaderMap,
+    Query(q): Query<SegmentUpload>,
+    body: axum::body::Bytes,
+) -> Result<Response> {
+    use crate::models::_entities::media_streams;
+    use crate::services::media_ingest::segments::{self, NewSegment};
+    use pnex_core::media_ingest::{CaptureOn, ClockSource};
+    if !crate::controllers::internal_flow::flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    let stream = media_streams::Entity::find_by_id(q.stream_id)
+        .filter(media_streams::Column::OrgId.eq(q.org_id))
+        .filter(media_streams::Column::CaptureOn.eq(CaptureOn::Worker.wire()))
+        .filter(media_streams::Column::DeletedAt.is_null())
+        .one(&ctx.db)
+        .await;
+    let stream = match stream {
+        Ok(Some(s)) => s,
+        Ok(None) => return Ok(StatusCode::NOT_FOUND.into_response()),
+        Err(e) => return db_error(e),
+    };
+    let started = chrono::DateTime::from_timestamp_millis(q.started_ms);
+    let ended = chrono::DateTime::from_timestamp_millis(q.ended_ms);
+    let clock = ClockSource::from_wire(&q.clock);
+    let (Some(started_at), Some(ended_at), Some(clock_source)) = (started, ended, clock) else {
+        return field("segment", err_codes::FIELD_INVALID);
+    };
+    let wav_ok = body.len() > 44 && &body[0..4] == b"RIFF" && &body[8..12] == b"WAVE";
+    if !wav_ok || q.seq < 0 || ended_at <= started_at || body.len() > segment_cap(&stream) {
+        return field("segment", err_codes::FIELD_INVALID);
+    }
+    let dup = media_segments::Entity::find()
+        .filter(media_segments::Column::StreamId.eq(stream.id))
+        .filter(media_segments::Column::Seq.eq(q.seq))
+        .filter(media_segments::Column::StartedAt.eq(started_at))
+        .one(&ctx.db)
+        .await;
+    match dup {
+        Ok(Some(_)) => return Ok(StatusCode::NO_CONTENT.into_response()),
+        Ok(None) => {}
+        Err(e) => return db_error(e),
+    }
+    let Ok(store) = crate::services::media::MediaSettings::from_config(&ctx.config).store() else {
+        return Ok(StatusCode::SERVICE_UNAVAILABLE.into_response());
+    };
+    let seg = NewSegment {
+        seq: q.seq,
+        started_at,
+        ended_at,
+        clock_source,
+        wav: body.to_vec(),
+    };
+    let row = match segments::write(&ctx.db, &store, &stream, seg).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(stream = %stream.slug, error = %e, "uploaded media segment not stored");
+            return Ok(StatusCode::SERVICE_UNAVAILABLE.into_response());
+        }
+    };
+    if stream.asr_profile_id.is_some() {
+        segments::enqueue(&ctx, &row).await;
+    }
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
 fn detail(status: StatusCode, code: &str, msg: &str) -> Error {
     Error::CustomError(status, ErrorDetail::new(code, msg.to_string()))
 }
