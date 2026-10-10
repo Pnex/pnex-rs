@@ -282,6 +282,12 @@ pub(super) fn MediaDetail(
                                     can_write,
                                     on_changed,
                                 }
+                                div { class: "mt-3",
+                                    crate::components::ontology::object_link::ObjectPageLink {
+                                        kind: "media_asset".to_string(),
+                                        native_id: asset_id.clone(),
+                                    }
+                                }
                             }
                             // Versions card — inline list (the drawer is
                             // gone): "Voir" previews a non-current version,

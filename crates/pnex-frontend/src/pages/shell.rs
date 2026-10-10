@@ -193,6 +193,10 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
             cb.call(());
         }
     };
+    let in_ontology = matches!(
+        route,
+        Route::Ontology { .. } | Route::OntologyObject { .. } | Route::OntologyType { .. }
+    );
     // Libellé conditionnel — dans le rail, l'item ne garde que son icône.
     rsx! {
         nav { class: "flex-1 space-y-2",
@@ -213,6 +217,20 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
             // connaissances agent) + Tour studio + futur Plan (placeholder
             // « bientôt », aucune route).
             NavDataGroup { on_navigate, rail }
+            // Ontology: objects, types, links (ontology.md D186).
+            Link {
+                to: Route::Ontology {
+                    tab: String::new(),
+                    type_key: String::new(),
+                },
+                class: nav_class(in_ontology, rail),
+                title: t!("nav-ontology"),
+                onclick: close_drawer,
+                crate::components::icons::Shapes { class: "h-5 w-5" }
+                if !rail {
+                    span { {t!("nav-ontology")} }
+                }
+            }
             // Groupe « Edges » : Devices + Catalogue + futurs collecteurs
             // (doc docs/architecture/edge-model.md — D44-D48).
             NavEdges { on_navigate, rail }
