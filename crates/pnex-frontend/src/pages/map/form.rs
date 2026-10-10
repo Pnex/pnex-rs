@@ -9,6 +9,9 @@ use super::*;
 pub(super) fn PoiFormModal(
     #[props(default)] initial: Option<viz::Poi>,
     coords: (f64, f64),
+    /// Address picked in the address search (label + location prefill).
+    #[props(default)]
+    suggested: Option<pnex_core::geo::GeocodeResult>,
     on_saved: EventHandler<()>,
     on_close: EventHandler<()>,
 ) -> Element {
@@ -16,6 +19,7 @@ pub(super) fn PoiFormModal(
         initial
             .as_ref()
             .map(|p| p.label.clone())
+            .or_else(|| suggested.as_ref().map(|h| short_label(&h.label)))
             .unwrap_or_default()
     });
     let mut emoji = use_signal(|| {
@@ -28,7 +32,26 @@ pub(super) fn PoiFormModal(
         initial
             .as_ref()
             .and_then(|p| p.location_detail.clone())
+            .or_else(|| suggested.as_ref().map(|h| h.label.clone()))
             .unwrap_or_default()
+    });
+    // New POI from a map click: prefill the location with the address of
+    // the point (org reverse geocoder, geo-layers.md §8). Silent when no
+    // provider is configured.
+    let reverse_wanted = initial.is_none() && suggested.is_none();
+    use_hook(move || {
+        if reverse_wanted {
+            spawn(async move {
+                let mut detail = detail;
+                if let Ok(hits) = crate::api::geo::reverse(coords.0, coords.1).await {
+                    if let Some(hit) = hits.first() {
+                        if detail.peek().is_empty() {
+                            detail.set(hit.label.clone());
+                        }
+                    }
+                }
+            });
+        }
     });
     let mut lat = use_signal(|| {
         initial
@@ -193,5 +216,23 @@ pub(super) fn PoiFormModal(
                 }
             }
         }
+    }
+}
+
+/// First part of an address label (`Place Bellecour, 69002 Lyon` →
+/// `Place Bellecour`): a short POI name.
+fn short_label(label: &str) -> String {
+    label.split(',').next().unwrap_or(label).trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn short_label_keeps_the_first_part() {
+        assert_eq!(
+            super::short_label("Place Bellecour, 69002 Lyon, France"),
+            "Place Bellecour"
+        );
+        assert_eq!(super::short_label("Lyon"), "Lyon");
     }
 }

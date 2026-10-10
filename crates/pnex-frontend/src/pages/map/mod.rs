@@ -110,6 +110,8 @@ pub fn Map() -> Element {
     let mut add_mode = use_signal(|| false);
     // Coords captées par le clic carte (formulaire de création ouvert).
     let mut pending_add = use_signal(|| None::<(f64, f64)>);
+    // Address picked in the address search, prefilling the creation form.
+    let mut suggested = use_signal(|| None::<pnex_core::geo::GeocodeResult>);
     // Embedded read-only preview: object shown in the panel covering the
     // map, and the POI pin (★).
     let mut preview = use_signal(|| None::<PreviewTarget>);
@@ -401,6 +403,7 @@ pub fn Map() -> Element {
                             {t!("poi-add")}
                         }
                     }
+                    AddressSearch { pending_add, suggested }
                 }
                 // Points status pill (top centre): spinner while loading,
                 // amber while failing (retried automatically).
@@ -450,12 +453,17 @@ pub fn Map() -> Element {
                     key: "create-{lat}-{lon}",
                     initial: None,
                     coords: (lat, lon),
+                    suggested: suggested(),
                     on_saved: move |_| {
                         pending_add.set(None);
+                        suggested.set(None);
                         add_mode.set(false);
                         reload += 1;
                     },
-                    on_close: move |_| pending_add.set(None),
+                    on_close: move |_| {
+                        pending_add.set(None);
+                        suggested.set(None);
+                    },
                 }
             }
             // ── Modales viewers (média + tour) ────────────────────
@@ -467,6 +475,7 @@ pub fn Map() -> Element {
 mod detail;
 mod filters;
 mod form;
+mod search;
 mod sites;
 
 pub use sites::Sites;
@@ -474,6 +483,7 @@ pub use sites::Sites;
 use detail::PoiDetail;
 use filters::{current_filters, handle_click, redraw_with, PoiRow};
 use form::PoiFormModal;
+use search::AddressSearch;
 // ───────────────────── viewer média attaché (modal) ─────────────────────
 
 // ─────────────────────────── badge d'erreur carte ─────────────────────────

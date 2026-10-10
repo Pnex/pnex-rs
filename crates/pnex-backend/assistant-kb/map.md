@@ -11,6 +11,7 @@ tags: map, carte, poi, point of interest, location, gps, emplacement, site, atta
 The Map (Visualization › Map) places the organization's points of interest (POIs) on a world map. A POI has a label, a pictogram, a free location text and coordinates; devices, media, 3D tours and dashboards are attached to it, so the map is the geographic entry point to everything installed somewhere. The basemap under the points comes from the organization's geo providers (see the geo-providers card); with several basemaps, a selector at the top right switches between them. **List view** (top of the panel) opens Sites, the same tree without the map.
 
 ## What you can do
+- **Search an address…** next to **＋ Add POI** finds a place with the organization's geocoder (see the geo-providers card); **+ POI** on a result creates a POI there, prefilled.
 - **＋ Add POI**, then click on the map to place it; fill **Label**, **Pictogram**, **Location (building, floor, room…)**, **Latitude** and **Longitude**. **Cancel adding** leaves the placing mode.
 - Use the side panel: **Search a POI…**, filters **Attached to a device**, **With GPS position** and **Type** (pictogram), **Show all**. **Collapse panel** gives the map more room.
 - Click a POI to open its detail: **Edit**, **Recenter**, **Delete**, and the **Attached objects** list (**Open**, **Detach**).
