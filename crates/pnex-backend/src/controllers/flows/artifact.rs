@@ -284,6 +284,7 @@ pub(crate) async fn reproject_candidate(
 
     // ── Snapshot notify (D50) : résolution batch sur tout le lot ────────
     let stale = resolve_notify_snapshots(db, &mut entries).await?;
+    stamp_taxonomies(db, &mut entries).await?;
 
     Ok((
         serde_json::Value::Array(entries),
@@ -292,6 +293,46 @@ pub(crate) async fn reproject_candidate(
         fn_violations,
         skipped_tabs,
     ))
+}
+
+/// Stamps the topics of the pinned taxonomy version into each
+/// `pnex-topic-classify` entry (D168), plus `taxonomy_version` =
+/// `<name>@<version>`. A version that is not one of the entry's org (deleted
+/// since the deploy) stamps no topic: the node then matches nothing.
+async fn stamp_taxonomies(
+    db: &DatabaseConnection,
+    entries: &mut [serde_json::Value],
+) -> Result<()> {
+    use crate::services::media_ingest::taxonomies;
+    for entry in entries.iter_mut() {
+        if entry.get("type").and_then(|t| t.as_str()) != Some("pnex-topic-classify") {
+            continue;
+        }
+        let org_id = entry
+            .get("pnex_org_id")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let version = entry.get("version").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+        let id = entry
+            .get("taxonomy_id")
+            .and_then(|v| v.as_str())
+            .and_then(|s| Uuid::parse_str(s.trim()).ok());
+        let mut topics = serde_json::json!([]);
+        let mut label = String::new();
+        if let Some(id) = id {
+            let v = taxonomies::find_version(db, org_id, id, version)
+                .await
+                .map_err(|_| Error::InternalServerError)?;
+            let t = taxonomies::find(db, org_id, id).await.ok();
+            if let (Some(v), Some(t)) = (v, t) {
+                topics = serde_json::to_value(taxonomies::topics_of(&v)).unwrap_or_default();
+                label = pnex_core::taxonomy::version_label(&t.name, version);
+            }
+        }
+        entry["topics"] = topics;
+        entry["taxonomy_version"] = label.into();
+    }
+    Ok(())
 }
 
 /// `vision-detect` nodes whose model is unknown to the org or did not pass
@@ -559,4 +600,64 @@ pub(super) async fn reproject_and_cast_extra(
         tracing::error!("sync des régulations échoué (projection poursuivie) : {e}");
     }
     reproject_and_signal_with_ack(ctx, org_id, ack_meta).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::media_ingest::taxonomies;
+    use sea_orm::ConnectionTrait;
+
+    /// The pinned version of the entry's org is stamped; the same id seen
+    /// from another org stamps nothing (R1).
+    #[tokio::test]
+    async fn taxonomy_topics_are_stamped_for_the_entry_org_only() {
+        let db = crate::services::artifact_store::tests::migrated_test_db().await;
+        let (own, other) = (987_001_i64, 987_002_i64);
+        db.execute_unprepared(&format!(
+            "DELETE FROM organizations WHERE id IN ({own}, {other}); \
+             INSERT INTO organizations (id, name) VALUES ({own}, 'tax-own'), ({other}, 'tax-other')"
+        ))
+        .await
+        .expect("orgs");
+        let input = pnex_core::taxonomy::TaxonomyInput {
+            name: Some("News".into()),
+            description: None,
+        };
+        let t = taxonomies::create(&db, own, None, &input)
+            .await
+            .expect("taxonomy");
+        let version = pnex_core::taxonomy::TaxonomyVersionInput {
+            topics: vec![pnex_core::taxonomy::Topic {
+                id: "economy".into(),
+                label: "Economy".into(),
+                definition: String::new(),
+                keywords: vec!["inflation".into()],
+            }],
+            note: String::new(),
+            expected_version: 0,
+        };
+        taxonomies::add_version(&db, own, t.id, None, &version)
+            .await
+            .expect("version");
+        let entry = |org: i64, v: i32| {
+            serde_json::json!({
+                "type": "pnex-topic-classify", "taxonomy_id": t.id.to_string(),
+                "version": v, "pnex_org_id": org,
+            })
+        };
+        let mut entries = vec![entry(own, 1), entry(other, 1), entry(own, 2)];
+        stamp_taxonomies(&db, &mut entries).await.expect("stamp");
+        assert_eq!(entries[0]["topics"][0]["id"], "economy");
+        assert_eq!(entries[0]["taxonomy_version"], "News@1");
+        for e in &entries[1..] {
+            assert_eq!(e["topics"], serde_json::json!([]), "{e}");
+            assert_eq!(e["taxonomy_version"], "", "{e}");
+        }
+        db.execute_unprepared(&format!(
+            "DELETE FROM organizations WHERE id IN ({own}, {other})"
+        ))
+        .await
+        .expect("cleanup");
+    }
 }

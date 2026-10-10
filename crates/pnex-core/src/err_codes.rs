@@ -422,6 +422,18 @@ pub const ASR_TEST_AUDIO_UNSUPPORTED: &str = "asr-test-audio-unsupported";
 pub const ASR_TEST_FAILED: &str = "asr-test-failed";
 /// Transcription search failed on OpenObserve.
 pub const MEDIA_TRANSCRIPTS_UNAVAILABLE: &str = "media-transcripts-unavailable";
+/// Taxonomy not found (or not in the org).
+pub const TAXONOMY_NOT_FOUND: &str = "taxonomy-not-found";
+/// A taxonomy of the org already has this name.
+pub const TAXONOMY_NAME_TAKEN: &str = "taxonomy-name-taken";
+/// New version written on a stale `expected_version`; `args.current` = the
+/// current version.
+pub const TAXONOMY_VERSION_CONFLICT: &str = "taxonomy-version-conflict";
+/// Viewer role: taxonomies are read-only.
+pub const TAXONOMY_WRITE_FORBIDDEN: &str = "taxonomy-write-forbidden";
+/// Deploy refused: a `topic_classify` pins a taxonomy version that is not
+/// one of the org; `args.version` = the pinned version.
+pub const TAXONOMY_UNKNOWN: &str = "taxonomy-unknown";
 
 // ── Registered codes ─────────────────────────────────────────────────────
 
@@ -647,6 +659,11 @@ pub const ALL: &[&str] = &[
     ASR_TEST_AUDIO_UNSUPPORTED,
     ASR_TEST_FAILED,
     MEDIA_TRANSCRIPTS_UNAVAILABLE,
+    TAXONOMY_NOT_FOUND,
+    TAXONOMY_NAME_TAKEN,
+    TAXONOMY_VERSION_CONFLICT,
+    TAXONOMY_WRITE_FORBIDDEN,
+    TAXONOMY_UNKNOWN,
 ];
 
 /// True when the code is registered (translatable through `err-<kebab>`).

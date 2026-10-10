@@ -1591,3 +1591,85 @@ async fn assistant_versions_functions_on_top_of_what_it_read() {
     })
     .await;
 }
+
+/// Taxonomies (D168): listed, read in full, a new version only on top of
+/// the version read (stale = coded 409 refusal); a viewer cannot write.
+#[tokio::test]
+#[serial]
+async fn assistant_versions_taxonomies_on_top_of_what_it_read() {
+    with_app_ai(true, true, |server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let created = send_json(
+            &server,
+            "POST",
+            "/api/v1/taxonomies",
+            &env.alice,
+            org,
+            Some(serde_json::json!({"name": "News"})),
+        )
+        .await;
+        assert_eq!(created.status_code(), 201, "{}", created.text());
+        let id = created.json::<serde_json::Value>()["id"]
+            .as_str()
+            .expect("taxonomy id")
+            .to_string();
+        let topics = serde_json::json!([
+            {"id": "economy", "label": "Economy", "keywords": ["inflation", "pouvoir d'achat"]}
+        ]);
+        let trace = run_tools(
+            &server,
+            &env.alice,
+            org,
+            vec![
+                ("list_taxonomies", serde_json::json!({})),
+                ("get_taxonomy", serde_json::json!({"taxonomy_id": id})),
+                (
+                    "create_taxonomy_version",
+                    serde_json::json!({"taxonomy_id": id, "expected_version": 0, "topics": topics}),
+                ),
+                (
+                    "create_taxonomy_version",
+                    serde_json::json!({"taxonomy_id": id, "expected_version": 0, "topics": topics}),
+                ),
+            ],
+        )
+        .await;
+        assert!(trace[..3].iter().all(|t| t["ok"] == true), "{trace:?}");
+        assert_eq!(trace[3]["ok"], false, "stale version refused: {trace:?}");
+        assert_eq!(
+            trace[3]["code"],
+            pnex_core::err_codes::TAXONOMY_VERSION_CONFLICT,
+            "{trace:?}"
+        );
+        let got = send_json(
+            &server,
+            "GET",
+            &format!("/api/v1/taxonomies/{id}"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await
+        .json::<serde_json::Value>();
+        assert_eq!(got["current_version"], 1, "{got}");
+        assert_eq!(got["current"]["topics"][0]["id"], "economy", "{got}");
+
+        add_bob(&server, &env, org, "viewer").await;
+        let trace = run_tools(
+            &server,
+            &env.bob,
+            org,
+            vec![(
+                "create_taxonomy_version",
+                serde_json::json!({"taxonomy_id": id, "expected_version": 1, "topics": topics}),
+            )],
+        )
+        .await;
+        assert_eq!(
+            trace[0]["code"],
+            pnex_core::err_codes::AI_WRITE_FORBIDDEN,
+            "{trace:?}"
+        );
+    })
+    .await;
+}

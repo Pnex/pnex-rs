@@ -49,6 +49,8 @@ pub mod secrets;
 pub mod stitch_jobs;
 /// System: O2 retention/cleanup + platform status (D72).
 pub mod system;
+/// Topic taxonomies (media-ingest.md D168).
+pub mod taxonomies;
 pub mod thermo;
 pub mod tours;
 pub mod user_info;

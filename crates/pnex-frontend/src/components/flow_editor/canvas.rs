@@ -308,6 +308,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::JsonMerge { .. } => kind_labels(PaletteKind::JsonMerge),
         pnex_core::FlowNodeKind::CameraSource { .. } => kind_labels(PaletteKind::CameraSource),
         pnex_core::FlowNodeKind::MediaSource { .. } => kind_labels(PaletteKind::MediaSource),
+        pnex_core::FlowNodeKind::TopicClassify { .. } => kind_labels(PaletteKind::TopicClassify),
         pnex_core::FlowNodeKind::VideoRecord { .. } => kind_labels(PaletteKind::VideoRecord),
         pnex_core::FlowNodeKind::VisionDetect { .. } => kind_labels(PaletteKind::VisionDetect),
         pnex_core::FlowNodeKind::EventLog { .. } => kind_labels(PaletteKind::EventLog),
@@ -361,7 +362,8 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::JsonSplit { .. } => {
             (geometry::JSON_SPLIT_FILL, geometry::JSON_SPLIT_STROKE)
         }
-        pnex_core::FlowNodeKind::JsonMerge { .. } => {
+        pnex_core::FlowNodeKind::JsonMerge { .. }
+        | pnex_core::FlowNodeKind::TopicClassify { .. } => {
             (geometry::JSON_MERGE_FILL, geometry::JSON_MERGE_STROKE)
         }
         pnex_core::FlowNodeKind::CameraSource { .. } => {
@@ -1066,6 +1068,7 @@ fn node_subtitle(node: &FlowNode) -> String {
             [one] => one.clone(),
             [first, rest @ ..] => format!("{first} +{}", rest.len()),
         },
+        pnex_core::FlowNodeKind::TopicClassify { config } => format!("v{}", config.version),
         pnex_core::FlowNodeKind::Weather { config } => format!(
             "{:.2}, {:.2} · {} min",
             config.latitude, config.longitude, config.interval_min

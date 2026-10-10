@@ -77,6 +77,9 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
         "media_segments",
         "asr_profiles",
         "ml_model_checks",
+        // D168: topic taxonomies and their append-only versions are org data.
+        "taxonomies",
+        "taxonomy_versions",
     ] {
         assert_eq!(
             nullable_of(&db, t, "org_id").await,
@@ -129,6 +132,10 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
         // D167: a per-carrier check follows its model.
         ("ml_model_checks", "org_id"),
         ("ml_model_checks", "model_id"),
+        // D168: versions follow their taxonomy; both follow the org.
+        ("taxonomies", "org_id"),
+        ("taxonomy_versions", "org_id"),
+        ("taxonomy_versions", "taxonomy_id"),
     ] {
         assert_eq!(
             fk_del_type(&db, t, col).await,

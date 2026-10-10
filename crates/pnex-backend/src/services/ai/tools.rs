@@ -372,6 +372,21 @@ pub fn tool_specs() -> Vec<ToolSpec> {
             }),
         },
         ToolSpec {
+            name: "list_taxonomies",
+            description: "Lists the organization's topic taxonomies (Audio streams › Taxonomies): name, current version, topic count and topic ids. Read-only.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{},"required":[]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "get_taxonomy",
+            description: "One taxonomy with the full topics (id, label, definition, keywords) of its current version. Read it before create_taxonomy_version.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"taxonomy_id":{"type":"string"}},"required":["taxonomy_id"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "create_taxonomy_version",
+            description: "Saves a new version of a taxonomy with the COMPLETE topic list (topics left out are dropped from the new version), on top of the version read with get_taxonomy (expected_version = its current_version). Topic id = stable slug [a-z0-9_]; keywords match whole words, ignoring case and accents. Never rewrites history: deployed flows keep their pinned version until the user picks the new one and redeploys.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"taxonomy_id":{"type":"string"},"expected_version":{"type":"integer"},"topics":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"label":{"type":"string"},"definition":{"type":"string"},"keywords":{"type":"array","items":{"type":"string"}}},"required":["id","label"]}},"note":{"type":"string"}},"required":["taxonomy_id","expected_version","topics"]}"#).expect("static schema"),
+        },
+        ToolSpec {
             name: "validate_flow_graph",
             description: "Valide un graphe de flow (structure, nœuds, câblage) SANS le sauvegarder — renvoie les violations à corriger. À appeler avant chaque create_flow/update_flow.",
             input_schema: json!({
@@ -499,6 +514,9 @@ pub async fn execute(
         "list_pois" => super::more_tools::list_pois(deps).await,
         "list_controls" => super::more_tools::list_controls(deps).await,
         "read_memory" => super::more_tools::read_memory(deps, args).await,
+        "list_taxonomies" => super::more_tools::list_taxonomies(deps).await,
+        "get_taxonomy" => super::more_tools::get_taxonomy(deps, args).await,
+        "create_taxonomy_version" => super::more_tools::create_taxonomy_version(deps, args).await,
         _ => Err(format!(
             "unknown tool: {name} — only the tools listed in this conversation are available"
         )
@@ -839,6 +857,33 @@ pub fn summarize(name: &str, out: &ToolOutcome) -> TraceSummary {
                 )
             }
         },
+        "list_taxonomies" => {
+            let n = count(&v["taxonomies"]);
+            s(
+                "ai-trace-taxonomies",
+                json!({"count": n}),
+                format!("{n} taxonomy(ies)"),
+            )
+        }
+        "get_taxonomy" => {
+            let (nm, ver) = (
+                shown(&v["taxonomy"]["name"]),
+                shown(&v["taxonomy"]["current_version"]),
+            );
+            s(
+                "ai-trace-taxonomy",
+                json!({"name": nm, "version": ver}),
+                format!("taxonomy \"{nm}\" v{ver}"),
+            )
+        }
+        "create_taxonomy_version" => {
+            let (nm, ver) = (shown(&v["name"]), shown(&v["new_version"]));
+            s(
+                "ai-trace-taxonomy-saved",
+                json!({"name": nm, "version": ver}),
+                format!("taxonomy \"{nm}\": version {ver}"),
+            )
+        }
         _ => s("ai-trace-ok", json!({}), "ok".into()),
     }
 }
@@ -1375,6 +1420,9 @@ mod tests {
                 "list_pois",
                 "list_controls",
                 "read_memory",
+                "list_taxonomies",
+                "get_taxonomy",
+                "create_taxonomy_version",
                 "validate_flow_graph",
                 "validate_calc_expression",
                 "create_flow",

@@ -62,6 +62,8 @@ pub mod secret_usages;
 pub mod stitch_jobs;
 pub mod subscription_tiers;
 pub mod system_settings;
+pub mod taxonomies;
+pub mod taxonomy_versions;
 pub mod tour_versions;
 pub mod tours;
 pub mod unit_conversions;

@@ -19,12 +19,14 @@ use crate::state::{org, session, toasts};
 mod form;
 mod models;
 mod segments;
+mod taxonomies;
 mod test;
 mod transcripts;
 
 use form::StreamFormModal;
 use models::ModelsTab;
 use segments::SegmentsDialog;
+use taxonomies::TaxonomiesTab;
 use test::StreamTestDialog;
 use transcripts::TranscriptsTab;
 
@@ -34,6 +36,7 @@ enum Tab {
     Streams,
     Transcripts,
     Models,
+    Taxonomies,
 }
 
 const TAB: &str = "px-3 py-1.5 text-sm rounded-lg border";
@@ -67,6 +70,7 @@ pub fn Streams() -> Element {
     let mut dialog = use_signal(|| None::<Dialog>);
     let mut tab = use_signal(|| Tab::Streams);
     let mut importing = use_signal(|| false);
+    let mut creating_taxonomy = use_signal(|| false);
     let can_write = current_role().is_some_and(|role| org::role_can_write(&role));
 
     let streams = use_resource(move || {
@@ -98,11 +102,13 @@ pub fn Streams() -> Element {
             add_label: match tab() {
                 Tab::Streams => Some(t!("streams-add").to_string()),
                 Tab::Models => Some(t!("asr-models-import").to_string()),
+                Tab::Taxonomies => Some(t!("taxonomies-add").to_string()),
                 Tab::Transcripts => None,
             },
             on_add: move |_| match tab() {
                 Tab::Streams => dialog.set(Some(Dialog::Create)),
                 Tab::Models => importing.set(true),
+                Tab::Taxonomies => creating_taxonomy.set(true),
                 Tab::Transcripts => {}
             },
             filters: rsx! {
@@ -111,6 +117,7 @@ pub fn Streams() -> Element {
                         (Tab::Streams, t!("streams-tab-streams")),
                         (Tab::Transcripts, t!("streams-tab-transcripts")),
                         (Tab::Models, t!("streams-tab-models")),
+                        (Tab::Taxonomies, t!("streams-tab-taxonomies")),
                     ]
                     {
                         button {
@@ -129,6 +136,9 @@ pub fn Streams() -> Element {
             }
             if tab() == Tab::Models {
                 ModelsTab { can_write, reload, importing }
+            }
+            if tab() == Tab::Taxonomies {
+                TaxonomiesTab { can_write, reload, creating: creating_taxonomy }
             }
             if tab() == Tab::Streams {
                 ListStates {

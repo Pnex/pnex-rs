@@ -1,6 +1,7 @@
 //! Assistant tools beyond flows and dashboards (extension rule §9.3):
-//! notification templates, JS/Starlark functions, and read-only access to
-//! annotations, tours and map POIs.
+//! notification templates, JS/Starlark functions, topic taxonomies (new
+//! versions only, D168), and read-only access to annotations, tours and
+//! map POIs.
 //!
 //! Writes go through the services of the UI's HTTP controllers
 //! (`services::notify_templates`, `services::functions`), re-check
@@ -528,4 +529,117 @@ pub async fn read_memory(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcom
         .map(|(k, v)| json!({ "key": k, "available": v.available, "value": v.value, "ts_ms": v.ts_ms }))
         .collect();
     outcome(json!({ "available": resp.available, "values": values }))
+}
+
+// ─────────────────────────── Topic taxonomies (D168) ───────────────────────────
+
+fn taxonomy_error(e: crate::services::media_ingest::taxonomies::TaxonomyError) -> ToolError {
+    use crate::services::media_ingest::taxonomies::TaxonomyError as E;
+    use pnex_core::err_codes;
+    let coded = |message: String, code: &'static str, args: Option<Value>| ToolError {
+        message,
+        code: Some(code),
+        args,
+    };
+    match e {
+        E::Invalid { field, token } => format!("field {field}: {token}").into(),
+        E::NotFound => coded(
+            "taxonomy not found in this organization".into(),
+            err_codes::TAXONOMY_NOT_FOUND,
+            None,
+        ),
+        E::NameTaken => coded(
+            "another taxonomy of the organization has this name".into(),
+            err_codes::TAXONOMY_NAME_TAKEN,
+            None,
+        ),
+        E::VersionConflict { current } => coded(
+            format!("version conflict: the taxonomy is now at version {current} — reload it with get_taxonomy and redo the change"),
+            err_codes::TAXONOMY_VERSION_CONFLICT,
+            Some(json!({ "current": current.to_string() })),
+        ),
+        E::Db(e) => internal("writing taxonomy")(e),
+    }
+}
+
+/// Taxonomies of the org with the ids of their current topics (no
+/// definitions or keywords: get_taxonomy reads one in full).
+pub async fn list_taxonomies(deps: &ToolDeps<'_>) -> Result<ToolOutcome, ToolError> {
+    let rows = crate::services::media_ingest::taxonomies::list(deps.db, deps.org_id)
+        .await
+        .map_err(internal("reading taxonomies"))?;
+    let list: Vec<Value> = rows
+        .iter()
+        .map(|t| {
+            let ids: Vec<&str> = t
+                .current
+                .iter()
+                .flat_map(|v| v.topics.iter().map(|tp| tp.id.as_str()))
+                .collect();
+            json!({
+                "id": t.id,
+                "name": t.name,
+                "current_version": t.current_version,
+                "topic_count": ids.len(),
+                "topic_ids": ids,
+            })
+        })
+        .collect();
+    outcome(json!({ "taxonomies": list }))
+}
+
+/// One taxonomy with the full topics of its current version.
+pub async fn get_taxonomy(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
+    let t = crate::services::media_ingest::taxonomies::get(
+        deps.db,
+        deps.org_id,
+        uuid_arg(args, "taxonomy_id")?,
+    )
+    .await
+    .map_err(taxonomy_error)?;
+    outcome(json!({ "taxonomy": t }))
+}
+
+/// New version (append-only) of a taxonomy on top of the version read with
+/// get_taxonomy — the HTTP controller's service, same checks, same 409.
+pub async fn create_taxonomy_version(
+    deps: &ToolDeps<'_>,
+    args: &Value,
+) -> Result<ToolOutcome, ToolError> {
+    require_write(deps)?;
+    let id = uuid_arg(args, "taxonomy_id")?;
+    let expected = i64_arg(args, "expected_version")?;
+    let topics: Vec<pnex_core::taxonomy::Topic> = serde_json::from_value(
+        args.get("topics").cloned().unwrap_or(Value::Null),
+    )
+    .map_err(|e| format!("invalid topics (array of {{id, label, definition, keywords}}): {e}"))?;
+    let input = pnex_core::taxonomy::TaxonomyVersionInput {
+        topics,
+        note: args
+            .get("note")
+            .and_then(Value::as_str)
+            .unwrap_or("written by the assistant")
+            .to_string(),
+        expected_version: i32::try_from(expected)
+            .map_err(|_| "expected_version out of range".to_string())?,
+    };
+    let v = crate::services::media_ingest::taxonomies::add_version(
+        deps.db,
+        deps.org_id,
+        id,
+        None,
+        &input,
+    )
+    .await
+    .map_err(taxonomy_error)?;
+    let t = crate::services::media_ingest::taxonomies::find(deps.db, deps.org_id, id)
+        .await
+        .map_err(taxonomy_error)?;
+    outcome(json!({
+        "taxonomy_id": id,
+        "name": t.name,
+        "new_version": v.version,
+        "topic_count": crate::services::media_ingest::taxonomies::topics_of(&v).len(),
+        "note": "deployed flows keep their pinned version: the user selects the new version in the Topic classifier node and redeploys",
+    }))
 }

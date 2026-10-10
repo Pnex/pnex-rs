@@ -3404,3 +3404,57 @@ fn metric_labels_are_checked_and_resolved() {
         .unwrap();
     assert_eq!(node["labels"], json!({"stream": "msg.topic"}));
 }
+
+#[test]
+fn topic_classify_validates_and_projects() {
+    let tax = "6f1c8a52-3b8e-4c1a-9d0e-7a2b5c4d3e21";
+    let g: FlowGraph = serde_json::from_value(serde_json::json!({
+        "nodes": [
+            {"id": "tc", "kind": "topic_classify",
+             "config": {"taxonomy_id": tax, "version": 3},
+             "outputs": [{"port": 0, "targets": ["dbg"]}]},
+            {"id": "dbg", "kind": "debug"}
+        ]
+    }))
+    .expect("graph");
+    assert!(validate_graph(&g).is_empty(), "{:?}", validate_graph(&g));
+    let meta = FlowArtifactMeta {
+        flow_id: 4,
+        version_number: 2,
+        org_id: 9,
+        o2_org: String::new(),
+    };
+    let red = to_red_flows_json(&g, &meta);
+    let node = red
+        .as_array()
+        .expect("entries")
+        .iter()
+        .find(|e| e["type"] == "pnex-topic-classify")
+        .expect("topic classify")
+        .clone();
+    assert_eq!(node["taxonomy_id"], tax);
+    assert_eq!(node["version"], 3);
+    assert_eq!(node["text_field"], "text");
+    assert_eq!(node["pnex_org_id"], 9);
+    // Topics are stamped by the backend, never projected from the graph.
+    assert!(node.get("topics").is_none());
+
+    let back: FlowGraph = serde_json::from_value(serde_json::to_value(&g).unwrap()).unwrap();
+    assert_eq!(back, g);
+    let bad: FlowGraph = serde_json::from_value(serde_json::json!({
+        "nodes": [
+            {"id": "a", "kind": "topic_classify", "config": {}},
+            {"id": "b", "kind": "topic_classify", "config": {"taxonomy_id": tax}},
+            {"id": "c", "kind": "topic_classify", "config": {"taxonomy_id": tax, "version": 1, "text_field": ""}}
+        ]
+    }))
+    .expect("graph");
+    let codes: Vec<String> = validate_graph(&bad).into_iter().map(|v| v.code).collect();
+    for code in [
+        "topic_classify_no_taxonomy",
+        "topic_classify_version_invalid",
+        "topic_classify_text_field_invalid",
+    ] {
+        assert!(codes.contains(&code.to_string()), "{code}: {codes:?}");
+    }
+}
