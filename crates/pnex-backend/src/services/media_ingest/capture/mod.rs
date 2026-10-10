@@ -612,7 +612,7 @@ async fn store_cut(
             CaptureError::StoreFailed
         })?;
     if stream.asr_profile_id.is_some() {
-        segments::enqueue(ctx, &row).await;
+        segments::enqueue(ctx, &row, true).await;
     }
     Ok(())
 }

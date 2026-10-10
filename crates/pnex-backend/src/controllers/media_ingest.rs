@@ -144,7 +144,7 @@ async fn internal_segment(
         }
     };
     if stream.asr_profile_id.is_some() {
-        segments::enqueue(&ctx, &row).await;
+        segments::enqueue(&ctx, &row, true).await;
     }
     Ok(StatusCode::NO_CONTENT.into_response())
 }
@@ -436,7 +436,7 @@ async fn segment_retry(
         Err(e) => return db_error(e),
     };
     for seg in &failed {
-        crate::services::media_ingest::segments::enqueue(&ctx, seg).await;
+        crate::services::media_ingest::segments::enqueue(&ctx, seg, false).await;
     }
     format::json(serde_json::json!({ "requeued": failed.len() }))
 }
