@@ -138,7 +138,11 @@ attaquant anonyme qui s'inscrit le peut aussi. La frontière qui compte est
   par empreinte).
 - **R20 — Dépendances : licence permissive** (règle existante) **et
   `cargo deny` vert** ; toute exception `deny.toml` porte sa
-  justification d'inexploitabilité.
+  justification d'inexploitabilité. Les images livrées sont **Chainguard
+  (Wolfi) uniquement** (`glibc-dynamic`, `wolfi-base`) ; les étages de
+  build Debian ne sont jamais livrés. Un binaire tiers compilé hors cargo
+  et copié dans une image (ffmpeg, archives sherpa-onnx) a sa source
+  épinglée en sha256 dans le Dockerfile (`ADD --checksum`).
 
 ## 4. Bons motifs existants (à imiter)
 
@@ -232,6 +236,7 @@ sans impact exploitable démontré.
 | SEC-22 | MEDIUM | **JWT de l'utilisateur dans l'URL des WebSockets navigateur** (`/ws/notify?token=`, `/ws/camera/live?token=`) : l'URL finit dans les journaux d'accès (proxy, CDN, contrôleur d'ingress) — même classe que O19 côté devices | R16 | corrigé 2026-10-09 (inventaire des ruptures pré-0.1.0) — ticket à usage unique `POST /api/v1/ws-ticket` (60 s, lié à l'utilisateur et à l'org du principal, consommé par `GETDEL` Valkey) ; ticket rejoué → 4001 (test) |
 | SEC-23 | LOW | **Filtre d'egress : angles morts** (`pnex-core/src/egress.rs`) — `ip_allowed` ne juge pas les adresses IPv6 qui embarquent une IPv4 (NAT64 `64:ff9b::/96`, 6to4 `2002::/16`) par leur IPv4 ; en `lan`, les noms `*.svc.cluster.local` et les adresses du réseau d'infra (Docker/k8s : Postgres, Valkey, O2, RustFS) restent joignables par toute org via `http_fetch` (et demain les flux média) | R8 | ouvert — relevé 2026-10-09 à la relecture de `media-ingest.md` ; piste : juger l'IPv4 embarquée, refuser `.svc`/`.cluster.local` hors `PNEX_EGRESS_ALLOW_HOSTS`, liste `PNEX_EGRESS_DENY_CIDRS` pour le réseau d'infra ; `public` reste obligatoire en mutualisé |
 | SEC-24 | LOW | **Modèles audio : disque du cache d'extraction** (`services/media_ingest/asr`) — chaque modèle audio importé est extrait dans `PNEX_ASR_MODELS_DIR` (borne de 4 Gio par modèle, traversée de chemins et liens refusés) ; aucune limite du nombre de modèles par org : une org peut remplir le disque du serveur en important des modèles distincts | — | ouvert — relevé 2026-10-10 au lot 1 de `media-ingest.md` ; piste : quota de modèles audio par org (verrou advisory, école D159), purge LRU du cache, taille d'upload `model` dédiée |
+| SEC-25 | LOW | **Binaires média hors veille CVE** (`deploy/docker/Dockerfile`, étages `ffmpeg` et `asr`) — ffmpeg (compilé par nous) et onnxruntime (lié statiquement dans `pnex-asr` via les archives sherpa-onnx) ne viennent pas de paquets Wolfi : ni l'avis CVE de Chainguard ni `cargo deny` ne les suivent. Ils décodent des médias non fiables | R20 | atténué 2026-10-10 : ffmpeg réduit au protocole `pipe` + démuxeurs/décodeurs audio listés, les deux process confinés (seccomp sans socket, Landlock lecture seule, rlimits, vérifié dans un conteneur Wolfi) ; reste : relever les versions épinglées à chaque release (scan d'image Trivy/Grype en CI) |
 
 \* SEC-4 seul exige le jeton de service ; c'est l'amplificateur qui rend
 SEC-1 / SEC-3 inter-org (actionneurs de n'importe quelle org).

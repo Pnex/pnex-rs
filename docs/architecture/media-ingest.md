@@ -246,10 +246,21 @@ reçoit du **texte** et des événements, et fait l'ETL léger.
 - Un superviseur par flux : redémarrage à backoff exponentiel borné
   (patron `flow_supervisor::run_supervisor`, généralisé à N enfants) ;
   un flux qui plante n'affecte pas les autres.
-- Prérequis d'image : ffmpeg n'est installé dans **aucune** image
-  aujourd'hui ; l'image serveur et l'image worker le gagnent (paquet
-  distribution, licence LGPL si build sans `--enable-gpl`, à vérifier
-  au lot 1 — `deny.toml` ne couvre pas les binaires système).
+- Images (tranche 1e) : l'image serveur et l'image worker embarquent un
+  ffmpeg **compilé par nous** (`deploy/docker/build-ffmpeg.sh`), pas un
+  paquet de distribution : tarball épinglé en sha256 (signature vérifiée
+  contre la clé de release FFmpeg au changement de version),
+  `--disable-everything` puis uniquement le protocole `pipe`, les
+  démuxeurs et décodeurs audio de `capture/decoder.rs`, le muxer PCM et
+  `aresample`/`aformat` ; ni réseau, ni fichier, ni vidéo, ni bibliothèque
+  externe (binaire de ~3 Mo lié à la seule glibc). Sans `--enable-gpl`,
+  `--enable-version3` ni `--enable-nonfree`, le binaire est
+  **LGPL-2.1-or-later** (vérifié dans `config.h` par le script) ; il est
+  distribué non modifié comme programme séparé, avec la licence, la source
+  et la ligne de configuration dans `/usr/share/licenses/ffmpeg/`.
+  Exception assumée à la règle « briques permissives » : aucun lien avec
+  le code PNEX, aucun équivalent permissif ne couvre AAC/MP3/Opus/MPEG-TS
+  (`deny.toml` ne couvre pas les binaires système).
 
 **Segments** :
 
@@ -946,7 +957,8 @@ Le lot 1 avance par tranches, chacune testée et commitée seule.
 | 1d — Modèles audio | `ml_models` de tâche `asr` (les chemins vision filtrent `detection`), import d'une archive sherpa-onnx (`.tar`, `.tar.bz2`, `.tar.gz`, `.zip`) ou d'un GGML (sniffé par sa signature), extraction bornée et aplatie, famille lue dans les fichiers, licence SPDX obligatoire, check sur l'échantillon FLEURS fr embarqué (CC BY 4.0) → `load_ms`, RTF, WER ; `/api/v1/asr/models` | ✅ 2026-10-10 (backend) ; check par porteur (`ml_model_checks`) et test par dépôt d'audio : à faire |
 | 1f — UI | `/streams` en trois onglets : flux, transcriptions (recherche plein texte, filtre par flux), modèles et profils (import par téléversement ou depuis la médiathèque, licence, vérification avec débit soutenable et WER, profils) ; fiche KB complétée | ✅ 2026-10-10 |
 | 1g — Rétention (D161) | pruner d'audio toutes les 15 min (singleton `task:media-audio-pruner`) : `days:N` par âge de l'audio, `none` après transcription ou fenêtre de rejeu de 15 min pour les `failed`/`captured`, `keep` jamais ; `POST /api/v1/media/streams/{id}/segments/retry` remet en queue les échecs dont l'audio est encore là ; pas de capture sans profil (l'audio ne serait jamais transcrit) | ✅ 2026-10-10 (bouton de rejeu dans l'UI : avec la vue des segments) |
-| 1e — Images + porteur `worker` | ffmpeg et bwrap dans les images, `/internal/media/segment` | à faire |
+| 1e — Images | stage `ffmpeg` (minimal, LGPL, épinglé) et stage `asr` (`pnex-asr` lié statiquement à sherpa-onnx, archives épinglées en sha256 via `SHERPA_ONNX_ARCHIVE_DIR`, cargo séparé pour que la feature `sherpa` n'atteigne pas `pnex-server`), réunis dans `media-tools` et copiés dans les images serveur et worker avec `PNEX_FFMPEG`, `PNEX_ASR_BIN`, `PNEX_ASR_MODELS_DIR=/data/asr-models` ; pas de bwrap (le confinement noyau suffit et marche sans user namespaces) | ✅ 2026-10-10 |
+| 1h — Porteur `worker` | capture sur un worker du mesh, `/internal/media/segment` | à faire |
 
 Écarts au PRD décidés en implémentant :
 
@@ -973,9 +985,9 @@ Le lot 1 avance par tranches, chacune testée et commitée seule.
   whisper.cpp Vulkan…). Il est confiné comme ffmpeg (`PNEX_ASR_SANDBOX`,
   `none` pour un GPU : les fichiers de périphérique s'ouvrent en écriture).
 - Le build sherpa-onnx télécharge des binaires précompilés sans somme de
-  contrôle ; un build de release fournit `SHERPA_ONNX_ARCHIVE_DIR` (archive
-  téléchargée et vérifiée contre une sha256 épinglée) — à câbler avec les
-  images (tranche 1e).
+  contrôle ; les images fournissent `SHERPA_ONNX_ARCHIVE_DIR` (archives
+  téléchargées par `ADD --checksum` contre les sha256 publiées par GitHub
+  pour la release, épinglées dans le Dockerfile).
 - Plafond mémoire du runtime ASR : `PNEX_ASR_MAX_MEMORY_MB` (8 Gio par
   défaut) ; mesuré : Parakeet TDT 0.6B int8 se bloque **sans erreur** sous
   1 Gio d'espace d'adressage et charge à partir de 2 Gio (onnxruntime
