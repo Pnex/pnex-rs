@@ -18,6 +18,8 @@ Audio streams (Data › Audio streams) lists the radios and live streams the org
 - **Alert channel**: when an enabled stream brings no audio for 2 minutes, the organization gets an in-app notification, and a message on this channel when one is picked (email, ntfy, Slack…). One alert per silence; it re-arms once audio is back.
 - **Segment length** (10 to 120 s) and **Audio retention**: none (audio deleted once transcribed, the default), a number of days, or kept (only when the organization holds the rights).
 - **Enable / Disable** capture, **Edit**, **Delete** (pending segments are erased; transcriptions already written stay in the history).
+- **Segments** (on each stream, every member): every captured slice with its state (captured, queued, transcribing, transcribed, failed, silence or too late), newest first, filterable by state. **Retry failed segments** sends back to transcription the failed ones whose audio is still kept.
+- Under the state of an enabled stream: how long ago the last audio arrived, how old the oldest segment waiting for transcription is, and the share of the last hour that was transcribed.
 - **Transcriptions** tab: search the text of every stream (or one), newest first.
 - **Models and profiles** tab: **Import a model** (upload a sherpa-onnx `.tar.bz2` archive or a whisper.cpp GGML file, or pick a `model` file from the media library) with its **Model license**; the server reads the family from the files, loads the model and transcribes a French reference clip: the row shows how many real-time streams it sustains and its error rate on the clip. **Check** runs it again. Then **Add the profile** (name, model, language) and pick that profile in the stream.
 

@@ -76,19 +76,28 @@ pub async fn views<C: ConnectionTrait>(
 ) -> Result<Vec<MediaStream>, StoreError> {
     let ids: Vec<Uuid> = rows.iter().filter_map(|r| r.secret_id).collect();
     let names = store::names_of(db, Some(org_id), &ids).await?;
-    Ok(rows
-        .iter()
-        .map(|r| {
-            let mut v = view(r);
-            v.auth_secret = r.secret_id.and_then(|id| {
-                Some(pnex_core::SecretFieldView {
-                    secret_id: id,
-                    name: names.get(&id)?.clone(),
-                })
+    let now = chrono::Utc::now();
+    let mut out = Vec::with_capacity(rows.len());
+    for r in rows {
+        let mut v = view(r);
+        v.auth_secret = r.secret_id.and_then(|id| {
+            Some(pnex_core::SecretFieldView {
+                secret_id: id,
+                name: names.get(&id)?.clone(),
+            })
+        });
+        if r.enabled {
+            v.health = super::health::sample(db, r, now).await.ok().map(|h| {
+                pnex_core::media_ingest::StreamHealth {
+                    gap_secs: h.gap_secs,
+                    lag_secs: h.lag_secs,
+                    coverage: h.coverage,
+                }
             });
-            v
-        })
-        .collect())
+        }
+        out.push(v);
+    }
+    Ok(out)
 }
 
 pub fn view(r: &media_streams::Model) -> MediaStream {
@@ -112,6 +121,7 @@ pub fn view(r: &media_streams::Model) -> MediaStream {
         tdm_note: r.tdm_note.clone().unwrap_or_default(),
         capture_state: CaptureState::from_wire(&r.capture_state).unwrap_or_default(),
         capture_error: r.capture_error.clone(),
+        health: None,
         created_at: r.created_at.to_rfc3339(),
         updated_at: r.updated_at.to_rfc3339(),
     }

@@ -3,8 +3,8 @@
 //! `/api/v1/media/transcripts`, `/api/v1/asr/models` and `/api/v1/asr/profiles`.
 
 use pnex_core::media_ingest::{
-    AsrModel, AsrModelInput, AsrProfile, AsrProfileInput, MediaStream, MediaStreamInput,
-    TranscriptRecord,
+    AsrModel, AsrModelInput, AsrProfile, AsrProfileInput, MediaSegment, MediaStream,
+    MediaStreamInput, TranscriptRecord,
 };
 use pnex_core::Paginated;
 
@@ -151,4 +151,36 @@ pub async fn transcripts(
         None,
     )
     .await
+}
+
+/// `GET /api/v1/media/streams/{id}/segments` — newest first, optional
+/// `state` filter (D14 envelope).
+pub async fn segments(
+    id: &str,
+    state: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<Paginated<MediaSegment>, ApiError> {
+    let mut pairs = vec![format!("limit={limit}"), format!("offset={offset}")];
+    if !state.is_empty() {
+        pairs.push(format!("state={state}"));
+    }
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/media/streams/{id}/segments?{}", pairs.join("&")),
+        None,
+    )
+    .await
+}
+
+/// `POST /api/v1/media/streams/{id}/segments/retry` — re-queues the failed
+/// segments whose audio is still kept; returns how many.
+pub async fn retry_segments(id: &str) -> Result<i64, ApiError> {
+    let v: serde_json::Value = client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/media/streams/{id}/segments/retry"),
+        None,
+    )
+    .await?;
+    Ok(v["requeued"].as_i64().unwrap_or(0))
 }

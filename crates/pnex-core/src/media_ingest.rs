@@ -348,8 +348,22 @@ pub struct MediaStream {
     /// Short machine code of the last capture failure.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capture_error: Option<String>,
+    /// Capture health, enabled streams only (D160).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub health: Option<StreamHealth>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// Capture health of an enabled stream, computed when read (D160, §9).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StreamHealth {
+    /// Seconds since the last captured audio.
+    pub gap_secs: i64,
+    /// Age of the oldest segment waiting for its transcription.
+    pub lag_secs: i64,
+    /// Transcribed share of the last hour, 0..=1.
+    pub coverage: f64,
 }
 
 /// Create / update body of a stream. On update every field is optional

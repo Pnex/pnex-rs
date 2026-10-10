@@ -18,10 +18,12 @@ use crate::state::{org, session, toasts};
 
 mod form;
 mod models;
+mod segments;
 mod transcripts;
 
 use form::StreamFormModal;
 use models::ModelsTab;
+use segments::SegmentsDialog;
 use transcripts::TranscriptsTab;
 
 /// Tabs of the page.
@@ -52,6 +54,7 @@ enum Dialog {
     Create,
     Edit(MediaStream),
     Delete(MediaStream),
+    Segments(MediaStream),
 }
 
 #[component]
@@ -191,6 +194,14 @@ pub fn Streams() -> Element {
                     },
                 }
             },
+            Some(Dialog::Segments(s)) => rsx! {
+                SegmentsDialog {
+                    key: "segments-{s.id}",
+                    stream: s.clone(),
+                    can_write,
+                    on_close: move |_| dialog.set(None),
+                }
+            },
             Some(Dialog::Delete(s)) => rsx! {
                 ConfirmDialog {
                     title: t!("streams-delete-title"),
@@ -235,6 +246,15 @@ fn capture_error_label(code: &str) -> String {
         "secret-unreadable" => t!("streams-error-secret-unreadable").to_string(),
         "store-failed" => t!("streams-error-store-failed").to_string(),
         other => other.to_string(),
+    }
+}
+
+/// `12 s`, `4 min`, `3 h`.
+fn short_duration(secs: i64) -> String {
+    match secs {
+        s if s < 120 => format!("{s} s"),
+        s if s < 7200 => format!("{} min", s / 60),
+        s => format!("{} h", s / 3600),
     }
 }
 
@@ -297,6 +317,13 @@ fn StreamRow(
     };
     let s_edit = stream.clone();
     let s_delete = stream.clone();
+    let s_segments = stream.clone();
+    let health_line = stream.health.as_ref().map(|h| {
+        let gap = short_duration(h.gap_secs);
+        let lag = short_duration(h.lag_secs);
+        let coverage = format!("{:.0}", h.coverage * 100.0);
+        t!("streams-health", gap: gap, lag: lag, coverage: coverage).to_string()
+    });
     rsx! {
         tr { class: "group hover:bg-gray-50",
             td { class: "td",
@@ -316,13 +343,22 @@ fn StreamRow(
                         {capture_error_label(err)}
                     }
                 }
+                if let Some(health) = health_line {
+                    p { class: "text-xs text-gray-500 mt-0.5", "{health}" }
+                }
             }
             td { class: "td hidden text-gray-600 md:table-cell",
                 {form::retention_label(&stream.audio_retention)}
             }
             td { class: "td {ACTIONS_TD_CLASS}",
-                if can_write {
-                    div { class: "flex justify-end gap-2",
+                div { class: "flex justify-end gap-2",
+                    button {
+                        class: "px-2 py-1 text-xs border border-gray-300 rounded-lg hover:bg-gray-50",
+                        r#type: "button",
+                        onclick: move |_| on_action.call(Dialog::Segments(s_segments.clone())),
+                        {t!("streams-segments")}
+                    }
+                    if can_write {
                         button {
                             class: "px-2 py-1 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40",
                             r#type: "button",
