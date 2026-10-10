@@ -26,5 +26,6 @@ An enabled audio stream brings no new audio, or its transcriptions arrive late.
 1. Open **Audio streams**, read the reason under the stream, then **Edit** it: check the **Stream URL** (open it in a browser), the **Kind** (`hls` for an `.m3u8` playlist, `icecast` for a continuous stream) and the **Access secret**.
 2. If the stream is captured by a **capture worker**, switch **Capture location** to **This server** unless the platform confirmed a worker runs.
 3. For late transcriptions, open the **Models and profiles** tab: pick a model whose sustained streams exceed your enabled streams, set it in the profile, or disable some streams.
+4. Open **Segments** on the stream to see which slices failed and why; **Retry failed segments** sends back those whose audio is still kept.
 
 Capture restarts by itself with a growing delay; one alert is sent per silence and the alert re-arms once audio is back.

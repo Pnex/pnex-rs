@@ -14,9 +14,7 @@ use loco_rs::app::AppContext;
 use pnex_core::media_ingest::{CaptureState, MediaStreamKind, SegmentState};
 use sea_orm::prelude::DateTimeWithTimeZone;
 use sea_orm::sea_query::{Expr, Func};
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-};
+use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
 use crate::models::_entities::{media_segments, media_streams, notify_channels};
@@ -69,8 +67,8 @@ pub fn compute(
     }
 }
 
-pub async fn sample(
-    db: &DatabaseConnection,
+pub async fn sample<C: sea_orm::ConnectionTrait>(
+    db: &C,
     stream: &media_streams::Model,
     now: DateTime<Utc>,
 ) -> Result<Health, DbErr> {
