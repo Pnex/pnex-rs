@@ -633,6 +633,7 @@ mod tests {
         };
         let reading = |metric: &str, line: bool| AnnotationTarget::Reading {
             source: crate::viz::SourceRef {
+                object_property: None,
                 role: "primary".into(),
                 metric: metric.into(),
                 device_id: "proud-ibex".into(),
@@ -1004,6 +1005,7 @@ mod tests {
                 ANNOTATION_KIND_READING,
                 AnnotationTarget::Reading {
                     source: crate::viz::SourceRef {
+                        object_property: None,
                         role: "primary".into(),
                         metric: "temperature".into(),
                         device_id: "proud-ibex".into(),

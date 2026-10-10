@@ -82,6 +82,7 @@ async fn call(
         "GET" => server.get(path),
         "POST" => server.post(path),
         "PUT" => server.put(path),
+        "PATCH" => server.patch(path),
         "DELETE" => server.delete(path),
         _ => unreachable!(),
     }
@@ -424,6 +425,60 @@ async fn isolation_roles_and_yaml_round_trip() {
         assert_eq!((st, e["error"].as_str()), (403, Some("ontology-write-forbidden")), "{e}");
         let (st, _) = call(&server, "POST", "/api/v1/ontology/objects", &env.bob, org_a, Some(json!({"type_key": "pump", "title": "P9", "properties": {"serial": "9"}}))).await;
         assert_eq!(st, 201);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn ranges_search_and_type_dashboards_reach_objects() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        call(&server, "POST", "/api/v1/ontology/packs/maintenance/install", &env.alice, org, None).await;
+        let line = object(&server, &env.alice, org, "line", "Ligne Nord", json!({"code": "N"})).await;
+        let lid = line["id"].as_str().unwrap();
+
+        // D182: a shift of a line.
+        let (st, r) = call(&server, "POST", "/api/v1/time-ranges", &env.alice, org, Some(json!({
+            "scope_kind": "object", "scope_id": lid, "label": "Morning shift",
+            "planned_start": "2026-10-01T06:00:00Z", "planned_end": "2026-10-01T14:00:00Z"
+        }))).await;
+        assert_eq!(st, 201, "{r}");
+        let (st, _) = call(&server, "POST", "/api/v1/time-ranges", &env.alice, org, Some(json!({
+            "scope_kind": "object", "scope_id": "00000000-0000-0000-0000-000000000000", "label": "x",
+            "planned_start": "2026-10-01T06:00:00Z", "planned_end": "2026-10-01T14:00:00Z"
+        }))).await;
+        assert_eq!(st, 400, "unknown object scope");
+
+        // D69: global search finds org-type objects.
+        let (st, s) = call(&server, "GET", "/api/v1/search?q=nord", &env.alice, org, None).await;
+        assert_eq!(st, 200);
+        let group = s["groups"].as_array().unwrap().iter().find(|g| g["entity_type"] == "object").cloned();
+        assert_eq!(group.unwrap()["results"][0]["id"], lid, "{s}");
+
+        // D187: a type dashboard reads an object property; the binding
+        // follows the open `measures` link.
+        let pump = object(&server, &env.alice, org, "pump", "P1", json!({"serial": "1"})).await;
+        let pid = pump["id"].as_str().unwrap();
+        let dev = device(&server, &env, org, "c1").await;
+        link(&server, &env.alice, org, json!({"link_type": "measures", "source_id": dev, "target_id": pid,
+            "attributes": {"metric": "temperature", "property": "temperature"}})).await;
+        let (st, b) = call(&server, "GET", &format!("/api/v1/ontology/objects/{pid}/bindings"), &env.alice, org, None).await;
+        assert_eq!(st, 200);
+        assert_eq!(b, json!([{"property": "temperature", "device_id": "c1", "metric": "temperature"}]));
+        let layout = |object_type: Value| json!({
+            "canvas": {"width": 800, "height": 600}, "object_type": object_type,
+            "widgets": [{"id": "w1", "type": "gauge", "x": 0, "y": 0, "w": 100, "h": 100,
+                "source": [{"metric": "", "device_id": "", "window": "1h", "object_property": "temperature"}]}]
+        });
+        let (st, d) = call(&server, "POST", "/api/v1/dashboards", &env.alice, org, Some(json!({"name": "Pump"}))).await;
+        assert!(st == 200 || st == 201, "{st} {d}");
+        let path = format!("/api/v1/dashboards/{}", d["id"].as_str().unwrap());
+        let (st, e) = call(&server, "PATCH", &path, &env.alice, org, Some(json!({"expected_version_number": 1, "layout": layout(Value::Null)}))).await;
+        assert_eq!(st, 400, "object source without object type: {e}");
+        let (st, d) = call(&server, "PATCH", &path, &env.alice, org, Some(json!({"expected_version_number": 1, "layout": layout(json!("pump"))}))).await;
+        assert_eq!(st, 200, "{d}");
+        assert_eq!(d["layout"]["object_type"], "pump");
     })
     .await;
 }

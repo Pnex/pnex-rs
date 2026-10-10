@@ -153,3 +153,53 @@ pub fn field_errors(
     let obj = e.body.as_ref()?.as_object()?;
     (e.status == Some(400) && !obj.contains_key("error")).then(|| obj.clone())
 }
+
+/// Object picker of a type dashboard (D187): the objects of `type_key`;
+/// the first one is selected when nothing is.
+#[component]
+pub fn ObjectPicker(type_key: String, selected: Signal<String>) -> Element {
+    let mut selected = selected;
+    let tk = type_key.clone();
+    let list = use_resource(move || {
+        let q = pnex_core::ontology::api::OntologyQuery {
+            type_key: Some(tk.clone()),
+            limit: Some(500),
+            ..Default::default()
+        };
+        async move {
+            crate::api::ontology::query(&q)
+                .await
+                .map(|r| r.rows)
+                .unwrap_or_default()
+        }
+    });
+    use_effect(move || {
+        if let Some(rows) = list.read().as_ref() {
+            if selected.peek().is_empty() {
+                if let Some(first) = rows.first() {
+                    selected.set(first.object.id.clone());
+                }
+            }
+        }
+    });
+    let rows = list.read().clone().unwrap_or_default();
+    let label = key_label(&type_key);
+    rsx! {
+        label { class: "flex items-center gap-2 text-sm text-gray-700",
+            span { "{label}" }
+            select {
+                class: "px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white",
+                "data-testid": "dashboard-object-picker",
+                onchange: move |e| selected.set(e.value()),
+                for r in rows {
+                    option {
+                        key: "{r.object.id}",
+                        value: "{r.object.id}",
+                        selected: r.object.id == selected(),
+                        "{r.object.title}"
+                    }
+                }
+            }
+        }
+    }
+}

@@ -311,6 +311,7 @@ mod tests {
     fn range_bars_widget_validation() {
         use crate::viz::{validate_widget, SourceRef, WidgetOptions};
         let src = SourceRef {
+            object_property: None,
             role: "primary".into(),
             metric: "etl_mentions".into(),
             device_id: String::new(),

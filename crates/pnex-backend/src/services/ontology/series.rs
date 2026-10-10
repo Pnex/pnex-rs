@@ -140,6 +140,47 @@ pub async fn read(
     Ok(view)
 }
 
+/// Current sensor of every bound `series` property of an object (open
+/// `measures` links): what a type dashboard reads (D187).
+pub async fn current_bindings(
+    db: &DatabaseConnection,
+    org_id: i64,
+    object: Uuid,
+) -> Result<Vec<pnex_core::SeriesBinding>> {
+    let open = resource_edges::Entity::find()
+        .filter(resource_edges::Column::OrgId.eq(org_id))
+        .filter(resource_edges::Column::Relation.eq(REL_MEASURES))
+        .filter(resource_edges::Column::TargetObjectId.eq(object))
+        .filter(resource_edges::Column::ValidTo.is_null())
+        .all(db)
+        .await?;
+    let mut out = Vec::new();
+    for l in open {
+        let attr = |k: &str| {
+            l.attributes
+                .get(k)
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string()
+        };
+        let Some(dev) = l.source_object_id else {
+            continue;
+        };
+        let Ok(dev) = super::objects::find(db, org_id, dev).await else {
+            continue;
+        };
+        let Some(label) = device_label(db, org_id, &dev.native_id).await else {
+            continue;
+        };
+        out.push(pnex_core::SeriesBinding {
+            property: attr(pnex_core::ontology::MEASURES_PROPERTY),
+            device_id: label,
+            metric: attr(MEASURES_METRIC),
+        });
+    }
+    Ok(out)
+}
+
 /// Joins the last value of `props` on query rows (D185), through the open
 /// `measures` link of each property.
 pub async fn join_latest(

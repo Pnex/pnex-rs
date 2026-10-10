@@ -9,7 +9,7 @@
 //! lowercased in Rust (shared with the paginated lists).
 //!
 //! Each searchable entity contributes one org-scoped containment query; the
-//! 9 groups (10 SQL queries, edge refs merge two tables) run concurrently
+//! 10 groups (11 SQL queries, edge refs merge two tables) run concurrently
 //! (`tokio::join!`, school `controllers/dashboard.rs`). Merging + light
 //! ranking happen in Rust: prefix matches beat substring matches, recency
 //! order preserved within each class.
@@ -28,7 +28,7 @@ use crate::auth::OrgContext;
 use crate::controllers::pagination;
 use crate::models::_entities::{
     annotation_layers, dashboards, device_registries, flows, functions, map_pins, media_assets,
-    pnex_hosts, tours, wifi_credentials,
+    objects, pnex_hosts, tours, wifi_credentials,
 };
 use crate::services::pois::PIN_MODE_GEO;
 
@@ -428,6 +428,42 @@ async fn fetch_edge_refs(
     Ok(out)
 }
 
+/// Ontology objects of the org's own types (D185 → D69): system objects
+/// are already found through their native group. Subtitle = type key.
+async fn fetch_objects(
+    db: &DatabaseConnection,
+    org_id: i64,
+    patterns: &[String],
+    prefix_token: &str,
+    candidate_limit: u64,
+) -> Fetched {
+    let system: Vec<String> = pnex_core::ontology::system_object_types()
+        .into_iter()
+        .map(|t| t.key)
+        .collect();
+    let rows = objects::Entity::find()
+        .filter(objects::Column::OrgId.eq(org_id))
+        .filter(objects::Column::ValidTo.is_null())
+        .filter(objects::Column::TypeKey.is_not_in(system))
+        .filter(match_tokens!(patterns, objects, [Title]))
+        .order_by_desc(objects::Column::UpdatedAt)
+        .limit(candidate_limit)
+        .all(db)
+        .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| Candidate {
+            prefix: r.title.to_lowercase().starts_with(prefix_token),
+            hit: SearchHit {
+                id: r.id.to_string(),
+                title: r.title,
+                subtitle: Some(r.type_key),
+                updated_at: r.updated_at.to_rfc3339(),
+            },
+        })
+        .collect())
+}
+
 /// Stable ranking: prefix matches first, recency order preserved within
 /// each class; then truncate to the per-group cap.
 fn rank_and_cap(mut candidates: Vec<Candidate>, take: i64) -> Vec<SearchHit> {
@@ -437,7 +473,7 @@ fn rank_and_cap(mut candidates: Vec<Candidate>, take: i64) -> Vec<SearchHit> {
 }
 
 /// Handler: empty `q` → empty 200 (silent default, never 400); otherwise
-/// the 9 groups run concurrently and reassemble in canonical order.
+/// the 10 groups run concurrently and reassemble in canonical order.
 async fn search(
     org: OrgContext,
     State(ctx): State<AppContext>,
@@ -463,7 +499,7 @@ async fn search(
     let candidate_limit = (take as u64 * OVERSHOOT).clamp(6, 30);
     let org_id = org.org.id;
 
-    let (dev, poi, tour, media, layer, func, flow, dash, refs) = tokio::join!(
+    let (dev, poi, tour, media, layer, func, flow, dash, refs, objs) = tokio::join!(
         fetch_devices(&ctx.db, org_id, &patterns, prefix_token, candidate_limit),
         fetch_pois(&ctx.db, org_id, &patterns, prefix_token, candidate_limit),
         fetch_tours(&ctx.db, org_id, &patterns, prefix_token, candidate_limit),
@@ -473,6 +509,7 @@ async fn search(
         fetch_flows(&ctx.db, org_id, &patterns, prefix_token, candidate_limit),
         fetch_dashboards(&ctx.db, org_id, &patterns, prefix_token, candidate_limit),
         fetch_edge_refs(&ctx.db, org_id, &patterns, prefix_token, candidate_limit),
+        fetch_objects(&ctx.db, org_id, &patterns, prefix_token, candidate_limit),
     );
 
     let mut groups = Vec::new();
@@ -486,6 +523,7 @@ async fn search(
         ("flow", flow),
         ("dashboard", dash),
         ("edge_ref", refs),
+        ("object", objs),
     ] {
         let hits = rank_and_cap(fetched.map_err(|_| Error::InternalServerError)?, take);
         if !hits.is_empty() {

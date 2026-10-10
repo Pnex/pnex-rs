@@ -235,6 +235,7 @@ mod tests {
             assert!(w >= pnex_core::WIDGET_MIN && h >= pnex_core::WIDGET_MIN);
         }
         let _ = SourceRef {
+            object_property: None,
             role: "primary".into(),
             metric: "m".into(),
             device_id: "d".into(),

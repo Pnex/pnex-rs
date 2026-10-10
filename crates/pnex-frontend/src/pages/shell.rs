@@ -965,6 +965,7 @@ fn search_group_key(entity_type: &str) -> &'static str {
         "flow" => "search-group-flow",
         "dashboard" => "search-group-dashboard",
         "edge_ref" => "search-group-edge_ref",
+        "object" => "search-group-object",
         _ => "search-group-device",
     }
 }
@@ -1018,6 +1019,9 @@ fn open_hit(
         }
         "edge_ref" => {
             navigator.push(Route::EdgeRefs {});
+        }
+        "object" => {
+            navigator.push(Route::OntologyObject { id: hit.id.clone() });
         }
         _ => {}
     }
@@ -1089,6 +1093,9 @@ fn HitIcon(entity_type: String) -> Element {
                 },
                 "edge_ref" => rsx! {
                     crate::components::icons::Database { class: "h-4 w-4" }
+                },
+                "object" => rsx! {
+                    crate::components::icons::Shapes { class: "h-4 w-4" }
                 },
                 _ => rsx! {
                     crate::components::icons::Cpu { class: "h-4 w-4" }

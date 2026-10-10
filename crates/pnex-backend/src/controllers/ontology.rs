@@ -49,6 +49,7 @@ pub fn routes() -> Routes {
         .add("/objects/{id}/graph", get(object_graph))
         .add("/objects/{id}/impact", get(object_impact))
         .add("/objects/{id}/series/{property}", get(object_series))
+        .add("/objects/{id}/bindings", get(object_bindings))
         .add("/objects/{id}/changes", get(object_changes))
         .add("/resolve/{kind}/{native_id}", get(resolve))
         .add("/path", get(path))
@@ -456,6 +457,20 @@ async fn object_series(
         )
         .await,
     )
+}
+
+/// `GET /api/v1/ontology/objects/{id}/bindings` — current sensor of each
+/// bound series property (type dashboards, D187).
+async fn object_bindings(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<String>,
+) -> Result<Response> {
+    let id = parse_uuid(&id)?;
+    if let Err(e) = objects::find(&ctx.db, org.org.id, id).await {
+        return onto_error(e);
+    }
+    reply(series::current_bindings(&ctx.db, org.org.id, id).await)
 }
 
 async fn object_changes(

@@ -23,12 +23,14 @@ pub const IMPORT_MAX_ROWS: usize = 5000;
 /// Row-level reasons returned by an import (the counts stay exact).
 pub const IMPORT_ERRORS_MAX: usize = 100;
 
-/// What a range belongs to. V1: a media stream of the org, or the org.
+/// What a range belongs to: a media stream of the org, the org, or any
+/// ontology object (D182: a line's shift, a machine's batch).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScopeKind {
     Stream,
     Org,
+    Object,
 }
 
 impl ScopeKind {
@@ -36,6 +38,7 @@ impl ScopeKind {
         match self {
             Self::Stream => "stream",
             Self::Org => "org",
+            Self::Object => "object",
         }
     }
 
@@ -43,6 +46,7 @@ impl ScopeKind {
         match s {
             "stream" => Some(Self::Stream),
             "org" => Some(Self::Org),
+            "object" => Some(Self::Object),
             _ => None,
         }
     }
