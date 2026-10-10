@@ -328,6 +328,13 @@ fonctionne normalement.
    pilier ? La phase F (fournisseurs, retrait de l'URL en dur) est de la
    consolidation et peut passer avant ; les phases A–E ajoutent une
    surface. À trancher (décision #20).
+8. **Routage : voiture seulement pour l'instant** (2026-10-10). L'instance
+   GraphHopper de référence (`alpine-box`) n'est chargée qu'avec le profil
+   `car`, sur l'Europe : les autres profils (vélo, piéton, camion) sont trop
+   lourds à construire pour le moment et répondent `geo-provider-failed`
+   (« profile does not exist »). Le code PneX gère déjà les quatre profils.
+   **À valider plus tard** : tests avec tous les profils et une couverture
+   monde, une fois le déploiement complet fait.
 
 ## 11. Tests
 
