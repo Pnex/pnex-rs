@@ -251,6 +251,16 @@ pub fn frame_key(org_id: i64, device_id: &str, seq: u32) -> String {
     format!("pnex:cam:v1:{org_id}:{device_id}:f:{seq}")
 }
 
+/// True when `key` is a frame key of `org_id` (device camera or IP
+/// stream, D175). Frame keys reach the nodes inside flow messages, which
+/// user code can forge: a node only reads keys of its own org (R3).
+pub fn frame_key_in_org(org_id: i64, key: &str) -> bool {
+    let rest = key
+        .strip_prefix(&format!("pnex:cam:v1:{org_id}:"))
+        .or_else(|| key.strip_prefix(&format!("pnex:media:v1:{org_id}:")));
+    rest.is_some_and(|r| r.contains(":f:"))
+}
+
 /// JSON published on [`bus_channel`] for each frame.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BusFrameMeta {
@@ -269,8 +279,13 @@ pub struct BusFrameMeta {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VideoSegment {
     pub id: String,
+    /// `device_registries.id`; 0 for a recording of an IP stream.
     pub device: i64,
+    /// Device slug; empty for a recording of an IP stream.
     pub device_id: String,
+    /// `media_streams.id` of an IP stream recording (D175).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream_id: Option<String>,
     pub stream: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flow_id: Option<i64>,
@@ -426,6 +441,19 @@ mod tests {
         ];
         assert_eq!(playback_chain(&spans), vec![0, 1, 3, 4]);
         assert!(playback_chain(&[]).is_empty());
+    }
+
+    #[test]
+    fn frame_keys_are_bound_to_their_org() {
+        assert!(frame_key_in_org(7, &frame_key(7, "cam", 1)));
+        assert!(frame_key_in_org(
+            7,
+            &crate::media_ingest::frame_key(7, "lobby", 2)
+        ));
+        assert!(!frame_key_in_org(8, &frame_key(7, "cam", 1)));
+        assert!(!frame_key_in_org(70, &frame_key(7, "cam", 1)));
+        assert!(!frame_key_in_org(7, "pnex:cam:v1:7:cam"));
+        assert!(!frame_key_in_org(7, "pnex:secrets:v1:7:f:1"));
     }
 
     #[test]

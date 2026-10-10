@@ -1,7 +1,9 @@
 //! ffmpeg as a confined decoder (media-ingest.md D160): bytes in on
 //! `pipe:0`, 16 kHz mono s16le out on `pipe:1`. No network protocol, no
 //! file, the demuxer imposed by what the fetcher saw (never probed), and
-//! only audio decoders.
+//! only audio decoders. The video track (D175) runs a second, equally
+//! confined invocation: video decoders only, sampled JPEG frames out on
+//! `pipe:1` (`image2pipe`).
 
 use std::path::{Path, PathBuf};
 
@@ -10,38 +12,77 @@ use std::path::{Path, PathBuf};
 pub struct InputFormat {
     /// ffmpeg demuxer name (`-f`, `-format_whitelist`).
     pub demuxer: &'static str,
-    /// Comma-separated decoders (`-codec_whitelist`).
+    /// Comma-separated audio decoders (`-codec_whitelist`); empty = no
+    /// audio in this format.
     pub decoders: &'static str,
+    /// Comma-separated video decoders of the video invocation; empty = no
+    /// video in this format.
+    pub video: &'static str,
 }
+
+impl InputFormat {
+    pub fn has_audio(&self) -> bool {
+        !self.decoders.is_empty()
+    }
+
+    pub fn has_video(&self) -> bool {
+        !self.video.is_empty()
+    }
+}
+
+/// Video decoders of a stream (D175): native FFmpeg decoders, LGPL.
+const VIDEO_DECODERS: &str = "h264,hevc,mjpeg";
 
 const MP3: InputFormat = InputFormat {
     demuxer: "mp3",
     decoders: "mp3float,mp3",
+    video: "",
 };
 const AAC: InputFormat = InputFormat {
     demuxer: "aac",
     decoders: "aac,aac_fixed",
+    video: "",
 };
 const OGG: InputFormat = InputFormat {
     demuxer: "ogg",
     decoders: "vorbis,opus,flac",
+    video: "",
 };
 const FLAC: InputFormat = InputFormat {
     demuxer: "flac",
     decoders: "flac",
+    video: "",
 };
 const WAV: InputFormat = InputFormat {
     demuxer: "wav",
     decoders: "pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8",
+    video: "",
 };
 const MPEGTS: InputFormat = InputFormat {
     demuxer: "mpegts",
     decoders: "aac,aac_fixed,mp3float,mp3,mp2float,mp2",
+    video: "h264,hevc",
 };
 const MP4: InputFormat = InputFormat {
     demuxer: "mov",
     decoders: "aac,aac_fixed,mp3float,mp3,opus,flac",
+    video: VIDEO_DECODERS,
 };
+
+/// Raw H.264 Annex B (RTSP video track).
+pub const H264: InputFormat = InputFormat {
+    demuxer: "h264",
+    decoders: "",
+    video: "h264",
+};
+/// Raw H.265 Annex B (RTSP video track).
+pub const HEVC: InputFormat = InputFormat {
+    demuxer: "hevc",
+    decoders: "",
+    video: "hevc",
+};
+/// ADTS AAC (RTSP audio track).
+pub const ADTS: InputFormat = AAC;
 
 /// Format of an HTTP body from its `Content-Type`, then from the URL path
 /// extension. `None` = refused (`format-unsupported`).
@@ -121,6 +162,62 @@ pub fn argv(ffmpeg: &Path, format: InputFormat) -> Vec<String> {
     out
 }
 
+/// Video decoder argv (D175): first video stream only, sampled at `fps`,
+/// scaled down to at most `max_width` (even height), one JPEG per frame on
+/// `pipe:1`. Same input confinement as [`argv`].
+pub fn video_argv(ffmpeg: &Path, format: InputFormat, fps: u32, max_width: u32) -> Vec<String> {
+    let mut out = vec![ffmpeg.display().to_string()];
+    out.extend(
+        [
+            "-hide_banner",
+            "-nostats",
+            "-loglevel",
+            "error",
+            "-protocol_whitelist",
+            "pipe",
+            "-format_whitelist",
+            format.demuxer,
+            "-codec_whitelist",
+            format.video,
+            "-f",
+            format.demuxer,
+            // Few threads: the address space is capped (RLIMIT_AS) and
+            // ffmpeg otherwise starts one per core.
+            "-threads",
+            "2",
+            "-filter_threads",
+            "1",
+            "-i",
+            "pipe:0",
+            "-map",
+            "0:v:0",
+            "-an",
+            "-sn",
+            "-dn",
+            "-vf",
+        ]
+        .map(String::from),
+    );
+    out.push(format!(
+        "fps={fps},scale=w='min({max_width},iw)':h=-2,format=yuvj420p"
+    ));
+    out.extend(
+        [
+            "-c:v",
+            "mjpeg",
+            "-threads",
+            "1",
+            "-q:v",
+            "5",
+            "-f",
+            "image2pipe",
+            "pipe:1",
+        ]
+        .map(String::from),
+    );
+    out
+}
+
 /// Absolute path of `program` (a path, or a name looked up in `PATH`):
 /// the decoder runs with an empty environment.
 pub fn resolve(program: &str) -> Option<PathBuf> {
@@ -171,5 +268,22 @@ mod tests {
         assert_eq!(a[i + 1], "pipe:0");
         assert_eq!(a.last().unwrap(), "pipe:1");
         assert!(!a.iter().any(|x| x.contains("http")));
+    }
+
+    #[test]
+    fn video_argv_is_confined_and_bounded() {
+        let a = video_argv(Path::new("/usr/bin/ffmpeg"), MPEGTS, 2, 1280);
+        let i = a.iter().position(|x| x == "-i").unwrap();
+        for opt in ["-protocol_whitelist", "-codec_whitelist", "-f"] {
+            assert!(a.iter().position(|x| x == opt).unwrap() < i, "{opt}");
+        }
+        let wl = a.iter().position(|x| x == "-codec_whitelist").unwrap();
+        assert_eq!(a[wl + 1], "h264,hevc");
+        assert!(a
+            .iter()
+            .any(|x| x.starts_with("fps=2,scale=w='min(1280,iw)'")));
+        assert!(a.iter().any(|x| x == "image2pipe"));
+        assert_eq!(a.last().unwrap(), "pipe:1");
+        assert!(!MP3.has_video() && MPEGTS.has_video() && !H264.has_audio());
     }
 }

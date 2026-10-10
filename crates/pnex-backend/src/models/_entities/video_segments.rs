@@ -13,7 +13,11 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub org_id: i64,
-    pub device_registry_id: i64,
+    /// Recording of a device camera; `None` for an IP stream (D175).
+    pub device_registry_id: Option<i64>,
+    /// Recording of an IP stream (`media_streams`, D175); exactly one of
+    /// the two sources is set (CHECK in the schema).
+    pub stream_id: Option<Uuid>,
     pub flow_id: Option<i64>,
     pub node_id: String,
     pub stream: String,
@@ -47,6 +51,14 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     Organizations,
+    #[sea_orm(
+        belongs_to = "super::media_streams::Entity",
+        from = "Column::StreamId",
+        to = "super::media_streams::Column::Id",
+        on_update = "NoAction",
+        on_delete = "Cascade"
+    )]
+    MediaStreams,
 }
 
 impl Related<super::device_registries::Entity> for Entity {

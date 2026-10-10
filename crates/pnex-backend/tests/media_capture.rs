@@ -414,3 +414,152 @@ async fn icecast_fetcher_strips_icy_metadata() {
     )
     .await;
 }
+
+/// 3 s of 1920x1080 H.264 + AAC in MPEG-TS, made by the system ffmpeg
+/// (`None` when it has no H.264 encoder).
+fn h264_ts() -> Option<Vec<u8>> {
+    let dir = tempfile::tempdir().ok()?;
+    let out = dir.path().join("cam.ts");
+    let ok = std::process::Command::new("ffmpeg")
+        .args([
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=1920x1080:rate=10",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:sample_rate=48000",
+            "-t",
+            "3",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-f",
+            "mpegts",
+            "-y",
+        ])
+        .arg(&out)
+        .status()
+        .ok()?
+        .success();
+    ok.then(|| std::fs::read(&out).ok()).flatten()
+}
+
+/// Video track (D175): a TS file over HTTP with `tracks = video` → frames
+/// sampled at `fps`, scaled to 1280 px, published as JPEG on the stream's
+/// own camera bus keys (never a device key).
+#[tokio::test]
+#[serial]
+async fn video_track_frames_reach_the_stream_bus() {
+    if decoder::resolve(&CaptureSettings::from_env().ffmpeg).is_none() {
+        eprintln!("ffmpeg not installed: skipped");
+        return;
+    }
+    let Some(ts) = h264_ts() else {
+        eprintln!("no H.264 encoder in the system ffmpeg: skipped");
+        return;
+    };
+    let base = common::spawn_mock_rauthy().await;
+    unsafe { std::env::set_var("RAUTHY_URL", &base) };
+    let alice = common::valid_token(
+        &base,
+        "00000000-0000-0000-0000-00000000000a",
+        "alice",
+        "alice@example.com",
+    );
+    let app = axum::Router::new().route(
+        "/cam.ts",
+        axum::routing::get(move || {
+            let ts = ts.clone();
+            async move { ([(axum::http::header::CONTENT_TYPE, "video/mp2t")], ts) }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let url = format!("http://{addr}/cam.ts");
+    let config: RequestConfig = RequestConfigBuilder::new().build();
+    loco_rs::testing::request::request_with_config::<App, _, _>(
+        config,
+        move |server, ctx| async move {
+            let org = server
+                .get("/api/v1/user-info")
+                .add_header("Authorization", format!("Bearer {alice}"))
+                .await
+                .json::<Value>()["orgs"][0]["id"]
+                .as_i64()
+                .unwrap();
+            let created = server
+                .post("/api/v1/media/streams")
+                .add_header("Authorization", format!("Bearer {alice}"))
+                .add_header("X-Org-Id", org.to_string())
+                .json(
+                    &json!({ "name": "Gate cam", "kind": "http_file", "url": url,
+                           "tracks": "video", "fps": 2 }),
+                )
+                .await;
+            assert_eq!(created.status_code(), 201, "{}", created.text());
+            let id: uuid::Uuid = created.json::<Value>()["id"]
+                .as_str()
+                .unwrap()
+                .parse()
+                .unwrap();
+            let stream = media_streams::Entity::find_by_id(id)
+                .one(&ctx.db)
+                .await
+                .unwrap()
+                .unwrap();
+
+            let valkey_url = std::env::var("PNEX_TEST_APP_VALKEY_URL")
+                .unwrap_or_else(|_| "redis://127.0.0.1:6379/14".into());
+            let client = redis::Client::open(valkey_url.as_str()).unwrap();
+            let mut pubsub = client.get_async_pubsub().await.expect("valkey");
+            let channel = pnex_core::media_ingest::frame_channel(org, &stream.slug);
+            pubsub.subscribe(&channel).await.unwrap();
+            // Listen while the capture runs.
+            let listener = tokio::spawn(async move {
+                use futures_util::StreamExt;
+                let mut messages = pubsub.on_message();
+                let mut metas = Vec::new();
+                while let Ok(Some(msg)) =
+                    tokio::time::timeout(Duration::from_secs(5), messages.next()).await
+                {
+                    let raw: String = msg.get_payload().unwrap();
+                    metas.push(
+                        serde_json::from_str::<pnex_core::camera::BusFrameMeta>(&raw).unwrap(),
+                    );
+                }
+                metas
+            });
+
+            let stored = capture::capture_once(&ctx, &stream, Duration::from_secs(60))
+                .await
+                .expect("capture");
+            assert_eq!(stored, 0, "no audio segment for a video-only stream");
+            let metas = listener.await.unwrap();
+            // 3 s at 2 fps.
+            assert!((5..=7).contains(&metas.len()), "{} frames", metas.len());
+            let m = &metas[0];
+            assert_eq!((m.width, m.height), (1280, 720));
+            assert!(m
+                .key
+                .starts_with(&format!("pnex:media:v1:{org}:{}:cam:f:", stream.slug)));
+            let mut conn = client.get_multiplexed_async_connection().await.unwrap();
+            let jpeg: Vec<u8> = redis::AsyncCommands::get(&mut conn, &m.key).await.unwrap();
+            assert_eq!(&jpeg[..2], &[0xFF, 0xD8]);
+            assert_eq!(jpeg.len() as u32, m.size);
+        },
+    )
+    .await;
+}

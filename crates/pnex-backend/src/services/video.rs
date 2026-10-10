@@ -19,11 +19,20 @@ const PRUNE_INTERVAL_SECS: u64 = 3600;
 /// Rows handled per prune batch.
 const PRUNE_BATCH: u64 = 500;
 
+/// What a segment records (D175): a device camera or an IP stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SegmentSource {
+    /// `device_registries.id`.
+    Device(i64),
+    /// `media_streams.id`.
+    Stream(Uuid),
+}
+
 /// Metadata of a segment to store.
 #[derive(Debug, Clone)]
 pub struct NewSegment {
     pub org_id: i64,
-    pub device: i64,
+    pub source: SegmentSource,
     pub flow_id: Option<i64>,
     pub node_id: String,
     pub stream: String,
@@ -36,10 +45,20 @@ pub struct NewSegment {
     pub retention_days: u32,
 }
 
-/// Logical storage key: `org_{org}/video/{device}/{yyyy}/{mm}/{dd}/{id}.avi`.
-pub fn storage_key(org_id: i64, device: i64, started_at: DateTime<Utc>, id: Uuid) -> String {
+/// Logical storage key: `org_{org}/video/{device}/{yyyy}/{mm}/{dd}/{id}.avi`,
+/// `org_{org}/video/stream_{uuid}/…` for an IP stream.
+pub fn storage_key(
+    org_id: i64,
+    source: SegmentSource,
+    started_at: DateTime<Utc>,
+    id: Uuid,
+) -> String {
+    let dir = match source {
+        SegmentSource::Device(device) => device.to_string(),
+        SegmentSource::Stream(stream) => format!("stream_{stream}"),
+    };
     format!(
-        "org_{org_id}/video/{device}/{}/{id}.avi",
+        "org_{org_id}/video/{dir}/{}/{id}.avi",
         started_at.format("%Y/%m/%d")
     )
 }
@@ -56,7 +75,7 @@ pub async fn write_segment(
             Error::InternalServerError
         })?;
     let id = Uuid::new_v4();
-    let key = storage_key(seg.org_id, seg.device, seg.started_at, id);
+    let key = storage_key(seg.org_id, seg.source, seg.started_at, id);
     let size_bytes = bytes.len();
     store.put(&key, bytes).await.map_err(|e| {
         tracing::error!(error = %e, key, "video: segment write failed");
@@ -68,7 +87,14 @@ pub async fn write_segment(
     let row = video_segments::ActiveModel {
         id: Set(id),
         org_id: Set(seg.org_id),
-        device_registry_id: Set(seg.device),
+        device_registry_id: Set(match seg.source {
+            SegmentSource::Device(d) => Some(d),
+            SegmentSource::Stream(_) => None,
+        }),
+        stream_id: Set(match seg.source {
+            SegmentSource::Stream(s) => Some(s),
+            SegmentSource::Device(_) => None,
+        }),
         flow_id: Set(seg.flow_id),
         node_id: Set(seg.node_id),
         stream: Set(seg.stream),
@@ -179,8 +205,12 @@ mod tests {
             .with_timezone(&Utc);
         let id = Uuid::nil();
         assert_eq!(
-            storage_key(3, 42, at, id),
+            storage_key(3, SegmentSource::Device(42), at, id),
             "org_3/video/42/2026/09/29/00000000-0000-0000-0000-000000000000.avi"
+        );
+        assert_eq!(
+            storage_key(3, SegmentSource::Stream(id), at, id),
+            format!("org_3/video/stream_{id}/2026/09/29/{id}.avi")
         );
     }
 }

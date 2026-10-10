@@ -184,6 +184,8 @@ impl Fetcher {
         match kind {
             MediaStreamKind::Icecast | MediaStreamKind::HttpFile => self.open_http(kind, url).await,
             MediaStreamKind::Hls => self.open_hls(url).await,
+            // RTSP has its own client (`capture::rtsp`), never this fetcher.
+            MediaStreamKind::Rtsp => Err(CaptureError::FormatUnsupported),
         }
     }
 

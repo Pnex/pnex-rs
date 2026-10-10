@@ -3,8 +3,10 @@ use super::*;
 
 // ─────────────── camera-source (camera-video.md D78) ───────────────
 
-/// Camera source inspector: camera picker (cameras of the org, from
-/// `GET /api/v1/cameras`) + `max_fps` sampling (0 = every frame).
+/// Camera source inspector: source switch (device | media stream, D175),
+/// camera picker (cameras of the org, from `GET /api/v1/cameras`) or
+/// stream picker (streams with a video track) + `max_fps` sampling
+/// (0 = every frame).
 #[component]
 pub(super) fn CameraSourceForm(
     mut cx: EditorCx,
@@ -14,6 +16,26 @@ pub(super) fn CameraSourceForm(
     let cameras =
         use_resource(move || async move { api::cameras::list().await.unwrap_or_default() });
     let device_slug = initial.device_id.clone();
+    let stream_slug = initial.stream.clone();
+    let from_stream = initial.source == pnex_core::CameraSourceKind::Stream;
+    let streams = use_resource(move || async move {
+        api::media_streams::list(None, None)
+            .await
+            .map(|page| page.results)
+            .unwrap_or_default()
+    });
+    let mut stream_slugs: Vec<String> = streams
+        .value()
+        .read()
+        .clone()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|s| s.tracks.has_video())
+        .map(|s| s.slug)
+        .collect();
+    if !stream_slug.is_empty() && !stream_slugs.contains(&stream_slug) {
+        stream_slugs.push(stream_slug.clone());
+    }
     let mut fps_raw = use_signal(move || v_to_string(initial.max_fps));
     let mut fps_invalid = use_signal(|| false);
 
@@ -41,6 +63,72 @@ pub(super) fn CameraSourceForm(
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-camera-source-help")} }
             label { class: "block",
+                span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                    {t!("flows-camera-source-kind")}
+                }
+                select {
+                    class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
+                    disabled: !can_write,
+                    onchange: move |event| {
+                        let stream = event.value() == "stream";
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::CameraSource { config } = &mut node.kind {
+                                    config.source = if stream {
+                                        pnex_core::CameraSourceKind::Stream
+                                    } else {
+                                        pnex_core::CameraSourceKind::Device
+                                    };
+                                }
+                            },
+                        );
+                    },
+                    option { value: "device", selected: !from_stream,
+                        {t!("flows-camera-source-kind-device")}
+                    }
+                    option { value: "stream", selected: from_stream,
+                        {t!("flows-camera-source-kind-stream")}
+                    }
+                }
+            }
+            if from_stream {
+                label { class: "block",
+                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
+                        {t!("flows-camera-source-stream")}
+                    }
+                    select {
+                        class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
+                        disabled: !can_write,
+                        onchange: move |event| {
+                            let slug = event.value();
+                            patch_selected(
+                                &mut cx,
+                                move |node: &mut FlowNode| {
+                                    if let FlowNodeKind::CameraSource { config } = &mut node.kind {
+                                        config.stream = slug;
+                                    }
+                                },
+                            );
+                        },
+                        option { value: "", selected: stream_slug.is_empty(),
+                            {t!("flows-camera-source-stream-none")}
+                        }
+                        for slug in stream_slugs {
+                            option {
+                                key: "{slug}",
+                                value: "{slug}",
+                                selected: slug == stream_slug,
+                                "{slug}"
+                            }
+                        }
+                    }
+                    span { class: "text-xs text-gray-400 mt-1 block",
+                        {t!("flows-camera-source-stream-hint")}
+                    }
+                }
+            }
+            label { class: "block", hidden: from_stream,
                 span { class: "text-xs font-medium text-gray-500 mb-1 block",
                     {t!("flows-camera-source-camera")}
                 }
@@ -71,7 +159,7 @@ pub(super) fn CameraSourceForm(
                     }
                 }
             }
-            if no_camera {
+            if no_camera && !from_stream {
                 p { class: "text-xs text-amber-700", {t!("flows-camera-source-no-camera")} }
             }
             label { class: "block",

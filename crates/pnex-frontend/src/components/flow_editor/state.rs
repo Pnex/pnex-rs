@@ -167,10 +167,7 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             // Camera left empty on purpose: the `camera_device_missing`
             // violation in the banner guides the selection.
             PaletteKind::CameraSource => FlowNodeKind::CameraSource {
-                config: CameraSourceConfig {
-                    device_id: String::new(),
-                    max_fps: 0.0,
-                },
+                config: CameraSourceConfig::default(),
             },
             // Usable as dropped: 60 s segments, 7-day retention.
             PaletteKind::VideoRecord => FlowNodeKind::VideoRecord {

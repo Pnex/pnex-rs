@@ -27,7 +27,13 @@ const BACKOFF_MAX_SECS: u64 = 30;
 
 #[derive(Debug, Deserialize)]
 struct SourceNodeConfig {
+    #[serde(default)]
+    source: pnex_core::CameraSourceKind,
+    #[serde(default)]
     device_id: String,
+    /// Media stream slug (`source: stream`, D175).
+    #[serde(default)]
+    stream: String,
     #[serde(default)]
     max_fps: f64,
     /// Stamped by the deploy projection.
@@ -68,7 +74,9 @@ impl CameraSourceNode {
         let cfg = SourceNodeConfig::deserialize(&config.rest)
             .map_err(|e| EdgelinkError::BadFlowsJson(format!("{NODE} : invalid config : {e}")))?;
         let check = pnex_core::CameraSourceConfig {
+            source: cfg.source,
             device_id: cfg.device_id.clone(),
+            stream: cfg.stream.clone(),
             max_fps: cfg.max_fps,
         };
         if let Some((code, message)) = check.check() {
@@ -91,9 +99,24 @@ impl CameraSourceNode {
 
     /// One subscription session: returns when the connection drops (the
     /// caller reconnects) or the node stops.
+    /// Slug the frames come from (device or stream), for logs and topics.
+    fn source_slug(&self) -> &str {
+        match self.config.source {
+            pnex_core::CameraSourceKind::Device => &self.config.device_id,
+            pnex_core::CameraSourceKind::Stream => &self.config.stream,
+        }
+    }
+
     async fn session(&self, stop: &CancellationToken) -> std::result::Result<(), String> {
-        let channel =
-            pnex_core::camera::bus_channel(self.config.pnex_org_id, &self.config.device_id);
+        // Exact channel built from the stamped org and the checked slug (R3).
+        let channel = match self.config.source {
+            pnex_core::CameraSourceKind::Device => {
+                pnex_core::camera::bus_channel(self.config.pnex_org_id, &self.config.device_id)
+            }
+            pnex_core::CameraSourceKind::Stream => {
+                pnex_core::media_ingest::frame_channel(self.config.pnex_org_id, &self.config.stream)
+            }
+        };
         let mut pubsub = self
             .client
             .get_async_pubsub()
@@ -130,8 +153,12 @@ impl CameraSourceNode {
                 continue;
             }
             last_ms = Some(meta.ts_ms);
+            let source_field = match self.config.source {
+                pnex_core::CameraSourceKind::Device => "device_id",
+                pnex_core::CameraSourceKind::Stream => "stream",
+            };
             let payload = serde_json::json!({
-                "device_id": self.config.device_id,
+                source_field: self.source_slug(),
                 "seq": meta.seq,
                 "ts_ms": meta.ts_ms,
                 "width": meta.width,
@@ -143,7 +170,7 @@ impl CameraSourceNode {
             body.insert("payload".to_string(), crate::variant_of(payload));
             body.insert(
                 "topic".to_string(),
-                Variant::from(self.config.device_id.clone()),
+                Variant::from(self.source_slug().to_string()),
             );
             let envelope = Envelope {
                 port: 0,
@@ -175,7 +202,7 @@ impl CameraSourceNode {
             NodeStatus::new(NodeStatusLevel::Error, "camera-bus-unavailable").detail(err)
         } else if idle_ms > STATUS_PERIOD.as_millis() as i64 {
             NodeStatus::new(NodeStatusLevel::Warn, "camera-no-frames")
-                .detail(self.config.device_id.clone())
+                .detail(self.source_slug().to_string())
         } else {
             NodeStatus::new(NodeStatusLevel::Ok, "camera-streaming")
         };

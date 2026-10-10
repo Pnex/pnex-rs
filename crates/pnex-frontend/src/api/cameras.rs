@@ -76,6 +76,24 @@ pub fn field_errors(err: &ApiError) -> Vec<(String, String)> {
         .unwrap_or_default()
 }
 
+/// `GET /api/v1/cameras/segments?stream_id=…` — recordings of an IP
+/// stream (D175), newest first.
+pub async fn stream_segments(
+    stream_id: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<pnex_core::Paginated<pnex_core::camera::VideoSegment>, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!(
+            "/api/v1/cameras/segments?stream_id={}&limit={limit}&offset={offset}",
+            urlencode(stream_id)
+        ),
+        None,
+    )
+    .await
+}
+
 /// `GET /api/v1/cameras/segments/{id}/content` — MJPEG-AVI bytes.
 pub async fn segment_bytes(id: &str) -> Result<Vec<u8>, ApiError> {
     client::request_bytes(

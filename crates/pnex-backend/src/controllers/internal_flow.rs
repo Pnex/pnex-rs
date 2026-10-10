@@ -160,8 +160,13 @@ async fn flow_secret(
 #[derive(Debug, Deserialize)]
 pub struct VideoSegmentQuery {
     pub org_id: i64,
-    /// Device slug.
+    /// Device slug (device camera recordings).
+    #[serde(default)]
     pub device_id: String,
+    /// Media stream slug (IP stream recordings, D175); exactly one of
+    /// `device_id` / `media_stream` is set.
+    #[serde(default)]
+    pub media_stream: String,
     pub flow_id: Option<i64>,
     pub node_id: String,
     pub stream: String,
@@ -206,14 +211,46 @@ async fn video_segment(
             "Invalid video segment",
         ));
     }
-    let device = device_registries::Entity::find()
-        .filter(device_registries::Column::OrgId.eq(q.org_id))
-        .filter(device_registries::Column::DeviceId.eq(&q.device_id))
-        .one(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
-    let Some(device) = device else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
+    // The source is resolved inside the stamped org only (R1): a slug of
+    // another org reads as unknown.
+    let (source, device_slug) = match (q.device_id.is_empty(), q.media_stream.is_empty()) {
+        (false, true) => {
+            let device = device_registries::Entity::find()
+                .filter(device_registries::Column::OrgId.eq(q.org_id))
+                .filter(device_registries::Column::DeviceId.eq(&q.device_id))
+                .one(&ctx.db)
+                .await
+                .map_err(|_| Error::InternalServerError)?;
+            let Some(device) = device else {
+                return Ok(StatusCode::NOT_FOUND.into_response());
+            };
+            (
+                crate::services::video::SegmentSource::Device(device.id),
+                device.device_id,
+            )
+        }
+        (true, false) => {
+            let found = crate::services::media_ingest::streams::find_by_slug(
+                &ctx.db,
+                q.org_id,
+                &q.media_stream,
+            )
+            .await
+            .map_err(|_| Error::InternalServerError)?;
+            let Some(stream) = found else {
+                return Ok(StatusCode::NOT_FOUND.into_response());
+            };
+            (
+                crate::services::video::SegmentSource::Stream(stream.id),
+                String::new(),
+            )
+        }
+        _ => {
+            return Err(bad_request(
+                "video-segment-invalid",
+                "Invalid video segment",
+            ))
+        }
     };
     let stream: String = q.stream.trim().chars().take(128).collect();
     let node_id: String = q.node_id.chars().take(64).collect();
@@ -221,7 +258,7 @@ async fn video_segment(
         &ctx,
         crate::services::video::NewSegment {
             org_id: q.org_id,
-            device: device.id,
+            source,
             flow_id: q.flow_id,
             node_id,
             stream,
@@ -235,10 +272,7 @@ async fn video_segment(
         body,
     )
     .await?;
-    format::json(crate::controllers::cameras::segment_dto(
-        &row,
-        &device.device_id,
-    ))
+    format::json(crate::controllers::cameras::segment_dto(&row, &device_slug))
 }
 
 async fn device_write(
