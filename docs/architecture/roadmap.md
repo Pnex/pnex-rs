@@ -616,9 +616,9 @@ destructive**.
 ontologie optionnelle ; **identité universelle** (une ligne `objects` UUID
 + temps de validité pour tout objet, contenu natif en place, liens à FK
 réelles — amende D177, tranche Q1) ; interface graphe unique dans
-`pnex-core` (jointures + CTE ; SQL/PGQ absent de PG 19) ; API bornée à 4 sauts, illimité en interne ;
-**PostgreSQL 19 bêta adopté** (`19beta4`, GA attendue avant la
-stabilisation industrielle) ; vue graphe Dioxus et verrou par type ajoutés au L4.
+`pnex-core` (jointures + CTE + `petgraph`, pas de base graphe) ; API
+bornée à 4 sauts, illimité en interne ; PostgreSQL 18 maintenu
+(SQL/PGQ absent de PG 19) ; vue graphe Dioxus et verrou par type ajoutés au L4.
 
 **Risque de dispersion acté** : pendant la 0.2.0, aucun nouveau pilier
 fonctionnel ne démarre (correctifs et finition seulement) — à arbitrer
@@ -756,7 +756,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 | 15 | Profils de sécurité : date de lancement de V1 (correctifs protocole, SEC-17 à SEC-19) ; socle de V4 (ESP-IDF C++ ou firmware Rust) ; statut CRA de PneX (avis juridique) | V1 : prochaine passe sécurité ; V4 : après 1 à 2 ans de communauté |
 | 14 | ~~Version firmware par rebuild~~ — tranché 2026-10-03 : 1 build = 1 enregistrement = 1 version, OTA en lot manuelle (O22) | ✅ |
 | 16 | Flux média : runtime ASR (sherpa-onnx, whisper.cpp ou les deux), ~~tags Loco ou queue dédiée~~ (tranché à la relecture du 2026-10-09 : tags, ASR configurable), superviseur de capture in-process (proposé), agrégation « par plage » (primitive D182), ~~plafond des extraits, amendement de D3~~ (sans objet : pas de publication), ordre vis-à-vis de l'ontologie (`media-ingest.md` §14) | Lot 0 (POC ASR) ; ordre à la validation |
-| 17 | Ontologie 0.2.0 : ~~identifiant d'objet global (UUID vs `ResourceRef`)~~ (tranché 2026-10-10 : UUID par table d'identité universelle), moment du bitemporel, format du schéma de propriétés (maison vs JSON Schema), liaison device → objet (lien générique vs table dédiée), packs forkables ou surcouche, langage de requête textuel, spécification publique du noyau ; ordre P2.13 / P2.14 / P2.1 vu le gel des nouveaux piliers (`ontology.md` §9) | À la validation du PRD |
+| 17 | Ontologie 0.2.0 : **actions D183 remontées dans la 0.2.0 ?** (au moins une action simple tracée : c'est ce qui rend la plateforme « opérationnelle », et le pack Maintenance et les procédures de `pages.md` en dépendent) ; ~~identifiant d'objet global (UUID vs `ResourceRef`)~~ (tranché 2026-10-10 : UUID par table d'identité universelle), moment du bitemporel, format du schéma de propriétés (maison vs JSON Schema), liaison device → objet (lien générique vs table dédiée), packs forkables ou surcouche, langage de requête textuel, spécification publique du noyau ; ordre P2.13 / P2.14 / P2.1 vu le gel des nouveaux piliers (`ontology.md` §9) | À la validation du PRD |
 | 19 | ~~Garder SQLite à côté de PostgreSQL~~ — tranché 2026-10-10 : **PostgreSQL obligatoire, SQLite abandonné**. La parité coûte à chaque migration et chaque requête (`ilike`, FK par reconstruction de table, pas de PostGIS) et pèse de plus en plus lourd à mesure que le produit grandit ; l'argument Raspberry Pi ne tient pas, Postgres reste léger sur un Pi. Les nouveaux développements ne gèrent plus SQLite | ✅ |
 | 18 | Media & Vision Studio : pose humaine ou poste de travail, tract vs `ort`, entraînement CPU, D174 en usage interne, détection → `device_write`, version cible (après 0.2.0 ou exception) (`media-vision-studio.md` §10) | À la validation du PRD |
 | 20 | Couches géographiques : ~~gel 0.2.0~~ (tranché 2026-10-10 : phase F avant, A–E après), ~~rétention des seeds~~ (génération courante), raster, OGC API – Features, plafonds par tier, lien ontologie (`geo-layers.md` §10) ; image Postgres étendue PostGIS + pgvector commune avec #22 | À la validation du PRD |
@@ -919,3 +919,9 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   `postgres:19beta4-alpine` (base de référence appliquée sans
   changement). Constat : **SQL/PGQ n'est pas dans PG 19** ; l'interface
   graphe de l'ontologie démarre en jointures + CTE.
+- **2026-10-10 (retour à PostgreSQL 18)** — 19beta4 abandonné le jour
+  même : sans SQL/PGQ, PG 19 n'apporte rien au graphe et retarderait
+  PostGIS et pgvector. Graphe de l'ontologie = CTE + `petgraph`
+  (annexe A3, avec la comparaison Palantir Foundry / ArgonOS) ;
+  pgRouting et AGE en branchements optionnels. Question « actions D183
+  dans la 0.2.0 ? » ouverte dans la décision #17.

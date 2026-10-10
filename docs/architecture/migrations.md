@@ -87,7 +87,7 @@ les données OpenObserve et RustFS ne sont pas concernées.
 ## 4. PostgreSQL, moteur unique (décision #19, 2026-10-10)
 
 PNEX ne parle plus qu'à PostgreSQL (image de référence :
-`postgres:19beta4-alpine` dans `compose.yaml`, en attendant la GA de 19). `DATABASE_URL` doit pointer sur PostgreSQL ; une URL
+`postgres:18-alpine` dans `compose.yaml`). `DATABASE_URL` doit pointer sur PostgreSQL ; une URL
 `sqlite://` n'est plus prise en charge et **aucun chemin de migration**
 n'existe depuis une base SQLite (recréer la base sur PostgreSQL). La file
 de jobs Loco vit dans la même base (`pg_loco_queue`, `queue.kind:

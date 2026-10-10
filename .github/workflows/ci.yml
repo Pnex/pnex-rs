@@ -63,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:19beta4-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: pnex
           POSTGRES_PASSWORD: pnex
