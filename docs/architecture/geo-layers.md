@@ -394,3 +394,6 @@ Corrections apportées à la v0.1 à l'intégration :
   rollback reste une nouvelle génération recalculée (L14).
 - Restent ouvertes : raster (Q2), OGC API – Features (Q3), plafonds par
   tier (Q4), lien ontologie (Q5), lecteurs en nœud de flow (Q6).
+- **Image Postgres** (2026-10-10, `ontology.md` annexe A3) : la 0.2.0
+  vise PostgreSQL 19 ; l'image étendue de L1 se construit donc sur 19
+  (repli 18 si PostGIS arm64 manque). La phase F n'en dépend pas.
