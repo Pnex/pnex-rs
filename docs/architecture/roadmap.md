@@ -136,6 +136,7 @@ tâche).
 | **Mémoire d'org** (Valkey) | Livré — `memory-write`/`memory-read` par org, source « Mémoire » des widgets | — |
 | **Flux média entrants** (D159–D175) | **PRD proposé** 2026-10-09 (`media-ingest.md`) — rien d'implémenté | Validation du PRD, puis lot 0 (POC ASR) — P2.13 |
 | **Ontologie / 0.2.0** (D176–D191) | **PRD proposé** 2026-10-09 (`ontology.md`) ; graine existante = couche Resource D42 | Validation du PRD, puis spike L0 — P2.14 |
+| **Media & Vision Studio** (D192+) | **PRD proposé** 2026-10-10 (`media-vision-studio.md`) — étend D73–D105 et D159–D175 : tracking, zones, Vision Lab (entraînement YOLOX), VLM, fusion | Validation du PRD (Q1–Q11) — P2.15 |
 
 ## P0 — Consolidation : fermer le livré non validé
 
@@ -563,6 +564,22 @@ fonctionnel ne démarre (correctifs et finition seulement) — à arbitrer
 avec P2.13 et P2.1. Décision #17 — **exception P2.13** (2026-10-09) : le
 média démarre avant la 0.2.0 (`media-ingest.md`, en-tête).
 
+### P2.15 — Media & Vision Studio : tracking, zones, Vision Lab, description (ajout 2026-10-10) — **PRD proposé**
+
+PRD `media-vision-studio.md`, zéro code avant validation, numéros D
+attribués à la validation (à partir de D192). Étend la caméra
+(D73–D105) et l'ingestion média (P2.13) sans les refaire : nœuds
+`vision_track` (ByteTrack en Rust), `vision_zone` (polygones sur
+l'image), `vision_caption` (VLM de l'org, D119), `media_fuse`
+(description horodatée sourcée, D184) ; **Vision Lab** = volet vision du
+Model Lab de l'axe C : annotation dans PNEX, datasets versionnés, job
+`train_detector` dans la queue Loco (seul composant Python, image YOLOX
+figée hors image serveur), ONNX publié dans le registre existant (D81,
+check D100). Phases M0 (= P2.13 lots 1 et 6) → M5 (studio de rapports,
+qui rouvre D173/D174/D3). Répond à la décision #7 (fine-tuning
+détecteurs). Dépend de P2.7 (GPU) et de P2.13 ; cible après la 0.2.0
+sauf exception. Décision #18.
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
@@ -626,6 +643,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 | 14 | ~~Version firmware par rebuild~~ — tranché 2026-10-03 : 1 build = 1 enregistrement = 1 version, OTA en lot manuelle (O22) | ✅ |
 | 16 | Flux média : runtime ASR (sherpa-onnx, whisper.cpp ou les deux), ~~tags Loco ou queue dédiée~~ (tranché à la relecture du 2026-10-09 : tags, ASR configurable), superviseur de capture in-process (proposé), agrégation « par plage » (primitive D182), ~~plafond des extraits, amendement de D3~~ (sans objet : pas de publication), ordre vis-à-vis de l'ontologie (`media-ingest.md` §14) | Lot 0 (POC ASR) ; ordre à la validation |
 | 17 | Ontologie 0.2.0 : identifiant d'objet global (UUID vs `ResourceRef`), format du schéma de propriétés (maison vs JSON Schema), liaison device → objet (lien générique vs table dédiée), packs forkables ou surcouche, langage de requête textuel, spécification publique du noyau ; ordre P2.13 / P2.14 / P2.1 vu le gel des nouveaux piliers (`ontology.md` §9) | À la validation du PRD |
+| 18 | Media & Vision Studio : pose humaine ou poste de travail, tract vs `ort`, entraînement CPU, D174 en usage interne, détection → `device_write`, version cible (après 0.2.0 ou exception) (`media-vision-studio.md` §10) | À la validation du PRD |
 
 ## Journal de la roadmap
 
@@ -744,3 +762,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   D159–D175, décision #16) et P2.14 noyau ontologique de la 0.2.0
   (`ontology.md`, D176–D191, décision #17). Numérotation décalée de +11 à
   l'intégration (D148–D158 déjà pris par `security-tiers.md`).
+- **2026-10-10 (Media & Vision Studio)** — PRD proposé, rien
+  d'implémenté : P2.15 (`media-vision-studio.md`, décision #18), relu
+  contre la doc (RustFS au lieu de MinIO, tract, kinds existants, LLM
+  d'org D119, conflits D173/D174 et gel 0.2.0 signalés).
