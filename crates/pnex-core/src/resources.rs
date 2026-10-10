@@ -3,9 +3,10 @@
 //!
 //! Trois mécanismes séparés : **labels** (classification requêtable GIN),
 //! **containment** (arbre, un seul parent), **edges** (liens + placement).
-//! Labels effectifs résolus au read (propres + ancêtres). Validité
-//! kind×relation×kind déclarée par kind (registre backend) — le moteur ne
-//! `match` jamais sur les kinds. Découplage device : organiser n'écrit jamais
+//! Labels effectifs résolus au read (propres + ancêtres).
+//! Containment and relation validity are declared as data by the types in
+//! [`crate::ontology`]; the engine never matches on kinds.
+//! Découplage device : organiser n'écrit jamais
 //! dans `device_registries` ni le firmware.
 
 // ─────────────────────────── ResourceRef ───────────────────────────
@@ -36,8 +37,8 @@ impl std::fmt::Display for ResourceRef {
 
 // ─────────────────────────── kinds vivants ───────────────────────────
 
-/// Concepts enregistrés (additif : futur concept = 1 constante + 1 entrée de
-/// registre backend, rien d'autre).
+/// Registered concepts. A new system type = 1 constant + 1 entry in
+/// `ontology::system_object_types` + 1 backend resolver.
 pub const KIND_DEVICE: &str = "device";
 pub const KIND_MEDIA_ASSET: &str = "media_asset";
 pub const KIND_DASHBOARD: &str = "dashboard";
@@ -118,36 +119,6 @@ pub fn parse_label_filter(raw: &str) -> (Option<(String, Option<String>)>, Optio
             (Some((raw.to_string(), None)), None)
         }
     }
-}
-
-// ─────────────────────────── specs déclaratives ───────────────────────────
-
-/// Règles de containment d'un kind — déclarées **par le kind**.
-/// `None` = interdit ; `Some(&[])` = sans restriction (wildcard) ;
-/// `Some(&[kinds])` = liste close.
-#[derive(Debug, Clone, Copy)]
-pub struct ContainmentRules {
-    /// Ce kind peut-il *contenir* d'autres ressources ?
-    pub may_contain: Option<&'static [&'static str]>,
-    /// Ce kind peut-il *être contenu* ?
-    pub may_be_contained_in: Option<&'static [&'static str]>,
-}
-
-/// Une relation déclarée par un kind source : `relation` vers `target_kinds`.
-#[derive(Debug, Clone, Copy)]
-pub struct RelationSpec {
-    pub relation: &'static str,
-    pub source_kind: &'static str,
-    /// Cibles admises (`&[]` = wildcard).
-    pub target_kinds: &'static [&'static str],
-}
-
-/// Ce que le moteur lit pour décider — jamais de `match` sur les kinds.
-#[derive(Debug, Clone)]
-pub struct KindSpec {
-    pub kind: &'static str,
-    pub containment: ContainmentRules,
-    pub relations: Vec<RelationSpec>,
 }
 
 // ─────────────────────────── tests ───────────────────────────
