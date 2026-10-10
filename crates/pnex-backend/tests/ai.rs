@@ -1673,3 +1673,53 @@ async fn assistant_versions_taxonomies_on_top_of_what_it_read() {
     })
     .await;
 }
+
+/// Ontology (D189): the schema is read from the registry, objects and links
+/// are written through the UI services (same 409), the schema needs an org
+/// admin, a viewer writes nothing, and nothing is ever deleted.
+#[tokio::test]
+#[serial]
+async fn assistant_works_the_ontology_through_the_ui_services() {
+    with_app_ai(true, true, |server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let pump = serde_json::json!({"key": "pump", "name": "Pump", "properties": [
+            {"key": "serial", "name": "Serial", "kind": "text", "required": true},
+            {"key": "rated_flow", "kind": "number", "unit": "m3/h", "min": 0}
+        ]});
+        let trace = run_tools(&server, &env.alice, org, vec![
+            ("save_object_type", serde_json::json!({"def": pump})),
+            ("describe_ontology", serde_json::json!({})),
+            ("create_object", serde_json::json!({"type_key": "pump", "title": "P1", "properties": {"serial": "S1", "rated_flow": 12.5}})),
+            ("create_object", serde_json::json!({"type_key": "pump", "title": "P2", "properties": {}})),
+            ("query_ontology", serde_json::json!({"query": {"type_key": "pump", "filters": [{"key": "rated_flow", "op": "gt", "value": 10}]}})),
+        ])
+        .await;
+        assert!(trace[..3].iter().all(|t| t["ok"] == true), "{trace:?}");
+        assert_eq!(trace[3]["ok"], false, "required property: {trace:?}");
+        assert_eq!(trace[4]["ok"], true, "{trace:?}");
+        assert!(mock_requests().last().unwrap().to_string().contains("rated_flow"), "schema in the model's context");
+
+        let q = send_json(&server, "POST", "/api/v1/ontology/query", &env.alice, org, Some(serde_json::json!({"type_key": "pump"})))
+            .await
+            .json::<serde_json::Value>();
+        let id = q["rows"][0]["object"]["id"].as_str().unwrap().to_string();
+        let trace = run_tools(&server, &env.alice, org, vec![
+            ("get_object", serde_json::json!({"object_id": id})),
+            ("update_object", serde_json::json!({"object_id": id, "expected_version": 1, "title": "P1", "properties": {"serial": "S1b"}})),
+            ("update_object", serde_json::json!({"object_id": id, "expected_version": 1, "title": "P1", "properties": {"serial": "S1c"}})),
+        ])
+        .await;
+        assert_eq!(trace[1]["ok"], true, "{trace:?}");
+        assert_eq!(trace[2]["code"], pnex_core::err_codes::ONTOLOGY_VERSION_CONFLICT, "{trace:?}");
+
+        add_bob(&server, &env, org, "viewer").await;
+        let trace = run_tools(&server, &env.bob, org, vec![
+            ("create_object", serde_json::json!({"type_key": "pump", "title": "x", "properties": {"serial": "1"}})),
+            ("query_ontology", serde_json::json!({"query": {}})),
+        ])
+        .await;
+        assert_eq!(trace[0]["code"], pnex_core::err_codes::AI_WRITE_FORBIDDEN, "{trace:?}");
+        assert_eq!(trace[1]["ok"], true, "a viewer reads");
+    })
+    .await;
+}

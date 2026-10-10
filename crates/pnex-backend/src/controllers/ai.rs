@@ -530,6 +530,11 @@ async fn run_conversation_turn(
         author: Some(org.auth.user.email.clone()).filter(|e| !e.trim().is_empty()),
         o2: o2_client.as_ref(),
         config: Some(&ctx.config),
+        actor: Some(crate::services::ontology::Actor {
+            user_id: Some(org.auth.user.id),
+            role: org.role.clone(),
+            source_ref: format!("assistant:{}", org.auth.user.id),
+        }),
     };
     let reply = agent::run_turn(&deps, cfg, cfg.provider, system, history).await?;
     let trace: Vec<pnex_core::AiToolTrace> = reply
