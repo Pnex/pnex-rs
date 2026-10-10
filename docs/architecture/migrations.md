@@ -2,6 +2,7 @@
 
 > Date : 2026-10-01 (première coupe, D120) ; **recoupée le 2026-10-09** :
 > la 0.1.0 n'est pas publiée (bêta), la base est refaite jusqu'à elle.
+> **PostgreSQL seul depuis le 2026-10-10** (décision #19, §4).
 
 ## 0. Recoupe du 2026-10-09 (avant 0.1.0)
 
@@ -82,3 +83,79 @@ les données OpenObserve et RustFS ne sont pas concernées.
   migration.
 - Les numéros de verrous consultatifs déjà utilisés (`db_lock::ns`) ne sont
   jamais réattribués, même retirés.
+
+## 4. PostgreSQL, moteur unique (décision #19, 2026-10-10)
+
+PNEX ne parle plus qu'à PostgreSQL (image de référence : `postgres:18-alpine`
+dans `compose.yaml`). `DATABASE_URL` doit pointer sur PostgreSQL ; une URL
+`sqlite://` n'est plus prise en charge et **aucun chemin de migration**
+n'existe depuis une base SQLite (recréer la base sur PostgreSQL). La file
+de jobs Loco vit dans la même base (`pg_loco_queue`, `queue.kind:
+Postgres` en dur dans les yaml).
+
+### 4.1 Ce qui a été retiré
+
+| Élément | Où | Remplacé par |
+|---|---|---|
+| Script `baseline/sqlite.sql` + test `schema_parity.rs` | `migration/` | `postgres.sql` seul ; `up()` refuse tout autre moteur |
+| Smoke test `tests/sqlite_smoke.rs` | backend | couverture des tests d'intégration PG |
+| Boot sur fichier SQLite temporaire (`meta`, `catalog_seed`, `seed_backfill`) | tests | base de test PG (`TEST_DATABASE_URL`) |
+| `truncate` par `DELETE` + `PRAGMA defer_foreign_keys` | `app.rs` | `TRUNCATE … RESTART IDENTITY CASCADE` |
+| Verrous consultatifs « no-op hors Postgres » | `services/db_lock.rs`, `tasks/seed.rs` | toujours pris ; `migrate_under_lock` ne renvoie plus de booléen |
+| Baux `flow_leases` sur horloge des pods | `flow_cluster/store.rs` | horloge de la base (`now()`) et `ON CONFLICT DO NOTHING` |
+| Repli « scan Rust » des labels effectifs | `resources/labels.rs` | CTE récursives + JSONB (GIN) |
+| Filtre JSONB conditionnel des annotations | `controllers/annotation_layers.rs` | `@>` systématique |
+| Taille de base par `PRAGMA page_count` | `system_status` | `pg_database_size` |
+| Suppression manuelle des révisions avant le projet | `controllers/firmware_projects.rs` | cascade de la FK `firmware_project_id` |
+| Tier « hobbyiste » SQLite | configs, `.env.example`, README, `firmware-build.md` | deux tiers : `postgres` et `s3` |
+
+`sqlx-sqlite` reste compilé **transitivement** (feature `with-db` de
+`loco-rs`) : aucune dépendance directe ne l'active, ne pas l'utiliser.
+
+### 4.2 Ce que l'on s'autorise désormais
+
+- SQL PostgreSQL natif dans les migrations comme dans les requêtes :
+  JSONB et ses opérateurs (`@>`, `?`), index GIN/GiST, `WITH RECURSIVE`,
+  `ON CONFLICT`, `ILIKE`, fonctions de date côté base (`now()`,
+  `make_interval`).
+- Clés étrangères ajoutées par `ALTER TABLE` (plus de reconstruction de
+  table), y compris les FK circulaires (`published_version_id`,
+  `deployed_version_id`, `current_version_id`).
+- Verrous consultatifs (`db_lock::xact_lock`, `TenantLock`) sans garde de
+  moteur ; un nouvel espace de verrou = une constante dans `db_lock::ns`
+  (§3 : jamais réattribuée).
+- Extensions (PostGIS envisagé pour le geofencing, `roadmap.md` axe G) :
+  une extension est activée par migration (`CREATE EXTENSION IF NOT
+  EXISTS`) et sa licence passe la règle des briques permissives ou une
+  exception consignée.
+- `PgExpr::ilike` n'est plus un piège (il paniquait sur le builder
+  SQLite). Toute requête brute reste **paramétrée** (`$1`…), jamais de
+  valeur utilisateur concaténée.
+
+### 4.3 Tests
+
+- Tous les tests base passent par PostgreSQL : `TEST_DATABASE_URL`
+  (défaut `postgres://pnex:pnex@localhost:5432/pnex_test`, `config/test.yaml`).
+- Chaque boot de test vide la base (`dangerously_truncate`) : un test ne
+  suppose jamais une base vierge **autre** que celle qu'il vient de booter,
+  et les tests qui bootent l'app restent `#[serial]`.
+- Tests unitaires du crate qui ont besoin d'un schéma :
+  `services::artifact_store::tests::migrated_test_db()` (migration sous
+  verrou consultatif, sûre en parallèle).
+- Worktree ou session parallèle : base dédiée (`CREATE DATABASE
+  pnex_test_<nom> OWNER pnex`) puis `TEST_DATABASE_URL` vers elle ; une
+  migration non commitée d'une autre session casse sinon tous les tests.
+
+### 4.4 Dette héritée de la portabilité (simplifications possibles)
+
+Le code ne porte plus de branche par moteur, mais certaines formes
+« portables » restent et peuvent être simplifiées au fil de l'eau :
+
+- recherche (`controllers/global_search.rs`, `controllers/pagination.rs`) :
+  `lower(col) LIKE … ESCAPE '\'` avec motif abaissé en Rust peut devenir
+  un `ILIKE` (même résultat sur PG, une fonction par colonne en moins) ;
+- `services/dashboard.rs::build_stats` : réduction en Rust au lieu d'un
+  `GROUP BY` ;
+- intégrité « portée par le contrôleur » sur les FK circulaires : la FK
+  existe en base, les vérifications applicatives restent comme garde de
+  message d'erreur (409/404 propres), pas comme seule protection.

@@ -385,10 +385,8 @@ RAM que Node-RED (non vérifié).
 - **Tables physiques plurielées** : le DSL Loco crée `flows`/`flow_versions`
   (`normalize_table` = pluriel cruet) — le PRD parlait de `flow`/`flow_version`
   au niveau conceptuel.
-- **FK circulaire PG-only** : `ALTER TABLE ADD CONSTRAINT` n'existe pas en
-  sqlite — sur le tier hobbyiste, `flows.deployed_version_id` reste une
-  colonne sans contrainte (l'intégrité est portée par le contrôleur) ;
-  `schema_invariants.rs` vérifie la contrainte sur PG.
+- **FK circulaire** `flows.deployed_version_id` (`ALTER TABLE ADD
+  CONSTRAINT`, `ON DELETE SET NULL`) ; `schema_invariants.rs` la vérifie.
 - **409 au lieu de 400** pour les saves périmés : exigence explicite du PRD
   (concurrence optimiste), écart assumé avec la convention 400 historique.
 - **Un seul flows.json par instance** : le deploy reprojette l'ensemble des

@@ -42,8 +42,7 @@ Migration `m20260911_000017_tours.rs` (école `m20260909_000012_media`) :
 - **`tours`** — `id` UUID PK, `org_id` BIGINT NN FK CASCADE, `name`
   varchar(255) NN, `description` TEXT NULL, `mode` varchar(16) NN default
   `panorama`, `share_token` varchar(64) NULL UNIQUE (les NULL multiples
-  sont admis PG + sqlite), `published_version_id` UUID NULL (FK circulaire
-  PG-only), `metadata` JSONB NULL, timestamps.
+  sont admis), `published_version_id` UUID NULL (FK circulaire), `metadata` JSONB NULL, timestamps.
 - **`tour_versions`** — `id` UUID PK, `tour_id` UUID NN FK CASCADE,
   `version_number` BIGINT NN, `doc` JSONB NN (`pnex_core::TourDoc`),
   `author` varchar(255) NULL, `note` TEXT NULL, timestamps.

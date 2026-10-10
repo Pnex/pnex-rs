@@ -52,8 +52,8 @@ versionnée, publiable, dépubliable à part).
 PATCH avec `expected_version_number` → 409 optimiste ; pas de restore —
 « restaurer » = charger une vieille version dans l'éditeur puis save).
 **Activation = pointeur** `annotation_layers.published_version_id` →
-`annotation_layer_versions.id` (FK circulaire PG-only `ON DELETE SET
-NULL`, intégrité par le contrôleur sur sqlite — école
+`annotation_layer_versions.id` (FK circulaire `ON DELETE SET
+NULL` — école
 `tours.published_version_id` / `flows.deployed_version_id`). Publier une
 vieille version = simple repointage ; dépublier = pointeur NULL + les
 items disparaissent de tous les viewers. Pas de colonne `is_active`
@@ -135,8 +135,7 @@ labels D42 via un futur `KIND_ANNOTATION_LAYER` au registre.
   (`pnex_core::AnnotationDoc`), `author` varchar(255) NULL, `note` TEXT
   NULL, timestamps ; uniq `(layer_id, version_number)` (SQL brut, **un
   statement par `execute_unprepared`**), idx org.
-- Bimoteur : `uuid_pk` PG-only, FK circulaire PG-only (sqlite :
-  intégrité portée par le contrôleur, écart documenté en commentaire).
+- `uuid_pk` et FK circulaire PostgreSQL (seul moteur, décision #19).
 
 ## 4. Doc JSON — `pnex_core::AnnotationDoc`
 

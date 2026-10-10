@@ -15,8 +15,7 @@ Migration `m20260909_000012_media` (PK UUID, école sites) :
 - **`media_assets`** — identité : `org_id` (D2, CASCADE), `kind`
   (`photo|panorama|splat`, string), `name`, `description`, `metadata` JSONB
   (tags libres ; futur zone/étage), `current_version_id` (FK circulaire
-  PG-only SET NULL — école `flows.deployed_version_id` ; intégrité portée
-  par le contrôleur sur sqlite).
+  SET NULL — école `flows.deployed_version_id`).
 - **`media_versions`** — append-only : `asset_id` CASCADE, `org_id`
   **dénormalisé** (scoping direct + purge fiable), `version_number`
   (incrémental par asset, unique `(asset_id, version_number)`),

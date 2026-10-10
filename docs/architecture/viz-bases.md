@@ -67,7 +67,7 @@ attacher des objets réels (devices, panoramas 360°) et préparer le futur
 > les nouvelles intégrations passent par `/api/v1/resources/edges`.
 > ℹ **D43 (2026-09-12)** : POI **multi-devices** — table `device_placements`
 > (migration 000019) : **N devices par repère**, **1 placement par device**
-> (UNIQUE `device_registry_id`, PG **et** sqlite), `location_detail` par
+> (UNIQUE `device_registry_id`), `location_detail` par
 > placement (« Rack 3 — Allée B ») en plus du `location_detail` bâtiment du
 > POI. Attacher un device déjà placé répond **409** porteur du POI courant,
 > le déplacement est un PATCH délibéré `pin_id` après confirmation UI.
@@ -138,7 +138,7 @@ Migration `crates/pnex-backend/migration/src/m20260911_000014_viz.rs`
 École `sites` : PK UUID (`uuid_pk()` — `gen_random_uuid()` PG-only), `org_id`
 BIGINT NOT NULL FK→organizations CASCADE **dénormalisé sur chaque table**,
 JSONB, codes string (pas d'enum PG), index `uniq_/idx_` via
-`execute_unprepared` (un statement par appel, sqlite-portable),
+`execute_unprepared` (un statement par appel),
 `created_at/updated_at`.
 
 **`buildings`** — `id` UUID PK, `org_id` NN, `site_id` UUID NN FK→sites
