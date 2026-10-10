@@ -121,6 +121,10 @@ pub mod media_ingest;
 /// classifier, `topic_classify` node config.
 pub mod taxonomy;
 
+/// Time ranges (media-ingest.md D169, D182): named intervals, announced and
+/// realigned; `range_upsert` node config.
+pub mod time_range;
+
 /// Predictive telemetry (ml-vision.md step 3): `anomaly` / `forecast` node
 /// configs, validation, port counts.
 pub mod predictive;

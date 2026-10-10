@@ -52,6 +52,8 @@ pub mod system;
 /// Topic taxonomies (media-ingest.md D168).
 pub mod taxonomies;
 pub mod thermo;
+/// Time ranges (media-ingest.md D169).
+pub mod time_ranges;
 pub mod tours;
 pub mod user_info;
 pub mod visualization;

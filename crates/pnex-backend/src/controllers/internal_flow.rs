@@ -51,6 +51,8 @@ pub fn routes() -> Routes {
         // MJPEG-AVI body, metadata in the query string.
         // JSON events from the `event-log` node (D84) → O2 logs stream.
         .add("/internal/flow/event", post(flow_event))
+        // Time ranges from the `range-upsert` node (D169).
+        .add("/internal/flow/time-range", post(flow_time_range))
         .add("/internal/flow/video-annotations", post(video_annotations))
         // Vault secret of a deployed notify channel (D115, lot S4).
         .add("/internal/flow/secret/{id}", get(flow_secret))
@@ -446,6 +448,91 @@ async fn flow_event(
                 axum::Json(serde_json::json!({ "code": "events-unavailable", "error": e })),
             )
                 .into_response())
+        }
+    }
+}
+
+/// Time range written by a `range-upsert` node (D169). The runtime is
+/// untrusted: the flow must be one of `org_id`, the scope is resolved in
+/// that org (a foreign stream answers 404 `time-range-scope-unknown`), the
+/// origin is one a flow may write, and the fields go through the same
+/// check as the HTTP API. Provenance `flow:<id>@<version>` is built here.
+async fn flow_time_range(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::time_range::RangeUpsertRequest>,
+) -> Result<Response> {
+    use crate::services::time_ranges::{self, RangeError, Writer};
+    use pnex_core::time_range::{flow_ref, RangeOrigin, RangeUpsertAck};
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.org_id).await {
+        return Ok(r);
+    }
+    let coded = |status: StatusCode, code: &str| {
+        (status, axum::Json(serde_json::json!({ "code": code }))).into_response()
+    };
+    let flow = crate::models::_entities::flows::Entity::find_by_id(req.flow_id)
+        .filter(crate::models::_entities::flows::Column::OrgId.eq(req.org_id))
+        .one(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    if flow.is_none() {
+        return Ok(coded(StatusCode::NOT_FOUND, "flow-not-found"));
+    }
+    let origin = RangeOrigin::from_wire(&req.origin).filter(|o| RangeOrigin::FLOW.contains(o));
+    let Some(origin) = origin else {
+        return Ok(coded(
+            StatusCode::BAD_REQUEST,
+            "range-upsert-origin-invalid",
+        ));
+    };
+    let mut input = req.range;
+    // The scope is the node's, never the payload's.
+    input.scope_kind = None;
+    input.scope_id = None;
+    if input
+        .external_id
+        .as_deref()
+        .is_none_or(|e| e.trim().is_empty())
+    {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            axum::Json(serde_json::json!({ "external_id": pnex_core::err_codes::FIELD_REQUIRED })),
+        )
+            .into_response());
+    }
+    let result =
+        match time_ranges::resolve_scope(&ctx.db, req.org_id, &req.scope_kind, &req.scope_id).await
+        {
+            Ok(scope) => {
+                let writer = Writer {
+                    origin,
+                    source_ref: Some(flow_ref(req.flow_id, req.version)),
+                };
+                time_ranges::upsert(&ctx.db, req.org_id, &scope, &input, &writer).await
+            }
+            Err(e) => Err(e),
+        };
+    match result {
+        Ok((row, created)) => Ok(axum::Json(RangeUpsertAck {
+            id: row.id.to_string(),
+            created,
+        })
+        .into_response()),
+        Err(RangeError::Invalid { field, token }) => Ok((
+            StatusCode::BAD_REQUEST,
+            axum::Json(serde_json::json!({ field: token })),
+        )
+            .into_response()),
+        Err(RangeError::ScopeUnknown | RangeError::NotFound) => Ok(coded(
+            StatusCode::NOT_FOUND,
+            pnex_core::err_codes::TIME_RANGE_SCOPE_UNKNOWN,
+        )),
+        Err(RangeError::Db(e)) => {
+            tracing::error!(error = %e, org_id = req.org_id, "flow time range write failed");
+            Err(Error::InternalServerError)
         }
     }
 }

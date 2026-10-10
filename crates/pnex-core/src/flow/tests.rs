@@ -3458,3 +3458,52 @@ fn topic_classify_validates_and_projects() {
         assert!(codes.contains(&code.to_string()), "{code}: {codes:?}");
     }
 }
+
+#[test]
+fn range_upsert_validates_and_projects() {
+    let stream = "6f1c8a52-3b8e-4c1a-9d0e-7a2b5c4d3e21";
+    let g: FlowGraph = serde_json::from_value(serde_json::json!({
+        "nodes": [
+            {"id": "r", "kind": "range_upsert",
+             "config": {"scope_id": stream, "origin": "detected"},
+             "outputs": [{"port": 0, "targets": ["dbg"]}]},
+            {"id": "dbg", "kind": "debug"}
+        ]
+    }))
+    .expect("graph");
+    assert!(validate_graph(&g).is_empty(), "{:?}", validate_graph(&g));
+    let meta = FlowArtifactMeta {
+        flow_id: 4,
+        version_number: 2,
+        org_id: 9,
+        o2_org: String::new(),
+    };
+    let red = to_red_flows_json(&g, &meta);
+    let node = red
+        .as_array()
+        .expect("entries")
+        .iter()
+        .find(|e| e["type"] == "pnex-range-upsert")
+        .expect("range upsert")
+        .clone();
+    assert_eq!(node["scope_kind"], "stream");
+    assert_eq!(node["scope_id"], stream);
+    assert_eq!(node["origin"], "detected");
+    assert_eq!(node["pnex_org_id"], 9);
+    assert_eq!(node["pnex_flow_id"], 4);
+    assert_eq!(node["pnex_version"], 2);
+
+    let back: FlowGraph = serde_json::from_value(serde_json::to_value(&g).unwrap()).unwrap();
+    assert_eq!(back, g);
+    let bad: FlowGraph = serde_json::from_value(serde_json::json!({
+        "nodes": [
+            {"id": "a", "kind": "range_upsert", "config": {}},
+            {"id": "b", "kind": "range_upsert", "config": {"scope_id": stream, "origin": "manual"}}
+        ]
+    }))
+    .expect("graph");
+    let codes: Vec<String> = validate_graph(&bad).into_iter().map(|v| v.code).collect();
+    for code in ["range_upsert_scope_invalid", "range_upsert_origin_invalid"] {
+        assert!(codes.contains(&code.to_string()), "{code}: {codes:?}");
+    }
+}

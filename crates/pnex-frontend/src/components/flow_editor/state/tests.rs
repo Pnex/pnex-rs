@@ -943,3 +943,22 @@ fn make_node_topic_classify_guides_taxonomy_pick() {
         "{codes:?}"
     );
 }
+
+#[test]
+fn make_node_range_upsert_guides_stream_pick() {
+    // Scoped on a stream by default, none picked: the banner asks for one.
+    let node = make_node("r1", PaletteKind::RangeUpsert, Position { x: 0.0, y: 0.0 });
+    let FlowNodeKind::RangeUpsert { config } = &node.kind else {
+        panic!("range_upsert expected, got {:?}", node.kind);
+    };
+    assert_eq!(config.scope_kind, "stream");
+    assert_eq!(config.origin, "grid");
+    let codes: Vec<String> = pnex_core::validate_graph(&FlowGraph { nodes: vec![node] })
+        .into_iter()
+        .map(|v| v.code)
+        .collect();
+    assert!(
+        codes.contains(&"range_upsert_scope_invalid".to_string()),
+        "{codes:?}"
+    );
+}

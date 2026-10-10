@@ -60,11 +60,26 @@ pub async fn write(ctx: &AppContext, org_id: i64, doc: &Doc<'_>) -> Result<(), S
     if !is_valid_slug(doc.slug) {
         return Err("invalid stream slug".into());
     }
+    ingest_retried(
+        ctx,
+        org_id,
+        &transcript_stream(doc.slug),
+        &[document_of(doc)],
+    )
+    .await
+}
+
+/// Ingests documents in an O2 logs stream of the org (stream name built by
+/// the caller from a checked slug), retried on transient failures.
+pub(crate) async fn ingest_retried(
+    ctx: &AppContext,
+    org_id: i64,
+    stream: &str,
+    body: &[serde_json::Value],
+) -> Result<(), String> {
     let Some(client) = client(ctx) else {
         return Err("openobserve is not configured".into());
     };
-    let body = [document_of(doc)];
-    let stream = transcript_stream(doc.slug);
     let mut last = String::new();
     for delay in std::iter::once(0).chain(WRITE_RETRIES) {
         if delay > 0 {
@@ -78,7 +93,7 @@ pub async fn write(ctx: &AppContext, org_id: i64, doc: &Doc<'_>) -> Result<(), S
             }
         };
         match client
-            .ingest_json(&creds.o2_org, &stream, &body, &creds.email_passcode)
+            .ingest_json(&creds.o2_org, stream, body, &creds.email_passcode)
             .await
         {
             Ok(()) => return Ok(()),

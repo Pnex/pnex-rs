@@ -1,7 +1,7 @@
 use super::*;
 
 /// Liste canonique des kinds proposés à l'ajout (ordre de la maquette).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 30] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 31] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::Weather,
@@ -25,6 +25,7 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 30] = [
     PaletteKind::TopicClassify,
     PaletteKind::VideoRecord,
     PaletteKind::VisionDetect,
+    PaletteKind::RangeUpsert,
     PaletteKind::EventLog,
     PaletteKind::MemoryWrite,
     PaletteKind::MemoryRead,
@@ -57,6 +58,7 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::CameraSource => "camera-source",
         PaletteKind::MediaSource => "media-source",
         PaletteKind::TopicClassify => "topic-classify",
+        PaletteKind::RangeUpsert => "range-upsert",
         PaletteKind::VideoRecord => "video-record",
         PaletteKind::VisionDetect => "vision-detect",
         PaletteKind::EventLog => "event-log",
@@ -103,6 +105,7 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::CameraSource => (PaletteIcon::Camera, "bg-rose-50 text-rose-600"),
         PaletteKind::MediaSource => (PaletteIcon::Activity, "bg-indigo-50 text-indigo-600"),
         PaletteKind::TopicClassify => (PaletteIcon::Layers, "bg-indigo-50 text-indigo-700"),
+        PaletteKind::RangeUpsert => (PaletteIcon::History, "bg-indigo-50 text-indigo-700"),
         PaletteKind::VideoRecord => (PaletteIcon::Video, "bg-red-50 text-red-600"),
         PaletteKind::VisionDetect => (PaletteIcon::Eye, "bg-fuchsia-50 text-fuchsia-600"),
         PaletteKind::EventLog => (PaletteIcon::History, "bg-slate-100 text-slate-600"),
@@ -142,6 +145,7 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::CameraSource { .. } => PaletteKind::CameraSource,
         FlowNodeKind::MediaSource { .. } => PaletteKind::MediaSource,
         FlowNodeKind::TopicClassify { .. } => PaletteKind::TopicClassify,
+        FlowNodeKind::RangeUpsert { .. } => PaletteKind::RangeUpsert,
         FlowNodeKind::VideoRecord { .. } => PaletteKind::VideoRecord,
         FlowNodeKind::VisionDetect { .. } => PaletteKind::VisionDetect,
         FlowNodeKind::EventLog { .. } => PaletteKind::EventLog,
@@ -210,6 +214,7 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         | PaletteKind::MemoryWrite
         | PaletteKind::MemoryRead
         | PaletteKind::VideoRecord
+        | PaletteKind::RangeUpsert
         | PaletteKind::EventLog => PaletteCategory::Storage,
         PaletteKind::VisionDetect | PaletteKind::Anomaly | PaletteKind::Forecast => {
             PaletteCategory::Ai
@@ -366,6 +371,10 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::TopicClassify => (
             t!("flows-palette-topic-classify").to_string(),
             t!("flows-palette-topic-classify-help").to_string(),
+        ),
+        PaletteKind::RangeUpsert => (
+            t!("flows-palette-range-upsert").to_string(),
+            t!("flows-palette-range-upsert-help").to_string(),
         ),
         PaletteKind::Weather => (
             t!("flows-palette-weather").to_string(),

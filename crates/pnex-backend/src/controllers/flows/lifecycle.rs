@@ -363,6 +363,35 @@ pub(crate) async fn unknown_taxonomies_for_deploy(
     Ok(violations)
 }
 
+/// Time range gate (D169, R1): a `range_upsert` scoped on a stream must
+/// target a live stream of the org — another org's id reads as unknown.
+pub(crate) async fn unknown_range_scopes_for_deploy(
+    ctx: &AppContext,
+    org_id: i64,
+    candidate_graph: &FlowGraph,
+) -> Result<Vec<pnex_core::FlowViolation>> {
+    use crate::services::time_ranges::{resolve_scope, RangeError};
+    let mut violations = Vec::new();
+    for n in &candidate_graph.nodes {
+        let pnex_core::FlowNodeKind::RangeUpsert { config } = &n.kind else {
+            continue;
+        };
+        if config.check().is_some() {
+            continue; // the node check reports it
+        }
+        match resolve_scope(&ctx.db, org_id, &config.scope_kind, &config.scope_id).await {
+            Ok(_) => {}
+            Err(RangeError::Db(_)) => return Err(Error::InternalServerError),
+            Err(_) => violations.push(pnex_core::FlowViolation::new(
+                Some(n.id.as_str()),
+                pnex_core::err_codes::TIME_RANGE_SCOPE_UNKNOWN,
+                "range-upsert targets a stream that does not exist in the organization",
+            )),
+        }
+    }
+    Ok(violations)
+}
+
 /// Dry-run, WRITE usage only: deployed flows of the org whose graph WRITES
 /// this (device slug, pin label). Reads never count — a flow reading a pin
 /// leaves it manually writable. Feeds the manual-write 409 guard.
@@ -517,6 +546,8 @@ async fn deploy_version(
         conflicts
             .extend(unknown_media_streams_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         conflicts.extend(unknown_taxonomies_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
+        conflicts
+            .extend(unknown_range_scopes_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         if !conflicts.is_empty() {
             return Ok((
                 StatusCode::BAD_REQUEST,

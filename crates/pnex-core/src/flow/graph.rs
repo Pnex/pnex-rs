@@ -148,6 +148,11 @@ pub enum FlowNodeKind {
     TopicClassify {
         config: crate::taxonomy::TopicClassifyConfig,
     },
+    /// Time range writer (media-ingest.md D169): upserts `msg.payload` as a
+    /// range of the configured scope, keyed by `external_id`.
+    RangeUpsert {
+        config: crate::time_range::RangeUpsertConfig,
+    },
     /// Timed weather source (D140): no input, three outputs (current,
     /// daily, hourly) normalized from an allowlisted provider.
     Weather {
@@ -281,6 +286,9 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: req_config(config)?,
                 }),
                 "topic_classify" => Ok(Self::TopicClassify {
+                    config: req_config(config)?,
+                }),
+                "range_upsert" => Ok(Self::RangeUpsert {
                     config: req_config(config)?,
                 }),
                 "weather" => Ok(Self::Weather {

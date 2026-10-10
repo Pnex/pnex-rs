@@ -2063,3 +2063,35 @@ CREATE TABLE taxonomy_versions (
         REFERENCES users(id) ON DELETE SET NULL
 );
 CREATE UNIQUE INDEX uniq_taxonomy_versions_taxonomy_version ON taxonomy_versions USING btree (taxonomy_id, version);
+
+-- ===== Time ranges (P2.13, D169, D182) =====
+
+CREATE TABLE time_ranges (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    org_id bigint NOT NULL,
+    scope_kind character varying(32) NOT NULL,
+    scope_id character varying(64) NOT NULL,
+    label character varying(200) NOT NULL,
+    external_id character varying(200),
+    category character varying(64),
+    planned_start timestamp with time zone,
+    planned_end timestamp with time zone,
+    actual_start timestamp with time zone,
+    actual_end timestamp with time zone,
+    origin character varying(16) NOT NULL,
+    confidence real,
+    source_url character varying(2048),
+    source_ref character varying(200),
+    attrs jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT time_ranges_pkey PRIMARY KEY (id),
+    CONSTRAINT "fk-time_ranges-org_id" FOREIGN KEY (org_id)
+        REFERENCES organizations(id) ON DELETE CASCADE,
+    CONSTRAINT time_ranges_complete_pair CHECK (
+        (planned_start IS NOT NULL AND planned_end IS NOT NULL)
+        OR (actual_start IS NOT NULL AND actual_end IS NOT NULL)
+    )
+);
+CREATE UNIQUE INDEX uniq_time_ranges_org_scope_external_id ON time_ranges USING btree (org_id, scope_kind, scope_id, external_id) WHERE external_id IS NOT NULL;
+CREATE INDEX idx_time_ranges_org_scope_planned_start ON time_ranges USING btree (org_id, scope_kind, scope_id, planned_start);

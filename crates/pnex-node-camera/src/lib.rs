@@ -13,8 +13,11 @@
 //!   (media-ingest.md D163); lives here to share the Valkey bus plumbing.
 //! - `pnex-topic-classify` — keyword topic classifier of transcribed text
 //!   (media-ingest.md D168), the media node next to `media-source`.
+//! - `pnex-range-upsert` — writes time ranges through the backend
+//!   (media-ingest.md D169), the third media node.
 
 mod media;
+mod ranges;
 mod record;
 mod source;
 pub mod status;

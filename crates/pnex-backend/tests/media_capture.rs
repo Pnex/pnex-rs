@@ -324,3 +324,93 @@ async fn health_sample_reads_segment_rows() {
     )
     .await;
 }
+
+/// Serves `audio` as an icecast stream: with `icy-metaint: 1024` and one
+/// title block after each cut when the client asks `Icy-MetaData: 1` and
+/// `icy` is set, as plain bytes otherwise.
+async fn serve_icy(audio: Vec<u8>, icy: bool) -> String {
+    use axum::response::IntoResponse;
+    let app = axum::Router::new().route(
+        "/live.mp3",
+        axum::routing::get(move |headers: axum::http::HeaderMap| {
+            let audio = audio.clone();
+            async move {
+                let asked = headers.get("icy-metadata").is_some_and(|v| v == "1");
+                if !(icy && asked) {
+                    return ([("content-type", "audio/mpeg".to_string())], audio).into_response();
+                }
+                let block = b"StreamTitle='Artiste - Morceau';";
+                let len = block.len().div_ceil(16);
+                let mut body = Vec::new();
+                for chunk in audio.chunks(1024) {
+                    body.extend_from_slice(chunk);
+                    if chunk.len() == 1024 {
+                        body.push(len as u8);
+                        let mut padded = block.to_vec();
+                        padded.resize(len * 16, 0);
+                        body.extend_from_slice(&padded);
+                    }
+                }
+                (
+                    [
+                        ("content-type", "audio/mpeg".to_string()),
+                        ("icy-metaint", "1024".to_string()),
+                    ],
+                    body,
+                )
+                    .into_response()
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    format!("http://{addr}/live.mp3")
+}
+
+/// D170: the icecast fetcher strips interleaved ICY blocks (only audio
+/// reaches the decoder) and hands the title over once; a server without
+/// `icy-metaint` is read exactly as before.
+#[tokio::test]
+#[serial]
+async fn icecast_fetcher_strips_icy_metadata() {
+    use pnex_backend::services::media_ingest::capture::fetch::Fetcher;
+    use pnex_core::media_ingest::MediaStreamKind;
+    // Booting the app sets the egress policy of the tests (`open`).
+    let base = common::spawn_mock_rauthy().await;
+    unsafe { std::env::set_var("RAUTHY_URL", &base) };
+    let config: RequestConfig = RequestConfigBuilder::new().build();
+    loco_rs::testing::request::request_with_config::<App, _, _>(
+        config,
+        |_server, _ctx| async move {
+            let audio: Vec<u8> = (0..10_000u32).map(|i| (i % 251) as u8).collect();
+            for icy in [true, false] {
+                let url: reqwest::Url = serve_icy(audio.clone(), icy).await.parse().unwrap();
+                let opened = Fetcher::new(None)
+                    .unwrap()
+                    .open(MediaStreamKind::Icecast, &url)
+                    .await
+                    .expect("opened");
+                let mut chunks = opened.chunks;
+                let mut got = Vec::new();
+                while let Some(c) = chunks.recv().await {
+                    got.extend_from_slice(&c.expect("chunk"));
+                }
+                assert_eq!(got, audio, "only audio reaches the decoder (icy = {icy})");
+                match opened.metadata {
+                    Some(mut events) => {
+                        assert!(icy);
+                        let first = events.recv().await.expect("one title");
+                        assert_eq!(first.title, "Artiste - Morceau");
+                        // Same title repeated in every block: emitted once.
+                        assert!(events.recv().await.is_none());
+                    }
+                    None => assert!(!icy, "metadata expected"),
+                }
+            }
+        },
+    )
+    .await;
+}
