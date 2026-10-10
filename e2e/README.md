@@ -98,6 +98,7 @@ Rules:
 | `map` | `@map` | POI placed by clicking the map, drawer, delete |
 | `geo` | `@geo` (`@geo-live`) | no basemap → notice; basemap added from the org page form, Test, default on the map, switcher remembered; with `PNEX_E2E_GEO_BASE`: geocode, reverse and route through the server proxy against Photon + GraphHopper, Test of each provider |
 | `media` | `@media` | photo upload (browser-rendered PNG), delete |
+| `documents` | `@media` `@i18n` | real Word / PDF / Excel files (`fixtures/docs/`) uploaded, indexed and found by the library search (exact code, spreadsheet cell, stemmed prose), index state + reindex, a renamed executable refused (`media-format-unsupported`) |
 | `studio` | `@studio` | virtual tour: floor plan + two labelled 360° scenes, start scene, stored doc, delete |
 | `profile-data` | `@profile @mixtures` | language preference switch, CoolProp mixture |
 | `firmware-ide` | `@firmware` | starter sketch compiles on the builder, a broken revision reports its error |
