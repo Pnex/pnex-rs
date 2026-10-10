@@ -23,6 +23,8 @@ pub mod meta;
 // Consommé uniquement par le pipeline capture360 (cfg android) — mort sur
 // les autres cibles, école capture360/mod.rs (allow(dead_code) documenté).
 pub mod devices;
+// Pages (pages.md #21)
+pub mod docs;
 pub mod error;
 /// Render-time error localization — code → fluent key (`err-<kebab>`).
 pub mod error_i18n;

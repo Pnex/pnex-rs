@@ -473,4 +473,71 @@ Corrections apportées à la v0.1 à l'intégration :
   (`security-tiers.md`, V2+).
 - **Nom (Q7)** : « **Pages** » ; « Documents » reste l'onglet des fichiers
   indexés (`doc-search.md` F14).
-- Reste ouverte : Loro vs yrs (Q3), au spike L0.
+- **Loro ou yrs (Q3)** : **yrs** côté serveur, **Yjs** côté client — tranché au spike L0 (§14).
+
+## 14. Spike L0 (2026-10-10) — CRDT : yrs + Yjs
+
+Banc jetable (hors dépôt) : 5 pairs, 6 000 frappes aléatoires (insertions
+de 1 caractère, suppressions de 3), synchronisation toutes les 8 frappes
+par abonnement aux mises à jour locales (le protocole réel du serveur),
+convergence vérifiée. Machine de dev, `--release`.
+
+| Critère | Loro 1.16 | yrs 0.28 (Yjs 13.6 côté client) |
+|---|---|---|
+| Application des mises à jour reçues (~12 000 imports) | **8,0 s** (≈ 0,65 ms/import) | **50 ms** (tout compris) |
+| Trafic réseau total | 392 Ko | **85 Ko** |
+| Snapshot | 70 Ko | **35 Ko** (sans GC, historique gardé) |
+| Mémoire par page chargée | **260 Ko** | 680 Ko (sans GC) |
+| Retour dans le temps natif | **oui** (`checkout`, 44 ms) | `encode_state_from_snapshot` → décodage en échec (`EndOfBuffer`) |
+| Bundle éditeur (ProseMirror + liaison, IIFE min. gzip) | **1,7 Mo** (wasm 3,4 Mo en base64) | **93 Ko** (JS pur) |
+| Liaison ProseMirror | `loro-prosemirror` 0.4 | `y-prosemirror` 1.3 |
+| Protocole de synchro + présence | à écrire | `yrs::sync` (protocole y-websocket + awareness) |
+
+Licences : toutes MIT. Décision : **yrs + Yjs**. Le serveur applique chaque
+frappe de chaque client ; à 0,65 ms par import (×5 à ×10 sur Pi 4), Loro
+coûte trop cher, et son bundle de 1,7 Mo pèse sur le mobile.
+
+Conséquence sur P5 (historique) : on ne s'appuie **pas** sur le retour dans
+le temps du CRDT. L'historique continu = état compacté + rejeu du journal
+`doc_updates` horodaté jusqu'à l'instant voulu (dans la rétention de
+l'org) ; une version nommée stocke son état figé complet
+(`doc_versions.snapshot`). Diff de versions = diff des arbres décodés.
+
+Modèle de données retenu pour L1–L2 (migration `m20261011_000004_pages`) :
+le snapshot compacté vit dans `docs.snapshot` (+ `snapshot_seq`) plutôt que
+dans une table `doc_snapshots` ; passage au MediaStore au-delà d'un seuil
+repoussé tant qu'aucune page ne l'atteint.
+
+## 15. État d'implémentation (2026-10-10, branche `feat/pages`, non commitée)
+
+Livré (L1 + cœur de L2) :
+
+- type système `doc` (`KIND_DOC`, registre ontologique dérivé), identité
+  universelle par les déclencheurs `pnex_object_identity` / `pnex_object_close`
+  (migration `m20261011_000004_pages`) ;
+- REST `/api/v1/docs` (liste, création, renommage, suppression avec purge des
+  ressources), versions nommées (`/versions`, état figé en base64) ;
+- `/ws/doc/{id}` : ticket à usage unique, protocole y-websocket (synchro +
+  présence), mise à jour validée sur copie contre la liste blanche
+  (`pnex_core::pages`), **persistée avant relais**, viewer en lecture seule
+  côté serveur, fan-out Valkey par page (`pnex:doc:<id>`) avec rattrapage
+  depuis la base à l'abonnement, compaction à la fermeture et tous les 500
+  journaux (suppression des seules lignes lues) ;
+- éditeur `js/doc.js` (ProseMirror + Yjs + fournisseur maison qui redemande
+  un ticket à chaque reconnexion), barre d'outils, palette `/`, raccourcis
+  Markdown, curseurs des autres, statut de synchro ; import/export Markdown,
+  aperçu, diff par blocs et restauration des versions côté client ;
+- garde JS ↔ Rust du schéma (`doc_editor.rs`), état produit par le vrai
+  client accepté par le validateur serveur (`yjs_client_state.b64`).
+
+Écarts et restes :
+
+- historique continu (« la page au 3 mars ») non fait : le journal est
+  compacté ; à reprendre avec la rétention par org (P5) ;
+- hors ligne mobile : les éditions survivent tant que la page reste ouverte
+  (pas de persistance locale `y-indexeddb`) ;
+- commentaires (P12) non faits (reste de L2) ;
+- débit par connexion non borné (SEC-28), rôle figé à l'ouverture (SEC-29) ;
+- import `.docx` et index plein texte des pages : attendent `doc_extract` et
+  `text_chunks` de `doc-search.md` (colonne `doc_id` + CHECK à ajouter) ;
+- vérification navigateur et multi-pods réels non faites.

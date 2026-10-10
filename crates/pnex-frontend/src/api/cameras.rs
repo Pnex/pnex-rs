@@ -213,14 +213,14 @@ struct WsTicket {
 
 /// `POST /api/v1/ws-ticket` — one-time ticket of the current org (valid
 /// 60 s, consumed by the first socket that uses it).
-async fn ws_ticket() -> Result<String, ApiError> {
+pub(crate) async fn ws_ticket() -> Result<String, ApiError> {
     client::request::<WsTicket>(reqwest::Method::POST, "/api/v1/ws-ticket", None)
         .await
         .map(|t| t.ticket)
 }
 
 /// `http(s)://host` → `ws(s)://host` (base without a trailing slash).
-fn ws_base(api_base: &str) -> String {
+pub(crate) fn ws_base(api_base: &str) -> String {
     if let Some(rest) = api_base.strip_prefix("https://") {
         format!("wss://{rest}")
     } else if let Some(rest) = api_base.strip_prefix("http://") {

@@ -61,6 +61,10 @@ pub mod firmware;
 pub mod functions;
 pub use functions::*;
 
+/// Pages (pages.md #21): collaborative documents, DTOs and editor schema
+/// allowlist. wasm-safe.
+pub mod pages;
+
 /// Flows ETL (décision D18) — modèle typé + validation + projection flows.json.
 pub mod flow;
 pub use flow::*;

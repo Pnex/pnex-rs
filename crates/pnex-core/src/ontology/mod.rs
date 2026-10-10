@@ -16,8 +16,8 @@ pub use schema::{PropertyDef, PropertyKind};
 
 use crate::err_codes::{FIELD_INVALID, FIELD_MAX_LENGTH, FIELD_REQUIRED};
 use crate::resources::{
-    KIND_DASHBOARD, KIND_DEVICE, KIND_FLOW, KIND_FOLDER, KIND_MAP_PIN, KIND_MEDIA_ASSET, KIND_TOUR,
-    REL_PLACED_ON,
+    KIND_DASHBOARD, KIND_DEVICE, KIND_DOC, KIND_FLOW, KIND_FOLDER, KIND_MAP_PIN, KIND_MEDIA_ASSET,
+    KIND_TOUR, REL_PLACED_ON,
 };
 
 /// A set of object type keys: `"*"` (every type, including types created
@@ -231,6 +231,7 @@ pub fn system_object_types() -> Vec<ObjectTypeDef> {
         leaf(KIND_DASHBOARD),
         leaf(KIND_TOUR),
         leaf(KIND_FLOW),
+        leaf(KIND_DOC),
         // A POI holds storage folders in its drawer.
         ObjectTypeDef {
             may_contain: Some(TypeSet::only(&[KIND_FOLDER])),

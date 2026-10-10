@@ -84,6 +84,8 @@ bzip2 = { version = "0.5", features = ["static"] }
 flate2 = "1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 base64 = "0.22"
+# Pages (pages.md #21): Yjs CRDT server side, MIT.
+yrs = "0.28"
 # Empreinte sha256 des artefacts firmware (intégrité, table firmware_artifacts)
 sha2 = "0.10"
 # Backend S3 des artefacts firmware (D5 v2, tier industriel) — dépendance

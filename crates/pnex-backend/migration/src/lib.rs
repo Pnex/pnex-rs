@@ -14,6 +14,7 @@ pub use sea_orm_migration::prelude::*;
 mod m20261009_000001_baseline;
 pub mod m20261011_000002_ontology;
 mod m20261011_000003_doc_search;
+mod m20261011_000004_pages;
 mod m20261011_000005_geo_providers;
 mod m20261011_000010_placed_at_links;
 
@@ -26,6 +27,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261009_000001_baseline::Migration),
             Box::new(m20261011_000002_ontology::Migration),
             Box::new(m20261011_000003_doc_search::Migration),
+            Box::new(m20261011_000004_pages::Migration),
             Box::new(m20261011_000005_geo_providers::Migration),
             Box::new(m20261011_000010_placed_at_links::Migration),
         ]

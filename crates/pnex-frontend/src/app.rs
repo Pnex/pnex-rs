@@ -11,7 +11,7 @@
 use crate::pages::edge_refs::EdgeRefs;
 use crate::pages::{
     self, AdminStatus, Annotations, AuthCallback, Cameras, Catalog, Controls, Dashboard,
-    Dashboards, Devices, Events, Firmware, Flows, FluidMixtures, Functions, Map, Media, Models,
+    Dashboards, Devices, Docs, Events, Firmware, Flows, FluidMixtures, Functions, Map, Media, Models,
     NotFound, Notifications, Ontology, OntologyObject, OntologyType, Orgs, OrgsCurrent, Profile,
     Secrets, ShareTour, Showcase, Sites, Streams, Studio, System, Visualisation,
 };
@@ -49,6 +49,10 @@ pub enum Route {
 
         #[route("/media")]
         Media {},
+
+        // Collaborative pages (pages.md #21); `?id=` opens the live editor.
+        #[route("/pages?:id")]
+        Docs { id: String },
 
         // Camera live view, settings and recordings (camera-video.md D80).
         #[route("/cameras")]

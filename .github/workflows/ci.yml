@@ -55,6 +55,7 @@ jobs:
           test -f crates/pnex-frontend/assets/viewers.css || printf '/* Stub CI — CSS reel genere par bun run js:viewers */\n' > crates/pnex-frontend/assets/viewers.css
           test -f crates/pnex-frontend/assets/map.js || printf '/* Stub CI — bundle reel genere par bun run js:map */\n' > crates/pnex-frontend/assets/map.js
           test -f crates/pnex-frontend/assets/map.css || printf '/* Stub CI — CSS maplibre genere par bun run js:map */\n' > crates/pnex-frontend/assets/map.css
+          test -f crates/pnex-frontend/assets/doc.js || printf '/* Stub CI — bundle reel genere par bun run js:doc */\n' > crates/pnex-frontend/assets/doc.js
       - run: cargo check --workspace
       - run: cargo check -p pnex-core -p pnex-frontend --target wasm32-unknown-unknown
 
@@ -110,6 +111,7 @@ jobs:
           test -f crates/pnex-frontend/assets/viewers.css || printf '/* Stub CI — CSS reel genere par bun run js:viewers */\n' > crates/pnex-frontend/assets/viewers.css
           test -f crates/pnex-frontend/assets/map.js || printf '/* Stub CI — bundle reel genere par bun run js:map */\n' > crates/pnex-frontend/assets/map.js
           test -f crates/pnex-frontend/assets/map.css || printf '/* Stub CI — CSS maplibre genere par bun run js:map */\n' > crates/pnex-frontend/assets/map.css
+          test -f crates/pnex-frontend/assets/doc.js || printf '/* Stub CI — bundle reel genere par bun run js:doc */\n' > crates/pnex-frontend/assets/doc.js
       - run: cargo test --workspace
 
   arm-check:

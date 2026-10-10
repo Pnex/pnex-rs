@@ -134,6 +134,7 @@ impl Hooks for App {
             // Registre « Fonctions » (groupe « Automation ») — versionné +
             // test en live via le binaire runtime.
             .add_route(controllers::functions::routes())
+            .add_route(controllers::docs::routes())
             .add_route(controllers::firmware_projects::routes())
             .add_route(controllers::flows::routes())
             .add_route(controllers::media::routes())
@@ -164,6 +165,7 @@ impl Hooks for App {
             // endpoint interne de livraison (nœud flow / loopback Test).
             .add_route(controllers::notify::routes())
             .add_route(controllers::ws_notify::routes())
+            .add_route(controllers::ws_doc::routes())
             .add_route(controllers::ws_ticket::routes())
             .add_route(controllers::internal_notify::routes())
             // Écriture device depuis le runtime (nœud pnex-device-write) —

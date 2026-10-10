@@ -16,12 +16,14 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::models::_entities::{
-    dashboards, device_registries, flows, map_pins, media_assets, objects, resource_folders, tours,
+    dashboards, device_registries, docs, flows, map_pins, media_assets, objects, resource_folders,
+    tours,
 };
 
 use pnex_core::ontology::{LinkTypeDef, ObjectTypeDef};
 use pnex_core::resources::{
-    KIND_DASHBOARD, KIND_DEVICE, KIND_FLOW, KIND_FOLDER, KIND_MAP_PIN, KIND_MEDIA_ASSET, KIND_TOUR,
+    KIND_DASHBOARD, KIND_DEVICE, KIND_DOC, KIND_FLOW, KIND_FOLDER, KIND_MAP_PIN, KIND_MEDIA_ASSET,
+    KIND_TOUR,
 };
 
 // ─────────────────────────── résolveurs ───────────────────────────
@@ -94,6 +96,7 @@ uuid_resolver!(MediaAssetKind, media_assets, name);
 uuid_resolver!(DashboardKind, dashboards, name);
 uuid_resolver!(TourKind, tours, name);
 uuid_resolver!(MapPinKind, map_pins, label);
+uuid_resolver!(DocKind, docs, title);
 
 struct DeviceKind;
 #[async_trait]
@@ -299,6 +302,7 @@ fn system_resolvers() -> HashMap<&'static str, Arc<dyn KindResolver>> {
         (KIND_TOUR, Arc::new(TourKind)),
         (KIND_MAP_PIN, Arc::new(MapPinKind)),
         (KIND_FLOW, Arc::new(FlowKind)),
+        (KIND_DOC, Arc::new(DocKind)),
         (KIND_FOLDER, Arc::new(FolderKind)),
     ])
 }
