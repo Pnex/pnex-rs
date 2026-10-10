@@ -482,3 +482,105 @@ async fn ranges_search_and_type_dashboards_reach_objects() {
     })
     .await;
 }
+
+/// D191: a device placement (D43) is mirrored as a temporal `placed_at`
+/// link; moving the device closes it and opens another.
+#[tokio::test]
+#[serial]
+async fn device_placements_become_placed_at_links() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let dev = device(&server, &env, org, "p1").await;
+        env.db
+            .execute_unprepared(&format!(
+                "INSERT INTO map_pins (id, org_id, mode, label, x, y) VALUES
+                   ('00000000-0000-0000-0000-0000000000a1', {org}, 'plan', 'Hall A', 1, 1),
+                   ('00000000-0000-0000-0000-0000000000a2', {org}, 'plan', 'Hall B', 2, 2);
+                 INSERT INTO device_placements (org_id, device_registry_id, device_id, pin_id)
+                   SELECT {org}, id, device_id, '00000000-0000-0000-0000-0000000000a1'
+                   FROM device_registries WHERE device_id = 'p1' AND org_id = {org};"
+            ))
+            .await
+            .unwrap();
+        let (_, now) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/ontology/objects/{dev}/links"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        let placed: Vec<&Value> = now
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|l| l["link_type"] == "placed_at")
+            .collect();
+        assert_eq!(placed.len(), 1, "{now}");
+        assert_eq!(placed[0]["target"]["title"], "Hall A");
+
+        env.db
+            .execute_unprepared(
+                "UPDATE device_placements SET pin_id = '00000000-0000-0000-0000-0000000000a2'",
+            )
+            .await
+            .unwrap();
+        let (_, now) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/ontology/objects/{dev}/links"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        let titles: Vec<&str> = now
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|l| l["link_type"] == "placed_at")
+            .map(|l| l["target"]["title"].as_str().unwrap())
+            .collect();
+        assert_eq!(titles, ["Hall B"]);
+        let (_, hist) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/ontology/objects/{dev}/links?history=true"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(
+            hist.as_array()
+                .unwrap()
+                .iter()
+                .filter(|l| l["link_type"] == "placed_at")
+                .count(),
+            2
+        );
+        // The D42 POI links still list only open placements.
+        env.db
+            .execute_unprepared("DELETE FROM device_placements")
+            .await
+            .unwrap();
+        let (_, now) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/ontology/objects/{dev}/links"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert!(
+            now.as_array()
+                .unwrap()
+                .iter()
+                .all(|l| l["link_type"] != "placed_at"),
+            "{now}"
+        );
+    })
+    .await;
+}

@@ -334,6 +334,15 @@ flows tournent, comme un flow l'est en D143 :
 Candidats suivants, dans cet ordre : notifications (canaux/templates en
 lecture, templates en écriture), annotations/studio, POI (lecture).
 
+**Ontologie (D189, livré 2026-10-10)** : schéma de l'org généré depuis le
+registre (prompt système + `describe_ontology`), `query_ontology`,
+`get_object`, `create_object`, `update_object`, `open_link`,
+`close_link`, `save_object_type` — services du contrôleur
+`/api/v1/ontology`, `expected_version` → 409, schéma réservé aux admins
+d'org, rôle d'écriture du type (D188) re-vérifié ; ni archivage ni
+suppression (un lien fermé reste dans l'historique). Fiche
+`assistant-kb/ontology.md`, test `assistant_works_the_ontology_through_the_ui_services`.
+
 ### 9.4 D145 — conversations
 
 **Modèle** (nouvelle migration, parité PG/SQLite, règles `migrations.md`) :
