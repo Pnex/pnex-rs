@@ -1,15 +1,14 @@
 //! Backends réels de l'`ArtifactStore` (D5 v2) — la crate builder ne porte
 //! que le trait ; les implémentations vivent ici :
 //!
-//! - [`DbStore`] (`db`, défaut) : binaires en base, table
-//!   `firmware_artifacts` — tiers sqlite (tout-en-un) et postgres (pods API
-//!   stateless, n'importe quel réplica sert le download). La clé logique est
-//!   stable par device (`org_{id}/firmware/{device}-firmware.bin`) → `put()`
-//!   est un upsert `ON CONFLICT (key) DO UPDATE` : un rebuild écrase la
-//!   ligne précédente, zéro artefact orphelin. Portable PG (BYTEA) / sqlite
-//!   (BLOB).
+//! - [`DbStore`] (`db`, default): binaries in the database, table
+//!   `firmware_artifacts` (stateless API pods, any replica serves the
+//!   download). The logical key is stable per device
+//!   (`org_{id}/firmware/{device}-firmware.bin`) → `put()` is an
+//!   `ON CONFLICT (key) DO UPDATE` upsert: a rebuild overwrites the previous
+//!   row, zero orphan artifact (BYTEA).
 //! - [`S3Store`] (`s3`, tier industriel) : binaires sur stockage compatible
-//!   S3 (AWS, RustFS, Scaleway…) via opendal. La base (PG ou sqlite) garde
+//!   S3 (AWS, RustFS, Scaleway…) via opendal. La base garde
 //!   données + queue ; seuls les artefacts partent sur S3. Clés logiques
 //!   identiques — la sémantique par device se mappe 1:1 sur PutObject
 //!   (écrasement natif, delete idempotent).
@@ -273,21 +272,18 @@ impl ArtifactStore for S3Store {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use sea_orm::{Database, PaginatorTrait};
 
-    /// Base sqlite mémoire + migrations complètes — double emploi : premier
-    /// test des migrations sur sqlite (tiers hobbyist).
-    async fn migrated_sqlite() -> DatabaseConnection {
-        let db = Database::connect("sqlite::memory:")
+    /// Migrated PostgreSQL test database (same URL as config/test.yaml).
+    pub(crate) async fn migrated_test_db() -> DatabaseConnection {
+        let uri = std::env::var("TEST_DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://pnex:pnex@localhost:5432/pnex_test".into());
+        crate::services::db_lock::migrate_under_lock::<pnex_migration::Migrator>(&uri)
             .await
-            .expect("connect sqlite");
-        use pnex_migration::MigratorTrait;
-        pnex_migration::Migrator::up(&db, None)
-            .await
-            .expect("migrations sqlite");
-        db
+            .expect("migrations");
+        Database::connect(&uri).await.expect("connect test db")
     }
 
     fn oversized() -> Vec<u8> {
@@ -296,7 +292,7 @@ mod tests {
 
     #[tokio::test]
     async fn cycle_complet_et_upsert() {
-        let db = migrated_sqlite().await;
+        let db = migrated_test_db().await;
         let store = DbStore::new(db);
         let key = "org_7/firmware/dev-1-firmware.bin";
 
@@ -323,7 +319,7 @@ mod tests {
 
     #[tokio::test]
     async fn garde_fous_taille_et_cle() {
-        let db = migrated_sqlite().await;
+        let db = migrated_test_db().await;
         let store = DbStore::new(db);
 
         assert!(matches!(

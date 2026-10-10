@@ -5,11 +5,8 @@
 //! D69: typeahead shape `{count, q, groups}` instead of the paginated
 //! envelope. Absent/empty `q` returns an empty 200, never a 400.
 //!
-//! Portability note: never `PgExpr::ilike` — it panics on the sqlite backend
-//! (`PgBinOper::ILike` falls into `unimplemented!()` in sea-query's sqlite
-//! builder). The portable form everywhere is `Func::lower(col) LIKE pattern
-//! ESCAPE '\'` with the pattern lowercased in Rust; sqlite folds ASCII only,
-//! so accented uppercase does not match on the sqlite tier.
+//! Matching is `Func::lower(col) LIKE pattern ESCAPE '\'` with the pattern
+//! lowercased in Rust (shared with the paginated lists).
 //!
 //! Each searchable entity contributes one org-scoped containment query; the
 //! 9 groups (10 SQL queries, edge refs merge two tables) run concurrently
@@ -40,8 +37,7 @@ const MAX_TAKE: i64 = 20;
 /// Candidate overshoot factor: prefix matches must survive the SQL LIMIT
 /// even when newer substring matches exist (SQL fetches recency-first).
 const OVERSHOOT: u64 = 3;
-/// LIKE escape character — PG honors `\` by default; sqlite gets the
-/// explicit ESCAPE clause we emit for both backends.
+/// LIKE escape character (emitted as an explicit ESCAPE clause).
 const LIKE_ESCAPE: char = '\\';
 
 pub fn routes() -> Routes {
@@ -89,8 +85,7 @@ struct Candidate {
 }
 
 /// Escape LIKE wildcards so user `%`, `_` and `\` stay literal. Paired with
-/// `LikeExpr::escape('\\')` (PG honors backslash by default, sqlite needs —
-/// and gets — the emitted ESCAPE clause). The pattern is a bind parameter;
+/// `LikeExpr::escape('\\')`. The pattern is a bind parameter;
 /// this is about wildcard semantics, not injection.
 fn escape_like(term: &str) -> String {
     let mut out = String::with_capacity(term.len() + 8);
@@ -103,9 +98,8 @@ fn escape_like(term: &str) -> String {
     out
 }
 
-/// Case-insensitive containment on one column, portable across PG and
-/// sqlite: `Func::lower(col) LIKE pattern ESCAPE '\'`. NEVER `PgExpr::ilike`
-/// — it panics on sqlite (see module header).
+/// Case-insensitive containment on one column:
+/// `Func::lower(col) LIKE pattern ESCAPE '\'`.
 fn contains_lower(col: impl IntoColumnRef, pattern: &str) -> Expr {
     Expr::expr(Func::lower(Expr::col(col)))
         .like(LikeExpr::new(pattern.to_string()).escape(LIKE_ESCAPE))

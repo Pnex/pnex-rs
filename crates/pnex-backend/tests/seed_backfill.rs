@@ -32,14 +32,7 @@ impl Drop for EnvGuard {
 #[tokio::test]
 #[serial]
 async fn saas_seed_backfills_orgs_without_tier() {
-    let dir = tempfile::tempdir().expect("tmp");
-    let uri = format!(
-        "sqlite://{}/pnex_seed_backfill.sqlite?mode=rwc",
-        dir.path().display()
-    );
-
-    let _guard = EnvGuard::capture(&["TEST_DATABASE_URL", "RAUTHY_URL", "PNEX_DEFAULT_ORG_TIER"]);
-    unsafe { std::env::set_var("TEST_DATABASE_URL", &uri) };
+    let _guard = EnvGuard::capture(&["RAUTHY_URL", "PNEX_DEFAULT_ORG_TIER"]);
     unsafe { std::env::remove_var("PNEX_DEFAULT_ORG_TIER") };
     let base = common::spawn_mock_rauthy().await;
     unsafe { std::env::set_var("RAUTHY_URL", &base) };

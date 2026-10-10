@@ -3,8 +3,7 @@
 //! OTA assignment per device" index, and optimistic version saves that
 //! answer a conflict (never a 500, never a silently overwritten restore).
 //!
-//! Requires PostgreSQL (TEST_DATABASE_URL): the races are only arbitrated
-//! there (advisory locks and row locks are no-ops on sqlite).
+//! Runs against the PostgreSQL test database (TEST_DATABASE_URL).
 
 mod common;
 
@@ -96,16 +95,9 @@ fn graph_json() -> serde_json::Value {
     serde_json::json!({ "nodes": [{ "id": "n1", "kind": "debug", "config": {} }] })
 }
 
-fn is_postgres() -> bool {
-    std::env::var("TEST_DATABASE_URL").is_ok_and(|u| u.starts_with("postgres"))
-}
-
 #[tokio::test]
 #[serial]
 async fn tenant_lock_serializes_same_key_only() {
-    if !is_postgres() {
-        return;
-    }
     with_app(|_server, _auth, ctx| async move {
         let held = TenantLock::acquire(
             &ctx.db,
@@ -165,9 +157,6 @@ async fn tenant_lock_serializes_same_key_only() {
 #[tokio::test]
 #[serial]
 async fn flow_deploy_waits_for_the_org_lock() {
-    if !is_postgres() {
-        return;
-    }
     with_app(|server, auth, ctx| async move {
         let org = personal_org(&server, &auth).await;
         let res = server
@@ -370,9 +359,6 @@ async fn dashboard_save_never_overwrites_a_concurrent_restore() {
 #[tokio::test]
 #[serial]
 async fn concurrent_flow_saves_conflict_instead_of_500() {
-    if !is_postgres() {
-        return;
-    }
     with_app(|server, auth, ctx| async move {
         use pnex_backend::services::flow::{self, FlowWriteError};
         let org = personal_org(&server, &auth).await;
@@ -417,25 +403,16 @@ async fn concurrent_flow_saves_conflict_instead_of_500() {
 #[tokio::test]
 #[serial]
 async fn boot_migrations_serialize_under_the_lock() {
-    if !is_postgres() {
-        return;
-    }
-    with_app(|_server, _auth, _ctx| async move {
-        let uri = std::env::var("TEST_DATABASE_URL").unwrap();
+    with_app(|_server, _auth, ctx| async move {
+        let uri = ctx.config.database.uri.clone();
         // Two pods booting together: both wait for the lock in turn and
         // find nothing left to apply (the app boot already migrated).
         let (a, b) = tokio::join!(
             db_lock::migrate_under_lock::<pnex_migration::Migrator>(&uri),
             db_lock::migrate_under_lock::<pnex_migration::Migrator>(&uri),
         );
-        assert!(a.expect("pod a"));
-        assert!(b.expect("pod b"));
-        // Off Postgres the framework path is kept.
-        assert!(
-            !db_lock::migrate_under_lock::<pnex_migration::Migrator>("sqlite://x.db?mode=rwc")
-                .await
-                .unwrap()
-        );
+        a.expect("pod a");
+        b.expect("pod b");
     })
     .await;
 }

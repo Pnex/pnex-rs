@@ -4,8 +4,8 @@
 //!   offline-safe (delivered at the next announce, not a 409 like pins
 //!   commands);
 //! - the device-token download route — same auth posture as `/ws/device`
-//!   (`authenticate_device`), works on the `db` ArtifactStore backend
-//!   (sqlite-on-Pi reference) and on `s3`, no presigned URLs.
+//!   (`authenticate_device`), works on the `db` ArtifactStore backend and
+//!   on `s3`, no presigned URLs.
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;

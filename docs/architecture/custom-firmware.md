@@ -45,8 +45,7 @@ fonctions (flow → fonction) :
   caméra…) dans la version exacte du serveur ;
 - la **board** vient de la variante figée du device (aucune nouveauté) ;
 - il choisit des **libs additionnelles** dans un catalogue épinglé ;
-- le code est **versionné en base** (Postgres, ou sqlite pour le tier
-  hobbyiste), chaque build pointe une révision immuable ;
+- le code est **versionné en base** (PostgreSQL), chaque build pointe une révision immuable ;
 - compilation, diagnostics par ligne, flash USB ou OTA — tout depuis l'UI.
 
 Estimation de couverture : un `main.cpp` + un catalogue de libs courantes
@@ -220,8 +219,6 @@ firmware_revisions      -- append-only
 - Sauvegarde = nouvelle révision si le hash change (auto-save brouillon
   côté front, révision explicite au « Enregistrer » ou au build).
 - Suppression d'un projet : refusée (409) tant qu'un device y est rattaché.
-- Portabilité sqlite ↔ PG : types simples (text/json/uuid), pas de
-  fonctionnalité PG-only (cf. piège migration 000029).
 
 ## 6. Build depuis une révision
 

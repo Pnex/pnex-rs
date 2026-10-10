@@ -1,5 +1,5 @@
 //! Magasin d'artefacts (D5 v2) : l'abstraction only — les implémentations
-//! réelles (`db` sur sqlite/postgres, `s3` via opendal) vivent côté
+//! réelles (`db` sur postgres, `s3` via opendal) vivent côté
 //! pnex-backend ; cette crate reste volontairement sans dépendance DB ni
 //! cloud, [`InMemoryStore`] sert aux tests du pipeline.
 //!

@@ -31,7 +31,6 @@ crates/pnex-frontend/assets/.map-worker.*
 # Runtime state and secrets
 crates/pnex-backend/flow-state/
 crates/pnex-backend/storage/
-**/*.sqlite
 .env
 .env.*
 deploy/edge/pki-data/

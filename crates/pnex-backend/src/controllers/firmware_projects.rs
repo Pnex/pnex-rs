@@ -276,13 +276,7 @@ async fn delete(
         )
             .into_response());
     }
-    // sqlite: no FK on current_revision_id — clear the pointer, then the
-    // revisions go with the project (FK cascade on firmware_project_id).
-    firmware_revisions::Entity::delete_many()
-        .filter(firmware_revisions::Column::FirmwareProjectId.eq(p.id))
-        .exec(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
+    // Revisions go with the project (FK cascade on firmware_project_id).
     firmware_projects::Entity::delete_by_id(p.id)
         .exec(&ctx.db)
         .await

@@ -1405,9 +1405,8 @@ mod tests {
     /// noms tentants (« deploy_flow », « run_sql », « http »).
     #[tokio::test]
     async fn execute_refuse_les_noms_hors_registre() {
-        let db = sea_orm::Database::connect("sqlite::memory:")
-            .await
-            .expect("sqlite mémoire");
+        // Refused before any query: no database needed.
+        let db = sea_orm::DatabaseConnection::default();
         let deps = ToolDeps {
             db: &db,
             org_id: 1,

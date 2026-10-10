@@ -107,13 +107,10 @@ impl Hooks for App {
         // serialize), then loco's own unlocked auto-migrate is disabled.
         // `dangerously_recreate` keeps the framework path (tests only).
         if config.database.auto_migrate && !config.database.dangerously_recreate {
-            let migrated =
-                crate::services::db_lock::migrate_under_lock::<Migrator>(&config.database.uri)
-                    .await
-                    .map_err(|e| loco_rs::Error::Message(format!("boot migration failed: {e}")))?;
-            if migrated {
-                config.database.auto_migrate = false;
-            }
+            crate::services::db_lock::migrate_under_lock::<Migrator>(&config.database.uri)
+                .await
+                .map_err(|e| loco_rs::Error::Message(format!("boot migration failed: {e}")))?;
+            config.database.auto_migrate = false;
         }
         create_app::<Self, Migrator>(mode, environment, config).await
     }
@@ -302,83 +299,31 @@ impl Hooks for App {
     async fn truncate(ctx: &AppContext) -> Result<()> {
         // Utilisé par les tests (config `dangerously_truncate`) : vide toutes
         // les tables applicatives (migrations + queue loco exclues), ids
-        // réinitialisés pour des tests déterministes. Portable PG/sqlite :
-        // catalogue de tables par backend, puis TRUNCATE côté PG ou DELETE
-        // dans UNE transaction avec `PRAGMA defer_foreign_keys` côté sqlite
-        // (le pool peut répartir des statements hors transaction sur
-        // plusieurs connexions — une transaction épingle une seule connexion).
-        use sea_orm::{ConnectionTrait, DatabaseBackend, Statement, TransactionTrait};
-        let backend = ctx.db.get_database_backend();
-        // Tables internes exclues : suivi des migrations + queue loco (pg/sqlt).
-        let excluded = [
-            "seaql_migrations",
-            "pg_loco_queue",
-            "sqlt_loco_queue",
-            "sqlt_loco_queue_lock",
-        ];
-        let (sql, col) = match backend {
-            DatabaseBackend::Sqlite => (
-                "SELECT name FROM sqlite_master WHERE type = 'table' \
-                 AND name NOT LIKE 'sqlite_%'",
-                "name",
-            ),
-            _ => (
-                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'",
-                "tablename",
-            ),
-        };
+        // réinitialisés pour des tests déterministes.
+        use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+        // Excluded internal tables: migration tracking + loco queue.
+        let excluded = ["seaql_migrations", "pg_loco_queue"];
         let rows = ctx
             .db
-            .query_all_raw(Statement::from_string(backend, sql.to_string()))
+            .query_all_raw(Statement::from_string(
+                DatabaseBackend::Postgres,
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'",
+            ))
             .await?;
         let tables: Vec<String> = rows
             .iter()
-            .filter_map(|row| row.try_get::<String>("", col).ok())
+            .filter_map(|row| row.try_get::<String>("", "tablename").ok())
             .filter(|t| !excluded.contains(&t.as_str()))
             .collect();
         if tables.is_empty() {
             return Ok(());
         }
-        match backend {
-            DatabaseBackend::Sqlite => {
-                ctx.db
-                    .transaction(|txn| {
-                        Box::pin(async move {
-                            // Désaxe les FK pour la durée des DELETE (l'ordre
-                            // des tables devient indifférent, repositionné au
-                            // commit). Reset des autoincrement best-effort —
-                            // sqlite_sequence n'existe qu'avec AUTOINCREMENT.
-                            txn.execute_unprepared("PRAGMA defer_foreign_keys = ON")
-                                .await?;
-                            for t in &tables {
-                                txn.execute_unprepared(&format!(r#"DELETE FROM "{t}""#))
-                                    .await?;
-                            }
-                            let names = tables
-                                .iter()
-                                .map(|t| format!("'{t}'"))
-                                .collect::<Vec<_>>()
-                                .join(", ");
-                            let _ = txn
-                                .execute_unprepared(&format!(
-                                    "DELETE FROM sqlite_sequence WHERE name IN ({names})"
-                                ))
-                                .await;
-                            Ok::<(), sea_orm::DbErr>(())
-                        })
-                    })
-                    .await
-                    .map_err(|e| loco_rs::Error::Message(e.to_string()))?;
-            }
-            _ => {
-                ctx.db
-                    .execute_unprepared(&format!(
-                        "TRUNCATE {} RESTART IDENTITY CASCADE",
-                        tables.join(", ")
-                    ))
-                    .await?;
-            }
-        }
+        ctx.db
+            .execute_unprepared(&format!(
+                "TRUNCATE {} RESTART IDENTITY CASCADE",
+                tables.join(", ")
+            ))
+            .await?;
         // Ids restart: liveness leases of the previous test must go too.
         crate::services::device_liveness::init(&ctx.config).await?;
         crate::services::device_liveness::clear_all().await?;

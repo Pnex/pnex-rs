@@ -10,7 +10,7 @@
 //! - POI **géo uniquement** en V1 (`mode="geo"`) — `mode`/`x`/`y` restent en
 //!   base pour les plans futurs sans hiérarchie (CHECK `chk_map_pins_mode_coords`) ;
 //! - D43 : un device = **un seul** placement (`device_placements`
-//!   UNIQUE `device_registry_id`, PG **et** sqlite) mais un POI porte
+//!   UNIQUE `device_registry_id`) mais un POI porte
 //!   **plusieurs** devices ; `location_detail` par placement (in-site) ;
 //!   device résolu dans `device_registries` de l'org. Amendement
 //!   2026-09-13 : le **détachement** existe (DELETE placement, le device

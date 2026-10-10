@@ -1,15 +1,13 @@
 //! Baseline schema of 0.1.0 (cut 2026-10-09): every pre-release migration
 //! collapsed into one plain-SQL script per backend, with the pre-vault
 //! leftovers removed (`ai_connectors`, plaintext
-//! `wifi_credentials.wifi_password`), the compatibility columns dropped
-//! and the SQLite drift fixed (dead tables dropped, missing columns and
-//! foreign keys restored).
+//! `wifi_credentials.wifi_password`) and the compatibility columns
+//! dropped. PostgreSQL only (decision #19).
 
 use sea_orm_migration::prelude::*;
 use sea_orm_migration::sea_orm::DatabaseBackend;
 
 const POSTGRES: &str = include_str!("baseline/postgres.sql");
-const SQLITE: &str = include_str!("baseline/sqlite.sql");
 /// Tables of the baseline, in creation order (`down` drops them reversed).
 const TABLES: &str = include_str!("baseline/tables.txt");
 /// PostgreSQL enum types of the baseline.
@@ -32,7 +30,6 @@ impl MigrationTrait for Migration {
     async fn up(&self, m: &SchemaManager) -> Result<(), DbErr> {
         let script = match m.get_database_backend() {
             DatabaseBackend::Postgres => POSTGRES,
-            DatabaseBackend::Sqlite => SQLITE,
             other => {
                 return Err(DbErr::Migration(format!(
                     "unsupported database backend: {other:?}"
@@ -46,28 +43,16 @@ impl MigrationTrait for Migration {
     async fn down(&self, m: &SchemaManager) -> Result<(), DbErr> {
         let db = m.get_connection();
         let tables: Vec<&str> = TABLES.lines().filter(|l| !l.is_empty()).rev().collect();
-        match m.get_database_backend() {
-            DatabaseBackend::Postgres => {
-                db.execute_unprepared(&format!(
-                    "DROP TABLE IF EXISTS {} CASCADE",
-                    tables.join(", ")
-                ))
-                .await?;
-                db.execute_unprepared(&format!(
-                    "DROP TYPE IF EXISTS {} CASCADE",
-                    PG_TYPES.join(", ")
-                ))
-                .await?;
-            }
-            _ => {
-                db.execute_unprepared("PRAGMA foreign_keys = OFF").await?;
-                for table in tables {
-                    db.execute_unprepared(&format!("DROP TABLE IF EXISTS \"{table}\""))
-                        .await?;
-                }
-                db.execute_unprepared("PRAGMA foreign_keys = ON").await?;
-            }
-        }
+        db.execute_unprepared(&format!(
+            "DROP TABLE IF EXISTS {} CASCADE",
+            tables.join(", ")
+        ))
+        .await?;
+        db.execute_unprepared(&format!(
+            "DROP TYPE IF EXISTS {} CASCADE",
+            PG_TYPES.join(", ")
+        ))
+        .await?;
         Ok(())
     }
 }

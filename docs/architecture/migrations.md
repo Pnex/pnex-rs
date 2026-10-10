@@ -23,27 +23,23 @@ les règles du §2 s'appliquent à partir de la 0.1.0.
 
 Les 50 migrations de la phase de développement (août → octobre 2026) sont
 remplacées par **une seule migration de base** (aujourd'hui
-`m20261009_000001_baseline`, voir §0), qui exécute un script SQL par moteur :
+`m20261009_000001_baseline`, voir §0), qui exécute un script SQL
+PostgreSQL :
 
 - `crates/pnex-backend/migration/src/baseline/postgres.sql`
-- `crates/pnex-backend/migration/src/baseline/sqlite.sql`
 - `crates/pnex-backend/migration/src/baseline/tables.txt` (ordre de
   création, utilisé par `down()`)
 
 Le script PG a été généré depuis la chaîne historique (`pg_dump
---schema-only`) puis nettoyé ; le script SQLite a été réaligné sur PG. Au
-passage :
+--schema-only`) puis nettoyé. Au passage :
 
 - reliquats pré-coffre supprimés : table `ai_connectors`, colonne
   `wifi_credentials.wifi_password`, reprises au boot (`takeover_at_boot`
   et les 4 `takeover` notify/flow/wifi/llm), champ en clair des jobs de
   build ;
 - `llm_providers.org_id` NOT NULL (D119 : pas de LLM plateforme) ;
-- **dérive SQLite corrigée** : 11 tables mortes que seul PG supprimait
-  (`sites`, `buildings`, `viz_links`…), `map_pins.site_id` NOT NULL vers
-  une table disparue (création de POI impossible en SQLite), colonnes
-  `annotation_layers.media_asset_id/tour_id` et `map_pins.preview_*`
-  manquantes, 7 clés étrangères ajoutées par `ALTER` jamais propagées.
+- le script SQLite de l'époque (dérive corrigée) a été retiré le
+  2026-10-10 avec tout le support SQLite (décision #19).
 
 Toute base créée avant la release doit être **recréée** (`task db:reset`) ;
 les données OpenObserve et RustFS ne sont pas concernées.
@@ -57,19 +53,12 @@ les données OpenObserve et RustFS ne sont pas concernées.
    ou avec défaut, une table, un index : une migration. Retirer ou
    renommer : en deux releases — (a) le code cesse de lire/écrire
    l'ancien élément, (b) une migration ultérieure le supprime.
-3. ~~**Les deux moteurs, toujours.**~~ **Caduque depuis le 2026-10-10**
-   (décision #19 de `roadmap.md`) : PostgreSQL seul, SQLite abandonné ;
-   une nouvelle migration n'écrit plus de branche SQLite. Le retrait du
-   script SQLite et du test de parité passe donc avant la prochaine
-   migration. Règle d'origine : chaque `up()` est écrit pour
-   PostgreSQL **et** SQLite. SQLite ne sait ni ajouter une FK ni modifier
-   une colonne par `ALTER` : reconstruire la table (créer la nouvelle,
-   copier, supprimer, renommer) plutôt que de sauter l'étape sur SQLite.
-   Le test `migration/tests/schema_parity.rs` (tables, colonnes, FK
-   identiques sur les deux moteurs) est **bloquant**.
+3. **PostgreSQL seul** (décision #19 de `roadmap.md`, 2026-10-10) :
+   SQL PostgreSQL natif (JSONB, `ILIKE`, FK par `ALTER`, PostGIS à
+   venir) ; aucune branche par moteur. Le script SQLite, le test de
+   parité et le smoke test SQLite ont été retirés le 2026-10-10.
 4. **Énumérations.** Les 8 types `ENUM` PG de la base sont conservés ;
-   ajouter une valeur = `ALTER TYPE … ADD VALUE IF NOT EXISTS` (PG) et
-   rien en SQLite (texte). Pour une **nouvelle** énumération, préférer une
+   ajouter une valeur = `ALTER TYPE … ADD VALUE IF NOT EXISTS`. Pour une **nouvelle** énumération, préférer une
    colonne `varchar` + validation applicative : aucune migration pour
    ajouter une valeur.
 5. **Conventions.** Tables au pluriel, `org_id bigint NOT NULL` + FK
@@ -84,7 +73,7 @@ les données OpenObserve et RustFS ne sont pas concernées.
    migration destructive documente qu'elle n'est pas réversible.
 8. Après la migration : `task db:entities` (ou édition à la main des
    entités), puis `cargo test -p pnex-migration` (invariants, aller-retour
-   de la base, parité PG/SQLite).
+   de la base).
 
 ## 3. Ouvertures prévues
 

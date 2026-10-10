@@ -48,8 +48,6 @@ crates/pnex-frontend/assets/.map-worker.js
 crates/pnex-frontend/assets/.map-worker.txt
 crates/pnex-frontend/assets/map.css
 
-# DB sqlite de dev créée par pnex-server (cwd backend)
-crates/pnex-backend/pnex.sqlite
 crates/pnex-backend/storage/
 # Clones de référence (licences incompatibles — concepts seulement, jamais compilés ni commités)
 /Panorama/

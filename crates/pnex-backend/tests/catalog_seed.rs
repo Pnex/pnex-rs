@@ -35,14 +35,7 @@ impl Drop for EnvGuard {
 #[tokio::test]
 #[serial]
 async fn seed_writes_the_typed_catalog_idempotently() {
-    let dir = tempfile::tempdir().expect("tmp");
-    let uri = format!(
-        "sqlite://{}/pnex_catalog_seed.sqlite?mode=rwc",
-        dir.path().display()
-    );
-
-    let _guard = EnvGuard::capture(&["TEST_DATABASE_URL", "RAUTHY_URL"]);
-    unsafe { std::env::set_var("TEST_DATABASE_URL", &uri) };
+    let _guard = EnvGuard::capture(&["RAUTHY_URL"]);
     let base = common::spawn_mock_rauthy().await;
     unsafe { std::env::set_var("RAUTHY_URL", &base) };
 

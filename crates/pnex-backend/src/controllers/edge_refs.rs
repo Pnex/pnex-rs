@@ -634,12 +634,10 @@ struct ListQuery {
     offset: Option<String>,
 }
 
-/// Course d'upsert : 2 POST concurrents passent le find ensemble, l'index
-/// unique fait échouer l'INSERT de l'un — portable PG (`duplicate key`) +
-/// sqlite (`UNIQUE constraint failed`).
+/// Upsert race: two concurrent POSTs pass the find together, the unique
+/// index fails the INSERT of one of them.
 fn is_unique_violation(e: &sea_orm::DbErr) -> bool {
-    let msg = e.to_string();
-    msg.contains("duplicate key") || msg.contains("UNIQUE constraint failed")
+    e.to_string().contains("duplicate key")
 }
 
 // ───────────────────────── Scan LAN (server-side) ─────────────────────

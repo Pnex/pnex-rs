@@ -70,16 +70,15 @@ Cinq primitives, et rien d'autre dans le noyau :
 | **Provenance** | D'où vient chaque fait, et peut-on le rejouer ? |
 
 Positionnement : une plateforme **de l'edge à l'ontologie**, open source
-(MIT), souveraine, qui tient sur un Raspberry Pi en tier sqlite et monte
-en cluster en tier Postgres. Le capteur à 3 € et l'objet métier vivent
+(MIT), souveraine, qui tient sur un Raspberry Pi et monte en cluster,
+sur PostgreSQL dans les deux cas (décision #19). Le capteur à 3 € et l'objet métier vivent
 dans le même modèle.
 
 ## 3. Non-objectifs
 
 - La parité fonctionnelle avec Palantir ou ArgonOS.
-- Une base graphe dédiée : le tier sqlite (Pi, tout-en-un) l'interdit ;
-  tout reste portable PG/sqlite (école D69 : pas de SQL spécifique non
-  gardé).
+- Une base graphe dédiée : tout reste dans PostgreSQL (CTE récursives,
+  JSONB).
 - Un environnement de code de type notebook ou workbook : le calcul
   passe par les flows et les fonctions existants.
 - La fédération inter-orgs (partage d'objets entre organisations) : plus
@@ -120,7 +119,7 @@ dans le même modèle.
   l'UI, elles, voient un modèle **uniforme** par `ResourceRef`.
 - Garde-fou anti-EAV : les propriétés sont un **document JSONB validé
   par schéma**, pas une table ligne-par-propriété ; index GIN (PG) sur
-  les propriétés déclarées `indexed`, scan Rust en sqlite (école D42).
+  les propriétés déclarées `indexed`.
 
 ### D178 — Propriétés typées, y compris les propriétés temporelles
 
@@ -212,7 +211,7 @@ devient une primitive de lecture du noyau, pas une fonction média.
   chiffre / ce lien ». C'est la condition pour Repère (fait sourcé et
   rejouable) comme pour l'audit industriel.
 
-### D185 — Une API de requête sur l'ontologie, portable PG/sqlite
+### D185 — Une API de requête sur l'ontologie
 
 `POST /api/v1/ontology/query`, requête JSON déclarative (pas de langage
 textuel en V1) :
@@ -223,8 +222,7 @@ textuel en V1) :
 - jointure temporelle : dernière valeur, agrégat sur fenêtre ou sur
   plage (D182) des propriétés `series`.
 
-Implémentation : SQL portable + CTE récursives bornées en PG, parcours
-Rust en sqlite (école D42) ; les agrégats temporels sont délégués à O2.
+Implémentation : CTE récursives bornées en PostgreSQL ; les agrégats temporels sont délégués à O2.
 La recherche globale (D69) s'étend aux objets. Le schéma de la requête
 vit dans `pnex-core` : l'UI, l'assistant et les flows (nœud
 `ontology-query`) parlent le même langage.
@@ -310,7 +308,7 @@ migration destructrice »), la 0.2.0 **migre les données**.
 - API : les routes `/api/v1/resources/*` restent servies pendant toute
   la 0.2.x (adaptateur), marquées dépréciées ; `CONTRACT` est incrémenté
   pour les nouvelles routes `/api/v1/ontology/*`.
-- Migration testée sur une base 0.1 réelle (fixture) en PG **et** sqlite.
+- Migration testée sur une base 0.1 réelle (fixture).
 
 ## 5. Modèle de données (récapitulatif)
 
@@ -347,7 +345,7 @@ migration destructrice »), la 0.2.0 **migre les données**.
 | Lot | Contenu | Sortie |
 |---|---|---|
 | **L0** | Spike : types en données dérivant le `KindSpec` existant, sans changement fonctionnel | registre généré identique au registre codé (test d'égalité) |
-| **L1** | D176–D178 : types, objets, propriétés scalaires, éditeur de types, YAML | créer « Pompe » et 100 objets en UI et en YAML, PG + sqlite |
+| **L1** | D176–D178 : types, objets, propriétés scalaires, éditeur de types, YAML | créer « Pompe » et 100 objets en UI et en YAML |
 | **L2** | D179–D180 : types de liens, validité temporelle, migration `placed_on` / `placed_at` | requête `as_of` correcte sur liens fermés |
 | **L3** | D178 temporel + D181 : propriétés `series`/`events`, liaisons device → objet | remplacement de capteur sans rupture de courbe |
 | **L4** | D185–D187 : API de requête, explorateur, dashboards de type | dashboard de type Pompe, recherche globale sur objets |
@@ -365,8 +363,7 @@ implémentation commence après L1.
   Parade : types système dans leurs tables (D177), packs concrets dès la
   0.2.0, pas de langage de requête textuel en V1.
 - **Performance du JSONB** sur gros volumes : index GIN uniquement sur
-  propriétés `indexed`, mesures sur 100 k objets en PG et 10 k en
-  sqlite avant la release.
+  propriétés `indexed`, mesures sur 100 k objets avant la release.
 - **Dispersion** : la 0.2.0 est un chantier de noyau ; aucun nouveau
   pilier fonctionnel ne démarre pendant sa réalisation (seuls les
   correctifs et la finition des piliers existants).

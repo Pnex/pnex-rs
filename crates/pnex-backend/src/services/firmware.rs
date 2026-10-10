@@ -5,9 +5,8 @@
 //! monorepo — cf. `pnex_firmware_builder::embedded`). Pas de sélecteur :
 //! une version du serveur compile la version du firmware qui l'accompagne.
 //!
-//! Storage (D5 v2, trois tiers de déploiement) : `db` (défaut — les
-//! binaires vivent dans la base, table `firmware_artifacts` ; tiers sqlite
-//! tout-en-un et postgres multi-pods stateless) ou `s3` (tier industriel —
+//! Storage (D5 v2): `db` (default: binaries live in the database, table
+//! `firmware_artifacts`, stateless multi-pod) or `s3` (industrial tier —
 //! artefacts sur S3-compatible via opendal, cf. `services::artifact_store`).
 //! `PNEX_STORAGE_BACKEND` (env) **surcharge** `storage.backend` de la config.
 //! Aucun système de migration/réconciliation entre backends : on choisit
@@ -257,9 +256,8 @@ impl FirmwareSettings {
         settings
     }
 
-    /// Magasin d'artefacts selon le backend (`db` | `s3`). Le backend `db`
-    /// a besoin de la connexion de l'app (tiers sqlite ou postgres) ; le
-    /// backend `s3` valide sa configuration à la construction.
+    /// Artifact store per backend (`db` | `s3`). `db` needs the app's
+    /// connection; `s3` validates its configuration at construction.
     pub fn store(&self, db: &DatabaseConnection) -> Result<Arc<dyn ArtifactStore>, String> {
         match self.storage_backend.as_str() {
             "db" => Ok(Arc::new(DbStore::new(db.clone())) as Arc<dyn ArtifactStore>),
@@ -283,19 +281,12 @@ impl FirmwareSettings {
 mod tests {
     use super::*;
 
-    /// Sélecteur de magasin : db opérationnel (put/get réels sur sqlite
-    /// mémoire migrée), s3 validé à la construction (config incomplète →
-    /// erreur explicite, complète → operator), inconnu rejeté. Défauts :
-    /// db / pio / 900 s.
+    /// Store selector: db works (real put/get on the test database), s3 is
+    /// validated at construction (incomplete config → explicit error,
+    /// complete → operator), unknown is rejected. Defaults: db / pio / 900 s.
     #[tokio::test]
     async fn selecteur_de_magasin() {
-        let db = sea_orm::Database::connect("sqlite::memory:")
-            .await
-            .expect("sqlite");
-        use pnex_migration::MigratorTrait;
-        pnex_migration::Migrator::up(&db, None)
-            .await
-            .expect("migrations");
+        let db = crate::services::artifact_store::tests::migrated_test_db().await;
 
         let mut settings = FirmwareSettings::default();
         assert_eq!(settings.storage_backend, "db");

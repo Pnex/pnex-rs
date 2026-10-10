@@ -2,13 +2,12 @@
 #![allow(clippy::wildcard_imports)]
 //! SeaORM migrations of the PNeX backend (Loco).
 //!
-//! `m20261009_000001_baseline` is the whole schema of 0.1.0, as plain SQL
-//! per backend (`baseline/postgres.sql`, `baseline/sqlite.sql`, kept
-//! identical in shape by `tests/schema_parity.rs`). It replaces the
+//! `m20261009_000001_baseline` is the whole schema of 0.1.0, as plain
+//! PostgreSQL (`baseline/postgres.sql`). It replaces the
 //! pre-release chain: a database created before it is refused (its applied
 //! migrations no longer exist) and must be recreated. Every later change
-//! is a new migration following docs/architecture/migrations.md, always
-//! written for both PostgreSQL and SQLite.
+//! is a new migration following docs/architecture/migrations.md.
+//! PostgreSQL is the only supported backend (decision #19).
 
 pub use sea_orm_migration::prelude::*;
 
