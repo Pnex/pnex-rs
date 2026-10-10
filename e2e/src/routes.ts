@@ -11,6 +11,7 @@ export const ROUTES: RouteCase[] = [
   { path: '/visualisation', title: 'nav-quick-charts' },
   { path: '/map', title: 'viz-map-title' },
   { path: '/dashboards', title: 'nav-dashboards' },
+  { path: '/pages', title: 'docs-title' },
   { path: '/media', title: 'media-title' },
   { path: '/cameras', title: 'cameras-title' },
   { path: '/models', title: 'models-title' },
