@@ -4,12 +4,14 @@
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Json;
 use loco_rs::controller::{format, ErrorDetail};
 use loco_rs::prelude::*;
 use pnex_core::err_codes;
-use pnex_core::media_ingest::{AsrProfileInput, MediaSegment, MediaStreamInput, SegmentState};
+use pnex_core::media_ingest::{
+    AsrModelInput, AsrProfileInput, MediaSegment, MediaStreamInput, SegmentState,
+};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
 use uuid::Uuid;
@@ -17,8 +19,10 @@ use uuid::Uuid;
 use crate::auth::OrgContext;
 use crate::controllers::pagination;
 use crate::models::_entities::media_segments;
+use crate::services::media_ingest::models::{self, ModelError};
 use crate::services::media_ingest::profiles::{self, ProfileError};
 use crate::services::media_ingest::streams::{self, Author, StreamError};
+use crate::services::media_ingest::transcripts;
 use crate::services::media_ingest::MediaIngestSettings;
 
 pub fn routes() -> Routes {
@@ -30,6 +34,13 @@ pub fn routes() -> Routes {
             get(stream_get).patch(stream_update).delete(stream_delete),
         )
         .add("/media/streams/{id}/segments", get(segment_list))
+        .add("/media/transcripts", get(transcript_search))
+        .add("/asr/models", get(model_list).post(model_create))
+        .add(
+            "/asr/models/{id}",
+            get(model_get).patch(model_update).delete(model_delete),
+        )
+        .add("/asr/models/{id}/check", post(model_check))
         .add("/asr/profiles", get(profile_list).post(profile_create))
         .add(
             "/asr/profiles/{id}",
@@ -372,5 +383,217 @@ async fn profile_delete(
     match profiles::delete(&ctx.db, org.org.id, id).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => profile_error(e),
+    }
+}
+
+// ───────────────────────────── Audio models ─────────────────────────────
+
+fn model_error(e: ModelError) -> Result<Response> {
+    match e {
+        ModelError::Invalid { field: f, token } => field(f, &token),
+        ModelError::NotFound => Err(detail(
+            StatusCode::NOT_FOUND,
+            err_codes::ASR_MODEL_NOT_FOUND,
+            "Audio model not found.",
+        )),
+        ModelError::NameTaken => Err(detail(
+            StatusCode::CONFLICT,
+            err_codes::ASR_MODEL_NAME_TAKEN,
+            "A model of the org already has this name.",
+        )),
+        ModelError::Unsupported => Err(detail(
+            StatusCode::BAD_REQUEST,
+            err_codes::ASR_MODEL_UNSUPPORTED,
+            "The file is not a supported audio model.",
+        )),
+        ModelError::Db(e) => db_error(e),
+    }
+}
+
+/// `GET /api/v1/asr/models` — every member.
+async fn model_list(State(ctx): State<AppContext>, org: OrgContext) -> Result<Response> {
+    match models::list(&ctx.db, org.org.id).await {
+        Ok(rows) => format::json(rows.iter().map(models::view).collect::<Vec<_>>()),
+        Err(e) => db_error(e),
+    }
+}
+
+/// `GET /api/v1/asr/models/{id}` — every member.
+async fn model_get(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    match models::find(&ctx.db, org.org.id, id).await {
+        Ok(row) => format::json(models::view(&row)),
+        Err(e) => model_error(e),
+    }
+}
+
+/// `POST /api/v1/asr/models` — `can_write`. The files are read and the
+/// model checked before the answer (family read, never typed).
+async fn model_create(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Json(input): Json<AsrModelInput>,
+) -> Result<Response> {
+    require_write(&org)?;
+    match models::create(&ctx, org.org.id, &input).await {
+        Ok(row) => Ok((StatusCode::CREATED, format::json(models::view(&row))).into_response()),
+        Err(e) => model_error(e),
+    }
+}
+
+/// `PATCH /api/v1/asr/models/{id}` — `can_write` (name, description,
+/// license; the file never changes).
+async fn model_update(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<AsrModelInput>,
+) -> Result<Response> {
+    require_write(&org)?;
+    match models::update(&ctx, org.org.id, id, &input).await {
+        Ok(row) => format::json(models::view(&row)),
+        Err(e) => model_error(e),
+    }
+}
+
+/// `DELETE /api/v1/asr/models/{id}` — `can_write`.
+async fn model_delete(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    require_write(&org)?;
+    match models::delete(&ctx, org.org.id, id).await {
+        Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
+        Err(e) => model_error(e),
+    }
+}
+
+/// `POST /api/v1/asr/models/{id}/check` — `can_write`: reload the model and
+/// transcribe the reference sample on this server.
+async fn model_check(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    require_write(&org)?;
+    let row = match models::find(&ctx.db, org.org.id, id).await {
+        Ok(row) => row,
+        Err(e) => return model_error(e),
+    };
+    match models::run_check(&ctx, row).await {
+        Ok(row) => format::json(models::view(&row)),
+        Err(e) => model_error(e),
+    }
+}
+
+// ───────────────────────────── Transcripts ─────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct TranscriptQuery {
+    /// Comma-separated slugs; empty = every stream of the org.
+    stream: Option<String>,
+    q: Option<String>,
+    /// RFC 3339 bounds.
+    from: Option<String>,
+    to: Option<String>,
+    limit: Option<String>,
+    offset: Option<String>,
+}
+
+fn parse_time(
+    field: &'static str,
+    raw: Option<&str>,
+) -> std::result::Result<Option<i64>, &'static str> {
+    match raw.map(str::trim).filter(|s| !s.is_empty()) {
+        None => Ok(None),
+        Some(s) => chrono::DateTime::parse_from_rfc3339(s)
+            .map(|t| Some(t.timestamp_micros()))
+            .map_err(|_| field),
+    }
+}
+
+/// `GET /api/v1/media/transcripts` — every member. Slugs are resolved to
+/// stream rows of the org; O2 stream names are built server side (D165).
+async fn transcript_search(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<TranscriptQuery>,
+) -> Result<Response> {
+    let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let text = q.q.as_deref().map(str::trim).filter(|t| !t.is_empty());
+    if text.is_some_and(|t| t.chars().count() > transcripts::QUERY_MAX) {
+        return field(
+            "q",
+            &format!("{}:{}", err_codes::FIELD_MAX_LENGTH, transcripts::QUERY_MAX),
+        );
+    }
+    let (from_us, to_us) = match (
+        parse_time("from", q.from.as_deref()),
+        parse_time("to", q.to.as_deref()),
+    ) {
+        (Ok(f), Ok(t)) => (f, t),
+        (Err(f), _) | (_, Err(f)) => return field(f, err_codes::FIELD_INVALID),
+    };
+    let rows = match streams::select(org.org.id).all(&ctx.db).await {
+        Ok(rows) => rows,
+        Err(e) => return db_error(e),
+    };
+    let wanted: Vec<String> = q
+        .stream
+        .as_deref()
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    let slugs: Vec<String> = if wanted.is_empty() {
+        rows.iter().map(|r| r.slug.clone()).collect()
+    } else {
+        // Unknown slugs: the hidden 404 of a stream that is not the org's.
+        for w in &wanted {
+            if !rows.iter().any(|r| &r.slug == w) {
+                return stream_error(StreamError::NotFound);
+            }
+        }
+        wanted.clone()
+    };
+    let query = transcripts::Query {
+        slugs,
+        text: text.map(str::to_string),
+        from_us,
+        to_us,
+        offset: page.offset,
+        limit: page.limit,
+    };
+    match transcripts::search(&ctx, org.org.id, &query).await {
+        Ok((count, results)) => {
+            let mut filters = Vec::new();
+            if !wanted.is_empty() {
+                filters.push(("stream".to_string(), wanted.join(",")));
+            }
+            if let Some(t) = text {
+                filters.push(("q".to_string(), t.to_string()));
+            }
+            format::json(pagination::envelope(
+                "/api/v1/media/transcripts",
+                &filters,
+                page,
+                count,
+                results,
+            ))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "transcript search failed");
+            Err(detail(
+                StatusCode::BAD_GATEWAY,
+                err_codes::MEDIA_TRANSCRIPTS_UNAVAILABLE,
+                "Transcription search failed on OpenObserve.",
+            ))
+        }
     }
 }

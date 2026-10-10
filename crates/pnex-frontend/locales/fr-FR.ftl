@@ -3513,3 +3513,7 @@ streams-error-decoder-failed = Le décodage audio a échoué
 streams-error-decoder-missing = ffmpeg est absent du serveur
 streams-error-secret-unreadable = Secret d'accès illisible
 streams-error-store-failed = Stockage des segments indisponible
+err-asr-model-not-found = Modèle de transcription introuvable.
+err-asr-model-name-taken = Un modèle porte déjà ce nom.
+err-asr-model-unsupported = Ce fichier n'est pas un modèle de transcription pris en charge (archive sherpa-onnx ou fichier GGML whisper.cpp attendu).
+err-media-transcripts-unavailable = Les transcriptions sont indisponibles pour le moment.
