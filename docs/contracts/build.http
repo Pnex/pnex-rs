@@ -1,7 +1,7 @@
 ### Firmware builds contract (Phase 6) — parity with the previous stack, adapted
 #
 # Adaptations vs the initial POC :
-# - chemins sans slash terminal (convention.md) ;
+# - chemins sans slash terminal ;
 # - org scoping (D2): X-Org-Id required, `org_id` in the records instead
 #   of the previous stack's `user` ;
 # - plus de champs k8s/Argo (`backend`, `job_name`, `argo_wf_job_name`) —

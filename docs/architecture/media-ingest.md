@@ -675,7 +675,7 @@ Changements de contrat assumés (additifs, défaut = comportement actuel) :
 | `media_*` | O2 metrics | séries de dashboards (D171) |
 | blobs audio | RustFS / fs | éphémères (D161) |
 
-Migrations : `migrations.md` §2 et `convention.md` — chaque `up()` écrit
+Migrations : `migrations.md` §2 — chaque `up()` écrit
 PostgreSQL **et** SQLite (`schema_parity.rs` bloquant), enums en
 `varchar`, `org_id bigint`, index `idx_<table>_<cols>`, après la base
 `m20261009_000001_baseline` (0.1.0) ; `schema_invariants.rs` complété.
@@ -910,7 +910,7 @@ Corrections intégrées ci-dessus :
 | D173 | `report_templates`, « école S3/D18 », « S4 » | D3 a supprimé `ReportTemplate` ; D123 fixe `desktop\|mobile` ; lien public = S5 | format `document`, amende D3/D123, kind `report` |
 | D174 | LLM D116, frontière D123 | D119 : LLM d'org seulement ; frontière assistant = D143 | citations |
 | D175 | bus « clé par `device_registry_id` », nœuds « sans modification » | bus clé par slug de device ; `camera_source.device_id` validé comme device | espace `pnex:media:v1`, sélecteur `source`, `stream_id` nullable |
-| §5 | migrations « école convention.md » | `migrations.md` §2 : PG + SQLite, parité bloquante, base 0.1.0 | renvoi |
+| §5 | migrations (`migrations.md`) | `migrations.md` §2 : PG + SQLite, parité bloquante, base 0.1.0 | renvoi |
 | D173 / D174 | studio de rapports, rapports figés, lien public, synthèse IA | décision user : pas de publication, consultation dans PNEX | studio et synthèse en tranche ultérieure, lot 4 = consultation, D3 intacte |
 | §14 | 5 questions | Loco 1.1 vérifié ; D3 contredit ; ordre ontologie | Q2 tranchée, Q3 proposée, Q6–Q7 ajoutées ; lot 6 reporté dans `roadmap.md` |
 
