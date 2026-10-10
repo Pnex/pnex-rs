@@ -13,6 +13,10 @@ services:
     environment:
       PUB_URL: localhost:8080
       TLS_GENERATE_SELF_SIGNED: "false"
+      # config.toml listens on http_https, which makes Rauthy issue
+      # `https://localhost:8080/auth/v1/` tokens: the server checks `iss`
+      # against the http issuer below and would refuse every token (401).
+      LISTEN_SCHEME: http
 
   pnex-server:
     pull_policy: never
