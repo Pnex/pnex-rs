@@ -186,6 +186,10 @@ tâche).
 | **Flux média entrants** (D159–D175) | **Lots 0 et 1 livrés** 2026-10-10 (`media-ingest.md` §16) : capture `server` confinée (icecast, HLS, `http_file`, audio des flux vidéo), `pnex-asr`, transcription → O2 + recherche, modèles audio, rétention, `/streams` | Porteur `worker` (1h), métriques D160 + alerte « flux muet », run 24 h ; puis lot 2 (`media_source`) — P2.13 |
 | **Ontologie / 0.2.0** (D176–D191) | **PRD proposé** 2026-10-09 (`ontology.md`) ; graine existante = couche Resource D42 | Validation du PRD, puis spike L0 — P2.14 |
 | **Media & Vision Studio** (D192+) | **PRD proposé** 2026-10-10 (`media-vision-studio.md`) — étend D73–D105 et D159–D175 : tracking, zones, Vision Lab (entraînement YOLOX), VLM, fusion | Validation du PRD (Q1–Q11) — P2.15 |
+| **Couches géographiques** | **PRD proposé** 2026-10-10 (`geo-layers.md`, L1–L28 provisoires) — PostGIS dans le Postgres existant, import de fichiers géo en layers MVT servies par Loco, fournisseurs géo d'org (fond, geocoding, routage) ; Martin garde le fond | Validation du PRD — P2.16 |
+| **Pages collaboratives** | **PRD proposé** 2026-10-10 (`pages.md`, P1–P16 provisoires) — documents CRDT temps réel reliés à l'ontologie (mentions, vues de collection, mesures, procédures, cartes) | Spike L0 (Loro vs yrs, ProseMirror) après validation — P2.17 |
+| **Documents & recherche IA** | **PRD proposé** 2026-10-10 (`doc-search.md`) — index lexical + pgvector sur les fichiers de la médiathèque, outils de l'assistant cités, tableurs en SQL | Validation du PRD — P2.18 |
+| **Hub de kits** | **PRD gelé** 2026-10-10 (`hub.md`) — partage communautaire par Git + CI + index statique, slots et requirements | Rien avant la 0.2.0 — P3 |
 
 ## P0 — Consolidation : fermer le livré non validé
 
@@ -629,6 +633,48 @@ qui rouvre D173/D174/D3). Répond à la décision #7 (fine-tuning
 détecteurs). Dépend de P2.7 (GPU) et de P2.13 ; cible après la 0.2.0
 sauf exception. Décision #18.
 
+### P2.16 — Couches géographiques et fournisseurs géo (ajout 2026-10-10) — **PRD proposé**
+
+PRD `geo-layers.md`, zéro code avant validation, décisions L1–L28
+provisoires (numéros D à la validation). Extension de la base map, pas un
+nouveau pilier : **PostGIS** en extension du Postgres existant (image
+multi-arch, arm64 obligatoire), fichier géo = média (kinds `vector` /
+`raster`), import en job worker (`import_geo` : sniff → mapping → staging
+→ publication sans coupure, wipe ou upsert par clé), tuiles MVT servies
+par Loco avec génération dans l'URL, cache Valkey obligatoire, seed
+PMTiles opt-in, GC des dérivés. **Martin garde le fond de carte.**
+Phase F : fournisseurs géo d'org (fond, geocoding, reverse, routage,
+école `llm_providers`), secrets en coffre, proxy serveur, rate limit —
+**retire l'URL de fond codée en dur** (D27). Phases A → F. Partage
+l'image Postgres étendue avec P2.18 (pgvector). **Phase F autorisée
+avant la 0.2.0 (consolidation), A–E après.** Décision #20.
+
+### P2.17 — Pages : documents collaboratifs reliés à l'ontologie (ajout 2026-10-10) — **PRD proposé**
+
+PRD `pages.md`, zéro code avant validation, décisions P1–P16
+provisoires. Page = type système `doc` de l'ontologie ; contenu CRDT
+(Loro ou yrs, spike L0) répliqué par le serveur, WS `/ws/doc/{id}` +
+fan-out Valkey multi-pods ; éditeur ProseMirror en bundle IIFE
+(`window.pnexDoc`, école `pnexMap`), blocs PNEX rendus par Dioxus ;
+mentions = liens `mentions` (rétroliens), vues de collection éditables
+via le service ontologique, tableau local IronCalc (formules en lecture
+seule), mesures avec tolérance, procédures et workflow de page, bloc
+carte live/figé, versions nommées. Lots L0 → L7. **L1–L2 en exception
+au gel (tranché 2026-10-10), L3+ après la 0.2.0.** Décision #21.
+
+### P2.18 — Documents & recherche IA (RAG hybride) (ajout 2026-10-10) — **PRD proposé**
+
+PRD `doc-search.md` (v0.2 relue), zéro code avant validation. Fichiers
+du quotidien (txt, md, docx, pdf, csv, xlsx/ods) déposés dans la
+médiathèque, extraits en job, découpés et indexés dans Postgres
+(`tsvector` simple + french, trigrammes pour les codes défaut, pgvector
++ RRF en phase 2) ; outils de l'assistant en lecture seule avec
+citations (doc + page) ; tableurs interrogés en SQL (Parquet +
+DataFusion), pas en RAG. Embeddings locaux (e5-small) ou fournisseur
+d'org. Phases P1 → P5 (P4 = liens ontologie, 0.2.0). Extracteurs et
+index partagés avec P2.17. **P1 seul en exception au gel (tranché
+2026-10-10), P2+ après la 0.2.0.** Décision #22.
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
@@ -667,6 +713,13 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   OTA signée Ed25519 + anti-downgrade, TLS obligatoire, X.509/mTLS par
   device, secret d'edge — D153–D158, banc 8266 + C6) ; V2–V5 non
   commencées. Décision #15.
+- **Hub de kits** (`hub.md`, ajout 2026-10-10) — **gelé jusqu'à la
+  0.2.0** : partage communautaire de flows, dashboards, synoptiques,
+  fonctions et variantes de cartes en kits (Git + CI + index statique,
+  zéro backend marketplace) ; références locales converties en slots et
+  requirements, classes de sensibilité déclarées sur les schémas
+  `pnex-core` pendant la refacto ontologie ; install depuis l'UI,
+  enregistré non déployé. Rien côté code pendant le gel. Décision #23.
 - **Ouvertures** : palette flow par capacité (au moment où l'éditeur
   touche aux formulaires D20), compression du fil MCU (jamais un
   prérequis), sous-titres/tours offline.
@@ -694,6 +747,10 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 | 17 | Ontologie 0.2.0 : identifiant d'objet global (UUID vs `ResourceRef`), format du schéma de propriétés (maison vs JSON Schema), liaison device → objet (lien générique vs table dédiée), packs forkables ou surcouche, langage de requête textuel, spécification publique du noyau ; ordre P2.13 / P2.14 / P2.1 vu le gel des nouveaux piliers (`ontology.md` §9) | À la validation du PRD |
 | 19 | ~~Garder SQLite à côté de PostgreSQL~~ — tranché 2026-10-10 : **PostgreSQL obligatoire, SQLite abandonné**. La parité coûte à chaque migration et chaque requête (`ilike`, FK par reconstruction de table, pas de PostGIS) et pèse de plus en plus lourd à mesure que le produit grandit ; l'argument Raspberry Pi ne tient pas, Postgres reste léger sur un Pi. Les nouveaux développements ne gèrent plus SQLite | ✅ |
 | 18 | Media & Vision Studio : pose humaine ou poste de travail, tract vs `ort`, entraînement CPU, D174 en usage interne, détection → `device_write`, version cible (après 0.2.0 ou exception) (`media-vision-studio.md` §10) | À la validation du PRD |
+| 20 | Couches géographiques : ~~gel 0.2.0~~ (tranché 2026-10-10 : phase F avant, A–E après), ~~rétention des seeds~~ (génération courante), raster, OGC API – Features, plafonds par tier, lien ontologie (`geo-layers.md` §10) ; image Postgres étendue PostGIS + pgvector commune avec #22 | À la validation du PRD |
+| 21 | Pages : Loro vs yrs (`pages.md` §11). Tranché 2026-10-10 (`pages.md` §13) : L1–L2 en exception au gel, tableau local admis (formule = lecture, `ontology.md` §3 amendé), pas de pages privées (suit D188), mesure publiée en série `*_manual` seulement, signature = trace d'identité en V1, nom « Pages » | Loro/yrs au spike L0 |
+| 22 | Documents & recherche IA : BM25 ParadeDB vs `ts_rank_cd`, rerank, poids de DataFusion sur Pi (`doc-search.md` §10). Tranché 2026-10-10 (§13) : P1 seul en exception au gel, embeddings en tract, index partagé avec les pages | À la validation du PRD ; BM25 au jeu de test |
+| 23 | Hub de kits : kits hardware-first, dépendances entre kits, hébergement de l'index (`hub.md` §19). Tranché 2026-10-10 (§21) : kit = pack D190 (un seul format), identité = compte GitHub seul | Pendant la 0.2.0 (aligner les schémas), implémentation après |
 
 ## Journal de la roadmap
 
@@ -823,3 +880,20 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   références et architecture pressentie du geofencing (Tile38, Traccar,
   ThingsBoard, Home Assistant, PostGIS accepté en extension malgré la
   GPL-2, crates `geo`/`rstar`/`h3o`/`geozero`).
+- **2026-10-10 (quatre PRD)** — Intégrés et relus contre la doc, rien
+  d'implémenté : P2.16 couches géographiques + fournisseurs géo
+  (`geo-layers.md`, décision #20), P2.17 pages collaboratives
+  (`pages.md`, #21), P2.18 documents & recherche IA (`doc-search.md`,
+  #22 ; MinIO → MediaStore, pas de table `document`, pas de LLM
+  plateforme), hub de kits gelé jusqu'à la 0.2.0 en P3 (`hub.md`, #23 ;
+  pas de WASM ni de Python dans la stack, UI = interface utilisateur).
+  Numéros D attribués à la validation, après la réserve D192+ de
+  P2.15.
+- **2026-10-10 (arbitrages des quatre PRD)** — Géo : phase F avant la
+  0.2.0, A–E après, seed = génération courante. Pages : L1–L2 en
+  exception au gel, tableau local admis (`ontology.md` §3 amendé), pas
+  de pages privées, mesures manuelles en série `*_manual`, signature =
+  trace d'identité, nom « Pages ». Recherche IA : P1 seul en exception,
+  embeddings en tract. Hub : kit = pack D190, identité GitHub seule.
+  Restent ouverts : choix techniques à trancher au spike ou au jeu de
+  test (Loro/yrs, BM25, rerank, DataFusion, raster, OGC).
