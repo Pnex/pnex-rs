@@ -497,3 +497,302 @@ async fn ws_refuses_bad_ticket_and_foreign_page() {
     })
     .await;
 }
+
+async fn add_member(server: &axum_test::TestServer, owner: &str, org: i64, role: &str) {
+    let (st, _) = call(
+        server,
+        "POST",
+        &format!("/api/v1/orgs/{org}/members"),
+        owner,
+        org,
+        Some(json!({ "email": "bob@example.com", "role": role })),
+    )
+    .await;
+    assert!(st == 200 || st == 201, "{st}");
+}
+
+#[tokio::test]
+#[serial]
+async fn comments_threads_roles_and_live_notice() {
+    with_app(|server, env| async move {
+        let org_a = personal_org(&server, &env.alice).await;
+        let org_b = personal_org(&server, &env.bob).await;
+        let (_, d) = call(
+            &server,
+            "POST",
+            "/api/v1/docs",
+            &env.alice,
+            org_a,
+            Some(json!({ "title": "Review" })),
+        )
+        .await;
+        let id = d["id"].as_str().unwrap().to_string();
+        let base = format!("/api/v1/docs/{id}/comments");
+
+        // An open editor hears about comment changes.
+        let mut ws = open(&server, &env.alice, org_a, &id).await;
+        handshake(&mut ws, &Doc::new()).await;
+
+        let (st, e) = call(
+            &server,
+            "POST",
+            &base,
+            &env.alice,
+            org_a,
+            Some(json!({ "body": " " })),
+        )
+        .await;
+        assert_eq!((st, e["body"].as_str()), (400, Some("required")));
+        let long_quote = "q".repeat(400);
+        let (st, root) = call(
+            &server,
+            "POST",
+            &base,
+            &env.alice,
+            org_a,
+            Some(json!({ "body": "Check this value", "anchor": "AAE.AAI", "quote": long_quote })),
+        )
+        .await;
+        assert_eq!(st, 201, "{root}");
+        let root_id = root["id"].as_i64().unwrap();
+        loop {
+            if let Message::Custom(100, _) = next(&mut ws).await {
+                break;
+            }
+        }
+        let (st, reply) = call(
+            &server,
+            "POST",
+            &base,
+            &env.alice,
+            org_a,
+            Some(json!({ "body": "Done", "parent_id": root_id })),
+        )
+        .await;
+        assert_eq!(st, 201);
+        let (st, e) = call(
+            &server,
+            "POST",
+            &base,
+            &env.alice,
+            org_a,
+            Some(json!({ "body": "nested", "parent_id": reply["id"] })),
+        )
+        .await;
+        assert_eq!((st, e["parent_id"].as_str()), (400, Some("invalid")));
+
+        let (_, list) = call(&server, "GET", &base, &env.alice, org_a, None).await;
+        assert_eq!(list["count"], 2);
+        assert_eq!(
+            list["results"][0]["quote"]
+                .as_str()
+                .unwrap()
+                .chars()
+                .count(),
+            300
+        );
+        assert_eq!(list["results"][0]["mine"], true);
+        assert!(list["results"][1]["anchor"].is_null());
+
+        let root_path = format!("{base}/{root_id}");
+        let (st, _) = call(
+            &server,
+            "PATCH",
+            &root_path,
+            &env.alice,
+            org_a,
+            Some(json!({ "resolved": true })),
+        )
+        .await;
+        assert_eq!(st, 204);
+        let (_, list) = call(&server, "GET", &base, &env.alice, org_a, None).await;
+        assert_eq!(list["results"][0]["resolved"], true);
+
+        // Another org: 404 everywhere.
+        for (m, p, body) in [
+            ("GET", base.clone(), None),
+            ("POST", base.clone(), Some(json!({ "body": "x" }))),
+            ("DELETE", root_path.clone(), None),
+        ] {
+            let (st, _) = call(&server, m, &p, &env.bob, org_b, body).await;
+            assert_eq!(st, 404, "{m} {p}");
+        }
+
+        // Viewer: reads, never writes.
+        add_member(&server, &env.alice, org_a, "viewer").await;
+        let (st, _) = call(&server, "GET", &base, &env.bob, org_a, None).await;
+        assert_eq!(st, 200);
+        for (m, p, body) in [
+            ("POST", base.clone(), Some(json!({ "body": "v" }))),
+            (
+                "PATCH",
+                root_path.clone(),
+                Some(json!({ "resolved": false })),
+            ),
+            ("DELETE", root_path.clone(), None),
+        ] {
+            let (st, e) = call(&server, m, &p, &env.bob, org_a, body).await;
+            assert_eq!(
+                (st, e["error"].as_str()),
+                (403, Some("docs-write-forbidden")),
+                "{m} {p}"
+            );
+        }
+
+        // Member: comments, but cannot edit or delete alice's comment.
+        let (st, _) = call(
+            &server,
+            "PATCH",
+            &format!(
+                "/api/v1/orgs/{org_a}/members/{}",
+                member_id(&server, &env.alice, org_a, "bob@example.com").await
+            ),
+            &env.alice,
+            org_a,
+            Some(json!({ "role": "member" })),
+        )
+        .await;
+        assert!(st == 200 || st == 204, "{st}");
+        let (st, _) = call(
+            &server,
+            "POST",
+            &base,
+            &env.bob,
+            org_a,
+            Some(json!({ "body": "me too", "parent_id": root_id })),
+        )
+        .await;
+        assert_eq!(st, 201);
+        let (st, e) = call(
+            &server,
+            "PATCH",
+            &root_path,
+            &env.bob,
+            org_a,
+            Some(json!({ "body": "hijack" })),
+        )
+        .await;
+        assert_eq!(
+            (st, e["error"].as_str()),
+            (403, Some("doc-comment-not-author"))
+        );
+        let (st, e) = call(&server, "DELETE", &root_path, &env.bob, org_a, None).await;
+        assert_eq!(
+            (st, e["error"].as_str()),
+            (403, Some("doc-comment-not-author"))
+        );
+
+        // The owner deletes the thread, replies included.
+        let (st, _) = call(&server, "DELETE", &root_path, &env.alice, org_a, None).await;
+        assert_eq!(st, 204);
+        let (_, list) = call(&server, "GET", &base, &env.alice, org_a, None).await;
+        assert_eq!(list["count"], 0);
+    })
+    .await;
+}
+
+/// User id of a member, from the org's member list.
+async fn member_id(server: &axum_test::TestServer, token: &str, org: i64, email: &str) -> i64 {
+    let (_, members) = call(
+        server,
+        "GET",
+        &format!("/api/v1/orgs/{org}/members"),
+        token,
+        org,
+        None,
+    )
+    .await;
+    let rows = members
+        .as_array()
+        .cloned()
+        .or_else(|| members["results"].as_array().cloned())
+        .unwrap_or_default();
+    rows.iter()
+        .find(|m| m["email"] == email)
+        .and_then(|m| m["user_id"].as_i64().or_else(|| m["id"].as_i64()))
+        .unwrap_or_else(|| panic!("member {email} in {members}"))
+}
+
+fn presence(client: u64, clock: u32, json: &str) -> Message {
+    use yrs::sync::awareness::{AwarenessUpdate, AwarenessUpdateEntry};
+    let entry = AwarenessUpdateEntry {
+        clock,
+        json: json.into(),
+    };
+    Message::Awareness(AwarenessUpdate {
+        clients: std::collections::HashMap::from([(yrs::block::ClientID::new(client), entry)]),
+    })
+}
+
+/// Next presence frame, skipping document traffic.
+async fn next_presence(ws: &mut axum_test::TestWebSocket) -> Vec<(u64, String)> {
+    loop {
+        if let Message::Awareness(u) = next(ws).await {
+            return u
+                .clients
+                .into_iter()
+                .map(|(id, e)| (id.get(), e.json.to_string()))
+                .collect();
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn ws_refuses_dangling_updates_and_owns_presence() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (_, d) = call(
+            &server,
+            "POST",
+            "/api/v1/docs",
+            &env.alice,
+            org,
+            Some(json!({ "title": "Edge" })),
+        )
+        .await;
+        let id = d["id"].as_str().unwrap().to_string();
+
+        let mut a = open(&server, &env.alice, org, &id).await;
+        handshake(&mut a, &Doc::new()).await;
+        let mut b = open(&server, &env.alice, org, &id).await;
+        handshake(&mut b, &Doc::new()).await;
+
+        // a announces client 42; b sees it; b cannot rewrite it.
+        send(&mut a, presence(42, 1, r#"{"user":{"name":"Alice"}}"#)).await;
+        assert_eq!(
+            next_presence(&mut b).await,
+            vec![(42, r#"{"user":{"name":"Alice"}}"#.into())]
+        );
+        send(&mut b, presence(42, 2, "null")).await;
+        send(&mut b, presence(7, 1, r#"{"user":{"name":"Bob"}}"#)).await;
+        assert_eq!(
+            next_presence(&mut a).await,
+            vec![(7, r#"{"user":{"name":"Bob"}}"#.into())]
+        );
+
+        // a leaves: its presence is cleared for b.
+        drop(a);
+        assert_eq!(next_presence(&mut b).await, vec![(42, "null".into())]);
+
+        // An update that depends on content the page does not have is refused.
+        let local = Doc::new();
+        let _first = write_paragraph(&local, "first");
+        let second = write_paragraph(&local, "second");
+        send(&mut b, Message::Sync(SyncMessage::Update(second))).await;
+        loop {
+            match tokio::time::timeout(Duration::from_secs(5), b.receive_message())
+                .await
+                .expect("close")
+            {
+                WsMessage::Close(Some(f)) => {
+                    assert_eq!(u16::from(f.code), 4422);
+                    break;
+                }
+                WsMessage::Close(None) => panic!("close without code"),
+                _ => continue,
+            }
+        }
+    })
+    .await;
+}

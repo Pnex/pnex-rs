@@ -2,7 +2,8 @@
 //! versions, and the websocket URL of the live editor.
 
 use pnex_core::pages::{
-    CreateDoc, CreateDocVersion, DocSummary, DocVersionState, DocVersionSummary, PatchDoc,
+    CreateDoc, CreateDocComment, CreateDocVersion, DocComment, DocSummary, DocVersionState,
+    DocVersionSummary, PatchDoc, PatchDocComment,
 };
 use pnex_core::Paginated;
 use uuid::Uuid;
@@ -79,6 +80,51 @@ pub async fn version_state(id: Uuid, n: i64) -> Result<DocVersionState, ApiError
         None,
     )
     .await
+}
+
+#[derive(serde::Deserialize)]
+struct CommentList {
+    results: Vec<DocComment>,
+}
+
+pub async fn comments(id: Uuid) -> Result<Vec<DocComment>, ApiError> {
+    let list: CommentList = client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/docs/{id}/comments"),
+        None,
+    )
+    .await?;
+    Ok(list.results)
+}
+
+pub async fn create_comment(id: Uuid, input: CreateDocComment) -> Result<(), ApiError> {
+    client::request_opt::<serde_json::Value>(
+        reqwest::Method::POST,
+        &format!("/api/v1/docs/{id}/comments"),
+        Some(serde_json::to_value(input).unwrap_or_default()),
+    )
+    .await
+    .map(|_| ())
+}
+
+pub async fn update_comment(id: Uuid, cid: i64, input: PatchDocComment) -> Result<(), ApiError> {
+    client::request_opt::<serde_json::Value>(
+        reqwest::Method::PATCH,
+        &format!("/api/v1/docs/{id}/comments/{cid}"),
+        Some(serde_json::to_value(input).unwrap_or_default()),
+    )
+    .await
+    .map(|_| ())
+}
+
+pub async fn delete_comment(id: Uuid, cid: i64) -> Result<(), ApiError> {
+    client::request_opt::<serde_json::Value>(
+        reqwest::Method::DELETE,
+        &format!("/api/v1/docs/{id}/comments/{cid}"),
+        None,
+    )
+    .await
+    .map(|_| ())
 }
 
 /// `/ws/doc/{id}` URL with a fresh one-time ticket; `None` without a

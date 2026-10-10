@@ -14,13 +14,13 @@
 // disconnect `needTicket` is bumped and Rust answers with `reconnect()`.
 
 import * as Y from 'yjs';
-import { ySyncPlugin, yCursorPlugin, yUndoPlugin, undo, redo, yXmlFragmentToProseMirrorRootNode } from 'y-prosemirror';
+import { ySyncPlugin, ySyncPluginKey, yCursorPlugin, yUndoPlugin, undo, redo, yXmlFragmentToProseMirrorRootNode, absolutePositionToRelativePosition, relativePositionToAbsolutePosition } from 'y-prosemirror';
 import * as syncProtocol from 'y-protocols/sync';
 import * as awarenessProtocol from 'y-protocols/awareness';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
-import { EditorState, Plugin } from 'prosemirror-state';
-import { EditorView } from 'prosemirror-view';
+import { EditorState, Plugin, PluginKey, TextSelection } from 'prosemirror-state';
+import { EditorView, Decoration, DecorationSet } from 'prosemirror-view';
 import { Schema } from 'prosemirror-model';
 import { schema as basic } from 'prosemirror-schema-basic';
 import { addListNodes, wrapInList, splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-list';
@@ -163,10 +163,71 @@ function cursorBuilder(user) {
   return cursor;
 }
 
+// ── Comment anchors (P12) ────────────────────────────────────────────────
+// An anchor is two Yjs relative positions ("<start b64>.<end b64>"): it
+// follows the text through every edit, local or remote.
+const b64 = (u8) => btoa(String.fromCharCode(...u8));
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+function binding(state) {
+  const s = ySyncPluginKey.getState(state);
+  return s && s.binding;
+}
+
+function anchorRange(state, anchor) {
+  const b = binding(state);
+  if (!b || !anchor) return null;
+  try {
+    const [a, z] = anchor.split('.');
+    const frag = b.type;
+    const from = relativePositionToAbsolutePosition(b.doc, frag, Y.decodeRelativePosition(unb64(a)), b.mapping);
+    const to = relativePositionToAbsolutePosition(b.doc, frag, Y.decodeRelativePosition(unb64(z)), b.mapping);
+    if (from === null || to === null || to <= from) return null;
+    return { from, to };
+  } catch (e) {
+    return null;
+  }
+}
+
+const commentsKey = new PluginKey('pnexComments');
+function commentsPlugin(host) {
+  return new Plugin({
+    key: commentsKey,
+    state: {
+      init: () => [],
+      apply: (tr, list) => tr.getMeta(commentsKey) || list,
+    },
+    props: {
+      decorations(state) {
+        const decos = [];
+        for (const c of commentsKey.getState(state)) {
+          if (c.resolved) continue;
+          const r = anchorRange(state, c.anchor);
+          if (r) decos.push(Decoration.inline(r.from, r.to, { class: 'pnex-doc-comment', 'data-comment': String(c.id) }));
+        }
+        return DecorationSet.create(state.doc, decos);
+      },
+      handleClick(view, pos) {
+        for (const c of commentsKey.getState(view.state)) {
+          if (c.resolved) continue;
+          const r = anchorRange(view.state, c.anchor);
+          if (r && pos >= r.from && pos <= r.to) {
+            report(host, { activeComment: { seq: ++seq, id: c.id } });
+            return false;
+          }
+        }
+        return false;
+      },
+    },
+  });
+}
+
 // ── Websocket provider (y-protocols) ─────────────────────────────────────
 const MSG_SYNC = 0;
 const MSG_AWARENESS = 1;
 const MSG_QUERY_AWARENESS = 3;
+// Custom message of the server: the comments of the page changed (room.rs).
+const MSG_COMMENTS_CHANGED = 100;
 // Close codes after which retrying is pointless (see controllers/ws_doc.rs).
 const FINAL = new Set([4004, 4006, 4422, 4413]);
 
@@ -215,11 +276,13 @@ class Provider {
         const reply = encoding.createEncoder();
         encoding.writeVarUint(reply, MSG_SYNC);
         const kind = syncProtocol.readSyncMessage(dec, reply, this.doc, this);
-        if (kind === syncProtocol.messageYjsSyncStep2) report(this.host, { status: 'synced' });
+        if (kind === syncProtocol.messageYjsSyncStep2) report(this.host, { status: 'synced', closeCode: null });
         if (encoding.length(reply) > 1) ws.send(encoding.toUint8Array(reply));
       } else if (type === MSG_AWARENESS) {
         awarenessProtocol.applyAwarenessUpdate(this.awareness, decoding.readVarUint8Array(dec), this);
         report(this.host, { peers: this.awareness.getStates().size - 1 });
+      } else if (type === MSG_COMMENTS_CHANGED) {
+        report(this.host, { commentsSeq: ++seq });
       } else if (type === MSG_QUERY_AWARENESS) {
         this.send(MSG_AWARENESS, (e) => encoding.writeVarUint8Array(e, awarenessProtocol.encodeAwarenessUpdate(this.awareness, [this.doc.clientID])));
       }
@@ -230,8 +293,10 @@ class Provider {
       const others = Array.from(this.awareness.getStates().keys()).filter((id) => id !== this.doc.clientID);
       awarenessProtocol.removeAwarenessStates(this.awareness, others, this);
       const final = FINAL.has(ev.code);
+      // Nothing typed from now on would reach the server: stop accepting it.
+      if (final && this.onFinal) this.onFinal();
       report(this.host, {
-        status: ev.code === 4422 ? 'refused' : final ? 'closed' : 'offline',
+        status: ev.code === 4422 ? 'refused' : ev.code === 4413 ? 'toolarge' : final ? 'closed' : 'offline',
         closeCode: ev.code,
         peers: 0,
         needTicket: final || this.destroyed ? (window.__pnexDoc[this.host] || {}).needTicket : ++seq,
@@ -241,6 +306,8 @@ class Provider {
 
   destroy() {
     this.destroyed = true;
+    // Clear our presence for the others while the socket is still open.
+    awarenessProtocol.removeAwarenessStates(this.awareness, [this.doc.clientID], 'local');
     this.doc.off('update', this.onUpdate);
     this.awareness.off('update', this.onAwareness);
     if (this.ws) this.ws.close();
@@ -323,9 +390,10 @@ window.pnexDoc = {
       const doc = new Y.Doc();
       const awareness = new awarenessProtocol.Awareness(doc);
       if (opts.user) awareness.setLocalStateField('user', opts.user);
-      const view = makeView(host, doc, opts, [yCursorPlugin(awareness, { cursorBuilder })]);
+      const view = makeView(host, doc, opts, [yCursorPlugin(awareness, { cursorBuilder }), commentsPlugin(host)]);
       if (!view) return false;
       const provider = new Provider(host, doc, awareness);
+      provider.onFinal = () => view.setProps({ editable: () => false });
       editors[host] = { doc, awareness, view, provider };
       report(host, { status: 'connecting', closeCode: null, peers: 0, slash: null, needTicket: 0 });
       provider.connect(opts.wsUrl);
@@ -386,6 +454,35 @@ window.pnexDoc = {
     dispatch(state.tr.addMark(state.selection.from, state.selection.to, schema.marks.link.create({ href: href.trim() })));
     return true;
   },
+  // Anchor of the current selection: {anchor, quote}, or null.
+  selectionAnchor(host) {
+    const ed = editors[host];
+    if (!ed) return null;
+    const { state } = ed.view;
+    const b = binding(state);
+    const { from, to, empty } = state.selection;
+    if (!b || empty) return null;
+    const rel = (pos) => b64(Y.encodeRelativePosition(absolutePositionToRelativePosition(pos, b.type, b.mapping)));
+    return { anchor: rel(from) + '.' + rel(to), quote: state.doc.textBetween(from, to, ' ').slice(0, 300) };
+  },
+  // Comments to highlight: [{id, anchor, resolved}].
+  setComments(host, list) {
+    const ed = editors[host];
+    if (!ed) return false;
+    ed.view.dispatch(ed.view.state.tr.setMeta(commentsKey, Array.isArray(list) ? list : []));
+    return true;
+  },
+  // Selects and shows the text a comment is anchored on; false if it is gone.
+  focusAnchor(host, anchor) {
+    const ed = editors[host];
+    if (!ed) return false;
+    const r = anchorRange(ed.view.state, anchor);
+    if (!r) return false;
+    const { state, dispatch } = ed.view;
+    dispatch(state.tr.setSelection(TextSelection.create(state.doc, r.from, r.to)).scrollIntoView());
+    ed.view.focus();
+    return true;
+  },
   exportMarkdown(host) {
     const ed = editors[host];
     return ed ? defaultMarkdownSerializer.serialize(ed.view.state.doc) : '';
@@ -439,6 +536,7 @@ window.pnexDoc = {
 .ProseMirror{position:relative;word-wrap:break-word;white-space:pre-wrap;white-space:break-spaces;font-variant-ligatures:none;outline:none;min-height:12rem}
 .ProseMirror pre{white-space:pre-wrap}
 .ProseMirror li{position:relative}
+.pnex-doc-comment{background:#fef08a;border-bottom:2px solid #eab308;cursor:pointer}
 .ProseMirror-hideselection *::selection{background:transparent}
 .ProseMirror-selectednode{outline:2px solid #8cf}
 .ProseMirror-separator,.ProseMirror-gapcursor{display:none}

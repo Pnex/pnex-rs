@@ -23,6 +23,23 @@ pub struct DocState {
     pub peers: u32,
     /// Slash palette request ("/" typed in an empty block).
     pub slash: Option<Slash>,
+    /// Bumped when the server says the comments changed.
+    pub comments_seq: u64,
+    /// Comment whose highlighted text was clicked.
+    pub active_comment: Option<ActiveComment>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ActiveComment {
+    pub seq: u64,
+    pub id: i64,
+}
+
+/// Anchor of a selection, for a new comment thread.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct SelectionAnchor {
+    pub anchor: String,
+    pub quote: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -134,6 +151,39 @@ pub async fn link(host: &str, href: &str) -> bool {
         "return window.pnexDoc?.link({}, {}) === true",
         lit(host),
         lit(href)
+    ))
+    .await
+}
+
+pub async fn selection_anchor(host: &str) -> Option<SelectionAnchor> {
+    let v = eval(&format!(
+        "return window.pnexDoc?.selectionAnchor({}) ?? null",
+        lit(host)
+    ))
+    .await?;
+    serde_json::from_value(v).ok()
+}
+
+/// Comments to highlight: `(id, anchor, resolved)`.
+pub async fn set_comments(host: &str, comments: &[(i64, Option<String>, bool)]) -> bool {
+    let list: Vec<serde_json::Value> = comments
+        .iter()
+        .map(|(id, anchor, resolved)| serde_json::json!({ "id": id, "anchor": anchor, "resolved": resolved }))
+        .collect();
+    eval_bool(&format!(
+        "return window.pnexDoc?.setComments({}, {}) === true",
+        lit(host),
+        serde_json::Value::Array(list)
+    ))
+    .await
+}
+
+/// Selects the text of an anchor; `false` when that text is gone.
+pub async fn focus_anchor(host: &str, anchor: &str) -> bool {
+    eval_bool(&format!(
+        "return window.pnexDoc?.focusAnchor({}, {}) === true",
+        lit(host),
+        lit(anchor)
     ))
     .await
 }

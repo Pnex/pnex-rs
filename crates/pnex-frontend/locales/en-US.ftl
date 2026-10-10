@@ -4073,6 +4073,7 @@ docs-status-connecting = Connecting…
 docs-status-offline = Offline, your changes will be sent on reconnection
 docs-status-refused = Change refused by the server, reload the page
 docs-status-closed = Page closed
+docs-status-toolarge = This change is too large to be saved: undo it, or split it in smaller pastes, then reload the page.
 docs-editor-unavailable = The editor could not be loaded. Reload the page.
 docs-cmd-bold = Bold
 docs-cmd-italic = Italic
@@ -4108,4 +4109,20 @@ docs-version-diff-title = Changes in version { $n }
 docs-version-load-failed = This version could not be loaded.
 docs-restore-failed = The restore failed.
 docs-restored-label = Restored from v{ $n }
+docs-comments = Comments
+docs-comments-empty = No comment yet. Select some text, then Comment.
+docs-comments-hide-resolved = Hide resolved threads
+docs-comments-show-resolved = { $count ->
+    [one] Show 1 resolved thread
+   *[other] Show { $count } resolved threads
+}
+docs-comment-new = Your comment
+docs-comment-post = Send
+docs-comment-reply = Reply
+docs-comment-resolve = Resolve
+docs-comment-reopen = Reopen
+docs-comment-anchor-gone = The commented text no longer exists.
+docs-comment-select-first = Select the text to comment on first.
+docs-cmd-comment = Comment
+err-doc-comment-not-author = Only the author can change this comment.
 err-docs-write-forbidden = Only owners, admins and members can edit pages.

@@ -4072,6 +4072,7 @@ docs-status-connecting = Connexion…
 docs-status-offline = Hors ligne, vos modifications partiront à la reconnexion
 docs-status-refused = Modification refusée par le serveur, rechargez la page
 docs-status-closed = Page fermée
+docs-status-toolarge = Cette modification est trop grosse pour être enregistrée : annulez-la ou collez-la en plusieurs fois, puis rechargez la page.
 docs-editor-unavailable = L'éditeur n'a pas pu être chargé. Rechargez la page.
 docs-cmd-bold = Gras
 docs-cmd-italic = Italique
@@ -4107,4 +4108,20 @@ docs-version-diff-title = Changements de la version { $n }
 docs-version-load-failed = Cette version n'a pas pu être chargée.
 docs-restore-failed = La restauration a échoué.
 docs-restored-label = Restaurée depuis la v{ $n }
+docs-comments = Commentaires
+docs-comments-empty = Aucun commentaire. Sélectionnez du texte, puis Commenter.
+docs-comments-hide-resolved = Masquer les fils résolus
+docs-comments-show-resolved = { $count ->
+    [one] Afficher 1 fil résolu
+   *[other] Afficher { $count } fils résolus
+}
+docs-comment-new = Votre commentaire
+docs-comment-post = Envoyer
+docs-comment-reply = Répondre
+docs-comment-resolve = Résoudre
+docs-comment-reopen = Rouvrir
+docs-comment-anchor-gone = Le texte commenté n'existe plus.
+docs-comment-select-first = Sélectionnez d'abord le texte à commenter.
+docs-cmd-comment = Commenter
+err-doc-comment-not-author = Seul l'auteur peut modifier ce commentaire.
 err-docs-write-forbidden = Seuls les owners, admins et membres peuvent modifier les pages.

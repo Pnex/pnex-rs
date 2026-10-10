@@ -33,6 +33,13 @@ pub enum PageError {
     Corrupt(String),
 }
 
+/// Valkey URL of the cross-pod fan-out, `None` on a single node.
+pub fn valkey_url(config: &loco_rs::config::Config) -> Option<String> {
+    crate::services::last_cache::ValkeySettings::from_config(config)
+        .and_then(|s| s.url)
+        .filter(|u| !u.trim().is_empty())
+}
+
 /// Applies a v1-encoded update to `doc`.
 pub fn apply(doc: &Doc, update: &[u8]) -> Result<(), PageError> {
     let u = Update::decode_v1(update).map_err(|e| PageError::Corrupt(e.to_string()))?;
@@ -48,8 +55,26 @@ pub fn encode(doc: &Doc) -> Vec<u8> {
 }
 
 /// Rebuilds the page from the database: snapshot, then every logged update.
-pub async fn load<C: ConnectionTrait>(db: &C, doc_id: Uuid) -> Result<Doc, PageError> {
-    let row = docs::Entity::find_by_id(doc_id)
+/// Read under a shared row lock so a compaction (exclusive lock) cannot
+/// commit between the two reads (old snapshot + already folded log).
+pub async fn load(db: &DatabaseConnection, doc_id: Uuid) -> Result<Doc, PageError> {
+    let txn = db.begin().await?;
+    let doc = load_locked(&txn, doc_id, true).await?;
+    txn.commit().await?;
+    Ok(doc)
+}
+
+/// [`load`] inside the caller's transaction (`share`: take the row lock).
+async fn load_locked<C: ConnectionTrait>(
+    db: &C,
+    doc_id: Uuid,
+    share: bool,
+) -> Result<Doc, PageError> {
+    let mut find = docs::Entity::find_by_id(doc_id);
+    if share {
+        find = find.lock_shared();
+    }
+    let row = find
         .one(db)
         .await?
         .ok_or_else(|| PageError::Corrupt(format!("page {doc_id} not found")))?;
@@ -140,28 +165,29 @@ pub async fn compact(db: &DatabaseConnection, doc_id: Uuid) -> Result<(), PageEr
 /// Freezes the current content as named version `label`; returns it.
 pub async fn create_version(
     db: &DatabaseConnection,
-    page: &docs::Model,
+    doc_id: Uuid,
+    org_id: i64,
     label: &str,
     user_id: i64,
 ) -> Result<doc_versions::Model, PageError> {
     let txn = db.begin().await?;
     // Row lock: serializes version numbering of this page.
-    docs::Entity::find_by_id(page.id)
+    docs::Entity::find_by_id(doc_id)
         .lock_exclusive()
         .one(&txn)
         .await?;
-    let state = encode(&load(&txn, page.id).await?);
+    let state = encode(&load_locked(&txn, doc_id, false).await?);
     let last: Option<i64> = doc_versions::Entity::find()
         .select_only()
         .column_as(doc_versions::Column::VersionNumber.max(), "n")
-        .filter(doc_versions::Column::DocId.eq(page.id))
+        .filter(doc_versions::Column::DocId.eq(doc_id))
         .into_tuple()
         .one(&txn)
         .await?
         .flatten();
     let version = doc_versions::ActiveModel {
-        doc_id: Set(page.id),
-        org_id: Set(page.org_id),
+        doc_id: Set(doc_id),
+        org_id: Set(org_id),
         version_number: Set(last.unwrap_or(0) + 1),
         label: Set(label.to_string()),
         snapshot: Set(state),

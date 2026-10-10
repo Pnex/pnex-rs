@@ -527,6 +527,11 @@ Livré (L1 + cœur de L2) :
   un ticket à chaque reconnexion), barre d'outils, palette `/`, raccourcis
   Markdown, curseurs des autres, statut de synchro ; import/export Markdown,
   aperçu, diff par blocs et restauration des versions côté client ;
+- commentaires (P12) : fils ancrés par positions relatives Yjs (table
+  `doc_comments`), réponses, résolution, surlignage dans l'éditeur ;
+  le serveur pousse un message y-protocols personnalisé (tag 100) aux
+  éditeurs ouverts à chaque changement ;
+- débit WS borné par session (SEC-28 corrigé) ;
 - garde JS ↔ Rust du schéma (`doc_editor.rs`), état produit par le vrai
   client accepté par le validateur serveur (`yjs_client_state.b64`).
 
@@ -536,8 +541,7 @@ Livré (L1 + cœur de L2) :
   compacté ; à reprendre avec la rétention par org (P5) ;
 - hors ligne mobile : les éditions survivent tant que la page reste ouverte
   (pas de persistance locale `y-indexeddb`) ;
-- commentaires (P12) non faits (reste de L2) ;
-- débit par connexion non borné (SEC-28), rôle figé à l'ouverture (SEC-29) ;
+- rôle figé à l'ouverture du websocket (SEC-29, accepté) ; mentions de personnes dans les commentaires → notification non faites ;
 - import `.docx` et index plein texte des pages : attendent `doc_extract` et
   `text_chunks` de `doc-search.md` (colonne `doc_id` + CHECK à ajouter) ;
 - vérification navigateur et multi-pods réels non faites.

@@ -11,6 +11,7 @@ pub mod dashboard;
 pub mod dashboards;
 pub mod device_link;
 pub mod devices;
+pub mod doc_comments;
 pub mod docs;
 /// Référentiels Edge — credentials WiFi + hosts serveur PNeX (wizard device).
 pub mod edge_agents;
