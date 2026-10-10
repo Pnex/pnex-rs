@@ -69,3 +69,4 @@ device_certificates
 asr_profiles
 media_streams
 media_segments
+ml_model_checks

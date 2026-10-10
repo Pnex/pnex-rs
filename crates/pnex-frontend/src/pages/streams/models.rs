@@ -214,6 +214,19 @@ fn ModelRow(
             wer: format!("{:.1}", wer * 100.0)
         )
     });
+    let carrier_lines: Vec<String> = model
+        .carriers
+        .iter()
+        .map(|c| match (c.check.status.as_str(), c.check.streams()) {
+            ("valid", Some(streams)) => t!(
+                "asr-models-carrier-valid",
+                carrier: c.carrier.clone(),
+                streams: format!("{streams:.0}")
+            )
+            .to_string(),
+            _ => t!("asr-models-carrier-invalid", carrier: c.carrier.clone()).to_string(),
+        })
+        .collect();
     let nc = license_is_non_commercial(&model.license);
     let id = model.id.clone();
     let m_delete = model.clone();
@@ -241,6 +254,9 @@ fn ModelRow(
                 }
                 if let Some(err) = check.error.clone() {
                     p { class: "text-xs text-red-700 mt-0.5 break-words", "{err}" }
+                }
+                for line in carrier_lines.iter() {
+                    p { class: "text-xs text-gray-500 mt-0.5", "{line}" }
                 }
             }
             td { class: "td text-right",

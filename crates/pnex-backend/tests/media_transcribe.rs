@@ -170,6 +170,32 @@ async fn model_import_check_and_transcription_chain() {
             assert_eq!(vision["count"], 0, "{vision}");
             let check = post(&format!("/api/v1/asr/models/{model_id}/check"), json!({})).await;
             assert_eq!(check.status_code(), 200);
+            assert!(
+                check.json::<Value>().get("carriers").is_none(),
+                "no dedicated worker"
+            );
+
+            // Dedicated transcription queue: the check also runs there
+            // (inline in tests) and is kept per carrier.
+            unsafe {
+                std::env::set_var("PNEX_ASR_QUEUE_TAG", "asr");
+                std::env::set_var("PNEX_ASR_CARRIER", "gpu-test");
+            }
+            let check = post(&format!("/api/v1/asr/models/{model_id}/check"), json!({})).await;
+            unsafe {
+                std::env::remove_var("PNEX_ASR_QUEUE_TAG");
+                std::env::remove_var("PNEX_ASR_CARRIER");
+            }
+            assert_eq!(check.status_code(), 200, "{}", check.text());
+            let got = server
+                .get(&format!("/api/v1/asr/models/{model_id}"))
+                .add_header("Authorization", auth.clone())
+                .add_header("X-Org-Id", org.to_string())
+                .await
+                .json::<Value>();
+            assert_eq!(got["carriers"][0]["carrier"], "gpu-test", "{got}");
+            assert_eq!(got["carriers"][0]["check"]["status"], "valid", "{got}");
+            assert!(got["carriers"][0]["check"]["rtf"].as_f64().unwrap() > 0.0);
 
             // Test by dropping a clip: unknown format refused; a WAV is
             // decoded (ffmpeg) and transcribed by the warm runtime.

@@ -2006,3 +2006,22 @@ CREATE TABLE media_segments (
 );
 CREATE INDEX idx_media_segments_org_id_stream_id_started_at ON media_segments USING btree (org_id, stream_id, started_at DESC);
 CREATE INDEX idx_media_segments_state_updated_at ON media_segments USING btree (state, updated_at);
+
+CREATE TABLE ml_model_checks (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    org_id bigint NOT NULL,
+    model_id uuid NOT NULL,
+    carrier character varying(64) NOT NULL,
+    check_status character varying(16) NOT NULL,
+    check_error text,
+    load_ms bigint,
+    rtf double precision,
+    wer double precision,
+    checked_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT ml_model_checks_pkey PRIMARY KEY (id),
+    CONSTRAINT "fk-ml_model_checks-org_id" FOREIGN KEY (org_id)
+        REFERENCES organizations(id) ON DELETE CASCADE,
+    CONSTRAINT "fk-ml_model_checks-model_id" FOREIGN KEY (model_id)
+        REFERENCES ml_models(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX uniq_ml_model_checks_model_carrier ON ml_model_checks USING btree (model_id, carrier);
