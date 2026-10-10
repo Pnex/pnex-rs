@@ -260,6 +260,12 @@ impl Hooks for App {
         queue
             .register(crate::workers::stitch_panorama::StitchPanoramaWorker::build(ctx))
             .await?;
+        // Media ingest transcription (media-ingest.md D166): every process
+        // that drives the queue registers it, whatever its tags, so no job
+        // waits for the reaper.
+        queue
+            .register(crate::workers::transcribe_segment::TranscribeSegmentWorker::build(ctx))
+            .await?;
         // Custom firmware compile-only checks (custom-firmware.md D90):
         // must run where PlatformIO lives (pnex-builder in containers).
         queue

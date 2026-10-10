@@ -81,7 +81,7 @@ settings:
   openobserve:
     base_url: <%= get_env(name="PNEX_O2_URL") %>
     root_email: root@pnex.local
-    root_password: whatever
+    root_password: <%= get_env(name="PNEX_O2_ROOT_PASSWORD", default="whatever") %>
   # <% endif %>
   # Firmware Phase 6 — toolchain remplacée par des scripts de fixture
   # (rapides, échec/timeout pilotés par des valeurs de wifi_ssid).

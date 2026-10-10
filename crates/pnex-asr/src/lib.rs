@@ -11,6 +11,7 @@
 
 use std::path::Path;
 
+pub mod protocol;
 pub mod wer;
 
 #[cfg(any(feature = "sherpa", feature = "sherpa-shared"))]
@@ -61,7 +62,18 @@ pub trait Transcriber: Send {
 /// Reads a 16 kHz WAV file as mono `f32`; stereo is downmixed, any other
 /// rate is refused (resampling belongs to the capture).
 pub fn read_wav(path: &Path) -> Result<Vec<f32>, AsrError> {
-    let mut reader = hound::WavReader::open(path).map_err(|e| AsrError::Audio(e.to_string()))?;
+    let reader = hound::WavReader::open(path).map_err(|e| AsrError::Audio(e.to_string()))?;
+    samples_of(reader)
+}
+
+/// [`read_wav`] on in-memory bytes.
+pub fn read_wav_bytes(bytes: &[u8]) -> Result<Vec<f32>, AsrError> {
+    let reader = hound::WavReader::new(std::io::Cursor::new(bytes))
+        .map_err(|e| AsrError::Audio(e.to_string()))?;
+    samples_of(reader)
+}
+
+fn samples_of<R: std::io::Read>(mut reader: hound::WavReader<R>) -> Result<Vec<f32>, AsrError> {
     let spec = reader.spec();
     if spec.sample_rate != SAMPLE_RATE {
         return Err(AsrError::Audio(format!(

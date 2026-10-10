@@ -942,8 +942,9 @@ Le lot 1 avance par tranches, chacune testée et commitée seule.
 |---|---|---|
 | 1a — Schéma + API + page | tables `media_streams`, `media_segments`, `asr_profiles`, colonne `ml_models.audio_meta` (base 0.1.0, PG + SQLite) ; contrat `pnex_core::media_ingest` ; CRUD `/api/v1/media/streams` (+ `segments`) et `/api/v1/asr/profiles` ; quota par verrou advisory ; secret `media-stream` lié à l'origine de l'URL ; page `/streams` ; fiche KB `streams` | ✅ 2026-10-10 |
 | 1b — Capture `server` | fetcher filtré (icecast, http_file, HLS ; redirections suivies à la main, secret à l'origine exacte, débit et tailles bornés), ffmpeg confiné (seccomp + Landlock + rlimits), découpage PCM en Rust avec chevauchement, superviseur par flux avec bail `task:media-capture:<id>` et backoff, segments `captured` ; capté et transcrit à la main sur France Inter (icecast et HLS) | ✅ 2026-10-10 |
-| 1c — Transcription | worker `transcribe_segment` (pnex-asr), `tx_<slug>`, PUBLISH, purge D161, `GET /api/v1/media/transcripts` | à faire |
-| 1d — Modèles audio | registre D167 (tâches/familles audio, import archive, check par porteur, test par dépôt d'audio) | à faire |
+| 1c — Transcription | worker `transcribe_segment` (claim idempotent, `skipped_backlog` au-delà de `PNEX_ASR_MAX_LAG_SECS`, échec = `failed` + code court, audio gardé), document `tx_<slug>` (écriture O2 réessayée 3 fois), PUBLISH sur `pnex:media:v1:{org}:{slug}:tx`, purge D161, `GET /api/v1/media/transcripts` (slugs résolus en flux de l'org, `match_all` échappé, borné) ; bout-en-bout réel validé (Canary 180M → O2 → recherche « croûte » → Valkey), test `media_live` ignoré par défaut | ✅ 2026-10-10 (backend) |
+| 1d — Modèles audio | `ml_models` de tâche `asr` (les chemins vision filtrent `detection`), import d'une archive sherpa-onnx (`.tar`, `.tar.bz2`, `.tar.gz`, `.zip`) ou d'un GGML (sniffé par sa signature), extraction bornée et aplatie, famille lue dans les fichiers, licence SPDX obligatoire, check sur l'échantillon FLEURS fr embarqué (CC BY 4.0) → `load_ms`, RTF, WER ; `/api/v1/asr/models` | ✅ 2026-10-10 (backend) ; check par porteur (`ml_model_checks`) et test par dépôt d'audio : à faire |
+| 1f — UI | modèles audio et profils sur `/streams`, onglet transcriptions | à faire |
 | 1e — Images + porteur `worker` | ffmpeg et bwrap dans les images, `/internal/media/segment` | à faire |
 
 Écarts au PRD décidés en implémentant :
@@ -961,6 +962,26 @@ Le lot 1 avance par tranches, chacune testée et commitée seule.
 - Shoutcast v1 (`ICY 200 OK`), métadonnées ICY (D170) et HLS chiffré
   (`EXT-X-KEY`) ne sont pas pris en charge au lot 1 (`format-unsupported`,
   `encrypted`).
+- **Le runtime ASR est un process séparé** (`pnex-asr serve`, protocole
+  JSON-lines, `crates/pnex-asr/src/protocol.rs`), pas une bibliothèque liée
+  au serveur : un crash du code natif (onnxruntime, whisper.cpp) ne tue pas
+  le serveur, le modèle reste chargé entre les segments (un process par
+  modèle, arrêté après 10 min d'inactivité), le build du serveur reste en
+  Rust pur (aucune lib native dans ses ~50 binaires de test), et le runtime
+  se choisit au déploiement (`PNEX_ASR_BIN` : build sherpa CPU, build
+  whisper.cpp Vulkan…). Il est confiné comme ffmpeg (`PNEX_ASR_SANDBOX`,
+  `none` pour un GPU : les fichiers de périphérique s'ouvrent en écriture).
+- Le build sherpa-onnx télécharge des binaires précompilés sans somme de
+  contrôle ; un build de release fournit `SHERPA_ONNX_ARCHIVE_DIR` (archive
+  téléchargée et vérifiée contre une sha256 épinglée) — à câbler avec les
+  images (tranche 1e).
+- Le texte est stocké dans le champ O2 `message` (champ plein texte par
+  défaut, comme les événements D84) : `match_all` refuse un champ `text`
+  sans réglage du stream. Le DTO l'expose sous `text`.
+- Un modèle audio n'est pas refusé quand le runtime manque ou échoue au
+  chargement : il est enregistré `invalid` avec le diagnostic (re-vérifiable
+  après installation de `pnex-asr`) ; seul un fichier qui n'est pas un
+  modèle est refusé (`asr-model-unsupported`).
 - Un slug supprimé peut être réattribué : la vérification « streams O2
   `tx_<slug>` encore en rétention » de D159 n'est pas faite. À traiter
   avant la tranche 1c (sinon un nouveau flux hérite de l'historique d'un

@@ -75,6 +75,10 @@ pub fn spec_of(m: &ml_models::Model) -> ModelSpec {
     }
 }
 
+/// `ml_models.task` of vision rows: the table also holds audio models
+/// (media-ingest.md D167), which every vision path ignores.
+pub const VISION_TASK: &str = "detection";
+
 pub fn dto(m: &ml_models::Model) -> MlModel {
     MlModel {
         id: m.id.to_string(),

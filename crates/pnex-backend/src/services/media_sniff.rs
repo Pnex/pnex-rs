@@ -45,6 +45,11 @@ pub fn detect(content_type: &str, filename: &str, bytes: &[u8]) -> Sniff {
             kind: "splat",
             metadata: Some(serde_json::json!({ "format": ext })),
         },
+        // whisper.cpp models (media-ingest.md D167), told by their magic.
+        _ if window.starts_with(b"lmgg") || window.starts_with(b"GGUF") => Sniff {
+            kind: "model",
+            metadata: Some(serde_json::json!({ "format": "ggml" })),
+        },
         // ONNX models (vision registry, camera-video.md D81).
         "onnx" => Sniff {
             kind: "model",
@@ -70,6 +75,18 @@ fn contains_ci(haystack: &[u8], needle: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ggml_models_are_sniffed_by_magic() {
+        let s = detect(
+            "application/octet-stream",
+            "ggml-small.bin",
+            b"lmgg\x01\x02",
+        );
+        assert_eq!(s.kind, "model");
+        assert_eq!(detect("", "x.gguf", b"GGUF\x03").kind, "model");
+        assert_eq!(detect("", "x.bin", b"\x00\x01").kind, "photo");
+    }
 
     /// JPEG minimal avec un segment APP1 XMP contenant `xmp`.
     /// SOI (FFD8) + APP1 (FFE1 + len + préfixe XMP standard) + EOI.

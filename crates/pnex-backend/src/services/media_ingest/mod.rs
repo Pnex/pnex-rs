@@ -6,12 +6,15 @@
 //! - [`streams`] / [`profiles`]: CRUD services shared by the HTTP
 //!   controller (and later the assistant tools, D142 §9.3);
 //! - [`MediaIngestSettings`]: platform settings (`settings.media_ingest`,
-//!   `PNEX_MEDIA_*` / `PNEX_ASR_*` overrides).
+//!   `PNEX_MEDIA_*` overrides); [`asr_queue_tags`]: queue routing (D166).
 
+pub mod asr;
 pub mod capture;
+pub mod models;
 pub mod profiles;
 pub mod segments;
 pub mod streams;
+pub mod transcripts;
 
 use loco_rs::config::Config;
 use serde::Deserialize;
@@ -21,16 +24,12 @@ use serde::Deserialize;
 pub struct MediaIngestSettings {
     /// Max declared streams per org (D159 quota).
     pub max_streams_per_org: u64,
-    /// Queue tag of the transcription jobs; empty = untagged queue shared
-    /// with firmware and stitch jobs (D166).
-    pub asr_queue_tag: String,
 }
 
 impl Default for MediaIngestSettings {
     fn default() -> Self {
         Self {
             max_streams_per_org: 3,
-            asr_queue_tag: String::new(),
         }
     }
 }
@@ -38,7 +37,6 @@ impl Default for MediaIngestSettings {
 #[derive(Debug, Default, Deserialize)]
 struct Partial {
     max_streams_per_org: Option<u64>,
-    asr_queue_tag: Option<String>,
 }
 
 impl MediaIngestSettings {
@@ -53,20 +51,24 @@ impl MediaIngestSettings {
         if let Some(v) = partial.max_streams_per_org {
             out.max_streams_per_org = v;
         }
-        if let Some(v) = partial.asr_queue_tag {
-            out.asr_queue_tag = v;
-        }
         if let Some(v) = env_parse::<u64>("PNEX_MEDIA_MAX_STREAMS_PER_ORG") {
             out.max_streams_per_org = v;
         }
-        if let Ok(v) = std::env::var("PNEX_ASR_QUEUE_TAG") {
-            out.asr_queue_tag = v;
-        }
-        out.asr_queue_tag = out.asr_queue_tag.trim().to_string();
         out
     }
 }
 
 fn env_parse<T: std::str::FromStr>(key: &str) -> Option<T> {
     std::env::var(key).ok().and_then(|v| v.trim().parse().ok())
+}
+
+/// Loco tags of the transcription jobs (D166): `PNEX_ASR_QUEUE_TAG`, read
+/// identically by the enqueuer and every worker process; empty = untagged.
+pub fn asr_queue_tags() -> Vec<String> {
+    std::env::var("PNEX_ASR_QUEUE_TAG")
+        .ok()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .into_iter()
+        .collect()
 }

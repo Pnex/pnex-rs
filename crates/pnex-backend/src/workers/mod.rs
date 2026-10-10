@@ -5,3 +5,4 @@
 pub mod build_firmware;
 pub mod firmware_check;
 pub mod stitch_panorama;
+pub mod transcribe_segment;

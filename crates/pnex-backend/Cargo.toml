@@ -74,6 +74,15 @@ libc = "0.2"
 # Unprivileged filesystem/TCP confinement of the media decoder (media-ingest.md
 # D160): works where user namespaces (bwrap) are refused. MIT OR Apache-2.0.
 landlock = "0.4"
+# Speech-to-text protocol, family detection and WER (pure Rust: the runtime
+# runs in the separate pnex-asr process, media-ingest.md D166).
+pnex-asr = { workspace = true }
+# Audio model archives (sherpa-onnx releases are .tar.bz2; .tar.gz / .zip
+# accepted), extracted to the model cache (D167).
+tar = "0.4"
+bzip2 = "0.5"
+flate2 = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 base64 = "0.22"
 # Empreinte sha256 des artefacts firmware (intégrité, table firmware_artifacts)
 sha2 = "0.10"

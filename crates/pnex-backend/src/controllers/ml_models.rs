@@ -121,6 +121,7 @@ async fn find(
 ) -> Result<Option<ml_models::Model>> {
     ml_models::Entity::find_by_id(id)
         .filter(ml_models::Column::OrgId.eq(org.org.id))
+        .filter(ml_models::Column::Task.eq(vision::VISION_TASK))
         .one(db)
         .await
         .map_err(|_| Error::InternalServerError)
@@ -141,6 +142,7 @@ async fn list(
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
     let rows = ml_models::Entity::find()
         .filter(ml_models::Column::OrgId.eq(org.org.id))
+        .filter(ml_models::Column::Task.eq(vision::VISION_TASK))
         .order_by_asc(ml_models::Column::Name)
         .all(&ctx.db)
         .await
@@ -643,6 +645,7 @@ async fn internal_find(
 ) -> Result<Option<ml_models::Model>> {
     ml_models::Entity::find_by_id(id)
         .filter(ml_models::Column::OrgId.eq(org_id))
+        .filter(ml_models::Column::Task.eq(vision::VISION_TASK))
         .one(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)
