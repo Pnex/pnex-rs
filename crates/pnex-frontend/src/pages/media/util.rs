@@ -151,13 +151,19 @@ pub(super) fn extension_for(asset: &MediaAsset) -> Option<&'static str> {
 /// matches in ⟦ and ⟧ (markers dropped). Rendered as text nodes only — the
 /// snippet is user data, never HTML.
 pub(super) fn snippet_parts(snippet: &str) -> Vec<(String, bool)> {
-    let mut parts = Vec::new();
+    let mut parts: Vec<(String, bool)> = Vec::new();
     let mut current = String::new();
     let mut inside = false;
     for c in snippet.chars() {
         if c == '⟦' || c == '⟧' {
             if !current.is_empty() {
-                parts.push((std::mem::take(&mut current), inside));
+                let text = std::mem::take(&mut current);
+                // Postgres splits `E-0457` into `⟦E⟧⟦-0457⟧`: adjacent
+                // highlights merge into one.
+                match parts.last_mut() {
+                    Some((prev, true)) if inside => prev.push_str(&text),
+                    _ => parts.push((text, inside)),
+                }
             }
             inside = c == '⟦';
         } else {
@@ -187,5 +193,13 @@ mod tests {
             ]
         );
         assert!(snippet_parts("").is_empty());
+        assert_eq!(
+            snippet_parts("code ⟦E⟧⟦-0457⟧ ok"),
+            vec![
+                ("code ".to_string(), false),
+                ("E-0457".to_string(), true),
+                (" ok".to_string(), false),
+            ]
+        );
     }
 }

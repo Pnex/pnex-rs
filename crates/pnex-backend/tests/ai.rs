@@ -1723,3 +1723,79 @@ async fn assistant_works_the_ontology_through_the_ui_services() {
     })
     .await;
 }
+
+/// Document search tools (doc-search.md P1): the assistant searches the
+/// org's documents and reads a passage; a page of a page-less document or
+/// an unknown chunk is a readable refusal.
+#[tokio::test]
+#[serial]
+async fn assistant_searches_and_reads_documents() {
+    with_app_ai(true, true, |server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let res = server
+            .post("/api/v1/media?filename=manuel.md")
+            .add_header("Authorization", format!("Bearer {}", env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .add_header("Content-Type", "application/octet-stream")
+            .bytes(
+                b"# Pompe P2\nLe defaut E-0457 signale une vibration."
+                    .to_vec()
+                    .into(),
+            )
+            .await;
+        assert_eq!(res.status_code(), 201, "{}", res.text());
+        let asset = res.json::<serde_json::Value>()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let hits = send_json(
+            &server,
+            "GET",
+            "/api/v1/media/search?q=E-0457",
+            &env.alice,
+            org,
+            None,
+        )
+        .await
+        .json::<serde_json::Value>();
+        let chunk = hits["hits"][0]["chunk_id"]
+            .as_str()
+            .expect("hit")
+            .to_string();
+
+        let trace = run_tools(
+            &server,
+            &env.alice,
+            org,
+            vec![
+                ("search_docs", serde_json::json!({"query": "E-0457"})),
+                ("read_chunk", serde_json::json!({"chunk_id": chunk})),
+                (
+                    "open_page",
+                    serde_json::json!({"asset_id": asset, "page": 1}),
+                ),
+            ],
+        )
+        .await;
+        assert_eq!(trace[0]["ok"], true, "{trace:?}");
+        assert_eq!(trace[0]["args"]["count"], "1", "{trace:?}");
+        assert_eq!(trace[1]["ok"], true, "{trace:?}");
+        // Markdown has no pages: a refusal the model can act on.
+        assert_eq!(trace[2]["ok"], false, "{trace:?}");
+
+        // An unknown (or other org's) chunk is a refusal, never a leak; org
+        // isolation of the shared service is covered by tests/doc_search.rs.
+        let trace = run_tools(
+            &server,
+            &env.alice,
+            org,
+            vec![(
+                "read_chunk",
+                serde_json::json!({"chunk_id": "00000000-0000-0000-0000-000000000001"}),
+            )],
+        )
+        .await;
+        assert_eq!(trace[0]["ok"], false, "{trace:?}");
+    })
+    .await;
+}
