@@ -11,7 +11,7 @@
 //! sensor to a property moves no actuator).
 
 use pnex_core::ontology::api::{
-    LinkInput, ObjectInput, ObjectTypeInput, OntologyQuery, TimelineQuery,
+    CaseExportQuery, LinkInput, ObjectInput, ObjectTypeInput, OntologyQuery, TimelineQuery,
 };
 use pnex_core::ontology::{ObjectTypeDef, WriteRole};
 use serde_json::{json, Value};
@@ -187,6 +187,18 @@ pub async fn case_board(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome
         .await
         .map_err(onto_error)?;
     outcome(serde_json::to_value(b).map_err(|e| ToolError::from(e.to_string()))?)
+}
+
+/// The case at an instant: members, links among them, places (K14).
+pub async fn case_snapshot(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
+    let id = uuid_arg(args, "case_id")?;
+    let q = CaseExportQuery {
+        as_of: args["as_of"].as_str().map(str::to_string),
+    };
+    let snap = onto::cases::snapshot(deps.db, deps.org_id, id, &q)
+        .await
+        .map_err(onto_error)?;
+    outcome(serde_json::to_value(snap).map_err(|e| ToolError::from(e.to_string()))?)
 }
 
 /// One object with its links valid now.

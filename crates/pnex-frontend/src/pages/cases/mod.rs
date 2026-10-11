@@ -3,6 +3,7 @@
 //! creates a case from one line; the workspace (`workspace.rs`) gathers
 //! members, dated links and the timeline on one screen.
 
+mod snapshot;
 pub mod workspace;
 
 use dioxus::prelude::*;
@@ -195,7 +196,7 @@ fn CaseCard(case: ObjectView) -> Element {
                 if !question.is_empty() {
                     p { class: "mt-1 text-sm text-gray-600 line-clamp-2", "{question}" }
                 }
-                p { class: "mt-2 text-xs text-gray-400", "{updated}" }
+                p { class: "mt-2 text-xs text-gray-500", "{updated}" }
             }
         }
     }

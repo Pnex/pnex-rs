@@ -160,4 +160,62 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
     const timeline = page.getByTestId('case-timeline');
     await expect(timeline.locator('[data-kind="range"]')).toContainText(`${prefix} night shift`);
   });
+
+  test('replays the case at an instant: graph, places and the timeline cursor', async ({
+    app,
+    page,
+    api,
+    prefix,
+    capture,
+  }) => {
+    await api.post('/ontology/packs/investigation/install', {});
+    const obj = (type_key: string, title: string, properties = {}) =>
+      api.post('/ontology/objects', { type_key, title: `${prefix} ${title}`, properties });
+    const ann = await obj('person', 'Ann');
+    const bob = await obj('person', 'Bob');
+    const ev = await obj('event', 'break-in', { location: { lat: 45.76, lon: 4.83 } });
+    const flat = await obj('place', 'flat', { location: { lat: 45.75, lon: 4.85 } });
+    const c = await obj('case', 'theft', { status: 'open' });
+    const start = new Date(Date.now() - 3 * 3600_000).toISOString();
+    for (const o of [ann, bob, ev]) {
+      await api.post('/ontology/links', {
+        link_type: 'in_case',
+        source_id: o.id,
+        target_id: c.id,
+        attributes: { role: 'actor' },
+        valid_from: start,
+      });
+    }
+    const knows = await api.post('/ontology/links', {
+      link_type: 'knows', source_id: ann.id, target_id: bob.id, valid_from: start,
+    });
+    const lives = await api.post('/ontology/links', {
+      link_type: 'located_at', source_id: ann.id, target_id: flat.id,
+      attributes: { kind: 'lives' }, valid_from: start,
+    });
+    for (const l of [knows, lives]) await api.post(`/ontology/links/${l.id}/close`, {});
+
+    await app.goto(`/cases/${c.id}`);
+    const snap = page.getByTestId('case-snapshot');
+    const nodes = snap.getByTestId('ontology-graph').locator('g.cursor-pointer');
+    // Now: three members, the links are closed, only the event is placed.
+    await expect(nodes).toHaveCount(3);
+    await expect(snap.getByTestId('ontology-graph').locator('line')).toHaveCount(0);
+    await expect(snap.getByTestId('case-map')).toBeVisible();
+
+    // Step back to the last link opening: Ann knows Bob and lives at the flat.
+    const timeline = page.getByTestId('case-timeline');
+    await timeline.locator('[data-kind="link_open"]').last().locator('button').first().click();
+    await expect(snap.getByTestId('ontology-graph').locator('line')).toHaveCount(1);
+    // Ann is placed through her located_at link, open at that instant.
+    await expect(snap.getByTestId('case-map')).toContainText(`${prefix} Ann (${prefix} flat)`);
+    await expect(timeline.locator('li.opacity-40').first()).toBeVisible();
+    await capture('case-snapshot', { caption: 'The case at an instant: graph and places' });
+
+    // A graph node focuses its lane; Now returns to the current state.
+    await nodes.filter({ hasText: `${prefix} Bob` }).click();
+    await expect(page.getByTestId('case-timeline')).toContainText(`${prefix} Bob`);
+    await snap.getByRole('button', { name: app.t('case-snapshot-now'), exact: true }).click();
+    await expect(snap.getByTestId('ontology-graph').locator('line')).toHaveCount(0);
+  });
 });

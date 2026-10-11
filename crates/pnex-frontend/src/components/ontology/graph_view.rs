@@ -1,7 +1,8 @@
 //! Local graph of an object (D186, lot L4 "vue graphe Dioxus"): the object
 //! in the centre, its neighbours on a ring, their neighbours on an outer
 //! ring. Plain SVG (no layout engine): a neighbourhood is small and a
-//! radial layout reads well. Clicking a node opens its object page.
+//! radial layout reads well. Clicking a node opens its object page, or
+//! calls `on_select` when given (case workspace: focus its lane).
 
 use std::collections::BTreeMap;
 
@@ -42,12 +43,16 @@ pub fn layout(n: &Neighborhood, center: &str) -> BTreeMap<String, (f64, f64)> {
             .or_default()
             .push(node.id.clone());
     }
+    // No centre node (a case's members): one ring, the inner one, so the
+    // labels below the lowest node stay inside the frame.
+    let has_center = n.nodes.iter().any(|x| x.id == center);
     let mut pos = BTreeMap::new();
     for (ring, ids) in by_ring {
         let r = match ring {
             0 => 0.0,
             1 => R1,
-            _ => R2,
+            _ if has_center => R2,
+            _ => R1,
         };
         let count = ids.len().max(1) as f64;
         // The outer ring is turned half a step so its nodes fall between.
@@ -69,6 +74,7 @@ pub fn GraphView(
     neighborhood: Neighborhood,
     center: String,
     link_types: Vec<LinkTypeView>,
+    #[props(default)] on_select: Option<EventHandler<String>>,
 ) -> Element {
     let pos = layout(&neighborhood, &center);
     let edges: Vec<(String, (f64, f64), (f64, f64), String)> = neighborhood
@@ -118,7 +124,10 @@ pub fn GraphView(
                     marker_width: "6",
                     marker_height: "6",
                     orient: "auto-start-reverse",
-                    path { d: "M 0 0 L 10 5 L 0 10 z", fill: "#9ca3af" }
+                    path {
+                        d: "M 0 0 L 10 5 L 0 10 z",
+                        fill: "var(--color-gray-400, #9ca3af)",
+                    }
                 }
             }
             for (id, (x1, y1), (x2, y2), label) in edges {
@@ -128,7 +137,7 @@ pub fn GraphView(
                         y1: "{y1}",
                         x2: "{x2}",
                         y2: "{y2}",
-                        stroke: "#9ca3af",
+                        stroke: "var(--color-gray-400, #9ca3af)",
                         stroke_width: "1.5",
                         marker_end: "url(#onto-arrow)",
                     }
@@ -137,7 +146,7 @@ pub fn GraphView(
                         y: "{(y1 + y2) / 2.0 - 4.0}",
                         text_anchor: "middle",
                         font_size: "10",
-                        fill: "#6b7280",
+                        fill: "var(--color-gray-500, #6b7280)",
                         "{label}"
                     }
                 }
@@ -146,11 +155,14 @@ pub fn GraphView(
                 g {
                     key: "n{id}",
                     class: "cursor-pointer",
-                    onclick: move |_| {
-                        navigator
-                            .push(Route::OntologyObject {
-                                id: id.clone(),
-                            });
+                    onclick: move |_| match on_select {
+                        Some(h) => h.call(id.clone()),
+                        None => {
+                            navigator
+                                .push(Route::OntologyObject {
+                                    id: id.clone(),
+                                });
+                        }
                     },
                     circle {
                         cx: "{x}",
@@ -165,7 +177,7 @@ pub fn GraphView(
                         y: "{y + 34.0}",
                         text_anchor: "middle",
                         font_size: "12",
-                        fill: "#111827",
+                        fill: "var(--color-gray-900, #111827)",
                         "{title}"
                     }
                     text {
@@ -173,7 +185,7 @@ pub fn GraphView(
                         y: "{y + 47.0}",
                         text_anchor: "middle",
                         font_size: "10",
-                        fill: "#6b7280",
+                        fill: "var(--color-gray-500, #6b7280)",
                         "{kind}"
                     }
                 }
@@ -223,6 +235,10 @@ mod tests {
         let pos = layout(&n, "c");
         assert_eq!(pos["c"], (W / 2.0, H / 2.0));
         let (x, y) = pos["a"];
+        let d = ((x - W / 2.0).powi(2) + (y - H / 2.0).powi(2)).sqrt();
+        assert!((d - R1).abs() < 1e-6);
+        // Without a centre node every node sits on the inner ring.
+        let (x, y) = layout(&n, "")["far"];
         let d = ((x - W / 2.0).powi(2) + (y - H / 2.0).powi(2)).sqrt();
         assert!((d - R1).abs() < 1e-6);
     }

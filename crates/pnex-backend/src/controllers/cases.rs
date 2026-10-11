@@ -2,7 +2,7 @@
 //! (`case`) whose members are `in_case` links, both written through
 //! `/api/v1/ontology/*`. This controller adds the opening from an event
 //! (window and first members filled in), the computed timeline, the
-//! hypotheses board and the export.
+//! hypotheses board, the snapshot at an instant and the export.
 
 use axum::http::StatusCode;
 use axum::routing::{get, post};
@@ -19,6 +19,7 @@ pub fn routes() -> Routes {
         .add("/", post(open_case))
         .add("/{id}/timeline", post(case_timeline))
         .add("/{id}/board", get(case_board))
+        .add("/{id}/snapshot", get(case_snapshot))
         .add("/{id}/export", post(case_export))
 }
 
@@ -55,6 +56,19 @@ async fn case_board(
     Path(id): Path<String>,
 ) -> Result<Response> {
     match cases::board(&ctx.db, org.org.id, parse_uuid(&id)?).await {
+        Ok(v) => format::json(v),
+        Err(e) => onto_error(e),
+    }
+}
+
+/// Read only: any org member, the org from the principal (R1).
+async fn case_snapshot(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<String>,
+    Query(q): Query<CaseExportQuery>,
+) -> Result<Response> {
+    match cases::snapshot(&ctx.db, org.org.id, parse_uuid(&id)?, &q).await {
         Ok(v) => format::json(v),
         Err(e) => onto_error(e),
     }

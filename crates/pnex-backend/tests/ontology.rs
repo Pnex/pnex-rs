@@ -787,6 +787,79 @@ async fn investigation_pack_fuzzy_time_and_claims() {
 /// against each hypothesis and flags unsourced and contradicted claims;
 /// the export re-reads the case at its freeze instant, counts persons,
 /// lists pieces; another org reads nothing (R1).
+/// K14: the case replayed at an instant: links and places of that instant.
+#[tokio::test]
+#[serial]
+async fn case_snapshot_replays_links_and_places() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
+        assert!(st < 300, "{p}");
+        let dev = device(&server, &env, org, "p1").await;
+        env.db
+            .execute_unprepared(&format!(
+                "INSERT INTO map_pins (id, org_id, mode, label, latitude, longitude) VALUES
+                   ('00000000-0000-0000-0000-0000000000a1', {org}, 'geo', 'Plant', 48.85, 2.35);
+                 INSERT INTO device_placements (org_id, device_registry_id, device_id, pin_id)
+                   SELECT {org}, id, device_id, '00000000-0000-0000-0000-0000000000a1'
+                   FROM device_registries WHERE device_id = 'p1' AND org_id = {org};"
+            ))
+            .await
+            .unwrap();
+        let case = object(&server, &env.alice, org, "case", "Theft", json!({"status": "open"})).await;
+        let cid = case["id"].as_str().unwrap().to_string();
+        let a = object(&server, &env.alice, org, "person", "Ann", json!({})).await;
+        let b = object(&server, &env.alice, org, "person", "Bob", json!({})).await;
+        let ev = object(&server, &env.alice, org, "event", "Break-in", json!({"location": {"lat": 45.0, "lon": 5.0}})).await;
+        let home = object(&server, &env.alice, org, "place", "Flat", json!({"location": {"lat": 43.3, "lon": 5.4}})).await;
+        let start = (chrono::Utc::now() - chrono::Duration::hours(2)).to_rfc3339();
+        for o in [&a, &b, &ev] {
+            let (st, l) = link(&server, &env.alice, org, json!({"link_type": "in_case", "source_id": o["id"], "target_id": cid, "attributes": {"role": "actor"}, "valid_from": start})).await;
+            assert_eq!(st, 201, "{l}");
+        }
+        let (st, l) = link(&server, &env.alice, org, json!({"link_type": "in_case", "source_id": dev, "target_id": cid, "attributes": {"role": "context"}, "valid_from": start})).await;
+        assert_eq!(st, 201, "{l}");
+        let (st, knows) = link(&server, &env.alice, org, json!({"link_type": "knows", "source_id": a["id"], "target_id": b["id"], "valid_from": start})).await;
+        assert_eq!(st, 201, "{knows}");
+        let (st, lives) = link(&server, &env.alice, org, json!({"link_type": "located_at", "source_id": a["id"], "target_id": home["id"], "attributes": {"kind": "lives"}, "valid_from": start})).await;
+        assert_eq!(st, 201, "{lives}");
+        let then = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+        for l in [&knows, &lives] {
+            let (st, _) = call(&server, "POST", &format!("/api/v1/ontology/links/{}/close", l["id"]), &env.alice, org, Some(json!({}))).await;
+            assert_eq!(st, 200);
+        }
+
+        let snap = |at: String| {
+            let (server, alice) = (&server, &env.alice);
+            let url = format!("/api/v1/cases/{cid}/snapshot?as_of={}", at.replace('+', "%2B"));
+            async move { call(server, "GET", &url, alice, org, None).await }
+        };
+        let (st, past) = snap(then).await;
+        assert_eq!(st, 200, "{past}");
+        assert_eq!(past["graph"]["nodes"].as_array().unwrap().len(), 4, "{past}");
+        assert_eq!(past["graph"]["links"].as_array().unwrap().len(), 1, "{past}");
+        let places = |v: &Value| {
+            let mut p: Vec<String> = v["places"].as_array().unwrap().iter()
+                .map(|p| format!("{}@{}", p["object"]["title"].as_str().unwrap(), p["lat"]))
+                .collect();
+            p.sort();
+            p
+        };
+        // The device was placed after that instant (placement made just now).
+        assert_eq!(places(&past), vec!["Ann@43.3", "Break-in@45.0"], "{past}");
+        let (_, now) = snap(chrono::Utc::now().to_rfc3339()).await;
+        assert_eq!(now["graph"]["links"].as_array().unwrap().len(), 0, "{now}");
+        assert_eq!(places(&now), vec!["Break-in@45.0", "p1@48.85"], "{now}");
+        let (st, _) = snap("yesterday".into()).await;
+        assert_eq!(st, 400);
+
+        let org_b = personal_org(&server, &env.bob).await;
+        let (st, _) = call(&server, "GET", &format!("/api/v1/cases/{cid}/snapshot"), &env.bob, org_b, None).await;
+        assert_eq!(st, 404);
+    })
+    .await;
+}
+
 #[tokio::test]
 #[serial]
 async fn case_board_freeze_and_export() {

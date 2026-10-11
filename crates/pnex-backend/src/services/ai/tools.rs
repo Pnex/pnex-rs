@@ -415,6 +415,11 @@ pub fn tool_specs() -> Vec<ToolSpec> {
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"case_id":{"type":"string"}},"required":["case_id"]}"#).expect("static schema"),
         },
         ToolSpec {
+            name: "case_snapshot",
+            description: "An investigation case replayed at an instant as_of (RFC 3339, default now): the members present then, the links valid then among them, and where each member stood (its own geo_point, or the POI or place reached by a placed_at, occurred_at or located_at link open then). Answers 'who was linked to whom, and where, on that date'. Read-only.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"case_id":{"type":"string"},"as_of":{"type":"string"}},"required":["case_id"]}"#).expect("static schema"),
+        },
+        ToolSpec {
             name: "create_object",
             description: "Creates an object of an organization type (not a system type: devices, media… are created from their own pages). properties must follow the type's schema (describe_ontology); series and events properties hold no value.",
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"type_key":{"type":"string"},"title":{"type":"string"},"properties":{"type":"object"}},"required":["type_key","title"]}"#).expect("static schema"),
@@ -590,6 +595,7 @@ pub async fn execute(
         "get_object" => super::ontology_tools::get_object(deps, args).await,
         "case_timeline" => super::ontology_tools::case_timeline(deps, args).await,
         "case_board" => super::ontology_tools::case_board(deps, args).await,
+        "case_snapshot" => super::ontology_tools::case_snapshot(deps, args).await,
         "create_object" => super::ontology_tools::create_object(deps, args).await,
         "update_object" => super::ontology_tools::update_object(deps, args).await,
         "open_link" => super::ontology_tools::open_link(deps, args).await,
@@ -1003,6 +1009,14 @@ pub fn summarize(name: &str, out: &ToolOutcome) -> TraceSummary {
                 "ai-trace-case-board",
                 json!({"hypotheses": h, "unsourced": u}),
                 format!("board: {h} hypothesis(es), {u} unsourced claim(s)"),
+            )
+        }
+        "case_snapshot" => {
+            let (n, p) = (count(&v["graph"]["nodes"]), count(&v["places"]));
+            s(
+                "ai-trace-case-snapshot",
+                json!({"members": n, "places": p}),
+                format!("snapshot: {n} member(s), {p} place(s)"),
             )
         }
         "create_object" | "update_object" => {
@@ -1598,6 +1612,7 @@ mod tests {
                 "get_object",
                 "case_timeline",
                 "case_board",
+                "case_snapshot",
                 "create_object",
                 "update_object",
                 "open_link",
