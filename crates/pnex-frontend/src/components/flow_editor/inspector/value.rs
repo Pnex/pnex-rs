@@ -12,7 +12,7 @@ pub(super) fn CalcForm(mut cx: EditorCx, initial: CalcConfig, can_write: bool) -
             label { class: "block",
                 span { class: FIELD_LABEL, {t!("flows-calc-expression")} }
                 textarea {
-                    class: if !errors.cloned().is_empty() { "w-full h-20 px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm font-mono" } else { "w-full h-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono" },
+                    class: if !errors.cloned().is_empty() { "w-full h-20 px-2 py-1.5 border border-red-400 rounded-lg text-sm font-mono" } else { "w-full h-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono" },
                     value: "{expression}",
                     disabled: !can_write,
                     oninput: move |event| {
@@ -32,7 +32,7 @@ pub(super) fn CalcForm(mut cx: EditorCx, initial: CalcConfig, can_write: bool) -
             if !errors.cloned().is_empty() {
                 div { class: "rounded-lg bg-red-50 border border-red-200 p-2 space-y-1",
                     for e in errors.cloned() {
-                        p { class: "text-xs text-red-700", {e.to_string()} }
+                        p { class: "text-xs text-red-700", {calc_error_text(&e)} }
                     }
                 }
             }
@@ -256,4 +256,41 @@ fn patch_value_config(cx: &mut EditorCx, v: serde_json::Value) {
             config.value = v.clone();
         }
     });
+}
+
+/// Localized calc error (`calc-err-<code>`), with its position when known.
+fn calc_error_text(e: &pnex_core::CalcError) -> String {
+    let mut args: serde_json::Map<String, serde_json::Value> = e
+        .args
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.clone().into()))
+        .collect();
+    args.insert("pos".into(), e.pos.into());
+    let text = crate::api::error_i18n::resolve(
+        &format!("calc-err-{}", e.code),
+        Some(&serde_json::Value::Object(args.clone())),
+    );
+    if e.pos > 0 {
+        let at =
+            crate::api::error_i18n::resolve("calc-err-at", Some(&serde_json::Value::Object(args)));
+        format!("{text} {at}")
+    } else {
+        text
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn every_calc_error_code_is_translated() {
+        for ftl in [
+            include_str!("../../../../locales/en-US.ftl"),
+            include_str!("../../../../locales/fr-FR.ftl"),
+        ] {
+            for code in pnex_core::CALC_ERROR_CODES.iter().chain(&["at"]) {
+                let key = format!("\ncalc-err-{code} =");
+                assert!(ftl.contains(&key), "missing {key}");
+            }
+        }
+    }
 }
