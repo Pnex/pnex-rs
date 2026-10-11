@@ -1,5 +1,6 @@
 use super::helpers::*;
 use super::*;
+use crate::components::ui::FIELD_LABEL;
 
 // ─────────────── cartes de régulation mixtes (reg_*) ───────────────
 
@@ -98,7 +99,7 @@ pub(super) fn RegTtForm(
             p { class: "text-xs text-gray-500", {t!("flows-reg-help")} }
             // ── Liaison : un seul device, capteur + actionneur sur la même board.
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-reg-device")} }
+                span { class: FIELD_LABEL, {t!("flows-reg-device")} }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write,
@@ -133,9 +134,7 @@ pub(super) fn RegTtForm(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-reg-sensor-pin")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-reg-sensor-pin")} }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write || device_id.cloned().is_empty(),
@@ -165,9 +164,7 @@ pub(super) fn RegTtForm(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-reg-actuator-pin")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-reg-actuator-pin")} }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write || device_id.cloned().is_empty(),
@@ -453,7 +450,7 @@ pub(super) fn RegPidForm(
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-reg-help")} }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-reg-device")} }
+                span { class: FIELD_LABEL, {t!("flows-reg-device")} }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write,
@@ -487,9 +484,7 @@ pub(super) fn RegPidForm(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-reg-sensor-pin")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-reg-sensor-pin")} }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write || device_id.cloned().is_empty(),
@@ -519,9 +514,7 @@ pub(super) fn RegPidForm(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-reg-actuator-pin")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-reg-actuator-pin")} }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write || device_id.cloned().is_empty(),
@@ -756,7 +749,7 @@ fn SafeStateSelect(
     let is_high = matches!(current, SafeState::High);
     rsx! {
         label { class: "block",
-            span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-reg-safe-state")} }
+            span { class: FIELD_LABEL, {t!("flows-reg-safe-state")} }
             select {
                 class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                 disabled,

@@ -10,7 +10,7 @@ use crate::components::badges::date_label;
 use crate::components::icons;
 
 const TOOL_BTN: &str =
-    "h-8 px-2.5 rounded-md border border-gray-300 bg-white text-[13px] text-gray-700 hover:bg-gray-50 disabled:opacity-40";
+    "h-8 px-2.5 rounded-md border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40";
 const MENU: &str =
     "absolute right-0 top-9 z-30 w-96 max-h-[420px] overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg py-1";
 const MENU_ITEM: &str = "w-full text-left px-3 py-2 hover:bg-gray-50 flex flex-col gap-0.5";
@@ -178,7 +178,7 @@ pub(super) fn ApiMenu(readonly: bool, on_insert: EventHandler<String>) -> Elemen
                                 open.set(false);
                             },
                             span { class: "text-sm text-gray-900", {t!(key)} }
-                            code { class: "text-[11px] font-mono text-gray-600 truncate",
+                            code { class: "text-xs font-mono text-gray-600 truncate",
                                 {snippet.lines().next().unwrap_or_default()}
                             }
                         }
@@ -224,7 +224,7 @@ pub(super) fn RevisionsDrawer(
                                             {format!("r{}", rev.revision_number)}
                                         }
                                         if rev.revision_number == current_revision {
-                                            span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-800",
+                                            span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800",
                                                 {t!("firmware-revision-current")}
                                             }
                                         }

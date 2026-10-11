@@ -17,6 +17,8 @@ use pnex_core::{ComponentStatus, OrgSystemRow, StatusMetric, TierOption};
 use crate::api;
 use crate::api::error_i18n::resolve;
 use crate::components::crud::layout::ListLayout;
+use crate::components::ui::FIELD_LABEL;
+use crate::components::ui::{BTN_DANGER_SOLID, BTN_PRIMARY_SM, BTN_SECONDARY_SM};
 use crate::pages::system::{format_bytes, parse_days};
 use crate::state::{session, toasts};
 
@@ -135,7 +137,7 @@ fn SecretsRekey(stale: Option<u64>, on_done: EventHandler<()>) -> Element {
                 if confirming() {
                     button {
                         r#type: "button",
-                        class: "px-3 py-1.5 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700",
+                        class: BTN_DANGER_SOLID,
                         disabled: busy(),
                         onclick: move |_| {
                             busy.set(true);
@@ -362,7 +364,7 @@ fn OrgsOverview() -> Element {
                     div { class: "overflow-x-auto",
                         table { class: "min-w-full text-sm",
                             thead {
-                                tr { class: "text-left text-xs uppercase text-gray-500 border-b",
+                                tr { class: "text-left text-xs text-gray-500 border-b",
                                     th { class: "py-2 pr-4", {t!("admin-orgs-col-org")} }
                                     th { class: "py-2 pr-4", {t!("admin-orgs-col-tier")} }
                                     th { class: "py-2 pr-4", {t!("admin-orgs-col-retention")} }
@@ -413,9 +415,7 @@ fn PlatformDefaultRetention(days: Option<u32>, on_saved: Callback<()>) -> Elemen
     };
     rsx! {
         div { class: "space-y-2 pb-4 border-b border-gray-100",
-            label {
-                r#for: "admin-retention-global",
-                class: "block text-sm font-medium text-gray-700",
+            label { r#for: "admin-retention-global", class: FIELD_LABEL,
                 {t!("system-retention-global")}
             }
             div { class: "flex gap-2",
@@ -430,13 +430,13 @@ fn PlatformDefaultRetention(days: Option<u32>, on_saved: Callback<()>) -> Elemen
                     oninput: move |e| input.set(e.value()),
                 }
                 button {
-                    class: "px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50",
+                    class: BTN_PRIMARY_SM,
                     disabled: busy(),
                     onclick: move |_| save(input()),
                     {t!("common-save")}
                 }
                 button {
-                    class: "px-2 py-1 text-xs text-gray-600 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50",
+                    class: BTN_SECONDARY_SM,
                     disabled: busy(),
                     onclick: move |_| {
                         input.set(String::new());
@@ -542,13 +542,13 @@ fn OrgRow(row: OrgSystemRow, tiers: Vec<TierOption>, on_saved: Callback<()>) -> 
                         oninput: move |e| input.set(e.value()),
                     }
                     button {
-                        class: "px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50",
+                        class: BTN_PRIMARY_SM,
                         disabled: busy(),
                         onclick: move |_| save(input()),
                         {t!("common-save")}
                     }
                     button {
-                        class: "px-2 py-1 text-xs text-gray-600 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50",
+                        class: BTN_SECONDARY_SM,
                         disabled: busy(),
                         onclick: move |_| {
                             input.set(String::new());

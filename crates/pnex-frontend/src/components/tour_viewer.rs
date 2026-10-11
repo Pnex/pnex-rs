@@ -552,7 +552,7 @@ pub fn TourViewer(
             if show_side_panel {
                 div { class: "w-60 shrink-0 flex flex-col gap-2 overflow-y-auto",
                     div {
-                        span { class: "text-xs font-semibold text-gray-500 uppercase tracking-wide",
+                        span { class: "text-xs font-semibold text-gray-500",
                             {t!("tour-viewer-floors")}
                         }
                         div { class: "flex flex-col gap-1 mt-1",

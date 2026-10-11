@@ -7,6 +7,7 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 
 use crate::api;
+use crate::components::ui::{BTN_PRIMARY_SM, BTN_SECONDARY_SM};
 use crate::pages::system::parse_days;
 use crate::state::toasts;
 
@@ -84,13 +85,13 @@ pub fn AiRetentionCard(platform: bool) -> Element {
                         oninput: move |e| input.set(e.value()),
                     }
                     button {
-                        class: "px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50",
+                        class: BTN_PRIMARY_SM,
                         disabled: saving(),
                         onclick: move |_| save(input()),
                         {t!("ai-retention-save")}
                     }
                     button {
-                        class: "px-3 py-1.5 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50",
+                        class: BTN_SECONDARY_SM,
                         disabled: saving(),
                         onclick: move |_| save(String::new()),
                         if platform {

@@ -1,6 +1,7 @@
 use super::helpers::*;
 use super::*;
 
+use crate::components::ui::FIELD_LABEL;
 use pnex_core::weather::{
     WeatherConfig, WeatherProvider, WEATHER_INTERVAL_MAX, WEATHER_INTERVAL_MIN,
 };
@@ -63,9 +64,7 @@ pub(super) fn WeatherForm(cx: EditorCx, initial: WeatherConfig, can_write: bool)
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-weather-help")} }
             label { class: "block",
-                span { class: "mb-1 block text-xs font-medium text-gray-500",
-                    {t!("flows-weather-provider")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-weather-provider")} }
                 select {
                     class: "w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm",
                     disabled: !can_write,
@@ -90,9 +89,7 @@ pub(super) fn WeatherForm(cx: EditorCx, initial: WeatherConfig, can_write: bool)
             }
             div { class: "grid grid-cols-2 gap-2",
                 label { class: "block",
-                    span { class: "mb-1 block text-xs font-medium text-gray-500",
-                        {t!("flows-weather-latitude")}
-                    }
+                    span { class: FIELD_LABEL, {t!("flows-weather-latitude")} }
                     input {
                         class: "w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm",
                         inputmode: "decimal",
@@ -108,9 +105,7 @@ pub(super) fn WeatherForm(cx: EditorCx, initial: WeatherConfig, can_write: bool)
                     }
                 }
                 label { class: "block",
-                    span { class: "mb-1 block text-xs font-medium text-gray-500",
-                        {t!("flows-weather-longitude")}
-                    }
+                    span { class: FIELD_LABEL, {t!("flows-weather-longitude")} }
                     input {
                         class: "w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm",
                         inputmode: "decimal",
@@ -127,9 +122,7 @@ pub(super) fn WeatherForm(cx: EditorCx, initial: WeatherConfig, can_write: bool)
                 }
             }
             label { class: "block",
-                span { class: "mb-1 block text-xs font-medium text-gray-500",
-                    {t!("flows-weather-interval")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-weather-interval")} }
                 input {
                     class: "w-32 rounded-lg border border-gray-300 px-2 py-1.5 text-sm",
                     r#type: "number",
@@ -163,7 +156,7 @@ pub(super) fn WeatherForm(cx: EditorCx, initial: WeatherConfig, can_write: bool)
                 p { class: "text-xs text-red-600", "{err}" }
             }
             p { class: "text-xs text-gray-500", {t!("flows-weather-ports-help")} }
-            p { class: "text-[10px] text-gray-400", "{attribution}" }
+            p { class: "text-xs text-gray-400", "{attribution}" }
         }
     }
 }

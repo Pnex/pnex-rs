@@ -15,12 +15,10 @@ use uuid::Uuid;
 
 use crate::api;
 use crate::components::secret_field::{SecretDraft, SecretField};
+use crate::components::ui::{BTN_DANGER, BTN_DANGER_SOLID, BTN_PRIMARY, BTN_SECONDARY, INPUT};
 use crate::state::toasts;
 
 const BTN: &str = "px-2 py-1 text-xs border border-gray-300 rounded-lg hover:bg-gray-50";
-const BTN_PRIMARY: &str =
-    "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm";
-const INPUT: &str = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white";
 const KINDS: [GeoProviderKind; 5] = GeoProviderKind::ALL;
 /// Key of the dark style variant of a basemap (server: `STYLE_URL_DARK`).
 const STYLE_URL_DARK: &str = "style_url_dark";
@@ -96,7 +94,7 @@ pub fn GeoProviders(can_manage: bool) -> Element {
                 if can_manage && editing().is_none() {
                     button {
                         r#type: "button",
-                        class: "inline-flex items-center self-start whitespace-nowrap px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm",
+                        class: "{BTN_PRIMARY} self-start whitespace-nowrap",
                         onclick: move |_| editing.set(Some(Editing::New)),
                         crate::components::icons::Plus { class: "h-4 w-4 mr-1" }
                         {t!("geo-add")}
@@ -113,7 +111,7 @@ pub fn GeoProviders(can_manage: bool) -> Element {
                 div { class: "overflow-x-auto",
                     table { class: "min-w-full text-sm",
                         thead {
-                            tr { class: "text-left text-xs uppercase text-gray-500 border-b",
+                            tr { class: "text-left text-xs text-gray-500 border-b",
                                 th { class: "py-2 pr-4", {t!("geo-col-name")} }
                                 th { class: "py-2 pr-4", {t!("geo-col-kind")} }
                                 th { class: "py-2 pr-4 hidden md:table-cell", {t!("geo-col-caps")} }
@@ -226,7 +224,7 @@ fn ProviderRow(
                     if confirming {
                         button {
                             r#type: "button",
-                            class: "px-2 py-1 text-xs rounded-lg bg-red-600 text-white hover:bg-red-700",
+                            class: BTN_DANGER_SOLID,
                             onclick: move |_| {
                                 spawn(async move {
                                     match api::geo::delete_provider(id).await {
@@ -243,7 +241,7 @@ fn ProviderRow(
                     } else {
                         button {
                             r#type: "button",
-                            class: "px-2 py-1 text-xs border border-red-200 text-red-700 rounded-lg hover:bg-red-50",
+                            class: BTN_DANGER,
                             onclick: move |_| on_ask_delete.call(id),
                             {t!("geo-delete")}
                         }
@@ -518,7 +516,7 @@ fn ProviderForm(
                 }
                 button {
                     r#type: "button",
-                    class: "px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm",
+                    class: BTN_SECONDARY,
                     onclick: move |_| on_cancel.call(()),
                     {t!("geo-cancel")}
                 }

@@ -21,7 +21,7 @@ use crate::api;
 use crate::api::media::{MediaAsset, MediaFilters, MediaKind, UploadParams};
 use crate::components::badges::date_label;
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::{FilterBar, SearchInput};
+use crate::components::crud::filters::{FilterBar, LabelFilterInput, SearchInput};
 use crate::components::crud::layout::{ListLayout, PRIMARY_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
@@ -326,7 +326,7 @@ pub fn Media() -> Element {
                 FilterBar {
                     select {
                         aria_label: t!("media-col-type"),
-                        class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                        class: INPUT,
                         value: "{filter_kind}",
                         onchange: move |evt| {
                             filter_kind.set(evt.value());
@@ -357,7 +357,7 @@ pub fn Media() -> Element {
                         },
                     }
                     // D42: effective label filter (inheritance included).
-                    SearchInput {
+                    LabelFilterInput {
                         placeholder: t!("resources-label-filter-placeholder").to_string(),
                         value: filter_label,
                         on_submit: move |_| {
@@ -473,6 +473,7 @@ mod preview;
 mod upload;
 mod util;
 
+use crate::components::ui::INPUT;
 use detail::MediaDetail;
 use preview::MediaPreview;
 use upload::UploadModal;

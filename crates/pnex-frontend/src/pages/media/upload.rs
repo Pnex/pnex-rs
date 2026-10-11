@@ -1,4 +1,6 @@
 use super::*;
+use crate::components::ui::BTN_PRIMARY;
+use crate::components::ui::{FIELD_LABEL, INPUT};
 
 /// Upload modal — file input (Dioxus 0.7: `evt.files()` via the
 /// `HasFileData` trait), metadata in query, bytes in body
@@ -19,14 +21,10 @@ pub(super) fn UploadModal(on_close: Callback<()>, on_uploaded: Callback<()>) -> 
             on_close: move |_| on_close.call(()),
             div { class: "space-y-4",
                 div {
-                    label {
-                        r#for: "upload-field-1",
-                        class: "block text-sm font-medium text-gray-700 mb-1",
-                        {t!("media-upload-file")}
-                    }
+                    label { r#for: "upload-field-1", class: FIELD_LABEL, {t!("media-upload-file")} }
                     input {
                         id: "upload-field-1",
-                        class: "w-full text-sm border border-gray-300 rounded-lg px-3 py-2",
+                        class: "{INPUT} w-full",
                         r#type: "file",
                         onchange: move |evt| {
                             let files = evt.files();
@@ -50,28 +48,20 @@ pub(super) fn UploadModal(on_close: Callback<()>, on_uploaded: Callback<()>) -> 
                     }
                 }
                 div {
-                    label {
-                        r#for: "upload-field-2",
-                        class: "block text-sm font-medium text-gray-700 mb-1",
-                        {t!("media-upload-name")}
-                    }
+                    label { r#for: "upload-field-2", class: FIELD_LABEL, {t!("media-upload-name")} }
                     input {
                         id: "upload-field-2",
-                        class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm",
+                        class: "{INPUT} w-full",
                         placeholder: t!("media-upload-name-placeholder"),
                         value: "{display_name}",
                         oninput: move |evt| display_name.set(evt.value()),
                     }
                 }
                 div {
-                    label {
-                        r#for: "upload-field-3",
-                        class: "block text-sm font-medium text-gray-700 mb-1",
-                        {t!("media-upload-kind")}
-                    }
+                    label { r#for: "upload-field-3", class: FIELD_LABEL, {t!("media-upload-kind")} }
                     select {
                         id: "upload-field-3",
-                        class: "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white",
+                        class: "{INPUT} w-full",
                         value: "{kind}",
                         onchange: move |evt| kind.set(evt.value()),
                         option { value: "auto", {t!("media-upload-kind-auto")} }
@@ -91,7 +81,7 @@ pub(super) fn UploadModal(on_close: Callback<()>, on_uploaded: Callback<()>) -> 
                         {t!("common-cancel")}
                     }
                     button {
-                        class: "px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50",
+                        class: BTN_PRIMARY,
                         disabled: submitting() || file_name().is_empty(),
                         onclick: move |_| {
                             spawn(async move {

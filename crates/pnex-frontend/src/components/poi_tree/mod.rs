@@ -669,7 +669,7 @@ pub fn PoiTreeSection(
                             {row.name.clone()}
                         }
                         if let Some(sub) = &row.subtitle {
-                            span { class: "shrink-0 text-[10px] text-gray-400", {sub.clone()} }
+                            span { class: "shrink-0 text-xs text-gray-400", {sub.clone()} }
                         }
                         // Objet aperçuable : étoile d'épinglage (aperçu par
                         // défaut à l'ouverture du POI — premier objet attaché

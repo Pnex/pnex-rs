@@ -1,6 +1,7 @@
 use super::helpers::*;
 use super::*;
 use crate::components::secret_field::{can_manage_secrets, SecretSlotField};
+use crate::components::ui::FIELD_LABEL;
 use pnex_core::SecretSlot;
 
 /// Mutation ciblée de la config `http_fetch` du nœud sélectionné.
@@ -68,9 +69,7 @@ pub(super) fn HttpFetchForm(
     rsx! {
         div { class: "space-y-3",
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-http-fetch-url")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-http-fetch-url")} }
                 input {
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono",
                     r#type: "text",
@@ -86,9 +85,7 @@ pub(super) fn HttpFetchForm(
             }
             div { class: "grid grid-cols-2 gap-2",
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                        {t!("flows-http-fetch-method")}
-                    }
+                    span { class: FIELD_LABEL, {t!("flows-http-fetch-method")} }
                     select {
                         class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white disabled:bg-gray-50",
                         disabled: !can_write,
@@ -112,9 +109,7 @@ pub(super) fn HttpFetchForm(
                     }
                 }
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                        {t!("flows-http-fetch-timeout")}
-                    }
+                    span { class: FIELD_LABEL, {t!("flows-http-fetch-timeout")} }
                     input {
                         class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
                         r#type: "text",
@@ -134,9 +129,7 @@ pub(super) fn HttpFetchForm(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-http-fetch-auth")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-http-fetch-auth")} }
                 select {
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white disabled:bg-gray-50",
                     disabled: !can_write,
@@ -361,9 +354,7 @@ pub(super) fn HttpFetchForm(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-http-fetch-proxy")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-http-fetch-proxy")} }
                 select {
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white disabled:bg-gray-50",
                     disabled: !can_write,
@@ -455,9 +446,7 @@ pub(super) fn HttpFetchForm(
             }
             if is_post {
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                        {t!("flows-http-fetch-body")}
-                    }
+                    span { class: FIELD_LABEL, {t!("flows-http-fetch-body")} }
                     textarea {
                         class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs font-mono",
                         rows: "4",
@@ -478,9 +467,7 @@ pub(super) fn HttpFetchForm(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-http-fetch-on-error")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-http-fetch-on-error")} }
                 select {
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white disabled:bg-gray-50",
                     disabled: !can_write,

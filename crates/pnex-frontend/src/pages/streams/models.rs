@@ -13,6 +13,7 @@ use crate::api::media::{MediaFilters, MediaKind, UploadParams};
 use crate::components::confirm::ConfirmDialog;
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::DANGER_BTN;
+use crate::components::ui::BTN_PRIMARY;
 use crate::state::toasts;
 
 const INPUT: &str = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white";
@@ -443,7 +444,7 @@ fn NewProfile(models: Vec<AsrModel>, on_saved: Callback<()>) -> Element {
                 }
             }
             button {
-                class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm disabled:opacity-40",
+                class: BTN_PRIMARY,
                 r#type: "button",
                 disabled: busy() || name().trim().is_empty(),
                 onclick: save,

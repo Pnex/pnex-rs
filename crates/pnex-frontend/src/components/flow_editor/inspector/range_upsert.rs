@@ -1,6 +1,7 @@
 use super::helpers::*;
 use super::*;
 
+use crate::components::ui::FIELD_LABEL;
 use crate::pages::streams::origin_label;
 use pnex_core::time_range::{RangeOrigin, RangeUpsertConfig, ScopeKind};
 
@@ -59,7 +60,7 @@ pub(super) fn RangeUpsertForm(
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-range-upsert-help")} }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("ranges-scope")} }
+                span { class: FIELD_LABEL, {t!("ranges-scope")} }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write,
@@ -74,9 +75,7 @@ pub(super) fn RangeUpsertForm(
             }
             if on_stream {
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                        {t!("ranges-stream")}
-                    }
+                    span { class: FIELD_LABEL, {t!("ranges-stream")} }
                     if loaded && streams.is_empty() {
                         p { class: "text-xs text-amber-700", {t!("flows-media-source-no-stream")} }
                     }
@@ -100,9 +99,7 @@ pub(super) fn RangeUpsertForm(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("ranges-col-origin")}
-                }
+                span { class: FIELD_LABEL, {t!("ranges-col-origin")} }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write,

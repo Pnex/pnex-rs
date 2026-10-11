@@ -21,7 +21,7 @@ use crate::components::ontology::{
 use crate::state::{org, toasts};
 
 const INPUT: &str = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white";
-const LABEL: &str = "block text-xs font-medium text-gray-500 uppercase mb-1";
+const LABEL: &str = "block text-xs font-medium text-gray-500 mb-1";
 
 fn set_label(set: &TypeSet) -> String {
     match set {

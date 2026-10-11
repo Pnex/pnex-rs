@@ -1,6 +1,7 @@
 //! Pagineur réutilisable — navigue un signal de page 0-based sur une liste
 //! paginée serveur (enveloppe `{count, …}` D14). Caché si une seule page.
 
+use crate::components::ui::BTN_SECONDARY_SM;
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 
@@ -26,7 +27,7 @@ pub fn Pager(
     rsx! {
         div { class: "mt-4 flex items-center justify-center gap-3 text-sm",
             button {
-                class: "px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
+                class: BTN_SECONDARY_SM,
                 disabled: current == 0,
                 onclick: move |_| on_navigate.call(prev),
                 {t!("pagination-previous")}
@@ -36,7 +37,7 @@ pub fn Pager(
                 span { class: "text-gray-400 ml-2", "({count})" }
             }
             button {
-                class: "px-3 py-1.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
+                class: BTN_SECONDARY_SM,
                 disabled: current >= pages - 1,
                 onclick: move |_| on_navigate.call(next),
                 {t!("pagination-next")}

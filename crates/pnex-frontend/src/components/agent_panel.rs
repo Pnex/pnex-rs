@@ -11,6 +11,8 @@ use dioxus_i18n::t;
 use super::badges::date_label;
 use super::icons;
 use crate::api;
+use crate::components::ui::INPUT;
+use crate::components::ui::{BTN_PRIMARY_SM, BTN_SECONDARY_SM};
 use crate::state::toasts;
 use crate::util::sleep;
 
@@ -100,11 +102,11 @@ pub fn AgentInstall(device_pk: i64) -> Element {
         div { class: "space-y-4",
             p { class: "text-sm text-gray-600", {t!("agent-install-help", time : expires)} }
             div { class: "flex flex-wrap items-center gap-3",
-                span { class: "rounded-lg bg-blue-50 px-3 py-2 font-mono text-lg font-semibold tracking-widest text-blue-800",
+                span { class: "rounded-lg bg-blue-50 px-3 py-2 font-mono text-lg font-semibold text-blue-800",
                     "{created.code}"
                 }
                 button {
-                    class: "rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50",
+                    class: BTN_SECONDARY_SM,
                     r#type: "button",
                     disabled: generating(),
                     onclick: move |_| generate(),
@@ -112,10 +114,10 @@ pub fn AgentInstall(device_pk: i64) -> Element {
                     {t!("agent-install-new-code")}
                 }
             }
-            label { class: "block text-xs font-semibold uppercase tracking-wider text-gray-500",
+            label { class: "block text-xs font-semibold text-gray-500",
                 {t!("agent-install-server")}
                 input {
-                    class: "mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm normal-case",
+                    class: "{INPUT} mt-1 w-full font-mono",
                     r#type: "url",
                     value: "{server}",
                     oninput: move |e| server.set(e.value()),
@@ -161,7 +163,7 @@ pub fn AgentInstall(device_pk: i64) -> Element {
                 },
             }
             if let Some(fp) = created.ca_sha256.clone() {
-                p { class: "break-all text-[11px] text-gray-400",
+                p { class: "break-all text-xs text-gray-400",
                     {t!("agent-install-fingerprint")}
                     " "
                     code { "{fp}" }
@@ -259,7 +261,7 @@ pub fn AgentPanel(device_pk: i64, can_write: bool) -> Element {
             if can_write {
                 div { class: "space-y-2",
                     button {
-                        class: "rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50",
+                        class: BTN_SECONDARY_SM,
                         r#type: "button",
                         onclick: move |_| show_install.set(!show_install()),
                         icons::RefreshCw { class: "mr-1 inline h-4 w-4" }
@@ -271,7 +273,7 @@ pub fn AgentPanel(device_pk: i64, can_write: bool) -> Element {
                     }
                 }
                 div { class: "flex items-end gap-2",
-                    label { class: "text-xs font-semibold uppercase tracking-wider text-gray-500",
+                    label { class: "text-xs font-semibold text-gray-500",
                         {t!("agent-panel-quota")}
                         input {
                             class: "mt-1 block w-32 rounded-lg border border-gray-300 px-3 py-1.5 text-sm",
@@ -282,7 +284,7 @@ pub fn AgentPanel(device_pk: i64, can_write: bool) -> Element {
                         }
                     }
                     button {
-                        class: "rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700",
+                        class: BTN_PRIMARY_SM,
                         r#type: "button",
                         onclick: save_quota,
                         {t!("agent-panel-save")}
@@ -290,9 +292,7 @@ pub fn AgentPanel(device_pk: i64, can_write: bool) -> Element {
                 }
             }
             div { class: "space-y-2",
-                h3 { class: "text-sm font-semibold uppercase tracking-wider text-gray-500",
-                    {t!("agent-keys-title")}
-                }
+                h3 { class: "text-sm font-semibold text-gray-500", {t!("agent-keys-title")} }
                 p { class: "text-xs text-gray-500", {t!("agent-keys-help")} }
                 match &*keys.read() {
                     Some(Ok(list)) if list.is_empty() => rsx! {
@@ -313,9 +313,7 @@ pub fn AgentPanel(device_pk: i64, can_write: bool) -> Element {
                 }
             }
             div { class: "space-y-2",
-                h3 { class: "text-sm font-semibold uppercase tracking-wider text-gray-500",
-                    {t!("agent-examples-title")}
-                }
+                h3 { class: "text-sm font-semibold text-gray-500", {t!("agent-examples-title")} }
                 p { class: "text-xs text-gray-500", {t!("agent-examples-help")} }
                 div { class: "flex gap-1",
                     for (i, (name, _)) in examples.iter().enumerate() {
@@ -360,7 +358,7 @@ fn agent_facts(
             ]
             {
                 div { key: "{label}",
-                    div { class: "text-xs uppercase tracking-wider text-gray-400", "{label}" }
+                    div { class: "text-xs text-gray-400", "{label}" }
                     div { class: "font-mono text-sm text-gray-800", "{value}" }
                 }
             }
@@ -378,7 +376,7 @@ fn KeysTable(
     rsx! {
         div { class: "overflow-x-auto rounded-lg border border-gray-200",
             table { class: "min-w-full text-sm",
-                thead { class: "bg-gray-50 text-left text-xs uppercase tracking-wider text-gray-500",
+                thead { class: "bg-gray-50 text-left text-xs text-gray-500",
                     tr {
                         th { class: "px-3 py-2", {t!("agent-keys-col-key")} }
                         th { class: "px-3 py-2 hidden md:table-cell", {t!("agent-keys-col-unit")} }

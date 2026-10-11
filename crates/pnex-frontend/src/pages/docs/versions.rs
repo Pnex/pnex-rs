@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::api;
 use crate::api::error::ApiError;
 use crate::components::modal::Modal;
+use crate::components::ui::BTN_PRIMARY_SM;
 use crate::doc_editor::{self, DiffBlock};
 use pnex_core::pages::DocVersionSummary;
 
@@ -78,7 +79,7 @@ pub fn VersionsPanel(id: Uuid, host: String, can_write: bool) -> Element {
                         oninput: move |e| label.set(e.value()),
                     }
                     button {
-                        class: "rounded bg-blue-600 px-2 py-1 text-white disabled:opacity-50",
+                        class: BTN_PRIMARY_SM,
                         disabled: busy() || label().trim().is_empty(),
                         onclick: save,
                         {t!("docs-version-save")}

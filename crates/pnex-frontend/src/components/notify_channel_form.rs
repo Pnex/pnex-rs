@@ -19,6 +19,8 @@ use pnex_core::{FieldSpec, FieldType, NotifyChannel, NotifyKindInfo};
 use crate::api;
 use crate::api::notify::TestError;
 use crate::components::secret_field::{can_manage_secrets, SecretDraft, SecretField};
+use crate::components::ui::BTN_PRIMARY;
+use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::state::toasts;
 
 /// Champs du formulaire : valeurs texte/secret/nombre par id de champ.
@@ -190,13 +192,13 @@ pub fn NotifyChannelForm(
             div { class: "space-y-4",
                 div {
                     label {
-                        class: "block text-sm font-medium text-gray-700 mb-1",
+                        class: FIELD_LABEL,
                         r#for: "notify-field-channel-name",
                         {t!("notify-field-name")}
                     }
                     input {
                         id: "notify-field-channel-name",
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} w-full",
                         value: "{name}",
                         oninput: move |e| name.set(e.value()),
                     }
@@ -252,7 +254,7 @@ pub fn NotifyChannelForm(
                         }
                     }
                     button {
-                        class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium",
+                        class: BTN_PRIMARY,
                         disabled: saving(),
                         onclick: do_save,
                         {
@@ -322,9 +324,7 @@ fn FieldInput(spec: FieldSpec, mut values: Signal<FieldValues>) -> Element {
     let control_id = format!("notify-field-{id}");
     rsx! {
         div {
-            label {
-                class: "block text-sm font-medium text-gray-700 mb-1",
-                r#for: "{control_id}",
+            label { class: FIELD_LABEL, r#for: "{control_id}",
                 {t!(label_key)}
                 if spec.required {
                     span { class: "text-red-500 ml-1", "*" }
@@ -334,7 +334,7 @@ fn FieldInput(spec: FieldSpec, mut values: Signal<FieldValues>) -> Element {
                 FieldType::Number => rsx! {
                     input {
                         id: "{control_id}",
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} w-full",
                         r#type: "number",
                         value: "{value}",
                         oninput: move |e| {
@@ -360,7 +360,7 @@ fn FieldInput(spec: FieldSpec, mut values: Signal<FieldValues>) -> Element {
                 FieldType::Select if !spec.options.is_empty() => rsx! {
                     select {
                         id: "{control_id}",
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                        class: "{INPUT} w-full",
                         onchange: move |e| {
                             values.write().insert(id.clone(), e.value());
                         },
@@ -372,7 +372,7 @@ fn FieldInput(spec: FieldSpec, mut values: Signal<FieldValues>) -> Element {
                 _ => rsx! {
                     input {
                         id: "{control_id}",
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} w-full",
                         placeholder: spec.placeholder.clone().unwrap_or_default(),
                         value: "{value}",
                         oninput: move |e| {

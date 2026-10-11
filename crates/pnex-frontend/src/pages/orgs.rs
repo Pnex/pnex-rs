@@ -13,6 +13,8 @@ use crate::components::crud::layout::ListLayout;
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
+use crate::components::ui::INPUT;
+use crate::components::ui::{BTN_DANGER, BTN_PRIMARY};
 use crate::state::{org, toasts};
 
 /// Valeur texte d'un champ de formulaire (`FormValue::Text`).
@@ -128,42 +130,42 @@ fn OrgsPage(initial: Option<i64>) -> Element {
             can_write: true,
             // Harmonisation socle : rafraîchissement manuel dans l'en-tête
             // (la page n'a pas de barre de filtres).
-            // Création
-            form {
-                class: "mb-6 flex gap-2",
-                onsubmit: move |event| {
-                    // Bloque la soumission native (rechargement du SPA).
-                    event.prevent_default();
-                    let name = field(&event, "name");
-                    let name = name.trim().to_string();
-                    if name.is_empty() {
-                        return;
-                    }
-                    new_name.set(String::new());
-                    spawn(async move {
-                        match api::orgs::create(&name).await {
-                            Ok(created) => {
-                                toasts::success("toast-saved");
-                                org::set(created.id);
-                            }
-                            Err(err) => toasts::error(err),
+            // Creation belongs to the list, not to an org's detail.
+            if selected().is_none() {
+                form {
+                    class: "mb-6 flex gap-2",
+                    onsubmit: move |event| {
+                        // Bloque la soumission native (rechargement du SPA).
+                        event.prevent_default();
+                        let name = field(&event, "name");
+                        let name = name.trim().to_string();
+                        if name.is_empty() {
+                            return;
                         }
-                        // recharge la liste (la ressource lit `reload`)
-                        reload.with_mut(|r| *r += 1);
-                    });
-                },
-                input {
-                    class: "flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent",
-                    r#type: "text",
-                    name: "name",
-                    placeholder: t!("orgs-new-placeholder"),
-                    value: "{new_name}",
-                }
-                button {
-                    class: "inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors",
-                    r#type: "submit",
-                    icons::Plus { class: "h-4 w-4 mr-2" }
-                    {t!("orgs-create")}
+                        new_name.set(String::new());
+                        spawn(async move {
+                            match api::orgs::create(&name).await {
+                                Ok(created) => {
+                                    toasts::success("toast-saved");
+                                    org::set(created.id);
+                                }
+                                Err(err) => toasts::error(err),
+                            }
+                            // recharge la liste (la ressource lit `reload`)
+                            reload.with_mut(|r| *r += 1);
+                        });
+                    },
+                    input {
+                        class: "{INPUT} flex-1",
+                        r#type: "text",
+                        name: "name",
+                        placeholder: t!("orgs-new-placeholder"),
+                        value: "{new_name}",
+                    }
+                    button { class: BTN_PRIMARY, r#type: "submit",
+                        icons::Plus { class: "h-4 w-4 mr-2" }
+                        {t!("orgs-create")}
+                    }
                 }
             }
 
@@ -236,7 +238,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
             let members = detail.members.clone();
             let name = detail.name.clone();
             rsx! {
-                div { class: "bg-white rounded-lg shadow-sm",
+                div { class: "bg-white rounded-lg border border-line",
                     // En-tête
                     div { class: "p-4 border-b border-gray-200 flex items-center justify-between gap-4 md:p-6",
                         div { class: "min-w-0",
@@ -252,7 +254,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                         }
                         if is_owner {
                             button {
-                                class: "inline-flex shrink-0 items-center gap-1 px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors",
+                                class: "{BTN_DANGER} shrink-0",
                                 title: t!("orgs-delete"),
                                 aria_label: t!("orgs-delete"),
                                 onclick: move |_| confirm_delete.set(true),
@@ -285,17 +287,13 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                                 });
                             },
                             input {
-                                class: "flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                                class: "{INPUT} flex-1",
                                 r#type: "text",
                                 name: "name",
                                 placeholder: t!("orgs-rename-placeholder"),
                                 value: "{rename}",
                             }
-                            button {
-                                class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm",
-                                r#type: "submit",
-                                {t!("orgs-rename")}
-                            }
+                            button { class: BTN_PRIMARY, r#type: "submit", {t!("orgs-rename")} }
                         }
                     }
 
@@ -326,7 +324,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                                     });
                                 },
                                 input {
-                                    class: "flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                                    class: "{INPUT} flex-1 min-w-48",
                                     r#type: "email",
                                     name: "email",
                                     placeholder: t!("orgs-email-placeholder"),
@@ -334,7 +332,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                                 }
                                 select {
                                     aria_label: t!("orgs-member-role"),
-                                    class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                                    class: INPUT,
                                     onchange: move |event| member_role.set(event.value()),
                                     option {
                                         value: "viewer",
@@ -357,9 +355,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                                         {t!("role-owner")}
                                     }
                                 }
-                                button {
-                                    class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm",
-                                    r#type: "submit",
+                                button { class: BTN_PRIMARY, r#type: "submit",
                                     icons::Plus { class: "h-4 w-4 inline mr-1" }
                                     {t!("orgs-add-member")}
                                 }

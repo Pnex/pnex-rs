@@ -16,7 +16,7 @@ use super::{EditorCx, Selection};
 
 const SELECT: &str = "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white";
 const INPUT: &str = "w-full px-2 py-1.5 border border-gray-300 rounded text-sm";
-const LABEL: &str = "block text-[10px] font-medium uppercase text-gray-400";
+const LABEL: &str = "block text-xs font-medium text-gray-400";
 
 /// Mutates the aggregation options of the selected widget.
 fn edit(mut cx: EditorCx, f: impl FnOnce(&mut AggregateWidgetOptions)) {
@@ -199,7 +199,7 @@ pub fn RangeBarsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Element 
                         placeholder: "00:00, 06:00, 09:00",
                         onchange: on_bounds,
                     }
-                    p { class: "text-[10px] text-gray-400 mt-1", {t!("rb-bounds-help")} }
+                    p { class: "text-xs text-gray-400 mt-1", {t!("rb-bounds-help")} }
                 }
                 div {
                     label { r#for: "rb-timezone", class: LABEL, {t!("rb-timezone")} }

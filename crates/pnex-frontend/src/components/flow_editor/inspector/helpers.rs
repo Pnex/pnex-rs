@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::ui::FIELD_LABEL;
 
 /// Mutation du nœud **sélectionné** (l'inspecteur ne cible que lui, et il
 /// est remonté par `key` à chaque sélection). Pas de capture de `String`
@@ -122,7 +123,7 @@ pub(super) fn text_field(
     let label = label.into();
     rsx! {
         label { class: "block",
-            span { class: "text-xs font-medium text-gray-500 mb-1 block", {label} }
+            span { class: FIELD_LABEL, {label} }
             input {
                 class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
                 r#type: "text",

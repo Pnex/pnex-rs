@@ -1,5 +1,6 @@
 use super::form::PoiFormModal;
 use super::*;
+use crate::components::ui::{BTN_DANGER, BTN_SECONDARY_SM};
 
 // ─────────────────────────── détail POI (drawer) ───────────────────────────
 
@@ -272,9 +273,7 @@ pub(super) fn PoiDetail(
                             }
                             // ── Objets attachés : arbre de dossiers ──
                             div { class: "space-y-1.5",
-                                h3 { class: "text-xs font-semibold text-gray-500 uppercase tracking-wide",
-                                    {t!("poi-attachments-title")}
-                                }
+                                h3 { class: "text-xs font-semibold text-gray-500", {t!("poi-attachments-title")} }
                                 PoiTreeSection {
                                     key: "{p.id}",
                                     poi_id: p.id.clone(),
@@ -309,7 +308,7 @@ pub(super) fn PoiDetail(
                                 {t!("poi-edit")}
                             }
                             button {
-                                class: "px-3 py-1.5 text-sm text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors",
+                                class: BTN_SECONDARY_SM,
                                 onclick: move |_| {
                                     if let Some(p) = actions_poi.as_ref() {
                                         if let (Some(lat), Some(lon)) = (p.latitude, p.longitude) {
@@ -323,7 +322,7 @@ pub(super) fn PoiDetail(
                             }
                         }
                         button {
-                            class: "px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors",
+                            class: BTN_DANGER,
                             onclick: move |_| confirm_delete.set(true),
                             icons::Trash2 { class: "h-4 w-4 inline-block mr-1" }
                             {t!("viz-delete")}

@@ -10,6 +10,7 @@ use crate::api;
 use crate::api::media::{MediaFilters, MediaKind, MediaPage};
 use crate::components::modal::Modal;
 use crate::components::pager::Pager;
+use crate::components::ui::INPUT;
 
 const PAGE_SIZE: i64 = 8;
 
@@ -64,7 +65,7 @@ pub(crate) fn MediaPicker(
             on_close,
             div { class: "space-y-3",
                 input {
-                    class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                    class: "{INPUT} w-full",
                     r#type: "search",
                     placeholder: t!("studio-picker-search"),
                     value: "{search}",

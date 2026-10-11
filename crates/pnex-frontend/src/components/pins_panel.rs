@@ -11,6 +11,7 @@ use dioxus_i18n::t;
 
 use crate::api;
 use crate::components::modal::Modal;
+use crate::components::ui::BTN_DANGER_SOLID;
 use crate::state::toasts;
 use crate::util::sleep;
 use std::time::Duration;
@@ -80,9 +81,9 @@ pub(crate) fn PinCard(
         mode_options.push(pin.mode.clone());
     }
     let role_class = if pin.role == "actuator" {
-        "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-100 text-purple-800"
+        "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800"
     } else {
-        "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-800"
+        "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
     };
     let last_label = match &pin.last_value {
         Some(serde_json::Value::Bool(b)) => {
@@ -377,7 +378,7 @@ pub(crate) fn PinCard(
                             }
                         }
                         button {
-                            class: "w-full px-3 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors",
+                            class: "{BTN_DANGER_SOLID} w-full",
                             onclick: move |_| {
                                 if let Some(mut cmd) = pending_cmd.cloned() {
                                     cmd.confirm_stop_flows = Some(true);
@@ -525,9 +526,7 @@ pub fn PinsPanel(device_pk: i64, can_write: bool) -> Element {
     rsx! {
         div { class: "p-6 border-t border-gray-200",
             div { class: "flex items-center justify-between mb-3",
-                h3 { class: "text-sm font-semibold text-gray-500 uppercase tracking-wider",
-                    {t!("pins-title")}
-                }
+                h3 { class: "text-sm font-semibold text-gray-500", {t!("pins-title")} }
                 div { class: "flex items-center gap-3",
                     if connected {
                         span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800",

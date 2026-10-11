@@ -13,6 +13,7 @@ use pnex_core::ui_control::{
 
 use crate::components::home_icons::HomeIconPicker;
 use crate::components::icons;
+use crate::components::ui::FIELD_LABEL;
 
 /// Localized text of a spec check code (`ControlSpec::check`).
 pub fn spec_error_text(code: &str) -> String {
@@ -196,9 +197,7 @@ pub fn SpecFields(
                 }
                 if show_unit {
                     label { class: "block",
-                        span { class: "mb-1 block text-xs font-medium text-gray-500",
-                            {t!("controls-form-unit")}
-                        }
+                        span { class: FIELD_LABEL, {t!("controls-form-unit")} }
                         input {
                             class: "w-full rounded border border-gray-300 px-2 py-1.5 text-sm",
                             value: "{unit_text}",
@@ -261,7 +260,7 @@ fn NumInput(
     rsx! {
         // The label wraps its input: named for assistive tech (O31).
         label { class: "block",
-            span { class: "mb-1 block text-xs font-medium text-gray-500", "{label}" }
+            span { class: FIELD_LABEL, "{label}" }
             input {
                 class: "w-full rounded border border-gray-300 px-2 py-1.5 text-sm",
                 r#type: "text",
@@ -323,7 +322,7 @@ fn OptionsEditor(
                     {t!("controls-form-add-option")}
                 }
             }
-            p { class: "text-[10px] text-gray-400", {t!("controls-form-options-help")} }
+            p { class: "text-xs text-gray-400", {t!("controls-form-options-help")} }
         }
     }
 }

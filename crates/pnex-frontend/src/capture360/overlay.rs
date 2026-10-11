@@ -25,6 +25,7 @@
 use super::pipeline::CapturedFrame;
 use super::state::{self, Phase};
 use super::{fov, frames, guidance, sensors, wakelock};
+use crate::components::ui::BTN_PRIMARY;
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use std::sync::atomic::Ordering;
@@ -544,7 +545,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                         li { {t!("media-take360-intro-step3")} }
                     }
                     button {
-                        class: "w-full py-3 rounded-xl bg-blue-600 text-white text-base font-semibold",
+                        class: "{BTN_PRIMARY} w-full",
                         onclick: move |_| state::reanchor(),
                         {t!("media-take360-start")}
                     }
@@ -592,11 +593,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                 div { class: "absolute inset-0 flex flex-col items-center justify-center gap-4 text-white",
                     div { class: "text-4xl", "✓" }
                     div { class: "text-lg", {t!("media-take360-done")} }
-                    button {
-                        class: "px-6 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium",
-                        onclick: cancel,
-                        {t!("media-take360-close")}
-                    }
+                    button { class: BTN_PRIMARY, onclick: cancel, {t!("media-take360-close")} }
                 }
             }
 

@@ -1,6 +1,7 @@
 use super::helpers::*;
 use super::*;
 
+use crate::components::ui::FIELD_LABEL;
 use pnex_core::predictive::{
     AnomalyConfig, AnomalyMethod, BreachDirection, ForecastConfig, ForecastModel,
     FORECAST_HORIZON_MAX, PREDICT_MIN_SAMPLES_FLOOR, PREDICT_WINDOW_MAX, PREDICT_WINDOW_MIN,
@@ -139,7 +140,7 @@ fn field_input(
 ) -> Element {
     rsx! {
         label { class: "block",
-            span { class: "text-xs font-medium text-gray-500 mb-1 block", {label} }
+            span { class: FIELD_LABEL, {label} }
             input {
                 class: if invalid { "w-full px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm" } else { "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm" },
                 r#type: if numeric { "number" } else { "text" },
@@ -255,9 +256,7 @@ pub(super) fn AnomalyForm(mut cx: EditorCx, initial: AnomalyConfig, can_write: b
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-anomaly-help")} }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-anomaly-method")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-anomaly-method")} }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write,
@@ -426,9 +425,7 @@ pub(super) fn ForecastForm(mut cx: EditorCx, initial: ForecastConfig, can_write:
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-forecast-help")} }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-forecast-model")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-forecast-model")} }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write,
@@ -545,9 +542,7 @@ pub(super) fn ForecastForm(mut cx: EditorCx, initial: ForecastConfig, can_write:
                     )
                 }
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                        {t!("flows-forecast-direction")}
-                    }
+                    span { class: FIELD_LABEL, {t!("flows-forecast-direction")} }
                     select {
                         class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                         disabled: !can_write,

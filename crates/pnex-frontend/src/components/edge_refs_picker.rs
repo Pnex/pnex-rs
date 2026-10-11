@@ -13,6 +13,8 @@ use dioxus_i18n::t;
 use super::icons;
 use super::lan_detect::LanDetect;
 use crate::api;
+use crate::components::ui::BTN_PRIMARY_SM;
+use crate::components::ui::INPUT;
 use crate::state::toasts;
 
 /// Host display — devices always connect over TLS (D70: wss only).
@@ -102,13 +104,13 @@ pub fn WifiCredentialPicker(mut selected: Signal<Option<pnex_core::WifiCredentia
                                 role: "group",
                                 aria_labelledby: "edge-refs-wifi-label",
                                 input {
-                                    class: "px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                                    class: INPUT,
                                     placeholder: "{ssid_placeholder}",
                                     value: "{new_ssid}",
                                     oninput: move |e| new_ssid.set(e.value()),
                                 }
                                 input {
-                                    class: "px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                                    class: INPUT,
                                     r#type: "password",
                                     placeholder: "{password_placeholder}",
                                     value: "{new_password}",
@@ -116,7 +118,7 @@ pub fn WifiCredentialPicker(mut selected: Signal<Option<pnex_core::WifiCredentia
                                 }
                                 div { class: "sm:col-span-2 flex items-center gap-2",
                                     button {
-                                        class: "px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors",
+                                        class: BTN_PRIMARY_SM,
                                         r#type: "button",
                                         onclick: save_wifi,
                                         {t!("wizard-ref-add")}
@@ -135,7 +137,7 @@ pub fn WifiCredentialPicker(mut selected: Signal<Option<pnex_core::WifiCredentia
                             div { class: "flex items-center gap-2",
                                 select {
                                     id: "edge-refs-wifi-select",
-                                    class: "flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                                    class: "{INPUT} flex-1",
                                     value: "{selected_id}",
                                     onchange: {
                                         // Clone possédé par la closure (le
@@ -328,7 +330,7 @@ fn FreeHostPicker(mut selected: Signal<Option<pnex_core::PnexHost>>) -> Element 
                                 aria_labelledby: "edge-refs-host-label",
                                 label { class: "sm:col-span-2 block",
                                     input {
-                                        class: "px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                                        class: INPUT,
                                         placeholder: "{host_placeholder}",
                                         value: "{new_host}",
                                         oninput: move |e| new_host.set(e.value()),
@@ -339,7 +341,7 @@ fn FreeHostPicker(mut selected: Signal<Option<pnex_core::PnexHost>>) -> Element 
                                 }
                                 div { class: "sm:col-span-2 flex items-center gap-2",
                                     button {
-                                        class: "px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors",
+                                        class: BTN_PRIMARY_SM,
                                         r#type: "button",
                                         onclick: save_host,
                                         {t!("wizard-ref-add")}
@@ -367,7 +369,7 @@ fn FreeHostPicker(mut selected: Signal<Option<pnex_core::PnexHost>>) -> Element 
                             div { class: "flex items-center gap-2",
                                 select {
                                     id: "edge-refs-host-select",
-                                    class: "flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                                    class: "{INPUT} flex-1",
                                     value: "{selected_id}",
                                     onchange: {
                                         // Clone possédé par la closure (le

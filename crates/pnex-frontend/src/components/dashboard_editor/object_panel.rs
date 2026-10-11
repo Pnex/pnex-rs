@@ -10,6 +10,7 @@ use pnex_core::Widget;
 use super::EditorCx;
 use crate::api;
 use crate::components::ontology::{key_label, type_label};
+use crate::components::ui::FIELD_LABEL;
 
 const SELECT: &str = "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white";
 
@@ -59,7 +60,7 @@ pub fn ObjectSourcePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Eleme
         div {
             class: "space-y-2 border-t border-gray-100 pt-3",
             "data-testid": "object-source-panel",
-            label { class: "block text-xs font-medium text-gray-500", {t!("insp-object-type")} }
+            label { class: FIELD_LABEL, {t!("insp-object-type")} }
             select {
                 class: SELECT,
                 disabled: !can_write,
@@ -79,9 +80,7 @@ pub fn ObjectSourcePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Eleme
                 }
             }
             if object_type.is_some() {
-                label { class: "block text-xs font-medium text-gray-500",
-                    {t!("insp-object-property", kind : shown_type)}
-                }
+                label { class: FIELD_LABEL, {t!("insp-object-property", kind : shown_type)} }
                 select {
                     class: SELECT,
                     disabled: !can_write,
@@ -103,7 +102,7 @@ pub fn ObjectSourcePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Eleme
                         }
                     }
                 }
-                p { class: "text-[10px] text-gray-400", {t!("insp-object-help")} }
+                p { class: "text-xs text-gray-400", {t!("insp-object-help")} }
             }
         }
     }

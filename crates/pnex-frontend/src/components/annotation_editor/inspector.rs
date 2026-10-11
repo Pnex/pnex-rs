@@ -17,6 +17,7 @@ use crate::components::annotation_editor::surface_targets::{
     ControlTargetEditor, ReadingTargetEditor,
 };
 use crate::components::resource_picker::{PickerTab, ResourcePick, ResourcePicker};
+use crate::components::ui::FIELD_LABEL;
 
 /// Cible par défaut d'un nouveau type (le slug/gpio utiles sont reportés).
 fn target_for_kind(new_kind: &str, current: &AnnotationTarget) -> AnnotationTarget {
@@ -130,9 +131,7 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
     rsx! {
         div { class: "border-t border-gray-200 p-3 space-y-3 bg-gray-50",
             div { class: "flex items-center justify-between",
-                span { class: "text-xs font-semibold text-gray-500 uppercase tracking-wide",
-                    {t!("annot-inspector-title")}
-                }
+                span { class: "text-xs font-semibold text-gray-500", {t!("annot-inspector-title")} }
                 button {
                     class: "text-xs text-red-600 hover:text-red-700 font-medium",
                     onclick: move |_| {
@@ -146,7 +145,7 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
                     {t!("annot-inspector-delete")}
                 }
             }
-            label { class: "block text-xs font-medium text-gray-600",
+            label { class: FIELD_LABEL,
                 {t!("annot-inspector-kind")}
                 select {
                     class: "mt-1 w-full rounded-lg border-gray-300 text-sm",
@@ -224,7 +223,7 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
                 }
             }
             if kind_now == "note" {
-                label { class: "block text-xs font-medium text-gray-600",
+                label { class: FIELD_LABEL,
                     {t!("annot-inspector-text")}
                     textarea {
                         class: "mt-1 w-full rounded-lg border-gray-300 text-sm",
@@ -245,7 +244,7 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
             }
 
             // Label
-            label { class: "block text-xs font-medium text-gray-600",
+            label { class: FIELD_LABEL,
                 {t!("annot-inspector-label")}
                 input {
                     class: "mt-1 w-full rounded-lg border-gray-300 text-sm",

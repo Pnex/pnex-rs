@@ -160,7 +160,7 @@ fn LiveSection(
                     values: values.clone(),
                 }
             } else if !title.trim().is_empty() {
-                h2 { class: "flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500",
+                h2 { class: "flex items-center gap-1.5 px-1 text-xs font-semibold text-gray-500",
                     if let Some(i) = icon.clone() {
                         HomeIconView { id: i, class: "h-4 w-4" }
                     }
@@ -201,7 +201,7 @@ fn StackCard(w: Widget, values: Values, on_open: EventHandler<String>) -> Elemen
     let fade = if degraded { "opacity-50" } else { "" };
     let id = w.id.clone();
     rsx! {
-        div { class: "{classes} {fade} group relative overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm",
+        div { class: "{classes} {fade} group relative overflow-hidden rounded-2xl border border-gray-200 bg-white",
             WidgetBody { widget: w.clone(), points, values: Some(values.clone()) }
             button {
                 r#type: "button",
@@ -226,7 +226,7 @@ fn Chip(widget: Widget, values: Values, on_open: EventHandler<String>) -> Elemen
     rsx! {
         button {
             r#type: "button",
-            class: "flex shrink-0 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-sm shadow-sm",
+            class: "flex shrink-0 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-sm",
             onclick: move |_| on_open.call(id.clone()),
             span { style: "{style}",
                 HomeIconView { id: icon, class: "h-4 w-4" }
@@ -316,7 +316,7 @@ fn RoomHeader(title: String, icon: Option<String>, cards: Vec<Widget>, values: V
     let offs = summary.switch_offs.clone();
     rsx! {
         div { class: "flex items-center gap-3 px-1",
-            span { class: "flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-700 shadow-sm",
+            span { class: "flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-700 border border-line",
                 HomeIconView {
                     id: icon.unwrap_or_else(|| "home-house".to_string()),
                     class: "h-5 w-5",
@@ -331,7 +331,7 @@ fn RoomHeader(title: String, icon: Option<String>, cards: Vec<Widget>, values: V
             if can_off {
                 button {
                     r#type: "button",
-                    class: "flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50",
+                    class: "flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-700 border border-line hover:bg-gray-50",
                     onclick: move |_| confirming.set(true),
                     HomeIconView { id: "home-power", class: "h-3.5 w-3.5" }
                     {t!("db-room-all-off")}
@@ -489,7 +489,7 @@ fn HistoryCurve(label: String, points: Vec<TelemetryPoint>) -> Element {
                     "vector-effect": "non-scaling-stroke",
                 }
             }
-            p { class: "text-[10px] text-gray-400", {t!("db-detail-24h")} }
+            p { class: "text-xs text-gray-400", {t!("db-detail-24h")} }
         }
     }
 }

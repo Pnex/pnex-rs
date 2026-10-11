@@ -79,11 +79,11 @@ pub fn AppearancePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Element
         .unwrap_or_default();
     rsx! {
         div { class: "space-y-2 border-t border-gray-100 pt-2",
-            p { class: "text-[10px] font-medium uppercase text-gray-400", {t!("appear-title")} }
+            p { class: "text-xs font-medium text-gray-400", {t!("appear-title")} }
             if show_states {
                 p {
                     id: "appearance-icon-label",
-                    class: "block text-[10px] text-gray-500",
+                    class: "block text-xs text-gray-500",
                     {t!("appear-icon")}
                 }
                 HomeIconPicker {
@@ -96,7 +96,7 @@ pub fn AppearancePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Element
             if show_thresholds {
                 p {
                     id: "appearance-thresholds-label",
-                    class: "block text-[10px] text-gray-500",
+                    class: "block text-xs text-gray-500",
                     {t!("appear-thresholds")}
                 }
                 for (i, th) in thresholds.iter().cloned().enumerate() {
@@ -160,12 +160,12 @@ pub fn AppearancePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Element
                     onclick: move |_| add_threshold(cx),
                     {t!("appear-add-threshold")}
                 }
-                p { class: "text-[10px] text-gray-400", {t!("appear-thresholds-help")} }
+                p { class: "text-xs text-gray-400", {t!("appear-thresholds-help")} }
             }
             if show_states {
                 p {
                     id: "appearance-states-label",
-                    class: "block text-[10px] text-gray-500",
+                    class: "block text-xs text-gray-500",
                     {t!("appear-states")}
                 }
                 for (i, rule) in rules.iter().cloned().enumerate() {
@@ -184,7 +184,7 @@ pub fn AppearancePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Element
                         {t!("appear-add-state")}
                     }
                 }
-                p { class: "text-[10px] text-gray-400", {t!("appear-states-help")} }
+                p { class: "text-xs text-gray-400", {t!("appear-states-help")} }
             }
             if show_visibility {
                 VisibilityRule { cx, rule: visible_when, can_write }
@@ -192,7 +192,7 @@ pub fn AppearancePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Element
             if show_stale {
                 label {
                     r#for: "appearance-field-1",
-                    class: "block text-[10px] text-gray-500",
+                    class: "block text-xs text-gray-500",
                     {t!("appear-stale")}
                 }
                 input {
@@ -209,7 +209,7 @@ pub fn AppearancePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Element
                         edit_widget(cx, |w| w.options.stale_after_s = v);
                     },
                 }
-                p { class: "text-[10px] text-gray-400", {t!("appear-stale-help")} }
+                p { class: "text-xs text-gray-400", {t!("appear-stale-help")} }
             }
         }
     }
@@ -399,7 +399,7 @@ fn VisibilityRule(cx: EditorCx, rule: Option<StateRule>, can_write: bool) -> Ele
                         },
                     }
                 }
-                p { class: "text-[10px] text-gray-400", {t!("appear-visible-when-help")} }
+                p { class: "text-xs text-gray-400", {t!("appear-visible-when-help")} }
             }
         }
     }

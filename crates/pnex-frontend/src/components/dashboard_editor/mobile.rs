@@ -179,7 +179,7 @@ fn SectionBlock(
             },
             div { class: "flex items-center gap-1",
                 input {
-                    class: "min-w-0 flex-1 rounded bg-transparent px-1 py-0.5 text-xs font-semibold uppercase tracking-wide text-gray-600 hover:bg-white focus:bg-white",
+                    class: "min-w-0 flex-1 rounded bg-transparent px-1 py-0.5 text-xs font-semibold text-gray-600 hover:bg-white focus:bg-white",
                     value: "{section.title}",
                     placeholder: "{title_hint}",
                     onchange: move |e| {
@@ -287,7 +287,7 @@ fn ComposerCard(mut cx: EditorCx, w: Widget, section_id: String) -> Element {
 
     rsx! {
         div {
-            class: "{classes} relative cursor-pointer rounded-xl border border-gray-200 bg-white shadow-sm {ring}",
+            class: "{classes} relative cursor-pointer rounded-xl border border-gray-200 bg-white {ring}",
             draggable: "true",
             ondragstart: move |_| cx.drag_card.set(Some(id_drag.clone())),
             ondragend: move |_| cx.drag_card.set(None),
@@ -399,7 +399,7 @@ fn PageBar(
 fn PageEditor(cx: EditorCx, page: pnex_core::MobilePage) -> Element {
     let (id_title, id_icon, id_del) = (page.id.clone(), page.id.clone(), page.id.clone());
     rsx! {
-        div { class: "flex items-center gap-2 rounded-lg bg-white px-2 py-1 shadow-sm",
+        div { class: "flex items-center gap-2 rounded-lg bg-white px-2 py-1 border border-line",
             HomeIconPicker {
                 value: page.icon.clone(),
                 disabled: false,

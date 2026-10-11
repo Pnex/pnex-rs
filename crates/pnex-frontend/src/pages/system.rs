@@ -14,6 +14,8 @@ use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
+use crate::components::ui::BTN_DANGER_SOLID;
+use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::state::{org, session, toasts};
 
 /// Human-readable size (B/KB/MB/GB/TB).
@@ -447,7 +449,7 @@ fn DataCard(
                 }
                 if can_write && !rows.is_empty() {
                     button {
-                        class: "inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700",
+                        class: BTN_DANGER_SOLID,
                         onclick: move |_| on_action.call(Pending::Purge),
                         icons::Trash2 { class: "h-4 w-4 mr-2" }
                         {t!("system-purge")}
@@ -460,7 +462,7 @@ fn DataCard(
             ListStates { state, is_empty: rows.is_empty(), empty_message,
                 div { class: "flex flex-wrap items-center gap-3 mb-3",
                     input {
-                        class: "flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} flex-1 min-w-48",
                         r#type: "search",
                         aria_label: t!("system-search-placeholder"),
                         placeholder: t!("system-search-placeholder"),
@@ -656,26 +658,18 @@ fn DeleteRangeDialog(name: String, on_done: Callback<()>, on_cancel: Callback<()
                     {t!("system-delete-range-title", name : name.clone())}
                 }
                 p { class: "text-sm text-gray-600", {t!("system-delete-range-help")} }
-                label {
-                    r#for: "system-field-1",
-                    class: "block text-sm font-medium text-gray-700",
-                    {t!("system-range-start")}
-                }
+                label { r#for: "system-field-1", class: FIELD_LABEL, {t!("system-range-start")} }
                 input {
                     id: "system-field-1",
-                    class: "w-full px-3 py-2 border border-gray-300 rounded-lg",
+                    class: "{INPUT} w-full",
                     r#type: "datetime-local",
                     value: "{start}",
                     oninput: move |e| start.set(e.value()),
                 }
-                label {
-                    r#for: "system-field-2",
-                    class: "block text-sm font-medium text-gray-700",
-                    {t!("system-range-end")}
-                }
+                label { r#for: "system-field-2", class: FIELD_LABEL, {t!("system-range-end")} }
                 input {
                     id: "system-field-2",
-                    class: "w-full px-3 py-2 border border-gray-300 rounded-lg",
+                    class: "{INPUT} w-full",
                     r#type: "datetime-local",
                     value: "{end}",
                     oninput: move |e| end.set(e.value()),
@@ -687,7 +681,7 @@ fn DeleteRangeDialog(name: String, on_done: Callback<()>, on_cancel: Callback<()
                         {t!("common-cancel")}
                     }
                     button {
-                        class: "px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50",
+                        class: BTN_DANGER_SOLID,
                         disabled: busy(),
                         onclick: submit,
                         {t!("common-delete")}
@@ -733,7 +727,7 @@ fn PurgeDialog(on_done: Callback<()>, on_cancel: Callback<()>) -> Element {
                     {t!("system-purge-message", name : org_name.clone())}
                 }
                 input {
-                    class: "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500",
+                    class: "{INPUT} w-full",
                     r#type: "text",
                     placeholder: "{org_name}",
                     value: "{typed}",
@@ -746,7 +740,7 @@ fn PurgeDialog(on_done: Callback<()>, on_cancel: Callback<()>) -> Element {
                         {t!("common-cancel")}
                     }
                     button {
-                        class: "px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50",
+                        class: BTN_DANGER_SOLID,
                         disabled: !matches || busy(),
                         onclick: submit,
                         {t!("system-purge")}

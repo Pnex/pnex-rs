@@ -11,6 +11,8 @@ use crate::api::resources::LabelSet;
 use crate::api;
 use crate::components::icons;
 use crate::components::modal::Modal;
+use crate::components::ui::BTN_SECONDARY_SM;
+use crate::components::ui::{LabelTag, BTN_PRIMARY, INPUT};
 use crate::state::toasts;
 use dioxus_i18n::t;
 
@@ -58,7 +60,7 @@ pub fn LabelsEditor(
             if can_write {
                 div { class: "flex justify-end",
                     button {
-                        class: "px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50",
+                        class: BTN_PRIMARY,
                         disabled: !dirty(),
                         onclick: move |_| {
                             let snapshot = labels.read().clone();
@@ -103,23 +105,22 @@ pub fn LabelChipsInput(
 ) -> Element {
     let mut labels = labels;
     let mut input = use_signal(String::new);
-    // Pre-computed entries ("name:value" | "name") keep the rsx flat.
-    let entries: Vec<(String, String)> = labels
+    let entries: Vec<(String, Option<String>)> = labels
         .read()
         .iter()
-        .map(|(k, v)| (k.clone(), label_display(k, v.as_deref())))
+        .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
 
     rsx! {
         div { class: "space-y-2",
             div { class: "flex flex-wrap gap-1.5",
-                for (name, display) in entries {
-                    span { key: "{name}", class: LABEL_CHIP_CLASS,
-                        "{display}"
+                for (name, value) in entries {
+                    LabelTag { key: "{name}", name: name.clone(), value,
                         if can_write {
                             button {
-                                class: "text-blue-500 hover:text-red-600 font-bold ml-1",
+                                class: "border-l border-line-strong px-1.5 text-slate hover:bg-red-50 hover:text-alarm",
                                 r#type: "button",
+                                aria_label: t!("resources-label-remove", name : name.clone()),
                                 onclick: move |_| {
                                     labels.write().remove(&name);
                                     if let Some(cb) = on_edit {
@@ -133,8 +134,10 @@ pub fn LabelChipsInput(
                 }
             }
             if can_write {
+                LabelSuggestions { id: "pnex-labels-edit" }
                 input {
-                    class: "w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm",
+                    class: INPUT,
+                    list: "pnex-labels-edit",
                     placeholder: t!("resources-label-input-placeholder"),
                     value: "{input}",
                     oninput: move |evt| input.set(evt.value()),
@@ -159,19 +162,6 @@ pub fn LabelChipsInput(
     }
 }
 
-/// The one D42 label chip look (editor, wizard, list rows): keep every
-/// label rendering on this class so labels look the same everywhere.
-pub const LABEL_CHIP_CLASS: &str =
-    "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800";
-
-/// Chip text of a label: `name:value`, or `name` for a bare tag.
-pub fn label_display(name: &str, value: Option<&str>) -> String {
-    match value {
-        Some(v) => format!("{name}:{v}"),
-        None => name.to_string(),
-    }
-}
-
 /// Read-only label chips (list rows, cards). Renders nothing for an
 /// empty set; chips wrap so they never widen their container.
 #[component]
@@ -179,14 +169,12 @@ pub fn LabelChips(labels: LabelSet) -> Element {
     if labels.is_empty() {
         return rsx! {};
     }
-    let entries: Vec<(String, String)> = labels
-        .iter()
-        .map(|(k, v)| (k.clone(), label_display(k, v.as_deref())))
-        .collect();
+    let entries: Vec<(String, Option<String>)> =
+        labels.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     rsx! {
         div { class: "flex flex-wrap gap-1 mt-1 font-normal whitespace-normal",
-            for (name, display) in entries {
-                span { key: "{name}", class: LABEL_CHIP_CLASS, "{display}" }
+            for (name, value) in entries {
+                LabelTag { key: "{name}", name, value }
             }
         }
     }
@@ -256,7 +244,7 @@ pub fn LabelsButton(
     let title = t!("resources-labels-title").to_string();
     rsx! {
         button {
-            class: "inline-flex items-center px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+            class: BTN_SECONDARY_SM,
             r#type: "button",
             title: "{title}",
             aria_label: "{title}",
@@ -275,6 +263,31 @@ pub fn LabelsButton(
                     id: id.clone(),
                     can_write,
                 }
+            }
+        }
+    }
+}
+
+/// `<datalist>` of the org's labels (`name` and `name:value`), the
+/// suggestions of every label input. Fetch failure = no suggestions.
+#[component]
+pub fn LabelSuggestions(id: String) -> Element {
+    let catalog =
+        use_resource(|| async { api::resources::labels_catalog().await.unwrap_or_default() });
+    let options: Vec<String> = catalog
+        .value()
+        .read()
+        .iter()
+        .flatten()
+        .flat_map(|e| {
+            std::iter::once(e.name.clone())
+                .chain(e.values.iter().map(|v| format!("{}:{v}", e.name)))
+        })
+        .collect();
+    rsx! {
+        datalist { id,
+            for option in options {
+                option { key: "{option}", value: "{option}" }
             }
         }
     }

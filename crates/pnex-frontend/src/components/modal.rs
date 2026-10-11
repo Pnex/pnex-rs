@@ -14,7 +14,7 @@ use super::icons;
 /// offset is negative too: a sticky box stays inside the body's *content*
 /// box, so `bottom-0` lifted the footer by the padding and it covered the
 /// last line of a form that did not even scroll.
-pub const MODAL_FOOTER: &str = "sticky -bottom-4 sm:-bottom-6 -mx-4 -mb-4 flex justify-end gap-2 border-t border-gray-100 bg-white px-4 py-3 sm:-mx-6 sm:-mb-6 sm:px-6";
+pub const MODAL_FOOTER: &str = "sticky -bottom-4 sm:-bottom-6 -mx-4 -mb-4 flex justify-end gap-2 border-t border-line bg-gray-50 px-4 py-3 sm:-mx-6 sm:-mb-6 sm:px-6";
 
 #[component]
 pub fn Modal(
@@ -25,20 +25,21 @@ pub fn Modal(
 ) -> Element {
     rsx! {
         div {
-            class: "fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3 sm:p-4",
+            // Phone: a bottom sheet (thumb reach); from sm up: a centred dialog.
+            class: "fixed inset-0 bg-ink/55 dark:bg-black/60 flex items-end sm:items-center justify-center z-50 pt-8 sm:p-4",
             onclick: move |_| on_close.call(()),
             div {
                 // Never taller than the viewport: header stays put, only the body
                 // scrolls (a phone used to lose the dialog's buttons).
-                class: "flex max-h-full w-full flex-col bg-white rounded-lg shadow-xl {max_width}",
+                class: "flex max-h-full w-full flex-col bg-surface rounded-t-xl sm:rounded-lg shadow-2xl {max_width}",
                 role: "dialog",
                 aria_modal: "true",
                 aria_label: "{title}",
                 onclick: move |event| event.stop_propagation(),
-                div { class: "flex shrink-0 items-center justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-gray-200",
-                    h3 { class: "text-lg font-semibold text-gray-900", "{title}" }
+                div { class: "flex shrink-0 items-center justify-between gap-4 px-4 py-3 sm:px-6 sm:py-4 border-b border-line",
+                    h3 { class: "text-xl font-semibold text-ink", "{title}" }
                     button {
-                        class: "p-1 text-gray-400 hover:text-gray-600 transition-colors",
+                        class: "-mr-2 inline-flex h-9 w-9 items-center justify-center rounded-md text-slate hover:bg-gray-100 hover:text-ink transition-colors",
                         r#type: "button",
                         title: t!("common-close"),
                         aria_label: t!("common-close"),

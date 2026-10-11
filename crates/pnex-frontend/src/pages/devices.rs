@@ -17,7 +17,7 @@ use pnex_core::Device;
 use crate::api;
 use crate::components::badges::{date_label, phase_badge};
 use crate::components::board_pinout_editor as board_pinout;
-use crate::components::crud::filters::{FilterBar, SearchInput};
+use crate::components::crud::filters::{FilterBar, LabelFilterInput, SearchInput};
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
@@ -27,6 +27,8 @@ use crate::components::flash_modal::FlashModal;
 use crate::components::icons;
 use crate::components::labels_editor::{use_row_labels, LabelChips};
 use crate::components::modal::Modal;
+use crate::components::ui::INPUT;
+use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY, BTN_SECONDARY_SM};
 use crate::flash;
 use crate::state::devices::OPEN_DEVICE;
 use crate::state::{org, session, toasts};
@@ -245,7 +247,7 @@ pub fn Devices() -> Element {
                 if device.predefined_device_name == pnex_core::EDGE_AGENT_PREDEF {
                     let version = device.fw_version.clone().unwrap_or_else(|| "—".into());
                     return rsx! {
-                        span { class: "font-mono text-[11px] text-gray-500", "pnex-agent {version}" }
+                        span { class: "font-mono text-xs text-gray-500", "pnex-agent {version}" }
                     };
                 }
                 // Badge + date du dernier build, téléchargement si succès.
@@ -301,7 +303,7 @@ pub fn Devices() -> Element {
                         match &firmware {
                             Some((class, label, date, _)) => rsx! {
                                 span { class: "{class} w-fit", title: "{failure_hint}", {label.clone()} }
-                                span { class: "text-[11px] text-gray-400", {date.clone()} }
+                                span { class: "text-xs text-gray-400", {date.clone()} }
                             },
                             None => rsx! {
                                 span { class: "text-xs text-gray-400", {t!("devices-build-never")} }
@@ -309,24 +311,24 @@ pub fn Devices() -> Element {
                         }
                         // Running version (announce) and newest deployable build.
                         if let Some(v) = &device.fw_version {
-                            span { class: "text-[11px] text-gray-500",
+                            span { class: "text-xs text-gray-500",
                                 {t!("devices-fw-running", version : v.clone())}
                             }
                         }
                         if let Some(v) = &deployable {
-                            span { class: "text-[11px] text-gray-500",
+                            span { class: "text-xs text-gray-500",
                                 {t!("devices-fw-latest", version : v.clone())}
                             }
                         }
                         if let Some((class, label)) = &status_badge {
-                            span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium w-fit {class}",
+                            span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium w-fit {class}",
                                 {label.clone()}
                             }
                         }
                         // Déploiement OTA actif → progression live.
                         if let Some(st) = &ota_state {
                             span {
-                                class: "text-[11px] font-medium text-indigo-600",
+                                class: "text-xs font-medium text-indigo-600",
                                 {ota_state_label(st)}
                             }
                         }
@@ -446,6 +448,12 @@ pub fn Devices() -> Element {
         _ => Vec::new(),
     };
 
+    // An empty list under filters is not an empty organisation.
+    let filtered = filter_type() != "all"
+        || filter_status() != "all"
+        || !filter_capability().trim().is_empty()
+        || !search().trim().is_empty()
+        || !filter_label().trim().is_empty();
     rsx! {
         ListLayout {
             title: t!("nav-devices").to_string(),
@@ -472,7 +480,7 @@ pub fn Devices() -> Element {
                 FilterBar {
                     select {
                         aria_label: t!("devices-col-type"),
-                        class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                        class: INPUT,
                         onchange: move |event| {
                             filter_type.set(event.value());
                             page.set(0);
@@ -504,7 +512,7 @@ pub fn Devices() -> Element {
                     }
                     select {
                         aria_label: t!("devices-col-status"),
-                        class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                        class: INPUT,
                         onchange: move |event| {
                             filter_status.set(event.value());
                             page.set(0);
@@ -527,7 +535,7 @@ pub fn Devices() -> Element {
                     if !capability_names.is_empty() {
                         select {
                             aria_label: t!("devices-capability-filter"),
-                            class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                            class: INPUT,
                             onchange: move |event| {
                                 filter_capability.set(event.value());
                                 page.set(0);
@@ -556,7 +564,7 @@ pub fn Devices() -> Element {
                         },
                     }
                     // D42: effective label filter (inheritance included).
-                    SearchInput {
+                    LabelFilterInput {
                         placeholder: t!("resources-label-filter-placeholder").to_string(),
                         value: filter_label,
                         on_submit: move |_| {
@@ -599,7 +607,7 @@ pub fn Devices() -> Element {
                 ListStates {
                     state: list_state,
                     is_empty,
-                    empty_message: t!("devices-empty").to_string(),
+                    empty_message: if filtered { t!("devices-empty-filtered").to_string() } else { t!("devices-empty").to_string() },
                     DataTable {
                         columns,
                         rows,
@@ -839,7 +847,7 @@ fn RebuildModal(
                 }
                 div { class: crate::components::modal::MODAL_FOOTER,
                     button {
-                        class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
+                        class: BTN_SECONDARY,
                         r#type: "button",
                         onclick: move |_| on_close.call(()),
                         {t!("common-cancel")}
@@ -1005,14 +1013,14 @@ fn BulkModal(
                 }
                 div { class: crate::components::modal::MODAL_FOOTER,
                     button {
-                        class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
+                        class: BTN_SECONDARY,
                         r#type: "button",
                         onclick: move |_| on_close.call(()),
                         {if finished { t!("common-close") } else { t!("common-cancel") }}
                     }
                     if !finished {
                         button {
-                            class: "px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed",
+                            class: BTN_PRIMARY,
                             r#type: "button",
                             disabled: running() || eligible == 0,
                             onclick: submit,
@@ -1094,7 +1102,7 @@ fn OtaModal(
                 p { class: "text-xs text-gray-500 mb-4", {t!("devices-ota-hint")} }
                 div { class: "flex justify-end gap-2",
                     button {
-                        class: "px-3 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50",
+                        class: BTN_SECONDARY_SM,
                         onclick: move |_| on_close.call(()),
                         {t!("common-cancel")}
                     }
@@ -1351,7 +1359,7 @@ fn last_seen_label(last_seen: &Option<String>) -> Element {
         None => t!("devices-last-seen-never"),
     };
     rsx! {
-        span { class: "text-[11px] text-gray-400", {label} }
+        span { class: "text-xs text-gray-400", {label} }
     }
 }
 
@@ -1397,7 +1405,7 @@ fn DeviceDetail(
             rsx! {
                 div { class: "space-y-4",
                     // Header card — identity, statuses, delete.
-                    div { class: "bg-white rounded-lg shadow-sm",
+                    div { class: "bg-white rounded-lg border border-line",
                         div { class: "flex flex-wrap items-center gap-3 p-5",
                             // Convention retour des éditeurs (functions.rs) :
                             // bouton carré ArrowLeft + titre à côté.
@@ -1444,7 +1452,7 @@ fn DeviceDetail(
 
                     // Board card — SVG pinout editor (generic, profile v2)
                     // or outputs black box (predefined).
-                    div { class: "bg-white rounded-lg shadow-sm",
+                    div { class: "bg-white rounded-lg border border-line",
                         if is_agent {
                             crate::components::agent_panel::AgentPanel { device_pk, can_write }
                         } else if device.predefined_device_name.starts_with("generic") {
@@ -1453,7 +1461,7 @@ fn DeviceDetail(
                             div { class: "p-6",
                                 if !capabilities.is_empty() {
                                     div { class: "mb-4",
-                                        h3 { class: "mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500",
+                                        h3 { class: "mb-3 text-sm font-semibold text-gray-500",
                                             {t!("devices-capabilities")}
                                         }
                                         div { class: "flex flex-wrap gap-2",
@@ -1502,7 +1510,7 @@ fn DeviceDetail(
                     }
 
                     // Labels card — the single D42 label mechanism.
-                    div { class: "bg-white rounded-lg shadow-sm",
+                    div { class: "bg-white rounded-lg border border-line",
                         div { class: "p-5 sm:p-6",
                             crate::components::labels_editor::LabelsEditor {
                                 key: "{device_pk}",
@@ -1580,12 +1588,10 @@ fn SecretCard(
     let mut revealed = use_signal(|| false);
     let mask = "•".repeat(28);
     rsx! {
-        div { class: "bg-white rounded-lg shadow-sm",
+        div { class: "bg-white rounded-lg border border-line",
             div { class: "space-y-3 p-5 sm:p-6",
                 div { class: "flex flex-wrap items-center gap-2",
-                    h3 { class: "text-sm font-semibold uppercase tracking-wider text-gray-500",
-                        "{title}"
-                    }
+                    h3 { class: "text-sm font-semibold text-gray-500", "{title}" }
                     div { class: "ml-auto flex items-center gap-2",
                         span { class: "inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-500",
                             {t!("devices-readonly-badge")}
@@ -1603,7 +1609,7 @@ fn SecretCard(
                         {if revealed() { value.clone() } else { mask.clone() }}
                     }
                     button {
-                        class: "rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50",
+                        class: BTN_SECONDARY_SM,
                         onclick: move |_| revealed.toggle(),
                         {
                             if revealed() {
@@ -1614,7 +1620,7 @@ fn SecretCard(
                         }
                     }
                     button {
-                        class: "rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50",
+                        class: BTN_SECONDARY_SM,
                         onclick: move |_| {
                             copy_to_clipboard(&value);
                             toasts::success(t!("toast-copied"));
@@ -1659,9 +1665,7 @@ fn black_box_outputs(device: &pnex_core::Device) -> Element {
     }
     rsx! {
         div { class: "space-y-2",
-            h3 { class: "text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3",
-                {t!("blackbox-outputs-title")}
-            }
+            h3 { class: "text-sm font-semibold text-gray-500 mb-3", {t!("blackbox-outputs-title")} }
             div { class: "rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2",
                 div { class: "flex items-center gap-2",
                     span { class: "inline-block h-2.5 w-2.5 rounded-full bg-green-500" }

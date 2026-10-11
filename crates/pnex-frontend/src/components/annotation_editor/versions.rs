@@ -9,6 +9,7 @@ use dioxus_i18n::t;
 use crate::api;
 use crate::components::badges::date_label;
 use crate::components::confirm::ConfirmDialog;
+use crate::components::ui::BTN_SECONDARY_SM;
 use crate::state::toasts;
 
 /// Drawer latéral : historique append-only + publication d'une couche.
@@ -54,7 +55,7 @@ pub fn AnnotationVersionsDrawer(
                     div { class: "px-4 py-3 border-b border-gray-200 space-y-2 bg-gray-50",
                         div { class: "flex items-center gap-2 text-xs",
                             if let Some(version) = published_version {
-                                span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-800",
+                                span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800",
                                     {t!("annot-published-tag", version : version)}
                                 }
                             } else {
@@ -84,7 +85,7 @@ pub fn AnnotationVersionsDrawer(
                             }
                             if published_version.is_some() {
                                 button {
-                                    class: "px-3 py-1.5 text-xs text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40",
+                                    class: BTN_SECONDARY_SM,
                                     disabled: busy(),
                                     onclick: move |_| {
                                         busy.set(true);
@@ -195,7 +196,7 @@ fn version_row(
                     {format!("v{}", version.version_number)}
                 }
                 if version.published {
-                    span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-800",
+                    span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800",
                         {t!("annot-version-published-tag")}
                     }
                 }

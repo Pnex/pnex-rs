@@ -1,4 +1,6 @@
 use super::*;
+use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY};
+use crate::components::ui::{FIELD_LABEL, INPUT};
 
 // ───────────────────── formulaire POI (création/édition) ───────────────────
 
@@ -80,14 +82,10 @@ pub(super) fn PoiFormModal(
             on_close: move |_| on_close.call(()),
             div { class: "space-y-4",
                 div {
-                    label {
-                        r#for: "form-field-1",
-                        class: "block text-sm font-medium text-gray-700 mb-1",
-                        {t!("poi-field-label")}
-                    }
+                    label { r#for: "form-field-1", class: FIELD_LABEL, {t!("poi-field-label")} }
                     input {
                         id: "form-field-1",
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} w-full",
                         value: "{label}",
                         oninput: move |e| label.set(e.value()),
                     }
@@ -113,21 +111,17 @@ pub(super) fn PoiFormModal(
                     }
                     input {
                         id: "form-field-emoji",
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} w-full",
                         placeholder: t!("poi-field-emoji"),
                         value: "{emoji}",
                         oninput: move |e| emoji.set(e.value()),
                     }
                 }
                 div {
-                    label {
-                        r#for: "form-field-2",
-                        class: "block text-sm font-medium text-gray-700 mb-1",
-                        {t!("poi-field-location")}
-                    }
+                    label { r#for: "form-field-2", class: FIELD_LABEL, {t!("poi-field-location")} }
                     input {
                         id: "form-field-2",
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} w-full",
                         placeholder: t!("poi-field-location-hint"),
                         value: "{detail}",
                         oninput: move |e| detail.set(e.value()),
@@ -135,27 +129,19 @@ pub(super) fn PoiFormModal(
                 }
                 div { class: "grid grid-cols-2 gap-3",
                     div {
-                        label {
-                            r#for: "form-field-3",
-                            class: "block text-sm font-medium text-gray-700 mb-1",
-                            {t!("poi-field-lat")}
-                        }
+                        label { r#for: "form-field-3", class: FIELD_LABEL, {t!("poi-field-lat")} }
                         input {
                             id: "form-field-3",
-                            class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                            class: "{INPUT} w-full",
                             value: "{lat}",
                             oninput: move |e| lat.set(e.value()),
                         }
                     }
                     div {
-                        label {
-                            r#for: "form-field-4",
-                            class: "block text-sm font-medium text-gray-700 mb-1",
-                            {t!("poi-field-lon")}
-                        }
+                        label { r#for: "form-field-4", class: FIELD_LABEL, {t!("poi-field-lon")} }
                         input {
                             id: "form-field-4",
-                            class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                            class: "{INPUT} w-full",
                             value: "{lon}",
                             oninput: move |e| lon.set(e.value()),
                         }
@@ -163,12 +149,12 @@ pub(super) fn PoiFormModal(
                 }
                 div { class: crate::components::modal::MODAL_FOOTER,
                     button {
-                        class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
+                        class: BTN_SECONDARY,
                         onclick: move |_| on_close.call(()),
                         {t!("common-cancel")}
                     }
                     button {
-                        class: "px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50",
+                        class: BTN_PRIMARY,
                         disabled: saving(),
                         onclick: move |_| {
                             // Garde client : coords numériques obligatoires.

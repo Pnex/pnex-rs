@@ -20,6 +20,7 @@ use crate::components::download_progress::MediaDownloadProgress;
 use crate::components::icons;
 use crate::components::poi_tree::KindIcon;
 use crate::components::tour_viewer::{TourViewer, ViewerSource};
+use crate::components::ui::BTN_SECONDARY_SM;
 use crate::util::media_blob_url_tracked;
 
 /// Cible d'aperçu : (kind, id, nom) d'un objet attaché au POI.
@@ -52,12 +53,10 @@ pub fn PoiPreviewPanel(
                 span { class: "min-w-0 text-sm font-semibold text-gray-900 truncate",
                     "{target.name}"
                 }
-                span { class: "hidden text-xs uppercase tracking-wide text-gray-400 shrink-0 sm:inline",
-                    "{kind_label}"
-                }
+                span { class: "hidden text-xs text-gray-400 shrink-0 sm:inline", "{kind_label}" }
                 div { class: "flex-1" }
                 button {
-                    class: "inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 shrink-0",
+                    class: "{BTN_SECONDARY_SM} shrink-0",
                     title: t!("poi-preview-edit"),
                     aria_label: t!("poi-preview-edit"),
                     onclick: move |_| on_edit.call(()),

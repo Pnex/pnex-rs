@@ -14,6 +14,7 @@ use crate::components::crud::filters::{FilterBar, SearchInput};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::icons;
+use crate::components::ui::INPUT;
 use crate::pages::events::ts_label;
 use crate::state::org;
 
@@ -111,7 +112,7 @@ pub fn NotifyDeliveriesTab(
     rsx! {
         FilterBar {
             select {
-                class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                class: INPUT,
                 onchange: move |e| {
                     channel_filter.set(e.value());
                     page.set(0);
@@ -129,7 +130,7 @@ pub fn NotifyDeliveriesTab(
                 }
             }
             select {
-                class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                class: INPUT,
                 onchange: move |e| {
                     status.set(e.value());
                     page.set(0);
@@ -140,7 +141,7 @@ pub fn NotifyDeliveriesTab(
                 }
             }
             select {
-                class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                class: INPUT,
                 onchange: move |e| {
                     source.set(e.value());
                     page.set(0);
@@ -151,7 +152,7 @@ pub fn NotifyDeliveriesTab(
                 }
             }
             select {
-                class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                class: INPUT,
                 onchange: move |e| {
                     hours.set(e.value().parse().unwrap_or(24));
                     page.set(0);

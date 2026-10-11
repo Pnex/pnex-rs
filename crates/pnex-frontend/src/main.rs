@@ -14,6 +14,7 @@ mod auth;
 mod capture;
 mod capture360;
 mod components;
+mod design_guard;
 mod doc_editor;
 #[cfg(not(target_arch = "wasm32"))]
 mod download;
@@ -87,6 +88,7 @@ fn main() {
 #[component]
 fn App() -> Element {
     i18n::init();
+    use_hook(state::theme::restore);
     // Restauration de session (tokens → user-info) une seule fois au boot.
     use_hook(|| {
         spawn(async {

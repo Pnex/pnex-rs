@@ -6,6 +6,7 @@ use dioxus_i18n::t;
 
 use crate::api;
 use crate::components::modal::{Modal, MODAL_FOOTER};
+use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY};
 use crate::state::toasts;
 
 #[component]
@@ -75,13 +76,13 @@ pub(super) fn BoardChangeModal(
                 }
                 div { class: MODAL_FOOTER,
                     button {
-                        class: "px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
+                        class: BTN_SECONDARY,
                         r#type: "button",
                         onclick: move |_| on_close.call(()),
                         {t!("common-cancel")}
                     }
                     button {
-                        class: "px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50",
+                        class: BTN_PRIMARY,
                         r#type: "button",
                         disabled: busy() || picked() == current_id,
                         onclick: save,
@@ -118,7 +119,7 @@ fn BoardOption(board: api::boards::Board, mut picked: Signal<i64>, current_id: i
             }
             span { class: "flex-1 text-sm font-medium text-gray-900", {name} }
             if builtin_screen {
-                span { class: "text-[10px] text-teal-700 bg-teal-50 rounded-full px-1.5 py-0.5",
+                span { class: "text-xs text-teal-700 bg-teal-50 rounded-full px-1.5 py-0.5",
                     {t!("board-peripheral-screen")}
                 }
             }

@@ -24,6 +24,16 @@ pub fn now_label() -> String {
     }
 }
 
+/// A translated string turned into stored data (default names): drops
+/// Fluent's invisible bidi isolation marks (U+2068/U+2069) around
+/// placeables, which would otherwise be saved inside the name.
+pub fn plain_text(text: impl Into<String>) -> String {
+    text.into()
+        .chars()
+        .filter(|c| !matches!(c, '\u{2068}' | '\u{2069}'))
+        .collect()
+}
+
 /// Wall clock in epoch seconds (`Date.now()` on the web: `SystemTime`
 /// panics on wasm32-unknown-unknown).
 pub fn now_secs() -> f64 {
@@ -397,5 +407,16 @@ pub fn release_image_url(url: &str) {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let _ = url;
+    }
+}
+
+#[cfg(test)]
+mod plain_text_tests {
+    #[test]
+    fn strips_fluent_isolation_marks() {
+        assert_eq!(
+            super::plain_text("Tour \u{2068}2026-10-11 11:39\u{2069}"),
+            "Tour 2026-10-11 11:39"
+        );
     }
 }

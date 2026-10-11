@@ -522,7 +522,7 @@ pub(super) fn DeviceWriteForm(
                                 }
                             }
                             if let Some(h) = hint {
-                                span { class: "block text-[11px] leading-snug text-amber-600 mt-0.5",
+                                span { class: "block text-xs leading-snug text-amber-600 mt-0.5",
                                     {h}
                                 }
                             }

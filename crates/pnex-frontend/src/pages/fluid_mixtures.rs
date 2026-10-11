@@ -16,6 +16,7 @@ use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
+use crate::components::ui::{FIELD_LABEL, INPUT};
 use pnex_core::{FluidMixtureComposition, FluidMixtureInput, MixtureBasis, MixtureComponent};
 
 /// Ligne du formulaire : (fluide, fraction en string d'input).
@@ -242,12 +243,12 @@ pub fn FluidMixtures() -> Element {
                         div {
                             label {
                                 r#for: "fluid-mixtures-field-1",
-                                class: "block text-sm font-medium text-gray-700 mb-1",
+                                class: FIELD_LABEL,
                                 {t!("mixtures-name")}
                             }
                             input {
                                 id: "fluid-mixtures-field-1",
-                                class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                                class: "{INPUT} w-full",
                                 placeholder: t!("mixtures-name-placeholder"),
                                 value: "{name}",
                                 oninput: move |e| name.set(e.value()),
@@ -256,12 +257,12 @@ pub fn FluidMixtures() -> Element {
                         div {
                             label {
                                 r#for: "fluid-mixtures-field-2",
-                                class: "block text-sm font-medium text-gray-700 mb-1",
+                                class: FIELD_LABEL,
                                 {t!("mixtures-description")}
                             }
                             input {
                                 id: "fluid-mixtures-field-2",
-                                class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                                class: "{INPUT} w-full",
                                 value: "{description}",
                                 oninput: move |e| description.set(e.value()),
                             }
@@ -269,12 +270,12 @@ pub fn FluidMixtures() -> Element {
                         div {
                             label {
                                 r#for: "fluid-mixtures-field-3",
-                                class: "block text-sm font-medium text-gray-700 mb-1",
+                                class: FIELD_LABEL,
                                 {t!("mixtures-basis")}
                             }
                             select {
                                 id: "fluid-mixtures-field-3",
-                                class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                                class: "{INPUT} w-full",
                                 onchange: move |e| {
                                     basis
                                         .set(
@@ -328,13 +329,13 @@ pub fn FluidMixtures() -> Element {
                                     for item in indexed {
                                         div { key: "{item.0}", class: "flex gap-2 items-center",
                                             input {
-                                                class: "flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono",
+                                                class: "{INPUT} flex-1 font-mono",
                                                 placeholder: t!("mixtures-fluid-placeholder"),
                                                 value: "{item.1.0}",
                                                 oninput: move |e| rows.with_mut(|r| r[item.0].0 = e.value()),
                                             }
                                             input {
-                                                class: "w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono",
+                                                class: "{INPUT} w-32! font-mono",
                                                 placeholder: t!("mixtures-fraction-placeholder"),
                                                 value: "{item.1.1}",
                                                 oninput: move |e| rows.with_mut(|r| r[item.0].1 = e.value()),

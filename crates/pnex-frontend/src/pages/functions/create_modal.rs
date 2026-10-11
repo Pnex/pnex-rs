@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::ui::{FIELD_LABEL, INPUT};
 
 /// Modal de création : nom + langage + description. Le code démarre du
 /// squelette du langage (`handle` obligatoire) — la version 1 est créée par
@@ -55,9 +56,7 @@ pub(super) fn CreateFunctionModal(on_close: Callback<()>, on_created: Callback<i
             // `valid` au défaut (true) : l'erreur inline name_error s'affiche
             // après clic — le bouton ne doit pas être verrouillé avant.
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("functions-field-name")}
-                }
+                span { class: FIELD_LABEL, {t!("functions-field-name")} }
                 input {
                     class: if name_error() { "w-full px-3 py-2 border border-red-400 bg-red-50 rounded-lg text-sm" } else { "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" },
                     r#type: "text",
@@ -98,8 +97,8 @@ pub(super) fn CreateFunctionModal(on_close: Callback<()>, on_created: Callback<i
                                         onchange: move |_| language.set(lang_opt),
                                     }
                                     span { class: "flex flex-col gap-0.5",
-                                        span { class: "font-semibold text-[15px]", "{title}" }
-                                        span { class: "text-[13px] text-gray-600", "{desc}" }
+                                        span { class: "font-semibold text-base", "{title}" }
+                                        span { class: "text-sm text-gray-600", "{desc}" }
                                     }
                                 }
                             }
@@ -137,11 +136,9 @@ pub(super) fn CreateFunctionModal(on_close: Callback<()>, on_created: Callback<i
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("functions-field-description")}
-                }
+                span { class: FIELD_LABEL, {t!("functions-field-description")} }
                 input {
-                    class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                    class: "{INPUT} w-full",
                     r#type: "text",
                     value: "{description}",
                     oninput: move |event| description.set(event.value()),

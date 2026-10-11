@@ -159,7 +159,7 @@ fn RangeBarRow(row: AggregateRow, span: String, pct: f64, value: Option<String>)
             title: "{title}",
             div { class: "min-w-0",
                 p { class: "truncate font-medium text-gray-700", "{row.label}" }
-                p { class: "truncate text-[10px] text-gray-400", "{span}" }
+                p { class: "truncate text-xs text-gray-400", "{span}" }
             }
             div { class: "h-3 rounded bg-gray-100",
                 div {

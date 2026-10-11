@@ -9,6 +9,7 @@ pub mod map;
 pub mod media;
 pub mod org;
 pub mod session;
+pub mod theme;
 pub mod toasts;
 pub mod tours;
 /// Préférences UI (rail de la sidebar) — préférences d'affichage globales.

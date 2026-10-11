@@ -21,7 +21,7 @@ pub fn ServerCaCard() -> Element {
     let qr_svg = qr_svg(&url);
 
     rsx! {
-        div { class: "bg-white rounded-lg shadow-sm",
+        div { class: "bg-white rounded-lg border border-line",
             div { class: "p-6 border-b border-gray-200",
                 h3 { class: "text-lg font-semibold text-gray-900", {t!("about-ca-title")} }
             }

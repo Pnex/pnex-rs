@@ -11,6 +11,7 @@ use crate::flash::{self, FlashError, FlashEvent};
 use pnex_core::err_codes;
 
 use super::{icons, modal::Modal};
+use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY};
 
 /// Étape du flow après le clic (« None » = prêt, en attente du clic).
 #[derive(Clone, PartialEq)]
@@ -170,7 +171,7 @@ pub fn FlashModal(device_id: String, on_close: Callback<()>) -> Element {
                                         icons::CheckCircle { class: "h-10 w-10 text-green-500 mx-auto" }
                                         p { class: "text-sm text-gray-700", {t!("flash-done")} }
                                         button {
-                                            class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium",
+                                            class: BTN_PRIMARY,
                                             r#type: "button",
                                             onclick: move |_| on_close.call(()),
                                             {t!("common-close")}
@@ -200,7 +201,7 @@ pub fn FlashModal(device_id: String, on_close: Callback<()>) -> Element {
                                                 {t!("flash-retry")}
                                             }
                                             button {
-                                                class: "flex-1 px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                                                class: "{BTN_SECONDARY} flex-1",
                                                 r#type: "button",
                                                 onclick: move |_| on_close.call(()),
                                                 {t!("common-close")}

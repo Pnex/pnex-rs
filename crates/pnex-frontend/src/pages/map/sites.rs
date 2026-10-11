@@ -6,6 +6,7 @@
 use super::*;
 use crate::components::crud::filters::{FilterBar, SearchInput};
 use crate::components::crud::layout::ListLayout;
+use crate::components::ui::BTN_SECONDARY;
 
 #[component]
 pub fn Sites() -> Element {
@@ -55,7 +56,7 @@ pub fn Sites() -> Element {
             can_write,
             actions: rsx! {
                 button {
-                    class: "inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                    class: BTN_SECONDARY,
                     r#type: "button",
                     onclick: move |_| {
                         navigator.push(Route::Map {});
@@ -73,7 +74,7 @@ pub fn Sites() -> Element {
                     }
                 }
             },
-            div { class: "bg-white rounded-lg shadow-sm overflow-hidden",
+            div { class: "bg-white rounded-lg border border-line overflow-hidden",
                 if loading {
                     div { class: "p-6 flex justify-center",
                         span { class: "animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" }

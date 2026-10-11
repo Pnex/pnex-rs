@@ -1,6 +1,7 @@
 use super::helpers::*;
 use super::*;
 
+use crate::components::ui::FIELD_LABEL;
 use pnex_core::taxonomy::TopicClassifyConfig;
 
 // ─────────────── topic-classify (media-ingest.md D168) ───────────────
@@ -53,9 +54,7 @@ pub(super) fn TopicClassifyForm(
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-topic-classify-help")} }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-topic-classify-taxonomy")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-topic-classify-taxonomy")} }
                 if loaded && taxonomies.is_empty() {
                     p { class: "text-xs text-amber-700", {t!("flows-topic-classify-no-taxonomy")} }
                 }
@@ -98,9 +97,7 @@ pub(super) fn TopicClassifyForm(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-topic-classify-text-field")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-topic-classify-text-field")} }
                 input {
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono",
                     r#type: "text",

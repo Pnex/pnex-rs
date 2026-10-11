@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::api;
 use crate::components::icons;
+use crate::components::ui::INPUT;
 use pnex_core::{SecretFieldInput, SecretFieldView, SecretSlot};
 
 /// Form-side state of a secret field.
@@ -240,7 +241,7 @@ pub fn SecretField(
                 if mode() == Mode::Type {
                     input {
                         id: "{control_id}",
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono bg-white",
+                        class: "{INPUT} w-full font-mono",
                         r#type: "password",
                         autocomplete: "new-password",
                         placeholder: t!("secret-field-type-placeholder"),
@@ -250,7 +251,7 @@ pub fn SecretField(
                 } else {
                     select {
                         id: "{control_id}",
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                        class: "{INPUT} w-full",
                         onchange: move |e| {
                             let id = e.value().parse::<Uuid>().ok();
                             let found = id

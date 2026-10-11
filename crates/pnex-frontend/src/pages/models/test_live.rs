@@ -21,6 +21,7 @@ use crate::state::toasts;
 use crate::util::{image_url_from_bytes, release_image_url, sleep};
 
 use super::test_image::box_color;
+use crate::components::ui::{FIELD_LABEL, INPUT};
 
 /// Minimum spacing between two live rounds.
 const ROUND_GAP_MS: u64 = 500;
@@ -160,12 +161,12 @@ pub(super) fn TestLiveModal(
                         div { class: "flex-1 min-w-48",
                             label {
                                 r#for: "test-live-field-1",
-                                class: "block text-sm font-medium text-gray-700 mb-1",
+                                class: FIELD_LABEL,
                                 {t!("models-live-camera")}
                             }
                             select {
                                 id: "test-live-field-1",
-                                class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                                class: "{INPUT} w-full",
                                 disabled: running(),
                                 onchange: move |e| device.set(e.value().parse::<i64>().ok()),
                                 for cam in camera_rows.clone() {

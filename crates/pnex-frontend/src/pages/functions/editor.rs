@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY_SM};
 
 /// Éditeur d'une fonction : métadonnées, code, aperçu de signature (extraction
 /// wasm des directives), test en live, historique. Remonté par `key` sur
@@ -277,7 +278,7 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
             div { class: "flex items-start justify-between flex-wrap gap-3",
                 div { class: "flex items-start gap-3 flex-grow min-w-0",
                     button {
-                        class: "px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors shrink-0",
+                        class: "{BTN_SECONDARY_SM} shrink-0",
                         onclick: move |_| on_back.call(()),
                         icons::ArrowLeft { class: "h-4 w-4" }
                     }
@@ -308,14 +309,14 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                 }
                 div { class: "flex items-center gap-2 shrink-0",
                     button {
-                        class: "px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                        class: BTN_SECONDARY_SM,
                         onclick: move |_| versions_open.set(true),
                         icons::History { class: "h-4 w-4 inline mr-1" }
                         {t!("functions-history")}
                     }
                     if can_write {
                         button {
-                            class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed",
+                            class: BTN_PRIMARY,
                             disabled: !dirty,
                             onclick: save,
                             icons::Save { class: "h-4 w-4 inline mr-1" }
@@ -329,8 +330,8 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
             div { class: "grid grid-cols-1 xl:grid-cols-3 gap-4 items-start",
                 div { class: "xl:col-span-2 space-y-0",
                     div { class: "flex items-center gap-2 px-3.5 py-2 rounded-t-xl border border-b-0 border-gray-200 bg-white",
-                        span { class: "text-[13px] font-semibold font-mono", "handle(inputs, msg)" }
-                        span { class: "text-[11px] text-gray-500 truncate hidden sm:inline",
+                        span { class: "text-sm font-semibold font-mono", "handle(inputs, msg)" }
+                        span { class: "text-xs text-gray-500 truncate hidden sm:inline",
                             {
                                 t!(
                                     "functions-signature-pill", inputs : signature_inputs.len(), outputs :
@@ -342,17 +343,17 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                         span { class: "flex-grow" }
                         if can_write {
                             button {
-                                class: "h-8 px-2.5 rounded-md border border-gray-300 bg-white text-[13px] text-gray-700 hover:bg-gray-50",
+                                class: "{BTN_SECONDARY_SM} h-8",
                                 onclick: format_code,
                                 {t!("functions-format")}
                             }
                             button {
-                                class: "h-8 px-2.5 rounded-md border border-gray-300 bg-white text-[13px] text-gray-700 hover:bg-gray-50",
+                                class: "{BTN_SECONDARY_SM} h-8",
                                 onclick: move |_| ref_open.set(true),
                                 {t!("functions-snippet")}
                             }
                             button {
-                                class: "h-8 px-2.5 rounded-md border border-gray-300 bg-white text-[13px] text-gray-700 hover:bg-gray-50",
+                                class: "{BTN_SECONDARY_SM} h-8",
                                 onclick: move |_| test_open.set(true),
                                 icons::Zap { class: "h-3.5 w-3.5 inline mr-1" }
                                 {t!("functions-test-open")}
@@ -369,12 +370,12 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                         area: editor_area,
                     }
                     if let Some(err) = &signature_error {
-                        div { class: "flex items-center gap-2 px-3.5 py-2 rounded-b-xl border border-t-0 border-red-200 bg-red-50 text-[13px] text-red-800",
+                        div { class: "flex items-center gap-2 px-3.5 py-2 rounded-b-xl border border-t-0 border-red-200 bg-red-50 text-sm text-red-800",
                             {err.clone()}
                         }
                     } else if !server_diags().is_empty() {
                         for d in server_diags() {
-                            div { class: "flex items-center gap-2 px-3.5 py-2 rounded-b-xl border border-t-0 border-red-200 bg-red-50 text-[13px] text-red-800",
+                            div { class: "flex items-center gap-2 px-3.5 py-2 rounded-b-xl border border-t-0 border-red-200 bg-red-50 text-sm text-red-800",
                                 if let Some(line) = d.line {
                                     b { class: "font-mono", {format!("{line}")} }
                                 }
@@ -382,7 +383,7 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                             }
                         }
                     } else if !undeclared.is_empty() {
-                        div { class: "flex items-center gap-2 px-3.5 py-2 rounded-b-xl border border-t-0 border-amber-200 bg-amber-50 text-[13px] text-amber-800",
+                        div { class: "flex items-center gap-2 px-3.5 py-2 rounded-b-xl border border-t-0 border-amber-200 bg-amber-50 text-sm text-amber-800",
                             span { class: "truncate",
                                 for u in undeclared.iter().take(3) {
                                     span { class: "font-mono font-semibold", "{u.name} " }
@@ -430,7 +431,7 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                             div { class: "flex flex-wrap gap-2 mt-2",
                                 for u in undeclared.clone() {
                                     button {
-                                        class: if u.kind == PortKind::Input { "h-8 px-3 rounded-full border border-teal-700 bg-teal-50 text-teal-800 font-mono text-[13px]" } else { "h-8 px-3 rounded-full border border-amber-600 bg-amber-100 text-amber-900 font-mono text-[13px]" },
+                                        class: if u.kind == PortKind::Input { "h-8 px-3 rounded-full border border-teal-700 bg-teal-50 text-teal-800 font-mono text-sm" } else { "h-8 px-3 rounded-full border border-amber-600 bg-amber-100 text-amber-900 font-mono text-sm" },
                                         onclick: declare_ports(vec![(u.name.clone(), u.kind == PortKind::Input)], code_value.clone()),
                                         "+ {u.name}"
                                     }

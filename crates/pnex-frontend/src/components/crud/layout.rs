@@ -13,17 +13,18 @@
 use dioxus::prelude::*;
 
 use crate::components::icons;
+use crate::components::ui::BTN_SECONDARY;
 
 /// Bouton primaire — action « ajouter » du header, submit des formulaires.
-pub const PRIMARY_BTN: &str = "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium";
+pub const PRIMARY_BTN: &str = crate::components::ui::BTN_PRIMARY;
 
-/// Bouton fantôme — annulation dans les pieds de formulaire.
-pub const GHOST_BTN: &str = "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors";
+/// Cancel in form footers: the secondary button of the design system.
+pub const GHOST_BTN: &str = crate::components::ui::BTN_SECONDARY;
 
 /// Danger action — row-level "delete" of CRUD list tables (canonical
 /// style: bordered red + trash icon, icon rendered by the caller since
 /// the label stays i18n-resolved by the page).
-pub const DANGER_BTN: &str = "inline-flex items-center px-3 py-1 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors";
+pub const DANGER_BTN: &str = crate::components::ui::BTN_DANGER;
 
 #[component]
 pub fn ListLayout(
@@ -79,7 +80,7 @@ pub fn ListLayout(
                     div { class: "flex min-w-0 flex-1 basis-72 items-center gap-3",
                         if let Some(back) = on_back {
                             button {
-                                class: "inline-flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                                class: BTN_SECONDARY,
                                 r#type: "button",
                                 onclick: move |_| back.call(()),
                                 icons::ArrowLeft { class: "h-5 w-5" }

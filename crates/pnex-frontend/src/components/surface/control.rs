@@ -472,12 +472,12 @@ pub fn ControlBody(
             div { class: if compact { "hidden" } else { "flex items-center justify-between gap-2 px-3 pt-2" },
                 span { class: "truncate text-xs font-medium text-gray-500", "{title}" }
                 if missing {
-                    span { class: "shrink-0 rounded bg-red-50 px-1.5 text-[10px] font-medium text-red-700",
+                    span { class: "shrink-0 rounded bg-red-50 px-1.5 text-xs font-medium text-red-700",
                         {t!("controls-missing")}
                     }
                 } else if idle {
                     span {
-                        class: "shrink-0 rounded bg-amber-50 px-1.5 text-[10px] font-medium text-amber-700",
+                        class: "shrink-0 rounded bg-amber-50 px-1.5 text-xs font-medium text-amber-700",
                         title: t!("controls-idle-help").to_string(),
                         {t!("controls-idle")}
                     }
@@ -485,7 +485,7 @@ pub fn ControlBody(
             }
             {body}
             if let Some(line) = state_line {
-                p { class: "px-3 pb-2 text-center text-[11px] text-gray-500", "{line}" }
+                p { class: "px-3 pb-2 text-center text-xs text-gray-500", "{line}" }
             }
         }
         if let Some(text) = confirm_value {

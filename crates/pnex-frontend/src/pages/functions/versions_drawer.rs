@@ -43,7 +43,7 @@ pub(super) fn FunctionVersionsDrawer(
                                                 {format!("v{}", version.version_number)}
                                             }
                                             if version.version_number == current_version {
-                                                span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-800",
+                                                span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800",
                                                     {t!("functions-version-current-tag")}
                                                 }
                                             }

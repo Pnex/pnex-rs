@@ -22,6 +22,9 @@ pub const KEY_ORG: &str = "pnex.org";
 pub const KEY_LOCALE: &str = "pnex.locale";
 /// Sidebar desktop repliée en rail d'icônes (préférence UI, cf. `state::ui`).
 pub const KEY_SIDEBAR_RAIL: &str = "pnex.sidebar_rail";
+/// Last applied theme preference (light/dark/auto), replayed at boot so the
+/// login screen does not flash light before the profile arrives.
+pub const KEY_THEME: &str = "pnex.theme";
 /// Basemap chosen on the map, per org: `pnex.basemap.<org id>` (geo-layers.md L25).
 pub const KEY_BASEMAP_PREFIX: &str = "pnex.basemap.";
 /// URL du serveur auto-hébergé — cible desktop/mobile uniquement (le web est

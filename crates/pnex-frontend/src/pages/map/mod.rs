@@ -285,7 +285,7 @@ pub fn Map() -> Element {
                     // Recherche.
                     div { class: "px-4 py-3 border-b border-gray-100",
                         input {
-                            class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                            class: "{INPUT} w-full",
                             r#type: "search",
                             placeholder: t!("poi-search-placeholder"),
                             value: "{search}",
@@ -480,6 +480,7 @@ mod sites;
 
 pub use sites::Sites;
 
+use crate::components::ui::INPUT;
 use detail::PoiDetail;
 use filters::{current_filters, handle_click, redraw_with, PoiRow};
 use form::PoiFormModal;

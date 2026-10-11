@@ -20,6 +20,8 @@ use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
+use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY};
+use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::state::{org, session, toasts};
 
 fn current_role() -> Option<String> {
@@ -404,11 +406,9 @@ fn WifiForm(
             on_close,
             div { class: "space-y-4",
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                        {t!("builds-field-ssid")}
-                    }
+                    span { class: FIELD_LABEL, {t!("builds-field-ssid")} }
                     input {
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} w-full",
                         r#type: "text",
                         placeholder: "{ssid_placeholder}",
                         value: "{ssid}",
@@ -429,20 +429,22 @@ fn WifiForm(
                 }
                 div { class: crate::components::modal::MODAL_FOOTER,
                     button {
-                        class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
+                        class: BTN_SECONDARY,
                         r#type: "button",
                         onclick: move |_| on_close.call(()),
                         {t!("common-cancel")}
                     }
                     button {
-                        class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed",
+                        class: BTN_PRIMARY,
                         r#type: "button",
                         disabled: busy,
                         onclick: submit,
                         if busy() {
                             {t!("common-loading")}
-                        } else {
+                        } else if is_edit {
                             {t!("common-save")}
+                        } else {
+                            {t!("common-add")}
                         }
                     }
                 }
@@ -503,11 +505,9 @@ fn HostForm(existing: Option<PnexHost>, on_close: Callback<()>, on_saved: Callba
             on_close,
             div { class: "space-y-4",
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                        {t!("builds-field-server")}
-                    }
+                    span { class: FIELD_LABEL, {t!("builds-field-server")} }
                     input {
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} w-full",
                         r#type: "text",
                         placeholder: "{host_placeholder}",
                         value: "{host}",
@@ -524,20 +524,22 @@ fn HostForm(existing: Option<PnexHost>, on_close: Callback<()>, on_saved: Callba
                 crate::components::lan_detect::LanDetect { on_pick: move |picked| host.set(picked) }
                 div { class: crate::components::modal::MODAL_FOOTER,
                     button {
-                        class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
+                        class: BTN_SECONDARY,
                         r#type: "button",
                         onclick: move |_| on_close.call(()),
                         {t!("common-cancel")}
                     }
                     button {
-                        class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed",
+                        class: BTN_PRIMARY,
                         r#type: "button",
                         disabled: busy,
                         onclick: submit,
                         if busy() {
                             {t!("common-loading")}
-                        } else {
+                        } else if is_edit {
                             {t!("common-save")}
+                        } else {
+                            {t!("common-add")}
                         }
                     }
                 }

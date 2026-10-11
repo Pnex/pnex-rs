@@ -24,7 +24,7 @@ pub fn FilterBar(children: Element) -> Element {
 
 /// Container classes of [`FilterBar`] (also the `filters` slot of
 /// [`super::layout::ListLayout`]).
-pub const FILTER_BAR_CLASS: &str = "mb-4 md:mb-6 flex flex-wrap items-center gap-2 [&>select]:min-w-0 [&>select]:grow [&>select]:basis-32 sm:[&>select]:grow-0 sm:[&>select]:basis-auto";
+pub const FILTER_BAR_CLASS: &str = "mb-4 md:mb-6 flex flex-wrap items-center gap-2 [&>select]:min-w-0 [&>select]:grow [&>select]:basis-32 sm:[&>select]:grow-0 sm:[&>select]:basis-auto sm:[&>select]:w-auto";
 
 /// Champ de recherche serveur — saisie **live sans refetch** (le signal
 /// suffit) ; la soumission est explicite : Enter → `prevent_default` +
@@ -40,8 +40,35 @@ pub fn SearchInput(
 ) -> Element {
     rsx! {
         input {
-            class: "order-first w-full sm:order-none sm:w-auto sm:flex-1 sm:min-w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm",
+            class: "order-first w-full sm:order-none sm:w-auto sm:flex-1 sm:min-w-48 rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-gray-500 focus:border-signal focus:outline-none focus:ring-3 focus:ring-blue-200",
             r#type: "search",
+            placeholder: "{placeholder}",
+            value: "{value}",
+            oninput: move |event| value.set(event.value()),
+            onkeydown: move |event| {
+                if event.key() == Key::Enter {
+                    event.prevent_default();
+                    on_submit.call(());
+                }
+            },
+        }
+    }
+}
+
+/// Label filter (`name` or `name:value`) with the org's labels suggested.
+#[component]
+pub fn LabelFilterInput(
+    placeholder: String,
+    value: Signal<String>,
+    on_submit: Callback<()>,
+) -> Element {
+    let mut value = value;
+    rsx! {
+        crate::components::labels_editor::LabelSuggestions { id: "pnex-labels-filter" }
+        input {
+            class: "order-first w-full sm:order-none sm:w-auto sm:flex-1 sm:min-w-48 rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-gray-500 focus:border-signal focus:outline-none focus:ring-3 focus:ring-blue-200",
+            r#type: "search",
+            list: "pnex-labels-filter",
             placeholder: "{placeholder}",
             value: "{value}",
             oninput: move |event| value.set(event.value()),
@@ -63,7 +90,7 @@ pub fn SearchInput(
 pub fn RefreshButton(on_click: Callback<()>) -> Element {
     rsx! {
         button {
-            class: "inline-flex items-center justify-center shrink-0 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+            class: "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line-strong bg-surface text-ink hover:bg-gray-50 transition-colors",
             r#type: "button",
             title: t!("common-refresh"),
             "aria-label": t!("common-refresh"),

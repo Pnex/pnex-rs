@@ -4,6 +4,7 @@
 //! ACTUALLY expose: Starlark = Standard dialect + `json` module only (no
 //! math), JS = QuickJS globals + the console shim.
 
+use crate::components::ui::INPUT;
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::FunctionLanguage;
@@ -195,7 +196,7 @@ pub fn FunctionsReferenceModal(
                 }
                 div { class: "px-5 pt-3",
                     input {
-                        class: "w-full h-9 rounded-lg border border-gray-300 px-3 text-sm",
+                        class: "{INPUT} w-full h-9",
                         placeholder: t!("functions-ref-search-placeholder"),
                         value: "{search}",
                         oninput: move |ev| search.set(ev.value()),
@@ -211,15 +212,15 @@ pub fn FunctionsReferenceModal(
                         }
                     }
                     div { class: "rounded-lg bg-red-50 border border-red-100 p-3",
-                        h3 { class: "text-[13px] font-semibold text-red-900 uppercase tracking-wide",
+                        h3 { class: "text-sm font-semibold text-red-900",
                             {t!("functions-ref-unavailable-title")}
                         }
-                        p { class: "text-[13px] text-red-800 whitespace-pre-line",
+                        p { class: "text-sm text-red-800 whitespace-pre-line",
                             {t!(unavailable_str)}
                         }
                     }
                     div { class: "pt-2",
-                        h3 { class: "text-[13px] font-semibold text-gray-500 uppercase tracking-wide",
+                        h3 { class: "text-sm font-semibold text-gray-500",
                             {t!("functions-ref-docs-title")}
                         }
                         for (key, host, href) in &links {
@@ -259,15 +260,13 @@ fn RefGroupView(
         .collect();
     rsx! {
         div {
-            h3 { class: "text-[13px] font-semibold text-gray-500 uppercase tracking-wide",
-                {t!(title_key.as_str())}
-            }
+            h3 { class: "text-sm font-semibold text-gray-500", {t!(title_key.as_str())} }
             div { class: "mt-1.5 divide-y divide-gray-100",
                 for (sig, desc, snippet) in matches {
                     div { class: "flex items-center gap-2 py-1.5",
                         div { class: "flex-grow min-w-0",
-                            div { class: "font-mono text-[13px]", "{sig}" }
-                            div { class: "text-[13px] text-gray-600", {t!(desc.as_str())} }
+                            div { class: "font-mono text-sm", "{sig}" }
+                            div { class: "text-sm text-gray-600", {t!(desc.as_str())} }
                         }
                         button {
                             class: "h-6 w-6 rounded-md border border-gray-300 text-sm text-blue-700 hover:bg-blue-50 shrink-0",

@@ -117,12 +117,12 @@ pub(super) fn FunctionForm(
                     span { class: "text-gray-500", {t!("flows-inspector-function-current")} }
                     span { class: "font-mono text-gray-700", {format!("v{current_version}")} }
                     if stale {
-                        span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800",
+                        span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800",
                             {t!("flows-inspector-function-stale")}
                         }
                         if can_write {
                             button {
-                                class: "px-2 py-0.5 text-[11px] text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors",
+                                class: "px-2 py-0.5 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors",
                                 onclick: rebase,
                                 {t!("flows-inspector-function-rebase")}
                             }
