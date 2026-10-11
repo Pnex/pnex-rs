@@ -156,7 +156,7 @@ pub fn TimeSeriesChart(series: Vec<ChartSeries>) -> Element {
                     y1: "{gy}",
                     x2: "{CHART_W - PAD_R}",
                     y2: "{gy}",
-                    stroke: "#e5e7eb",
+                    stroke: "var(--color-gray-200, #e5e7eb)",
                     "stroke-width": "1",
                 }
             }

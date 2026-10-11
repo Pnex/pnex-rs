@@ -221,7 +221,7 @@ fn Chip(widget: Widget, values: Values, on_open: EventHandler<String>) -> Elemen
     let (icon, text, tint) = chip_summary(&widget, &values);
     let style = tint
         .map(|c| format!("color: {c}"))
-        .unwrap_or_else(|| "color: #4b5563".to_string());
+        .unwrap_or_else(|| "color: var(--color-gray-600, #4b5563)".to_string());
     let id = widget.id.clone();
     rsx! {
         button {
