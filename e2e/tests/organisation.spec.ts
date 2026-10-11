@@ -33,6 +33,8 @@ test.describe('organisation', { tag: '@sites' }, () => {
       // The list filter keeps only the labelled device.
       await devices.open();
       const filter = app.page.getByPlaceholder(app.t('resources-label-filter-placeholder'));
+      // The filter suggests the labels already used in the org.
+      await expect(app.page.locator('datalist#pnex-labels-filter option[value="site:serre"]')).toHaveCount(1);
       await filter.fill('site:serre');
       await filter.press('Enter');
       await expect(devices.row(id)).toBeVisible();

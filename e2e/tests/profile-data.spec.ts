@@ -1,10 +1,10 @@
-// Profile preferences (language switch) and fluid mixtures (CoolProp).
+// Profile preferences (language, theme) and fluid mixtures (CoolProp).
 import { expect, test } from '../src/fixtures.ts';
 import { t } from '../src/i18n.ts';
 import { dialog } from '../src/pages/shell.ts';
 
 test.describe('profile', { tag: '@profile' }, () => {
-  // The language is a user preference: never run alongside itself.
+  // Language and theme are user preferences: never run alongside themselves.
   test.describe.configure({ mode: 'serial' });
 
   test('language switch to French and back', async ({ app, page, api }) => {
@@ -20,6 +20,35 @@ test.describe('profile', { tag: '@profile' }, () => {
     await expect(page.locator('main h1')).toHaveText(t('en-US', 'nav-profile'));
     await page.getByRole('main').getByRole('button', { name: t('en-US', 'common-save') }).click();
     await expect.poll(language).toBe('en');
+  });
+
+  test('dark theme applies, survives a reload, back to light', async ({ app, page, api }) => {
+    // The API reads the theme capitalized ("Dark") and takes it lowercase.
+    const before = (await api.get<{ profile: { theme: string } }>('/user-info')).profile.theme.toLowerCase();
+    const html = page.locator('html');
+    const theme = page.getByRole('combobox', { name: app.t('profile-theme') });
+    const save = page.getByRole('main').getByRole('button', { name: app.t('common-save'), exact: true });
+    try {
+      await app.goto('/profile');
+      await theme.selectOption('dark');
+      await save.click();
+      await expect(html).toHaveAttribute('data-theme', 'dark');
+      await expect.poll(async () => (await api.get('/user-info')).profile.theme.toLowerCase()).toBe('dark');
+
+      await page.reload();
+      await app.settle();
+      await expect(html).toHaveAttribute('data-theme', 'dark');
+      // Dark surfaces, not just the attribute.
+      const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+      const [r, g, b] = bg.match(/\d+/g)!.map(Number);
+      expect(r + g + b).toBeLessThan(200);
+
+      await theme.selectOption('light');
+      await save.click();
+      await expect(html).toHaveAttribute('data-theme', 'light');
+    } finally {
+      await api.patch('/profile', { theme: before });
+    }
   });
 });
 
