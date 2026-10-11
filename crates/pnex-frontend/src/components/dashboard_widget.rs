@@ -22,8 +22,8 @@ use crate::components::charts::{
 
 /// Couleur par défaut de l'arc / de la LED (littéral — scanner Tailwind).
 const ACCENT: &str = "#0d9488";
-const GRAY: &str = "#d1d5db";
-const TEXT_MUTED: &str = "#6b7280";
+const GRAY: &str = "var(--color-gray-300, #d1d5db)";
+const TEXT_MUTED: &str = "var(--color-gray-500, #6b7280)";
 
 #[component]
 pub fn WidgetBody(
@@ -188,7 +188,7 @@ fn gauge_body(widget: Widget, last: Option<TelemetryPoint>, decimals: u8) -> Ele
                     y: "128",
                     "text-anchor": "middle",
                     style: "font-size: 20px; font-weight: 600",
-                    fill: "#111827",
+                    fill: "var(--color-gray-900, #111827)",
                     "{label}"
                     // Unité portée par la valeur (le corps, pas seulement
                     // l'en-tête : sans titre, l'en-tête n'existe pas).

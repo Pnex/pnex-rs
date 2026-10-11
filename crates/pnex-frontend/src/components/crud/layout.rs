@@ -67,6 +67,9 @@ pub fn ListLayout(
     /// (`FilterBar` pour le même rendu dans le corps de page).
     #[props(default)]
     filters: Option<Element>,
+    /// Tab bar of a page split in tabs, right under the header.
+    #[props(default)]
+    tabs: Option<Element>,
     children: Element,
 ) -> Element {
     rsx! {
@@ -113,6 +116,9 @@ pub fn ListLayout(
                         }
                     }
                 }
+            }
+            if let Some(tabs) = tabs {
+                div { class: "mb-4 md:mb-6", {tabs} }
             }
             if let Some(filters) = filters {
                 div { class: super::filters::FILTER_BAR_CLASS, {filters} }

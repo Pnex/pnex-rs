@@ -241,7 +241,7 @@ fn PinChip(view: PinView, mut selected_label: Signal<Option<String>>) -> Element
             text {
                 x: "{view.chip_x + 12.0}",
                 y: "{view.y - 1.0}",
-                fill: "#0f172a",
+                fill: "var(--color-slate-900, #0f172a)",
                 font_size: "12.5",
                 font_weight: "700",
                 font_family: "ui-monospace, monospace",
@@ -250,7 +250,7 @@ fn PinChip(view: PinView, mut selected_label: Signal<Option<String>>) -> Element
             text {
                 x: "{view.chip_x + 12.0}",
                 y: "{view.y + 10.0}",
-                fill: "var(--color-slate-400, #94a3b8)",
+                fill: "var(--color-slate-500, #64748b)",
                 font_size: "8.5",
                 font_family: "ui-monospace, monospace",
                 {sub}

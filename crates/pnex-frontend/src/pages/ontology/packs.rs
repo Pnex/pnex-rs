@@ -10,7 +10,7 @@ use crate::components::crud::layout::{ListLayout, PRIMARY_BTN};
 use crate::state::{org, toasts};
 
 #[component]
-pub fn PacksTab() -> Element {
+pub fn PacksTab(tabs: Element) -> Element {
     let mut reload = use_signal(|| 0u32);
     let admin = org::current_can_administer();
     let packs = use_resource(move || async move {
@@ -23,6 +23,7 @@ pub fn PacksTab() -> Element {
     rsx! {
         ListLayout {
             title: t!("onto-packs").to_string(),
+            tabs,
             can_write: admin,
             subtitle: Some(t!("onto-packs-subtitle").to_string()),
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
