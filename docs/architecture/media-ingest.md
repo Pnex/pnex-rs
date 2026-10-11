@@ -84,6 +84,9 @@ un Raspberry Pi (< 1 Go au repos) — la transcription GPU vit ailleurs.
 - Identifier une personne par sa **voix** (biométrie, RGPD art. 9) : les
   locuteurs sont nommés par des sources externes (bandeaux, grilles,
   annonces), jamais par empreinte vocale.
+  *(2026-10-11 : la reconnaissance d'une personne **consentante** existe
+  désormais à part, `voice-id.md` ; elle ne nomme pas les locuteurs des
+  flux.)*
 - Entraîner ou fine-tuner des modèles ASR (hors scope, école ml-vision).
 - Analyse d'image des flux vidéo (OCR des bandeaux) : tranche ultérieure
   (§13), elle réutilisera `pnex-vision`.

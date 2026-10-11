@@ -286,6 +286,7 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
     let media = at(Route::Media {})
         || at(Route::Cameras {})
         || at(Route::Streams {})
+        || at(Route::VoiceId {})
         || at(Route::Studio {})
         || at(Route::Annotations {});
     let devices = at(Route::Devices {})
@@ -414,6 +415,12 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     to: Route::Streams {},
                     label: t!("nav-streams"),
                     active: at(Route::Streams {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::VoiceId {},
+                    label: t!("nav-voice-id"),
+                    active: at(Route::VoiceId {}),
                     on_navigate,
                 }
                 NavItem {

@@ -69,13 +69,17 @@ pub fn OntologyObject(id: String) -> Element {
         };
     };
     let archived = o.valid_to.is_some();
-    let tabs = [
+    let mut tabs = vec![
         ("properties", t!("onto-tab-properties")),
         ("links", t!("onto-tab-links")),
         ("graph", t!("onto-tab-graph")),
         ("time", t!("onto-tab-time")),
         ("provenance", t!("onto-tab-provenance")),
     ];
+    // Consented voice profile of a person (voice-id.md).
+    if o.type_key == pnex_core::voice_id::PERSON_TYPE {
+        tabs.push(("voice", t!("onto-tab-voice")));
+    }
     let icon = icon_of(&tv.def);
     let kind = type_label(&tv.def);
     let type_key = o.type_key.clone();
@@ -156,6 +160,8 @@ pub fn OntologyObject(id: String) -> Element {
                     }
                 } else if tab() == "provenance" {
                     ProvenancePanel { id: o.id.clone() }
+                } else if tab() == "voice" {
+                    crate::components::voice_id::VoiceProfilePanel { object_id: o.id.clone() }
                 } else {
                     PropertiesPanel { object: o.clone(), type_view: tv.clone() }
                 }

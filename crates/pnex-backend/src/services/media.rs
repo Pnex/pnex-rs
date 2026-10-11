@@ -507,6 +507,12 @@ const INLINE_CONTENT_TYPES: &[&str] = &[
     "image/avif",
     "video/mp4",
     "video/webm",
+    // Voice clips (voice-id.md), played by an <audio> element.
+    "audio/wav",
+    "audio/mpeg",
+    "audio/ogg",
+    "audio/flac",
+    "audio/mp4",
 ];
 
 /// Fallback of any content type outside [`INLINE_CONTENT_TYPES`].

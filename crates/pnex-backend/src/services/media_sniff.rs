@@ -49,6 +49,12 @@ pub enum Format {
     /// Model archives only (sherpa-onnx publishes some as zip).
     ModelZip,
     Doc(DocFormat),
+    /// Audio clips (voice-id.md: enrolment of a voice profile).
+    Wav,
+    Mp3,
+    Ogg,
+    Flac,
+    M4a,
 }
 
 impl Format {
@@ -70,6 +76,11 @@ impl Format {
             Self::TarGz => &["gz", "tgz"],
             Self::TarBz2 => &["bz2", "tbz2"],
             Self::ModelZip => &["zip"],
+            Self::Wav => &["wav"],
+            Self::Mp3 => &["mp3"],
+            Self::Ogg => &["ogg", "oga", "opus"],
+            Self::Flac => &["flac"],
+            Self::M4a => &["m4a"],
             // `format_of` already matched the extension.
             Self::Doc(_) => &[],
         }
@@ -87,6 +98,7 @@ impl Format {
             }
             Self::Doc(d) if d.kind() == doc_extract::KIND_TABLE => &["table"],
             Self::Doc(_) => &["document"],
+            Self::Wav | Self::Mp3 | Self::Ogg | Self::Flac | Self::M4a => &["audio"],
         }
     }
 
@@ -118,6 +130,13 @@ fn by_magic(b: &[u8]) -> Option<Format> {
         _ if b.starts_with(b"\x89PNG\r\n\x1a\n") => Format::Png,
         _ if b.starts_with(b"GIF87a") || b.starts_with(b"GIF89a") => Format::Gif,
         _ if b.starts_with(b"RIFF") && b.get(8..12) == Some(b"WEBP") => Format::Webp,
+        _ if b.starts_with(b"RIFF") && b.get(8..12) == Some(b"WAVE") => Format::Wav,
+        _ if b.starts_with(b"ID3") || (b.len() >= 2 && b[0] == 0xFF && b[1] & 0xE6 == 0xE2) => {
+            Format::Mp3
+        }
+        _ if b.starts_with(b"OggS") => Format::Ogg,
+        _ if b.starts_with(b"fLaC") => Format::Flac,
+        _ if matches!(ftyp_brand, Some(b"M4A ")) => Format::M4a,
         _ if matches!(ftyp_brand, Some(b"avif" | b"avis")) => Format::Avif,
         _ if matches!(ftyp_brand, Some(b"heic" | b"heix" | b"mif1" | b"msf1")) => Format::Heic,
         _ if b.starts_with(b"ply\n") || b.starts_with(b"ply\r\n") => Format::Ply,
@@ -229,6 +248,28 @@ mod tests {
         assert!(detect("a.docx", b"PK\x03\x04photos/a.jpg").is_none());
         // Text names over binary content.
         assert!(detect("notes.txt", b"\x00\x01\x02").is_none());
+    }
+
+    #[test]
+    fn audio_by_magic_and_extension() {
+        assert_eq!(
+            kind("a.wav", b"RIFF\x24\x00\x00\x00WAVEfmt "),
+            Some("audio")
+        );
+        assert_eq!(kind("a.mp3", b"ID3\x04\x00"), Some("audio"));
+        assert_eq!(kind("a.mp3", &[0xFF, 0xFB, 0x90, 0x00]), Some("audio"));
+        assert_eq!(kind("a.ogg", b"OggS\x00"), Some("audio"));
+        assert_eq!(kind("a.opus", b"OggS\x00"), Some("audio"));
+        assert_eq!(kind("a.flac", b"fLaC\x00"), Some("audio"));
+        assert_eq!(
+            kind("a.m4a", b"\x00\x00\x00\x20ftypM4A \x00"),
+            Some("audio")
+        );
+        // A JPEG is never taken for an MP3 frame, a WAV never for a WebP.
+        assert!(detect("a.mp3", JPEG).is_none());
+        assert!(detect("a.webp", b"RIFF\x24\x00\x00\x00WAVEfmt ").is_none());
+        assert!(accepts("audio", "a.wav", b"RIFF\x24\x00\x00\x00WAVEfmt "));
+        assert!(!accepts("photo", "a.wav", b"RIFF\x24\x00\x00\x00WAVEfmt "));
     }
 
     #[test]

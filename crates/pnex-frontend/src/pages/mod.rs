@@ -51,6 +51,8 @@ pub mod system;
 /// Trust-on-first-use dialog for a self-hosted server root CA (D70).
 pub mod trust_ca;
 pub mod visualisation;
+/// Consented voice profiles (voice-id.md).
+pub mod voice_id;
 
 pub use admin_status::AdminStatus;
 pub use annotations::Annotations;
@@ -83,3 +85,4 @@ pub use streams::Streams;
 pub use studio::Studio;
 pub use system::System;
 pub use visualisation::Visualisation;
+pub use voice_id::VoiceId;

@@ -29,6 +29,7 @@ pub(super) fn MediaPreview(
     // Data > Annotations and shown by the Visualisation views only.
     let is_floorplan = asset.media_kind() == MediaKind::Floorplan;
     let is_image = is_photo || is_floorplan;
+    let is_audio = asset.media_kind() == MediaKind::Audio;
 
     // Mime cloned BEFORE the effects: a `move` capturing
     // `asset.content_type` = partial move of `asset`, clashing with the
@@ -129,6 +130,9 @@ pub(super) fn MediaPreview(
                         MediaKind::Table => rsx! {
                             icons::Database { class: "h-3 w-3" }
                         },
+                        MediaKind::Audio => rsx! {
+                            icons::Activity { class: "h-3 w-3" }
+                        },
                     }
                     {kind_label(&asset)}
                 }
@@ -157,6 +161,17 @@ pub(super) fn MediaPreview(
                         div { class: "p-6 text-center",
                             icons::Image { class: "h-10 w-10 text-gray-500 mx-auto mb-2" }
                             span { class: "text-sm text-gray-300", {t!("media-preview-unavailable")} }
+                        }
+                    },
+                    None => rsx! {
+                        span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-white" }
+                    },
+                }
+            } else if is_audio {
+                match blob_url() {
+                    Some(url) => rsx! {
+                        div { class: "w-full p-6",
+                            audio { src: "{url}", controls: true, class: "w-full" }
                         }
                     },
                     None => rsx! {

@@ -91,4 +91,6 @@ pub mod user_profiles;
 pub mod users;
 pub mod video_segments;
 pub mod viz_widget_library;
+pub mod voice_profiles;
+pub mod voice_samples;
 pub mod wifi_credentials;

@@ -23,6 +23,8 @@ pub enum MediaKind {
     Document,
     /// Spreadsheet (csv, xlsx, ods) indexed for search (doc-search.md).
     Table,
+    /// Voice clip (voice-id.md: enrolment of a voice profile).
+    Audio,
 }
 
 impl MediaKind {
@@ -35,6 +37,7 @@ impl MediaKind {
             MediaKind::Model => "model",
             MediaKind::Document => "document",
             MediaKind::Table => "table",
+            MediaKind::Audio => "audio",
         }
     }
 }
@@ -84,6 +87,7 @@ impl MediaAsset {
             "model" => MediaKind::Model,
             "document" => MediaKind::Document,
             "table" => MediaKind::Table,
+            "audio" => MediaKind::Audio,
             _ => MediaKind::Photo,
         }
     }

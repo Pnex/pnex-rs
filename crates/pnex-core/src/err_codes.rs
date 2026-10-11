@@ -446,6 +446,26 @@ pub const ASR_MODEL_UNSUPPORTED: &str = "asr-model-unsupported";
 pub const ASR_TEST_AUDIO_UNSUPPORTED: &str = "asr-test-audio-unsupported";
 /// The model test could not transcribe (runtime missing or crashed).
 pub const ASR_TEST_FAILED: &str = "asr-test-failed";
+/// Voice profiles are written by owners and admins only; tests need write access.
+pub const VOICE_ID_WRITE_FORBIDDEN: &str = "voice-id-write-forbidden";
+/// A voice profile attaches to a Person object only.
+pub const VOICE_ID_NOT_PERSON: &str = "voice-id-not-person";
+/// This person already has a voice profile.
+pub const VOICE_ID_PROFILE_EXISTS: &str = "voice-id-profile-exists";
+/// Voice profile not found.
+pub const VOICE_ID_PROFILE_NOT_FOUND: &str = "voice-id-profile-not-found";
+/// Voice sample not found.
+pub const VOICE_ID_SAMPLE_NOT_FOUND: &str = "voice-id-sample-not-found";
+/// No valid speaker embedding model in the organization.
+pub const VOICE_ID_NO_MODEL: &str = "voice-id-no-model";
+/// The audio file cannot be read.
+pub const VOICE_ID_AUDIO_UNSUPPORTED: &str = "voice-id-audio-unsupported";
+/// Not enough speech to build or test a profile.
+pub const VOICE_ID_NOT_ENOUGH_SPEECH: &str = "voice-id-not-enough-speech";
+/// No generated voice profile to compare with.
+pub const VOICE_ID_NOT_READY: &str = "voice-id-not-ready";
+/// The speaker embedding could not be computed.
+pub const VOICE_ID_FAILED: &str = "voice-id-failed";
 /// Transcription search failed on OpenObserve.
 pub const MEDIA_TRANSCRIPTS_UNAVAILABLE: &str = "media-transcripts-unavailable";
 /// Taxonomy not found (or not in the org).
@@ -748,6 +768,16 @@ pub const ALL: &[&str] = &[
     ASR_MODEL_UNSUPPORTED,
     ASR_TEST_AUDIO_UNSUPPORTED,
     ASR_TEST_FAILED,
+    VOICE_ID_WRITE_FORBIDDEN,
+    VOICE_ID_NOT_PERSON,
+    VOICE_ID_PROFILE_EXISTS,
+    VOICE_ID_PROFILE_NOT_FOUND,
+    VOICE_ID_SAMPLE_NOT_FOUND,
+    VOICE_ID_NO_MODEL,
+    VOICE_ID_AUDIO_UNSUPPORTED,
+    VOICE_ID_NOT_ENOUGH_SPEECH,
+    VOICE_ID_NOT_READY,
+    VOICE_ID_FAILED,
     MEDIA_TRANSCRIPTS_UNAVAILABLE,
     TAXONOMY_NOT_FOUND,
     TAXONOMY_NAME_TAKEN,

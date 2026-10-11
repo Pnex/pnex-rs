@@ -122,6 +122,10 @@ pub mod vision;
 /// transcript records, server-built names.
 pub mod media_ingest;
 
+/// Voice identification by consented enrolment (voice-id.md, cases.md
+/// K19): profile DTOs, windowing, centroid, calibrated threshold, verdict.
+pub mod voice_id;
+
 /// Topic taxonomies (media-ingest.md D168): versioned topics, keyword
 /// classifier, `topic_classify` node config.
 pub mod taxonomy;

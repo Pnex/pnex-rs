@@ -82,3 +82,5 @@ pub mod toasts;
 pub mod tour_editor;
 pub mod tour_viewer;
 pub mod ui;
+/// Consented voice profiles of persons (voice-id.md).
+pub mod voice_id;
