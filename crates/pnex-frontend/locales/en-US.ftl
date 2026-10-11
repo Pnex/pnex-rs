@@ -3371,6 +3371,7 @@ lib-kind-select = List of choices
 lib-kind-stepper = Stepper (− / +)
 lib-kind-command = Commands
 lib-kind-color = Colour
+lib-kind-home_card = Home card
 
 # Home cards (D138)
 lib-group-home = Home

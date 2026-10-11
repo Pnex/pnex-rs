@@ -108,7 +108,7 @@ pub fn HomePanel(cx: EditorCx, widget: Widget, can_write: bool, catalog: SourceC
     let control_roles = card.control_roles();
     let on_above = home.on_above.map(|v| v.to_string()).unwrap_or_default();
     rsx! {
-        div { class: "space-y-3 rounded-lg border border-amber-100 bg-amber-50/40 p-2",
+        div { class: "space-y-3 rounded-lg border border-line bg-gray-50 p-2",
             p { class: "text-xs font-medium text-gray-500",
                 {t!("hcard-inspector", card : card_label(card))}
             }
