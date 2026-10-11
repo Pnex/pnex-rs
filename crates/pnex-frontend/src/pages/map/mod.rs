@@ -151,9 +151,11 @@ pub fn Map() -> Element {
             let chosen = pick_basemap(&maps);
             basemap.set(chosen.map(|b| b.id));
             let style_url = chosen.map(|b| b.style_url.clone()).unwrap_or_default();
+            let style_url_dark = chosen.and_then(|b| b.style_url_dark.clone());
             basemaps.set(maps);
             let opts = MapOpts {
                 style_url,
+                style_url_dark,
                 center: DEFAULT_CENTER,
                 zoom: DEFAULT_ZOOM,
                 items: vec![],
@@ -578,11 +580,11 @@ fn switch_basemap(
     let Ok(id) = value.parse::<uuid::Uuid>() else {
         return;
     };
-    let Some(style) = basemaps
+    let Some((style, style_dark)) = basemaps
         .read()
         .iter()
         .find(|b| b.id == id)
-        .map(|b| b.style_url.clone())
+        .map(|b| (b.style_url.clone(), b.style_url_dark.clone()))
     else {
         return;
     };
@@ -591,6 +593,7 @@ fn switch_basemap(
     spawn(async move {
         let opts = MapOpts {
             style_url: style,
+            style_url_dark: style_dark,
             center: DEFAULT_CENTER,
             zoom: DEFAULT_ZOOM,
             items: vec![],

@@ -83,6 +83,34 @@ test.describe('geo providers', { tag: '@geo' }, () => {
     await expect(app.page.getByText(app.t('viz-map-unavailable'))).toHaveCount(0);
   });
 
+  test('basemap: the dark variant follows the dark theme', async ({ app, api, prefix }) => {
+    const name = `${prefix} themed`;
+    const provider = await api.post('/geo/providers', {
+      name,
+      kind: 'basemap',
+      capabilities: ['basemap'],
+      base_url: BASEMAP_URL,
+      params: { style_url_dark: BASEMAP_DARK_URL },
+    });
+    try {
+      // This page sees a dark profile; the shared test user is left untouched.
+      await app.page.route('**/api/v1/user-info', async (route) => {
+        const res = await route.fetch();
+        const body = await res.json();
+        await route.fulfill({ response: res, json: { ...body, profile: { ...body.profile, theme: 'Dark' } } });
+      });
+      const map = new MapPage(app);
+      const darkStyle = app.page.waitForRequest((r) => r.url().startsWith(BASEMAP_DARK_URL));
+      await map.open();
+      const switcher = app.page.getByRole('combobox', { name: app.t('geo-basemap-label') });
+      await switcher.selectOption({ label: name });
+      await darkStyle;
+      await expect(app.page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    } finally {
+      await api.delete(`/geo/providers/${provider.id}`);
+    }
+  });
+
   test('geocode, reverse, route, address search and POI prefill', { tag: '@geo-live' }, async ({
     app,
     api,

@@ -26,6 +26,8 @@ use serde::Deserialize;
 /// Paramètres de mount de la carte globale.
 pub struct MapOpts {
     pub style_url: String,
+    /// Style used while the app theme is dark (the basemap's dark variant).
+    pub style_url_dark: Option<String>,
     pub center: (f64, f64),
     pub zoom: f64,
     pub items: Vec<MapItem>,
@@ -90,6 +92,7 @@ pub async fn mount(host_id: &str, opts: &MapOpts) -> bool {
         .collect();
     let opts_json = serde_json::json!({
         "styleUrl": opts.style_url,
+        "styleUrlDark": opts.style_url_dark,
         "center": [opts.center.0, opts.center.1],
         "zoom": opts.zoom,
         "items": items,
