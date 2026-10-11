@@ -55,6 +55,12 @@ export const PREFIX = `e2e-${RUN_ID}`;
  */
 export const FIXED_PREFIX = process.env.PNEX_E2E_PREFIX;
 
+/**
+ * Local web build served instead of the server's UI (API and auth stay on
+ * BASE_URL): test a front change without rebuilding the server image.
+ */
+export const DIST = process.env.PNEX_E2E_DIST;
+
 /** When set, `capture()` writes annotated screenshots + a manifest there. */
 export const CAPTURE_DIR = process.env.PNEX_E2E_CAPTURE_DIR;
 
