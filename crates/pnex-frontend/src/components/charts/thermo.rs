@@ -86,10 +86,10 @@ fn diagram_key(t: &ThermoChartOptions) -> String {
 
 /// Couleurs littérales (scanner Tailwind + attributs SVG).
 const CURVE: &str = "var(--color-slate-400, #94a3b8)";
-const DOME: &str = "#475569";
+const DOME: &str = "var(--color-slate-600, #475569)";
 const CYCLE: &str = "#dc2626";
-const FRAME: &str = "#9ca3af";
-const TEXT_MUTED: &str = "#6b7280";
+const FRAME: &str = "var(--color-gray-400, #9ca3af)";
+const TEXT_MUTED: &str = "var(--color-gray-500, #6b7280)";
 
 #[component]
 pub fn ThermoChart(

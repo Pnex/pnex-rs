@@ -44,43 +44,45 @@ pub fn Ontology(tab: String, type_key: String) -> Element {
         ("schema", t!("onto-tab-schema")),
         ("packs", t!("onto-tab-packs")),
     ];
-    rsx! {
-        div { class: "space-y-4",
-            div { class: TAB_BAR, role: "tablist",
-                for (key, label) in tabs {
-                    button {
-                        key: "{key}",
-                        r#type: "button",
-                        role: "tab",
-                        "data-tab": "{key}",
-                        class: if tab == key { TAB_ACTIVE } else { TAB_IDLE },
-                        aria_selected: tab == key,
-                        onclick: move |_| {
-                            navigator
-                                .push(Route::Ontology {
-                                    tab: key.to_string(),
-                                    type_key: String::new(),
-                                });
-                        },
-                        "{label}"
-                    }
+    let bar = rsx! {
+        div { class: TAB_BAR, role: "tablist",
+            for (key, label) in tabs {
+                button {
+                    key: "{key}",
+                    r#type: "button",
+                    role: "tab",
+                    "data-tab": "{key}",
+                    class: if tab == key { TAB_ACTIVE } else { TAB_IDLE },
+                    aria_selected: tab == key,
+                    onclick: move |_| {
+                        navigator
+                            .push(Route::Ontology {
+                                tab: key.to_string(),
+                                type_key: String::new(),
+                            });
+                    },
+                    "{label}"
                 }
             }
+        }
+    };
+    rsx! {
+        div {
             if org::current().is_none() {
                 p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
             } else if tab == "schema" {
-                schema::SchemaTab {}
+                schema::SchemaTab { tabs: bar }
             } else if tab == "packs" {
-                packs::PacksTab {}
+                packs::PacksTab { tabs: bar }
             } else {
-                ObjectsTab { initial_type: type_key }
+                ObjectsTab { initial_type: type_key, tabs: bar }
             }
         }
     }
 }
 
 #[component]
-fn ObjectsTab(initial_type: String) -> Element {
+fn ObjectsTab(initial_type: String, tabs: Element) -> Element {
     let mut reload = use_signal(|| 0u32);
     let mut type_key = use_signal(move || initial_type.clone());
     let search = use_signal(String::new);
@@ -142,6 +144,7 @@ fn ObjectsTab(initial_type: String) -> Element {
         ListLayout {
             title: t!("nav-ontology").to_string(),
             subtitle: Some(t!("onto-subtitle").to_string()),
+            tabs,
             can_write: can_create,
             add_label: Some(t!("onto-new-object").to_string()),
             on_add: move |_| creating.set(true),

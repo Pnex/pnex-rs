@@ -35,7 +35,7 @@ fn set_label(set: &TypeSet) -> String {
 }
 
 #[component]
-pub fn SchemaTab() -> Element {
+pub fn SchemaTab(tabs: Element) -> Element {
     let mut reload = use_signal(|| 0u32);
     let navigator = use_navigator();
     let admin = org::current_can_administer();
@@ -102,6 +102,7 @@ pub fn SchemaTab() -> Element {
     rsx! {
         ListLayout {
             title: t!("onto-types").to_string(),
+            tabs,
             subtitle: Some(t!("onto-types-subtitle").to_string()),
             can_write: admin,
             add_label: Some(t!("onto-new-type").to_string()),
