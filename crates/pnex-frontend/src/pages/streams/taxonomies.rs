@@ -14,7 +14,7 @@ use crate::components::crud::layout::DANGER_BTN;
 use crate::components::modal::Modal;
 use crate::state::toasts;
 
-const INPUT: &str = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white";
+const INPUT: &str = crate::components::ui::INPUT;
 const CELL_INPUT: &str = "w-full px-2 py-1 border border-gray-300 rounded text-sm bg-white";
 const LABEL: &str = "block text-xs text-gray-600 mb-1";
 const BTN: &str =

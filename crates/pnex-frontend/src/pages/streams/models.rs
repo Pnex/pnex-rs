@@ -16,7 +16,7 @@ use crate::components::crud::layout::DANGER_BTN;
 use crate::components::ui::BTN_PRIMARY;
 use crate::state::toasts;
 
-const INPUT: &str = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white";
+const INPUT: &str = crate::components::ui::INPUT;
 const LABEL: &str = "block text-xs text-gray-600 mb-1";
 const BTN: &str =
     "px-2 py-1 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40";

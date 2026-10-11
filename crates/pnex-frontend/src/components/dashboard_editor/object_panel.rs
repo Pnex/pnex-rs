@@ -12,7 +12,7 @@ use crate::api;
 use crate::components::ontology::{key_label, type_label};
 use crate::components::ui::FIELD_LABEL;
 
-const SELECT: &str = "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white";
+const SELECT: &str = crate::components::ui::INPUT;
 
 #[component]
 pub fn ObjectSourcePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Element {

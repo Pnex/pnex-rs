@@ -45,7 +45,7 @@ pub(super) fn onnx_filename(name: &str) -> String {
     }
 }
 
-const INPUT_CLASS: &str = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm";
+const INPUT_CLASS: &str = crate::components::ui::INPUT;
 const LABEL_CLASS: &str = crate::components::ui::FIELD_LABEL;
 
 #[component]

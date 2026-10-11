@@ -14,9 +14,9 @@ use crate::api;
 
 use super::{EditorCx, Selection};
 
-const SELECT: &str = "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white";
-const INPUT: &str = "w-full px-2 py-1.5 border border-gray-300 rounded text-sm";
-const LABEL: &str = "block text-xs font-medium text-gray-400";
+const SELECT: &str = crate::components::ui::INPUT;
+const INPUT: &str = crate::components::ui::INPUT;
+const LABEL: &str = "block text-xs font-medium text-slate";
 
 /// Mutates the aggregation options of the selected widget.
 fn edit(mut cx: EditorCx, f: impl FnOnce(&mut AggregateWidgetOptions)) {

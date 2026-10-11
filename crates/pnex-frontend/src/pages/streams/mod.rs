@@ -45,9 +45,7 @@ enum Tab {
     Ranges,
 }
 
-const TAB: &str = "px-3 py-1.5 text-sm rounded-lg border";
-const TAB_ON: &str = "bg-blue-50 border-blue-300 text-blue-800";
-const TAB_OFF: &str = "border-transparent text-gray-600 hover:bg-gray-100";
+use crate::components::ui::{TAB, TAB_ACTIVE, TAB_BAR};
 
 /// User role in the current org.
 fn current_role() -> Option<String> {
@@ -122,7 +120,7 @@ pub fn Streams() -> Element {
                 Tab::Transcripts => {}
             },
             filters: rsx! {
-                div { class: "flex flex-wrap gap-2", role: "tablist",
+                div { class: TAB_BAR, role: "tablist",
                     for (t, label) in [
                         (Tab::Streams, t!("streams-tab-streams")),
                         (Tab::Transcripts, t!("streams-tab-transcripts")),
@@ -132,7 +130,7 @@ pub fn Streams() -> Element {
                     ]
                     {
                         button {
-                            class: if tab() == t { "{TAB} {TAB_ON}" } else { "{TAB} {TAB_OFF}" },
+                            class: if tab() == t { TAB_ACTIVE } else { TAB },
                             r#type: "button",
                             role: "tab",
                             aria_selected: tab() == t,

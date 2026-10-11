@@ -18,7 +18,7 @@ use crate::components::secret_field::{SecretDraft, SecretField};
 use crate::components::ui::{BTN_DANGER, BTN_DANGER_SOLID, BTN_PRIMARY, BTN_SECONDARY, INPUT};
 use crate::state::toasts;
 
-const BTN: &str = "px-2 py-1 text-xs border border-gray-300 rounded-lg hover:bg-gray-50";
+const BTN: &str = crate::components::ui::BTN_SECONDARY_SM;
 const KINDS: [GeoProviderKind; 5] = GeoProviderKind::ALL;
 /// Key of the dark style variant of a basemap (server: `STYLE_URL_DARK`).
 const STYLE_URL_DARK: &str = "style_url_dark";

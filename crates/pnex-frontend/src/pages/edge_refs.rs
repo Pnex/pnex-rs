@@ -98,11 +98,16 @@ pub fn EdgeRefs() -> Element {
             if org::current().is_none() {
                 p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
             } else {
-                div { class: "mb-6 flex flex-wrap gap-1 border-b border-gray-200 pb-2",
+                div {
+                    class: "mb-6 {crate::components::ui::TAB_BAR}",
+                    role: "tablist",
                     for tab_def in [(Tab::Wifi, "edgerefs-tab-wifi"), (Tab::Hosts, "edgerefs-tab-hosts")] {
                         button {
                             key: "{tab_def.1}",
-                            class: if tab() == tab_def.0 { "px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white" } else { "px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100" },
+                            class: if tab() == tab_def.0 { crate::components::ui::TAB_ACTIVE } else { crate::components::ui::TAB },
+                            r#type: "button",
+                            role: "tab",
+                            aria_selected: tab() == tab_def.0,
                             onclick: move |_| tab.set(tab_def.0),
                             span { class: "inline-flex items-center gap-1.5",
                                 match tab_def.0 {

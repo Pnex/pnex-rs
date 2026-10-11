@@ -9,17 +9,13 @@ nav-edge-refs = Referentials
 
 nav-orgs = Organizations
 nav-profile = Profile
-nav-visualisation = Visualization
 nav-quick-charts = Quick charts
-nav-edges = Edges
 nav-group-monitor = Monitor
 nav-group-knowledge = Knowledge
 nav-group-media = Media
 nav-group-devices = Devices
 nav-group-settings = Settings
 shell-menu = Menu
-nav-browser-collector = Browser Collector
-nav-soon = Soon
 
 # Générique
 common-loading = Loading…
@@ -753,7 +749,6 @@ llm-deleted = Provider deleted
 ai-not-configured = Assistant not configured for this organization: add an LLM provider in Organizations → org detail.
 
 # Média (D21) — groupe nav « Data » (Library = médias + futurs documents / base de connaissances agent)
-nav-data = Data
 nav-library = Library
 media-title = Media library
 media-subtitle = Versioned photos, 360° panoramas, splats, models and documents of the organization
@@ -1168,7 +1163,6 @@ insp-thermo-add-point = + Add point
 
 # ─── Studio (3D tours) ───
 nav-studio = Studio Tour
-nav-plan = Plans
 studio-subtitle = 3D virtual tours — floor plans, 360° scenes, hotspots
 studio-new = New tour
 studio-search-placeholder = Search a tour…
@@ -4055,6 +4049,7 @@ ai-trace-ontology-schema = ontology schema: { $count } type(s)
 ai-trace-ontology-query = { $count } object(s)
 ai-trace-ontology-object = object "{ $title }"
 ai-trace-case-timeline = case: { $members } member(s), { $count } event(s)
+ai-trace-case-board = board: { $hypotheses } hypothesis(es), { $unsourced } unsourced claim(s)
 ai-trace-ontology-object-saved = object "{ $title }" v{ $version }
 ai-trace-ontology-link-opened = link opened: { $source } —{ $link }→ { $target }
 ai-trace-ontology-link-closed = link closed: { $source } —{ $link }→ { $target }
@@ -4160,6 +4155,21 @@ case-status-concluded = Concluded
 case-status-archived = Archived
 case-subtitle = Investigation case
 case-question = Question to resolve
+case-legal-basis = Processing basis of personal data
+case-legal-basis-placeholder = legitimate interest, journalism (GDPR art. 85), public task, consent…
+case-freeze = Freeze the current state
+case-frozen = Frozen on { $at }
+case-unfreeze = Unfreeze
+case-freeze-help = A frozen case exports as it stood at that instant (members and links). It is not a legally binding chain of custody.
+case-export = Export
+case-export-persons = The export contains { $count } person(s): this is personal data.
+case-board = Hypotheses and claims
+case-board-supports = For
+case-board-contradicts = Against
+case-board-none = no claim
+case-board-unsourced = Without a source
+case-board-contradicted = Contradicted
+case-board-sources = { $count } source(s)
 case-question-placeholder = What happened? Who was involved? What proves it?
 case-window-from = Window start (UTC)
 case-window-to = Window end (UTC)

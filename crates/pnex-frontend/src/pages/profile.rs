@@ -181,7 +181,11 @@ pub fn Profile() -> Element {
                                 span { class: FIELD_LABEL, {t!("profile-theme")} }
                                 select {
                                     class: "{INPUT} w-full",
-                                    onchange: move |event| theme.set(event.value()),
+                                    onchange: move |event| {
+                                        // Preview at once, like the language; saving persists it.
+                                        crate::state::theme::apply(&event.value());
+                                        theme.set(event.value());
+                                    },
                                     option {
                                         value: "light",
                                         selected: theme() == "light",

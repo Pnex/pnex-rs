@@ -7,7 +7,7 @@ use dioxus_i18n::t;
 use pnex_core::ontology::{PropertyDef, PropertyKind};
 use serde_json::{json, Map, Value};
 
-const INPUT: &str = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white";
+const INPUT: &str = crate::components::ui::INPUT;
 
 /// Label of a property: its name, else its key.
 pub fn prop_label(d: &PropertyDef) -> String {
