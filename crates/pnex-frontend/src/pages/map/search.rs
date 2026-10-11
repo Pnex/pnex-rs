@@ -10,6 +10,9 @@ pub(super) fn AddressSearch(
     pending_add: Signal<Option<(f64, f64)>>,
     suggested: Signal<Option<pnex_core::geo::GeocodeResult>>,
 ) -> Element {
+    const DEBOUNCE_MS: u64 = 300;
+    const MIN_CHARS: usize = 3;
+
     let mut query = use_signal(String::new);
     let mut hits = use_signal(Vec::<pnex_core::geo::GeocodeResult>::new);
     let mut searched = use_signal(|| false);
@@ -23,7 +26,13 @@ pub(super) fn AddressSearch(
         }
         busy.set(true);
         spawn(async move {
-            match api::geo::geocode(&q).await {
+            let res = api::geo::geocode(&q).await;
+            busy.set(false);
+            // A slower answer to an older term must not overwrite a newer one.
+            if query().trim() != q {
+                return;
+            }
+            match res {
                 Ok(found) => {
                     hits.set(found);
                     error.set(None);
@@ -34,7 +43,6 @@ pub(super) fn AddressSearch(
                 }
             }
             searched.set(true);
-            busy.set(false);
         });
     };
 
@@ -47,8 +55,16 @@ pub(super) fn AddressSearch(
                 aria_label: t!("geo-search-placeholder"),
                 value: "{query}",
                 oninput: move |e| {
-                    query.set(e.value());
+                    let value = e.value();
+                    query.set(value.clone());
                     searched.set(false);
+                    // Search as you type: sleep-and-compare debounce (school `SidebarSearch`).
+                    spawn(async move {
+                        crate::util::sleep(std::time::Duration::from_millis(DEBOUNCE_MS)).await;
+                        if query() == value && value.trim().chars().count() >= MIN_CHARS {
+                            run();
+                        }
+                    });
                 },
                 onkeydown: move |e| {
                     if e.key() == Key::Enter {
