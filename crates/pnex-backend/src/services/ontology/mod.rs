@@ -1,5 +1,6 @@
 //! Ontology core (docs/architecture/ontology.md D176–D191): org object and
-//! link types, objects, temporal links, queries, graph, series, packs.
+//! link types, objects, temporal links, queries, graph, series, packs,
+//! case timelines (cases.md).
 //!
 //! Shared by the HTTP controller (`controllers/ontology.rs`) and the
 //! assistant tools: same validations, same 409. The org always comes from
@@ -16,6 +17,7 @@ pub mod objects;
 pub mod packs;
 pub mod query;
 pub mod series;
+pub mod timeline;
 pub mod types;
 
 use pnex_core::ontology::{
@@ -144,7 +146,18 @@ pub async fn schema<C: ConnectionTrait>(
             .iter_mut()
             .find(|(s, _, _)| s.system && s.key == def.key)
         {
-            sys.0.properties = def.properties;
+            // Built-in properties of the system type stay first and fixed.
+            let extra: Vec<_> = def
+                .properties
+                .into_iter()
+                .filter(|p| !sys.0.properties.iter().any(|b| b.key == p.key))
+                .collect();
+            sys.0.properties = system_object_types()
+                .into_iter()
+                .find(|t| t.key == sys.0.key)
+                .map(|t| t.properties)
+                .unwrap_or_default();
+            sys.0.properties.extend(extra);
             sys.1 = t.current_version;
             continue;
         }

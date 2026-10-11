@@ -186,6 +186,7 @@ impl Hooks for App {
             .add_route(controllers::taxonomies::routes())
             .add_route(controllers::time_ranges::routes())
             .add_route(controllers::ontology::routes())
+            .add_route(controllers::cases::routes())
             .add_route(controllers::ml_models::routes())
             .add_route(controllers::ml_models::internal_routes())
             .add_route(controllers::pins::routes())

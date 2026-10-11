@@ -584,3 +584,68 @@ async fn device_placements_become_placed_at_links() {
     })
     .await;
 }
+
+/// Cases (cases.md K1, K2, K6): a case is a system type without a native
+/// table, written through the generic object API; members are `in_case`
+/// links (role required), removal closes them; the timeline merges member
+/// links over the window; another org never sees it (R1); a viewer reads
+/// but never writes (R2).
+#[tokio::test]
+#[serial]
+async fn cases_members_and_timeline() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (st, e) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(json!({"type_key": "case", "title": "P-12", "properties": {}}))).await;
+        assert_eq!((st, e["status"].as_str()), (400, Some("required")), "{e}");
+        let case = object(&server, &env.alice, org, "case", "Low pressure P-12", json!({"status": "open", "question": "Why?"})).await;
+        let cid = case["id"].as_str().unwrap().to_string();
+        assert_eq!(case["system"], false, "{case}");
+        let d1 = device(&server, &env, org, "c47").await;
+        let d2 = device(&server, &env, org, "c88").await;
+
+        // Membership: role required, then open.
+        let (st, e) = link(&server, &env.alice, org, json!({"link_type": "in_case", "source_id": d1, "target_id": cid})).await;
+        assert_eq!(st, 400, "{e}");
+        for d in [&d1, &d2] {
+            let (st, l) = link(&server, &env.alice, org, json!({"link_type": "in_case", "source_id": d, "target_id": cid, "attributes": {"role": "evidence"}})).await;
+            assert_eq!(st, 201, "{l}");
+        }
+        // A case is not a member type of a device link.
+        let (st, _) = link(&server, &env.alice, org, json!({"link_type": "placed_at", "source_id": d1, "target_id": cid})).await;
+        assert_eq!(st, 400);
+
+        let (st, tl) = call(&server, "POST", &format!("/api/v1/cases/{cid}/timeline"), &env.alice, org, Some(json!({}))).await;
+        assert_eq!(st, 200, "{tl}");
+        assert_eq!(tl["members"].as_array().unwrap().len(), 2, "{tl}");
+        let opens = tl["items"].as_array().unwrap().iter().filter(|i| i["kind"] == "link_open").count();
+        assert_eq!(opens, 2, "{tl}");
+
+        // Removing a member closes its link: gone from members, kept as history.
+        let member = tl["members"][0]["id"].as_i64().unwrap();
+        let (st, _) = call(&server, "POST", &format!("/api/v1/ontology/links/{member}/close"), &env.alice, org, Some(json!({}))).await;
+        assert_eq!(st, 200);
+        let (_, tl) = call(&server, "POST", &format!("/api/v1/cases/{cid}/timeline"), &env.alice, org, Some(json!({}))).await;
+        assert_eq!(tl["members"].as_array().unwrap().len(), 1, "{tl}");
+        assert!(tl["items"].as_array().unwrap().iter().any(|i| i["kind"] == "link_close"), "{tl}");
+
+        // Bad window, not a case, another org.
+        let (st, _) = call(&server, "POST", &format!("/api/v1/cases/{cid}/timeline"), &env.alice, org, Some(json!({"from": "2026-10-02T00:00:00Z", "to": "2026-10-01T00:00:00Z"}))).await;
+        assert_eq!(st, 400);
+        let (st, _) = call(&server, "POST", &format!("/api/v1/cases/{d1}/timeline"), &env.alice, org, Some(json!({}))).await;
+        assert_eq!(st, 404);
+        let org_b = personal_org(&server, &env.bob).await;
+        let (st, _) = call(&server, "POST", &format!("/api/v1/cases/{cid}/timeline"), &env.bob, org_b, Some(json!({}))).await;
+        assert_eq!(st, 404);
+
+        // Viewer: reads the timeline, cannot add a member nor edit the case.
+        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
+        assert!(st < 300);
+        let (st, _) = call(&server, "POST", &format!("/api/v1/cases/{cid}/timeline"), &env.bob, org, Some(json!({}))).await;
+        assert_eq!(st, 200);
+        let (st, _) = link(&server, &env.bob, org, json!({"link_type": "in_case", "source_id": d1, "target_id": cid, "attributes": {"role": "context"}})).await;
+        assert_eq!(st, 403);
+        let (st, _) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{cid}"), &env.bob, org, Some(json!({"title": "x", "properties": {"status": "concluded"}, "expected_version": 1}))).await;
+        assert_eq!(st, 403);
+    })
+    .await;
+}

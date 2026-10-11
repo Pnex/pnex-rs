@@ -199,3 +199,16 @@ pub async fn export_yaml() -> Result<Vec<u8>, ApiError> {
 pub async fn import_yaml(yaml: Vec<u8>) -> Result<PackView, ApiError> {
     client::request_upload(Method::POST, &format!("{BASE}/import"), yaml).await
 }
+
+/// Members and merged timeline of a case (cases.md K6).
+pub async fn case_timeline(
+    id: &str,
+    q: &pnex_core::ontology::api::TimelineQuery,
+) -> Result<pnex_core::ontology::api::CaseTimeline, ApiError> {
+    client::request(
+        Method::POST,
+        &format!("/api/v1/cases/{}/timeline", urlencode(id)),
+        body(q),
+    )
+    .await
+}

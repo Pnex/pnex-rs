@@ -301,3 +301,40 @@ pub struct PackView {
     #[serde(default)]
     pub installed_version: Option<String>,
 }
+
+/// Timeline request of a case (cases.md K6); bounds RFC 3339, defaulting
+/// to the case window, then to the last 30 days.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct TimelineQuery {
+    #[serde(default)]
+    pub from: Option<String>,
+    #[serde(default)]
+    pub to: Option<String>,
+}
+
+/// One dated element of a timeline. `lane` is the member object it belongs
+/// to (the case itself for its own events).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TimelineItem {
+    pub at: String,
+    /// `link_open` | `link_close` | `change`.
+    pub kind: String,
+    pub lane: String,
+    #[serde(default)]
+    pub link: Option<LinkView>,
+    #[serde(default)]
+    pub change: Option<ChangeView>,
+}
+
+/// Members (open `in_case` links) and the merged timeline, oldest first.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaseTimeline {
+    pub from: String,
+    pub to: String,
+    pub members: Vec<LinkView>,
+    pub items: Vec<TimelineItem>,
+    /// False when the change journal (O2) could not be read.
+    pub changes_available: bool,
+    /// True when a source hit its cap: narrow the window.
+    pub truncated: bool,
+}

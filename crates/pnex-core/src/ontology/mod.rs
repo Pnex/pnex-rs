@@ -169,6 +169,13 @@ fn check_set(
 }
 
 impl ObjectTypeDef {
+    /// A system type backed by its own table (D42 kinds): its objects are
+    /// created and deleted by their pages. A system type without a native
+    /// table (`case`) lives entirely in `objects`, written like org types.
+    pub fn native(&self) -> bool {
+        self.system && crate::resources::KINDS.contains(&self.key.as_str())
+    }
+
     /// Checks an org type definition; `known` answers whether a type key
     /// exists (system, org, or this type itself).
     pub fn check(&self, known: &dyn Fn(&str) -> bool) -> Result<(), schema::FieldError> {
@@ -242,8 +249,73 @@ pub fn system_object_types() -> Vec<ObjectTypeDef> {
             may_contain: Some(TypeSet::Any),
             ..leaf(KIND_FOLDER)
         },
+        // Investigation case (cases.md K1): a lens on the ontology, its
+        // members are `in_case` links; sub-cases by containment.
+        ObjectTypeDef {
+            icon: "book".into(),
+            properties: case_properties(),
+            may_contain: Some(TypeSet::only(&[KIND_CASE])),
+            may_be_contained_in: Some(TypeSet::only(&[KIND_FOLDER, KIND_CASE])),
+            ..leaf(KIND_CASE)
+        },
     ]
 }
+
+fn prop(key: &str, kind: PropertyKind) -> PropertyDef {
+    PropertyDef {
+        key: key.into(),
+        name: String::new(),
+        kind,
+        required: false,
+        indexed: false,
+    }
+}
+
+fn case_properties() -> Vec<PropertyDef> {
+    vec![
+        prop(
+            CASE_QUESTION,
+            PropertyKind::Text {
+                max_len: Some(1000),
+            },
+        ),
+        PropertyDef {
+            required: true,
+            indexed: true,
+            ..prop(
+                CASE_STATUS,
+                PropertyKind::Enum {
+                    values: CASE_STATUSES.iter().map(|v| v.to_string()).collect(),
+                },
+            )
+        },
+        prop(CASE_WINDOW_FROM, PropertyKind::DateTime),
+        prop(CASE_WINDOW_TO, PropertyKind::DateTime),
+        prop(CASE_TEMPLATE, PropertyKind::Text { max_len: Some(64) }),
+    ]
+}
+
+/// Investigation case (cases.md K1): system type without a native table.
+pub const KIND_CASE: &str = "case";
+pub const CASE_QUESTION: &str = "question";
+pub const CASE_STATUS: &str = "status";
+pub const CASE_STATUSES: [&str; 3] = ["open", "concluded", "archived"];
+pub const CASE_WINDOW_FROM: &str = "window_from";
+pub const CASE_WINDOW_TO: &str = "window_to";
+pub const CASE_TEMPLATE: &str = "template";
+/// Case membership (cases.md K2): any object → case, temporal.
+pub const REL_IN_CASE: &str = "in_case";
+pub const IN_CASE_ROLE: &str = "role";
+pub const IN_CASE_ROLES: [&str; 6] = [
+    "subject",
+    "actor",
+    "evidence",
+    "context",
+    "hypothesis",
+    "note",
+];
+pub const IN_CASE_PINNED: &str = "pinned";
+pub const IN_CASE_NOTE: &str = "note";
 
 /// The system link types.
 pub fn system_link_types() -> Vec<LinkTypeDef> {
@@ -287,6 +359,23 @@ pub fn system_link_types() -> Vec<LinkTypeDef> {
             attributes: vec![text(MEASURES_METRIC), text(MEASURES_PROPERTY)],
             ..link(REL_MEASURES, TypeSet::only(&[KIND_DEVICE]), TypeSet::Any)
         },
+        // Case membership (cases.md K2): removing a member closes the link.
+        LinkTypeDef {
+            attributes: vec![
+                PropertyDef {
+                    required: true,
+                    ..prop(
+                        IN_CASE_ROLE,
+                        PropertyKind::Enum {
+                            values: IN_CASE_ROLES.iter().map(|v| v.to_string()).collect(),
+                        },
+                    )
+                },
+                prop(IN_CASE_PINNED, PropertyKind::Bool),
+                prop(IN_CASE_NOTE, PropertyKind::Text { max_len: Some(255) }),
+            ],
+            ..link(REL_IN_CASE, TypeSet::Any, TypeSet::only(&[KIND_CASE]))
+        },
     ]
 }
 
@@ -306,7 +395,11 @@ mod tests {
 
     #[test]
     fn system_types_are_the_live_kinds() {
-        let mut keys: Vec<String> = system_object_types().into_iter().map(|t| t.key).collect();
+        let mut keys: Vec<String> = system_object_types()
+            .into_iter()
+            .filter(ObjectTypeDef::native)
+            .map(|t| t.key)
+            .collect();
         keys.sort();
         let mut kinds: Vec<String> = KINDS.iter().map(|k| k.to_string()).collect();
         kinds.sort();

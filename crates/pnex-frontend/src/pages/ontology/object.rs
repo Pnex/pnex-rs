@@ -94,7 +94,7 @@ pub fn OntologyObject(id: String) -> Element {
             },
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
             actions: rsx! {
-                if can_write && !archived && (!tv.def.system || !tv.def.properties.is_empty()) {
+                if can_write && !archived && (!tv.def.native() || !tv.def.properties.is_empty()) {
                     button {
                         class: BTN,
                         "data-testid": "onto-edit",
@@ -102,7 +102,10 @@ pub fn OntologyObject(id: String) -> Element {
                         {t!("onto-edit")}
                     }
                 }
-                if can_write && !archived && !tv.def.system {
+                if can_write && !archived && o.type_key != pnex_core::ontology::KIND_CASE {
+                    crate::components::ontology::add_to_case::AddToCase { object_id: o.id.clone() }
+                }
+                if can_write && !archived && !tv.def.native() {
                     button { class: DANGER_BTN, onclick: move |_| archiving.set(true), {t!("onto-archive")} }
                 }
             },
@@ -211,7 +214,7 @@ fn PropertiesPanel(object: ObjectView, type_view: ObjectTypeView) -> Element {
             dl { class: "grid grid-cols-1 gap-3 sm:grid-cols-2",
                 for p in props {
                     div { key: "{p.key}", "data-prop": "{p.key}",
-                        dt { class: "text-xs font-medium uppercase text-gray-500",
+                        dt { class: "text-xs font-medium text-gray-500",
                             {prop_label(&p)}
                         }
                         dd { class: "text-sm text-gray-900",
@@ -266,7 +269,7 @@ fn LinksPanel(
         div { class: SECTION,
             div { class: "flex flex-wrap items-end gap-3",
                 div {
-                    label { class: "block text-xs font-medium text-gray-500 uppercase mb-1",
+                    label { class: "block text-xs font-medium text-gray-500 mb-1",
                         {t!("onto-as-of")}
                     }
                     input {
@@ -575,7 +578,7 @@ fn LinkForm(
             },
             div { class: "space-y-3",
                 div {
-                    label { class: "block text-xs font-medium text-gray-500 uppercase mb-1",
+                    label { class: "block text-xs font-medium text-gray-500 mb-1",
                         {t!("onto-link-type")}
                     }
                     select {
@@ -596,7 +599,7 @@ fn LinkForm(
                     }
                 }
                 div {
-                    label { class: "block text-xs font-medium text-gray-500 uppercase mb-1",
+                    label { class: "block text-xs font-medium text-gray-500 mb-1",
                         {t!("onto-link-other")}
                     }
                     select {
@@ -627,7 +630,7 @@ fn LinkForm(
                     }
                 }
                 div {
-                    label { class: "block text-xs font-medium text-gray-500 uppercase mb-1",
+                    label { class: "block text-xs font-medium text-gray-500 mb-1",
                         {t!("onto-valid-from")}
                     }
                     input {

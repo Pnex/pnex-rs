@@ -439,6 +439,7 @@ async fn fetch_objects(
 ) -> Fetched {
     let system: Vec<String> = pnex_core::ontology::system_object_types()
         .into_iter()
+        .filter(|t| t.native())
         .map(|t| t.key)
         .collect();
     let rows = objects::Entity::find()

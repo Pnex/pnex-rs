@@ -10,10 +10,11 @@
 
 use crate::pages::edge_refs::EdgeRefs;
 use crate::pages::{
-    self, AdminStatus, Annotations, AuthCallback, Cameras, Catalog, Controls, Dashboard,
-    Dashboards, Devices, Docs, Events, Firmware, Flows, FluidMixtures, Functions, Map, Media,
-    Models, NotFound, Notifications, Ontology, OntologyObject, OntologyType, Orgs, OrgsCurrent,
-    Profile, Secrets, ShareTour, Showcase, Sites, Streams, Studio, System, Visualisation,
+    self, AdminStatus, Annotations, AuthCallback, Cameras, CaseWorkspace, Cases, Catalog, Controls,
+    Dashboard, Dashboards, Devices, Docs, Events, Firmware, Flows, FluidMixtures, Functions, Map,
+    Media, Models, NotFound, Notifications, Ontology, OntologyObject, OntologyType, Orgs,
+    OrgsCurrent, Profile, Secrets, ShareTour, Showcase, Sites, Streams, Studio, System,
+    Visualisation,
 };
 use dioxus::prelude::*;
 
@@ -78,6 +79,13 @@ pub enum Route {
 
         #[route("/controls")]
         Controls {},
+
+        // Investigation cases and their workspace (cases.md).
+        #[route("/cases")]
+        Cases {},
+
+        #[route("/cases/:id")]
+        CaseWorkspace { id: String },
 
         // Ontology explorer, object page and type editor (ontology.md D186).
         #[route("/ontology?:tab&:type_key")]

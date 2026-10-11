@@ -2,6 +2,7 @@
 //! and link types, typed property inputs and values, the local graph view
 //! and the "object page" link shown on the specialised pages.
 
+pub mod add_to_case;
 pub mod graph_view;
 pub mod object_link;
 pub mod property_input;

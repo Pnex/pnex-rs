@@ -115,7 +115,7 @@ fn ObjectsTab(initial_type: String) -> Element {
         Some(Err(e)) => (Some(Err(e.clone())), false, 0, Vec::new()),
     };
     let selected = all_types.iter().find(|t| t.def.key == type_key()).cloned();
-    let can_create = can_write && selected.as_ref().is_some_and(|t| !t.def.system);
+    let can_create = can_write && selected.as_ref().is_some_and(|t| !t.def.native());
     let label_types = all_types.clone();
     let columns = vec![
         Column::new(t!("onto-col-title").to_string(), |r: &QueryRow| {
@@ -227,7 +227,7 @@ pub fn ObjectForm(
     let mut busy = use_signal(|| false);
     let mut errors = use_signal(Map::<String, Value>::new);
     let def = type_view.def.clone();
-    let system = def.system;
+    let system = def.native();
     // `ref` choices: the live objects of each referenced type.
     let ref_types: Vec<String> = def
         .properties
@@ -322,7 +322,7 @@ pub fn ObjectForm(
             div { class: "space-y-3",
                 if !system {
                     div {
-                        label { class: "block text-xs font-medium text-gray-500 uppercase mb-1",
+                        label { class: "block text-xs font-medium text-gray-500 mb-1",
                             "{title_label} *"
                         }
                         input {
