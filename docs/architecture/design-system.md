@@ -140,8 +140,9 @@ Les entrées « bientôt » sans route sont retirées du menu.
 
 ## 7. Reste à faire
 
-- Éditeurs plein écran : flows, dashboards, Studio, annotations et firmware
-  revus en clair et sombre (2026-10-11), ainsi que les pages de détail
-  (device, média, POI, objet, dossier) ; les inspecteurs de chaque type de
-  nœud/widget restent à parcourir un à un.
+- Revue sombre faite le 2026-10-11 : toutes les pages de liste, les pages
+  de détail (device, média, POI, objet, dossier), les éditeurs plein écran
+  (flows, dashboards, Studio, annotations, firmware, pages) et l'inspecteur
+  de chaque type de nœud (31) et de widget (35). Reste à voir au cas par
+  cas : visionneuses 360/splat et carte avec un fond configuré.
 - Captures de la documentation et du site à refaire.
