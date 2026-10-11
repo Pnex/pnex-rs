@@ -177,31 +177,72 @@ pub async fn history(
     object_id: &str,
     limit: i64,
 ) -> std::result::Result<Option<Vec<ChangeView>>, String> {
+    let end = chrono::Utc::now().timestamp_micros();
+    Ok(history_of(
+        ctx,
+        org_id,
+        &[object_id.to_string()],
+        end - WINDOW_US,
+        end,
+        limit,
+    )
+    .await?
+    .map(|rows| rows.into_iter().map(|(_, c)| c).collect()))
+}
+
+/// Changes of several objects between two instants (µs), newest first,
+/// each with its object id. `None` = journal unavailable.
+pub async fn history_of(
+    ctx: &AppContext,
+    org_id: i64,
+    object_ids: &[String],
+    start_us: i64,
+    end_us: i64,
+    limit: i64,
+) -> std::result::Result<Option<Vec<(String, ChangeView)>>, String> {
     let Some(client) = client(ctx) else {
         return Ok(None);
     };
     let Some(creds) = provisioned_credentials(&ctx.db, org_id).await? else {
         return Ok(None);
     };
-    // The id is a UUID parsed by the controller: safe in the literal.
+    if object_ids.is_empty() {
+        return Ok(Some(Vec::new()));
+    }
+    // Ids are UUIDs parsed by the callers; quotes escaped all the same.
+    let ids: Vec<String> = object_ids
+        .iter()
+        .map(|id| format!("'{}'", id.replace('\'', "''")))
+        .collect();
     let sql = format!(
-        "SELECT * FROM \"{OBJECT_CHANGES_STREAM}\" WHERE object_id = '{}' ORDER BY _timestamp DESC",
-        object_id.replace('\'', "''")
+        "SELECT * FROM \"{OBJECT_CHANGES_STREAM}\" WHERE object_id IN ({}) ORDER BY _timestamp DESC",
+        ids.join(",")
     );
-    let end = chrono::Utc::now().timestamp_micros();
     match client
         .search_logs(
             &creds.o2_org,
             &sql,
-            end - WINDOW_US,
-            end,
+            start_us,
+            end_us,
             0,
             limit,
             &creds.email_passcode,
         )
         .await
     {
-        Ok(page) => Ok(Some(page.hits.iter().map(change_of).collect())),
+        Ok(page) => Ok(Some(
+            page.hits
+                .iter()
+                .map(|h| {
+                    let id = h
+                        .get("object_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string();
+                    (id, change_of(h))
+                })
+                .collect(),
+        )),
         Err(e) if e.contains("not found") => Ok(Some(Vec::new())),
         Err(e) => Err(e),
     }

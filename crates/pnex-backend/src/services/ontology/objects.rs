@@ -26,7 +26,7 @@ pub fn view(o: &objects::Model, s: &OrgSchema) -> ObjectView {
         type_key: o.type_key.clone(),
         title: o.title.clone(),
         native_id: o.native_id.clone(),
-        system: s.object_type(&o.type_key).is_some_and(|t| t.system),
+        system: s.object_type(&o.type_key).is_some_and(|t| t.native()),
         properties: o.properties.as_object().cloned().unwrap_or_default(),
         type_version: o.type_version,
         version: o.version,
@@ -131,7 +131,7 @@ pub async fn create(
     let Some(def) = s.object_type(&input.type_key) else {
         return Err(super::invalid("type_key", FIELD_INVALID));
     };
-    if def.system {
+    if def.native() {
         return Err(OntologyError::SystemReadOnly);
     }
     require_role(def, actor)?;
@@ -184,7 +184,7 @@ pub async fn update(
     let Some(expected) = input.expected_version else {
         return Err(super::invalid("expected_version", FIELD_REQUIRED));
     };
-    let title = if def.system {
+    let title = if def.native() {
         row.title.clone()
     } else {
         check_title(&input.title)?
@@ -240,7 +240,7 @@ pub async fn archive(db: &DatabaseConnection, org_id: i64, actor: &Actor, id: Uu
     let Some(def) = s.object_type(&row.type_key) else {
         return Err(OntologyError::NotFound);
     };
-    if def.system {
+    if def.native() {
         return Err(OntologyError::SystemReadOnly);
     }
     require_role(def, actor)?;

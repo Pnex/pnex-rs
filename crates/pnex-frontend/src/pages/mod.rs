@@ -14,6 +14,8 @@ pub mod dashboard;
 pub mod dashboards;
 pub mod devices;
 // Pages (pages.md #21)
+/// Investigation cases (cases.md).
+pub mod cases;
 pub mod docs;
 /// Référentiels Edge (WiFi / serveurs PNeX) — CRUD consommé par le wizard
 /// device et la file de build firmware.
@@ -54,6 +56,7 @@ pub use admin_status::AdminStatus;
 pub use annotations::Annotations;
 pub use auth_callback::AuthCallback;
 pub use cameras::Cameras;
+pub use cases::{CaseWorkspace, Cases};
 pub use catalog::Catalog;
 pub use controls::Controls;
 pub use dashboard::Dashboard;

@@ -20,7 +20,7 @@ use crate::models::_entities::{
     tours,
 };
 
-use pnex_core::ontology::{LinkTypeDef, ObjectTypeDef};
+use pnex_core::ontology::{LinkTypeDef, ObjectTypeDef, KIND_CASE};
 use pnex_core::resources::{
     KIND_DASHBOARD, KIND_DEVICE, KIND_DOC, KIND_FLOW, KIND_FOLDER, KIND_MAP_PIN, KIND_MEDIA_ASSET,
     KIND_TOUR,
@@ -304,6 +304,8 @@ fn system_resolvers() -> HashMap<&'static str, Arc<dyn KindResolver>> {
         (KIND_FLOW, Arc::new(FlowKind)),
         (KIND_DOC, Arc::new(DocKind)),
         (KIND_FOLDER, Arc::new(FolderKind)),
+        // No native table: resolved through its identity rows like org types.
+        (KIND_CASE, Arc::new(ObjectKind(KIND_CASE.into()))),
     ])
 }
 
@@ -313,7 +315,7 @@ pub async fn for_org(db: &DatabaseConnection, org_id: i64) -> Result<Registry, s
     let s = crate::services::ontology::schema(db, org_id).await?;
     let mut resolvers: HashMap<&str, Arc<dyn KindResolver>> = system_resolvers();
     for (t, _, _) in &s.types {
-        if !t.system {
+        if !t.native() {
             resolvers.insert(t.key.as_str(), Arc::new(ObjectKind(t.key.clone())));
         }
     }
@@ -344,7 +346,10 @@ mod tests {
     #[test]
     fn derived_registry_matches_d42_rules() {
         let reg = global();
-        assert_eq!(reg.kinds().len(), KINDS.len());
+        assert_eq!(
+            reg.kinds().len(),
+            pnex_core::ontology::system_object_types().len()
+        );
         for parent in KINDS {
             for child in KINDS {
                 let expected =

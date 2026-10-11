@@ -20,6 +20,7 @@ export const ROUTES: RouteCase[] = [
   { path: '/annotations', title: 'annot-page-title' },
   { path: '/controls', title: 'nav-controls' },
   { path: '/ontology', title: 'nav-ontology' },
+  { path: '/cases', title: 'cases-title' },
   { path: '/devices', title: 'nav-devices' },
   { path: '/mixtures', title: 'mixtures-title' },
   { path: '/flows', title: 'nav-flows' },

@@ -170,7 +170,7 @@ fn o2(ctx: &AppContext) -> Option<Client> {
     OpenobserveSettings::from_config(&ctx.config).map(|s| Client::new(&s))
 }
 
-fn parse_uuid(raw: &str) -> Result<Uuid> {
+pub(crate) fn parse_uuid(raw: &str) -> Result<Uuid> {
     Uuid::parse_str(raw).map_err(|_| {
         coded_error(
             StatusCode::NOT_FOUND,

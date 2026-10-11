@@ -20,7 +20,13 @@ pub fn ObjectPageLink(kind: String, native_id: String) -> Element {
     let Some(Some(object)) = res.read().clone() else {
         return rsx! {};
     };
+    let can_add =
+        crate::state::org::current_can_write() && object.type_key != pnex_core::ontology::KIND_CASE;
+    let object_id = object.id.clone();
     rsx! {
+        if can_add {
+            super::add_to_case::AddToCase { object_id }
+        }
         Link {
             class: "inline-flex items-center gap-1 px-3 py-1 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
             to: Route::OntologyObject {
