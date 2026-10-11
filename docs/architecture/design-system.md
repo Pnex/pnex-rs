@@ -97,6 +97,10 @@ les compose hérite de l'identité.
   de « rien ne correspond aux filtres ».
 - **Labels** : saisie et filtres proposent les noms et valeurs déjà utilisés
   dans l'org (`GET /api/v1/resources/labels/catalog`, `<datalist>` natif).
+  Ce sont des étiquettes de travail, pas un modèle : sur une fiche, le type
+  et les propriétés d'ontologie passent avant, les labels restent discrets
+  et ne sont pas ajoutés aux pages qui n'en ont pas (`ontology.md`, « Labels
+  et ontologie »).
 
 ## 5. Navigation par tâche
 

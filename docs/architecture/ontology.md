@@ -331,6 +331,35 @@ migration destructrice »), la 0.2.0 **migre les données**.
   pour les nouvelles routes `/api/v1/ontology/*`.
 - Migration testée sur une base 0.1 réelle (fixture).
 
+### Labels et ontologie : deux rôles, pas deux modèles (2026-10-11)
+
+> Numéro D à attribuer à la validation (D192+ réservé par
+> `media-vision-studio.md`).
+
+Les labels D42 restent, mais ne sont **pas** un second outil de
+modélisation :
+
+- **Ontologie = ce que l'objet est** : type, propriétés typées, liens
+  datés et sourcés. Tout fait métier sur lequel on raisonne, requête ou
+  agit y vit.
+- **Labels = étiquettes de travail** : clé:valeur libre, sans schéma,
+  pour trier, filtrer et regrouper à la volée (« lot:2026 »,
+  « à-vérifier »). D185 filtre par labels effectifs : les deux
+  cohabitent.
+- Les labels **ne sont pas étendus** à tous les kinds : structurer un
+  objet passe par l'ontologie. Pas d'éditeur de labels ajouté aux pages
+  qui n'en ont pas.
+- Un label qui porte un fait métier (`marque:grundfos`, `site:serre`) est
+  une dette : la bonne place est une propriété ou un lien. Évolution
+  possible, non planifiée : « promouvoir ce label en propriété » (même
+  clé sur beaucoup d'objets d'un type → propriété du type, valeurs
+  migrées, provenance D184).
+- À ne pas confondre avec les labels des séries O2 (`__name__`,
+  `device_id`…) : sélecteurs de données, utilisés par les propriétés
+  `series` (D178).
+- UI : sur une fiche, type et propriétés d'abord ; labels en étiquettes
+  discrètes (`LabelTag`, `design-system.md`).
+
 ## 5. Modèle de données (récapitulatif)
 
 | Table / stream | Rôle |
