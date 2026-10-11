@@ -1153,3 +1153,59 @@ async fn labels_batch_returns_a_page_and_stays_in_the_org() {
     })
     .await;
 }
+
+#[tokio::test]
+#[serial]
+async fn labels_catalog_lists_org_names_and_values_only() {
+    with_app(|server, _db, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let a = create_media(&server, &env.alice, org, "cat-a").await;
+        let b = create_media(&server, &env.alice, org, "cat-b").await;
+        for (id, labels) in [
+            (&a, serde_json::json!({"site": "serre", "critique": null})),
+            (&b, serde_json::json!({"site": "atelier"})),
+        ] {
+            jput(
+                &server,
+                &env.alice,
+                org,
+                &format!("/api/v1/resources/media_asset/{id}/labels"),
+                serde_json::json!({ "labels": labels }),
+            )
+            .await
+            .assert_status_ok();
+        }
+        let body: serde_json::Value =
+            jget(&server, &env.alice, org, "/api/v1/resources/labels/catalog")
+                .await
+                .json();
+        let site = body["labels"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["name"] == "site")
+            .expect("site listed");
+        assert_eq!(site["count"], 2);
+        let mut values: Vec<&str> = site["values"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect();
+        values.sort_unstable();
+        assert_eq!(values, ["atelier", "serre"]);
+
+        // Bob's org sees none of alice's labels.
+        let bob_org = personal_org(&server, &env.bob).await;
+        let body: serde_json::Value = jget(
+            &server,
+            &env.bob,
+            bob_org,
+            "/api/v1/resources/labels/catalog",
+        )
+        .await
+        .json();
+        assert_eq!(body["labels"], serde_json::json!([]));
+    })
+    .await;
+}

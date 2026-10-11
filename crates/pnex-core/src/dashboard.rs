@@ -33,6 +33,9 @@ pub struct LivenessSummary {
     /// Triés live d'abord, puis `last_seen` décroissant — plafonnés à ~10
     /// côté backend (demande user : « only latest ~10 », pas toute l'org).
     pub devices: Vec<DeviceLiveness>,
+    /// Device count per device type over the whole org (not capped).
+    #[serde(default)]
+    pub by_type: std::collections::BTreeMap<String, u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

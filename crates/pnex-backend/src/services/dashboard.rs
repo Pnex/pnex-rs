@@ -98,8 +98,19 @@ pub async fn liveness(
         .filter_map(|id| Some((by_id.remove(id)?, last_seen_of(id))))
         .collect();
 
-    // predefined → (nom du modèle, type) pour l'affichage (page only).
-    let pd_ids: Vec<i64> = rows.iter().map(|(d, _)| d.predefined_device_id).collect();
+    // Model of every device of the org: per-type counts cover the whole org,
+    // the display rows reuse the same lookup.
+    let all_pd: Vec<i64> = device_registries::Entity::find()
+        .select_only()
+        .column(device_registries::Column::PredefinedDeviceId)
+        .filter(device_registries::Column::OrgId.eq(org_id))
+        .into_tuple::<i64>()
+        .all(db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    let mut pd_ids = all_pd.clone();
+    pd_ids.sort_unstable();
+    pd_ids.dedup();
     let predefined: HashMap<i64, (String, i64)> = predefined_devices::Entity::find()
         .filter(predefined_devices::Column::Id.is_in(pd_ids))
         .all(db)
@@ -137,10 +148,19 @@ pub async fn liveness(
             }
         })
         .collect();
+    let mut by_type = std::collections::BTreeMap::new();
+    for pd in &all_pd {
+        let name = predefined
+            .get(pd)
+            .and_then(|(_, type_id)| types.get(type_id).cloned())
+            .unwrap_or_else(|| "unknown".into());
+        *by_type.entry(name).or_insert(0u64) += 1;
+    }
     Ok(LivenessSummary {
         total,
         live,
         devices,
+        by_type,
     })
 }
 
