@@ -343,6 +343,13 @@ d'org, rôle d'écriture du type (D188) re-vérifié ; ni archivage ni
 suppression (un lien fermé reste dans l'historique). Fiche
 `assistant-kb/ontology.md`, test `assistant_works_the_ontology_through_the_ui_services`.
 
+**Dossiers (cases.md K15, livré 2026-10-11)** : `case_timeline` en
+lecture seule (membres et rôles, chronologie fusionnée, 200 éléments au
+plus) — même service que `POST /api/v1/cases/{id}/timeline`. L'assistant
+n'ajoute ni ne retire de membre et ne change pas le statut d'une
+affirmation (409 `ontology-claim-unsourced` sinon). Fiche
+`assistant-kb/cases.md`, test `assistant_reads_a_case_timeline`.
+
 ### 9.4 D145 — conversations
 
 **Modèle** (nouvelle migration, parité PG/SQLite, règles `migrations.md`) :

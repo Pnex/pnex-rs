@@ -5,7 +5,7 @@ kind: feature
 pages: /cases, /cases/:id, /events
 nodes:
 err_codes: ontology-not-found, ontology-version-conflict, ontology-link-not-allowed, ontology-already-exists, ontology-write-forbidden
-tools: query_ontology, get_object, create_object, update_object, open_link, close_link
+tools: case_timeline, query_ontology, get_object, create_object, update_object, open_link, close_link
 tags: case, cases, dossier, dossier d'enquête, enquête, investigation, incident, rca, root cause, cause racine, timeline, chronologie, members, membres, evidence, preuve, hypothesis, hypothèse, actor, acteur, who, when, what happened, que s'est-il passé
 ---
 A **case** (sidebar › Cases) gathers everything that matters for one question to resolve — an incident, an investigation, a story — without copying anything: devices, media, sites, pages, flows or any ontology object become **members** of the case, and the case shows them on one timeline.
@@ -25,3 +25,4 @@ A **case** (sidebar › Cases) gathers everything that matters for one question 
 - If someone saved the case while you were editing, saving answers *ontology-version-conflict*: reload and redo your change.
 - "No link type connects these two objects": create one in Ontology › Schema, or install a pack.
 - If the change journal is unavailable, the timeline still shows the links.
+- Ask the assistant about a case ("summarize the timeline between 9:00 and 11:00", "what changed on P-12 in the 24 hours before the alert?"): it reads the case's members and timeline. It never adds or removes a member, nor changes a claim's status.

@@ -1799,3 +1799,40 @@ async fn assistant_searches_and_reads_documents() {
     })
     .await;
 }
+
+/// Cases (cases.md K15): the assistant reads a case's members and timeline
+/// through the same service as the UI; a viewer reads too; an object that
+/// is not a case is a readable refusal; nothing is written.
+#[tokio::test]
+#[serial]
+async fn assistant_reads_a_case_timeline() {
+    with_app_ai(true, true, |server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let case = send_json(&server, "POST", "/api/v1/cases", &env.alice, org, Some(serde_json::json!({
+            "title": "Low pressure", "from": {"kind": "event", "at": "2026-10-03T10:02:00Z"}
+        })))
+        .await
+        .json::<serde_json::Value>();
+        let cid = case["id"].as_str().unwrap().to_string();
+        let other = send_json(&server, "POST", "/api/v1/cases", &env.alice, org, Some(serde_json::json!({"title": "Other"})))
+            .await
+            .json::<serde_json::Value>();
+        let link = send_json(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(serde_json::json!({
+            "link_type": "in_case", "source_id": other["id"], "target_id": cid, "attributes": {"role": "context"}
+        })))
+        .await;
+        assert_eq!(link.status_code(), 201, "{}", link.text());
+
+        add_bob(&server, &env, org, "viewer").await;
+        let trace = run_tools(&server, &env.bob, org, vec![
+            ("case_timeline", serde_json::json!({"case_id": cid})),
+            ("case_timeline", serde_json::json!({"case_id": "00000000-0000-0000-0000-000000000000"})),
+        ])
+        .await;
+        assert_eq!(trace[0]["ok"], true, "{trace:?}");
+        assert_eq!(trace[1]["code"], pnex_core::err_codes::ONTOLOGY_NOT_FOUND, "{trace:?}");
+        let out = mock_requests().last().unwrap().to_string();
+        assert!(out.contains("Other") && out.contains("context"), "member and role reach the model");
+    })
+    .await;
+}

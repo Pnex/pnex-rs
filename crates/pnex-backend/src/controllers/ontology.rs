@@ -171,7 +171,7 @@ pub(crate) fn actor(org: &OrgContext) -> Actor {
     Actor::manual(org.auth.user.id, org.role.clone())
 }
 
-fn o2(ctx: &AppContext) -> Option<Client> {
+pub(crate) fn o2(ctx: &AppContext) -> Option<Client> {
     OpenobserveSettings::from_config(&ctx.config).map(|s| Client::new(&s))
 }
 

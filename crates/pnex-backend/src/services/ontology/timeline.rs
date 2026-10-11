@@ -10,7 +10,6 @@
 
 use std::collections::{HashMap, HashSet};
 
-use loco_rs::prelude::AppContext;
 use pnex_core::ontology::api::{CaseTimeline, TimelineItem, TimelineQuery};
 use pnex_core::ontology::PropertyKind;
 use pnex_core::ontology::{CASE_WINDOW_FROM, CASE_WINDOW_TO, KIND_CASE, REL_IN_CASE};
@@ -27,18 +26,19 @@ use super::objects::find;
 use super::{changes, parse_instant, OntologyError, Result};
 use crate::models::_entities::{resource_edges, time_ranges};
 use crate::services::notify_journal;
+use crate::services::openobserve::Client;
 
 /// Cap per source; beyond it the answer says `truncated`.
 const CAP: u64 = 2000;
 const DEFAULT_SPAN_DAYS: i64 = 30;
 
 pub async fn for_case(
-    ctx: &AppContext,
+    db: &sea_orm::DatabaseConnection,
+    o2: Option<&Client>,
     org_id: i64,
     case_id: Uuid,
     q: &TimelineQuery,
 ) -> Result<CaseTimeline> {
-    let db = &ctx.db;
     let case = find(db, org_id, case_id).await?;
     if case.type_key != KIND_CASE {
         return Err(OntologyError::NotFound);
@@ -139,7 +139,8 @@ pub async fn for_case(
     // Object changes (links are already above, from the database).
     let object_ids: Vec<String> = ids.iter().map(Uuid::to_string).collect();
     let changes_available = match changes::history_of(
-        ctx,
+        db,
+        o2,
         org_id,
         &object_ids,
         from.timestamp_micros(),
@@ -245,7 +246,8 @@ pub async fn for_case(
         .collect();
     let flow_ids: Vec<i64> = flows.keys().copied().collect();
     match notify_journal::for_flows(
-        ctx,
+        db,
+        o2,
         org_id,
         &flow_ids,
         from.timestamp_micros(),

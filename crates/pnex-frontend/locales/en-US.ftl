@@ -4054,6 +4054,7 @@ search-group-object = Objects
 ai-trace-ontology-schema = ontology schema: { $count } type(s)
 ai-trace-ontology-query = { $count } object(s)
 ai-trace-ontology-object = object "{ $title }"
+ai-trace-case-timeline = case: { $members } member(s), { $count } event(s)
 ai-trace-ontology-object-saved = object "{ $title }" v{ $version }
 ai-trace-ontology-link-opened = link opened: { $source } —{ $link }→ { $target }
 ai-trace-ontology-link-closed = link closed: { $source } —{ $link }→ { $target }

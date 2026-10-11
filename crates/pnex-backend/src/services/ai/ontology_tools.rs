@@ -10,7 +10,9 @@
 //! only closed, which keeps it as history; no physical action (binding a
 //! sensor to a property moves no actuator).
 
-use pnex_core::ontology::api::{LinkInput, ObjectInput, ObjectTypeInput, OntologyQuery};
+use pnex_core::ontology::api::{
+    LinkInput, ObjectInput, ObjectTypeInput, OntologyQuery, TimelineQuery,
+};
 use pnex_core::ontology::{ObjectTypeDef, WriteRole};
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -118,6 +120,64 @@ pub async fn query_ontology(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOut
         .await
         .map_err(onto_error)?;
     outcome(json!({ "count": r.count, "rows": r.rows }))
+}
+
+/// Items of a case timeline handed to the model (newest kept).
+const TIMELINE_CAP: usize = 200;
+
+/// A case's members and its merged timeline (cases.md K6, K15), compacted
+/// for the model: one line per item, the source objects by title and id.
+/// Read-only: the assistant never adds nor removes a member.
+pub async fn case_timeline(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
+    let id = uuid_arg(args, "case_id")?;
+    let s = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_string);
+    let q = TimelineQuery {
+        from: s("from"),
+        to: s("to"),
+    };
+    let tl = onto::timeline::for_case(deps.db, deps.o2, deps.org_id, id, &q)
+        .await
+        .map_err(onto_error)?;
+    let members: Vec<Value> = tl
+        .members
+        .iter()
+        .map(|m| {
+            json!({
+                "object_id": m.source.id, "title": m.source.title, "type": m.source.type_key,
+                "role": m.attributes.get("role"), "since": m.valid_from,
+            })
+        })
+        .collect();
+    let total = tl.items.len();
+    let items: Vec<Value> = tl
+        .items
+        .iter()
+        .skip(total.saturating_sub(TIMELINE_CAP))
+        .map(|i| {
+            let what = match (&i.link, &i.change, &i.range, &i.notification, &i.fuzzy) {
+                (Some(l), ..) => json!({
+                    "link": l.link_type, "source": l.source.title, "target": l.target.title,
+                    "source_id": l.source.id, "target_id": l.target.id, "attributes": l.attributes,
+                }),
+                (_, Some(c), ..) => json!({"action": c.action, "by": c.source_ref}),
+                (_, _, Some(r), ..) => json!({
+                    "range": r.label,
+                    "end": r.actual_end.clone().or_else(|| r.planned_end.clone()),
+                }),
+                (_, _, _, Some(n), _) => json!({
+                    "notification": n.subject, "status": n.status, "channel": n.channel_kind,
+                }),
+                (.., Some(f)) => json!({"title": i.title, "occurred": f}),
+                _ => Value::Null,
+            };
+            json!({"at": i.at, "kind": i.kind, "lane": i.lane, "what": what})
+        })
+        .collect();
+    outcome(json!({
+        "from": tl.from, "to": tl.to, "members": members, "items": items,
+        "items_total": total, "changes_available": tl.changes_available,
+        "truncated": tl.truncated || total > TIMELINE_CAP,
+    }))
 }
 
 /// One object with its links valid now.
