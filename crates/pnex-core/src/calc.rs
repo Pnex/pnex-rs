@@ -33,14 +33,38 @@ pub enum CalcErrorKind {
     MathRange,
 }
 
-/// Erreur calc : position en octets dans l'expression (0 quand non
-/// localisable — ex. variable absente à l'exécution) + message français.
+/// Calc error: byte position in the expression (0 when it has none, e.g. a
+/// variable missing at run time), a machine `code` with its named `args`
+/// (the UI renders `calc-err-<code>`), and the canonical English message
+/// (runtime diagnostics, assistant tool).
 #[derive(Debug, Clone, PartialEq)]
 pub struct CalcError {
     pub kind: CalcErrorKind,
     pub pos: usize,
+    pub code: &'static str,
+    pub args: Vec<(&'static str, String)>,
     pub message: String,
 }
+
+/// Every `CalcError::code` (the UI holds one `calc-err-<code>` key each).
+pub const CALC_ERROR_CODES: &[&str] = &[
+    "out-of-range",
+    "invalid-number",
+    "unexpected-char",
+    "expected-token",
+    "missing-token",
+    "missing-operand",
+    "unexpected-operand",
+    "unknown-function",
+    "arity-exact",
+    "arity-range",
+    "arity-min",
+    "unknown-variable",
+    "division-by-zero",
+    "modulo-by-zero",
+    "empty",
+    "trailing-symbol",
+];
 
 impl fmt::Display for CalcError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -53,10 +77,22 @@ impl fmt::Display for CalcError {
 }
 
 impl CalcError {
-    fn new(kind: CalcErrorKind, pos: usize, message: impl Into<String>) -> Self {
+    fn new(
+        kind: CalcErrorKind,
+        pos: usize,
+        code: &'static str,
+        args: Vec<(&'static str, String)>,
+        message: impl Into<String>,
+    ) -> Self {
+        debug_assert!(
+            CALC_ERROR_CODES.contains(&code),
+            "unregistered calc code {code}"
+        );
         Self {
             kind,
             pos,
+            code,
+            args,
             message: message.into(),
         }
     }
@@ -70,7 +106,9 @@ fn finite(x: f64) -> Result<f64, CalcError> {
         Err(CalcError::new(
             CalcErrorKind::MathRange,
             0,
-            "résultat hors domaine (infini ou NaN)",
+            "out-of-range",
+            vec![],
+            "result out of range (infinite or NaN)",
         ))
     }
 }
@@ -138,7 +176,9 @@ fn lex(src: &str) -> Result<Vec<Token>, CalcError> {
                 CalcError::new(
                     CalcErrorKind::Lexical,
                     pos,
-                    format!("nombre invalide « {text} »"),
+                    "invalid-number",
+                    vec![("text", text.clone())],
+                    format!("invalid number \"{text}\""),
                 )
             })?;
             out.push(Token {
@@ -190,7 +230,9 @@ fn lex(src: &str) -> Result<Vec<Token>, CalcError> {
                 return Err(CalcError::new(
                     CalcErrorKind::Lexical,
                     pos,
-                    format!("caractère inattendu « {other} »"),
+                    "unexpected-char",
+                    vec![("char", other.to_string())],
+                    format!("unexpected character \"{other}\""),
                 ));
             }
         };
@@ -270,12 +312,16 @@ impl Parser {
             Some(t) => Err(CalcError::new(
                 CalcErrorKind::Syntax,
                 t.pos,
-                format!("{what} attendu, reçu « {} »", describe(&t.tok)),
+                "expected-token",
+                vec![("expected", what.to_string()), ("got", describe(&t.tok))],
+                format!("expected \"{what}\", got \"{}\"", describe(&t.tok)),
             )),
             None => Err(CalcError::new(
                 CalcErrorKind::Syntax,
                 self.peek_pos(),
-                format!("{what} manquant en fin d'expression"),
+                "missing-token",
+                vec![("expected", what.to_string())],
+                format!("\"{what}\" missing at the end of the expression"),
             )),
         }
     }
@@ -286,7 +332,7 @@ impl Parser {
         if self.peek() == Some(&Tok::Question) {
             self.bump();
             let then = self.parse_expr()?;
-            self.expect(Tok::Colon, "« : » du ternaire")?;
+            self.expect(Tok::Colon, ":")?;
             let els = self.parse_expr()?; // droite-associatif
             return Ok(Expr::Ternary(Box::new(cond), Box::new(then), Box::new(els)));
         }
@@ -351,7 +397,9 @@ impl Parser {
             return Err(CalcError::new(
                 CalcErrorKind::Syntax,
                 self.peek_pos(),
-                "opérande manquant en fin d'expression",
+                "missing-operand",
+                vec![],
+                "operand missing at the end of the expression",
             ));
         };
         match t.tok {
@@ -370,7 +418,7 @@ impl Parser {
                             break;
                         }
                     }
-                    self.expect(Tok::RParen, "parenthèse fermante")?;
+                    self.expect(Tok::RParen, ")")?;
                     return Ok(Expr::Call {
                         name,
                         args,
@@ -386,13 +434,15 @@ impl Parser {
             }
             Tok::LParen => {
                 let inner = self.parse_expr()?;
-                self.expect(Tok::RParen, "parenthèse fermante")?;
+                self.expect(Tok::RParen, ")")?;
                 Ok(inner)
             }
             other => Err(CalcError::new(
                 CalcErrorKind::Syntax,
                 t.pos,
-                format!("opérande inattendu « {} »", describe(&other)),
+                "unexpected-operand",
+                vec![("got", describe(&other))],
+                format!("unexpected operand \"{}\"", describe(&other)),
             )),
         }
     }
@@ -419,8 +469,8 @@ fn binary_op(tok: &Tok) -> Option<(u8, BinOp)> {
 
 fn describe(tok: &Tok) -> String {
     match tok {
-        Tok::Num(_) => "nombre".into(),
-        Tok::Ident(_) => "identifiant".into(),
+        Tok::Num(v) => v.to_string(),
+        Tok::Ident(name) => name.clone(),
         Tok::Plus => "+".into(),
         Tok::Minus => "-".into(),
         Tok::Star => "*".into(),
@@ -491,21 +541,33 @@ fn analyze(expr: &Expr, out: &mut Vec<CalcError>) {
                 None => out.push(CalcError::new(
                     CalcErrorKind::UnknownFunction,
                     *pos,
-                    format!("fonction inconnue « {name} »"),
+                    "unknown-function",
+                    vec![("name", name.clone())],
+                    format!("unknown function \"{name}\""),
                 )),
                 Some((_, min, max)) => {
                     let (min, max) = (*min, *max);
                     let ok = args.len() >= min && max.map(|m| args.len() <= m).unwrap_or(true);
                     if !ok {
-                        let attendu = match max {
-                            Some(m) if m == min => format!("{min} argument(s) attendu(s)"),
-                            Some(m) => format!("{min} à {m} arguments attendus"),
-                            None => format!("au moins {min} argument(s) attendu(s)"),
+                        let got = args.len().to_string();
+                        let (code, expected) = match max {
+                            Some(m) if m == min => ("arity-exact", format!("{min}")),
+                            Some(m) => ("arity-range", format!("{min} to {m}")),
+                            None => ("arity-min", format!("at least {min}")),
                         };
+                        let mut named = vec![("name", name.clone()), ("min", min.to_string())];
+                        if let Some(m) = max {
+                            named.push(("max", m.to_string()));
+                        }
+                        named.push(("got", got.clone()));
                         out.push(CalcError::new(
                             CalcErrorKind::Arity,
                             *pos,
-                            format!("fonction « {name} » : {attendu}, reçu {}", args.len()),
+                            code,
+                            named,
+                            format!(
+                                "function \"{name}\": {expected} argument(s) expected, got {got}"
+                            ),
                         ));
                     }
                 }
@@ -530,7 +592,9 @@ fn eval(expr: &Expr, vars: &HashMap<String, f64>) -> Result<f64, CalcError> {
             CalcError::new(
                 CalcErrorKind::UnknownVariable,
                 *pos,
-                format!("variable inconnue « {name} » (clé absente du payload device)"),
+                "unknown-variable",
+                vec![("name", name.clone())],
+                format!("unknown variable \"{name}\" (key missing from the device payload)"),
             )
         }),
         Expr::Neg(inner) => eval(inner, vars).map(|v| -v),
@@ -558,7 +622,9 @@ fn eval(expr: &Expr, vars: &HashMap<String, f64>) -> Result<f64, CalcError> {
                         return Err(CalcError::new(
                             CalcErrorKind::DivisionByZero,
                             *pos,
-                            "division par zéro",
+                            "division-by-zero",
+                            vec![],
+                            "division by zero",
                         ));
                     }
                     l / r
@@ -568,7 +634,9 @@ fn eval(expr: &Expr, vars: &HashMap<String, f64>) -> Result<f64, CalcError> {
                         return Err(CalcError::new(
                             CalcErrorKind::DivisionByZero,
                             *pos,
-                            "modulo par zéro",
+                            "modulo-by-zero",
+                            vec![],
+                            "modulo by zero",
                         ));
                     }
                     l % r
@@ -634,7 +702,9 @@ fn call(name: &str, args: &[f64], pos: usize) -> Result<f64, CalcError> {
             return Err(CalcError::new(
                 CalcErrorKind::UnknownFunction,
                 pos,
-                format!("fonction inconnue « {name} »"),
+                "unknown-function",
+                vec![("name", name.to_string())],
+                format!("unknown function \"{name}\""),
             ));
         }
     };
@@ -652,7 +722,9 @@ pub fn eval_calc(expr: &str, vars: &HashMap<String, f64>) -> Result<f64, CalcErr
         return Err(CalcError::new(
             CalcErrorKind::Syntax,
             0,
-            "l'expression est vide",
+            "empty",
+            vec![],
+            "the expression is empty",
         ));
     }
     let mut p = Parser { toks, i: 0 };
@@ -662,8 +734,10 @@ pub fn eval_calc(expr: &str, vars: &HashMap<String, f64>) -> Result<f64, CalcErr
         return Err(CalcError::new(
             CalcErrorKind::Syntax,
             t.pos,
+            "trailing-symbol",
+            vec![("got", describe(&t.tok))],
             format!(
-                "symbole inattendu « {} » après la fin de l'expression",
+                "unexpected symbol \"{}\" after the end of the expression",
                 describe(&t.tok)
             ),
         ));
@@ -684,7 +758,9 @@ pub fn validate_calc(expr: &str) -> Vec<CalcError> {
         errors.push(CalcError::new(
             CalcErrorKind::Syntax,
             0,
-            "l'expression est vide",
+            "empty",
+            vec![],
+            "the expression is empty",
         ));
         return errors;
     }
@@ -696,8 +772,10 @@ pub fn validate_calc(expr: &str) -> Vec<CalcError> {
                 errors.push(CalcError::new(
                     CalcErrorKind::Syntax,
                     t.pos,
+                    "trailing-symbol",
+                    vec![("got", describe(&t.tok))],
                     format!(
-                        "symbole inattendu « {} » après la fin de l'expression",
+                        "unexpected symbol \"{}\" after the end of the expression",
                         describe(&t.tok)
                     ),
                 ));
@@ -856,6 +934,21 @@ mod tests {
         // Toutes les erreurs collectées.
         assert_eq!(validate_calc("foo(1) + bar(2)").len(), 2);
         assert_eq!(validate_calc("").len(), 1);
+    }
+
+    #[test]
+    fn errors_carry_a_registered_code_and_its_args() {
+        let first = |expr: &str| validate_calc(expr).into_iter().next().expect(expr);
+        assert_eq!(first("").code, "empty");
+        assert_eq!(first("1 2").code, "trailing-symbol");
+        assert_eq!(first("1 2").args, vec![("got", "2".to_string())]);
+        assert_eq!(first("(1").args, vec![("expected", ")".to_string())]);
+        assert_eq!(first("foo(1)").args, vec![("name", "foo".to_string())]);
+        assert_eq!(first("sqrt(1, 2)").code, "arity-exact");
+        assert_eq!(first("min()").code, "arity-min");
+        let err = eval_calc("1 / 0", &HashMap::new()).unwrap_err();
+        assert_eq!(err.code, "division-by-zero");
+        assert_eq!(err.message, "division by zero");
     }
 
     #[test]
