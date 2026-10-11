@@ -20,21 +20,24 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
     prefix,
     capture,
   }) => {
+    // The ontology is not swept and the prefix is stable across runs: a run
+    // tag keeps the quick-add search off the objects of earlier runs.
+    const run = Date.now().toString(36);
     await api.post('/ontology/objects', {
       type_key: 'pump',
-      title: `${prefix} pump P-12`,
+      title: `${prefix} ${run} pump P-12`,
       properties: { serial: 'S-12', status: 'running' },
     });
     await api.post('/ontology/objects', {
       type_key: 'line',
-      title: `${prefix} line L2`,
+      title: `${prefix} ${run} line L2`,
       properties: { code: 'L2' },
     });
 
     // One line + Enter opens the case and lands in its workspace.
     await app.goto('/cases');
     await capture('cases-list', { caption: 'Cases: open one from a single line' });
-    await page.getByTestId('case-new-title').fill(`${prefix} low pressure`);
+    await page.getByTestId('case-new-title').fill(`${prefix} ${run} low pressure`);
     await page.getByTestId('case-new-title').press('Enter');
     await expect(page).toHaveURL(/\/cases\/[0-9a-f-]{36}/);
     const caseId = page.url().split('/').pop()!;
@@ -49,25 +52,32 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
     // Members as you type: role chip, then Enter on the first hit.
     const quick = page.getByTestId('case-quick-add');
     await page.locator('[data-role="subject"]').click();
-    await quick.fill(`${prefix} pump`);
-    await expect(page.getByRole('option').first()).toContainText(`${prefix} pump P-12`);
+    await quick.fill(`${prefix} ${run} pump`);
+    await expect(page.getByRole('option').first()).toContainText(`${prefix} ${run} pump P-12`);
     await quick.press('Enter');
     const members = page.getByTestId('case-members');
-    await expect(members).toContainText(`${prefix} pump P-12`);
+    await expect(members).toContainText(`${prefix} ${run} pump P-12`);
     await expect(quick).toHaveValue('');
     await page.locator('[data-role="context"]').click();
-    await quick.fill(`${prefix} line`);
-    await expect(page.getByRole('option').first()).toContainText(`${prefix} line L2`);
+    await quick.fill(`${prefix} ${run} line`);
+    await expect(page.getByRole('option').first()).toContainText(`${prefix} ${run} line L2`);
     await page.getByRole('option').first().click();
-    await expect(members).toContainText(`${prefix} line L2`);
+    await expect(members).toContainText(`${prefix} ${run} line L2`);
     await expect(members).toContainText(app.t('case-role-context'));
     await capture('case-members', { caption: 'Members grouped by role' });
 
     // A dated link between two members.
     const composer = page.getByTestId('case-link-composer');
-    const memberIds = (await api.post(`/cases/${caseId}/timeline`, {})).members.map(
-      (m: any) => [m.source.title, m.source.id],
-    );
+    // Both memberships committed before reading their ids (slow under load).
+    let memberIds: string[][] = [];
+    await expect
+      .poll(async () => {
+        memberIds = (await api.post(`/cases/${caseId}/timeline`, {})).members.map(
+          (m: any) => [m.source.title, m.source.id],
+        );
+        return memberIds.length;
+      })
+      .toBe(2);
     const id = (t: string) => memberIds.find(([title]: string[]) => title.includes(t))[1];
     await composer.getByTestId('case-link-src').selectOption(id('pump'));
     await composer.getByTestId('case-link-tgt').selectOption(id('line'));
@@ -84,17 +94,17 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
     await capture('case-timeline', { caption: 'Timeline: memberships and a dated link' });
 
     // Focus on the line: what touches it (its membership, the feeds link).
-    await members.locator('[data-member]', { hasText: `${prefix} line L2` }).locator('button').first().click();
+    await members.locator('[data-member]', { hasText: `${prefix} ${run} line L2` }).locator('button').first().click();
     await expect(timeline.locator('[data-kind="link_open"]')).toHaveCount(2);
     await expect(timeline.locator('[data-kind="change"]')).toHaveCount(1);
     await capture('case-focus', { caption: 'Focus on one member' });
 
     // Remove the line: closed, kept in the timeline.
     await members
-      .locator('[data-member]', { hasText: `${prefix} line L2` })
+      .locator('[data-member]', { hasText: `${prefix} ${run} line L2` })
       .getByTestId('case-remove-member')
       .click();
-    await expect(members).not.toContainText(`${prefix} line L2`);
+    await expect(members).not.toContainText(`${prefix} ${run} line L2`);
     await expect(timeline.locator('[data-kind="link_close"]')).toHaveCount(1);
 
     // Status in place.
