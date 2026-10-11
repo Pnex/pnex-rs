@@ -179,7 +179,8 @@ pub async fn history(
 ) -> std::result::Result<Option<Vec<ChangeView>>, String> {
     let end = chrono::Utc::now().timestamp_micros();
     Ok(history_of(
-        ctx,
+        &ctx.db,
+        client(ctx).as_ref(),
         org_id,
         &[object_id.to_string()],
         end - WINDOW_US,
@@ -193,17 +194,18 @@ pub async fn history(
 /// Changes of several objects between two instants (µs), newest first,
 /// each with its object id. `None` = journal unavailable.
 pub async fn history_of(
-    ctx: &AppContext,
+    db: &sea_orm::DatabaseConnection,
+    client: Option<&Client>,
     org_id: i64,
     object_ids: &[String],
     start_us: i64,
     end_us: i64,
     limit: i64,
 ) -> std::result::Result<Option<Vec<(String, ChangeView)>>, String> {
-    let Some(client) = client(ctx) else {
+    let Some(client) = client else {
         return Ok(None);
     };
-    let Some(creds) = provisioned_credentials(&ctx.db, org_id).await? else {
+    let Some(creds) = provisioned_credentials(db, org_id).await? else {
         return Ok(None);
     };
     if object_ids.is_empty() {

@@ -295,17 +295,18 @@ pub async fn search(
 /// first — the notification source of case timelines (cases.md K6).
 /// `None` = O2 not configured or org never provisioned.
 pub async fn for_flows(
-    ctx: &AppContext,
+    db: &sea_orm::DatabaseConnection,
+    client: Option<&Client>,
     org_id: i64,
     flow_ids: &[i64],
     start_us: i64,
     end_us: i64,
     limit: i64,
 ) -> std::result::Result<Option<Vec<NotifyDelivery>>, String> {
-    let Some(client) = client(ctx) else {
+    let Some(client) = client else {
         return Ok(None);
     };
-    let Some(creds) = provisioned_credentials(&ctx.db, org_id).await? else {
+    let Some(creds) = provisioned_credentials(db, org_id).await? else {
         return Ok(None);
     };
     if flow_ids.is_empty() {

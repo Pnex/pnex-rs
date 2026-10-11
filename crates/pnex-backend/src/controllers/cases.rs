@@ -9,7 +9,7 @@ use loco_rs::prelude::*;
 use pnex_core::ontology::api::{CaseOpenInput, TimelineQuery};
 
 use crate::auth::OrgContext;
-use crate::controllers::ontology::{actor, onto_error, parse_uuid, require_write};
+use crate::controllers::ontology::{actor, o2, onto_error, parse_uuid, require_write};
 use crate::services::ontology::{cases, timeline};
 
 pub fn routes() -> Routes {
@@ -39,7 +39,7 @@ async fn case_timeline(
     Path(id): Path<String>,
     Json(q): Json<TimelineQuery>,
 ) -> Result<Response> {
-    match timeline::for_case(&ctx, org.org.id, parse_uuid(&id)?, &q).await {
+    match timeline::for_case(&ctx.db, o2(&ctx).as_ref(), org.org.id, parse_uuid(&id)?, &q).await {
         Ok(v) => format::json(v),
         Err(e) => onto_error(e),
     }

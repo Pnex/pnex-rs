@@ -4053,6 +4053,7 @@ search-group-object = Objets
 ai-trace-ontology-schema = schéma de l'ontologie : { $count } type(s)
 ai-trace-ontology-query = { $count } objet(s)
 ai-trace-ontology-object = objet « { $title } »
+ai-trace-case-timeline = dossier : { $members } membre(s), { $count } événement(s)
 ai-trace-ontology-object-saved = objet « { $title } » v{ $version }
 ai-trace-ontology-link-opened = lien ouvert : { $source } —{ $link }→ { $target }
 ai-trace-ontology-link-closed = lien fermé : { $source } —{ $link }→ { $target }
