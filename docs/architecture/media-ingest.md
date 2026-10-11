@@ -812,6 +812,8 @@ Dépendances :
 
 - OCR des bandeaux TV (vision `pnex-vision`, frames échantillonnées) pour
   nommer les locuteurs et dater les sujets à l'écran.
+- Apparitions des personnes dans les flux (présent, parle, mentionné ;
+  heure de diffusion live ou différé) : `cases.md` K17–K18.
 - Empreintes de jingles (recalage précis des plages sans transcription).
 - Extension navigateur (P2.1) comme porteur de capture « signalement »
   (URL + position de lecture), jamais pour du contenu protégé.
