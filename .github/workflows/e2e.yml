@@ -74,6 +74,8 @@ jobs:
           PNEX_E2E_ISSUER: http://localhost:8080/auth/v1/
           PNEX_E2E_FRESH_ORG: "1"
           PNEX_E2E_DPR: "1"
+          # Live Photon + GraphHopper root (secret path segment); @geo-live skips when empty.
+          PNEX_E2E_GEO_BASE: ${{ secrets.PNEX_E2E_GEO_BASE }}
           GREP: ${{ inputs.grep }}
         run: |
           if [ -n "$GREP" ]; then
