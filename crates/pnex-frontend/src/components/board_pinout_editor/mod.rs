@@ -76,7 +76,7 @@ fn BoardHeader(
             div { class: "flex items-center gap-2",
                 h3 { class: "text-sm font-semibold text-gray-500", {title} }
                 if let Some(chip) = &board.chip_label {
-                    span { class: "text-xs font-mono text-gray-400", {chip.clone()} }
+                    span { class: "text-xs font-mono text-gray-500", {chip.clone()} }
                 }
                 if change_target.is_some() {
                     button {
@@ -98,7 +98,7 @@ fn BoardHeader(
             }
             if !screens.is_empty() {
                 div { class: "flex flex-wrap items-center gap-1",
-                    span { class: "text-xs text-gray-400 mr-1", {t!("board-screen-toggle")} }
+                    span { class: "text-xs text-gray-500 mr-1", {t!("board-screen-toggle")} }
                     for opt in options {
                         button {
                             key: "{opt.label}",

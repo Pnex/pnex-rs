@@ -298,7 +298,7 @@ pub(super) fn CoolPropForm(mut cx: EditorCx, initial: CoolPropConfig, can_write:
                         }
                     }
                 }
-                p { class: "text-xs text-gray-400", {t!("flows-coolprop-inputs-help")} }
+                p { class: "text-xs text-gray-500", {t!("flows-coolprop-inputs-help")} }
             }
 
             // Outputs, grouped; a checked row shows its unit picker.
@@ -321,12 +321,12 @@ pub(super) fn CoolPropForm(mut cx: EditorCx, initial: CoolPropConfig, can_write:
                             },
                         }
                         span { class: "font-mono", "{id}" }
-                        span { class: "text-xs text-gray-400", {t!("flows-coolprop-custom-output")} }
+                        span { class: "text-xs text-gray-500", {t!("flows-coolprop-custom-output")} }
                     }
                 }
                 for (group, rows) in groups.into_iter() {
                     div { key: "group-{group}", class: "space-y-1",
-                        span { class: "text-xs text-gray-400 block pt-1", "{group}" }
+                        span { class: "text-xs text-gray-500 block pt-1", "{group}" }
                         for (id, label, checked, unit) in rows.into_iter() {
                             div {
                                 key: "out-{id}",
@@ -382,7 +382,7 @@ pub(super) fn CoolPropForm(mut cx: EditorCx, initial: CoolPropConfig, can_write:
                     }
                     {t!("flows-coolprop-phase")}
                 }
-                p { class: "text-xs text-gray-400", {t!("flows-coolprop-outputs-help")} }
+                p { class: "text-xs text-gray-500", {t!("flows-coolprop-outputs-help")} }
             }
 
             // Advanced: input row names (also object payload keys).
@@ -416,7 +416,7 @@ pub(super) fn CoolPropForm(mut cx: EditorCx, initial: CoolPropConfig, can_write:
                         }
                     }
                 }
-                p { class: "text-xs text-gray-400 pt-1", {t!("flows-coolprop-advanced-help")} }
+                p { class: "text-xs text-gray-500 pt-1", {t!("flows-coolprop-advanced-help")} }
             }
         }
     }

@@ -143,7 +143,7 @@ pub fn ThermoPanel(
             // fluide à choisir — HAPropsSI n'a pas de paramètre fluide).
             span { class: "block text-xs font-medium text-gray-500", {t!("insp-thermo-fluid")} }
             if is_psychro {
-                span { class: "block text-xs italic text-gray-400", {t!("insp-thermo-fluid-air")} }
+                span { class: "block text-xs italic text-gray-500", {t!("insp-thermo-fluid-air")} }
             } else {
                 select {
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",

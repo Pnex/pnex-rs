@@ -255,7 +255,7 @@ pub(super) fn PoiDetail(
                                 div { class: "text-sm text-gray-600", "{detail}" }
                             }
                             if !coord_text.is_empty() {
-                                div { class: "text-xs text-gray-400", "{coord_text}" }
+                                div { class: "text-xs text-gray-500", "{coord_text}" }
                             }
                             // D42 labels of the POI itself (its folders carry
                             // their own, inherited by the objects inside).

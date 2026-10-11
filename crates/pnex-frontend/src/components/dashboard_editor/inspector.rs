@@ -109,7 +109,7 @@ fn widget_panel(
     let w = state::find_widget(&cx.layout.read(), &widget_id);
     let Some(w) = w else {
         return rsx! {
-            p { class: "text-xs text-gray-400", {t!("insp-no-selection")} }
+            p { class: "text-xs text-gray-500", {t!("insp-no-selection")} }
         };
     };
 
@@ -383,7 +383,7 @@ fn widget_panel(
                             }
                         }
                     }
-                    p { class: "text-xs text-gray-400 mt-1", {t!("insp-memory-help")} }
+                    p { class: "text-xs text-gray-500 mt-1", {t!("insp-memory-help")} }
                 } else {
                     field_label {
                         label_key: "metric",
@@ -423,7 +423,7 @@ fn widget_panel(
                     // Série enregistrée absente du catalogue (source
                     // disparue depuis le save) : affichée telle quelle.
                     if catalog.ready && catalog.by_source.is_empty() && catalog.labelled.is_empty() {
-                        p { class: "text-xs text-gray-400 mt-1", {t!("insp-no-series")} }
+                        p { class: "text-xs text-gray-500 mt-1", {t!("insp-no-series")} }
                     }
                     if w.widget_type != pnex_core::RANGE_BARS {
                         field_label {
@@ -656,7 +656,7 @@ fn field_label(label_key: String, label: String) -> Element {
             key: "{label_key}",
             // Pairs with the control's `insp-<key>` id (accessible name).
             r#for: "insp-{label_key}",
-            class: "block text-xs font-medium text-gray-400 mt-1",
+            class: "block text-xs font-medium text-gray-500 mt-1",
             "{label}"
         }
     }

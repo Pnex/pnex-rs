@@ -402,7 +402,7 @@ pub fn AnnotationLayerPanel(
             }
             div { class: "flex-1 overflow-y-auto",
                 if rows_now.is_empty() {
-                    p { class: "p-4 text-sm text-gray-400", {t!("annot-items-empty")} }
+                    p { class: "p-4 text-sm text-gray-500", {t!("annot-items-empty")} }
                 }
                 ul { class: "divide-y divide-gray-100",
                     for r in rows_now.clone() {
@@ -423,7 +423,7 @@ pub fn AnnotationLayerPanel(
                                             }
                                         }
                                     }
-                                    span { class: "text-xs text-gray-400 ml-auto font-mono",
+                                    span { class: "text-xs text-gray-500 ml-auto font-mono",
                                         // Pano : degrés ; plat : pourcentages
                                         // (x/y ∈ [0,1] mappés ×100 dans rows_now).
                                         {

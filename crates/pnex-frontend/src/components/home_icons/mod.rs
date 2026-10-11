@@ -111,7 +111,7 @@ pub fn HomeIconPicker(
                         open.set(next);
                     },
                     if current.is_empty() {
-                        span { class: "text-xs text-gray-400", "—" }
+                        span { class: "text-xs text-gray-500", "—" }
                     } else {
                         HomeIconView { id: current.clone(), class: "h-5 w-5" }
                     }
@@ -119,7 +119,7 @@ pub fn HomeIconPicker(
                 if !current.is_empty() && !disabled {
                     button {
                         r#type: "button",
-                        class: "text-xs text-gray-400 hover:text-red-500",
+                        class: "text-xs text-gray-500 hover:text-red-500",
                         onclick: move |_| on_change.call(None),
                         {t!("hicon-none")}
                     }
@@ -136,7 +136,7 @@ pub fn HomeIconPicker(
                     div { class: "max-h-64 space-y-2 overflow-y-auto",
                         for (cat, icons) in groups {
                             div { key: "{cat}",
-                                p { class: "mb-1 text-xs font-medium text-gray-400",
+                                p { class: "mb-1 text-xs font-medium text-gray-500",
                                     {category_label(cat)}
                                 }
                                 div { class: "grid grid-cols-6 gap-1",

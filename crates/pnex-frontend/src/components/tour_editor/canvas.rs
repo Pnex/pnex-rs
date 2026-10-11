@@ -14,8 +14,8 @@ const SCENE_FILL: &str = "#eff6ff";
 const SCENE_STROKE: &str = "#3b82f6";
 const SCENE_START_FILL: &str = "#ecfdf5";
 const SCENE_START_STROKE: &str = "#10b981";
-const SELECTED_STROKE: &str = "#2563eb";
-const LINK_STROKE: &str = "#94a3b8";
+const SELECTED_STROKE: &str = "var(--color-blue-600, #2563eb)";
+const LINK_STROKE: &str = "var(--color-slate-400, #94a3b8)";
 const LINK_PENDING_STROKE: &str = "#f59e0b";
 const STAIR_STROKE: &str = "#8b5cf6";
 
@@ -334,8 +334,9 @@ pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
             // Étage sans plan : bandeau d'invite (scènes posables après
             // import — l'éditeur exige un plan pour positionner).
             if active_floor.as_ref().and_then(|f| f.plan.as_ref()).is_none() {
-                div { class: "absolute inset-0 flex items-center justify-center pointer-events-none",
-                    p { class: "text-sm text-gray-400 bg-white/80 rounded-lg px-4 py-2",
+                // Top of the canvas: the centre belongs to the shell's empty hint.
+                div { class: "absolute inset-x-0 top-20 flex justify-center pointer-events-none",
+                    p { class: "rounded-lg border border-line bg-surface/90 px-4 py-2 text-sm text-slate",
                         {t!("studio-canvas-no-plan")}
                     }
                 }

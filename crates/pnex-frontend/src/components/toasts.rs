@@ -70,7 +70,7 @@ fn ToastCard(id: u64, kind: ToastKind, message: ToastMessage) -> Element {
                 }
             }
             button {
-                class: "ml-4 flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors",
+                class: "ml-4 flex-shrink-0 text-gray-500 hover:text-gray-600 transition-colors",
                 onclick: move |_| crate::state::toasts::dismiss(id),
                 icons::X { class: "h-4 w-4" }
             }

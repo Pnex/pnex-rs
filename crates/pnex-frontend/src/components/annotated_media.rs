@@ -247,7 +247,7 @@ pub fn SplatHost(asset_id: String, host_id: String) -> Element {
         MediaDownloadProgress { progress: progress() }
         if failed() {
             div { class: "absolute inset-0 flex items-center justify-center pointer-events-none",
-                span { class: "text-sm text-gray-400", {dioxus_i18n::t!("poi-media-unavailable")} }
+                span { class: "text-sm text-gray-500", {dioxus_i18n::t!("poi-media-unavailable")} }
             }
         }
     }

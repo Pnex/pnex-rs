@@ -955,18 +955,15 @@ pub fn FlowEditor(
             },
             actions: rsx! {
                 if can_write {
+                    // One filled action at a time: Save while edited, Deploy once saved.
                     button {
-                        class: BTN_PRIMARY_SM,
+                        class: if dirty { BTN_PRIMARY_SM } else { BTN_SECONDARY_SM },
                         disabled: saving() || !dirty,
                         onclick: move |_| save.call(None),
                         {t!("common-save")}
                     }
                     button {
-                        class: if !dirty {
-                            "px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-                        } else {
-                            "px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg transition-colors font-medium opacity-40 cursor-not-allowed"
-                        },
+                        class: if dirty { BTN_SECONDARY_SM } else { BTN_PRIMARY_SM },
                         disabled: deploying() || runtime_busy() || dirty,
                         title: if dirty { t!("flows-deploy-need-save") } else { t!("flows-deploy") },
                         onclick: deploy,

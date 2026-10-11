@@ -49,21 +49,21 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
                 div { class: "flex items-center justify-between px-4 py-3 border-b border-gray-200",
                     h3 { class: "text-sm font-semibold text-gray-900", {t!("flows-debug-title")} }
                     button {
-                        class: "text-gray-400 hover:text-gray-600",
+                        class: "text-gray-500 hover:text-gray-600",
                         onclick: close,
                         {"✕"}
                     }
                 }
                 match &*entries.value().read() {
                     Some(Ok(feed)) if feed.entries.is_empty() => rsx! {
-                        p { class: "p-4 text-sm text-gray-400", {t!("flows-debug-empty")} }
+                        p { class: "p-4 text-sm text-gray-500", {t!("flows-debug-empty")} }
                     },
                     Some(Ok(feed)) => rsx! {
                         ul { class: "flex-1 overflow-y-auto divide-y divide-gray-100",
                             for entry in feed.entries.clone() {
                                 li { key: "{entry.seq}", class: "px-4 py-2.5 space-y-1",
                                     div { class: "flex items-center gap-2",
-                                        span { class: "text-xs font-mono text-gray-400", {heure_label(&entry.ts)} }
+                                        span { class: "text-xs font-mono text-gray-500", {heure_label(&entry.ts)} }
                                         span { class: "text-xs font-semibold text-gray-700",
                                             {entry.name.clone().unwrap_or_else(|| entry.node_id.clone())}
                                         }
@@ -78,7 +78,7 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
                                             }
                                         }
                                         if let Some(topic) = &entry.topic {
-                                            span { class: "text-xs text-gray-400 truncate", {topic.clone()} }
+                                            span { class: "text-xs text-gray-500 truncate", {topic.clone()} }
                                         }
                                     }
                                     if let Some(st) = node_status(&entry.source, &entry.msg) {
@@ -99,7 +99,7 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
                                                     {if expanded.read().contains(&entry.seq) { "▾" } else { "▸" }}
                                                 }
                                                 span { class: "truncate", {display_value_compact(&entry.msg)} }
-                                                span { class: "shrink-0 font-sans text-gray-400",
+                                                span { class: "shrink-0 font-sans text-gray-500",
                                                     {t!("flows-debug-json-lines", count : pretty.lines().count())}
                                                 }
                                             }
@@ -129,7 +129,7 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
                         }
                     },
                 }
-                div { class: "px-4 py-2 border-t border-gray-200 text-xs text-gray-400",
+                div { class: "px-4 py-2 border-t border-gray-200 text-xs text-gray-500",
                     {t!("flows-debug-hint")}
                 }
             }

@@ -533,7 +533,7 @@ fn KindPickerModal(
                 div { class: "flex items-center justify-between border-b border-gray-200 px-4 py-3",
                     h2 { class: "text-lg font-semibold text-gray-900", {t!("notify-pick-title")} }
                     button {
-                        class: "text-gray-400 hover:text-gray-600",
+                        class: "text-gray-500 hover:text-gray-600",
                         title: t!("common-close"),
                         aria_label: t!("common-close"),
                         onclick: move |_| on_close.call(()),

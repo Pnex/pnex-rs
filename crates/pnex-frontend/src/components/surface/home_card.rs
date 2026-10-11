@@ -630,7 +630,7 @@ fn ReadingCard(
                 style: "{style}",
                 "{big}"
             }
-            span { class: "text-xs text-gray-400", "{unit}" }
+            span { class: "text-xs text-gray-500", "{unit}" }
         }
         for d in details {
             p { key: "{d}", class: "text-xs text-gray-500", "{d}" }
@@ -916,7 +916,7 @@ fn WeatherCard(widget: Widget, title: String, values: LiveValues) -> Element {
                         span { "{day.label}" }
                         HomeIconView { id: day.icon, class: "h-5 w-5 text-sky-600" }
                         span { class: "font-medium text-gray-900", "{day.max}" }
-                        span { class: "text-gray-400", "{day.min}" }
+                        span { class: "text-gray-500", "{day.min}" }
                     }
                 }
             }

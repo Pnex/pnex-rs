@@ -113,7 +113,7 @@ pub(super) fn ControlSourceForm(
             }
             for (group, items) in groups {
                 div { key: "{group}", class: "space-y-1",
-                    p { class: "text-xs font-semibold text-gray-400", "{group}" }
+                    p { class: "text-xs font-semibold text-gray-500", "{group}" }
                     ul { class: "space-y-1",
                         for c in items {
                             ControlRow {
@@ -136,7 +136,7 @@ pub(super) fn ControlSourceForm(
                         span { class: "text-xs text-red-700", {t!("flows-control-source-missing")} }
                         if can_write {
                             button {
-                                class: "text-xs text-gray-400 hover:text-red-600",
+                                class: "text-xs text-gray-500 hover:text-red-600",
                                 onclick: move |_| toggle(id),
                                 "✕"
                             }
@@ -157,7 +157,7 @@ pub(super) fn ControlSourceForm(
                 }
                 {t!("flows-control-source-emit-on-start")}
             }
-            span { class: "text-xs text-gray-400 block",
+            span { class: "text-xs text-gray-500 block",
                 {t!("flows-control-source-emit-on-start-hint")}
             }
             if can_write && !full {

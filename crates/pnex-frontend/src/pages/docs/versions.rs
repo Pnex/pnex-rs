@@ -93,7 +93,7 @@ pub fn VersionsPanel(id: Uuid, host: String, can_write: bool) -> Element {
                 p { class: "mb-2 text-xs text-amber-700", {msg} }
             }
             if rows.is_empty() {
-                p { class: "text-gray-400", {t!("docs-versions-empty")} }
+                p { class: "text-gray-500", {t!("docs-versions-empty")} }
             }
             ul { class: "space-y-2",
                 for (i, v) in rows.iter().enumerate() {

@@ -422,7 +422,7 @@ fn DetailSheet(widget: Widget, values: Values, on_close: EventHandler<()>) -> El
                     h2 { class: "text-base font-semibold text-gray-900", "{title}" }
                     button {
                         r#type: "button",
-                        class: "rounded-full p-1 text-gray-400 hover:bg-gray-200",
+                        class: "rounded-full p-1 text-gray-500 hover:bg-gray-200",
                         aria_label: t!("common-close"),
                         onclick: move |_| on_close.call(()),
                         icons::X { class: "h-5 w-5" }
@@ -489,7 +489,7 @@ fn HistoryCurve(label: String, points: Vec<TelemetryPoint>) -> Element {
                     "vector-effect": "non-scaling-stroke",
                 }
             }
-            p { class: "text-xs text-gray-400", {t!("db-detail-24h")} }
+            p { class: "text-xs text-gray-500", {t!("db-detail-24h")} }
         }
     }
 }

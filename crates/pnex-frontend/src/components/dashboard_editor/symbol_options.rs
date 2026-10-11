@@ -181,7 +181,7 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                     }
                     {t!("sym-live")}
                 }
-                p { class: "text-xs text-gray-400", {t!("sym-live-help")} }
+                p { class: "text-xs text-gray-500", {t!("sym-live-help")} }
                 if live {
                     label { class: "flex items-center gap-2 text-xs text-gray-600",
                         input {
@@ -197,7 +197,7 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                     }
                     p {
                         id: "symbol-options-states-label",
-                        class: "block text-xs font-medium text-gray-400",
+                        class: "block text-xs font-medium text-gray-500",
                         {t!("sym-states")}
                     }
                     for (i, th) in thresholds.iter().cloned().enumerate() {
@@ -281,7 +281,7 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                         },
                         {t!("sym-add-state")}
                     }
-                    p { class: "text-xs text-gray-400", {t!("sym-states-help")} }
+                    p { class: "text-xs text-gray-500", {t!("sym-states-help")} }
                 }
             }
         }

@@ -169,7 +169,7 @@ pub fn NotifyDeliveriesTab(
         }
         if !available {
             div { class: "text-center py-12 bg-white rounded-lg shadow border border-gray-200",
-                icons::History { class: "h-8 w-8 text-gray-400 mx-auto" }
+                icons::History { class: "h-8 w-8 text-gray-500 mx-auto" }
                 p { class: "text-gray-900 font-medium mt-3",
                     {t!("notify-deliveries-unavailable-title")}
                 }
@@ -183,7 +183,7 @@ pub fn NotifyDeliveriesTab(
                 is_empty,
                 empty_message: t!("notify-deliveries-empty").to_string(),
                 empty_icon: rsx! {
-                    icons::History { class: "h-8 w-8 text-gray-400" }
+                    icons::History { class: "h-8 w-8 text-gray-500" }
                 },
                 div { class: "space-y-4",
                     div { class: "overflow-x-auto bg-white rounded-lg shadow border border-gray-200",
@@ -237,9 +237,9 @@ fn DeliveryRow(
             },
             td { class: "td text-gray-600 whitespace-nowrap",
                 if open() {
-                    icons::ChevronDown { class: "h-3 w-3 inline mr-1 text-gray-400" }
+                    icons::ChevronDown { class: "h-3 w-3 inline mr-1 text-gray-500" }
                 } else {
-                    icons::ChevronRight { class: "h-3 w-3 inline mr-1 text-gray-400" }
+                    icons::ChevronRight { class: "h-3 w-3 inline mr-1 text-gray-500" }
                 }
                 {ts_label(d.ts_us)}
             }

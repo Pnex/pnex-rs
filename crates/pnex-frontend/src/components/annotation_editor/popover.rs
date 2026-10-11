@@ -77,16 +77,16 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
                                     if item.label.is_empty() { t!(kind_key).to_string() } else { item.label.clone() }
                                 }
                             }
-                            span { class: "text-xs text-gray-400", {t!(kind_key)} }
+                            span { class: "text-xs text-gray-500", {t!(kind_key)} }
                         }
                         div { class: "text-xs text-gray-500 mt-0.5 truncate",
-                            span { class: "font-medium text-gray-400", {t!("annot-popover-layer")} }
+                            span { class: "font-medium text-gray-500", {t!("annot-popover-layer")} }
                             {" · "}
                             {item.layer_name.clone()}
                         }
                     }
                     button {
-                        class: "text-gray-400 hover:text-gray-600 shrink-0",
+                        class: "text-gray-500 hover:text-gray-600 shrink-0",
                         onclick: move |_| on_close.call(()),
                         aria_label: "Fermer",
                         icons::X { class: "h-4 w-4" }
@@ -102,14 +102,14 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
                 // Cible : résolue ou morte (grisée — référence tolérée, S7).
                 div {
                     hidden: surface,
-                    class: if is_dead { "mt-3 text-xs rounded-lg px-3 py-2 bg-gray-50 text-gray-400 border border-gray-100" } else { "mt-3 text-xs rounded-lg px-3 py-2 bg-blue-50 text-blue-800 border border-blue-100" },
+                    class: if is_dead { "mt-3 text-xs rounded-lg px-3 py-2 bg-gray-50 text-gray-500 border border-gray-100" } else { "mt-3 text-xs rounded-lg px-3 py-2 bg-blue-50 text-blue-800 border border-blue-100" },
                     {target_block}
                 }
 
                 // Valeur live (device vivant ; kind note → pas de section).
                 if device_pk.is_some() && item.kind != "note" {
                     div { class: "mt-2 flex items-center gap-2 text-xs text-gray-600 px-3",
-                        span { class: "font-medium text-gray-400", {t!("annot-popover-value")} }
+                        span { class: "font-medium text-gray-500", {t!("annot-popover-value")} }
                         match live_now {
                             Some((connected, value)) => rsx! {
                                 if item.kind == "pin" {
@@ -117,7 +117,7 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
                                         {value.unwrap_or_else(|| t!("annot-popover-none").to_string())}
                                     }
                                 }
-                                span { class: if connected { "ml-auto inline-flex items-center gap-1 text-emerald-600" } else { "ml-auto inline-flex items-center gap-1 text-gray-400" },
+                                span { class: if connected { "ml-auto inline-flex items-center gap-1 text-emerald-600" } else { "ml-auto inline-flex items-center gap-1 text-gray-500" },
                                     span { class: if connected { "h-2 w-2 rounded-full bg-emerald-500" } else { "h-2 w-2 rounded-full bg-gray-300" } }
                                     {
                                         if connected {

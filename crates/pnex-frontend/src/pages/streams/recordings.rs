@@ -113,7 +113,7 @@ fn RecordingRow(segment: VideoSegment) -> Element {
         tr {
             td { class: "td whitespace-nowrap",
                 {date_label(&segment.started_at)}
-                span { class: "ml-1 text-xs text-gray-400", "{segment.stream}" }
+                span { class: "ml-1 text-xs text-gray-500", "{segment.stream}" }
             }
             td { class: "td hidden text-gray-600 sm:table-cell", "{secs} s" }
             td { class: "td hidden text-gray-600 sm:table-cell", "{segment.frame_count}" }

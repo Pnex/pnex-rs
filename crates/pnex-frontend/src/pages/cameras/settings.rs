@@ -160,7 +160,7 @@ pub(super) fn SettingsDialog(
                         disabled,
                         oninput: move |event| quality.set(event.value()),
                     }
-                    span { class: "text-xs text-gray-400 block",
+                    span { class: "text-xs text-gray-500 block",
                         {t!("cameras-quality-hint", min : QUALITY_MIN, max : QUALITY_MAX)}
                     }
                     if let Some(e) = quality_err {
@@ -178,7 +178,7 @@ pub(super) fn SettingsDialog(
                         disabled,
                         oninput: move |event| fps.set(event.value()),
                     }
-                    span { class: "text-xs text-gray-400 block",
+                    span { class: "text-xs text-gray-500 block",
                         {t!("cameras-fps-hint", min : FPS_MIN, max : FPS_MAX)}
                     }
                     if let Some(e) = fps_err {

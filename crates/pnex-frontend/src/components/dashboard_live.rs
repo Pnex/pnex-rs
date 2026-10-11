@@ -199,7 +199,9 @@ pub fn live_canvas(
         .canvas
         .background
         .clone()
-        .unwrap_or_else(|| "#f8fafc".into());
+        // "#f8fafc" was the stored default before dark mode: follow the theme.
+        .filter(|b| b != "#f8fafc")
+        .unwrap_or_else(|| "var(--color-slate-50, #f8fafc)".into());
     rsx! {
         div {
             class: "relative w-full rounded-lg border border-gray-200 overflow-hidden",
@@ -238,7 +240,7 @@ fn live_wire(layout: &DashboardLayout, wire: &pnex_core::Wire) -> Element {
         path {
             d: "{path}",
             fill: "none",
-            stroke: "#94a3b8",
+            stroke: "var(--color-slate-400, #94a3b8)",
             "stroke-width": "2",
             "stroke-dasharray": "6 4",
             "stroke-linecap": "round",

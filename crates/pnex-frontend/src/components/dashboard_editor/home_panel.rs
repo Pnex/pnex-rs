@@ -109,7 +109,7 @@ pub fn HomePanel(cx: EditorCx, widget: Widget, can_write: bool, catalog: SourceC
     let on_above = home.on_above.map(|v| v.to_string()).unwrap_or_default();
     rsx! {
         div { class: "space-y-3 rounded-lg border border-amber-100 bg-amber-50/40 p-2",
-            p { class: "text-xs font-medium text-gray-400",
+            p { class: "text-xs font-medium text-gray-500",
                 {t!("hcard-inspector", card : card_label(card))}
             }
             if card == pnex_core::home::HomeCard::Binary {
@@ -158,7 +158,7 @@ pub fn HomePanel(cx: EditorCx, widget: Widget, can_write: bool, catalog: SourceC
                 }
             }
             if !source_roles.is_empty() && card != pnex_core::home::HomeCard::Weather {
-                p { class: "text-xs font-medium text-gray-400", {t!("hcard-sources")} }
+                p { class: "text-xs font-medium text-gray-500", {t!("hcard-sources")} }
                 for r in source_roles.iter() {
                     RoleSource {
                         key: "src-{r.role}",
@@ -172,7 +172,7 @@ pub fn HomePanel(cx: EditorCx, widget: Widget, can_write: bool, catalog: SourceC
                 }
             }
             if !control_roles.is_empty() {
-                p { class: "text-xs font-medium text-gray-400", {t!("hcard-controls")} }
+                p { class: "text-xs font-medium text-gray-500", {t!("hcard-controls")} }
                 for (r, control) in role_controls {
                     RoleControl {
                         key: "ctl-{r.role}",
@@ -186,7 +186,7 @@ pub fn HomePanel(cx: EditorCx, widget: Widget, can_write: bool, catalog: SourceC
                         dirty,
                     }
                 }
-                p { class: "text-xs text-gray-400", {t!("hcard-controls-help")} }
+                p { class: "text-xs text-gray-500", {t!("hcard-controls-help")} }
             }
         }
     }
@@ -220,7 +220,7 @@ fn RoleSource(
                 }
                 if !required && present && can_write {
                     button {
-                        class: "text-xs text-gray-400 hover:text-red-500",
+                        class: "text-xs text-gray-500 hover:text-red-500",
                         onclick: move |_| edit_widget(cx, |w| w.source.retain(|s| s.role != role)),
                         {t!("common-delete")}
                     }
@@ -421,7 +421,7 @@ fn RoleControl(
                     }
                 }
                 span { class: "font-medium", {role_label(role)} }
-                span { class: "ml-auto font-mono text-xs text-gray-400", "{reference}" }
+                span { class: "ml-auto font-mono text-xs text-gray-500", "{reference}" }
             }
             if active {
                 details {

@@ -74,7 +74,7 @@ pub fn LocationBreadcrumb(
                     key: "{site_id}",
                     class: "{text_class}",
                     aria_label: t!("location-label"),
-                    icons::MapPin { class: "h-3.5 w-3.5 shrink-0 text-gray-400" }
+                    icons::MapPin { class: "h-3.5 w-3.5 shrink-0 text-gray-500" }
                     SiteStep {
                         site_id: site_id.clone(),
                         text: site_text,
@@ -99,7 +99,7 @@ pub fn LocationBreadcrumb(
 #[component]
 fn FolderStep(site_id: String, text: String, unfold: Vec<String>) -> Element {
     rsx! {
-        span { class: "text-gray-400", "›" }
+        span { class: "text-gray-500", "›" }
         SiteStep {
             site_id,
             text,

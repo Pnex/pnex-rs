@@ -158,7 +158,7 @@ pub fn WifiCredentialPicker(mut selected: Signal<Option<pnex_core::WifiCredentia
                                 }
                                 if selected().is_some() {
                                     button {
-                                        class: "p-2 text-gray-400 hover:text-red-600 transition-colors",
+                                        class: "p-2 text-gray-500 hover:text-red-600 transition-colors",
                                         title: "{delete_title}",
                                         r#type: "button",
                                         onclick: move |_| {
@@ -197,7 +197,7 @@ pub fn WifiCredentialPicker(mut selected: Signal<Option<pnex_core::WifiCredentia
                     }
                 },
                 None => rsx! {
-                    p { class: "text-xs text-gray-400", {t!("common-loading")} }
+                    p { class: "text-xs text-gray-500", {t!("common-loading")} }
                 },
             }
         }
@@ -212,7 +212,7 @@ pub fn PnexHostPicker(selected: Signal<Option<pnex_core::PnexHost>>) -> Element 
     let locked = use_resource(|| async { api::hosts::locked().await });
     match locked.cloned() {
         None => rsx! {
-            div { class: "sm:col-span-2 text-xs text-gray-400", {t!("wizard-host-loading")} }
+            div { class: "sm:col-span-2 text-xs text-gray-500", {t!("wizard-host-loading")} }
         },
         // Host imposed by the deployment; otherwise (none, or the request
         // failed) the user picks one.
@@ -246,7 +246,7 @@ fn LockedHostView(host: String, mut selected: Signal<Option<pnex_core::PnexHost>
         div { class: "sm:col-span-2 space-y-1",
             p { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("wizard-host-select")} }
             div { class: "flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700",
-                icons::Server { class: "h-4 w-4 text-gray-400" }
+                icons::Server { class: "h-4 w-4 text-gray-500" }
                 span { class: "font-mono", "wss://{host}" }
             }
             p { class: "text-xs text-gray-500", {t!("wizard-host-locked-hint")} }
@@ -390,7 +390,7 @@ fn FreeHostPicker(mut selected: Signal<Option<pnex_core::PnexHost>>) -> Element 
                                 }
                                 if selected().is_some() {
                                     button {
-                                        class: "p-2 text-gray-400 hover:text-red-600 transition-colors",
+                                        class: "p-2 text-gray-500 hover:text-red-600 transition-colors",
                                         title: "{delete_title}",
                                         r#type: "button",
                                         onclick: move |_| {
@@ -429,7 +429,7 @@ fn FreeHostPicker(mut selected: Signal<Option<pnex_core::PnexHost>>) -> Element 
                     }
                 },
                 None => rsx! {
-                    p { class: "text-xs text-gray-400", {t!("common-loading")} }
+                    p { class: "text-xs text-gray-500", {t!("common-loading")} }
                 },
             }
         }

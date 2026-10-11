@@ -23,7 +23,7 @@ pub(super) fn FirmwarePickBlock(soc: String, mut firmware_pick: Signal<Option<i6
     rsx! {
         div { class: "border-t border-gray-100 pt-3 mt-3",
             h4 { class: "text-xs font-semibold text-gray-600 mb-2", {t!("wizard-firmware")} }
-            p { class: "text-xs text-gray-400 mb-2", {t!("wizard-firmware-help")} }
+            p { class: "text-xs text-gray-500 mb-2", {t!("wizard-firmware-help")} }
             select {
                 class: "{INPUT} w-full",
                 aria_label: t!("wizard-firmware"),

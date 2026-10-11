@@ -65,7 +65,7 @@ pub fn SymbolPanel(cx: EditorCx) -> Element {
             div { class: "flex items-center justify-between px-3 pt-3",
                 span { class: "text-sm font-semibold text-gray-900", {t!("sym-library")} }
                 button {
-                    class: "text-gray-400 hover:text-gray-600",
+                    class: "text-gray-500 hover:text-gray-600",
                     title: "{close_label}",
                     onclick: move |_| symbols_open.set(false),
                     icons::X { class: "h-4 w-4" }
@@ -106,7 +106,7 @@ pub fn SymbolPanel(cx: EditorCx) -> Element {
                                 icons::ChevronRight { class: "h-3.5 w-3.5" }
                             }
                             span { class: "truncate", "{label}" }
-                            span { class: "ml-auto text-xs font-normal text-gray-400",
+                            span { class: "ml-auto text-xs font-normal text-gray-500",
                                 "{entries.len()}"
                             }
                         }
@@ -124,7 +124,7 @@ pub fn SymbolPanel(cx: EditorCx) -> Element {
                     }
                 }
                 if no_result {
-                    p { class: "px-2 py-4 text-center text-sm text-gray-400",
+                    p { class: "px-2 py-4 text-center text-sm text-gray-500",
                         {t!("eshell-no-result")}
                     }
                 }

@@ -521,7 +521,7 @@ pub fn PoiTreeSection(
             },
             // Actions : compteur + ＋ dossier + ＋ objet
             div { class: "flex items-center justify-between gap-2",
-                span { class: "text-xs text-gray-400", {t!("poi-tree-count", count : total)} }
+                span { class: "text-xs text-gray-500", {t!("poi-tree-count", count : total)} }
                 div { class: "flex gap-1",
                     button {
                         class: "px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded transition-colors",
@@ -643,7 +643,7 @@ pub fn PoiTreeSection(
                                 on_preview.call(target);
                             }
                         },
-                        span { class: "select-none shrink-0 text-gray-400 w-3",
+                        span { class: "select-none shrink-0 text-gray-500 w-3",
                             {if row.expanded_now { "▾" } else if row.has_children { "▸" } else { "•" }}
                         }
                         span {
@@ -660,16 +660,16 @@ pub fn PoiTreeSection(
                             if let Some(emoji) = &row.emoji {
                                 span { class: "shrink-0 text-sm", {emoji.clone()} }
                             } else {
-                                icons::Folder { class: "w-3.5 h-3.5 shrink-0 text-gray-400" }
+                                icons::Folder { class: "w-3.5 h-3.5 shrink-0 text-gray-500" }
                             }
                         } else {
                             KindIcon { kind: row.icon_kind.clone().unwrap_or_default() }
                         }
-                        span { class: if row.is_dead { "truncate text-xs text-gray-400 line-through flex-1" } else if row.is_folder { "truncate text-sm font-medium text-gray-900 flex-1" } else { "truncate text-sm text-gray-700 flex-1" },
+                        span { class: if row.is_dead { "truncate text-xs text-gray-500 line-through flex-1" } else if row.is_folder { "truncate text-sm font-medium text-gray-900 flex-1" } else { "truncate text-sm text-gray-700 flex-1" },
                             {row.name.clone()}
                         }
                         if let Some(sub) = &row.subtitle {
-                            span { class: "shrink-0 text-xs text-gray-400", {sub.clone()} }
+                            span { class: "shrink-0 text-xs text-gray-500", {sub.clone()} }
                         }
                         // Objet aperçuable : étoile d'épinglage (aperçu par
                         // défaut à l'ouverture du POI — premier objet attaché
@@ -738,8 +738,8 @@ pub fn PoiTreeSection(
                         perform_drop((item, DropId::Root));
                     }
                 },
-                icons::Package { class: "w-3 h-3 shrink-0 text-gray-400" }
-                span { class: "text-xs text-gray-400", {t!("poi-tree-root-zone")} }
+                icons::Package { class: "w-3 h-3 shrink-0 text-gray-500" }
+                span { class: "text-xs text-gray-500", {t!("poi-tree-root-zone")} }
             }
             // Confirmation de suppression de dossier
             if let Some((fid, name)) = pending_delete() {
@@ -778,25 +778,25 @@ pub fn KindIcon(kind: String) -> Element {
     rsx! {
         match kind.as_str() {
             "device" => rsx! {
-                icons::Cpu { class: "w-3.5 h-3.5 shrink-0 text-gray-400" }
+                icons::Cpu { class: "w-3.5 h-3.5 shrink-0 text-gray-500" }
             },
             "media_asset" => rsx! {
-                icons::Image { class: "w-3.5 h-3.5 shrink-0 text-gray-400" }
+                icons::Image { class: "w-3.5 h-3.5 shrink-0 text-gray-500" }
             },
             "tour" => rsx! {
-                icons::Cube { class: "w-3.5 h-3.5 shrink-0 text-gray-400" }
+                icons::Cube { class: "w-3.5 h-3.5 shrink-0 text-gray-500" }
             },
             "dashboard" => rsx! {
-                icons::Gauge { class: "w-3.5 h-3.5 shrink-0 text-gray-400" }
+                icons::Gauge { class: "w-3.5 h-3.5 shrink-0 text-gray-500" }
             },
             "flow" => rsx! {
-                icons::Workflow { class: "w-3.5 h-3.5 shrink-0 text-gray-400" }
+                icons::Workflow { class: "w-3.5 h-3.5 shrink-0 text-gray-500" }
             },
             "map_pin" => rsx! {
-                icons::MapPin { class: "w-3.5 h-3.5 shrink-0 text-gray-400" }
+                icons::MapPin { class: "w-3.5 h-3.5 shrink-0 text-gray-500" }
             },
             _ => rsx! {
-                icons::Package { class: "w-3.5 h-3.5 shrink-0 text-gray-400" }
+                icons::Package { class: "w-3.5 h-3.5 shrink-0 text-gray-500" }
             },
         }
     }
@@ -823,7 +823,7 @@ fn DevicePlacementRow(
                 icons::Cpu { class: "h-4 w-4 text-gray-500 shrink-0" }
                 div { class: "flex-1 min-w-0",
                     div { class: "text-sm font-medium text-gray-900 truncate", "{slug}" }
-                    div { class: "text-xs text-gray-400", "{subtitle}" }
+                    div { class: "text-xs text-gray-500", "{subtitle}" }
                 }
             }
             if editing() {
@@ -860,7 +860,7 @@ fn DevicePlacementRow(
                         if let Some(loc) = location.clone() {
                             "{loc}"
                         } else {
-                            span { class: "italic text-gray-400", {t!("poi-device-location-add")} }
+                            span { class: "italic text-gray-500", {t!("poi-device-location-add")} }
                         }
                     }
                 }

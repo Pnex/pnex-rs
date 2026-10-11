@@ -286,7 +286,7 @@ pub fn EditorShell(
                                 span { class: "min-w-0 max-w-[15rem] truncate text-base font-semibold text-gray-900",
                                     {title.clone()}
                                 }
-                                icons::Pencil { class: "h-3.5 w-3.5 shrink-0 text-gray-400 group-hover:text-gray-600" }
+                                icons::Pencil { class: "h-3.5 w-3.5 shrink-0 text-gray-500 group-hover:text-gray-600" }
                             }
                         },
                         None => rsx! {
@@ -297,7 +297,7 @@ pub fn EditorShell(
                     }
                 }
                 if let Some(sub) = subtitle {
-                    span { class: "hidden shrink-0 text-xs text-gray-400 sm:inline",
+                    span { class: "hidden shrink-0 text-xs text-gray-500 sm:inline",
                         {sub}
                     }
                 }
@@ -324,7 +324,7 @@ pub fn EditorShell(
                 div { class: "absolute inset-0", {canvas} }
                 if let Some(hint) = empty_hint {
                     div { class: "pointer-events-none absolute inset-0 z-10 flex items-center justify-center",
-                        p { class: "rounded-lg bg-white/80 px-4 py-2 text-sm text-gray-400",
+                        p { class: "rounded-lg border border-line bg-surface/90 px-4 py-2 text-sm text-slate",
                             {hint}
                         }
                     }

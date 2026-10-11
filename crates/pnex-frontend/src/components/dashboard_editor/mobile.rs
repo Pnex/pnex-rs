@@ -219,7 +219,7 @@ fn SectionBlock(
             }
             SectionOptions { cx, section: section.clone(), pages }
             if empty {
-                p { class: "rounded-lg border border-dashed border-gray-300 px-3 py-6 text-center text-xs text-gray-400",
+                p { class: "rounded-lg border border-dashed border-gray-300 px-3 py-6 text-center text-xs text-gray-500",
                     {t!("db-section-empty")}
                 }
             }
@@ -247,7 +247,7 @@ fn SectionButton(
     rsx! {
         button {
             r#type: "button",
-            class: "rounded p-1 text-gray-400 hover:bg-white hover:text-gray-700 disabled:opacity-30",
+            class: "rounded p-1 text-gray-500 hover:bg-white hover:text-gray-700 disabled:opacity-30",
             disabled,
             title: "{title}",
             onclick: move |e| {

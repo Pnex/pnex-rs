@@ -117,7 +117,7 @@ pub fn FluidMixtures() -> Element {
                 rsx! {
                     div { class: "text-sm font-medium text-gray-900", {m.name.clone()} }
                     if let Some(spec) = spec {
-                        div { class: "text-xs text-gray-400 font-mono break-all", {spec} }
+                        div { class: "text-xs text-gray-500 font-mono break-all", {spec} }
                     }
                 }
             },
@@ -387,7 +387,7 @@ pub fn FluidMixtures() -> Element {
                     is_empty,
                     empty_message: t!("mixtures-empty").to_string(),
                     empty_detail: rsx! {
-                        p { class: "text-sm text-gray-400 mt-2", {t!("mixtures-empty-hint")} }
+                        p { class: "text-sm text-gray-500 mt-2", {t!("mixtures-empty-hint")} }
                     },
                     div { class: "space-y-4",
                         DataTable {

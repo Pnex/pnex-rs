@@ -206,7 +206,7 @@ pub(crate) fn Canvas(
                         path {
                             d: "M 20 0 L 0 0 0 20",
                             fill: "none",
-                            stroke: "#f3f4f6",
+                            stroke: "var(--color-gray-100, #f3f4f6)",
                             "stroke-width": "1",
                         }
                     }
@@ -436,11 +436,27 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
     let (badge_fill, badge_stroke, badge_text) =
         match display_badge.as_ref().and_then(|b| b.status.as_ref()) {
             Some(st) => match st.level {
-                pnex_core::vision::NodeStatusLevel::Ok => ("#ecfdf5", "#10b981", "#047857"),
-                pnex_core::vision::NodeStatusLevel::Warn => ("#fffbeb", "#f59e0b", "#b45309"),
-                pnex_core::vision::NodeStatusLevel::Error => ("#fef2f2", "#ef4444", "#b91c1c"),
+                pnex_core::vision::NodeStatusLevel::Ok => (
+                    "var(--color-emerald-50, #ecfdf5)",
+                    "var(--color-emerald-500, #10b981)",
+                    "var(--color-emerald-700, #047857)",
+                ),
+                pnex_core::vision::NodeStatusLevel::Warn => (
+                    "var(--color-amber-50, #fffbeb)",
+                    "var(--color-amber-500, #f59e0b)",
+                    "var(--color-amber-700, #b45309)",
+                ),
+                pnex_core::vision::NodeStatusLevel::Error => (
+                    "var(--color-red-50, #fef2f2)",
+                    "var(--color-red-500, #ef4444)",
+                    "var(--color-red-700, #b91c1c)",
+                ),
             },
-            None => ("#ecfeff", "#06b6d4", "#0e7490"),
+            None => (
+                "var(--color-cyan-50, #ecfeff)",
+                "var(--color-cyan-500, #06b6d4)",
+                "var(--color-cyan-700, #0e7490)",
+            ),
         };
     // Ports de sortie précalculés (pas de `let` dans rsx) : un par pin +
     // « tout » pour device-read, un seul pour tous les autres kinds. Labels
@@ -692,7 +708,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                 "text-anchor": "middle",
                 "font-size": "12",
                 "font-weight": "600",
-                fill: "#1f2937",
+                fill: "var(--color-gray-800, #1f2937)",
                 "pointer-events": "none",
                 {title}
             }
@@ -701,7 +717,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                 y: "{node_h / 2.0 + 12.0}",
                 "text-anchor": "middle",
                 "font-size": "10",
-                fill: "#6b7280",
+                fill: "var(--color-gray-500, #6b7280)",
                 "pointer-events": "none",
                 {subtitle}
             }
@@ -758,7 +774,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                         x: "8",
                         y: "{anchor_y + 3.0}",
                         "font-size": "9",
-                        fill: "#6b7280",
+                        fill: "var(--color-gray-500, #6b7280)",
                         "pointer-events": "none",
                         {pin_label}
                     }
@@ -798,7 +814,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                             y: "{port_y + 3.0}",
                             "text-anchor": "end",
                             "font-size": "9",
-                            fill: "#6b7280",
+                            fill: "var(--color-gray-500, #6b7280)",
                             "pointer-events": "none",
                             {port_label}
                         }

@@ -76,7 +76,7 @@ pub(crate) fn MediaPicker(
                 }
                 match &*list.value().read() {
                     Some(Ok(items)) if items.is_empty() => rsx! {
-                        p { class: "text-sm text-gray-400 text-center py-6", {t!("studio-picker-empty")} }
+                        p { class: "text-sm text-gray-500 text-center py-6", {t!("studio-picker-empty")} }
                     },
                     Some(Ok(items)) => rsx! {
                         ul { class: "divide-y divide-gray-100 max-h-80 overflow-y-auto",
@@ -88,7 +88,7 @@ pub(crate) fn MediaPicker(
                                             on_picked.call((asset.id.clone(), asset.name.clone()));
                                         },
                                         div { class: "text-sm font-medium text-gray-900", {asset.name.clone()} }
-                                        div { class: "text-xs text-gray-400",
+                                        div { class: "text-xs text-gray-500",
                                             {format!("{} · v{}", asset.id, asset.latest_version_number)}
                                         }
                                     }
@@ -115,7 +115,7 @@ pub(crate) fn MediaPicker(
                         }
                     },
                 }
-                p { class: "text-xs text-gray-400", {t!("studio-picker-hint")} }
+                p { class: "text-xs text-gray-500", {t!("studio-picker-hint")} }
             }
         }
     }

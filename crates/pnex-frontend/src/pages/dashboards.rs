@@ -214,7 +214,7 @@ fn ListView(
                 if let Some(desc) = &d.description {
                     div { class: "text-xs text-gray-500", "{desc}" }
                 }
-                div { class: "text-xs text-gray-400", "{date_label(&d.updated_at)}" }
+                div { class: "text-xs text-gray-500", "{date_label(&d.updated_at)}" }
             }
         }),
         Column::new(t!("db-format").to_string(), |d: &VizDashboardSummary| {
@@ -583,7 +583,7 @@ fn FormatCard(mobile: bool, selected: bool, on_pick: EventHandler<()>) -> Elemen
             ul { class: "space-y-1 text-xs text-gray-500",
                 for u in uses {
                     li { class: "flex gap-1.5",
-                        span { class: "text-gray-400", "•" }
+                        span { class: "text-gray-500", "•" }
                         span { "{u}" }
                     }
                 }

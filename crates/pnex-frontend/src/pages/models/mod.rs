@@ -92,7 +92,7 @@ pub fn Models() -> Element {
                 is_empty,
                 empty_message: t!("models-empty-title").to_string(),
                 empty_icon: rsx! {
-                    icons::Eye { class: "h-8 w-8 text-gray-400" }
+                    icons::Eye { class: "h-8 w-8 text-gray-500" }
                 },
                 empty_detail: rsx! {
                     p { class: "text-gray-600 mt-2 max-w-xl mx-auto", {t!("models-empty-message")} }

@@ -289,7 +289,7 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
                     }
                     span { class: "text-xs font-medium text-gray-500", {t!("flows-notify-strict")} }
                 }
-                p { class: "text-xs text-gray-400", {t!("flows-notify-strict-hint")} }
+                p { class: "text-xs text-gray-500", {t!("flows-notify-strict-hint")} }
             }
 
             // ── Anti-spam (fixed window "count × duration") — plain checkbox,
@@ -340,7 +340,7 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
                             }
                         }
                     }
-                    p { class: "text-xs text-gray-400 pl-6",
+                    p { class: "text-xs text-gray-500 pl-6",
                         {
                             t!(
                                 "flows-notify-antispam-hint", max : anti_max.read().parse::< u32 > ()

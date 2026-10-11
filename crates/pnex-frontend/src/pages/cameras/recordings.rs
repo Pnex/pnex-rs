@@ -300,14 +300,14 @@ pub(super) fn RecordingsDialog(
                     is_empty,
                     empty_message: t!("cameras-recordings-empty-title").to_string(),
                     empty_icon: rsx! {
-                        icons::Video { class: "h-8 w-8 text-gray-400" }
+                        icons::Video { class: "h-8 w-8 text-gray-500" }
                     },
                     empty_detail: rsx! {
                         p { class: "text-gray-600 mt-2 max-w-xl mx-auto", {t!("cameras-recordings-empty-message")} }
                     },
                     div { class: "space-y-3",
                         if layer_rows.is_empty() {
-                            p { class: "text-xs text-gray-400", {t!("cameras-layers-none")} }
+                            p { class: "text-xs text-gray-500", {t!("cameras-layers-none")} }
                         } else {
                             div { class: "flex flex-wrap items-center gap-x-4 gap-y-1",
                                 span { class: "text-xs font-medium text-gray-500",
@@ -341,7 +341,7 @@ pub(super) fn RecordingsDialog(
                                             }
                                         }
                                         "{layer.name}"
-                                        span { class: "text-xs text-gray-400", "({layer.count})" }
+                                        span { class: "text-xs text-gray-500", "({layer.count})" }
                                     }
                                 }
                             }
@@ -389,7 +389,7 @@ pub(super) fn RecordingsDialog(
                                     }
                                 },
                             }
-                            div { class: "flex justify-between text-xs text-gray-400 tabular-nums",
+                            div { class: "flex justify-between text-xs text-gray-500 tabular-nums",
                                 for h in (0..=24).step_by(3) {
                                     span { key: "{h}", "{h:02}:00" }
                                 }

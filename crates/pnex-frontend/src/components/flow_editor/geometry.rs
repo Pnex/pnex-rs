@@ -22,73 +22,73 @@ pub const ZOOM_MIN: f64 = 0.4;
 pub const ZOOM_MAX: f64 = 2.0;
 
 /// Couleurs par kind (attributs SVG bruts — parité `visualisation.rs`).
-pub const INJECT_FILL: &str = "#ecfdf5";
-pub const INJECT_STROKE: &str = "#10b981";
-pub const VALUE_FILL: &str = "#fefce8";
-pub const VALUE_STROKE: &str = "#eab308";
+pub const INJECT_FILL: &str = "var(--color-emerald-50, #ecfdf5)";
+pub const INJECT_STROKE: &str = "var(--color-emerald-500, #10b981)";
+pub const VALUE_FILL: &str = "var(--color-yellow-50, #fefce8)";
+pub const VALUE_STROKE: &str = "var(--color-yellow-500, #eab308)";
 /// Nœud device (ambre), calc (vert) et metric (rose) — Phase 6.
-pub const DEVICE_FILL: &str = "#fffbeb";
-pub const DEVICE_STROKE: &str = "#f59e0b";
-pub const CALC_FILL: &str = "#f0fdf4";
-pub const CALC_STROKE: &str = "#22c55e";
-pub const METRIC_FILL: &str = "#fdf2f8";
-pub const METRIC_STROKE: &str = "#ec4899";
+pub const DEVICE_FILL: &str = "var(--color-amber-50, #fffbeb)";
+pub const DEVICE_STROKE: &str = "var(--color-amber-500, #f59e0b)";
+pub const CALC_FILL: &str = "var(--color-green-50, #f0fdf4)";
+pub const CALC_STROKE: &str = "var(--color-green-500, #22c55e)";
+pub const METRIC_FILL: &str = "var(--color-pink-50, #fdf2f8)";
+pub const METRIC_STROKE: &str = "var(--color-pink-500, #ec4899)";
 // CoolProp : ambre (thermodynamique / chaleur).
-pub const COOLPROP_FILL: &str = "#fffbeb";
-pub const COOLPROP_STROKE: &str = "#f59e0b";
+pub const COOLPROP_FILL: &str = "var(--color-amber-50, #fffbeb)";
+pub const COOLPROP_STROKE: &str = "var(--color-amber-500, #f59e0b)";
 /// Nœud display (cyan) — sonde du panneau de debug.
-pub const DISPLAY_FILL: &str = "#ecfeff";
-pub const DISPLAY_STROKE: &str = "#06b6d4";
+pub const DISPLAY_FILL: &str = "var(--color-cyan-50, #ecfeff)";
+pub const DISPLAY_STROKE: &str = "var(--color-cyan-500, #06b6d4)";
 /// Cartes de régulation mixtes : TT heat/cool (orange chaud/froid) et PID
 /// (indigo) — mêmes familles que device (ambre) mais distinctes au regard.
-pub const REG_TT_FILL: &str = "#fff7ed";
-pub const REG_TT_STROKE: &str = "#f97316";
-pub const REG_PID_FILL: &str = "#eef2ff";
-pub const REG_PID_STROKE: &str = "#6366f1";
-pub const DEBUG_FILL: &str = "#f5f3ff";
-pub const DEBUG_STROKE: &str = "#8b5cf6";
+pub const REG_TT_FILL: &str = "var(--color-orange-50, #fff7ed)";
+pub const REG_TT_STROKE: &str = "var(--color-orange-500, #f97316)";
+pub const REG_PID_FILL: &str = "var(--color-indigo-50, #eef2ff)";
+pub const REG_PID_STROKE: &str = "var(--color-indigo-500, #6366f1)";
+pub const DEBUG_FILL: &str = "var(--color-violet-50, #f5f3ff)";
+pub const DEBUG_STROKE: &str = "var(--color-violet-500, #8b5cf6)";
 /// Nœud notify (violet doux) — bus de notification (D49).
-pub const NOTIFY_FILL: &str = "#faf5ff";
-pub const NOTIFY_STROKE: &str = "#a855f7";
+pub const NOTIFY_FILL: &str = "var(--color-purple-50, #faf5ff)";
+pub const NOTIFY_STROKE: &str = "var(--color-purple-500, #a855f7)";
 /// Nœud http-fetch (sky) — collecte web C1a (amendement edge-model
 /// 2026-09-15) ; cyan déjà pris par display.
-pub const HTTP_FETCH_FILL: &str = "#f0f9ff";
-pub const HTTP_FETCH_STROKE: &str = "#0ea5e9";
+pub const HTTP_FETCH_FILL: &str = "var(--color-sky-50, #f0f9ff)";
+pub const HTTP_FETCH_STROKE: &str = "var(--color-sky-500, #0ea5e9)";
 /// Nœuds JSON split/merge (cyan/teal) — famille transformation de données.
-pub const JSON_SPLIT_FILL: &str = "#ecfeff";
-pub const JSON_SPLIT_STROKE: &str = "#0891b2";
-pub const JSON_MERGE_FILL: &str = "#f0fdfa";
-pub const JSON_MERGE_STROKE: &str = "#0d9488";
+pub const JSON_SPLIT_FILL: &str = "var(--color-cyan-50, #ecfeff)";
+pub const JSON_SPLIT_STROKE: &str = "var(--color-cyan-600, #0891b2)";
+pub const JSON_MERGE_FILL: &str = "var(--color-teal-50, #f0fdfa)";
+pub const JSON_MERGE_STROKE: &str = "var(--color-teal-600, #0d9488)";
 // Camera nodes (D78): rose source, red recorder.
-pub const CAMERA_FILL: &str = "#fff1f2";
-pub const CAMERA_STROKE: &str = "#f43f5e";
-pub const VIDEO_RECORD_FILL: &str = "#fef2f2";
-pub const VIDEO_RECORD_STROKE: &str = "#ef4444";
+pub const CAMERA_FILL: &str = "var(--color-rose-50, #fff1f2)";
+pub const CAMERA_STROKE: &str = "var(--color-rose-500, #f43f5e)";
+pub const VIDEO_RECORD_FILL: &str = "var(--color-red-50, #fef2f2)";
+pub const VIDEO_RECORD_STROKE: &str = "var(--color-red-500, #ef4444)";
 // Vision (fuchsia) and event log (slate) nodes (D83/D84).
-pub const VISION_FILL: &str = "#fdf4ff";
-pub const VISION_STROKE: &str = "#d946ef";
-pub const EVENT_LOG_FILL: &str = "#f8fafc";
-pub const EVENT_LOG_STROKE: &str = "#64748b";
+pub const VISION_FILL: &str = "var(--color-fuchsia-50, #fdf4ff)";
+pub const VISION_STROKE: &str = "var(--color-fuchsia-500, #d946ef)";
+pub const EVENT_LOG_FILL: &str = "var(--color-slate-50, #f8fafc)";
+pub const EVENT_LOG_STROKE: &str = "var(--color-slate-500, #64748b)";
 // Shared memory nodes (Valkey): lime writer, green reader.
-pub const MEMORY_WRITE_FILL: &str = "#f7fee7";
-pub const MEMORY_WRITE_STROKE: &str = "#65a30d";
-pub const CONTROL_SOURCE_FILL: &str = "#eff6ff";
-pub const CONTROL_SOURCE_STROKE: &str = "#2563eb";
-pub const MEMORY_READ_FILL: &str = "#f0fdf4";
-pub const MEMORY_READ_STROKE: &str = "#16a34a";
+pub const MEMORY_WRITE_FILL: &str = "var(--color-lime-50, #f7fee7)";
+pub const MEMORY_WRITE_STROKE: &str = "var(--color-lime-600, #65a30d)";
+pub const CONTROL_SOURCE_FILL: &str = "var(--color-blue-50, #eff6ff)";
+pub const CONTROL_SOURCE_STROKE: &str = "var(--color-blue-600, #2563eb)";
+pub const MEMORY_READ_FILL: &str = "var(--color-green-50, #f0fdf4)";
+pub const MEMORY_READ_STROKE: &str = "var(--color-green-600, #16a34a)";
 // Predictive nodes: red anomaly, violet forecast.
-pub const ANOMALY_FILL: &str = "#fef2f2";
-pub const ANOMALY_STROKE: &str = "#dc2626";
-pub const FORECAST_FILL: &str = "#f5f3ff";
-pub const FORECAST_STROKE: &str = "#7c3aed";
-pub const RED_FILL: &str = "#f9fafb";
-pub const RED_STROKE: &str = "#6b7280";
+pub const ANOMALY_FILL: &str = "var(--color-red-50, #fef2f2)";
+pub const ANOMALY_STROKE: &str = "var(--color-red-600, #dc2626)";
+pub const FORECAST_FILL: &str = "var(--color-violet-50, #f5f3ff)";
+pub const FORECAST_STROKE: &str = "var(--color-violet-600, #7c3aed)";
+pub const RED_FILL: &str = "var(--color-gray-50, #f9fafb)";
+pub const RED_STROKE: &str = "var(--color-gray-500, #6b7280)";
 /// Nœud en violation (surlignage d'erreur).
-pub const VIOLATION_STROKE: &str = "#dc2626";
+pub const VIOLATION_STROKE: &str = "var(--color-red-600, #dc2626)";
 /// Nœud sélectionné.
-pub const SELECTED_STROKE: &str = "#2563eb";
+pub const SELECTED_STROKE: &str = "var(--color-blue-600, #2563eb)";
 /// Couleur des câbles.
-pub const WIRE_STROKE: &str = "#94a3b8";
+pub const WIRE_STROKE: &str = "var(--color-slate-400, #94a3b8)";
 
 /// Arrondit à la grille (positions snapées → rendu stable).
 pub fn snap(value: f64) -> f64 {

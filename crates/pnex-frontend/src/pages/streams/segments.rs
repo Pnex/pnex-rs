@@ -179,7 +179,7 @@ fn SegmentRow(segment: MediaSegment) -> Element {
         tr {
             td { class: "td whitespace-nowrap",
                 {date_label(&segment.started_at)}
-                span { class: "ml-1 text-xs text-gray-400", "#{segment.seq}" }
+                span { class: "ml-1 text-xs text-gray-500", "#{segment.seq}" }
             }
             td { class: "td hidden text-gray-600 sm:table-cell", "{secs} s" }
             td { class: "td",

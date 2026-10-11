@@ -116,7 +116,7 @@ pub(super) fn TopicClassifyForm(
                         );
                     },
                 }
-                span { class: "text-xs text-gray-400 mt-1 block",
+                span { class: "text-xs text-gray-500 mt-1 block",
                     {t!("flows-topic-classify-text-field-hint")}
                 }
             }

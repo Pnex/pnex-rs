@@ -441,7 +441,7 @@ pub(super) fn HttpFetchForm(
                             );
                         },
                     }
-                    p { class: "text-xs text-gray-400", {t!("flows-http-fetch-proxy-hint")} }
+                    p { class: "text-xs text-gray-500", {t!("flows-http-fetch-proxy-hint")} }
                 }
             }
             if is_post {

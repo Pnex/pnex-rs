@@ -367,7 +367,7 @@ fn RangesTimeline(rows: Vec<TimeRange>, day: chrono::NaiveDate) -> Element {
             }
             div { class: "flex",
                 div { class: "w-28 shrink-0" }
-                div { class: "relative h-4 flex-1 text-xs text-gray-400",
+                div { class: "relative h-4 flex-1 text-xs text-gray-500",
                     for (label, left) in ticks.iter() {
                         span {
                             key: "{label}",

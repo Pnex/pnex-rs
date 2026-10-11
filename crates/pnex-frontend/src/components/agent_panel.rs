@@ -163,7 +163,7 @@ pub fn AgentInstall(device_pk: i64) -> Element {
                 },
             }
             if let Some(fp) = created.ca_sha256.clone() {
-                p { class: "break-all text-xs text-gray-400",
+                p { class: "break-all text-xs text-gray-500",
                     {t!("agent-install-fingerprint")}
                     " "
                     code { "{fp}" }
@@ -296,7 +296,7 @@ pub fn AgentPanel(device_pk: i64, can_write: bool) -> Element {
                 p { class: "text-xs text-gray-500", {t!("agent-keys-help")} }
                 match &*keys.read() {
                     Some(Ok(list)) if list.is_empty() => rsx! {
-                        p { class: "py-4 text-center text-sm text-gray-400", {t!("agent-keys-empty")} }
+                        p { class: "py-4 text-center text-sm text-gray-500", {t!("agent-keys-empty")} }
                     },
                     Some(Ok(list)) => rsx! {
                         KeysTable {
@@ -358,7 +358,7 @@ fn agent_facts(
             ]
             {
                 div { key: "{label}",
-                    div { class: "text-xs text-gray-400", "{label}" }
+                    div { class: "text-xs text-gray-500", "{label}" }
                     div { class: "font-mono text-sm text-gray-800", "{value}" }
                 }
             }
@@ -451,7 +451,7 @@ fn KeyRow(
             td { class: "px-3 py-2 text-right",
                 if can_write {
                     button {
-                        class: "text-xs text-gray-400 hover:text-red-600",
+                        class: "text-xs text-gray-500 hover:text-red-600",
                         r#type: "button",
                         title: t!("agent-keys-forget"),
                         onclick: forget,

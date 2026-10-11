@@ -14,7 +14,7 @@ pub fn phase_badge(phase: Option<&str>) -> (String, String) {
         ),
         Some("succeeded") => ("bg-green-100 text-green-700", "builds-phase-succeeded"),
         Some("failed") => ("bg-red-100 text-red-700", "builds-phase-failed"),
-        _ => ("bg-gray-100 text-gray-400", "builds-phase-queued"),
+        _ => ("bg-gray-100 text-gray-500", "builds-phase-queued"),
     };
     (
         format!("inline-block px-2 py-0.5 rounded-full text-xs font-medium {class}"),

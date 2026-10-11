@@ -68,7 +68,7 @@ pub(super) fn ScreenPickBlock(
 
     rsx! {
         div { class: "mt-3 space-y-1",
-            span { class: "text-xs text-gray-400", {t!("board-screen-toggle")} }
+            span { class: "text-xs text-gray-500", {t!("board-screen-toggle")} }
             div { class: "flex flex-wrap gap-1",
                 for opt in options {
                     button {

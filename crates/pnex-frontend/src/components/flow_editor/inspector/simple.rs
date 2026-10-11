@@ -68,7 +68,7 @@ pub(super) fn MetricForm(
                     code { class: "ml-1 px-1 rounded bg-gray-100", {preview.cloned()} }
                 }
             }
-            p { class: "text-xs text-gray-400", {t!("flows-metric-labels-help", id : flow_id)} }
+            p { class: "text-xs text-gray-500", {t!("flows-metric-labels-help", id : flow_id)} }
             div { class: "space-y-1",
                 span { class: "text-xs font-medium text-gray-500 block", {t!("flows-metric-labels")} }
                 for (index, (label, source)) in label_rows.read().iter().enumerate() {
@@ -105,7 +105,7 @@ pub(super) fn MetricForm(
                         {t!("flows-metric-label-add")}
                     }
                 }
-                p { class: "text-xs text-gray-400", {t!("flows-metric-label-sources-help")} }
+                p { class: "text-xs text-gray-500", {t!("flows-metric-label-sources-help")} }
             }
         }
     }

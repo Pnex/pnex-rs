@@ -298,7 +298,7 @@ fn MetricRow(metric: StatusMetric) -> Element {
             dt { class: "text-gray-500",
                 {label}
                 if let Some(qualifier) = metric.label.clone() {
-                    span { class: "ml-1 text-gray-400 font-mono text-xs break-all", "({qualifier})" }
+                    span { class: "ml-1 text-gray-500 font-mono text-xs break-all", "({qualifier})" }
                 }
             }
             dd { class: "text-gray-900 font-medium text-right", {value} }
@@ -561,7 +561,7 @@ fn OrgRow(row: OrgSystemRow, tiers: Vec<TierOption>, on_saved: Callback<()>) -> 
             td { class: if over { "py-2 pr-4 text-red-700 font-medium" } else { "py-2 pr-4 text-gray-600" },
                 {usage}
                 if let Some(n) = row.stream_count {
-                    span { class: "ml-2 text-xs text-gray-400", {t!("admin-orgs-streams", count : n)} }
+                    span { class: "ml-2 text-xs text-gray-500", {t!("admin-orgs-streams", count : n)} }
                 }
             }
         }

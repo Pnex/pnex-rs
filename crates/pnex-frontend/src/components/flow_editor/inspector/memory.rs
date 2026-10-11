@@ -128,7 +128,7 @@ pub(super) fn MemoryWriteForm(
                         );
                     },
                 }
-                span { class: if key_bad { "text-xs text-red-600 mt-1 block" } else { "text-xs text-gray-400 mt-1 block" },
+                span { class: if key_bad { "text-xs text-red-600 mt-1 block" } else { "text-xs text-gray-500 mt-1 block" },
                     {t!("flows-memory-key-rule", max : MEMORY_KEY_MAX_LEN)}
                 }
             }
@@ -150,7 +150,7 @@ pub(super) fn MemoryWriteForm(
                         );
                     },
                 }
-                span { class: if ttl_bad { "text-xs text-red-600 mt-1 block" } else { "text-xs text-gray-400 mt-1 block" },
+                span { class: if ttl_bad { "text-xs text-red-600 mt-1 block" } else { "text-xs text-gray-500 mt-1 block" },
                     {t!("flows-memory-ttl-help")}
                 }
             }
@@ -227,7 +227,7 @@ pub(super) fn MemoryReadForm(
                             code { class: "text-xs", "{k}" }
                             if can_write {
                                 button {
-                                    class: "text-xs text-gray-400 hover:text-red-600",
+                                    class: "text-xs text-gray-500 hover:text-red-600",
                                     title: t!("flows-memory-key-remove").to_string(),
                                     onclick: move |_| {
                                         let mut next = cfg.peek().clone();
@@ -269,7 +269,7 @@ pub(super) fn MemoryReadForm(
                             option { key: "{k}", value: "{k}" }
                         }
                     }
-                    span { class: "text-xs text-gray-400 mt-1 block",
+                    span { class: "text-xs text-gray-500 mt-1 block",
                         {t!("flows-memory-key-rule", max : MEMORY_KEY_MAX_LEN)}
                     }
                 }
@@ -288,7 +288,7 @@ pub(super) fn MemoryReadForm(
                         commit_read(&mut cx, cfg, next);
                     },
                 }
-                span { class: "text-xs text-gray-400 mt-1 block", {t!("flows-memory-max-age-help")} }
+                span { class: "text-xs text-gray-500 mt-1 block", {t!("flows-memory-max-age-help")} }
             }
         }
     }

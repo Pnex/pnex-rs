@@ -102,7 +102,7 @@ pub fn Secrets() -> Element {
             let desc = s.description.clone();
             rsx! {
                 div { class: "flex items-center gap-2 text-sm font-medium text-gray-900",
-                    icons::Key { class: "h-4 w-4 text-gray-400" }
+                    icons::Key { class: "h-4 w-4 text-gray-500" }
                     span { class: "font-mono break-all", {s.name.clone()} }
                 }
                 if let Some(desc) = desc {
@@ -118,7 +118,7 @@ pub fn Secrets() -> Element {
                 .collect();
             rsx! {
                 if usages.is_empty() {
-                    span { class: "text-sm text-gray-400", {t!("secrets-unused")} }
+                    span { class: "text-sm text-gray-500", {t!("secrets-unused")} }
                 } else {
                     div { class: "flex flex-wrap gap-1",
                         for (route, label) in usages {
@@ -137,7 +137,7 @@ pub fn Secrets() -> Element {
             rsx! {
                 div { class: "text-sm text-gray-600", {short_date(&s.updated_at)} }
                 if let Some(by) = by {
-                    div { class: "text-xs text-gray-400", {by} }
+                    div { class: "text-xs text-gray-500", {by} }
                 }
             }
         })
@@ -308,7 +308,7 @@ pub fn Secrets() -> Element {
                 is_empty,
                 empty_message: t!("secrets-empty").to_string(),
                 empty_detail: rsx! {
-                    p { class: "text-sm text-gray-400 mt-2", {t!("secrets-empty-hint")} }
+                    p { class: "text-sm text-gray-500 mt-2", {t!("secrets-empty-hint")} }
                 },
                 div { class: "space-y-4",
                     DataTable {

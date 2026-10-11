@@ -303,7 +303,7 @@ fn library_rows(
                     },
                     div { class: "min-w-0",
                         p { class: "truncate text-xs font-medium text-gray-800", "{widget.name}" }
-                        p { class: "text-xs text-gray-400", "{caption}" }
+                        p { class: "text-xs text-gray-500", "{caption}" }
                     }
                     button {
                         class: "shrink-0 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100",
@@ -343,7 +343,7 @@ pub fn TemplateList(mut cx: EditorCx) -> Element {
     rsx! {
         div { class: "space-y-1",
             if loaded.is_empty() {
-                p { class: "p-2 text-xs text-gray-400", {t!("lib-empty")} }
+                p { class: "p-2 text-xs text-gray-500", {t!("lib-empty")} }
             }
             // Lignes précalculées en Vec<Element> : chaque ligne a DEUX
             // closures `move` qui consomment des copies différentes de

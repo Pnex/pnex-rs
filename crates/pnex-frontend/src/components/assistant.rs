@@ -196,7 +196,7 @@ fn AssistantDrawer(on_close: Callback) -> Element {
                         {t!("ai-new-conversation")}
                     }
                     button {
-                        class: "text-gray-400 hover:text-gray-600",
+                        class: "text-gray-500 hover:text-gray-600",
                         onclick: close,
                         {"✕"}
                     }
@@ -222,7 +222,7 @@ fn AssistantDrawer(on_close: Callback) -> Element {
                             }
                         }
                         if bubbles.is_empty() && ai::configured() {
-                            p { class: "text-sm text-gray-400", {t!("ai-empty")} }
+                            p { class: "text-sm text-gray-500", {t!("ai-empty")} }
                         }
                         for (idx, bubble) in bubbles.into_iter().enumerate() {
                             Bubble { key: "{idx}", bubble }
@@ -263,7 +263,7 @@ fn AssistantDrawer(on_close: Callback) -> Element {
                             },
                         }
                         div { class: "flex items-center justify-between gap-2 mt-2",
-                            p { class: "text-xs text-gray-400 leading-tight",
+                            p { class: "text-xs text-gray-500 leading-tight",
                                 {t!("ai-provider-notice")}
                             }
                             button {
@@ -321,9 +321,9 @@ fn ConversationList(on_open: Callback<Uuid>, on_cleared: Callback<()>) -> Elemen
     rsx! {
         div { class: "flex-1 overflow-y-auto px-2 py-2 space-y-1",
             if loading {
-                p { class: "text-sm text-gray-400 px-2", {t!("ai-thinking")} }
+                p { class: "text-sm text-gray-500 px-2", {t!("ai-thinking")} }
             } else if list.is_empty() {
-                p { class: "text-sm text-gray-400 px-2", {t!("ai-no-conversations")} }
+                p { class: "text-sm text-gray-500 px-2", {t!("ai-no-conversations")} }
             }
             for conv in list {
                 ConversationRow {
@@ -357,7 +357,7 @@ fn ConversationList(on_open: Callback<Uuid>, on_cleared: Callback<()>) -> Elemen
             }
         }
         footer { class: "border-t border-gray-200 p-3 space-y-2",
-            p { class: "text-xs text-gray-400 leading-tight", {t!("ai-history-notice")} }
+            p { class: "text-xs text-gray-500 leading-tight", {t!("ai-history-notice")} }
             div { class: "flex justify-between",
                 button {
                     class: "text-xs text-gray-600 hover:text-gray-900",
@@ -451,16 +451,16 @@ fn ConversationRow(
                     class: "flex-1 min-w-0 text-left",
                     onclick: move |_| on_open.call(id),
                     p { class: "text-sm text-gray-900 truncate", {title.clone()} }
-                    p { class: "text-xs text-gray-400", {date} }
+                    p { class: "text-xs text-gray-500", {date} }
                 }
                 button {
-                    class: "text-xs text-gray-400 hover:text-gray-700",
+                    class: "text-xs text-gray-500 hover:text-gray-700",
                     aria_label: t!("ai-rename"),
                     onclick: move |_| on_edit.call((id, title.clone())),
                     {"✎"}
                 }
                 button {
-                    class: "text-xs text-gray-400 hover:text-red-600",
+                    class: "text-xs text-gray-500 hover:text-red-600",
                     aria_label: t!("ai-delete"),
                     onclick: move |_| on_delete.call(id),
                     {"🗑"}

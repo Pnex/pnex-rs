@@ -34,7 +34,7 @@ pub fn Pager(
             }
             span { class: "text-gray-600",
                 "Page {current + 1} / {pages}"
-                span { class: "text-gray-400 ml-2", "({count})" }
+                span { class: "text-gray-500 ml-2", "({count})" }
             }
             button {
                 class: BTN_SECONDARY_SM,

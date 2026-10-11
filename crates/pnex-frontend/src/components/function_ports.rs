@@ -141,7 +141,7 @@ pub fn FunctionPortsPanel(
     let spans = pnex_core::directive_spans(&code);
     rsx! {
         if sig.inputs.is_empty() && sig.outputs.is_empty() {
-            div { class: "text-sm text-gray-400 italic", {t!("functions-ports-none")} }
+            div { class: "text-sm text-gray-500 italic", {t!("functions-ports-none")} }
         }
         if !sig.inputs.is_empty() {
             InputsSection {

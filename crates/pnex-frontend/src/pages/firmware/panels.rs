@@ -114,7 +114,7 @@ fn LibItem(
             },
             span { class: "text-sm text-gray-900 flex items-center gap-1.5",
                 {item.name.clone()}
-                span { class: "text-xs text-gray-400", {version} }
+                span { class: "text-xs text-gray-500", {version} }
                 if already {
                     icons::Check { class: "h-3.5 w-3.5 text-green-600" }
                 }
@@ -209,7 +209,7 @@ pub(super) fn RevisionsDrawer(
                         {t!("firmware-revisions-title")}
                     }
                     button {
-                        class: "text-gray-400 hover:text-gray-600",
+                        class: "text-gray-500 hover:text-gray-600",
                         onclick: close,
                         icons::X { class: "h-4 w-4" }
                     }
@@ -228,7 +228,7 @@ pub(super) fn RevisionsDrawer(
                                                 {t!("firmware-revision-current")}
                                             }
                                         }
-                                        span { class: "text-xs text-gray-400 ml-auto", {date_label(&rev.created_at)} }
+                                        span { class: "text-xs text-gray-500 ml-auto", {date_label(&rev.created_at)} }
                                     }
                                     if let Some(note) = &rev.note {
                                         p { class: "text-xs text-gray-600", {note.clone()} }

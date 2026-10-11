@@ -70,14 +70,14 @@ pub fn LanDetect(on_pick: Callback<String>) -> Element {
             }
             if let Some(scan) = result().filter(|r| r.is_some()).map(|r| r.unwrap()) {
                 if scan.hits.is_empty() {
-                    p { class: "text-xs text-gray-400", {t!("edgerefs-scan-none")} }
+                    p { class: "text-xs text-gray-500", {t!("edgerefs-scan-none")} }
                 }
                 div { class: "space-y-1",
                     for hit in scan.hits {
                         div { class: "flex items-center justify-between gap-2",
                             span { class: "text-xs text-gray-700 truncate",
                                 code { class: "font-medium", "ws://{hit.host}" }
-                                span { class: "text-gray-400 ml-2", "v{hit.version}" }
+                                span { class: "text-gray-500 ml-2", "v{hit.version}" }
                             }
                             button {
                                 class: "px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors shrink-0",
