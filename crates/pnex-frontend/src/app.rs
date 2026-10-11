@@ -14,7 +14,7 @@ use crate::pages::{
     Dashboard, Dashboards, Devices, Docs, Events, Firmware, Flows, FluidMixtures, Functions, Map,
     Media, Models, NotFound, Notifications, Ontology, OntologyObject, OntologyType, Orgs,
     OrgsCurrent, Profile, Secrets, ShareTour, Showcase, Sites, Streams, Studio, System,
-    Visualisation,
+    Visualisation, VoiceId,
 };
 use dioxus::prelude::*;
 
@@ -66,6 +66,10 @@ pub enum Route {
         // Captured audio streams, transcribed by the queue (media-ingest.md P2.13).
         #[route("/streams")]
         Streams {},
+
+        // Consented voice profiles of persons (voice-id.md).
+        #[route("/voice-id")]
+        VoiceId {},
 
         // JSON events stored in OpenObserve (camera-video.md D84).
         #[route("/events")]

@@ -12,6 +12,7 @@ pub(super) fn kind_pill_classes(asset: &MediaAsset) -> &'static str {
         MediaKind::Model => "bg-fuchsia-100 text-fuchsia-700",
         MediaKind::Document => "bg-slate-100 text-slate-700",
         MediaKind::Table => "bg-teal-100 text-teal-700",
+        MediaKind::Audio => "bg-rose-100 text-rose-700",
     }
 }
 
@@ -27,6 +28,7 @@ pub(super) fn kind_gradient(asset: &MediaAsset) -> &'static str {
         MediaKind::Model => "from-fuchsia-500 to-pink-600",
         MediaKind::Document => "from-slate-500 to-gray-600",
         MediaKind::Table => "from-teal-500 to-cyan-600",
+        MediaKind::Audio => "from-rose-500 to-red-600",
     }
 }
 
@@ -73,6 +75,7 @@ pub(super) fn kind_label(asset: &MediaAsset) -> String {
         MediaKind::Model => t!("media-kind-model").to_string(),
         MediaKind::Document => t!("media-kind-document").to_string(),
         MediaKind::Table => t!("media-kind-table").to_string(),
+        MediaKind::Audio => t!("media-kind-audio").to_string(),
     }
 }
 

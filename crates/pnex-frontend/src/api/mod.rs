@@ -66,5 +66,6 @@ pub mod tls;
 pub mod tours;
 pub mod user;
 pub mod viz;
+pub mod voice_id;
 /// Référentiel WiFi (wizard device).
 pub mod wifi;

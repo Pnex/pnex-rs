@@ -18,6 +18,7 @@ mod m20261011_000004_pages;
 mod m20261011_000005_geo_providers;
 mod m20261011_000010_placed_at_links;
 mod m20261011_000011_media_ingest_catchup;
+mod m20261011_000012_voice_profiles;
 
 pub struct Migrator;
 
@@ -32,6 +33,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261011_000005_geo_providers::Migration),
             Box::new(m20261011_000010_placed_at_links::Migration),
             Box::new(m20261011_000011_media_ingest_catchup::Migration),
+            Box::new(m20261011_000012_voice_profiles::Migration),
         ]
     }
 }

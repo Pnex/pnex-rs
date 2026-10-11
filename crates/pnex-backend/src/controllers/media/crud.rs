@@ -14,7 +14,8 @@ pub(super) struct UploadQuery {
 /// `floorplan` = plan d'étage importé (référencé par `tour_versions.doc`).
 /// `model` = ONNX model of the vision registry (camera-video.md D81).
 /// `document` / `table` = indexed for search (doc-search.md P1).
-const KINDS: [&str; 7] = [
+/// `audio` = voice clips (voice-id.md: enrolment of a voice profile).
+const KINDS: [&str; 8] = [
     "photo",
     "panorama",
     "splat",
@@ -22,6 +23,7 @@ const KINDS: [&str; 7] = [
     "model",
     "document",
     "table",
+    "audio",
 ];
 
 /// `POST /api/v1/media` — upload octet-stream, crée asset + version 1.
@@ -67,7 +69,7 @@ pub(super) async fn upload(
         if !KINDS.contains(&k) {
             return Ok(field_status(
                 "kind",
-                "unknown kind (photo | panorama | splat | floorplan | model | document | table)",
+                "unknown kind (photo | panorama | splat | floorplan | model | document | table | audio)",
             ));
         }
         if !media_sniff::accepts(k, &filename, &body) {

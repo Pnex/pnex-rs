@@ -183,6 +183,7 @@ impl Hooks for App {
             .add_route(controllers::events::routes())
             .add_route(controllers::media_ingest::routes())
             .add_route(controllers::media_ingest::internal_routes())
+            .add_route(controllers::voice_id::routes())
             .add_route(controllers::taxonomies::routes())
             .add_route(controllers::time_ranges::routes())
             .add_route(controllers::ontology::routes())
