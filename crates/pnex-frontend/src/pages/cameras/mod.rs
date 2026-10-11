@@ -46,7 +46,7 @@ fn current_role() -> Option<String> {
 const LIST_REFRESH_SECS: u64 = 10;
 
 /// Row action buttons (full literals for the Tailwind scan).
-const ROW_BTN: &str = "inline-flex items-center px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50";
+const ROW_BTN: &str = crate::components::ui::BTN_SECONDARY_SM;
 const ROW_BTN_PRIMARY: &str = "inline-flex items-center px-3 py-1.5 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700";
 
 #[component]

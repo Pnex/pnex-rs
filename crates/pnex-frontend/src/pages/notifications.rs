@@ -139,10 +139,10 @@ pub fn Notifications() -> Element {
             if org::current().is_none() {
                 p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
             } else {
-                // Pill tabs (resource_picker school) — refresh lives in the
-                // tab bar (socle filter-bar role), the "add" action is in
-                // the header.
-                div { class: "mb-6 flex flex-wrap gap-1 border-b border-gray-200 pb-2",
+                // Shared tab bar (ui::TAB_BAR); the "add" action is in the header.
+                div {
+                    class: "mb-6 {crate::components::ui::TAB_BAR}",
+                    role: "tablist",
                     for tab_def in [
                         (Tab::Channels, "notify-tab-connect"),
                         (Tab::Templates, "notify-tab-templates"),
@@ -150,7 +150,10 @@ pub fn Notifications() -> Element {
                     ]
                     {
                         button {
-                            class: if tab() == tab_def.0 { "px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white" } else { "px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100" },
+                            class: if tab() == tab_def.0 { crate::components::ui::TAB_ACTIVE } else { crate::components::ui::TAB },
+                            r#type: "button",
+                            role: "tab",
+                            aria_selected: tab() == tab_def.0,
                             onclick: move |_| tab.set(tab_def.0),
                             {t!(tab_def.1)}
                         }

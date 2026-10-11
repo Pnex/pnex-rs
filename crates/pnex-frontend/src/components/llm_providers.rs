@@ -13,7 +13,7 @@ use crate::components::secret_field::{SecretDraft, SecretField};
 use crate::components::ui::{BTN_DANGER, BTN_DANGER_SOLID, BTN_PRIMARY, BTN_SECONDARY, INPUT};
 use crate::state::{ai, toasts};
 
-const BTN: &str = "px-2 py-1 text-xs border border-gray-300 rounded-lg hover:bg-gray-50";
+const BTN: &str = crate::components::ui::BTN_SECONDARY_SM;
 // Explicit white: the edit form sits on a grey block (fields must not look
 // disabled).
 

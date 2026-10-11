@@ -27,7 +27,7 @@ use crate::state::toasts;
 const LABEL: &str = "block text-xs text-gray-600 mb-1";
 const BTN: &str =
     "px-2 py-1 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40";
-const NAV_BTN: &str = "px-2 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50";
+const NAV_BTN: &str = crate::components::ui::BTN_SECONDARY_SM;
 const RANGES_PAGE: i64 = 50;
 /// Scope value of the org in the picker (stream ids are uuids).
 const ORG_SCOPE: &str = "org";

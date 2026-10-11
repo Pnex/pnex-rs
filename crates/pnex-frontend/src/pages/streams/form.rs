@@ -13,7 +13,7 @@ use crate::components::crud::form::FormDialog;
 use crate::components::secret_field::{can_manage_secrets, SecretDraft, SecretField};
 use crate::state::toasts;
 
-const INPUT: &str = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white";
+const INPUT: &str = crate::components::ui::INPUT;
 const LABEL: &str = "block text-xs text-gray-600 mb-1";
 
 /// Retention choices offered by the form (any `days:N` stays valid on

@@ -23,7 +23,7 @@ use crate::components::ontology::{
 };
 use crate::state::{org, toasts};
 
-const BTN: &str = "inline-flex items-center gap-1 px-3 py-1 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50";
+const BTN: &str = crate::components::ui::BTN_SECONDARY_SM;
 const SECTION: &str = "bg-white rounded-lg border border-gray-200 p-4 space-y-3";
 const INPUT: &str = "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white";
 
@@ -125,7 +125,7 @@ pub fn OntologyObject(id: String) -> Element {
                     }
                     span { class: "text-xs text-gray-500", {t!("onto-version", version : o.version)} }
                 }
-                div { class: "flex flex-wrap gap-2", role: "tablist",
+                div { class: super::TAB_BAR, role: "tablist",
                     for (key, label) in tabs {
                         button {
                             key: "{key}",
@@ -133,6 +133,7 @@ pub fn OntologyObject(id: String) -> Element {
                             role: "tab",
                             "data-tab": "{key}",
                             class: if tab() == key { super::TAB_ACTIVE } else { super::TAB_IDLE },
+                            aria_selected: tab() == key,
                             onclick: move |_| tab.set(key.to_string()),
                             "{label}"
                         }

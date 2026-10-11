@@ -16,8 +16,8 @@ use crate::components::crud::layout::{ListLayout, DANGER_BTN, PRIMARY_BTN};
 use crate::components::ontology::{field_errors, type_label, ICON_NAMES};
 use crate::state::{org, toasts};
 
-const INPUT: &str = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white";
-const LABEL: &str = "block text-xs font-medium text-gray-500 mb-1";
+const INPUT: &str = crate::components::ui::INPUT;
+const LABEL: &str = crate::components::ui::FIELD_LABEL;
 const SECTION: &str = "bg-white rounded-lg border border-gray-200 p-4 space-y-3";
 const KINDS: &[&str] = &[
     "text",

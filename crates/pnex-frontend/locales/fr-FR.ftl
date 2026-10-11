@@ -9,17 +9,13 @@ nav-edge-refs = Référentiels
 
 nav-orgs = Organisations
 nav-profile = Profil
-nav-visualisation = Visualisation
 nav-quick-charts = Graphiques rapides
-nav-edges = Edges
 nav-group-monitor = Surveiller
 nav-group-knowledge = Connaissance
 nav-group-media = Médias
 nav-group-devices = Devices
 nav-group-settings = Réglages
 shell-menu = Menu
-nav-browser-collector = Collecteur navigateur
-nav-soon = bientôt
 
 # Générique
 common-loading = Chargement…
@@ -752,7 +748,6 @@ llm-deleted = Fournisseur supprimé
 ai-not-configured = Assistant non configuré pour cette organisation : ajoutez un fournisseur LLM dans Organisations → détail de l'org.
 
 # Média (D21) — groupe nav « Data » (Library = médias + futurs documents / base de connaissances agent)
-nav-data = Données
 nav-library = Bibliothèque
 media-title = Bibliothèque média
 media-subtitle = Photos, panoramas 360°, splats, modèles et documents versionnés de l'organisation
@@ -1167,7 +1162,6 @@ insp-thermo-add-point = + Ajouter un point
 
 # ─── Studio (parcours 3D) ───
 nav-studio = Studio de visites
-nav-plan = Plans
 studio-subtitle = Parcours de visite 3D — plans d'étage, scènes 360°, hotspots
 studio-new = Nouveau parcours
 studio-search-placeholder = Rechercher un parcours…
@@ -4054,6 +4048,7 @@ ai-trace-ontology-schema = schéma de l'ontologie : { $count } type(s)
 ai-trace-ontology-query = { $count } objet(s)
 ai-trace-ontology-object = objet « { $title } »
 ai-trace-case-timeline = dossier : { $members } membre(s), { $count } événement(s)
+ai-trace-case-board = tableau : { $hypotheses } hypothèse(s), { $unsourced } affirmation(s) sans source
 ai-trace-ontology-object-saved = objet « { $title } » v{ $version }
 ai-trace-ontology-link-opened = lien ouvert : { $source } —{ $link }→ { $target }
 ai-trace-ontology-link-closed = lien fermé : { $source } —{ $link }→ { $target }
@@ -4159,6 +4154,21 @@ case-status-concluded = Conclu
 case-status-archived = Archivé
 case-subtitle = Dossier d'enquête
 case-question = Question à élucider
+case-legal-basis = Base de traitement des données personnelles
+case-legal-basis-placeholder = intérêt légitime, exercice journalistique (art. 85 RGPD), mission, consentement…
+case-freeze = Geler l'état actuel
+case-frozen = Gelé le { $at }
+case-unfreeze = Dégeler
+case-freeze-help = Un dossier gelé s'exporte tel qu'il était à cet instant (membres et liens). Ce n'est pas une chaîne de possession à valeur légale.
+case-export = Exporter
+case-export-persons = L'export contient { $count } personne(s) : ce sont des données personnelles.
+case-board = Hypothèses et affirmations
+case-board-supports = Pour
+case-board-contradicts = Contre
+case-board-none = aucune affirmation
+case-board-unsourced = Sans source
+case-board-contradicted = Contredites
+case-board-sources = { $count } source(s)
 case-question-placeholder = Que s'est-il passé ? Qui était impliqué ? Qu'est-ce qui le prouve ?
 case-window-from = Fenêtre : début (UTC)
 case-window-to = Fenêtre : fin (UTC)

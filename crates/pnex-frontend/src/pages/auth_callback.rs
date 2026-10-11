@@ -32,11 +32,7 @@ pub fn AuthCallback(code: String, error: String, error_description: String) -> E
                         crate::components::icons::AlertTriangle { class: "h-10 w-10 text-red-500 mx-auto" }
                         h2 { class: "text-xl font-bold text-gray-900", {t!("callback-failed")} }
                         p { class: "text-sm text-gray-700 break-words", {message} }
-                        Link {
-                            to: Route::Dashboard {},
-                            class: "inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-semibold",
-                            {t!("callback-back")}
-                        }
+                        Link { to: Route::Dashboard {}, class: crate::components::ui::BTN_PRIMARY, {t!("callback-back")} }
                     }
                 },
                 _ => rsx! {

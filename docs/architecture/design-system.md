@@ -81,6 +81,7 @@ variante `dark:` de Tailwind suit cet attribut (`@custom-variant`).
 | `BTN_DANGER_SOLID` | suppression confirmée (dans la modale de confirmation seulement) |
 | `INPUT`, `FIELD_LABEL`, `FIELD_HELP`, `FIELD_ERROR` | champs de formulaire, libellé en casse de phrase |
 | `PANEL` | surface plate à filet (pas d'ombre) |
+| `TAB_BAR`, `TAB`, `TAB_ACTIVE` | onglets soulignés (filet cyan sur l'onglet ouvert), `role="tablist"` / `tab` + `aria-selected` ; un onglet est une vue, jamais une action |
 | `LabelTag` | label D42 en étiquette d'actif « clé \| valeur » |
 | `StateMark` | état ISA-101 (forme + couleur + texte) |
 
@@ -130,6 +131,8 @@ Les entrées « bientôt » sans route sont retirées du menu.
 - Renommer `blue-*` → `signal-*` (raccourci du §2).
 - Éditeurs plein écran (flows, dashboards, Studio, firmware) et leurs
   panneaux : passés par les remplacements mécaniques, pas encore revus un à un.
-- Onglets : composant partagé (aujourd'hui pastilles recopiées ; les onglets de
-  l'Ontologie sont au-dessus du titre, à aligner).
+- Onglets de l'Ontologie au-dessus du titre de la page, à replacer sous
+  l'en-tête (le style est partagé depuis `TAB_*`).
+- Dossiers d'enquête (`pages/cases`) : boutons et champs encore en classes
+  locales, à passer sur `ui.rs` une fois le chantier C7 posé.
 - Captures de la documentation et du site à refaire.

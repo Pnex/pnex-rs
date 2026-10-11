@@ -42,6 +42,16 @@ pub const FIELD_HELP: &str = "mt-1.5 text-xs text-slate";
 pub const FIELD_ERROR: &str = "mt-1.5 text-xs text-alarm";
 
 /// Flat work surface (list, form section, detail block).
+/// Tab bar (`role: "tablist"`): underlined tabs, the signal line marks the
+/// open one. Tabs are views of one page, never actions (no filled pill).
+pub const TAB_BAR: &str = "flex flex-wrap gap-x-1 border-b border-line";
+
+/// Closed tab (`role: "tab"`, `aria_selected: false`).
+pub const TAB: &str = "-mb-px inline-flex items-center gap-1.5 border-b-2 border-transparent px-3 py-2 text-sm font-medium text-slate hover:text-ink hover:border-line-strong focus-visible:outline-2 focus-visible:outline-signal";
+
+/// Open tab (`role: "tab"`, `aria_selected: true`).
+pub const TAB_ACTIVE: &str = "-mb-px inline-flex items-center gap-1.5 border-b-2 border-signal px-3 py-2 text-sm font-semibold text-ink focus-visible:outline-2 focus-visible:outline-signal";
+
 pub const PANEL: &str = "rounded-lg border border-line bg-surface";
 
 /// A D42 label as an asset tag: name on the left, value on the right; a

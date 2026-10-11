@@ -29,8 +29,7 @@ use crate::state::{org, toasts};
 pub use object::OntologyObject;
 pub use type_editor::OntologyType;
 
-const TAB_ACTIVE: &str = "px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-600 text-white";
-const TAB_IDLE: &str = "px-3 py-1.5 text-sm font-medium rounded-lg text-gray-600 hover:bg-gray-100";
+use crate::components::ui::{TAB as TAB_IDLE, TAB_ACTIVE, TAB_BAR};
 
 #[component]
 pub fn Ontology(tab: String, type_key: String) -> Element {
@@ -47,7 +46,7 @@ pub fn Ontology(tab: String, type_key: String) -> Element {
     ];
     rsx! {
         div { class: "space-y-4",
-            div { class: "flex flex-wrap gap-2", role: "tablist",
+            div { class: TAB_BAR, role: "tablist",
                 for (key, label) in tabs {
                     button {
                         key: "{key}",
@@ -55,6 +54,7 @@ pub fn Ontology(tab: String, type_key: String) -> Element {
                         role: "tab",
                         "data-tab": "{key}",
                         class: if tab == key { TAB_ACTIVE } else { TAB_IDLE },
+                        aria_selected: tab == key,
                         onclick: move |_| {
                             navigator
                                 .push(Route::Ontology {
