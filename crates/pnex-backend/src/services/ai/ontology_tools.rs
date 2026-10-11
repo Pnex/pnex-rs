@@ -74,6 +74,11 @@ fn onto_error(e: OntologyError) -> ToolError {
             "an open link already takes this place: close it first (close_link), then open the new one".into(),
             None,
         ),
+        OntologyError::ClaimUnsourced => coded(
+            c::ONTOLOGY_CLAIM_UNSOURCED,
+            "a claim becomes corroborated only with two pieces of distinct origins linked by sourced_by; never change a claim's status yourself, the user does".into(),
+            None,
+        ),
         OntologyError::Db(e) => internal("using the ontology")(e),
     }
 }

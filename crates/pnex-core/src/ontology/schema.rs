@@ -74,7 +74,15 @@ pub enum PropertyKind {
     Events {
         stream: String,
     },
+    /// An instant known only up to a precision (cases.md K5):
+    /// `{"from": RFC 3339 UTC, "to": RFC 3339 UTC, "precision": …}`.
+    FuzzyTime,
 }
+
+/// Precisions of a `fuzzy_time` value (cases.md K5).
+pub const FUZZY_PRECISIONS: [&str; 8] = [
+    "instant", "minute", "hour", "day", "month", "year", "range", "approx",
+];
 
 impl PropertyKind {
     pub fn is_temporal(&self) -> bool {
@@ -94,6 +102,7 @@ impl PropertyKind {
             Self::Ref { .. } => "ref",
             Self::Series { .. } => "series",
             Self::Events { .. } => "events",
+            Self::FuzzyTime => "fuzzy_time",
         }
     }
 }
@@ -169,6 +178,7 @@ impl<'de> Deserialize<'de> for PropertyDef {
             "events" => PropertyKind::Events {
                 stream: c.stream.ok_or_else(|| missing("stream"))?,
             },
+            "fuzzy_time" => PropertyKind::FuzzyTime,
             other => {
                 return Err(D::Error::unknown_variant(
                     other,
@@ -184,6 +194,7 @@ impl<'de> Deserialize<'de> for PropertyDef {
                         "ref",
                         "series",
                         "events",
+                        "fuzzy_time",
                     ],
                 ))
             }
@@ -322,8 +333,66 @@ fn check_value(d: &PropertyDef, v: &Value) -> Result<Value, String> {
         (PropertyKind::Ref { .. }, Value::String(s)) if uuid::Uuid::parse_str(s).is_ok() => {
             Ok(v.clone())
         }
+        (PropertyKind::FuzzyTime, Value::Object(o)) => check_fuzzy(o).ok_or_else(invalid),
         _ => Err(invalid()),
     }
+}
+
+/// `fuzzy_time`: both bounds RFC 3339 in UTC (`Z`, so that they compare to
+/// the second as text), `from <= to`, `instant` ⇒ `from == to`.
+fn check_fuzzy(o: &Map<String, Value>) -> Option<Value> {
+    let bound = |k: &str| {
+        o.get(k)
+            .and_then(Value::as_str)
+            .filter(|s| valid_date_time(s) && s.ends_with(['Z', 'z']))
+    };
+    let (from, to) = (bound("from")?, bound("to")?);
+    let precision = o.get("precision").and_then(Value::as_str)?;
+    let second = |s: &str| s.get(..19).map(str::to_string);
+    if o.len() != 3 || !FUZZY_PRECISIONS.contains(&precision) || second(from)? > second(to)? {
+        return None;
+    }
+    if precision == "instant" && second(from)? != second(to)? {
+        return None;
+    }
+    Some(Value::Object(o.clone()))
+}
+
+/// Bounds of a `fuzzy_time` entered as one start at a precision: `start` is
+/// `YYYY-MM-DDTHH:MM` (UTC); the bounds cover the whole minute, hour, day,
+/// month or year. `instant` is the start itself. `range` and `approx` take
+/// both bounds from the user: `None` here.
+pub fn fuzzy_bounds(precision: &str, start: &str) -> Option<(String, String)> {
+    let num = |r: std::ops::Range<usize>| start.get(r)?.parse::<u32>().ok();
+    let (y, mo, d, h, mi) = (
+        num(0..4)?,
+        num(5..7)?,
+        num(8..10)?,
+        num(11..13)?,
+        num(14..16)?,
+    );
+    if !valid_date(start.get(..10)?) || h > 23 || mi > 59 {
+        return None;
+    }
+    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let month_days = match mo {
+        2 if leap => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    };
+    let at = |y: u32, mo: u32, d: u32, h: u32, mi: u32, s: u32| {
+        format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z")
+    };
+    Some(match precision {
+        "instant" => (at(y, mo, d, h, mi, 0), at(y, mo, d, h, mi, 0)),
+        "minute" => (at(y, mo, d, h, mi, 0), at(y, mo, d, h, mi, 59)),
+        "hour" => (at(y, mo, d, h, 0, 0), at(y, mo, d, h, 59, 59)),
+        "day" => (at(y, mo, d, 0, 0, 0), at(y, mo, d, 23, 59, 59)),
+        "month" => (at(y, mo, 1, 0, 0, 0), at(y, mo, month_days, 23, 59, 59)),
+        "year" => (at(y, 1, 1, 0, 0, 0), at(y, 12, 31, 23, 59, 59)),
+        _ => return None,
+    })
 }
 
 /// Validates a property document against its definitions and returns the
@@ -445,6 +514,59 @@ mod tests {
             FIELD_INVALID
         );
         assert_eq!(e(json!({"serial": "a", "temperature": 3})).1, FIELD_INVALID);
+    }
+
+    #[test]
+    fn fuzzy_time_values() {
+        let d = vec![def("occurred", PropertyKind::FuzzyTime)];
+        let c = |v: Value| check_values(&d, json!({ "occurred": v }).as_object().unwrap());
+        let ok = json!({"from": "2019-03-01T00:00:00Z", "to": "2019-03-31T23:59:59Z", "precision": "month"});
+        assert_eq!(c(ok.clone()).unwrap()["occurred"], ok);
+        let bad = [
+            json!({"from": "2019-03-31T00:00:00Z", "to": "2019-03-01T00:00:00Z", "precision": "range"}),
+            json!({"from": "2019-03-01T00:00:00Z", "to": "2019-03-01T00:00:01Z", "precision": "instant"}),
+            json!({"from": "2019-03-01T00:00:00+02:00", "to": "2019-03-02T00:00:00Z", "precision": "day"}),
+            json!({"from": "2019-03-01T00:00:00Z", "to": "2019-03-02T00:00:00Z", "precision": "week"}),
+            json!({"from": "2019-03-01T00:00:00Z", "to": "2019-03-02T00:00:00Z", "precision": "day", "x": 1}),
+            json!("2019-03-01"),
+        ];
+        for b in bad {
+            assert_eq!(c(b.clone()).unwrap_err().1, FIELD_INVALID, "{b}");
+        }
+        let v = serde_json::to_value(&d[0]).unwrap();
+        assert_eq!(serde_json::from_value::<PropertyDef>(v).unwrap(), d[0]);
+    }
+
+    #[test]
+    fn fuzzy_bounds_cover_the_precision() {
+        let b = |p: &str| fuzzy_bounds(p, "2024-02-10T21:35").unwrap();
+        assert_eq!(
+            b("instant"),
+            ("2024-02-10T21:35:00Z".into(), "2024-02-10T21:35:00Z".into())
+        );
+        assert_eq!(b("hour").1, "2024-02-10T21:59:59Z");
+        assert_eq!(
+            b("day"),
+            ("2024-02-10T00:00:00Z".into(), "2024-02-10T23:59:59Z".into())
+        );
+        assert_eq!(b("month").1, "2024-02-29T23:59:59Z");
+        assert_eq!(
+            fuzzy_bounds("month", "2023-02-10T00:00").unwrap().1,
+            "2023-02-28T23:59:59Z"
+        );
+        assert_eq!(
+            b("year"),
+            ("2024-01-01T00:00:00Z".into(), "2024-12-31T23:59:59Z".into())
+        );
+        assert_eq!(fuzzy_bounds("range", "2024-02-10T21:35"), None);
+        assert_eq!(fuzzy_bounds("day", "2024-13-10T21:35"), None);
+        // Derived bounds always pass the validation.
+        let d = vec![def("t", PropertyKind::FuzzyTime)];
+        for p in ["instant", "minute", "hour", "day", "month", "year"] {
+            let (from, to) = b(p);
+            let v = json!({"t": {"from": from, "to": to, "precision": p}});
+            assert!(check_values(&d, v.as_object().unwrap()).is_ok(), "{p}");
+        }
     }
 
     #[test]

@@ -649,3 +649,136 @@ async fn cases_members_and_timeline() {
     })
     .await;
 }
+
+/// Opening a case from an event (cases.md K3): window around the event,
+/// the flow that raised it as subject, its neighbours at that instant as
+/// context; ranges scoped on a member join the timeline (K6); a viewer
+/// cannot open a case (R2); another org's flow adds nothing (R1).
+#[tokio::test]
+#[serial]
+async fn case_opened_from_an_event() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let flow = |org: i64, name: &str| format!("INSERT INTO flows (name, status, org_id) VALUES ('{name}', 'draft', {org}) RETURNING id");
+        let row = env.db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, flow(org, "pressure watch"))).await.unwrap().unwrap();
+        let flow_id: i64 = row.try_get("", "id").unwrap();
+        let (st, f) = call(&server, "GET", &format!("/api/v1/ontology/resolve/flow/{flow_id}"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{f}");
+        let d1 = device(&server, &env, org, "p12-sensor").await;
+        let (st, e) = call(&server, "POST", "/api/v1/ontology/link-types", &env.alice, org, Some(json!({"key": "drives", "name": "drives", "from_types": ["flow"], "to_types": ["device"]}))).await;
+        assert_eq!(st, 201, "{e}");
+        let (st, e) = link(&server, &env.alice, org, json!({"link_type": "drives", "source_id": f["id"], "target_id": d1, "valid_from": "2026-10-01T00:00:00Z"})).await;
+        assert_eq!(st, 201, "{e}");
+
+        // Bad inputs.
+        for bad in [
+            json!({"title": "x", "from": {"kind": "rumour", "at": "2026-10-03T10:02:00Z"}}),
+            json!({"title": "x", "from": {"kind": "notification", "at": "yesterday"}}),
+            json!({"title": "x", "from": {"kind": "notification", "at": "2026-10-03T10:02:00Z", "margin_minutes": 0}}),
+            json!({"title": "", "from": {"kind": "notification", "at": "2026-10-03T10:02:00Z"}}),
+        ] {
+            let (st, e) = call(&server, "POST", "/api/v1/cases", &env.alice, org, Some(bad)).await;
+            assert_eq!(st, 400, "{e}");
+        }
+
+        let (st, c) = call(&server, "POST", "/api/v1/cases", &env.alice, org, Some(json!({
+            "title": "Low pressure P-12",
+            "from": {"kind": "notification", "at": "2026-10-03T10:02:00Z", "flow_id": flow_id}
+        }))).await;
+        assert_eq!(st, 201, "{c}");
+        assert!(c["properties"]["window_from"].as_str().unwrap().starts_with("2026-10-03T08:02:00"), "{c}");
+        assert!(c["properties"]["window_to"].as_str().unwrap().starts_with("2026-10-03T12:02:00"), "{c}");
+        let cid = c["id"].as_str().unwrap().to_string();
+
+        // A shift on the sensor, inside the window.
+        let (st, r) = call(&server, "POST", "/api/v1/time-ranges", &env.alice, org, Some(json!({
+            "scope_kind": "object", "scope_id": d1, "label": "Night shift",
+            "planned_start": "2026-10-03T06:00:00Z", "planned_end": "2026-10-03T14:00:00Z"
+        }))).await;
+        assert_eq!(st, 201, "{r}");
+
+        let (st, tl) = call(&server, "POST", &format!("/api/v1/cases/{cid}/timeline"), &env.alice, org, Some(json!({}))).await;
+        assert_eq!(st, 200, "{tl}");
+        let roles: Vec<(String, String)> = tl["members"].as_array().unwrap().iter()
+            .map(|m| (m["source"]["type_key"].as_str().unwrap().to_string(), m["attributes"]["role"].as_str().unwrap().to_string()))
+            .collect();
+        assert!(roles.contains(&("flow".into(), "subject".into())), "{roles:?}");
+        assert!(roles.contains(&("device".into(), "context".into())), "{roles:?}");
+        let range = tl["items"].as_array().unwrap().iter().find(|i| i["kind"] == "range").expect("range item");
+        assert_eq!(range["range"]["label"], "Night shift");
+        assert_eq!(range["lane"].as_str(), Some(d1.as_str()));
+
+        // Another org's flow adds nothing; a viewer cannot open a case.
+        let org_b = personal_org(&server, &env.bob).await;
+        let row = env.db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, flow(org_b, "foreign"))).await.unwrap().unwrap();
+        let foreign: i64 = row.try_get("", "id").unwrap();
+        let (st, c) = call(&server, "POST", "/api/v1/cases", &env.alice, org, Some(json!({
+            "title": "Foreign", "from": {"kind": "event", "at": "2026-10-03T10:02:00Z", "flow_id": foreign}
+        }))).await;
+        assert_eq!(st, 201, "{c}");
+        let (_, tl) = call(&server, "POST", &format!("/api/v1/cases/{}/timeline", c["id"].as_str().unwrap()), &env.alice, org, Some(json!({}))).await;
+        assert_eq!(tl["members"].as_array().unwrap().len(), 0, "{tl}");
+        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
+        assert!(st < 300);
+        let (st, _) = call(&server, "POST", "/api/v1/cases", &env.bob, org, Some(json!({"title": "nope"}))).await;
+        assert_eq!(st, 403);
+    })
+    .await;
+}
+
+/// Investigation pack (cases.md K4, K5, K7): approximate dates are
+/// validated and placed on the case timeline at their precision; a claim
+/// becomes corroborated only with two pieces of distinct origins.
+#[tokio::test]
+#[serial]
+async fn investigation_pack_fuzzy_time_and_claims() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
+        assert!(st < 300, "{p}");
+        let month = json!({"from": "2019-03-01T00:00:00Z", "to": "2019-03-31T23:59:59Z", "precision": "month"});
+        let (st, e) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(json!({
+            "type_key": "event", "title": "Meeting", "properties": {"occurred": {"from": "2019-03-31T00:00:00Z", "to": "2019-03-01T00:00:00Z", "precision": "range"}}
+        }))).await;
+        assert_eq!((st, e["occurred"].as_str()), (400, Some("invalid")), "{e}");
+        let ev = object(&server, &env.alice, org, "event", "Meeting at the port", json!({"occurred": month})).await;
+        let person = object(&server, &env.alice, org, "person", "X", json!({})).await;
+        let (st, l) = link(&server, &env.alice, org, json!({"link_type": "involves", "source_id": ev["id"], "target_id": person["id"], "attributes": {"role": "witness"}})).await;
+        assert_eq!(st, 201, "{l}");
+
+        let case = object(&server, &env.alice, org, "case", "Port affair", json!({"status": "open", "window_from": "2019-01-01T00:00:00Z", "window_to": "2019-12-31T00:00:00Z"})).await;
+        let cid = case["id"].as_str().unwrap();
+        let (st, _) = link(&server, &env.alice, org, json!({"link_type": "in_case", "source_id": ev["id"], "target_id": cid, "attributes": {"role": "subject"}})).await;
+        assert_eq!(st, 201);
+        let (_, tl) = call(&server, "POST", &format!("/api/v1/cases/{cid}/timeline"), &env.alice, org, Some(json!({}))).await;
+        let occ = tl["items"].as_array().unwrap().iter().find(|i| i["kind"] == "occurred").expect("occurred item");
+        assert_eq!(occ["fuzzy"], month);
+        assert_eq!(occ["title"], "Meeting at the port");
+
+        // K7: corroborated needs two pieces of distinct origins.
+        let claim = object(&server, &env.alice, org, "claim", "C1", json!({"statement": "X was at the port", "status": "unverified"})).await;
+        let corroborate = |v: i64| json!({"title": "C1", "properties": {"statement": "X was at the port", "status": "corroborated"}, "expected_version": v});
+        let (st, e) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{}", claim["id"].as_str().unwrap()), &env.alice, org, Some(corroborate(1))).await;
+        assert_eq!((st, e["error"].as_str()), (409, Some("ontology-claim-unsourced")), "{e}");
+        let (st, e) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(json!({"type_key": "claim", "title": "C2", "properties": {"statement": "s", "status": "corroborated"}}))).await;
+        assert_eq!((st, e["error"].as_str()), (409, Some("ontology-claim-unsourced")), "{e}");
+        let mut pieces = Vec::new();
+        for (t, url) in [("article", "https://a.example/1"), ("copy", "https://a.example/1"), ("court record", "https://b.example/2")] {
+            let p = object(&server, &env.alice, org, "piece", t, json!({"source_url": url})).await;
+            pieces.push(p["id"].as_str().unwrap().to_string());
+        }
+        // Two pieces, one origin: still refused.
+        for p in &pieces[..2] {
+            let (st, l) = link(&server, &env.alice, org, json!({"link_type": "sourced_by", "source_id": claim["id"], "target_id": p, "attributes": {"locator": "p. 3"}})).await;
+            assert_eq!(st, 201, "{l}");
+        }
+        let (st, _) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{}", claim["id"].as_str().unwrap()), &env.alice, org, Some(corroborate(1))).await;
+        assert_eq!(st, 409);
+        let (st, _) = link(&server, &env.alice, org, json!({"link_type": "sourced_by", "source_id": claim["id"], "target_id": pieces[2]})).await;
+        assert_eq!(st, 201);
+        let (st, c) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{}", claim["id"].as_str().unwrap()), &env.alice, org, Some(corroborate(1))).await;
+        assert_eq!(st, 200, "{c}");
+        assert_eq!(c["properties"]["status"], "corroborated");
+    })
+    .await;
+}

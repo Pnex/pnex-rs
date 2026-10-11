@@ -9,6 +9,7 @@
 //! Identity rows of system objects are written by database triggers
 //! (migration `m20261011_000002_ontology`); this module never inserts them.
 
+pub mod cases;
 pub mod changes;
 pub mod graph;
 pub mod link_types;
@@ -53,6 +54,9 @@ pub enum OntologyError {
     /// One-to-one / one-to-many violated by an open link.
     #[error("link cardinality")]
     LinkCardinality,
+    /// `corroborated` needs two pieces of distinct origins (cases.md K7).
+    #[error("claim unsourced")]
+    ClaimUnsourced,
     #[error(transparent)]
     Db(#[from] DbErr),
 }

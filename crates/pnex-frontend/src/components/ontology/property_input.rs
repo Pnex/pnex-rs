@@ -56,9 +56,7 @@ pub fn PropertyInput(
     let required = if def.required { " *" } else { "" };
     rsx! {
         div { "data-prop": "{key}",
-            label { class: "block text-xs font-medium text-gray-500 mb-1",
-                "{label}{unit}{required}"
-            }
+            label { class: "block text-xs font-medium text-gray-500 mb-1", "{label}{unit}{required}" }
             PropertyField {
                 def: def.clone(),
                 doc,
@@ -187,6 +185,9 @@ fn PropertyField(
         PropertyKind::Events { stream } => rsx! {
             p { class: "text-xs text-gray-500", {t!("onto-events-bound", stream : stream)} }
         },
+        PropertyKind::FuzzyTime => rsx! {
+            FuzzyField { name: key.clone(), doc, current }
+        },
         kind => {
             let input_type = match kind {
                 PropertyKind::Date => "date",
@@ -209,6 +210,81 @@ fn PropertyField(
                         // datetime-local has no zone: the value is read as UTC.
                         let v = if is_dt && raw.len() == 16 { format!("{raw}:00Z") } else { raw };
                         set(doc, &key, Value::String(v));
+                    },
+                }
+            }
+        }
+    }
+}
+
+/// `fuzzy_time` entry: a precision, then one start (the bounds cover the
+/// precision) or, for a range or an approximation, two bounds. UTC.
+#[component]
+fn FuzzyField(name: String, doc: Signal<Map<String, Value>>, current: Option<Value>) -> Element {
+    let get = |k: &str| {
+        current
+            .as_ref()
+            .and_then(|v| v.get(k))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    let init_p = Some(get("precision")).filter(|p| !p.is_empty());
+    let mut precision = use_signal(move || init_p.unwrap_or_else(|| "day".to_string()));
+    let mut start = use_signal(|| get("from").get(..16).unwrap_or_default().to_string());
+    let mut end = use_signal(|| get("to").get(..16).unwrap_or_default().to_string());
+    let two = matches!(precision().as_str(), "range" | "approx");
+    let apply = move |p: String, a: String, b: String| {
+        let bounds = match p.as_str() {
+            "range" | "approx" if a.len() == 16 && b.len() == 16 => {
+                Some((format!("{a}:00Z"), format!("{b}:00Z")))
+            }
+            _ => pnex_core::ontology::schema::fuzzy_bounds(&p, &a),
+        };
+        let v = match bounds {
+            Some((from, to)) => json!({"from": from, "to": to, "precision": p}),
+            None => Value::Null,
+        };
+        set(doc, &name, v);
+    };
+    let (a1, a2, a3) = (apply.clone(), apply.clone(), apply);
+    rsx! {
+        div { class: "flex flex-wrap gap-2",
+            select {
+                class: "{INPUT} sm:w-40",
+                "data-testid": "fuzzy-precision",
+                onchange: move |e| {
+                    precision.set(e.value());
+                    a1(e.value(), start(), end());
+                },
+                for p in pnex_core::ontology::schema::FUZZY_PRECISIONS {
+                    option {
+                        key: "{p}",
+                        value: "{p}",
+                        selected: p == precision(),
+                        {super::precision_label(p)}
+                    }
+                }
+            }
+            input {
+                r#type: "datetime-local",
+                class: "{INPUT} sm:w-56",
+                "data-testid": "fuzzy-from",
+                value: "{start}",
+                oninput: move |e| {
+                    start.set(e.value());
+                    a2(precision(), e.value(), end());
+                },
+            }
+            if two {
+                input {
+                    r#type: "datetime-local",
+                    class: "{INPUT} sm:w-56",
+                    "data-testid": "fuzzy-to",
+                    value: "{end}",
+                    oninput: move |e| {
+                        end.set(e.value());
+                        a3(precision(), start(), e.value());
                     },
                 }
             }
@@ -283,6 +359,12 @@ pub fn PropertyValue(
             let unit = unit.clone().unwrap_or_default();
             rsx! {
                 span { class: "font-mono", "{n} {unit}" }
+            }
+        }
+        (PropertyKind::FuzzyTime, Value::Object(_)) => {
+            let text = super::fuzzy_label(&v);
+            rsx! {
+                span { class: "font-mono", "{text}" }
             }
         }
         (PropertyKind::Ref { .. }, Value::String(id)) => {

@@ -314,16 +314,51 @@ pub struct TimelineQuery {
 
 /// One dated element of a timeline. `lane` is the member object it belongs
 /// to (the case itself for its own events).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TimelineItem {
     pub at: String,
-    /// `link_open` | `link_close` | `change`.
+    /// `link_open` | `link_close` | `change` | `range` | `notification`.
     pub kind: String,
     pub lane: String,
     #[serde(default)]
     pub link: Option<LinkView>,
     #[serde(default)]
     pub change: Option<ChangeView>,
+    /// A named interval scoped on a member (D182).
+    #[serde(default)]
+    pub range: Option<crate::time_range::TimeRange>,
+    /// A notification sent by a member flow (D86 journal).
+    #[serde(default)]
+    pub notification: Option<crate::notify::NotifyDelivery>,
+    /// `occurred`: a `fuzzy_time` property of a member (cases.md K5), drawn
+    /// as an interval at its precision; `title` is the member's title.
+    #[serde(default)]
+    pub fuzzy: Option<Value>,
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+/// Opening a case (cases.md K3): from scratch, or from a dated event whose
+/// window and first members are filled in.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaseOpenInput {
+    pub title: String,
+    #[serde(default)]
+    pub from: Option<CaseFrom>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaseFrom {
+    /// `notification` | `event`.
+    pub kind: String,
+    /// RFC 3339 instant of the triggering event.
+    pub at: String,
+    /// Flow that raised it: becomes the subject, its linked objects the context.
+    #[serde(default)]
+    pub flow_id: Option<i64>,
+    /// Window half-width around `at`; default 120, at most 7 days.
+    #[serde(default)]
+    pub margin_minutes: Option<i64>,
 }
 
 /// Members (open `in_case` links) and the merged timeline, oldest first.

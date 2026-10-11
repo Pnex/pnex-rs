@@ -5,6 +5,7 @@
 pub mod add_to_case;
 pub mod graph_view;
 pub mod object_link;
+pub mod open_case;
 pub mod property_input;
 
 use dioxus::prelude::*;
@@ -51,6 +52,34 @@ pub fn link_label(def: Option<&LinkTypeDef>, key: &str, inverse: bool) -> String
             };
             i18n().try_translate(&k).unwrap_or_else(|_| key.to_string())
         }
+    }
+}
+
+/// Translated precision of a `fuzzy_time` (`fuzzy-precision-<p>`).
+pub fn precision_label(p: &str) -> String {
+    i18n()
+        .try_translate(&format!("fuzzy-precision-{p}"))
+        .unwrap_or_else(|_| p.to_string())
+}
+
+/// A `fuzzy_time` value read at its precision: `2019-03` for a month,
+/// `≈ a → b` for an approximation (UTC).
+pub fn fuzzy_label(v: &serde_json::Value) -> String {
+    let get = |k: &str| {
+        v.get(k)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+    };
+    let (from, to, p) = (get("from"), get("to"), get("precision"));
+    let cut = |s: &str, n: usize| s.get(..n).unwrap_or(s).replace('T', " ");
+    match p {
+        "year" => cut(from, 4),
+        "month" => cut(from, 7),
+        "day" => cut(from, 10),
+        "hour" => format!("{} h", cut(from, 13)),
+        "minute" | "instant" => cut(from, 16),
+        "approx" => format!("≈ {} → {}", cut(from, 16), cut(to, 16)),
+        _ => format!("{} → {}", cut(from, 16), cut(to, 16)),
     }
 }
 

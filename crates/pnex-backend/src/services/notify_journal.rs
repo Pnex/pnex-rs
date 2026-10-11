@@ -291,6 +291,50 @@ pub async fn search(
     Ok(Some((total.max(q.offset + rows.len() as i64), rows)))
 }
 
+/// Deliveries raised by some flows between two instants (µs), newest
+/// first — the notification source of case timelines (cases.md K6).
+/// `None` = O2 not configured or org never provisioned.
+pub async fn for_flows(
+    ctx: &AppContext,
+    org_id: i64,
+    flow_ids: &[i64],
+    start_us: i64,
+    end_us: i64,
+    limit: i64,
+) -> std::result::Result<Option<Vec<NotifyDelivery>>, String> {
+    let Some(client) = client(ctx) else {
+        return Ok(None);
+    };
+    let Some(creds) = provisioned_credentials(&ctx.db, org_id).await? else {
+        return Ok(None);
+    };
+    if flow_ids.is_empty() {
+        return Ok(Some(Vec::new()));
+    }
+    // Integers only: nothing to escape.
+    let ids: Vec<String> = flow_ids.iter().map(i64::to_string).collect();
+    let sql = format!(
+        "SELECT * FROM \"{NOTIFY_DELIVERY_STREAM}\" WHERE flow_id IN ({}) ORDER BY _timestamp DESC",
+        ids.join(", ")
+    );
+    match client
+        .search_logs(
+            &creds.o2_org,
+            &sql,
+            start_us,
+            end_us,
+            0,
+            limit,
+            &creds.email_passcode,
+        )
+        .await
+    {
+        Ok(page) => Ok(Some(page.hits.iter().map(delivery_of).collect())),
+        Err(e) if is_missing_stream(&e) => Ok(Some(Vec::new())),
+        Err(e) => Err(e),
+    }
+}
+
 /// `channel_id → (status, RFC 3339 of the attempt)` over the default
 /// window. Best effort: any O2 trouble reads as "no badge".
 pub async fn last_status_by_channel(

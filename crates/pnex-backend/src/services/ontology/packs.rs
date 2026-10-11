@@ -18,7 +18,10 @@ use crate::models::_entities::packs;
 /// YAML documents are bounded before parsing.
 pub const YAML_MAX_BYTES: usize = 256 * 1024;
 
-const SHIPPED: &[&str] = &[include_str!("../../../packs/maintenance.yaml")];
+const SHIPPED: &[&str] = &[
+    include_str!("../../../packs/maintenance.yaml"),
+    include_str!("../../../packs/investigation.yaml"),
+];
 
 pub fn shipped() -> Vec<Pack> {
     SHIPPED

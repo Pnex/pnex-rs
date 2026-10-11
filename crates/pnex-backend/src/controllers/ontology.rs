@@ -117,6 +117,11 @@ pub(crate) fn onto_error(e: OntologyError) -> Result<Response> {
             err_codes::ONTOLOGY_LINK_CARDINALITY,
             "An open link already takes this place; close it first.",
         ),
+        OntologyError::ClaimUnsourced => coded(
+            StatusCode::CONFLICT,
+            err_codes::ONTOLOGY_CLAIM_UNSOURCED,
+            "A claim is corroborated only with two pieces of distinct origins.",
+        ),
         OntologyError::Db(e) => {
             tracing::error!(error = %e, "ontology database error");
             Err(Error::InternalServerError)
@@ -150,7 +155,7 @@ fn require_admin(org: &OrgContext) -> Result<()> {
     ))
 }
 
-fn require_write(org: &OrgContext) -> Result<()> {
+pub(crate) fn require_write(org: &OrgContext) -> Result<()> {
     if org.can_write() {
         return Ok(());
     }
@@ -162,7 +167,7 @@ fn require_write(org: &OrgContext) -> Result<()> {
     ))
 }
 
-fn actor(org: &OrgContext) -> Actor {
+pub(crate) fn actor(org: &OrgContext) -> Actor {
     Actor::manual(org.auth.user.id, org.role.clone())
 }
 
