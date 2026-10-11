@@ -137,6 +137,26 @@ export async function sweep(api: Api, prefix: string): Promise<void> {
       for (const it of items) await api.delete(`${path}/${it.id}`).catch(() => {});
     }
   }
+  // Ontology objects of earlier runs: archived (DELETE), which drops them
+  // from queries and pickers. Mirrors of native resources (`system`) follow
+  // their resource. Pages of 500, until none is left.
+  if (!prefix) {
+    for (let round = 0; round < 20; round++) {
+      const res = await api
+        .post<{ rows: { object: { id: string; title: string; system: boolean } }[] }>('/ontology/query', {
+          text: 'e2e-',
+          limit: 500,
+        })
+        .catch(() => ({ rows: [] }));
+      const doomed = res.rows.map((r) => r.object).filter((o) => o.title.startsWith('e2e-') && !o.system);
+      if (doomed.length === 0) break;
+      let archived = 0;
+      for (const o of doomed) {
+        if (await api.delete(`/ontology/objects/${o.id}`).then(() => true, () => false)) archived++;
+      }
+      if (archived === 0) break;
+    }
+  }
   // Geo providers: a plain array (bounded per org), not a paginated list.
   const geo = await api.get<{ id: string; name: string }[]>('/geo/providers').catch(() => []);
   for (const p of geo.filter((g) => g.name.startsWith(prefix))) {

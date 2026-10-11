@@ -32,7 +32,14 @@ export default defineConfig({
     video: 'off',
     launchOptions: {
       // Software WebGL (maplibre, viewers) on headless boxes without a GPU.
-      args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+      args: [
+        '--use-gl=angle',
+        '--use-angle=swiftshader',
+        '--enable-unsafe-swiftshader',
+        // A UI served from PNEX_E2E_DIST has no address: Chrome would block its
+        // websockets to a LAN server as public → private requests.
+        ...(process.env.PNEX_E2E_DIST ? ['--disable-features=LocalNetworkAccessChecks'] : []),
+      ],
     },
   },
   projects: [

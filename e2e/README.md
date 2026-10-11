@@ -27,6 +27,7 @@ cd e2e && bun run report         # HTML report of the last run (traces on failur
 | `PNEX_E2E_KEEP=1` | skip the start-of-run sweep (keep what the last run left) |
 | `PNEX_E2E_WORKERS` | `2` |
 | `PNEX_E2E_DPR` | `2` (device scale factor; `1` = faster runs) |
+| `PNEX_E2E_DIST` | unset — a local web build (`target/dx/pnex-frontend/release/web/public`) served instead of the server UI; API and auth stay on the server. Tests a front change without a new image |
 | `PNEX_E2E_BASEMAP_URL` / `PNEX_E2E_BASEMAP_DARK_URL` | `https://map.alpine-box.com/style/light-en` / `…/dark-en` (public MapLibre styles used as test basemaps) |
 | `PNEX_E2E_GEO_BASE` | unset — root of a live Photon + GraphHopper (`<root>/photon`, `<root>/graphhopper`); `@geo-live` tests are skipped without it. Holds a secret path segment: CI secret, never committed |
 

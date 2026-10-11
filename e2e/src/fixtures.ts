@@ -1,12 +1,13 @@
 // Playwright fixtures shared by every spec (and by external runners that
 // import this package): an authenticated page in the test org, an API
 // client scoped to it, a unique name prefix, and `capture()`.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import path from 'node:path';
 import { test as base, expect } from '@playwright/test';
 import { Api } from './api.ts';
 import { passwordGrant, storageEntries, type Tokens } from './auth.ts';
 import { Capturer, type CaptureOptions } from './capture.ts';
-import { FIXED_PREFIX, PREFIX, STATE_FILE } from './env.ts';
+import { BASE_URL, DIST, FIXED_PREFIX, PREFIX, STATE_FILE } from './env.ts';
 import { t as tr, tRe } from './i18n.ts';
 import { AppShell } from './pages/shell.ts';
 
@@ -89,6 +90,16 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   },
 
   page: async ({ page, authenticated, tokens, runState, uiLocale }, use) => {
+    if (DIST) {
+      // The UI comes from a local build, the API and auth from the server.
+      await page.route(`${BASE_URL}/**`, async (route) => {
+        const { pathname } = new URL(route.request().url());
+        if (/^\/(api|auth|ws|health)(\/|$)/.test(pathname)) return route.continue();
+        const file = path.join(DIST, pathname);
+        const isFile = existsSync(file) && statSync(file).isFile();
+        return route.fulfill({ path: isFile ? file : path.join(DIST, 'index.html') });
+      });
+    }
     if (authenticated) {
       // Set once: later navigations must keep tokens the app refreshed itself.
       await page.addInitScript((entries: Record<string, string>) => {
