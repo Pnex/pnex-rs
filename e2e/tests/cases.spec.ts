@@ -35,9 +35,10 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
       properties: { code: 'L2' },
     });
 
-    // One line + Enter opens the case and lands in its workspace.
+    // New case: the header button opens the title dialog, Enter opens the case.
     await app.goto('/cases');
-    await capture('cases-list', { caption: 'Cases: open one from a single line' });
+    await capture('cases-list', { caption: 'Cases: the list and its New case button' });
+    await page.getByRole('button', { name: app.t('cases-new'), exact: true }).click();
     await page.getByTestId('case-new-title').fill(`${prefix} ${run} low pressure`);
     await page.getByTestId('case-new-title').press('Enter');
     await expect(page).toHaveURL(/\/cases\/[0-9a-f-]{36}/);
