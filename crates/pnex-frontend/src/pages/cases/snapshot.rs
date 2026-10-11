@@ -184,11 +184,12 @@ fn CaseMap(places: Vec<CasePlace>) -> Element {
         let (center, zoom) = frame(&places);
         spawn(async move {
             let maps = api::geo::basemaps().await.unwrap_or_default();
-            let style_url = crate::pages::map::pick_basemap(&maps)
-                .map(|b| b.style_url.clone())
-                .unwrap_or_default();
+            let chosen = crate::pages::map::pick_basemap(&maps);
+            let style_url = chosen.map(|b| b.style_url.clone()).unwrap_or_default();
+            let style_url_dark = chosen.and_then(|b| b.style_url_dark.clone());
             let opts = MapOpts {
                 style_url,
+                style_url_dark,
                 center,
                 zoom,
                 items: Vec::new(),

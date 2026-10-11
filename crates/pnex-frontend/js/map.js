@@ -156,12 +156,14 @@ maplibreGl.setWorkerUrl(
       if (!webglAvailable()) { setErr(host, 'webgl'); return false; }
       try {
         api.unmount(hostId);
+        // The dark variant of the basemap follows the app theme (data-theme).
+        var dark = document.documentElement.getAttribute('data-theme') === 'dark';
         var map = new ml.Map({
           container: host,
           // No basemap configured (L26): plain background, POIs still usable.
-          style: opts.styleUrl || {
+          style: (dark && opts.styleUrlDark) || opts.styleUrl || {
             version: 8, sources: {},
-            layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#e9ecef' } }],
+            layers: [{ id: 'bg', type: 'background', paint: { 'background-color': dark ? '#0f161d' : '#e9ecef' } }],
           },
           center: opts.center || [2.35, 48.85],
           zoom: typeof opts.zoom === 'number' ? opts.zoom : 4,
