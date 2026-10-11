@@ -782,3 +782,70 @@ async fn investigation_pack_fuzzy_time_and_claims() {
     })
     .await;
 }
+
+/// Concluding a case (cases.md K8, K12, K16): the board puts claims for and
+/// against each hypothesis and flags unsourced and contradicted claims;
+/// the export re-reads the case at its freeze instant, counts persons,
+/// lists pieces; another org reads nothing (R1).
+#[tokio::test]
+#[serial]
+async fn case_board_freeze_and_export() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
+        assert!(st < 300, "{p}");
+        let case = object(&server, &env.alice, org, "case", "Leak", json!({"status": "open", "legal_basis": "legitimate interest"})).await;
+        let cid = case["id"].as_str().unwrap().to_string();
+        let h = object(&server, &env.alice, org, "hypothesis", "Seal worn", json!({"statement": "The seal wore out", "status": "open"})).await;
+        let c1 = object(&server, &env.alice, org, "claim", "Seal changed late", json!({"statement": "s1", "status": "unverified"})).await;
+        let c2 = object(&server, &env.alice, org, "claim", "Seal changed on time", json!({"statement": "s2", "status": "unverified"})).await;
+        let piece = object(&server, &env.alice, org, "piece", "Work order", json!({"sha256": "ab".repeat(32)})).await;
+        let person = object(&server, &env.alice, org, "person", "Technician", json!({})).await;
+        let mut person_link = 0;
+        for (o, role) in [(&h, "hypothesis"), (&c1, "evidence"), (&c2, "evidence"), (&piece, "evidence"), (&person, "actor")] {
+            let (st, l) = link(&server, &env.alice, org, json!({"link_type": "in_case", "source_id": o["id"], "target_id": cid, "attributes": {"role": role}})).await;
+            assert_eq!(st, 201, "{l}");
+            person_link = l["id"].as_i64().unwrap();
+        }
+        for (t, s, d) in [("supports", &c1, &h), ("contradicts", &c2, &c1), ("sourced_by", &c2, &piece)] {
+            let (st, l) = link(&server, &env.alice, org, json!({"link_type": t, "source_id": s["id"], "target_id": d["id"]})).await;
+            assert_eq!(st, 201, "{l}");
+        }
+
+        let (st, b) = call(&server, "GET", &format!("/api/v1/cases/{cid}/board"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{b}");
+        assert_eq!(b["hypotheses"][0]["supports"][0]["claim"]["title"], "Seal changed late", "{b}");
+        assert_eq!(b["hypotheses"][0]["status"], "open");
+        let titles = |k: &str| b[k].as_array().unwrap().iter().map(|c| c["claim"]["title"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!(titles("unsourced"), vec!["Seal changed late"]);
+        assert_eq!(titles("contradicted"), vec!["Seal changed late"]);
+
+        // Freeze, then the technician leaves the case: the export at the
+        // freeze still has them, the export now does not.
+        let frozen = chrono::Utc::now().to_rfc3339();
+        let (st, c) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{cid}"), &env.alice, org, Some(json!({
+            "title": "Leak", "properties": {"status": "concluded", "legal_basis": "legitimate interest", "frozen_at": frozen}, "expected_version": 1
+        }))).await;
+        assert_eq!(st, 200, "{c}");
+        let (st, _) = call(&server, "POST", &format!("/api/v1/ontology/links/{person_link}/close"), &env.alice, org, Some(json!({}))).await;
+        assert_eq!(st, 200);
+        let (st, x) = call(&server, "POST", &format!("/api/v1/cases/{cid}/export"), &env.alice, org, Some(json!({}))).await;
+        assert_eq!(st, 200, "{x}");
+        assert_eq!((x["persons"].as_u64(), x["members"].as_array().unwrap().len()), (Some(1), 5), "{x}");
+        assert_eq!(x["pieces"][0]["sha256"], "ab".repeat(32));
+        assert_eq!(x["links"].as_array().unwrap().len(), 3, "{x}");
+        assert_eq!(x["case"]["properties"]["legal_basis"], "legitimate interest");
+        let now = chrono::Utc::now().to_rfc3339();
+        let (_, x) = call(&server, "POST", &format!("/api/v1/cases/{cid}/export"), &env.alice, org, Some(json!({"as_of": now}))).await;
+        assert_eq!(x["persons"].as_u64(), Some(0), "{x}");
+        let (st, _) = call(&server, "POST", &format!("/api/v1/cases/{cid}/export"), &env.alice, org, Some(json!({"as_of": "yesterday"}))).await;
+        assert_eq!(st, 400);
+
+        let org_b = personal_org(&server, &env.bob).await;
+        let (st, _) = call(&server, "GET", &format!("/api/v1/cases/{cid}/board"), &env.bob, org_b, None).await;
+        assert_eq!(st, 404);
+        let (st, _) = call(&server, "POST", &format!("/api/v1/cases/{cid}/export"), &env.bob, org_b, Some(json!({}))).await;
+        assert_eq!(st, 404);
+    })
+    .await;
+}

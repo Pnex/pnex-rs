@@ -5,8 +5,8 @@ kind: feature
 pages: /cases, /cases/:id, /events
 nodes:
 err_codes: ontology-not-found, ontology-version-conflict, ontology-link-not-allowed, ontology-already-exists, ontology-write-forbidden
-tools: case_timeline, query_ontology, get_object, create_object, update_object, open_link, close_link
-tags: case, cases, dossier, dossier d'enquête, enquête, investigation, incident, rca, root cause, cause racine, timeline, chronologie, members, membres, evidence, preuve, hypothesis, hypothèse, actor, acteur, who, when, what happened, que s'est-il passé
+tools: case_timeline, case_board, query_ontology, get_object, create_object, update_object, open_link, close_link
+tags: case, cases, dossier, dossier d'enquête, enquête, investigation, incident, rca, root cause, cause racine, timeline, chronologie, members, membres, evidence, preuve, hypothesis, hypothèse, claim, affirmation, source, freeze, gel, export, rgpd, gdpr, legal basis, actor, acteur, who, when, what happened, que s'est-il passé
 ---
 A **case** (sidebar › Cases) gathers everything that matters for one question to resolve — an incident, an investigation, a story — without copying anything: devices, media, sites, pages, flows or any ontology object become **members** of the case, and the case shows them on one timeline.
 
@@ -17,6 +17,10 @@ A **case** (sidebar › Cases) gathers everything that matters for one question 
 - **Link two members**: choose *From*, the link type, *To*, and optionally *Valid from* to date the link in the past (for example "sensor C88 measures pump P-12 since March 2"). Only link types that admit both objects are offered.
 - **Open a case from an event**: in Events or in a notification channel's journal, expand a row and click **Open a case**: the case opens with a window of 2 hours before and after the event, the flow that raised it as subject and the objects linked to that flow as context.
 - **Timeline**: every link opened or closed and every change of the members, the ranges (shifts, broadcasts…) set on a member, and the notifications sent by a member flow, oldest first, grouped by day, within the case window or the last 24 h / 7 d / 30 d / 1 year. Click a member to see only its own timeline.
+- **Hypotheses and claims** (with the Investigation pack): each hypothesis member with the claims that support it (*For*) and contradict it (*Against*), their status and number of sources; below, the member claims *Without a source* and those *Contradicted* by another claim. There is no score: you weigh and conclude. Click an entry to focus the timeline on it.
+- **Processing basis**: when the case names people, write the basis you process their data on (legitimate interest, journalism, public task, consent…).
+- **Freeze the current state**: records the instant; the export then re-reads the case as it stood then (members and the links between them), even if members leave afterwards. **Unfreeze** clears it. A freeze is not a legally binding chain of custody.
+- **Export**: downloads one JSON file: the case, its members, the links between them, the timeline, the hypotheses board and the pieces manifest (source URL, SHA-256). A warning shows when the case contains persons: the file holds personal data.
 - From any device, media or site page, or any object page: **Add to a case**.
 
 ## Good to know
@@ -25,4 +29,4 @@ A **case** (sidebar › Cases) gathers everything that matters for one question 
 - If someone saved the case while you were editing, saving answers *ontology-version-conflict*: reload and redo your change.
 - "No link type connects these two objects": create one in Ontology › Schema, or install a pack.
 - If the change journal is unavailable, the timeline still shows the links.
-- Ask the assistant about a case ("summarize the timeline between 9:00 and 11:00", "what changed on P-12 in the 24 hours before the alert?"): it reads the case's members and timeline. It never adds or removes a member, nor changes a claim's status.
+- Ask the assistant about a case ("summarize the timeline between 9:00 and 11:00", "what changed on P-12 in the 24 hours before the alert?"): it reads the case's members, timeline and hypotheses board ("which claims have no source?"). It never adds or removes a member, nor changes a claim's status.

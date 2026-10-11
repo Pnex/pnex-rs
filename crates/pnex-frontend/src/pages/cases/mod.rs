@@ -16,11 +16,12 @@ use crate::api;
 use crate::app::Route;
 use crate::components::crud::layout::ListLayout;
 use crate::components::ontology::short_time;
+use crate::components::ui::BTN_PRIMARY;
 use crate::state::{org, toasts};
 
 pub use workspace::CaseWorkspace;
 
-const CHIP_ON: &str = "px-3 py-1 text-sm rounded-full bg-blue-600 text-white";
+const CHIP_ON: &str = "px-3 py-1 text-sm rounded-full bg-ink text-white";
 const CHIP_OFF: &str =
     "px-3 py-1 text-sm rounded-full bg-white border border-gray-300 text-gray-700 hover:bg-gray-50";
 
@@ -140,7 +141,7 @@ pub fn Cases() -> Element {
                         }
                         button {
                             r#type: "submit",
-                            class: "px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50",
+                            class: BTN_PRIMARY,
                             disabled: busy() || draft().trim().is_empty(),
                             {t!("case-new")}
                         }

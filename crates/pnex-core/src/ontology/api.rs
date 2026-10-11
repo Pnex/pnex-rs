@@ -373,3 +373,76 @@ pub struct CaseTimeline {
     /// True when a source hit its cap: narrow the window.
     pub truncated: bool,
 }
+
+/// A claim as the hypotheses board shows it (cases.md K8).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BoardClaim {
+    pub claim: ObjectRef,
+    #[serde(default)]
+    pub status: Option<String>,
+    /// Open `sourced_by` links of the claim.
+    pub sources: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BoardHypothesis {
+    pub hypothesis: ObjectRef,
+    #[serde(default)]
+    pub status: Option<String>,
+    pub supports: Vec<BoardClaim>,
+    pub contradicts: Vec<BoardClaim>,
+}
+
+/// Hypotheses with the claims for and against them, plus the member claims
+/// that need attention: no source, or contradicted by another claim. No
+/// score: the human concludes (K8).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaseBoard {
+    pub hypotheses: Vec<BoardHypothesis>,
+    pub unsourced: Vec<BoardClaim>,
+    pub contradicted: Vec<BoardClaim>,
+}
+
+/// Export request (cases.md K12): the case as it stood at `as_of`
+/// (RFC 3339), default its freeze instant, else now.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaseExportQuery {
+    #[serde(default)]
+    pub as_of: Option<String>,
+}
+
+/// One member at the export instant: its `in_case` link and the object.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExportMember {
+    pub link: LinkView,
+    pub object: ObjectView,
+}
+
+/// Integrity line of a `piece` member (K12).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct PieceEntry {
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub source_url: Option<String>,
+    #[serde(default)]
+    pub sha256: Option<String>,
+    #[serde(default)]
+    pub captured_at: Option<String>,
+}
+
+/// A whole case in one document: members, the links between them, the
+/// timeline, the board and the pieces manifest, all read at `as_of`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CaseExport {
+    pub exported_at: String,
+    pub as_of: String,
+    pub case: ObjectView,
+    pub members: Vec<ExportMember>,
+    pub links: Vec<LinkView>,
+    pub timeline: CaseTimeline,
+    pub board: CaseBoard,
+    pub pieces: Vec<PieceEntry>,
+    /// Members of type `person`: the UI warns before handing it out (K16).
+    pub persons: usize,
+}

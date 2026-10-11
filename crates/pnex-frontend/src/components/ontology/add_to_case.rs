@@ -13,11 +13,8 @@ use serde_json::{Map, Value};
 use crate::api;
 use crate::components::crud::form::FormDialog;
 use crate::components::icons;
+use crate::components::ui::{BTN_SECONDARY_SM as BTN, FIELD_LABEL as LABEL, INPUT};
 use crate::state::toasts;
-
-const BTN: &str = "inline-flex items-center gap-1 px-3 py-1 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50";
-const INPUT: &str = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white";
-const LABEL: &str = "block text-xs font-medium text-gray-500 mb-1";
 
 /// Translated role of a member (`case-role-<role>`, else the raw value).
 pub fn role_label(role: &str) -> String {

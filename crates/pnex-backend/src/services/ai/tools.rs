@@ -410,6 +410,11 @@ pub fn tool_specs() -> Vec<ToolSpec> {
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"case_id":{"type":"string"},"from":{"type":"string"},"to":{"type":"string"}},"required":["case_id"]}"#).expect("static schema"),
         },
         ToolSpec {
+            name: "case_board",
+            description: "The hypotheses board of an investigation case: each hypothesis member with the claims that support or contradict it (status, number of sources), the member claims without any source, and those contradicted by another claim. No score: present the balance, the user concludes. Read-only: never change a hypothesis' or claim's status.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"case_id":{"type":"string"}},"required":["case_id"]}"#).expect("static schema"),
+        },
+        ToolSpec {
             name: "create_object",
             description: "Creates an object of an organization type (not a system type: devices, media… are created from their own pages). properties must follow the type's schema (describe_ontology); series and events properties hold no value.",
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"type_key":{"type":"string"},"title":{"type":"string"},"properties":{"type":"object"}},"required":["type_key","title"]}"#).expect("static schema"),
@@ -584,6 +589,7 @@ pub async fn execute(
         "query_ontology" => super::ontology_tools::query_ontology(deps, args).await,
         "get_object" => super::ontology_tools::get_object(deps, args).await,
         "case_timeline" => super::ontology_tools::case_timeline(deps, args).await,
+        "case_board" => super::ontology_tools::case_board(deps, args).await,
         "create_object" => super::ontology_tools::create_object(deps, args).await,
         "update_object" => super::ontology_tools::update_object(deps, args).await,
         "open_link" => super::ontology_tools::open_link(deps, args).await,
@@ -989,6 +995,14 @@ pub fn summarize(name: &str, out: &ToolOutcome) -> TraceSummary {
                 "ai-trace-case-timeline",
                 json!({"members": m, "count": n}),
                 format!("case: {m} member(s), {n} event(s)"),
+            )
+        }
+        "case_board" => {
+            let (h, u) = (count(&v["hypotheses"]), count(&v["unsourced"]));
+            s(
+                "ai-trace-case-board",
+                json!({"hypotheses": h, "unsourced": u}),
+                format!("board: {h} hypothesis(es), {u} unsourced claim(s)"),
             )
         }
         "create_object" | "update_object" => {
@@ -1583,6 +1597,7 @@ mod tests {
                 "query_ontology",
                 "get_object",
                 "case_timeline",
+                "case_board",
                 "create_object",
                 "update_object",
                 "open_link",
