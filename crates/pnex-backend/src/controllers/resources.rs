@@ -245,6 +245,32 @@ async fn labels_batch(
     format::json(serde_json::json!({ "labels": labels }))
 }
 
+/// One label name of the org with its known values (picker suggestions).
+#[derive(Serialize)]
+struct LabelCatalogEntry {
+    name: String,
+    values: Vec<String>,
+    /// Resources carrying this name.
+    count: i64,
+}
+
+/// `GET /resources/labels/catalog` — label names and values already used in
+/// the org, for the label picker (read-only, any member, org from the
+/// principal, R1).
+async fn labels_catalog(ctx: State<AppContext>, org: OrgContext) -> Result<Response> {
+    let entries = svc::labels::catalog(&ctx.db, org.org.id)
+        .await
+        .map_err(|_| Error::InternalServerError)?
+        .into_iter()
+        .map(|(name, values, count)| LabelCatalogEntry {
+            name,
+            values,
+            count,
+        })
+        .collect::<Vec<_>>();
+    format::json(serde_json::json!({ "labels": entries }))
+}
+
 // ─────────────────────────── location ───────────────────────────
 
 /// `GET /resources/{kind}/{id}/location` — site breadcrumb(s) of a
@@ -836,6 +862,7 @@ pub fn routes() -> Routes {
         .prefix("/api/v1/resources")
         // Statiques avant paramétriques (matchit — école pois).
         .add("/labels/batch", post(labels_batch))
+        .add("/labels/catalog", get(labels_catalog))
         .add("/edges", get(list_edges).post(create_edge))
         .add(
             "/edges/{id}",
