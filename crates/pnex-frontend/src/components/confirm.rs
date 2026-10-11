@@ -22,6 +22,13 @@ pub fn ConfirmDialog(
                 aria_modal: "true",
                 aria_label: "{title}",
                 onclick: move |event| event.stop_propagation(),
+                onkeydown: move |event| {
+                    if event.key() == Key::Escape {
+                        // Only the innermost dialog closes.
+                        event.stop_propagation();
+                        on_cancel.call(());
+                    }
+                },
                 div { class: "space-y-3 p-6",
                     h3 { class: "text-xl font-semibold text-ink", "{title}" }
                     p { class: "text-sm text-slate", {message} }
@@ -30,6 +37,10 @@ pub fn ConfirmDialog(
                     button {
                         class: crate::components::ui::BTN_SECONDARY,
                         r#type: "button",
+                        // Focus on the safe answer: Escape and Enter both cancel.
+                        onmounted: move |e| async move {
+                            let _ = e.set_focus(true).await;
+                        },
                         onclick: move |_| on_cancel.call(()),
                         {t!("common-cancel")}
                     }
