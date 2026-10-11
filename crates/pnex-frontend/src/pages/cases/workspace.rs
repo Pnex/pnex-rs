@@ -7,12 +7,12 @@ use std::collections::BTreeMap;
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::ontology::api::{
-    CaseTimeline, LinkClose, LinkInput, LinkTypeView, LinkView, ObjectInput, ObjectTypeView,
-    ObjectView, OntologyQuery, TimelineItem, TimelineQuery,
+    BoardClaim, CaseBoard, CaseExportQuery, CaseTimeline, LinkClose, LinkInput, LinkTypeView,
+    LinkView, ObjectInput, ObjectTypeView, ObjectView, OntologyQuery, TimelineItem, TimelineQuery,
 };
 use pnex_core::ontology::{
-    CASE_QUESTION, CASE_STATUS, CASE_STATUSES, CASE_WINDOW_FROM, CASE_WINDOW_TO, IN_CASE_ROLE,
-    IN_CASE_ROLES, REL_IN_CASE,
+    CASE_FROZEN_AT, CASE_LEGAL_BASIS, CASE_QUESTION, CASE_STATUS, CASE_STATUSES, CASE_WINDOW_FROM,
+    CASE_WINDOW_TO, IN_CASE_ROLE, IN_CASE_ROLES, REL_IN_CASE,
 };
 use serde_json::Value;
 
@@ -24,12 +24,11 @@ use crate::components::ontology::add_to_case::role_label;
 use crate::components::ontology::{
     fuzzy_label, link_label, precision_label, short_time, type_label_of,
 };
+use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY_SM, FIELD_LABEL as LABEL, INPUT};
 use crate::state::{org, toasts};
 
-const INPUT: &str = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white";
-const LABEL: &str = "block text-xs font-medium text-gray-500 mb-1";
 const CARD: &str = "bg-white rounded-lg border border-gray-200 p-4 space-y-3";
-const CHIP_ON: &str = "px-2.5 py-1 text-xs rounded-full bg-blue-600 text-white";
+const CHIP_ON: &str = "px-2.5 py-1 text-xs rounded-full bg-ink text-white";
 const CHIP_OFF: &str = "px-2.5 py-1 text-xs rounded-full bg-white border border-gray-300 text-gray-700 hover:bg-gray-50";
 const DEBOUNCE_MS: u64 = 200;
 /// Lane colours, assigned by member order.
@@ -93,6 +92,14 @@ pub fn CaseWorkspace(id: String) -> Element {
             api::ontology::case_timeline(&id, &q).await
         }
     });
+    let bid = id.clone();
+    let board = use_resource(move || {
+        let id = bid.clone();
+        async move {
+            let _ = reload();
+            api::ontology::case_board(&id).await.ok()
+        }
+    });
     let types = use_resource(|| async { api::ontology::types().await.unwrap_or_default() });
     let link_types =
         use_resource(|| async { api::ontology::link_types().await.unwrap_or_default() });
@@ -121,6 +128,11 @@ pub fn CaseWorkspace(id: String) -> Element {
     let archived = c.valid_to.is_some();
     let editable = can_write && !archived;
     let changed = move |_| reload.with_mut(|r| *r += 1);
+    let persons = members
+        .iter()
+        .filter(|m| m.source.type_key == "person")
+        .count();
+    let board = board.read().clone().flatten().unwrap_or_default();
 
     rsx! {
         ListLayout {
@@ -140,7 +152,12 @@ pub fn CaseWorkspace(id: String) -> Element {
                 }
             },
             div { class: "space-y-4",
-                CaseHeader { case: c.clone(), editable, on_saved: changed }
+                CaseHeader {
+                    case: c.clone(),
+                    editable,
+                    persons,
+                    on_saved: changed,
+                }
                 div { class: "grid gap-4 lg:grid-cols-[minmax(300px,380px)_1fr]",
                     div { class: "space-y-4",
                         MembersPanel {
@@ -160,6 +177,11 @@ pub fn CaseWorkspace(id: String) -> Element {
                                 on_created: changed,
                             }
                         }
+                        if !board.hypotheses.is_empty() || !board.unsourced.is_empty()
+                            || !board.contradicted.is_empty()
+                        {
+                            BoardPanel { board: board.clone(), focus }
+                        }
                         TimelinePanel {
                             timeline: tl.clone(),
                             loading: timeline.read().is_none(),
@@ -178,10 +200,11 @@ pub fn CaseWorkspace(id: String) -> Element {
 
 /// Title, status, question and window, each saved when it is left.
 #[component]
-fn CaseHeader(case: ObjectView, editable: bool, on_saved: Callback<()>) -> Element {
+fn CaseHeader(case: ObjectView, editable: bool, persons: usize, on_saved: Callback<()>) -> Element {
     let c = case.clone();
     let mut title = use_signal(|| c.title.clone());
     let mut question = use_signal(|| prop_str(&c, CASE_QUESTION));
+    let mut basis = use_signal(|| prop_str(&c, CASE_LEGAL_BASIS));
     let mut busy = use_signal(|| false);
     // Saves `title` + properties with one property replaced, on the version read.
     let save = use_callback(move |(key, value): (Option<String>, Value)| {
@@ -223,6 +246,23 @@ fn CaseHeader(case: ObjectView, editable: bool, on_saved: Callback<()>) -> Eleme
     };
     let orig_title = c.title.clone();
     let orig_question = prop_str(&c, CASE_QUESTION);
+    let orig_basis = prop_str(&c, CASE_LEGAL_BASIS);
+    let frozen = prop_str(&c, CASE_FROZEN_AT);
+    let export_id = c.id.clone();
+    let export = move |_| {
+        let id = export_id.clone();
+        spawn(async move {
+            match api::ontology::case_export(&id, &CaseExportQuery::default()).await {
+                Ok(x) => {
+                    let bytes = serde_json::to_vec_pretty(&x).unwrap_or_default();
+                    let day = x.as_of.get(..10).unwrap_or_default().to_string();
+                    let name = format!("case-{}-{day}.json", id.get(..8).unwrap_or_default());
+                    crate::util::trigger_download(&name, "application/json", &bytes);
+                }
+                Err(e) => toasts::error(e),
+            }
+        });
+    };
 
     rsx! {
         div { class: CARD, "data-testid": "case-header",
@@ -300,6 +340,165 @@ fn CaseHeader(case: ObjectView, editable: bool, on_saved: Callback<()>) -> Eleme
                     }
                 }
             }
+            div {
+                label { class: LABEL, {t!("case-legal-basis")} }
+                input {
+                    class: INPUT,
+                    "data-testid": "case-legal-basis",
+                    maxlength: 255,
+                    disabled: !editable,
+                    placeholder: t!("case-legal-basis-placeholder"),
+                    value: "{basis}",
+                    oninput: move |e| basis.set(e.value()),
+                    onblur: move |_| {
+                        let b = basis().trim().to_string();
+                        if b != orig_basis {
+                            let v = if b.is_empty() { Value::Null } else { Value::String(b) };
+                            save.call((Some(CASE_LEGAL_BASIS.to_string()), v));
+                        }
+                    },
+                }
+            }
+            div { class: "flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3",
+                if frozen.is_empty() {
+                    if editable {
+                        button {
+                            class: BTN_SECONDARY_SM,
+                            r#type: "button",
+                            "data-testid": "case-freeze",
+                            disabled: busy(),
+                            onclick: move |_| {
+                                save.call((Some(CASE_FROZEN_AT.to_string()), Value::String(now_minus_hours(0))))
+                            },
+                            {t!("case-freeze")}
+                        }
+                    }
+                } else {
+                    span {
+                        class: "text-sm text-gray-700",
+                        "data-testid": "case-frozen",
+                        {t!("case-frozen", at : short_time(& frozen))}
+                    }
+                    if editable {
+                        button {
+                            class: "text-xs text-gray-500 hover:underline",
+                            r#type: "button",
+                            "data-testid": "case-unfreeze",
+                            disabled: busy(),
+                            onclick: move |_| save.call((Some(CASE_FROZEN_AT.to_string()), Value::Null)),
+                            {t!("case-unfreeze")}
+                        }
+                    }
+                }
+                button {
+                    class: BTN_SECONDARY_SM,
+                    r#type: "button",
+                    "data-testid": "case-export",
+                    onclick: export,
+                    {t!("case-export")}
+                }
+                if persons > 0 {
+                    span {
+                        class: "text-xs text-amber-700",
+                        "data-testid": "case-export-persons",
+                        {t!("case-export-persons", count : persons)}
+                    }
+                }
+                p { class: "basis-full text-xs text-gray-500", {t!("case-freeze-help")} }
+            }
+        }
+    }
+}
+
+// ─────────────────────────── board ───────────────────────────
+
+/// Hypotheses with the claims for and against, then the claims that need
+/// a source or are contradicted (cases.md K8). No score: the human concludes.
+#[component]
+fn BoardPanel(board: CaseBoard, focus: Signal<Option<String>>) -> Element {
+    rsx! {
+        div { class: CARD, "data-testid": "case-board",
+            h2 { class: "font-semibold text-gray-900", {t!("case-board")} }
+            for h in board.hypotheses.iter() {
+                div {
+                    key: "{h.hypothesis.id}",
+                    class: "rounded-md border border-gray-200 p-3 space-y-2",
+                    div { class: "flex items-baseline gap-2",
+                        ClaimTitle { r: h.hypothesis.clone(), focus }
+                        if let Some(st) = &h.status {
+                            span { class: "text-xs text-gray-500", "{st}" }
+                        }
+                    }
+                    div { class: "grid gap-2 sm:grid-cols-2",
+                        ClaimList {
+                            label: t!("case-board-supports").to_string(),
+                            claims: h.supports.clone(),
+                            focus,
+                        }
+                        ClaimList {
+                            label: t!("case-board-contradicts").to_string(),
+                            claims: h.contradicts.clone(),
+                            focus,
+                        }
+                    }
+                }
+            }
+            if !board.unsourced.is_empty() {
+                ClaimList {
+                    label: t!("case-board-unsourced").to_string(),
+                    claims: board.unsourced.clone(),
+                    focus,
+                }
+            }
+            if !board.contradicted.is_empty() {
+                ClaimList {
+                    label: t!("case-board-contradicted").to_string(),
+                    claims: board.contradicted.clone(),
+                    focus,
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ClaimList(label: String, claims: Vec<BoardClaim>, focus: Signal<Option<String>>) -> Element {
+    rsx! {
+        div {
+            p { class: LABEL, "{label} ({claims.len()})" }
+            if claims.is_empty() {
+                p { class: "text-xs text-gray-400", {t!("case-board-none")} }
+            }
+            ul { class: "space-y-1",
+                for c in claims.iter() {
+                    li {
+                        key: "{c.claim.id}",
+                        class: "flex items-baseline gap-2 text-sm",
+                        ClaimTitle { r: c.claim.clone(), focus }
+                        if let Some(st) = &c.status {
+                            span { class: "text-xs text-gray-500", "{st}" }
+                        }
+                        span { class: "text-xs text-gray-400",
+                            {t!("case-board-sources", count : c.sources)}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A board entry: clicking it focuses the timeline on that object.
+#[component]
+fn ClaimTitle(r: pnex_core::ontology::api::ObjectRef, focus: Signal<Option<String>>) -> Element {
+    let mut focus = focus;
+    let id = r.id.clone();
+    rsx! {
+        button {
+            r#type: "button",
+            class: "text-left text-sm text-gray-900 hover:underline",
+            onclick: move |_| focus.set(Some(id.clone())),
+            "{r.title}"
         }
     }
 }
@@ -728,7 +927,7 @@ fn LinkComposer(
                 }
                 button {
                     r#type: "button",
-                    class: "px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50",
+                    class: BTN_PRIMARY,
                     "data-testid": "case-link-submit",
                     disabled: !valid || busy(),
                     onclick: submit,

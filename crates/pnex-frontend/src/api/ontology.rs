@@ -213,6 +213,29 @@ pub async fn case_timeline(
     .await
 }
 
+/// Hypotheses board of a case (cases.md K8).
+pub async fn case_board(id: &str) -> Result<pnex_core::ontology::api::CaseBoard, ApiError> {
+    client::request(
+        Method::GET,
+        &format!("/api/v1/cases/{}/board", urlencode(id)),
+        None,
+    )
+    .await
+}
+
+/// The whole case as of its freeze, else now (cases.md K12).
+pub async fn case_export(
+    id: &str,
+    q: &pnex_core::ontology::api::CaseExportQuery,
+) -> Result<pnex_core::ontology::api::CaseExport, ApiError> {
+    client::request(
+        Method::POST,
+        &format!("/api/v1/cases/{}/export", urlencode(id)),
+        body(q),
+    )
+    .await
+}
+
 /// Opens a case, possibly from a dated event (cases.md K3).
 pub async fn open_case(
     input: &pnex_core::ontology::api::CaseOpenInput,

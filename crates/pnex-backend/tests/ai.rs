@@ -1827,10 +1827,12 @@ async fn assistant_reads_a_case_timeline() {
         let trace = run_tools(&server, &env.bob, org, vec![
             ("case_timeline", serde_json::json!({"case_id": cid})),
             ("case_timeline", serde_json::json!({"case_id": "00000000-0000-0000-0000-000000000000"})),
+            ("case_board", serde_json::json!({"case_id": cid})),
         ])
         .await;
         assert_eq!(trace[0]["ok"], true, "{trace:?}");
         assert_eq!(trace[1]["code"], pnex_core::err_codes::ONTOLOGY_NOT_FOUND, "{trace:?}");
+        assert_eq!(trace[2]["ok"], true, "{trace:?}");
         let out = mock_requests().last().unwrap().to_string();
         assert!(out.contains("Other") && out.contains("context"), "member and role reach the model");
     })

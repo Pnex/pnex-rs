@@ -457,6 +457,11 @@ l'humain active.
 
 ### K19 — Identification vocale par enrôlement consenti (à trancher, avis juridique requis)
 
+> **2026-10-11 : variante A implémentée** comme domaine séparé, voir
+> `voice-id.md` (V1–V10). Écart assumé : l'audio d'enrôlement est conservé
+> en médiathèque (choix produit), l'audio testé ne l'est pas. Variante B
+> non retenue. L'avis juridique reste à obtenir avant un usage réel.
+
 Demande produit (2026-10-11) : pré-enregistrer la voix des personnes
 pour nommer directement les locuteurs. Techniquement direct : les
 empreintes de locuteur existent déjà (`media-ingest.md` lot 5,
@@ -642,3 +647,5 @@ arbitrage des questions §11.
 | Temps flou (K5) | `PropertyKind::FuzzyTime` dans le noyau (proposition q.5, provisoire) : `{from, to, precision}`, bornes UTC `Z`, `instant` ⇒ égales ; `fuzzy_bounds` dérive les bornes d'une date à sa précision (saisie en un champ) ; affichage à la précision (`2019-03`, `≈ a → b`) | code |
 | Pack `investigation` (K4) | personne, organisation, événement (`occurred` flou), pièce, affirmation, hypothèse, identifiant ; liens `involves`, `occurred_at`, `before`, `member_of`, `employs`, `owns`, `knows`, `uses_identifier`, `wraps`, `about`, `sourced_by` (`locator`), `supports`, `contradicts`. Pas de `requires` (aucun pack Couverture médiatique livré à ce jour) | code |
 | Corroboration (K7) | `corroborated` refusé (409 `ontology-claim-unsourced`) sans ≥ 2 pièces `sourced_by` d'origines distinctes (URL source, sinon objet enveloppé, sinon la pièce) ; vérifié au changement de statut. Dérogation justifiée non faite | code partiel |
+| Tableau des hypothèses (K8, C7) | `GET /api/v1/cases/{id}/board` : chaque `hypothesis` membre avec ses `claim` `supports` / `contradicts` (statut, nombre de sources ouvertes), puis les affirmations membres **sans source** et **contredites** par une autre ; aucun score ; outil assistant `case_board` (lecture). Modèles de pages RCA et `conclusion_page` non faits | code partiel |
+| Gel et export (K12, K16, C7) | propriétés intégrées `frozen_at` (instant du gel, un seul — pas de versions nommées multiples) et `legal_basis` (base de traitement, texte libre) ; `POST /api/v1/cases/{id}/export` `{as_of?}` (défaut : gel, sinon maintenant) → un JSON : dossier, membres à l'instant avec leur objet, liens entre membres à l'instant, chronologie jusqu'à l'instant, tableau, manifeste des pièces (URL, SHA-256), nombre de `person` (avertissement UI). Lecture seule (tout membre de l'org). **Limites** : statuts des affirmations = ceux d'aujourd'hui (rejouer via O2 à faire), pas de YAML/CSV séparés, pas de vérification de divergence SHA-256, purge K16 à l'archivage non faite | code partiel |

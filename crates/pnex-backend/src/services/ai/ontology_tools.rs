@@ -180,6 +180,15 @@ pub async fn case_timeline(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutc
     }))
 }
 
+/// The hypotheses board of a case (cases.md K8), as the UI shows it.
+pub async fn case_board(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
+    let id = uuid_arg(args, "case_id")?;
+    let b = onto::cases::board(deps.db, deps.org_id, id)
+        .await
+        .map_err(onto_error)?;
+    outcome(serde_json::to_value(b).map_err(|e| ToolError::from(e.to_string()))?)
+}
+
 /// One object with its links valid now.
 pub async fn get_object(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     let id = uuid_arg(args, "object_id")?;

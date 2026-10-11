@@ -292,6 +292,8 @@ fn case_properties() -> Vec<PropertyDef> {
         prop(CASE_WINDOW_FROM, PropertyKind::DateTime),
         prop(CASE_WINDOW_TO, PropertyKind::DateTime),
         prop(CASE_TEMPLATE, PropertyKind::Text { max_len: Some(64) }),
+        prop(CASE_LEGAL_BASIS, PropertyKind::Text { max_len: Some(255) }),
+        prop(CASE_FROZEN_AT, PropertyKind::DateTime),
     ]
 }
 
@@ -303,6 +305,10 @@ pub const CASE_STATUSES: [&str; 3] = ["open", "concluded", "archived"];
 pub const CASE_WINDOW_FROM: &str = "window_from";
 pub const CASE_WINDOW_TO: &str = "window_to";
 pub const CASE_TEMPLATE: &str = "template";
+/// Declared processing basis of the personal data in the case (K16).
+pub const CASE_LEGAL_BASIS: &str = "legal_basis";
+/// Freeze instant (K12): the case is re-read as it stood then.
+pub const CASE_FROZEN_AT: &str = "frozen_at";
 /// Case membership (cases.md K2): any object → case, temporal.
 pub const REL_IN_CASE: &str = "in_case";
 pub const IN_CASE_ROLE: &str = "role";
