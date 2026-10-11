@@ -193,7 +193,7 @@ pub(super) fn FirmwareEditor(project_id: i64, can_write: bool, on_back: Callback
                     }
                     div { class: "flex-grow min-w-0",
                         input {
-                            class: "w-full text-xl font-bold text-gray-900 bg-transparent rounded-lg px-2 py-0.5 -ml-2 border border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white outline-none",
+                            class: "w-full text-xl font-bold text-gray-900 bg-transparent rounded-lg px-2 py-0.5 -ml-2 border border-transparent hover:border-gray-300 focus:border-signal-500 focus:bg-white outline-none",
                             value: "{name}",
                             disabled: !can_write,
                             oninput: move |event| name.set(event.value()),
@@ -340,13 +340,13 @@ fn CheckReport(
     match (checking, check) {
         (true, None) => rsx! {
             div { class: "{box_class} border-gray-200 bg-gray-50 text-gray-700 flex items-center gap-2",
-                span { class: "animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600" }
+                span { class: "animate-spin rounded-full h-4 w-4 border-b-2 border-signal-600" }
                 {t!("firmware-check-running")}
             }
         },
         (_, Some(status)) if matches!(status.status.as_str(), "queued" | "running") => rsx! {
             div { class: "{box_class} border-gray-200 bg-gray-50 text-gray-700 flex items-center gap-2",
-                span { class: "animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600" }
+                span { class: "animate-spin rounded-full h-4 w-4 border-b-2 border-signal-600" }
                 {t!("firmware-check-running")}
             }
         },

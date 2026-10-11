@@ -317,7 +317,7 @@ fn capture_badge(s: &MediaStream) -> (&'static str, String) {
             t!("streams-state-running").to_string(),
         ),
         CaptureState::Starting => (
-            "bg-blue-100 text-blue-800",
+            "bg-signal-100 text-signal-800",
             t!("streams-state-starting").to_string(),
         ),
         CaptureState::Backoff => (

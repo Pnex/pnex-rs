@@ -319,7 +319,7 @@ pub fn PalettePopover(
                                                 }
                                             },
                                             (Some(icon), None) => rsx! {
-                                                span { class: "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600",
+                                                span { class: "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-signal-50 text-signal-600",
                                                     IconView { icon }
                                                 }
                                             },

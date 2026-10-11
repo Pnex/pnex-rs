@@ -36,7 +36,7 @@ pub fn status_label(status: &str) -> String {
 pub fn status_class(status: &str) -> &'static str {
     match status {
         "open" => "rounded px-2 py-0.5 text-xs bg-green-50 text-green-700",
-        "concluded" => "rounded px-2 py-0.5 text-xs bg-blue-50 text-blue-700",
+        "concluded" => "rounded px-2 py-0.5 text-xs bg-signal-50 text-signal-700",
         _ => "rounded px-2 py-0.5 text-xs bg-gray-100 text-gray-600",
     }
 }
@@ -198,7 +198,7 @@ fn CaseCard(case: ObjectView) -> Element {
     rsx! {
         li {
             Link {
-                class: "block h-full bg-white rounded-lg border border-gray-200 p-4 hover:border-blue-400 hover:shadow-sm",
+                class: "block h-full bg-white rounded-lg border border-gray-200 p-4 hover:border-signal-400 hover:shadow-sm",
                 "data-testid": "case-card",
                 to: Route::CaseWorkspace {
                     id: case.id.clone(),

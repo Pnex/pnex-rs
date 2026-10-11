@@ -259,7 +259,7 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                         }
                     }
                     button {
-                        class: if can_write { "text-xs font-medium text-blue-600 hover:text-blue-800" } else { "hidden" },
+                        class: if can_write { "text-xs font-medium text-signal-600 hover:text-signal-800" } else { "hidden" },
                         onclick: move |_| {
                             edit_widget(
                                 cx,

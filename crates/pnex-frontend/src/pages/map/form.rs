@@ -103,7 +103,7 @@ pub(super) fn PoiFormModal(
                         aria_labelledby: "form-field-emoji-label",
                         for e in PALETTE {
                             button {
-                                class: if emoji() == e { "w-9 h-9 text-xl rounded-lg border-2 border-blue-500 bg-blue-50" } else { "w-9 h-9 text-xl rounded-lg border border-gray-200 hover:border-blue-300" },
+                                class: if emoji() == e { "w-9 h-9 text-xl rounded-lg border-2 border-signal-500 bg-signal-50" } else { "w-9 h-9 text-xl rounded-lg border border-gray-200 hover:border-signal-300" },
                                 onclick: move |_| emoji.set(e.to_string()),
                                 "{e}"
                             }

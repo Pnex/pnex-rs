@@ -434,7 +434,7 @@ pub(super) fn ModelFormModal(
                             {t!("models-labels", count : label_count)}
                         }
                         button {
-                            class: "text-xs text-blue-600 hover:underline",
+                            class: "text-xs text-signal-600 hover:underline",
                             r#type: "button",
                             onclick: move |_| labels.set(coco_labels().join("\n")),
                             {t!("models-labels-coco")}

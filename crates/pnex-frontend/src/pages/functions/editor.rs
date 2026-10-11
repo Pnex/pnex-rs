@@ -284,7 +284,7 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                     }
                     div { class: "flex-grow min-w-0",
                         input {
-                            class: "w-full text-xl font-bold text-gray-900 bg-transparent rounded-lg px-2 py-0.5 -ml-2 border border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white outline-none",
+                            class: "w-full text-xl font-bold text-gray-900 bg-transparent rounded-lg px-2 py-0.5 -ml-2 border border-transparent hover:border-gray-300 focus:border-signal-500 focus:bg-white outline-none",
                             value: "{name}",
                             disabled: !can_write,
                             oninput: move |event| name.set(event.value()),
@@ -298,7 +298,7 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                                 span { class: "text-xs text-amber-600", {t!("functions-dirty")} }
                             }
                             input {
-                                class: "flex-grow min-w-[220px] text-sm text-gray-600 bg-transparent rounded-lg px-2 py-0.5 border border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white outline-none placeholder:text-gray-400",
+                                class: "flex-grow min-w-[220px] text-sm text-gray-600 bg-transparent rounded-lg px-2 py-0.5 border border-transparent hover:border-gray-300 focus:border-signal-500 focus:bg-white outline-none placeholder:text-gray-400",
                                 placeholder: t!("functions-description-placeholder").to_string(),
                                 value: "{description_value}",
                                 disabled: !can_write,
@@ -392,7 +392,7 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                             span { class: "flex-grow" }
                             if can_write {
                                 button {
-                                    class: "text-blue-700 font-semibold hover:underline shrink-0",
+                                    class: "text-signal-700 font-semibold hover:underline shrink-0",
                                     onclick: declare_ports(
                                         undeclared.iter().map(|u| (u.name.clone(), u.kind == PortKind::Input)).collect(),
                                         code_value.clone(),
@@ -419,7 +419,7 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                                 }
                                 if can_write {
                                     button {
-                                        class: "text-sm font-semibold text-blue-700 hover:underline",
+                                        class: "text-sm font-semibold text-signal-700 hover:underline",
                                         onclick: declare_ports(
                                             undeclared.iter().map(|u| (u.name.clone(), u.kind == PortKind::Input)).collect(),
                                             code_value.clone(),

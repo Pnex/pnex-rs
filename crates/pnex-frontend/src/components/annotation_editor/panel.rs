@@ -322,7 +322,7 @@ pub fn AnnotationLayerPanel(
             if can_write && cx.layer_id.cloned().is_some() {
                 div { class: "px-3 py-2 border-b border-gray-200 flex items-center gap-2",
                     button {
-                        class: if placing_now { "px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg font-medium" } else { "px-3 py-1.5 text-xs bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50" },
+                        class: if placing_now { "px-3 py-1.5 text-xs bg-signal-600 text-white rounded-lg font-medium" } else { "px-3 py-1.5 text-xs bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50" },
                         onclick: move |_| cx.placing.toggle(),
                         {t!("annot-place-toggle")}
                     }
@@ -379,7 +379,7 @@ pub fn AnnotationLayerPanel(
                     }
                 }
                 if placing_now {
-                    div { class: "px-3 pb-2 text-xs text-blue-700 bg-blue-50 border-b border-blue-100",
+                    div { class: "px-3 pb-2 text-xs text-signal-700 bg-signal-50 border-b border-signal-100",
                         {t!("annot-place-hint")}
                     }
                 }
@@ -408,7 +408,7 @@ pub fn AnnotationLayerPanel(
                     for r in rows_now.clone() {
                         li { key: "row-{r.id}",
                             button {
-                                class: if cx.selected.cloned().as_deref() == Some(r.id.as_str()) { "w-full text-left px-3 py-2 hover:bg-gray-50 bg-blue-50" } else { "w-full text-left px-3 py-2 hover:bg-gray-50" },
+                                class: if cx.selected.cloned().as_deref() == Some(r.id.as_str()) { "w-full text-left px-3 py-2 hover:bg-gray-50 bg-signal-50" } else { "w-full text-left px-3 py-2 hover:bg-gray-50" },
                                 onclick: move |_| cx.selected.set(Some(r.id.clone())),
                                 div { class: "flex items-center gap-2",
                                     span { class: "inline-block h-2.5 w-2.5 rounded-full {crate::components::annotation_editor::popover::annot_dot_color(&r.kind)}" }

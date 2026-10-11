@@ -83,7 +83,7 @@ pub(crate) fn MediaPicker(
                             for asset in items.clone() {
                                 li { key: "{asset.id}",
                                     button {
-                                        class: "w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors rounded-lg",
+                                        class: "w-full text-left px-3 py-2 hover:bg-signal-50 transition-colors rounded-lg",
                                         onclick: move |_| {
                                             on_picked.call((asset.id.clone(), asset.name.clone()));
                                         },
@@ -111,7 +111,7 @@ pub(crate) fn MediaPicker(
                     },
                     None => rsx! {
                         div { class: "flex justify-center py-6",
-                            span { class: "animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" }
+                            span { class: "animate-spin rounded-full h-6 w-6 border-b-2 border-signal-600" }
                         }
                     },
                 }

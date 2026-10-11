@@ -183,7 +183,7 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
                 }
                 if can_write {
                     button {
-                        class: "text-xs text-blue-600 hover:text-blue-700 disabled:opacity-50",
+                        class: "text-xs text-signal-600 hover:text-signal-700 disabled:opacity-50",
                         disabled: channels_value.is_empty(),
                         onclick: move |_| {
                             let mut ids = channel_ids.read().clone();
@@ -271,7 +271,7 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
             div { class: "space-y-1",
                 label { class: "flex items-center gap-2 select-none",
                     input {
-                        class: "h-4 w-4 accent-blue-600",
+                        class: "h-4 w-4 accent-signal-600",
                         r#type: "checkbox",
                         checked: strict,
                         disabled: !can_write,
@@ -297,7 +297,7 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
             div { class: "space-y-1.5",
                 label { class: "flex items-center gap-2 select-none",
                     input {
-                        class: "h-4 w-4 accent-blue-600",
+                        class: "h-4 w-4 accent-signal-600",
                         r#type: "checkbox",
                         checked: anti_enabled(),
                         disabled: !can_write,

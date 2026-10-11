@@ -175,7 +175,7 @@ pub fn WifiCredentialPicker(mut selected: Signal<Option<pnex_core::WifiCredentia
                                     }
                                 }
                                 button {
-                                    class: "px-2 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors",
+                                    class: "px-2 py-1.5 text-xs font-medium text-signal-600 hover:text-signal-800 border border-signal-200 rounded-lg hover:bg-signal-50 transition-colors",
                                     r#type: "button",
                                     onclick: move |_| show_add.set(Some(!expanded)),
                                     {if expanded { "✕" } else { "+" }}
@@ -407,7 +407,7 @@ fn FreeHostPicker(mut selected: Signal<Option<pnex_core::PnexHost>>) -> Element 
                                     }
                                 }
                                 button {
-                                    class: "px-2 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors",
+                                    class: "px-2 py-1.5 text-xs font-medium text-signal-600 hover:text-signal-800 border border-signal-200 rounded-lg hover:bg-signal-50 transition-colors",
                                     r#type: "button",
                                     onclick: move |_| show_add.set(Some(!expanded)),
                                     {if expanded { "✕" } else { "+" }}

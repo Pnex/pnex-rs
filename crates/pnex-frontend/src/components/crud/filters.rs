@@ -40,7 +40,7 @@ pub fn SearchInput(
 ) -> Element {
     rsx! {
         input {
-            class: "order-first w-full sm:order-none sm:w-auto sm:flex-1 sm:min-w-48 rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-gray-500 focus:border-signal focus:outline-none focus:ring-3 focus:ring-blue-200",
+            class: "order-first w-full sm:order-none sm:w-auto sm:flex-1 sm:min-w-48 rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-gray-500 focus:border-signal focus:outline-none focus:ring-3 focus:ring-signal-200",
             r#type: "search",
             placeholder: "{placeholder}",
             value: "{value}",
@@ -66,7 +66,7 @@ pub fn LabelFilterInput(
     rsx! {
         crate::components::labels_editor::LabelSuggestions { id: "pnex-labels-filter" }
         input {
-            class: "order-first w-full sm:order-none sm:w-auto sm:flex-1 sm:min-w-48 rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-gray-500 focus:border-signal focus:outline-none focus:ring-3 focus:ring-blue-200",
+            class: "order-first w-full sm:order-none sm:w-auto sm:flex-1 sm:min-w-48 rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-gray-500 focus:border-signal focus:outline-none focus:ring-3 focus:ring-signal-200",
             r#type: "search",
             list: "pnex-labels-filter",
             placeholder: "{placeholder}",

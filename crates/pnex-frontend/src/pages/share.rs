@@ -76,7 +76,7 @@ pub fn ShareTour(token: String) -> Element {
                     },
                     None => rsx! {
                         div { class: "text-center py-16",
-                            span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-blue-600" }
+                            span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-signal-600" }
                         }
                     },
                 }

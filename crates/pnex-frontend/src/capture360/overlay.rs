@@ -563,7 +563,10 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                     }
                     div { class: "text-2xl font-bold", "{ui().step} / {n_steps}" }
                     div { class: "mt-2 mx-auto h-1.5 w-48 bg-white/20 rounded-full overflow-hidden",
-                        div { class: "h-full bg-blue-500", width: "{ring_pct}%" }
+                        div {
+                            class: "h-full bg-signal-500",
+                            width: "{ring_pct}%",
+                        }
                     }
                     // Lecture continue : distance yaw + stabilité.
                     div { class: "mt-1.5 text-sm font-medium",
@@ -576,7 +579,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
             // Phases de traitement.
             if in_processing {
                 div { class: "absolute inset-0 flex flex-col items-center justify-center gap-4 text-white",
-                    span { class: "animate-spin rounded-full h-10 w-10 border-b-2 border-blue-400" }
+                    span { class: "animate-spin rounded-full h-10 w-10 border-b-2 border-signal-400" }
                     div { class: "text-lg",
                         if ui().phase == Phase::Stitching {
                             {t!("media-take360-stitching")}

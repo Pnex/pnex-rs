@@ -334,7 +334,7 @@ pub fn PropertyValue(
         (PropertyKind::Url, Value::String(s)) if pnex_core::ontology::schema::valid_http_url(s) => {
             rsx! {
                 a {
-                    class: "text-blue-600 hover:underline break-all",
+                    class: "text-signal-600 hover:underline break-all",
                     href: "{s}",
                     target: "_blank",
                     rel: "noopener noreferrer",
@@ -372,7 +372,7 @@ pub fn PropertyValue(
             let id = id.clone();
             rsx! {
                 Link {
-                    class: "text-blue-600 hover:underline",
+                    class: "text-signal-600 hover:underline",
                     to: crate::app::Route::OntologyObject {
                         id,
                     },

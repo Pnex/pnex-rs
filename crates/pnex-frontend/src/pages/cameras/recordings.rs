@@ -318,7 +318,7 @@ pub(super) fn RecordingsDialog(
                                         key: "{layer.id}",
                                         class: "flex items-center gap-1.5 text-sm text-gray-700 select-none",
                                         input {
-                                            class: "h-4 w-4 accent-blue-600",
+                                            class: "h-4 w-4 accent-signal-600",
                                             r#type: "checkbox",
                                             checked: layers.read().contains(&layer.id),
                                             onchange: {
@@ -366,7 +366,7 @@ pub(super) fn RecordingsDialog(
                                 for (s, e) in blocks.iter().copied() {
                                     div {
                                         key: "{s}",
-                                        class: "absolute inset-y-0 bg-blue-400",
+                                        class: "absolute inset-y-0 bg-signal-400",
                                         style: "left: {pct(s)}%; width: max(2px, {pct(e) - pct(s)}%);",
                                     }
                                 }
@@ -378,7 +378,7 @@ pub(super) fn RecordingsDialog(
                                 }
                             }
                             input {
-                                class: "w-full accent-blue-600",
+                                class: "w-full accent-signal-600",
                                 r#type: "range",
                                 min: "0",
                                 max: "{day_len / 1000}",

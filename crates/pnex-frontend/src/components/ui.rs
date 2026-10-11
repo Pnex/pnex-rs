@@ -30,7 +30,7 @@ pub const BTN_DANGER: &str = "inline-flex items-center justify-center gap-1.5 px
 pub const BTN_DANGER_SOLID: &str = "inline-flex items-center justify-center gap-1.5 min-h-10 px-4 py-2 rounded-md bg-alarm text-white text-sm font-medium hover:bg-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-alarm disabled:opacity-40 transition-colors";
 
 /// Text input, select and textarea.
-pub const INPUT: &str = "w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-gray-500 focus:border-signal focus:outline-none focus:ring-3 focus:ring-blue-200 disabled:bg-gray-50 disabled:text-gray-500";
+pub const INPUT: &str = "w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-gray-500 focus:border-signal focus:outline-none focus:ring-3 focus:ring-signal-200 disabled:bg-gray-50 disabled:text-gray-500";
 
 /// Field label, sentence case (never uppercase).
 pub const FIELD_LABEL: &str = "block text-sm font-medium text-ink mb-1.5";

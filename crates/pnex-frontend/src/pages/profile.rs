@@ -63,8 +63,8 @@ pub fn Profile() -> Element {
                         }
                         div { class: "p-6",
                             div { class: "flex items-center space-x-6 mb-8",
-                                div { class: "w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center",
-                                    icons::User { class: "h-8 w-8 text-blue-600" }
+                                div { class: "w-20 h-20 bg-signal-100 rounded-full flex items-center justify-center",
+                                    icons::User { class: "h-8 w-8 text-signal-600" }
                                 }
                                 div {
                                     h3 { class: "text-xl font-semibold text-gray-900",

@@ -38,11 +38,10 @@ la couleur ne sert qu'à porter une information.
 | `mark` | `#e5482d` | repère de navigation |
 | `ok` / `idle` / `warn` / `alarm` | `#2b7a4b` / `#8793a0` / `#c77700` / `#b42318` | états |
 
-Les échelles `gray-*` et `blue-*` de Tailwind sont **réaccordées** sur ces
-teintes (gris acier, cyan signal) : les ~3 500 classes existantes suivent
-l'identité sans réécriture. Raccourci assumé : `blue-*` est le cyan signal
-sous son ancien nom, à renommer `signal-*` quand aucune autre session n'a les
-pages en vol.
+L'échelle `gray-*` de Tailwind est **réaccordée** sur le gris acier : les
+classes existantes suivent l'identité sans réécriture. Le cyan signal a sa
+propre échelle `signal-50` … `signal-950` (renommée depuis `blue-*` le
+2026-10-11) ; `design_guard` refuse toute classe `blue-*`.
 
 **Typographie** : IBM Plex Sans (400/500/600) et IBM Plex Mono (400/500),
 sous-ensemble latin embarqué en data URI dans `style/fonts.css` (web, desktop
@@ -141,10 +140,8 @@ Les entrées « bientôt » sans route sont retirées du menu.
 
 ## 7. Reste à faire
 
-- Renommer `blue-*` → `signal-*` (raccourci du §2).
-- Éditeurs plein écran : flows, dashboards, Studio et annotations revus en
-  clair et sombre (2026-10-11) ; l'éditeur de firmware et les inspecteurs
-  de chaque type de nœud/widget restent à parcourir un à un.
-- Onglets de l'Ontologie au-dessus du titre de la page, à replacer sous
-  l'en-tête (le style est partagé depuis `TAB_*`).
+- Éditeurs plein écran : flows, dashboards, Studio, annotations et firmware
+  revus en clair et sombre (2026-10-11), ainsi que les pages de détail
+  (device, média, POI, objet, dossier) ; les inspecteurs de chaque type de
+  nœud/widget restent à parcourir un à un.
 - Captures de la documentation et du site à refaire.

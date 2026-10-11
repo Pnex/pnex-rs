@@ -332,7 +332,7 @@ pub(super) fn HttpFetchForm(
                 }
                 if can_write {
                     button {
-                        class: "text-xs text-blue-600 hover:text-blue-700",
+                        class: "text-xs text-signal-600 hover:text-signal-700",
                         onclick: move |_| {
                             let mut rows = headers.read().clone();
                             rows.push((String::new(), String::new()));

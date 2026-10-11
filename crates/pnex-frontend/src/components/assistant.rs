@@ -191,7 +191,7 @@ fn AssistantDrawer(on_close: Callback) -> Element {
                         {t!("ai-conversations")}
                     }
                     button {
-                        class: "text-xs text-blue-600 hover:text-blue-800",
+                        class: "text-xs text-signal-600 hover:text-signal-800",
                         onclick: new_conversation,
                         {t!("ai-new-conversation")}
                     }
@@ -433,7 +433,7 @@ fn ConversationRow(
     let date: String = conv.last_message_at.chars().take(10).collect();
     let current = CURRENT() == Some(id);
     rsx! {
-        div { class: if current { "flex items-center gap-2 rounded-md px-2 py-1.5 bg-blue-50" } else { "flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-gray-50" },
+        div { class: if current { "flex items-center gap-2 rounded-md px-2 py-1.5 bg-signal-50" } else { "flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-gray-50" },
             if let Some(text) = editing {
                 input {
                     class: "flex-1 border border-gray-300 rounded px-2 py-1 text-sm",
@@ -476,7 +476,7 @@ fn Bubble(bubble: ChatBubble) -> Element {
     match bubble {
         ChatBubble::User(text) => rsx! {
             div { class: "flex justify-end",
-                div { class: "max-w-[80%] rounded-lg bg-blue-600 text-white px-3 py-2 text-sm whitespace-pre-wrap",
+                div { class: "max-w-[80%] rounded-lg bg-signal-600 text-white px-3 py-2 text-sm whitespace-pre-wrap",
                     {text}
                 }
             }
@@ -534,7 +534,7 @@ fn Bubble(bubble: ChatBubble) -> Element {
                         for entry in flow_entries {
                             button {
                                 key: "{entry.flow_id:?}",
-                                class: "px-3 py-1.5 rounded-md border border-blue-600 text-blue-600 text-sm hover:bg-blue-50",
+                                class: "px-3 py-1.5 rounded-md border border-signal-600 text-signal-600 text-sm hover:bg-signal-50",
                                 onclick: move |_| {
                                     if let Some(flow_id) = entry.flow_id {
                                         navigator

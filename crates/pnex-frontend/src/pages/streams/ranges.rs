@@ -469,7 +469,7 @@ fn RangeRow(
                 }
                 if let Some(url) = link {
                     a {
-                        class: "text-xs text-blue-700 hover:underline",
+                        class: "text-xs text-signal-700 hover:underline",
                         href: "{url}",
                         target: "_blank",
                         rel: "noopener noreferrer",

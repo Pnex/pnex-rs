@@ -41,7 +41,7 @@ pub fn ServerCaCard() -> Element {
                 }
                 a {
                     class: "block w-full text-center py-2 px-4 rounded-lg text-sm font-medium \
-                            text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors",
+                            text-signal-700 bg-signal-50 hover:bg-signal-100 transition-colors",
                     href: "{url}",
                     download: "pnex-ca.crt",
                     {t!("about-ca-download")}

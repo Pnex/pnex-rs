@@ -152,7 +152,7 @@ pub(super) fn MediaDetail(
                         icons::ArrowLeft { class: "h-5 w-5" }
                     }
                     button {
-                        class: "text-sm font-medium text-blue-600 hover:text-blue-800 whitespace-nowrap",
+                        class: "text-sm font-medium text-signal-600 hover:text-signal-800 whitespace-nowrap",
                         onclick: move |_| on_close.call(()),
                         {t!("media-title")}
                     }
@@ -321,9 +321,9 @@ pub(super) fn MediaDetail(
                                     }
                                     if can_write {
                                         label {
-                                        class: "inline-flex cursor-pointer items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-xs text-blue-700 hover:bg-blue-100",
+                                        class: "inline-flex cursor-pointer items-center gap-1 rounded-lg bg-signal-50 px-2 py-1 text-xs text-signal-700 hover:bg-signal-100",
                                             if uploading() {
-                                                span { class: "animate-spin inline-block rounded-full h-3 w-3 border-b-2 border-blue-600" }
+                                                span { class: "animate-spin inline-block rounded-full h-3 w-3 border-b-2 border-signal-600" }
                                             } else {
                                                 icons::Upload { class: "h-3 w-3" }
                                             }
@@ -441,7 +441,7 @@ pub(super) fn MediaDetail(
                 },
                 None if error().is_empty() => rsx! {
                     div { class: "text-center py-12",
-                        span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-blue-600" }
+                        span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-signal-600" }
                     }
                 },
                 None => rsx! {},
@@ -528,7 +528,7 @@ fn VersionRow(
     let is_current = version.current;
     let is_viewed = viewing_version() == Some(v);
     let row_classes: &str = if is_current {
-        "border-blue-300 bg-blue-50/60"
+        "border-signal-300 bg-signal-50/60"
     } else if is_viewed {
         "border-amber-300 bg-amber-50/60"
     } else {
@@ -574,7 +574,7 @@ fn VersionRow(
                     div { class: "flex flex-wrap items-center gap-1.5",
                         span { class: "text-sm font-semibold text-gray-900", "v{v}" }
                         if is_current {
-                            span { class: "text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700",
+                            span { class: "text-xs px-1.5 py-0.5 rounded-full bg-signal-100 text-signal-700",
                                 {t!("media-version-current")}
                             }
                         } else if is_viewed {
@@ -595,7 +595,7 @@ fn VersionRow(
                     // (blob from /versions/{n}/content).
                     if !is_current {
                         button {
-                            class: if is_viewed { "text-xs font-medium text-amber-600 hover:underline" } else { "text-xs text-blue-600 hover:underline" },
+                            class: if is_viewed { "text-xs font-medium text-amber-600 hover:underline" } else { "text-xs text-signal-600 hover:underline" },
                             onclick: move |_| {
                                 if is_viewed {
                                     viewing_version.set(None);
@@ -608,7 +608,7 @@ fn VersionRow(
                     }
                     if !is_current && can_write {
                         button {
-                            class: "text-xs text-blue-600 hover:underline",
+                            class: "text-xs text-signal-600 hover:underline",
                             onclick: move |_| {
                                 let id = asset_id_for_restore.clone();
                                 spawn(async move {
@@ -634,7 +634,7 @@ fn VersionRow(
                     }
                     // Download this version's bytes (every role).
                     button {
-                        class: "text-blue-600 hover:text-blue-800 disabled:opacity-50",
+                        class: "text-signal-600 hover:text-signal-800 disabled:opacity-50",
                         title: t!("media-download"),
                         disabled: downloading(),
                         onclick: move |_| {
@@ -664,7 +664,7 @@ fn VersionRow(
                             });
                         },
                         if downloading() {
-                            span { class: "animate-spin inline-block rounded-full h-3 w-3 border-b-2 border-blue-600" }
+                            span { class: "animate-spin inline-block rounded-full h-3 w-3 border-b-2 border-signal-600" }
                         } else {
                             icons::Download { class: "h-4 w-4 inline" }
                         }
@@ -746,7 +746,7 @@ fn IndexStateCard(asset_id: String, can_write: bool) -> Element {
                 h3 { class: "text-sm font-semibold text-gray-700", {t!("media-index-title")} }
                 if can_write {
                     button {
-                        class: "text-xs text-blue-600 hover:underline disabled:opacity-50",
+                        class: "text-xs text-signal-600 hover:underline disabled:opacity-50",
                         r#type: "button",
                         disabled: reindexing(),
                         onclick: on_reindex,

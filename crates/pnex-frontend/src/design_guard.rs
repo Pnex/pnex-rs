@@ -19,6 +19,9 @@ fn violation(token: &str) -> Option<&'static str> {
     if token.starts_with("tracking-wide") {
         return Some("no letter-spaced caps");
     }
+    if token.contains("blue-") {
+        return Some("the signal cyan is `signal-*`, not the stock blue scale");
+    }
     let size = token.strip_prefix("text-[")?;
     if size.ends_with("px]") || size.ends_with("rem]") {
         return Some("font sizes come from the scale (text-xs … text-3xl)");

@@ -1089,7 +1089,7 @@ pub fn FlowEditor(
                 {
                     match propose_deploy() {
                         Some(version) if !dirty => rsx! {
-                            div { class: "bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-800 flex items-center gap-3",
+                            div { class: "bg-signal-50 border border-signal-200 rounded-lg px-4 py-2 text-sm text-signal-800 flex items-center gap-3",
                                 span { class: "flex-1", {t!("flows-deploy-propose-text", version : version)} }
                                 button {
                                     class: BTN_PRIMARY_SM,
@@ -1101,7 +1101,7 @@ pub fn FlowEditor(
                                     {t!("flows-deploy-propose-go", version : version)}
                                 }
                                 button {
-                                    class: "px-3 py-1 text-xs text-blue-700 hover:bg-blue-100 rounded-lg transition-colors",
+                                    class: "px-3 py-1 text-xs text-signal-700 hover:bg-signal-100 rounded-lg transition-colors",
                                     onclick: move |_| propose_deploy.set(None),
                                     {t!("flows-deploy-propose-later")}
                                 }

@@ -33,7 +33,7 @@ fn state_class(state: SegmentState) -> &'static str {
         SegmentState::Transcribed => "bg-emerald-100 text-emerald-800",
         SegmentState::Failed => "bg-red-100 text-red-800",
         SegmentState::SkippedBacklog => "bg-amber-100 text-amber-800",
-        SegmentState::Queued | SegmentState::Transcribing => "bg-blue-100 text-blue-800",
+        SegmentState::Queued | SegmentState::Transcribing => "bg-signal-100 text-signal-800",
         SegmentState::Captured | SegmentState::SkippedSilence => "bg-gray-100 text-gray-700",
     }
 }

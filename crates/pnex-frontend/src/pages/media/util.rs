@@ -3,7 +3,7 @@ use super::*;
 /// Soft pill classes per kind (info card + preview overlay badge).
 pub(super) fn kind_pill_classes(asset: &MediaAsset) -> &'static str {
     match asset.media_kind() {
-        MediaKind::Panorama => "bg-blue-100 text-blue-700",
+        MediaKind::Panorama => "bg-signal-100 text-signal-700",
         MediaKind::Splat => "bg-purple-100 text-purple-700",
         // Floorplan (Studio): amber, same family as the old list icon.
         MediaKind::Floorplan => "bg-amber-100 text-amber-700",
@@ -21,7 +21,7 @@ pub(super) fn kind_pill_classes(asset: &MediaAsset) -> &'static str {
 /// the list).
 pub(super) fn kind_gradient(asset: &MediaAsset) -> &'static str {
     match asset.media_kind() {
-        MediaKind::Panorama => "from-blue-500 to-indigo-600",
+        MediaKind::Panorama => "from-signal-500 to-indigo-600",
         MediaKind::Splat => "from-purple-500 to-fuchsia-600",
         MediaKind::Floorplan => "from-amber-500 to-orange-600",
         MediaKind::Photo => "from-green-500 to-emerald-600",

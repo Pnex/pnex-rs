@@ -56,14 +56,14 @@ pub fn Login() -> Element {
                         div { class: "space-y-4",
                             button {
                                 class: "w-full flex justify-center items-center py-3 px-4 rounded-lg text-sm font-semibold text-white \
-                                        bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 \
+                                        bg-gradient-to-r from-signal-600 to-signal-700 hover:from-signal-700 hover:to-signal-800 \
                                         shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all",
                                 onclick: signin,
                                 {t!("login-signin")}
                             }
                             div { class: "flex items-center justify-between text-sm",
                                 button {
-                                    class: "text-blue-600 hover:text-blue-700 font-medium",
+                                    class: "text-signal-600 hover:text-signal-700 font-medium",
                                     onclick: register,
                                     {t!("login-register")}
                                 }

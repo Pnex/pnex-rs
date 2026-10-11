@@ -83,7 +83,7 @@ pub(crate) fn PinCard(
     let role_class = if pin.role == "actuator" {
         "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800"
     } else {
-        "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+        "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-signal-100 text-signal-800"
     };
     let last_label = match &pin.last_value {
         Some(serde_json::Value::Bool(b)) => {
@@ -222,7 +222,7 @@ pub(crate) fn PinCard(
             // Appliquer mode + safe-state (set_mode manuel).
             if is_configurable && can_write {
                 button {
-                    class: "w-full px-3 py-1.5 text-xs font-medium text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors",
+                    class: "w-full px-3 py-1.5 text-xs font-medium text-signal-700 border border-signal-200 rounded-lg hover:bg-signal-50 transition-colors",
                     disabled: busy() || !connected,
                     onclick: move |_| {
                         let cmd = api::pins::Command {
@@ -329,7 +329,7 @@ pub(crate) fn PinCard(
                         }
                     }
                     button {
-                        class: "px-3 py-1.5 text-xs font-medium text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors",
+                        class: "px-3 py-1.5 text-xs font-medium text-signal-700 border border-signal-200 rounded-lg hover:bg-signal-50 transition-colors",
                         disabled: busy() || !connected,
                         onclick: move |_| {
                             let interval_ms: u32 = interval_sel().parse().unwrap_or(0);
@@ -424,7 +424,7 @@ fn DutyControl(
                 oninput: move |e| duty.set(e.value()),
             }
             button {
-                class: "px-3 py-1.5 text-xs font-medium text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors",
+                class: "px-3 py-1.5 text-xs font-medium text-signal-700 border border-signal-200 rounded-lg hover:bg-signal-50 transition-colors",
                 disabled: busy() || !connected || disabled,
                 onclick: move |_| {
                     let v = duty.cloned().parse::<f64>().unwrap_or(-1.0);

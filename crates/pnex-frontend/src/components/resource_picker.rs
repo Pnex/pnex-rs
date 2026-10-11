@@ -181,7 +181,7 @@ pub fn ResourcePicker(
                     {
                         button {
                             key: "{tab_def.1}",
-                            class: if tab() == tab_def.0 { "px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 rounded-full" } else { "px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-full transition-colors" },
+                            class: if tab() == tab_def.0 { "px-3 py-1.5 text-sm font-medium text-signal-700 bg-signal-50 rounded-full" } else { "px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-full transition-colors" },
                             onclick: move |_| {
                                 tab.set(tab_def.0);
                                 page.set(0);
@@ -216,7 +216,7 @@ pub fn ResourcePicker(
                             for row in result.rows.clone() {
                                 li { key: "{row.id}",
                                     button {
-                                        class: "w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors rounded-lg",
+                                        class: "w-full text-left px-3 py-2 hover:bg-signal-50 transition-colors rounded-lg",
                                         onclick: move |_| {
                                             // Onglet courant LU au clic
                                             // (la ligne est rendue sous
@@ -268,7 +268,7 @@ pub fn ResourcePicker(
                     },
                     None => rsx! {
                         div { class: "flex justify-center py-6",
-                            span { class: "animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" }
+                            span { class: "animate-spin rounded-full h-6 w-6 border-b-2 border-signal-600" }
                         }
                     },
                 }

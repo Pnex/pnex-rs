@@ -138,7 +138,7 @@ pub fn AnnotationVersionsDrawer(
                         },
                         None => rsx! {
                             div { class: "flex-1 flex items-center justify-center",
-                                span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" }
+                                span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-signal-600" }
                             }
                         },
                     }
@@ -212,7 +212,7 @@ fn version_row(
             }
             div { class: "flex items-center gap-2",
                 button {
-                    class: "px-2 py-1 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors",
+                    class: "px-2 py-1 text-xs text-signal-700 bg-signal-50 border border-signal-200 rounded-lg hover:bg-signal-100 transition-colors",
                     onclick: move |_| {
                         let id = layer_load.clone();
                         let n = version.version_number;

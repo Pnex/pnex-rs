@@ -251,7 +251,7 @@ pub fn EditorShell(
                     match on_rename {
                         Some(cb) if renaming() => rsx! {
                             input {
-                                class: "w-56 shrink-0 rounded-lg border border-blue-400 px-2 py-1 text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500",
+                                class: "w-56 shrink-0 rounded-lg border border-signal-400 px-2 py-1 text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-signal-500",
                                 value: "{draft}",
                                 autofocus: true,
                                 oninput: move |e: Event<FormData>| draft.set(e.value()),

@@ -74,7 +74,7 @@ pub(super) fn AddressSearch(
                 },
             }
             if busy() {
-                span { class: "absolute right-3 top-3 animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600" }
+                span { class: "absolute right-3 top-3 animate-spin rounded-full h-4 w-4 border-b-2 border-signal-600" }
             }
             if searched() {
                 div { class: "absolute mt-1 w-full bg-white rounded-lg shadow border border-gray-200 text-sm max-h-72 overflow-y-auto",
@@ -123,7 +123,7 @@ fn AddressHit(
             }
             button {
                 r#type: "button",
-                class: "shrink-0 px-2 py-1 text-xs text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50",
+                class: "shrink-0 px-2 py-1 text-xs text-signal-700 border border-signal-200 rounded-lg hover:bg-signal-50",
                 onclick: move |_| on_add.call(for_add.clone()),
                 {t!("geo-search-add-poi")}
             }

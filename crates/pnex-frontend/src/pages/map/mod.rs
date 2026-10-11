@@ -272,7 +272,7 @@ pub fn Map() -> Element {
                         h1 { class: "text-base font-semibold text-gray-900", {t!("viz-map-title")} }
                         Link {
                             to: Route::Sites {},
-                            class: "ml-auto mr-1 text-xs font-medium text-blue-700 hover:underline",
+                            class: "ml-auto mr-1 text-xs font-medium text-signal-700 hover:underline",
                             {t!("map-open-sites")}
                         }
                         button {
@@ -336,7 +336,7 @@ pub fn Map() -> Element {
                             }
                         }
                         button {
-                            class: "w-full px-3 py-1.5 text-sm text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors",
+                            class: "w-full px-3 py-1.5 text-sm text-signal-700 border border-signal-200 rounded-lg hover:bg-signal-50 transition-colors",
                             onclick: move |_| {
                                 search.set(String::new());
                                 filter_device.set(false);
@@ -351,7 +351,7 @@ pub fn Map() -> Element {
                     div { class: "flex-1 overflow-y-auto",
                         if list_loading {
                             div { class: "p-6 flex justify-center",
-                                span { class: "animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" }
+                                span { class: "animate-spin rounded-full h-5 w-5 border-b-2 border-signal-600" }
                             }
                         } else if pois.is_empty() {
                             div { class: "p-6 text-center text-sm text-gray-500", {t!("poi-empty")} }
@@ -395,7 +395,7 @@ pub fn Map() -> Element {
                         }
                     }
                     button {
-                        class: if add_active { "px-3 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg shadow border border-blue-700 transition-colors" } else { "px-3 py-2.5 text-sm font-semibold text-blue-700 bg-white rounded-lg shadow border border-blue-200 hover:bg-blue-50 transition-colors" },
+                        class: if add_active { "px-3 py-2.5 text-sm font-semibold text-white bg-signal-600 rounded-lg shadow border border-signal-700 transition-colors" } else { "px-3 py-2.5 text-sm font-semibold text-signal-700 bg-white rounded-lg shadow border border-signal-200 hover:bg-signal-50 transition-colors" },
                         onclick: move |_| add_mode.toggle(),
                         if add_active {
                             {t!("poi-add-cancel")}
@@ -412,7 +412,7 @@ pub fn Map() -> Element {
                         div {
                             role: "status",
                             class: "absolute top-3 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white/95 rounded-full shadow border border-gray-200",
-                            span { class: "animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-600" }
+                            span { class: "animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-signal-600" }
                             {t!("poi-points-loading")}
                         }
                     },
@@ -426,7 +426,7 @@ pub fn Map() -> Element {
                     _ => rsx! {},
                 }
                 if add_active {
-                    div { class: "absolute top-16 left-3 z-10 px-3 py-1.5 text-xs font-medium text-white bg-blue-600/90 rounded-lg shadow",
+                    div { class: "absolute top-16 left-3 z-10 px-3 py-1.5 text-xs font-medium text-white bg-signal-600/90 rounded-lg shadow",
                         {t!("poi-add-hint")}
                     }
                 }
@@ -543,7 +543,7 @@ fn BasemapControl(
                 " "
                 Link {
                     to: Route::OrgsCurrent {},
-                    class: "text-blue-600 hover:underline",
+                    class: "text-signal-600 hover:underline",
                     {t!("geo-basemap-configure")}
                 }
             }

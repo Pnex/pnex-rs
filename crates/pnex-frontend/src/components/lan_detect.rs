@@ -55,12 +55,12 @@ pub fn LanDetect(on_pick: Callback<String>) -> Element {
                     oninput: move |e| prefix.set(e.value()),
                 }
                 button {
-                    class: "px-3 py-1.5 text-xs font-medium text-blue-700 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50",
+                    class: "px-3 py-1.5 text-xs font-medium text-signal-700 bg-white border border-signal-200 rounded-lg hover:bg-signal-50 transition-colors disabled:opacity-50",
                     r#type: "button",
                     disabled: scanning(),
                     onclick: run,
                     if scanning() {
-                        span { class: "animate-spin inline-block rounded-full h-3 w-3 border-b-2 border-blue-600 mr-1" }
+                        span { class: "animate-spin inline-block rounded-full h-3 w-3 border-b-2 border-signal-600 mr-1" }
                         {t!("edgerefs-detecting")}
                     } else {
                         icons::Search { class: "h-3.5 w-3.5 inline mr-1" }
@@ -80,7 +80,7 @@ pub fn LanDetect(on_pick: Callback<String>) -> Element {
                                 span { class: "text-gray-500 ml-2", "v{hit.version}" }
                             }
                             button {
-                                class: "px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors shrink-0",
+                                class: "px-2 py-1 text-xs font-medium text-signal-600 hover:text-signal-800 border border-signal-200 rounded-lg hover:bg-signal-50 transition-colors shrink-0",
                                 r#type: "button",
                                 onclick: move |_| on_pick.call(hit.host.clone()),
                                 {t!("edgerefs-scan-register")}

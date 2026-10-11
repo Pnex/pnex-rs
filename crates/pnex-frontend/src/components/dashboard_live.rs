@@ -129,7 +129,7 @@ pub fn DashboardLive(dashboard_id: String) -> Element {
                     div { class: "flex flex-col items-center gap-3 py-12",
                         p { class: "text-sm text-gray-500", {t!("dashboard-live-unavailable")} }
                         button {
-                            class: "px-3 py-1.5 text-sm text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors",
+                            class: "px-3 py-1.5 text-sm text-signal-700 border border-signal-200 rounded-lg hover:bg-signal-50 transition-colors",
                             onclick: move |_| reload.with_mut(|r| *r += 1),
                             {t!("common-retry")}
                         }
@@ -137,7 +137,7 @@ pub fn DashboardLive(dashboard_id: String) -> Element {
                 },
                 None => rsx! {
                     div { class: "flex justify-center py-12",
-                        span { class: "animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" }
+                        span { class: "animate-spin rounded-full h-6 w-6 border-b-2 border-signal-600" }
                     }
                 },
             }

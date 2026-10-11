@@ -168,7 +168,7 @@ fn IconCell(id: String, title: String, selected: bool, on_pick: EventHandler<Str
     rsx! {
         button {
             r#type: "button",
-            class: if selected { "flex h-8 items-center justify-center rounded bg-blue-600 text-white" } else { "flex h-8 items-center justify-center rounded text-gray-700 hover:bg-gray-100" },
+            class: if selected { "flex h-8 items-center justify-center rounded bg-signal-600 text-white" } else { "flex h-8 items-center justify-center rounded text-gray-700 hover:bg-gray-100" },
             title: "{title}",
             onclick: move |_| on_pick.call(pick.clone()),
             HomeIconView { id, class: "h-5 w-5" }

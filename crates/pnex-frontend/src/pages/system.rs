@@ -162,7 +162,7 @@ pub fn System() -> Element {
 fn LoadingCard() -> Element {
     rsx! {
         div { class: "bg-white rounded-lg shadow p-6 text-center",
-            span { class: "animate-spin inline-block rounded-full h-6 w-6 border-b-2 border-blue-600" }
+            span { class: "animate-spin inline-block rounded-full h-6 w-6 border-b-2 border-signal-600" }
         }
     }
 }
@@ -183,7 +183,7 @@ fn source_badge(source: &str) -> (&'static str, String) {
             t!("system-retention-source-override"),
         ),
         "global" => (
-            "bg-blue-100 text-blue-800",
+            "bg-signal-100 text-signal-800",
             t!("system-retention-source-global"),
         ),
         "tier" => (
@@ -261,7 +261,7 @@ fn RetentionCard(info: RetentionInfo) -> Element {
                     " "
                     Link {
                         to: crate::app::Route::AdminStatus {},
-                        class: "text-blue-600 underline",
+                        class: "text-signal-600 underline",
                         {t!("system-retention-change-in-admin")}
                     }
                 }
@@ -345,7 +345,7 @@ fn DataCard(
                 let checked = selected.read().contains(&name);
                 rsx! {
                     input {
-                        class: "h-4 w-4 accent-blue-600",
+                        class: "h-4 w-4 accent-signal-600",
                         r#type: "checkbox",
                         aria_label: "{stream_label}",
                         checked,
@@ -475,7 +475,7 @@ fn DataCard(
                     if can_write {
                         label { class: "flex items-center gap-2 text-sm text-gray-700 select-none",
                             input {
-                                class: "h-4 w-4 accent-blue-600",
+                                class: "h-4 w-4 accent-signal-600",
                                 r#type: "checkbox",
                                 checked: all_selected,
                                 disabled: filtered_names.is_empty(),

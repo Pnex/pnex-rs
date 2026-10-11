@@ -184,7 +184,7 @@ fn PinChip(view: PinView, mut selected_label: Signal<Option<String>>) -> Element
     let ring_x = view.x;
     let opacity = if view.reserved { "0.55" } else { "1" };
     let stroke = if view.selected {
-        "var(--color-blue-600, #2563eb)"
+        "var(--color-signal-600, #2563eb)"
     } else {
         "var(--color-slate-300, #cbd5e1)"
     };
@@ -217,7 +217,7 @@ fn PinChip(view: PinView, mut selected_label: Signal<Option<String>>) -> Element
                     cy: "{view.y}",
                     r: "8",
                     fill: "none",
-                    stroke: "var(--color-blue-600, #2563eb)",
+                    stroke: "var(--color-signal-600, #2563eb)",
                     stroke_width: "2",
                 }
             }

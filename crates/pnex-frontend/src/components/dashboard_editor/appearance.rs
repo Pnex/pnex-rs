@@ -156,7 +156,7 @@ pub fn AppearancePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Element
                     }
                 }
                 button {
-                    class: if can_write { "text-xs font-medium text-blue-600 hover:text-blue-800" } else { "hidden" },
+                    class: if can_write { "text-xs font-medium text-signal-600 hover:text-signal-800" } else { "hidden" },
                     onclick: move |_| add_threshold(cx),
                     {t!("appear-add-threshold")}
                 }
@@ -179,7 +179,7 @@ pub fn AppearancePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Element
                 }
                 if rules.len() < STATE_RULES_MAX {
                     button {
-                        class: if can_write { "text-xs font-medium text-blue-600 hover:text-blue-800" } else { "hidden" },
+                        class: if can_write { "text-xs font-medium text-signal-600 hover:text-signal-800" } else { "hidden" },
                         onclick: move |_| add_rule(cx),
                         {t!("appear-add-state")}
                     }

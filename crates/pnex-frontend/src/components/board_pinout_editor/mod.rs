@@ -80,7 +80,7 @@ fn BoardHeader(
                 }
                 if change_target.is_some() {
                     button {
-                        class: "text-xs text-blue-600 hover:underline",
+                        class: "text-xs text-signal-600 hover:underline",
                         r#type: "button",
                         onclick: move |_| changing_board.set(true),
                         {t!("board-change-open")}

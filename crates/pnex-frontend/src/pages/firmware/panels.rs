@@ -15,7 +15,7 @@ const MENU: &str =
     "absolute right-0 top-9 z-30 w-96 max-h-[420px] overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg py-1";
 const MENU_ITEM: &str = "w-full text-left px-3 py-2 hover:bg-gray-50 flex flex-col gap-0.5";
 const SMALL_BTN: &str =
-    "px-2 py-0.5 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 disabled:opacity-40";
+    "px-2 py-0.5 text-xs text-signal-700 bg-signal-50 border border-signal-200 rounded-md hover:bg-signal-100 disabled:opacity-40";
 
 /// PneX API snippets: (label key, snippet inserted at the caret).
 const API_SNIPPETS: &[(&str, &str)] = &[
@@ -252,7 +252,7 @@ pub(super) fn RevisionsDrawer(
                     },
                     None => rsx! {
                         div { class: "flex-1 flex items-center justify-center",
-                            span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" }
+                            span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-signal-600" }
                         }
                     },
                 }

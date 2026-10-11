@@ -243,10 +243,12 @@ fn WidgetElement(
     // hover / selection.
     let is_symbol = w.widget_type == "symbol";
     let frame = match (is_symbol, is_selected) {
-        (false, true) => "bg-white shadow-sm rounded-lg ring-2 ring-blue-500",
-        (false, false) => "bg-white shadow-sm rounded-lg ring-1 ring-gray-200 hover:ring-blue-300",
-        (true, true) => "rounded ring-2 ring-blue-500",
-        (true, false) => "rounded hover:ring-1 hover:ring-blue-300",
+        (false, true) => "bg-white shadow-sm rounded-lg ring-2 ring-signal-500",
+        (false, false) => {
+            "bg-white shadow-sm rounded-lg ring-1 ring-gray-200 hover:ring-signal-300"
+        }
+        (true, true) => "rounded ring-2 ring-signal-500",
+        (true, false) => "rounded hover:ring-1 hover:ring-signal-300",
     };
     let busy = matches!(
         interaction,
@@ -297,7 +299,7 @@ fn WidgetElement(
             onpointerdown: on_pointer_down,
             WidgetBody { widget: w.clone(), points, values: Some(live.clone()) }
             if is_selected && !busy {
-                div { class: "absolute -bottom-1 -right-1 h-3 w-3 rounded-sm bg-blue-500 cursor-se-resize" }
+                div { class: "absolute -bottom-1 -right-1 h-3 w-3 rounded-sm bg-signal-500 cursor-se-resize" }
             }
         }
     }
@@ -322,7 +324,7 @@ fn WireElement(
     let id = wire.id.clone();
     let is_selected = matches!(&selected, Some(Selection::Wire(sel)) if *sel == wire.id);
     let stroke = if is_selected {
-        "var(--color-blue-600, #2563eb)"
+        "var(--color-signal-600, #2563eb)"
     } else {
         "var(--color-slate-400, #94a3b8)"
     };
@@ -369,7 +371,7 @@ fn AnchorElement(
     };
     let armed = matches!(&wire_draft, Some(d) if d.widget_id == w.id && d.side == side);
     let fill = if armed {
-        "var(--color-blue-600, #2563eb)"
+        "var(--color-signal-600, #2563eb)"
     } else {
         "var(--color-slate-400, #94a3b8)"
     };

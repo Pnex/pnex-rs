@@ -229,7 +229,7 @@ pub(super) fn VisionDetectForm(
             }
             label { class: "flex items-start gap-2 text-sm text-gray-700 select-none",
                 input {
-                    class: "h-4 w-4 mt-0.5 accent-blue-600",
+                    class: "h-4 w-4 mt-0.5 accent-signal-600",
                     r#type: "checkbox",
                     checked: record_layer,
                     disabled: !can_write,

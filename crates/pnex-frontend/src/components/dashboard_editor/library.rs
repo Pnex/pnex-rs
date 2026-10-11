@@ -53,8 +53,8 @@ pub fn kind_label(kind: &str) -> String {
 /// Icône + tuile d'un type de widget (palette + en-tête d'inspecteur).
 pub fn kind_icon(kind: &str) -> (PaletteIcon, &'static str) {
     match kind {
-        "gauge" => (PaletteIcon::Gauge, "bg-blue-50 text-blue-600"),
-        "stat" => (PaletteIcon::Hash, "bg-blue-50 text-blue-600"),
+        "gauge" => (PaletteIcon::Gauge, "bg-signal-50 text-signal-600"),
+        "stat" => (PaletteIcon::Hash, "bg-signal-50 text-signal-600"),
         "line" => (PaletteIcon::LineChart, "bg-green-50 text-green-600"),
         "indicator" => (PaletteIcon::CheckCircle, "bg-emerald-50 text-emerald-600"),
         "text" => (PaletteIcon::Info, "bg-gray-100 text-gray-600"),
@@ -295,7 +295,7 @@ fn library_rows(
             rsx! {
                 div {
                     key: "{widget.id}",
-                    class: "group flex items-center justify-between px-2 py-1.5 rounded border border-gray-100 hover:border-blue-200 hover:bg-blue-50 cursor-grab select-none",
+                    class: "group flex items-center justify-between px-2 py-1.5 rounded border border-gray-100 hover:border-signal-200 hover:bg-signal-50 cursor-grab select-none",
                     onpointerdown: move |_| {
                         // Arme le drag : la pose se fait au pointerup
                         // sur le canvas (snapshot au drop, D41).

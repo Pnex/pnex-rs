@@ -221,7 +221,7 @@ pub(super) fn SettingsDialog(
             div { class: "flex gap-4",
                 label { class: "flex items-center gap-2 text-sm text-gray-700 select-none",
                     input {
-                        class: "h-4 w-4 accent-blue-600",
+                        class: "h-4 w-4 accent-signal-600",
                         r#type: "checkbox",
                         checked: vflip(),
                         disabled,
@@ -231,7 +231,7 @@ pub(super) fn SettingsDialog(
                 }
                 label { class: "flex items-center gap-2 text-sm text-gray-700 select-none",
                     input {
-                        class: "h-4 w-4 accent-blue-600",
+                        class: "h-4 w-4 accent-signal-600",
                         r#type: "checkbox",
                         checked: hmirror(),
                         disabled,

@@ -28,7 +28,7 @@ pub fn MediaDownloadProgress(progress: Option<DownloadProgress>) -> Element {
                 if let Some(p) = percent {
                     div { class: "h-1.5 w-full overflow-hidden rounded-full bg-white/20",
                         div {
-                            class: "h-full rounded-full bg-blue-500 transition-[width]",
+                            class: "h-full rounded-full bg-signal-500 transition-[width]",
                             style: "width: {p}%",
                         }
                     }

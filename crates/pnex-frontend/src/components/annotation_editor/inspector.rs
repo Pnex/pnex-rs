@@ -188,7 +188,7 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
                     {t!("annot-inspector-target")}
                     span { class: "ml-1 font-mono text-gray-900", "{slug_now}" }
                     button {
-                        class: "ml-2 px-2 py-0.5 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100",
+                        class: "ml-2 px-2 py-0.5 text-xs text-signal-700 bg-signal-50 border border-signal-200 rounded-lg hover:bg-signal-100",
                         onclick: move |_| picker_open.set(true),
                         {t!("annot-inspector-pick")}
                     }

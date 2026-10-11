@@ -16,10 +16,9 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* PNeX identity (docs/architecture/design-system.md): calm ISA-101 chrome,
- * colour only carries meaning. Semantic tokens first; the gray and blue
- * scales are retuned so the existing utilities follow the identity.
- * shortcut: `blue-*` is the signal cyan under its old name, rename it to
- * `signal-*` once no other session has the pages in flight. */
+ * colour only carries meaning. Semantic tokens first; the gray scale is
+ * retuned so the existing utilities follow the identity, and `signal-*` is
+ * the scale of the signal cyan (`blue-*` is refused by design_guard). */
 @theme {
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -52,17 +51,17 @@
   --color-gray-900: #16212b;
   --color-gray-950: #0e151c;
 
-  --color-blue-50: #eef8fb;
-  --color-blue-100: #e3f2f6;
-  --color-blue-200: #cbe7ef;
-  --color-blue-300: #9fcad8;
-  --color-blue-400: #5fa9c0;
-  --color-blue-500: #2b8fad;
-  --color-blue-600: #0e7c9c;
-  --color-blue-700: #0b6984;
-  --color-blue-800: #0a556b;
-  --color-blue-900: #0b4557;
-  --color-blue-950: #062b37;
+  --color-signal-50: #eef8fb;
+  --color-signal-100: #e3f2f6;
+  --color-signal-200: #cbe7ef;
+  --color-signal-300: #9fcad8;
+  --color-signal-400: #5fa9c0;
+  --color-signal-500: #2b8fad;
+  --color-signal-600: #0e7c9c;
+  --color-signal-700: #0b6984;
+  --color-signal-800: #0a556b;
+  --color-signal-900: #0b4557;
+  --color-signal-950: #062b37;
 }
 
 @layer base {
@@ -322,7 +321,7 @@
     @apply border-l-4 border-gray-300 pl-3 my-2 text-gray-600 italic;
   }
   .ai-md a {
-    @apply text-blue-600 underline;
+    @apply text-signal-600 underline;
   }
   .ai-md hr {
     @apply border-gray-300 my-3;

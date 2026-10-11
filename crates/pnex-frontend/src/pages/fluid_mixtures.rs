@@ -313,7 +313,7 @@ pub fn FluidMixtures() -> Element {
                                 {t!("mixtures-components")}
                             }
                             button {
-                                class: "px-2 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded",
+                                class: "px-2 py-1 text-sm text-signal-600 hover:bg-signal-50 rounded",
                                 onclick: move |_| rows.push(("".into(), "".into())),
                                 {t!("mixtures-add-component")}
                             }

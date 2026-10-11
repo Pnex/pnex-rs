@@ -120,7 +120,7 @@ pub(super) fn FlashToggle(device: i64) -> Element {
                 // board profile made it an output): one click switches it.
                 button {
                     r#type: "button",
-                    class: "px-3 py-1.5 text-xs font-medium text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50 disabled:opacity-40",
+                    class: "px-3 py-1.5 text-xs font-medium text-signal-700 border border-signal-200 rounded-lg hover:bg-signal-50 disabled:opacity-40",
                     disabled,
                     onclick: move |_| {
                         let cmd = api::pins::Command {

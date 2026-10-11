@@ -615,7 +615,7 @@ fn widget_panel(
 fn SpanPicker(mut cx: EditorCx, widget: pnex_core::Widget, can_write: bool) -> Element {
     let half = widget.options.span == Some(1);
     let (id_half, id_full) = (widget.id.clone(), widget.id.clone());
-    let on = "flex-1 rounded px-2 py-1 text-xs font-medium bg-blue-600 text-white";
+    let on = "flex-1 rounded px-2 py-1 text-xs font-medium bg-signal-600 text-white";
     let off = "flex-1 rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100";
     rsx! {
         field_label { label_key: "span", label: t!("insp-span").to_string() }

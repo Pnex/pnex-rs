@@ -34,8 +34,8 @@ pub(crate) fn TrustCaDialog() -> Element {
                 }
                 p { class: "text-xs text-gray-500", {t!("trust-ca-device-hint")} }
                 button {
-                    class: "w-full py-2 px-4 rounded-lg text-xs font-medium text-blue-700 \
-                            bg-blue-50 hover:bg-blue-100 transition-colors",
+                    class: "w-full py-2 px-4 rounded-lg text-xs font-medium text-signal-700 \
+                            bg-signal-50 hover:bg-signal-100 transition-colors",
                     onclick: move |_| open_in_browser(&download_url),
                     {t!("trust-ca-download")}
                 }
@@ -48,7 +48,7 @@ pub(crate) fn TrustCaDialog() -> Element {
                     }
                     button {
                         class: "flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold text-white \
-                                bg-blue-600 hover:bg-blue-700 transition-colors",
+                                bg-signal-600 hover:bg-signal-700 transition-colors",
                         onclick: move |_| accept(accept_target.clone()),
                         {t!("trust-ca-accept")}
                     }

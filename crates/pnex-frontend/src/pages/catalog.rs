@@ -121,7 +121,7 @@ pub fn Catalog() -> Element {
                         for cap in shown_caps {
                             span {
                                 key: "{cap}",
-                                class: "px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full",
+                                class: "px-2 py-0.5 bg-signal-100 text-signal-800 text-xs rounded-full",
                                 {cap}
                             }
                         }
@@ -144,7 +144,7 @@ pub fn Catalog() -> Element {
                 };
                 rsx! {
                     button {
-                        class: "flex items-center px-3 py-1 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors text-sm",
+                        class: "flex items-center px-3 py-1 text-signal-600 hover:bg-signal-50 rounded-lg transition-colors text-sm",
                         r#type: "button",
                         onclick: move |_| preview_board.set(Some(board.clone())),
                         icons::Eye { class: Some("h-4 w-4 mr-1".into()) }

@@ -228,7 +228,9 @@ pub fn Showcase() -> Element {
                     button { class: "px-3 py-1.5 text-sm text-gray-700 bg-gray-50 border border-gray-300 rounded-lg font-medium",
                         "Versions"
                     }
-                    button { class: "px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg font-medium", "Enregistrer" }
+                    button { class: "px-3 py-1.5 text-sm bg-signal-600 text-white rounded-lg font-medium",
+                        "Enregistrer"
+                    }
                     button { class: "px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg font-medium",
                         "Déployer"
                     }

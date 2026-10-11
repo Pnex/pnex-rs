@@ -287,7 +287,7 @@ pub(crate) fn SelfHostedSection() -> Element {
             if open() {
                 div { class: "mt-3 space-y-2",
                     input {
-                        class: "w-full py-2 px-3 rounded-lg border border-gray-300 text-xs text-gray-900                                 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent",
+                        class: "w-full py-2 px-3 rounded-lg border border-gray-300 text-xs text-gray-900                                 focus:outline-none focus:ring-2 focus:ring-signal-500 focus:border-transparent",
                         r#type: "url",
                         placeholder: t!("server-url-placeholder"),
                         value: "{url}",
@@ -381,7 +381,7 @@ pub fn ServerUrl() -> Element {
                         div { class: "space-y-4",
                             input {
                                 class: "w-full py-3 px-4 rounded-lg border border-gray-300 text-sm text-gray-900 \
-                                        focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent",
+                                        focus:outline-none focus:ring-2 focus:ring-signal-500 focus:border-transparent",
                                 r#type: "url",
                                 placeholder: t!("server-url-placeholder"),
                                 value: "{url}",
@@ -404,7 +404,7 @@ pub fn ServerUrl() -> Element {
                             }
                             button {
                                 class: "w-full flex justify-center items-center py-3 px-4 rounded-lg text-sm font-semibold text-white \
-                                        bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 \
+                                        bg-gradient-to-r from-signal-600 to-signal-700 hover:from-signal-700 hover:to-signal-800 \
                                         shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all \
                                         disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-md",
                                 disabled: busy(),

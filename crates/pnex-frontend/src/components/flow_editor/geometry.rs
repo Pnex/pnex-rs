@@ -72,8 +72,8 @@ pub const EVENT_LOG_STROKE: &str = "var(--color-slate-500, #64748b)";
 // Shared memory nodes (Valkey): lime writer, green reader.
 pub const MEMORY_WRITE_FILL: &str = "var(--color-lime-50, #f7fee7)";
 pub const MEMORY_WRITE_STROKE: &str = "var(--color-lime-600, #65a30d)";
-pub const CONTROL_SOURCE_FILL: &str = "var(--color-blue-50, #eff6ff)";
-pub const CONTROL_SOURCE_STROKE: &str = "var(--color-blue-600, #2563eb)";
+pub const CONTROL_SOURCE_FILL: &str = "var(--color-signal-50, #eff6ff)";
+pub const CONTROL_SOURCE_STROKE: &str = "var(--color-signal-600, #2563eb)";
 pub const MEMORY_READ_FILL: &str = "var(--color-green-50, #f0fdf4)";
 pub const MEMORY_READ_STROKE: &str = "var(--color-green-600, #16a34a)";
 // Predictive nodes: red anomaly, violet forecast.
@@ -86,7 +86,7 @@ pub const RED_STROKE: &str = "var(--color-gray-500, #6b7280)";
 /// Nœud en violation (surlignage d'erreur).
 pub const VIOLATION_STROKE: &str = "var(--color-red-600, #dc2626)";
 /// Nœud sélectionné.
-pub const SELECTED_STROKE: &str = "var(--color-blue-600, #2563eb)";
+pub const SELECTED_STROKE: &str = "var(--color-signal-600, #2563eb)";
 /// Couleur des câbles.
 pub const WIRE_STROKE: &str = "var(--color-slate-400, #94a3b8)";
 

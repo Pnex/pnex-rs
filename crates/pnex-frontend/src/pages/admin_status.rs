@@ -72,7 +72,7 @@ pub fn AdminStatus() -> Element {
             match &*status.value().read() {
                 None => rsx! {
                     div { class: "text-center py-12",
-                        span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-blue-600" }
+                        span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-signal-600" }
                     }
                 },
                 Some(Err(err)) => rsx! {
@@ -289,7 +289,7 @@ fn MetricRow(metric: StatusMetric) -> Element {
     let bar_class = match ratio {
         Some(r) if r > 0.9 => "bg-red-500",
         Some(r) if r > 0.75 => "bg-amber-500",
-        _ => "bg-blue-500",
+        _ => "bg-signal-500",
     };
     // dt + dd (+ a gauge dd) in one group: the only children a <dl>
     // group may hold.
@@ -354,7 +354,7 @@ fn OrgsOverview() -> Element {
             match &*rows.value().read() {
                 None => rsx! {
                     div { class: "text-center py-6",
-                        span { class: "animate-spin inline-block rounded-full h-6 w-6 border-b-2 border-blue-600" }
+                        span { class: "animate-spin inline-block rounded-full h-6 w-6 border-b-2 border-signal-600" }
                     }
                 },
                 Some(Err(err)) => rsx! {

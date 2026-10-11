@@ -301,7 +301,7 @@ fn SceneLinks(cx: TourEditorCx, can_write: bool, scene_id: String) -> Element {
                 div {
                     key: "{link_id}",
                     class: "flex items-center gap-2 rounded-lg border border-gray-200 px-2 py-1.5",
-                    span { class: if is_stair { "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200" } else { "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200" },
+                    span { class: if is_stair { "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200" } else { "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-signal-50 text-signal-700 border border-signal-200" },
                         {
                             if is_stair { t!("studio-link-kind-stair") } else { t!("studio-link-kind-walk") }
                         }
@@ -330,7 +330,7 @@ fn SceneLinks(cx: TourEditorCx, can_write: bool, scene_id: String) -> Element {
                         }
                     }
                     button {
-                        class: "px-3 py-2 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors shrink-0 whitespace-nowrap",
+                        class: "px-3 py-2 text-sm text-signal-700 bg-signal-50 border border-signal-200 rounded-lg hover:bg-signal-100 transition-colors shrink-0 whitespace-nowrap",
                         onclick: move |_| {
                             let to = target.cloned();
                             if to.is_empty() {
@@ -505,7 +505,7 @@ fn FloorForm(cx: TourEditorCx, can_write: bool, floor: pnex_core::TourFloor) -> 
                             }
                         } else if can_write {
                             button {
-                                class: "w-full px-3 py-2 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors",
+                                class: "w-full px-3 py-2 text-sm text-signal-700 bg-signal-50 border border-signal-200 rounded-lg hover:bg-signal-100 transition-colors",
                                 onclick: move |_| picker_open.set(true),
                                 {t!("studio-floor-plan-pick")}
                             }
