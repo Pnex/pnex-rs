@@ -10,7 +10,7 @@
 //
 // Events back to Rust by polling (tron.rs school, works in wasm and
 // native): `window.__pnexDoc[hostId] = {status, closeCode, needTicket,
-// peers, slash, dirtySeq}`. The websocket ticket is single-use: on every
+// peers, request, commentsSeq, activeComment}`. The websocket ticket is single-use: on every
 // disconnect `needTicket` is bumped and Rust answers with `reconnect()`.
 
 import * as Y from 'yjs';
@@ -87,7 +87,7 @@ const linkGuard = new Plugin({
   },
 });
 
-// ── Commands (toolbar and slash palette) ─────────────────────────────────
+// ── Commands ("/" menu, bubble, header)  ─────────────────────────────────
 const S = schema.nodes;
 const COMMANDS = {
   bold: () => toggleMark(schema.marks.strong),
@@ -129,22 +129,271 @@ function report(host, patch) {
   window.__pnexDoc[host] = Object.assign(window.__pnexDoc[host] || {}, patch);
 }
 
-// "/" typed in an empty block opens the palette (rendered by Rust).
-function slashPlugin(host) {
+// ── Notion-like chrome: "/" menu, selection bubble, "+" handle, hint ─────
+// Drawn here, not in Rust, so arrow keys answer without the polling delay;
+// every label comes from Rust at mount (`opts.labels`, fluent).
+// [command, icon, Markdown shortcut]
+const BLOCK_ITEMS = [
+  ['paragraph', 'T', ''],
+  ['h1', 'H1', '#'],
+  ['h2', 'H2', '##'],
+  ['h3', 'H3', '###'],
+  ['bullet', '\u2022', '-'],
+  ['ordered', '1.', '1.'],
+  ['quote', '\u275D', '>'],
+  ['codeblock', '</>', '```'],
+  ['rule', '\u2014', '---'],
+];
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+// "/query" right before the cursor, the "/" at the start of a block or after a space.
+function slashMatch(state) {
+  const { $from, empty } = state.selection;
+  if (!empty || !$from.parent.isTextblock || $from.parent.type === S.code_block) return null;
+  const before = $from.parent.textBetween(0, $from.parentOffset, null, '\ufffc');
+  const m = /(?:^|\s)\/([^\s/]{0,24})$/.exec(before);
+  if (!m) return null;
+  return { from: $from.pos - m[1].length - 1, to: $from.pos, query: m[1].toLowerCase() };
+}
+
+function slashPlugin(labels) {
+  let menu = null;
+  let items = [];
+  let index = 0;
+  let match = null;
+  let dismissed = null;
+  const close = () => {
+    if (menu) menu.remove();
+    menu = null;
+    match = null;
+  };
+  const pick = (view, cmd) => {
+    const m = match;
+    close();
+    if (!m) return;
+    view.dispatch(view.state.tr.delete(m.from, m.to));
+    COMMANDS[cmd]()(view.state, view.dispatch, view);
+    view.focus();
+  };
+  const highlight = () => {
+    menu.querySelectorAll('.pnex-doc-menu-item').forEach((b, i) => {
+      b.classList.toggle('is-active', i === index);
+      b.setAttribute('aria-selected', String(i === index));
+      if (i === index) b.scrollIntoView({ block: 'nearest' });
+    });
+  };
+  const render = (view) => {
+    if (!menu) {
+      menu = el('div', 'pnex-doc-menu');
+      menu.setAttribute('role', 'listbox');
+      document.body.appendChild(menu);
+    }
+    menu.replaceChildren(el('div', 'pnex-doc-menu-section', labels.basicBlocks || ''));
+    if (!items.length) menu.append(el('div', 'pnex-doc-menu-empty', labels.noResults || ''));
+    items.forEach(([cmd, icon, hint], i) => {
+      const b = el('button', 'pnex-doc-menu-item');
+      b.type = 'button';
+      b.setAttribute('role', 'option');
+      b.append(el('span', 'pnex-doc-menu-icon', icon), el('span', 'pnex-doc-menu-label', labels[cmd] || cmd), el('span', 'pnex-doc-menu-hint', hint));
+      b.onmousedown = (e) => e.preventDefault();
+      b.onclick = () => pick(view, cmd);
+      b.onmouseenter = () => {
+        index = i;
+        highlight();
+      };
+      menu.append(b);
+    });
+    highlight();
+    // Below the "/", or above it when the viewport is too short.
+    const c = view.coordsAtPos(match.from);
+    const h = menu.offsetHeight;
+    menu.style.left = Math.max(8, Math.min(c.left, window.innerWidth - menu.offsetWidth - 8)) + 'px';
+    menu.style.top = (window.innerHeight - c.bottom > h + 8 ? c.bottom + 4 : Math.max(8, c.top - h - 4)) + 'px';
+  };
   return new Plugin({
     view: () => ({
       update(view) {
-        const { $from, empty } = view.state.selection;
-        const open = empty && $from.parent.isTextblock && $from.parent.textContent === '/';
-        const cur = (window.__pnexDoc[host] || {}).slash;
-        if (open && !cur) {
-          const c = view.coordsAtPos($from.pos);
-          report(host, { slash: { seq: ++seq, x: c.left, y: c.bottom } });
-        } else if (!open && cur) {
-          report(host, { slash: null });
-        }
+        const m = slashMatch(view.state);
+        if (!m) dismissed = null;
+        if (!m || dismissed === m.from) return close();
+        const changed = !match || match.query !== m.query;
+        match = m;
+        items = BLOCK_ITEMS.filter(([cmd, , hint]) => {
+          const q = m.query;
+          return !q || (labels[cmd] || '').toLowerCase().includes(q) || cmd.includes(q) || hint === q;
+        });
+        if (changed) index = 0;
+        render(view);
       },
+      destroy: close,
     }),
+    props: {
+      handleKeyDown(view, ev) {
+        if (!menu) return false;
+        if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+          if (items.length) {
+            index = (index + (ev.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
+            highlight();
+          }
+          return true;
+        }
+        if (ev.key === 'Enter' || ev.key === 'Tab') {
+          if (!items.length) {
+            close();
+            return false;
+          }
+          pick(view, items[index][0]);
+          return true;
+        }
+        if (ev.key === 'Escape') {
+          dismissed = match.from;
+          close();
+          return true;
+        }
+        return false;
+      },
+      handleDOMEvents: {
+        blur: () => {
+          close();
+          return false;
+        },
+      },
+    },
+  });
+}
+
+// Floating bar over a text selection: marks here, link and comment asked
+// to Rust (`request`), which owns the link bar and the comments panel.
+function bubblePlugin(host, labels) {
+  let bar = null;
+  const hide = () => {
+    if (bar) bar.remove();
+    bar = null;
+  };
+  const button = (label, text, cls, active, onclick) => {
+    const b = el('button', 'pnex-doc-bubble-btn ' + cls + (active ? ' is-active' : ''), text);
+    b.type = 'button';
+    b.title = label || '';
+    if (text !== label) b.setAttribute('aria-label', label || '');
+    b.onmousedown = (e) => e.preventDefault();
+    b.onclick = onclick;
+    return b;
+  };
+  return new Plugin({
+    view: () => ({
+      update(view) {
+        const { state } = view;
+        const { from, to, empty } = state.selection;
+        if (empty || !(state.selection instanceof TextSelection) || !view.hasFocus()) return hide();
+        if (!bar) {
+          bar = el('div', 'pnex-doc-bubble');
+          bar.setAttribute('role', 'toolbar');
+          document.body.appendChild(bar);
+        }
+        const mark = (name, text, cls) =>
+          button(labels[name === 'strong' ? 'bold' : name === 'em' ? 'italic' : 'code'], text, cls, state.doc.rangeHasMark(from, to, schema.marks[name]), () => {
+            toggleMark(schema.marks[name])(view.state, view.dispatch);
+            view.focus();
+          });
+        const ask = (kind) => button(labels[kind], labels[kind], '', false, () => report(host, { request: { seq: ++seq, kind } }));
+        bar.replaceChildren(mark('strong', 'B', 'is-bold'), mark('em', 'i', 'is-italic'), mark('code', '</>', 'is-code'), el('span', 'pnex-doc-bubble-sep'), ask('link'), ask('comment'));
+        const a = view.coordsAtPos(from);
+        const z = view.coordsAtPos(to);
+        const left = Math.max(8, Math.min((a.left + z.right) / 2 - bar.offsetWidth / 2, window.innerWidth - bar.offsetWidth - 8));
+        bar.style.left = left + 'px';
+        bar.style.top = (a.top > bar.offsetHeight + 12 ? a.top - bar.offsetHeight - 8 : z.bottom + 8) + 'px';
+      },
+      destroy: hide,
+    }),
+    props: {
+      handleDOMEvents: {
+        blur: () => {
+          hide();
+          return false;
+        },
+      },
+    },
+  });
+}
+
+// "+" in the left gutter of the hovered block: a new line below that opens
+// the "/" menu (or the menu in place when that block is an empty line).
+function handlePlugin(labels) {
+  return new Plugin({
+    view(view) {
+      const host = view.dom.parentNode;
+      const h = el('button', 'pnex-doc-handle', '+');
+      h.type = 'button';
+      h.title = labels.addBlock || '';
+      h.setAttribute('aria-label', labels.addBlock || '');
+      host.appendChild(h);
+      let target = null;
+      const onMove = (e) => {
+        const block = Array.from(view.dom.children).find((c) => {
+          const r = c.getBoundingClientRect();
+          return e.clientY >= r.top - 4 && e.clientY <= r.bottom + 4;
+        });
+        if (!block) return;
+        const pos = view.posAtDOM(block, 0);
+        const $p = view.state.doc.resolve(pos);
+        target = $p.depth ? $p.before(1) : pos;
+        const hr = host.getBoundingClientRect();
+        const br = block.getBoundingClientRect();
+        const line = parseFloat(getComputedStyle(block).lineHeight) || 24;
+        h.style.top = br.top - hr.top + Math.max(0, (Math.min(line, br.height) - 24) / 2) + 'px';
+        h.style.left = view.dom.getBoundingClientRect().left - hr.left - 30 + 'px';
+        h.classList.add('is-visible');
+      };
+      const onLeave = () => h.classList.remove('is-visible');
+      h.onmousedown = (e) => e.preventDefault();
+      h.onclick = () => {
+        const node = target === null ? null : view.state.doc.nodeAt(target);
+        if (!node) return;
+        let tr = view.state.tr;
+        if (node.type === S.paragraph && node.content.size === 0) {
+          tr = tr.insertText('/', target + 1).setSelection(TextSelection.create(tr.doc, target + 2));
+        } else {
+          const at = target + node.nodeSize;
+          tr = tr.insert(at, S.paragraph.create(null, schema.text('/')));
+          tr.setSelection(TextSelection.create(tr.doc, at + 2));
+        }
+        view.focus();
+        view.dispatch(tr.scrollIntoView());
+      };
+      host.addEventListener('mousemove', onMove);
+      host.addEventListener('mouseleave', onLeave);
+      return {
+        destroy() {
+          host.removeEventListener('mousemove', onMove);
+          host.removeEventListener('mouseleave', onLeave);
+          h.remove();
+        },
+      };
+    },
+  });
+}
+
+// Grey hint on the empty line holding the cursor, and on an empty page.
+function placeholderPlugin(text) {
+  return new Plugin({
+    props: {
+      decorations(state) {
+        const { doc } = state;
+        const { $from, empty } = state.selection;
+        let pos = null;
+        if (doc.childCount === 1 && doc.firstChild.type === S.paragraph && doc.firstChild.content.size === 0) pos = 0;
+        else if (empty && $from.parent.type === S.paragraph && $from.parent.content.size === 0) pos = $from.before();
+        if (pos === null) return null;
+        const node = doc.nodeAt(pos);
+        return DecorationSet.create(doc, [Decoration.node(pos, pos + node.nodeSize, { class: 'is-empty', 'data-placeholder': text || '' })]);
+      },
+    },
   });
 }
 
@@ -355,8 +604,10 @@ function makeView(host, doc, opts, extra) {
   el.innerHTML = '';
   const fragment = doc.getXmlFragment('prosemirror');
   const plugins = [ySyncPlugin(fragment), ...extra, linkGuard];
+  const labels = opts.labels || {};
   if (opts.editable) {
     plugins.push(
+      slashPlugin(labels),
       yUndoPlugin(),
       rules(),
       keymap({
@@ -371,7 +622,9 @@ function makeView(host, doc, opts, extra) {
         'Shift-Tab': liftListItem(S.list_item),
       }),
       keymap(baseKeymap),
-      slashPlugin(host),
+      placeholderPlugin(labels.placeholder),
+      bubblePlugin(host, labels),
+      handlePlugin(labels),
     );
   }
   return new EditorView(el, {
@@ -425,7 +678,7 @@ function diffBlocks(a, b) {
 }
 
 window.pnexDoc = {
-  // Live page: {wsUrl, editable, user: {name, color}} → bool.
+  // Live page: {wsUrl, editable, user: {name, color}, labels} → bool.
   mount(host, opts) {
     try {
       this.unmount(host);
@@ -437,7 +690,7 @@ window.pnexDoc = {
       const provider = new Provider(host, doc, awareness);
       provider.onFinal = () => view.setProps({ editable: () => false });
       editors[host] = { doc, awareness, view, provider };
-      report(host, { status: 'connecting', closeCode: null, peers: 0, slash: null, needTicket: 0 });
+      report(host, { status: 'connecting', closeCode: null, peers: 0, request: null, needTicket: 0 });
       provider.connect(opts.wsUrl);
       return true;
     } catch (e) {
@@ -473,16 +726,12 @@ window.pnexDoc = {
     delete editors[host];
     delete window.__pnexDoc[host];
   },
-  // Toolbar / palette command; `dropSlash` removes the "/" that opened the palette.
-  command(host, name, dropSlash) {
+  // Header command (undo, redo).
+  command(host, name) {
     const ed = editors[host];
     const make = COMMANDS[name];
     if (!ed || !make) return false;
     const view = ed.view;
-    if (dropSlash) {
-      const { $from } = view.state.selection;
-      if ($from.parent.textContent === '/') view.dispatch(view.state.tr.delete($from.start(), $from.end()));
-    }
     const ok = make()(view.state, view.dispatch, view);
     view.focus();
     return ok;
@@ -589,6 +838,47 @@ window.pnexDoc = {
 .ProseMirror-separator,.ProseMirror-gapcursor{display:none}
 .ProseMirror-yjs-cursor{position:relative;margin-left:-1px;margin-right:-1px;border-left:1px solid;border-right:1px solid;word-break:normal;pointer-events:none}
 .ProseMirror-yjs-cursor>div{position:absolute;top:-1.05em;left:-1px;font-size:11px;line-height:normal;font-weight:600;user-select:none;color:#fff;padding:0 3px;border-radius:3px 3px 3px 0;white-space:nowrap}
+.pnex-doc-content{color:#37352f;font-size:16px;line-height:1.5;padding-bottom:30vh}
+.pnex-doc-content>*{margin:0}
+.pnex-doc-content p{margin:1px 0;padding:3px 2px}
+.pnex-doc-content h1,.pnex-doc-content h2,.pnex-doc-content h3{font-weight:600;line-height:1.3;padding:3px 2px;margin:0}
+.pnex-doc-content h1{font-size:1.875em;margin-top:1.4em}
+.pnex-doc-content h2{font-size:1.5em;margin-top:1.1em}
+.pnex-doc-content h3{font-size:1.25em;margin-top:1em}
+.pnex-doc-content>:first-child{margin-top:0}
+.pnex-doc-content ul,.pnex-doc-content ol{padding-left:1.7em;margin:1px 0}
+.pnex-doc-content ul{list-style:disc}
+.pnex-doc-content ol{list-style:decimal}
+.pnex-doc-content li>p{padding:3px 2px}
+.pnex-doc-content blockquote{border-left:3px solid currentColor;padding:3px 14px;margin:4px 0;font-size:1.1em}
+.pnex-doc-content blockquote p{padding:0}
+.pnex-doc-content pre{background:#f7f6f3;border-radius:4px;padding:24px 24px;margin:4px 0;font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;tab-size:2}
+.pnex-doc-content code{background:rgba(135,131,120,.15);color:#eb5757;border-radius:4px;padding:.2em .4em;font:85% ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.pnex-doc-content pre code{background:none;color:inherit;padding:0;font-size:inherit}
+.pnex-doc-content hr{border:0;border-top:1px solid rgba(55,53,47,.16);margin:14px 2px}
+.pnex-doc-content a{color:inherit;text-decoration:underline;text-decoration-color:rgba(55,53,47,.4);text-underline-offset:2px}
+.pnex-doc-content strong{font-weight:600}
+.pnex-doc-content .is-empty::before{content:attr(data-placeholder);color:rgba(55,53,47,.35);pointer-events:none;float:left;height:0}
+.pnex-doc-handle,.pnex-doc-menu-item,.pnex-doc-bubble-btn{border:0;background:transparent;font-family:inherit;margin:0}
+.pnex-doc-handle{position:absolute;width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:4px;color:rgba(55,53,47,.35);font-size:20px;line-height:1;opacity:0;transition:opacity .15s;cursor:pointer}
+.pnex-doc-handle.is-visible{opacity:1}
+.pnex-doc-handle:hover{background:rgba(55,53,47,.08);color:rgba(55,53,47,.6)}
+.pnex-doc-menu{position:fixed;z-index:60;width:300px;max-height:min(340px,60vh);overflow-y:auto;background:#fff;border-radius:8px;padding:4px;box-shadow:0 0 0 1px rgba(15,15,15,.05),0 3px 6px rgba(15,15,15,.1),0 9px 24px rgba(15,15,15,.2)}
+.pnex-doc-menu-section{padding:8px 10px 4px;font-size:12px;font-weight:500;color:rgba(55,53,47,.65)}
+.pnex-doc-menu-empty{padding:6px 10px;font-size:14px;color:rgba(55,53,47,.5)}
+.pnex-doc-menu-item{display:flex;align-items:center;gap:10px;width:100%;padding:4px 10px;border-radius:6px;text-align:left;font-size:14px;color:#37352f;cursor:pointer}
+.pnex-doc-menu-item.is-active{background:rgba(55,53,47,.08)}
+.pnex-doc-menu-icon{width:22px;height:22px;flex:none;display:flex;align-items:center;justify-content:center;border:1px solid rgba(55,53,47,.16);border-radius:4px;font-size:11px;font-weight:600;color:rgba(55,53,47,.75);background:#fff}
+.pnex-doc-menu-label{flex:1}
+.pnex-doc-menu-hint{font-size:12px;color:rgba(55,53,47,.45);font-family:ui-monospace,monospace}
+.pnex-doc-bubble{position:fixed;z-index:60;display:flex;align-items:center;gap:1px;padding:3px;background:#fff;border-radius:6px;box-shadow:0 0 0 1px rgba(15,15,15,.05),0 3px 6px rgba(15,15,15,.1),0 9px 24px rgba(15,15,15,.2)}
+.pnex-doc-bubble-btn{min-width:28px;height:28px;padding:0 8px;border-radius:4px;font-size:14px;color:#37352f;cursor:pointer}
+.pnex-doc-bubble-btn:hover{background:rgba(55,53,47,.08)}
+.pnex-doc-bubble-btn.is-active{color:#2383e2}
+.pnex-doc-bubble-btn.is-bold{font-weight:700}
+.pnex-doc-bubble-btn.is-italic{font-style:italic;font-family:Georgia,serif}
+.pnex-doc-bubble-btn.is-code{font:12px ui-monospace,monospace}
+.pnex-doc-bubble-sep{width:1px;height:18px;margin:0 3px;background:rgba(55,53,47,.16)}
 `;
   document.head.appendChild(s);
 })();

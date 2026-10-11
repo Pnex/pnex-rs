@@ -13,7 +13,7 @@ use crate::app::Route;
 use crate::components::icons;
 use crate::doc_editor::{self, DocState};
 
-/// Toolbar entries: (command, label key).
+/// Entries of the "/" menu (doc.js `BLOCK_ITEMS`): (command, label key).
 const BLOCKS: &[(&str, &str)] = &[
     ("paragraph", "docs-cmd-paragraph"),
     ("h1", "docs-cmd-h1"),
@@ -26,7 +26,21 @@ const BLOCKS: &[(&str, &str)] = &[
     ("rule", "docs-cmd-rule"),
 ];
 
-const TOOL_BTN: &str = "px-2 py-1 text-sm rounded hover:bg-gray-100 text-gray-700";
+/// Other texts drawn by doc.js: (label name, key).
+const CHROME: &[(&str, &str)] = &[
+    ("placeholder", "docs-placeholder"),
+    ("basicBlocks", "docs-slash-basic"),
+    ("noResults", "docs-slash-empty"),
+    ("addBlock", "docs-add-block"),
+    ("bold", "docs-cmd-bold"),
+    ("italic", "docs-cmd-italic"),
+    ("code", "docs-cmd-code"),
+    ("link", "docs-cmd-link"),
+    ("comment", "docs-cmd-comment"),
+];
+
+const HEADER_BTN: &str =
+    "inline-flex items-center gap-1 rounded px-2 py-1 text-sm text-gray-600 hover:bg-gray-100";
 
 /// Stable cursor color of a user (presence).
 fn user_color(id: i64) -> &'static str {
@@ -47,7 +61,16 @@ pub fn DocEditor(id: Uuid) -> Element {
     let mut show_comments = use_signal(|| false);
     let mut draft = use_signal(|| Option::<doc_editor::SelectionAnchor>::None);
     let mut link_href = use_signal(|| Option::<String>::None);
-    let mut notice = use_signal(|| Option::<String>::None);
+    let notice = use_signal(|| Option::<String>::None);
+    // Resolved here (render scope), never inside the mount task.
+    let labels = use_hook(|| {
+        let map = BLOCKS
+            .iter()
+            .chain(CHROME)
+            .map(|(name, key)| (name.to_string(), t!(key).to_string().into()))
+            .collect();
+        serde_json::Value::Object(map)
+    });
 
     let detail = use_resource(move || async move { api::docs::detail(id).await });
     use_effect(move || {
@@ -60,6 +83,7 @@ pub fn DocEditor(id: Uuid) -> Element {
     let host_poll = host.clone();
     use_future(move || {
         let host = host_poll.clone();
+        let labels = labels.clone();
         async move {
             let (name, color) = match crate::state::session::user() {
                 Some(u) => (
@@ -72,7 +96,7 @@ pub fn DocEditor(id: Uuid) -> Element {
                 mounted.set(Some(false));
                 return;
             };
-            let ok = doc_editor::mount(&host, &url, can_write, &name, color).await;
+            let ok = doc_editor::mount(&host, &url, can_write, &name, color, &labels).await;
             mounted.set(Some(ok));
             if !ok {
                 return;
@@ -107,6 +131,20 @@ pub fn DocEditor(id: Uuid) -> Element {
                 {
                     show_comments.set(true);
                 }
+                // Link / comment asked from the selection bubble.
+                let asked = s.request.clone();
+                if asked.as_ref().map(|r| r.seq) != state.peek().request.as_ref().map(|r| r.seq) {
+                    match asked.as_ref().map(|r| r.kind.as_str()) {
+                        Some("link") => link_href.set(Some(String::new())),
+                        Some("comment") => {
+                            if let Some(a) = doc_editor::selection_anchor(&host).await {
+                                draft.set(Some(a));
+                                show_comments.set(true);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
                 if *state.peek() != s {
                     state.set(s);
                 }
@@ -118,26 +156,12 @@ pub fn DocEditor(id: Uuid) -> Element {
 
     let run = {
         let host = host.clone();
-        move |name: &'static str, drop_slash: bool| {
+        move |name: &'static str| {
             let host = host.clone();
             spawn(async move {
-                doc_editor::command(&host, name, drop_slash).await;
+                doc_editor::command(&host, name).await;
             });
         }
-    };
-
-    let host_comment = host.clone();
-    let comment = move |_| {
-        let host = host_comment.clone();
-        spawn(async move {
-            match doc_editor::selection_anchor(&host).await {
-                Some(a) => {
-                    draft.set(Some(a));
-                    show_comments.set(true);
-                }
-                None => notice.set(Some(t!("docs-comment-select-first").to_string())),
-            }
-        });
     };
 
     let s = state();
@@ -156,26 +180,48 @@ pub fn DocEditor(id: Uuid) -> Element {
     };
 
     rsx! {
-        div { class: "p-4 pb-24 md:p-6 max-w-5xl mx-auto",
-            div { class: "mb-4 flex flex-wrap items-center gap-3",
+        div { class: "flex min-h-full flex-col bg-white",
+            div { class: "flex flex-wrap items-center gap-1 px-3 py-2 text-sm text-gray-600",
                 Link {
                     to: Route::Docs { id: String::new() },
-                    class: "text-gray-500 hover:text-gray-900",
+                    class: "{HEADER_BTN}",
                     aria_label: t!("docs-back"),
-                    icons::ArrowLeft { class: "h-5 w-5" }
+                    icons::ArrowLeft { class: "h-4 w-4" }
                 }
-                TitleField { id, title, can_write }
-                div { class: "ml-auto flex items-center gap-3 text-sm text-gray-600",
-                    span { class: "flex items-center gap-1.5",
+                span { class: "min-w-0 truncate px-1 text-gray-800", {title()} }
+                div { class: "ml-auto flex flex-wrap items-center gap-1",
+                    span { class: "flex items-center gap-1.5 px-2",
                         span { class: "inline-block h-2 w-2 rounded-full {status_dot}" }
                         {status_label}
                     }
                     if s.peers > 0 {
-                        span { {t!("docs-peers", count : s.peers)} }
+                        span { class: "px-2", {t!("docs-peers", count : s.peers)} }
                     }
                     if !can_write {
                         span { class: "rounded bg-gray-100 px-2 py-0.5 text-xs",
                             {t!("docs-read-only")}
+                        }
+                    }
+                    if can_write {
+                        button {
+                            class: HEADER_BTN,
+                            title: t!("docs-cmd-undo"),
+                            aria_label: t!("docs-cmd-undo"),
+                            onclick: {
+                                let run = run.clone();
+                                move |_| run("undo")
+                            },
+                            icons::Undo { class: "h-4 w-4" }
+                        }
+                        button {
+                            class: HEADER_BTN,
+                            title: t!("docs-cmd-redo"),
+                            aria_label: t!("docs-cmd-redo"),
+                            onclick: {
+                                let run = run.clone();
+                                move |_| run("redo")
+                            },
+                            icons::Redo { class: "h-4 w-4" }
                         }
                     }
                     MarkdownActions {
@@ -185,104 +231,38 @@ pub fn DocEditor(id: Uuid) -> Element {
                         notice,
                     }
                     button {
-                        class: "px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50",
+                        class: HEADER_BTN,
                         onclick: move |_| show_comments.toggle(),
-                        icons::MessageCircle { class: "h-4 w-4 inline mr-1" }
+                        icons::MessageCircle { class: "h-4 w-4" }
                         {t!("docs-comments")}
                     }
                     button {
-                        class: "px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50",
+                        class: HEADER_BTN,
                         onclick: move |_| show_versions.toggle(),
-                        icons::History { class: "h-4 w-4 inline mr-1" }
+                        icons::History { class: "h-4 w-4" }
                         {t!("docs-versions")}
                     }
                 }
             }
-            if let Some(msg) = notice() {
-                div { class: "mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800",
-                    {msg}
-                }
-            }
-            if can_write {
-                div { class: "sticky top-0 z-10 mb-2 flex flex-wrap items-center gap-1 rounded-lg border border-gray-200 bg-white p-1",
-                    button {
-                        class: "{TOOL_BTN} font-bold",
-                        title: t!("docs-cmd-bold"),
-                        onclick: {
-                            let run = run.clone();
-                            move |_| run("bold", false)
-                        },
-                        "B"
-                    }
-                    button {
-                        class: "{TOOL_BTN} italic",
-                        title: t!("docs-cmd-italic"),
-                        onclick: {
-                            let run = run.clone();
-                            move |_| run("italic", false)
-                        },
-                        "I"
-                    }
-                    button {
-                        class: "{TOOL_BTN} font-mono",
-                        title: t!("docs-cmd-code"),
-                        onclick: {
-                            let run = run.clone();
-                            move |_| run("code", false)
-                        },
-                        "</>"
-                    }
-                    button {
-                        class: TOOL_BTN,
-                        onclick: move |_| link_href.set(Some(String::new())),
-                        {t!("docs-cmd-link")}
-                    }
-                    button { class: TOOL_BTN, onclick: comment, {t!("docs-cmd-comment")} }
-                    span { class: "mx-1 h-5 w-px bg-gray-200" }
-                    for (cmd, key) in BLOCKS.iter().copied() {
-                        button {
-                            key: "{cmd}",
-                            class: TOOL_BTN,
-                            onclick: {
-                                let run = run.clone();
-                                move |_| run(cmd, false)
-                            },
-                            {t!(key)}
+            div { class: "flex flex-1 gap-4",
+                div { class: "min-w-0 flex-1 px-6 pb-24 pt-8 md:px-24 md:pt-16",
+                    div { class: "mx-auto w-full max-w-[900px]",
+                        if let Some(msg) = notice() {
+                            div { class: "mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800",
+                                {msg}
+                            }
                         }
+                        if let Some(href) = link_href() {
+                            LinkBar { host: host.clone(), href, link_href }
+                        }
+                        TitleField { id, title, can_write }
+                        if mounted() == Some(false) {
+                            div { class: "rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700",
+                                {t!("docs-editor-unavailable")}
+                            }
+                        }
+                        div { id: "{host}", class: "relative mt-4" }
                     }
-                    span { class: "mx-1 h-5 w-px bg-gray-200" }
-                    button {
-                        class: TOOL_BTN,
-                        title: t!("docs-cmd-undo"),
-                        onclick: {
-                            let run = run.clone();
-                            move |_| run("undo", false)
-                        },
-                        icons::Undo { class: "h-4 w-4" }
-                    }
-                    button {
-                        class: TOOL_BTN,
-                        title: t!("docs-cmd-redo"),
-                        onclick: {
-                            let run = run.clone();
-                            move |_| run("redo", false)
-                        },
-                        icons::Redo { class: "h-4 w-4" }
-                    }
-                }
-            }
-            if let Some(href) = link_href() {
-                LinkBar { host: host.clone(), href, link_href }
-            }
-            if mounted() == Some(false) {
-                div { class: "rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700",
-                    {t!("docs-editor-unavailable")}
-                }
-            }
-            div { class: "flex gap-4",
-                div {
-                    id: "{host}",
-                    class: "prose max-w-none flex-1 min-w-0 rounded-lg border border-gray-200 bg-white p-4 md:p-8",
                 }
                 if show_comments() {
                     super::comments::CommentsPanel {
@@ -296,25 +276,6 @@ pub fn DocEditor(id: Uuid) -> Element {
                 }
                 if show_versions() {
                     super::versions::VersionsPanel { id, host: host.clone(), can_write }
-                }
-            }
-            if let Some(slash) = s.slash.clone() {
-                if can_write {
-                    div {
-                        class: "fixed z-20 w-56 rounded-lg border border-gray-200 bg-white py-1 shadow-lg",
-                        style: "left: {slash.x}px; top: {slash.y + 4.0}px;",
-                        for (cmd, key) in BLOCKS.iter().copied() {
-                            button {
-                                key: "{cmd}",
-                                class: "block w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100",
-                                onclick: {
-                                    let run = run.clone();
-                                    move |_| run(cmd, true)
-                                },
-                                {t!(key)}
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -337,14 +298,15 @@ fn TitleField(id: Uuid, title: Signal<String>, can_write: bool) -> Element {
     };
     if !can_write {
         return rsx! {
-            h1 { class: "text-xl font-semibold text-gray-900 truncate", {title()} }
+            h1 { class: "break-words text-4xl font-bold text-gray-900", {title()} }
         };
     }
     rsx! {
         input {
-            class: "min-w-0 flex-1 basis-60 rounded px-2 py-1 text-xl font-semibold text-gray-900 hover:bg-gray-50 focus:bg-white",
-            class: if error() { "ring-1 ring-red-400" },
+            class: "w-full bg-transparent text-4xl font-bold text-gray-900 outline-none placeholder:text-gray-300",
+            class: if error() { "rounded ring-1 ring-red-400" },
             aria_label: t!("docs-field-title"),
+            placeholder: t!("docs-field-title"),
             value: "{title}",
             oninput: move |e| title.set(e.value()),
             onblur: move |_| save(),
@@ -419,15 +381,13 @@ fn MarkdownActions(
         });
     };
     rsx! {
-        button {
-            class: "px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50",
-            onclick: export,
-            icons::Download { class: "h-4 w-4 inline mr-1" }
+        button { class: HEADER_BTN, onclick: export,
+            icons::Download { class: "h-4 w-4" }
             {t!("docs-export-md")}
         }
         if can_write {
-            label { class: "cursor-pointer px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50",
-                icons::Upload { class: "h-4 w-4 inline mr-1" }
+            label { class: "{HEADER_BTN} cursor-pointer",
+                icons::Upload { class: "h-4 w-4" }
                 {t!("docs-import-md")}
                 input {
                     class: "hidden",
