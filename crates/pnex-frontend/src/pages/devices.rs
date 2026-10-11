@@ -414,11 +414,13 @@ pub fn Devices() -> Element {
                         button {
                             class: "px-3 py-1 text-sm bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors",
                             title: t!("devices-rebuild-title"),
+                            aria_label: t!("devices-rebuild"),
                             onclick: move |_| {
                                 rebuild_target.set(Some((rebuild_pk, rebuild_id.clone(), rebuild_model.clone())));
                             },
-                            icons::Wrench { class: "h-3.5 w-3.5 inline mr-0.5" }
-                            {t!("devices-rebuild")}
+                            icons::Wrench { class: "h-3.5 w-3.5 inline sm:mr-0.5" }
+                            // Icon only on phones: the status column stays visible.
+                            span { class: "hidden sm:inline", {t!("devices-rebuild")} }
                         }
                     }
                     button {
