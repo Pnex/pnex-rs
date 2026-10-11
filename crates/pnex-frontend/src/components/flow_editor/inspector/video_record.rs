@@ -1,5 +1,6 @@
 use super::helpers::*;
 use super::*;
+use crate::components::ui::FIELD_LABEL;
 
 // ─────────────── video-record (camera-video.md D78/D79) ───────────────
 
@@ -81,7 +82,7 @@ fn field_input(
 ) -> Element {
     rsx! {
         label { class: "block",
-            span { class: "text-xs font-medium text-gray-500 mb-1 block", {label} }
+            span { class: FIELD_LABEL, {label} }
             input {
                 class: if invalid { "w-full px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm" } else { "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm" },
                 r#type: if numeric { "number" } else { "text" },

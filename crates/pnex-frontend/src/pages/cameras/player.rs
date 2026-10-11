@@ -22,6 +22,7 @@ use pnex_core::camera::{annotation_at, FrameAnnotation, VideoSegment};
 
 use crate::api;
 use crate::components::icons;
+use crate::components::ui::{BTN_PRIMARY_SM, BTN_SECONDARY_SM};
 use crate::util::sleep;
 
 /// Loaded segment: file bytes + frame index.
@@ -420,7 +421,7 @@ pub(super) fn RecordingPlayer(
             }
             div { class: "flex flex-wrap items-center gap-2",
                 button {
-                    class: "px-2 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40",
+                    class: BTN_SECONDARY_SM,
                     r#type: "button",
                     disabled: c == 0,
                     title: t!("cameras-player-prev"),
@@ -434,7 +435,7 @@ pub(super) fn RecordingPlayer(
                     icons::ChevronLeft { class: "h-4 w-4" }
                 }
                 button {
-                    class: "px-3 py-1.5 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 min-w-20",
+                    class: "{BTN_PRIMARY_SM} min-w-20",
                     r#type: "button",
                     onclick: move |_| {
                         let next = !playing();
@@ -447,7 +448,7 @@ pub(super) fn RecordingPlayer(
                     }
                 }
                 button {
-                    class: "px-2 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40",
+                    class: BTN_SECONDARY_SM,
                     r#type: "button",
                     disabled: c + 1 >= count,
                     title: t!("cameras-player-next"),

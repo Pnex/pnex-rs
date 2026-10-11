@@ -73,6 +73,31 @@ pub async fn labels_batch(
     Ok(dto.labels)
 }
 
+/// A label name already used in the org, with its known values.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct LabelCatalogEntry {
+    pub name: String,
+    #[serde(default)]
+    pub values: Vec<String>,
+    pub count: i64,
+}
+
+/// `GET /api/v1/resources/labels/catalog` — picker suggestions.
+pub async fn labels_catalog() -> Result<Vec<LabelCatalogEntry>, ApiError> {
+    #[derive(Deserialize)]
+    struct Dto {
+        #[serde(default)]
+        labels: Vec<LabelCatalogEntry>,
+    }
+    let dto: Dto = client::request(
+        reqwest::Method::GET,
+        "/api/v1/resources/labels/catalog",
+        None,
+    )
+    .await?;
+    Ok(dto.labels)
+}
+
 /// `GET /api/v1/resources/{kind}/{id}/labels`.
 pub async fn get_labels(kind: &str, id: &str) -> Result<LabelSet, ApiError> {
     #[derive(Deserialize)]

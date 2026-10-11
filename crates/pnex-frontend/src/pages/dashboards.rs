@@ -13,7 +13,7 @@ use pnex_core::{DashboardFormat, TelemetryPoint, VizDashboard, VizDashboardSumma
 use crate::api;
 use crate::components::badges::date_label;
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::{FilterBar, SearchInput};
+use crate::components::crud::filters::{FilterBar, LabelFilterInput};
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
@@ -25,6 +25,10 @@ use crate::components::icons;
 use crate::components::labels_editor::{use_row_labels, LabelChips};
 use crate::components::modal::Modal;
 use crate::components::refresh_rate::{use_auto_refresh, RefreshRateControl};
+use crate::components::ui::{
+    BTN_DANGER, BTN_PRIMARY, BTN_PRIMARY_SM, BTN_SECONDARY, BTN_SECONDARY_SM,
+};
+use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::state::viz::{OPEN_DASHBOARD, VIZ_EDIT};
 use crate::state::{org, session, toasts};
 
@@ -245,7 +249,7 @@ fn ListView(
                     // delete button used to sit lower than its neighbours).
                     div { class: "flex items-center justify-end gap-2",
                         button {
-                            class: "inline-flex h-8 items-center px-3 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
+                            class: "{BTN_SECONDARY_SM} h-8",
                             title: t!("db-open"),
                             aria_label: t!("db-open"),
                             onclick: move |_| on_open.call((id_open.clone(), false)),
@@ -254,7 +258,7 @@ fn ListView(
                         }
                         if can_write {
                             button {
-                                class: "inline-flex h-8 items-center px-3 text-sm text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700",
+                                class: "{BTN_PRIMARY_SM} h-8",
                                 title: t!("db-edit"),
                                 aria_label: t!("db-edit"),
                                 onclick: move |_| on_open.call((id_edit.clone(), true)),
@@ -262,7 +266,7 @@ fn ListView(
                                 span { class: "hidden sm:inline", {t!("db-edit")} }
                             }
                             button {
-                                class: "inline-flex h-8 items-center px-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors",
+                                class: "{BTN_DANGER} h-8",
                                 title: t!("viz-delete"),
                                 aria_label: t!("viz-delete"),
                                 onclick: move |_| delete_target.set(Some((id_delete.clone(), name_delete.clone()))),
@@ -303,7 +307,7 @@ fn ListView(
             } else {
                 FilterBar {
                     // D42: effective label filter (inheritance included).
-                    SearchInput {
+                    LabelFilterInput {
                         placeholder: t!("resources-label-filter-placeholder").to_string(),
                         value: filter_label,
                         on_submit: move |_| {
@@ -375,7 +379,7 @@ fn create_dashboard(
     };
     let params = pnex_core::CreateDashboard {
         name: if name.trim().is_empty() {
-            t!("db-default-name", date : crate ::util::now_label()).to_string()
+            crate::util::plain_text(t!("db-default-name", date : crate ::util::now_label()))
         } else {
             name.trim().to_string()
         },
@@ -405,7 +409,8 @@ fn NewDashboardModal(
     let mut name = use_signal(String::new);
     let mut format = use_signal(|| None::<DashboardFormat>);
     let mut template = use_signal(|| None::<HomeTemplate>);
-    let placeholder = t!("db-default-name", date : crate ::util::now_label()).to_string();
+    let placeholder =
+        crate::util::plain_text(t!("db-default-name", date : crate ::util::now_label()));
     let picked = format();
     rsx! {
         Modal {
@@ -413,10 +418,10 @@ fn NewDashboardModal(
             max_width: "max-w-3xl".to_string(),
             on_close: move |_| on_close.call(()),
             div { class: "space-y-5",
-                label { class: "block text-sm font-medium text-gray-700",
+                label { class: FIELD_LABEL,
                     {t!("db-new-name")}
                     input {
-                        class: "mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} mt-1 w-full",
                         r#type: "text",
                         placeholder: "{placeholder}",
                         value: "{name}",
@@ -451,13 +456,13 @@ fn NewDashboardModal(
                 p { class: "text-xs text-gray-500", {t!("db-new-final")} }
                 div { class: "flex justify-end gap-2",
                     button {
-                        class: "px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
+                        class: BTN_SECONDARY,
                         r#type: "button",
                         onclick: move |_| on_close.call(()),
                         {t!("common-cancel")}
                     }
                     button {
-                        class: "px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40",
+                        class: BTN_PRIMARY,
                         r#type: "button",
                         disabled: picked.is_none(),
                         onclick: move |_| {
@@ -740,7 +745,7 @@ fn LiveSubView(
                     }
                     if can_write {
                         button {
-                            class: "ml-auto inline-flex shrink-0 items-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 sm:hidden",
+                            class: "{BTN_PRIMARY_SM} ml-auto shrink-0 sm:hidden",
                             title: t!("db-mode-edit"),
                             aria_label: t!("db-mode-edit"),
                             onclick: move |_| on_edit.call(()),
@@ -757,7 +762,7 @@ fn LiveSubView(
                     }
                     if can_write {
                         button {
-                            class: "hidden items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 sm:inline-flex",
+                            class: "{BTN_PRIMARY} hidden sm:inline-flex",
                             onclick: move |_| on_edit.call(()),
                             icons::Wrench { class: "h-4 w-4 mr-2" }
                             {t!("db-mode-edit")}
@@ -820,7 +825,7 @@ fn EditorSubView(dashboard_id: String, on_back: EventHandler<()>) -> Element {
         Some(None) => rsx! {
             div { class: "p-6",
                 button {
-                    class: "mb-4 inline-flex items-center px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50",
+                    class: "{BTN_SECONDARY_SM} mb-4",
                     onclick: move |_| on_back.call(()),
                     icons::ArrowLeft { class: "h-4 w-4 mr-2" }
                     {t!("db-back")}

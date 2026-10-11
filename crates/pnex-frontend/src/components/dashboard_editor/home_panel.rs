@@ -109,13 +109,13 @@ pub fn HomePanel(cx: EditorCx, widget: Widget, can_write: bool, catalog: SourceC
     let on_above = home.on_above.map(|v| v.to_string()).unwrap_or_default();
     rsx! {
         div { class: "space-y-3 rounded-lg border border-amber-100 bg-amber-50/40 p-2",
-            p { class: "text-[10px] font-medium uppercase text-gray-400",
+            p { class: "text-xs font-medium text-gray-400",
                 {t!("hcard-inspector", card : card_label(card))}
             }
             if card == pnex_core::home::HomeCard::Binary {
                 label {
                     r#for: "home-panel-field-1",
-                    class: "block text-[10px] text-gray-500",
+                    class: "block text-xs text-gray-500",
                     {t!("hcard-variant")}
                 }
                 select {
@@ -133,7 +133,7 @@ pub fn HomePanel(cx: EditorCx, widget: Widget, can_write: bool, catalog: SourceC
                 }
                 label {
                     r#for: "home-panel-field-2",
-                    class: "block text-[10px] text-gray-500",
+                    class: "block text-xs text-gray-500",
                     {t!("hcard-on-above")}
                 }
                 input {
@@ -158,7 +158,7 @@ pub fn HomePanel(cx: EditorCx, widget: Widget, can_write: bool, catalog: SourceC
                 }
             }
             if !source_roles.is_empty() && card != pnex_core::home::HomeCard::Weather {
-                p { class: "text-[10px] font-medium uppercase text-gray-400", {t!("hcard-sources")} }
+                p { class: "text-xs font-medium text-gray-400", {t!("hcard-sources")} }
                 for r in source_roles.iter() {
                     RoleSource {
                         key: "src-{r.role}",
@@ -172,9 +172,7 @@ pub fn HomePanel(cx: EditorCx, widget: Widget, can_write: bool, catalog: SourceC
                 }
             }
             if !control_roles.is_empty() {
-                p { class: "text-[10px] font-medium uppercase text-gray-400",
-                    {t!("hcard-controls")}
-                }
+                p { class: "text-xs font-medium text-gray-400", {t!("hcard-controls")} }
                 for (r, control) in role_controls {
                     RoleControl {
                         key: "ctl-{r.role}",
@@ -188,7 +186,7 @@ pub fn HomePanel(cx: EditorCx, widget: Widget, can_write: bool, catalog: SourceC
                         dirty,
                     }
                 }
-                p { class: "text-[10px] text-gray-400", {t!("hcard-controls-help")} }
+                p { class: "text-xs text-gray-400", {t!("hcard-controls-help")} }
             }
         }
     }
@@ -222,7 +220,7 @@ fn RoleSource(
                 }
                 if !required && present && can_write {
                     button {
-                        class: "text-[10px] text-gray-400 hover:text-red-500",
+                        class: "text-xs text-gray-400 hover:text-red-500",
                         onclick: move |_| edit_widget(cx, |w| w.source.retain(|s| s.role != role)),
                         {t!("common-delete")}
                     }
@@ -423,13 +421,11 @@ fn RoleControl(
                     }
                 }
                 span { class: "font-medium", {role_label(role)} }
-                span { class: "ml-auto font-mono text-[10px] text-gray-400", "{reference}" }
+                span { class: "ml-auto font-mono text-xs text-gray-400", "{reference}" }
             }
             if active {
                 details {
-                    summary { class: "cursor-pointer text-[11px] text-gray-500",
-                        {t!("insp-control-domain")}
-                    }
+                    summary { class: "cursor-pointer text-xs text-gray-500", {t!("insp-control-domain")} }
                     div { class: "mt-1",
                         SpecFields {
                             spec,
@@ -507,10 +503,10 @@ fn WeatherBind(cx: EditorCx, widget: Widget, catalog: SourceCatalog, can_write: 
     let keys2 = keys.clone();
     rsx! {
         div { class: "space-y-1",
-            p { class: "text-[10px] text-gray-500", {t!("hweather-bind-help")} }
+            p { class: "text-xs text-gray-500", {t!("hweather-bind-help")} }
             label {
                 r#for: "home-panel-field-3",
-                class: "block text-[10px] text-gray-500",
+                class: "block text-xs text-gray-500",
                 {t!("hweather-bind-current")}
             }
             select {
@@ -530,7 +526,7 @@ fn WeatherBind(cx: EditorCx, widget: Widget, catalog: SourceCatalog, can_write: 
             }
             label {
                 r#for: "home-panel-field-4",
-                class: "block text-[10px] text-gray-500",
+                class: "block text-xs text-gray-500",
                 {t!("hweather-bind-daily")}
             }
             select {

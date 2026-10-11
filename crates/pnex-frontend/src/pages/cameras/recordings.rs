@@ -16,6 +16,8 @@ use crate::components::crud::layout::DANGER_BTN;
 use crate::components::crud::states::ListStates;
 use crate::components::icons;
 use crate::components::modal::Modal;
+use crate::components::ui::BTN_SECONDARY_SM;
+use crate::components::ui::INPUT;
 use crate::state::toasts;
 use crate::util::trigger_download;
 
@@ -196,7 +198,7 @@ pub(super) fn RecordingsDialog(
                 // Day navigation + summary.
                 div { class: "flex flex-wrap items-center gap-2",
                     button {
-                        class: "px-2 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
+                        class: BTN_SECONDARY_SM,
                         r#type: "button",
                         title: t!("cameras-day-prev"),
                         onclick: move |_| {
@@ -208,7 +210,7 @@ pub(super) fn RecordingsDialog(
                         icons::ChevronLeft { class: "h-4 w-4" }
                     }
                     input {
-                        class: "px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: INPUT,
                         r#type: "date",
                         value: "{day().format(\"%Y-%m-%d\")}",
                         max: "{today.format(\"%Y-%m-%d\")}",
@@ -220,7 +222,7 @@ pub(super) fn RecordingsDialog(
                         },
                     }
                     button {
-                        class: "px-2 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40",
+                        class: BTN_SECONDARY_SM,
                         r#type: "button",
                         disabled: day() >= today,
                         title: t!("cameras-day-next"),
@@ -244,7 +246,7 @@ pub(super) fn RecordingsDialog(
                     }
                     div { class: "ml-auto flex gap-2",
                         button {
-                            class: "inline-flex items-center px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40",
+                            class: BTN_SECONDARY_SM,
                             r#type: "button",
                             disabled: exporting() || export_window.is_none(),
                             title: t!("cameras-export-hint"),
@@ -387,7 +389,7 @@ pub(super) fn RecordingsDialog(
                                     }
                                 },
                             }
-                            div { class: "flex justify-between text-[10px] text-gray-400 tabular-nums",
+                            div { class: "flex justify-between text-xs text-gray-400 tabular-nums",
                                 for h in (0..=24).step_by(3) {
                                     span { key: "{h}", "{h:02}:00" }
                                 }

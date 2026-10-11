@@ -85,9 +85,7 @@ pub(super) fn ControlPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Ele
 
     rsx! {
         div { class: "space-y-2 rounded-lg border border-teal-100 bg-teal-50/40 p-2",
-            p { class: "block text-[10px] font-medium text-gray-400 uppercase",
-                {t!("insp-control")}
-            }
+            p { class: "block text-xs font-medium text-gray-400", {t!("insp-control")} }
             if current.is_none() {
                 div { class: "rounded border border-dashed border-teal-300 bg-white px-2 py-1.5 text-xs",
                     p { class: "font-mono text-teal-800", "{reference}" }
@@ -107,7 +105,7 @@ pub(super) fn ControlPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Ele
                         }
                         if can_write {
                             button {
-                                class: "text-[11px] text-indigo-700 underline",
+                                class: "text-xs text-indigo-700 underline",
                                 onclick: move |_| {
                                     patch_widget(cx, &wid_own, |w| w.options.control = None);
                                 },
@@ -128,7 +126,7 @@ pub(super) fn ControlPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Ele
                         {t!("insp-source-link")}
                     }
                     div { class: "mt-2 space-y-1",
-                        p { class: "text-[10px] text-gray-500", {t!("insp-source-link-help")} }
+                        p { class: "text-xs text-gray-500", {t!("insp-source-link-help")} }
                         select {
                             id: "insp-control",
                             class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",
@@ -166,7 +164,7 @@ pub(super) fn ControlPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Ele
                 }
                 div { class: "mt-2 space-y-1",
                     if shared {
-                        p { class: "text-[10px] text-gray-500", {t!("insp-control-domain-shared")} }
+                        p { class: "text-xs text-gray-500", {t!("insp-control-domain-shared")} }
                     } else {
                         SpecFields {
                             spec: declared,
@@ -308,7 +306,7 @@ pub(super) fn FlowDraft(control: UiControl, dirty: bool) -> Element {
                 {t!("insp-control-flow")}
             }
             div { class: "mt-2 space-y-1",
-                p { class: "text-[10px] text-gray-500", {t!("insp-control-flow-help")} }
+                p { class: "text-xs text-gray-500", {t!("insp-control-flow-help")} }
                 select {
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",
                     onchange: move |e| {
@@ -359,7 +357,7 @@ pub(super) fn FlowDraft(control: UiControl, dirty: bool) -> Element {
                     }
                 }
                 if no_target {
-                    p { class: "text-[10px] text-amber-700",
+                    p { class: "text-xs text-amber-700",
                         if with_pins {
                             {t!("insp-control-flow-no-target")}
                         } else {
@@ -368,7 +366,7 @@ pub(super) fn FlowDraft(control: UiControl, dirty: bool) -> Element {
                     }
                 }
                 if dirty {
-                    p { class: "text-[10px] text-amber-700", {t!("insp-control-flow-save-first")} }
+                    p { class: "text-xs text-amber-700", {t!("insp-control-flow-save-first")} }
                 }
                 button {
                     class: "w-full rounded bg-teal-600 px-2 py-1 text-xs font-medium text-white disabled:opacity-40",

@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::ui::FIELD_LABEL;
 use pnex_core::{
     thermo_default_unit, thermo_quantity, ThermoGroup, THERMO_GROUPS, THERMO_INPUT_PAIRS,
     THERMO_QUANTITIES,
@@ -188,9 +189,7 @@ pub(super) fn CoolPropForm(mut cx: EditorCx, initial: CoolPropConfig, can_write:
         div { class: "space-y-4",
             // Fluid / mixture picker.
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-coolprop-fluid")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-coolprop-fluid")} }
                 select {
                     class: SELECT_CLASS,
                     disabled: !can_write,
@@ -327,9 +326,7 @@ pub(super) fn CoolPropForm(mut cx: EditorCx, initial: CoolPropConfig, can_write:
                 }
                 for (group, rows) in groups.into_iter() {
                     div { key: "group-{group}", class: "space-y-1",
-                        span { class: "text-[11px] uppercase tracking-wide text-gray-400 block pt-1",
-                            "{group}"
-                        }
+                        span { class: "text-xs text-gray-400 block pt-1", "{group}" }
                         for (id, label, checked, unit) in rows.into_iter() {
                             div {
                                 key: "out-{id}",

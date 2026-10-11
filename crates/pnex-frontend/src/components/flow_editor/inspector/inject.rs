@@ -1,5 +1,6 @@
 use super::helpers::*;
 use super::*;
+use crate::components::ui::FIELD_LABEL;
 
 /// ─────────────── inject ───────────────
 
@@ -91,9 +92,7 @@ pub(super) fn InjectForm(mut cx: EditorCx, initial: InjectConfig, can_write: boo
                 )
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-inject-payload")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-inject-payload")} }
                 textarea {
                     class: if payload_invalid() { "w-full h-20 px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm font-mono" } else { "w-full h-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono" },
                     value: "{payload}",

@@ -11,6 +11,7 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 
 use crate::components::icons;
+use crate::components::ui::INPUT;
 
 /// Icônes de la palette — énum plate (data), rendue par `IconView` via le
 /// jeu `icons.rs`. Évite tout `Element`/closure dans les items (props
@@ -258,7 +259,7 @@ pub fn PalettePopover(
 
 
             button {
-                class: "flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg transition-colors hover:bg-blue-700",
+                class: "flex h-10 w-10 items-center justify-center rounded-full bg-ink text-white shadow-lg transition-colors hover:bg-gray-800",
                 title: "{add_title}",
                 "aria-label": "{add_title}",
                 onclick: move |_| {
@@ -284,7 +285,7 @@ pub fn PalettePopover(
                     }
                     div { class: "p-3 pb-2",
                         input {
-                            class: "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500",
+                            class: "{INPUT} w-full",
                             placeholder: "{search_placeholder}",
                             value: "{search}",
                             autofocus: true,
@@ -300,7 +301,7 @@ pub fn PalettePopover(
                         for (header, item) in rows.into_iter() {
                             div { key: "{item.key}",
                                 if let Some(header) = header {
-                                    div { class: "px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400",
+                                    div { class: "px-2 pb-1 pt-3 text-xs font-semibold text-gray-400",
                                         {header}
                                     }
                                 }

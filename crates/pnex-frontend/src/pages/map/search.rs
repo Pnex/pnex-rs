@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::ui::INPUT;
 
 // ───────────────────── address search (geo-layers.md §8) ─────────────────────
 
@@ -50,7 +51,7 @@ pub(super) fn AddressSearch(
         div { class: "relative w-72",
             input {
                 r#type: "search",
-                class: "w-full px-3 py-2.5 text-sm bg-white rounded-lg shadow border border-gray-200",
+                class: "{INPUT} w-full",
                 placeholder: t!("geo-search-placeholder"),
                 aria_label: t!("geo-search-placeholder"),
                 value: "{query}",

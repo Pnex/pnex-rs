@@ -12,13 +12,14 @@ use pnex_core::TourSummary;
 use crate::api;
 use crate::components::badges::date_label;
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::{FilterBar, SearchInput};
+use crate::components::crud::filters::{FilterBar, LabelFilterInput, SearchInput};
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
 use crate::components::labels_editor::{use_row_labels, LabelChips};
+use crate::components::ui::BTN_DANGER;
 use crate::state::tours::OPEN_TOUR;
 use crate::state::{org, session, toasts};
 
@@ -129,7 +130,7 @@ pub fn Studio() -> Element {
             |tour: &TourSummary| {
                 rsx! {
                     if let Some(version) = tour.published_version_number {
-                        span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-50 text-green-700 border border-green-200",
+                        span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200",
                             {t!("studio-published-tag", version: version)}
                         }
                     } else {
@@ -160,7 +161,7 @@ pub fn Studio() -> Element {
                         }
                         if can_write {
                             button {
-                                class: "px-3 py-1 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors",
+                                class: BTN_DANGER,
                                 onclick: move |_| delete_target.set(Some((id_delete.clone(), name_delete.clone()))),
                                 icons::Trash2 { class: "h-3.5 w-3.5 inline mr-0.5" }
                                 {t!("studio-delete")}
@@ -195,8 +196,7 @@ pub fn Studio() -> Element {
                     // document minimal posé par le backend (un étage
                     // « RDC »), ouverture directe de l'éditeur.
                     let params = pnex_core::CreateTour {
-                        name: t!("studio-default-name", date : crate ::util::now_label())
-                            .to_string(),
+                        name: default_name("studio-default-name"),
                         description: None,
                         author: session::user().map(|user| user.username),
                         note: None,
@@ -226,7 +226,7 @@ pub fn Studio() -> Element {
                             },
                         }
                         // D42: effective label filter (inheritance included).
-                        SearchInput {
+                        LabelFilterInput {
                             placeholder: t!("resources-label-filter-placeholder").to_string(),
                             value: filter_label,
                             on_submit: move |_| {
@@ -279,4 +279,10 @@ pub fn Studio() -> Element {
             }
         }
     }
+}
+
+/// Dated default name of a new item (stored data: plain text, no Fluent
+/// bidi marks).
+fn default_name(key: &str) -> String {
+    crate::util::plain_text(t!(key, date: crate::util::now_label()))
 }

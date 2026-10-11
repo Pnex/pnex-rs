@@ -323,9 +323,9 @@ fn PortRow(
     onedit: EventHandler<String>,
 ) -> Element {
     let name_valid = is_valid_port_name(&fields.name);
-    let cell = "h-8 rounded-md border border-gray-300 px-2 font-mono text-[13px] min-w-0";
+    let cell = "h-8 rounded-md border border-gray-300 px-2 font-mono text-sm min-w-0";
     let cell_bad =
-        "h-8 rounded-md border-2 border-red-400 bg-red-50 px-2 font-mono text-[13px] min-w-0";
+        "h-8 rounded-md border-2 border-red-400 bg-red-50 px-2 font-mono text-sm min-w-0";
 
     // Rewrite the directive line with one field replaced — one closure per
     // cell (each takes its own clone of the current fields).

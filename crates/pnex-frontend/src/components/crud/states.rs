@@ -41,25 +41,28 @@ pub fn ListStates(
 ) -> Element {
     match state {
         None => rsx! {
-            div { class: "text-center py-12",
-                span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-blue-600" }
+            div { class: "py-12 text-center",
+                span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-signal" }
             }
         },
         Some(Err(err)) => rsx! {
-            div { class: "bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700",
+            div {
+                class: "rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-alarm",
+                role: "alert",
                 {err.message.clone()}
             }
         },
+        // The one empty-state form: what is missing, then what it is for.
         Some(Ok(())) if is_empty => rsx! {
-            div { class: "text-center py-12",
+            div { class: "flex flex-col items-center gap-2 rounded-lg border border-dashed border-line-strong px-6 py-12 text-center",
                 if let Some(icon) = empty_icon {
-                    div { class: "p-4 bg-gray-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center",
+                    div { class: "mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-slate",
                         {icon}
                     }
                 }
-                p { class: "text-gray-500 text-lg", {empty_message} }
+                p { class: "max-w-prose text-base font-medium text-ink", {empty_message} }
                 if let Some(detail) = empty_detail {
-                    {detail}
+                    div { class: "max-w-prose text-sm text-slate", {detail} }
                 }
             }
         },

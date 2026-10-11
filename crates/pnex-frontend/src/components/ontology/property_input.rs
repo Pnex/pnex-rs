@@ -56,7 +56,7 @@ pub fn PropertyInput(
     let required = if def.required { " *" } else { "" };
     rsx! {
         div { "data-prop": "{key}",
-            label { class: "block text-xs font-medium text-gray-500 uppercase mb-1",
+            label { class: "block text-xs font-medium text-gray-500 mb-1",
                 "{label}{unit}{required}"
             }
             PropertyField {

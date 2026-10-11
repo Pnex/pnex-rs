@@ -8,7 +8,76 @@
  * consommé par la macro asset!() — ne jamais éditer le fichier généré.
  */
 @import "tailwindcss" source(none);
+@import "./fonts.css";
+@import "./dark.css";
 @source "../src";
+
+/* `dark:` follows the app theme (state::theme), not only the OS. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* PNeX identity (docs/architecture/design-system.md): calm ISA-101 chrome,
+ * colour only carries meaning. Semantic tokens first; the gray and blue
+ * scales are retuned so the existing utilities follow the identity.
+ * shortcut: `blue-*` is the signal cyan under its old name, rename it to
+ * `signal-*` once no other session has the pages in flight. */
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --color-ink: #16212b;
+  --color-ground: #eef1f4;
+  --color-rail: #e4e9ee;
+  --color-surface: #ffffff;
+  --color-line: #d5dbe1;
+  --color-line-strong: #c3cbd3;
+  --color-slate: #4c5966;
+  --color-signal: #0e7c9c;
+  --color-signal-soft: #e3f2f6;
+  --color-mark: #e5482d;
+  --color-ok: #2b7a4b;
+  --color-idle: #8793a0;
+  --color-warn: #c77700;
+  --color-warn-text: #a35c00;
+  --color-alarm: #b42318;
+
+  --color-gray-50: #f7f9fa;
+  --color-gray-100: #eef1f4;
+  --color-gray-200: #e4e9ee;
+  --color-gray-300: #d5dbe1;
+  --color-gray-400: #a9b3bd;
+  --color-gray-500: #6b7785;
+  --color-gray-600: #4c5966;
+  --color-gray-700: #36424e;
+  --color-gray-800: #232e39;
+  --color-gray-900: #16212b;
+  --color-gray-950: #0e151c;
+
+  --color-blue-50: #eef8fb;
+  --color-blue-100: #e3f2f6;
+  --color-blue-200: #cbe7ef;
+  --color-blue-300: #9fcad8;
+  --color-blue-400: #5fa9c0;
+  --color-blue-500: #2b8fad;
+  --color-blue-600: #0e7c9c;
+  --color-blue-700: #0b6984;
+  --color-blue-800: #0a556b;
+  --color-blue-900: #0b4557;
+  --color-blue-950: #062b37;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-ground);
+    color: var(--color-ink);
+  }
+  :root {
+    accent-color: var(--color-signal);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-signal);
+    outline-offset: 2px;
+  }
+}
 
 /* Port des keyframes de l'ancienne UI (index.css React). */
 @keyframes slide-in {
@@ -159,10 +228,10 @@
 @layer components {
   /* Compact padding below md (phone), desktop values from md up. */
   .th {
-    @apply px-3 py-2 md:px-6 md:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap;
+    @apply px-3 py-2 md:px-4 md:py-3 text-left text-xs font-medium text-gray-600 whitespace-nowrap;
   }
   .td {
-    @apply px-3 py-2 md:px-6 md:py-3 text-left text-sm text-gray-900;
+    @apply px-3 py-2 md:px-4 md:py-3 text-left text-sm text-gray-900 tabular-nums;
   }
 }
 

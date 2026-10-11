@@ -1,5 +1,6 @@
 use super::helpers::*;
 use super::*;
+use crate::components::ui::FIELD_LABEL;
 
 // ─────────────── camera-source (camera-video.md D78) ───────────────
 
@@ -63,9 +64,7 @@ pub(super) fn CameraSourceForm(
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-camera-source-help")} }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-camera-source-kind")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-camera-source-kind")} }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write,
@@ -94,9 +93,7 @@ pub(super) fn CameraSourceForm(
             }
             if from_stream {
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                        {t!("flows-camera-source-stream")}
-                    }
+                    span { class: FIELD_LABEL, {t!("flows-camera-source-stream")} }
                     select {
                         class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                         disabled: !can_write,
@@ -129,9 +126,7 @@ pub(super) fn CameraSourceForm(
                 }
             }
             label { class: "block", hidden: from_stream,
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-camera-source-camera")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-camera-source-camera")} }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write,
@@ -163,9 +158,7 @@ pub(super) fn CameraSourceForm(
                 p { class: "text-xs text-amber-700", {t!("flows-camera-source-no-camera")} }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-camera-max-fps")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-camera-max-fps")} }
                 input {
                     class: if fps_invalid() { "w-full px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm" } else { "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm" },
                     r#type: "number",

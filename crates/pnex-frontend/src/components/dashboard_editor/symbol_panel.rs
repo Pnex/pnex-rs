@@ -14,6 +14,7 @@ use crate::components::symbols::{self, SymbolView, LIBRARY};
 
 use super::library;
 use super::EditorCx;
+use crate::components::ui::INPUT;
 
 /// One thumbnail row entry, resolved at render time (localized name).
 #[derive(Clone, PartialEq)]
@@ -72,7 +73,7 @@ pub fn SymbolPanel(cx: EditorCx) -> Element {
             }
             div { class: "p-3 pb-2",
                 input {
-                    class: "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500",
+                    class: "{INPUT} w-full",
                     placeholder: "{placeholder}",
                     value: "{search}",
                     autofocus: true,
@@ -105,7 +106,7 @@ pub fn SymbolPanel(cx: EditorCx) -> Element {
                                 icons::ChevronRight { class: "h-3.5 w-3.5" }
                             }
                             span { class: "truncate", "{label}" }
-                            span { class: "ml-auto text-[10px] font-normal text-gray-400",
+                            span { class: "ml-auto text-xs font-normal text-gray-400",
                                 "{entries.len()}"
                             }
                         }

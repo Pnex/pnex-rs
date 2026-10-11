@@ -9,6 +9,7 @@ use pnex_core::vision::{DetectionResult, MlModel};
 use crate::api;
 use crate::api::error::ApiError;
 use crate::components::modal::Modal;
+use crate::components::ui::INPUT;
 use crate::util::{image_url_from_bytes, release_image_url};
 
 /// Stroke colors cycled per class id (full hex literals).
@@ -59,7 +60,7 @@ pub(super) fn TestImageModal(model: MlModel, on_close: Callback<()>) -> Element 
             on_close: move |_| on_close.call(()),
             div { class: "space-y-4",
                 input {
-                    class: "w-full text-sm border border-gray-300 rounded-lg px-3 py-2",
+                    class: "{INPUT} w-full",
                     r#type: "file",
                     accept: "image/jpeg,image/png",
                     onchange: move |evt| {

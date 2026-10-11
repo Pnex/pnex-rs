@@ -263,9 +263,7 @@ pub fn HomeCardBody(widget: Widget, values: Option<LiveValues>) -> Element {
             title: if stale { t!("db-stale").to_string() } else { String::new() },
             {body}
             if to_configure {
-                p { class: "mt-auto text-[11px] font-medium text-amber-700",
-                    {t!("hcard-to-configure")}
-                }
+                p { class: "mt-auto text-xs font-medium text-amber-700", {t!("hcard-to-configure")} }
             }
         }
     }
@@ -747,10 +745,10 @@ fn FlowNode(icon: String, label: String, value: String, note: String) -> Element
     rsx! {
         div { class: "flex flex-col items-center justify-center rounded-lg bg-gray-50 p-2 text-center",
             HomeIconView { id: icon, class: "h-5 w-5 text-gray-600" }
-            span { class: "text-[11px] text-gray-500", "{label}" }
+            span { class: "text-xs text-gray-500", "{label}" }
             span { class: "text-sm font-semibold text-gray-900", "{value} W" }
             if !note.is_empty() {
-                span { class: "text-[10px] text-gray-500", "{note}" }
+                span { class: "text-xs text-gray-500", "{note}" }
             }
         }
     }
@@ -914,7 +912,7 @@ fn WeatherCard(widget: Widget, title: String, values: LiveValues) -> Element {
                 for day in days {
                     div {
                         key: "{day.label}",
-                        class: "flex flex-col items-center text-[11px] text-gray-600",
+                        class: "flex flex-col items-center text-xs text-gray-600",
                         span { "{day.label}" }
                         HomeIconView { id: day.icon, class: "h-5 w-5 text-sky-600" }
                         span { class: "font-medium text-gray-900", "{day.max}" }

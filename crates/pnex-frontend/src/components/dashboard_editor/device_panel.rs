@@ -18,6 +18,7 @@ use super::EditorCx;
 use crate::api;
 use crate::components::icons;
 use crate::components::surface::{create_flow_draft, suggest_key, DraftTarget};
+use crate::components::ui::BTN_SECONDARY_SM;
 use crate::state::toasts;
 
 /// Home card suggested for a device metric (D141), by name heuristics:
@@ -269,9 +270,7 @@ pub fn DevicePanel(cx: EditorCx, by_source: BTreeMap<String, Vec<String>>) -> El
                     }
                 }
                 if device().is_some() {
-                    p { class: "text-[10px] font-medium uppercase text-gray-400",
-                        {t!("db-from-device-outputs")}
-                    }
+                    p { class: "text-xs font-medium text-gray-400", {t!("db-from-device-outputs")} }
                     if outputs.is_empty() {
                         p { class: "text-xs text-gray-400", {t!("db-from-device-no-output")} }
                     }
@@ -287,9 +286,7 @@ pub fn DevicePanel(cx: EditorCx, by_source: BTreeMap<String, Vec<String>>) -> El
                             dirty,
                         }
                     }
-                    p { class: "text-[10px] font-medium uppercase text-gray-400",
-                        {t!("db-from-device-metrics")}
-                    }
+                    p { class: "text-xs font-medium text-gray-400", {t!("db-from-device-metrics")} }
                     if metrics.is_empty() {
                         p { class: "text-xs text-gray-400", {t!("db-from-device-no-metric")} }
                     }
@@ -361,7 +358,7 @@ fn PinRow(
             }
             if let Some(control) = made {
                 if dirty {
-                    p { class: "text-[10px] text-amber-700", {t!("insp-control-flow-save-first")} }
+                    p { class: "text-xs text-amber-700", {t!("insp-control-flow-save-first")} }
                 } else {
                     button {
                         class: "w-full rounded border border-teal-200 px-2 py-0.5 text-xs text-teal-700 hover:bg-teal-50",
@@ -391,7 +388,7 @@ fn MetricRow(cx: EditorCx, device: String, metric: String, siblings: Vec<String>
             div { class: "flex flex-wrap gap-1",
                 if let Some((card, role, variant)) = suggestion {
                     button {
-                        class: "rounded border border-amber-300 px-1.5 py-0.5 text-[11px] text-amber-800 hover:bg-amber-50",
+                        class: "rounded border border-amber-300 px-1.5 py-0.5 text-xs text-amber-800 hover:bg-amber-50",
                         title: t!("db-from-device-home-card").to_string(),
                         onclick: move |_| {
                             let sources = suggested_sources(card, role, &sd, &sm, &siblings);
@@ -425,7 +422,7 @@ fn ReadingButton(
 ) -> Element {
     rsx! {
         button {
-            class: "rounded border border-gray-300 px-1.5 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50",
+            class: BTN_SECONDARY_SM,
             onclick: move |_| {
                 let (d, m) = (device.clone(), metric.clone());
                 library::add_configured(

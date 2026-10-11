@@ -28,6 +28,8 @@ mod firmware_pick;
 mod naming;
 mod screen_pick;
 
+use crate::components::ui::INPUT;
+use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY, BTN_SECONDARY_SM};
 use firmware_pick::*;
 use naming::*;
 use screen_pick::*;
@@ -343,7 +345,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                             p { class: "text-sm text-gray-600", {t!("wizard-identity-help")} }
                             div { class: "flex gap-2",
                                 input {
-                                    class: "flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono",
+                                    class: "{INPUT} flex-1 font-mono",
                                     r#type: "text",
                                     maxlength: "16",
                                     placeholder: t!("devices-new-placeholder"),
@@ -351,25 +353,23 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                     oninput: move |event| device_id.set(event.value()),
                                 }
                                 button {
-                                    class: "px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors",
+                                    class: BTN_SECONDARY_SM,
                                     r#type: "button",
                                     onclick: move |_| device_id.set(random_device_id()),
                                     icons::RefreshCw { class: "h-4 w-4 inline mr-1" }
                                     {t!("wizard-shuffle")}
                                 }
                             }
-                            span { class: "text-[11px] text-gray-400", "{device_id().chars().count()}/16" }
+                            span { class: "text-xs text-gray-400", "{device_id().chars().count()}/16" }
 
                             div {
-                                span { class: "block mb-2 text-xs font-semibold text-gray-500 uppercase tracking-wider",
-                                    {t!("wizard-labels-title")}
-                                }
+                                span { class: "block mb-2 text-xs font-semibold text-gray-500", {t!("wizard-labels-title")} }
                                 LabelChipsInput { labels, can_write: true }
                             }
 
                             div { class: "flex justify-end",
                                 button {
-                                    class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium",
+                                    class: BTN_PRIMARY,
                                     r#type: "button",
                                     onclick: go_model,
                                     {t!("wizard-next")}
@@ -395,9 +395,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                             for (title, help, models) in model_sections {
                                 if !models.is_empty() {
                                     div {
-                                        h4 { class: "text-xs font-semibold text-blue-600 uppercase tracking-wider",
-                                            {title}
-                                        }
+                                        h4 { class: "text-xs font-semibold text-blue-600", {title} }
                                         p { class: "text-xs text-gray-400 mb-2", {help} }
                                         div { class: "grid gap-2",
                                             for pd in models {
@@ -442,9 +440,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                     let effective_soc = effective_board.as_ref().map(|b| b.soc.clone());
                                     rsx! {
                                         div { class: "border-t border-gray-100 pt-3",
-                                            h4 { class: "text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2",
-                                                {t!("wizard-board-variant")}
-                                            }
+                                            h4 { class: "text-xs font-semibold text-gray-600 mb-2", {t!("wizard-board-variant")} }
                                             p { class: "text-xs text-gray-400 mb-2", {t!("wizard-board-variant-help")} }
                                             div { class: "flex flex-wrap gap-2",
                                                 for v in variants {
@@ -486,13 +482,13 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
 
                             div { class: "flex justify-between pt-2",
                                 button {
-                                    class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
+                                    class: BTN_SECONDARY,
                                     r#type: "button",
                                     onclick: go_identity,
                                     {t!("wizard-back")}
                                 }
                                 button {
-                                    class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium",
+                                    class: BTN_PRIMARY,
                                     r#type: "button",
                                     disabled: busy,
                                     onclick: go_config,
@@ -514,7 +510,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                             }
                             div { class: "flex justify-end",
                                 button {
-                                    class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium",
+                                    class: BTN_PRIMARY,
                                     r#type: "button",
                                     onclick: move |_| on_close.call(()),
                                     {t!("common-close")}
@@ -530,13 +526,13 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                             p { class: "text-xs text-gray-400", {t!("wizard-config-help")} }
                             div { class: "flex justify-between pt-2",
                                 button {
-                                    class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
+                                    class: BTN_SECONDARY,
                                     r#type: "button",
                                     onclick: go_model_back,
                                     {t!("wizard-back")}
                                 }
                                 button {
-                                    class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium",
+                                    class: BTN_PRIMARY,
                                     r#type: "button",
                                     onclick: go_review,
                                     {t!("wizard-next")}
@@ -568,13 +564,13 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                             }
                             div { class: "flex justify-between pt-2",
                                 button {
-                                    class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
+                                    class: BTN_SECONDARY,
                                     r#type: "button",
                                     onclick: move |_| step.set(Step::Config),
                                     {t!("wizard-back")}
                                 }
                                 button {
-                                    class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed",
+                                    class: BTN_PRIMARY,
                                     r#type: "button",
                                     disabled: busy,
                                     onclick: submit,
@@ -655,7 +651,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                             }
                             div { class: "flex justify-end",
                                 button {
-                                    class: "px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors",
+                                    class: BTN_PRIMARY,
                                     r#type: "button",
                                     onclick: move |_| on_close.call(()),
                                     {t!("common-close")}
@@ -675,7 +671,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                             }
                             div { class: "flex justify-end",
                                 button {
-                                    class: "px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors",
+                                    class: BTN_PRIMARY,
                                     r#type: "button",
                                     onclick: move |_| on_close.call(()),
                                     {t!("common-close")}
@@ -786,19 +782,19 @@ fn model_card(
                 p { class: "text-xs text-gray-500 mt-1", {description} }
             }
             div { class: "flex flex-wrap gap-1 mt-2",
-                span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium {chip}",
+                span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {chip}",
                     {pd.board.clone()}
                 }
-                span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-700",
+                span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700",
                     {pd.device_type.clone()}
                 }
                 for cap in shown_caps {
-                    span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-600",
+                    span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600",
                         {cap}
                     }
                 }
                 if hidden_caps > 0 {
-                    span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-400",
+                    span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-400",
                         "+{hidden_caps}"
                     }
                 }
@@ -868,9 +864,9 @@ fn VariantChip(
             span { class: "text-sm font-semibold text-gray-900 pr-6",
                 {board.pretty_name.clone().unwrap_or_else(|| board.name.clone())}
             }
-            span { class: "text-[11px] font-mono text-gray-400", "{meta}" }
+            span { class: "text-xs font-mono text-gray-400", "{meta}" }
             if builtin_screen {
-                span { class: "inline-flex items-center gap-1 text-[10px] text-teal-700 bg-teal-50 rounded-full px-1.5 py-0.5",
+                span { class: "inline-flex items-center gap-1 text-xs text-teal-700 bg-teal-50 rounded-full px-1.5 py-0.5",
                     {t!("board-peripheral-screen")}
                 }
             }

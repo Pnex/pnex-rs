@@ -18,6 +18,8 @@ use pnex_core::{AiConversation, AiMessage, AiPageContext, AiSendMessage, AiToolT
 use uuid::Uuid;
 
 use crate::api;
+use crate::components::ui::BTN_PRIMARY_SM;
+use crate::components::ui::INPUT;
 use crate::state::{ai, toasts};
 
 /// Conversation shown by the drawer, kept across open/close (reset when
@@ -49,9 +51,16 @@ fn bubbles_of(messages: Vec<AiMessage>) -> Vec<ChatBubble> {
         .collect()
 }
 
+/// Assistant drawer visibility, opened from the sidebar footer entry.
+static OPEN: GlobalSignal<bool> = GlobalSignal::new(|| false);
+
+/// Opens the assistant drawer (sidebar footer entry).
+pub fn open() {
+    *OPEN.write() = true;
+}
+
 #[component]
 pub fn AssistantPanel() -> Element {
-    let mut open = use_signal(|| false);
     // Hydratation du statut : au montage, puis à CHAQUE changement d'org
     // (la config IA est par org — un statut périmé masquerait/afficherait
     // le panneau à tort). L'org est lu dans le scope réactif de l'effet.
@@ -72,16 +81,8 @@ pub fn AssistantPanel() -> Element {
         return rsx! {};
     }
     rsx! {
-        div {
-            button {
-                class: "fixed bottom-6 right-6 z-30 rounded-full h-12 w-12 bg-blue-600 text-white shadow-lg hover:bg-blue-700 text-xl leading-none",
-                onclick: move |_| open.set(true),
-                aria_label: t!("ai-title"),
-                {"💬"}
-            }
-            if open() {
-                AssistantDrawer { on_close: move |_| open.set(false) }
-            }
+        if OPEN() {
+            AssistantDrawer { on_close: move |_| *OPEN.write() = false }
         }
     }
 }
@@ -248,7 +249,7 @@ fn AssistantDrawer(on_close: Callback) -> Element {
                     }
                     footer { class: "border-t border-gray-200 p-3",
                         textarea {
-                            class: "w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500",
+                            class: "{INPUT} w-full",
                             rows: "2",
                             value: "{input}",
                             placeholder: t!("ai-placeholder"),
@@ -262,11 +263,11 @@ fn AssistantDrawer(on_close: Callback) -> Element {
                             },
                         }
                         div { class: "flex items-center justify-between gap-2 mt-2",
-                            p { class: "text-[11px] text-gray-400 leading-tight",
+                            p { class: "text-xs text-gray-400 leading-tight",
                                 {t!("ai-provider-notice")}
                             }
                             button {
-                                class: "px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50",
+                                class: BTN_PRIMARY_SM,
                                 disabled: thinking(),
                                 onclick: move |_| {
                                     let text = input();
@@ -356,7 +357,7 @@ fn ConversationList(on_open: Callback<Uuid>, on_cleared: Callback<()>) -> Elemen
             }
         }
         footer { class: "border-t border-gray-200 p-3 space-y-2",
-            p { class: "text-[11px] text-gray-400 leading-tight", {t!("ai-history-notice")} }
+            p { class: "text-xs text-gray-400 leading-tight", {t!("ai-history-notice")} }
             div { class: "flex justify-between",
                 button {
                     class: "text-xs text-gray-600 hover:text-gray-900",
@@ -450,7 +451,7 @@ fn ConversationRow(
                     class: "flex-1 min-w-0 text-left",
                     onclick: move |_| on_open.call(id),
                     p { class: "text-sm text-gray-900 truncate", {title.clone()} }
-                    p { class: "text-[11px] text-gray-400", {date} }
+                    p { class: "text-xs text-gray-400", {date} }
                 }
                 button {
                     class: "text-xs text-gray-400 hover:text-gray-700",

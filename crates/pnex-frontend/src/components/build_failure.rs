@@ -27,7 +27,7 @@ pub fn BuildFailureNote(code: Option<String>, detail: Option<String>) -> Element
             if let Some(detail) = detail {
                 details { class: "mt-2",
                     summary { class: "cursor-pointer text-xs text-red-600", {t!("build-fail-output")} }
-                    pre { class: "mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-white p-2 font-mono text-[11px] text-gray-800",
+                    pre { class: "mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-white p-2 font-mono text-xs text-gray-800",
                         "{detail}"
                     }
                 }

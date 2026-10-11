@@ -14,6 +14,8 @@ use pnex_core::{NotifyTemplate, NotifyTemplateInput};
 
 use crate::api;
 use crate::api::error::ApiError;
+use crate::components::ui::BTN_PRIMARY;
+use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::state::toasts;
 
 /// Lignes de vars éditables `(name, example)`.
@@ -219,12 +221,12 @@ pub fn NotifyTemplateForm(
                 div {
                     label {
                         r#for: "notify-template-form-field-1",
-                        class: "block text-sm font-medium text-gray-700 mb-1",
+                        class: FIELD_LABEL,
                         {t!("notify-field-template-name")}
                     }
                     input {
                         id: "notify-template-form-field-1",
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} w-full",
                         value: "{name}",
                         oninput: move |e| name.set(e.value()),
                     }
@@ -237,7 +239,7 @@ pub fn NotifyTemplateForm(
                 div {
                     label {
                         r#for: "notify-template-subject-input",
-                        class: "block text-sm font-medium text-gray-700 mb-1",
+                        class: FIELD_LABEL,
                         {t!("notify-template-subject")}
                     }
                     crate::components::code_highlight::TemplateEditor {
@@ -252,7 +254,7 @@ pub fn NotifyTemplateForm(
                     div { class: "flex items-center justify-between",
                         label {
                             r#for: "notify-template-body-input",
-                            class: "block text-sm font-medium text-gray-700",
+                            class: FIELD_LABEL,
                             {t!("notify-template-body")}
                             span { class: "text-red-500 ml-1", "*" }
                         }
@@ -352,7 +354,7 @@ pub fn NotifyTemplateForm(
                 div { class: "border-t border-gray-200 pt-3 space-y-2",
                     label {
                         r#for: "notify-template-test-channel",
-                        class: "block text-sm font-medium text-gray-700",
+                        class: FIELD_LABEL,
                         {t!("notify-test-send-title")}
                     }
                     match &*test_channels.value().read() {
@@ -360,7 +362,7 @@ pub fn NotifyTemplateForm(
                             div { class: "flex gap-2",
                                 select {
                                     id: "notify-template-test-channel",
-                                    class: "flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                                    class: "{INPUT} flex-1",
                                     onchange: move |e| test_target.set(Some(e.value())),
                                     option {
                                         value: "",
@@ -391,7 +393,7 @@ pub fn NotifyTemplateForm(
 
                 div { class: crate::components::modal::MODAL_FOOTER,
                     button {
-                        class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium",
+                        class: BTN_PRIMARY,
                         disabled: busy(),
                         onclick: do_save,
                         {

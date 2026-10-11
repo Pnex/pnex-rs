@@ -27,6 +27,7 @@ pub use preview::BoardPreviewModal;
 
 pub(crate) use screens::*;
 
+use crate::components::ui::BTN_SECONDARY_SM;
 use board_change::BoardChangeModal;
 use panels::PinDrawer;
 use svg::{BoardSvg, Legend};
@@ -73,9 +74,7 @@ fn BoardHeader(
         }
         div { class: "flex flex-wrap items-center justify-between gap-2 mb-3",
             div { class: "flex items-center gap-2",
-                h3 { class: "text-sm font-semibold text-gray-500 uppercase tracking-wider",
-                    {title}
-                }
+                h3 { class: "text-sm font-semibold text-gray-500", {title} }
                 if let Some(chip) = &board.chip_label {
                     span { class: "text-xs font-mono text-gray-400", {chip.clone()} }
                 }
@@ -282,7 +281,7 @@ fn BoardLayout(
             div { class: "flex items-center justify-end gap-3",
                 preview::ZoomBar { zoom }
                 button {
-                    class: "inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:border-blue-400 hover:text-blue-600 transition-colors",
+                    class: BTN_SECONDARY_SM,
                     r#type: "button",
                     onclick: on_export,
                     {t!("board-export-svg")}

@@ -8,6 +8,8 @@ use dioxus_i18n::t;
 
 use crate::api;
 use crate::components::icons;
+use crate::components::ui::BTN_PRIMARY;
+use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::i18n;
 use crate::state::{session, toasts};
 
@@ -45,16 +47,15 @@ pub fn Profile() -> Element {
     let mut theme = use_signal(|| normalize_theme(&profile.theme));
 
     rsx! {
-        div { class: "p-6",
-            div { class: "mb-8",
-                h1 { class: "text-3xl font-bold text-gray-900", {t!("nav-profile")} }
-                p { class: "text-gray-600 mt-2", {t!("profile-subtitle")} }
-            }
+        crate::components::crud::layout::ListLayout {
+            title: t!("nav-profile").to_string(),
+            subtitle: t!("profile-subtitle").to_string(),
+            can_write: false,
 
             div { class: "grid grid-cols-1 lg:grid-cols-3 gap-8",
                 div { class: "lg:col-span-2 space-y-6",
                     // Identité — gérée par l'IdP Rauthy, lecture seule.
-                    div { class: "bg-white rounded-lg shadow-sm",
+                    div { class: "bg-white rounded-lg border border-line",
                         div { class: "p-6 border-b border-gray-200",
                             h2 { class: "text-lg font-semibold text-gray-900",
                                 {t!("profile-identity")}
@@ -76,22 +77,18 @@ pub fn Profile() -> Element {
                             }
                             div { class: "grid grid-cols-1 md:grid-cols-2 gap-6",
                                 label { class: "block",
-                                    span { class: "block text-sm font-medium text-gray-700 mb-2",
-                                        {t!("profile-username")}
-                                    }
+                                    span { class: FIELD_LABEL, {t!("profile-username")} }
                                     input {
-                                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-900",
+                                        class: "{INPUT} w-full",
                                         r#type: "text",
                                         disabled: true,
                                         value: "{user.username}",
                                     }
                                 }
                                 label { class: "block",
-                                    span { class: "block text-sm font-medium text-gray-700 mb-2",
-                                        {t!("profile-email")}
-                                    }
+                                    span { class: FIELD_LABEL, {t!("profile-email")} }
                                     input {
-                                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-900",
+                                        class: "{INPUT} w-full",
                                         r#type: "email",
                                         disabled: true,
                                         value: "{user.email.clone().unwrap_or_default()}",
@@ -106,7 +103,7 @@ pub fn Profile() -> Element {
 
                     // Préférences — PATCH /api/v1/profile.
                     form {
-                        class: "bg-white rounded-lg shadow-sm",
+                        class: "bg-white rounded-lg border border-line",
                         onsubmit: move |event| {
                             event.prevent_default();
                             let patch = pnex_core::ProfilePatch {
@@ -139,11 +136,9 @@ pub fn Profile() -> Element {
                         }
                         div { class: "p-6 grid grid-cols-1 md:grid-cols-2 gap-6",
                             label { class: "block",
-                                span { class: "block text-sm font-medium text-gray-700 mb-2",
-                                    {t!("profile-language")}
-                                }
+                                span { class: FIELD_LABEL, {t!("profile-language")} }
                                 select {
-                                    class: "w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900",
+                                    class: "{INPUT} w-full",
                                     onchange: move |event| {
                                         let tag = event.value();
                                         language.set(tag.clone());
@@ -164,22 +159,18 @@ pub fn Profile() -> Element {
                                 }
                             }
                             label { class: "block",
-                                span { class: "block text-sm font-medium text-gray-700 mb-2",
-                                    {t!("profile-timezone")}
-                                }
+                                span { class: FIELD_LABEL, {t!("profile-timezone")} }
                                 input {
-                                    class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900",
+                                    class: "{INPUT} w-full",
                                     r#type: "text",
                                     value: "{timezone}",
                                     oninput: move |event| timezone.set(event.value()),
                                 }
                             }
                             label { class: "block",
-                                span { class: "block text-sm font-medium text-gray-700 mb-2",
-                                    {t!("profile-date-format")}
-                                }
+                                span { class: FIELD_LABEL, {t!("profile-date-format")} }
                                 input {
-                                    class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900",
+                                    class: "{INPUT} w-full",
                                     r#type: "text",
                                     placeholder: "YYYY-MM-DD HH:mm",
                                     value: "{date_format}",
@@ -187,11 +178,9 @@ pub fn Profile() -> Element {
                                 }
                             }
                             label { class: "block",
-                                span { class: "block text-sm font-medium text-gray-700 mb-2",
-                                    {t!("profile-theme")}
-                                }
+                                span { class: FIELD_LABEL, {t!("profile-theme")} }
                                 select {
-                                    class: "w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900",
+                                    class: "{INPUT} w-full",
                                     onchange: move |event| theme.set(event.value()),
                                     option {
                                         value: "light",
@@ -212,18 +201,14 @@ pub fn Profile() -> Element {
                             }
                         }
                         div { class: "px-6 pb-6",
-                            button {
-                                class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors",
-                                r#type: "submit",
-                                {t!("common-save")}
-                            }
+                            button { class: BTN_PRIMARY, r#type: "submit", {t!("common-save")} }
                         }
                     }
                 }
 
                 // Actions de compte.
                 div { class: "space-y-6",
-                    div { class: "bg-white rounded-lg shadow-sm",
+                    div { class: "bg-white rounded-lg border border-line",
                         div { class: "p-6 border-b border-gray-200",
                             h3 { class: "text-lg font-semibold text-gray-900",
                                 {t!("profile-account")}
@@ -247,7 +232,7 @@ pub fn Profile() -> Element {
                     // À propos — versions app + serveur et contrat d'API :
                     // identification claire des deux côtés (refus propre de
                     // la porte de compatibilité, support).
-                    div { class: "bg-white rounded-lg shadow-sm",
+                    div { class: "bg-white rounded-lg border border-line",
                         div { class: "p-6 border-b border-gray-200",
                             h3 { class: "text-lg font-semibold text-gray-900", {t!("about-title")} }
                         }

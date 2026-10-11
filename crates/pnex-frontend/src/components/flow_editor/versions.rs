@@ -58,7 +58,7 @@ pub(crate) fn VersionsDrawer(
                                                 {format!("v{}", version.version_number)}
                                             }
                                             if version.deployed {
-                                                span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-800",
+                                                span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800",
                                                     {t!("flows-version-deployed-tag")}
                                                 }
                                             }

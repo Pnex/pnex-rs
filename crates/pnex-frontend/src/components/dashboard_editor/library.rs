@@ -303,7 +303,7 @@ fn library_rows(
                     },
                     div { class: "min-w-0",
                         p { class: "truncate text-xs font-medium text-gray-800", "{widget.name}" }
-                        p { class: "text-[10px] text-gray-400", "{caption}" }
+                        p { class: "text-xs text-gray-400", "{caption}" }
                     }
                     button {
                         class: "shrink-0 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100",

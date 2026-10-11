@@ -17,6 +17,7 @@ use uuid::Uuid;
 use crate::api;
 use crate::components::annotation_editor::state::AnnotationEditorCx;
 use crate::components::surface::{control_display_name, kind_text, spec_summary};
+use crate::components::ui::FIELD_LABEL;
 
 /// Replaces the target of item `id`.
 fn set_target(cx: AnnotationEditorCx, id: &str, target: AnnotationTarget) {
@@ -105,13 +106,13 @@ pub fn ControlTargetEditor(
 
     rsx! {
         div { class: "space-y-2 rounded-lg border border-teal-100 bg-teal-50/40 p-2",
-            p { class: "text-[10px] font-medium uppercase text-gray-400", {t!("insp-control")} }
+            p { class: "text-xs font-medium text-gray-400", {t!("insp-control")} }
             if pending {
                 div { class: "rounded border border-dashed border-teal-300 bg-white px-2 py-1.5 text-xs",
                     p { class: "font-mono text-teal-800", "{reference}" }
                     p { class: "text-gray-500", {t!("annot-source-pending")} }
                 }
-                label { class: "block text-xs font-medium text-gray-600",
+                label { class: FIELD_LABEL,
                     {t!("annot-source-kind")}
                     select {
                         class: "mt-1 w-full rounded-lg border-gray-300 text-sm",
@@ -150,7 +151,7 @@ pub fn ControlTargetEditor(
                             {t!("insp-source-shared", label : d.label.clone())}
                         }
                         button {
-                            class: "text-[11px] text-indigo-700 underline",
+                            class: "text-xs text-indigo-700 underline",
                             onclick: move |_| {
                                 set_target(
                                     cx,
@@ -165,12 +166,12 @@ pub fn ControlTargetEditor(
                         }
                     }
                 }
-                p { class: "text-[11px] text-gray-500",
+                p { class: "text-xs text-gray-500",
                     code { "{d.key}" }
                     " · {spec_summary(&d.spec)}"
                 }
                 if d.listened_by.is_empty() {
-                    p { class: "rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800",
+                    p { class: "rounded bg-amber-50 px-2 py-1 text-xs text-amber-800",
                         {t!("controls-idle-help")}
                     }
                 }
@@ -178,7 +179,7 @@ pub fn ControlTargetEditor(
                 div { class: "rounded bg-red-50 px-2 py-1 text-xs text-red-700 space-y-1",
                     p { {t!("controls-missing")} }
                     button {
-                        class: "text-[11px] underline",
+                        class: "text-xs underline",
                         onclick: move |_| {
                             set_target(
                                 cx,
@@ -198,7 +199,7 @@ pub fn ControlTargetEditor(
                     {t!("insp-source-link")}
                 }
                 div { class: "mt-2 space-y-1",
-                    p { class: "text-[10px] text-gray-500", {t!("insp-source-link-help")} }
+                    p { class: "text-xs text-gray-500", {t!("insp-source-link-help")} }
                     select {
                         class: "w-full rounded-lg border-gray-300 text-sm",
                         onchange: move |e| {
@@ -312,7 +313,7 @@ pub fn ReadingTargetEditor(
     let (cat_src, mem_src) = (by_source.clone(), mem.clone());
 
     rsx! {
-        label { class: "block text-xs font-medium text-gray-600",
+        label { class: FIELD_LABEL,
             {t!("insp-source")}
             select {
                 class: "mt-1 w-full rounded-lg border-gray-300 text-sm",
@@ -378,7 +379,7 @@ pub fn ReadingTargetEditor(
             }
         }
         if is_memory {
-            label { class: "block text-xs font-medium text-gray-600",
+            label { class: FIELD_LABEL,
                 {t!("insp-memory-field")}
                 select {
                     class: "mt-1 w-full rounded-lg border-gray-300 text-sm",
@@ -404,7 +405,7 @@ pub fn ReadingTargetEditor(
                 }
             }
         } else if !source.device_id.is_empty() {
-            label { class: "block text-xs font-medium text-gray-600",
+            label { class: FIELD_LABEL,
                 {t!("insp-metric")}
                 select {
                     class: "mt-1 w-full rounded-lg border-gray-300 text-sm",
@@ -424,7 +425,7 @@ pub fn ReadingTargetEditor(
                 }
             }
             if shape == "line" {
-                label { class: "block text-xs font-medium text-gray-600",
+                label { class: FIELD_LABEL,
                     {t!("insp-window")}
                     select {
                         class: "mt-1 w-full rounded-lg border-gray-300 text-sm",
@@ -446,7 +447,7 @@ pub fn ReadingTargetEditor(
             }
         }
         // Mini chart drawn on the media card.
-        label { class: "block text-xs font-medium text-gray-600",
+        label { class: FIELD_LABEL,
             {t!("annot-display")}
             select {
                 class: "mt-1 w-full rounded-lg border-gray-300 text-sm",
@@ -462,7 +463,7 @@ pub fn ReadingTargetEditor(
         }
         if shape == "gauge" {
             div { class: "grid grid-cols-2 gap-2",
-                label { class: "block text-xs font-medium text-gray-600",
+                label { class: FIELD_LABEL,
                     {t!("annot-gauge-min")}
                     input {
                         r#type: "number",
@@ -475,7 +476,7 @@ pub fn ReadingTargetEditor(
                         },
                     }
                 }
-                label { class: "block text-xs font-medium text-gray-600",
+                label { class: FIELD_LABEL,
                     {t!("annot-gauge-max")}
                     input {
                         r#type: "number",

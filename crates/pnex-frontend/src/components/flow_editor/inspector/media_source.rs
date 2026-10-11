@@ -1,6 +1,7 @@
 use super::helpers::*;
 use super::*;
 
+use crate::components::ui::FIELD_LABEL;
 use pnex_core::media_ingest::{MediaSourceConfig, MediaSourceEmit};
 
 // ─────────────── media-source (media-ingest.md D163) ───────────────
@@ -89,9 +90,7 @@ pub(super) fn MediaSourceForm(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-media-source-emit")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-media-source-emit")} }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write,
@@ -123,9 +122,7 @@ pub(super) fn MediaSourceForm(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-media-source-min-confidence")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-media-source-min-confidence")} }
                 input {
                     class: if conf_invalid() { "w-full px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm" } else { "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm" },
                     r#type: "number",

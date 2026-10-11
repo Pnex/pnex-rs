@@ -12,6 +12,8 @@ use pnex_core::TourDoc;
 
 use super::{state, MediaPicker, Select, TourEditorCx};
 use crate::api::media::MediaKind;
+use crate::components::ui::{BTN_DANGER, BTN_SECONDARY_SM};
+use crate::components::ui::{FIELD_LABEL, INPUT};
 
 /// Patch la scène sélectionnée **via le réducteur** (l'id est dérivé de la
 /// sélection au geste — closures FnMut-safe, école `patch_selected`).
@@ -108,11 +110,9 @@ fn SceneForm(cx: TourEditorCx, can_write: bool, scene: pnex_core::TourScene) -> 
             }
 
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("studio-scene-label")}
-                }
+                span { class: FIELD_LABEL, {t!("studio-scene-label")} }
                 input {
-                    class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                    class: "{INPUT} w-full",
                     r#type: "text",
                     value: "{label}",
                     disabled: !can_write,
@@ -126,11 +126,9 @@ fn SceneForm(cx: TourEditorCx, can_write: bool, scene: pnex_core::TourScene) -> 
 
             div { class: "grid grid-cols-3 gap-2",
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                        {t!("studio-scene-yaw")}
-                    }
+                    span { class: FIELD_LABEL, {t!("studio-scene-yaw")} }
                     input {
-                        class: "w-full px-2 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} w-full",
                         r#type: "number",
                         step: "1",
                         value: "{yaw}",
@@ -148,11 +146,9 @@ fn SceneForm(cx: TourEditorCx, can_write: bool, scene: pnex_core::TourScene) -> 
                     }
                 }
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                        {t!("studio-scene-pitch")}
-                    }
+                    span { class: FIELD_LABEL, {t!("studio-scene-pitch")} }
                     input {
-                        class: "w-full px-2 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} w-full",
                         r#type: "number",
                         step: "1",
                         value: "{pitch}",
@@ -170,11 +166,9 @@ fn SceneForm(cx: TourEditorCx, can_write: bool, scene: pnex_core::TourScene) -> 
                     }
                 }
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                        {t!("studio-scene-fov")}
-                    }
+                    span { class: FIELD_LABEL, {t!("studio-scene-fov")} }
                     input {
-                        class: "w-full px-2 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} w-full",
                         r#type: "number",
                         step: "1",
                         value: "{fov}",
@@ -210,7 +204,7 @@ fn SceneForm(cx: TourEditorCx, can_write: bool, scene: pnex_core::TourScene) -> 
                     {t!("studio-scene-start")}
                 }
                 button {
-                    class: "w-full px-3 py-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors",
+                    class: "{BTN_DANGER} w-full",
                     onclick: move |_| {
                         let Some(Select::Scene(id)) = cx.selected.cloned() else {
                             return;
@@ -307,7 +301,7 @@ fn SceneLinks(cx: TourEditorCx, can_write: bool, scene_id: String) -> Element {
                 div {
                     key: "{link_id}",
                     class: "flex items-center gap-2 rounded-lg border border-gray-200 px-2 py-1.5",
-                    span { class: if is_stair { "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-violet-50 text-violet-700 border border-violet-200" } else { "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200" },
+                    span { class: if is_stair { "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200" } else { "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200" },
                         {
                             if is_stair { t!("studio-link-kind-stair") } else { t!("studio-link-kind-walk") }
                         }
@@ -328,7 +322,7 @@ fn SceneLinks(cx: TourEditorCx, can_write: bool, scene_id: String) -> Element {
             if can_write && !candidates.is_empty() {
                 div { class: "flex gap-2",
                     select {
-                        class: "flex-1 px-2 py-2 border border-gray-300 rounded-lg text-sm min-w-0",
+                        class: "{INPUT} flex-1 min-w-0",
                         value: "{target}",
                         onchange: move |event| target.set(event.value()),
                         for (id, label) in candidates.clone() {
@@ -366,11 +360,9 @@ fn FloorForm(cx: TourEditorCx, can_write: bool, floor: pnex_core::TourFloor) -> 
     rsx! {
         div { class: "space-y-3",
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("studio-floor-name")}
-                }
+                span { class: FIELD_LABEL, {t!("studio-floor-name")} }
                 input {
-                    class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                    class: "{INPUT} w-full",
                     r#type: "text",
                     value: "{name}",
                     disabled: !can_write,
@@ -390,11 +382,9 @@ fn FloorForm(cx: TourEditorCx, can_write: bool, floor: pnex_core::TourFloor) -> 
             }
             div { class: "grid grid-cols-2 gap-2",
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                        {t!("studio-floor-level")}
-                    }
+                    span { class: FIELD_LABEL, {t!("studio-floor-level")} }
                     input {
-                        class: "w-full px-2 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} w-full",
                         r#type: "number",
                         step: "1",
                         value: "{level}",
@@ -414,11 +404,9 @@ fn FloorForm(cx: TourEditorCx, can_write: bool, floor: pnex_core::TourFloor) -> 
                     }
                 }
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                        {t!("studio-floor-north")}
-                    }
+                    span { class: FIELD_LABEL, {t!("studio-floor-north")} }
                     input {
-                        class: "w-full px-2 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} w-full",
                         r#type: "number",
                         step: "1",
                         value: "{north}",
@@ -507,7 +495,7 @@ fn FloorForm(cx: TourEditorCx, can_write: bool, floor: pnex_core::TourFloor) -> 
                                 }
                                 if can_write {
                                     button {
-                                        class: "w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                                        class: "{BTN_SECONDARY_SM} w-full",
                                         onclick: move |_| {
                                             patch_floor(&cx, move |doc, id| state::set_floor_plan(doc, id, None));
                                         },
@@ -530,7 +518,7 @@ fn FloorForm(cx: TourEditorCx, can_write: bool, floor: pnex_core::TourFloor) -> 
 
             if can_write {
                 button {
-                    class: "w-full px-3 py-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors",
+                    class: "{BTN_DANGER} w-full",
                     onclick: move |_| {
                         let Some(Select::Floor(id)) = cx.selected.cloned() else {
                             return;
@@ -592,7 +580,7 @@ fn LinkForm(cx: TourEditorCx, can_write: bool, link: pnex_core::TourLink) -> Ele
                 {t!("studio-link-endpoints", from : link.from.clone(), to : link.to.clone())}
             }
             p { class: "text-xs",
-                span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-violet-50 text-violet-700 border border-violet-200",
+                span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-violet-50 text-violet-700 border border-violet-200",
                     {
                         if link.kind == pnex_core::TOUR_LINK_STAIR {
                             t!("studio-link-kind-stair")
@@ -604,11 +592,9 @@ fn LinkForm(cx: TourEditorCx, can_write: bool, link: pnex_core::TourLink) -> Ele
                 span { class: "ml-2 text-gray-400", {t!("studio-link-kind-derived")} }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("studio-link-label")}
-                }
+                span { class: FIELD_LABEL, {t!("studio-link-label")} }
                 input {
-                    class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                    class: "{INPUT} w-full",
                     r#type: "text",
                     value: "{label}",
                     disabled: !can_write,
@@ -624,7 +610,7 @@ fn LinkForm(cx: TourEditorCx, can_write: bool, link: pnex_core::TourLink) -> Ele
             }
             if can_write {
                 button {
-                    class: "w-full px-3 py-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors",
+                    class: "{BTN_DANGER} w-full",
                     onclick: move |_| {
                         let Some(Select::Link(id)) = cx.selected.cloned() else {
                             return;

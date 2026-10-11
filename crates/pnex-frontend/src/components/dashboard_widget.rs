@@ -81,7 +81,7 @@ pub fn WidgetBody(
                 div { class: "flex items-baseline justify-between px-3 pt-2",
                     span { class: "truncate text-xs font-medium text-gray-500", "{w.title}" }
                     if let Some(unit) = &header_unit {
-                        span { class: "ml-2 shrink-0 text-[10px] text-gray-400", "{unit}" }
+                        span { class: "ml-2 shrink-0 text-xs text-gray-400", "{unit}" }
                     }
                 }
             }
@@ -405,12 +405,10 @@ fn symbol_body(widget: Widget, last: Option<TelemetryPoint>, decimals: u8) -> El
             if has_title || value.is_some() {
                 div { class: "flex max-w-full items-baseline gap-1 px-1 leading-tight",
                     if has_title {
-                        span { class: "truncate text-[11px] font-medium text-gray-700",
-                            "{w.title}"
-                        }
+                        span { class: "truncate text-xs font-medium text-gray-700", "{w.title}" }
                     }
                     if let Some(v) = value {
-                        span { class: "shrink-0 text-[11px] font-semibold text-teal-700",
+                        span { class: "shrink-0 text-xs font-semibold text-teal-700",
                             "{v}"
                         }
                     }

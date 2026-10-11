@@ -27,12 +27,12 @@ pub fn ShareTour(token: String) -> Element {
     rsx! {
         div { class: "min-h-screen bg-gray-100 flex flex-col",
             // En-tête minimal (pas de nav authentifiée ici).
-            header { class: "bg-white shadow-sm px-6 py-4 flex items-center gap-3",
+            header { class: "bg-white border border-line px-6 py-4 flex items-center gap-3",
                 span { class: "text-base font-semibold text-gray-900", {t!("share-title")} }
                 match &*fetch.value().read() {
                     Some(Ok(tour)) => rsx! {
                         span { class: "text-sm text-gray-500", {tour.name.clone()} }
-                        span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-50 text-green-700 border border-green-200",
+                        span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200",
                             {t!("share-published-tag", version : tour.published_version_number)}
                         }
                     },
@@ -64,7 +64,7 @@ pub fn ShareTour(token: String) -> Element {
                         }
                     },
                     Some(Err(err)) if err.status == Some(404) => rsx! {
-                        div { class: "max-w-md mx-auto mt-16 bg-white rounded-lg shadow-sm p-8 text-center",
+                        div { class: "max-w-md mx-auto mt-16 bg-white rounded-lg border border-line p-8 text-center",
                             p { class: "text-lg font-medium text-gray-900", {t!("share-invalid-title")} }
                             p { class: "text-sm text-gray-500 mt-2", {t!("share-invalid-message")} }
                         }

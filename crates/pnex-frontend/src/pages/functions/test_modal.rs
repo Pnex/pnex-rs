@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::ui::{FIELD_LABEL, INPUT};
 
 /// Live-test modal (opened from the editor toolbar "Test run"): one typed
 /// field per declared input, simulated incoming msg (JSON), result (pretty
@@ -70,11 +71,9 @@ pub(super) fn FunctionTestModal(
                     }
                 }
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                        {t!("functions-test-msg-field")}
-                    }
+                    span { class: FIELD_LABEL, {t!("functions-test-msg-field")} }
                     textarea {
-                        class: "w-full h-16 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono",
+                        class: "{INPUT} w-full h-16 font-mono",
                         value: "{msg_value}",
                         spellcheck: false,
                         oninput: move |event| test_msg.set(event.value()),
@@ -89,27 +88,23 @@ pub(super) fn FunctionTestModal(
                             }
                             if !resp.logs.is_empty() {
                                 div { class: "rounded-lg bg-gray-50 border border-gray-200 p-2",
-                                    p { class: "text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1",
-                                        {t!("functions-test-logs")}
-                                    }
+                                    p { class: "text-xs font-semibold text-gray-400 mb-1", {t!("functions-test-logs")} }
                                     for line in resp.logs.clone() {
                                         p { class: "text-xs text-gray-600 font-mono", {line} }
                                     }
                                 }
                             }
                             div {
-                                p { class: "text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1",
-                                    {t!("functions-test-outputs")}
-                                }
+                                p { class: "text-xs font-semibold text-gray-400 mb-1", {t!("functions-test-outputs")} }
                                 if has_port_rows {
                                     div { class: "space-y-1.5",
                                         for (label, muted, pretty) in port_rows {
                                             div { class: "flex items-start gap-2 rounded-lg bg-gray-900 p-2",
-                                                span { class: "shrink-0 w-40 text-[11px] text-cyan-300 font-mono pt-0.5 truncate",
+                                                span { class: "shrink-0 w-40 text-xs text-cyan-300 font-mono pt-0.5 truncate",
                                                     {label}
                                                 }
                                                 if muted {
-                                                    span { class: "text-[11px] text-gray-500 italic",
+                                                    span { class: "text-xs text-gray-500 italic",
                                                         {t!("functions-test-port-muted")}
                                                     }
                                                 } else {
@@ -124,7 +119,7 @@ pub(super) fn FunctionTestModal(
                                     pre { class: "rounded-lg bg-gray-900 text-gray-100 p-3 text-xs font-mono overflow-x-auto",
                                         {serde_json::to_string_pretty(&resp.outputs).unwrap_or_default()}
                                     }
-                                    p { class: "text-[11px] text-gray-500 italic mt-1", {t!("functions-test-no-outputs")} }
+                                    p { class: "text-xs text-gray-500 italic mt-1", {t!("functions-test-no-outputs")} }
                                 }
                             }
                         }
@@ -167,9 +162,7 @@ fn test_field(
     let name_for_label = name.clone();
     rsx! {
         label { class: "block",
-            span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                {format!("{name_for_label} ({})", type_label(input.ty))}
-            }
+            span { class: FIELD_LABEL, {format!("{name_for_label} ({})", type_label(input.ty))} }
             match input.ty {
                 FunctionType::Number => rsx! {
                     input {
@@ -207,7 +200,7 @@ fn test_field(
                 },
             }
             if !label_desc.is_empty() {
-                span { class: "text-[11px] text-gray-400 block mt-0.5", {label_desc} }
+                span { class: "text-xs text-gray-400 block mt-0.5", {label_desc} }
             }
         }
     }

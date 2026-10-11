@@ -3,6 +3,7 @@ use super::*;
 
 use pnex_core::events::{event_stream_name, EventLevel, EventLogConfig, EVENT_STREAM_MAX_LEN};
 
+use crate::components::ui::FIELD_LABEL;
 use crate::pages::events::level_label;
 
 // ─────────────── event-log (camera-video.md D84) ───────────────
@@ -25,9 +26,7 @@ pub(super) fn EventLogForm(mut cx: EditorCx, initial: EventLogConfig, can_write:
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-event-log-help")} }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-event-log-stream")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-event-log-stream")} }
                 input {
                     class: if stream_bad { "w-full px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm" } else { "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm" },
                     r#type: "text",
@@ -62,9 +61,7 @@ pub(super) fn EventLogForm(mut cx: EditorCx, initial: EventLogConfig, can_write:
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-event-log-level")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-event-log-level")} }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write,
@@ -91,9 +88,7 @@ pub(super) fn EventLogForm(mut cx: EditorCx, initial: EventLogConfig, can_write:
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-event-log-message")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-event-log-message")} }
                 textarea {
                     class: if message_len > MESSAGE_MAX { "w-full h-16 px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm" } else { "w-full h-16 px-2 py-1.5 border border-gray-300 rounded-lg text-sm" },
                     value: "{message}",

@@ -174,7 +174,7 @@ pub fn DataTable<T: Clone + PartialEq + 'static>(
     rsx! {
         // Horizontal scroll instead of clipping: on a phone the columns past
         // the viewport (row actions first) must stay reachable.
-        div { class: "bg-white rounded-lg shadow-sm overflow-x-auto",
+        div { class: "bg-white rounded-lg border border-line overflow-x-auto",
             table { class: "min-w-full divide-y divide-gray-200",
                 thead { class: "bg-gray-50",
                     tr {

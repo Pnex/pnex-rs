@@ -3,6 +3,7 @@
 //! the effective board. The device carries the choice (`firmware_project_id`).
 
 use super::*;
+use crate::components::ui::INPUT;
 
 #[component]
 pub(super) fn FirmwarePickBlock(soc: String, mut firmware_pick: Signal<Option<i64>>) -> Element {
@@ -21,12 +22,10 @@ pub(super) fn FirmwarePickBlock(soc: String, mut firmware_pick: Signal<Option<i6
     let current = firmware_pick().map(|id| id.to_string()).unwrap_or_default();
     rsx! {
         div { class: "border-t border-gray-100 pt-3 mt-3",
-            h4 { class: "text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2",
-                {t!("wizard-firmware")}
-            }
+            h4 { class: "text-xs font-semibold text-gray-600 mb-2", {t!("wizard-firmware")} }
             p { class: "text-xs text-gray-400 mb-2", {t!("wizard-firmware-help")} }
             select {
-                class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                class: "{INPUT} w-full",
                 aria_label: t!("wizard-firmware"),
                 value: "{current}",
                 onchange: move |event| firmware_pick.set(event.value().parse::<i64>().ok()),

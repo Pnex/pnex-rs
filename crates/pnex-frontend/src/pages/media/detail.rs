@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY};
 
 /// Asset detail — full-page two columns (2026-09-19 redesign): preview +
 /// metadata strip on the left, info/labels/versions cards on the right,
@@ -145,7 +146,7 @@ pub(super) fn MediaDetail(
             div { class: "mb-6 flex flex-wrap items-center justify-between gap-3",
                 div { class: "flex min-w-0 items-center gap-2",
                     button {
-                        class: "inline-flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                        class: BTN_SECONDARY,
                         r#type: "button",
                         onclick: move |_| on_close.call(()),
                         icons::ArrowLeft { class: "h-5 w-5" }
@@ -387,7 +388,7 @@ pub(super) fn MediaDetail(
                             // Download the current version (primary action —
                             // read, every role; the server enforces).
                             button {
-                                class: "w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50",
+                                class: "{BTN_PRIMARY} w-full",
                                 disabled: downloading(),
                                 onclick: move |_| {
                                     let asset = asset.clone();

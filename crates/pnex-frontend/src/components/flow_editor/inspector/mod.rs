@@ -37,7 +37,7 @@ pub(crate) fn InspectorBody(mut cx: EditorCx, can_write: bool, flow_id: i64) -> 
     rsx! {
         div { class: "space-y-3",
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-node-name")} }
+                span { class: FIELD_LABEL, {t!("flows-node-name")} }
                 input {
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm disabled:bg-gray-50 disabled:text-gray-400",
                     r#type: "text",
@@ -66,7 +66,7 @@ pub(crate) fn InspectorBody(mut cx: EditorCx, can_write: bool, flow_id: i64) -> 
 
             if can_write {
                 button {
-                    class: "w-full px-3 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors",
+                    class: "{BTN_DANGER} w-full",
                     onclick: move |_| confirm_delete.set(true),
                     {t!("flows-node-delete")}
                 }
@@ -251,6 +251,8 @@ mod video_record;
 mod vision_detect;
 mod weather;
 
+use crate::components::ui::BTN_DANGER;
+use crate::components::ui::FIELD_LABEL;
 use camera_source::CameraSourceForm;
 use control_source::ControlSourceForm;
 use coolprop::CoolPropForm;

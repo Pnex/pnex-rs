@@ -22,6 +22,7 @@ use crate::state::{org, session, toasts};
 mod editor;
 mod panels;
 
+use crate::components::ui::{FIELD_LABEL, INPUT};
 use editor::FirmwareEditor;
 
 /// Role of the user in the current org (same helper as `functions`).
@@ -265,9 +266,7 @@ fn CreateProjectModal(on_close: Callback<()>, on_created: Callback<i64>) -> Elem
             on_submit: submit,
             busy: creating(),
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("firmware-field-name")}
-                }
+                span { class: FIELD_LABEL, {t!("firmware-field-name")} }
                 input {
                     class: if name_error() { "w-full px-3 py-2 border border-red-400 bg-red-50 rounded-lg text-sm" } else { "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" },
                     r#type: "text",
@@ -284,11 +283,9 @@ fn CreateProjectModal(on_close: Callback<()>, on_created: Callback<i64>) -> Elem
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("firmware-field-chip")}
-                }
+                span { class: FIELD_LABEL, {t!("firmware-field-chip")} }
                 select {
-                    class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                    class: "{INPUT} w-full",
                     value: "{chip}",
                     onchange: move |event| chip.set(event.value()),
                     for soc in CHIP_FAMILIES {
@@ -300,11 +297,9 @@ fn CreateProjectModal(on_close: Callback<()>, on_created: Callback<i64>) -> Elem
                 span { class: "text-xs text-gray-500 mt-1 block", {t!("firmware-field-chip-hint")} }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("firmware-field-description")}
-                }
+                span { class: FIELD_LABEL, {t!("firmware-field-description")} }
                 input {
-                    class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                    class: "{INPUT} w-full",
                     r#type: "text",
                     value: "{description}",
                     oninput: move |event| description.set(event.value()),

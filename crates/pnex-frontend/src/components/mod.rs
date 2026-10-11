@@ -81,3 +81,4 @@ pub mod symbols;
 pub mod toasts;
 pub mod tour_editor;
 pub mod tour_viewer;
+pub mod ui;

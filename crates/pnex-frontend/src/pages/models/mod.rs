@@ -27,6 +27,7 @@ mod form;
 mod test_image;
 mod test_live;
 
+use crate::components::ui::BTN_SECONDARY_SM;
 use form::ModelFormModal;
 use test_image::TestImageModal;
 use test_live::TestLiveModal;
@@ -281,7 +282,7 @@ fn ModelRow(
                         button {
                             title: t!("models-check"),
                             aria_label: t!("models-check"),
-                            class: "inline-flex items-center px-3 py-1 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 whitespace-nowrap",
+                            class: "{BTN_SECONDARY_SM} whitespace-nowrap",
                             r#type: "button",
                             disabled: checking(),
                             onclick: move |_| {
@@ -310,7 +311,7 @@ fn ModelRow(
                         button {
                             title: t!("models-edit"),
                             aria_label: t!("models-edit"),
-                            class: "inline-flex items-center px-3 py-1 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
+                            class: BTN_SECONDARY_SM,
                             r#type: "button",
                             onclick: move |_| on_action.call(Dialog::Edit(m_edit.clone())),
                             icons::Pencil { class: "h-4 w-4 sm:hidden" }

@@ -1,6 +1,7 @@
 use super::helpers::*;
 use super::*;
 
+use crate::components::ui::FIELD_LABEL;
 use pnex_core::vision::{VisionDetectConfig, VisionEmit};
 
 // ─────────────── vision-detect (camera-video.md D83) ───────────────
@@ -64,9 +65,7 @@ pub(super) fn VisionDetectForm(
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-vision-help")} }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-vision-model")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-vision-model")} }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write,
@@ -138,9 +137,7 @@ pub(super) fn VisionDetectForm(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-vision-min-score")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-vision-min-score")} }
                 input {
                     class: if score_invalid() { "w-full px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm" } else { "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm" },
                     r#type: "number",
@@ -170,9 +167,7 @@ pub(super) fn VisionDetectForm(
                 span { class: "text-xs text-gray-400 mt-1 block", {t!("flows-vision-min-score-hint")} }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-vision-emit")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-vision-emit")} }
                 select {
                     class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                     disabled: !can_write,
@@ -202,9 +197,7 @@ pub(super) fn VisionDetectForm(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-camera-max-fps")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-camera-max-fps")} }
                 input {
                     class: if fps_invalid() { "w-full px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm" } else { "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm" },
                     r#type: "number",

@@ -17,6 +17,7 @@ use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
+use crate::components::ui::{FIELD_LABEL, INPUT};
 use pnex_core::pages::DocSummary;
 
 /// `2026-10-01T13:44:11+02:00` → `2026-10-01 13:44`.
@@ -152,14 +153,12 @@ fn DocList() -> Element {
                     valid: !title().trim().is_empty(),
                     div { class: "space-y-4",
                         div {
-                            label {
-                                r#for: "docs-field-title",
-                                class: "block text-sm font-medium text-gray-700 mb-1",
+                            label { r#for: "docs-field-title", class: FIELD_LABEL,
                                 {t!("docs-field-title")}
                             }
                             input {
                                 id: "docs-field-title",
-                                class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                                class: "{INPUT} w-full",
                                 value: "{title}",
                                 oninput: move |e| title.set(e.value()),
                             }

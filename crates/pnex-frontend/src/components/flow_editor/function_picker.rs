@@ -8,6 +8,7 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 
 use crate::api;
+use crate::components::ui::FIELD_LABEL;
 use crate::state::toasts;
 
 /// Sélection transmise au parent — tout ce qu'il faut pour patcher la config
@@ -72,9 +73,7 @@ pub(crate) fn FunctionPicker(
     let has_selection = rows_value.iter().any(|s| s.id == selected_id());
     rsx! {
         div { class: "space-y-1",
-            label {
-                r#for: "function-picker-select",
-                class: "text-xs font-medium text-gray-500 mb-1 block",
+            label { r#for: "function-picker-select", class: FIELD_LABEL,
                 {t!("flows-inspector-function-pick")}
             }
             // Remount the select once the rows arrive (keyed on their

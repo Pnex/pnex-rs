@@ -29,6 +29,10 @@ use crate::components::editor_shell::{
 use crate::components::icons;
 use crate::components::modal::Modal;
 use crate::components::tour_viewer;
+use crate::components::ui::{
+    BTN_DANGER_SOLID, BTN_PRIMARY, BTN_PRIMARY_SM, BTN_SECONDARY, BTN_SECONDARY_SM,
+};
+use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::state::session;
 use crate::state::toasts;
 
@@ -408,14 +412,14 @@ pub fn TourEditor(
             actions: rsx! {
                 if can_write {
                     button {
-                        class: "px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed",
+                        class: BTN_PRIMARY_SM,
                         disabled: saving() || !dirty,
                         onclick: move |_| save.call(None),
                         {t!("common-save")}
                     }
                 }
                 button {
-                    class: "px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                    class: BTN_SECONDARY_SM,
                     onclick: move |_| {
                         preview_doc.set(Some(doc()));
                         preview_open.set(true);
@@ -423,7 +427,7 @@ pub fn TourEditor(
                     {t!("studio-preview")}
                 }
                 button {
-                    class: "inline-flex items-center px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                    class: BTN_SECONDARY_SM,
                     title: t!("studio-versions"),
                     aria_label: t!("studio-versions"),
                     onclick: move |_| versions_open.set(true),
@@ -529,7 +533,7 @@ pub fn TourEditor(
                                                     {floor.name.clone()}
                                                 }
                                             }
-                                            span { class: "text-[11px] text-gray-400", "{count}" }
+                                            span { class: "text-xs text-gray-400", "{count}" }
                                         }
                                     }
                                 }
@@ -549,7 +553,7 @@ pub fn TourEditor(
                                 }
                             }
                             if link_mode() {
-                                p { class: "text-[11px] text-gray-400",
+                                p { class: "text-xs text-gray-400",
                                     if link_from().is_some() {
                                         {t!("studio-link-hint-target")}
                                     } else {
@@ -557,7 +561,7 @@ pub fn TourEditor(
                                     }
                                 }
                             }
-                            span { class: "text-[11px] text-gray-400", {t!("studio-scene-count", count : scene_count)} }
+                            span { class: "text-xs text-gray-400", {t!("studio-scene-count", count : scene_count)} }
                         }
                     }
                 }
@@ -720,12 +724,12 @@ pub fn TourEditor(
                     p { class: "text-sm text-gray-600", {t!("studio-conflict-message")} }
                     div { class: "flex flex-col gap-2 pt-2",
                         button {
-                            class: "px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                            class: BTN_SECONDARY,
                             onclick: move |_| conflict_reload(()),
                             {t!("studio-conflict-reload")}
                         }
                         button {
-                            class: "px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors",
+                            class: BTN_DANGER_SOLID,
                             onclick: conflict_overwrite,
                             {t!("studio-conflict-overwrite")}
                         }
@@ -749,22 +753,18 @@ fn AddFloorModal(on_close: Callback<()>, on_created: Callback<(String, i32)>) ->
             on_close,
             div { class: "space-y-4",
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                        {t!("studio-floor-name")}
-                    }
+                    span { class: FIELD_LABEL, {t!("studio-floor-name")} }
                     input {
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} w-full",
                         r#type: "text",
                         value: "{name}",
                         oninput: move |event| name.set(event.value()),
                     }
                 }
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                        {t!("studio-floor-level")}
-                    }
+                    span { class: FIELD_LABEL, {t!("studio-floor-level")} }
                     input {
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} w-full",
                         r#type: "number",
                         step: "1",
                         value: "{level}",
@@ -773,13 +773,13 @@ fn AddFloorModal(on_close: Callback<()>, on_created: Callback<(String, i32)>) ->
                 }
                 div { class: crate::components::modal::MODAL_FOOTER,
                     button {
-                        class: "px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors",
+                        class: BTN_SECONDARY,
                         r#type: "button",
                         onclick: move |_| on_close.call(()),
                         {t!("common-cancel")}
                     }
                     button {
-                        class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium",
+                        class: BTN_PRIMARY,
                         r#type: "button",
                         onclick: move |_| {
                             // L'id est résolu par le réducteur côté parent.

@@ -10,6 +10,7 @@ use crate::components::icons;
 use crate::components::symbols::{self, SymbolView};
 
 use super::{EditorCx, Selection};
+use crate::components::ui::FIELD_LABEL;
 
 /// Default colour of a new state threshold (green = running).
 const NEW_THRESHOLD_COLOR: &str = "#22c55e";
@@ -71,11 +72,7 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
             }
             div { class: "grid grid-cols-2 gap-2",
                 div {
-                    label {
-                        r#for: "symbol-options-field-1",
-                        class: "block text-[10px] font-medium uppercase text-gray-400",
-                        {t!("sym-stroke")}
-                    }
+                    label { r#for: "symbol-options-field-1", class: FIELD_LABEL, {t!("sym-stroke")} }
                     input {
                         id: "symbol-options-field-1",
                         class: "h-8 w-full cursor-pointer rounded border border-gray-300",
@@ -89,11 +86,7 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                     }
                 }
                 div {
-                    label {
-                        r#for: "symbol-options-field-2",
-                        class: "block text-[10px] font-medium uppercase text-gray-400",
-                        {t!("sym-fill")}
-                    }
+                    label { r#for: "symbol-options-field-2", class: FIELD_LABEL, {t!("sym-fill")} }
                     input {
                         id: "symbol-options-field-2",
                         class: "h-8 w-full cursor-pointer rounded border border-gray-300",
@@ -107,11 +100,7 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                     }
                 }
                 div {
-                    label {
-                        r#for: "symbol-options-field-3",
-                        class: "block text-[10px] font-medium uppercase text-gray-400",
-                        {t!("sym-rotation")}
-                    }
+                    label { r#for: "symbol-options-field-3", class: FIELD_LABEL, {t!("sym-rotation")} }
                     select {
                         id: "symbol-options-field-3",
                         class: "w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm",
@@ -192,7 +181,7 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                     }
                     {t!("sym-live")}
                 }
-                p { class: "text-[10px] text-gray-400", {t!("sym-live-help")} }
+                p { class: "text-xs text-gray-400", {t!("sym-live-help")} }
                 if live {
                     label { class: "flex items-center gap-2 text-xs text-gray-600",
                         input {
@@ -208,7 +197,7 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                     }
                     p {
                         id: "symbol-options-states-label",
-                        class: "block text-[10px] font-medium uppercase text-gray-400",
+                        class: "block text-xs font-medium text-gray-400",
                         {t!("sym-states")}
                     }
                     for (i, th) in thresholds.iter().cloned().enumerate() {
@@ -292,7 +281,7 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                         },
                         {t!("sym-add-state")}
                     }
-                    p { class: "text-[10px] text-gray-400", {t!("sym-states-help")} }
+                    p { class: "text-xs text-gray-400", {t!("sym-states-help")} }
                 }
             }
         }

@@ -23,6 +23,7 @@ use crate::components::icons;
 
 use super::state;
 use super::{EditorCx, Selection};
+use crate::components::ui::BTN_DANGER;
 
 /// Catalogue télémétrie **remodelé par source** — l'inspecteur fait
 /// choisir la source (device réel ou device virtuel d'un flow) d'abord,
@@ -83,7 +84,7 @@ fn wire_panel(mut cx: EditorCx, wire_id: String) -> Element {
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", "{wire_id}" }
             button {
-                class: "inline-flex items-center px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50",
+                class: BTN_DANGER,
                 onclick: move |_| {
                     let current = cx.layout.read().clone();
                     cx.history.with_mut(|h| h.push(&current));
@@ -382,7 +383,7 @@ fn widget_panel(
                             }
                         }
                     }
-                    p { class: "text-[10px] text-gray-400 mt-1", {t!("insp-memory-help")} }
+                    p { class: "text-xs text-gray-400 mt-1", {t!("insp-memory-help")} }
                 } else {
                     field_label {
                         label_key: "metric",
@@ -422,7 +423,7 @@ fn widget_panel(
                     // Série enregistrée absente du catalogue (source
                     // disparue depuis le save) : affichée telle quelle.
                     if catalog.ready && catalog.by_source.is_empty() && catalog.labelled.is_empty() {
-                        p { class: "text-[10px] text-gray-400 mt-1", {t!("insp-no-series")} }
+                        p { class: "text-xs text-gray-400 mt-1", {t!("insp-no-series")} }
                     }
                     if w.widget_type != pnex_core::RANGE_BARS {
                         field_label {
@@ -655,7 +656,7 @@ fn field_label(label_key: String, label: String) -> Element {
             key: "{label_key}",
             // Pairs with the control's `insp-<key>` id (accessible name).
             r#for: "insp-{label_key}",
-            class: "block text-[10px] font-medium text-gray-400 uppercase mt-1",
+            class: "block text-xs font-medium text-gray-400 mt-1",
             "{label}"
         }
     }

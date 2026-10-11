@@ -41,6 +41,9 @@ pub async fn boot() {
 pub fn login(user: UserInfo) {
     crate::state::org::restore(&user.orgs);
     apply_profile_language(&user);
+    if let Some(profile) = &user.profile {
+        crate::state::theme::apply(&profile.theme);
+    }
     SESSION.with_mut(|s| {
         *s = SessionState::Authenticated {
             user: Box::new(user),

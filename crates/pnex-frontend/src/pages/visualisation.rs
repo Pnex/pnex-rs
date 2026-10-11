@@ -18,6 +18,7 @@ use crate::api;
 use crate::components::charts::{ChartSeries, TimeSeriesChart, PALETTE};
 use crate::components::crud::layout::ListLayout;
 use crate::components::icons;
+use crate::components::ui::FIELD_LABEL;
 use crate::state::org;
 use crate::util::sleep;
 
@@ -219,7 +220,7 @@ pub fn Visualisation() -> Element {
             },
 
             // Sélection : métrique × device × fenêtre + ajout
-            div { class: "bg-white rounded-lg shadow-sm mb-8",
+            div { class: "bg-white rounded-lg border border-line mb-8",
                 div { class: "p-6 border-b border-gray-200",
                     h2 { class: "text-lg font-semibold text-gray-900", {t!("vis-series")} }
                 }
@@ -238,7 +239,7 @@ pub fn Visualisation() -> Element {
                                 div {
                                     label {
                                         r#for: "visualisation-field-1",
-                                        class: "block text-xs font-medium text-gray-500 uppercase mb-1",
+                                        class: FIELD_LABEL,
                                         {t!("vis-metric")}
                                     }
                                     select {
@@ -256,7 +257,7 @@ pub fn Visualisation() -> Element {
                                 div {
                                     label {
                                         r#for: "visualisation-field-2",
-                                        class: "block text-xs font-medium text-gray-500 uppercase mb-1",
+                                        class: FIELD_LABEL,
                                         {t!("vis-device")}
                                     }
                                     select {
@@ -272,7 +273,7 @@ pub fn Visualisation() -> Element {
                                 div {
                                     p {
                                         id: "visualisation-window-label",
-                                        class: "block text-xs font-medium text-gray-500 uppercase mb-1",
+                                        class: "block text-xs font-medium text-gray-500 mb-1",
                                         {t!("vis-window")}
                                     }
                                     div {
@@ -334,7 +335,7 @@ pub fn Visualisation() -> Element {
             }
 
             // Courbe
-            div { class: "bg-white rounded-lg shadow-sm",
+            div { class: "bg-white rounded-lg border border-line",
                 div { class: "p-6 border-b border-gray-200 flex items-center justify-between",
                     h2 { class: "text-lg font-semibold text-gray-900", {t!("vis-chart")} }
                     if total_points > 0 {

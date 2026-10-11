@@ -10,6 +10,7 @@ use pnex_core::camera::{
 use crate::api;
 use crate::api::error::ApiError;
 use crate::components::crud::form::FormDialog;
+use crate::components::ui::FIELD_LABEL;
 use crate::state::toasts;
 
 /// Age of the last frame, compact (`3 s`, `4 min`, `2 h`, `5 d`) — data,
@@ -125,9 +126,7 @@ pub(super) fn SettingsDialog(
             on_submit: save,
             busy: saving(),
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("cameras-framesize")}
-                }
+                span { class: FIELD_LABEL, {t!("cameras-framesize")} }
                 select {
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white",
                     disabled,
@@ -151,9 +150,7 @@ pub(super) fn SettingsDialog(
             }
             div { class: "grid grid-cols-2 gap-3",
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                        {t!("cameras-quality")}
-                    }
+                    span { class: FIELD_LABEL, {t!("cameras-quality")} }
                     input {
                         class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
                         r#type: "number",
@@ -171,7 +168,7 @@ pub(super) fn SettingsDialog(
                     }
                 }
                 label { class: "block",
-                    span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("cameras-fps")} }
+                    span { class: FIELD_LABEL, {t!("cameras-fps")} }
                     input {
                         class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
                         r#type: "number",
@@ -190,9 +187,7 @@ pub(super) fn SettingsDialog(
                 }
             }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("cameras-capture-mode")}
-                }
+                span { class: FIELD_LABEL, {t!("cameras-capture-mode")} }
                 select {
                     class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white",
                     disabled,

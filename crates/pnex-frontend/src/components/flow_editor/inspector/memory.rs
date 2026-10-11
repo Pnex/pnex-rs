@@ -1,6 +1,7 @@
 use super::helpers::*;
 use super::*;
 
+use crate::components::ui::FIELD_LABEL;
 use pnex_core::memory::{
     valid_memory_key, MemoryReadConfig, MemoryWriteConfig, MEMORY_KEY_MAX_LEN,
     MEMORY_READ_MAX_KEYS, MEMORY_TTL_MAX_SECS,
@@ -107,7 +108,7 @@ pub(super) fn MemoryWriteForm(
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-memory-write-help")} }
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block", {t!("flows-memory-key")} }
+                span { class: FIELD_LABEL, {t!("flows-memory-key")} }
                 input {
                     class: if key_bad { "w-full px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm font-mono" } else { "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono" },
                     r#type: "text",

@@ -19,10 +19,11 @@ use crate::components::crud::layout::DANGER_BTN;
 use crate::components::crud::pager::ListPager;
 use crate::components::icons;
 use crate::components::modal::Modal;
+use crate::components::ui::BTN_PRIMARY;
+use crate::components::ui::INPUT;
 use crate::pages::events::local_input_to_rfc3339;
 use crate::state::toasts;
 
-const INPUT: &str = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white";
 const LABEL: &str = "block text-xs text-gray-600 mb-1";
 const BTN: &str =
     "px-2 py-1 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40";
@@ -143,7 +144,7 @@ pub fn RangesTab(
             p { class: "text-xs text-gray-500", {t!("ranges-help")} }
             div { class: "flex flex-wrap items-center gap-2",
                 select {
-                    class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                    class: INPUT,
                     aria_label: t!("ranges-scope"),
                     onchange: move |e| {
                         page.set(0);
@@ -176,7 +177,7 @@ pub fn RangesTab(
                     icons::ChevronLeft { class: "h-4 w-4" }
                 }
                 input {
-                    class: "px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                    class: INPUT,
                     r#type: "date",
                     aria_label: t!("ranges-day"),
                     value: "{day_value}",
@@ -354,7 +355,7 @@ fn RangesTimeline(rows: Vec<TimeRange>, day: chrono::NaiveDate) -> Element {
         .collect();
     rsx! {
         div { class: "bg-white rounded-lg shadow border border-gray-200 p-3 space-y-1",
-            div { class: "flex items-center gap-4 text-[10px] text-gray-500",
+            div { class: "flex items-center gap-4 text-xs text-gray-500",
                 span { class: "inline-flex items-center gap-1",
                     span { class: "inline-block h-2 w-4 rounded bg-sky-300" }
                     {t!("ranges-col-planned")}
@@ -366,7 +367,7 @@ fn RangesTimeline(rows: Vec<TimeRange>, day: chrono::NaiveDate) -> Element {
             }
             div { class: "flex",
                 div { class: "w-28 shrink-0" }
-                div { class: "relative h-4 flex-1 text-[10px] text-gray-400",
+                div { class: "relative h-4 flex-1 text-xs text-gray-400",
                     for (label, left) in ticks.iter() {
                         span {
                             key: "{label}",
@@ -754,7 +755,7 @@ fn ImportDialog(scope: String, on_close: Callback<()>, on_imported: Callback<()>
                         {t!("ranges-close")}
                     }
                     button {
-                        class: "px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40",
+                        class: BTN_PRIMARY,
                         r#type: "button",
                         disabled: !ready,
                         onclick: run,

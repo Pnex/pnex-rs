@@ -1,5 +1,6 @@
 use super::helpers::*;
 use super::*;
+use crate::components::ui::FIELD_LABEL;
 
 #[component]
 pub(super) fn CalcForm(mut cx: EditorCx, initial: CalcConfig, can_write: bool) -> Element {
@@ -9,9 +10,7 @@ pub(super) fn CalcForm(mut cx: EditorCx, initial: CalcConfig, can_write: bool) -
     rsx! {
         div { class: "space-y-3",
             label { class: "block",
-                span { class: "text-xs font-medium text-gray-500 mb-1 block",
-                    {t!("flows-calc-expression")}
-                }
+                span { class: FIELD_LABEL, {t!("flows-calc-expression")} }
                 textarea {
                     class: if !errors.cloned().is_empty() { "w-full h-20 px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm font-mono" } else { "w-full h-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm font-mono" },
                     value: "{expression}",

@@ -21,6 +21,7 @@ use crate::components::annotation_editor::state::{
 };
 use crate::components::annotation_editor::versions::AnnotationVersionsDrawer;
 use crate::components::modal::Modal;
+use crate::components::ui::{BTN_DANGER_SOLID, BTN_SECONDARY_SM};
 use crate::tour_viewer as bridge;
 use crate::tour_viewer::{AnnotMarkerView, AnnotNs, SplatMarkerView};
 
@@ -271,7 +272,7 @@ pub fn AnnotationLayerPanel(
             div { class: "flex items-center justify-between px-3 py-2 border-b border-gray-200",
                 span { class: "text-sm font-semibold text-gray-900", {t!("annot-panel-title")} }
                 button {
-                    class: "inline-flex items-center px-2 py-1 text-xs text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50",
+                    class: BTN_SECONDARY_SM,
                     onclick: move |_| versions_open.set(true),
                     disabled: cx.layer_id.cloned().is_none(),
                     crate::components::icons::History { class: "h-3.5 w-3.5 mr-1" }
@@ -282,18 +283,16 @@ pub fn AnnotationLayerPanel(
             div { class: if up_to_date { "px-3 py-2 border-b border-gray-200 flex items-center gap-2" } else { "px-3 py-2 border-b border-amber-200 bg-amber-50 flex items-center gap-2" },
                 div { class: "min-w-0 flex-1",
                     if let Some(version) = published_now {
-                        span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-800",
+                        span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800",
                             {t!("annot-published-tag", version : version)}
                         }
                     } else {
-                        span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800",
+                        span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800",
                             {t!("annot-publish-none")}
                         }
                     }
                     if !up_to_date {
-                        p { class: "mt-1 text-[11px] text-amber-800",
-                            {t!("annot-publish-needed-hint")}
-                        }
+                        p { class: "mt-1 text-xs text-amber-800", {t!("annot-publish-needed-hint")} }
                     }
                 }
                 if can_write {
@@ -399,9 +398,7 @@ pub fn AnnotationLayerPanel(
 
             // ─── Liste des items du média courant ───
             div { class: "px-3 py-2 border-b border-gray-200",
-                span { class: "text-xs font-semibold text-gray-500 uppercase tracking-wide",
-                    {t!("annot-items-title")}
-                }
+                span { class: "text-xs font-semibold text-gray-500", {t!("annot-items-title")} }
             }
             div { class: "flex-1 overflow-y-auto",
                 if rows_now.is_empty() {
@@ -426,7 +423,7 @@ pub fn AnnotationLayerPanel(
                                             }
                                         }
                                     }
-                                    span { class: "text-[11px] text-gray-400 ml-auto font-mono",
+                                    span { class: "text-xs text-gray-400 ml-auto font-mono",
                                         // Pano : degrés ; plat : pourcentages
                                         // (x/y ∈ [0,1] mappés ×100 dans rows_now).
                                         {
@@ -491,7 +488,7 @@ pub fn AnnotationLayerPanel(
                     p { class: "text-sm text-gray-600", {t!("annot-conflict-text")} }
                     div { class: "flex justify-end gap-2",
                         button {
-                            class: "px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50",
+                            class: BTN_SECONDARY_SM,
                             onclick: move |_| {
                                 cx.conflict.set(None);
                                 let id = cx.layer_id.cloned().unwrap_or_default();
@@ -507,7 +504,7 @@ pub fn AnnotationLayerPanel(
                             {t!("annot-conflict-reload")}
                         }
                         button {
-                            class: "px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700",
+                            class: BTN_DANGER_SOLID,
                             onclick: move |_| {
                                 cx.conflict.set(None);
                                 let id = cx.layer_id.cloned().unwrap_or_default();

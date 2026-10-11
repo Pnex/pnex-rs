@@ -16,6 +16,7 @@ use crate::components::crud::pager::ListPager;
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
+use crate::components::ui::INPUT;
 
 /// Taille de page de la liste (3 colonnes × 4 rangées en desktop, héritée
 /// de la grille de cartes).
@@ -173,7 +174,7 @@ pub fn Catalog() -> Element {
                 }
                 select {
                     aria_label: t!("devices-col-type"),
-                    class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                    class: INPUT,
                     onchange: move |event| {
                         filter_type.set(event.value());
                         page.set(0);
@@ -204,7 +205,7 @@ pub fn Catalog() -> Element {
                             rsx! {
                                 select {
                                     aria_label: t!("catalog-board-filter"),
-                                    class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                                    class: INPUT,
                                     onchange: move |event| {
                                         filter_board.set(event.value());
                                         page.set(0);

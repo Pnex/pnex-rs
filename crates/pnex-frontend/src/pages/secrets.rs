@@ -19,6 +19,7 @@ use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
 use crate::components::secret_field::can_manage_secrets;
+use crate::components::ui::{FIELD_LABEL, INPUT};
 use pnex_core::{OrgSecret, OrgSecretInput, SecretConsumerKind, SecretUsage};
 
 /// `2026-10-01T13:44:11+02:00` → `2026-10-01 13:44`.
@@ -241,36 +242,30 @@ pub fn Secrets() -> Element {
                     valid: form_valid,
                     div { class: "space-y-4",
                         div {
-                            label {
-                                r#for: "secrets-field-1",
-                                class: "block text-sm font-medium text-gray-700 mb-1",
+                            label { r#for: "secrets-field-1", class: FIELD_LABEL,
                                 {t!("secrets-name")}
                             }
                             input {
                                 id: "secrets-field-1",
-                                class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono",
+                                class: "{INPUT} w-full font-mono",
                                 placeholder: t!("secrets-name-placeholder"),
                                 value: "{name}",
                                 oninput: move |e| name.set(e.value()),
                             }
                         }
                         div {
-                            label {
-                                r#for: "secrets-field-2",
-                                class: "block text-sm font-medium text-gray-700 mb-1",
+                            label { r#for: "secrets-field-2", class: FIELD_LABEL,
                                 {t!("secrets-description")}
                             }
                             input {
                                 id: "secrets-field-2",
-                                class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                                class: "{INPUT} w-full",
                                 value: "{description}",
                                 oninput: move |e| description.set(e.value()),
                             }
                         }
                         div {
-                            label {
-                                r#for: "secrets-field-3",
-                                class: "block text-sm font-medium text-gray-700 mb-1",
+                            label { r#for: "secrets-field-3", class: FIELD_LABEL,
                                 if is_edit {
                                     {t!("secrets-new-value")}
                                 } else {
@@ -279,7 +274,7 @@ pub fn Secrets() -> Element {
                             }
                             input {
                                 id: "secrets-field-3",
-                                class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono",
+                                class: "{INPUT} w-full font-mono",
                                 r#type: "password",
                                 autocomplete: "new-password",
                                 placeholder: if is_edit { t!("secrets-value-keep") } else { String::new() },

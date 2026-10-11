@@ -12,6 +12,12 @@ nav-profile = Profile
 nav-visualisation = Visualization
 nav-quick-charts = Quick charts
 nav-edges = Edges
+nav-group-monitor = Monitor
+nav-group-knowledge = Knowledge
+nav-group-media = Media
+nav-group-devices = Devices
+nav-group-settings = Settings
+shell-menu = Menu
 nav-browser-collector = Browser Collector
 nav-soon = Soon
 
@@ -23,8 +29,9 @@ crud-select-row = Select this row
 crud-col-selection = Selection
 common-delete = Delete
 common-retry = Retry
-common-save = Save Changes
+common-save = Save
 common-create = Create
+common-add = Add
 common-error = Error
 common-close = Close
 common-refresh = Refresh
@@ -174,7 +181,7 @@ profile-theme-dark = Dark
 profile-theme-auto = Auto
 profile-account = Account
 profile-change-password = Change password
-profile-theme-note = The theme is stored in your profile; its application to the interface comes with the dark mode (later phase).
+profile-theme-note = Auto follows the light or dark setting of your system.
 
 # Pages en attente de phase
 empty-phase = Comes in phase { $phase }
@@ -224,7 +231,8 @@ devices-id-required = Enter the device identifier (device_id).
 devices-register-title = Register a new device
 devices-register = Register
 devices-created = Device registered — provisioning token generated.
-devices-empty = No device matches — register one above.
+devices-empty = No device yet. Register a board or an edge agent to start collecting its data.
+devices-empty-filtered = No device matches these filters.
 devices-col-id = Device
 devices-col-type = Type
 devices-col-model = Model
@@ -1258,8 +1266,9 @@ share-invalid-message = this share link is no longer active — ask the tour own
 # ─── Transverse organization layer (D42) ───
 resources-labels-title = Labels
 resources-label-input-placeholder = name:value or name (Enter)
-resources-label-filter-placeholder = Filter by label (site:serre)
-resources-label-save = Save
+resources-label-filter-placeholder = Filter by label
+resources-label-save = Save labels
+resources-label-remove = Remove label { $name }
 resources-label-saved = Labels saved
 resources-label-name-required = Label name is required.
 resources-label-name-invalid = Invalid label name (lowercase, digits, _ or -).
@@ -3879,6 +3888,7 @@ err-ontology-admin-required = Only an organization owner or admin can change the
 err-ontology-system-read-only = System types and objects are edited from their own pages (devices, media, flows…).
 err-ontology-link-not-allowed = This link type does not connect objects of these types.
 err-ontology-link-cardinality = An open link already takes this place: close it first (for example when replacing a sensor).
+err-ontology-claim-unsourced = A claim is corroborated only with at least two pieces of distinct origins: link it to its sources ("is sourced by").
 
 ## Ontology UI (D186)
 nav-ontology = Ontology

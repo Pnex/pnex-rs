@@ -17,6 +17,7 @@ use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::icons;
+use crate::components::ui::INPUT;
 use crate::state::org;
 
 /// Localized level name (also used by the `event-log` inspector).
@@ -162,7 +163,7 @@ pub fn Events() -> Element {
             FilterBar {
                 select {
                     aria_label: t!("events-stream"),
-                    class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                    class: INPUT,
                     onchange: move |e| {
                         stream.set(e.value());
                         page.set(0);
@@ -178,7 +179,7 @@ pub fn Events() -> Element {
                 }
                 select {
                     aria_label: t!("events-col-level"),
-                    class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                    class: INPUT,
                     onchange: move |e| {
                         level.set(e.value());
                         page.set(0);
@@ -195,7 +196,7 @@ pub fn Events() -> Element {
                 }
                 select {
                     aria_label: t!("events-period"),
-                    class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                    class: INPUT,
                     onchange: move |e| {
                         period.set(Period::from_wire(&e.value()));
                         page.set(0);
@@ -217,7 +218,7 @@ pub fn Events() -> Element {
                 }
                 if period() == Period::Custom {
                     input {
-                        class: "px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: INPUT,
                         r#type: "datetime-local",
                         title: t!("events-from"),
                         value: "{custom_from}",
@@ -227,7 +228,7 @@ pub fn Events() -> Element {
                         },
                     }
                     input {
-                        class: "px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: INPUT,
                         r#type: "datetime-local",
                         title: t!("events-to"),
                         value: "{custom_to}",

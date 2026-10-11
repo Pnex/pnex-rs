@@ -30,6 +30,7 @@ use crate::state::toasts;
 use pnex_core::err_codes;
 pub(crate) mod cx;
 
+use crate::components::ui::{BTN_DANGER_SOLID, BTN_PRIMARY_SM, BTN_SECONDARY, BTN_SECONDARY_SM};
 use cx::{EditorCx, Interaction, RuntimeAction};
 
 /// Éditeur monté par la page `/flows` — orchestration : chargement, save,
@@ -955,7 +956,7 @@ pub fn FlowEditor(
             actions: rsx! {
                 if can_write {
                     button {
-                        class: "px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed",
+                        class: BTN_PRIMARY_SM,
                         disabled: saving() || !dirty,
                         onclick: move |_| save.call(None),
                         {t!("common-save")}
@@ -1023,7 +1024,7 @@ pub fn FlowEditor(
                     }
                 }
                 button {
-                    class: "inline-flex items-center px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                    class: BTN_SECONDARY_SM,
                     title: t!("flows-versions"),
                     aria_label: t!("flows-versions"),
                     onclick: move |_| versions_open.set(true),
@@ -1094,7 +1095,7 @@ pub fn FlowEditor(
                             div { class: "bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-800 flex items-center gap-3",
                                 span { class: "flex-1", {t!("flows-deploy-propose-text", version : version)} }
                                 button {
-                                    class: "px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed",
+                                    class: BTN_PRIMARY_SM,
                                     disabled: deploying(),
                                     onclick: move |evt| {
                                         propose_deploy.set(None);
@@ -1185,12 +1186,12 @@ pub fn FlowEditor(
                     p { class: "text-sm text-gray-600", {t!("flows-conflict-message")} }
                     div { class: "flex flex-col gap-2 pt-2",
                         button {
-                            class: "px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                            class: BTN_SECONDARY,
                             onclick: move |_| conflict_reload(()),
                             {t!("flows-conflict-reload")}
                         }
                         button {
-                            class: "px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors",
+                            class: BTN_DANGER_SOLID,
                             onclick: conflict_overwrite,
                             {t!("flows-conflict-overwrite")}
                         }

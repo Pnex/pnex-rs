@@ -48,20 +48,21 @@ fn ShellContent() -> Element {
     let rail = *ui::RAIL.read();
 
     rsx! {
-        div { class: "min-h-screen bg-gray-50",
+        div { class: "min-h-screen bg-ground",
             // Drawer mobile — toujours déplié (w-64), le rail est un concept
             // desktop uniquement.
             if sidebar_open() {
                 div { class: "fixed inset-0 z-50 lg:hidden",
                     div {
-                        class: "fixed inset-0 bg-gray-600/75",
+                        class: "fixed inset-0 bg-ink/55 dark:bg-black/60",
                         onclick: move |_| sidebar_open.set(false),
                     }
-                    div { class: "fixed inset-y-0 left-0 flex w-64 flex-col bg-gray-900",
+                    div { class: "fixed inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-rail",
                         div { class: "flex h-16 items-center justify-between px-4",
                             SidebarBrand {}
                             button {
-                                class: "text-gray-400 hover:text-white",
+                                class: "inline-flex h-10 w-10 items-center justify-center rounded-md text-slate hover:bg-surface hover:text-ink",
+                                aria_label: t!("common-close"),
                                 onclick: move |_| sidebar_open.set(false),
                                 crate::components::icons::X { class: "h-6 w-6" }
                             }
@@ -72,23 +73,30 @@ fn ShellContent() -> Element {
                             rail: false,
                             on_navigate: Some(Callback::new(move |()| sidebar_open.set(false))),
                         }
-                        div { class: "flex-1 min-h-0 overflow-y-auto sidebar-scroll px-4 py-6",
+                        div { class: "flex-1 min-h-0 overflow-y-auto sidebar-scroll px-3 py-4",
                             Nav {
                                 on_navigate: Some(Callback::new(move |()| sidebar_open.set(false))),
                                 rail: false,
                             }
                         }
-                        SidebarFooter { rail: false }
+                        SidebarFooter {
+                            rail: false,
+                            on_navigate: Some(Callback::new(move |()| sidebar_open.set(false))),
+                        }
                     }
                 }
             }
 
             // Sidebar desktop — dépliée w-64 ou rail d'icônes w-16 (classes
             // littérales complètes via match, exigence du scan Tailwind).
-            div { class: if rail { "hidden lg:fixed lg:inset-y-0 lg:flex lg:w-16 lg:flex-col lg:bg-gray-900" } else { "hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col lg:bg-gray-900" },
+            div { class: if rail { "hidden lg:fixed lg:inset-y-0 lg:flex lg:w-16 lg:flex-col lg:bg-rail lg:border-r lg:border-line" } else { "hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col lg:bg-rail lg:border-r lg:border-line" },
                 div { class: "flex h-16 items-center justify-center px-3",
                     if rail {
-                        crate::components::icons::Zap { class: "h-7 w-7 text-white" }
+                        img {
+                            src: asset!("/assets/logo-mark.png"),
+                            alt: "PNeX",
+                            class: "h-7 w-7",
+                        }
                     } else {
                         SidebarBrand {}
                     }
@@ -98,10 +106,10 @@ fn ShellContent() -> Element {
                 SidebarSearch { rail }
                 // Défilement quand tous les groupes sont dépliés (le menu
                 // dépasse l'écran sur web — constat user 2026-09-18).
-                div { class: "flex-1 min-h-0 overflow-y-auto sidebar-scroll px-3 py-6",
+                div { class: "flex-1 min-h-0 overflow-y-auto sidebar-scroll px-3 py-4",
                     Nav { rail }
                 }
-                SidebarFooter { rail }
+                SidebarFooter { rail, on_navigate: None }
             }
 
             div { class: if rail { "lg:pl-16" } else { "lg:pl-64" },
@@ -109,20 +117,15 @@ fn ShellContent() -> Element {
                 // Hidden while a full-screen editor is open: its own bar
                 // has the back button (saves 64 px of canvas on phones).
                 div { class: if *ui::EDITORS_OPEN.read() > 0 { "hidden" } else { "sticky top-0 z-40 lg:hidden" },
-                    div { class: "flex h-16 items-center justify-between bg-white px-4 shadow-sm",
+                    div { class: "flex h-14 items-center justify-between border-b border-line bg-rail px-2",
                         button {
-                            class: "text-gray-500 hover:text-gray-600",
+                            class: "inline-flex h-11 w-11 items-center justify-center rounded-md text-ink hover:bg-surface",
+                            aria_label: t!("shell-menu"),
                             onclick: move |_| sidebar_open.set(true),
                             crate::components::icons::Menu { class: "h-6 w-6" }
                         }
-                        div { class: "flex items-center",
-                            img {
-                                src: asset!("/assets/logo.png"),
-                                alt: "PNeX",
-                                class: "h-8 w-auto",
-                            }
-                        }
-                        div {}
+                        div { class: "flex items-center", SidebarBrand {} }
+                        div { class: "w-11" }
                     }
                 }
                 main { class: "flex-1", Outlet::<Route> {} }
@@ -150,154 +153,391 @@ fn use_e2e_navigation() {
     });
 }
 
-/// Classes de navigation : littéraux complets pour le scan Tailwind (jamais
-/// de classes construites dynamiquement). Variante rail : items centrés,
-/// sans libellé — l'infobulle native (`title`) porte le nom.
-fn nav_class(active: bool, rail: bool) -> &'static str {
-    match (active, rail) {
-        (true, false) => {
-            "flex w-full items-center space-x-3 rounded-lg px-3 py-2 text-left bg-blue-600 text-white transition-colors"
-        }
-        (false, false) => {
-            "flex w-full items-center space-x-3 rounded-lg px-3 py-2 text-left text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
-        }
-        (true, true) => {
-            "flex w-full items-center justify-center rounded-lg px-2 py-2 bg-blue-600 text-white transition-colors"
-        }
-        (false, true) => {
-            "flex w-full items-center justify-center rounded-lg px-2 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+/// Navigation entry. Active = surface fill + the logo's vermilion cross in
+/// the gutter (design-system.md: the cross marks where you are). `icon`
+/// only on top-level entries; group children are indented text.
+#[component]
+fn NavItem(
+    to: Route,
+    label: String,
+    active: bool,
+    #[props(default)] icon: Option<Element>,
+    #[props(default)] rail: bool,
+    #[props(default)] on_navigate: Option<Callback<()>>,
+) -> Element {
+    let class = match (active, rail, icon.is_some()) {
+        (true, true, _) => "relative flex w-full items-center justify-center rounded-md py-2 bg-surface text-ink shadow-[0_0_0_1px_var(--color-line)]",
+        (false, true, _) => "relative flex w-full items-center justify-center rounded-md py-2 text-slate hover:bg-surface hover:text-ink",
+        (true, false, true) => "relative flex w-full items-center gap-3 rounded-md py-2 pl-3 pr-3 text-sm font-semibold bg-surface text-ink shadow-[0_0_0_1px_var(--color-line)]",
+        (false, false, true) => "relative flex w-full items-center gap-3 rounded-md py-2 pl-3 pr-3 text-sm text-ink hover:bg-surface",
+        (true, false, false) => "relative flex w-full items-center rounded-md py-1.5 pl-11 pr-3 text-sm font-semibold bg-surface text-ink shadow-[0_0_0_1px_var(--color-line)]",
+        (false, false, false) => "relative flex w-full items-center rounded-md py-1.5 pl-11 pr-3 text-sm text-ink hover:bg-surface",
+    };
+    rsx! {
+        Link {
+            to,
+            class,
+            title: "{label}",
+            aria_current: if active { "page" } else { "false" },
+            onclick: move |_| {
+                if let Some(cb) = on_navigate {
+                    cb.call(());
+                }
+            },
+            if active && !rail && icon.is_none() {
+                NavMark {}
+            }
+            if let Some(icon) = icon {
+                {icon}
+            }
+            if !rail {
+                span { class: "truncate", "{label}" }
+            }
         }
     }
 }
 
-/// Classes du bouton d'en-tête de groupe — même logique que `nav_class`.
-fn nav_group_class(rail: bool) -> &'static str {
-    if rail {
-        "flex w-full items-center justify-center rounded-lg px-2 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
-    } else {
-        "flex w-full items-center space-x-3 rounded-lg px-3 py-2 text-left text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+/// The logo's cross, the "you are here" mark of the active child entry.
+#[component]
+fn NavMark() -> Element {
+    rsx! {
+        svg {
+            class: "absolute left-5 top-1/2 h-2.5 w-2.5 -translate-y-1/2",
+            view_box: "0 0 10 10",
+            "aria-hidden": "true",
+            path {
+                d: "M1 1l8 8M9 1L1 9",
+                stroke: "var(--color-mark)",
+                "stroke-width": "2",
+                "stroke-linecap": "round",
+            }
+        }
     }
 }
 
-/// Navigation latérale — composant dédié pour être rendu dans le drawer ET la
-/// sidebar desktop. `on_navigate` est fourni par le drawer mobile (referme le
-/// drawer après un clic sur un item) ; la sidebar desktop n'en a pas besoin.
-/// `rail` : mode rail d'icônes (desktop replié) — libellés masqués, groupes
-/// qui rouvrent la sidebar.
+/// Collapsible task group. Opens on mount when the current route is inside
+/// it, never closes by itself (an effect writing the signal it reads loops:
+/// UI freeze seen 2026-09-15). In rail mode a click re-expands the sidebar
+/// on this group.
+#[component]
+fn NavGroup(label: String, icon: Element, active: bool, rail: bool, children: Element) -> Element {
+    let mut open = use_signal(|| active);
+    let class = match (rail, active) {
+        (true, true) => "flex w-full items-center justify-center rounded-md py-2 text-ink bg-surface/60",
+        (true, false) => "flex w-full items-center justify-center rounded-md py-2 text-slate hover:bg-surface hover:text-ink",
+        (false, true) => "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-semibold text-ink hover:bg-surface",
+        (false, false) => "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-medium text-ink hover:bg-surface",
+    };
+    rsx! {
+        div { class: "space-y-0.5",
+            button {
+                class,
+                r#type: "button",
+                title: "{label}",
+                aria_expanded: if open() && !rail { "true" } else { "false" },
+                onclick: move |_| {
+                    if rail {
+                        ui::set(false);
+                        open.set(true);
+                    } else {
+                        open.toggle();
+                    }
+                },
+                {icon}
+                if !rail {
+                    span { class: "truncate", "{label}" }
+                    if open() {
+                        crate::components::icons::ChevronDown { class: "ml-auto h-4 w-4 text-slate" }
+                    } else {
+                        crate::components::icons::ChevronRight { class: "ml-auto h-4 w-4 text-slate" }
+                    }
+                }
+            }
+            if open() && !rail {
+                div { class: "space-y-0.5", {children} }
+            }
+        }
+    }
+}
+
+/// Side navigation, grouped by task (design-system.md §navigation): rendered
+/// in the mobile drawer and in the desktop sidebar. `on_navigate` closes
+/// the drawer after a click.
 #[component]
 fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
     let route = use_route::<Route>();
     let is_platform_admin = session::user().is_some_and(|u| u.platform_admin);
-    let close_drawer = move |_| {
-        if let Some(cb) = on_navigate {
-            cb.call(());
-        }
-    };
-    let in_ontology = matches!(
+    let at = |r: Route| route == r;
+
+    let monitor = matches!(route, Route::Dashboards { .. })
+        || at(Route::Visualisation {})
+        || at(Route::Map {})
+        || at(Route::Sites {})
+        || at(Route::Events {});
+    let knowledge = matches!(
         route,
-        Route::Ontology { .. } | Route::OntologyObject { .. } | Route::OntologyType { .. }
+        Route::Docs { .. }
+            | Route::Ontology { .. }
+            | Route::OntologyObject { .. }
+            | Route::OntologyType { .. }
+            | Route::Cases {}
+            | Route::CaseWorkspace { .. }
     );
-    // Libellé conditionnel — dans le rail, l'item ne garde que son icône.
+    let media = at(Route::Media {})
+        || at(Route::Cameras {})
+        || at(Route::Streams {})
+        || at(Route::Studio {})
+        || at(Route::Annotations {});
+    let devices = at(Route::Devices {})
+        || at(Route::Catalog {})
+        || at(Route::EdgeRefs {})
+        || at(Route::Firmware {});
+    let automation = matches!(route, Route::Flows { .. })
+        || at(Route::Functions {})
+        || at(Route::Controls {})
+        || at(Route::Notifications {})
+        || at(Route::Models {})
+        || at(Route::FluidMixtures {});
+    let settings = matches!(route, Route::Orgs {} | Route::OrgsCurrent {})
+        || at(Route::Secrets {})
+        || at(Route::System {})
+        || at(Route::AdminStatus {});
+    let icon = "h-5 w-5 shrink-0";
+
     rsx! {
-        nav { class: "flex-1 space-y-2",
-            Link {
+        nav { class: "flex-1 space-y-1",
+            NavItem {
                 to: Route::Dashboard {},
-                class: nav_class(route == Route::Dashboard {}, rail),
-                title: t!("nav-dashboard"),
-                onclick: close_drawer,
-                crate::components::icons::Home { class: "h-5 w-5" }
-                if !rail {
-                    span { {t!("nav-dashboard")} }
-                }
-            }
-            // Groupe « Visualisation » : Quick charts + Tableaux de bord +
-            // Carte (les trois vues de télémétrie).
-            NavVizGroup { on_navigate, rail }
-            // Collaborative pages (pages.md #21).
-            Link {
-                to: Route::Docs { id: String::new() },
-                class: nav_class(matches!(route, Route::Docs { .. }), rail),
-                title: t!("nav-docs"),
-                onclick: close_drawer,
-                crate::components::icons::BookOpen { class: "h-5 w-5" }
-                if !rail {
-                    span { {t!("nav-docs")} }
-                }
-            }
-            // Groupe « Data » : Library (médias + futurs documents / base de
-            // connaissances agent) + Tour studio + futur Plan (placeholder
-            // « bientôt », aucune route).
-            NavDataGroup { on_navigate, rail }
-            // Ontology: objects, types, links (ontology.md D186).
-            Link {
-                to: Route::Ontology {
-                    tab: String::new(),
-                    type_key: String::new(),
+                label: t!("nav-dashboard"),
+                active: at(Route::Dashboard {}),
+                icon: rsx! {
+                    crate::components::icons::Home { class: icon }
                 },
-                class: nav_class(in_ontology, rail),
-                title: t!("nav-ontology"),
-                onclick: close_drawer,
-                crate::components::icons::Shapes { class: "h-5 w-5" }
-                if !rail {
-                    span { {t!("nav-ontology")} }
+                rail,
+                on_navigate,
+            }
+            NavGroup {
+                label: t!("nav-group-monitor"),
+                active: monitor,
+                rail,
+                icon: rsx! {
+                    crate::components::icons::Gauge { class: icon }
+                },
+                NavItem {
+                    to: Route::Dashboards {
+                        id: String::new(),
+                        mode: String::new(),
+                    },
+                    label: t!("nav-dashboards"),
+                    active: matches!(route, Route::Dashboards { .. }),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Visualisation {},
+                    label: t!("nav-quick-charts"),
+                    active: at(Route::Visualisation {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Map {},
+                    label: t!("nav-map"),
+                    active: at(Route::Map {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Sites {},
+                    label: t!("nav-sites"),
+                    active: at(Route::Sites {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Events {},
+                    label: t!("nav-events"),
+                    active: at(Route::Events {}),
+                    on_navigate,
                 }
             }
-            // Groupe « Edges » : Devices + Catalogue + futurs collecteurs
-            // (doc docs/architecture/edge-model.md — D44-D48).
-            NavEdges { on_navigate, rail }
-            // Groupe « Automation » : fonctions + flux ETL + notifications +
-            // mélanges de fluides.
-            NavAutomationGroup { on_navigate, rail }
-            Link {
-                to: Route::Orgs {},
-                class: nav_class(matches!(route, Route::Orgs {} | Route::OrgsCurrent {}), rail),
-                title: t!("nav-orgs"),
-                onclick: close_drawer,
-                crate::components::icons::Building { class: "h-5 w-5" }
-                if !rail {
-                    span { {t!("nav-orgs")} }
+            NavGroup {
+                label: t!("nav-group-knowledge"),
+                active: knowledge,
+                rail,
+                icon: rsx! {
+                    crate::components::icons::BookOpen { class: icon }
+                },
+                NavItem {
+                    to: Route::Docs { id: String::new() },
+                    label: t!("nav-docs"),
+                    active: matches!(route, Route::Docs { .. }),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Ontology {
+                        tab: String::new(),
+                        type_key: String::new(),
+                    },
+                    label: t!("nav-ontology"),
+                    active: matches!(
+                        route,
+                        Route::Ontology { .. }
+                        | Route::OntologyObject { .. }
+                        | Route::OntologyType { .. }
+                    ),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Cases {},
+                    label: t!("nav-cases"),
+                    active: matches!(route, Route::Cases {} | Route::CaseWorkspace { .. }),
+                    on_navigate,
                 }
             }
-            Link {
-                to: Route::Secrets {},
-                class: nav_class(route == Route::Secrets {}, rail),
-                title: t!("nav-secrets"),
-                onclick: close_drawer,
-                crate::components::icons::Key { class: "h-5 w-5" }
-                if !rail {
-                    span { {t!("nav-secrets")} }
+            NavGroup {
+                label: t!("nav-group-media"),
+                active: media,
+                rail,
+                icon: rsx! {
+                    crate::components::icons::Image { class: icon }
+                },
+                NavItem {
+                    to: Route::Media {},
+                    label: t!("nav-library"),
+                    active: at(Route::Media {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Cameras {},
+                    label: t!("nav-cameras"),
+                    active: at(Route::Cameras {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Streams {},
+                    label: t!("nav-streams"),
+                    active: at(Route::Streams {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Studio {},
+                    label: t!("nav-studio"),
+                    active: at(Route::Studio {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Annotations {},
+                    label: t!("nav-annotations"),
+                    active: at(Route::Annotations {}),
+                    on_navigate,
                 }
             }
-            Link {
-                to: Route::System {},
-                class: nav_class(route == Route::System {}, rail),
-                title: t!("nav-system"),
-                onclick: close_drawer,
-                crate::components::icons::Wrench { class: "h-5 w-5" }
-                if !rail {
-                    span { {t!("nav-system")} }
+            NavGroup {
+                label: t!("nav-group-devices"),
+                active: devices,
+                rail,
+                icon: rsx! {
+                    crate::components::icons::Router { class: icon }
+                },
+                NavItem {
+                    to: Route::Devices {},
+                    label: t!("nav-devices"),
+                    active: at(Route::Devices {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Catalog {},
+                    label: t!("nav-catalog"),
+                    active: at(Route::Catalog {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Firmware {},
+                    label: t!("nav-firmware"),
+                    active: at(Route::Firmware {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::EdgeRefs {},
+                    label: t!("nav-edge-refs"),
+                    active: at(Route::EdgeRefs {}),
+                    on_navigate,
                 }
             }
-            if is_platform_admin {
-                Link {
-                    to: Route::AdminStatus {},
-                    class: nav_class(route == Route::AdminStatus {}, rail),
-                    title: t!("nav-admin-status"),
-                    onclick: close_drawer,
-                    crate::components::icons::Activity { class: "h-5 w-5" }
-                    if !rail {
-                        span { {t!("nav-admin-status")} }
+            NavGroup {
+                label: t!("nav-automation"),
+                active: automation,
+                rail,
+                icon: rsx! {
+                    crate::components::icons::Workflow { class: icon }
+                },
+                NavItem {
+                    to: Route::Flows { id: String::new() },
+                    label: t!("nav-flows"),
+                    active: matches!(route, Route::Flows { .. }),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Functions {},
+                    label: t!("nav-functions"),
+                    active: at(Route::Functions {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Controls {},
+                    label: t!("nav-controls"),
+                    active: at(Route::Controls {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Notifications {},
+                    label: t!("nav-notifications"),
+                    active: at(Route::Notifications {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Models {},
+                    label: t!("nav-models"),
+                    active: at(Route::Models {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::FluidMixtures {},
+                    label: t!("nav-mixtures"),
+                    active: at(Route::FluidMixtures {}),
+                    on_navigate,
+                }
+            }
+            div { class: "my-3 border-t border-line" }
+            NavGroup {
+                label: t!("nav-group-settings"),
+                active: settings,
+                rail,
+                icon: rsx! {
+                    crate::components::icons::Settings { class: icon }
+                },
+                NavItem {
+                    to: Route::OrgsCurrent {},
+                    label: t!("nav-orgs"),
+                    active: matches!(route, Route::Orgs {} | Route::OrgsCurrent {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Secrets {},
+                    label: t!("nav-secrets"),
+                    active: at(Route::Secrets {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::System {},
+                    label: t!("nav-system"),
+                    active: at(Route::System {}),
+                    on_navigate,
+                }
+                if is_platform_admin {
+                    NavItem {
+                        to: Route::AdminStatus {},
+                        label: t!("nav-admin-status"),
+                        active: at(Route::AdminStatus {}),
+                        on_navigate,
                     }
-                }
-            }
-            Link {
-                to: Route::Profile {},
-                class: nav_class(route == Route::Profile {}, rail),
-                title: t!("nav-profile"),
-                onclick: close_drawer,
-                crate::components::icons::User { class: "h-5 w-5" }
-                if !rail {
-                    span { {t!("nav-profile")} }
                 }
             }
         }
@@ -306,19 +546,26 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
 
 #[component]
 fn SidebarBrand() -> Element {
-    // Variante claire (lettres blanches, X rouge) : la variante navy serait
-    // illisible directement sur le bg-gray-900 de la sidebar.
+    // Navy letters on the light rail; the white variant on the night theme.
     rsx! {
+        img {
+            src: asset!("/assets/logo.png"),
+            alt: "PNeX",
+            class: "h-9 w-auto dark:hidden",
+        }
         img {
             src: asset!("/assets/logo-light.png"),
             alt: "PNeX",
-            class: "h-10 w-auto",
+            class: "hidden h-9 w-auto dark:block",
         }
     }
 }
 
+/// Sidebar footer: assistant, org selector, identity (opens the profile),
+/// rail toggle and logout.
 #[component]
-fn SidebarFooter(rail: bool) -> Element {
+fn SidebarFooter(rail: bool, on_navigate: Option<Callback<()>>) -> Element {
+    let route = use_route::<Route>();
     let identity = session::user()
         .map(|user| user.full_name.or(user.email).unwrap_or(user.username))
         .unwrap_or_default();
@@ -326,19 +573,38 @@ fn SidebarFooter(rail: bool) -> Element {
     let logout_title = t!("shell-logout");
     let expand_title = t!("shell-sidebar-expand");
     let collapse_title = t!("shell-sidebar-collapse");
+    let ai_title = t!("ai-title");
+    let icon_btn = "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-slate hover:bg-surface hover:text-ink transition-colors";
     rsx! {
-        div { class: "p-4 border-t border-gray-800 space-y-3",
+        div { class: "space-y-2 border-t border-line p-3",
+            if crate::state::ai::visible() {
+                button {
+                    class: if rail { "flex w-full items-center justify-center rounded-md py-2 text-slate hover:bg-surface hover:text-ink" } else { "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm text-ink hover:bg-surface" },
+                    r#type: "button",
+                    title: "{ai_title}",
+                    aria_label: "{ai_title}",
+                    onclick: move |_| {
+                        crate::components::assistant::open();
+                        if let Some(cb) = on_navigate {
+                            cb.call(());
+                        }
+                    },
+                    crate::components::icons::Sparkles { class: "h-5 w-5 shrink-0" }
+                    if !rail {
+                        span { "{ai_title}" }
+                    }
+                }
+            }
             if rail {
-                // Rail : deux icônes empilées (rouvrir la sidebar, déconnexion).
-                div { class: "flex flex-col items-center gap-3",
+                div { class: "flex flex-col items-center gap-1",
                     button {
-                        class: "text-gray-400 hover:text-white transition-colors",
+                        class: icon_btn,
                         title: "{expand_title}",
                         onclick: move |_| ui::set(false),
                         crate::components::icons::PanelLeftOpen { class: "h-5 w-5" }
                     }
                     button {
-                        class: "text-gray-400 hover:text-white transition-colors",
+                        class: icon_btn,
                         title: "{logout_title}",
                         onclick: move |_| confirm_logout.set(true),
                         crate::components::icons::LogOut { class: "h-4 w-4" }
@@ -346,16 +612,26 @@ fn SidebarFooter(rail: bool) -> Element {
                 }
             } else {
                 OrgSwitcher {}
-                div { class: "flex items-center justify-between gap-2 px-1",
+                div { class: "flex items-center gap-1",
+                    Link {
+                        to: Route::Profile {},
+                        class: if route == (Route::Profile {}) { "min-w-0 flex-1 truncate rounded-md px-2 py-2 text-sm font-semibold text-ink bg-surface" } else { "min-w-0 flex-1 truncate rounded-md px-2 py-2 text-sm text-slate hover:bg-surface hover:text-ink" },
+                        title: t!("nav-profile"),
+                        onclick: move |_| {
+                            if let Some(cb) = on_navigate {
+                                cb.call(());
+                            }
+                        },
+                        {identity}
+                    }
                     button {
-                        class: "text-gray-400 hover:text-white transition-colors",
+                        class: icon_btn,
                         title: "{collapse_title}",
                         onclick: move |_| ui::toggle(),
                         crate::components::icons::PanelLeftClose { class: "h-4 w-4" }
                     }
-                    span { class: "text-xs text-gray-400 truncate", {identity} }
                     button {
-                        class: "text-gray-400 hover:text-white transition-colors",
+                        class: icon_btn,
                         title: "{logout_title}",
                         onclick: move |_| confirm_logout.set(true),
                         crate::components::icons::LogOut { class: "h-4 w-4" }
@@ -372,400 +648,6 @@ fn SidebarFooter(rail: bool) -> Element {
                         session::logout();
                     },
                     on_cancel: move |_| confirm_logout.set(false),
-                }
-            }
-        }
-    }
-}
-
-/// Groupe « Edges » de la navigation — converge Devices + Catalogue sous la
-/// bannière edge (D44–D48) et matérialise la place des futurs collecteurs
-/// (Edge Agent, collecteur navigateur : placeholders désactivés, aucune
-/// route). Le groupe s'auto-déploie à l'entrée dans le périmètre (deep-link
-/// /devices ou /catalog) mais ne se referme jamais tout seul.
-#[component]
-fn NavEdges(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
-    let route = use_route::<Route>();
-    let in_edges = route == Route::Devices {}
-        || route == Route::Catalog {}
-        || route == Route::EdgeRefs {}
-        || route == Route::Firmware {};
-    // Ouvert au montage si on est déjà dans le périmètre (deep-link
-    // /devices, /catalog). Volontairement SANS effet d'auto-expand à la
-    // navigation : un use_effect qui écrit un signal qu'il lit s'auto-réveille
-    // (boucle infinie → freeze UI, constat 2026-09-15 sur /catalog) ; le seul
-    // chemin UI vers ces pages passe de toute façon par le groupe ouvert.
-    let mut open = use_signal(|| in_edges);
-
-    let close_drawer = move |_| {
-        if let Some(cb) = on_navigate {
-            cb.call(());
-        }
-    };
-
-    // Entrée désactivée (futur collecteur) — badge « bientôt », pas de route.
-    // (Badge inline ×2 : un rsx! n'est pas Copy.)
-    rsx! {
-        div { class: "space-y-2",
-            button {
-                class: nav_group_class(rail),
-                r#type: "button",
-                title: t!("nav-edges"),
-                onclick: move |_| {
-                    if rail {
-                        // Rail : un groupe rouvre la sidebar sur ce groupe.
-                        ui::set(false);
-                        open.set(true);
-                    } else {
-                        open.toggle();
-                    }
-                },
-                crate::components::icons::Router { class: "h-5 w-5" }
-                if !rail {
-                    span { {t!("nav-edges")} }
-                    if open() {
-                        crate::components::icons::ChevronDown { class: "ml-auto h-4 w-4 text-gray-400" }
-                    } else {
-                        crate::components::icons::ChevronRight { class: "ml-auto h-4 w-4 text-gray-400" }
-                    }
-                }
-            }
-            // En rail, les enfants ne sont jamais rendus (le clic rouvre la
-            // sidebar entière).
-            if open() && !rail {
-                div { class: "space-y-1 pl-6",
-                    Link {
-                        to: Route::Devices {},
-                        class: nav_class(route == Route::Devices {}, false),
-                        onclick: close_drawer,
-                        crate::components::icons::Cpu { class: "h-5 w-5" }
-                        span { {t!("nav-devices")} }
-                    }
-                    Link {
-                        to: Route::Catalog {},
-                        class: nav_class(route == Route::Catalog {}, false),
-                        onclick: close_drawer,
-                        crate::components::icons::Package { class: "h-5 w-5" }
-                        span { {t!("nav-catalog")} }
-                    }
-                    Link {
-                        to: Route::EdgeRefs {},
-                        class: nav_class(route == Route::EdgeRefs {}, false),
-                        onclick: close_drawer,
-                        crate::components::icons::Database { class: "h-5 w-5" }
-                        span { {t!("nav-edge-refs")} }
-                    }
-                    Link {
-                        to: Route::Firmware {},
-                        class: nav_class(route == Route::Firmware {}, false),
-                        onclick: close_drawer,
-                        crate::components::icons::Braces { class: "h-5 w-5" }
-                        span { {t!("nav-firmware")} }
-                    }
-                    div { class: "flex w-full items-center space-x-3 rounded-lg px-3 py-2 text-left text-gray-500 cursor-not-allowed",
-                        crate::components::icons::Globe { class: "h-5 w-5" }
-                        span { {t!("nav-browser-collector")} }
-                        span { class: "ml-auto rounded bg-gray-700 px-1.5 py-0.5 text-[10px] uppercase text-gray-300",
-                            {t!("nav-soon")}
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// Groupe « Data » de la navigation — converge la Library (médias, demain
-/// documents PDF/Word indexés pour la base de connaissances de l'agent) et le
-/// Tour studio, et matérialise la place du futur gestionnaire de plans
-/// (placeholder désactivé, aucune route). Même contrat que NavEdges : ouvert
-/// au montage si la route courante est dans le périmètre (deep-link /media,
-/// /studio), jamais refermé automatiquement — pas d'auto-expand (lecture +
-/// écriture du même signal dans un use_effect = boucle infinie → freeze UI).
-#[component]
-fn NavDataGroup(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
-    let route = use_route::<Route>();
-    let in_media = route == Route::Media {}
-        || route == Route::Cameras {}
-        || route == Route::Models {}
-        || route == Route::Streams {}
-        || route == Route::Studio {}
-        || route == Route::Annotations {}
-        || route == Route::Controls {};
-    let mut open = use_signal(|| in_media);
-
-    let close_drawer = move |_| {
-        if let Some(cb) = on_navigate {
-            cb.call(());
-        }
-    };
-
-    // Entrée désactivée (futur gestionnaire de plans) — badge « bientôt »,
-    // pas de route. (Badge inline : un rsx! n'est pas Copy.)
-    rsx! {
-        div { class: "space-y-2",
-            button {
-                class: nav_group_class(rail),
-                r#type: "button",
-                title: t!("nav-data"),
-                onclick: move |_| {
-                    if rail {
-                        ui::set(false);
-                        open.set(true);
-                    } else {
-                        open.toggle();
-                    }
-                },
-                crate::components::icons::Database { class: "h-5 w-5" }
-                if !rail {
-                    span { {t!("nav-data")} }
-                    if open() {
-                        crate::components::icons::ChevronDown { class: "ml-auto h-4 w-4 text-gray-400" }
-                    } else {
-                        crate::components::icons::ChevronRight { class: "ml-auto h-4 w-4 text-gray-400" }
-                    }
-                }
-            }
-            // En rail, les enfants ne sont jamais rendus (le clic rouvre la
-            // sidebar entière).
-            if open() && !rail {
-                div { class: "space-y-1 pl-6",
-                    Link {
-                        to: Route::Media {},
-                        class: nav_class(route == Route::Media {}, false),
-                        onclick: close_drawer,
-                        crate::components::icons::Image { class: "h-5 w-5" }
-                        span { {t!("nav-library")} }
-                    }
-                    Link {
-                        to: Route::Cameras {},
-                        class: nav_class(route == Route::Cameras {}, false),
-                        onclick: close_drawer,
-                        crate::components::icons::Video { class: "h-5 w-5" }
-                        span { {t!("nav-cameras")} }
-                    }
-                    Link {
-                        to: Route::Models {},
-                        class: nav_class(route == Route::Models {}, false),
-                        onclick: close_drawer,
-                        crate::components::icons::Eye { class: "h-5 w-5" }
-                        span { {t!("nav-models")} }
-                    }
-                    Link {
-                        to: Route::Streams {},
-                        class: nav_class(route == Route::Streams {}, false),
-                        onclick: close_drawer,
-                        crate::components::icons::Radio { class: "h-5 w-5" }
-                        span { {t!("nav-streams")} }
-                    }
-                    Link {
-                        to: Route::Studio {},
-                        class: nav_class(route == Route::Studio {}, false),
-                        onclick: close_drawer,
-                        crate::components::icons::Map { class: "h-5 w-5" }
-                        span { {t!("nav-studio")} }
-                    }
-                    Link {
-                        to: Route::Annotations {},
-                        class: nav_class(route == Route::Annotations {}, false),
-                        onclick: close_drawer,
-                        crate::components::icons::MapPin { class: "h-5 w-5" }
-                        span { {t!("nav-annotations")} }
-                    }
-                    Link {
-                        to: Route::Controls {},
-                        class: nav_class(route == Route::Controls {}, false),
-                        onclick: close_drawer,
-                        crate::components::icons::ToggleRight { class: "h-5 w-5" }
-                        span { {t!("nav-controls")} }
-                    }
-                    div { class: "flex w-full items-center space-x-3 rounded-lg px-3 py-2 text-left text-gray-500 cursor-not-allowed",
-                        crate::components::icons::MapPin { class: "h-5 w-5" }
-                        span { {t!("nav-plan")} }
-                        span { class: "ml-auto rounded bg-gray-700 px-1.5 py-0.5 text-[10px] uppercase text-gray-300",
-                            {t!("nav-soon")}
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// Groupe « Visualisation » de la navigation — converge les trois vues de
-/// télémétrie : Quick charts (vérif rapide que les données arrivent),
-/// Tableaux de bord (dashboarding SCADA complet) et la Carte (vue spatiale
-/// POI). Même contrat que NavEdges/NavDataGroup/NavFlowGroup : ouvert au
-/// montage si la route courante est dans le périmètre (deep-link
-/// /visualisation, /dashboards, /map), jamais refermé automatiquement — pas
-/// d'auto-expand (lecture + écriture du même signal dans un use_effect =
-/// boucle infinie → freeze UI).
-#[component]
-fn NavVizGroup(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
-    let route = use_route::<Route>();
-    // matches! pour Dashboards : l'égalité stricte échoue dès que l'URL
-    // porte un id/mode — on veut le groupe et l'entrée actifs sur n'importe
-    // quel tableau ouvert.
-    let in_viz = route == Route::Visualisation {}
-        || matches!(route, Route::Dashboards { .. })
-        || route == Route::Map {}
-        || route == Route::Sites {};
-    let mut open = use_signal(|| in_viz);
-
-    let close_drawer = move |_| {
-        if let Some(cb) = on_navigate {
-            cb.call(());
-        }
-    };
-
-    rsx! {
-        div { class: "space-y-2",
-            button {
-                class: nav_group_class(rail),
-                r#type: "button",
-                title: t!("nav-visualisation"),
-                onclick: move |_| {
-                    if rail {
-                        ui::set(false);
-                        open.set(true);
-                    } else {
-                        open.toggle();
-                    }
-                },
-                crate::components::icons::LineChart { class: "h-5 w-5" }
-                if !rail {
-                    span { {t!("nav-visualisation")} }
-                    if open() {
-                        crate::components::icons::ChevronDown { class: "ml-auto h-4 w-4 text-gray-400" }
-                    } else {
-                        crate::components::icons::ChevronRight { class: "ml-auto h-4 w-4 text-gray-400" }
-                    }
-                }
-            }
-            if open() && !rail {
-                div { class: "space-y-1 pl-6",
-                    Link {
-                        to: Route::Visualisation {},
-                        class: nav_class(route == Route::Visualisation {}, false),
-                        onclick: close_drawer,
-                        crate::components::icons::TrendingUp { class: "h-5 w-5" }
-                        span { {t!("nav-quick-charts")} }
-                    }
-                    Link {
-                        to: Route::Dashboards {
-                            id: String::new(),
-                            mode: String::new(),
-                        },
-                        class: nav_class(matches!(route, Route::Dashboards { .. }), false),
-                        onclick: close_drawer,
-                        crate::components::icons::Gauge { class: "h-5 w-5" }
-                        span { {t!("nav-dashboards")} }
-                    }
-                    Link {
-                        to: Route::Map {},
-                        class: nav_class(route == Route::Map {}, false),
-                        onclick: close_drawer,
-                        crate::components::icons::Map { class: "h-5 w-5" }
-                        span { {t!("nav-map")} }
-                    }
-                    Link {
-                        to: Route::Sites {},
-                        class: nav_class(route == Route::Sites {}, false),
-                        onclick: close_drawer,
-                        crate::components::icons::Building { class: "h-5 w-5" }
-                        span { {t!("nav-sites")} }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// Groupe « Automation » de la navigation — converge les fonctions, les flux
-/// ETL, les notifications et les mélanges de fluides (tous alimentés par le
-/// moteur de flows). Même contrat que NavEdges : ouvert au montage si la
-/// route courante est dans le périmètre (deep-link /flows, /notifications,
-/// /mixtures), jamais refermé automatiquement — pas d'auto-expand (lecture +
-/// écriture du même signal dans un use_effect = boucle infinie → freeze UI).
-#[component]
-fn NavAutomationGroup(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
-    let route = use_route::<Route>();
-    let in_flows = route == Route::Functions {}
-        || matches!(route, Route::Flows { .. })
-        || route == Route::Notifications {}
-        || route == Route::Events {}
-        || route == Route::FluidMixtures {};
-    let mut open = use_signal(|| in_flows);
-
-    let close_drawer = move |_| {
-        if let Some(cb) = on_navigate {
-            cb.call(());
-        }
-    };
-
-    rsx! {
-        div { class: "space-y-2",
-            button {
-                class: nav_group_class(rail),
-                r#type: "button",
-                title: t!("nav-automation"),
-                onclick: move |_| {
-                    if rail {
-                        ui::set(false);
-                        open.set(true);
-                    } else {
-                        open.toggle();
-                    }
-                },
-                crate::components::icons::Workflow { class: "h-5 w-5" }
-                if !rail {
-                    span { {t!("nav-automation")} }
-                    if open() {
-                        crate::components::icons::ChevronDown { class: "ml-auto h-4 w-4 text-gray-400" }
-                    } else {
-                        crate::components::icons::ChevronRight { class: "ml-auto h-4 w-4 text-gray-400" }
-                    }
-                }
-            }
-            if open() && !rail {
-                div { class: "space-y-1 pl-6",
-                    // Les fonctions alimentent les flows : premier item du
-                    // groupe « Automation ».
-                    Link {
-                        to: Route::Functions {},
-                        class: nav_class(route == Route::Functions {}, false),
-                        onclick: close_drawer,
-                        crate::components::icons::Wrench { class: "h-5 w-5" }
-                        span { {t!("nav-functions")} }
-                    }
-                    Link {
-                        to: Route::Flows { id: String::new() },
-                        class: nav_class(matches!(route, Route::Flows { .. }), false),
-                        onclick: close_drawer,
-                        crate::components::icons::Activity { class: "h-5 w-5" }
-                        span { {t!("nav-flows")} }
-                    }
-                    Link {
-                        to: Route::Notifications {},
-                        class: nav_class(route == Route::Notifications {}, false),
-                        onclick: close_drawer,
-                        crate::components::icons::Bell { class: "h-5 w-5" }
-                        span { {t!("nav-notifications")} }
-                    }
-                    Link {
-                        to: Route::Events {},
-                        class: nav_class(route == Route::Events {}, false),
-                        onclick: close_drawer,
-                        crate::components::icons::History { class: "h-5 w-5" }
-                        span { {t!("nav-events")} }
-                    }
-                    Link {
-                        to: Route::FluidMixtures {},
-                        class: nav_class(route == Route::FluidMixtures {}, false),
-                        onclick: close_drawer,
-                        crate::components::icons::Layers { class: "h-5 w-5" }
-                        span { {t!("nav-mixtures")} }
-                    }
                 }
             }
         }
@@ -850,7 +732,7 @@ fn SidebarSearch(
         return rsx! {
             div { class: "flex justify-center pt-3",
                 button {
-                    class: "flex items-center justify-center rounded-lg px-2 py-2 text-gray-300 hover:bg-gray-800 hover:text-white transition-colors",
+                    class: "flex items-center justify-center rounded-md px-2 py-2 text-slate hover:bg-surface hover:text-ink transition-colors",
                     title: t!("search-title"),
                     onclick: move |_| ui::set(false),
                     crate::components::icons::Search { class: "h-5 w-5" }
@@ -874,7 +756,7 @@ fn SidebarSearch(
                     crate::components::icons::Search { class: "h-4 w-4 text-gray-400" }
                 }
                 input {
-                    class: "w-full rounded-lg bg-gray-800 py-2 pl-9 pr-3 text-sm text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500",
+                    class: "w-full rounded-md border border-line bg-surface py-2 pl-9 pr-3 text-sm text-ink placeholder:text-gray-500 focus:border-signal focus:outline-none focus:ring-3 focus:ring-blue-200",
                     placeholder: t!("search-placeholder"),
                     value: "{q_value}",
                     oninput: move |event| {
@@ -1052,7 +934,7 @@ fn SearchHitRow(
     let navigator = use_navigator();
     rsx! {
         if is_group_start {
-            div { class: "px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 bg-gray-50",
+            div { class: "px-3 pt-2 pb-1 text-xs font-semibold text-gray-400 bg-gray-50",
                 {t!(search_group_key(& entity_type))}
             }
         }

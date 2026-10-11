@@ -126,7 +126,7 @@ pub fn HomeIconPicker(
                 }
             }
             if open() && !disabled {
-                div { class: "rounded-lg border border-gray-200 bg-white p-2 shadow-sm",
+                div { class: "rounded-lg border border-gray-200 bg-white p-2",
                     input {
                         class: "mb-2 w-full rounded border border-gray-300 px-2 py-1 text-xs",
                         placeholder: t!("hicon-search").to_string(),
@@ -136,7 +136,7 @@ pub fn HomeIconPicker(
                     div { class: "max-h-64 space-y-2 overflow-y-auto",
                         for (cat, icons) in groups {
                             div { key: "{cat}",
-                                p { class: "mb-1 text-[10px] font-medium uppercase text-gray-400",
+                                p { class: "mb-1 text-xs font-medium text-gray-400",
                                     {category_label(cat)}
                                 }
                                 div { class: "grid grid-cols-6 gap-1",

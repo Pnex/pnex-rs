@@ -63,32 +63,32 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
                             for entry in feed.entries.clone() {
                                 li { key: "{entry.seq}", class: "px-4 py-2.5 space-y-1",
                                     div { class: "flex items-center gap-2",
-                                        span { class: "text-[11px] font-mono text-gray-400", {heure_label(&entry.ts)} }
+                                        span { class: "text-xs font-mono text-gray-400", {heure_label(&entry.ts)} }
                                         span { class: "text-xs font-semibold text-gray-700",
                                             {entry.name.clone().unwrap_or_else(|| entry.node_id.clone())}
                                         }
                                         if entry.source == "pnex-display" {
-                                            span { class: "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-100 text-cyan-800",
+                                            span { class: "inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-cyan-100 text-cyan-800",
                                                 {t!("flows-debug-display-tag")}
                                             }
                                         }
                                         if entry.source == "pnex-status" {
-                                            span { class: "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800",
+                                            span { class: "inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800",
                                                 {t!("flows-debug-status-tag")}
                                             }
                                         }
                                         if let Some(topic) = &entry.topic {
-                                            span { class: "text-[11px] text-gray-400 truncate", {topic.clone()} }
+                                            span { class: "text-xs text-gray-400 truncate", {topic.clone()} }
                                         }
                                     }
                                     if let Some(st) = node_status(&entry.source, &entry.msg) {
-                                        pre { class: "text-[11px] font-mono whitespace-pre-wrap break-all text-gray-700 m-0",
+                                        pre { class: "text-xs font-mono whitespace-pre-wrap break-all text-gray-700 m-0",
                                             {status_pretty(&st)}
                                         }
                                     } else if let Some(pretty) = display_value_pretty(&entry.msg) {
                                         div { class: "space-y-1",
                                             button {
-                                                class: "w-full text-left flex items-center gap-1.5 text-[11px] font-mono text-gray-500 hover:text-gray-800 transition-colors",
+                                                class: "w-full text-left flex items-center gap-1.5 text-xs font-mono text-gray-500 hover:text-gray-800 transition-colors",
                                                 onclick: move |_| {
                                                     let mut set = expanded.write();
                                                     if !set.remove(&entry.seq) {
@@ -104,13 +104,13 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
                                                 }
                                             }
                                             if expanded.read().contains(&entry.seq) {
-                                                pre { class: "text-[11px] font-mono whitespace-pre-wrap break-all text-gray-600 m-0",
+                                                pre { class: "text-xs font-mono whitespace-pre-wrap break-all text-gray-600 m-0",
                                                     {pretty}
                                                 }
                                             }
                                         }
                                     } else {
-                                        pre { class: "text-[11px] font-mono whitespace-pre-wrap break-all text-gray-600 m-0",
+                                        pre { class: "text-xs font-mono whitespace-pre-wrap break-all text-gray-600 m-0",
                                             {format_msg(&entry.msg)}
                                         }
                                     }
@@ -129,7 +129,7 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
                         }
                     },
                 }
-                div { class: "px-4 py-2 border-t border-gray-200 text-[11px] text-gray-400",
+                div { class: "px-4 py-2 border-t border-gray-200 text-xs text-gray-400",
                     {t!("flows-debug-hint")}
                 }
             }

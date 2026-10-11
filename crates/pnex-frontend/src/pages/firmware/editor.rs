@@ -10,6 +10,7 @@ use crate::api;
 use crate::components::code_editing::CodeLang;
 use crate::components::code_highlight::{AreaHandle, FunctionCodeEditor, LineMark, MarkSeverity};
 use crate::components::icons;
+use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY_SM};
 use crate::state::toasts;
 use crate::util;
 
@@ -186,7 +187,7 @@ pub(super) fn FirmwareEditor(project_id: i64, can_write: bool, on_back: Callback
             div { class: "flex items-start justify-between flex-wrap gap-3",
                 div { class: "flex items-start gap-3 flex-grow min-w-0",
                     button {
-                        class: "px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors shrink-0",
+                        class: "{BTN_SECONDARY_SM} shrink-0",
                         onclick: move |_| on_back.call(()),
                         icons::ArrowLeft { class: "h-4 w-4" }
                     }
@@ -210,13 +211,13 @@ pub(super) fn FirmwareEditor(project_id: i64, can_write: bool, on_back: Callback
                 }
                 div { class: "flex items-center gap-2 shrink-0",
                     button {
-                        class: "px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                        class: BTN_SECONDARY_SM,
                         onclick: move |_| history_open.set(true),
                         icons::History { class: "h-4 w-4 inline mr-1" }
                         {t!("firmware-history")}
                     }
                     button {
-                        class: "px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40",
+                        class: BTN_SECONDARY_SM,
                         disabled: checking() || saving() || (dirty && !can_write),
                         onclick: move |_| save(true),
                         icons::CheckCircle { class: "h-4 w-4 inline mr-1" }
@@ -228,7 +229,7 @@ pub(super) fn FirmwareEditor(project_id: i64, can_write: bool, on_back: Callback
                     }
                     if can_write {
                         button {
-                            class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed",
+                            class: BTN_PRIMARY,
                             disabled: !dirty || saving(),
                             onclick: move |_| save(false),
                             icons::Save { class: "h-4 w-4 inline mr-1" }
@@ -240,7 +241,7 @@ pub(super) fn FirmwareEditor(project_id: i64, can_write: bool, on_back: Callback
 
             div {
                 div { class: "flex items-center gap-2 flex-wrap px-3.5 py-2 rounded-t-xl border border-b-0 border-gray-200 bg-white",
-                    span { class: "text-[13px] font-semibold font-mono", "src/main.cpp" }
+                    span { class: "text-sm font-semibold font-mono", "src/main.cpp" }
                     LibChips { selected: libs, readonly: !can_write }
                     span { class: "flex-grow" }
                     if can_write {
@@ -255,7 +256,7 @@ pub(super) fn FirmwareEditor(project_id: i64, can_write: bool, on_back: Callback
                             on_insert: move |snippet: String| insert_at_caret(snippet),
                         }
                         button {
-                            class: "h-8 px-2.5 rounded-md border border-gray-300 bg-white text-[13px] text-gray-700 hover:bg-gray-50",
+                            class: "{BTN_SECONDARY_SM} h-8",
                             onclick: format_code,
                             {t!("firmware-format")}
                         }
@@ -301,7 +302,7 @@ fn CheckReport(
     check: Option<FirmwareCheckStatus>,
     checking: bool,
 ) -> Element {
-    let box_class = "px-3.5 py-2 rounded-b-xl border border-t-0 text-[13px]";
+    let box_class = "px-3.5 py-2 rounded-b-xl border border-t-0 text-sm";
     if !violations.is_empty() {
         return rsx! {
             div { class: "{box_class} border-red-200 bg-red-50 text-red-800 space-y-1",

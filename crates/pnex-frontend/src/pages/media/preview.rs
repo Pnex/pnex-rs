@@ -190,7 +190,7 @@ pub(super) fn MediaPreview(
                                 {t!("media-stitch-hd-title")}
                             }
                         }
-                        div { class: "text-[11px] text-gray-300 bg-black/50 rounded-lg px-3 py-1 max-w-[92%] text-center",
+                        div { class: "text-xs text-gray-300 bg-black/50 rounded-lg px-3 py-1 max-w-[92%] text-center",
                             {t!("media-stitch-hd-text")}
                         }
                     }

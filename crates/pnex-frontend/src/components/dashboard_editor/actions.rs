@@ -4,6 +4,8 @@
 use super::*;
 
 use crate::components::modal::Modal;
+use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY};
+use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::state::toasts;
 
 /// Save : validation navigateur puis PATCH (nouvelle version = live).
@@ -71,7 +73,7 @@ pub(super) fn ConflictModal(mut cx: EditorCx, on_changed: EventHandler<()>) -> E
                 }
                 div { class: "flex justify-end gap-2",
                     button {
-                        class: "px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
+                        class: BTN_SECONDARY,
                         onclick: move |_| {
                             // Recharger : le document serveur écrase l'éditeur.
                             let id = cx.dashboard_id.cloned();
@@ -92,7 +94,7 @@ pub(super) fn ConflictModal(mut cx: EditorCx, on_changed: EventHandler<()>) -> E
                         {t!("db-conflict-reload")}
                     }
                     button {
-                        class: "px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700",
+                        class: BTN_PRIMARY,
                         onclick: move |_| {
                             // Écraser : re-lire le pointeur serveur puis
                             // re-PATCH avec MON layout (409 possible si un
@@ -147,21 +149,17 @@ pub(super) fn SaveAsTemplate(mut cx: EditorCx, widget_id: String) -> Element {
             on_close: move |_| cx.save_as.set(None),
             div { class: "space-y-4",
                 div {
-                    label {
-                        r#for: "actions-field-1",
-                        class: "block text-xs font-medium text-gray-500 uppercase mb-1",
-                        {t!("lib-template-name")}
-                    }
+                    label { r#for: "actions-field-1", class: FIELD_LABEL, {t!("lib-template-name")} }
                     input {
                         id: "actions-field-1",
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} w-full",
                         value: "{name}",
                         oninput: move |e| name.set(e.value()),
                     }
                 }
                 div { class: "flex justify-end gap-2",
                     button {
-                        class: "px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
+                        class: BTN_SECONDARY,
                         onclick: move |_| cx.save_as.set(None),
                         {t!("common-cancel")}
                     }

@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::api;
 use crate::api::error::ApiError;
+use crate::components::ui::BTN_PRIMARY_SM;
 use crate::doc_editor::{self, SelectionAnchor};
 use pnex_core::pages::{CreateDocComment, DocComment, PatchDocComment};
 
@@ -157,7 +158,7 @@ fn NewThread(
             div { class: "mt-1 flex justify-end gap-2",
                 button { class: SMALL_BTN, onclick: move |_| draft.set(None), {t!("docs-cancel")} }
                 button {
-                    class: "rounded bg-blue-600 px-2 py-0.5 text-xs text-white disabled:opacity-50",
+                    class: BTN_PRIMARY_SM,
                     disabled: body().trim().is_empty(),
                     onclick: post,
                     {t!("docs-comment-post")}

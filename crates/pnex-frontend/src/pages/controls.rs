@@ -25,6 +25,8 @@ use crate::components::icons;
 use crate::components::modal::Modal;
 use crate::components::surface::spec_editor::{spec_error_text, SpecFields};
 use crate::components::surface::{control_group, kind_text, spec_summary, suggest_key};
+use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY, BTN_SECONDARY_SM};
+use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::state::{org, toasts};
 
 #[component]
@@ -127,7 +129,7 @@ pub fn Controls() -> Element {
                     // One flex row, both buttons the same height.
                     div { class: "flex items-center justify-end gap-2",
                         button {
-                            class: "inline-flex items-center px-3 py-1 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
+                            class: BTN_SECONDARY_SM,
                             onclick: move |_| editing.set(Some(Some(edit.clone()))),
                             icons::Wrench { class: "h-4 w-4 mr-1" }
                             {t!("controls-edit-short")}
@@ -288,7 +290,7 @@ fn ControlForm(
                     field_id: "controls-form-label",
                     input {
                         id: "controls-form-label",
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm",
+                        class: "{INPUT} w-full",
                         value: "{label}",
                         placeholder: t!("controls-label-placeholder").to_string(),
                         oninput: move |e| {
@@ -305,7 +307,7 @@ fn ControlForm(
                     field_id: "controls-form-key",
                     input {
                         id: "controls-form-key",
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono",
+                        class: "{INPUT} w-full font-mono",
                         value: "{key}",
                         placeholder: "light.room",
                         oninput: move |e| {
@@ -320,7 +322,7 @@ fn ControlForm(
                     field_id: "controls-form-kind",
                     select {
                         id: "controls-form-kind",
-                        class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                        class: "{INPUT} w-full",
                         disabled: editing_id.is_some(),
                         onchange: move |e| {
                             if let Some(next) = ControlKind::ALL
@@ -355,15 +357,16 @@ fn ControlForm(
                 }
                 div { class: crate::components::modal::MODAL_FOOTER,
                     button {
-                        class: "px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
+                        class: BTN_SECONDARY,
                         onclick: move |_| on_close.call(()),
                         {t!("common-cancel")}
                     }
-                    button {
-                        class: "px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40",
-                        disabled: !ok,
-                        onclick: submit,
-                        {t!("common-save")}
+                    button { class: BTN_PRIMARY, disabled: !ok, onclick: submit,
+                        if editing_id.is_some() {
+                            {t!("common-save")}
+                        } else {
+                            {t!("common-create")}
+                        }
                     }
                 }
             }
@@ -376,11 +379,7 @@ fn ControlForm(
 fn FormRow(label: String, field_id: String, children: Element) -> Element {
     rsx! {
         div {
-            label {
-                r#for: "{field_id}",
-                class: "block text-xs font-medium text-gray-500 uppercase mb-1",
-                "{label}"
-            }
+            label { r#for: "{field_id}", class: FIELD_LABEL, "{label}" }
             {children}
         }
     }

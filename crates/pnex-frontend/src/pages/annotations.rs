@@ -21,6 +21,8 @@ use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
 use crate::components::modal::Modal;
 use crate::components::tour_viewer::{TourViewer, ViewerSource};
+use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY, BTN_SECONDARY_SM};
+use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::state::annotations::OPEN_LAYER;
 use crate::state::{org, session, toasts};
 use crate::util::media_blob_url;
@@ -258,7 +260,7 @@ pub fn Annotations() -> Element {
             |s: &pnex_core::AnnotationLayerSummary| {
                 rsx! {
                     if s.published_version_number.is_some() {
-                        span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-800",
+                        span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800",
                             {t!("annot-page-published")}
                         }
                     } else {
@@ -309,7 +311,7 @@ pub fn Annotations() -> Element {
                         }
                         select {
                             aria_label: t!("annot-page-media-filter"),
-                            class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                            class: INPUT,
                             value: "{media_filter_now}",
                             onchange: move |e| selected_media_filter.set(e.value()),
                             option { value: "", {t!("annot-page-all-medias")} }
@@ -336,7 +338,7 @@ pub fn Annotations() -> Element {
                     // Barre : retour + nom + autres ensembles du même média
                     div { class: "flex items-center gap-3 flex-wrap",
                         button {
-                            class: "px-3 py-1.5 text-xs text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50",
+                            class: BTN_SECONDARY_SM,
                             onclick: move |_| {
                                 preview.set(false);
                                 view.set(View::List);
@@ -654,14 +656,12 @@ fn NewSetModal(
             div { class: "space-y-5",
                 // Nom de l'ensemble
                 div {
-                    label {
-                        r#for: "annotations-field-1",
-                        class: "block text-sm font-medium text-gray-700 mb-1.5",
+                    label { r#for: "annotations-field-1", class: FIELD_LABEL,
                         {t!("annot-page-col-name")}
                     }
                     input {
                         id: "annotations-field-1",
-                        class: "w-full rounded-lg border-gray-300 text-sm px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500",
+                        class: INPUT,
                         placeholder: "{name_placeholder}",
                         value: "{name()}",
                         oninput: move |e| name.set(e.value()),
@@ -670,15 +670,13 @@ fn NewSetModal(
                 }
                 // Média associé
                 div {
-                    label {
-                        r#for: "annotations-field-2",
-                        class: "block text-sm font-medium text-gray-700 mb-1.5",
+                    label { r#for: "annotations-field-2", class: FIELD_LABEL,
                         {t!("annot-page-col-media")}
                     }
                     select {
                         id: "annotations-field-2",
                         aria_label: t!("annot-page-media-select"),
-                        class: "w-full rounded-lg border-gray-300 text-sm px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500",
+                        class: INPUT,
                         value: "{choice()}",
                         onchange: move |e| choice.set(e.value()),
                         option { value: "", {t!("annot-page-media-select")} }
@@ -707,12 +705,12 @@ fn NewSetModal(
                 // Actions
                 div { class: "pt-2 border-t border-gray-100 flex justify-end gap-2",
                     button {
-                        class: "px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors",
+                        class: BTN_SECONDARY,
                         onclick: move |_| on_close.call(()),
                         {t!("annot-page-cancel")}
                     }
                     button {
-                        class: "px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed",
+                        class: BTN_PRIMARY,
                         disabled: submit_disabled,
                         onclick: move |_| {
                             let name = name.read().trim().to_string();

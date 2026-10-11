@@ -156,7 +156,7 @@ fn SurfaceCard(
     };
     let is_control = w.options.control.is_some();
     rsx! {
-        div { class: "{height} overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm",
+        div { class: "{height} overflow-hidden rounded-xl border border-gray-200 bg-white",
             if is_control {
                 ControlBody { widget: w.clone(), state: None, via: Some(via.clone()) }
             } else {

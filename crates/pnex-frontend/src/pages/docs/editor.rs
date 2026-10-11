@@ -11,6 +11,7 @@ use uuid::Uuid;
 use crate::api;
 use crate::app::Route;
 use crate::components::icons;
+use crate::components::ui::BTN_PRIMARY_SM;
 use crate::doc_editor::{self, DocState};
 
 /// Entries of the "/" menu (doc.js `BLOCK_ITEMS`): (command, label key).
@@ -343,11 +344,7 @@ fn LinkBar(host: String, href: String, link_href: Signal<Option<String>>) -> Ele
                 value: "{href}",
                 oninput: move |e| link_href.set(Some(e.value())),
             }
-            button {
-                class: "px-3 py-1 text-sm bg-blue-600 text-white rounded-lg",
-                onclick: apply,
-                {t!("docs-link-apply")}
-            }
+            button { class: BTN_PRIMARY_SM, onclick: apply, {t!("docs-link-apply")} }
             button {
                 class: "px-3 py-1 text-sm text-gray-600",
                 onclick: move |_| link_href.set(None),

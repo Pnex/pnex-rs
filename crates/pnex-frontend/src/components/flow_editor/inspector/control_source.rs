@@ -113,9 +113,7 @@ pub(super) fn ControlSourceForm(
             }
             for (group, items) in groups {
                 div { key: "{group}", class: "space-y-1",
-                    p { class: "text-[10px] font-semibold uppercase tracking-wide text-gray-400",
-                        "{group}"
-                    }
+                    p { class: "text-xs font-semibold text-gray-400", "{group}" }
                     ul { class: "space-y-1",
                         for c in items {
                             ControlRow {

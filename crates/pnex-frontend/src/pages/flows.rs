@@ -16,7 +16,7 @@ use pnex_core::{FlowGraph, FlowNode, FlowNodeKind, FlowSummary, InjectConfig, Po
 use crate::api;
 use crate::components::badges::date_label;
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::{FilterBar, SearchInput};
+use crate::components::crud::filters::{FilterBar, LabelFilterInput, SearchInput};
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
@@ -24,6 +24,7 @@ use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
 use crate::components::labels_editor::{use_row_labels, LabelChips};
 use crate::components::loading_overlay::LoadingOverlay;
+use crate::components::ui::INPUT;
 use crate::state::{org, session, toasts};
 
 /// Rôle de l'utilisateur dans l'org courante (« owner »/« admin »/« viewer ») —
@@ -143,7 +144,7 @@ pub fn Flows(id: String) -> Element {
                 div { class: "flex items-center gap-2",
                     span { {format!("v{}", flow.latest_version_number)} }
                     if let Some(deployed) = flow.deployed_version_number {
-                        span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-50 text-green-700 border border-green-200",
+                        span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200",
                             {format!("v{deployed} {}", t!("flows-version-deployed-tag"))}
                         }
                     }
@@ -222,7 +223,7 @@ pub fn Flows(id: String) -> Element {
                     // (fluidité — retour user 2026-09-18). Le renommage
                     // reste possible après coup.
                     let params = pnex_core::CreateFlow {
-                        name: t!("flows-default-name", date : crate ::util::now_label()).to_string(),
+                        name: default_name("flows-default-name"),
                         device_id: None,
                         graph: starter_graph(),
                         author: session::user().map(|user| user.username),
@@ -245,7 +246,7 @@ pub fn Flows(id: String) -> Element {
                     FilterBar {
                         select {
                             aria_label: t!("flows-col-status"),
-                            class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                            class: INPUT,
                             onchange: move |event| {
                                 filter_status.set(event.value());
                                 page.set(0);
@@ -286,7 +287,7 @@ pub fn Flows(id: String) -> Element {
                             },
                         }
                         // D42: effective label filter (inheritance included).
-                        SearchInput {
+                        LabelFilterInput {
                             placeholder: t!("resources-label-filter-placeholder").to_string(),
                             value: filter_label,
                             on_submit: move |_| {
@@ -386,4 +387,10 @@ pub(crate) fn starter_graph() -> FlowGraph {
             },
         }],
     }
+}
+
+/// Dated default name of a new item (stored data: plain text, no Fluent
+/// bidi marks).
+fn default_name(key: &str) -> String {
+    crate::util::plain_text(t!(key, date: crate::util::now_label()))
 }

@@ -77,9 +77,7 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
                                     if item.label.is_empty() { t!(kind_key).to_string() } else { item.label.clone() }
                                 }
                             }
-                            span { class: "text-[11px] uppercase tracking-wide text-gray-400",
-                                {t!(kind_key)}
-                            }
+                            span { class: "text-xs text-gray-400", {t!(kind_key)} }
                         }
                         div { class: "text-xs text-gray-500 mt-0.5 truncate",
                             span { class: "font-medium text-gray-400", {t!("annot-popover-layer")} }

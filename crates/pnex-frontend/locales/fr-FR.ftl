@@ -12,6 +12,12 @@ nav-profile = Profil
 nav-visualisation = Visualisation
 nav-quick-charts = Graphiques rapides
 nav-edges = Edges
+nav-group-monitor = Surveiller
+nav-group-knowledge = Connaissance
+nav-group-media = Médias
+nav-group-devices = Devices
+nav-group-settings = Réglages
+shell-menu = Menu
 nav-browser-collector = Collecteur navigateur
 nav-soon = bientôt
 
@@ -25,6 +31,7 @@ common-delete = Supprimer
 common-retry = Réessayer
 common-save = Enregistrer
 common-create = Créer
+common-add = Ajouter
 common-error = Erreur
 common-close = Fermer
 common-refresh = Rafraîchir
@@ -174,7 +181,7 @@ profile-theme-dark = Sombre
 profile-theme-auto = Automatique
 profile-account = Compte
 profile-change-password = Changer de mot de passe
-profile-theme-note = Le thème est enregistré dans votre profil ; son application à l'interface arrive avec le mode sombre (phase ultérieure).
+profile-theme-note = Automatique suit le réglage clair ou sombre de votre système.
 
 # Pages en attente de phase
 empty-phase = Arrive en phase { $phase }
@@ -224,7 +231,8 @@ devices-id-required = Renseignez l'identifiant de l'appareil (device_id).
 devices-register-title = Enregistrer un nouvel appareil
 devices-register = Enregistrer
 devices-created = Appareil enregistré — token de provisioning généré.
-devices-empty = Aucun appareil ne correspond — enregistrez-en un ci-dessus.
+devices-empty = Aucun appareil pour l’instant. Enregistrez une carte ou un agent edge pour collecter ses données.
+devices-empty-filtered = Aucun appareil ne correspond à ces filtres.
 devices-col-id = Appareil
 devices-col-type = Type
 devices-col-model = Modèle
@@ -436,7 +444,7 @@ pins-mode-adc = Analogique — lecture (analog_in)
 # ─────────────── Brick 0 — flash firmware générique (secteur PNEXCFG) ───────────────
 
 # ─────────────── Flux ETL (D18) — liste et éditeur ───────────────
-nav-automation = Automation
+nav-automation = Automatisation
 nav-flows = Flows
 flows-subtitle = Pipelines ETL : créez, éditez et déployez vos flows
 flows-new = Nouveau flow
@@ -1257,8 +1265,9 @@ share-invalid-message = ce lien de partage n'est plus actif — demandez-en un n
 # ─── Couche d'organisation transverse (D42) ───
 resources-labels-title = Étiquettes
 resources-label-input-placeholder = nom:valeur ou nom (Entrée)
-resources-label-filter-placeholder = Filtrer par étiquette (site:serre)
-resources-label-save = Enregistrer
+resources-label-filter-placeholder = Filtrer par étiquette
+resources-label-save = Enregistrer les labels
+resources-label-remove = Retirer le label { $name }
 resources-label-saved = Étiquettes enregistrées
 resources-label-name-required = Le nom de l'étiquette est requis.
 resources-label-name-invalid = Nom d'étiquette invalide (minuscules, chiffres, _ ou -).
@@ -3878,6 +3887,7 @@ err-ontology-admin-required = Seul un propriétaire ou un administrateur de l'or
 err-ontology-system-read-only = Les types et objets système se modifient depuis leur page dédiée (appareils, médias, flows…).
 err-ontology-link-not-allowed = Ce type de lien ne relie pas des objets de ces types.
 err-ontology-link-cardinality = Un lien ouvert occupe déjà cette place : fermez-le d'abord (par exemple au remplacement d'un capteur).
+err-ontology-claim-unsourced = Une affirmation n'est corroborée qu'avec au moins deux pièces d'origines distinctes : reliez-la à ses sources (« est sourcée par »).
 
 ## Ontology UI (D186)
 nav-ontology = Ontologie
