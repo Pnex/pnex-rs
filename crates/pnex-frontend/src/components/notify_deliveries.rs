@@ -304,6 +304,14 @@ fn DeliveryRow(
                         dt { class: "text-gray-500", {t!("notify-detail-channel-id")} }
                         dd { class: "font-mono", "{d.channel_id}" }
                     }
+                    div { class: "pt-2",
+                        crate::components::ontology::open_case::OpenCaseButton {
+                            kind: "notification",
+                            at_us: d.ts_us,
+                            flow_id,
+                            title: d.subject.clone().unwrap_or_default(),
+                        }
+                    }
                 }
             }
         }

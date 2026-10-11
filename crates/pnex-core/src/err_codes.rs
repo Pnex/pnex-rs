@@ -492,6 +492,8 @@ pub const ONTOLOGY_SYSTEM_READ_ONLY: &str = "ontology-system-read-only";
 pub const ONTOLOGY_LINK_NOT_ALLOWED: &str = "ontology-link-not-allowed";
 /// An open link already takes this place (one-to-one, or a series already bound).
 pub const ONTOLOGY_LINK_CARDINALITY: &str = "ontology-link-cardinality";
+/// A claim is corroborated only with two pieces of distinct origins (cases.md K7).
+pub const ONTOLOGY_CLAIM_UNSOURCED: &str = "ontology-claim-unsourced";
 
 // ── Pages (pages.md #21) ─────────────────────────────────────────────────
 
@@ -514,6 +516,7 @@ pub const ALL: &[&str] = &[
     ONTOLOGY_SYSTEM_READ_ONLY,
     ONTOLOGY_LINK_NOT_ALLOWED,
     ONTOLOGY_LINK_CARDINALITY,
+    ONTOLOGY_CLAIM_UNSOURCED,
     WS_TICKET_UNAVAILABLE,
     DEVICE_NOT_FOUND,
     DEVICE_QUOTA_REACHED,

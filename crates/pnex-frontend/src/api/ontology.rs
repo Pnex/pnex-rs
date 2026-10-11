@@ -212,3 +212,10 @@ pub async fn case_timeline(
     )
     .await
 }
+
+/// Opens a case, possibly from a dated event (cases.md K3).
+pub async fn open_case(
+    input: &pnex_core::ontology::api::CaseOpenInput,
+) -> Result<ObjectView, ApiError> {
+    client::request(Method::POST, "/api/v1/cases", body(input)).await
+}

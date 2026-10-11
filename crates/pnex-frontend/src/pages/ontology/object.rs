@@ -214,9 +214,7 @@ fn PropertiesPanel(object: ObjectView, type_view: ObjectTypeView) -> Element {
             dl { class: "grid grid-cols-1 gap-3 sm:grid-cols-2",
                 for p in props {
                     div { key: "{p.key}", "data-prop": "{p.key}",
-                        dt { class: "text-xs font-medium text-gray-500",
-                            {prop_label(&p)}
-                        }
+                        dt { class: "text-xs font-medium text-gray-500", {prop_label(&p)} }
                         dd { class: "text-sm text-gray-900",
                             PropertyValue {
                                 value: object.properties.get(&p.key).cloned(),
@@ -269,9 +267,7 @@ fn LinksPanel(
         div { class: SECTION,
             div { class: "flex flex-wrap items-end gap-3",
                 div {
-                    label { class: "block text-xs font-medium text-gray-500 mb-1",
-                        {t!("onto-as-of")}
-                    }
+                    label { class: "block text-xs font-medium text-gray-500 mb-1", {t!("onto-as-of")} }
                     input {
                         r#type: "datetime-local",
                         class: INPUT,

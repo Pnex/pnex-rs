@@ -21,7 +21,9 @@ use crate::api;
 use crate::app::Route;
 use crate::components::crud::layout::ListLayout;
 use crate::components::ontology::add_to_case::role_label;
-use crate::components::ontology::{link_label, short_time, type_label_of};
+use crate::components::ontology::{
+    fuzzy_label, link_label, precision_label, short_time, type_label_of,
+};
 use crate::state::{org, toasts};
 
 const INPUT: &str = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white";
@@ -865,7 +867,12 @@ fn TimelinePanel(
 
 #[component]
 fn TimelineRow(item: TimelineItem, color: &'static str, link_types: Vec<LinkTypeView>) -> Element {
-    let time = item.at.get(11..16).unwrap_or_default().to_string();
+    // An approximate date has no meaningful time of day.
+    let time = if item.kind == "occurred" {
+        "≈".to_string()
+    } else {
+        item.at.get(11..16).unwrap_or_default().to_string()
+    };
     let body = match (&item.link, &item.change) {
         (Some(l), _) => {
             let def = link_types
@@ -919,7 +926,52 @@ fn TimelineRow(item: TimelineItem, color: &'static str, link_types: Vec<LinkType
                 }
             }
         }
-        _ => rsx! {},
+        _ => match (&item.range, &item.notification) {
+            (Some(r), _) => {
+                let end = r
+                    .actual_end
+                    .as_deref()
+                    .or(r.planned_end.as_deref())
+                    .map(short_time)
+                    .unwrap_or_default();
+                rsx! {
+                    span { class: "text-gray-500", {t!("case-tl-range")} }
+                    span { class: "font-medium text-gray-900", "{r.label}" }
+                    if !end.is_empty() {
+                        span { class: "text-xs text-gray-500", "→ {end}" }
+                    }
+                }
+            }
+            (None, Some(n)) => rsx! {
+                span { class: "text-gray-500", {t!("case-tl-notification")} }
+                span { class: "font-medium text-gray-900",
+                    {n.subject.clone().unwrap_or_else(|| n.channel_kind.clone())}
+                }
+                span { class: "text-xs text-gray-500", "{n.status}" }
+            },
+            _ => match &item.fuzzy {
+                Some(f) => {
+                    let when = fuzzy_label(f);
+                    let precision = precision_label(
+                        f.get("precision")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default(),
+                    );
+                    rsx! {
+                        Link {
+                            class: "font-medium text-gray-900 hover:underline",
+                            to: Route::OntologyObject {
+                                id: item.lane.clone(),
+                            },
+                            {item.title.clone().unwrap_or_default()}
+                        }
+                        span { class: "font-mono text-xs text-gray-700", "{when}" }
+                        span { class: "text-xs text-gray-500", "({precision})" }
+                    }
+                }
+                None => rsx! {},
+            },
+        },
     };
     rsx! {
         li {

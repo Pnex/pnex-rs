@@ -366,6 +366,14 @@ fn EventRow(ev: EventRecord) -> Element {
                         dt { class: "text-gray-500", {t!("events-col-node")} }
                         dd { class: "text-gray-700 font-mono break-all", "{ev.node_id}" }
                     }
+                    div { class: "mb-2",
+                        crate::components::ontology::open_case::OpenCaseButton {
+                            kind: "event",
+                            at_us: ev.ts_us,
+                            flow_id,
+                            title: ev.message.clone(),
+                        }
+                    }
                     if has_payload {
                         dl { class: "grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs bg-white border border-gray-200 rounded-lg p-3 max-h-80 overflow-y-auto",
                             for (i, (key, value)) in payload_rows.into_iter().enumerate() {

@@ -125,4 +125,39 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
     const tl = await api.post(`/cases/${c.id}/timeline`, {});
     expect(tl.members.map((m: any) => m.source.id)).toContain(pump.id);
   });
+
+  test('a case opened from an event gets its window; ranges of members join the timeline', async ({
+    app,
+    page,
+    api,
+    prefix,
+  }) => {
+    const pump = await api.post('/ontology/objects', {
+      type_key: 'pump',
+      title: `${prefix} pump P-9`,
+      properties: { serial: 'S-9', status: 'running' },
+    });
+    const c = await api.post('/cases', {
+      title: `${prefix} alarm`,
+      from: { kind: 'event', at: '2026-10-03T10:02:00Z' },
+    });
+    expect(c.properties.window_from).toMatch(/^2026-10-03T08:02:00/);
+    await api.post('/ontology/links', {
+      link_type: 'in_case',
+      source_id: pump.id,
+      target_id: c.id,
+      attributes: { role: 'subject' },
+    });
+    await api.post('/time-ranges', {
+      scope_kind: 'object',
+      scope_id: pump.id,
+      label: `${prefix} night shift`,
+      planned_start: '2026-10-03T06:00:00Z',
+      planned_end: '2026-10-03T14:00:00Z',
+    });
+    await app.goto(`/cases/${c.id}`);
+    await expect(page.getByTestId('case-window-from')).toHaveValue('2026-10-03T08:02');
+    const timeline = page.getByTestId('case-timeline');
+    await expect(timeline.locator('[data-kind="range"]')).toContainText(`${prefix} night shift`);
+  });
 });

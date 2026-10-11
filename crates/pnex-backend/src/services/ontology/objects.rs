@@ -111,6 +111,45 @@ async fn check_properties<C: ConnectionTrait>(
     Ok(out)
 }
 
+/// Investigation pack (cases.md K7): `claim.status = corroborated` needs
+/// at least two `sourced_by` pieces of distinct origins (a piece's source
+/// URL, else the object it wraps, else the piece itself).
+/// shortcut: no justified override yet (K7 « contournable »), add it with
+/// the review queue (C6).
+async fn check_claim<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    type_key: &str,
+    claim: Option<Uuid>,
+    props: &Map<String, Value>,
+) -> Result<()> {
+    if type_key != CLAIM || props.get("status").and_then(Value::as_str) != Some(CORROBORATED) {
+        return Ok(());
+    }
+    let Some(claim) = claim else {
+        return Err(OntologyError::ClaimUnsourced);
+    };
+    let row = db
+        .query_one_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT count(DISTINCT coalesce(p.properties ->> 'source_url', w.target_object_id::text, p.id::text)) AS n \
+             FROM resource_edges s JOIN objects p ON p.id = s.target_object_id \
+             LEFT JOIN resource_edges w ON w.source_object_id = p.id AND w.relation = 'wraps' AND w.valid_to IS NULL \
+             WHERE s.org_id = $1 AND s.relation = 'sourced_by' AND s.valid_to IS NULL \
+               AND s.source_object_id = $2 AND p.valid_to IS NULL",
+            [org_id.into(), claim.into()],
+        ))
+        .await?;
+    let n: i64 = row.and_then(|r| r.try_get("", "n").ok()).unwrap_or(0);
+    if n < 2 {
+        return Err(OntologyError::ClaimUnsourced);
+    }
+    Ok(())
+}
+
+const CLAIM: &str = "claim";
+const CORROBORATED: &str = "corroborated";
+
 fn require_role(def: &ObjectTypeDef, actor: &Actor) -> Result<()> {
     if role_allows(&actor.role, def.write_role) {
         Ok(())
@@ -137,6 +176,7 @@ pub async fn create(
     require_role(def, actor)?;
     let title = check_title(&input.title)?;
     let props = check_properties(db, org_id, def, &input.properties).await?;
+    check_claim(db, org_id, &def.key, None, &props).await?;
     let id = Uuid::new_v4();
     let row = objects::ActiveModel {
         id: Set(id),
@@ -190,6 +230,10 @@ pub async fn update(
         check_title(&input.title)?
     };
     let props = check_properties(db, org_id, def, &input.properties).await?;
+    // Checked when the status changes, not on every later edit.
+    if row.properties.get("status") != props.get("status") {
+        check_claim(db, org_id, &def.key, Some(id), &props).await?;
+    }
     let now = sea_orm::prelude::DateTimeWithTimeZone::from(chrono::Utc::now());
     let done = objects::Entity::update_many()
         .col_expr(objects::Column::Title, Expr::value(title))
