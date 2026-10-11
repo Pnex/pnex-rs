@@ -10,10 +10,10 @@ use super::{geometry, state, Interaction, Select, TourEditorCx};
 use crate::api;
 
 /// Palette de rendu (attributs SVG bruts — parité flow_editor).
-const SCENE_FILL: &str = "#eff6ff";
-const SCENE_STROKE: &str = "#3b82f6";
-const SCENE_START_FILL: &str = "#ecfdf5";
-const SCENE_START_STROKE: &str = "#10b981";
+const SCENE_FILL: &str = "var(--color-signal-50, #eff6ff)";
+const SCENE_STROKE: &str = "var(--color-signal-500, #3b82f6)";
+const SCENE_START_FILL: &str = "var(--color-emerald-50, #ecfdf5)";
+const SCENE_START_STROKE: &str = "var(--color-emerald-500, #10b981)";
 const SELECTED_STROKE: &str = "var(--color-signal-600, #2563eb)";
 const LINK_STROKE: &str = "var(--color-slate-400, #94a3b8)";
 const LINK_PENDING_STROKE: &str = "#f59e0b";
@@ -386,7 +386,7 @@ fn ScenePin(
                 y: "{scene.y + geometry::SCENE_RADIUS + 14.0}",
                 "text-anchor": "middle",
                 "font-size": "13",
-                fill: "#374151",
+                fill: "var(--color-gray-700, #374151)",
                 "pointer-events": "none",
                 {if scene.label.is_empty() { scene.id.clone() } else { scene.label.clone() }}
             }
@@ -396,7 +396,7 @@ fn ScenePin(
                     y: "{scene.y - geometry::SCENE_RADIUS - 6.0}",
                     "text-anchor": "middle",
                     "font-size": "12",
-                    fill: "#10b981",
+                    fill: "var(--color-emerald-600, #10b981)",
                     "pointer-events": "none",
                     {t!("studio-scene-start-tag")}
                 }

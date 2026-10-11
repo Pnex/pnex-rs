@@ -281,7 +281,7 @@ fn Header(
 ) -> Element {
     let halo = match &tint {
         Some(c) => format!("background-color: {c}22; color: {c}"),
-        None => "background-color: #f3f4f6; color: #6b7280".to_string(),
+        None => "background-color: var(--color-gray-100, #f3f4f6); color: var(--color-gray-500, #6b7280)".to_string(),
     };
     rsx! {
         div { class: "flex items-center gap-3",

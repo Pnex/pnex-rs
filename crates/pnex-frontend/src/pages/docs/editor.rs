@@ -181,7 +181,9 @@ pub fn DocEditor(id: Uuid) -> Element {
     };
 
     rsx! {
-        div { class: "flex min-h-full flex-col bg-white",
+        // The page fills the screen (main has no height of its own); the
+        // mobile bar of the shell is 3.5rem tall below lg.
+        div { class: "flex min-h-[calc(100dvh-3.5rem)] flex-col bg-white lg:min-h-dvh",
             div { class: "flex flex-wrap items-center gap-1 px-3 py-2 text-sm text-gray-600",
                 Link {
                     to: Route::Docs { id: String::new() },
