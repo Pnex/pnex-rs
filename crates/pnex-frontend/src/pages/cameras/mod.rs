@@ -120,7 +120,7 @@ pub fn Cameras() -> Element {
                 let viewers = t!("cameras-viewers", count: c.viewers).to_string();
                 rsx! {
                     div { class: "text-sm text-gray-600", "{label}" }
-                    div { class: "text-xs text-gray-400", "{viewers}" }
+                    div { class: "text-xs text-gray-500", "{viewers}" }
                 }
             },
         )
@@ -172,7 +172,7 @@ pub fn Cameras() -> Element {
                 is_empty,
                 empty_message: t!("cameras-empty-title").to_string(),
                 empty_icon: rsx! {
-                    icons::Video { class: "h-8 w-8 text-gray-400" }
+                    icons::Video { class: "h-8 w-8 text-gray-500" }
                 },
                 empty_detail: rsx! {
                     p { class: "text-gray-600 mt-2 max-w-xl mx-auto", {t!("cameras-empty-message")} }

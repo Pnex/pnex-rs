@@ -303,7 +303,7 @@ fn highlight_code(line: &str, lang: CodeLang, out: &mut Vec<Tok>) {
 fn emit_comment(text: &str, prefix: &str, out: &mut Vec<Tok>) {
     let body = text.strip_prefix(prefix).unwrap_or(text);
     out.push(Tok {
-        class: "text-gray-400",
+        class: "text-gray-500",
         text: prefix.to_string(),
     });
     let trimmed = body.trim_start();
@@ -904,7 +904,7 @@ pub fn FunctionCodeEditor(
             // Gutter: numbers share the exact code metrics (leading-5).
             div { class: "absolute inset-y-0 left-0 w-10 overflow-hidden border-r border-gray-100 bg-gray-50",
                 pre {
-                    class: "m-0 py-2 text-right text-sm font-mono leading-5 text-gray-400 whitespace-pre overflow-hidden pointer-events-none",
+                    class: "m-0 py-2 text-right text-sm font-mono leading-5 text-gray-500 whitespace-pre overflow-hidden pointer-events-none",
                     style: "{shift}",
                     for i in 1..=line_count {
                         if let Some(sev) = marked.get(&i) {

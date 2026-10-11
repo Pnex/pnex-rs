@@ -81,7 +81,7 @@ pub fn WidgetBody(
                 div { class: "flex items-baseline justify-between px-3 pt-2",
                     span { class: "truncate text-xs font-medium text-gray-500", "{w.title}" }
                     if let Some(unit) = &header_unit {
-                        span { class: "ml-2 shrink-0 text-xs text-gray-400", "{unit}" }
+                        span { class: "ml-2 shrink-0 text-xs text-gray-500", "{unit}" }
                     }
                 }
             }
@@ -109,7 +109,7 @@ pub fn WidgetBody(
                     crate::components::range_bars::RangeBarsBody { widget: widget.clone() }
                 },
                 _ => rsx! {
-                    p { class: "p-2 text-xs text-gray-400", "{w.widget_type}" }
+                    p { class: "p-2 text-xs text-gray-500", "{w.widget_type}" }
                 },
             }
         }
@@ -252,7 +252,7 @@ fn stat_body(widget: Widget, last: Option<TelemetryPoint>, decimals: u8) -> Elem
             }
             span { class: "text-3xl font-semibold leading-none", "{l.text}" }
             if let Some(unit) = &l.unit {
-                span { class: "text-xs text-gray-400", "{unit}" }
+                span { class: "text-xs text-gray-500", "{unit}" }
             }
         }
     }
@@ -278,7 +278,7 @@ fn line_body(widget: Widget, points: Option<Vec<TelemetryPoint>>) -> Element {
     if t_min > t_max {
         return rsx! {
             div { class: "flex flex-1 items-center justify-center",
-                span { class: "text-xs text-gray-400", {t!("db-no-data")} }
+                span { class: "text-xs text-gray-500", {t!("db-no-data")} }
             }
         };
     }
@@ -357,7 +357,7 @@ fn indicator_body(widget: Widget, last: Option<TelemetryPoint>, decimals: u8) ->
             }
             span { class: "text-lg font-medium text-gray-800", "{l.text}" }
             if let Some(unit) = &l.unit {
-                span { class: "text-xs text-gray-400", "{unit}" }
+                span { class: "text-xs text-gray-500", "{unit}" }
             }
         }
     }

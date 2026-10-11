@@ -322,7 +322,7 @@ fn OptionsEditor(
                     {t!("controls-form-add-option")}
                 }
             }
-            p { class: "text-xs text-gray-400", {t!("controls-form-options-help")} }
+            p { class: "text-xs text-gray-500", {t!("controls-form-options-help")} }
         }
     }
 }

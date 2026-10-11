@@ -156,7 +156,7 @@ pub(super) fn WeatherForm(cx: EditorCx, initial: WeatherConfig, can_write: bool)
                 p { class: "text-xs text-red-600", "{err}" }
             }
             p { class: "text-xs text-gray-500", {t!("flows-weather-ports-help")} }
-            p { class: "text-xs text-gray-400", "{attribution}" }
+            p { class: "text-xs text-gray-500", "{attribution}" }
         }
     }
 }

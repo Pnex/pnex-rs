@@ -96,7 +96,7 @@ fn DocList() -> Element {
                 Link {
                     to: Route::Docs { id },
                     class: "flex items-center gap-2 text-sm font-medium text-blue-700 hover:underline",
-                    icons::BookOpen { class: "h-4 w-4 text-gray-400" }
+                    icons::BookOpen { class: "h-4 w-4 text-gray-500" }
                     {d.title.clone()}
                 }
             }
@@ -181,7 +181,7 @@ fn DocList() -> Element {
                 is_empty,
                 empty_message: t!("docs-empty").to_string(),
                 empty_detail: rsx! {
-                    p { class: "text-sm text-gray-400 mt-2", {t!("docs-empty-hint")} }
+                    p { class: "text-sm text-gray-500 mt-2", {t!("docs-empty-hint")} }
                 },
                 DataTable {
                     columns,

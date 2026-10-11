@@ -29,7 +29,7 @@ pub fn OrgSwitcher() -> Element {
                 class: "w-full flex items-center justify-between gap-2 rounded-md border border-line bg-surface px-3 py-2 text-left text-sm font-medium text-ink hover:bg-gray-50 transition-colors",
                 onclick: move |_| open.toggle(),
                 span { class: "truncate", {current_name} }
-                icons::ChevronDown { class: "h-4 w-4 text-gray-400 flex-shrink-0" }
+                icons::ChevronDown { class: "h-4 w-4 text-gray-500 flex-shrink-0" }
             }
             if open() {
                 div { class: "absolute bottom-full left-0 right-0 mb-1 rounded-md border border-line bg-surface shadow-lg overflow-hidden z-20",

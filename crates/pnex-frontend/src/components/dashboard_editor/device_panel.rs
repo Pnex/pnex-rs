@@ -239,7 +239,7 @@ pub fn DevicePanel(cx: EditorCx, by_source: BTreeMap<String, Vec<String>>) -> El
             div { class: "flex items-center justify-between px-3 pt-3",
                 span { class: "text-sm font-semibold text-gray-900", {t!("db-from-device")} }
                 button {
-                    class: "text-gray-400 hover:text-gray-600",
+                    class: "text-gray-500 hover:text-gray-600",
                     title: "{close_label}",
                     onclick: move |_| open.set(false),
                     icons::X { class: "h-4 w-4" }
@@ -270,9 +270,9 @@ pub fn DevicePanel(cx: EditorCx, by_source: BTreeMap<String, Vec<String>>) -> El
                     }
                 }
                 if device().is_some() {
-                    p { class: "text-xs font-medium text-gray-400", {t!("db-from-device-outputs")} }
+                    p { class: "text-xs font-medium text-gray-500", {t!("db-from-device-outputs")} }
                     if outputs.is_empty() {
-                        p { class: "text-xs text-gray-400", {t!("db-from-device-no-output")} }
+                        p { class: "text-xs text-gray-500", {t!("db-from-device-no-output")} }
                     }
                     for (pin, kind) in outputs {
                         PinRow {
@@ -286,9 +286,9 @@ pub fn DevicePanel(cx: EditorCx, by_source: BTreeMap<String, Vec<String>>) -> El
                             dirty,
                         }
                     }
-                    p { class: "text-xs font-medium text-gray-400", {t!("db-from-device-metrics")} }
+                    p { class: "text-xs font-medium text-gray-500", {t!("db-from-device-metrics")} }
                     if metrics.is_empty() {
-                        p { class: "text-xs text-gray-400", {t!("db-from-device-no-metric")} }
+                        p { class: "text-xs text-gray-500", {t!("db-from-device-no-metric")} }
                     }
                     for m in metrics.clone() {
                         MetricRow {

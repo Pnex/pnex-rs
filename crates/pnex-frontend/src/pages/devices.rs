@@ -303,10 +303,10 @@ pub fn Devices() -> Element {
                         match &firmware {
                             Some((class, label, date, _)) => rsx! {
                                 span { class: "{class} w-fit", title: "{failure_hint}", {label.clone()} }
-                                span { class: "text-xs text-gray-400", {date.clone()} }
+                                span { class: "text-xs text-gray-500", {date.clone()} }
                             },
                             None => rsx! {
-                                span { class: "text-xs text-gray-400", {t!("devices-build-never")} }
+                                span { class: "text-xs text-gray-500", {t!("devices-build-never")} }
                             },
                         }
                         // Running version (announce) and newest deployable build.
@@ -422,7 +422,7 @@ pub fn Devices() -> Element {
                         }
                     }
                     button {
-                        class: "px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors",
+                        class: crate::components::ui::BTN_SECONDARY_SM,
                         onclick: move |_| selected.set(Some(pk)),
                         {t!("devices-detail")}
                     }
@@ -824,7 +824,7 @@ fn RebuildModal(
                 PnexHostPicker { selected: host_sel }
                 if has_screens {
                     div { class: "space-y-1",
-                        span { class: "text-xs text-gray-400", {t!("board-screen-toggle")} }
+                        span { class: "text-xs text-gray-500", {t!("board-screen-toggle")} }
                         div { class: "flex flex-wrap gap-1",
                             for opt in options {
                                 button {
@@ -1002,7 +1002,7 @@ fn BulkModal(
                             key: "{pk}",
                             class: "flex items-center justify-between gap-3 px-3 py-2 text-sm",
                             code { class: "font-medium", {device_id} }
-                            span { class: if ok { "text-xs text-gray-700" } else { "text-xs text-gray-400" },
+                            span { class: if ok { "text-xs text-gray-700" } else { "text-xs text-gray-500" },
                                 {text}
                             }
                         }
@@ -1359,7 +1359,7 @@ fn last_seen_label(last_seen: &Option<String>) -> Element {
         None => t!("devices-last-seen-never"),
     };
     rsx! {
-        span { class: "text-xs text-gray-400", {label} }
+        span { class: "text-xs text-gray-500", {label} }
     }
 }
 
@@ -1425,7 +1425,7 @@ fn DeviceDetail(
                             }
                             if let Some((class, label, date)) = &firmware_badge {
                                 span { class: "{class}", {label.clone()} }
-                                span { class: "text-xs text-gray-400", {date.clone()} }
+                                span { class: "text-xs text-gray-500", {date.clone()} }
                             }
                             {last_seen_label(&device.last_seen)}
                             div { class: "flex-1" }
@@ -1603,7 +1603,7 @@ fn SecretCard(
                         }
                     }
                 }
-                p { class: "text-xs text-gray-400", "{hint}" }
+                p { class: "text-xs text-gray-500", "{hint}" }
                 div { class: "flex flex-wrap items-center gap-2",
                     code { class: "min-w-0 flex-1 truncate rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 font-mono text-sm",
                         {if revealed() { value.clone() } else { mask.clone() }}
@@ -1669,7 +1669,7 @@ fn black_box_outputs(device: &pnex_core::Device) -> Element {
             div { class: "rounded-lg border border-gray-800 bg-gray-900 p-4 space-y-2",
                 div { class: "flex items-center gap-2",
                     span { class: "inline-block h-2.5 w-2.5 rounded-full bg-green-500" }
-                    span { class: "font-mono text-xs text-gray-400", {device.device_id.clone()} }
+                    span { class: "font-mono text-xs text-gray-500", {device.device_id.clone()} }
                 }
                 div { class: "flex flex-wrap gap-2",
                     for cap in &device.capabilities {

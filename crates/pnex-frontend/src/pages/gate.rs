@@ -20,7 +20,7 @@ pub fn GateScreen() -> Element {
                 p { class: "text-sm text-gray-500", {t!("gate-checking")} }
                 // Serveur en cours de vérification — rend l'attente lisible.
                 if !crate::api::config::api_base().is_empty() {
-                    p { class: "text-xs text-gray-400", "{crate::api::config::api_base()}" }
+                    p { class: "text-xs text-gray-500", "{crate::api::config::api_base()}" }
                 }
                 // Escape hatch: never leave the user trapped on the spinner.
                 if !cfg!(target_arch = "wasm32") && crate::api::config::locked_server().is_none() {

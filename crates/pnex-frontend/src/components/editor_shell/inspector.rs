@@ -55,12 +55,12 @@ pub fn InspectorPanel(
                 div { class: "min-w-0",
                     div { class: "truncate text-sm font-semibold text-gray-900", {title} }
                     if let Some(sub) = subtitle {
-                        div { class: "text-xs text-gray-400", {sub} }
+                        div { class: "text-xs text-gray-500", {sub} }
                     }
                 }
                 div { class: "flex-1" }
                 button {
-                    class: "shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600",
+                    class: "shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-600",
                     title: "{close_label}",
                     onclick: move |_| on_close.call(()),
                     icons::X { class: "h-4 w-4" }

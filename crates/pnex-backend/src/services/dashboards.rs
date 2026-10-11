@@ -150,7 +150,8 @@ pub async fn create_dashboard(
         canvas: pnex_core::CanvasSpec {
             width: 1600,
             height: 900,
-            background: Some("#f8fafc".into()),
+            // None follows the UI theme (light or dark ground).
+            background: None,
         },
         widgets: vec![],
         wires: vec![],

@@ -559,7 +559,7 @@ pub fn TourViewer(
                             for (floor, is_active, target) in floor_buttons.clone() {
                                 button {
                                     key: "{floor.id}",
-                                    class: if target.is_none() { "w-full text-left px-2 py-1.5 text-sm rounded-lg bg-gray-50 text-gray-400 border border-transparent cursor-not-allowed" } else if is_active { "w-full text-left px-2 py-1.5 text-sm rounded-lg bg-blue-50 text-blue-700 border border-blue-200" } else { "w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-gray-50 text-gray-700 border border-transparent" },
+                                    class: if target.is_none() { "w-full text-left px-2 py-1.5 text-sm rounded-lg bg-gray-50 text-gray-500 border border-transparent cursor-not-allowed" } else if is_active { "w-full text-left px-2 py-1.5 text-sm rounded-lg bg-blue-50 text-blue-700 border border-blue-200" } else { "w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-gray-50 text-gray-700 border border-transparent" },
                                     // Un étage sans scène n'a rien à montrer : no-op
                                     // silencieux = confusion (constat 2026-09-16) —
                                     // visuellement désactivé.
@@ -642,7 +642,7 @@ pub fn TourViewer(
                     div {
                         class: "flex items-center justify-center bg-gray-100 rounded-lg",
                         style: "height: 320px;",
-                        p { class: "text-sm text-gray-400", {t!("tour-viewer-unavailable")} }
+                        p { class: "text-sm text-gray-500", {t!("tour-viewer-unavailable")} }
                     }
                 }
                 div {

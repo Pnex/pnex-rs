@@ -360,7 +360,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                     {t!("wizard-shuffle")}
                                 }
                             }
-                            span { class: "text-xs text-gray-400", "{device_id().chars().count()}/16" }
+                            span { class: "text-xs text-gray-500", "{device_id().chars().count()}/16" }
 
                             div {
                                 span { class: "block mb-2 text-xs font-semibold text-gray-500", {t!("wizard-labels-title")} }
@@ -382,7 +382,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                     Step::Model => rsx! {
                         div { class: "space-y-4",
                             div { class: "relative",
-                                icons::Search { class: "h-4 w-4 absolute left-3 top-3 text-gray-400" }
+                                icons::Search { class: "h-4 w-4 absolute left-3 top-3 text-gray-500" }
                                 input {
                                     class: "w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm",
                                     r#type: "search",
@@ -396,7 +396,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                 if !models.is_empty() {
                                     div {
                                         h4 { class: "text-xs font-semibold text-blue-600", {title} }
-                                        p { class: "text-xs text-gray-400 mb-2", {help} }
+                                        p { class: "text-xs text-gray-500 mb-2", {help} }
                                         div { class: "grid gap-2",
                                             for pd in models {
                                                 {model_card(pd, selected, variant_board_id)}
@@ -407,7 +407,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                             }
 
                             if visible_models.is_empty() {
-                                p { class: "text-sm text-gray-400 text-center py-6", {t!("wizard-model-none")} }
+                                p { class: "text-sm text-gray-500 text-center py-6", {t!("wizard-model-none")} }
                             }
 
                             // Variantes de board du modèle générique sélectionné
@@ -441,7 +441,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                     rsx! {
                                         div { class: "border-t border-gray-100 pt-3",
                                             h4 { class: "text-xs font-semibold text-gray-600 mb-2", {t!("wizard-board-variant")} }
-                                            p { class: "text-xs text-gray-400 mb-2", {t!("wizard-board-variant-help")} }
+                                            p { class: "text-xs text-gray-500 mb-2", {t!("wizard-board-variant-help")} }
                                             div { class: "flex flex-wrap gap-2",
                                                 for v in variants {
                                                     VariantChip {
@@ -523,7 +523,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                         div { class: "space-y-4",
                             WifiCredentialPicker { selected: wifi_sel }
                             PnexHostPicker { selected: host_sel }
-                            p { class: "text-xs text-gray-400", {t!("wizard-config-help")} }
+                            p { class: "text-xs text-gray-500", {t!("wizard-config-help")} }
                             div { class: "flex justify-between pt-2",
                                 button {
                                     class: BTN_SECONDARY,
@@ -604,7 +604,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                                 span { class: phase_badge(Some(record.build_phase.as_str())).0,
                                                     {phase_badge(Some(record.build_phase.as_str())).1}
                                                 }
-                                                span { class: "text-xs text-gray-400", {date_label(&record.updated_at)} }
+                                                span { class: "text-xs text-gray-500", {date_label(&record.updated_at)} }
                                             }
                                             if record.succeeded() {
                                                 div { class: "space-y-2",
@@ -735,7 +735,7 @@ fn step_label_class(index: usize, current: usize) -> &'static str {
     } else if index < current {
         "hidden text-xs font-medium text-blue-700 sm:inline"
     } else {
-        "hidden text-xs text-gray-400 sm:inline"
+        "hidden text-xs text-gray-500 sm:inline"
     }
 }
 
@@ -794,7 +794,7 @@ fn model_card(
                     }
                 }
                 if hidden_caps > 0 {
-                    span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-400",
+                    span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500",
                         "+{hidden_caps}"
                     }
                 }
@@ -864,14 +864,14 @@ fn VariantChip(
             span { class: "text-sm font-semibold text-gray-900 pr-6",
                 {board.pretty_name.clone().unwrap_or_else(|| board.name.clone())}
             }
-            span { class: "text-xs font-mono text-gray-400", "{meta}" }
+            span { class: "text-xs font-mono text-gray-500", "{meta}" }
             if builtin_screen {
                 span { class: "inline-flex items-center gap-1 text-xs text-teal-700 bg-teal-50 rounded-full px-1.5 py-0.5",
                     {t!("board-peripheral-screen")}
                 }
             }
             button {
-                class: "absolute top-2 right-2 p-1 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors",
+                class: "absolute top-2 right-2 p-1 rounded-md text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors",
                 r#type: "button",
                 title: t!("board-pinout-preview"),
                 aria_label: t!("board-pinout-preview"),

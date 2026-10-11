@@ -23,7 +23,7 @@ pub fn FunctionNodePreview(
     };
     rsx! {
         section { class: "rounded-xl border border-gray-200 bg-white p-4",
-            div { class: "mb-3 text-sm text-gray-400", {t!("functions-preview-hint")} }
+            div { class: "mb-3 text-sm text-gray-500", {t!("functions-preview-hint")} }
             div { class: "flex items-center justify-center gap-2",
                 div { class: "flex flex-col gap-3 items-end",
                     for input in inputs {
@@ -31,7 +31,7 @@ pub fn FunctionNodePreview(
                             span {
                                 span { class: "text-gray-800", "{input.name} " }
                                 if let Some(d) = &input.default {
-                                    span { class: "text-gray-400", "{d}" }
+                                    span { class: "text-gray-500", "{d}" }
                                 }
                             }
                             span { class: "h-0.5 w-5 bg-teal-400" }

@@ -346,7 +346,7 @@ pub(super) fn RegTtForm(
                     );
                 },
             }
-            p { class: "text-xs text-gray-400",
+            p { class: "text-xs text-gray-500",
                 {
                     if heat {
                         t!("flows-reg-tt-heat-hint").to_string()
@@ -718,7 +718,7 @@ pub(super) fn RegPidForm(
                     );
                 },
             }
-            p { class: "text-xs text-gray-400", {t!("flows-reg-pid-hint")} }
+            p { class: "text-xs text-gray-500", {t!("flows-reg-pid-hint")} }
         }
     }
 }

@@ -327,7 +327,7 @@ pub fn PropertyValue(
 ) -> Element {
     let Some(v) = value else {
         return rsx! {
-            span { class: "text-gray-400", "—" }
+            span { class: "text-gray-500", "—" }
         };
     };
     match (&def.kind, &v) {

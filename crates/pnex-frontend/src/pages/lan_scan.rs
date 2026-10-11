@@ -125,7 +125,7 @@ pub(crate) fn LanScanSection() -> Element {
             }
             if let Some(list) = hits.cloned() {
                 if list.is_empty() {
-                    p { class: "text-xs text-gray-400 text-center", {t!("scan-none")} }
+                    p { class: "text-xs text-gray-500 text-center", {t!("scan-none")} }
                 }
                 for hit in list {
                     ScanRow { hit }

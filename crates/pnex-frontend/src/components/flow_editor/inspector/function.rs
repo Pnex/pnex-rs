@@ -113,7 +113,7 @@ pub(super) fn FunctionForm(
                 div { class: "flex items-center gap-2 text-xs flex-wrap",
                     span { class: "text-gray-500", {t!("flows-inspector-function-version")} }
                     span { class: "font-mono text-gray-700", {format!("v{pinned_version}")} }
-                    span { class: "text-gray-400", "·" }
+                    span { class: "text-gray-500", "·" }
                     span { class: "text-gray-500", {t!("flows-inspector-function-current")} }
                     span { class: "font-mono text-gray-700", {format!("v{current_version}")} }
                     if stale {

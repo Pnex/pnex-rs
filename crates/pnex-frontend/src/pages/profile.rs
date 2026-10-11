@@ -260,7 +260,7 @@ pub fn Profile() -> Element {
                         }
                     }
                     crate::components::server_ca_card::ServerCaCard {}
-                    p { class: "text-xs text-gray-400 px-2", {t!("profile-theme-note")} }
+                    p { class: "text-xs text-gray-500 px-2", {t!("profile-theme-note")} }
                 }
             }
         }

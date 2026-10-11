@@ -164,7 +164,7 @@ pub(super) fn SaveAsTemplate(mut cx: EditorCx, widget_id: String) -> Element {
                         {t!("common-cancel")}
                     }
                     button {
-                        class: if busy() || name().trim().is_empty() { "px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg opacity-40 cursor-not-allowed" } else { "px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700" },
+                        class: crate::components::ui::BTN_PRIMARY,
                         disabled: busy() || name().trim().is_empty(),
                         onclick: move |_| {
                             let layout_now = cx.layout.read().clone();

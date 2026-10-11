@@ -102,7 +102,7 @@ pub fn ObjectSourcePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Eleme
                         }
                     }
                 }
-                p { class: "text-xs text-gray-400", {t!("insp-object-help")} }
+                p { class: "text-xs text-gray-500", {t!("insp-object-help")} }
             }
         }
     }

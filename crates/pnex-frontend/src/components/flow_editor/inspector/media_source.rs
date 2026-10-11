@@ -83,7 +83,7 @@ pub(super) fn MediaSourceForm(
                                     },
                                 }
                                 span { "{name}" }
-                                span { class: "text-xs text-gray-400", "{slug}" }
+                                span { class: "text-xs text-gray-500", "{slug}" }
                             }
                         }
                     }
@@ -153,7 +153,7 @@ pub(super) fn MediaSourceForm(
                         }
                     },
                 }
-                span { class: "text-xs text-gray-400 mt-1 block",
+                span { class: "text-xs text-gray-500 mt-1 block",
                     {t!("flows-media-source-min-confidence-hint")}
                 }
             }

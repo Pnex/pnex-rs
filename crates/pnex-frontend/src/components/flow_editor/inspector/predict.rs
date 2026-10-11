@@ -149,7 +149,7 @@ fn field_input(
                 oninput,
             }
             if !hint.is_empty() {
-                span { class: "text-xs text-gray-400 mt-1 block", {hint} }
+                span { class: "text-xs text-gray-500 mt-1 block", {hint} }
             }
         }
     }
@@ -281,7 +281,7 @@ pub(super) fn AnomalyForm(mut cx: EditorCx, initial: AnomalyConfig, can_write: b
                         }
                     }
                 }
-                span { class: "text-xs text-gray-400 mt-1 block", {method_help(method)} }
+                span { class: "text-xs text-gray-500 mt-1 block", {method_help(method)} }
             }
             {
                 field_input(
@@ -373,7 +373,7 @@ pub(super) fn AnomalyForm(mut cx: EditorCx, initial: AnomalyConfig, can_write: b
                     )
                 }
             }
-            p { class: "text-xs text-gray-400", {t!("flows-anomaly-ports-help")} }
+            p { class: "text-xs text-gray-500", {t!("flows-anomaly-ports-help")} }
         }
     }
 }
@@ -514,7 +514,7 @@ pub(super) fn ForecastForm(mut cx: EditorCx, initial: ForecastConfig, can_write:
                 }
             }
             if let Some(span) = horizon_span_hint(&horizon.read()) {
-                p { class: "text-xs text-gray-400", {span} }
+                p { class: "text-xs text-gray-500", {span} }
             }
             if model == ForecastModel::Ets {
                 {
@@ -585,7 +585,7 @@ pub(super) fn ForecastForm(mut cx: EditorCx, initial: ForecastConfig, can_write:
                     on(F_EVERY, every),
                 )
             }
-            p { class: "text-xs text-gray-400", {t!("flows-forecast-ports-help")} }
+            p { class: "text-xs text-gray-500", {t!("flows-forecast-ports-help")} }
         }
     }
 }

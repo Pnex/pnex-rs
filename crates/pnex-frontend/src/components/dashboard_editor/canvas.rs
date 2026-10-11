@@ -28,7 +28,9 @@ pub(super) fn CanvasView(cx: EditorCx) -> Element {
     let bg = canvas
         .background
         .clone()
-        .unwrap_or_else(|| "#f8fafc".into());
+        // "#f8fafc" was the stored default before dark mode: follow the theme.
+        .filter(|b| b != "#f8fafc")
+        .unwrap_or_else(|| "var(--color-slate-50, #f8fafc)".into());
 
     rsx! {
         div {
@@ -319,7 +321,11 @@ fn WireElement(
     };
     let id = wire.id.clone();
     let is_selected = matches!(&selected, Some(Selection::Wire(sel)) if *sel == wire.id);
-    let stroke = if is_selected { "#2563eb" } else { "#94a3b8" };
+    let stroke = if is_selected {
+        "var(--color-blue-600, #2563eb)"
+    } else {
+        "var(--color-slate-400, #94a3b8)"
+    };
     rsx! {
         g {
             style: "pointer-events: stroke; cursor: pointer;",
@@ -362,14 +368,18 @@ fn AnchorElement(
         side,
     };
     let armed = matches!(&wire_draft, Some(d) if d.widget_id == w.id && d.side == side);
-    let fill = if armed { "#2563eb" } else { "#94a3b8" };
+    let fill = if armed {
+        "var(--color-blue-600, #2563eb)"
+    } else {
+        "var(--color-slate-400, #94a3b8)"
+    };
     rsx! {
         circle {
             cx: "{ax}",
             cy: "{ay}",
             r: "6",
             fill: "{fill}",
-            stroke: "#ffffff",
+            stroke: "var(--color-white, #ffffff)",
             "stroke-width": "2",
             style: "pointer-events: all; cursor: crosshair;",
             onpointerdown: move |event| {

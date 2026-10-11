@@ -154,7 +154,7 @@ pub fn FlashModal(device_id: String, on_close: Callback<()>) -> Element {
                                         div { class: "flex items-center justify-between text-sm",
                                             span { class: "text-gray-600", {stage_label(&stage)} }
                                             if !chip().is_empty() {
-                                                span { class: "text-xs text-gray-400", {chip()} }
+                                                span { class: "text-xs text-gray-500", {chip()} }
                                             }
                                         }
                                         div { class: "w-full bg-gray-200 rounded-full h-2.5",
@@ -163,7 +163,7 @@ pub fn FlashModal(device_id: String, on_close: Callback<()>) -> Element {
                                                 style: "width: {percent}%",
                                             }
                                         }
-                                        p { class: "text-xs text-gray-400 text-right", "{percent} %" }
+                                        p { class: "text-xs text-gray-500 text-right", "{percent} %" }
                                     }
                                 },
                                 Some(FlashState::Done) => rsx! {
@@ -187,11 +187,11 @@ pub fn FlashModal(device_id: String, on_close: Callback<()>) -> Element {
                                         ReplugAnimation {}
                                         p { class: "text-sm text-gray-700", {t!("flash-replug-prompt")} }
                                         p { class: "text-xs text-gray-500", {t!("flash-replug-hint")} }
-                                        p { class: "text-xs text-gray-400 break-words",
+                                        p { class: "text-xs text-gray-500 break-words",
                                             {crate::api::error_i18n::resolve(&err_codes::fluent_key(error.code), None)}
                                         }
                                         if let Some(detail) = &error.detail {
-                                            p { class: "text-xs text-gray-400 break-words", {detail.clone()} }
+                                            p { class: "text-xs text-gray-500 break-words", {detail.clone()} }
                                         }
                                         div { class: "flex gap-2",
                                             button {
@@ -284,7 +284,7 @@ fn ReplugAnimation() -> Element {
             }
             div { class: "flex justify-center items-center gap-3 text-xs text-gray-700",
                 span { class: "pnex-replug-step-1", {t!("flash-replug-step-unplug")} }
-                span { class: "text-gray-400", "→" }
+                span { class: "text-gray-500", "→" }
                 span { class: "pnex-replug-step-2", {t!("flash-replug-step-replug")} }
             }
         }

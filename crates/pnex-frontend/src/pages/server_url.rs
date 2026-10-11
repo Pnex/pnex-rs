@@ -276,7 +276,7 @@ pub(crate) fn SelfHostedSection() -> Element {
     rsx! {
         div { class: "pt-1",
             button {
-                class: "flex items-center gap-1.5 mx-auto text-xs text-gray-400 hover:text-gray-600",
+                class: "flex items-center gap-1.5 mx-auto text-xs text-gray-500 hover:text-gray-600",
                 onclick: move |_| {
                     open.with_mut(|o| *o = !*o);
                     saved.set(false);

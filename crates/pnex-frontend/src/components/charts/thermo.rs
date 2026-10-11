@@ -85,7 +85,7 @@ fn diagram_key(t: &ThermoChartOptions) -> String {
 }
 
 /// Couleurs littérales (scanner Tailwind + attributs SVG).
-const CURVE: &str = "#94a3b8";
+const CURVE: &str = "var(--color-slate-400, #94a3b8)";
 const DOME: &str = "#475569";
 const CYCLE: &str = "#dc2626";
 const FRAME: &str = "#9ca3af";
@@ -99,7 +99,7 @@ pub fn ThermoChart(
     let Some(thermo) = widget.options.thermo.clone() else {
         return rsx! {
             div { class: "flex h-full w-full items-center justify-center",
-                span { class: "text-xs text-gray-400", {t!("db-thermo-no-options")} }
+                span { class: "text-xs text-gray-500", {t!("db-thermo-no-options")} }
             }
         };
     };
@@ -208,7 +208,7 @@ pub fn ThermoChart(
                     y: "{pad}",
                     width: "{inner_w}",
                     height: "{inner_h}",
-                    fill: "#ffffff",
+                    fill: "var(--color-white, #ffffff)",
                     stroke: "{FRAME}",
                     "stroke-width": "1",
                 }

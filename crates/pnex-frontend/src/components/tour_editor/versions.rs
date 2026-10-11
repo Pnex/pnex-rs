@@ -53,7 +53,7 @@ pub(crate) fn VersionsDrawer(
                 div { class: "flex items-center justify-between px-4 py-3 border-b border-gray-200",
                     h3 { class: "text-sm font-semibold text-gray-900", {t!("studio-versions-title")} }
                     button {
-                        class: "text-gray-400 hover:text-gray-600",
+                        class: "text-gray-500 hover:text-gray-600",
                         onclick: close,
                         {"✕"}
                     }
@@ -181,7 +181,7 @@ pub(crate) fn VersionsDrawer(
                 {
                     match &*versions.value().read() {
                         Some(Ok(paged)) if paged.results.is_empty() => rsx! {
-                            p { class: "p-4 text-sm text-gray-400", {t!("studio-versions-empty")} }
+                            p { class: "p-4 text-sm text-gray-500", {t!("studio-versions-empty")} }
                         },
                         Some(Ok(paged)) => rsx! {
                             ul { class: "flex-1 overflow-y-auto divide-y divide-gray-100",
@@ -269,7 +269,7 @@ fn version_row(
                         {t!("studio-version-published-tag")}
                     }
                 }
-                span { class: "text-xs text-gray-400 ml-auto", {date_label(&version.created_at)} }
+                span { class: "text-xs text-gray-500 ml-auto", {date_label(&version.created_at)} }
             }
             div { class: "text-xs text-gray-500",
                 if let Some(author) = &version.author {

@@ -209,7 +209,7 @@ pub fn ResourcePicker(
                 }
                 match &*list.value().read() {
                     Some(Ok(result)) if result.rows.is_empty() => rsx! {
-                        p { class: "text-sm text-gray-400 text-center py-6", {t!("poi-picker-empty")} }
+                        p { class: "text-sm text-gray-500 text-center py-6", {t!("poi-picker-empty")} }
                     },
                     Some(Ok(result)) => rsx! {
                         ul { class: "divide-y divide-gray-100 max-h-80 overflow-y-auto",
@@ -249,7 +249,7 @@ pub fn ResourcePicker(
                                             on_picked.call(pick);
                                         },
                                         div { class: "text-sm font-medium text-gray-900", {row.name.clone()} }
-                                        div { class: "text-xs text-gray-400", {row.subtitle.clone()} }
+                                        div { class: "text-xs text-gray-500", {row.subtitle.clone()} }
                                     }
                                 }
                             }

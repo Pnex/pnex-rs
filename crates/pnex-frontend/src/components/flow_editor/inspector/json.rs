@@ -85,7 +85,7 @@ pub(super) fn JsonSplitForm(
                         div { class: "text-xs font-mono text-gray-600 pl-4", "• {k}" }
                     }
                     if key_rows.is_empty() {
-                        p { class: "text-xs text-gray-400", {t!("flows-json-split-auto-empty")} }
+                        p { class: "text-xs text-gray-500", {t!("flows-json-split-auto-empty")} }
                     }
                 }
                 if !auto {
@@ -318,7 +318,7 @@ pub(super) fn JsonMergeForm(
                     }
                 }
             }
-            p { class: "text-xs text-gray-400", {t!("flows-json-merge-hint")} }
+            p { class: "text-xs text-gray-500", {t!("flows-json-merge-hint")} }
         }
     }
 }

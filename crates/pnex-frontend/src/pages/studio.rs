@@ -111,7 +111,7 @@ pub fn Studio() -> Element {
                 rsx! {
                     div { class: "flex items-center gap-2",
                         {tour.name.clone()}
-                        span { class: "text-xs text-gray-400", {tour.mode.clone()} }
+                        span { class: "text-xs text-gray-500", {tour.mode.clone()} }
                     }
                     LabelChips { labels }
                 }
@@ -134,7 +134,7 @@ pub fn Studio() -> Element {
                             {t!("studio-published-tag", version: version)}
                         }
                     } else {
-                        span { class: "text-xs text-gray-400", {t!("studio-publish-none")} }
+                        span { class: "text-xs text-gray-500", {t!("studio-publish-none")} }
                     }
                 }
             },
@@ -155,7 +155,7 @@ pub fn Studio() -> Element {
                 rsx! {
                     div { class: "flex items-center gap-1.5",
                         button {
-                            class: "px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors",
+                            class: crate::components::ui::BTN_SECONDARY_SM,
                             onclick: move |_| selected.set(Some(id_open.clone())),
                             {t!("studio-open")}
                         }

@@ -60,10 +60,10 @@ pub(super) fn FunctionTestModal(
             busy: running,
             max_width: "max-w-2xl".to_string(),
             div { class: "space-y-3",
-                p { class: "text-xs text-gray-400", {t!("functions-test-hint")} }
+                p { class: "text-xs text-gray-500", {t!("functions-test-hint")} }
 
                 if inputs.is_empty() {
-                    p { class: "text-xs text-gray-400", {t!("functions-test-no-inputs")} }
+                    p { class: "text-xs text-gray-500", {t!("functions-test-no-inputs")} }
                 }
                 div { class: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3",
                     for input in inputs.clone() {
@@ -83,19 +83,19 @@ pub(super) fn FunctionTestModal(
                 match result {
                     Some(resp) if resp.ok => rsx! {
                         div { class: "space-y-2",
-                            div { class: "flex items-center gap-3 text-xs text-gray-400",
+                            div { class: "flex items-center gap-3 text-xs text-gray-500",
                                 span { {format!("{} {} ms", t!("functions-test-duration"), resp.duration_ms)} }
                             }
                             if !resp.logs.is_empty() {
                                 div { class: "rounded-lg bg-gray-50 border border-gray-200 p-2",
-                                    p { class: "text-xs font-semibold text-gray-400 mb-1", {t!("functions-test-logs")} }
+                                    p { class: "text-xs font-semibold text-gray-500 mb-1", {t!("functions-test-logs")} }
                                     for line in resp.logs.clone() {
                                         p { class: "text-xs text-gray-600 font-mono", {line} }
                                     }
                                 }
                             }
                             div {
-                                p { class: "text-xs font-semibold text-gray-400 mb-1", {t!("functions-test-outputs")} }
+                                p { class: "text-xs font-semibold text-gray-500 mb-1", {t!("functions-test-outputs")} }
                                 if has_port_rows {
                                     div { class: "space-y-1.5",
                                         for (label, muted, pretty) in port_rows {
@@ -200,7 +200,7 @@ fn test_field(
                 },
             }
             if !label_desc.is_empty() {
-                span { class: "text-xs text-gray-400 block mt-0.5", {label_desc} }
+                span { class: "text-xs text-gray-500 block mt-0.5", {label_desc} }
             }
         }
     }

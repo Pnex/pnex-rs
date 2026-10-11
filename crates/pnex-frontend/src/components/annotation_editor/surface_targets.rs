@@ -106,7 +106,7 @@ pub fn ControlTargetEditor(
 
     rsx! {
         div { class: "space-y-2 rounded-lg border border-teal-100 bg-teal-50/40 p-2",
-            p { class: "text-xs font-medium text-gray-400", {t!("insp-control")} }
+            p { class: "text-xs font-medium text-gray-500", {t!("insp-control")} }
             if pending {
                 div { class: "rounded border border-dashed border-teal-300 bg-white px-2 py-1.5 text-xs",
                     p { class: "font-mono text-teal-800", "{reference}" }

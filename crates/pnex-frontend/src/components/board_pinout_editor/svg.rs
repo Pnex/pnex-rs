@@ -183,7 +183,11 @@ fn PinChip(view: PinView, mut selected_label: Signal<Option<String>>) -> Element
     // Anneau « configuré » centré sur le pad (halo) — jamais décalé.
     let ring_x = view.x;
     let opacity = if view.reserved { "0.55" } else { "1" };
-    let stroke = if view.selected { "#2563eb" } else { "#cbd5e1" };
+    let stroke = if view.selected {
+        "var(--color-blue-600, #2563eb)"
+    } else {
+        "var(--color-slate-300, #cbd5e1)"
+    };
     let stroke_w = if view.selected { "2.4" } else { "1.2" };
     let mut badge_x = if left {
         view.chip_x + CHIP_W - 14.0
@@ -213,7 +217,7 @@ fn PinChip(view: PinView, mut selected_label: Signal<Option<String>>) -> Element
                     cy: "{view.y}",
                     r: "8",
                     fill: "none",
-                    stroke: "#2563eb",
+                    stroke: "var(--color-blue-600, #2563eb)",
                     stroke_width: "2",
                 }
             }
@@ -223,7 +227,7 @@ fn PinChip(view: PinView, mut selected_label: Signal<Option<String>>) -> Element
                 width: "{CHIP_W}",
                 height: "{CHIP_H}",
                 rx: "7",
-                fill: "#ffffff",
+                fill: "var(--color-white, #ffffff)",
                 stroke: "{stroke}",
                 stroke_width: "{stroke_w}",
             }
@@ -246,7 +250,7 @@ fn PinChip(view: PinView, mut selected_label: Signal<Option<String>>) -> Element
             text {
                 x: "{view.chip_x + 12.0}",
                 y: "{view.y + 10.0}",
-                fill: "#94a3b8",
+                fill: "var(--color-slate-400, #94a3b8)",
                 font_size: "8.5",
                 font_family: "ui-monospace, monospace",
                 {sub}

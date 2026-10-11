@@ -246,7 +246,7 @@ pub fn Events() -> Element {
             }
             if !available {
                 div { class: "text-center py-12 bg-white rounded-lg shadow border border-gray-200",
-                    icons::History { class: "h-8 w-8 text-gray-400 mx-auto" }
+                    icons::History { class: "h-8 w-8 text-gray-500 mx-auto" }
                     p { class: "text-gray-900 font-medium mt-3", {t!("events-unavailable-title")} }
                     p { class: "text-gray-600 mt-2 max-w-xl mx-auto text-sm",
                         {t!("events-unavailable-message")}
@@ -258,7 +258,7 @@ pub fn Events() -> Element {
                     is_empty,
                     empty_message: t!("events-empty-title").to_string(),
                     empty_icon: rsx! {
-                        icons::History { class: "h-8 w-8 text-gray-400" }
+                        icons::History { class: "h-8 w-8 text-gray-500" }
                     },
                     empty_detail: rsx! {
                         p { class: "text-gray-600 mt-2 max-w-xl mx-auto", {t!("events-empty-message")} }
@@ -315,9 +315,9 @@ fn EventRow(ev: EventRecord) -> Element {
             },
             td { class: "td text-gray-600 whitespace-nowrap",
                 if open() {
-                    icons::ChevronDown { class: "h-3 w-3 inline mr-1 text-gray-400" }
+                    icons::ChevronDown { class: "h-3 w-3 inline mr-1 text-gray-500" }
                 } else {
-                    icons::ChevronRight { class: "h-3 w-3 inline mr-1 text-gray-400" }
+                    icons::ChevronRight { class: "h-3 w-3 inline mr-1 text-gray-500" }
                 }
                 {ts_label(ev.ts_us)}
             }

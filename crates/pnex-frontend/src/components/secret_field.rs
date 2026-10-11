@@ -218,9 +218,9 @@ pub fn SecretField(
                     }
                 }
             } else if managers_only {
-                span { class: "text-xs text-gray-400", {t!("secret-field-managers-only")} }
+                span { class: "text-xs text-gray-500", {t!("secret-field-managers-only")} }
             } else if read_only {
-                span { class: "text-xs text-gray-400", {t!("secret-field-unset")} }
+                span { class: "text-xs text-gray-500", {t!("secret-field-unset")} }
             } else {
                 div { class: "inline-flex rounded-lg bg-gray-100 p-0.5",
                     if can_manage {

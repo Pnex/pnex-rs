@@ -382,7 +382,7 @@ pub fn DashboardEditor(
             },
             actions: rsx! {
                 button {
-                    class: if save_disabled { "inline-flex items-center px-4 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg opacity-40 cursor-not-allowed" } else { "inline-flex items-center px-4 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700" },
+                    class: crate::components::ui::BTN_PRIMARY_SM,
                     disabled: save_disabled,
                     onclick: move |_| save(cx, None),
                     icons::Save { class: "h-4 w-4 mr-1" }

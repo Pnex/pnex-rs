@@ -129,12 +129,22 @@ Les entrées « bientôt » sans route sont retirées du menu.
    battre `w-full` d'`INPUT` prend le suffixe `!` (`w-32!`).
 3. Couleurs par les jetons ; une couleur vive doit dire un état.
 4. Vérifier la page en clair **et** en sombre, en desktop **et** à 390 px.
+5. Texte secondaire en `text-gray-500` au plus clair (`gray-400` échoue au
+   contraste dans les deux thèmes ; il reste pour les placeholders et les
+   états désactivés).
+6. Couleurs de canevas SVG (nœuds, grilles, câbles) en
+   `var(--color-…, #hex)` plutôt qu'en hexadécimal brut : le mode sombre
+   les inverse comme le reste. Une couleur choisie par l'utilisateur
+   (fond, symbole) reste telle quelle.
+7. Un seul bouton plein par écran : dans un éditeur, « Enregistrer » tant
+   qu'il y a des modifications, puis l'action suivante (« Déployer »).
 
 ## 7. Reste à faire
 
 - Renommer `blue-*` → `signal-*` (raccourci du §2).
-- Éditeurs plein écran (flows, dashboards, Studio, firmware) et leurs
-  panneaux : passés par les remplacements mécaniques, pas encore revus un à un.
+- Éditeurs plein écran : flows, dashboards, Studio et annotations revus en
+  clair et sombre (2026-10-11) ; l'éditeur de firmware et les inspecteurs
+  de chaque type de nœud/widget restent à parcourir un à un.
 - Onglets de l'Ontologie au-dessus du titre de la page, à replacer sous
   l'en-tête (le style est partagé depuis `TAB_*`).
 - Dossiers d'enquête (`pages/cases`) : boutons et champs encore en classes

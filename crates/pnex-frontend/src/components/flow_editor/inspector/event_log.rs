@@ -106,7 +106,7 @@ pub(super) fn EventLogForm(mut cx: EditorCx, initial: EventLogConfig, can_write:
                         );
                     },
                 }
-                span { class: "text-xs text-gray-400 mt-1 block",
+                span { class: "text-xs text-gray-500 mt-1 block",
                     {t!("flows-event-log-message-hint", count : message_len, max : MESSAGE_MAX)}
                 }
             }

@@ -24,7 +24,7 @@ pub(super) fn FunctionVersionsDrawer(
                         {t!("functions-versions-title")}
                     }
                     button {
-                        class: "text-gray-400 hover:text-gray-600",
+                        class: "text-gray-500 hover:text-gray-600",
                         onclick: close,
                         {"✕"}
                     }
@@ -32,7 +32,7 @@ pub(super) fn FunctionVersionsDrawer(
                 {
                     match &*versions.value().read() {
                         Some(Ok(paged)) if paged.results.is_empty() => rsx! {
-                            p { class: "p-4 text-sm text-gray-400", {t!("functions-versions-empty")} }
+                            p { class: "p-4 text-sm text-gray-500", {t!("functions-versions-empty")} }
                         },
                         Some(Ok(paged)) => rsx! {
                             ul { class: "flex-1 overflow-y-auto divide-y divide-gray-100",
@@ -47,7 +47,7 @@ pub(super) fn FunctionVersionsDrawer(
                                                     {t!("functions-version-current-tag")}
                                                 }
                                             }
-                                            span { class: "text-xs text-gray-400 ml-auto", {date_label(&version.created_at)} }
+                                            span { class: "text-xs text-gray-500 ml-auto", {date_label(&version.created_at)} }
                                         }
                                         if let Some(note) = &version.note {
                                             p { class: "text-xs text-gray-600", {note.clone()} }

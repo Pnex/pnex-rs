@@ -216,7 +216,7 @@ pub fn Visualisation() -> Element {
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
             can_write: false,
             actions: rsx! {
-                span { class: "hidden text-xs text-gray-400 sm:inline", {t!("dash-auto-refresh")} }
+                span { class: "hidden text-xs text-gray-500 sm:inline", {t!("dash-auto-refresh")} }
             },
 
             // Sélection : métrique × device × fenêtre + ajout
@@ -316,7 +316,7 @@ pub fn Visualisation() -> Element {
                                             }
                                             span { class: "text-gray-700", "{label}" }
                                             button {
-                                                class: "text-gray-400 hover:text-red-500",
+                                                class: "text-gray-500 hover:text-red-500",
                                                 onclick: move |_| {
                                                     active
                                                         .with_mut(|list| {
@@ -339,7 +339,7 @@ pub fn Visualisation() -> Element {
                 div { class: "p-6 border-b border-gray-200 flex items-center justify-between",
                     h2 { class: "text-lg font-semibold text-gray-900", {t!("vis-chart")} }
                     if total_points > 0 {
-                        span { class: "text-xs text-gray-400", "{total_points}" }
+                        span { class: "text-xs text-gray-500", "{total_points}" }
                     }
                 }
                 div { class: "p-6",

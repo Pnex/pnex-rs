@@ -156,8 +156,8 @@ pub fn GraphView(
                         cx: "{x}",
                         cy: "{y}",
                         r: if is_center { "22" } else { "16" },
-                        fill: if is_center { "#2563eb" } else { "#ffffff" },
-                        stroke: "#2563eb",
+                        fill: if is_center { "var(--color-blue-600, #2563eb)" } else { "var(--color-white, #ffffff)" },
+                        stroke: "var(--color-blue-600, #2563eb)",
                         stroke_width: "2",
                     }
                     text {

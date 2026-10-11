@@ -533,7 +533,7 @@ pub fn TourEditor(
                                                     {floor.name.clone()}
                                                 }
                                             }
-                                            span { class: "text-xs text-gray-400", "{count}" }
+                                            span { class: "text-xs text-gray-500", "{count}" }
                                         }
                                     }
                                 }
@@ -553,7 +553,7 @@ pub fn TourEditor(
                                 }
                             }
                             if link_mode() {
-                                p { class: "text-xs text-gray-400",
+                                p { class: "text-xs text-gray-500",
                                     if link_from().is_some() {
                                         {t!("studio-link-hint-target")}
                                     } else {
@@ -561,7 +561,7 @@ pub fn TourEditor(
                                     }
                                 }
                             }
-                            span { class: "text-xs text-gray-400", {t!("studio-scene-count", count : scene_count)} }
+                            span { class: "text-xs text-gray-500", {t!("studio-scene-count", count : scene_count)} }
                         }
                     }
                 }

@@ -295,7 +295,7 @@ fn SceneLinks(cx: TourEditorCx, can_write: bool, scene_id: String) -> Element {
         div { class: "space-y-2",
             span { class: "text-xs font-medium text-gray-500 block", {t!("studio-scene-links")} }
             if rows.is_empty() {
-                p { class: "text-xs text-gray-400", {t!("studio-scene-links-none")} }
+                p { class: "text-xs text-gray-500", {t!("studio-scene-links-none")} }
             }
             for (link_id, is_stair, label) in rows {
                 div {
@@ -510,7 +510,7 @@ fn FloorForm(cx: TourEditorCx, can_write: bool, floor: pnex_core::TourFloor) -> 
                                 {t!("studio-floor-plan-pick")}
                             }
                         } else {
-                            p { class: "text-sm text-gray-400", {t!("studio-floor-plan-none")} }
+                            p { class: "text-sm text-gray-500", {t!("studio-floor-plan-none")} }
                         }
                     }
                 }
@@ -589,7 +589,7 @@ fn LinkForm(cx: TourEditorCx, can_write: bool, link: pnex_core::TourLink) -> Ele
                         }
                     }
                 }
-                span { class: "ml-2 text-gray-400", {t!("studio-link-kind-derived")} }
+                span { class: "ml-2 text-gray-500", {t!("studio-link-kind-derived")} }
             }
             label { class: "block",
                 span { class: FIELD_LABEL, {t!("studio-link-label")} }

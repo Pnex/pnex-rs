@@ -157,7 +157,7 @@ pub(crate) fn PinCard(
             div { class: "flex items-center justify-between",
                 div {
                     span { class: "font-semibold text-gray-900", {pin.label.clone()} }
-                    span { class: "ml-2 text-xs text-gray-400", "GPIO{pin.gpio}" }
+                    span { class: "ml-2 text-xs text-gray-500", "GPIO{pin.gpio}" }
                 }
                 span { class: "{role_class}", {role_label(&pin.role)} }
             }
@@ -537,7 +537,7 @@ pub fn PinsPanel(device_pk: i64, can_write: bool) -> Element {
                             {t!("pins-offline")}
                         }
                     }
-                    span { class: "text-xs text-gray-400", {t!("pins-auto-refresh")} }
+                    span { class: "text-xs text-gray-500", {t!("pins-auto-refresh")} }
                 }
             }
             if silent_device {

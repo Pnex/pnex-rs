@@ -192,7 +192,7 @@ pub fn ControlBody(
                 div { class: "flex flex-1 flex-col justify-center gap-1 px-3",
                     div { class: "flex items-baseline justify-center gap-1",
                         span { class: "text-2xl font-semibold text-gray-900", "{text}" }
-                        span { class: "text-xs text-gray-400", "{unit}" }
+                        span { class: "text-xs text-gray-500", "{unit}" }
                     }
                     input {
                         r#type: "range",
@@ -247,7 +247,7 @@ pub fn ControlBody(
                 div { class: "flex flex-1 flex-col justify-center gap-1 px-3",
                     div { class: "flex items-baseline justify-center gap-1",
                         span { class: "text-2xl font-semibold text-gray-900", "{text}" }
-                        span { class: "text-xs text-gray-400", "{unit}" }
+                        span { class: "text-xs text-gray-500", "{unit}" }
                     }
                     form {
                         class: "flex gap-1",
@@ -361,7 +361,7 @@ pub fn ControlBody(
                     }
                     div { class: "flex items-baseline gap-1",
                         span { class: "text-3xl font-semibold text-gray-900", "{text}" }
-                        span { class: "text-xs text-gray-400", "{unit}" }
+                        span { class: "text-xs text-gray-500", "{unit}" }
                     }
                     button {
                         r#type: "button",

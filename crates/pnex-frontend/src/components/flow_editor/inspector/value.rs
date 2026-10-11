@@ -47,7 +47,7 @@ pub(super) fn CalcForm(mut cx: EditorCx, initial: CalcConfig, can_write: bool) -
                     }
                 }
             }
-            p { class: "text-xs text-gray-400", {t!("flows-calc-functions-help")} }
+            p { class: "text-xs text-gray-500", {t!("flows-calc-functions-help")} }
         }
     }
 }
@@ -151,7 +151,7 @@ pub(super) fn ValueForm(mut cx: EditorCx, initial: ValueConfig, can_write: bool)
                     if invalid() {
                         p { class: "text-xs text-red-500", {t!("flows-value-invalid-json")} }
                     }
-                    p { class: "text-xs text-gray-400", {t!("flows-value-static-help")} }
+                    p { class: "text-xs text-gray-500", {t!("flows-value-static-help")} }
                 },
                 ValuePane::Kv => rsx! {
                     if value.read().as_object().is_none() {
@@ -175,7 +175,7 @@ pub(super) fn ValueForm(mut cx: EditorCx, initial: ValueConfig, can_write: bool)
                                             patch_value_config(&mut cx, rows_to_object(&next));
                                         },
                                     }
-                                    span { class: "text-xs text-gray-400", "=" }
+                                    span { class: "text-xs text-gray-500", "=" }
                                     input {
                                         class: "flex-1 px-2 py-1 border border-gray-300 rounded-lg text-sm",
                                         value: "{cell}",

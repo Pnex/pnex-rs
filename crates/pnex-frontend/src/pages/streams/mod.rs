@@ -163,7 +163,7 @@ pub fn Streams() -> Element {
                     is_empty,
                     empty_message: t!("streams-empty-title").to_string(),
                     empty_icon: rsx! {
-                        icons::Radio { class: "h-8 w-8 text-gray-400" }
+                        icons::Radio { class: "h-8 w-8 text-gray-500" }
                     },
                     empty_detail: rsx! {
                         p { class: "text-gray-600 mt-2 max-w-xl mx-auto", {t!("streams-empty-message")} }

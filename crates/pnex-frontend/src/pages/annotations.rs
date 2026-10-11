@@ -264,7 +264,7 @@ pub fn Annotations() -> Element {
                             {t!("annot-page-published")}
                         }
                     } else {
-                        span { class: "text-gray-400 text-xs", {t!("annot-page-draft")} }
+                        span { class: "text-gray-500 text-xs", {t!("annot-page-draft")} }
                     }
                 }
             },
@@ -273,8 +273,18 @@ pub fn Annotations() -> Element {
             String::new(),
             move |s: &pnex_core::AnnotationLayerSummary| {
                 let s_delete = s.clone();
+                let id_open = s.id.clone();
                 rsx! {
                     div { class: "inline-flex items-center gap-1.5",
+                        // Same as the row click, spelled out like the other lists.
+                        button {
+                            class: crate::components::ui::BTN_SECONDARY_SM,
+                            onclick: move |e| {
+                                e.stop_propagation();
+                                view.set(View::Editor(id_open.clone()));
+                            },
+                            {t!("studio-open")}
+                        }
                         button {
                             class: DANGER_BTN,
                             onclick: move |e| {
@@ -544,7 +554,7 @@ pub fn Annotations() -> Element {
                         }
                         (Some(set), None, None) => rsx! {
                             div { class: "bg-white rounded-xl border border-gray-200 p-8 text-center",
-                                p { class: "text-sm text-gray-400", {t!("annot-page-missing-media-body")} }
+                                p { class: "text-sm text-gray-500", {t!("annot-page-missing-media-body")} }
                                 span { {set.name.clone()} }
                             }
                         },
@@ -666,7 +676,7 @@ fn NewSetModal(
                         value: "{name()}",
                         oninput: move |e| name.set(e.value()),
                     }
-                    p { class: "mt-1.5 text-xs text-gray-400", {t!("annot-page-new-name-hint")} }
+                    p { class: "mt-1.5 text-xs text-gray-500", {t!("annot-page-new-name-hint")} }
                 }
                 // Média associé
                 div {
@@ -700,7 +710,7 @@ fn NewSetModal(
                             span { class: "text-blue-400 ml-auto", "{k}" }
                         }
                     }
-                    p { class: "mt-1.5 text-xs text-gray-400", "{media_hint}" }
+                    p { class: "mt-1.5 text-xs text-gray-500", "{media_hint}" }
                 }
                 // Actions
                 div { class: "pt-2 border-t border-gray-100 flex justify-end gap-2",

@@ -567,10 +567,10 @@ pub(super) fn DeviceWriteForm(
                             }
                         }
                     }
-                    p { class: "text-xs text-gray-400", {t!("flows-device-write-commands-help")} }
+                    p { class: "text-xs text-gray-500", {t!("flows-device-write-commands-help")} }
                 }
             }
-            p { class: "text-xs text-gray-400 font-mono", {t!("flows-device-write-payload")} }
+            p { class: "text-xs text-gray-500 font-mono", {t!("flows-device-write-payload")} }
         }
     }
 }

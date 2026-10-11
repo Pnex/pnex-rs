@@ -39,7 +39,7 @@ pub fn VersionsDrawer(
                 div { class: "flex items-center justify-between px-4 py-3 border-b border-gray-200",
                     h3 { class: "text-sm font-semibold text-gray-900", {t!("ver-drawer-title")} }
                     button {
-                        class: "text-gray-400 hover:text-gray-600",
+                        class: "text-gray-500 hover:text-gray-600",
                         onclick: close,
                         icons::X { class: "h-4 w-4" }
                     }
@@ -47,7 +47,7 @@ pub fn VersionsDrawer(
                 {
                     match &*versions.value().read() {
                         Some(Ok(rows)) if rows.is_empty() => rsx! {
-                            p { class: "p-4 text-sm text-gray-400", {t!("ver-empty")} }
+                            p { class: "p-4 text-sm text-gray-500", {t!("ver-empty")} }
                         },
                         Some(Ok(rows)) => rsx! {
                             ul { class: "flex-1 overflow-y-auto divide-y divide-gray-100",
@@ -62,7 +62,7 @@ pub fn VersionsDrawer(
                                                     {t!("ver-current")}
                                                 }
                                             }
-                                            span { class: "text-xs text-gray-400 ml-auto", {date_label(&v.created_at)} }
+                                            span { class: "text-xs text-gray-500 ml-auto", {date_label(&v.created_at)} }
                                         }
                                         if let Some(author) = &v.author {
                                             div { class: "text-xs text-gray-500", {author.clone()} }

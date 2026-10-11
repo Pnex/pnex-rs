@@ -233,10 +233,10 @@ pub fn Catalog() -> Element {
                 is_empty,
                 empty_message: t!("catalog-empty").to_string(),
                 empty_icon: rsx! {
-                    icons::Package { class: "h-8 w-8 text-gray-400" }
+                    icons::Package { class: "h-8 w-8 text-gray-500" }
                 },
                 empty_detail: rsx! {
-                    p { class: "text-gray-400 text-sm mt-2", {t!("catalog-empty-hint")} }
+                    p { class: "text-gray-500 text-sm mt-2", {t!("catalog-empty-hint")} }
                 },
                 div { class: "space-y-4",
                     DataTable {

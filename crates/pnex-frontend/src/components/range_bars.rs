@@ -126,11 +126,11 @@ pub fn RangeBarsBody(widget: Widget) -> Element {
     rsx! {
         div { class: "flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-2 text-xs",
             if !configured {
-                p { class: "text-gray-400", {t!("rb-not-configured")} }
+                p { class: "text-gray-500", {t!("rb-not-configured")} }
             } else if !available {
-                p { class: "text-gray-400", {t!("rb-unavailable")} }
+                p { class: "text-gray-500", {t!("rb-unavailable")} }
             } else if rows.is_empty() {
-                p { class: "text-gray-400", {t!("rb-empty")} }
+                p { class: "text-gray-500", {t!("rb-empty")} }
             }
             for (i, row) in rows.iter().enumerate() {
                 RangeBarRow {
@@ -159,7 +159,7 @@ fn RangeBarRow(row: AggregateRow, span: String, pct: f64, value: Option<String>)
             title: "{title}",
             div { class: "min-w-0",
                 p { class: "truncate font-medium text-gray-700", "{row.label}" }
-                p { class: "truncate text-xs text-gray-400", "{span}" }
+                p { class: "truncate text-xs text-gray-500", "{span}" }
             }
             div { class: "h-3 rounded bg-gray-100",
                 div {

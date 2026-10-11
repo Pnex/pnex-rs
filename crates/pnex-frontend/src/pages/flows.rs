@@ -167,7 +167,7 @@ pub fn Flows(id: String) -> Element {
                 rsx! {
                     div { class: "flex items-center gap-1.5",
                         button {
-                            class: "px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
+                            class: crate::components::ui::BTN_SECONDARY_SM,
                             disabled: is_deleting,
                             onclick: move |_| selected.set(Some(pk)),
                             {t!("flows-open")}

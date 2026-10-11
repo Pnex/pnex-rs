@@ -22,7 +22,7 @@ fn PinConfigPanel(
 ) -> Element {
     let Some(label) = selected() else {
         return rsx! {
-            div { class: "rounded-lg border border-gray-200 p-6 text-center text-sm text-gray-400",
+            div { class: "rounded-lg border border-gray-200 p-6 text-center text-sm text-gray-500",
                 {t!("board-select-pin")}
             }
         };
@@ -37,7 +37,7 @@ fn PinConfigPanel(
             div { class: "rounded-lg border border-gray-200 p-4 space-y-2",
                 div { class: "flex items-center justify-between",
                     span { class: "font-semibold text-gray-900", {pin.label.clone()} }
-                    span { class: "text-xs text-gray-400", {gpio_label(pin.gpio)} }
+                    span { class: "text-xs text-gray-500", {gpio_label(pin.gpio)} }
                 }
                 if pin.reserved {
                     div { class: "rounded-lg bg-teal-50 border border-teal-200 px-3 py-2 text-sm text-teal-800",
@@ -79,7 +79,7 @@ fn PinConfigPanel(
         div { class: "rounded-lg border border-gray-200 p-4 space-y-2",
             div { class: "flex items-center justify-between",
                 span { class: "font-semibold text-gray-900", {pin.label.clone()} }
-                span { class: "text-xs text-gray-400", {gpio_label(pin.gpio)} }
+                span { class: "text-xs text-gray-500", {gpio_label(pin.gpio)} }
             }
             span {
                 class: "inline-block w-3 h-3 rounded",
@@ -143,11 +143,11 @@ pub(super) fn PinDrawer(
                     {label.clone()}
                 }
                 if !gpio_text.is_empty() {
-                    span { class: "font-mono text-xs text-gray-400", {gpio_text} }
+                    span { class: "font-mono text-xs text-gray-500", {gpio_text} }
                 }
                 div { class: "flex-1" }
                 button {
-                    class: "shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600",
+                    class: "shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-600",
                     title: t!("board-drawer-close"),
                     onclick: move |_| selected.set(None),
                     icons::X { class: "h-4 w-4" }

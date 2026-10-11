@@ -82,7 +82,7 @@ pub fn CommentsPanel(
                 }
             }
             if roots.is_empty() && draft().is_none() {
-                p { class: "text-gray-400", {t!("docs-comments-empty")} }
+                p { class: "text-gray-500", {t!("docs-comments-empty")} }
             }
             ul { class: "space-y-3",
                 for root in roots {

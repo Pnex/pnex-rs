@@ -24,7 +24,7 @@ pub fn FloatingPanel(
             div { class: "flex items-center justify-between",
                 span { class: "text-xs font-semibold text-gray-500", {title} }
                 button {
-                    class: "text-gray-400 hover:text-gray-600",
+                    class: "text-gray-500 hover:text-gray-600",
                     title: "{close_label}",
                     onclick: move |_| on_close.call(()),
                     icons::X { class: "h-3.5 w-3.5" }

@@ -133,7 +133,7 @@ pub(super) fn VisionDetectForm(
                             }
                         }
                     }
-                    span { class: "text-xs text-gray-400 mt-1 block", {t!("flows-vision-labels-hint")} }
+                    span { class: "text-xs text-gray-500 mt-1 block", {t!("flows-vision-labels-hint")} }
                 }
             }
             label { class: "block",
@@ -164,7 +164,7 @@ pub(super) fn VisionDetectForm(
                         }
                     },
                 }
-                span { class: "text-xs text-gray-400 mt-1 block", {t!("flows-vision-min-score-hint")} }
+                span { class: "text-xs text-gray-500 mt-1 block", {t!("flows-vision-min-score-hint")} }
             }
             label { class: "block",
                 span { class: FIELD_LABEL, {t!("flows-vision-emit")} }
@@ -225,7 +225,7 @@ pub(super) fn VisionDetectForm(
                         }
                     },
                 }
-                span { class: "text-xs text-gray-400 mt-1 block", {t!("flows-vision-max-fps-hint")} }
+                span { class: "text-xs text-gray-500 mt-1 block", {t!("flows-vision-max-fps-hint")} }
             }
             label { class: "flex items-start gap-2 text-sm text-gray-700 select-none",
                 input {
@@ -247,7 +247,7 @@ pub(super) fn VisionDetectForm(
                 }
                 span {
                     span { class: "block", {t!("flows-vision-record-layer")} }
-                    span { class: "text-xs text-gray-400 block",
+                    span { class: "text-xs text-gray-500 block",
                         {t!("flows-vision-record-layer-hint")}
                     }
                 }
