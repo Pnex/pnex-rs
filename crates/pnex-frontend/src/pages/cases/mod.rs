@@ -1,6 +1,6 @@
 //! `/cases` — investigation cases (docs/architecture/cases.md): a case is
 //! an ontology object (`case`) whose members are `in_case` links. The list
-//! creates a case from one line; the workspace (`workspace.rs`) gathers
+//! creates a case from a title dialog; the workspace (`workspace.rs`) gathers
 //! members, dated links and the timeline on one screen.
 
 mod pages_panel;
@@ -17,16 +17,14 @@ use serde_json::{Map, Value};
 
 use crate::api;
 use crate::app::Route;
+use crate::components::crud::filters::FilterBar;
+use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::ListLayout;
 use crate::components::ontology::short_time;
-use crate::components::ui::BTN_PRIMARY;
+use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::state::{org, toasts};
 
 pub use workspace::CaseWorkspace;
-
-const CHIP_ON: &str = "px-3 py-1 text-sm rounded-full bg-ink text-white";
-const CHIP_OFF: &str =
-    "px-3 py-1 text-sm rounded-full bg-white border border-gray-300 text-gray-700 hover:bg-gray-50";
 
 /// Translated case status (`case-status-<status>`).
 pub fn status_label(status: &str) -> String {
@@ -58,6 +56,7 @@ pub fn Cases() -> Element {
     let mut status = use_signal(|| "open".to_string());
     let mut draft = use_signal(String::new);
     let mut busy = use_signal(|| false);
+    let mut creating = use_signal(|| false);
     let can_write = org::current_can_write();
     let navigator = use_navigator();
 
@@ -101,7 +100,7 @@ pub fn Cases() -> Element {
             busy.set(false);
             match res {
                 Ok(o) => {
-                    draft.set(String::new());
+                    creating.set(false);
                     navigator.push(Route::CaseWorkspace { id: o.id });
                 }
                 Err(e) => toasts::error(e),
@@ -126,41 +125,54 @@ pub fn Cases() -> Element {
             subtitle: t!("cases-subtitle").to_string(),
             can_write,
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
-            div { class: "space-y-4",
-                if can_write {
+            add_label: Some(t!("cases-new").to_string()),
+            on_add: move |_| {
+                draft.set(String::new());
+                creating.set(true);
+            },
+            if creating() {
+                FormDialog {
+                    title: t!("cases-new").to_string(),
+                    submit_label: t!("case-new").to_string(),
+                    on_close: move |_| creating.set(false),
+                    on_submit: move |_| create(),
+                    busy: busy(),
+                    valid: !draft().trim().is_empty(),
                     form {
-                        class: "flex gap-2",
                         onsubmit: move |e| {
                             e.prevent_default();
                             create();
                         },
+                        label { r#for: "case-new-title", class: FIELD_LABEL, {t!("case-field-title")} }
                         input {
-                            class: "flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                            id: "case-new-title",
+                            class: INPUT,
                             "data-testid": "case-new-title",
                             placeholder: t!("case-new-placeholder"),
                             maxlength: 255,
+                            autofocus: true,
                             value: "{draft}",
                             oninput: move |e| draft.set(e.value()),
                         }
-                        button {
-                            r#type: "submit",
-                            class: BTN_PRIMARY,
-                            disabled: busy() || draft().trim().is_empty(),
-                            {t!("case-new")}
-                        }
                     }
                 }
-                div { class: "flex flex-wrap gap-2",
+            }
+            FilterBar {
+                select {
+                    class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
+                    "data-testid": "case-status-filter",
+                    onchange: move |e| status.set(e.value()),
                     for (key, label) in filters {
-                        button {
+                        option {
                             key: "{key}",
-                            r#type: "button",
-                            class: if status() == key { CHIP_ON } else { CHIP_OFF },
-                            onclick: move |_| status.set(key.clone()),
+                            value: "{key}",
+                            selected: status() == key,
                             "{label}"
                         }
                     }
                 }
+            }
+            div { class: "space-y-4",
                 if loading {
                     p { class: "text-sm text-gray-500", {t!("common-loading")} }
                 } else if failed {
