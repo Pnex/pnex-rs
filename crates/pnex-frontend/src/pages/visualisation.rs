@@ -283,7 +283,7 @@ pub fn Visualisation() -> Element {
                                         for (key, label, secs) in WINDOWS {
                                             button {
                                                 key: "{key}",
-                                                class: if window() == *secs { "px-3 py-2 text-sm bg-blue-600 text-white" } else { "px-3 py-2 text-sm bg-white text-gray-700 hover:bg-gray-50" },
+                                                class: if window() == *secs { "px-3 py-2 text-sm bg-signal-600 text-white" } else { "px-3 py-2 text-sm bg-white text-gray-700 hover:bg-gray-50" },
                                                 onclick: move |_| window.set(*secs),
                                                 {t!(label)}
                                             }
@@ -291,7 +291,7 @@ pub fn Visualisation() -> Element {
                                     }
                                 }
                                 button {
-                                    class: if can_add { "inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors" } else { "inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg opacity-40 cursor-not-allowed" },
+                                    class: if can_add { "inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-signal-600 rounded-lg hover:bg-signal-700 transition-colors" } else { "inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-signal-600 rounded-lg opacity-40 cursor-not-allowed" },
                                     disabled: !can_add,
                                     onclick: move |_| {
                                         if can_add {

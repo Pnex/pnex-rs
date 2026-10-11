@@ -181,18 +181,20 @@ fn VersionRow(
             }
             div { class: "mt-1 flex flex-wrap gap-2 text-xs",
                 button {
-                    class: "text-blue-700 hover:underline",
+                    class: "text-signal-700 hover:underline",
                     onclick: move |_| shown.set(Some(Shown::View(n))),
                     {t!("docs-version-view")}
                 }
                 if previous.is_some() {
-                    button { class: "text-blue-700 hover:underline", onclick: diff,
+                    button {
+                        class: "text-signal-700 hover:underline",
+                        onclick: diff,
                         {t!("docs-version-diff")}
                     }
                 }
                 if can_write {
                     button {
-                        class: "text-blue-700 hover:underline",
+                        class: "text-signal-700 hover:underline",
                         onclick: restore,
                         {t!("docs-version-restore")}
                     }

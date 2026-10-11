@@ -282,7 +282,7 @@ pub fn Media() -> Element {
                     // watcher cannot touch the UI itself).
                     if capture_running() {
                         div { class: "flex items-center gap-2 text-sm text-gray-600",
-                            span { class: "animate-spin inline-block rounded-full h-4 w-4 border-b-2 border-blue-600" }
+                            span { class: "animate-spin inline-block rounded-full h-4 w-4 border-b-2 border-signal-600" }
                             {t!("media-upload-progress")}
                         }
                     }
@@ -449,7 +449,7 @@ fn DocHitRow(hit: api::media::SearchHit, on_open: Callback<String>) -> Element {
             r#type: "button",
             onclick: move |_| on_open.call(asset_id.clone()),
             div { class: "flex flex-wrap items-baseline gap-x-2 text-sm",
-                span { class: "font-medium text-blue-700", "{hit.asset_name}" }
+                span { class: "font-medium text-signal-700", "{hit.asset_name}" }
                 span { class: "text-gray-500", "{hit.filename}" }
                 if let Some(heading) = hit.heading.clone() {
                     span { class: "text-gray-500", "· {heading}" }

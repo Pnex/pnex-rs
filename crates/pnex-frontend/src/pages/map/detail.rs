@@ -303,7 +303,7 @@ pub(super) fn PoiDetail(
                     div { class: "px-4 py-3 border-t border-gray-200 flex justify-between gap-2",
                         div { class: "flex gap-2",
                             button {
-                                class: "px-3 py-1.5 text-sm text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors",
+                                class: "px-3 py-1.5 text-sm text-signal-700 border border-signal-200 rounded-lg hover:bg-signal-50 transition-colors",
                                 onclick: move |_| editing.set(true),
                                 {t!("poi-edit")}
                             }

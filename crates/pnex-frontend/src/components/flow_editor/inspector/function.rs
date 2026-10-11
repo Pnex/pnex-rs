@@ -122,7 +122,7 @@ pub(super) fn FunctionForm(
                         }
                         if can_write {
                             button {
-                                class: "px-2 py-0.5 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors",
+                                class: "px-2 py-0.5 text-xs text-signal-700 bg-signal-50 border border-signal-200 rounded-lg hover:bg-signal-100 transition-colors",
                                 onclick: rebase,
                                 {t!("flows-inspector-function-rebase")}
                             }

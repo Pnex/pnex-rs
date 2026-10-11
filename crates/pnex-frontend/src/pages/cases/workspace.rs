@@ -36,7 +36,7 @@ const CHIP_OFF: &str = "px-2.5 py-1 text-xs rounded-full bg-white border border-
 const DEBOUNCE_MS: u64 = 200;
 /// Lane colours, assigned by member order.
 const LANE_COLORS: [&str; 8] = [
-    "bg-blue-500",
+    "bg-signal-500",
     "bg-emerald-500",
     "bg-amber-500",
     "bg-rose-500",
@@ -300,7 +300,7 @@ fn CaseHeader(case: ObjectView, editable: bool, persons: usize, on_saved: Callba
         div { class: CARD, "data-testid": "case-header",
             div { class: "flex flex-wrap items-center gap-3",
                 input {
-                    class: "flex-1 min-w-48 text-lg font-semibold text-gray-900 border-0 border-b border-transparent focus:border-blue-500 focus:ring-0 px-0",
+                    class: "flex-1 min-w-48 text-lg font-semibold text-gray-900 border-0 border-b border-transparent focus:border-signal-500 focus:ring-0 px-0",
                     "data-testid": "case-title",
                     disabled: !editable,
                     maxlength: 255,
@@ -632,7 +632,7 @@ fn MemberRow(
     let oid = o.id.clone();
     rsx! {
         li {
-            class: if focused { "flex items-center gap-2 rounded-lg px-2 py-1 bg-blue-50 ring-1 ring-blue-300" } else { "flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-gray-50" },
+            class: if focused { "flex items-center gap-2 rounded-lg px-2 py-1 bg-signal-50 ring-1 ring-signal-300" } else { "flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-gray-50" },
             "data-member": "{o.id}",
             button {
                 r#type: "button",
@@ -646,7 +646,7 @@ fn MemberRow(
                 span { class: "block text-xs text-gray-500", "{kind}" }
             }
             Link {
-                class: "text-xs text-blue-600 hover:underline",
+                class: "text-xs text-signal-600 hover:underline",
                 to: Route::OntologyObject {
                     id: o.id.clone(),
                 },
@@ -819,7 +819,7 @@ fn QuickAdd(
                                 key: "{key}",
                                 role: "option",
                                 "aria-selected": i == active(),
-                                class: if i == active() { "px-3 py-2 cursor-pointer bg-blue-50" } else { "px-3 py-2 cursor-pointer hover:bg-gray-50" },
+                                class: if i == active() { "px-3 py-2 cursor-pointer bg-signal-50" } else { "px-3 py-2 cursor-pointer hover:bg-gray-50" },
                                 onmousedown: move |e| e.prevent_default(),
                                 onclick: move |_| add.call(id.clone()),
                                 span { class: "text-sm text-gray-900", "{title}" }
@@ -1070,7 +1070,7 @@ fn TimelinePanel(
                 if let Some(title) = focused_title {
                     button {
                         r#type: "button",
-                        class: "rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 hover:bg-blue-100",
+                        class: "rounded-full bg-signal-50 px-2 py-0.5 text-signal-700 hover:bg-signal-100",
                         onclick: move |_| focus.set(None),
                         {t!("case-focus-only", title : title)}
                         " ×"
@@ -1244,7 +1244,7 @@ fn TimelineRow(
             div { class: "flex flex-wrap items-baseline gap-x-1.5 text-sm",
                 button {
                     r#type: "button",
-                    class: "font-mono text-xs text-gray-500 w-10 text-left hover:text-blue-700 hover:underline",
+                    class: "font-mono text-xs text-gray-500 w-10 text-left hover:text-signal-700 hover:underline",
                     title: t!("case-tl-set-cursor"),
                     onclick: move |_| on_cursor.call(at.clone()),
                     "{time}"

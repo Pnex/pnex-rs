@@ -267,7 +267,7 @@ fn highlight_code(line: &str, lang: CodeLang, out: &mut Vec<Tok>) {
             } else if lits.contains(&word) {
                 "text-orange-600 font-semibold"
             } else if call {
-                "text-blue-600"
+                "text-signal-600"
             } else {
                 ""
             };
@@ -477,7 +477,7 @@ pub fn TemplateEditor(
 
     if multiline {
         rsx! {
-            div { class: "relative {height_class} w-full rounded-lg border border-gray-300 overflow-hidden bg-white focus-within:border-blue-500",
+            div { class: "relative {height_class} w-full rounded-lg border border-gray-300 overflow-hidden bg-white focus-within:border-signal-500",
                 pre {
                     class: "absolute inset-0 {field_metrics} whitespace-pre-wrap break-words overflow-hidden pointer-events-none m-0",
                     "aria-hidden": "true",
@@ -504,7 +504,7 @@ pub fn TemplateEditor(
         }
     } else {
         rsx! {
-            div { class: "relative w-full rounded-lg border border-gray-300 overflow-hidden bg-white focus-within:border-blue-500",
+            div { class: "relative w-full rounded-lg border border-gray-300 overflow-hidden bg-white focus-within:border-signal-500",
                 pre {
                     class: "absolute inset-0 {field_metrics} whitespace-pre overflow-hidden pointer-events-none m-0",
                     "aria-hidden": "true",
@@ -634,7 +634,7 @@ pub fn JsonEditor(
     let field_metrics = "px-3 py-2 text-sm font-mono leading-5";
 
     rsx! {
-        div { class: "relative {height_class} w-full rounded-lg border border-gray-300 overflow-hidden bg-white focus-within:border-blue-500",
+        div { class: "relative {height_class} w-full rounded-lg border border-gray-300 overflow-hidden bg-white focus-within:border-signal-500",
             pre {
                 class: "absolute inset-0 {field_metrics} whitespace-pre-wrap break-words overflow-hidden pointer-events-none m-0",
                 "aria-hidden": "true",
@@ -763,7 +763,7 @@ mod tests {
             .any(|t| t.class.contains("purple") && t.text == "return"));
         assert!(toks
             .iter()
-            .any(|t| t.class.contains("blue") && t.text == "handle"));
+            .any(|t| t.class.contains("signal") && t.text == "handle"));
         assert!(toks
             .iter()
             .any(|t| t.class.contains("amber") && t.text == "42"));

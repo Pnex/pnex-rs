@@ -516,7 +516,7 @@ fn TemplatePicker(
                     button {
                         key: "{label}",
                         r#type: "button",
-                        class: if selected == value { "flex items-center gap-1.5 rounded-full border border-blue-500 bg-blue-50 px-3 py-1.5 text-sm text-blue-700" } else { "flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:border-blue-300" },
+                        class: if selected == value { "flex items-center gap-1.5 rounded-full border border-signal-500 bg-signal-50 px-3 py-1.5 text-sm text-signal-700" } else { "flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:border-signal-300" },
                         onclick: move |_| on_pick.call(value),
                         crate::components::home_icons::HomeIconView { id: icon, class: "h-4 w-4" }
                         "{label}"
@@ -533,9 +533,9 @@ fn TemplatePicker(
 #[component]
 fn FormatCard(mobile: bool, selected: bool, on_pick: EventHandler<()>) -> Element {
     let ring = if selected {
-        "border-blue-500 ring-2 ring-blue-200 bg-blue-50/40"
+        "border-signal-500 ring-2 ring-signal-200 bg-signal-50/40"
     } else {
-        "border-gray-200 hover:border-blue-300"
+        "border-gray-200 hover:border-signal-300"
     };
     let (title, help) = if mobile {
         (t!("db-format-mobile"), t!("db-format-mobile-help"))
@@ -572,11 +572,11 @@ fn FormatCard(mobile: bool, selected: bool, on_pick: EventHandler<()>) -> Elemen
                 if mobile {
                     icons::Smartphone { class: "h-5 w-5 text-teal-600" }
                 } else {
-                    icons::Monitor { class: "h-5 w-5 text-blue-600" }
+                    icons::Monitor { class: "h-5 w-5 text-signal-600" }
                 }
                 p { class: "text-sm font-semibold text-gray-900", "{title}" }
                 if selected {
-                    icons::Check { class: "ml-auto h-4 w-4 text-blue-600" }
+                    icons::Check { class: "ml-auto h-4 w-4 text-signal-600" }
                 }
             }
             p { class: "text-xs text-gray-600", "{help}" }
@@ -598,8 +598,8 @@ fn FormatCard(mobile: bool, selected: bool, on_pick: EventHandler<()>) -> Elemen
 fn DesktopSketch() -> Element {
     rsx! {
         div { class: "relative h-20 w-36 rounded border border-gray-300 bg-white",
-            div { class: "absolute left-2 top-2 h-7 w-7 rounded-full border-4 border-blue-300" }
-            div { class: "absolute left-12 top-3 h-6 w-16 rounded bg-blue-100" }
+            div { class: "absolute left-2 top-2 h-7 w-7 rounded-full border-4 border-signal-300" }
+            div { class: "absolute left-12 top-3 h-6 w-16 rounded bg-signal-100" }
             div { class: "absolute left-6 bottom-2 h-5 w-24 rounded bg-gray-100" }
             div { class: "absolute left-9 top-9 h-px w-10 bg-gray-400" }
             div { class: "absolute right-2 top-2 h-4 w-6 rounded bg-emerald-100" }

@@ -260,7 +260,7 @@ pub fn NotifyTemplateForm(
                         }
                         button {
                             r#type: "button",
-                            class: "text-sm text-blue-600 hover:text-blue-700",
+                            class: "text-sm text-signal-600 hover:text-signal-700",
                             onclick: insert_variable,
                             {t!("notify-vars-insert")}
                         }
@@ -284,7 +284,7 @@ pub fn NotifyTemplateForm(
                             {t!("notify-template-vars")}
                         }
                         button {
-                            class: "text-sm text-blue-600 hover:text-blue-700",
+                            class: "text-sm text-signal-600 hover:text-signal-700",
                             onclick: move |_| vars.with_mut(|rows| rows.push((String::new(), String::new()))),
                             {t!("notify-vars-add")}
                         }

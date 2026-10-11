@@ -16,7 +16,7 @@ pub fn GateScreen() -> Element {
     match GATE.cloned() {
         GateState::Checking => rsx! {
             div { class: "min-h-screen flex flex-col items-center justify-center bg-gray-50 space-y-4",
-                span { class: "animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" }
+                span { class: "animate-spin rounded-full h-10 w-10 border-b-2 border-signal-600" }
                 p { class: "text-sm text-gray-500", {t!("gate-checking")} }
                 // Serveur en cours de vérification — rend l'attente lisible.
                 if !crate::api::config::api_base().is_empty() {
@@ -109,7 +109,7 @@ fn gate_layout(
                         div { class: "space-y-2 pt-2",
                             button {
                                 class: "w-full py-2.5 px-4 rounded-lg text-sm font-semibold text-white \
-                                        bg-blue-600 hover:bg-blue-700 transition-colors disabled:opacity-50",
+                                        bg-signal-600 hover:bg-signal-700 transition-colors disabled:opacity-50",
                                 onclick: move |_| {
                                     // Detached on purpose: `check()` flips GATE to Checking,
                                     // which unmounts this layout — a scoped `spawn` would be

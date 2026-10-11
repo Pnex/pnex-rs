@@ -36,7 +36,7 @@ fn level_classes(level: &str) -> &'static str {
         "error" => "bg-red-100 text-red-700",
         "warn" => "bg-amber-100 text-amber-700",
         "debug" => "bg-gray-100 text-gray-600",
-        _ => "bg-blue-100 text-blue-700",
+        _ => "bg-signal-100 text-signal-700",
     }
 }
 
@@ -337,7 +337,7 @@ fn EventRow(ev: EventRecord) -> Element {
             td { class: "td hidden md:table-cell",
                 if let Some(id) = flow_id {
                     button {
-                        class: "text-blue-600 hover:underline",
+                        class: "text-signal-600 hover:underline",
                         r#type: "button",
                         onclick: move |e| {
                             e.stop_propagation();

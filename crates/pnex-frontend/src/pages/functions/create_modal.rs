@@ -88,7 +88,7 @@ pub(super) fn CreateFunctionModal(on_close: Callback<()>, on_created: Callback<i
                                 }
                             };
                             rsx! {
-                                label { class: if language() == lang_opt { "flex gap-2.5 p-3 border-2 border-blue-700 bg-blue-50 rounded-xl cursor-pointer" } else { "flex gap-2.5 p-3 border border-gray-300 rounded-xl cursor-pointer hover:border-gray-400" },
+                                label { class: if language() == lang_opt { "flex gap-2.5 p-3 border-2 border-signal-700 bg-signal-50 rounded-xl cursor-pointer" } else { "flex gap-2.5 p-3 border border-gray-300 rounded-xl cursor-pointer hover:border-gray-400" },
                                     input {
                                         r#type: "radio",
                                         name: "fn-lang",
@@ -117,7 +117,7 @@ pub(super) fn CreateFunctionModal(on_close: Callback<()>, on_created: Callback<i
                             let title = t!(kind.title_key());
                             let sig = t!(kind.sig_key());
                             rsx! {
-                                label { class: if selected { "flex flex-col gap-1.5 p-3 border-2 border-blue-700 bg-blue-50 rounded-xl cursor-pointer" } else { "flex flex-col gap-1.5 p-3 border border-gray-300 rounded-xl cursor-pointer hover:border-gray-400" },
+                                label { class: if selected { "flex flex-col gap-1.5 p-3 border-2 border-signal-700 bg-signal-50 rounded-xl cursor-pointer" } else { "flex flex-col gap-1.5 p-3 border border-gray-300 rounded-xl cursor-pointer hover:border-gray-400" },
                                     span { class: "flex items-center gap-2",
                                         input {
                                             r#type: "radio",

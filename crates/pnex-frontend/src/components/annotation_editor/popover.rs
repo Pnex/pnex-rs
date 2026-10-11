@@ -102,7 +102,7 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
                 // Cible : résolue ou morte (grisée — référence tolérée, S7).
                 div {
                     hidden: surface,
-                    class: if is_dead { "mt-3 text-xs rounded-lg px-3 py-2 bg-gray-50 text-gray-500 border border-gray-100" } else { "mt-3 text-xs rounded-lg px-3 py-2 bg-blue-50 text-blue-800 border border-blue-100" },
+                    class: if is_dead { "mt-3 text-xs rounded-lg px-3 py-2 bg-gray-50 text-gray-500 border border-gray-100" } else { "mt-3 text-xs rounded-lg px-3 py-2 bg-signal-50 text-signal-800 border border-signal-100" },
                     {target_block}
                 }
 
@@ -155,7 +155,7 @@ pub fn kind_label_key(kind: &str) -> &'static str {
 
 pub fn annot_dot_color(kind: &str) -> &'static str {
     match kind {
-        "device" => "bg-blue-600",
+        "device" => "bg-signal-600",
         "pin" => "bg-violet-600",
         "status" => "bg-emerald-600",
         "control" => "bg-teal-600",

@@ -1314,7 +1314,7 @@ fn type_badge(device_type: &str) -> (&'static str, String) {
         other => other.to_string(),
     };
     let badge = match device_type {
-        "sensor" => "bg-blue-100 text-blue-800",
+        "sensor" => "bg-signal-100 text-signal-800",
         "actuator" => "bg-amber-100 text-amber-800",
         "mixed" => "bg-purple-100 text-purple-800",
         "agent" => "bg-emerald-100 text-emerald-800",
@@ -1565,7 +1565,7 @@ fn DeviceDetail(
         },
         None => rsx! {
             div { class: "text-center py-12",
-                span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-blue-600" }
+                span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-signal-600" }
             }
         },
     }

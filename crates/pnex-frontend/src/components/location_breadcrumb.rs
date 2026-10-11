@@ -35,7 +35,7 @@ pub fn LocationBreadcrumb(
                 {t!("location-none")}
                 Link {
                     to: Route::Sites {},
-                    class: "text-blue-600 hover:underline",
+                    class: "text-signal-600 hover:underline",
                     {t!("location-open-sites")}
                 }
             }
@@ -116,7 +116,7 @@ fn SiteStep(site_id: String, text: String, strong: bool, unfold: Vec<String>) ->
     rsx! {
         button {
             r#type: "button",
-            class: if strong { "font-medium text-blue-700 hover:underline" } else { "hover:underline" },
+            class: if strong { "font-medium text-signal-700 hover:underline" } else { "hover:underline" },
             onclick: move |_| {
                 *OPEN_POI.write() = Some(site_id.clone());
                 *OPEN_POI_FOLDERS.write() = unfold.clone();

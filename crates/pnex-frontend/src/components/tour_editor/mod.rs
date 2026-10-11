@@ -479,7 +479,7 @@ pub fn TourEditor(
                     search_placeholder: t!("eshell-search").to_string(),
                     items: vec![
                         PaletteItem::new("floor", t!("studio-add-floor").to_string())
-                            .with_icon(PaletteIcon::Layers, "bg-blue-50 text-blue-600"),
+                            .with_icon(PaletteIcon::Layers, "bg-signal-50 text-signal-600"),
                         PaletteItem::new("scene", t!("studio-add-scene").to_string())
                             .with_icon(PaletteIcon::Image, "bg-emerald-50 text-emerald-600"),
                     ],
@@ -497,7 +497,7 @@ pub fn TourEditor(
                 div {
                     button {
                         class: if floors_panel_open() {
-                            "flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg"
+                            "flex h-10 w-10 items-center justify-center rounded-full bg-signal-600 text-white shadow-lg"
                         } else {
                             "flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-lg hover:bg-gray-50"
                         },
@@ -514,7 +514,7 @@ pub fn TourEditor(
                                     button {
                                         key: "{floor.id}",
                                         class: if is_active {
-                                            "w-full text-left px-2 py-1.5 text-sm rounded-lg bg-blue-50 text-blue-700 border border-blue-200"
+                                            "w-full text-left px-2 py-1.5 text-sm rounded-lg bg-signal-50 text-signal-700 border border-signal-200"
                                         } else {
                                             "w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-gray-50 text-gray-700 border border-transparent"
                                         },

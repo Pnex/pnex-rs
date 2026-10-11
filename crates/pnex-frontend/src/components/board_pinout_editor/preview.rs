@@ -140,7 +140,7 @@ pub(super) fn ZoomBar(mut zoom: Signal<u32>) -> Element {
     let idx = ZOOM_LEVELS.iter().position(|z| *z == current).unwrap_or(0);
     let can_out = idx > 0;
     let can_in = idx + 1 < ZOOM_LEVELS.len();
-    let btn = "inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-600 hover:border-blue-400 hover:text-blue-600 disabled:opacity-40 disabled:hover:border-gray-300 disabled:hover:text-gray-600 transition-colors";
+    let btn = "inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-600 hover:border-signal-400 hover:text-signal-600 disabled:opacity-40 disabled:hover:border-gray-300 disabled:hover:text-gray-600 transition-colors";
     rsx! {
         div { class: "flex items-center justify-end gap-1",
             button {

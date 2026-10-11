@@ -138,7 +138,7 @@ pub(super) fn JsonSplitForm(
                     }
                     if can_write {
                         button {
-                            class: "text-xs text-blue-600 hover:text-blue-700",
+                            class: "text-xs text-signal-600 hover:text-signal-700",
                             onclick: move |_| {
                                 let mut new = keys.read().clone();
                                 let mut i = new.len() + 1;
@@ -166,7 +166,7 @@ pub(super) fn JsonSplitForm(
                     // elle n'a pas de raison d'exister.
                     if importable {
                         button {
-                            class: "text-xs text-blue-600 hover:text-blue-700 ml-2",
+                            class: "text-xs text-signal-600 hover:text-signal-700 ml-2",
                             onclick: move |_| {
                                 let Some(imported) = import_for_click.clone() else {
                                     return;
@@ -291,7 +291,7 @@ pub(super) fn JsonMergeForm(
                 }
                 if can_write {
                     button {
-                        class: "text-xs text-blue-600 hover:text-blue-700",
+                        class: "text-xs text-signal-600 hover:text-signal-700",
                         onclick: move |_| {
                             // Nom auto : value1, value2… unique parmi les
                             // entrées — une ligne vide n'est pas câblable,

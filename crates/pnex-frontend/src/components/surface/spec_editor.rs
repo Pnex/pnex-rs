@@ -229,7 +229,7 @@ fn ModeButton(label: String, active: bool, disabled: bool, on_press: EventHandle
     rsx! {
         button {
             r#type: "button",
-            class: if active { "flex-1 rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white" } else { "flex-1 rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100" },
+            class: if active { "flex-1 rounded bg-signal-600 px-2 py-1 text-xs font-medium text-white" } else { "flex-1 rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100" },
             disabled,
             onclick: move |_| on_press.call(()),
             "{label}"
@@ -317,7 +317,7 @@ fn OptionsEditor(
             if can_add {
                 button {
                     r#type: "button",
-                    class: "text-xs font-medium text-blue-600 hover:text-blue-800",
+                    class: "text-xs font-medium text-signal-600 hover:text-signal-800",
                     onclick: move |_| add.call(()),
                     {t!("controls-form-add-option")}
                 }

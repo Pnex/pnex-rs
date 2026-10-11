@@ -12,7 +12,7 @@ use crate::components::ui::BTN_PRIMARY_SM;
 use crate::doc_editor::{self, SelectionAnchor};
 use pnex_core::pages::{CreateDocComment, DocComment, PatchDocComment};
 
-const SMALL_BTN: &str = "text-xs text-blue-700 hover:underline";
+const SMALL_BTN: &str = "text-xs text-signal-700 hover:underline";
 
 #[component]
 pub fn CommentsPanel(
@@ -143,7 +143,7 @@ fn NewThread(
         });
     };
     rsx! {
-        div { class: "mb-3 rounded border border-blue-200 bg-blue-50 p-2",
+        div { class: "mb-3 rounded border border-signal-200 bg-signal-50 p-2",
             p { class: "mb-1 border-l-2 border-yellow-400 pl-2 text-xs italic text-gray-600",
                 {quote}
             }

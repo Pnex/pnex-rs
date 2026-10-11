@@ -214,7 +214,7 @@ pub fn AnnotModeToggle(
             for (m, key) in options {
                 button {
                     key: "{key}",
-                    class: if m == mode { "px-2.5 py-1.5 text-xs font-medium bg-blue-600 text-white" } else { "px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-white" },
+                    class: if m == mode { "px-2.5 py-1.5 text-xs font-medium bg-signal-600 text-white" } else { "px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-white" },
                     aria_pressed: if m == mode { "true" } else { "false" },
                     onclick: move |_| on_change.call(m),
                     {dioxus_i18n::t!(key)}

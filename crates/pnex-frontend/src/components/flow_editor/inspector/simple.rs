@@ -96,7 +96,7 @@ pub(super) fn MetricForm(
                 }
                 if can_add_label {
                     button {
-                        class: "text-xs text-blue-600 hover:text-blue-700",
+                        class: "text-xs text-signal-600 hover:text-signal-700",
                         onclick: move |_| {
                             let mut rows = label_rows.read().clone();
                             rows.push((String::new(), String::new()));
@@ -169,7 +169,7 @@ pub(super) fn DebugForm(mut cx: EditorCx, initial: DebugConfig, can_write: bool)
         div { class: "space-y-3",
             label { class: "flex items-center gap-2 select-none",
                 input {
-                    class: "h-4 w-4 accent-blue-600",
+                    class: "h-4 w-4 accent-signal-600",
                     r#type: "checkbox",
                     checked: active,
                     disabled: !can_write,
@@ -208,7 +208,7 @@ pub(super) fn DebugForm(mut cx: EditorCx, initial: DebugConfig, can_write: bool)
             }
             label { class: "flex items-center gap-2 select-none",
                 input {
-                    class: "h-4 w-4 accent-blue-600",
+                    class: "h-4 w-4 accent-signal-600",
                     r#type: "checkbox",
                     checked: console,
                     disabled: !can_write,

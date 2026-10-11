@@ -127,7 +127,7 @@ pub fn FlashModal(device_id: String, on_close: Callback<()>) -> Element {
                     match &*firmware.read() {
                         None => rsx! {
                             div { class: "flex items-center gap-3 text-sm text-gray-600",
-                                span { class: "animate-spin inline-block rounded-full h-5 w-5 border-b-2 border-blue-600" }
+                                span { class: "animate-spin inline-block rounded-full h-5 w-5 border-b-2 border-signal-600" }
                                 {t!("flash-fetching")}
                             }
                         },
@@ -159,7 +159,7 @@ pub fn FlashModal(device_id: String, on_close: Callback<()>) -> Element {
                                         }
                                         div { class: "w-full bg-gray-200 rounded-full h-2.5",
                                             div {
-                                                class: "bg-blue-600 h-2.5 rounded-full transition-all duration-300",
+                                                class: "bg-signal-600 h-2.5 rounded-full transition-all duration-300",
                                                 style: "width: {percent}%",
                                             }
                                         }

@@ -546,7 +546,7 @@ fn KindPickerModal(
                             for info in list.clone() {
                                 button {
                                     key: "{info.kind}",
-                                    class: "flex items-start gap-3 rounded-lg border border-gray-200 p-3 text-left hover:border-blue-400 hover:bg-blue-50",
+                                    class: "flex items-start gap-3 rounded-lg border border-gray-200 p-3 text-left hover:border-signal-400 hover:bg-signal-50",
                                     onclick: move |_| on_pick.call(info.clone()),
                                     span { class: "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700",
                                         {kind_icon(&info.kind)}
@@ -571,7 +571,7 @@ fn KindPickerModal(
                     },
                     None => rsx! {
                         div { class: "flex justify-center p-8",
-                            span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" }
+                            span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-signal-600" }
                         }
                     },
                 }

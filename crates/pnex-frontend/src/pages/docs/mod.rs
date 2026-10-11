@@ -95,7 +95,7 @@ fn DocList() -> Element {
             rsx! {
                 Link {
                     to: Route::Docs { id },
-                    class: "flex items-center gap-2 text-sm font-medium text-blue-700 hover:underline",
+                    class: "flex items-center gap-2 text-sm font-medium text-signal-700 hover:underline",
                     icons::BookOpen { class: "h-4 w-4 text-gray-500" }
                     {d.title.clone()}
                 }

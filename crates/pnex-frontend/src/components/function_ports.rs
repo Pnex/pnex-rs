@@ -433,7 +433,7 @@ fn AddPortButton(
     };
     rsx! {
         button {
-            class: "h-9 rounded-lg border border-dashed border-gray-300 bg-white text-sm font-medium text-blue-700 hover:bg-blue-50",
+            class: "h-9 rounded-lg border border-dashed border-gray-300 bg-white text-sm font-medium text-signal-700 hover:bg-signal-50",
             onclick: move |_| {
                 let mut n = 0;
                 let base = if is_input { "input" } else { "output" };

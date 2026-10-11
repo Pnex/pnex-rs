@@ -57,7 +57,7 @@ pub(super) fn BoardChangeModal(
                 match list {
                     None => rsx! {
                         div { class: "text-center py-4",
-                            span { class: "animate-spin inline-block rounded-full h-6 w-6 border-b-2 border-blue-600" }
+                            span { class: "animate-spin inline-block rounded-full h-6 w-6 border-b-2 border-signal-600" }
                         }
                     },
                     Some(list) => rsx! {
@@ -109,7 +109,7 @@ fn BoardOption(board: api::boards::Board, mut picked: Signal<i64>, current_id: i
     rsx! {
         label {
             r#for: "{input_id}",
-            class: if picked() == id { "flex items-center gap-3 rounded-lg border border-blue-500 ring-1 ring-blue-500 px-3 py-2 cursor-pointer" } else { "flex items-center gap-3 rounded-lg border border-gray-300 px-3 py-2 cursor-pointer hover:border-blue-400" },
+            class: if picked() == id { "flex items-center gap-3 rounded-lg border border-signal-500 ring-1 ring-signal-500 px-3 py-2 cursor-pointer" } else { "flex items-center gap-3 rounded-lg border border-gray-300 px-3 py-2 cursor-pointer hover:border-signal-400" },
             input {
                 id: "{input_id}",
                 r#type: "radio",

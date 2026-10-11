@@ -360,7 +360,7 @@ pub fn Annotations() -> Element {
                         })}
                         if open_set.as_ref().is_some_and(|s| s.media_asset_id.is_some() || s.tour_id.is_some()) {
                             button {
-                                class: if preview_now { "ml-auto inline-flex items-center px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg" } else { "ml-auto inline-flex items-center px-3 py-1.5 text-xs text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40" },
+                                class: if preview_now { "ml-auto inline-flex items-center px-3 py-1.5 text-xs font-medium bg-signal-600 text-white rounded-lg" } else { "ml-auto inline-flex items-center px-3 py-1.5 text-xs text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40" },
                                 disabled: !preview_now && preview_disabled,
                                 title: if preview_disabled { t!("annot-preview-save-first") } else { t!("annot-preview-hint") },
                                 onclick: move |_| preview.toggle(),
@@ -704,10 +704,10 @@ fn NewSetModal(
                         }
                     }
                     if let Some((n, k)) = chosen {
-                        div { class: "mt-2 flex items-center gap-2 text-xs bg-blue-50 border border-blue-100 text-blue-800 rounded-lg px-3 py-2",
-                            span { class: "inline-block h-2.5 w-2.5 rounded-full bg-blue-500" }
+                        div { class: "mt-2 flex items-center gap-2 text-xs bg-signal-50 border border-signal-100 text-signal-800 rounded-lg px-3 py-2",
+                            span { class: "inline-block h-2.5 w-2.5 rounded-full bg-signal-500" }
                             span { class: "font-medium truncate", "{n}" }
-                            span { class: "text-blue-400 ml-auto", "{k}" }
+                            span { class: "text-signal-400 ml-auto", "{k}" }
                         }
                     }
                     p { class: "mt-1.5 text-xs text-gray-500", "{media_hint}" }
@@ -918,7 +918,7 @@ fn FlatAnnotViewer(media_id: String, cx: AnnotationEditorCx, set_name: String) -
                                 }
                             }
                             if placing_now {
-                                div { class: "absolute top-2 left-2 px-2 py-1 text-xs rounded-lg bg-blue-600/90 text-white pointer-events-none",
+                                div { class: "absolute top-2 left-2 px-2 py-1 text-xs rounded-lg bg-signal-600/90 text-white pointer-events-none",
                                     {t!("annot-place-hint")}
                                 }
                             }

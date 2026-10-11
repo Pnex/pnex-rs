@@ -77,7 +77,7 @@ pub fn Sites() -> Element {
             div { class: "bg-white rounded-lg border border-line overflow-hidden",
                 if loading {
                     div { class: "p-6 flex justify-center",
-                        span { class: "animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" }
+                        span { class: "animate-spin rounded-full h-5 w-5 border-b-2 border-signal-600" }
                     }
                 } else if sites.is_empty() {
                     div { class: "p-8 text-center text-sm text-gray-500", {t!("sites-empty")} }

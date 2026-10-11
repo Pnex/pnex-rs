@@ -199,7 +199,7 @@ fn ControlRow(
                 }
             }
             if let Some(p) = port {
-                span { class: "text-xs text-blue-700 bg-blue-50 rounded px-1.5",
+                span { class: "text-xs text-signal-700 bg-signal-50 rounded px-1.5",
                     {t!("flows-control-source-port", port : p + 1)}
                 }
             }

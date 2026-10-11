@@ -125,7 +125,7 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
                     },
                     None => rsx! {
                         div { class: "flex-1 flex items-center justify-center",
-                            span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" }
+                            span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-signal-600" }
                         }
                     },
                 }

@@ -102,7 +102,7 @@ pub fn AgentInstall(device_pk: i64) -> Element {
         div { class: "space-y-4",
             p { class: "text-sm text-gray-600", {t!("agent-install-help", time : expires)} }
             div { class: "flex flex-wrap items-center gap-3",
-                span { class: "rounded-lg bg-blue-50 px-3 py-2 font-mono text-lg font-semibold text-blue-800",
+                span { class: "rounded-lg bg-signal-50 px-3 py-2 font-mono text-lg font-semibold text-signal-800",
                     "{created.code}"
                 }
                 button {
@@ -131,7 +131,7 @@ pub fn AgentInstall(device_pk: i64) -> Element {
                 ]
                 {
                     button {
-                        class: if tab() == t_id { "border-b-2 border-blue-600 px-3 py-2 text-sm font-medium text-blue-700" } else { "px-3 py-2 text-sm text-gray-500 hover:text-gray-800" },
+                        class: if tab() == t_id { "border-b-2 border-signal-600 px-3 py-2 text-sm font-medium text-signal-700" } else { "px-3 py-2 text-sm text-gray-500 hover:text-gray-800" },
                         r#type: "button",
                         onclick: move |_| tab.set(t_id),
                         "{label}"
@@ -176,7 +176,7 @@ pub fn AgentInstall(device_pk: i64) -> Element {
                 }
             } else {
                 div { class: "flex items-center gap-2 text-sm text-gray-500",
-                    span { class: "inline-block h-3 w-3 animate-spin rounded-full border-b-2 border-blue-600" }
+                    span { class: "inline-block h-3 w-3 animate-spin rounded-full border-b-2 border-signal-600" }
                     {t!("agent-install-waiting")}
                 }
             }
@@ -319,7 +319,7 @@ pub fn AgentPanel(device_pk: i64, can_write: bool) -> Element {
                     for (i, (name, _)) in examples.iter().enumerate() {
                         button {
                             key: "{name}",
-                            class: if example() == i { "rounded-full bg-blue-600 px-3 py-1 text-xs text-white" } else { "rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 hover:bg-gray-200" },
+                            class: if example() == i { "rounded-full bg-signal-600 px-3 py-1 text-xs text-white" } else { "rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 hover:bg-gray-200" },
                             r#type: "button",
                             onclick: move |_| example.set(i),
                             "{name}"

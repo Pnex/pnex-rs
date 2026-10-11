@@ -262,7 +262,7 @@ fn DeliveryRow(
             td { class: "td hidden md:table-cell",
                 if let Some(id) = flow_id {
                     button {
-                        class: "text-blue-600 hover:underline",
+                        class: "text-signal-600 hover:underline",
                         r#type: "button",
                         onclick: move |e| {
                             e.stop_propagation();

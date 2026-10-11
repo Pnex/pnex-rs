@@ -395,7 +395,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                             for (title, help, models) in model_sections {
                                 if !models.is_empty() {
                                     div {
-                                        h4 { class: "text-xs font-semibold text-blue-600", {title} }
+                                        h4 { class: "text-xs font-semibold text-signal-600", {title} }
                                         p { class: "text-xs text-gray-500 mb-2", {help} }
                                         div { class: "grid gap-2",
                                             for pd in models {
@@ -594,7 +594,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                 match build_record() {
                                     None => rsx! {
                                         div { class: "flex items-center gap-3 text-sm text-gray-600",
-                                            span { class: "animate-spin inline-block rounded-full h-5 w-5 border-b-2 border-blue-600" }
+                                            span { class: "animate-spin inline-block rounded-full h-5 w-5 border-b-2 border-signal-600" }
                                             {t!("wizard-build-pending")}
                                         }
                                     },
@@ -634,7 +634,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                                 }
                                             } else {
                                                 div { class: "flex items-center gap-3 text-sm text-gray-600",
-                                                    span { class: "animate-spin inline-block rounded-full h-5 w-5 border-b-2 border-blue-600" }
+                                                    span { class: "animate-spin inline-block rounded-full h-5 w-5 border-b-2 border-signal-600" }
                                                     {t!("wizard-build-pending")}
                                                 }
                                             }
@@ -645,7 +645,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                             // Reassurance: closing is safe — the build runs in the
                             // server worker, the binary persists and credentials
                             // stay reachable (masked) on the device page.
-                            div { class: "flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800",
+                            div { class: "flex items-start gap-3 bg-signal-50 border border-signal-200 rounded-lg p-3 text-sm text-signal-800",
                                 icons::Info { class: "h-5 w-5 shrink-0" }
                                 {t!("wizard-build-close-hint")}
                             }
@@ -663,7 +663,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                     // ── Réactivation : pas de nouveau token ──
                     Step::Reactivated => rsx! {
                         div { class: "space-y-4",
-                            div { class: "flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800",
+                            div { class: "flex items-start gap-3 bg-signal-50 border border-signal-200 rounded-lg p-4 text-sm text-signal-800",
                                 icons::Info { class: "h-5 w-5 shrink-0" }
                                 div {
                                     p { {t!("wizard-reactivated")} }
@@ -716,7 +716,7 @@ fn stepper(current: Step) -> Element {
                     if index > 0 {
                         span { class: "text-gray-300 mx-0.5", "→" }
                     }
-                    span { class: if index <= current_index { "flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold bg-blue-600 text-white" } else { "flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold bg-gray-200 text-gray-500" },
+                    span { class: if index <= current_index { "flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold bg-signal-600 text-white" } else { "flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold bg-gray-200 text-gray-500" },
                         "{index + 1}"
                     }
                     // Phone: only the current step keeps its label, so the
@@ -731,9 +731,9 @@ fn stepper(current: Step) -> Element {
 /// Label classes of a wizard step (full literals for the Tailwind scan).
 fn step_label_class(index: usize, current: usize) -> &'static str {
     if index == current {
-        "text-xs font-medium text-blue-700"
+        "text-xs font-medium text-signal-700"
     } else if index < current {
-        "hidden text-xs font-medium text-blue-700 sm:inline"
+        "hidden text-xs font-medium text-signal-700 sm:inline"
     } else {
         "hidden text-xs text-gray-500 sm:inline"
     }
@@ -747,9 +747,12 @@ fn model_card(
 ) -> Element {
     let name = pd.name.clone();
     let is_selected = selected().as_ref().is_some_and(|s| s.name == name);
-    let (border, chip) = ("border-blue-200 bg-white", "bg-blue-100 text-blue-800");
+    let (border, chip) = (
+        "border-signal-200 bg-white",
+        "bg-signal-100 text-signal-800",
+    );
     let (ring, check) = if is_selected {
-        ("ring-2 ring-blue-500 border-blue-500", true)
+        ("ring-2 ring-signal-500 border-signal-500", true)
     } else {
         ("", false)
     };
@@ -758,7 +761,7 @@ fn model_card(
     let pretty = pd.pretty_name.clone().unwrap_or_else(|| pd.name.clone());
     rsx! {
         button {
-            class: "text-left w-full p-3 rounded-lg border transition-colors hover:border-blue-400 {border} {ring}",
+            class: "text-left w-full p-3 rounded-lg border transition-colors hover:border-signal-400 {border} {ring}",
             r#type: "button",
             onclick: move |_| {
                 // Nouveau modèle → variante réinitialisée (None = défaut).
@@ -768,7 +771,7 @@ fn model_card(
             div { class: "flex items-center justify-between",
                 span { class: "text-sm font-semibold text-gray-900", {pretty} }
                 if check {
-                    icons::Check { class: "h-4 w-4 text-blue-600" }
+                    icons::Check { class: "h-4 w-4 text-signal-600" }
                 }
             }
             // description_i18n (fluent key) resolved client-side when
@@ -843,7 +846,7 @@ fn VariantChip(
         * 2;
     let meta = format!("{} · {} pins", board.soc, per_side);
     let (border, ring) = if selected_now {
-        ("border-blue-500", "ring-2 ring-blue-500")
+        ("border-signal-500", "ring-2 ring-signal-500")
     } else {
         ("border-gray-300", "")
     };
@@ -856,7 +859,7 @@ fn VariantChip(
         .any(|s| s.get("builtin").and_then(|b| b.as_bool()) == Some(true));
     rsx! {
         div {
-            class: "relative flex flex-col items-start gap-0.5 text-left rounded-xl border px-3.5 py-2.5 transition-colors hover:border-blue-400 {border} {ring} bg-white cursor-pointer select-none",
+            class: "relative flex flex-col items-start gap-0.5 text-left rounded-xl border px-3.5 py-2.5 transition-colors hover:border-signal-400 {border} {ring} bg-white cursor-pointer select-none",
             role: "button",
             tabindex: "0",
             aria_pressed: selected_now,
@@ -871,7 +874,7 @@ fn VariantChip(
                 }
             }
             button {
-                class: "absolute top-2 right-2 p-1 rounded-md text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors",
+                class: "absolute top-2 right-2 p-1 rounded-md text-gray-500 hover:text-signal-600 hover:bg-signal-50 transition-colors",
                 r#type: "button",
                 title: t!("board-pinout-preview"),
                 aria_label: t!("board-pinout-preview"),

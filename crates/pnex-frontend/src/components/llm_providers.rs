@@ -153,7 +153,7 @@ fn ProviderRow(
                 span { class: "font-medium", {provider.name.clone()} }
                 p { class: "text-xs text-gray-500 font-mono md:hidden", {provider.model.clone()} }
                 if provider.is_default {
-                    span { class: "ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-xs",
+                    span { class: "ml-2 px-1.5 py-0.5 rounded bg-signal-50 text-signal-700 text-xs",
                         {t!("llm-default")}
                     }
                 }

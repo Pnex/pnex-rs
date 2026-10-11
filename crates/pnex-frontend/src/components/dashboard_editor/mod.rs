@@ -496,7 +496,7 @@ fn ToolsPill(mut cx: EditorCx, mobile: bool) -> Element {
         div { class: "flex items-center gap-1 rounded-full border border-gray-200 bg-white p-1 shadow-lg",
             button {
                 hidden: mobile,
-                class: if cx.tool.cloned() == Tool::Select { "flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-white" } else { "flex h-8 w-8 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100" },
+                class: if cx.tool.cloned() == Tool::Select { "flex h-8 w-8 items-center justify-center rounded-full bg-signal-600 text-white" } else { "flex h-8 w-8 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100" },
                 title: "{select_title}",
                 onclick: move |_| {
                     cx.tool.set(Tool::Select);
@@ -506,7 +506,7 @@ fn ToolsPill(mut cx: EditorCx, mobile: bool) -> Element {
             }
             button {
                 hidden: mobile,
-                class: if cx.tool.cloned() == Tool::Wire { "flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-white" } else { "flex h-8 w-8 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100" },
+                class: if cx.tool.cloned() == Tool::Wire { "flex h-8 w-8 items-center justify-center rounded-full bg-signal-600 text-white" } else { "flex h-8 w-8 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100" },
                 title: "{wire_title}",
                 onclick: move |_| {
                     cx.tool.set(Tool::Wire);

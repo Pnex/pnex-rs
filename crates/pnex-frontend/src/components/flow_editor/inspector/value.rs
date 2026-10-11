@@ -108,7 +108,7 @@ pub(super) fn ValueForm(mut cx: EditorCx, initial: ValueConfig, can_write: bool)
             // ── Pane toggle: key/value (non-developers) vs raw JSON ──
             div { class: "flex gap-1",
                 button {
-                    class: if pane() == ValuePane::Kv { "px-2 py-0.5 rounded-full text-xs bg-blue-600 text-white" } else { "px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 hover:bg-gray-200" },
+                    class: if pane() == ValuePane::Kv { "px-2 py-0.5 rounded-full text-xs bg-signal-600 text-white" } else { "px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 hover:bg-gray-200" },
                     disabled: !can_write,
                     onclick: move |_| {
                         pane.set(ValuePane::Kv);
@@ -116,7 +116,7 @@ pub(super) fn ValueForm(mut cx: EditorCx, initial: ValueConfig, can_write: bool)
                     {t!("flows-value-pane-kv")}
                 }
                 button {
-                    class: if pane() == ValuePane::Json { "px-2 py-0.5 rounded-full text-xs bg-blue-600 text-white" } else { "px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 hover:bg-gray-200" },
+                    class: if pane() == ValuePane::Json { "px-2 py-0.5 rounded-full text-xs bg-signal-600 text-white" } else { "px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 hover:bg-gray-200" },
                     disabled: !can_write,
                     onclick: move |_| {
                         raw.set(value_json_to_raw(&value.read().clone()));
@@ -209,7 +209,7 @@ pub(super) fn ValueForm(mut cx: EditorCx, initial: ValueConfig, can_write: bool)
                             }
                             if can_write {
                                 button {
-                                    class: "text-xs text-blue-600 hover:text-blue-700",
+                                    class: "text-xs text-signal-600 hover:text-signal-700",
                                     onclick: move |_| {
                                         let mut next = rows.read().clone();
                                         next.push((String::new(), String::new()));

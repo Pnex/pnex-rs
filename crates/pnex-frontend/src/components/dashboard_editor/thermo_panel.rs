@@ -336,7 +336,7 @@ pub fn ThermoPanel(
                 }
             }
             button {
-                class: "px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded",
+                class: "px-2 py-1 text-xs text-signal-600 hover:bg-signal-50 rounded",
                 disabled: !can_write,
                 onclick: move |_| {
                     let add_names = add_names.clone();

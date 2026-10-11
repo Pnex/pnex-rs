@@ -229,7 +229,7 @@ pub fn FunctionsReferenceModal(
                                 target: "_blank",
                                 rel: "noopener",
                                 class: "flex items-center justify-between py-1.5 text-sm",
-                                span { class: "font-medium text-blue-700", {t!(key.as_str())} }
+                                span { class: "font-medium text-signal-700", {t!(key.as_str())} }
                                 span { class: "text-xs text-gray-500", "{host}" }
                             }
                         }
@@ -269,7 +269,7 @@ fn RefGroupView(
                             div { class: "text-sm text-gray-600", {t!(desc.as_str())} }
                         }
                         button {
-                            class: "h-6 w-6 rounded-md border border-gray-300 text-sm text-blue-700 hover:bg-blue-50 shrink-0",
+                            class: "h-6 w-6 rounded-md border border-gray-300 text-sm text-signal-700 hover:bg-signal-50 shrink-0",
                             title: "insert",
                             onclick: move |_| oninsert.call(snippet.clone()),
                             "+"

@@ -103,7 +103,7 @@ pub(super) fn MobileComposer(mut cx: EditorCx) -> Element {
                 }
                 button {
                     r#type: "button",
-                    class: "w-full rounded-xl border-2 border-dashed border-gray-300 py-3 text-sm text-gray-500 hover:border-blue-300 hover:text-blue-600",
+                    class: "w-full rounded-xl border-2 border-dashed border-gray-300 py-3 text-sm text-gray-500 hover:border-signal-300 hover:text-signal-600",
                     onclick: move |e| {
                         e.stop_propagation();
                         let title = new_title.clone();
@@ -132,7 +132,7 @@ fn SectionBlock(
     let target = cx.section.cloned().as_deref() == Some(sid.as_str())
         || (cx.section.cloned().is_none() && index + 1 == count);
     let frame = if target {
-        "rounded-xl p-2 ring-2 ring-blue-200 bg-blue-50/40"
+        "rounded-xl p-2 ring-2 ring-signal-200 bg-signal-50/40"
     } else {
         "rounded-xl p-2"
     };
@@ -265,9 +265,9 @@ fn ComposerCard(mut cx: EditorCx, w: Widget, section_id: String) -> Element {
     let selected = matches!(cx.selected.cloned(), Some(Selection::Widget(ref s)) if *s == id);
     let classes = mobile_card_classes(&w);
     let ring = if selected {
-        "ring-2 ring-blue-500"
+        "ring-2 ring-signal-500"
     } else {
-        "hover:ring-2 hover:ring-blue-200"
+        "hover:ring-2 hover:ring-signal-200"
     };
     let points = w
         .source
@@ -364,7 +364,7 @@ fn PageBar(
         .iter()
         .find(|p| Some(&p.id) == current.as_ref())
         .cloned();
-    let tab_on = "flex shrink-0 items-center gap-1 rounded-full bg-blue-600 px-3 py-1 text-xs font-medium text-white";
+    let tab_on = "flex shrink-0 items-center gap-1 rounded-full bg-signal-600 px-3 py-1 text-xs font-medium text-white";
     let tab_off = "flex shrink-0 items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50";
     rsx! {
         div { class: "space-y-2", onclick: move |e| e.stop_propagation(),
@@ -383,7 +383,7 @@ fn PageBar(
                 }
                 button {
                     r#type: "button",
-                    class: "shrink-0 rounded-full border border-dashed border-gray-300 px-3 py-1 text-xs text-gray-500 hover:border-blue-300 hover:text-blue-600",
+                    class: "shrink-0 rounded-full border border-dashed border-gray-300 px-3 py-1 text-xs text-gray-500 hover:border-signal-300 hover:text-signal-600",
                     onclick: move |_| on_add.call(()),
                     {t!("db-page-add")}
                 }

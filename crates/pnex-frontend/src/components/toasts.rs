@@ -51,9 +51,9 @@ fn ToastCard(id: u64, kind: ToastKind, message: ToastMessage) -> Element {
             },
         ),
         ToastKind::Info => (
-            "bg-blue-50 border-blue-200",
+            "bg-signal-50 border-signal-200",
             rsx! {
-                icons::Info { class: "h-5 w-5 text-blue-500" }
+                icons::Info { class: "h-5 w-5 text-signal-500" }
             },
         ),
     };

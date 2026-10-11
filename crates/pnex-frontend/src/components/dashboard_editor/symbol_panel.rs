@@ -138,7 +138,7 @@ fn SymbolTile(cx: EditorCx, entry: Entry) -> Element {
     let id = entry.id;
     rsx! {
         button {
-            class: "flex h-14 items-center justify-center rounded-md border border-transparent p-1.5 hover:border-blue-200 hover:bg-blue-50",
+            class: "flex h-14 items-center justify-center rounded-md border border-transparent p-1.5 hover:border-signal-200 hover:bg-signal-50",
             title: "{entry.name}",
             "aria-label": "{entry.name}",
             onclick: move |_| library::add_symbol(cx, id),

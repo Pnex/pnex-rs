@@ -559,7 +559,7 @@ pub fn TourViewer(
                             for (floor, is_active, target) in floor_buttons.clone() {
                                 button {
                                     key: "{floor.id}",
-                                    class: if target.is_none() { "w-full text-left px-2 py-1.5 text-sm rounded-lg bg-gray-50 text-gray-500 border border-transparent cursor-not-allowed" } else if is_active { "w-full text-left px-2 py-1.5 text-sm rounded-lg bg-blue-50 text-blue-700 border border-blue-200" } else { "w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-gray-50 text-gray-700 border border-transparent" },
+                                    class: if target.is_none() { "w-full text-left px-2 py-1.5 text-sm rounded-lg bg-gray-50 text-gray-500 border border-transparent cursor-not-allowed" } else if is_active { "w-full text-left px-2 py-1.5 text-sm rounded-lg bg-signal-50 text-signal-700 border border-signal-200" } else { "w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-gray-50 text-gray-700 border border-transparent" },
                                     // Un étage sans scène n'a rien à montrer : no-op
                                     // silencieux = confusion (constat 2026-09-16) —
                                     // visuellement désactivé.
@@ -609,7 +609,7 @@ pub fn TourViewer(
                         for (scene, is_current) in scene_buttons.clone() {
                             li { key: "list-{scene.id}",
                                 button {
-                                    class: if is_current { "w-full text-left px-2 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-lg" } else { "w-full text-left px-2 py-1.5 text-sm hover:bg-gray-50 text-gray-700 rounded-lg" },
+                                    class: if is_current { "w-full text-left px-2 py-1.5 text-sm bg-signal-50 text-signal-700 rounded-lg" } else { "w-full text-left px-2 py-1.5 text-sm hover:bg-gray-50 text-gray-700 rounded-lg" },
                                     onclick: move |_| {
                                         current.set(scene.id.clone());
                                         active_floor.set(scene.floor_id.clone());

@@ -111,7 +111,7 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::EventLog => (PaletteIcon::History, "bg-slate-100 text-slate-600"),
         PaletteKind::MemoryWrite => (PaletteIcon::Database, "bg-lime-50 text-lime-700"),
         PaletteKind::MemoryRead => (PaletteIcon::Database, "bg-green-50 text-green-700"),
-        PaletteKind::ControlSource => (PaletteIcon::Gauge, "bg-blue-50 text-blue-600"),
+        PaletteKind::ControlSource => (PaletteIcon::Gauge, "bg-signal-50 text-signal-600"),
         PaletteKind::Weather => (
             PaletteIcon::Home("home-partly-cloudy"),
             "bg-sky-50 text-sky-600",

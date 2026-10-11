@@ -205,7 +205,7 @@ pub fn role_badge(role: &str) -> (&'static str, String) {
         _ => t!("role-viewer"),
     };
     let badge = match role {
-        "owner" => "bg-blue-100 text-blue-800",
+        "owner" => "bg-signal-100 text-signal-800",
         "admin" => "bg-amber-100 text-amber-800",
         "member" => "bg-green-100 text-green-800",
         _ => "bg-gray-100 text-gray-800",
@@ -243,7 +243,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                     div { class: "p-4 border-b border-gray-200 flex items-center justify-between gap-4 md:p-6",
                         div { class: "min-w-0",
                             button {
-                                class: "text-sm text-blue-600 hover:text-blue-700 mb-1",
+                                class: "text-sm text-signal-600 hover:text-signal-700 mb-1",
                                 onclick: move |_| on_back.call(()),
                                 {"← "}
                                 {t!("orgs-back")}
@@ -439,7 +439,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
         },
         None => rsx! {
             div { class: "text-center py-12",
-                span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-blue-600" }
+                span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-signal-600" }
             }
         },
     }

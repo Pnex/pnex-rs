@@ -524,12 +524,12 @@ pub fn PoiTreeSection(
                 span { class: "text-xs text-gray-500", {t!("poi-tree-count", count : total)} }
                 div { class: "flex gap-1",
                     button {
-                        class: "px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded transition-colors",
+                        class: "px-2 py-1 text-xs font-medium text-signal-700 bg-signal-50 hover:bg-signal-100 rounded transition-colors",
                         onclick: move |_| create_folder_now(()),
                         {t!("poi-tree-add-folder")}
                     }
                     button {
-                        class: "px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded transition-colors",
+                        class: "px-2 py-1 text-xs font-medium text-signal-700 bg-signal-50 hover:bg-signal-100 rounded transition-colors",
                         onclick: move |_| on_attach.call(()),
                         {t!("poi-attachment-attach")}
                     }
@@ -538,7 +538,7 @@ pub fn PoiTreeSection(
             // Création inline d'un dossier racine
             div { class: "flex gap-1",
                 input {
-                    class: "flex-1 min-w-0 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400",
+                    class: "flex-1 min-w-0 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-signal-400",
                     placeholder: t!("poi-tree-folder-placeholder"),
                     value: "{new_folder}",
                     oninput: move |e| new_folder.set(e.value()),
@@ -620,7 +620,7 @@ pub fn PoiTreeSection(
                 } else {
                     button {
                         key: "{row.key}",
-                        class: if row.is_dragged { "w-full text-left px-2 py-1.5 flex items-center gap-1 rounded opacity-40 transition-colors" } else if row.is_folder { "w-full text-left px-2 py-1.5 flex items-center gap-1 rounded hover:bg-blue-50 transition-colors" } else if row.is_previewed { "w-full text-left px-2 py-1.5 flex items-center gap-1 rounded bg-blue-50 transition-colors" } else { "w-full text-left px-2 py-1.5 flex items-center gap-1 rounded hover:bg-gray-50 transition-colors" },
+                        class: if row.is_dragged { "w-full text-left px-2 py-1.5 flex items-center gap-1 rounded opacity-40 transition-colors" } else if row.is_folder { "w-full text-left px-2 py-1.5 flex items-center gap-1 rounded hover:bg-signal-50 transition-colors" } else if row.is_previewed { "w-full text-left px-2 py-1.5 flex items-center gap-1 rounded bg-signal-50 transition-colors" } else { "w-full text-left px-2 py-1.5 flex items-center gap-1 rounded hover:bg-gray-50 transition-colors" },
                         style: format!("padding-left: {}px", row.depth * 14 + 4),
                         onpointerup: move |e| {
                             e.stop_propagation();
@@ -701,7 +701,7 @@ pub fn PoiTreeSection(
                         // Folder: D42 labels (inherited by everything inside).
                         if row.labels.is_some() {
                             span {
-                                class: "shrink-0 text-gray-300 hover:text-blue-600 cursor-pointer",
+                                class: "shrink-0 text-gray-300 hover:text-signal-600 cursor-pointer",
                                 title: t!("resources-labels-title"),
                                 onclick: move |e| {
                                     e.stop_propagation();
@@ -730,7 +730,7 @@ pub fn PoiTreeSection(
             }
             // Zone de dépôt racine
             div {
-                class: "flex items-center gap-1 px-2 py-2 rounded border border-dashed border-gray-200 hover:bg-blue-50 transition-colors",
+                class: "flex items-center gap-1 px-2 py-2 rounded border border-dashed border-gray-200 hover:bg-signal-50 transition-colors",
                 onpointerup: move |e| {
                     e.stop_propagation();
                     if let Some(item) = dragging() {
@@ -829,7 +829,7 @@ fn DevicePlacementRow(
             if editing() {
                 div { class: "flex items-center gap-1 mt-1.5",
                     input {
-                        class: "flex-1 min-w-0 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400",
+                        class: "flex-1 min-w-0 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-signal-400",
                         placeholder: t!("poi-device-location-hint"),
                         value: "{value}",
                         autofocus: true,
@@ -842,7 +842,7 @@ fn DevicePlacementRow(
                         },
                     }
                     button {
-                        class: "text-xs font-semibold text-blue-700 hover:text-blue-800 shrink-0",
+                        class: "text-xs font-semibold text-signal-700 hover:text-signal-800 shrink-0",
                         onclick: move |_| {
                             on_save_location.call((placement_id, value()));
                             editing.set(false);
@@ -852,7 +852,7 @@ fn DevicePlacementRow(
                 }
             } else {
                 button {
-                    class: "flex items-center gap-1 mt-1.5 text-xs text-gray-500 hover:text-blue-700 transition-colors",
+                    class: "flex items-center gap-1 mt-1.5 text-xs text-gray-500 hover:text-signal-700 transition-colors",
                     title: t!("poi-device-location-hint"),
                     onclick: move |_| editing.set(true),
                     icons::MapPin { class: "h-3 w-3 shrink-0" }

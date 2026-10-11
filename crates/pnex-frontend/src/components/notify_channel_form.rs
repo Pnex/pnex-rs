@@ -220,7 +220,7 @@ pub fn NotifyChannelForm(
 
                 // Canal websocket : aucun champ — bloc informatif.
                 if field_spec.is_empty() {
-                    div { class: "rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800",
+                    div { class: "rounded-lg bg-signal-50 border border-signal-200 p-3 text-sm text-signal-800",
                         {t!("notify-kind-in-app-noconfig")}
                     }
                 }

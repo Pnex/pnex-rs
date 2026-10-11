@@ -115,8 +115,10 @@ pub fn OntologyObject(id: String) -> Element {
             },
             div { class: "space-y-4",
                 div { class: "flex flex-wrap items-center gap-2 text-sm",
-                    TypeIcon { icon, class: "h-5 w-5 text-blue-600" }
-                    span { class: "rounded bg-blue-50 px-2 py-0.5 text-blue-700", "{kind}" }
+                    TypeIcon { icon, class: "h-5 w-5 text-signal-600" }
+                    span { class: "rounded bg-signal-50 px-2 py-0.5 text-signal-700",
+                        "{kind}"
+                    }
                     if tv.def.system {
                         span { class: "rounded bg-gray-100 px-2 py-0.5 text-gray-600",
                             {t!("onto-system")}
@@ -377,7 +379,7 @@ fn LinkRow(
             "data-link": "{link.link_type}",
             span { class: "text-sm text-gray-500", "{label}" }
             Link {
-                class: "text-sm font-medium text-blue-600 hover:underline",
+                class: "text-sm font-medium text-signal-600 hover:underline",
                 to: Route::OntologyObject {
                     id: other.id.clone(),
                 },

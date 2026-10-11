@@ -92,7 +92,7 @@ pub(super) fn TestImageModal(model: MlModel, on_close: Callback<()>) -> Element 
                 p { class: "text-xs text-gray-500", {t!("models-test-hint")} }
                 if running() {
                     div { class: "flex items-center gap-2 text-sm text-gray-600",
-                        span { class: "animate-spin inline-block rounded-full h-4 w-4 border-b-2 border-blue-600" }
+                        span { class: "animate-spin inline-block rounded-full h-4 w-4 border-b-2 border-signal-600" }
                         {t!("models-test-running")}
                     }
                 }

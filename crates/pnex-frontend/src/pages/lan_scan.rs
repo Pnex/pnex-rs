@@ -93,7 +93,7 @@ pub(crate) fn LanScanSection() -> Element {
             div { class: "flex items-center gap-2",
                 input {
                     class: "flex-1 py-2 px-3 rounded-lg border border-gray-300 text-xs text-gray-900 \
-                            focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent",
+                            focus:outline-none focus:ring-2 focus:ring-signal-500 focus:border-transparent",
                     r#type: "text",
                     placeholder: DEFAULT_PREFIX,
                     value: "{prefix}",
@@ -111,7 +111,7 @@ pub(crate) fn LanScanSection() -> Element {
                 div { class: "space-y-1",
                     div { class: "h-2 w-full bg-gray-200 rounded-full overflow-hidden",
                         div {
-                            class: "h-full bg-blue-600 rounded-full transition-all duration-200",
+                            class: "h-full bg-signal-600 rounded-full transition-all duration-200",
                             style: "width: {pct}%",
                         }
                     }
@@ -165,7 +165,7 @@ fn ScanRow(hit: ScanHit) -> Element {
                 }
                 button {
                     class: "py-1.5 px-3 rounded-lg text-xs font-semibold text-white \
-                            bg-blue-600 hover:bg-blue-700 transition-colors disabled:opacity-40",
+                            bg-signal-600 hover:bg-signal-700 transition-colors disabled:opacity-40",
                     disabled: !ok,
                     onclick: move |_| {
                         let target = url_for_click.clone();

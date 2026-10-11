@@ -19,7 +19,7 @@ pub fn Shell() -> Element {
     match SESSION.cloned() {
         SessionState::Booting => rsx! {
             div { class: "min-h-screen flex items-center justify-center bg-gray-50",
-                span { class: "animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" }
+                span { class: "animate-spin rounded-full h-10 w-10 border-b-2 border-signal-600" }
             }
         },
         SessionState::LoggedOut => rsx! {
@@ -763,7 +763,7 @@ fn SidebarSearch(
                     crate::components::icons::Search { class: "h-4 w-4 text-gray-400" }
                 }
                 input {
-                    class: "w-full rounded-md border border-line bg-surface py-2 pl-9 pr-3 text-sm text-ink placeholder:text-gray-500 focus:border-signal focus:outline-none focus:ring-3 focus:ring-blue-200",
+                    class: "w-full rounded-md border border-line bg-surface py-2 pl-9 pr-3 text-sm text-ink placeholder:text-gray-500 focus:border-signal focus:outline-none focus:ring-3 focus:ring-signal-200",
                     placeholder: t!("search-placeholder"),
                     value: "{q_value}",
                     oninput: move |event| {
@@ -946,7 +946,7 @@ fn SearchHitRow(
             }
         }
         button {
-            class: if active { "flex w-full items-center gap-3 px-3 py-2 text-left bg-blue-600/10" } else { "flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-gray-100" },
+            class: if active { "flex w-full items-center gap-3 px-3 py-2 text-left bg-signal-600/10" } else { "flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-gray-100" },
             onclick: move |_| {
                 open_hit(&navigator, &entity_type, &hit);
                 if let Some(cb) = on_navigate {
