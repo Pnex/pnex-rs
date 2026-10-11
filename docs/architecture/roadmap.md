@@ -16,6 +16,32 @@
 > **palette de nœuds par catégories** (P1.7, D109) puis la **parité
 > n8n** (P2.11).
 
+## Positionnement : plateforme de données sur socle IoT (directive 2026-10-11)
+
+PneX passe en mode **data platform**. Le produit n'est plus seulement une
+plateforme IoT/SCADA : c'est une plateforme de données qui relie, dans
+une même org, des sources hétérogènes et les rend exploitables ensemble.
+
+- **Le cœur devient la donnée reliée** : noyau ontologique (objets, liens,
+  temps — P2.14), séries temporelles O2, médias et transcriptions (P2.13,
+  P2.15), documents et recherche IA (P2.18), pages (P2.17), couches géo
+  (P2.16), dossiers et chronologie unifiée (P2.19). Le device devient une
+  source de données parmi d'autres (imports, flux média, fichiers, API),
+  la première et la mieux intégrée.
+- **Le socle IoT reste entier, ambition et roadmap inchangées** :
+  contrôle/commande (surfaces pilotables D123–D133, « une surface lit, un
+  flow agit »), M2M résilient (M1–M3, `m2m-resilient.md`), firmware et
+  OTA, identité device X.509 (D153–D158), régulation autonome (F3, D20),
+  profils de sécurité (D148–D152), banc matériel (P0.1). Aucune entrée de
+  ces volets n'est déclassée, reportée ni réduite par ce repositionnement.
+- **Invariants conservés** : seul un flow déployé par l'humain agit sur le
+  physique (D123, A4) ; l'assistant ne commande jamais un device ; la
+  frontière de sécurité reste l'org puis la plateforme (D130).
+- **Conséquence de tri** : à priorité égale, un chantier qui relie des
+  données existantes (ontologie, chronologie, recherche) passe avant un
+  nouveau pilier isolé — cohérent avec le gel des nouveaux piliers de la
+  0.2.0 (`ontology.md` §9).
+
 ## Méthode
 
 - Deux horizons imbriqués : **consolider** (fermer le livré non validé)
@@ -705,6 +731,57 @@ l'assistant, exécutée par des flows déployés par l'humain (K18).
 Lots C0 → C8. Proposé : **C0–C1 comme validation de la 0.2.0**
 (première application du noyau), le reste après. Décision #24.
 
+### Outils externes évalués (ajout 2026-10-11) — **inscrits, rien d'implémenté**
+
+Contraintes de tri : workspace Cargo unique, cible Raspberry Pi (pas de
+plafond mémoire strict : ~2 Go au repos avec des pics est acceptable, la
+charge se gère au scheduling), PNEX sous MIT et visée d'une fondation (CNCF/Apache) →
+dépendance du cœur = licence **OSI, permissive de préférence** ; une seule
+UI, tout moteur tiers reste headless derrière elle.
+
+**À intégrer au cœur**
+
+| Outil | Licence | Rôle | Pilier | Statut / jalon | Contraintes |
+|---|---|---|---|---|---|
+| **anydoc** (firecrawl/anydoc) | MIT, pur Rust | docx/pptx/xlsx/odt/rtf/epub/csv/pdf → Markdown | Médiathèque + RAG (P2.18), agent IA de debugging | À intégrer, avec le chantier RAG (P2.18) | PDF scannés non gérés → OCR local (`ocrs` ou Tesseract) ; **jamais** l'offre hébergée Firecrawl |
+| **fframes** | MIT, Rust | Rendu vidéo MP4 depuis un arbre SVG par frame | Export vidéo du replay temporel (synoptique/dashboard sur une plage) : RCA, dossiers (P2.19), studio de rapports | À intégrer **après la 0.2.0** (dépend du temps) ; **valider avant engagement** le rendu SVG serveur des synoptiques partagé dans `pnex-core` | Rendu CPU → queue de workers (école build firmware) ; FFmpeg **sans** `libav-agree-gpl` / `-nonfree` / `-version3`, codecs compatibles MIT |
+
+**Références de design (inspiration, aucune dépendance)**
+
+| Outil | Pilier | Note |
+|---|---|---|
+| Open-notebook | Dossiers / espace projet (P2.19) | Modèle sources + chat contextuel + recherche |
+| OpenFlowKit, DeepDiagram | Canevas d'enquête, éditeur type Notion (P2.17, P2.19) | Stack React → refaire en Dioxus |
+| Whitebophir | Canevas collaboratif | Licence copyleft à vérifier |
+| Kaneo | GMAO (ordres de travail) | Référence UI kanban |
+| Aria-Icons | Symboles de l'éditeur de synoptiques | Licence variable par collection → filtrer (règle « assets tiers : jamais de copie ») |
+| Kiln | Assets 3D (GLB) d'équipements pour synoptiques / visites 3D | Outil de production d'assets, pas runtime |
+
+**Sidecars optionnels (hors cœur, profil docker compose)**
+
+- **Stirling-PDF** : fusion, caviardage PDF pour dossiers/GMAO, appelé en
+  REST depuis un nœud de flow. Lourd (Java + LibreOffice) ; **cœur MIT
+  seulement**, dossiers `proprietary`, `saas`, `engine` exclus.
+- **Steel-browser / Figranium** : nœud d'ingestion web ou outil de
+  navigation de l'assistant ; navigateur headless → hors cœur.
+- **Typst** (Apache-2.0) : **candidat cœur** pour la génération de
+  rapports PDF (studio de rapports, P2.13 / P2.15 M5).
+
+**Tutoriels générés : dans `pnex-website`** (repo privé, génération
+interne ; pas de repo dédié ni d'open source) — étend le scénario de
+captures existant pour la communauté Instructables / Medium. À chaque
+release : instance de démo (compose), pilotage de l'UI, capture, montage,
+publication. Seul couplage avec pnex-rs : API publique + compose. Outils
+à intégrer : Openscreen (capture), fframes (montage
+as-code), archify (diagrammes d'archi animés), Anatomy (vues isométriques
+des cartes), Kiln (rendus 3D), Stickman Video Director (modèle cloud →
+marketing uniquement).
+
+**Écartés** : OmniParse (Python, GPU, couvert par anydoc), Lorien,
+ArtCraft, Zennotes, **Reticulum** (licence non OSI ; le transport M2M
+reste celui de `m2m-resilient.md` : zenoh-pico + OpenThread, tout open
+source — pas de discussion).
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
@@ -953,3 +1030,14 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   données, au vidéaste et au journaliste ; chronologie unifiée comme
   primitive du noyau, acteurs humains et affirmations sourcées en pack,
   confinement par org dédiée en V1.
+- **2026-10-11 (positionnement)** — PneX passe en mode **plateforme de
+  données** sur socle IoT (section « Positionnement ») : la donnée reliée
+  (ontologie, séries, médias, documents, pages, géo, dossiers) devient le
+  cœur ; contrôle/commande, M2M, firmware/OTA, identité device et
+  sécurité gardent la même ambition et la même roadmap.
+- **2026-10-11 (outils externes)** — Section « Outils externes évalués »
+  (après P2.19) : anydoc et fframes au cœur, références de design,
+  sidecars (Stirling-PDF, navigateurs headless), Typst candidat,
+  tutoriels générés dans `pnex-website`. Reticulum écarté (M2M =
+  zenoh-pico + OpenThread inchangé) ; pas de plafond < 1 Go.
+  Rien d'implémenté.
