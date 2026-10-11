@@ -294,6 +294,12 @@ fn case_properties() -> Vec<PropertyDef> {
         prop(CASE_TEMPLATE, PropertyKind::Text { max_len: Some(64) }),
         prop(CASE_LEGAL_BASIS, PropertyKind::Text { max_len: Some(255) }),
         prop(CASE_FROZEN_AT, PropertyKind::DateTime),
+        prop(
+            CASE_CONCLUSION_PAGE,
+            PropertyKind::Ref {
+                to_type: crate::resources::KIND_DOC.into(),
+            },
+        ),
     ]
 }
 
@@ -301,7 +307,8 @@ fn case_properties() -> Vec<PropertyDef> {
 pub const KIND_CASE: &str = "case";
 pub const CASE_QUESTION: &str = "question";
 pub const CASE_STATUS: &str = "status";
-pub const CASE_STATUSES: [&str; 3] = ["open", "concluded", "archived"];
+pub const CASE_STATUSES: [&str; 3] = ["open", CASE_CONCLUDED, "archived"];
+pub const CASE_CONCLUDED: &str = "concluded";
 pub const CASE_WINDOW_FROM: &str = "window_from";
 pub const CASE_WINDOW_TO: &str = "window_to";
 pub const CASE_TEMPLATE: &str = "template";
@@ -309,6 +316,8 @@ pub const CASE_TEMPLATE: &str = "template";
 pub const CASE_LEGAL_BASIS: &str = "legal_basis";
 /// Freeze instant (K12): the case is re-read as it stood then.
 pub const CASE_FROZEN_AT: &str = "frozen_at";
+/// The page holding the conclusion (K8), versioned when the case concludes.
+pub const CASE_CONCLUSION_PAGE: &str = "conclusion_page";
 /// Case membership (cases.md K2): any object → case, temporal.
 pub const REL_IN_CASE: &str = "in_case";
 pub const IN_CASE_ROLE: &str = "role";

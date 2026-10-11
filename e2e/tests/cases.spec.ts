@@ -5,6 +5,7 @@
 // prefix: the ontology is not swept between runs.
 import { expect, test } from '../src/fixtures.ts';
 import { dialog } from '../src/pages/shell.ts';
+import { DocEditor } from '../src/pages/docs.ts';
 
 test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
   test.beforeEach(async ({ api }) => {
@@ -227,5 +228,83 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
     await expect(page.getByTestId('case-timeline')).toContainText(`${prefix} Bob`);
     await snap.getByRole('button', { name: app.t('case-snapshot-now'), exact: true }).click();
     await expect(snap.getByTestId('ontology-graph').locator('line')).toHaveCount(0);
+  });
+
+  test('starts a page from a template, designates it, freezes it at the conclusion', async ({
+    app,
+    page,
+    api,
+    prefix,
+    capture,
+  }) => {
+    await api.post('/ontology/packs/investigation/install', {});
+    const run = Date.now().toString(36);
+    const c = await api.post('/ontology/objects', {
+      type_key: 'case', title: `${prefix} trip ${run}`, properties: { status: 'open' },
+    });
+    await app.goto(`/cases/${c.id}`);
+    const panel = page.getByTestId('case-pages');
+    await expect(panel.getByTestId('case-page-template').locator('option[value="five_whys"]')).toHaveCount(1);
+    await panel.getByTestId('case-page-template').selectOption('five_whys');
+    await panel.getByTestId('case-page-title').fill(`${prefix} why ${run}`);
+    await panel.getByTestId('case-page-title').press('Enter');
+
+    // The page opens filled with the template's sections.
+    const editor = new DocEditor(app, page);
+    await editor.waitSynced();
+    await expect(editor.content.locator('h2').first()).toHaveText('Problem');
+    await expect(editor.content.locator('ol li')).toHaveCount(5);
+    await capture('case-page-template', { caption: 'A 5 whys page started from the case' });
+    const docId = editor.id;
+
+    await app.goto(`/cases/${c.id}`);
+    await panel.getByTestId('case-page-row').filter({ hasText: `${prefix} why ${run}` })
+      .getByTestId('case-page-designate').click();
+    await expect(panel.getByTestId('case-page-conclusion')).toBeVisible();
+    await capture('case-pages', { caption: 'Case pages with the conclusion designated' });
+
+    // Concluding the case freezes the conclusion page in a named version.
+    await page.getByTestId('case-header').locator('[data-status="concluded"]').click();
+    await expect.poll(async () => JSON.stringify(await api.get(`/docs/${docId}/versions`)))
+      .toContain('"Conclusion"');
+  });
+
+  test('an archived case proposes to purge the persons only it holds', async ({
+    app,
+    page,
+    api,
+    prefix,
+    capture,
+  }) => {
+    await api.post('/ontology/packs/investigation/install', {});
+    const run = Date.now().toString(36);
+    const obj = (type_key: string, title: string, properties = {}) =>
+      api.post('/ontology/objects', { type_key, title: `${prefix} ${title} ${run}`, properties });
+    const c = await obj('case', 'fraud', { status: 'open' });
+    const ann = await obj('person', 'Ann');
+    const bob = await obj('person', 'Bob');
+    const carl = await obj('person', 'Carl');
+    for (const o of [ann, bob]) {
+      await api.post('/ontology/links', {
+        link_type: 'in_case', source_id: o.id, target_id: c.id, attributes: { role: 'actor' },
+      });
+    }
+    // Bob is also known outside the case: he is not proposed.
+    await api.post('/ontology/links', { link_type: 'knows', source_id: bob.id, target_id: carl.id });
+
+    await app.goto(`/cases/${c.id}`);
+    await expect(page.getByTestId('case-purge')).toHaveCount(0);
+    await page.getByTestId('case-header').locator('[data-status="archived"]').click();
+    const panel = page.getByTestId('case-purge');
+    await expect(panel).toContainText(`${prefix} Ann ${run}`);
+    await expect(panel).not.toContainText(`${prefix} Bob ${run}`);
+    await capture('case-purge', { caption: 'Personal data proposed for purge at archiving' });
+
+    await panel.getByTestId('case-purge-start').click();
+    await page.getByRole('alertdialog').getByRole('button').last().click();
+    await expect(page.getByTestId('case-purge')).toHaveCount(0);
+    await expect.poll(() => api.get(`/ontology/objects/${ann.id}`).then(() => 'kept', () => 'purged'))
+      .toBe('purged');
+    expect(await api.get(`/ontology/objects/${bob.id}`)).toHaveProperty('id', bob.id);
   });
 });

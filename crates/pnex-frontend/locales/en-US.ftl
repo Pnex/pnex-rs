@@ -3882,7 +3882,7 @@ err-ontology-admin-required = Only an organization owner or admin can change the
 err-ontology-system-read-only = System types and objects are edited from their own pages (devices, media, flows…).
 err-ontology-link-not-allowed = This link type does not connect objects of these types.
 err-ontology-link-cardinality = An open link already takes this place: close it first (for example when replacing a sensor).
-err-ontology-claim-unsourced = A claim is corroborated only with at least two pieces of distinct origins: link it to its sources ("is sourced by").
+err-ontology-claim-unsourced = A claim is corroborated only with at least two pieces of distinct origins: link it to its sources ("is sourced by"), or write why in "Corroboration justification".
 
 ## Ontology UI (D186)
 nav-ontology = Ontology
@@ -4171,6 +4171,7 @@ case-board-none = no claim
 case-board-unsourced = Without a source
 case-board-contradicted = Contradicted
 case-board-sources = { $count } source(s)
+case-board-justified = justified exception
 case-question-placeholder = What happened? Who was involved? What proves it?
 case-window-from = Window start (UTC)
 case-window-to = Window end (UTC)
@@ -4195,6 +4196,25 @@ case-snapshot-help = The cursor steps from one timeline event to the next: the g
 case-snapshot-empty = No member in the case at that instant.
 case-snapshot-no-places = No member located at that instant. A place comes from a geographic property of the member, or from an “is located at”, “occurred at” or “installed at” link to a POI or a place.
 case-tl-set-cursor = See the case at this instant
+case-pages = Pages
+case-page-title = Page title
+case-page-template = Page template
+case-page-blank = Blank page
+case-page-create = Create page
+case-pages-empty = No page in this case yet. Write the analysis here, then the conclusion.
+case-page-conclusion = Conclusion
+case-page-designate = Make it the conclusion
+case-page-unset = Remove
+case-pages-help = When the case is set to “Concluded”, the conclusion page is frozen in a named version “Conclusion”.
+case-purge = Personal data to purge
+case-purge-help = These persons and identifiers appear in no other case and in no link outside this case. Purging deletes them for good, with all their links. Untick those to keep.
+case-purge-action = { $count ->
+    [one] Purge 1 object
+   *[other] Purge { $count } objects
+}
+case-purge-confirm-title = Purge for good?
+case-purge-confirm = The ticked objects are deleted with their links, ranges and labels ({ $count }). The case will no longer show them, even at a past date. This cannot be undone.
+case-purged = Personal data purged
 case-focus-only = Only: { $title }
 case-link-title = Link two members
 case-link-from = From

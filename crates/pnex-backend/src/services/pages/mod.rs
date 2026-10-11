@@ -10,6 +10,7 @@
 
 pub mod room;
 pub mod schema;
+pub mod seed;
 
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
@@ -168,7 +169,7 @@ pub async fn create_version(
     doc_id: Uuid,
     org_id: i64,
     label: &str,
-    user_id: i64,
+    user_id: Option<i64>,
 ) -> Result<doc_versions::Model, PageError> {
     let txn = db.begin().await?;
     // Row lock: serializes version numbering of this page.
@@ -191,7 +192,7 @@ pub async fn create_version(
         version_number: Set(last.unwrap_or(0) + 1),
         label: Set(label.to_string()),
         snapshot: Set(state),
-        created_by: Set(Some(user_id)),
+        created_by: Set(user_id),
         ..Default::default()
     }
     .insert(&txn)

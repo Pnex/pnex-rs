@@ -7,7 +7,9 @@
 use pnex_core::err_codes::{FIELD_INVALID, FIELD_MAX_LENGTH, FIELD_REQUIRED};
 use pnex_core::ontology::api::{ObjectInput, ObjectView, TITLE_MAX};
 use pnex_core::ontology::schema::check_values;
-use pnex_core::ontology::{ObjectTypeDef, PropertyKind};
+use pnex_core::ontology::{
+    ObjectTypeDef, PropertyKind, CASE_CONCLUDED, CASE_CONCLUSION_PAGE, CASE_STATUS, KIND_CASE,
+};
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
@@ -113,9 +115,9 @@ async fn check_properties<C: ConnectionTrait>(
 
 /// Investigation pack (cases.md K7): `claim.status = corroborated` needs
 /// at least two `sourced_by` pieces of distinct origins (a piece's source
-/// URL, else the object it wraps, else the piece itself).
-/// shortcut: no justified override yet (K7 « contournable »), add it with
-/// the review queue (C6).
+/// URL, else the object it wraps, else the piece itself), unless a
+/// `corroboration_note` justifies the exception (K7: the rule can be
+/// overridden, never silently).
 async fn check_claim<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
@@ -127,7 +129,10 @@ async fn check_claim<C: ConnectionTrait>(
         return Ok(());
     }
     let Some(claim) = claim else {
-        return Err(OntologyError::ClaimUnsourced);
+        return match claim_note(props) {
+            Some(_) => Ok(()),
+            None => Err(OntologyError::ClaimUnsourced),
+        };
     };
     let row = db
         .query_one_raw(sea_orm::Statement::from_sql_and_values(
@@ -141,13 +146,24 @@ async fn check_claim<C: ConnectionTrait>(
         ))
         .await?;
     let n: i64 = row.and_then(|r| r.try_get("", "n").ok()).unwrap_or(0);
-    if n < 2 {
+    if n < 2 && claim_note(props).is_none() {
         return Err(OntologyError::ClaimUnsourced);
     }
     Ok(())
 }
 
+/// The written justification of a claim corroborated below two origins.
+pub(crate) fn claim_note(props: &Map<String, Value>) -> Option<String> {
+    props
+        .get(CLAIM_NOTE)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+}
+
 const CLAIM: &str = "claim";
+const CLAIM_NOTE: &str = "corroboration_note";
 const CORROBORATED: &str = "corroborated";
 
 fn require_role(def: &ObjectTypeDef, actor: &Actor) -> Result<()> {
@@ -231,7 +247,16 @@ pub async fn update(
     };
     let props = check_properties(db, org_id, def, &input.properties).await?;
     // Checked when the status changes, not on every later edit.
-    if row.properties.get("status") != props.get("status") {
+    let status_changed = row.properties.get("status") != props.get("status");
+    let concluded = status_changed
+        && def.key == KIND_CASE
+        && props.get(CASE_STATUS).and_then(Value::as_str) == Some(CASE_CONCLUDED);
+    let conclusion = props
+        .get(CASE_CONCLUSION_PAGE)
+        .and_then(Value::as_str)
+        .filter(|_| concluded)
+        .map(String::from);
+    if status_changed {
         check_claim(db, org_id, &def.key, Some(id), &props).await?;
     }
     let now = sea_orm::prelude::DateTimeWithTimeZone::from(chrono::Utc::now());
@@ -259,6 +284,9 @@ pub async fn update(
         return Err(OntologyError::VersionConflict {
             current: row.version,
         });
+    }
+    if let Some(page) = conclusion {
+        super::case_pages::on_concluded(db, org_id, actor, &page).await;
     }
     let before = view(&row, &s);
     let after = view(&find(db, org_id, id).await?, &s);

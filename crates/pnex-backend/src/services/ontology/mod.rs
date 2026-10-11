@@ -9,6 +9,8 @@
 //! Identity rows of system objects are written by database triggers
 //! (migration `m20261011_000002_ontology`); this module never inserts them.
 
+pub mod case_pages;
+pub mod case_purge;
 pub mod cases;
 pub mod changes;
 pub mod graph;

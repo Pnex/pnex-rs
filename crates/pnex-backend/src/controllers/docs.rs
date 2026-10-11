@@ -316,7 +316,7 @@ async fn create_version(
         Ok(t) => t,
         Err(resp) => return Ok(*resp),
     };
-    let v = pages::create_version(&ctx.db, d.id, d.org_id, &label, org.auth.user.id)
+    let v = pages::create_version(&ctx.db, d.id, d.org_id, &label, Some(org.auth.user.id))
         .await
         .map_err(|e| {
             tracing::warn!(doc_id = %d.id, error = %e, "pages: version not created");

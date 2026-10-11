@@ -11,8 +11,8 @@ use std::collections::{HashMap, HashSet};
 use pnex_core::err_codes::{FIELD_INVALID, FIELD_REQUIRED};
 use pnex_core::ontology::api::{
     BoardClaim, BoardHypothesis, CaseBoard, CaseExport, CaseExportQuery, CaseOpenInput, CasePlace,
-    CaseSnapshot, ExportMember, LinkInput, LinkView, Neighborhood, ObjectInput, ObjectRef,
-    ObjectView, PieceEntry, TimelineQuery,
+    CaseSnapshot, ChangeView, ExportMember, LinkInput, LinkView, Neighborhood, ObjectInput,
+    ObjectRef, ObjectView, PieceEntry, TimelineQuery,
 };
 use pnex_core::ontology::{
     PropertyKind, CASE_FROZEN_AT, CASE_STATUS, CASE_WINDOW_FROM, CASE_WINDOW_TO, IN_CASE_ROLE,
@@ -25,8 +25,8 @@ use serde_json::{Map, Value};
 use uuid::Uuid;
 
 use super::{
-    invalid, links, objects, parse_instant, schema, timeline, ts, Actor, OntologyError, OrgSchema,
-    Result,
+    changes, invalid, links, objects, parse_instant, schema, timeline, ts, Actor, OntologyError,
+    OrgSchema, Result,
 };
 use crate::models::_entities::map_pins;
 use crate::services::openobserve::Client;
@@ -36,7 +36,7 @@ const DEFAULT_MARGIN_MIN: i64 = 120;
 const MAX_MARGIN_MIN: i64 = 7 * 24 * 60;
 const SOURCE_KINDS: [&str; 2] = ["notification", "event"];
 
-fn member(case_id: &str, object_id: &str, role: &str) -> LinkInput {
+pub(super) fn member(case_id: &str, object_id: &str, role: &str) -> LinkInput {
     let mut attributes = Map::new();
     attributes.insert(IN_CASE_ROLE.into(), Value::String(role.into()));
     LinkInput {
@@ -133,6 +133,8 @@ const T_PERSON: &str = "person";
 const L_SUPPORTS: &str = "supports";
 const L_CONTRADICTS: &str = "contradicts";
 const L_SOURCED_BY: &str = "sourced_by";
+/// Journal rows an export reads to replay states (`states_at`).
+const REPLAY_CAP: i64 = 5000;
 /// Members an export reads at most (one query per member for its links).
 const EXPORT_CAP: usize = 1000;
 /// Links that put their source somewhere: a device installed at a POI
@@ -186,10 +188,10 @@ async fn claim_row(
         .count();
     let row = BoardClaim {
         claim: claim.clone(),
-        // shortcut: the status is today's even for a past `at`; replaying it
-        // needs the O2 change journal (K12 freeze of statuses).
+        // Today's status; the export replays it at its instant (`states_at`).
         status: status_of(&o),
         sources,
+        justification: objects::claim_note(&o.properties),
     };
     seen.insert(claim.id.clone(), row.clone());
     Ok(row)
@@ -434,7 +436,27 @@ pub async fn export(
         },
     )
     .await?;
-    let board = board_of(db, org_id, &members_links, Some(at)).await?;
+    let mut board = board_of(db, org_id, &members_links, Some(at)).await?;
+    // Objects whose state is replayed: the members and the board entries.
+    let mut ids: Vec<String> = members.iter().map(|m| m.object.id.clone()).collect();
+    for h in &board.hypotheses {
+        ids.push(h.hypothesis.id.clone());
+        ids.extend(
+            h.supports
+                .iter()
+                .chain(&h.contradicts)
+                .map(|c| c.claim.id.clone()),
+        );
+    }
+    let states = states_at(db, o2, org_id, &ids, at, now).await;
+    if let Some(states) = &states {
+        for m in &mut members {
+            if let Some(o) = states.get(&m.object.id) {
+                m.object = o.clone();
+            }
+        }
+        replay_board(&mut board, states);
+    }
     Ok(CaseExport {
         exported_at: ts(&now),
         as_of: ts(&at),
@@ -445,5 +467,107 @@ pub async fn export(
         board,
         pieces,
         persons,
+        states_replayed: states.is_some(),
     })
+}
+
+/// Object states at `at` (K12): the `before` of each object's first change
+/// after `at`; an object unchanged since keeps its current state. `None`
+/// when the change journal is unavailable.
+/// shortcut: at most `REPLAY_CAP` changes after `at` are read; an object
+/// changed more often than that since may replay a later state.
+async fn states_at(
+    db: &DatabaseConnection,
+    o2: Option<&Client>,
+    org_id: i64,
+    ids: &[String],
+    at: DateTimeWithTimeZone,
+    now: DateTimeWithTimeZone,
+) -> Option<HashMap<String, ObjectView>> {
+    let rows = changes::history_of(
+        db,
+        o2,
+        org_id,
+        ids,
+        at.timestamp_micros() + 1,
+        now.timestamp_micros(),
+        REPLAY_CAP,
+    )
+    .await
+    .ok()??;
+    Some(fold_states(rows))
+}
+
+/// Journal rows newest first → state before each object's first change.
+fn fold_states(rows: Vec<(String, ChangeView)>) -> HashMap<String, ObjectView> {
+    let mut out = HashMap::new();
+    // Newest first: the last insert per object is its first change after `at`.
+    for (id, c) in rows {
+        if !c.action.starts_with("object.") {
+            continue;
+        }
+        match serde_json::from_value::<ObjectView>(c.before) {
+            Ok(o) => out.insert(id, o),
+            Err(_) => out.remove(&id),
+        };
+    }
+    out
+}
+
+fn replay_board(board: &mut CaseBoard, states: &HashMap<String, ObjectView>) {
+    let claim = |c: &mut BoardClaim| {
+        if let Some(o) = states.get(&c.claim.id) {
+            c.status = status_of(o);
+            c.justification = objects::claim_note(&o.properties);
+        }
+    };
+    for h in &mut board.hypotheses {
+        if let Some(o) = states.get(&h.hypothesis.id) {
+            h.status = status_of(o);
+        }
+        h.supports
+            .iter_mut()
+            .chain(&mut h.contradicts)
+            .for_each(claim);
+    }
+    board
+        .unsourced
+        .iter_mut()
+        .chain(&mut board.contradicted)
+        .for_each(claim);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn change(action: &str, status: Option<&str>) -> (String, ChangeView) {
+        let before = status.map_or(Value::Null, |st| {
+            serde_json::json!({"id": "c1", "type_key": "claim", "title": "C", "native_id": "c1",
+                "system": false, "properties": {"status": st}, "version": 1,
+                "valid_from": "", "created_at": "", "updated_at": ""})
+        });
+        let c = ChangeView {
+            at: String::new(),
+            action: action.into(),
+            source_ref: String::new(),
+            before,
+            after: Value::Null,
+        };
+        ("c1".into(), c)
+    }
+
+    #[test]
+    fn state_at_is_before_the_first_later_change() {
+        // Newest first: unverified → contested → corroborated after `at`.
+        let rows = vec![
+            change("object.update", Some("contested")),
+            change("link.open", None),
+            change("object.update", Some("unverified")),
+        ];
+        let s = fold_states(rows);
+        assert_eq!(status_of(&s["c1"]).as_deref(), Some("unverified"));
+        // Created after `at`: no state then.
+        assert!(fold_states(vec![change("object.create", None)]).is_empty());
+    }
 }

@@ -1,12 +1,13 @@
 # Reference pack "Investigation" (cases.md K4, K5, K7): human actors,
 # events dated as precisely as known (fuzzy time), pieces wrapping a source,
 # places, where anything was over time (`located_at`, dated by the link),
-# claims sourced by pieces at an exact locator, hypotheses they support or
+# claims sourced by pieces at an exact locator (corroborated with two
+# origins, or one and a written justification), hypotheses they support or
 # contradict, identifiers. No "suspect" or "guilty" field (K16): an actor
 # has roles in events, legal qualification is not an object attribute.
 key: investigation
 name: Investigation
-version: "1.1.0"
+version: "1.2.0"
 description: People, organizations, events with approximate dates, sourced claims and hypotheses — for cases, newsrooms and root-cause analyses.
 types:
   - key: person
@@ -72,6 +73,7 @@ types:
         name: Information credibility
         kind: enum
         values: ["1", "2", "3", "4", "5", "6"]
+      - { key: corroboration_note, name: Corroboration justification, kind: text, max_len: 1000 }
   - key: hypothesis
     name: Hypothesis
     icon: globe
@@ -179,3 +181,96 @@ link_types:
     inverse_name: is contradicted by
     from_types: [claim]
     to_types: [hypothesis, claim]
+page_templates:
+  - key: five_whys
+    name: 5 whys
+    description: Walk back from the symptom to a root cause, one "why" at a time.
+    body: |
+      ## Problem
+      What failed, where and when (link the alert or the event).
+
+      ## Why?
+      1. Why did it happen?
+      2. Why?
+      3. Why?
+      4. Why?
+      5. Why?
+
+      ## Root cause
+
+      ## Actions
+      - Containment:
+      - Correction:
+      - Prevention:
+  - key: ishikawa
+    name: Ishikawa (6M)
+    description: Sort the possible causes by family before testing them.
+    body: |
+      ## Effect
+      The observed effect, in one sentence.
+
+      ## Method
+      - 
+
+      ## Machine
+      - 
+
+      ## Manpower
+      - 
+
+      ## Material
+      - 
+
+      ## Measurement
+      - 
+
+      ## Mother nature (environment)
+      - 
+
+      ## Causes retained
+      Each retained cause becomes a hypothesis of the case.
+  - key: incident_report
+    name: Incident report
+    description: What happened, the impact, the response and what changes.
+    body: |
+      ## Summary
+
+      ## Timeline
+      Key moments from the case timeline, in UTC.
+
+      ## Impact
+
+      ## Response
+
+      ## Root cause
+
+      ## Actions
+      - 
+  - key: investigation_note
+    name: Investigation note
+    description: The question, what is established, what is not, and the sources.
+    body: |
+      ## Question
+
+      ## Established facts
+      Each fact cites its claims and pieces.
+
+      ## Open hypotheses
+
+      ## Not established
+
+      ## Sources
+  - key: script
+    name: Script / rundown
+    description: Sequences of a video or a story, each with its sources.
+    body: |
+      ## Angle
+
+      ## Sequences
+      1. Opening
+      2. 
+      3. Conclusion
+
+      ## Sources to show
+
+      ## Rights and consent
