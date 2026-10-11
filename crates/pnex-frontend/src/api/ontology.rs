@@ -214,6 +214,19 @@ pub async fn case_timeline(
 }
 
 /// Hypotheses board of a case (cases.md K8).
+/// The case replayed at `as_of` (RFC 3339, default now): members, links
+/// among them and their places (K14).
+pub async fn case_snapshot(
+    id: &str,
+    as_of: Option<&str>,
+) -> Result<pnex_core::ontology::api::CaseSnapshot, ApiError> {
+    let mut path = format!("/api/v1/cases/{}/snapshot", urlencode(id));
+    if let Some(t) = as_of {
+        path.push_str(&format!("?as_of={}", urlencode(t)));
+    }
+    client::request(Method::GET, &path, None).await
+}
+
 pub async fn case_board(id: &str) -> Result<pnex_core::ontology::api::CaseBoard, ApiError> {
     client::request(
         Method::GET,

@@ -16,6 +16,7 @@ use pnex_core::ontology::{
 };
 use serde_json::Value;
 
+use super::snapshot::SnapshotPanel;
 use super::{prop_str, status_class, status_label};
 use crate::api;
 use crate::app::Route;
@@ -66,6 +67,8 @@ pub fn CaseWorkspace(id: String) -> Element {
     // Timeline range preset: `case` = the case window, else hours back.
     let range = use_signal(|| "case".to_string());
     let focus = use_signal(|| None::<String>);
+    // Snapshot instant (K14), `None` = now.
+    let cursor = use_signal(|| None::<String>);
     let navigator = use_navigator();
     let can_write = org::current_can_write();
 
@@ -133,6 +136,11 @@ pub fn CaseWorkspace(id: String) -> Element {
         .filter(|m| m.source.type_key == "person")
         .count();
     let board = board.read().clone().flatten().unwrap_or_default();
+    let mut steps: Vec<String> = tl
+        .as_ref()
+        .map(|t| t.items.iter().map(|i| i.at.clone()).collect())
+        .unwrap_or_default();
+    steps.dedup();
 
     rsx! {
         ListLayout {
@@ -182,12 +190,21 @@ pub fn CaseWorkspace(id: String) -> Element {
                         {
                             BoardPanel { board: board.clone(), focus }
                         }
+                        SnapshotPanel {
+                            case_id: c.id.clone(),
+                            steps,
+                            cursor,
+                            focus,
+                            link_types: link_types.clone(),
+                            reload,
+                        }
                         TimelinePanel {
                             timeline: tl.clone(),
                             loading: timeline.read().is_none(),
                             link_types: link_types.clone(),
                             range,
                             focus,
+                            cursor,
                         }
                     }
                 }
@@ -467,7 +484,7 @@ fn ClaimList(label: String, claims: Vec<BoardClaim>, focus: Signal<Option<String
         div {
             p { class: LABEL, "{label} ({claims.len()})" }
             if claims.is_empty() {
-                p { class: "text-xs text-gray-400", {t!("case-board-none")} }
+                p { class: "text-xs text-gray-500", {t!("case-board-none")} }
             }
             ul { class: "space-y-1",
                 for c in claims.iter() {
@@ -478,7 +495,7 @@ fn ClaimList(label: String, claims: Vec<BoardClaim>, focus: Signal<Option<String
                         if let Some(st) = &c.status {
                             span { class: "text-xs text-gray-500", "{st}" }
                         }
-                        span { class: "text-xs text-gray-400",
+                        span { class: "text-xs text-gray-500",
                             {t!("case-board-sources", count : c.sources)}
                         }
                     }
@@ -603,7 +620,7 @@ fn MemberRow(
                     span { class: "h-2.5 w-2.5 shrink-0 rounded-full {color}" }
                     span { class: "truncate text-sm font-medium text-gray-900", "{o.title}" }
                 }
-                span { class: "block text-xs text-gray-400", "{kind}" }
+                span { class: "block text-xs text-gray-500", "{kind}" }
             }
             Link {
                 class: "text-xs text-blue-600 hover:underline",
@@ -615,7 +632,7 @@ fn MemberRow(
             if editable {
                 button {
                     r#type: "button",
-                    class: "text-gray-400 hover:text-red-600 px-1",
+                    class: "text-gray-500 hover:text-red-600 px-1",
                     title: t!("case-remove"),
                     "aria-label": t!("case-remove"),
                     "data-testid": "case-remove-member",
@@ -783,7 +800,7 @@ fn QuickAdd(
                                 onmousedown: move |e| e.prevent_default(),
                                 onclick: move |_| add.call(id.clone()),
                                 span { class: "text-sm text-gray-900", "{title}" }
-                                span { class: "ml-2 text-xs text-gray-400", "{kind}" }
+                                span { class: "ml-2 text-xs text-gray-500", "{kind}" }
                             }
                         }
                     }
@@ -951,7 +968,9 @@ fn TimelinePanel(
     link_types: Vec<LinkTypeView>,
     range: Signal<String>,
     focus: Signal<Option<String>>,
+    cursor: Signal<Option<String>>,
 ) -> Element {
+    let mut cursor = cursor;
     let mut range = range;
     let mut focus = focus;
     let presets = [
@@ -1005,6 +1024,8 @@ fn TimelinePanel(
     }
     let span = format!("{} → {}", short_time(&tl.from), short_time(&tl.to));
     let focused_title = current.and_then(|f| titles.get(&f).cloned());
+    let instant = |t: &str| chrono::DateTime::parse_from_rfc3339(t).ok();
+    let cut = cursor().as_deref().and_then(instant);
 
     rsx! {
         div { class: CARD, "data-testid": "case-timeline",
@@ -1055,6 +1076,8 @@ fn TimelinePanel(
                                 color: LANE_COLORS[lanes.iter().position(|l| *l == item.lane).unwrap_or(0)
                                     % LANE_COLORS.len()],
                                 link_types: link_types.clone(),
+                                after: cut.is_some_and(|c| instant(&item.at).is_some_and(|a| a > c)),
+                                on_cursor: move |at: String| cursor.set(Some(at)),
                             }
                         }
                     }
@@ -1065,7 +1088,14 @@ fn TimelinePanel(
 }
 
 #[component]
-fn TimelineRow(item: TimelineItem, color: &'static str, link_types: Vec<LinkTypeView>) -> Element {
+fn TimelineRow(
+    item: TimelineItem,
+    color: &'static str,
+    link_types: Vec<LinkTypeView>,
+    /// Later than the snapshot cursor: dimmed.
+    after: bool,
+    on_cursor: EventHandler<String>,
+) -> Element {
     // An approximate date has no meaningful time of day.
     let time = if item.kind == "occurred" {
         "≈".to_string()
@@ -1172,13 +1202,30 @@ fn TimelineRow(item: TimelineItem, color: &'static str, link_types: Vec<LinkType
             },
         },
     };
+    let pad = if item.kind == "change" {
+        "py-0.5"
+    } else {
+        "py-1.5"
+    };
+    let dim = if after {
+        "opacity-40"
+    } else if item.kind == "change" {
+        "opacity-60"
+    } else {
+        ""
+    };
+    let at = item.at.clone();
     rsx! {
-        li {
-            class: if item.kind == "change" { "ml-4 py-0.5 opacity-60" } else { "ml-4 py-1.5" },
-            "data-kind": "{item.kind}",
+        li { class: "ml-4 {pad} {dim}", "data-kind": "{item.kind}",
             span { class: "absolute -left-1.5 mt-1.5 h-3 w-3 rounded-full ring-2 ring-white {color}" }
             div { class: "flex flex-wrap items-baseline gap-x-1.5 text-sm",
-                span { class: "font-mono text-xs text-gray-400 w-10", "{time}" }
+                button {
+                    r#type: "button",
+                    class: "font-mono text-xs text-gray-500 w-10 text-left hover:text-blue-700 hover:underline",
+                    title: t!("case-tl-set-cursor"),
+                    onclick: move |_| on_cursor.call(at.clone()),
+                    "{time}"
+                }
                 {body}
             }
         }

@@ -10,17 +10,17 @@ use std::collections::{HashMap, HashSet};
 
 use pnex_core::err_codes::{FIELD_INVALID, FIELD_REQUIRED};
 use pnex_core::ontology::api::{
-    BoardClaim, BoardHypothesis, CaseBoard, CaseExport, CaseExportQuery, CaseOpenInput,
-    ExportMember, LinkInput, LinkView, ObjectInput, ObjectRef, ObjectView, PieceEntry,
-    TimelineQuery,
+    BoardClaim, BoardHypothesis, CaseBoard, CaseExport, CaseExportQuery, CaseOpenInput, CasePlace,
+    CaseSnapshot, ExportMember, LinkInput, LinkView, Neighborhood, ObjectInput, ObjectRef,
+    ObjectView, PieceEntry, TimelineQuery,
 };
 use pnex_core::ontology::{
-    CASE_FROZEN_AT, CASE_STATUS, CASE_WINDOW_FROM, CASE_WINDOW_TO, IN_CASE_ROLE, KIND_CASE,
-    REL_IN_CASE,
+    PropertyKind, CASE_FROZEN_AT, CASE_STATUS, CASE_WINDOW_FROM, CASE_WINDOW_TO, IN_CASE_ROLE,
+    KIND_CASE, REL_IN_CASE, REL_PLACED_AT,
 };
-use pnex_core::resources::KIND_FLOW;
+use pnex_core::resources::{KIND_FLOW, KIND_MAP_PIN};
 use sea_orm::prelude::DateTimeWithTimeZone;
-use sea_orm::DatabaseConnection;
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
@@ -28,7 +28,9 @@ use super::{
     invalid, links, objects, parse_instant, schema, timeline, ts, Actor, OntologyError, OrgSchema,
     Result,
 };
+use crate::models::_entities::map_pins;
 use crate::services::openobserve::Client;
+use crate::services::pois::d2f;
 
 const DEFAULT_MARGIN_MIN: i64 = 120;
 const MAX_MARGIN_MIN: i64 = 7 * 24 * 60;
@@ -133,6 +135,9 @@ const L_CONTRADICTS: &str = "contradicts";
 const L_SOURCED_BY: &str = "sourced_by";
 /// Members an export reads at most (one query per member for its links).
 const EXPORT_CAP: usize = 1000;
+/// Links that put their source somewhere: a device installed at a POI
+/// (D191), where an event happened, where anything was (investigation).
+const LOCATION_LINKS: [&str; 3] = [REL_PLACED_AT, "occurred_at", "located_at"];
 
 /// Open `in_case` links of the case at `at` (now when None).
 async fn members_at(
@@ -249,6 +254,131 @@ pub async fn board(db: &DatabaseConnection, org_id: i64, case_id: Uuid) -> Resul
 
 /// The case as it stood at `as_of` (default its freeze, else now), in one
 /// document (cases.md K12). Read only.
+/// Links valid at `at` of each member, in member order. A member whose
+/// id is not a UUID cannot exist (in_case sources are objects), skipped.
+async fn member_links(
+    db: &DatabaseConnection,
+    org_id: i64,
+    members: &[LinkView],
+    at: DateTimeWithTimeZone,
+) -> Result<Vec<(Uuid, Vec<LinkView>)>> {
+    let mut out = Vec::new();
+    for m in members {
+        let Ok(id) = Uuid::parse_str(&m.source.id) else {
+            continue;
+        };
+        out.push((
+            id,
+            links::for_object(db, org_id, id, Some(at), false).await?,
+        ));
+    }
+    Ok(out)
+}
+
+/// Links among members (not their membership), deduplicated, by id.
+fn between(members: &[LinkView], per: &[(Uuid, Vec<LinkView>)]) -> Vec<LinkView> {
+    let ids: HashSet<&str> = members.iter().map(|l| l.source.id.as_str()).collect();
+    let mut by_id: HashMap<i64, LinkView> = HashMap::new();
+    for e in per.iter().flat_map(|(_, ls)| ls) {
+        if e.link_type != REL_IN_CASE
+            && ids.contains(e.source.id.as_str())
+            && ids.contains(e.target.id.as_str())
+        {
+            by_id.insert(e.id, e.clone());
+        }
+    }
+    let mut out: Vec<LinkView> = by_id.into_values().collect();
+    out.sort_by_key(|l| l.id);
+    out
+}
+
+/// The case at an instant (K14): members then, links among them, places.
+/// shortcut: `geo_point` values are today's even for a past `as_of`
+/// (replaying them needs the O2 change journal), links are replayed.
+pub async fn snapshot(
+    db: &DatabaseConnection,
+    org_id: i64,
+    case_id: Uuid,
+    q: &CaseExportQuery,
+) -> Result<CaseSnapshot> {
+    let now: DateTimeWithTimeZone = chrono::Utc::now().into();
+    let at = parse_instant("as_of", q.as_of.as_deref())?.unwrap_or(now);
+    let mut members = members_at(db, org_id, case_id, Some(at)).await?;
+    members.truncate(EXPORT_CAP);
+    let per = member_links(db, org_id, &members, at).await?;
+    let located = |id: &Uuid, l: &&LinkView| {
+        LOCATION_LINKS.contains(&l.link_type.as_str()) && l.source.id == id.to_string()
+    };
+    let mut wanted: HashSet<Uuid> = per.iter().map(|(id, _)| *id).collect();
+    for (id, ls) in &per {
+        wanted.extend(
+            ls.iter()
+                .filter(|l| located(id, l))
+                .filter_map(|l| Uuid::parse_str(&l.target.id).ok()),
+        );
+    }
+    let objs = links::refs(db, org_id, wanted).await?;
+    let pin_ids: Vec<Uuid> = objs
+        .values()
+        .filter(|o| o.type_key == KIND_MAP_PIN)
+        .filter_map(|o| Uuid::parse_str(&o.native_id).ok())
+        .collect();
+    let pins: HashMap<String, (f64, f64)> = map_pins::Entity::find()
+        .filter(map_pins::Column::OrgId.eq(org_id))
+        .filter(map_pins::Column::Id.is_in(pin_ids))
+        .all(db)
+        .await?
+        .into_iter()
+        .filter_map(|p| Some((p.id.to_string(), (d2f(p.latitude)?, d2f(p.longitude)?))))
+        .collect();
+    let s = schema(db, org_id).await?;
+    let coords = |id: &str| -> Option<(f64, f64)> {
+        let o = objs.get(&Uuid::parse_str(id).ok()?)?;
+        if o.type_key == KIND_MAP_PIN {
+            return pins.get(&o.native_id).copied();
+        }
+        s.object_type(&o.type_key)?
+            .properties
+            .iter()
+            .filter(|p| matches!(p.kind, PropertyKind::GeoPoint))
+            .find_map(|p| {
+                let v = o.properties.get(&p.key)?;
+                Some((v.get("lat")?.as_f64()?, v.get("lon")?.as_f64()?))
+            })
+    };
+    let mut places = Vec::new();
+    for (m, (id, ls)) in members.iter().zip(&per) {
+        if let Some((lat, lon)) = coords(&m.source.id) {
+            places.push(CasePlace {
+                object: m.source.clone(),
+                lat,
+                lon,
+                via: None,
+                link_type: String::new(),
+            });
+        }
+        for l in ls.iter().filter(|l| located(id, l)) {
+            if let Some((lat, lon)) = coords(&l.target.id) {
+                places.push(CasePlace {
+                    object: m.source.clone(),
+                    lat,
+                    lon,
+                    via: Some(l.target.clone()),
+                    link_type: l.link_type.clone(),
+                });
+            }
+        }
+    }
+    Ok(CaseSnapshot {
+        as_of: ts(&at),
+        graph: Neighborhood {
+            nodes: members.iter().map(|l| l.source.clone()).collect(),
+            links: between(&members, &per),
+        },
+        places,
+    })
+}
+
 pub async fn export(
     db: &DatabaseConnection,
     o2: Option<&Client>,
@@ -263,28 +393,15 @@ pub async fn export(
     let at = parse_instant("as_of", q.as_of.as_deref().or(frozen))?.unwrap_or(now);
     let mut members_links = members_at(db, org_id, case_id, Some(at)).await?;
     members_links.truncate(EXPORT_CAP);
-    let ids: HashSet<String> = members_links.iter().map(|l| l.source.id.clone()).collect();
+    let per = member_links(db, org_id, &members_links, at).await?;
+    let links = between(&members_links, &per);
     let mut members = Vec::new();
-    let mut between: HashMap<i64, LinkView> = HashMap::new();
-    for l in &members_links {
-        let Ok(id) = Uuid::parse_str(&l.source.id) else {
-            continue;
-        };
+    for (l, (id, _)) in members_links.iter().zip(&per) {
         members.push(ExportMember {
             link: l.clone(),
-            object: objects::view(&objects::find(db, org_id, id).await?, &s),
+            object: objects::view(&objects::find(db, org_id, *id).await?, &s),
         });
-        for e in links::for_object(db, org_id, id, Some(at), false).await? {
-            if e.link_type != REL_IN_CASE
-                && ids.contains(&e.source.id)
-                && ids.contains(&e.target.id)
-            {
-                between.insert(e.id, e);
-            }
-        }
     }
-    let mut links: Vec<LinkView> = between.into_values().collect();
-    links.sort_by_key(|l| l.id);
     let text = |o: &ObjectView, k: &str| {
         o.properties
             .get(k)

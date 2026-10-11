@@ -517,7 +517,7 @@ fn basemap_key() -> String {
 
 /// The user's stored choice if it still exists, else the org default,
 /// else the first basemap (L25).
-fn pick_basemap(maps: &[pnex_core::geo::Basemap]) -> Option<&pnex_core::geo::Basemap> {
+pub(crate) fn pick_basemap(maps: &[pnex_core::geo::Basemap]) -> Option<&pnex_core::geo::Basemap> {
     use crate::storage::KeyValueStorage;
     let stored = crate::storage::local()
         .get(&basemap_key())

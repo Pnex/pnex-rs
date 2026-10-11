@@ -1828,8 +1828,10 @@ async fn assistant_reads_a_case_timeline() {
             ("case_timeline", serde_json::json!({"case_id": cid})),
             ("case_timeline", serde_json::json!({"case_id": "00000000-0000-0000-0000-000000000000"})),
             ("case_board", serde_json::json!({"case_id": cid})),
+            ("case_snapshot", serde_json::json!({"case_id": cid})),
         ])
         .await;
+        assert_eq!(trace[3]["ok"], true, "{trace:?}");
         assert_eq!(trace[0]["ok"], true, "{trace:?}");
         assert_eq!(trace[1]["code"], pnex_core::err_codes::ONTOLOGY_NOT_FOUND, "{trace:?}");
         assert_eq!(trace[2]["ok"], true, "{trace:?}");

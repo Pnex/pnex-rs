@@ -411,6 +411,30 @@ pub struct CaseExportQuery {
     pub as_of: Option<String>,
 }
 
+/// Where a member stands at the snapshot instant: its own `geo_point`
+/// (`via` empty) or the place reached by a location link open then.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CasePlace {
+    pub object: ObjectRef,
+    pub lat: f64,
+    pub lon: f64,
+    #[serde(default)]
+    pub via: Option<ObjectRef>,
+    /// Location link type (`placed_at`, `located_at`, ...), empty for a
+    /// property.
+    #[serde(default)]
+    pub link_type: String,
+}
+
+/// The case replayed at `as_of` (cases.md K14): members present then, the
+/// links valid then among them, and their places.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaseSnapshot {
+    pub as_of: String,
+    pub graph: Neighborhood,
+    pub places: Vec<CasePlace>,
+}
+
 /// One member at the export instant: its `in_case` link and the object.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExportMember {

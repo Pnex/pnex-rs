@@ -5,8 +5,8 @@ kind: feature
 pages: /cases, /cases/:id, /events
 nodes:
 err_codes: ontology-not-found, ontology-version-conflict, ontology-link-not-allowed, ontology-already-exists, ontology-write-forbidden
-tools: case_timeline, case_board, query_ontology, get_object, create_object, update_object, open_link, close_link
-tags: case, cases, dossier, dossier d'enquête, enquête, investigation, incident, rca, root cause, cause racine, timeline, chronologie, members, membres, evidence, preuve, hypothesis, hypothèse, claim, affirmation, source, freeze, gel, export, rgpd, gdpr, legal basis, actor, acteur, who, when, what happened, que s'est-il passé
+tools: case_timeline, case_board, case_snapshot, query_ontology, get_object, create_object, update_object, open_link, close_link
+tags: case, cases, dossier, dossier d'enquête, enquête, investigation, incident, rca, root cause, cause racine, timeline, chronologie, members, membres, evidence, preuve, hypothesis, hypothèse, claim, affirmation, source, freeze, gel, export, map, carte, place, lieu, where, où, located, se trouve, as of, à l'instant, replay, rgpd, gdpr, legal basis, actor, acteur, who, when, what happened, que s'est-il passé
 ---
 A **case** (sidebar › Cases) gathers everything that matters for one question to resolve — an incident, an investigation, a story — without copying anything: devices, media, sites, pages, flows or any ontology object become **members** of the case, and the case shows them on one timeline.
 
@@ -18,6 +18,8 @@ A **case** (sidebar › Cases) gathers everything that matters for one question 
 - **Open a case from an event**: in Events or in a notification channel's journal, expand a row and click **Open a case**: the case opens with a window of 2 hours before and after the event, the flow that raised it as subject and the objects linked to that flow as context.
 - **Timeline**: every link opened or closed and every change of the members, the ranges (shifts, broadcasts…) set on a member, and the notifications sent by a member flow, oldest first, grouped by day, within the case window or the last 24 h / 7 d / 30 d / 1 year. Click a member to see only its own timeline.
 - **Hypotheses and claims** (with the Investigation pack): each hypothesis member with the claims that support it (*For*) and contradict it (*Against*), their status and number of sources; below, the member claims *Without a source* and those *Contradicted* by another claim. There is no score: you weigh and conclude. Click an entry to focus the timeline on it.
+- **The case at an instant**: the cursor steps from one timeline event to the next (‹ ›, or click a time in the timeline); the graph shows the members present then and the links valid then, the map shows where each member stood then. *Now* returns to the current state. Click a graph node to follow only its timeline; timeline events after the cursor are dimmed.
+- **Places** (with the Investigation pack): a member is on the map through its own geographic property (an event's *Location*), a device installed at a POI, an event that *occurred at* a POI, or an *is located at* link to a POI or a **Place** (an address cited in a piece, no POI needed). *is located at* says how (seen, lives, works, registered, stored) and is dated like any link: open it with *Valid from*, close it when the person moved.
 - **Processing basis**: when the case names people, write the basis you process their data on (legitimate interest, journalism, public task, consent…).
 - **Freeze the current state**: records the instant; the export then re-reads the case as it stood then (members and the links between them), even if members leave afterwards. **Unfreeze** clears it. A freeze is not a legally binding chain of custody.
 - **Export**: downloads one JSON file: the case, its members, the links between them, the timeline, the hypotheses board and the pieces manifest (source URL, SHA-256). A warning shows when the case contains persons: the file holds personal data.
@@ -29,4 +31,6 @@ A **case** (sidebar › Cases) gathers everything that matters for one question 
 - If someone saved the case while you were editing, saving answers *ontology-version-conflict*: reload and redo your change.
 - "No link type connects these two objects": create one in Ontology › Schema, or install a pack.
 - If the change journal is unavailable, the timeline still shows the links.
-- Ask the assistant about a case ("summarize the timeline between 9:00 and 11:00", "what changed on P-12 in the 24 hours before the alert?"): it reads the case's members, timeline and hypotheses board ("which claims have no source?"). It never adds or removes a member, nor changes a claim's status.
+- A geographic property is shown at its current value even for a past instant; links (placements, *is located at*) are replayed.
+- "No member located at that instant": give the member a location, or link it to a POI or a Place with *is located at*.
+- Ask the assistant about a case ("summarize the timeline between 9:00 and 11:00", "what changed on P-12 in the 24 hours before the alert?"): it reads the case's members, timeline and hypotheses board ("which claims have no source?"), and the case at an instant ("who was linked to whom, and where, on March 2?"). It never adds or removes a member, nor changes a claim's status.

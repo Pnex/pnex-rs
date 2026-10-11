@@ -1,11 +1,12 @@
 # Reference pack "Investigation" (cases.md K4, K5, K7): human actors,
 # events dated as precisely as known (fuzzy time), pieces wrapping a source,
+# places, where anything was over time (`located_at`, dated by the link),
 # claims sourced by pieces at an exact locator, hypotheses they support or
 # contradict, identifiers. No "suspect" or "guilty" field (K16): an actor
 # has roles in events, legal qualification is not an object attribute.
 key: investigation
 name: Investigation
-version: "1.0.0"
+version: "1.1.0"
 description: People, organizations, events with approximate dates, sourced claims and hypotheses — for cases, newsrooms and root-cause analyses.
 types:
   - key: person
@@ -34,6 +35,14 @@ types:
       - { key: occurred, name: Occurred, kind: fuzzy_time }
       - { key: summary, name: Summary, kind: text, max_len: 2000 }
       - { key: location, name: Location, kind: geo_point }
+  - key: place
+    name: Place
+    icon: map-pin
+    may_be_contained_in: [folder]
+    properties:
+      - { key: address, name: Address, kind: text, max_len: 500 }
+      - { key: location, name: Location, kind: geo_point }
+      - { key: notes, name: Notes, kind: text, max_len: 2000 }
   - key: piece
     name: Piece
     icon: book
@@ -100,6 +109,16 @@ link_types:
     from_types: [event]
     to_types: [map_pin]
     one_target: true
+  - key: located_at
+    name: is located at
+    inverse_name: is the location of
+    from_types: "*"
+    to_types: [map_pin, place]
+    attributes:
+      - key: kind
+        name: Kind
+        kind: enum
+        values: [seen, lives, works, registered, stored, other]
   - key: before
     name: happened before
     inverse_name: happened after
