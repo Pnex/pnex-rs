@@ -110,7 +110,8 @@ mod tests {
                         "live": false,
                         "last_seen": null
                     }
-                ]
+                ],
+                "by_type": { "actuator": 1, "sensor": 1 }
             },
             "telemetry": {
                 "available": true,
@@ -129,6 +130,7 @@ mod tests {
         assert_eq!(summary.liveness.total, 2);
         assert_eq!(summary.liveness.live, 1);
         assert!(summary.liveness.devices[0].live);
+        assert_eq!(summary.liveness.by_type["sensor"], 1);
         assert!(summary.telemetry.available);
         assert_eq!(summary.telemetry.latest[0].metric, "soil_moisture");
         assert_eq!(summary.builds.total, 3);
