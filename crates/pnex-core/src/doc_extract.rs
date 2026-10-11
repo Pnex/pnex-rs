@@ -191,7 +191,7 @@ mod extract {
     /// Resource ceilings of one extraction (zip bombs, huge sheets).
     #[derive(Debug, Clone, Copy)]
     pub struct Limits {
-        /// Sum of the uncompressed sizes of a zip container.
+        /// Sum of the uncompressed sizes of a zip container; also caps each PDF page inflate.
         pub max_unzipped: u64,
         pub max_zip_entries: usize,
         /// Extracted text kept, in bytes; the rest is dropped.
@@ -361,11 +361,20 @@ mod extract {
     }
 
     fn pdf(bytes: &[u8], limits: &Limits) -> Result<ExtractedDoc, ExtractError> {
-        let pages = pdf_extract::extract_text_from_mem_by_pages(bytes)
-            .map_err(|_| ExtractError::Malformed)?;
-        if pages.len() > limits.max_pages as usize {
+        let doc = lopdf::Document::load_mem(bytes).map_err(|_| ExtractError::Malformed)?;
+        let numbers: Vec<u32> = doc.get_pages().into_keys().collect();
+        if numbers.len() > limits.max_pages as usize {
             return Err(ExtractError::TooLarge);
         }
+        // A page that fails to decode counts as empty: the others still get indexed.
+        let max_inflate = usize::try_from(limits.max_unzipped).unwrap_or(usize::MAX);
+        let pages: Vec<String> = numbers
+            .iter()
+            .map(|n| {
+                doc.extract_text_with_limit(&[*n], max_inflate)
+                    .unwrap_or_default()
+            })
+            .collect();
         if pages.iter().all(|p| p.trim().is_empty()) {
             return Err(ExtractError::NeedsOcr);
         }
@@ -470,6 +479,81 @@ mod extract {
                 Err(ExtractError::Malformed)
             );
             assert!(extract(DocFormat::Pdf, b"%PDF-1.4 junk", &limits).is_err());
+        }
+
+        /// Builds a PDF with one Helvetica text line per page.
+        fn pdf_with_pages(texts: &[&str]) -> Vec<u8> {
+            use lopdf::content::{Content, Operation};
+            use lopdf::{dictionary, Document, Object, Stream};
+            let mut doc = Document::with_version("1.5");
+            let pages_id = doc.new_object_id();
+            let font_id = doc.add_object(dictionary! {
+                "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Helvetica",
+            });
+            let resources_id = doc.add_object(dictionary! {
+                "Font" => dictionary! { "F1" => font_id },
+            });
+            let kids: Vec<Object> = texts
+                .iter()
+                .map(|t| {
+                    let content = Content {
+                        operations: vec![
+                            Operation::new("BT", vec![]),
+                            Operation::new("Tf", vec!["F1".into(), 12.into()]),
+                            Operation::new("Td", vec![50.into(), 700.into()]),
+                            Operation::new("Tj", vec![Object::string_literal(*t)]),
+                            Operation::new("ET", vec![]),
+                        ],
+                    };
+                    let content_id =
+                        doc.add_object(Stream::new(dictionary! {}, content.encode().unwrap()));
+                    doc.add_object(dictionary! {
+                        "Type" => "Page", "Parent" => pages_id, "Contents" => content_id,
+                    })
+                    .into()
+                })
+                .collect();
+            doc.objects.insert(
+                pages_id,
+                Object::Dictionary(dictionary! {
+                    "Type" => "Pages", "Count" => kids.len() as i64, "Kids" => kids,
+                    "Resources" => resources_id,
+                    "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
+                }),
+            );
+            let catalog_id =
+                doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+            doc.trailer.set("Root", catalog_id);
+            let mut out = Vec::new();
+            doc.save_to(&mut out).unwrap();
+            out
+        }
+
+        #[test]
+        fn pdf_text_is_extracted_per_page() {
+            let bytes = pdf_with_pages(&["Pump P101 alarm", "Valve V7 closed"]);
+            let doc = extract(DocFormat::Pdf, &bytes, &Limits::default()).unwrap();
+            assert_eq!(doc.page_count, Some(2));
+            assert_eq!(doc.sections[0].page, Some(1));
+            assert!(doc.sections[0].text.contains("Pump P101 alarm"));
+            assert!(doc.sections[1].text.contains("Valve V7 closed"));
+        }
+
+        #[test]
+        fn pdf_page_limit_and_empty_text() {
+            let bytes = pdf_with_pages(&["a", "b", "c"]);
+            let limits = Limits {
+                max_pages: 2,
+                ..Limits::default()
+            };
+            assert_eq!(
+                extract(DocFormat::Pdf, &bytes, &limits),
+                Err(ExtractError::TooLarge)
+            );
+            assert_eq!(
+                extract(DocFormat::Pdf, &pdf_with_pages(&[" "]), &Limits::default()),
+                Err(ExtractError::NeedsOcr)
+            );
         }
 
         /// Real files (Word, LibreOffice, PDF exports): every file of
