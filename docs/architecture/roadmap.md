@@ -189,6 +189,7 @@ tâche).
 | **Couches géographiques** | **PRD proposé** 2026-10-10 (`geo-layers.md`, L1–L28 provisoires) — PostGIS dans le Postgres existant, import de fichiers géo en layers MVT servies par Loco, fournisseurs géo d'org (fond, geocoding, routage) ; Martin garde le fond | Validation du PRD — P2.16 |
 | **Pages collaboratives** | **PRD proposé** 2026-10-10 (`pages.md`, P1–P16 provisoires) — documents CRDT temps réel reliés à l'ontologie (mentions, vues de collection, mesures, procédures, cartes) | Spike L0 (Loro vs yrs, ProseMirror) après validation — P2.17 |
 | **Documents & recherche IA** | **PRD proposé** 2026-10-10 (`doc-search.md`) — index lexical + pgvector sur les fichiers de la médiathèque, outils de l'assistant cités, tableurs en SQL | Validation du PRD — P2.18 |
+| **Dossiers (enquête, RCA)** | **PRD proposé** 2026-10-11 (`cases.md`, K1–K19 provisoires) — lentille sur l'ontologie : membres par lien `in_case`, chronologie unifiée (séries, alertes, liens, transcriptions, événements), acteurs humains, temps flou, affirmations sourcées, apparitions média live/différé, synchro carte/graphe | Validation du PRD — P2.19 |
 | **Hub de kits** | **PRD gelé** 2026-10-10 (`hub.md`) — partage communautaire par Git + CI + index statique, slots et requirements | Rien avant la 0.2.0 — P3 |
 
 ## P0 — Consolidation : fermer le livré non validé
@@ -683,6 +684,27 @@ d'org. Phases P1 → P5 (P4 = liens ontologie, 0.2.0). Extracteurs et
 index partagés avec P2.17. **P1 seul en exception au gel (tranché
 2026-10-10), P2+ après la 0.2.0.** Décision #22.
 
+### P2.19 — Dossiers : enquêter sur données × temps × ontologie × acteurs (ajout 2026-10-11) — **PRD proposé**
+
+PRD `cases.md`, zéro code avant validation, décisions K1–K19
+provisoires (numéros D à la validation). Un **dossier** (`case`, type
+système) est une lentille sur l'ontologie : il référence sans copier
+(lien `in_case` temporel, rôle), porte une fenêtre d'intérêt et une
+question. Même notion pour la RCA industrielle (ouverture depuis une
+alerte), l'enquêteur « données seules » (imports CSV/GPS), le vidéaste
+et le journaliste. Noyau : `case`, `in_case`, **chronologie unifiée**
+(`/timeline` : événements, liens, `object_changes`, journal D86,
+caméra, transcriptions, plages, séries) et type `fuzzy_time` ; métier
+dans le pack `investigation` (personnes, organisations, événements,
+pièces, affirmations sourcées, hypothèses). Confinement V1 = org
+dédiée (aucune frontière neuve), ACL par dossier en V2 avec D188.
+Apparitions média (K17) : qui est passé dans quelle émission, à
+l'heure de diffusion (live ou différé), rattaché par grille,
+transcription ou mention, jamais par la voix ; collecte conçue par
+l'assistant, exécutée par des flows déployés par l'humain (K18).
+Lots C0 → C8. Proposé : **C0–C1 comme validation de la 0.2.0**
+(première application du noyau), le reste après. Décision #24.
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
@@ -763,6 +785,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 | 21 | Pages : Loro vs yrs (`pages.md` §11). Tranché 2026-10-10 (`pages.md` §13) : L1–L2 en exception au gel, tableau local admis (formule = lecture, `ontology.md` §3 amendé), pas de pages privées (suit D188), mesure publiée en série `*_manual` seulement, signature = trace d'identité en V1, nom « Pages » | Loro/yrs au spike L0 |
 | 22 | Documents & recherche IA : BM25 ParadeDB vs `ts_rank_cd`, rerank, poids de DataFusion sur Pi (`doc-search.md` §10). Tranché 2026-10-10 (§13) : P1 seul en exception au gel, embeddings en tract, index partagé avec les pages | À la validation du PRD ; BM25 au jeu de test |
 | 23 | Hub de kits : kits hardware-first, dépendances entre kits, hébergement de l'index (`hub.md` §19). Tranché 2026-10-10 (§21) : kit = pack D190 (un seul format), identité = compte GitHub seul | Pendant la 0.2.0 (aligner les schémas), implémentation après |
+| 24 | Dossiers : version cible (C0–C1 en exception au gel ?), nom « Dossiers / Cases », ACL par dossier (V2, avec D188), temps flou dans le noyau, pack de base « Acteurs », co-présences GPS, horodatage qualifié des gels, seuil d'écriture automatique des apparitions, identification vocale par enrôlement consenti (K19, avis juridique requis) (`cases.md` §11) | À la validation du PRD |
 
 ## Journal de la roadmap
 
@@ -925,3 +948,8 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   (annexe A3, avec la comparaison Palantir Foundry / ArgonOS) ;
   pgRouting et AGE en branchements optionnels. Question « actions D183
   dans la 0.2.0 ? » ouverte dans la décision #17.
+- **2026-10-11 (dossiers)** — Ajout du PRD `cases.md` (P2.19, décision
+  #24) : espace de travail borné commun à la RCA, à l'enquête sur
+  données, au vidéaste et au journaliste ; chronologie unifiée comme
+  primitive du noyau, acteurs humains et affirmations sourcées en pack,
+  confinement par org dédiée en V1.
