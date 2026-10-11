@@ -10,7 +10,7 @@
 <h3 align="center">Your boards. Your server. Your data.</h3>
 
 <p align="center">
-  Open-source industrial IoT &amp; SCADA platform, written in Rust end to end.<br>
+  Open-source data platform on an industrial IoT &amp; SCADA foundation, written in Rust end to end.<br>
   Flash a board from your browser, automate with drag &amp; drop or code, monitor and get alerted —
   from home to the factory floor, self-hosted down to a Raspberry Pi.
 </p>
@@ -59,6 +59,11 @@ PNeX (**Platform Nexus**) is the crossroads of tools industrial teams already kn
 device management of ThingsBoard, the firmware experience of ESPHome, the visual flow
 programming of Node-RED — rebuilt as a single, coherent, memory-frugal product with an
 integrated AI assistant.
+
+PNeX is becoming a **data platform**: devices, time series, media and transcripts, documents,
+maps and investigations live in one organization, linked by a shared ontology of objects,
+relations and time. The IoT foundation stays whole: control and command, machine-to-machine,
+firmware and OTA keep the same ambitions and the same roadmap.
 
 - **One platform, one language.** Server, web app, flow runtime, firmware tooling and the
   thermophysics engine are all Rust, in a single workspace.
