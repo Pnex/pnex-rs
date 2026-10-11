@@ -22,4 +22,34 @@ test.describe('shell', { tag: '@shell' }, () => {
     await expect(page).toHaveURL(/\/dashboards/);
     await expect(page.locator('main h1')).toHaveText(app.t('nav-dashboards'));
   });
+
+  test('dialogs: focus inside, Escape closes, a confirmation defaults to cancel', async ({ app, page, api, prefix }) => {
+    // Form dialog: Escape closes it.
+    await app.goto('/cases');
+    await page.getByRole('button', { name: app.t('cases-new'), exact: true }).click();
+    const form = page.getByRole('dialog', { name: app.t('cases-new') });
+    await expect(form).toBeVisible();
+    await expect.poll(() => form.evaluate((d) => d.contains(document.activeElement))).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(form).toBeHidden();
+
+    // Confirmation: Cancel holds the focus, Escape cancels and nothing is deleted.
+    const name = `${prefix} escape fn`;
+    const fn = await api.post('/functions', {
+      name,
+      language: 'js',
+      code: 'function handle(inputs, msg) {\n  return msg;\n}',
+    });
+    try {
+      await app.goto('/functions');
+      await page.getByRole('main').locator('tr', { hasText: name }).getByRole('button', { name: app.t('functions-delete') }).click();
+      const confirm = page.getByRole('alertdialog');
+      await expect(confirm.getByRole('button', { name: app.t('common-cancel'), exact: true })).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(confirm).toBeHidden();
+      await expect(page.getByRole('main').locator('tr', { hasText: name })).toBeVisible();
+    } finally {
+      await api.delete(`/functions/${fn.id}`);
+    }
+  });
 });

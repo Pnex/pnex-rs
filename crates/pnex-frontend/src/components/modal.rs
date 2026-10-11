@@ -31,11 +31,27 @@ pub fn Modal(
             div {
                 // Never taller than the viewport: header stays put, only the body
                 // scrolls (a phone used to lose the dialog's buttons).
-                class: "flex max-h-full w-full flex-col bg-surface rounded-t-xl sm:rounded-lg shadow-2xl {max_width}",
+                class: "flex max-h-full w-full flex-col bg-surface rounded-t-xl sm:rounded-lg shadow-2xl outline-none {max_width}",
                 role: "dialog",
                 aria_modal: "true",
                 aria_label: "{title}",
+                tabindex: "-1",
+                "data-pnex-modal": "",
+                // Keyboard focus inside the dialog (Escape reaches it), unless
+                // a field of the dialog already took it.
+                onmounted: move |_| {
+                    document::eval(
+                        "const d=[...document.querySelectorAll('[data-pnex-modal]')].pop();if(d&&!d.contains(document.activeElement))d.focus();",
+                    );
+                },
                 onclick: move |event| event.stop_propagation(),
+                onkeydown: move |event| {
+                    if event.key() == Key::Escape {
+                        // Only the innermost dialog closes.
+                        event.stop_propagation();
+                        on_close.call(());
+                    }
+                },
                 div { class: "flex shrink-0 items-center justify-between gap-4 px-4 py-3 sm:px-6 sm:py-4 border-b border-line",
                     h3 { class: "text-xl font-semibold text-ink", "{title}" }
                     button {
