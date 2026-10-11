@@ -779,6 +779,12 @@ async fn investigation_pack_fuzzy_time_and_claims() {
         let (st, c) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{}", claim["id"].as_str().unwrap()), &env.alice, org, Some(corroborate(1))).await;
         assert_eq!(st, 200, "{c}");
         assert_eq!(c["properties"]["status"], "corroborated");
+        // A written justification overrides the rule, an empty one does not.
+        let justified = |note: &str| json!({"type_key": "claim", "title": "C3", "properties": {"statement": "s", "status": "corroborated", "corroboration_note": note}});
+        let (st, _) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(justified("  "))).await;
+        assert_eq!(st, 409);
+        let (st, c3) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(justified("Official statement, single source by nature"))).await;
+        assert_eq!(st, 201, "{c3}");
     })
     .await;
 }
@@ -918,6 +924,128 @@ async fn case_board_freeze_and_export() {
         let (st, _) = call(&server, "GET", &format!("/api/v1/cases/{cid}/board"), &env.bob, org_b, None).await;
         assert_eq!(st, 404);
         let (st, _) = call(&server, "POST", &format!("/api/v1/cases/{cid}/export"), &env.bob, org_b, Some(json!({}))).await;
+        assert_eq!(st, 404);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn case_pages_from_templates_and_conclusion() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        // Templates come with the pack.
+        let (_, t) = call(&server, "GET", "/api/v1/cases/templates", &env.alice, org, None).await;
+        assert_eq!(t.as_array().unwrap().len(), 0, "{t}");
+        let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
+        assert!(st < 300, "{p}");
+        let (_, t) = call(&server, "GET", "/api/v1/cases/templates", &env.alice, org, None).await;
+        assert!(t.as_array().unwrap().iter().any(|t| t["key"] == "five_whys"), "{t}");
+
+        let case = object(&server, &env.alice, org, "case", "Pump trip", json!({"status": "open"})).await;
+        let cid = case["id"].as_str().unwrap().to_string();
+        let url = format!("/api/v1/cases/{cid}/pages");
+        let (st, page) = call(&server, "POST", &url, &env.alice, org, Some(json!({"title": "Why it tripped", "template": "five_whys"}))).await;
+        assert_eq!(st, 201, "{page}");
+        let doc = page["id"].as_str().unwrap().to_string();
+        let row = env.db
+            .query_one_raw(sea_orm::Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                format!("SELECT length(snapshot) AS n FROM docs WHERE id = '{doc}'"),
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(row.try_get::<i32>("", "n").unwrap() > 100);
+        let (st, blank) = call(&server, "POST", &url, &env.alice, org, Some(json!({"title": "Notes"}))).await;
+        assert_eq!(st, 201, "{blank}");
+        let (st, e) = call(&server, "POST", &url, &env.alice, org, Some(json!({"title": "x", "template": "nope"}))).await;
+        assert_eq!((st, e["template"].as_str()), (400, Some("invalid")), "{e}");
+        let (st, e) = call(&server, "POST", &url, &env.alice, org, Some(json!({"title": "  "}))).await;
+        assert_eq!((st, e["title"].as_str()), (400, Some("required")));
+
+        // Both pages joined the case as notes.
+        let (_, links) = call(&server, "GET", &format!("/api/v1/ontology/objects/{cid}/links"), &env.alice, org, None).await;
+        let notes: Vec<&Value> = links.as_array().unwrap().iter()
+            .filter(|l| l["link_type"] == "in_case" && l["attributes"]["role"] == "note")
+            .collect();
+        assert_eq!(notes.len(), 2, "{links}");
+        let page_obj = notes.iter().find(|l| l["source"]["native_id"] == doc.as_str()).unwrap()["source"]["id"].clone();
+
+        // Concluding versions the designated conclusion page.
+        let upd = json!({"title": "Pump trip", "properties": {"status": "concluded", "conclusion_page": page_obj}, "expected_version": case["version"]});
+        let (st, v) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{cid}"), &env.alice, org, Some(upd)).await;
+        assert_eq!(st, 200, "{v}");
+        let (_, versions) = call(&server, "GET", &format!("/api/v1/docs/{doc}/versions"), &env.alice, org, None).await;
+        assert!(versions.to_string().contains("\"Conclusion\""), "{versions}");
+
+        // R1 / R2: another org sees nothing; a viewer cannot add a page.
+        let org_b = personal_org(&server, &env.bob).await;
+        let (st, _) = call(&server, "POST", &url, &env.bob, org_b, Some(json!({"title": "x"}))).await;
+        assert_eq!(st, 404);
+        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
+        assert!(st == 200 || st == 201);
+        let (st, _) = call(&server, "POST", &url, &env.bob, org, Some(json!({"title": "x"}))).await;
+        assert_eq!(st, 403);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn archived_case_purges_its_own_persons_only() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
+        assert!(st < 300, "{p}");
+        let case = object(&server, &env.alice, org, "case", "Fraud", json!({"status": "open"})).await;
+        let cid = case["id"].as_str().unwrap().to_string();
+        let other = object(&server, &env.alice, org, "case", "Other", json!({"status": "open"})).await;
+        let ann = object(&server, &env.alice, org, "person", "Ann", json!({})).await;
+        let phone = object(&server, &env.alice, org, "identifier", "Ann phone", json!({"kind": "phone", "value": "+33600000000"})).await;
+        let bob = object(&server, &env.alice, org, "person", "Bob", json!({})).await;
+        let carl = object(&server, &env.alice, org, "person", "Carl", json!({})).await;
+        let dan = object(&server, &env.alice, org, "person", "Dan", json!({})).await;
+        for o in [&ann, &phone, &bob, &dan] {
+            let (st, l) = link(&server, &env.alice, org, json!({"link_type": "in_case", "source_id": o["id"], "target_id": cid, "attributes": {"role": "actor"}})).await;
+            assert_eq!(st, 201, "{l}");
+        }
+        // Links among members do not hold; a link outside or another case does.
+        for body in [
+            json!({"link_type": "uses_identifier", "source_id": ann["id"], "target_id": phone["id"]}),
+            json!({"link_type": "knows", "source_id": bob["id"], "target_id": carl["id"]}),
+            json!({"link_type": "in_case", "source_id": dan["id"], "target_id": other["id"], "attributes": {"role": "actor"}}),
+        ] {
+            let (st, l) = link(&server, &env.alice, org, body).await;
+            assert_eq!(st, 201, "{l}");
+        }
+        let url = format!("/api/v1/cases/{cid}/purge");
+        let (st, cands) = call(&server, "GET", &url, &env.alice, org, None).await;
+        assert_eq!(st, 200, "{cands}");
+        let mut titles: Vec<&str> = cands.as_array().unwrap().iter().map(|c| c["title"].as_str().unwrap()).collect();
+        titles.sort();
+        assert_eq!(titles, ["Ann", "Ann phone"], "{cands}");
+        let ids: Vec<Value> = cands.as_array().unwrap().iter().map(|c| c["id"].clone()).chain([bob["id"].clone()]).collect();
+
+        // Only an archived case purges.
+        let (st, e) = call(&server, "POST", &url, &env.alice, org, Some(json!({"ids": ids}))).await;
+        assert_eq!((st, e["status"].as_str()), (400, Some("invalid")), "{e}");
+        let upd = json!({"title": "Fraud", "properties": {"status": "archived"}, "expected_version": case["version"]});
+        let (st, v) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{cid}"), &env.alice, org, Some(upd)).await;
+        assert_eq!(st, 200, "{v}");
+        // Bob is not a candidate: asking for him purges nothing of his.
+        let (st, r) = call(&server, "POST", &url, &env.alice, org, Some(json!({"ids": ids}))).await;
+        assert_eq!((st, r["purged"].as_u64()), (200, Some(2)), "{r}");
+        let (st, _) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}", ann["id"].as_str().unwrap()), &env.alice, org, None).await;
+        assert_eq!(st, 404);
+        let (st, _) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}", bob["id"].as_str().unwrap()), &env.alice, org, None).await;
+        assert_eq!(st, 200);
+
+        // R1: another org neither lists nor purges.
+        let org_b = personal_org(&server, &env.bob).await;
+        let (st, _) = call(&server, "GET", &url, &env.bob, org_b, None).await;
+        assert_eq!(st, 404);
+        let (st, _) = call(&server, "POST", &url, &env.bob, org_b, Some(json!({"ids": []}))).await;
         assert_eq!(st, 404);
     })
     .await;

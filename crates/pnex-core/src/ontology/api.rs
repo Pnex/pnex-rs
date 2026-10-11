@@ -289,6 +289,39 @@ pub struct Pack {
     pub types: Vec<ObjectTypeDef>,
     #[serde(default)]
     pub link_types: Vec<LinkTypeDef>,
+    /// Page models (pages.md P13, cases.md K8).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub page_templates: Vec<PageTemplate>,
+}
+
+/// A page model shipped by a pack. `body` is a Markdown subset: `#`–`###`
+/// headings, `-` and `1.` list items, paragraphs (no inline marks).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PageTemplate {
+    pub key: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    pub body: String,
+}
+
+/// Objects to purge from an archived case (cases.md K16).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CasePurgeInput {
+    pub ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CasePurged {
+    pub purged: usize,
+}
+
+/// New page of a case, optionally from a template of an installed pack.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CasePageInput {
+    pub title: String,
+    #[serde(default)]
+    pub template: Option<String>,
 }
 
 /// A pack the server offers, and whether the org installed it.
@@ -382,6 +415,9 @@ pub struct BoardClaim {
     pub status: Option<String>,
     /// Open `sourced_by` links of the claim.
     pub sources: usize,
+    /// Why it is corroborated below two origins (K7), when written.
+    #[serde(default)]
+    pub justification: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -469,4 +505,8 @@ pub struct CaseExport {
     pub pieces: Vec<PieceEntry>,
     /// Members of type `person`: the UI warns before handing it out (K16).
     pub persons: usize,
+    /// Member properties and claim statuses were replayed at `as_of` from
+    /// the change journal; false = today's values (journal unavailable).
+    #[serde(default)]
+    pub states_replayed: bool,
 }

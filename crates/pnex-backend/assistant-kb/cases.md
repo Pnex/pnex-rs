@@ -2,11 +2,11 @@
 id: cases
 title: Cases — investigate a question over objects, links and time
 kind: feature
-pages: /cases, /cases/:id, /events
+pages: /cases, /cases/:id, /events, /pages
 nodes:
 err_codes: ontology-not-found, ontology-version-conflict, ontology-link-not-allowed, ontology-already-exists, ontology-write-forbidden
 tools: case_timeline, case_board, case_snapshot, query_ontology, get_object, create_object, update_object, open_link, close_link
-tags: case, cases, dossier, dossier d'enquête, enquête, investigation, incident, rca, root cause, cause racine, timeline, chronologie, members, membres, evidence, preuve, hypothesis, hypothèse, claim, affirmation, source, freeze, gel, export, map, carte, place, lieu, where, où, located, se trouve, as of, à l'instant, replay, rgpd, gdpr, legal basis, actor, acteur, who, when, what happened, que s'est-il passé
+tags: case, cases, page, template, modèle, 5 whys, 5 pourquoi, ishikawa, 6m, incident report, compte rendu, conclusion, dossier, dossier d'enquête, enquête, investigation, incident, rca, root cause, cause racine, timeline, chronologie, members, membres, evidence, preuve, hypothesis, hypothèse, claim, affirmation, source, freeze, gel, export, purge, retention, rétention, justification, dérogation, map, carte, place, lieu, where, où, located, se trouve, as of, à l'instant, replay, rgpd, gdpr, legal basis, actor, acteur, who, when, what happened, que s'est-il passé
 ---
 A **case** (sidebar › Cases) gathers everything that matters for one question to resolve — an incident, an investigation, a story — without copying anything: devices, media, sites, pages, flows or any ontology object become **members** of the case, and the case shows them on one timeline.
 
@@ -20,17 +20,23 @@ A **case** (sidebar › Cases) gathers everything that matters for one question 
 - **Hypotheses and claims** (with the Investigation pack): each hypothesis member with the claims that support it (*For*) and contradict it (*Against*), their status and number of sources; below, the member claims *Without a source* and those *Contradicted* by another claim. There is no score: you weigh and conclude. Click an entry to focus the timeline on it.
 - **The case at an instant**: the cursor steps from one timeline event to the next (‹ ›, or click a time in the timeline); the graph shows the members present then and the links valid then, the map shows where each member stood then. *Now* returns to the current state. Click a graph node to follow only its timeline; timeline events after the cursor are dimmed.
 - **Places** (with the Investigation pack): a member is on the map through its own geographic property (an event's *Location*), a device installed at a POI, an event that *occurred at* a POI, or an *is located at* link to a POI or a **Place** (an address cited in a piece, no POI needed). *is located at* says how (seen, lives, works, registered, stored) and is dated like any link: open it with *Valid from*, close it when the person moved.
+- **Pages** (with the Investigation pack for the templates): type a title, pick a template — *5 whys*, *Ishikawa (6M)*, *Incident report*, *Investigation note*, *Script / rundown* — or a blank page, and **Create page**: the page opens filled with the template's sections and joins the case as a note. **Make it the conclusion** designates the page holding the conclusion; when the case is set to *Concluded*, that page is frozen in a named version *Conclusion* (see the page's versions).
+- **Purge at archiving**: when the case is set to *Archived*, a *Personal data to purge* panel lists the persons and identifiers that no other case and no link outside the case hold. Untick those to keep, then **Purge**: they are deleted for good, with their links, ranges and labels — the case no longer shows them, even at a past date.
+- **Corroborate with a single source**: a claim needs two pieces of distinct origins to be *corroborated*; when it cannot have two (an official statement, a single witness), write why in its *Corroboration justification* property: the status is then accepted and the board marks it *justified exception* (hover to read why).
 - **Processing basis**: when the case names people, write the basis you process their data on (legitimate interest, journalism, public task, consent…).
 - **Freeze the current state**: records the instant; the export then re-reads the case as it stood then (members and the links between them), even if members leave afterwards. **Unfreeze** clears it. A freeze is not a legally binding chain of custody.
-- **Export**: downloads one JSON file: the case, its members, the links between them, the timeline, the hypotheses board and the pieces manifest (source URL, SHA-256). A warning shows when the case contains persons: the file holds personal data.
+- **Export**: downloads one JSON file: the case, its members, the links between them, the timeline, the hypotheses board and the pieces manifest (source URL, SHA-256). Members' properties and claim statuses are those of the freeze instant, replayed from the change journal (`states_replayed` says so; without the journal they are today's). A warning shows when the case contains persons: the file holds personal data.
 - From any device, media or site page, or any object page: **Add to a case**.
 
 ## Good to know
 - Times are in UTC.
+- Templates are in English, like the pack's types; edit the headings freely, the page is yours.
+- Setting the case back to *Open*, then *Concluded* again freezes a new *Conclusion* version; the earlier ones stay.
 - A case is an ontology object: it also has an object page (properties, links, graph, provenance).
 - If someone saved the case while you were editing, saving answers *ontology-version-conflict*: reload and redo your change.
 - "No link type connects these two objects": create one in Ontology › Schema, or install a pack.
 - If the change journal is unavailable, the timeline still shows the links.
+- The purge cannot be undone; copies already in the change journal remain until the organization's journal retention removes them.
 - A geographic property is shown at its current value even for a past instant; links (placements, *is located at*) are replayed.
 - "No member located at that instant": give the member a location, or link it to a POI or a Place with *is located at*.
 - Ask the assistant about a case ("summarize the timeline between 9:00 and 11:00", "what changed on P-12 in the 24 hours before the alert?"): it reads the case's members, timeline and hypotheses board ("which claims have no source?"), and the case at an instant ("who was linked to whom, and where, on March 2?"). It never adds or removes a member, nor changes a claim's status.

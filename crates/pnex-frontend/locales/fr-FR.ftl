@@ -3881,7 +3881,7 @@ err-ontology-admin-required = Seul un propriétaire ou un administrateur de l'or
 err-ontology-system-read-only = Les types et objets système se modifient depuis leur page dédiée (appareils, médias, flows…).
 err-ontology-link-not-allowed = Ce type de lien ne relie pas des objets de ces types.
 err-ontology-link-cardinality = Un lien ouvert occupe déjà cette place : fermez-le d'abord (par exemple au remplacement d'un capteur).
-err-ontology-claim-unsourced = Une affirmation n'est corroborée qu'avec au moins deux pièces d'origines distinctes : reliez-la à ses sources (« est sourcée par »).
+err-ontology-claim-unsourced = Une affirmation n'est corroborée qu'avec au moins deux pièces d'origines distinctes : reliez-la à ses sources (« est sourcée par »), ou écrivez pourquoi dans « Corroboration justification ».
 
 ## Ontology UI (D186)
 nav-ontology = Ontologie
@@ -4170,6 +4170,7 @@ case-board-none = aucune affirmation
 case-board-unsourced = Sans source
 case-board-contradicted = Contredites
 case-board-sources = { $count } source(s)
+case-board-justified = dérogation justifiée
 case-question-placeholder = Que s'est-il passé ? Qui était impliqué ? Qu'est-ce qui le prouve ?
 case-window-from = Fenêtre : début (UTC)
 case-window-to = Fenêtre : fin (UTC)
@@ -4194,6 +4195,25 @@ case-snapshot-help = Le curseur avance d'un événement de la chronologie à l'a
 case-snapshot-empty = Aucun membre dans le dossier à cet instant.
 case-snapshot-no-places = Aucun membre localisé à cet instant. Un lieu vient d'une propriété géographique du membre, ou d'un lien « se trouve à », « s'est produit à » ou « installé à » vers un POI ou un lieu.
 case-tl-set-cursor = Voir le dossier à cet instant
+case-pages = Pages
+case-page-title = Titre de la page
+case-page-template = Modèle de page
+case-page-blank = Page vierge
+case-page-create = Créer la page
+case-pages-empty = Aucune page dans ce dossier. Rédigez ici l'analyse, puis la conclusion.
+case-page-conclusion = Conclusion
+case-page-designate = En faire la conclusion
+case-page-unset = Retirer
+case-pages-help = Quand le dossier passe à « Conclu », la page de conclusion est figée dans une version nommée « Conclusion ».
+case-purge = Données personnelles à purger
+case-purge-help = Ces personnes et identifiants ne figurent dans aucun autre dossier ni dans aucun lien extérieur au dossier. Les purger les supprime définitivement, avec tous leurs liens. Décochez ceux à garder.
+case-purge-action = { $count ->
+    [one] Purger 1 objet
+   *[other] Purger { $count } objets
+}
+case-purge-confirm-title = Purger définitivement ?
+case-purge-confirm = Les objets cochés sont supprimés avec leurs liens, leurs plages et leurs labels ({ $count }). Le dossier ne les montrera plus, même à une date passée. Ce n'est pas réversible.
+case-purged = Données personnelles purgées
 case-focus-only = Seulement : { $title }
 case-link-title = Relier deux membres
 case-link-from = De

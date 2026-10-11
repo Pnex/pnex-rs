@@ -147,6 +147,4 @@ Les entrées « bientôt » sans route sont retirées du menu.
   de chaque type de nœud/widget restent à parcourir un à un.
 - Onglets de l'Ontologie au-dessus du titre de la page, à replacer sous
   l'en-tête (le style est partagé depuis `TAB_*`).
-- Dossiers d'enquête (`pages/cases`) : boutons et champs encore en classes
-  locales, à passer sur `ui.rs` une fois le chantier C7 posé.
 - Captures de la documentation et du site à refaire.

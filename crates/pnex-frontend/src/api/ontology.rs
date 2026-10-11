@@ -236,6 +236,49 @@ pub async fn case_board(id: &str) -> Result<pnex_core::ontology::api::CaseBoard,
     .await
 }
 
+/// Page templates of the packs the org installed (cases.md K8).
+pub async fn case_templates() -> Result<Vec<pnex_core::ontology::api::PageTemplate>, ApiError> {
+    client::request(Method::GET, "/api/v1/cases/templates", None).await
+}
+
+/// New page of the case, filled from a template; it joins as a note.
+pub async fn case_add_page(
+    id: &str,
+    input: &pnex_core::ontology::api::CasePageInput,
+) -> Result<pnex_core::pages::DocSummary, ApiError> {
+    client::request(
+        Method::POST,
+        &format!("/api/v1/cases/{}/pages", urlencode(id)),
+        body(input),
+    )
+    .await
+}
+
+/// Persons and identifiers only this case holds (cases.md K16).
+pub async fn case_purge_candidates(
+    id: &str,
+) -> Result<Vec<pnex_core::ontology::api::ObjectRef>, ApiError> {
+    client::request(
+        Method::GET,
+        &format!("/api/v1/cases/{}/purge", urlencode(id)),
+        None,
+    )
+    .await
+}
+
+/// Deletes them for good; the case must be archived.
+pub async fn case_purge(
+    id: &str,
+    input: &pnex_core::ontology::api::CasePurgeInput,
+) -> Result<pnex_core::ontology::api::CasePurged, ApiError> {
+    client::request(
+        Method::POST,
+        &format!("/api/v1/cases/{}/purge", urlencode(id)),
+        body(input),
+    )
+    .await
+}
+
 /// The whole case as of its freeze, else now (cases.md K12).
 pub async fn case_export(
     id: &str,

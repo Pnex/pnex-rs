@@ -7,7 +7,7 @@
 //! 2026-10-11); an upgrade appends the pack definition as a new version,
 //! the local history staying readable.
 
-use pnex_core::ontology::api::{LinkTypeInput, ObjectTypeInput, Pack, PackView};
+use pnex_core::ontology::api::{LinkTypeInput, ObjectTypeInput, Pack, PackView, PageTemplate};
 use pnex_core::ontology::{LinkTypeDef, ObjectTypeDef};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use uuid::Uuid;
@@ -68,6 +68,22 @@ pub async fn list(db: &DatabaseConnection, org_id: i64) -> Result<Vec<PackView>>
             version: p.version,
             description: p.description,
         })
+        .collect())
+}
+
+/// Page templates of the shipped packs the org installed.
+pub async fn page_templates(db: &DatabaseConnection, org_id: i64) -> Result<Vec<PageTemplate>> {
+    let installed: Vec<String> = packs::Entity::find()
+        .filter(packs::Column::OrgId.eq(org_id))
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|p| p.key)
+        .collect();
+    Ok(shipped()
+        .into_iter()
+        .filter(|p| installed.contains(&p.key))
+        .flat_map(|p| p.page_templates)
         .collect())
 }
 
@@ -229,6 +245,7 @@ pub async fn export(db: &DatabaseConnection, org_id: i64) -> Result<String> {
         description: String::new(),
         types: s.org_types(),
         link_types: s.org_links(),
+        page_templates: Vec::new(),
     };
     serde_yaml::to_string(&pack)
         .map_err(|e| OntologyError::Db(sea_orm::DbErr::Custom(e.to_string())))

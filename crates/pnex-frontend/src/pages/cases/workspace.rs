@@ -16,6 +16,8 @@ use pnex_core::ontology::{
 };
 use serde_json::Value;
 
+use super::pages_panel::PagesPanel;
+use super::purge_panel::PurgePanel;
 use super::snapshot::SnapshotPanel;
 use super::{prop_str, status_class, status_label};
 use crate::api;
@@ -166,6 +168,13 @@ pub fn CaseWorkspace(id: String) -> Element {
                     persons,
                     on_saved: changed,
                 }
+                if can_write && prop_str(&c, CASE_STATUS) == "archived" {
+                    PurgePanel {
+                        case_id: c.id.clone(),
+                        types: types.clone(),
+                        on_purged: changed,
+                    }
+                }
                 div { class: "grid gap-4 lg:grid-cols-[minmax(300px,380px)_1fr]",
                     div { class: "space-y-4",
                         MembersPanel {
@@ -174,6 +183,12 @@ pub fn CaseWorkspace(id: String) -> Element {
                             types: types.clone(),
                             editable,
                             focus,
+                            on_changed: changed,
+                        }
+                        PagesPanel {
+                            case: c.clone(),
+                            members: members.clone(),
+                            editable,
                             on_changed: changed,
                         }
                     }
@@ -497,6 +512,14 @@ fn ClaimList(label: String, claims: Vec<BoardClaim>, focus: Signal<Option<String
                         }
                         span { class: "text-xs text-gray-500",
                             {t!("case-board-sources", count : c.sources)}
+                        }
+                        if let Some(j) = &c.justification {
+                            span {
+                                class: "text-xs text-amber-700 underline decoration-dotted cursor-help",
+                                title: "{j}",
+                                "data-testid": "case-board-justified",
+                                {t!("case-board-justified")}
+                            }
                         }
                     }
                 }

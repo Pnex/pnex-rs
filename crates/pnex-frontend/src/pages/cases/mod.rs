@@ -3,6 +3,8 @@
 //! creates a case from one line; the workspace (`workspace.rs`) gathers
 //! members, dated links and the timeline on one screen.
 
+mod pages_panel;
+mod purge_panel;
 mod snapshot;
 pub mod workspace;
 
