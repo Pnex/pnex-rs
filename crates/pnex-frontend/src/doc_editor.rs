@@ -21,8 +21,8 @@ pub struct DocState {
     pub need_ticket: u64,
     /// Other people on the page.
     pub peers: u32,
-    /// Slash palette request ("/" typed in an empty block).
-    pub slash: Option<Slash>,
+    /// Link or comment asked from the selection bubble.
+    pub request: Option<Request>,
     /// Bumped when the server says the comments changed.
     pub comments_seq: u64,
     /// Comment whose highlighted text was clicked.
@@ -43,10 +43,10 @@ pub struct SelectionAnchor {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
-pub struct Slash {
+pub struct Request {
     pub seq: u64,
-    pub x: f64,
-    pub y: f64,
+    /// `link` | `comment`.
+    pub kind: String,
 }
 
 /// One block of a version diff.
@@ -73,12 +73,21 @@ async fn eval_bool(js: &str) -> bool {
 }
 
 /// Mounts the live editor in `host` (retries 100 ms × 50: the bundle may
-/// finish loading after the first render).
-pub async fn mount(host: &str, ws_url: &str, editable: bool, user_name: &str, color: &str) -> bool {
+/// finish loading after the first render). `labels`: the texts of the "/"
+/// menu, bubble and hints, resolved by the caller in render scope.
+pub async fn mount(
+    host: &str,
+    ws_url: &str,
+    editable: bool,
+    user_name: &str,
+    color: &str,
+    labels: &serde_json::Value,
+) -> bool {
     let opts = serde_json::json!({
         "wsUrl": ws_url,
         "editable": editable,
         "user": { "name": user_name, "color": color },
+        "labels": labels,
     });
     let js = format!(
         "return window.pnexDoc?.mount({}, {opts}) === true",
@@ -135,10 +144,10 @@ pub async fn state(host: &str) -> Option<DocState> {
     serde_json::from_value(v).ok()
 }
 
-/// Toolbar / palette command (`bold`, `h1`, `bullet`…, see doc.js).
-pub async fn command(host: &str, name: &str, drop_slash: bool) -> bool {
+/// Header command (`undo`, `redo`, see doc.js).
+pub async fn command(host: &str, name: &str) -> bool {
     eval_bool(&format!(
-        "return window.pnexDoc?.command({}, {}, {drop_slash}) === true",
+        "return window.pnexDoc?.command({}, {}) === true",
         lit(host),
         lit(name)
     ))
