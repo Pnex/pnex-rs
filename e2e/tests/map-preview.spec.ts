@@ -74,7 +74,7 @@ test.describe('map on a bad network', { tag: '@map' }, () => {
     await page.unroute('**/api/v1/pois/cluster**');
     await page.route('**/api/v1/pois/cluster**', (route) => route.abort());
     await map.ensurePanel();
-    await page.getByRole('searchbox').fill(prefix);
+    await page.getByPlaceholder(app.t('poi-search-placeholder')).fill(prefix);
     await expect(failed).toBeVisible();
     await page.unroute('**/api/v1/pois/cluster**');
     await expect(failed).toBeHidden({ timeout: 15_000 });

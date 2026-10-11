@@ -13,7 +13,7 @@ test.describe('edge referentials', { tag: '@edge' }, () => {
     await dlg.getByRole('textbox', { name: app.t('builds-field-ssid') }).fill(ssid);
     // The secret field is named by its label (O21), not by its placeholder.
     await dlg.getByRole('textbox', { name: app.t('builds-field-wifi-password') }).fill(password);
-    await dlg.getByRole('button', { name: app.t('common-save'), exact: true }).click();
+    await dlg.getByRole('button', { name: app.t('common-add'), exact: true }).click();
     await expect(dlg).toBeHidden();
     const row = page.locator('main tr').filter({ hasText: ssid });
     await expect(row).toBeVisible();

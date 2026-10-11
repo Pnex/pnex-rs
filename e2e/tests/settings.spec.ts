@@ -39,7 +39,7 @@ test.describe('settings', { tag: '@settings' }, () => {
 
     await row.getByRole('button', { name: app.t('orgs-manage') }).click();
     await expect(page.getByRole('main').getByRole('heading', { name, level: 2 })).toBeVisible();
-    await page.getByRole('main').getByRole('button', { name: app.t('orgs-delete') }).click();
+    await page.getByRole('main').getByRole('button', { name: app.t('orgs-delete') }).first().click();
     await confirmDialog(page, app.t('orgs-confirm-delete-title')).getByRole('button', { name: app.t('orgs-delete') }).click();
     // Back on the list once the delete is done.
     await expect(page.locator('main h1')).toHaveText(app.t('orgs-title'));
