@@ -46,6 +46,7 @@ pub fn kind_label(kind: &str) -> String {
         "stepper" => t!("lib-kind-stepper").to_string(),
         "command" => t!("lib-kind-command").to_string(),
         "color" => t!("lib-kind-color").to_string(),
+        "home_card" => t!("lib-kind-home_card").to_string(),
         other => other.to_string(),
     }
 }

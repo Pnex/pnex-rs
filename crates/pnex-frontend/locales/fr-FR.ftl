@@ -3370,6 +3370,7 @@ lib-kind-select = Liste de choix
 lib-kind-stepper = Pas à pas (− / +)
 lib-kind-command = Commandes
 lib-kind-color = Couleur
+lib-kind-home_card = Carte maison
 
 # Home cards (D138)
 lib-group-home = Maison

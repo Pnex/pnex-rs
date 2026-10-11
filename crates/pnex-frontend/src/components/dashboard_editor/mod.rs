@@ -322,7 +322,15 @@ pub fn DashboardEditor(
         Selection::Widget(id) => {
             let w = state::find_widget(&cx.layout.read(), &id);
             let kind = w.as_ref().map(|w| w.widget_type.clone());
-            let name: Option<String> = w.map(|w| w.title).filter(|title| !title.is_empty());
+            // A home card is named after its card type (Light, Thermostat…).
+            let card = w
+                .as_ref()
+                .and_then(|w| w.options.home.as_ref())
+                .map(|h| crate::components::surface::home_card::card_label(h.card));
+            let name: Option<String> = w
+                .map(|w| w.title)
+                .filter(|title| !title.is_empty())
+                .or(card);
             let (icon, _) = match &kind {
                 Some(k) => library::kind_icon(k),
                 None => (PaletteIcon::Puzzle, ""),
