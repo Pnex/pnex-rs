@@ -731,6 +731,17 @@ l'assistant, exécutée par des flows déployés par l'humain (K18).
 Lots C0 → C8. Proposé : **C0–C1 comme validation de la 0.2.0**
 (première application du noyau), le reste après. Décision #24.
 
+**Refonte de l'écran (2026-10-12)** — PRD `cases-workspace.md` v0.2
+(K20–K41) : l'écran formulaire devient un espace de travail frise ×
+carte × graphe. L'événement daté entre dans le noyau (`event`, attache
+`involves` à rôle fermé), les membres se déduisent des attaches, les
+traces sont lues depuis un stream O2 `positions` (devices et imports
+GPX/CSV), et des détecteurs Rust (co-présence, zones, arrêts, fin de
+signal) **proposent** sans jamais ajouter. Deux tables seulement
+(`case_proposals`, `case_snapshots`). Démarche imposée : benchmark
+(**fait**, `docs/bench/dossier-enquete.md`) → design (maquettes aux
+jetons PNEX) → modèle → code, lots L0–L6.
+
 ### Outils externes évalués (ajout 2026-10-11) — **inscrits, rien d'implémenté**
 
 Contraintes de tri : workspace Cargo unique, cible Raspberry Pi (pas de
@@ -1030,6 +1041,15 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   données, au vidéaste et au journaliste ; chronologie unifiée comme
   primitive du noyau, acteurs humains et affirmations sourcées en pack,
   confinement par org dédiée en V1.
+- **2026-10-12 (analyse du discours)** — PRD `discourse-analysis.md`
+  (DA1–DA10) : formules récurrentes détectées mot pour mot (empreintes de
+  fragments), mesures de pluralisme sourcées, indices de coordination
+  documentés sans conclusion automatique ; emplacement du composant
+  ouvert (proposé : outil de l'assistant depuis une note).
+- **2026-10-12 (dossiers, refonte)** — PRD `cases-workspace.md` v0.2 et
+  benchmark de 6 projets (OpenAleph, OpenCTI, Timesketch, DFIR-IRIS,
+  kepler.gl, MovingPandas) : brut et retenu séparés, événement au noyau,
+  traces O2, graphe natif ; amende K1, K2, K6 de `cases.md`.
 - **2026-10-11 (positionnement)** — PneX passe en mode **plateforme de
   données** sur socle IoT (section « Positionnement ») : la donnée reliée
   (ontologie, séries, médias, documents, pages, géo, dossiers) devient le
