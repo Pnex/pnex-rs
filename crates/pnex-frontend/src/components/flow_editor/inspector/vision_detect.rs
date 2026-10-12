@@ -32,7 +32,7 @@ pub(super) fn VisionDetectForm(
     });
     let mut model_id = use_signal(move || initial.model_id.clone());
     let mut labels = use_signal(move || initial.labels.clone());
-    let mut score_raw = use_signal(move || v_to_string(f64::from(initial.min_score)));
+    let mut score_raw = use_signal(move || initial.min_score.to_string());
     let mut score_invalid = use_signal(|| false);
     let mut fps_raw = use_signal(move || v_to_string(initial.max_fps));
     let mut fps_invalid = use_signal(|| false);

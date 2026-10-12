@@ -59,8 +59,8 @@ pub(super) fn VisionTrackForm(
     initial: VisionTrackConfig,
     can_write: bool,
 ) -> Element {
-    let high = use_signal(|| v_to_string(f64::from(initial.high_score)));
-    let iou = use_signal(|| v_to_string(f64::from(initial.min_iou)));
+    let high = use_signal(|| initial.high_score.to_string());
+    let iou = use_signal(|| initial.min_iou.to_string());
     let hits = use_signal(|| initial.min_hits.to_string());
     let lost = use_signal(|| v_to_string(initial.lost_after_secs));
 

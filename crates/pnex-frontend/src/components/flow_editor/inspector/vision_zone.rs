@@ -105,7 +105,7 @@ pub(super) fn VisionZoneForm(
                 }
             }
             div {
-                class: "relative w-full bg-gray-900 rounded-lg overflow-hidden select-none",
+                class: "relative w-full bg-gray-50 border border-dashed border-gray-300 rounded-lg overflow-hidden select-none",
                 style: "aspect-ratio: {w} / {h};",
                 if let Some(device) = preview {
                     div { class: "absolute inset-0",
@@ -182,46 +182,49 @@ pub(super) fn VisionZoneForm(
             }
             p { class: "text-xs text-gray-500", {t!("flows-zone-draw-hint", max : ZONE_MAX_POINTS)} }
             if can_write {
-                div { class: "flex flex-wrap items-center gap-2",
+                div { class: "space-y-2",
                     input {
-                        class: "flex-1 min-w-0 px-2 py-1 border border-gray-300 rounded-lg text-sm",
+                        class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                         r#type: "text",
                         maxlength: "64",
+                        aria_label: t!("flows-zone-name").to_string(),
                         placeholder: next_zone_name(&zones),
                         value: "{draft_name}",
                         oninput: move |event| draft_name.set(event.value()),
                     }
-                    button {
-                        r#type: "button",
-                        class: BTN_PRIMARY_SM,
-                        disabled: !can_close,
-                        onclick: move |_| {
-                            let points = draft.peek().clone();
-                            let typed = draft_name.peek().trim().to_string();
-                            patch_zone_cfg(
-                                &mut cx,
-                                move |c| {
-                                    let name = if typed.is_empty() {
-                                        next_zone_name(&c.zones)
-                                    } else {
-                                        typed
-                                    };
-                                    c.zones.push(VisionZone { name, points });
-                                },
-                            );
-                            draft.set(Vec::new());
-                            draft_name.set(String::new());
-                        },
-                        {t!("flows-zone-close")}
-                    }
-                    button {
-                        r#type: "button",
-                        class: BTN_SECONDARY_SM,
-                        disabled: draft_now.is_empty(),
-                        onclick: move |_| {
-                            draft.write().pop();
-                        },
-                        {t!("flows-zone-undo")}
+                    div { class: "flex flex-wrap gap-2",
+                        button {
+                            r#type: "button",
+                            class: BTN_PRIMARY_SM,
+                            disabled: !can_close,
+                            onclick: move |_| {
+                                let points = draft.peek().clone();
+                                let typed = draft_name.peek().trim().to_string();
+                                patch_zone_cfg(
+                                    &mut cx,
+                                    move |c| {
+                                        let name = if typed.is_empty() {
+                                            next_zone_name(&c.zones)
+                                        } else {
+                                            typed
+                                        };
+                                        c.zones.push(VisionZone { name, points });
+                                    },
+                                );
+                                draft.set(Vec::new());
+                                draft_name.set(String::new());
+                            },
+                            {t!("flows-zone-close")}
+                        }
+                        button {
+                            r#type: "button",
+                            class: BTN_SECONDARY_SM,
+                            disabled: draft_now.is_empty(),
+                            onclick: move |_| {
+                                draft.write().pop();
+                            },
+                            {t!("flows-zone-undo")}
+                        }
                     }
                 }
             }
