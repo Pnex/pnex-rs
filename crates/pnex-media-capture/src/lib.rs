@@ -474,10 +474,12 @@ fn numbered(seq: &mut i64, cut: segmenter::Cut, clock: ClockSource) -> Segment {
 }
 
 /// Decodes an uploaded clip with the confined decoder (D160 regime) into
-/// a 16 kHz mono WAV of at most `max_secs`; the flag says it was cut.
+/// a 16 kHz mono WAV of at most `max_secs`, starting `skip_secs` into the
+/// audio; the flag says it was cut.
 pub async fn decode_clip(
     bytes: Vec<u8>,
     format: decoder::InputFormat,
+    skip_secs: u32,
     max_secs: u32,
 ) -> Result<(Vec<u8>, bool), CaptureError> {
     let settings = CaptureSettings::from_env();
@@ -497,7 +499,10 @@ pub async fn decode_clip(
     let feeder = tokio::spawn(async move {
         let _ = stdin.write_all(&bytes).await;
     });
-    let max_bytes = max_secs as usize * pnex_core::media_ingest::SAMPLE_RATE as usize * 2;
+    let bytes_per_sec = pnex_core::media_ingest::SAMPLE_RATE as usize * 2;
+    let max_bytes = max_secs as usize * bytes_per_sec;
+    // Skipped on the decoded PCM: sample-exact, whatever the container.
+    let mut skip = skip_secs as usize * bytes_per_sec;
     let mut pcm = Vec::new();
     let mut buf = vec![0u8; 64 * 1024];
     let mut truncated = false;
@@ -510,7 +515,9 @@ pub async fn decode_clip(
             if n == 0 {
                 return Ok::<(), CaptureError>(());
             }
-            pcm.extend_from_slice(&buf[..n]);
+            let dropped = skip.min(n);
+            skip -= dropped;
+            pcm.extend_from_slice(&buf[dropped..n]);
             if pcm.len() >= max_bytes {
                 pcm.truncate(max_bytes);
                 truncated = true;

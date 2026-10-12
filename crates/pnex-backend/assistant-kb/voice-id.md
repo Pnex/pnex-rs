@@ -14,7 +14,7 @@ A voice profile is biometric data: it exists only with the person's **explicit c
 
 ## What you can do
 - **Create the profile** (Person › Voice): pick the **speaker embedding model**, enter the **consent date**, its **scope** (purpose, duration) and where the **proof** is kept, then tick the confirmation. Without a valid speaker embedding model in Audio streams › Models, nothing can be created.
-- **Add enrolment clips**: recordings of the person **alone** (WAV, MP3, Ogg/Opus, FLAC, M4A), at least about 30 seconds of speech in total. Each clip is kept as an **Audio** item of the media library, so the profile can be generated again with another model.
+- **Add enrolment clips**: recordings of the person **alone** (WAV, MP3, Ogg/Opus, FLAC, M4A), at least about 30 seconds of speech in total. After choosing a file, a player opens: **Start here** / **End here** set the span to enrol (3 minutes at most), useful for a long show or interview. Only that span is sent for analysis and kept, as an **Audio** item of the media library, so the profile can be generated again with another model.
 - **Generate the profile**: each clip is cut into 8-second stretches; stretches with too little voice, or with another voice, are left out. The profile gets a **threshold** calibrated on how consistent the clips are. Each clip shows its score and whether it was used.
 - **Test with another audio** (Voice tab, profile ready): drop a recording; the score says whether it is the same voice. The tested audio is **not kept**.
 - **Recognize a voice** (Media › Voice profiles): compares a recording with every ready profile of the chosen model. The result is "recognized", "ambiguous" (two voices too close) or "none".

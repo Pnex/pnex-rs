@@ -10,7 +10,7 @@ use axum::Json;
 use loco_rs::controller::{format, ErrorDetail};
 use loco_rs::prelude::*;
 use pnex_core::err_codes;
-use pnex_core::voice_id::{VoiceProfileInput, VoiceProfilePatch};
+use pnex_core::voice_id::{VoiceProfileInput, VoiceProfilePatch, CLIP_MAX_SECS};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -215,6 +215,11 @@ struct ClipQuery {
     name: String,
     #[serde(default)]
     content_type: Option<String>,
+    /// Span to enrol, in seconds into the recording (default: its start).
+    #[serde(default)]
+    start: u32,
+    #[serde(default)]
+    duration: Option<u32>,
 }
 
 async fn add_sample(
@@ -227,7 +232,8 @@ async fn add_sample(
     require_admin(&org)?;
     let name = pnex_firmware_builder::sanitize_segment(q.name.trim());
     let ct = q.content_type.unwrap_or_default();
-    match samples::add(&ctx, org.org.id, id, &name, &ct, body).await {
+    let secs = q.duration.unwrap_or(CLIP_MAX_SECS).clamp(1, CLIP_MAX_SECS);
+    match samples::add(&ctx, org.org.id, id, &name, &ct, body, (q.start, secs)).await {
         Ok(row) => match profiles::find(&ctx.db, org.org.id, row.profile_id).await {
             Ok(p) => respond(&ctx, &org, StatusCode::CREATED, p).await,
             Err(e) => fail(e),

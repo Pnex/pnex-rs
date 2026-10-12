@@ -19,6 +19,8 @@ use crate::services::media_ingest::capture::{self, segmenter, CaptureError};
 
 /// A decoded clip.
 pub struct Clip {
+    /// The decoded audio as a 16 kHz mono WAV.
+    pub wav: Vec<u8>,
     pub samples: Vec<f32>,
     /// Longer than [`CLIP_MAX_SECS`]: only the start was decoded.
     pub truncated: bool,
@@ -37,16 +39,31 @@ impl Clip {
 /// Decodes any audio the capture chain reads (WAV, MP3, Ogg/Opus, FLAC,
 /// M4A…); the demuxer comes from the content type, else the file name.
 pub async fn decode(bytes: Vec<u8>, filename: &str, content_type: Option<&str>) -> Result<Clip> {
+    decode_span(bytes, filename, content_type, 0, CLIP_MAX_SECS).await
+}
+
+/// [`decode`] of `secs` (at most [`CLIP_MAX_SECS`]) from `start_secs`.
+pub async fn decode_span(
+    bytes: Vec<u8>,
+    filename: &str,
+    content_type: Option<&str>,
+    start_secs: u32,
+    secs: u32,
+) -> Result<Clip> {
     let format = capture::decoder::input_format(content_type, filename)
         .ok_or(VoiceIdError::AudioUnsupported)?;
-    let (wav, truncated) = capture::decode_clip(bytes, format, CLIP_MAX_SECS)
+    let (wav, truncated) = capture::decode_clip(bytes, format, start_secs, secs.min(CLIP_MAX_SECS))
         .await
         .map_err(|e| match e {
             CaptureError::DecoderMissing => VoiceIdError::Failed("ffmpeg is missing".into()),
             _ => VoiceIdError::AudioUnsupported,
         })?;
     let samples = pnex_asr::read_wav_bytes(&wav).map_err(|_| VoiceIdError::AudioUnsupported)?;
-    Ok(Clip { samples, truncated })
+    Ok(Clip {
+        wav,
+        samples,
+        truncated,
+    })
 }
 
 /// The org's speaker embedding model: `id` when given (it must be one,
