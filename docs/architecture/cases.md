@@ -22,6 +22,13 @@ juridiques, D173 pas de publication), `geo-layers.md` (traces et couches),
 `notifications.md` (D86 journal O2), `annotations.md`, `ai-assistant.md`
 §9 (D123, D142–D145), `security.md` (R1–R20).
 
+> **2026-10-12 — refonte de l'écran :** `cases-workspace.md` (v0.2,
+> K20–K41) remplace l'écran décrit ici (K6 pour le rendu, K14) et amende
+> K1 (deux tables : propositions et gels), K2 (membres déduits des
+> attaches d'événements, `in_case` = événements et bac) et K6 (signaux
+> bruts séparés des événements retenus). Le modèle d'enquête de ce
+> document (pack, affirmations, apparitions, voix) reste valable.
+
 ---
 
 ## 1. Constat
