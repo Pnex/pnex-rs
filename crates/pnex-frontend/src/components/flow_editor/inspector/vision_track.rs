@@ -12,8 +12,7 @@ type TrackSetter = fn(&mut VisionTrackConfig, f64);
 /// Number input committed when it parses inside `range`.
 fn track_field(
     mut cx: EditorCx,
-    label: String,
-    hint: String,
+    (label, hint): (String, String),
     mut raw: Signal<String>,
     range: (f64, f64),
     step: &'static str,
@@ -71,8 +70,10 @@ pub(super) fn VisionTrackForm(
             {
                 track_field(
                     cx,
-                    t!("flows-track-high-score").to_string(),
-                    t!("flows-track-high-score-hint").to_string(),
+                    (
+                        t!("flows-track-high-score").to_string(),
+                        t!("flows-track-high-score-hint").to_string(),
+                    ),
                     high,
                     (0.0, 1.0),
                     "0.05",
@@ -83,8 +84,10 @@ pub(super) fn VisionTrackForm(
             {
                 track_field(
                     cx,
-                    t!("flows-track-min-iou").to_string(),
-                    t!("flows-track-min-iou-hint").to_string(),
+                    (
+                        t!("flows-track-min-iou").to_string(),
+                        t!("flows-track-min-iou-hint").to_string(),
+                    ),
                     iou,
                     (0.01, 1.0),
                     "0.05",
@@ -95,8 +98,10 @@ pub(super) fn VisionTrackForm(
             {
                 track_field(
                     cx,
-                    t!("flows-track-min-hits").to_string(),
-                    t!("flows-track-min-hits-hint").to_string(),
+                    (
+                        t!("flows-track-min-hits").to_string(),
+                        t!("flows-track-min-hits-hint").to_string(),
+                    ),
                     hits,
                     (1.0, 100.0),
                     "1",
@@ -107,8 +112,10 @@ pub(super) fn VisionTrackForm(
             {
                 track_field(
                     cx,
-                    t!("flows-track-lost-after").to_string(),
-                    t!("flows-track-lost-after-hint").to_string(),
+                    (
+                        t!("flows-track-lost-after").to_string(),
+                        t!("flows-track-lost-after-hint").to_string(),
+                    ),
                     lost,
                     (0.1, TRACK_LOST_MAX_SECS),
                     "0.5",
