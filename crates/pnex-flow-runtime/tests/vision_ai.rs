@@ -1,6 +1,6 @@
 //! Video understanding nodes on the real engine (media-vision-studio.md
-//! D195/D196): `vision-caption` and `media-fuse` against a canned backend
-//! (`/internal/flow/ai/{caption,fuse}`) — the runtime side only: the
+//! D195–D197): `vision-caption`, `media-fuse` and `text-decide` against a
+//! canned backend (`/internal/flow/ai/{caption,fuse,decide}`) — the runtime side only: the
 //! backend reads the frame and calls the org model.
 
 mod common;
@@ -19,7 +19,13 @@ fn start_ai_server() -> String {
                 let mut buf = [0u8; 65536];
                 let n = stream.read(&mut buf).unwrap_or(0);
                 let head = String::from_utf8_lossy(&buf[..n]).into_owned();
-                let body = if head.starts_with("POST /internal/flow/ai/caption") {
+                let body = if head.starts_with("POST /internal/flow/ai/decide") {
+                    serde_json::json!({
+                        "answers": {"incident": {"best": "routine", "probability": 0.7,
+                            "probabilities": [["incident", 0.3], ["routine", 0.7]], "confidence": 0.12}},
+                        "model": "ml", "took_ms": 5
+                    })
+                } else if head.starts_with("POST /internal/flow/ai/caption") {
                     serde_json::json!({"caption": "a cat on a chair", "model": "m", "took_ms": 3})
                 } else {
                     serde_json::json!({
@@ -65,7 +71,13 @@ return msg;
         {
             "id": "fuse", "type": "pnex-media-fuse", "z": "pnexflow8",
             "window_secs": 5.0, "language": "en",
-            "pnex_org_id": 5, "pnex_node_id": "fuse", "wires": [["dbg"]]
+            "pnex_org_id": 5, "pnex_node_id": "fuse", "wires": [["dbg", "dec"]]
+        },
+        {
+            "id": "dec", "type": "pnex-text-decide", "z": "pnexflow8",
+            "questions": [{"id": "incident", "kind": "choice", "instructions": "Incident?",
+                           "options": ["incident", "routine"]}],
+            "text_field": "text", "pnex_org_id": 5, "pnex_node_id": "dec", "wires": [["dbg"]]
         },
         {
             "id": "dbg", "type": "debug", "z": "pnexflow8",
@@ -105,6 +117,11 @@ fn caption_then_fused_description() {
         |v| {
             common::is_debug_with(v, "A cat sat on the chair.") && common::is_debug_with(v, "t0_ms")
         },
+        Duration::from_secs(20),
+    );
+    // The fused text goes on to the decision node, which keeps the payload.
+    rt.wait_for(
+        |v| common::is_debug_with(v, "decisions") && common::is_debug_with(v, "A cat sat"),
         Duration::from_secs(20),
     );
 }

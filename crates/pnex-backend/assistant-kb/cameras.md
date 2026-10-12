@@ -3,10 +3,10 @@ id: cameras
 title: Cameras
 kind: feature
 pages: /cameras
-nodes: camera_source, video_record, vision_detect, vision_track, vision_zone, vision_caption, media_fuse, media_source, event_log, pnex_notify
+nodes: camera_source, video_record, vision_detect, vision_track, vision_zone, vision_caption, media_fuse, text_decide, media_source, event_log, pnex_notify
 err_codes: camera-write-forbidden, camera-unknown, camera-no-frame, camera-offline, camera-range-invalid, camera-export-too-large, camera-export-empty, camera-already-recorded, camera-stream-unknown, video-segment-invalid, video-store-unavailable
 tools: 
-tags: camera, caméra, esp32-cam, video, vidéo, live, stream, recording, enregistrement, playback, detection, détection, surveillance, rtsp, ip camera, caméra ip, tracking, suivi, zone, comptage, counting, présence, presence, description, caption, légende, vlm, what happens, ce qui se passe, résumé vidéo, video summary
+tags: camera, caméra, esp32-cam, video, vidéo, live, stream, recording, enregistrement, playback, detection, détection, surveillance, rtsp, ip camera, caméra ip, tracking, suivi, zone, comptage, counting, présence, presence, description, caption, légende, vlm, what happens, ce qui se passe, résumé vidéo, video summary, decision, décision, laya, incident, classification, probability, probabilité
 ---
 Cameras (Data › Cameras) lists every device that announced a camera (for example an ESP32-CAM on the generic camera firmware) with its streaming status, capture settings and last frame. From there you watch the live view, change capture settings and play back recordings. Recording and object detection are done by flows.
 
@@ -32,6 +32,7 @@ In **Automation › Flows**: the **Camera source** node reads a camera device (s
 - Typical chain: Camera source → Object detection → Object tracking → Image zones and Image description → Video description → Event log (searchable on the Events page).
 - Both nodes share a daily cap of model calls per organization (2000 by default). "AI model call failed" on the node: no LLM provider, the provider refused the image (text-only model), the cap was reached, or the frame expired (keep the node right after the camera chain).
 - The descriptions are AI-generated and indicative: show or store them, never let them drive a device.
+- **Text decision** answers typed questions about a text (a Video description, a transcript) with a probability per answer — e.g. "incident" or "routine", or an urgency level — without writing any text. The model runs on the PneX server, nothing leaves it. Route with a **Switch** on the best answer and its probability, or put it before Video description so the AI model only describes the windows that matter. Out of the box the probabilities are a ranking, not a calibrated truth: check them on real examples before alerting on a threshold. "AI model call failed" with decide-unavailable: the decision model is not installed on this server (ask the platform administrator).
 
 ## Good to know
 - No **Video recording** node = nothing is stored. Recordings show "No recording" until such a flow is deployed.

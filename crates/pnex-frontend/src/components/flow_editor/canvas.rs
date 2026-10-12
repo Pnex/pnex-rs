@@ -316,6 +316,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::VisionZone { .. } => kind_labels(PaletteKind::VisionZone),
         pnex_core::FlowNodeKind::VisionCaption { .. } => kind_labels(PaletteKind::VisionCaption),
         pnex_core::FlowNodeKind::MediaFuse { .. } => kind_labels(PaletteKind::MediaFuse),
+        pnex_core::FlowNodeKind::TextDecide { .. } => kind_labels(PaletteKind::TextDecide),
         pnex_core::FlowNodeKind::EventLog { .. } => kind_labels(PaletteKind::EventLog),
         pnex_core::FlowNodeKind::MemoryWrite { .. } => kind_labels(PaletteKind::MemoryWrite),
         pnex_core::FlowNodeKind::MemoryRead { .. } => kind_labels(PaletteKind::MemoryRead),
@@ -381,7 +382,8 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::VisionTrack { .. }
         | pnex_core::FlowNodeKind::VisionZone { .. }
         | pnex_core::FlowNodeKind::VisionCaption { .. }
-        | pnex_core::FlowNodeKind::MediaFuse { .. } => {
+        | pnex_core::FlowNodeKind::MediaFuse { .. }
+        | pnex_core::FlowNodeKind::TextDecide { .. } => {
             (geometry::VISION_FILL, geometry::VISION_STROKE)
         }
         pnex_core::FlowNodeKind::EventLog { .. } | pnex_core::FlowNodeKind::RangeUpsert { .. } => {
@@ -430,7 +432,8 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::ControlSource { .. }
         | pnex_core::FlowNodeKind::VisionDetect { .. }
         | pnex_core::FlowNodeKind::VisionCaption { .. }
-        | pnex_core::FlowNodeKind::MediaFuse { .. } => {
+        | pnex_core::FlowNodeKind::MediaFuse { .. }
+        | pnex_core::FlowNodeKind::TextDecide { .. } => {
             cx.display_values.read().get(&node.id).cloned()
         }
         _ => None,
@@ -1074,6 +1077,21 @@ fn node_subtitle(node: &FlowNode) -> String {
         pnex_core::FlowNodeKind::VisionCaption { config } => {
             let crop = if config.crop_best { " · crop" } else { "" };
             format!("1 / {} s{crop}", config.min_interval_secs)
+        }
+        // Question ids, or a dash until one is written.
+        pnex_core::FlowNodeKind::TextDecide { config } => {
+            let ids: Vec<&str> = config.questions.iter().map(|q| q.id.as_str()).collect();
+            let text = if ids.is_empty() {
+                "—".to_string()
+            } else {
+                ids.join(", ")
+            };
+            let short: String = text.chars().take(30).collect();
+            if text.chars().count() > 30 {
+                format!("{short}…")
+            } else {
+                text
+            }
         }
         // Window · language.
         pnex_core::FlowNodeKind::MediaFuse { config } => {

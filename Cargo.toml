@@ -33,6 +33,7 @@ members = [
     "crates/pnex-node-events",
     # Vision inference (tract ONNX, YOLOX) — backend test endpoint + flow node.
     "crates/pnex-vision",
+    "crates/pnex-decide",
     "crates/pnex-node-vision",
     # Speech-to-text (media-ingest.md D167): Transcriber trait, lot 0 POC.
     "crates/pnex-asr",
@@ -93,6 +94,7 @@ pnex-node-http-fetch = { path = "crates/pnex-node-http-fetch" }
 pnex-node-camera = { path = "crates/pnex-node-camera" }
 pnex-node-events = { path = "crates/pnex-node-events" }
 pnex-vision = { path = "crates/pnex-vision" }
+pnex-decide = { path = "crates/pnex-decide" }
 pnex-asr = { path = "crates/pnex-asr" }
 pnex-media-capture = { path = "crates/pnex-media-capture" }
 pnex-node-vision = { path = "crates/pnex-node-vision" }

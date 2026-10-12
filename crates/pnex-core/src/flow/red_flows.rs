@@ -136,6 +136,15 @@ pub fn to_red_flows_json_with(
                 "pnex_version": meta.version_number,
                 "pnex_org_id": meta.org_id,
             }),
+            FlowNodeKind::TextDecide { config } => serde_json::json!({
+                "type": "pnex-text-decide",
+                "questions": config.questions,
+                "text_field": config.effective_field(),
+                "pnex_node_id": n.id,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+                "pnex_org_id": meta.org_id,
+            }),
             FlowNodeKind::VisionCaption { config } => serde_json::json!({
                 "type": "pnex-vision-caption",
                 "prompt": config.effective_prompt(),

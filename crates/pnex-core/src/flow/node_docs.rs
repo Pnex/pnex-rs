@@ -354,6 +354,15 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         notes: "Wire it after vision_detect; set the detect min_score below high_score so weak detections can keep a track alive. Raise lost_after_secs at low fps (1 fps → 3 s or more). Port 0 also fires when tracks expire without a new frame, so vision_zone sees the exits. Wire port 1 to event_log to search appearances on the Events page.",
     },
     NodeDoc {
+        kind: "text_decide",
+        summary: "Asks typed questions about the text of each message (default payload.text: what media_fuse and media_source emit) and adds probabilities, without generating text: the Laya decision model runs on the PneX server. Adds payload.decisions = {question id: {best, probability, probabilities: [[option, p]…], confidence, expected (score)}}, payload.decide_model; the rest of the payload is kept. One output, emitted when the model answered (no text or a failed call = dropped, reason in the node status).",
+        config: &[
+            ("questions", "1..8 × {id: [a-z0-9_]{1,32} unique, kind: \"choice\" (one option among 2..20) | \"score\" (levels of an ordered rubric, worst first), instructions: the question (≤ 300 chars), options: labels (≤ 120 chars, unique), descriptions: optional text after each choice label}"),
+            ("text_field", "dotted path of the text in msg.payload, default \"text\"; a non-text value is sent as JSON"),
+        ],
+        notes: "Route on the result with a switch on payload.decisions.<id>.best and payload.decisions.<id>.probability (e.g. incident with probability > 0.8 → notify), or wire it before media_fuse so the organization's LLM only describes the windows that matter. Out of the box the model is close to chance on business questions and over-confident: treat probabilities as a ranking until the organization has labelled real examples and calibrated the model. Needs the decision model installed by the platform administrator (node error \"decide-unavailable\" otherwise). Never wire it to anything that acts on a device by itself (D128).",
+    },
+    NodeDoc {
         kind: "vision_caption",
         summary: "Describes a camera frame in words with the organization's own model (its default LLM provider, which must accept images: e.g. Claude, GPT-4o, or a local VLM behind an OpenAI-compatible endpoint). Input: any message carrying payload.frame_key (camera_source, vision_detect, vision_track port 0). Output: payload = {caption, caption_id, model, ts_ms, frame_key, device_id or stream, label (when cropped), ai_generated: true}.",
         config: &[
