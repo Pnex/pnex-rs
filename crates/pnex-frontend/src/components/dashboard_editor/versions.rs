@@ -35,7 +35,7 @@ pub fn VersionsDrawer(
         div { class: "fixed inset-0 z-40",
             // Click outside the drawer closes it.
             div { class: "absolute inset-0", onclick: close }
-            aside { class: "absolute inset-y-0 right-0 w-96 max-w-full bg-white shadow-xl border-l border-gray-200 flex flex-col",
+            aside { class: "pnex-drawer-in-right absolute inset-y-0 right-0 w-96 max-w-full bg-white shadow-xl border-l border-gray-200 flex flex-col",
                 div { class: "flex items-center justify-between px-4 py-3 border-b border-gray-200",
                     h3 { class: "text-sm font-semibold text-gray-900", {t!("ver-drawer-title")} }
                     button {

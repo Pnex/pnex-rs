@@ -20,7 +20,7 @@ pub fn FloatingPanel(
 ) -> Element {
     let close_label = t!("eshell-close");
     rsx! {
-        div { class: "absolute left-0 top-12 z-30 w-44 rounded-lg border border-gray-200 bg-white p-3 shadow-xl",
+        div { class: "pnex-pop-in absolute left-0 top-12 z-30 w-44 rounded-lg border border-gray-200 bg-white p-3 shadow-xl",
             div { class: "flex items-center justify-between",
                 span { class: "text-xs font-semibold text-gray-500", {title} }
                 button {

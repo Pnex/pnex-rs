@@ -54,10 +54,10 @@ fn ShellContent() -> Element {
             if sidebar_open() {
                 div { class: "fixed inset-0 z-50 lg:hidden",
                     div {
-                        class: "fixed inset-0 bg-ink/55 dark:bg-black/60",
+                        class: "pnex-backdrop-in fixed inset-0 bg-ink/55 dark:bg-black/60",
                         onclick: move |_| sidebar_open.set(false),
                     }
-                    div { class: "fixed inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-rail",
+                    div { class: "pnex-drawer-in fixed inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-rail",
                         div { class: "flex h-16 items-center justify-between px-4",
                             SidebarBrand {}
                             button {

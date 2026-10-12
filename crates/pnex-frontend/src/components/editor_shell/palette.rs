@@ -266,14 +266,11 @@ pub fn PalettePopover(
                     open.toggle();
                     search.set(String::new());
                 },
-                if open() {
-                    icons::X { class: "h-5 w-5" }
-                } else {
-                    icons::Plus { class: "h-5 w-5" }
-                }
+                // One glyph: the plus turns 45° into the close cross.
+                icons::Plus { class: if open() { "h-5 w-5 rotate-45 transition-transform duration-150 ease-out-ui" } else { "h-5 w-5 transition-transform duration-150 ease-out-ui" } }
             }
             if open() {
-                div { class: "absolute left-0 top-12 z-30 flex w-72 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl",
+                div { class: "pnex-pop-in absolute left-0 top-12 z-30 flex w-72 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl",
                     div { class: "flex items-center justify-between px-3 pt-3",
                         span { class: "text-sm font-semibold text-gray-900", {title} }
                         button {

@@ -26,12 +26,12 @@ pub fn Modal(
     rsx! {
         div {
             // Phone: a bottom sheet (thumb reach); from sm up: a centred dialog.
-            class: "fixed inset-0 bg-ink/55 dark:bg-black/60 flex items-end sm:items-center justify-center z-50 pt-8 sm:p-4",
+            class: "pnex-backdrop-in fixed inset-0 bg-ink/55 dark:bg-black/60 flex items-end sm:items-center justify-center z-50 pt-8 sm:p-4",
             onclick: move |_| on_close.call(()),
             div {
                 // Never taller than the viewport: header stays put, only the body
                 // scrolls (a phone used to lose the dialog's buttons).
-                class: "flex max-h-full w-full flex-col bg-surface rounded-t-xl sm:rounded-lg shadow-2xl outline-none {max_width}",
+                class: "pnex-dialog-in flex max-h-full w-full flex-col bg-surface rounded-t-xl sm:rounded-lg shadow-2xl outline-none {max_width}",
                 role: "dialog",
                 aria_modal: "true",
                 aria_label: "{title}",

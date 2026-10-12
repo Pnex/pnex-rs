@@ -42,7 +42,7 @@ pub fn ListStates(
     match state {
         None => rsx! {
             div { class: "py-12 text-center",
-                span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-signal" }
+                span { class: "pnex-spinner-delayed inline-block rounded-full h-8 w-8 border-b-2 border-signal" }
             }
         },
         Some(Err(err)) => rsx! {

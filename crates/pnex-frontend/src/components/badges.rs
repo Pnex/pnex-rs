@@ -9,7 +9,7 @@ pub fn phase_badge(phase: Option<&str>) -> (String, String) {
     let (class, key) = match phase {
         Some("queued") => ("bg-gray-100 text-gray-600", "builds-phase-queued"),
         Some("running") => (
-            "bg-signal-100 text-signal-700 animate-pulse",
+            "bg-signal-100 text-signal-700 pnex-live-dot",
             "builds-phase-running",
         ),
         Some("succeeded") => ("bg-green-100 text-green-700", "builds-phase-succeeded"),

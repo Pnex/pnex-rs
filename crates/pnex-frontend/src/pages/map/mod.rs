@@ -265,10 +265,10 @@ pub fn Map() -> Element {
             if sidebar_open() {
                 // Phone backdrop: tap outside the overlay panel to close it.
                 div {
-                    class: "absolute inset-0 z-20 bg-black/20 lg:hidden",
+                    class: "pnex-backdrop-in absolute inset-0 z-20 bg-black/20 lg:hidden",
                     onclick: move |_| sidebar_open.set(false),
                 }
-                aside { class: "absolute inset-y-0 left-0 z-30 w-80 max-w-[85vw] shrink-0 bg-white border-r border-gray-200 flex flex-col shadow-xl lg:static lg:z-auto lg:max-w-none lg:shadow-none",
+                aside { class: "pnex-drawer-in absolute inset-y-0 left-0 z-30 w-80 max-w-[85vw] shrink-0 bg-white border-r border-gray-200 flex flex-col shadow-xl lg:static lg:z-auto lg:max-w-none lg:shadow-none",
                     // En-tête + repli.
                     div { class: "flex items-center justify-between px-4 py-3 border-b border-gray-200",
                         h1 { class: "text-base font-semibold text-gray-900", {t!("viz-map-title")} }
