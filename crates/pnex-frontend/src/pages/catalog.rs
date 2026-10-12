@@ -165,6 +165,7 @@ pub fn Catalog() -> Element {
             // canonique du socle (uniformité des pages liste).
             FilterBar {
                 SearchInput {
+                    page,
                     placeholder: t!("catalog-search-placeholder").to_string(),
                     value: search,
                     on_submit: move |_| {

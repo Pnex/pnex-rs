@@ -146,7 +146,11 @@ function mount(hostId, optsRaw) {
     hosts[hostId] = { error: 'host' };
     return false;
   }
-  if (hosts[hostId]?.renderer) return true;
+  if (hosts[hostId]?.renderer) {
+    if (hosts[hostId].el === el) return true;
+    // A renderer left on a detached host (tab switched away and back).
+    unmount(hostId);
+  }
   if (!webgl()) {
     hosts[hostId] = { error: 'webgl' };
     return false;

@@ -344,6 +344,7 @@ pub fn Media() -> Element {
                         option { value: "audio", {t!("media-kind-audio")} }
                     }
                     SearchInput {
+                        page,
                         placeholder: t!("media-search-placeholder").to_string(),
                         value: search,
                         on_submit: move |_| {

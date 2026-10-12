@@ -279,6 +279,7 @@ pub fn Flows(id: String) -> Element {
                             }
                         }
                         SearchInput {
+                            page,
                             placeholder: t!("flows-search-placeholder").to_string(),
                             value: search,
                             on_submit: move |_| {

@@ -66,10 +66,11 @@ pub async fn error(host_id: &str) -> Option<String> {
     }
 }
 
-/// Fire and forget.
+/// Fire and forget; `spawn_forever` because a task spawned from `use_drop`
+/// dies with its scope before it runs.
 pub fn unmount(host_id: &str) {
     let host_id = host_id.to_string();
-    dioxus::prelude::spawn(async move {
+    dioxus::dioxus_core::spawn_forever(async move {
         let _ = invoke("unmount", &host_id, None).await;
     });
 }

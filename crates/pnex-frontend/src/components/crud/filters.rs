@@ -37,6 +37,9 @@ pub fn SearchInput(
     /// Signal de la requête courante (saisie conservée entre deux rendus).
     mut value: Signal<String>,
     on_submit: Callback<()>,
+    /// Current page of a list that refetches as you type: reset to 0 on each
+    /// keystroke, otherwise a narrower query is read at a stale offset.
+    page: Option<Signal<i64>>,
 ) -> Element {
     rsx! {
         input {
@@ -44,7 +47,12 @@ pub fn SearchInput(
             r#type: "search",
             placeholder: "{placeholder}",
             value: "{value}",
-            oninput: move |event| value.set(event.value()),
+            oninput: move |event| {
+                value.set(event.value());
+                if let Some(mut page) = page {
+                    page.set(0);
+                }
+            },
             onkeydown: move |event| {
                 if event.key() == Key::Enter {
                     event.prevent_default();

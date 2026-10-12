@@ -558,6 +558,7 @@ pub fn Devices() -> Element {
                         }
                     }
                     SearchInput {
+                        page,
                         placeholder: t!("devices-search-placeholder").to_string(),
                         value: search,
                         on_submit: move |_| {

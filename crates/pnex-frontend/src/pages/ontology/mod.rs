@@ -168,6 +168,7 @@ fn ObjectsTab(initial_type: String, tabs: Element) -> Element {
                     }
                 }
                 SearchInput {
+                    page,
                     placeholder: t!("onto-search").to_string(),
                     value: search,
                     on_submit: move |_| {

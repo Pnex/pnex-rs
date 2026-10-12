@@ -162,6 +162,7 @@ pub fn NotifyDeliveriesTab(
                 }
             }
             SearchInput {
+                page,
                 placeholder: t!("notify-deliveries-search").to_string(),
                 value: search,
                 on_submit: move |_| page.set(0),

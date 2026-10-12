@@ -239,6 +239,7 @@ pub fn Events() -> Element {
                     }
                 }
                 SearchInput {
+                    page,
                     placeholder: t!("events-search-placeholder").to_string(),
                     value: search,
                     on_submit: move |_| page.set(0),
