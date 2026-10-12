@@ -111,6 +111,27 @@ pub async fn install(
     user_id: Option<i64>,
     pack: &Pack,
 ) -> Result<PackView> {
+    // One install at a time per org: two at once raced on the type keys
+    // (409 for the loser) although the second had nothing to do.
+    use crate::services::db_lock::{ns, TenantLock};
+    let lock = TenantLock::acquire(
+        db,
+        ns::ONTOLOGY_PACK,
+        org_id,
+        std::time::Duration::from_secs(30),
+    )
+    .await?;
+    let out = install_locked(db, org_id, user_id, pack).await;
+    lock.release().await;
+    out
+}
+
+async fn install_locked(
+    db: &DatabaseConnection,
+    org_id: i64,
+    user_id: Option<i64>,
+    pack: &Pack,
+) -> Result<PackView> {
     // Same version already installed: nothing to do (no duplicate versions).
     let installed = packs::Entity::find()
         .filter(packs::Column::OrgId.eq(org_id))
