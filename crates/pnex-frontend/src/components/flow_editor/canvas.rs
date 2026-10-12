@@ -579,6 +579,15 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                 .map(|(i, label)| (i, rel_y(i), label, node.id.clone()))
                 .collect()
         }
+        pnex_core::FlowNodeKind::VisionTrack { .. } => {
+            // Port 0 = current tracks (→ zones), port 1 = appear/disappear.
+            let rel_y = |port: usize| node_h * (port + 1) as f64 / (out_count + 1) as f64;
+            [t!("flow-port-tracks"), t!("flow-port-track-events")]
+                .into_iter()
+                .enumerate()
+                .map(|(i, label)| (i, rel_y(i), label.to_string(), node.id.clone()))
+                .collect()
+        }
         pnex_core::FlowNodeKind::Anomaly { .. }
         | pnex_core::FlowNodeKind::Forecast { .. }
         | pnex_core::FlowNodeKind::Weather { .. } => {

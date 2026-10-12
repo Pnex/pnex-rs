@@ -100,6 +100,7 @@ fn QuestionCard(
         )
     };
     let instructions_placeholder = t!("flows-decide-instructions-placeholder").to_string();
+    let id_label = t!("flows-decide-id").to_string();
 
     rsx! {
         div { class: "border border-gray-200 rounded-lg p-2 space-y-2",
@@ -108,6 +109,7 @@ fn QuestionCard(
                     class: "flex-1 min-w-0 px-2 py-1 border border-gray-300 rounded-lg text-sm font-mono",
                     r#type: "text",
                     maxlength: "32",
+                    aria_label: "{id_label}",
                     value: "{id}",
                     disabled: !can_write,
                     oninput: move |event| {
