@@ -263,24 +263,33 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
     });
     const yard = await api.post('/ontology/objects', { type_key: 'place', title: `${prefix} yard ${run}`, properties: {} });
     const gate = await api.post('/ontology/objects', { type_key: 'place', title: `${prefix} gate ${run}`, properties: {} });
-    await api.post(`/cases/${c.id}/events`, {
+    const seen = await api.post(`/cases/${c.id}/events`, {
       title: 'Seen', occurred: instant('2025-05-02T09:00:00Z'),
       attach: [{ object_id: yard.id }, { object_id: gate.id }],
     });
+    const ev: string = seen.events[0].event.id;
     await app.goto(`/cases/${c.id}`);
-    const nodes = page.getByTestId('case-graph-node');
-    const centre = async (text: string) => {
-      const b = (await nodes.filter({ hasText: text }).locator('circle, rect').first().boundingBox())!;
-      return [b.x + b.width / 2, b.y + b.height / 2];
+    // Sigma draws on a canvas (cases-graph-sigma.md §5): positions and
+    // screen points come from window.pnexGraph.
+    const host = 'cw-graph-sigma';
+    const placed = () =>
+      page.evaluate((h) => JSON.parse((window as any).pnexGraph?.positions(h) ?? '{}'), host);
+    const centre = async (id: string): Promise<[number, number]> => {
+      const p = await page.evaluate(
+        ([h, i]) => JSON.parse((window as any).pnexGraph.screenPos(h, i)),
+        [host, id],
+      );
+      return [p.x, p.y];
     };
     // Shape of the drawing, whatever its scale: |event–yard| / |event–gate|.
     const shape = async () => {
-      const [e, y, g] = [await centre('Seen'), await centre(`yard ${run}`), await centre(`gate ${run}`)];
-      return Math.hypot(e[0] - y[0], e[1] - y[1]) / Math.hypot(e[0] - g[0], e[1] - g[1]);
+      const p = await placed();
+      const d = (a: string, b: string) => Math.hypot(p[a][0] - p[b][0], p[a][1] - p[b][1]);
+      return d(ev, yard.id) / d(ev, gate.id);
     };
-    await expect(nodes.filter({ hasText: `yard ${run}` })).toBeVisible();
+    await expect.poll(async () => Object.keys(await placed()).length).toBe(3);
     const before = await shape();
-    const [x, y] = await centre(`yard ${run}`);
+    const [x, y] = await centre(yard.id);
     const panel = (await page.getByTestId('case-graph').boundingBox())!;
     // Toward the middle of the panel, by a good third of the way.
     const [tx, ty] = [x + (panel.x + panel.width / 2 - x) * 0.6, y + (panel.y + panel.height / 2 - y) * 0.6];
@@ -289,7 +298,7 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
     await page.mouse.move(tx, ty, { steps: 8 });
     await page.mouse.up();
     // The node stays where it was let go.
-    const [dx, dy] = await centre(`yard ${run}`);
+    const [dx, dy] = await centre(yard.id);
     expect(Math.hypot(dx - tx, dy - ty)).toBeLessThan(4);
     await expect.poll(async () => Object.keys((await api.get(`/cases/${c.id}/layout`)).positions)).toContain(yard.id);
     const dropped = await shape();
@@ -297,12 +306,105 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
 
     // After a reload, the same arrangement.
     await page.reload();
-    await expect(nodes.filter({ hasText: `yard ${run}` })).toBeVisible();
+    await expect.poll(async () => Object.keys(await placed()).length).toBe(3);
     await expect.poll(async () => Math.abs((await shape()) - dropped)).toBeLessThan(0.02);
 
     // Re-layout: back to the automatic layout, nothing saved.
     await page.getByRole('button', { name: app.t('cw-graph-relayout'), exact: true }).click();
     await expect.poll(async () => Object.keys((await api.get(`/cases/${c.id}/layout`)).positions)).toEqual([]);
     await expect.poll(async () => Math.abs((await shape()) - before)).toBeLessThan(0.02);
+  });
+
+  test('double-clicking an object in the graph offers its neighbours, added until undone', async ({
+    app,
+    page,
+    api,
+    prefix,
+  }) => {
+    const run = Date.now().toString(36);
+    const c = await api.post('/ontology/objects', {
+      type_key: 'case', title: `${prefix} expand ${run}`, properties: { status: 'open', legal_basis: 'legitimate interest' },
+    });
+    const ann = await api.post('/ontology/objects', { type_key: 'person', title: `${prefix} Ann ${run}`, properties: {} });
+    const acme = await api.post('/ontology/objects', { type_key: 'organization', title: `${prefix} Acme ${run}`, properties: {} });
+    await api.post('/ontology/links', { link_type: 'member_of', source_id: ann.id, target_id: acme.id });
+    await api.post(`/cases/${c.id}/events`, {
+      title: 'Met', occurred: instant('2025-05-02T09:00:00Z'), attach: [{ object_id: ann.id }],
+    });
+    await app.goto(`/cases/${c.id}`);
+    const host = 'cw-graph-sigma';
+    const placed = () =>
+      page.evaluate((h) => JSON.parse((window as any).pnexGraph?.positions(h) ?? '{}'), host);
+    await expect.poll(async () => Object.keys(await placed()).length).toBe(2);
+    const p = await page.evaluate(
+      ([h, i]) => JSON.parse((window as any).pnexGraph.screenPos(h, i)),
+      [host, ann.id],
+    );
+    await page.mouse.dblclick(p.x, p.y);
+    const offer = page.getByTestId('case-expand');
+    await expect(offer).toBeVisible();
+    await offer.getByRole('checkbox').first().check();
+    await page.getByTestId('case-expand-add').click();
+    await expect.poll(async () => Object.keys(await placed())).toContain(acme.id);
+    await page.getByTestId('case-expand-undo').click();
+    await expect.poll(async () => Object.keys(await placed())).not.toContain(acme.id);
+  });
+
+  test('removing an object from the case in the inspector takes it out', async ({ app, page, api, prefix }) => {
+    const run = Date.now().toString(36);
+    const c = await api.post('/ontology/objects', {
+      type_key: 'case', title: `${prefix} remove ${run}`, properties: { status: 'open' },
+    });
+    const yard = await api.post('/ontology/objects', { type_key: 'place', title: `${prefix} yard ${run}`, properties: {} });
+    const gate = await api.post('/ontology/objects', { type_key: 'place', title: `${prefix} gate ${run}`, properties: {} });
+    await api.post(`/cases/${c.id}/events`, {
+      title: 'Seen', occurred: instant('2025-05-02T09:00:00Z'), attach: [{ object_id: yard.id }],
+    });
+    await api.post(`/cases/${c.id}/attach`, { object_id: gate.id });
+    await app.goto(`/cases/${c.id}`);
+    const host = 'cw-graph-sigma';
+    const placed = () =>
+      page.evaluate((h) => JSON.parse((window as any).pnexGraph?.positions(h) ?? '{}'), host);
+    await expect.poll(async () => Object.keys(await placed()).length).toBe(3);
+    const members = async () => {
+      const w = await api.get(`/cases/${c.id}/workspace`);
+      return [
+        ...w.undated.map((o: { id: string }) => o.id),
+        ...w.events.flatMap((e: { attachments: { object: { id: string } }[] }) => e.attachments.map((a) => a.object.id)),
+      ];
+    };
+    // Both an attached object and an undated one leave on "Remove from the case".
+    for (const o of [yard, gate]) {
+      const p = await page.evaluate(([h, i]) => JSON.parse((window as any).pnexGraph.screenPos(h, i)), [host, o.id]);
+      const remove = page.getByRole('button', { name: app.t('cw-remove-object'), exact: true });
+      // Right after a reload of the graph, Sigma may not have redrawn yet.
+      await expect(async () => {
+        await page.mouse.click(p.x, p.y);
+        await expect(remove).toBeVisible({ timeout: 1000 });
+      }).toPass();
+      await remove.click();
+      await expect.poll(members).not.toContain(o.id);
+      await expect.poll(async () => Object.keys(await placed())).not.toContain(o.id);
+    }
+  });
+
+  test('without WebGL the graph falls back to the SVG drawing', async ({ app, page, api, prefix }) => {
+    const run = Date.now().toString(36);
+    const c = await api.post('/ontology/objects', {
+      type_key: 'case', title: `${prefix} nogl ${run}`, properties: { status: 'open' },
+    });
+    const yard = await api.post('/ontology/objects', { type_key: 'place', title: `${prefix} yard ${run}`, properties: {} });
+    await api.post(`/cases/${c.id}/events`, {
+      title: 'Seen', occurred: instant('2025-05-02T09:00:00Z'), attach: [{ object_id: yard.id }],
+    });
+    await page.addInitScript(() => {
+      const get = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (kind: string, ...rest: unknown[]) {
+        return /webgl/.test(kind) ? null : get.call(this, kind, ...rest);
+      } as typeof get;
+    });
+    await app.goto(`/cases/${c.id}`);
+    await expect(page.getByTestId('case-graph-simplified')).toBeVisible();
+    await expect(page.getByTestId('case-graph-node').filter({ hasText: `yard ${run}` })).toBeVisible();
   });
 });

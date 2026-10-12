@@ -19,6 +19,7 @@ mod doc_editor;
 #[cfg(not(target_arch = "wasm32"))]
 mod download;
 mod flash;
+mod graph_viewer;
 mod i18n;
 mod i18n_guard;
 mod js_guard;
@@ -137,6 +138,9 @@ fn App() -> Element {
         // Pages editor (pages.md #21) — ProseMirror + Yjs, IIFE exposing
         // window.pnexDoc (see doc_editor.rs).
         script { src: asset!("/assets/doc.js") }
+        // Case graph (cases-graph-sigma.md) — Sigma.js + graphology, IIFE
+        // exposing window.pnexGraph (see graph_viewer.rs).
+        script { src: asset!("/assets/graph.js") }
         style { {VIEWERS_CSS_INLINE} }
         link { rel: "stylesheet", href: asset!("/assets/viewers.css") }
         style { {MAP_CSS_INLINE} }

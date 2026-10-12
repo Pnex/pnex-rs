@@ -327,11 +327,13 @@ tasks:
       - assets/map.js
       - assets/map.css
       - assets/doc.js
+      - assets/graph.js
     cmds:
       - bun run js:build
       - bun run js:viewers
       - bun run js:map
       - bun run js:doc
+      - bun run js:graph
 
   js:ensure:
     desc: Garantit l'existence des bundles JS/CSS (stubs) — la macro asset!() les exige à la compilation
@@ -346,6 +348,7 @@ tasks:
       - test -f crates/pnex-frontend/assets/map.js || printf '/* Stub — bundle reel genere par task js:build (bun) */\n' > crates/pnex-frontend/assets/map.js
       - test -f crates/pnex-frontend/assets/map.css || printf '/* Stub — CSS maplibre genere par task js:build (bun) */\n' > crates/pnex-frontend/assets/map.css
       - test -f crates/pnex-frontend/assets/doc.js || printf '/* Stub — bundle reel genere par task js:build (bun) */\n' > crates/pnex-frontend/assets/doc.js
+      - test -f crates/pnex-frontend/assets/graph.js || printf '/* Stub — bundle reel genere par task js:build (bun) */\n' > crates/pnex-frontend/assets/graph.js
 
   # ---------- Rauthy (branding IdP) ----------
 

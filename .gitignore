@@ -48,6 +48,7 @@ crates/pnex-frontend/assets/.map-worker.js
 crates/pnex-frontend/assets/.map-worker.txt
 crates/pnex-frontend/assets/map.css
 crates/pnex-frontend/assets/doc.js
+crates/pnex-frontend/assets/graph.js
 
 crates/pnex-backend/storage/
 # Clones de référence (licences incompatibles — concepts seulement, jamais compilés ni commités)

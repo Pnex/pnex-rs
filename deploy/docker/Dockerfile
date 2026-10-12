@@ -42,7 +42,7 @@ WORKDIR /src/crates/pnex-frontend
 COPY crates/pnex-frontend/package.json crates/pnex-frontend/bun.lock ./
 RUN bun install --frozen-lockfile
 COPY crates/pnex-frontend/ ./
-RUN bun run css:build && bun run js:build && bun run js:viewers && bun run js:map && bun run js:doc
+RUN bun run css:build && bun run js:build && bun run js:viewers && bun run js:map && bun run js:doc && bun run js:graph
 
 # ── Rust toolchain on the build host, with aarch64 cross compilers ────────
 FROM --platform=$BUILDPLATFORM rust:${RUST_VERSION}-trixie AS toolchain-base

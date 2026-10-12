@@ -193,6 +193,27 @@ mod tests {
         assert!(p1.iter().all(|(x, y)| x.is_finite() && y.is_finite()));
     }
 
+    /// Same vectors as `crates/pnex-frontend/js/graph_layout.test.js`: the
+    /// Sigma graph seeds its layout with the JS port of `hashed`.
+    #[test]
+    fn hashed_matches_the_js_port() {
+        let close = |got: (f64, f64), want: (f64, f64)| {
+            assert!(
+                (got.0 - want.0).abs() < 1e-12 && (got.1 - want.1).abs() < 1e-12,
+                "{got:?}"
+            );
+        };
+        close(
+            hashed("case-1", "obj-1"),
+            (0.4513241717245719, 0.6161696809847302),
+        );
+        close(
+            hashed("0192f0c4-case", "été"),
+            (0.5870898609485221, 0.002698675497132045),
+        );
+        close(hashed("", ""), (0.6851156532496949, 0.5234637184821683));
+    }
+
     #[test]
     fn linked_nodes_sit_closer_than_unlinked_ones() {
         let nodes = free(&["e1", "a", "b", "e2", "c", "d"]);
