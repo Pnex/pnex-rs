@@ -26,7 +26,7 @@ const SHIPPED: &[&str] = &[
 pub fn shipped() -> Vec<Pack> {
     SHIPPED
         .iter()
-        .map(|y| serde_yaml::from_str(y).expect("shipped pack is valid YAML"))
+        .map(|y| serde_saphyr::from_str(y).expect("shipped pack is valid YAML"))
         .collect()
 }
 
@@ -40,7 +40,7 @@ pub fn parse(yaml: &str) -> Result<Pack> {
             ),
         ));
     }
-    let pack: Pack = serde_yaml::from_str(yaml)
+    let pack: Pack = serde_saphyr::from_str(yaml)
         .map_err(|_| invalid("yaml", pnex_core::err_codes::FIELD_INVALID))?;
     if !pnex_core::ontology::schema::valid_key(&pack.key)
         || pack.version.trim().is_empty()
@@ -268,7 +268,7 @@ pub async fn export(db: &DatabaseConnection, org_id: i64) -> Result<String> {
         link_types: s.org_links(),
         page_templates: Vec::new(),
     };
-    serde_yaml::to_string(&pack)
+    serde_saphyr::to_string(&pack)
         .map_err(|e| OntologyError::Db(sea_orm::DbErr::Custom(e.to_string())))
 }
 
@@ -299,7 +299,7 @@ mod tests {
     #[test]
     fn export_round_trips_through_parse() {
         let p = shipped().remove(0);
-        let yaml = serde_yaml::to_string(&p).unwrap();
+        let yaml = serde_saphyr::to_string(&p).unwrap();
         assert_eq!(parse(&yaml).unwrap(), p);
     }
 }

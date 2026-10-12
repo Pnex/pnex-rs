@@ -103,7 +103,7 @@ type Db = DatabaseTransaction;
 fn read_yaml<T: for<'de> serde::Deserialize<'de>>(path: &std::path::Path) -> Result<Vec<T>> {
     let f = std::fs::File::open(path)
         .map_err(|e| Error::string(&format!("fixture {} illisible : {e}", path.display())))?;
-    serde_yaml::from_reader(f)
+    serde_saphyr::from_reader(f)
         .map_err(|e| Error::string(&format!("fixture {} invalide : {e}", path.display())))
 }
 

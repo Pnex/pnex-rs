@@ -20,6 +20,10 @@ ignore = [
     { id = "RUSTSEC-2024-0388", reason = "derivative unmaintained (starlark)" },
     { id = "RUSTSEC-2025-0057", reason = "fxhash unmaintained (starlark)" },
     { id = "RUSTSEC-2024-0436", reason = "paste unmaintained (simba / augurs)" },
+    # unsafe-libyaml only via loco-rs (serde_yaml_ng: operator config files) and
+    # rrgen (code generator). Our own YAML parsing, incl. user-uploaded ontology
+    # packs, uses serde-saphyr (safe Rust).
+    { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml unmaintained (loco-rs config / rrgen), no untrusted input" },
     { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained (unic-langid macros, build time)" },
 ]
 
