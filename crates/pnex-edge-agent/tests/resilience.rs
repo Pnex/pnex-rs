@@ -334,7 +334,13 @@ async fn concurrent_producers_survive_a_killed_connection_exactly_once() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn points_accepted_while_server_is_down_survive_an_agent_restart() {
     let dir = tempfile::tempdir().unwrap();
-    let server_port = free_port();
+    // Bound but not listening: connects are refused (server down) yet the port
+    // stays reserved, so no ephemeral socket can grab it before the server starts.
+    let server_sock = tokio::net::TcpSocket::new_v4().unwrap();
+    server_sock
+        .bind(SocketAddr::from(([127, 0, 0, 1], 0)))
+        .unwrap();
+    let server_port = server_sock.local_addr().unwrap().port();
     let api_port = free_port();
     let pki = pki();
     write_config(dir.path(), &pki, server_port, api_port);
@@ -360,9 +366,7 @@ async fn points_accepted_while_server_is_down_survive_an_agent_restart() {
     stop_agent(agent).await;
 
     // Server comes up, agent restarts: the durable queue drains.
-    let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], server_port)))
-        .await
-        .unwrap();
+    let listener = server_sock.listen(1024).unwrap();
     let srv = Arc::new(FakeServer::default());
     tokio::spawn(serve(listener, acceptor(&pki), srv.clone()));
     let agent = start_agent(dir.path(), api_port).await;
