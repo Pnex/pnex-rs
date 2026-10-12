@@ -392,6 +392,11 @@ fn NewProfile(models: Vec<AsrModel>, on_saved: Callback<()>) -> Element {
                     id: "profile-model",
                     class: INPUT,
                     onchange: move |e| model.set(e.value()),
+                    if asr_models.is_empty() {
+                        option { value: "", disabled: true, selected: true,
+                            {t!("asr-profiles-model-empty")}
+                        }
+                    }
                     for m in asr_models {
                         option { value: "{m.id}", selected: model() == m.id, "{m.name}" }
                     }
@@ -577,8 +582,9 @@ fn ImportModel(on_close: Callback<()>, on_saved: Callback<()>) -> Element {
             }
             if source() == Source::Upload {
                 input {
+                    class: INPUT,
                     r#type: "file",
-                    accept: ".tar,.bz2,.gz,.tgz,.zip,.bin,.gguf",
+                    accept: ".tar,.bz2,.gz,.tgz,.zip,.bin,.gguf,.onnx",
                     onchange: move |evt| {
                         if let Some(file) = evt.files().first().cloned() {
                             file_name.set(file.name());

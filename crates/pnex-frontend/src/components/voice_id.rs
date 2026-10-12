@@ -7,8 +7,8 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::media_ingest::AsrModel;
 use pnex_core::voice_id::{
-    VoiceProfileInput, VoiceProfileView, VoiceTestResult, VoiceVerdict, CONSENT_PROOF_MAX,
-    CONSENT_SCOPE_MAX, STATUS_READY,
+    VoiceProfileInput, VoiceProfileView, VoiceTestResult, VoiceVerdict, CLIP_MAX_SECS,
+    CONSENT_PROOF_MAX, CONSENT_SCOPE_MAX, STATUS_READY,
 };
 
 use crate::api;
@@ -17,6 +17,7 @@ use crate::components::ui::{
     BTN_DANGER, BTN_PRIMARY_SM, BTN_SECONDARY_SM, FIELD_HELP, FIELD_LABEL, INPUT, PANEL,
 };
 use crate::state::{org, toasts};
+use crate::util;
 
 const SECTION: &str = "rounded-lg border border-line bg-surface p-4 space-y-3";
 const AUDIO_ACCEPT: &str = "audio/*,.wav,.mp3,.ogg,.opus,.flac,.m4a";
@@ -246,26 +247,6 @@ fn ProfileCard(profile: VoiceProfileView, can_admin: bool, on_change: Callback<(
             on_change.call(());
         });
     };
-    let pid = profile.id.clone();
-    let upload = move |evt: Event<FormData>| {
-        let id = pid.clone();
-        async move {
-            let Some(file) = evt.files().first().cloned() else {
-                return;
-            };
-            let Ok(bytes) = file.read_bytes().await else {
-                return;
-            };
-            busy.set(true);
-            let ct = file.content_type().unwrap_or_default();
-            let res = api::voice_id::add_sample(&id, &file.name(), &ct, bytes.to_vec()).await;
-            busy.set(false);
-            match res {
-                Ok(_) => on_change.call(()),
-                Err(e) => toasts::error(e),
-            }
-        }
-    };
     let threshold = pct(profile.threshold);
     let spread = match (profile.intra_mean, profile.intra_std) {
         (Some(m), Some(s)) => format!("{:.0} % ± {:.0}", m * 100.0, s * 100.0),
@@ -334,7 +315,23 @@ fn ProfileCard(profile: VoiceProfileView, can_admin: bool, on_change: Callback<(
                 }
             }
             div { class: SECTION,
-                h3 { class: "text-base font-semibold text-ink", {t!("voice-samples")} }
+                div { class: "flex flex-wrap items-center justify-between gap-2",
+                    h3 { class: "text-base font-semibold text-ink", {t!("voice-samples")} }
+                    if can_admin {
+                        button {
+                            class: BTN_PRIMARY_SM,
+                            "data-testid": "voice-generate",
+                            disabled: busy() || profile.samples.is_empty(),
+                            onclick: generate,
+                            if busy() {
+                                span { class: "animate-spin inline-block rounded-full h-4 w-4 border-2 border-current border-t-transparent" }
+                                {t!("voice-generating")}
+                            } else {
+                                {t!("voice-generate")}
+                            }
+                        }
+                    }
+                }
                 p { class: "text-sm text-slate", {t!("voice-samples-help")} }
                 if profile.samples.is_empty() {
                     p { class: "text-sm text-slate", {t!("voice-samples-empty")} }
@@ -351,26 +348,7 @@ fn ProfileCard(profile: VoiceProfileView, can_admin: bool, on_change: Callback<(
                     }
                 }
                 if can_admin {
-                    div { class: "flex flex-wrap items-end gap-3",
-                        div { class: "grow",
-                            label { r#for: "voice-clip", class: FIELD_LABEL, {t!("voice-add-sample")} }
-                            input {
-                                id: "voice-clip",
-                                class: INPUT,
-                                r#type: "file",
-                                accept: AUDIO_ACCEPT,
-                                disabled: busy(),
-                                onchange: upload,
-                            }
-                        }
-                        button {
-                            class: BTN_PRIMARY_SM,
-                            "data-testid": "voice-generate",
-                            disabled: busy() || profile.samples.is_empty(),
-                            onclick: generate,
-                            {t!("voice-generate")}
-                        }
-                    }
+                    ClipPicker { profile_id: profile.id.clone(), on_change }
                 }
             }
             if ready {
@@ -409,6 +387,167 @@ fn ProfileCard(profile: VoiceProfileView, can_admin: bool, on_change: Callback<(
                         });
                     },
                     on_cancel: move |_| revoking.set(false),
+                }
+            }
+        }
+    }
+}
+
+/// A recording waiting to be enrolled, with its local preview URL.
+#[derive(Clone, PartialEq)]
+struct PendingClip {
+    name: String,
+    content_type: String,
+    bytes: Vec<u8>,
+    url: String,
+}
+
+const PLAYER_ID: &str = "voice-clip-player";
+
+/// Playback position of the preview player, in whole seconds.
+async fn player_position() -> u32 {
+    let js = format!("return document.getElementById('{PLAYER_ID}')?.currentTime ?? 0");
+    dioxus::document::eval(&js)
+        .await
+        .ok()
+        .and_then(|v| v.as_f64())
+        .map_or(0, |t| t.max(0.0) as u32)
+}
+
+/// `m:ss` of a position in seconds.
+fn clock(secs: u32) -> String {
+    format!("{}:{:02}", secs / 60, secs % 60)
+}
+
+/// Picks a recording, plays it, and enrols only the span chosen in the
+/// player (at most `CLIP_MAX_SECS`): the server decodes and keeps that span.
+#[component]
+fn ClipPicker(profile_id: String, on_change: Callback<()>) -> Element {
+    let mut pending = use_signal(|| None::<PendingClip>);
+    let mut start = use_signal(|| 0u32);
+    let mut end = use_signal(|| CLIP_MAX_SECS);
+    let mut busy = use_signal(|| false);
+    let mut clear = move || {
+        if let Some(p) = pending.take() {
+            util::release_image_url(&p.url);
+        }
+    };
+    let pick = move |evt: Event<FormData>| async move {
+        let Some(file) = evt.files().first().cloned() else {
+            return;
+        };
+        busy.set(true);
+        let read = file.read_bytes().await;
+        busy.set(false);
+        let Ok(bytes) = read else {
+            return;
+        };
+        let content_type = file.content_type().unwrap_or_default();
+        let Some(url) = util::image_url_from_bytes(&bytes, &content_type) else {
+            return;
+        };
+        clear();
+        start.set(0);
+        end.set(CLIP_MAX_SECS);
+        pending.set(Some(PendingClip {
+            name: file.name(),
+            content_type,
+            bytes: bytes.to_vec(),
+            url,
+        }));
+    };
+    // The URL only: cloning the clip's bytes on every render is wasted.
+    let preview = pending.read().as_ref().map(|p| p.url.clone());
+    let length = end().saturating_sub(start());
+    let span_ok = (1..=CLIP_MAX_SECS).contains(&length);
+    let add = move |_| {
+        let Some(p) = pending.peek().clone() else {
+            return;
+        };
+        let (id, from, secs) = (profile_id.clone(), start(), end().saturating_sub(start()));
+        busy.set(true);
+        spawn(async move {
+            let res =
+                api::voice_id::add_sample(&id, &p.name, &p.content_type, p.bytes, from, secs).await;
+            busy.set(false);
+            match res {
+                Ok(_) => {
+                    clear();
+                    on_change.call(());
+                }
+                Err(e) => toasts::error(e),
+            }
+        });
+    };
+    rsx! {
+        div { class: "space-y-3",
+            div {
+                label { r#for: "voice-clip", class: FIELD_LABEL, {t!("voice-add-sample")} }
+                input {
+                    id: "voice-clip",
+                    class: INPUT,
+                    r#type: "file",
+                    accept: AUDIO_ACCEPT,
+                    disabled: busy(),
+                    onchange: pick,
+                }
+            }
+            if busy() && pending.read().is_none() {
+                p { class: "flex items-center gap-2 text-sm text-slate",
+                    span { class: "animate-spin inline-block rounded-full h-4 w-4 border-2 border-current border-t-transparent" }
+                    {t!("voice-reading")}
+                }
+            }
+            if let Some(url) = preview {
+                audio {
+                    id: PLAYER_ID,
+                    class: "w-full",
+                    controls: true,
+                    src: "{url}",
+                }
+                p { class: FIELD_HELP, {t!("voice-span-help", max : CLIP_MAX_SECS)} }
+                div { class: "flex flex-wrap items-center gap-3 text-sm",
+                    button {
+                        class: BTN_SECONDARY_SM,
+                        onclick: move |_| async move {
+                            let t = player_position().await;
+                            start.set(t);
+                            if end() <= t || end() - t > CLIP_MAX_SECS {
+                                end.set(t + CLIP_MAX_SECS);
+                            }
+                        },
+                        {t!("voice-span-start")}
+                    }
+                    button {
+                        class: BTN_SECONDARY_SM,
+                        onclick: move |_| async move {
+                            let t = player_position().await;
+                            end.set(t);
+                        },
+                        {t!("voice-span-end")}
+                    }
+                    span { class: if span_ok { "text-ink" } else { "text-red-600" },
+                        {t!("voice-span", from : clock(start()), to : clock(end()), secs : length)}
+                    }
+                }
+                div { class: "flex flex-wrap gap-2",
+                    button {
+                        class: BTN_PRIMARY_SM,
+                        "data-testid": "voice-span-add",
+                        disabled: busy() || !span_ok,
+                        onclick: add,
+                        if busy() {
+                            {t!("voice-span-adding")}
+                        } else {
+                            {t!("voice-span-add")}
+                        }
+                    }
+                    button {
+                        class: BTN_SECONDARY_SM,
+                        disabled: busy(),
+                        onclick: move |_| clear(),
+                        {t!("voice-span-cancel")}
+                    }
                 }
             }
         }
@@ -486,7 +625,12 @@ pub fn VoiceTestBox(object_id: Option<String>, model_id: Option<String>) -> Elem
                     accept: AUDIO_ACCEPT,
                     onchange: move |evt| async move {
                         if let Some(f) = evt.files().first().cloned() {
-                            if let Ok(bytes) = f.read_bytes().await {
+                            // Reading a large file takes seconds: show it.
+                            busy.set(true);
+                            file.set(None);
+                            let read = f.read_bytes().await;
+                            busy.set(false);
+                            if let Ok(bytes) = read {
                                 file.set(
                                     Some((
                                         f.name(),
@@ -504,6 +648,9 @@ pub fn VoiceTestBox(object_id: Option<String>, model_id: Option<String>) -> Elem
                 "data-testid": "voice-test-run",
                 disabled: !can_write || busy() || file.read().is_none(),
                 onclick: run,
+                if busy() {
+                    span { class: "animate-spin inline-block rounded-full h-4 w-4 border-2 border-current border-t-transparent" }
+                }
                 {t!("voice-test-run")}
             }
         }

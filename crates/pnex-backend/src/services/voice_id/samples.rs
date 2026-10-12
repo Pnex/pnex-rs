@@ -1,6 +1,7 @@
 //! Enrolment clips. Each clip is decoded first (unreadable audio is
-//! refused before anything is stored), then kept as an `audio` media asset
-//! of the org so the profile can be generated again with another model.
+//! refused before anything is stored); only the chosen span, as decoded
+//! (16 kHz mono WAV), is kept as an `audio` media asset of the org so the
+//! profile can be generated again with another model.
 //! Removing a clip, or the whole profile, deletes the asset and its blobs.
 
 use loco_rs::app::AppContext;
@@ -17,8 +18,14 @@ use crate::services::media_sniff;
 /// Media kind of the clips.
 pub const AUDIO_KIND: &str = "audio";
 
+/// `m:ss` of a position in seconds.
+fn clock(secs: u32) -> String {
+    format!("{}:{:02}", secs / 60, secs % 60)
+}
+
 /// Adds a clip to the profile: speech is measured now, the embedding at
-/// the next generation.
+/// the next generation. `span` = (start, length) in seconds of the part of
+/// the recording to enrol.
 pub async fn add(
     ctx: &AppContext,
     org_id: i64,
@@ -26,19 +33,26 @@ pub async fn add(
     filename: &str,
     content_type: &str,
     bytes: axum::body::Bytes,
+    span: (u32, u32),
 ) -> Result<voice_samples::Model> {
     let profile = profiles::find(&ctx.db, org_id, profile_id).await?;
     if !media_sniff::accepts(AUDIO_KIND, filename, &bytes) {
         return Err(VoiceIdError::AudioUnsupported);
     }
-    let clip = audio::decode(bytes.to_vec(), filename, Some(content_type)).await?;
+    let (start, secs) = span;
+    let clip =
+        audio::decode_span(bytes.to_vec(), filename, Some(content_type), start, secs).await?;
     let usable = core::usable(&clip.windows());
     let person = profiles::person_title(&ctx.db, org_id, profile.object_id).await?;
     let asset = media_assets::ActiveModel {
         id: Set(Uuid::new_v4()),
         org_id: Set(org_id),
         kind: Set(AUDIO_KIND.into()),
-        name: Set(format!("{person} — {filename}")),
+        name: Set(format!(
+            "{person} — {filename} ({}–{})",
+            clock(start),
+            clock(start.saturating_add(clip.duration_ms() / 1000))
+        )),
         description: Set(Some("Voice profile enrolment clip (consented).".into())),
         metadata: Set(None),
         ..Default::default()
@@ -51,10 +65,13 @@ pub async fn add(
         org_id,
         &asset,
         IncomingVersion {
-            filename: filename.to_string(),
-            content_type: content_type.to_string(),
+            filename: format!(
+                "{}.wav",
+                filename.rsplit_once('.').map_or(filename, |(stem, _)| stem)
+            ),
+            content_type: "audio/wav".into(),
             note: None,
-            bytes,
+            bytes: clip.wav.clone().into(),
         },
         &settings,
     )

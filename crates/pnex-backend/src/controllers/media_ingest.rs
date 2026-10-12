@@ -180,7 +180,7 @@ async fn model_test(
         .and_then(|v| v.to_str().ok());
     let format = capture::decoder::input_format(content_type, &q.name).ok_or_else(unsupported)?;
     let (wav, truncated) =
-        match capture::decode_clip(body.to_vec(), format, TEST_CLIP_MAX_SECS).await {
+        match capture::decode_clip(body.to_vec(), format, 0, TEST_CLIP_MAX_SECS).await {
             Ok(v) => v,
             Err(capture::CaptureError::DecoderMissing) => {
                 return Err(detail(

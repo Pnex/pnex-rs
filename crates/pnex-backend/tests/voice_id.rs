@@ -372,16 +372,25 @@ async fn consented_profile_generation_test_and_revocation() {
             .await;
             assert_eq!((st, e["error"].as_str()), (409, Some("voice-id-not-ready")));
 
-            let (st, _) = upload(
+            // A span of the recording (4 s → 12 s): only it is decoded and kept.
+            let (st, p) = upload(
                 &alice,
                 org,
                 format!(
-                    "/api/v1/voice-id/profiles/{pid}/samples?name=two.wav&content_type=audio/wav"
+                    "/api/v1/voice-id/profiles/{pid}/samples?name=two.wav&content_type=audio/wav&start=4&duration=8"
                 ),
                 tone_wav(),
             )
             .await;
-            assert_eq!(st, 201);
+            assert_eq!(st, 201, "{p}");
+            let span = p["samples"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|s| s["name"].as_str().is_some_and(|n| n.contains("two")))
+                .unwrap();
+            assert_eq!((span["duration_ms"].as_i64(), span["windows"].as_i64()), (Some(8000), Some(1)), "{p}");
+            assert!(span["name"].as_str().unwrap().ends_with("two.wav (0:04–0:12)"), "{p}");
             let (st, p) = call(
                 &alice,
                 org,
@@ -392,7 +401,7 @@ async fn consented_profile_generation_test_and_revocation() {
             .await;
             assert_eq!(st, 200, "{p}");
             assert_eq!(p["status"], "ready");
-            assert_eq!(p["windows_used"], 4);
+            assert_eq!(p["windows_used"], 3);
             // Identical vectors: no spread, the threshold sits at its ceiling.
             assert!((p["threshold"].as_f64().unwrap() - 0.8).abs() < 1e-6, "{p}");
             assert!(

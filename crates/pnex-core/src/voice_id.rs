@@ -173,9 +173,12 @@ pub struct Window {
 
 /// Frame of the energy gate.
 const FRAME: usize = SAMPLE_RATE / 50;
-/// A frame is speech when its RMS is above this fraction of the loudest
-/// frame of the clip and above an absolute floor (digital silence).
+/// A frame is speech when its RMS is above this fraction of the clip's
+/// reference level and above an absolute floor (digital silence).
 const SPEECH_REL: f32 = 0.1;
+/// Reference level = this percentile of frame RMS, not the loudest frame:
+/// one burst (applause, jingle, plosive) would otherwise gate out the speech.
+const REFERENCE_PERCENTILE: f32 = 0.95;
 const SPEECH_ABS: f32 = 0.005;
 
 fn rms(frame: &[f32]) -> f32 {
@@ -186,8 +189,16 @@ fn rms(frame: &[f32]) -> f32 {
 /// shortcut: energy gate, not a VAD model; noisy recordings overestimate
 /// speech — use the org's VAD model if enrolments in noise fail.
 pub fn windows(samples: &[f32]) -> Vec<Window> {
-    let loudest = samples.chunks(FRAME).map(rms).fold(0.0f32, f32::max);
-    let gate = (loudest * SPEECH_REL).max(SPEECH_ABS);
+    let mut levels: Vec<f32> = samples.chunks(FRAME).map(rms).collect();
+    levels.sort_by(f32::total_cmp);
+    let reference = levels
+        .get(
+            ((levels.len() as f32 * REFERENCE_PERCENTILE) as usize)
+                .min(levels.len().saturating_sub(1)),
+        )
+        .copied()
+        .unwrap_or(0.0);
+    let gate = (reference * SPEECH_REL).max(SPEECH_ABS);
     let len = WINDOW_MS as usize * SAMPLE_RATE / 1000;
     let mut out = Vec::new();
     let mut start = 0;
@@ -358,6 +369,15 @@ mod tests {
         assert!(ws[2].speech_ms <= 2_000);
         assert_eq!(usable(&ws), vec![ws[0]]);
         assert!(windows(&[]).is_empty());
+    }
+
+    #[test]
+    fn a_loud_burst_does_not_gate_out_speech() {
+        // Moderate speech with a short burst 15x louder (applause, jingle).
+        let mut s = tone(1.0, 1.0);
+        s.extend(tone(23.0, 0.066));
+        let ws = windows(&s);
+        assert_eq!(usable(&ws).len(), 3, "{ws:?}");
     }
 
     fn jitter(base: &[f32], k: f32) -> Vec<f32> {

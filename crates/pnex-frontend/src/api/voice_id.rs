@@ -57,17 +57,20 @@ pub async fn revoke(id: &str) -> Result<Option<()>, ApiError> {
     .await
 }
 
-/// `POST /api/v1/voice-id/profiles/{id}/samples` — one enrolment clip.
+/// `POST /api/v1/voice-id/profiles/{id}/samples` — one enrolment clip,
+/// `duration` seconds from `start` into the recording.
 pub async fn add_sample(
     id: &str,
     file_name: &str,
     content_type: &str,
     bytes: Vec<u8>,
+    start: u32,
+    duration: u32,
 ) -> Result<VoiceProfileView, ApiError> {
     client::request_upload(
         reqwest::Method::POST,
         &format!(
-            "/api/v1/voice-id/profiles/{id}/samples?name={}&content_type={}",
+            "/api/v1/voice-id/profiles/{id}/samples?name={}&content_type={}&start={start}&duration={duration}",
             urlencode(file_name),
             urlencode(content_type)
         ),
