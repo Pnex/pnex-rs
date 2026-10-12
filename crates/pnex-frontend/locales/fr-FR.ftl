@@ -4408,6 +4408,7 @@ cw-links = Liens
 cw-links-empty = Les événements et les pièces attachées apparaissent ici.
 cw-graph-hidden = { $count } masqué(s)
 cw-graph-relayout = Réorganiser
+cw-graph-simplified = Rendu simplifié
 cw-graph-relayout-help = Recalculer la disposition (les nœuds déplacés à la main sont libérés).
 cw-sig-object-create = Créé : { $title }
 cw-sig-object-update = Modifié : { $title }

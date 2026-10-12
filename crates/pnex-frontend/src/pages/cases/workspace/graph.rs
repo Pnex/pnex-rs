@@ -8,6 +8,8 @@
 //! after the cursor fades (only classes change per frame). Double-click an
 //! object to expand it: its neighbours counted by link and type, then the
 //! ones picked, until "Undo expansion" or "Keep" (they join the undated).
+//! Drawn by Sigma.js when the browser can (cases-graph-sigma.md, bridge in
+//! `graph_viewer.rs`), by the SVG below otherwise.
 
 use std::collections::{HashMap, HashSet};
 
@@ -19,10 +21,13 @@ use pnex_core::ontology::api::{
 };
 use pnex_core::ontology::layout::{force_layout, LayoutNode};
 
+use serde_json::{json, Value};
+
 use super::{model, Sel, Ws};
 use crate::api;
 use crate::components::ontology::add_to_case::role_label;
 use crate::components::ui::{BTN_GHOST, BTN_PRIMARY_SM, BTN_SECONDARY_SM};
+use crate::graph_viewer;
 use crate::state::toasts;
 
 /// Nodes drawn at most; the rest is counted.
@@ -30,6 +35,7 @@ const CAP: usize = 300;
 /// Under this many nodes every label shows; above, on hover or selection.
 const LABELS_UNDER: usize = 40;
 const SVG_ID: &str = "cw-graph";
+const GRAPH_HOST: &str = "cw-graph-sigma";
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct GNode {
@@ -38,6 +44,21 @@ pub(super) struct GNode {
     pub event_from: Option<i64>,
     /// Added by an expansion, not (yet) in the case.
     pub extra: bool,
+    /// `event`, or the colour family of the object's type (`family`).
+    pub family: &'static str,
+}
+
+/// Colour family of an object type in the graph (cases-graph-sigma.md GS6).
+pub(super) fn family(type_key: &str) -> &'static str {
+    match type_key {
+        "person" => "person",
+        "organization" => "organization",
+        "place" => "place",
+        "piece" => "piece",
+        "claim" | "hypothesis" => "claim",
+        "identifier" => "identifier",
+        _ => "other",
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -69,23 +90,25 @@ pub(super) fn build(
     let mut nodes: Vec<GNode> = Vec::new();
     let mut index: HashMap<String, usize> = HashMap::new();
     let mut hidden = 0;
-    let mut add = |nodes: &mut Vec<GNode>, o: &ObjectRef, at: Option<i64>, extra: bool| {
-        if let Some(i) = index.get(&o.id) {
-            return Some(*i);
-        }
-        if nodes.len() == CAP {
-            hidden += 1;
-            return None;
-        }
-        index.insert(o.id.clone(), nodes.len());
-        nodes.push(GNode {
-            id: o.id.clone(),
-            title: o.title.clone(),
-            event_from: at,
-            extra,
-        });
-        Some(nodes.len() - 1)
-    };
+    let mut add =
+        |nodes: &mut Vec<GNode>, o: &ObjectRef, at: Option<i64>, extra: bool, event: bool| {
+            if let Some(i) = index.get(&o.id) {
+                return Some(*i);
+            }
+            if nodes.len() == CAP {
+                hidden += 1;
+                return None;
+            }
+            index.insert(o.id.clone(), nodes.len());
+            nodes.push(GNode {
+                id: o.id.clone(),
+                title: o.title.clone(),
+                event_from: at,
+                extra,
+                family: if event { "event" } else { family(&o.type_key) },
+            });
+            Some(nodes.len() - 1)
+        };
     let mut edges = Vec::new();
     let events = w
         .events
@@ -99,11 +122,11 @@ pub(super) fn build(
             title: e.event.title.clone(),
             native_id: e.event.native_id.clone(),
         };
-        let Some(ei) = add(&mut nodes, &ev, at, false) else {
+        let Some(ei) = add(&mut nodes, &ev, at, false, true) else {
             continue;
         };
         for a in &e.attachments {
-            if let Some(oi) = add(&mut nodes, &a.object, None, false) {
+            if let Some(oi) = add(&mut nodes, &a.object, None, false, false) {
                 edges.push(GEdge {
                     a: ei,
                     b: oi,
@@ -117,12 +140,12 @@ pub(super) fn build(
     }
     if follow.is_none() {
         for u in &w.undated {
-            add(&mut nodes, u, None, false);
+            add(&mut nodes, u, None, false, false);
         }
     }
     for x in extra {
         for n in &x.nodes {
-            add(&mut nodes, n, None, true);
+            add(&mut nodes, n, None, true, false);
         }
     }
     let ms = |s: &str| model::ms(s);
@@ -186,6 +209,69 @@ pub(super) fn faded(nodes: &[GNode], edges: &[GEdge], cursor: i64) -> Vec<bool> 
         out[*i] = true;
     }
     out
+}
+
+/// What graph.js draws (cases-graph-sigma.md GS3): nodes with their saved
+/// or held position if any, edges by node id.
+pub(super) fn sigma_data(
+    nodes: &[GNode],
+    edges: &[GEdge],
+    pos: &HashMap<String, (f64, f64)>,
+    aspect: f64,
+) -> Value {
+    let nodes: Vec<Value> = nodes
+        .iter()
+        .map(|n| {
+            let mut v = json!({
+                "id": n.id, "title": n.title, "family": n.family,
+                "event": n.family == "event", "at": n.event_from, "extra": n.extra,
+            });
+            if let Some((x, y)) = pos.get(&n.id) {
+                v["x"] = json!(x);
+                v["y"] = json!(y);
+            }
+            v
+        })
+        .collect();
+    let edges: Vec<Value> = edges
+        .iter()
+        .map(|e| {
+            let (kind, label) = match &e.kind {
+                EdgeKind::Role { role, .. } => ("role", role_label(role)),
+                EdgeKind::Relation { link_type, .. } => ("relation", link_type.replace('_', " ")),
+            };
+            json!({ "a": nodes[e.a]["id"], "b": nodes[e.b]["id"], "kind": kind, "label": label })
+        })
+        .collect();
+    json!({ "nodes": nodes, "edges": edges, "aspect": aspect })
+}
+
+/// The cursor's effect, computed here and applied as is by graph.js (GS8):
+/// faded node ids, relations not live (by edge key `e<index>`).
+pub(super) fn sigma_state(
+    nodes: &[GNode],
+    edges: &[GEdge],
+    cursor: i64,
+    selected: Option<&str>,
+) -> Value {
+    let fade = faded(nodes, edges, cursor);
+    let faded_ids: Vec<&str> = nodes
+        .iter()
+        .zip(&fade)
+        .filter(|(_, f)| **f)
+        .map(|(n, _)| n.id.as_str())
+        .collect();
+    let mut shown = serde_json::Map::new();
+    for (k, e) in edges.iter().enumerate() {
+        if let EdgeKind::Relation { from, to, .. } = e.kind {
+            match relation_at(from, to, cursor) {
+                Shown::Gone => shown.insert(format!("e{k}"), json!("gone")),
+                Shown::Ahead => shown.insert(format!("e{k}"), json!("ahead")),
+                Shown::Live => None,
+            };
+        }
+    }
+    json!({ "selected": selected, "faded": faded_ids, "edges": shown, "mode": "force" })
 }
 
 /// Layout coordinates onto the panel's pixels: one scale for both axes
@@ -323,9 +409,24 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
         async move { api::cases::layout(&id).await.unwrap_or_default() }
     });
     let mut seeded = use_signal(|| false);
+    // Sigma renderer: None while it mounts, then whether it took (else SVG).
+    let mut sigma = use_signal(|| None::<bool>);
+    use_effect(move || {
+        let opts = json!({
+            "caseId": ws.case_id.peek().clone(),
+            "canWrite": ws.can_write,
+            "canDrag": true,
+        });
+        spawn(async move {
+            let ok = graph_viewer::mount(GRAPH_HOST, &opts).await;
+            sigma.set(Some(ok));
+        });
+    });
+    use_drop(|| graph_viewer::unmount(GRAPH_HOST));
     // Place the newcomers; whatever has a position keeps it.
     use_effect(move || {
         let _ = relayout();
+        let svg = sigma() == Some(false);
         let Some(w) = (ws.data)() else { return };
         let Some(saved) = saved.read().clone() else {
             return;
@@ -336,6 +437,14 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
         if !*seeded.peek() {
             prev.extend(saved.positions);
             seeded.set(true);
+            if !svg {
+                positions.set(prev);
+                return;
+            }
+        }
+        // Sigma lays out in JS.
+        if !svg {
+            return;
         }
         let input: Vec<LayoutNode> = nodes
             .iter()
@@ -357,6 +466,111 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
             next.insert(n.id.clone(), p);
         }
         positions.set(next);
+    });
+    // Saves the arrangement (none = back to the automatic layout).
+    let save = move |p: HashMap<String, (f64, f64)>| {
+        let id = ws.case_id.peek().clone();
+        let input = CaseLayout {
+            positions: p.into_iter().collect(),
+        };
+        spawn(async move {
+            if let Err(e) = api::cases::save_layout(&id, &input).await {
+                toasts::error(e);
+            }
+        });
+    };
+    // Neighbours of `node` not shown yet, offered for an expansion.
+    let open_offer = move |node: String, title: String, shown: Vec<String>| {
+        let id = ws.case_id.peek().clone();
+        let input = ExpandInput {
+            object_id: node.clone(),
+            exclude: shown,
+            pick: None,
+        };
+        spawn(async move {
+            match api::cases::expand(&id, &input).await {
+                Ok(r) if r.facets.is_empty() => toasts::info(t!("cw-expand-none").to_string()),
+                Ok(r) => offer.set(Some(Offer {
+                    node,
+                    title,
+                    facets: r.facets,
+                    ticked: HashSet::new(),
+                })),
+                Err(e) => toasts::error(e),
+            }
+        });
+    };
+    // Sigma: the data when it changes, then the cursor's state.
+    let mut sent = use_signal(String::new);
+    use_effect(move || {
+        if sigma() != Some(true) || !seeded() {
+            return;
+        }
+        let Some(w) = (ws.data)() else { return };
+        let rel = relations.read().clone().unwrap_or_default();
+        let (nodes, edges, _) = build(&w, (ws.follow)().as_deref(), &rel, &extra());
+        let aspect = crate::util::element_rect(GRAPH_HOST).map_or(1.6, |r| r.2 / r.3.max(1.0));
+        let data = sigma_data(&nodes, &edges, &positions.peek(), aspect);
+        let selected = match (ws.sel)() {
+            Sel::Event(id) | Sel::Object(id) => Some(id),
+            Sel::None => None,
+        };
+        let state = sigma_state(&nodes, &edges, (ws.cursor)(), selected.as_deref());
+        spawn(async move {
+            // The aspect alone does not make new data.
+            let key = data["nodes"].to_string() + &data["edges"].to_string();
+            if *sent.peek() != key && graph_viewer::send(GRAPH_HOST, "setData", &data).await {
+                sent.set(key);
+            }
+            graph_viewer::send(GRAPH_HOST, "setState", &state).await;
+        });
+    });
+    // Gestures on the Sigma canvas, polled.
+    use_future(move || async move {
+        // An event left by an earlier mount is not ours.
+        let mut seen = graph_viewer::take_event(GRAPH_HOST, 0)
+            .await
+            .map_or(0, |e| e.seq);
+        loop {
+            crate::util::sleep(std::time::Duration::from_millis(150)).await;
+            if *sigma.peek() != Some(true) {
+                continue;
+            }
+            let Some(ev) = graph_viewer::take_event(GRAPH_HOST, seen).await else {
+                continue;
+            };
+            seen = ev.seq;
+            let Some(w) = ws.data.peek().clone() else {
+                continue;
+            };
+            let is_event = |id: &str| w.events.iter().any(|e| e.event.id == id);
+            let mut sel = ws.sel;
+            match (ev.kind.as_str(), ev.id) {
+                ("click", Some(id)) if is_event(&id) => ws.select_event(id),
+                ("click", Some(id)) => sel.set(Sel::Object(id)),
+                ("stage", _) => sel.set(Sel::None),
+                ("dblclick", Some(id)) if !is_event(&id) => {
+                    let rel = relations.peek().clone().unwrap_or_default();
+                    let follow = ws.follow.peek().clone();
+                    let (nodes, _, _) = build(&w, follow.as_deref(), &rel, &extra.peek());
+                    let title = nodes
+                        .iter()
+                        .find(|n| n.id == id)
+                        .map(|n| n.title.clone())
+                        .unwrap_or_default();
+                    open_offer(id, title, nodes.into_iter().map(|n| n.id).collect());
+                }
+                ("drop", Some(_)) => {
+                    let placed = graph_viewer::positions(GRAPH_HOST).await;
+                    positions.with_mut(|m| m.extend(placed));
+                    if ws.can_write {
+                        // Kept for everyone who opens the case.
+                        save(positions.peek().clone());
+                    }
+                }
+                _ => {}
+            }
+        }
     });
 
     let follow = (ws.follow)();
@@ -418,18 +632,6 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
             sel.set(Sel::Object(id));
         }
     };
-    // Saves the arrangement (none = back to the automatic layout).
-    let save = move |p: HashMap<String, (f64, f64)>| {
-        let id = ws.case_id.peek().clone();
-        let input = CaseLayout {
-            positions: p.into_iter().collect(),
-        };
-        spawn(async move {
-            if let Err(e) = api::cases::save_layout(&id, &input).await {
-                toasts::error(e);
-            }
-        });
-    };
     // The background: a press pans the view, the wheel zooms around the
     // pointer (the point under it stays put).
     let on_press = move |e: PointerEvent| {
@@ -484,49 +686,36 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
         drag.set(None);
     };
     let shown: Vec<String> = nodes.iter().map(|n| n.id.clone()).collect();
-    let open_offer = {
+    let svg_mode = sigma() == Some(false);
+    let on_sigma = sigma() == Some(true);
+    let cam = move |method: &'static str| {
+        spawn(async move {
+            graph_viewer::act(GRAPH_HOST, method).await;
+        });
+    };
+    let add_picked = {
         let shown = shown.clone();
-        move |(node, title): (String, String)| {
-            let id = ws.case_id.peek().clone();
+        move |_| {
+            let Some(o) = offer() else { return };
             let input = ExpandInput {
-                object_id: node.clone(),
+                object_id: o.node.clone(),
                 exclude: shown.clone(),
-                pick: None,
+                pick: Some(
+                    o.ticked
+                        .iter()
+                        .filter_map(|i| o.facets.get(*i).cloned())
+                        .collect(),
+                ),
             };
+            let id = ws.case_id.peek().clone();
+            offer.set(None);
             spawn(async move {
                 match api::cases::expand(&id, &input).await {
-                    Ok(r) if r.facets.is_empty() => toasts::info(t!("cw-expand-none").to_string()),
-                    Ok(r) => offer.set(Some(Offer {
-                        node,
-                        title,
-                        facets: r.facets,
-                        ticked: HashSet::new(),
-                    })),
+                    Ok(r) => extra.with_mut(|x| x.push(r)),
                     Err(e) => toasts::error(e),
                 }
             });
         }
-    };
-    let add_picked = move |_| {
-        let Some(o) = offer() else { return };
-        let input = ExpandInput {
-            object_id: o.node.clone(),
-            exclude: shown.clone(),
-            pick: Some(
-                o.ticked
-                    .iter()
-                    .filter_map(|i| o.facets.get(*i).cloned())
-                    .collect(),
-            ),
-        };
-        let id = ws.case_id.peek().clone();
-        offer.set(None);
-        spawn(async move {
-            match api::cases::expand(&id, &input).await {
-                Ok(r) => extra.with_mut(|x| x.push(r)),
-                Err(e) => toasts::error(e),
-            }
-        });
     };
     // Keep: the added neighbours join the case as undated pieces.
     let keep = move |_| {
@@ -602,14 +791,26 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
                         class: BTN_GHOST,
                         r#type: "button",
                         "aria-label": t!("cw-zoom-out"),
-                        onclick: move |_| zoom.set((zoom() / 1.25).max(0.3)),
+                        onclick: move |_| {
+                            if on_sigma {
+                                cam("zoomOut");
+                            } else {
+                                zoom.set((zoom() / 1.25).max(0.3));
+                            }
+                        },
                         "−"
                     }
                     button {
                         class: BTN_GHOST,
                         r#type: "button",
                         "aria-label": t!("cw-zoom-in"),
-                        onclick: move |_| zoom.set((zoom() * 1.25).min(6.0)),
+                        onclick: move |_| {
+                            if on_sigma {
+                                cam("zoomIn");
+                            } else {
+                                zoom.set((zoom() * 1.25).min(6.0));
+                            }
+                        },
                         "+"
                     }
                     button {
@@ -617,6 +818,9 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
                         r#type: "button",
                         title: t!("cw-graph-fit-help"),
                         onclick: move |_| {
+                            if on_sigma {
+                                cam("fit");
+                            }
                             zoom.set(1.0);
                             pan.set((0.0, 0.0));
                         },
@@ -629,6 +833,9 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
                         onclick: move |_| {
                             positions.set(HashMap::new());
                             relayout += 1;
+                            if on_sigma {
+                                cam("relayout");
+                            }
                             if ws.can_write {
                                 save(HashMap::new());
                             }
@@ -637,11 +844,27 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
                     }
                 }
             }
+            if !svg_mode {
+                div {
+                    id: GRAPH_HOST,
+                    class: "absolute inset-0",
+                    role: "img",
+                    "aria-label": t!("cw-links"),
+                    "data-testid": "case-graph",
+                }
+            }
+            if svg_mode && !empty {
+                p {
+                    class: "absolute bottom-2 left-2 z-10 rounded border border-line bg-surface px-2 py-0.5 text-xs text-slate",
+                    "data-testid": "case-graph-simplified",
+                    {t!("cw-graph-simplified")}
+                }
+            }
             if empty {
                 p { class: "absolute inset-0 grid place-items-center p-4 text-center text-sm text-slate",
                     {t!("cw-links-empty")}
                 }
-            } else {
+            } else if svg_mode {
                 svg {
                     id: SVG_ID,
                     class: "absolute inset-0 block h-full w-full touch-none select-none",
@@ -701,7 +924,7 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
                             let id = n.id.clone();
                             let (hid, hid2) = (n.id.clone(), n.id.clone());
                             let dbl = (n.id.clone(), n.title.clone());
-                            let open_offer = open_offer.clone();
+                            let shown = shown.clone();
                             rsx! {
                                 g {
                                     key: "{n.id}",
@@ -720,7 +943,7 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
                                     },
                                     ondoubleclick: move |_| {
                                         if !event {
-                                            open_offer(dbl.clone());
+                                            open_offer(dbl.0.clone(), dbl.1.clone(), shown.clone());
                                         }
                                     },
                                     if event {
@@ -913,6 +1136,80 @@ mod tests {
         // A tiny graph is not blown up past 1.5 ×.
         let g = Fit::new(&[(0.0, 0.0), (10.0, 10.0)], 600.0, 300.0);
         assert!((g.px((10.0, 0.0)).0 - g.px((0.0, 0.0)).0 - 15.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn every_investigation_type_has_a_colour_family() {
+        let pack = include_str!("../../../../../pnex-backend/packs/investigation.yaml");
+        let types = pack
+            .split("\nlink_types:")
+            .next()
+            .unwrap()
+            .split("\ntypes:")
+            .nth(1)
+            .unwrap();
+        let keys: Vec<&str> = types
+            .lines()
+            .filter_map(|l| l.strip_prefix("  - key: "))
+            .collect();
+        assert!(keys.contains(&"person"), "{keys:?}");
+        for k in keys {
+            assert_ne!(family(k), "other", "type `{k}` needs a family in graph.rs");
+        }
+    }
+
+    #[test]
+    fn sigma_payloads_carry_families_and_the_cursor() {
+        let mut w = workspace(
+            vec![
+                event("e1", "2025-01-01T10:00:00Z", &["ann"]),
+                event("e2", "2025-01-01T12:00:00Z", &["carl"]),
+            ],
+            &[],
+        );
+        w.events[0].attachments[0].object.type_key = "organization".into();
+        let rel = LinkView {
+            id: 9,
+            link_type: "member_of".into(),
+            source: obj("ann"),
+            target: obj("carl"),
+            attributes: Default::default(),
+            valid_from: "2025-01-01T11:00:00Z".into(),
+            valid_to: None,
+            source_ref: None,
+        };
+        let (nodes, edges, _) = build(&w, None, std::slice::from_ref(&rel), &[]);
+        assert_eq!(
+            (nodes[0].family, nodes[1].family),
+            ("event", "organization")
+        );
+        // Role labels need the i18n runtime: the data is checked on objects
+        // and a relation only.
+        let loose = workspace(Vec::new(), &["ann", "carl"]);
+        let (n2, e2, _) = build(&loose, None, &[rel], &[]);
+        let pos = HashMap::from([("ann".to_string(), (3.0, 4.0))]);
+        let data = sigma_data(&n2, &e2, &pos, 1.6);
+        assert_eq!(
+            (
+                data["nodes"][0]["event"].clone(),
+                data["nodes"][0]["family"].clone()
+            ),
+            (json!(false), json!("person"))
+        );
+        assert_eq!(
+            (data["nodes"][0]["x"].clone(), data["nodes"][1].get("x")),
+            (json!(3.0), None)
+        );
+        assert_eq!(
+            data["edges"][0],
+            json!({"a": "ann", "b": "carl", "kind": "relation", "label": "member of"})
+        );
+        // At 10:30: e2 and Carl ahead, the relation not yet valid.
+        let t = model::ms("2025-01-01T10:30:00Z").unwrap();
+        let state = sigma_state(&nodes, &edges, t, Some("ann"));
+        assert_eq!(state["faded"], json!(["e2", "carl"]));
+        assert_eq!(state["edges"], json!({"e2": "ahead"}));
+        assert_eq!(state["selected"], "ann");
     }
 
     #[test]
