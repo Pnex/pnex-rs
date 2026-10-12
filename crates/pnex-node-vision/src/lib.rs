@@ -24,6 +24,9 @@
 //!   with every drop reason counted (`stale`, `throttled`, `not_ready`,
 //!   `no_frame`, `failed`, `below_threshold`) — never a silent drop.
 
+pub mod track;
+pub mod zone;
+
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;

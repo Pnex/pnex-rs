@@ -120,6 +120,16 @@ pub enum FlowNodeKind {
     VisionDetect {
         config: crate::vision::VisionDetectConfig,
     },
+    /// Per-source object tracking over detections (D192).
+    VisionTrack {
+        #[serde(default)]
+        config: crate::vision::VisionTrackConfig,
+    },
+    /// Enter / exit events of tracked objects in image zones (D193).
+    VisionZone {
+        #[serde(default)]
+        config: crate::vision::VisionZoneConfig,
+    },
     /// Stores `msg.payload` in the org shared memory (Valkey) under a key,
     /// with a lifetime; passes the message through.
     MemoryWrite {
@@ -272,6 +282,12 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                 }),
                 "vision_detect" => Ok(Self::VisionDetect {
                     config: req_config(config)?,
+                }),
+                "vision_track" => Ok(Self::VisionTrack {
+                    config: opt_config(config)?,
+                }),
+                "vision_zone" => Ok(Self::VisionZone {
+                    config: opt_config(config)?,
                 }),
                 "memory_write" => Ok(Self::MemoryWrite {
                     config: opt_config(config)?,

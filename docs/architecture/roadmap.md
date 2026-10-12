@@ -211,7 +211,7 @@ tâche).
 | **Mémoire d'org** (Valkey) | Livré — `memory-write`/`memory-read` par org, source « Mémoire » des widgets | — |
 | **Flux média entrants** (D159–D175) | **Lots 0 et 1 livrés** 2026-10-10 (`media-ingest.md` §16) : capture `server` confinée (icecast, HLS, `http_file`, audio des flux vidéo), `pnex-asr`, transcription → O2 + recherche, modèles audio, rétention, `/streams` | Porteur `worker` (1h), métriques D160 + alerte « flux muet », run 24 h ; puis lot 2 (`media_source`) — P2.13 |
 | **Ontologie / 0.2.0** (D176–D191) | **L0–L5 livrés** 2026-10-10 (`ontology.md` §10) : identité universelle, types et liens temporels, séries d'objets, requête et graphe, explorateur, dashboards de type, assistant, pack Maintenance | D183 actions (question #17), mesures 100 k objets — P2.14 |
-| **Media & Vision Studio** (D192+) | **PRD proposé** 2026-10-10 (`media-vision-studio.md`) — étend D73–D105 et D159–D175 : tracking, zones, Vision Lab (entraînement YOLOX), VLM, fusion | Validation du PRD (Q1–Q11) — P2.15 |
+| **Media & Vision Studio** (D192+) | **Lancé** 2026-10-12 (`media-vision-studio.md`) — étend D73–D105 et D159–D175 : M1 tracking (D192) + zones (D193) livrés sur branche ; Vision Lab, VLM, fusion à suivre | M2/M3 ; questions Q1–Q15 restantes — P2.15 |
 | **Couches géographiques** | **PRD proposé** 2026-10-10 (`geo-layers.md`, L1–L28 provisoires) — PostGIS dans le Postgres existant, import de fichiers géo en layers MVT servies par Loco, fournisseurs géo d'org (fond, geocoding, routage) ; Martin garde le fond | Validation du PRD — P2.16 |
 | **Pages collaboratives** | **PRD proposé** 2026-10-10 (`pages.md`, P1–P16 provisoires) — documents CRDT temps réel reliés à l'ontologie (mentions, vues de collection, mesures, procédures, cartes) | Spike L0 (Loro vs yrs, ProseMirror) après validation — P2.17 |
 | **Documents & recherche IA** | **PRD proposé** 2026-10-10 (`doc-search.md`) — index lexical + pgvector sur les fichiers de la médiathèque, outils de l'assistant cités, tableurs en SQL | Validation du PRD — P2.18 |
@@ -652,10 +652,11 @@ fonctionnel ne démarre (correctifs et finition seulement) — à arbitrer
 avec P2.13 et P2.1. Décision #17 — **exception P2.13** (2026-10-09) : le
 média démarre avant la 0.2.0 (`media-ingest.md`, en-tête).
 
-### P2.15 — Media & Vision Studio : tracking, zones, Vision Lab, description (ajout 2026-10-10) — **PRD proposé**
+### P2.15 — Media & Vision Studio : tracking, zones, Vision Lab, description (ajout 2026-10-10) — **lancé 2026-10-12**
 
-PRD `media-vision-studio.md`, zéro code avant validation, numéros D
-attribués à la validation (à partir de D192). Étend la caméra
+PRD `media-vision-studio.md`, validé et lancé le 2026-10-12 par le lot
+M1 : `vision_track` (D192) et `vision_zone` (D193) livrés sur la branche
+`feat/media-vision-studio`. Étend la caméra
 (D73–D105) et l'ingestion média (P2.13) sans les refaire : nœuds
 `vision_track` (ByteTrack en Rust), `vision_zone` (polygones sur
 l'image), `vision_caption` (VLM de l'org, D119), `media_fuse`
@@ -1050,6 +1051,11 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   benchmark de 6 projets (OpenAleph, OpenCTI, Timesketch, DFIR-IRIS,
   kepler.gl, MovingPandas) : brut et retenu séparés, événement au noyau,
   traces O2, graphe natif ; amende K1, K2, K6 de `cases.md`.
+- **2026-10-12 (Media & Vision Studio, M1)** — P2.15 lancé (gel 0.2.0
+  levé pour ce pilier par Shan, comme P2.13) : D192 suivi d'objets
+  (ByteTrack Rust, glouton, vitesse constante) et D193 zones d'image
+  (polygones normalisés, entrée/sortie/occupation, présence minimale),
+  éditeur de zones sur la vue live. Q10 tranchée dans ce sens.
 - **2026-10-11 (positionnement)** — PneX passe en mode **plateforme de
   données** sur socle IoT (section « Positionnement ») : la donnée reliée
   (ontologie, séries, médias, documents, pages, géo, dossiers) devient le

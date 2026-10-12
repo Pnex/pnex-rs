@@ -312,6 +312,8 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::RangeUpsert { .. } => kind_labels(PaletteKind::RangeUpsert),
         pnex_core::FlowNodeKind::VideoRecord { .. } => kind_labels(PaletteKind::VideoRecord),
         pnex_core::FlowNodeKind::VisionDetect { .. } => kind_labels(PaletteKind::VisionDetect),
+        pnex_core::FlowNodeKind::VisionTrack { .. } => kind_labels(PaletteKind::VisionTrack),
+        pnex_core::FlowNodeKind::VisionZone { .. } => kind_labels(PaletteKind::VisionZone),
         pnex_core::FlowNodeKind::EventLog { .. } => kind_labels(PaletteKind::EventLog),
         pnex_core::FlowNodeKind::MemoryWrite { .. } => kind_labels(PaletteKind::MemoryWrite),
         pnex_core::FlowNodeKind::MemoryRead { .. } => kind_labels(PaletteKind::MemoryRead),
@@ -373,7 +375,9 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::VideoRecord { .. } => {
             (geometry::VIDEO_RECORD_FILL, geometry::VIDEO_RECORD_STROKE)
         }
-        pnex_core::FlowNodeKind::VisionDetect { .. } => {
+        pnex_core::FlowNodeKind::VisionDetect { .. }
+        | pnex_core::FlowNodeKind::VisionTrack { .. }
+        | pnex_core::FlowNodeKind::VisionZone { .. } => {
             (geometry::VISION_FILL, geometry::VISION_STROKE)
         }
         pnex_core::FlowNodeKind::EventLog { .. } | pnex_core::FlowNodeKind::RangeUpsert { .. } => {
@@ -1060,6 +1064,25 @@ fn node_subtitle(node: &FlowNode) -> String {
             }
         }
         pnex_core::FlowNodeKind::VisionDetect { config } => vision_subtitle(config),
+        // High score · lost delay.
+        pnex_core::FlowNodeKind::VisionTrack { config } => {
+            format!("≥ {} · {} s", config.high_score, config.lost_after_secs)
+        }
+        // Zone names, or a dash until one is drawn.
+        pnex_core::FlowNodeKind::VisionZone { config } => {
+            let names: Vec<&str> = config.zones.iter().map(|z| z.name.as_str()).collect();
+            let text = if names.is_empty() {
+                "—".to_string()
+            } else {
+                names.join(", ")
+            };
+            let short: String = text.chars().take(30).collect();
+            if text.chars().count() > 30 {
+                format!("{short}…")
+            } else {
+                text
+            }
+        }
         pnex_core::FlowNodeKind::EventLog { config } => {
             // Normalized stream name (what the events page lists) · level.
             let stream =

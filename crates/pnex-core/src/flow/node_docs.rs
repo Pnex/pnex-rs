@@ -343,6 +343,28 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         notes: "Works on device and stream frames alike; the annotation layer (record_layer) is stored for device cameras only.",
     },
     NodeDoc {
+        kind: "vision_track",
+        summary: "Follows the objects found by vision_detect from frame to frame and gives each one a stable track_id (per camera or stream). Port 0 = current tracks {device_id or stream, ts_ms, width, height, count, labels, tracks: [{track_id, label, score, bbox, first_ts_ms, last_ts_ms}]}; port 1 = events {event: \"appear\" | \"disappear\", track_id, label, t0_ms, t1_ms, duration_s, conf_avg}.",
+        config: &[
+            ("high_score", "0..1, default 0.5: detections at or above it open tracks, lower ones only extend existing tracks"),
+            ("min_iou", "]0..1], default 0.2: box overlap needed to match a detection to a track"),
+            ("min_hits", "1..100, default 2: matched frames before \"appear\""),
+            ("lost_after_secs", "0.1..3600, default 3: unseen this long → \"disappear\""),
+        ],
+        notes: "Wire it after vision_detect; set the detect min_score below high_score so weak detections can keep a track alive. Raise lost_after_secs at low fps (1 fps → 3 s or more). Port 0 also fires when tracks expire without a new frame, so vision_zone sees the exits. Wire port 1 to event_log to search appearances on the Events page.",
+    },
+    NodeDoc {
+        kind: "vision_zone",
+        summary: "Zones drawn over the camera image (polygons, normalized 0..1 coordinates). Fed by vision_track port 0, emits one message per zone event: {event: \"enter\" | \"exit\", zone, track_id, label, ts_ms, t0_ms, duration_s (exit), count (objects now in the zone), device_id or stream}.",
+        config: &[
+            ("zones", "[{name (unique, 1..64 chars), points: [[x, y]…] 3..32 vertices in 0..1}] 1..16 — drawn in the node inspector"),
+            ("labels", "keep only these labels (empty = all)"),
+            ("anchor", "\"bottom\" (default, bottom centre of the box: feet, wheels) | \"center\""),
+            ("min_dwell_secs", "0..3600: time in the zone before \"enter\" fires (\"present for more than N s\")"),
+        ],
+        notes: "The zones apply to every camera reaching the node: use one vision_zone per camera viewpoint. An object counted in a zone leaves it by \"exit\" (including when its track disappears). Wire it to event_log for searchable events, and to notify behind a switch on payload.event for alerts. It never drives a device by itself (D128).",
+    },
+    NodeDoc {
         kind: "memory_write",
         summary: "Stores msg.payload (any JSON) in the org shared memory under a key, with a lifetime; passthrough. Other flows read it with memory_read, dashboards display its numeric fields (source \"Memory\").",
         config: &[

@@ -1,7 +1,9 @@
 # PRD — PNEX Media & Vision Studio
 
-> **Statut :** Draft v0.2 — 10/10/2026 (v0.1 de Shan, **relue contre la
-> doc le 2026-10-10**, corrections au §11). Zéro code avant validation.
+> **Statut :** v0.3 — **validé et lancé le 2026-10-12** (Shan : « attaque
+> la partie studio », M1 en premier). v0.1 de Shan, relue contre la doc le
+> 2026-10-10 (§11). Décisions actées au §12 ; questions encore ouvertes
+> au §10.
 > **Auteur :** Shan
 > **Périmètre :** pilier « Ingestion média + Vision » de PNEX (audio,
 > vidéo, caméras IP, reconnaissance d'objets custom, description vidéo,
@@ -9,8 +11,7 @@
 > **Version cible :** **après la 0.2.0** (gel des nouveaux piliers pendant
 > la 0.2.0, `roadmap.md` P2.14), sauf exception explicite comme celle
 > accordée à P2.13 (décision #17). Entrée roadmap : P2.15, décision #18.
-> **Numérotation :** les décisions de ce PRD reçoivent leurs numéros D à
-> la validation (prochain libre : D192).
+> **Numérotation :** D192 et suivants, attribués au fil des lots (§12).
 > **Renvois :** `camera-video.md` (D73–D86 bus caméra, D81 registre de
 > modèles, D82 `pnex-vision`/tract, D83 `vision_detect`, D84 événements
 > O2, D100–D104 fiabilité, D105 calques de détection), `media-ingest.md`
@@ -631,3 +632,22 @@ Corrections apportées à la v0.1 après lecture de la doc existante :
     limites tirées de la carte modèle (zéro-shot faible, `noul` biaisé,
     sur-confiance, `act_probability` inutilisable) sont intégrées comme
     règles. Questions Q12–Q15 ajoutées, phase M3bis ajoutée.
+
+---
+
+## 12. Décisions actées et état
+
+| # | Décision | Date |
+|---|---|---|
+| **D192** | **`vision_track`** : suivi par source (caméra device ou flux), ByteTrack réimplémenté en Rust sans dépendance (MIT, aucun code repris) : prédiction à vitesse constante du centre (lissée 0,5) au lieu d'un Kalman complet, association en deux étapes (détections ≥ `high_score` sur tous les suivis, puis détections faibles sur les suivis restants, sans jamais en ouvrir), par classe, par IoU ≥ `min_iou`, **appariement glouton** (meilleur IoU d'abord) au lieu du hongrois — suffisant pour les scènes clairsemées d'une caméra, à revoir si des foules échangent les identifiants. Suivi provisoire jusqu'à `min_hits` correspondances (puis `appear`), supprimé sans bruit s'il rate une image ; suivi confirmé perdu après `lost_after_secs` (`disappear`, avec `t0_ms`, `t1_ms`, `duration_s`, `conf_avg`). Port 0 = suivis courants de la source (à chaque image, **et** quand des suivis expirent sans nouvelle image : balayage horloge murale 1 s, nécessaire puisque `vision_detect` en `on_detection` n'émet rien quand la scène est vide) ; port 1 = événements. Identifiants propres au nœud, remis à zéro au redéploiement. Pas de statut D103 (nœud de calcul pur, aucun chargement ni dépendance externe). Défauts réglés pour 1 fps : `high_score` 0,5, `min_iou` 0,2, `min_hits` 2, `lost_after_secs` 3. | 2026-10-12 |
+| **D193** | **`vision_zone`** : polygones en **coordonnées image normalisées 0–1** (survivent à un changement de résolution), 1 à 16 zones de 3 à 32 sommets, noms uniques ; testés sur un **point d'ancrage** du cadre (bas-centre par défaut : pieds, roues ; ou centre). Entrée après `min_dwell_secs` de présence continue (« présent depuis plus de N s », 0 = immédiat), sortie quand l'ancrage quitte la zone **ou que le suivi disparaît** ; seule une entrée émise peut sortir (visite courte = silence). Un message par événement `{event: enter \| exit, zone, track_id, label, ts_ms, t0_ms, duration_s (sortie), count}`, `count` = occupation de la zone juste après l'événement (comptage sans nœud dédié). Les zones s'appliquent à **toutes** les sources qui arrivent au nœud (un nœud par point de vue) ; `preview_device` sert seulement de fond à l'éditeur. Éditeur dans l'inspecteur du nœud : vue live de la caméra (D75) à son propre ratio, clics → sommets, aucun stockage d'image. Événements vers `event_log` (O2 `ev_*`, D84) et alerting existant ; aucune commande (P6/D128). | 2026-10-12 |
+
+### État des lots
+
+- **M1** (2026-10-12, branche `feat/media-vision-studio`) : `vision_track` et
+  `vision_zone` livrés (core + runtime + éditeur + NodeDoc + fiche KB
+  `cameras.md` + i18n), tests unitaires (suivi, zones, validation) et test
+  moteur réel (`pnex-flow-runtime/tests/vision_zone.rs`). Reste : essai sur
+  caméra réelle (ESP32-CAM) et éventuel calque de zones sur les
+  enregistrements de `/cameras`.
+

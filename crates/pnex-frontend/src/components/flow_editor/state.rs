@@ -32,6 +32,8 @@ pub enum PaletteKind {
     CameraSource,
     VideoRecord,
     VisionDetect,
+    VisionTrack,
+    VisionZone,
     EventLog,
     MemoryWrite,
     MemoryRead,
@@ -184,6 +186,15 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
                     max_fps: 1.0,
                     record_layer: true,
                 },
+            },
+            // Usable as dropped: tuned for 1 fps detection.
+            PaletteKind::VisionTrack => FlowNodeKind::VisionTrack {
+                config: pnex_core::vision::VisionTrackConfig::default(),
+            },
+            // No zone yet on purpose: the `vision_zone_empty` violation in
+            // the banner sends the user to the zone editor.
+            PaletteKind::VisionZone => FlowNodeKind::VisionZone {
+                config: pnex_core::vision::VisionZoneConfig::default(),
             },
             // Usable as dropped: `ev_events` stream, info level.
             PaletteKind::EventLog => FlowNodeKind::EventLog {
