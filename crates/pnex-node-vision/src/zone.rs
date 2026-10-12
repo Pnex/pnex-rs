@@ -336,7 +336,9 @@ mod tests {
             bbox: [10.0, 10.0, 20.0, 70.0],
         };
         let mut st = ZoneState::default();
-        assert!(st.update(&c, 0, 200, 100, &[tall.clone()]).is_empty());
+        assert!(st
+            .update(&c, 0, 200, 100, std::slice::from_ref(&tall))
+            .is_empty());
         c.anchor = ZoneAnchor::Center;
         let mut st = ZoneState::default();
         assert_eq!(st.update(&c, 0, 200, 100, &[tall]).len(), 1);

@@ -304,6 +304,9 @@ fn message(payload: Value, topic: &str) -> MsgHandle {
     MsgHandle::with_properties(body)
 }
 
+/// Tracker state per `(field, id)` source.
+type Sources = HashMap<(&'static str, String), SourceState>;
+
 /// Pending output: port 0 state, then port 1 events.
 type Outputs = Vec<(usize, Value, String)>;
 
@@ -312,7 +315,7 @@ struct VisionTrackNode {
     base: BaseFlowNodeState,
     config: VisionTrackConfig,
     /// Per `(field, id)` source.
-    state: std::sync::Mutex<(HashMap<(&'static str, String), SourceState>, u64)>,
+    state: std::sync::Mutex<(Sources, u64)>,
 }
 
 impl VisionTrackNode {

@@ -111,14 +111,13 @@ pub fn item_of(payload: &Value, now_ms: i64) -> Option<FuseItem> {
             format!("det-{source}-{ts_ms}"),
             format!("detected: {summary}"),
         )
-    } else if let Some(text) = str_of(payload, "text") {
+    } else {
+        let text = str_of(payload, "text")?;
         (
             FuseKind::Transcript,
             format!("txt-{source}-{ts_ms}"),
             text.to_string(),
         )
-    } else {
-        return None;
     };
     Some(FuseItem {
         id,
