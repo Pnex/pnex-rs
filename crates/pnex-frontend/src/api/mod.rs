@@ -10,6 +10,7 @@ pub mod boards;
 pub mod builds;
 /// Cameras & recordings (camera-video.md D75–D80).
 pub mod cameras;
+pub mod cases;
 pub mod client;
 pub mod config;
 /// Org controls (D125–D127): surfaces write, flows listen.

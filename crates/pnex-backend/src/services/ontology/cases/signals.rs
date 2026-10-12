@@ -1,29 +1,30 @@
-//! Case timeline (cases.md K6, lot C1): the members of a case and, over a
-//! window, the openings and closings of their links (D179) merged with
-//! their object changes (D184, O2). Computed on read, writes nothing.
-//!
-//! Sources: links, object changes, ranges scoped on members (D182),
-//! notifications of member flows (D86) and approximate dates of members
-//! (`fuzzy_time`, K5).
-//! shortcut: camera events, transcripts, appearances (K17) and series are
-//! not merged yet (K6 table); they join as further sources.
+//! Raw signals of a case (cases-workspace.md K30): around the members, over
+//! a window, the openings and closings of their links (D179), their object
+//! changes (D184, O2), the ranges scoped on them (D182), the notifications
+//! of member flows (D86) and the approximate dates of members (K5).
+//! Computed on read, nothing is copied; retaining a signal makes an event.
+//! The workspace's own operations (events, notes, attachments) are not
+//! signals and are left out.
+//! shortcut: camera events, transcripts and series are not merged yet; they
+//! join as further sources.
 
 use std::collections::{HashMap, HashSet};
 
-use pnex_core::ontology::api::{CaseTimeline, TimelineItem, TimelineQuery};
+use pnex_core::ontology::api::{CaseSignals, SignalItem, SignalsQuery};
 use pnex_core::ontology::PropertyKind;
-use pnex_core::ontology::{CASE_WINDOW_FROM, CASE_WINDOW_TO, KIND_CASE, REL_IN_CASE};
+use pnex_core::ontology::{EVENT_OCCURRED, KIND_EVENT, KIND_NOTE, REL_INVOLVES, REL_IN_CASE};
 use pnex_core::resources::KIND_FLOW;
 use pnex_core::time_range::ScopeKind;
 use sea_orm::prelude::DateTimeWithTimeZone;
 use sea_orm::sea_query::Expr;
+use sea_orm::DatabaseConnection;
 use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::links::views;
-use super::objects::find;
-use super::{changes, parse_instant, OntologyError, Result};
+use super::super::links::{self, views};
+use super::super::{changes, invalid, parse_instant, schema, Result};
+use super::membership;
 use crate::models::_entities::{resource_edges, time_ranges};
 use crate::services::notify_journal;
 use crate::services::openobserve::Client;
@@ -32,52 +33,47 @@ use crate::services::openobserve::Client;
 const CAP: u64 = 2000;
 const DEFAULT_SPAN_DAYS: i64 = 30;
 
-pub async fn for_case(
-    db: &sea_orm::DatabaseConnection,
+/// Span of the case events (`occurred` bounds), when any is dated, padded
+/// by a tenth of its width and at least an hour on each side: what led to
+/// the first event and followed the last one matters.
+pub(super) fn events_span(
+    events: &[crate::models::_entities::objects::Model],
+) -> Option<(DateTimeWithTimeZone, DateTimeWithTimeZone)> {
+    let bound = |o: &crate::models::_entities::objects::Model, k: &str| {
+        o.properties
+            .get(EVENT_OCCURRED)?
+            .get(k)?
+            .as_str()
+            .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+    };
+    let from = events.iter().filter_map(|o| bound(o, "from")).min()?;
+    let to = events.iter().filter_map(|o| bound(o, "to")).max()?;
+    let pad = ((to - from) / 10).max(chrono::Duration::hours(1));
+    Some((from - pad, to + pad))
+}
+
+pub async fn signals(
+    db: &DatabaseConnection,
     o2: Option<&Client>,
     org_id: i64,
     case_id: Uuid,
-    q: &TimelineQuery,
-) -> Result<CaseTimeline> {
-    let case = find(db, org_id, case_id).await?;
-    if case.type_key != KIND_CASE {
-        return Err(OntologyError::NotFound);
-    }
-    let prop = |k: &str| case.properties.get(k).and_then(Value::as_str);
+    q: &SignalsQuery,
+) -> Result<CaseSignals> {
+    let m = membership(db, org_id, case_id).await?;
     let now: DateTimeWithTimeZone = chrono::Utc::now().into();
-    let to = parse_instant("to", q.to.as_deref().or(prop(CASE_WINDOW_TO)))?.unwrap_or(now);
-    let from = parse_instant("from", q.from.as_deref().or(prop(CASE_WINDOW_FROM)))?
+    let events: Vec<_> = m.events.iter().map(|(_, o)| o.clone()).collect();
+    let span = events_span(&events);
+    let to = parse_instant("to", q.to.as_deref())?
+        .or(span.map(|(_, t)| t))
+        .unwrap_or(now);
+    let from = parse_instant("from", q.from.as_deref())?
+        .or(span.map(|(f, _)| f))
         .unwrap_or(to - chrono::Duration::days(DEFAULT_SPAN_DAYS));
     if from >= to {
-        return Err(super::invalid("from", pnex_core::err_codes::FIELD_INVALID));
+        return Err(invalid("from", pnex_core::err_codes::FIELD_INVALID));
     }
-
-    // Members: open `in_case` links. Former members removed inside the
-    // window keep their lane: their removal is part of the story.
-    let member_rows = resource_edges::Entity::find()
-        .filter(resource_edges::Column::OrgId.eq(org_id))
-        .filter(resource_edges::Column::Relation.eq(REL_IN_CASE))
-        .filter(resource_edges::Column::TargetObjectId.eq(case_id))
-        .filter(
-            Condition::any()
-                .add(resource_edges::Column::ValidTo.is_null())
-                .add(resource_edges::Column::ValidTo.gte(from)),
-        )
-        .order_by_asc(resource_edges::Column::ValidFrom)
-        .all(db)
-        .await?;
-    let open: Vec<_> = member_rows
-        .iter()
-        .filter(|e| e.valid_to.is_none())
-        .cloned()
-        .collect();
-    let members = views(db, org_id, &open).await?;
-    let mut ids: Vec<Uuid> = member_rows
-        .iter()
-        .filter_map(|e| e.source_object_id)
-        .collect();
-    ids.sort();
-    ids.dedup();
+    let workspace: HashSet<Uuid> = events.iter().map(|o| o.id).collect();
+    let mut ids = m.member_ids();
     ids.push(case_id);
     let id_set: HashSet<Uuid> = ids.iter().copied().collect();
 
@@ -98,6 +94,7 @@ pub async fn for_case(
         );
     let edges = resource_edges::Entity::find()
         .filter(resource_edges::Column::OrgId.eq(org_id))
+        .filter(resource_edges::Column::Relation.is_not_in([REL_IN_CASE, REL_INVOLVES]))
         .filter(ends)
         .filter(moved)
         .order_by_asc(resource_edges::Column::ValidFrom)
@@ -117,7 +114,7 @@ pub async fn for_case(
             .unwrap_or(case_id)
             .to_string();
         if e.valid_from >= from && e.valid_from <= to {
-            items.push(TimelineItem {
+            items.push(SignalItem {
                 at: e.valid_from.to_rfc3339(),
                 kind: "link_open".into(),
                 lane: lane.clone(),
@@ -126,7 +123,7 @@ pub async fn for_case(
             });
         }
         if let Some(t) = e.valid_to.filter(|t| *t >= from && *t <= to) {
-            items.push(TimelineItem {
+            items.push(SignalItem {
                 at: t.to_rfc3339(),
                 kind: "link_close".into(),
                 lane,
@@ -137,12 +134,19 @@ pub async fn for_case(
     }
 
     // Object changes (links are already above, from the database).
+    let by_id = links::refs(db, org_id, ids.iter().copied()).await?;
+    let signal_ids: Vec<String> = ids
+        .iter()
+        .filter(|id| **id != case_id && !workspace.contains(id))
+        .filter(|id| by_id.get(id).is_none_or(|o| o.type_key != KIND_NOTE))
+        .map(Uuid::to_string)
+        .collect();
     let object_ids: Vec<String> = ids.iter().map(Uuid::to_string).collect();
     let changes_available = match changes::history_of(
         db,
         o2,
         org_id,
-        &object_ids,
+        &signal_ids,
         from.timestamp_micros(),
         to.timestamp_micros(),
         CAP as i64,
@@ -154,9 +158,14 @@ pub async fn for_case(
             items.extend(
                 rows.into_iter()
                     .filter(|(_, c)| c.action.starts_with("object."))
-                    .map(|(lane, c)| TimelineItem {
+                    .map(|(lane, c)| SignalItem {
                         at: c.at.clone(),
                         kind: "change".into(),
+                        // The object's title, for a readable label.
+                        title: Uuid::parse_str(&lane)
+                            .ok()
+                            .and_then(|id| by_id.get(&id))
+                            .map(|o| o.title.clone()),
                         lane,
                         change: Some(c),
                         ..Default::default()
@@ -166,7 +175,7 @@ pub async fn for_case(
         }
         Ok(None) => false,
         Err(e) => {
-            tracing::warn!("case timeline: change journal read failed: {e}");
+            tracing::warn!("case signals: change journal read failed: {e}");
             false
         }
     };
@@ -191,7 +200,7 @@ pub async fn for_case(
         let Some(start) = r.actual_start.or(r.planned_start) else {
             continue;
         };
-        items.push(TimelineItem {
+        items.push(SignalItem {
             at: start.to_rfc3339(),
             kind: "range".into(),
             lane: r.scope_id.clone(),
@@ -202,9 +211,8 @@ pub async fn for_case(
 
     // Approximate dates of the members (`fuzzy_time` properties, K5),
     // placed at their lower bound when they overlap the window.
-    let s = super::schema(db, org_id).await?;
-    let by_id = super::links::refs(db, org_id, ids.iter().copied()).await?;
-    for o in by_id.values() {
+    let s = schema(db, org_id).await?;
+    for o in by_id.values().filter(|o| o.type_key != KIND_EVENT) {
         let Some(def) = s.object_type(&o.type_key) else {
             continue;
         };
@@ -227,7 +235,7 @@ pub async fn for_case(
             if a > to || b < from {
                 continue;
             }
-            items.push(TimelineItem {
+            items.push(SignalItem {
                 at: a.to_rfc3339(),
                 kind: "occurred".into(),
                 lane: o.id.to_string(),
@@ -239,10 +247,10 @@ pub async fn for_case(
     }
 
     // Notifications raised by member flows (D86 journal).
-    let flows: HashMap<i64, String> = member_rows
-        .iter()
-        .filter(|e| e.source_kind == KIND_FLOW)
-        .filter_map(|e| Some((e.source_id.parse().ok()?, e.source_object_id?.to_string())))
+    let flows: HashMap<i64, String> = by_id
+        .values()
+        .filter(|o| o.type_key == KIND_FLOW)
+        .filter_map(|o| Some((o.native_id.parse().ok()?, o.id.to_string())))
         .collect();
     let flow_ids: Vec<i64> = flows.keys().copied().collect();
     match notify_journal::for_flows(
@@ -260,7 +268,7 @@ pub async fn for_case(
             truncated |= rows.len() as u64 >= CAP;
             items.extend(rows.into_iter().filter_map(|n| {
                 let lane = flows.get(&n.flow_id?)?.clone();
-                Some(TimelineItem {
+                Some(SignalItem {
                     at: n.created_at.clone(),
                     kind: "notification".into(),
                     lane,
@@ -270,14 +278,13 @@ pub async fn for_case(
             }));
         }
         Ok(None) => {}
-        Err(e) => tracing::warn!("case timeline: notification journal read failed: {e}"),
+        Err(e) => tracing::warn!("case signals: notification journal read failed: {e}"),
     }
 
     items.sort_by_key(|i| chrono::DateTime::parse_from_rfc3339(&i.at).ok());
-    Ok(CaseTimeline {
+    Ok(CaseSignals {
         from: from.to_rfc3339(),
         to: to.to_rfc3339(),
-        members,
         items,
         changes_available,
         truncated,

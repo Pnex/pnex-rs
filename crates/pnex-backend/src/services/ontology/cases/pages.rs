@@ -1,17 +1,17 @@
 //! Pages of a case (cases.md K8): a page started from a template of an
-//! installed pack joins the case as a note; the page designated as the
+//! installed pack joins the case as an undated piece; the page designated as the
 //! conclusion (`conclusion_page`) gets a named version when the case
 //! concludes, so the conclusion read later is the one concluded on.
 
 use pnex_core::err_codes::{FIELD_INVALID, FIELD_MAX_LENGTH, FIELD_REQUIRED};
 use pnex_core::ontology::api::{CasePageInput, PageTemplate};
-use pnex_core::ontology::KIND_CASE;
 use pnex_core::pages::{DocSummary, MAX_TITLE_CHARS};
 use pnex_core::resources::KIND_DOC;
 use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
 use uuid::Uuid;
 
-use super::{cases, invalid, links, objects, packs, Actor, OntologyError, Result};
+use super::super::{invalid, links, objects, packs, Actor, Result};
+use super::{case_of, in_case};
 use crate::models::_entities::docs;
 use crate::services::pages;
 
@@ -29,10 +29,7 @@ pub async fn add_page(
     case_id: Uuid,
     input: &CasePageInput,
 ) -> Result<DocSummary> {
-    let case = objects::find(db, org_id, case_id).await?;
-    if case.type_key != KIND_CASE || case.valid_to.is_some() {
-        return Err(OntologyError::NotFound);
-    }
+    case_of(db, org_id, case_id).await?;
     let title = input.title.trim();
     if title.is_empty() {
         return Err(invalid("title", FIELD_REQUIRED));
@@ -67,13 +64,7 @@ pub async fn add_page(
     .await?;
     // The identity trigger gave the page its object row.
     let page = objects::find_by_native(db, org_id, KIND_DOC, &row.id.to_string()).await?;
-    links::create(
-        db,
-        org_id,
-        actor,
-        &cases::member(&case.id.to_string(), &page.id.to_string(), "note"),
-    )
-    .await?;
+    links::create(db, org_id, actor, &in_case(case_id, page.id)).await?;
     Ok(DocSummary {
         id: row.id,
         title: row.title,

@@ -106,6 +106,8 @@ chrono = { workspace = true }
 # ICS TZID of the time range import (D169); MIT OR Apache-2.0, already in
 # the tree through loco (tokio-cron-scheduler).
 chrono-tz = "0.10"
+# GPX track import (cases-workspace.md K26); MIT, same version as pnex-core's.
+quick-xml = "0.41"
 if-addrs = { workspace = true }
 futures-util = "0.3"
 uuid = { workspace = true, features = ["v5"] }

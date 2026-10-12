@@ -514,6 +514,18 @@ pub const ONTOLOGY_LINK_NOT_ALLOWED: &str = "ontology-link-not-allowed";
 pub const ONTOLOGY_LINK_CARDINALITY: &str = "ontology-link-cardinality";
 /// A claim is corroborated only with two pieces of distinct origins (cases.md K7).
 pub const ONTOLOGY_CLAIM_UNSOURCED: &str = "ontology-claim-unsourced";
+/// A person is attached to a case only once its processing basis is declared
+/// (cases-workspace.md K38).
+pub const CASE_LEGAL_BASIS_REQUIRED: &str = "case-legal-basis-required";
+/// A proposal already reviewed the other way: a rejected one is not retained,
+/// a retained one is not rejected (cases-workspace.md K30).
+pub const CASE_PROPOSAL_STALE: &str = "case-proposal-stale";
+/// A track file whose times carry no offset needs the recording's time zone.
+pub const TRACK_IMPORT_TIMEZONE_REQUIRED: &str = "track-import-timezone-required";
+/// A track file without a single usable point.
+pub const TRACK_IMPORT_EMPTY: &str = "track-import-empty";
+/// Not a GPX document, or a CSV without time, latitude and longitude columns.
+pub const TRACK_IMPORT_UNREADABLE: &str = "track-import-unreadable";
 
 // ── Pages (pages.md #21) ─────────────────────────────────────────────────
 
@@ -537,6 +549,11 @@ pub const ALL: &[&str] = &[
     ONTOLOGY_LINK_NOT_ALLOWED,
     ONTOLOGY_LINK_CARDINALITY,
     ONTOLOGY_CLAIM_UNSOURCED,
+    CASE_LEGAL_BASIS_REQUIRED,
+    CASE_PROPOSAL_STALE,
+    TRACK_IMPORT_TIMEZONE_REQUIRED,
+    TRACK_IMPORT_EMPTY,
+    TRACK_IMPORT_UNREADABLE,
     WS_TICKET_UNAVAILABLE,
     DEVICE_NOT_FOUND,
     DEVICE_QUOTA_REACHED,

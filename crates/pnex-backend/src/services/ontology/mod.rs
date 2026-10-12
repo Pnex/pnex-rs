@@ -9,8 +9,6 @@
 //! Identity rows of system objects are written by database triggers
 //! (migration `m20261011_000002_ontology`); this module never inserts them.
 
-pub mod case_pages;
-pub mod case_purge;
 pub mod cases;
 pub mod changes;
 pub mod graph;
@@ -20,7 +18,6 @@ pub mod objects;
 pub mod packs;
 pub mod query;
 pub mod series;
-pub mod timeline;
 pub mod types;
 
 use pnex_core::ontology::{
@@ -59,6 +56,15 @@ pub enum OntologyError {
     /// `corroborated` needs two pieces of distinct origins (cases.md K7).
     #[error("claim unsourced")]
     ClaimUnsourced,
+    /// A person joins a case only once its processing basis is declared (K38).
+    #[error("case legal basis required")]
+    CaseLegalBasisRequired,
+    /// The proposal was already reviewed the other way (K30).
+    #[error("case proposal stale")]
+    CaseProposalStale,
+    /// A track file that cannot be imported (`err_codes::TRACK_IMPORT_*`).
+    #[error("track import: {0}")]
+    TrackImport(&'static str),
     #[error(transparent)]
     Db(#[from] DbErr),
 }

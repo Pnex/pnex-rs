@@ -2,51 +2,59 @@
 //! identifiers it gathered that no other case and no other open link
 //! hold are proposed for purge. Purging deletes them for real (the one
 //! exception to "archive, never delete", D179): the object row, every
-//! link to or from it, its ranges, labels and containment.
+//! link to or from it, its ranges, labels and containment, and the frozen
+//! states that mention it.
 //! shortcut: copies already in the change journal (O2 `object_changes`)
 //! stay until the org's journal retention expires.
 
 use pnex_core::err_codes::FIELD_INVALID;
 use pnex_core::ontology::api::ObjectRef;
-use pnex_core::ontology::{CASE_STATUS, KIND_CASE};
+use pnex_core::ontology::CASE_STATUS;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::changes::{self, Change};
-use super::{invalid, objects, role_allows, schema, Actor, OntologyError, Result};
+use super::super::changes::{self, Change};
+use super::super::{invalid, objects, role_allows, schema, Actor, OntologyError, Result};
+use super::{case_of, T_PERSON};
 
 /// Types holding personal data that a case retention purges.
-const PERSONAL: [&str; 2] = ["person", "identifier"];
+const PERSONAL: [&str; 2] = [T_PERSON, "identifier"];
 
-/// Personal objects held by this case only: a membership of the case
-/// (open or closed), no membership of any other case (even closed), no
-/// open link but to another member of the case (a person and their phone
-/// number, both members, go together).
+/// Personal objects held by this case only. The case holds an object that
+/// is (or was) one of its undated pieces or attached to one of its events.
+/// Kept out: an object another case holds (even in the past), and an object
+/// with an open link to anything this case does not hold (a person and
+/// their phone number, both held, go together).
 pub async fn candidates(
     db: &DatabaseConnection,
     org_id: i64,
     case_id: Uuid,
 ) -> Result<Vec<ObjectRef>> {
-    let case = objects::find(db, org_id, case_id).await?;
-    if case.type_key != KIND_CASE {
-        return Err(OntologyError::NotFound);
-    }
+    case_of(db, org_id, case_id).await?;
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT o.id, o.type_key, o.title, o.native_id FROM objects o \
-             WHERE o.org_id = $1 AND o.type_key IN ($3, $4) \
-               AND EXISTS (SELECT 1 FROM resource_edges m WHERE m.source_object_id = o.id \
-                           AND m.relation = 'in_case' AND m.target_object_id = $2) \
+            "WITH ev AS (SELECT source_object_id AS id FROM resource_edges \
+                         WHERE org_id = $1 AND relation = 'in_case' AND target_object_id = $2), \
+                  held AS (SELECT source_object_id AS id FROM resource_edges \
+                           WHERE org_id = $1 AND relation = 'in_case' AND target_object_id = $2 \
+                           UNION SELECT e.target_object_id FROM resource_edges e JOIN ev ON e.source_object_id = ev.id \
+                           WHERE e.org_id = $1 AND e.relation = 'involves') \
+             SELECT o.id, o.type_key, o.title, o.native_id FROM objects o \
+             WHERE o.org_id = $1 AND o.type_key IN ($3, $4) AND o.id IN (SELECT id FROM held) \
+               AND NOT EXISTS (SELECT 1 FROM resource_edges m WHERE m.org_id = $1 AND m.relation = 'in_case' \
+                               AND m.source_object_id = o.id AND m.target_object_id <> $2) \
+               AND NOT EXISTS (SELECT 1 FROM resource_edges i JOIN resource_edges c \
+                               ON c.source_object_id = i.source_object_id AND c.relation = 'in_case' AND c.target_object_id <> $2 \
+                               WHERE i.org_id = $1 AND i.relation = 'involves' AND i.target_object_id = o.id) \
                AND NOT EXISTS (SELECT 1 FROM resource_edges e \
-                           WHERE (e.source_object_id = o.id OR e.target_object_id = o.id) \
-                             AND NOT (e.relation = 'in_case' AND e.target_object_id = $2) \
-                             AND (e.valid_to IS NULL OR e.relation = 'in_case') \
-                             AND NOT EXISTS (SELECT 1 FROM resource_edges m2 \
-                                   WHERE m2.relation = 'in_case' AND m2.target_object_id = $2 \
-                                     AND m2.source_object_id = CASE WHEN e.source_object_id = o.id \
-                                         THEN e.target_object_id ELSE e.source_object_id END)) \
+                               WHERE e.org_id = $1 AND e.valid_to IS NULL \
+                                 AND (e.source_object_id = o.id OR e.target_object_id = o.id) \
+                                 AND NOT (e.relation = 'in_case' AND e.target_object_id = $2) \
+                                 AND NOT (e.relation = 'involves' AND e.source_object_id IN (SELECT id FROM ev)) \
+                                 AND (CASE WHEN e.source_object_id = o.id THEN e.target_object_id \
+                                      ELSE e.source_object_id END) NOT IN (SELECT id FROM held)) \
              ORDER BY o.title",
             [
                 org_id.into(),
@@ -112,6 +120,7 @@ pub async fn purge(
             ))
             .await?;
         }
+        super::snapshots::forget(&txn, org_id, id).await?;
         txn.commit().await?;
         crate::services::resources::purge_for(db, org_id, &c.type_key, &c.native_id).await?;
         // The journal records the purge, never the purged data again.

@@ -132,6 +132,22 @@ pub async fn set_items(host_id: &str, items: &[MapItem]) -> bool {
     set_items_impl(host_id, &serde_json::Value::Array(json).to_string()).await
 }
 
+/// Tracks of a window (cases-workspace.md K28), sent once: `data` is
+/// `{recentMs, tracks: [{id, color, segments: [[[lon, lat, t_ms]]]}]}`.
+pub async fn set_tracks(host_id: &str, data: &serde_json::Value) -> bool {
+    call_json(host_id, "setTracks", &data.to_string()).await
+}
+
+/// Areas to draw, a GeoJSON FeatureCollection of polygons (K29).
+pub async fn set_zones(host_id: &str, data: &serde_json::Value) -> bool {
+    call_json(host_id, "setZones", &data.to_string()).await
+}
+
+/// Cursor instant (ms): map.js redraws the past of each track only.
+pub async fn set_time(host_id: &str, t_ms: i64) -> bool {
+    set_time_impl(host_id, t_ms).await
+}
+
 /// Consomme le dernier clic (poll côté page, ~300 ms) — `None` si rien de
 /// neuf depuis le dernier appel.
 pub async fn take_click(prev_seq: u64) -> Option<MapClick> {
@@ -236,6 +252,30 @@ async fn set_items_impl(host_id: &str, items_json: &str) -> bool {
 }
 
 #[cfg(target_arch = "wasm32")]
+async fn call_json(host_id: &str, method: &str, json: &str) -> bool {
+    use wasm_bindgen::JsValue;
+    wasm::call(
+        "pnexMap",
+        method,
+        &[JsValue::from_str(host_id), JsValue::from_str(json)],
+    )
+    .and_then(|v| v.as_bool())
+    .unwrap_or(false)
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn set_time_impl(host_id: &str, t_ms: i64) -> bool {
+    use wasm_bindgen::JsValue;
+    wasm::call(
+        "pnexMap",
+        "setTime",
+        &[JsValue::from_str(host_id), JsValue::from_f64(t_ms as f64)],
+    )
+    .and_then(|v| v.as_bool())
+    .unwrap_or(false)
+}
+
+#[cfg(target_arch = "wasm32")]
 async fn take_click_impl(prev_seq: u64) -> Option<MapClick> {
     let raw = wasm::global_value("__pnexMapLastClick")?.as_string()?;
     let click: MapClick = serde_json::from_str(&raw).ok()?;
@@ -328,6 +368,24 @@ async fn set_items_impl(host_id: &str, items_json: &str) -> bool {
     let js =
         format!("return window.pnexMap?.setItems('{host_id_q}', JSON.parse('{items_q}')) === true");
     eval_bool(&js).await
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn call_json(host_id: &str, method: &str, json: &str) -> bool {
+    let host_id_q = host_id.replace('\'', "");
+    let json_q = json.replace('\\', "\\\\").replace('\'', "\\'");
+    let js =
+        format!("return window.pnexMap?.{method}('{host_id_q}', JSON.parse('{json_q}')) === true");
+    eval_bool(&js).await
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn set_time_impl(host_id: &str, t_ms: i64) -> bool {
+    let host_id_q = host_id.replace('\'', "");
+    eval_bool(&format!(
+        "return window.pnexMap?.setTime('{host_id_q}', {t_ms}) === true"
+    ))
+    .await
 }
 
 #[cfg(not(target_arch = "wasm32"))]

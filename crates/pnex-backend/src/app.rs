@@ -218,6 +218,8 @@ impl Hooks for App {
         // Notify delivery journal → O2 (D86): background writer.
         crate::services::notify_journal::spawn_writer(ctx);
         crate::services::ontology::changes::spawn_writer(ctx);
+        crate::services::ontology::cases::spawn_reads_writer(ctx);
+        crate::services::pois::position_log::spawn_writer(ctx);
         crate::services::notify::warn_missing_token(ctx);
         // Cross-pod fan-out of /ws/notify frames (no-op without Valkey).
         crate::services::notify::spawn_bus(ctx).await;

@@ -27,6 +27,7 @@ const KINDS: &[&str] = &[
     "date_time",
     "enum",
     "geo_point",
+    "geo_area",
     "url",
     "ref",
     "series",
@@ -59,6 +60,7 @@ fn kind_default(kind: &str) -> PropertyKind {
         "date_time" => PropertyKind::DateTime,
         "enum" => PropertyKind::Enum { values: Vec::new() },
         "geo_point" => PropertyKind::GeoPoint,
+        "geo_area" => PropertyKind::GeoArea,
         "url" => PropertyKind::Url,
         "ref" => PropertyKind::Ref {
             to_type: String::new(),

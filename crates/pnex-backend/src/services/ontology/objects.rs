@@ -175,9 +175,10 @@ fn require_role(def: &ObjectTypeDef, actor: &Actor) -> Result<()> {
 }
 
 /// Creates an org-type object. System objects are created by their own
-/// pages (device wizard, media upload…): the identity follows.
-pub async fn create(
-    db: &DatabaseConnection,
+/// pages (device wizard, media upload…): the identity follows. Works
+/// inside a transaction (the journal entry is queued at once).
+pub async fn create<C: ConnectionTrait>(
+    db: &C,
     org_id: i64,
     actor: &Actor,
     input: &ObjectInput,
@@ -286,7 +287,7 @@ pub async fn update(
         });
     }
     if let Some(page) = conclusion {
-        super::case_pages::on_concluded(db, org_id, actor, &page).await;
+        super::cases::on_concluded(db, org_id, actor, &page).await;
     }
     let before = view(&row, &s);
     let after = view(&find(db, org_id, id).await?, &s);

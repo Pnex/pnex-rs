@@ -16,6 +16,10 @@ pub use api::*;
 pub mod builds;
 pub mod egress;
 pub mod geo;
+/// Position tracks of a case: normalisation, signal gaps, sampling,
+/// generalisation (cases-workspace.md K25–K28).
+pub mod geo_area;
+pub mod track;
 pub use builds::*;
 
 pub mod dashboard;
