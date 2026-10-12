@@ -887,6 +887,14 @@ async fn case_workspace_events_attachments_and_signals() {
         // Detached from the event, it stays in the case, undated.
         let (st, w) = call(&server, "POST", &url("detach"), &env.alice, org, Some(json!({"event_id": ev, "object_id": d2}))).await;
         assert_eq!((st, undated(&w)), (200, vec!["c88".to_string()]), "{w}");
+        // Undated then attached, removed from the case: gone, not back to undated.
+        let (st, _) = call(&server, "POST", &url("attach"), &env.alice, org, Some(json!({"event_id": ev, "object_id": d2}))).await;
+        assert_eq!(st, 200);
+        let (st, w) = call(&server, "POST", &url("detach"), &env.alice, org, Some(json!({"object_id": d2}))).await;
+        assert_eq!((st, undated(&w)), (200, Vec::<String>::new()), "{w}");
+        assert_eq!(attached(&w, "High pressure alarm").len(), 2, "{w}");
+        let (st, w) = call(&server, "POST", &url("attach"), &env.alice, org, Some(json!({"object_id": d2}))).await;
+        assert_eq!((st, undated(&w)), (200, vec!["c88".to_string()]), "{w}");
 
         // Signals: a link among members is one, the workspace's own links are not.
         let (st, lt) = call(&server, "POST", "/api/v1/ontology/link-types", &env.alice, org, Some(json!({"key": "feeds", "name": "feeds", "from_types": ["device"], "to_types": ["device"]}))).await;

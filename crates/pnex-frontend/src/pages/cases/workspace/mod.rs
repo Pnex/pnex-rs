@@ -140,6 +140,13 @@ pub(super) struct Ws {
 }
 
 impl Ws {
+    /// Runs `fut` in the workspace's scope, not the caller's: a panel that
+    /// closes on the click (the inspector after "Remove from the case")
+    /// would otherwise cancel the request with itself.
+    fn spawn(self, fut: impl std::future::Future<Output = ()> + 'static) {
+        dioxus::dioxus_core::Runtime::current().in_scope(self.data.origin_scope(), || spawn(fut));
+    }
+
     fn id(&self) -> String {
         self.case_id.peek().clone()
     }
@@ -155,7 +162,7 @@ impl Ws {
         F: Future<Output = Result<Workspace, ApiError>> + 'static,
     {
         let mut data = self.data;
-        spawn(async move {
+        self.spawn(async move {
             match call.await {
                 Ok(w) => data.set(Some(w)),
                 Err(e) => toasts::error(e),
@@ -168,12 +175,12 @@ impl Ws {
     pub fn detect(self) {
         let (id, win, mut proposals) = (self.id(), *self.window.peek(), self.proposals);
         if Self::too_wide(win) {
-            spawn(async move {
+            self.spawn(async move {
                 proposals.set(api::cases::proposals(&id).await.unwrap_or_default());
             });
             return;
         }
-        spawn(async move {
+        self.spawn(async move {
             let q = DetectQuery {
                 from: Some(model::rfc3339(win.0)),
                 to: Some(model::rfc3339(win.1)),
@@ -198,7 +205,7 @@ impl Ws {
     /// Rejects a proposal; it is never proposed again.
     pub fn reject(self, pid: String) {
         let (id, mut proposals) = (self.id(), self.proposals);
-        spawn(async move {
+        self.spawn(async move {
             match api::cases::reject(&id, &pid, &ProposalReject::default()).await {
                 Ok(p) => proposals.set(p),
                 Err(e) => toasts::error(e),
@@ -238,7 +245,7 @@ impl Ws {
             origin: None,
             attach,
         };
-        spawn(async move {
+        self.spawn(async move {
             match api::cases::create_event(&id, &input).await {
                 Ok(w) => {
                     if let Some(e) = w.events.iter().find(|e| !before.contains(&e.event.id)) {
@@ -274,7 +281,7 @@ impl Ws {
         detect: bool,
     ) {
         let ws = self;
-        spawn(async move {
+        self.spawn(async move {
             let input = ObjectInput {
                 type_key: String::new(),
                 title,
