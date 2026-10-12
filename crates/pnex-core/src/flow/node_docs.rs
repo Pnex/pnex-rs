@@ -354,6 +354,25 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         notes: "Wire it after vision_detect; set the detect min_score below high_score so weak detections can keep a track alive. Raise lost_after_secs at low fps (1 fps → 3 s or more). Port 0 also fires when tracks expire without a new frame, so vision_zone sees the exits. Wire port 1 to event_log to search appearances on the Events page.",
     },
     NodeDoc {
+        kind: "vision_caption",
+        summary: "Describes a camera frame in words with the organization's own model (its default LLM provider, which must accept images: e.g. Claude, GPT-4o, or a local VLM behind an OpenAI-compatible endpoint). Input: any message carrying payload.frame_key (camera_source, vision_detect, vision_track port 0). Output: payload = {caption, caption_id, model, ts_ms, frame_key, device_id or stream, label (when cropped), ai_generated: true}.",
+        config: &[
+            ("prompt", "question asked about the image (≤ 500 chars; empty = a factual description of people, objects, actions and readable text)"),
+            ("min_interval_secs", "1..86400, default 10: at most one caption per camera in this interval (each caption is a paid model call)"),
+            ("crop_best", "bool: describe the best detection or track of the message (cropped) instead of the whole frame"),
+        ],
+        notes: "The image leaves PneX for the organization's provider: wiring this node is that choice. Needs an LLM provider in the organization settings (none = node error status). Model calls of caption and media_fuse nodes share a daily cap per organization (2000 by default). The caption is indicative, never a fact: feed it to media_fuse, an event_log, or a notify for a human, never to anything that acts. Frames older than 15 s are gone from the camera bus: keep it right after the source or detection.",
+    },
+    NodeDoc {
+        kind: "media_fuse",
+        summary: "Every window (default 30 s), turns what the flow received (transcripts from media_source, detection, tracking or zone events, captions from vision_caption) into a short time-stamped description written by the organization's LLM. Output once per non-empty window: payload = {t0_ms, t1_ms, sentences: [{text, sources: [item ids]}], items, rejected, model, ai_generated: true}.",
+        config: &[
+            ("window_secs", "5..3600, default 30"),
+            ("language", "language of the description (\"fr\", \"en\"…; empty = the language of the transcripts)"),
+        ],
+        notes: "Trust order given to the model: detections and zone events are facts, transcripts are reliable for speech, captions are indicative; it may not invent objects absent from its inputs. Every sentence must cite the ids of its inputs: a sentence without a valid source is dropped (counted in rejected). Inputs are untrusted text passed as data, never as instructions; the model has no tool. Wire several sources into the same node (one per scene). Output is AI-generated: store it with event_log, show it on a dashboard, never act on it.",
+    },
+    NodeDoc {
         kind: "vision_zone",
         summary: "Zones drawn over the camera image (polygons, normalized 0..1 coordinates). Fed by vision_track port 0, emits one message per zone event: {event: \"enter\" | \"exit\", zone, track_id, label, ts_ms, t0_ms, duration_s (exit), count (objects now in the zone), device_id or stream}.",
         config: &[

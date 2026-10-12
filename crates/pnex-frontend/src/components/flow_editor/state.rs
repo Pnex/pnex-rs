@@ -34,6 +34,8 @@ pub enum PaletteKind {
     VisionDetect,
     VisionTrack,
     VisionZone,
+    VisionCaption,
+    MediaFuse,
     EventLog,
     MemoryWrite,
     MemoryRead,
@@ -195,6 +197,14 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             // the banner sends the user to the zone editor.
             PaletteKind::VisionZone => FlowNodeKind::VisionZone {
                 config: pnex_core::vision::VisionZoneConfig::default(),
+            },
+            // Usable as dropped: default prompt, one caption per 10 s.
+            PaletteKind::VisionCaption => FlowNodeKind::VisionCaption {
+                config: pnex_core::vision_ai::VisionCaptionConfig::default(),
+            },
+            // Usable as dropped: 30 s windows, language of the transcripts.
+            PaletteKind::MediaFuse => FlowNodeKind::MediaFuse {
+                config: pnex_core::vision_ai::MediaFuseConfig::default(),
             },
             // Usable as dropped: `ev_events` stream, info level.
             PaletteKind::EventLog => FlowNodeKind::EventLog {

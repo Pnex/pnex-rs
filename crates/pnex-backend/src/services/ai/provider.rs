@@ -56,6 +56,12 @@ pub enum Msg {
     User {
         text: String,
     },
+    /// User turn with one JPEG image (base64), for vision-language models
+    /// (vision_caption node, D195).
+    UserImage {
+        text: String,
+        jpeg_b64: String,
+    },
     Assistant {
         text: Option<String>,
         tool_calls: Vec<ToolCall>,
@@ -202,6 +208,16 @@ fn build_anthropic_messages(msgs: &[Msg]) -> Vec<AnthropicMessage> {
                 out.push(AnthropicMessage {
                     role: "user",
                     content: json!(text),
+                });
+                i += 1;
+            }
+            Msg::UserImage { text, jpeg_b64 } => {
+                out.push(AnthropicMessage {
+                    role: "user",
+                    content: json!([
+                        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": jpeg_b64}},
+                        {"type": "text", "text": text},
+                    ]),
                 });
                 i += 1;
             }
@@ -406,8 +422,9 @@ fn extract_error_message(body: &str) -> String {
 #[derive(Serialize)]
 struct OpenAiMessage {
     role: &'static str,
+    /// A string, or content parts when an image rides along.
     #[serde(skip_serializing_if = "Option::is_none")]
-    content: Option<String>,
+    content: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_calls: Option<Vec<OpenAiToolCallOut>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -509,13 +526,22 @@ fn build_openai_messages(msgs: &[Msg]) -> Vec<OpenAiMessage> {
         match msg {
             Msg::User { text } => out.push(OpenAiMessage {
                 role: "user",
-                content: Some(text.clone()),
+                content: Some(json!(text)),
+                tool_calls: None,
+                tool_call_id: None,
+            }),
+            Msg::UserImage { text, jpeg_b64 } => out.push(OpenAiMessage {
+                role: "user",
+                content: Some(json!([
+                    {"type": "text", "text": text},
+                    {"type": "image_url", "image_url": {"url": format!("data:image/jpeg;base64,{jpeg_b64}")}},
+                ])),
                 tool_calls: None,
                 tool_call_id: None,
             }),
             Msg::Assistant { text, tool_calls } => out.push(OpenAiMessage {
                 role: "assistant",
-                content: text.clone(),
+                content: text.clone().map(Value::String),
                 tool_calls: Some(
                     tool_calls
                         .iter()
@@ -533,7 +559,7 @@ fn build_openai_messages(msgs: &[Msg]) -> Vec<OpenAiMessage> {
             }),
             Msg::ToolResult { id, content, .. } => out.push(OpenAiMessage {
                 role: "tool",
-                content: Some(content.clone()),
+                content: Some(json!(content)),
                 tool_calls: None,
                 tool_call_id: Some(id.clone()),
             }),
@@ -735,6 +761,20 @@ mod tests {
         );
         assert_eq!(wire[2].role, "tool");
         assert_eq!(wire[2].tool_call_id.as_deref(), Some("c1"));
+    }
+
+    #[test]
+    fn image_turn_on_both_protocols() {
+        let msgs = vec![Msg::UserImage {
+            text: "what is this?".into(),
+            jpeg_b64: "AAAA".into(),
+        }];
+        let a = build_anthropic_messages(&msgs);
+        assert_eq!(a[0].content[0]["source"]["data"], "AAAA");
+        assert_eq!(a[0].content[1]["text"], "what is this?");
+        let o = build_openai_messages(&msgs);
+        let parts = o[0].content.as_ref().expect("parts");
+        assert_eq!(parts[1]["image_url"]["url"], "data:image/jpeg;base64,AAAA");
     }
 
     #[test]

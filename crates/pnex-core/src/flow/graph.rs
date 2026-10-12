@@ -120,6 +120,17 @@ pub enum FlowNodeKind {
     VisionDetect {
         config: crate::vision::VisionDetectConfig,
     },
+    /// Frame or detection → caption by the org vision-language model (D195).
+    VisionCaption {
+        #[serde(default)]
+        config: crate::vision_ai::VisionCaptionConfig,
+    },
+    /// Window of transcripts, events and captions → sourced description by
+    /// the org LLM (D196).
+    MediaFuse {
+        #[serde(default)]
+        config: crate::vision_ai::MediaFuseConfig,
+    },
     /// Per-source object tracking over detections (D192).
     VisionTrack {
         #[serde(default)]
@@ -282,6 +293,12 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                 }),
                 "vision_detect" => Ok(Self::VisionDetect {
                     config: req_config(config)?,
+                }),
+                "vision_caption" => Ok(Self::VisionCaption {
+                    config: opt_config(config)?,
+                }),
+                "media_fuse" => Ok(Self::MediaFuse {
+                    config: opt_config(config)?,
                 }),
                 "vision_track" => Ok(Self::VisionTrack {
                     config: opt_config(config)?,

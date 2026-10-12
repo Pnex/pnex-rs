@@ -104,3 +104,49 @@ async fn interne_via_proxy_public_404() {
     })
     .await;
 }
+
+/// Model calls of the vision-caption / media-fuse nodes (D195/D196):
+/// token-gated, the frame key must be in the org, no LLM provider = 409.
+#[tokio::test]
+#[serial]
+async fn internal_ai_caption_and_fuse() {
+    with_app(|server| async move {
+        let caption = serde_json::json!({
+            "org_id": 1, "frame_key": "pnex:cam:v1:2:cam:f:1", "prompt": "what?"
+        });
+        let fuse = serde_json::json!({
+            "org_id": 1, "t0_ms": 0, "t1_ms": 1, "language": "",
+            "items": [{"id": "a", "kind": "caption", "ts_ms": 0, "text": "a cat"}]
+        });
+        for (path, body) in [("caption", &caption), ("fuse", &fuse)] {
+            let denied = server
+                .post(&format!("/internal/flow/ai/{path}"))
+                .json(body)
+                .await;
+            assert_eq!(denied.status_code(), 401, "{path}");
+        }
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-test-123") };
+        let foreign = server
+            .post("/internal/flow/ai/caption")
+            .add_header("x-pnex-flow-token", "tok-test-123")
+            .json(&caption)
+            .await;
+        assert_eq!(foreign.status_code(), 404);
+        assert_eq!(
+            foreign.json::<serde_json::Value>()["code"],
+            "camera-no-frame"
+        );
+        let unconfigured = server
+            .post("/internal/flow/ai/fuse")
+            .add_header("x-pnex-flow-token", "tok-test-123")
+            .json(&fuse)
+            .await;
+        assert_eq!(unconfigured.status_code(), 409);
+        assert_eq!(
+            unconfigured.json::<serde_json::Value>()["code"],
+            pnex_core::err_codes::AI_NOT_CONFIGURED
+        );
+        unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
+    })
+    .await;
+}

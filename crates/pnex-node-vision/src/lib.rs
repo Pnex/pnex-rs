@@ -24,6 +24,8 @@
 //!   with every drop reason counted (`stale`, `throttled`, `not_ready`,
 //!   `no_frame`, `failed`, `below_threshold`) — never a silent drop.
 
+pub mod caption;
+pub mod fuse;
 pub mod track;
 pub mod zone;
 

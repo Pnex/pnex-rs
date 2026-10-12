@@ -27,6 +27,7 @@ pub mod events;
 pub mod firmware;
 pub mod firmware_projects;
 pub mod flow;
+pub mod flow_ai;
 pub mod flow_cluster;
 pub mod flow_supervisor;
 pub mod functions;

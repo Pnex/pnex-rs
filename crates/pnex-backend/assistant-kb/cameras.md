@@ -3,10 +3,10 @@ id: cameras
 title: Cameras
 kind: feature
 pages: /cameras
-nodes: camera_source, video_record, vision_detect, vision_track, vision_zone, event_log, pnex_notify
+nodes: camera_source, video_record, vision_detect, vision_track, vision_zone, vision_caption, media_fuse, media_source, event_log, pnex_notify
 err_codes: camera-write-forbidden, camera-unknown, camera-no-frame, camera-offline, camera-range-invalid, camera-export-too-large, camera-export-empty, camera-already-recorded, camera-stream-unknown, video-segment-invalid, video-store-unavailable
 tools: 
-tags: camera, caméra, esp32-cam, video, vidéo, live, stream, recording, enregistrement, playback, detection, détection, surveillance, rtsp, ip camera, caméra ip, tracking, suivi, zone, comptage, counting, présence, presence
+tags: camera, caméra, esp32-cam, video, vidéo, live, stream, recording, enregistrement, playback, detection, détection, surveillance, rtsp, ip camera, caméra ip, tracking, suivi, zone, comptage, counting, présence, presence, description, caption, légende, vlm, what happens, ce qui se passe, résumé vidéo, video summary
 ---
 Cameras (Data › Cameras) lists every device that announced a camera (for example an ESP32-CAM on the generic camera firmware) with its streaming status, capture settings and last frame. From there you watch the live view, change capture settings and play back recordings. Recording and object detection are done by flows.
 
@@ -25,6 +25,13 @@ In **Automation › Flows**: the **Camera source** node reads a camera device (s
 - For an alert, wire **Image zones** → **Notification** (filter on the event in between if only entries matter), or → **Event log** and create the alert on the Events page. Neither node ever drives a device.
 - Tracking at 1 frame per second: keep **Lost after** at 3 s or more and lower **Min overlap** if fast objects get a new id at every frame. Set the detection **Min score** below the tracking **Score to open a track** so weak detections keep a track alive.
 - Zones apply to every camera reaching the node: use one Image zones node per camera viewpoint.
+
+## Describing what happens (in a flow)
+- **Image description** asks the organization's AI model (Organizations → organization detail → LLM providers; the default provider must accept images) to describe a frame in words. Feed it with **Camera source**, **Object detection** or **Object tracking**; **Describe the best detection only** crops the most confident object. The image leaves PneX for that provider: pick a local model if images must stay on site.
+- **Video description** collects, over a window (30 s by default), transcripts from **Media source**, detection, tracking and zone events and image descriptions, and writes a short description where every sentence cites its inputs. Detections count as facts, speech as reliable, image descriptions as indicative; a sentence without a source is dropped.
+- Typical chain: Camera source → Object detection → Object tracking → Image zones and Image description → Video description → Event log (searchable on the Events page).
+- Both nodes share a daily cap of model calls per organization (2000 by default). "AI model call failed" on the node: no LLM provider, the provider refused the image (text-only model), the cap was reached, or the frame expired (keep the node right after the camera chain).
+- The descriptions are AI-generated and indicative: show or store them, never let them drive a device.
 
 ## Good to know
 - No **Video recording** node = nothing is stored. Recordings show "No recording" until such a flow is deployed.

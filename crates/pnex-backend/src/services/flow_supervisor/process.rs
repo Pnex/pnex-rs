@@ -83,6 +83,12 @@ pub(crate) fn apply_runtime_env(cmd: &mut tokio::process::Command, settings: &Fl
                 "PNEX_FLOW_SECRET_URL",
                 url.replace("/internal/flow/device-write", "/internal/flow/secret"),
             )
+            // Org model calls (vision-caption / media-fuse nodes, D195/D196):
+            // base of `/internal/flow/ai/{caption,fuse}`.
+            .env(
+                "PNEX_FLOW_AI_URL",
+                url.replace("/internal/flow/device-write", "/internal/flow/ai"),
+            )
             // Registry models (vision-detect node, D83): base of
             // `/internal/flow/ml-model/{id}[/content]`.
             .env(

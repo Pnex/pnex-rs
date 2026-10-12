@@ -314,6 +314,8 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::VisionDetect { .. } => kind_labels(PaletteKind::VisionDetect),
         pnex_core::FlowNodeKind::VisionTrack { .. } => kind_labels(PaletteKind::VisionTrack),
         pnex_core::FlowNodeKind::VisionZone { .. } => kind_labels(PaletteKind::VisionZone),
+        pnex_core::FlowNodeKind::VisionCaption { .. } => kind_labels(PaletteKind::VisionCaption),
+        pnex_core::FlowNodeKind::MediaFuse { .. } => kind_labels(PaletteKind::MediaFuse),
         pnex_core::FlowNodeKind::EventLog { .. } => kind_labels(PaletteKind::EventLog),
         pnex_core::FlowNodeKind::MemoryWrite { .. } => kind_labels(PaletteKind::MemoryWrite),
         pnex_core::FlowNodeKind::MemoryRead { .. } => kind_labels(PaletteKind::MemoryRead),
@@ -377,7 +379,9 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         }
         pnex_core::FlowNodeKind::VisionDetect { .. }
         | pnex_core::FlowNodeKind::VisionTrack { .. }
-        | pnex_core::FlowNodeKind::VisionZone { .. } => {
+        | pnex_core::FlowNodeKind::VisionZone { .. }
+        | pnex_core::FlowNodeKind::VisionCaption { .. }
+        | pnex_core::FlowNodeKind::MediaFuse { .. } => {
             (geometry::VISION_FILL, geometry::VISION_STROKE)
         }
         pnex_core::FlowNodeKind::EventLog { .. } | pnex_core::FlowNodeKind::RangeUpsert { .. } => {
@@ -424,7 +428,9 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::Debug { .. }
         | pnex_core::FlowNodeKind::CameraSource { .. }
         | pnex_core::FlowNodeKind::ControlSource { .. }
-        | pnex_core::FlowNodeKind::VisionDetect { .. } => {
+        | pnex_core::FlowNodeKind::VisionDetect { .. }
+        | pnex_core::FlowNodeKind::VisionCaption { .. }
+        | pnex_core::FlowNodeKind::MediaFuse { .. } => {
             cx.display_values.read().get(&node.id).cloned()
         }
         _ => None,
@@ -1064,6 +1070,20 @@ fn node_subtitle(node: &FlowNode) -> String {
             }
         }
         pnex_core::FlowNodeKind::VisionDetect { config } => vision_subtitle(config),
+        // Interval · crop.
+        pnex_core::FlowNodeKind::VisionCaption { config } => {
+            let crop = if config.crop_best { " · crop" } else { "" };
+            format!("1 / {} s{crop}", config.min_interval_secs)
+        }
+        // Window · language.
+        pnex_core::FlowNodeKind::MediaFuse { config } => {
+            let lang = if config.language.is_empty() {
+                "auto"
+            } else {
+                config.language.as_str()
+            };
+            format!("{} s · {lang}", config.window_secs)
+        }
         // High score · lost delay.
         pnex_core::FlowNodeKind::VisionTrack { config } => {
             format!("≥ {} · {} s", config.high_score, config.lost_after_secs)

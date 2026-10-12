@@ -115,6 +115,36 @@ pub fn mean_luma(encoded: &[u8]) -> Option<f32> {
     Some((sum / n as f64) as f32)
 }
 
+/// JPEG sent to a vision-language model (D195): optionally cropped to a
+/// `[x, y, w, h]` box (source pixels, widened by 10 % on each side, clamped
+/// to the frame), then scaled down so the longest side is at most
+/// `max_side` — smaller uploads, same answer for a caption.
+pub fn prepare_jpeg(
+    encoded: &[u8],
+    crop: Option<[f32; 4]>,
+    max_side: u32,
+) -> Result<Vec<u8>, VisionError> {
+    let mut img =
+        image::load_from_memory(encoded).map_err(|e| VisionError::Image(e.to_string()))?;
+    if let Some([x, y, w, h]) = crop {
+        let (fw, fh) = (img.width() as f32, img.height() as f32);
+        let (mx, my) = (w * 0.1, h * 0.1);
+        let x0 = (x - mx).clamp(0.0, fw - 1.0);
+        let y0 = (y - my).clamp(0.0, fh - 1.0);
+        let x1 = (x + w + mx).clamp(x0 + 1.0, fw);
+        let y1 = (y + h + my).clamp(y0 + 1.0, fh);
+        img = img.crop_imm(x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32);
+    }
+    if img.width().max(img.height()) > max_side {
+        img = img.resize(max_side, max_side, image::imageops::FilterType::Triangle);
+    }
+    let mut out = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 85)
+        .encode_image(&img.to_rgb8())
+        .map_err(|e| VisionError::Image(e.to_string()))?;
+    Ok(out)
+}
+
 /// A loaded, optimized detector — `Send + Sync`, cheap to share behind an
 /// `Arc` (tract plans are immutable; `run` allocates its own state).
 pub struct Detector {
@@ -337,6 +367,21 @@ fn nms(mut dets: Vec<Detection>, thr: f32) -> Vec<Detection> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prepare_jpeg_crops_and_scales() {
+        let img = image::RgbImage::from_pixel(2000, 1000, image::Rgb([200, 30, 30]));
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        let full = image::load_from_memory(&prepare_jpeg(&png, None, 1024).unwrap()).unwrap();
+        assert_eq!((full.width(), full.height()), (1024, 512));
+        let crop = prepare_jpeg(&png, Some([100.0, 100.0, 100.0, 50.0]), 1024).unwrap();
+        let crop = image::load_from_memory(&crop).unwrap();
+        assert_eq!((crop.width(), crop.height()), (120, 60));
+        assert!(prepare_jpeg(b"nope", None, 1024).is_err());
+    }
 
     fn det(class_id: u32, score: f32, bbox: [f32; 4]) -> Detection {
         Detection {
