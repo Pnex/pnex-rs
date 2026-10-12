@@ -218,6 +218,7 @@ pub fn Studio() -> Element {
                     // Recherche + refresh.
                     FilterBar {
                         SearchInput {
+                            page,
                             placeholder: t!("studio-search-placeholder").to_string(),
                             value: search,
                             on_submit: move |_| {
