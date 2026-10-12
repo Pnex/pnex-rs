@@ -69,6 +69,11 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
                     v.push(FlowViolation::new(Some(&n.id), code, message));
                 }
             }
+            FlowNodeKind::TextDecide { config } => {
+                if let Some((code, message)) = config.check() {
+                    v.push(FlowViolation::new(Some(&n.id), code, message));
+                }
+            }
             FlowNodeKind::VisionCaption { config } => {
                 if let Some((code, message)) = config.check() {
                     v.push(FlowViolation::new(Some(&n.id), code, message));

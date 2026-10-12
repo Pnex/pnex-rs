@@ -582,10 +582,10 @@ Python confinée que `train_detector` (§11, point 10).
 | Q9 | Une détection peut-elle alimenter `device_write` via un flow humain (D128 le permet aujourd'hui), ou ce PRD l'interdit-il (porte de deploy) ? |
 | Q10 | Version cible : après la 0.2.0, ou exception au gel comme P2.13 (décision #17) ? |
 | Q11 | D174 : la description par fenêtre (M3) est-elle autorisée en usage interne, et sous quelles règles (marquage IA, relecture) ? |
-| Q12 | Inférence `text_decide` : tract supporte-t-il le graphe ModernBERT/mmBERT exporté, ou ce nœud justifie-t-il `ort` (cf. Q2) ? Le portage Rust du formatage d'entrée doit égaler la référence Python à 1e-4 près. |
+| Q12 | **Tranchée (D197)** : tract suffit (écart ≤ 2e-5, 160–250 ms/question x86). ~~Inférence `text_decide` : tract supporte-t-il le graphe ModernBERT/mmBERT exporté, ou ce nœud justifie-t-il `ort` (cf. Q2) ? Le portage Rust du formatage d'entrée doit égaler la référence Python à 1e-4 près.~~ |
 | Q13 | `text_decide` sur Pi : fp32 acceptable sur Pi 5 8 Go, ou quantification INT8 obligatoire (précision et calibration à re-mesurer) ? |
 | Q14 | Seuil de mise en production de `text_decide` : quel écart de précision avec le LLM de l'org est acceptable en échange d'un gain de latence et de coût ? Proposition : ≥ 80 % de précision sur le jeu annoté de l'org et un ECE ≤ 0,10 après calibration. |
-| Q15 | Maturité de l'écosystème Laya : modèle récent, benchmarks comparatifs auto-publiés, portage `receptron/laya` à un seul auteur (oct. 2026). Faut-il vendorer le script d'export et figer une révision du checkpoint (hash HF) plutôt que suivre `main` ? |
+| Q15 | **Tranchée (D197)** : révision HF épinglée `7b928d82`, script d'export vendu (`scripts/laya/`). ~~Maturité de l'écosystème Laya : modèle récent, benchmarks comparatifs auto-publiés, portage `receptron/laya` à un seul auteur (oct. 2026). Faut-il vendorer le script d'export et figer une révision du checkpoint (hash HF) plutôt que suivre `main` ?~~ |
 
 ---
 
@@ -646,6 +646,8 @@ Corrections apportées à la v0.1 après lecture de la doc existante :
 | **D195** | **`vision_caption`** : le runtime n'envoie qu'une **référence** (`frame_key`) à la route interne `/internal/flow/ai/caption` (jeton de service + fencing D106) ; le backend relit l'image sur le bus caméra (clé préfixée par l'org, sinon 404), la recadre éventuellement (meilleure détection ou suivi, marge 10 %), la réduit à 1024 px et appelle le **fournisseur LLM par défaut de l'org** (D119) avec l'image (blocs image Anthropic / `image_url` OpenAI-compatible) ; la clé ne quitte jamais le backend (R6), l'appel sort par le client filtré R8. Une description par source au plus toutes les `min_interval_secs` (10 s par défaut) ; câbler le nœud **est** le choix explicite d'envoyer l'image au fournisseur (texte d'avertissement dans l'inspecteur). Pas de VLM plateforme ni de modèle par défaut (Q5 : la doc recommandera des modèles à poids ouverts servis en local). | 2026-10-13 |
 | **D196** | **`media_fuse`** : le nœud normalise ses entrées en éléments `{id, kind, ts_ms, source, text}` (`detection` = événements de détection/suivi/zone, `transcript` = segments ASR, `caption` = légendes) et envoie chaque fenêtre (30 s par défaut, ≤ 200 éléments, textes ≤ 2000 caractères) à `/internal/flow/ai/fuse`. Le prompt impose la hiérarchie de confiance (détections = faits, ASR = parole, légendes = indicatives), interdit d'inventer, traite les textes comme des **données délimitées** (aucun outil) ; la réponse JSON est filtrée côté serveur : **une phrase dont une source n'est pas un id de la fenêtre est rejetée** (compteur `rejected`). **Plafond commun** `vision_caption` + `media_fuse` : 2000 appels par org et par jour UTC (`settings.ai.flow_daily_calls`, compteur Valkey) → 429 `flow-ai-quota`. Statut de nœud D103 `ai-call-failed` avec le code serveur en détail. | 2026-10-13 |
 
+| **D197** | **`text_decide` (Laya)** — Q12 tranchée : **tract suffit**, pas d'`ort`. Mesures 2026-10-13 (x86, release) : checkpoint multilingue (mmBERT-base) exporté depuis la révision HF **épinglée** `7b928d82` (Q15), écart de logits tract / ONNX Runtime ≤ 2e-5 (exigence 1e-4), ids de tokens identiques à la référence Python (cas français compris), 160–250 ms par question sur CPU (ORT 70–150 ms), chargement + optimisation 3,4 s, ~1,3 Go de poids fp32. Le **bundle publié `receptron/laya-onnx` est le checkpoint anglais** (exclu, §4.5bis) : le bundle multilingue se construit avec `task laya:bundle` (outillage hors ligne uv + torch CPU, export MIT adapté ; PneX n'exécute jamais Python). Les jetons spéciaux viennent de `tokenizer_config.json` comme dans `rl_common.py` (le portage TS les code en dur `[CLS]`…, faux pour le multilingue). Inférence **dans le backend** (crate `pnex-decide`, une copie du modèle par serveur, chargement paresseux, un calcul à la fois), jamais dans le runtime d'org ; route interne `/internal/flow/ai/decide` (jeton + fencing, questions re-vérifiées). Bundle installé par l'admin (`settings.decide.model_dir` / `PNEX_DECIDE_MODEL_DIR`), absent → 503 `decide-unavailable`. Questions `choice` et `score` seulement (`noul` refusé, §4.5bis) ; état = texte (`text_field`, défaut `text`) : les objets JSON sont sérialisés clés triées (raccourci assumé, la référence garde l'ordre d'insertion). Le checkpoint multilingue est **non calibré** (températures 1,0) : l'UI le dit ; calibration et fine-tuning par org restent le POC M3bis. | 2026-10-13 |
+
 ### État des lots
 
 - **M1** (2026-10-12, branche `feat/media-vision-studio`) : `vision_track` et
@@ -661,4 +663,10 @@ Corrections apportées à la v0.1 après lecture de la doc existante :
   Tests : unitaires, moteur réel contre un backend simulé
   (`tests/vision_ai.rs`), routes (401 / 404 / 409). Reste : essai avec un
   vrai fournisseur (Claude ou VLM local) et une vraie caméra.
+- **M3bis** (2026-10-13, même branche) : `text_decide` (D197) livré —
+  crate `pnex-decide` (port de la mise en séquence + tract), test de
+  parité `--ignored` contre la référence ONNX Runtime (anglais et
+  multilingue), service backend, nœud, formulaire de questions, NodeDoc,
+  fiche KB, `task laya:bundle`. Reste : POC calibration / fine-tuning sur
+  ~200 fenêtres réelles (Q14), mesure sur Pi 5 (Q13).
 

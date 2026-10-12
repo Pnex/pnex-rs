@@ -36,6 +36,9 @@ pub enum FlowAiError {
     Invalid(String),
     #[error("{0}")]
     Ai(#[from] AiError),
+    /// Local decision model missing, failed to load or busy (D197).
+    #[error("decision model unavailable: {0}")]
+    Unavailable(String),
 }
 
 impl FlowAiError {
@@ -47,6 +50,7 @@ impl FlowAiError {
             Self::NoFrame => "camera-no-frame",
             Self::Invalid(_) => "flow-ai-invalid",
             Self::Ai(e) => e.code(),
+            Self::Unavailable(_) => "decide-unavailable",
         }
     }
 }

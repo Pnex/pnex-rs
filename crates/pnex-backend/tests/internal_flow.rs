@@ -105,8 +105,9 @@ async fn interne_via_proxy_public_404() {
     .await;
 }
 
-/// Model calls of the vision-caption / media-fuse nodes (D195/D196):
-/// token-gated, the frame key must be in the org, no LLM provider = 409.
+/// Model calls of the vision-caption / media-fuse / text-decide nodes
+/// (D195–D197): token-gated, the frame key must be in the org, no LLM
+/// provider = 409, no decision model = 503, bad questions = 400.
 #[tokio::test]
 #[serial]
 async fn internal_ai_caption_and_fuse() {
@@ -118,7 +119,11 @@ async fn internal_ai_caption_and_fuse() {
             "org_id": 1, "t0_ms": 0, "t1_ms": 1, "language": "",
             "items": [{"id": "a", "kind": "caption", "ts_ms": 0, "text": "a cat"}]
         });
-        for (path, body) in [("caption", &caption), ("fuse", &fuse)] {
+        let decide = serde_json::json!({
+            "org_id": 1, "state": "a forklift entered the dock",
+            "questions": [{"id": "incident", "kind": "choice", "instructions": "Incident?", "options": ["yes", "no"]}]
+        });
+        for (path, body) in [("caption", &caption), ("fuse", &fuse), ("decide", &decide)] {
             let denied = server
                 .post(&format!("/internal/flow/ai/{path}"))
                 .json(body)
@@ -146,6 +151,23 @@ async fn internal_ai_caption_and_fuse() {
             unconfigured.json::<serde_json::Value>()["code"],
             pnex_core::err_codes::AI_NOT_CONFIGURED
         );
+        // No decision model on the test server; invalid questions first.
+        unsafe { std::env::remove_var("PNEX_DECIDE_MODEL_DIR") };
+        let no_model = server
+            .post("/internal/flow/ai/decide")
+            .add_header("x-pnex-flow-token", "tok-test-123")
+            .json(&decide)
+            .await;
+        assert_eq!(no_model.status_code(), 503);
+        assert_eq!(no_model.json::<serde_json::Value>()["code"], "decide-unavailable");
+        let mut bad = decide.clone();
+        bad["questions"][0]["options"] = serde_json::json!(["only"]);
+        let invalid = server
+            .post("/internal/flow/ai/decide")
+            .add_header("x-pnex-flow-token", "tok-test-123")
+            .json(&bad)
+            .await;
+        assert_eq!(invalid.status_code(), 400);
         unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
     })
     .await;

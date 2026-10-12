@@ -154,6 +154,9 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::VisionDetect { config } => rsx! {
             VisionDetectForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::TextDecide { config } => rsx! {
+            TextDecideForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::VisionCaption { config } => rsx! {
             VisionCaptionForm { cx, initial: config.clone(), can_write }
         },
@@ -257,6 +260,7 @@ mod range_upsert;
 mod red;
 mod reg;
 mod simple;
+mod text_decide;
 mod topic_classify;
 mod value;
 mod video_record;
@@ -286,6 +290,7 @@ use range_upsert::RangeUpsertForm;
 use red::RedForm;
 use reg::{RegPidForm, RegTtForm};
 use simple::{DebugForm, DisplayForm, MetricForm};
+use text_decide::TextDecideForm;
 use topic_classify::TopicClassifyForm;
 use value::{CalcForm, ValueForm};
 use video_record::VideoRecordForm;

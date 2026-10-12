@@ -60,6 +60,8 @@ time = "0.3"
 subtle = "2"
 # Vision inference (model registry test endpoint, D82).
 pnex-vision = { workspace = true }
+# Laya typed decisions (text-decide node, D197).
+pnex-decide = { workspace = true }
 # Ingestion metrics OpenObserve : Prometheus remote-write (protobuf+snappy)
 prost = "0.13"
 snap = "1"

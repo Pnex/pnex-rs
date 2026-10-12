@@ -57,6 +57,8 @@ pub fn routes() -> Routes {
         // Org model calls of the vision-caption / media-fuse nodes (D195/D196).
         .add("/internal/flow/ai/caption", post(flow_ai_caption))
         .add("/internal/flow/ai/fuse", post(flow_ai_fuse))
+        // Typed decisions of the text-decide node, local Laya model (D197).
+        .add("/internal/flow/ai/decide", post(flow_ai_decide))
         // Vault secret of a deployed notify channel (D115, lot S4).
         .add("/internal/flow/secret/{id}", get(flow_secret))
         .add(
@@ -505,6 +507,7 @@ fn flow_ai_reply<T: serde::Serialize>(
                 FlowAiError::NoFrame => StatusCode::NOT_FOUND,
                 FlowAiError::Invalid(_) => StatusCode::BAD_REQUEST,
                 FlowAiError::Ai(_) => StatusCode::BAD_GATEWAY,
+                FlowAiError::Unavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
             };
             tracing::warn!(org_id, error = %e, "flow model call failed");
             (
@@ -543,6 +546,21 @@ async fn flow_ai_fuse(
         return Ok(r);
     }
     let res = crate::services::flow_ai::fuse(&ctx, &req).await;
+    Ok(flow_ai_reply(req.org_id, res))
+}
+
+async fn flow_ai_decide(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::decide::DecideRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.org_id).await {
+        return Ok(r);
+    }
+    let res = crate::services::decide::decide(&ctx, &req).await;
     Ok(flow_ai_reply(req.org_id, res))
 }
 

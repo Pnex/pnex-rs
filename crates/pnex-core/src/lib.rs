@@ -40,6 +40,7 @@ pub use fluid_mixture::*;
 pub mod thermo_quantities;
 pub use thermo_quantities::*;
 
+pub mod decide;
 pub mod devices;
 pub use devices::*;
 

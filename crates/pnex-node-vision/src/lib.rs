@@ -25,6 +25,7 @@
 //!   `no_frame`, `failed`, `below_threshold`) — never a silent drop.
 
 pub mod caption;
+pub mod decide;
 pub mod fuse;
 pub mod track;
 pub mod zone;

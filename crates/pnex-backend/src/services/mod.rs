@@ -16,6 +16,7 @@ pub mod dashboard;
 pub mod dashboards;
 /// Cross-pod serialization helpers (advisory locks, unique violations).
 pub mod db_lock;
+pub mod decide;
 pub mod device_bus;
 pub mod device_liveness;
 pub mod device_pki;

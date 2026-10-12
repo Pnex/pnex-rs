@@ -36,6 +36,7 @@ pub enum PaletteKind {
     VisionZone,
     VisionCaption,
     MediaFuse,
+    TextDecide,
     EventLog,
     MemoryWrite,
     MemoryRead,
@@ -205,6 +206,11 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             // Usable as dropped: 30 s windows, language of the transcripts.
             PaletteKind::MediaFuse => FlowNodeKind::MediaFuse {
                 config: pnex_core::vision_ai::MediaFuseConfig::default(),
+            },
+            // No question yet on purpose: the `text_decide_empty` violation in
+            // the banner sends the user to the question editor.
+            PaletteKind::TextDecide => FlowNodeKind::TextDecide {
+                config: pnex_core::decide::TextDecideConfig::default(),
             },
             // Usable as dropped: `ev_events` stream, info level.
             PaletteKind::EventLog => FlowNodeKind::EventLog {

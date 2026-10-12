@@ -1,0 +1,16 @@
+[package]
+name = "pnex-decide"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "PNeX typed decisions — Laya (Apache-2.0 weights) on tract, pure Rust, no Python at runtime"
+
+[dependencies]
+pnex-core = { workspace = true }
+# Same pure-Rust ONNX runtime as pnex-vision (Q12 of media-vision-studio.md).
+tract-onnx = "0.23"
+# Hugging Face tokenizer (Apache-2.0); onig regex only — no C++ suffix arrays, no progress bar.
+tokenizers = { version = "0.23.2", default-features = false, features = ["onig"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

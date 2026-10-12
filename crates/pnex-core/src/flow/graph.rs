@@ -120,6 +120,11 @@ pub enum FlowNodeKind {
     VisionDetect {
         config: crate::vision::VisionDetectConfig,
     },
+    /// Typed questions about a text → calibrated probabilities (Laya, D197).
+    TextDecide {
+        #[serde(default)]
+        config: crate::decide::TextDecideConfig,
+    },
     /// Frame or detection → caption by the org vision-language model (D195).
     VisionCaption {
         #[serde(default)]
@@ -293,6 +298,9 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                 }),
                 "vision_detect" => Ok(Self::VisionDetect {
                     config: req_config(config)?,
+                }),
+                "text_decide" => Ok(Self::TextDecide {
+                    config: opt_config(config)?,
                 }),
                 "vision_caption" => Ok(Self::VisionCaption {
                     config: opt_config(config)?,
