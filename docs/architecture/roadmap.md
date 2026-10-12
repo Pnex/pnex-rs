@@ -874,6 +874,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 | 22 | Documents & recherche IA : BM25 ParadeDB vs `ts_rank_cd`, rerank, poids de DataFusion sur Pi (`doc-search.md` §10). Tranché 2026-10-10 (§13) : P1 seul en exception au gel, embeddings en tract, index partagé avec les pages | À la validation du PRD ; BM25 au jeu de test |
 | 23 | Hub de kits : kits hardware-first, dépendances entre kits, hébergement de l'index (`hub.md` §19). Tranché 2026-10-10 (§21) : kit = pack D190 (un seul format), identité = compte GitHub seul | Pendant la 0.2.0 (aligner les schémas), implémentation après |
 | 24 | Dossiers : version cible (C0–C1 en exception au gel ?), nom « Dossiers / Cases », ACL par dossier (V2, avec D188), temps flou dans le noyau, pack de base « Acteurs », co-présences GPS, horodatage qualifié des gels, seuil d'écriture automatique des apparitions, identification vocale par enrôlement consenti (K19, avis juridique requis) (`cases.md` §11) | À la validation du PRD |
+| 25 | ~~Stockage `fs` local à côté de S3~~ — tranché 2026-10-12 : **fin du stockage `fs`, toujours RustFS ou un S3 compatible** (médias, firmware, modèles, frames de stitch). Deux backends = trop de code à maintenir ; l'argument Raspberry Pi ne tient pas, RustFS ne consomme quasiment rien pour le volume de données traité. Les nouveaux développements ne gèrent plus `fs` | ✅ |
 
 ## Journal de la roadmap
 
@@ -1061,3 +1062,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   tutoriels générés dans `pnex-website`. Reticulum écarté (M2M =
   zenoh-pico + OpenThread inchangé) ; pas de plafond < 1 Go.
   Rien d'implémenté.
+- **2026-10-12 (S3 seul)** — Décision #25 : fin du stockage `fs`,
+  toujours RustFS ou un S3 compatible ; même raisonnement que #19 (coût
+  de maintenance de deux backends, RustFS négligeable sur un Pi). Retrait
+  du code `fs` existant à planifier.
