@@ -121,6 +121,7 @@ pub mod weather;
 /// Vision contract (D81–D83): model spec, detections, registry DTOs,
 /// `vision-detect` node config.
 pub mod vision;
+pub mod vision_ai;
 
 /// Media ingest (media-ingest.md P2.13): streams, segments, ASR profiles,
 /// transcript records, server-built names.

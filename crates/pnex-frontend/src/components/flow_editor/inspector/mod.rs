@@ -154,6 +154,12 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::VisionDetect { config } => rsx! {
             VisionDetectForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::VisionCaption { config } => rsx! {
+            VisionCaptionForm { cx, initial: config.clone(), can_write }
+        },
+        FlowNodeKind::MediaFuse { config } => rsx! {
+            MediaFuseForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::VisionTrack { config } => rsx! {
             VisionTrackForm { cx, initial: config.clone(), can_write }
         },
@@ -254,6 +260,7 @@ mod simple;
 mod topic_classify;
 mod value;
 mod video_record;
+mod vision_ai;
 mod vision_detect;
 mod vision_track;
 mod vision_zone;
@@ -282,6 +289,7 @@ use simple::{DebugForm, DisplayForm, MetricForm};
 use topic_classify::TopicClassifyForm;
 use value::{CalcForm, ValueForm};
 use video_record::VideoRecordForm;
+use vision_ai::{MediaFuseForm, VisionCaptionForm};
 use vision_detect::VisionDetectForm;
 use vision_track::VisionTrackForm;
 use vision_zone::VisionZoneForm;

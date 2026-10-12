@@ -211,7 +211,7 @@ tâche).
 | **Mémoire d'org** (Valkey) | Livré — `memory-write`/`memory-read` par org, source « Mémoire » des widgets | — |
 | **Flux média entrants** (D159–D175) | **Lots 0 et 1 livrés** 2026-10-10 (`media-ingest.md` §16) : capture `server` confinée (icecast, HLS, `http_file`, audio des flux vidéo), `pnex-asr`, transcription → O2 + recherche, modèles audio, rétention, `/streams` | Porteur `worker` (1h), métriques D160 + alerte « flux muet », run 24 h ; puis lot 2 (`media_source`) — P2.13 |
 | **Ontologie / 0.2.0** (D176–D191) | **L0–L5 livrés** 2026-10-10 (`ontology.md` §10) : identité universelle, types et liens temporels, séries d'objets, requête et graphe, explorateur, dashboards de type, assistant, pack Maintenance | D183 actions (question #17), mesures 100 k objets — P2.14 |
-| **Media & Vision Studio** (D192+) | **Lancé** 2026-10-12 (`media-vision-studio.md`) — étend D73–D105 et D159–D175 : M1 tracking (D192) + zones (D193) livrés sur branche ; Vision Lab, VLM, fusion à suivre | M2/M3 ; questions Q1–Q15 restantes — P2.15 |
+| **Media & Vision Studio** (D192+) | **Lancé** 2026-10-12 (`media-vision-studio.md`) — étend D73–D105 et D159–D175 : M1 tracking (D192) + zones (D193) et M3 description (D194–D196 : légendes VLM de l'org, description sourcée par fenêtre) livrés sur branche ; Laya, Vision Lab à suivre | M2/M3 ; questions Q1–Q15 restantes — P2.15 |
 | **Couches géographiques** | **PRD proposé** 2026-10-10 (`geo-layers.md`, L1–L28 provisoires) — PostGIS dans le Postgres existant, import de fichiers géo en layers MVT servies par Loco, fournisseurs géo d'org (fond, geocoding, routage) ; Martin garde le fond | Validation du PRD — P2.16 |
 | **Pages collaboratives** | **PRD proposé** 2026-10-10 (`pages.md`, P1–P16 provisoires) — documents CRDT temps réel reliés à l'ontologie (mentions, vues de collection, mesures, procédures, cartes) | Spike L0 (Loro vs yrs, ProseMirror) après validation — P2.17 |
 | **Documents & recherche IA** | **PRD proposé** 2026-10-10 (`doc-search.md`) — index lexical + pgvector sur les fichiers de la médiathèque, outils de l'assistant cités, tableurs en SQL | Validation du PRD — P2.18 |
@@ -1056,6 +1056,10 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   (ByteTrack Rust, glouton, vitesse constante) et D193 zones d'image
   (polygones normalisés, entrée/sortie/occupation, présence minimale),
   éditeur de zones sur la vue live. Q10 tranchée dans ce sens.
+- **2026-10-13 (Media & Vision Studio, M3)** — D194 (D174 rouverte pour
+  l'usage interne, sorties marquées IA), D195 `vision_caption` (image lue
+  par le backend, modèle de l'org), D196 `media_fuse` (fenêtre → phrases
+  sourcées, rejet des phrases sans source, plafond 2000 appels/jour/org).
 - **2026-10-11 (positionnement)** — PneX passe en mode **plateforme de
   données** sur socle IoT (section « Positionnement ») : la donnée reliée
   (ontologie, séries, médias, documents, pages, géo, dossiers) devient le

@@ -54,6 +54,9 @@ pub fn routes() -> Routes {
         // Time ranges from the `range-upsert` node (D169).
         .add("/internal/flow/time-range", post(flow_time_range))
         .add("/internal/flow/video-annotations", post(video_annotations))
+        // Org model calls of the vision-caption / media-fuse nodes (D195/D196).
+        .add("/internal/flow/ai/caption", post(flow_ai_caption))
+        .add("/internal/flow/ai/fuse", post(flow_ai_fuse))
         // Vault secret of a deployed notify channel (D115, lot S4).
         .add("/internal/flow/secret/{id}", get(flow_secret))
         .add(
@@ -484,6 +487,63 @@ async fn flow_event(
                 .into_response())
         }
     }
+}
+
+/// Runtime-facing outcome of a model call: 200 + body, or a status with
+/// `{code, error}` (verbatim diagnostic shown in the node status).
+fn flow_ai_reply<T: serde::Serialize>(
+    org_id: i64,
+    res: Result<T, crate::services::flow_ai::FlowAiError>,
+) -> Response {
+    use crate::services::flow_ai::FlowAiError;
+    match res {
+        Ok(body) => axum::Json(body).into_response(),
+        Err(e) => {
+            let status = match &e {
+                FlowAiError::NotConfigured => StatusCode::CONFLICT,
+                FlowAiError::Quota(_) => StatusCode::TOO_MANY_REQUESTS,
+                FlowAiError::NoFrame => StatusCode::NOT_FOUND,
+                FlowAiError::Invalid(_) => StatusCode::BAD_REQUEST,
+                FlowAiError::Ai(_) => StatusCode::BAD_GATEWAY,
+            };
+            tracing::warn!(org_id, error = %e, "flow model call failed");
+            (
+                status,
+                axum::Json(serde_json::json!({ "code": e.code(), "error": e.to_string() })),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn flow_ai_caption(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::vision_ai::CaptionRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.org_id).await {
+        return Ok(r);
+    }
+    let res = crate::services::flow_ai::caption(&ctx, &req).await;
+    Ok(flow_ai_reply(req.org_id, res))
+}
+
+async fn flow_ai_fuse(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::vision_ai::FuseRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.org_id).await {
+        return Ok(r);
+    }
+    let res = crate::services::flow_ai::fuse(&ctx, &req).await;
+    Ok(flow_ai_reply(req.org_id, res))
 }
 
 /// Time range written by a `range-upsert` node (D169). The runtime is
