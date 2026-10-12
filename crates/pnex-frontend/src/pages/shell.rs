@@ -90,15 +90,34 @@ fn ShellContent() -> Element {
             // Sidebar desktop — dépliée w-64 ou rail d'icônes w-16 (classes
             // littérales complètes via match, exigence du scan Tailwind).
             div { class: if rail { "hidden lg:fixed lg:inset-y-0 lg:flex lg:w-16 lg:flex-col lg:bg-rail lg:border-r lg:border-line" } else { "hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col lg:bg-rail lg:border-r lg:border-line" },
-                div { class: "flex h-16 items-center justify-center px-3",
-                    if rail {
+                // Rail toggle next to the logo, away from logout.
+                if rail {
+                    div { class: "flex flex-col items-center gap-1 px-3 pt-4 pb-2",
                         img {
                             src: asset!("/assets/logo-mark.png"),
                             alt: "PNeX",
                             class: "h-7 w-7",
                         }
-                    } else {
+                        button {
+                            class: "inline-flex h-8 w-8 items-center justify-center rounded-md text-slate hover:bg-surface hover:text-ink",
+                            r#type: "button",
+                            title: t!("shell-sidebar-expand"),
+                            aria_label: t!("shell-sidebar-expand"),
+                            onclick: move |_| ui::set(false),
+                            crate::components::icons::PanelLeftOpen { class: "h-5 w-5" }
+                        }
+                    }
+                } else {
+                    div { class: "relative flex h-16 items-center justify-center px-3",
                         SidebarBrand {}
+                        button {
+                            class: "absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-md text-slate hover:bg-surface hover:text-ink",
+                            r#type: "button",
+                            title: t!("shell-sidebar-collapse"),
+                            aria_label: t!("shell-sidebar-collapse"),
+                            onclick: move |_| ui::toggle(),
+                            crate::components::icons::PanelLeftClose { class: "h-4 w-4" }
+                        }
                     }
                 }
                 // Global search (D69) — right below the logo; rail mode gets
@@ -568,8 +587,8 @@ fn SidebarBrand() -> Element {
     }
 }
 
-/// Sidebar footer: assistant, org selector, identity (opens the profile),
-/// rail toggle and logout.
+/// Sidebar footer: assistant, org selector, identity (opens the profile)
+/// and logout (the rail toggle sits by the logo).
 #[component]
 fn SidebarFooter(rail: bool, on_navigate: Option<Callback<()>>) -> Element {
     let route = use_route::<Route>();
@@ -578,10 +597,9 @@ fn SidebarFooter(rail: bool, on_navigate: Option<Callback<()>>) -> Element {
         .unwrap_or_default();
     let mut confirm_logout = use_signal(|| false);
     let logout_title = t!("shell-logout");
-    let expand_title = t!("shell-sidebar-expand");
-    let collapse_title = t!("shell-sidebar-collapse");
     let ai_title = t!("ai-title");
-    let icon_btn = "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-slate hover:bg-surface hover:text-ink transition-colors";
+    // Logout in the mark colour of the active menu entry.
+    let logout_btn = "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-mark hover:bg-surface transition-colors";
     rsx! {
         div { class: "space-y-2 border-t border-line p-3",
             if crate::state::ai::visible() {
@@ -605,13 +623,7 @@ fn SidebarFooter(rail: bool, on_navigate: Option<Callback<()>>) -> Element {
             if rail {
                 div { class: "flex flex-col items-center gap-1",
                     button {
-                        class: icon_btn,
-                        title: "{expand_title}",
-                        onclick: move |_| ui::set(false),
-                        crate::components::icons::PanelLeftOpen { class: "h-5 w-5" }
-                    }
-                    button {
-                        class: icon_btn,
+                        class: logout_btn,
                         title: "{logout_title}",
                         onclick: move |_| confirm_logout.set(true),
                         crate::components::icons::LogOut { class: "h-4 w-4" }
@@ -632,13 +644,7 @@ fn SidebarFooter(rail: bool, on_navigate: Option<Callback<()>>) -> Element {
                         {identity}
                     }
                     button {
-                        class: icon_btn,
-                        title: "{collapse_title}",
-                        onclick: move |_| ui::toggle(),
-                        crate::components::icons::PanelLeftClose { class: "h-4 w-4" }
-                    }
-                    button {
-                        class: icon_btn,
+                        class: logout_btn,
                         title: "{logout_title}",
                         onclick: move |_| confirm_logout.set(true),
                         crate::components::icons::LogOut { class: "h-4 w-4" }
