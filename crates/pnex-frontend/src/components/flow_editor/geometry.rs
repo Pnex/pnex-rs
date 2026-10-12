@@ -130,6 +130,8 @@ pub fn port_counts_of(node: &FlowNode) -> (usize, usize) {
         FlowNodeKind::CameraSource { .. } | FlowNodeKind::VideoRecord { .. } => (1, 0),
         // Vision detect: one detections output; event log: passthrough.
         FlowNodeKind::VisionDetect { .. } | FlowNodeKind::EventLog { .. } => (1, 0),
+        // Vision track: current tracks + appear/disappear events.
+        FlowNodeKind::VisionTrack { .. } => (2, 0),
         _ => (1, 0),
     }
 }

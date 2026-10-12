@@ -431,9 +431,225 @@ impl VisionDetectConfig {
     }
 }
 
+/// Config of the `vision_track` flow node (D192): per-source object
+/// tracking over `vision_detect` output (ByteTrack-style two-stage IoU
+/// association), stable `track_id` per object.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VisionTrackConfig {
+    /// Detections at or above this score open and confirm tracks; lower
+    /// ones only extend existing tracks (ByteTrack second stage).
+    #[serde(default = "default_track_high_score")]
+    pub high_score: f32,
+    /// Minimum box overlap (IoU) to match a detection to a track.
+    #[serde(default = "default_track_min_iou")]
+    pub min_iou: f32,
+    /// Matched frames before a track is confirmed (`appear` event).
+    #[serde(default = "default_track_min_hits")]
+    pub min_hits: u32,
+    /// A track unseen for this long is dropped (`disappear` event).
+    #[serde(default = "default_track_lost_secs")]
+    pub lost_after_secs: f64,
+}
+
+fn default_track_high_score() -> f32 {
+    0.5
+}
+fn default_track_min_iou() -> f32 {
+    0.2
+}
+fn default_track_min_hits() -> u32 {
+    2
+}
+fn default_track_lost_secs() -> f64 {
+    3.0
+}
+
+impl Default for VisionTrackConfig {
+    fn default() -> Self {
+        Self {
+            high_score: default_track_high_score(),
+            min_iou: default_track_min_iou(),
+            min_hits: default_track_min_hits(),
+            lost_after_secs: default_track_lost_secs(),
+        }
+    }
+}
+
+/// Upper bound of `lost_after_secs` and `min_dwell_secs` (one hour).
+pub const TRACK_LOST_MAX_SECS: f64 = 3600.0;
+
+impl VisionTrackConfig {
+    pub fn check(&self) -> Option<(&'static str, String)> {
+        let unit = |v: f32| (0.0..=1.0).contains(&v);
+        if !unit(self.high_score) || !unit(self.min_iou) || self.min_iou == 0.0 {
+            return Some((
+                "vision_track_invalid",
+                "high score must be in 0..1 and min IoU in ]0..1]".into(),
+            ));
+        }
+        if !(1..=100).contains(&self.min_hits)
+            || !self.lost_after_secs.is_finite()
+            || !(0.1..=TRACK_LOST_MAX_SECS).contains(&self.lost_after_secs)
+        {
+            return Some((
+                "vision_track_invalid",
+                format!(
+                    "min hits must be in 1..100 and lost after in 0.1..{TRACK_LOST_MAX_SECS} s"
+                ),
+            ));
+        }
+        None
+    }
+}
+
+/// Point of a box tested against the zones.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ZoneAnchor {
+    /// Bottom centre (feet of a person, wheels of a vehicle).
+    #[default]
+    Bottom,
+    Center,
+}
+
+/// One zone: a polygon in normalized image coordinates (0–1, top-left
+/// origin), so it survives a resolution change of the camera (D193).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VisionZone {
+    pub name: String,
+    /// `[x, y]` vertices, 3..=[`ZONE_MAX_POINTS`].
+    pub points: Vec<[f32; 2]>,
+}
+
+pub const ZONE_MAX_POINTS: usize = 32;
+pub const ZONE_MAX_COUNT: usize = 16;
+
+/// Config of the `vision_zone` flow node (D193): enter / exit events of
+/// tracked objects in image zones, with the zone occupancy.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct VisionZoneConfig {
+    #[serde(default)]
+    pub zones: Vec<VisionZone>,
+    /// Keep only these labels (empty = all).
+    #[serde(default)]
+    pub labels: Vec<String>,
+    #[serde(default)]
+    pub anchor: ZoneAnchor,
+    /// Time an object must stay in a zone before `enter` fires (0 = at
+    /// once) — "present for more than N s".
+    #[serde(default)]
+    pub min_dwell_secs: f64,
+    /// Camera shown behind the zone editor (`device_registries.id`) —
+    /// editor only, the runtime applies the zones to every source.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview_device: Option<i64>,
+}
+
+impl VisionZoneConfig {
+    pub fn check(&self) -> Option<(&'static str, String)> {
+        if self.zones.is_empty() {
+            return Some(("vision_zone_empty", "draw at least one zone".into()));
+        }
+        if self.zones.len() > ZONE_MAX_COUNT {
+            return Some((
+                "vision_zone_invalid",
+                format!("at most {ZONE_MAX_COUNT} zones"),
+            ));
+        }
+        let mut names = std::collections::BTreeSet::new();
+        for z in &self.zones {
+            let name = z.name.trim();
+            if name.is_empty() || name.chars().count() > 64 || !names.insert(name) {
+                return Some((
+                    "vision_zone_invalid",
+                    "each zone needs a unique name (1..64 chars)".into(),
+                ));
+            }
+            let in_unit = |p: &[f32; 2]| p.iter().all(|c| (0.0..=1.0).contains(c));
+            if !(3..=ZONE_MAX_POINTS).contains(&z.points.len()) || !z.points.iter().all(in_unit) {
+                return Some((
+                    "vision_zone_invalid",
+                    format!("zone {name}: 3..{ZONE_MAX_POINTS} points inside the image"),
+                ));
+            }
+        }
+        if !self.min_dwell_secs.is_finite()
+            || !(0.0..=TRACK_LOST_MAX_SECS).contains(&self.min_dwell_secs)
+        {
+            return Some((
+                "vision_zone_invalid",
+                format!("min dwell must be in 0..{TRACK_LOST_MAX_SECS} s"),
+            ));
+        }
+        None
+    }
+}
+
+/// Even-odd point-in-polygon test (normalized coordinates).
+pub fn point_in_polygon(p: [f32; 2], poly: &[[f32; 2]]) -> bool {
+    let mut inside = false;
+    let mut j = poly.len().wrapping_sub(1);
+    for i in 0..poly.len() {
+        let (a, b) = (poly[i], poly[j]);
+        if (a[1] > p[1]) != (b[1] > p[1])
+            && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]
+        {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn track_config_check() {
+        assert!(VisionTrackConfig::default().check().is_none());
+        let bad = VisionTrackConfig {
+            min_iou: 0.0,
+            ..Default::default()
+        };
+        assert_eq!(bad.check().unwrap().0, "vision_track_invalid");
+        let bad = VisionTrackConfig {
+            lost_after_secs: 0.0,
+            ..Default::default()
+        };
+        assert_eq!(bad.check().unwrap().0, "vision_track_invalid");
+    }
+
+    #[test]
+    fn zone_config_check() {
+        let zone = |name: &str, points: Vec<[f32; 2]>| VisionZone {
+            name: name.into(),
+            points,
+        };
+        let square = vec![[0.1, 0.1], [0.5, 0.1], [0.5, 0.5], [0.1, 0.5]];
+        let mut c = VisionZoneConfig::default();
+        assert_eq!(c.check().unwrap().0, "vision_zone_empty");
+        c.zones = vec![zone("dock", square.clone())];
+        assert!(c.check().is_none());
+        c.zones.push(zone("dock", square.clone()));
+        assert_eq!(
+            c.check().unwrap().0,
+            "vision_zone_invalid",
+            "duplicate name"
+        );
+        c.zones = vec![zone("a", vec![[0.0, 0.0], [1.0, 0.0]])];
+        assert_eq!(c.check().unwrap().0, "vision_zone_invalid", "two points");
+        c.zones = vec![zone("a", vec![[0.0, 0.0], [1.2, 0.0], [0.5, 0.5]])];
+        assert_eq!(c.check().unwrap().0, "vision_zone_invalid", "outside");
+    }
+
+    #[test]
+    fn polygon_membership() {
+        let tri = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        assert!(point_in_polygon([0.2, 0.2], &tri));
+        assert!(!point_in_polygon([0.8, 0.8], &tri));
+        assert!(!point_in_polygon([0.5, 0.5], &[]));
+    }
 
     #[test]
     fn default_spec_is_valid() {

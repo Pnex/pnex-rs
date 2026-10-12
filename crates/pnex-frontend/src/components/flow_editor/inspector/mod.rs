@@ -154,6 +154,12 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::VisionDetect { config } => rsx! {
             VisionDetectForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::VisionTrack { config } => rsx! {
+            VisionTrackForm { cx, initial: config.clone(), can_write }
+        },
+        FlowNodeKind::VisionZone { config } => rsx! {
+            VisionZoneForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::EventLog { config } => rsx! {
             EventLogForm { cx, initial: config.clone(), can_write }
         },
@@ -249,6 +255,8 @@ mod topic_classify;
 mod value;
 mod video_record;
 mod vision_detect;
+mod vision_track;
+mod vision_zone;
 mod weather;
 
 use crate::components::ui::BTN_DANGER;
@@ -275,4 +283,6 @@ use topic_classify::TopicClassifyForm;
 use value::{CalcForm, ValueForm};
 use video_record::VideoRecordForm;
 use vision_detect::VisionDetectForm;
+use vision_track::VisionTrackForm;
+use vision_zone::VisionZoneForm;
 use weather::WeatherForm;
