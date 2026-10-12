@@ -335,22 +335,238 @@ pub struct PackView {
     pub installed_version: Option<String>,
 }
 
-/// Timeline request of a case (cases.md K6); bounds RFC 3339, defaulting
-/// to the case window, then to the last 30 days.
+/// Opening a case: from scratch, or from a dated alert (cases-workspace.md
+/// K20): its first event is then the alert, with the flow that raised it
+/// and the flow's neighbours attached as context.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct TimelineQuery {
+pub struct CaseOpenInput {
+    pub title: String,
+    #[serde(default)]
+    pub from: Option<CaseFrom>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaseFrom {
+    /// `notification` | `event`.
+    pub kind: String,
+    /// RFC 3339 instant of the alert.
+    pub at: String,
+    /// Flow that raised it.
+    #[serde(default)]
+    pub flow_id: Option<i64>,
+}
+
+/// An object attached to an event of the case, with its role (K21).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CaseAttachment {
+    /// The `involves` link, to change its role or close it.
+    pub link_id: i64,
+    pub object: ObjectRef,
+    pub role: String,
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+/// An event of the case and what it involves.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CaseEvent {
+    pub event: ObjectView,
+    pub attachments: Vec<CaseAttachment>,
+}
+
+/// The case as the workspace shows it (K22): its events, oldest first,
+/// with their attachments, and its undated pieces. Members are derived.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CaseWorkspace {
+    pub case: ObjectView,
+    pub events: Vec<CaseEvent>,
+    pub undated: Vec<ObjectRef>,
+    /// Areas held by members (`geo_area` values, K29), for the map.
+    #[serde(default)]
+    pub zones: Vec<CaseZone>,
+    /// Members with a place on the map: a `geo_point` value, else the centre
+    /// of their area, else the POI's coordinates.
+    #[serde(default)]
+    pub places: Vec<CasePlace>,
+}
+
+/// A located member of a case.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CasePlace {
+    pub object: ObjectRef,
+    pub lon: f64,
+    pub lat: f64,
+}
+
+/// An area of a case member.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CaseZone {
+    pub object: ObjectRef,
+    /// The `geo_area` value: a circle or a GeoJSON polygon.
+    pub area: Value,
+}
+
+/// New event of a case with its first attachments, in one transaction.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaseEventInput {
+    pub title: String,
+    /// `fuzzy_time` value (`from`, `to`, `precision`).
+    pub occurred: Value,
+    #[serde(default)]
+    pub origin: Option<String>,
+    #[serde(default)]
+    pub attach: Vec<CaseAttachInput>,
+}
+
+/// Attach an object to an event of the case (`event_id`), or put it among
+/// the undated pieces (no `event_id`). The role defaults by object type.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaseAttachInput {
+    #[serde(default)]
+    pub event_id: Option<String>,
+    pub object_id: String,
+    #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+/// Detach an object from an event (`event_id`: it stays in the case, undated
+/// if nothing else dates it), or remove it from the case (no `event_id`; for
+/// an event, its pieces stay in the case).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaseDetachInput {
+    #[serde(default)]
+    pub event_id: Option<String>,
+    pub object_id: String,
+}
+
+/// A track file to import onto a case member (K26): GPX or CSV text. A dry
+/// run only previews; times without offset need `time_zone` (IANA name).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct TrackImportInput {
+    pub object_id: String,
+    pub file_name: String,
+    /// `gpx` | `csv`.
+    pub format: String,
+    pub content: String,
+    #[serde(default)]
+    pub time_zone: Option<String>,
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+/// An imported track, kept as case evidence.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TrackImport {
+    pub id: String,
+    pub object: ObjectRef,
+    pub file_name: String,
+    pub format: String,
+    pub sha256: String,
+    #[serde(default)]
+    pub time_zone: Option<String>,
+    pub points: usize,
+    pub rejected: usize,
+    pub t_start: String,
+    pub t_end: String,
+    pub imported_at: String,
+}
+
+/// What an import reads (or read): clean points, rejected rows with their
+/// reason (the first ones), the span, and the import once written.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct TrackImportPreview {
+    pub points: usize,
+    pub rejected_count: usize,
+    pub rejected: Vec<crate::track::Rejected>,
+    #[serde(default)]
+    pub t_start: Option<String>,
+    #[serde(default)]
+    pub t_end: Option<String>,
+    /// Some times carry no offset: a time zone is required.
+    pub needs_time_zone: bool,
+    pub sha256: String,
+    #[serde(default)]
+    pub import: Option<TrackImport>,
+}
+
+/// Detection request (K30): RFC 3339 bounds, defaulting like signals.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct DetectQuery {
     #[serde(default)]
     pub from: Option<String>,
     #[serde(default)]
     pub to: Option<String>,
 }
 
-/// One dated element of a timeline. `lane` is the member object it belongs
-/// to (the case itself for its own events).
+/// Outcome of a detection run: proposals new to this case (a rejected one is
+/// never proposed again), and whether the position history was readable.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct TimelineItem {
+pub struct CaseDetected {
+    pub from: String,
+    pub to: String,
+    pub available: bool,
+    pub truncated: bool,
+    pub inserted: usize,
+}
+
+/// A detection proposed to the case (K30): retained (it became `event_id`),
+/// rejected (kept, never proposed again) or still proposed.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaseProposal {
+    pub id: String,
+    /// `co_presence` | `stop` | `signal_loss`.
+    pub kind: String,
+    /// `<kind>@<version>`.
+    pub detector: String,
+    /// Effective thresholds of the run.
+    pub params: Value,
+    pub t_start: String,
+    #[serde(default)]
+    pub t_end: Option<String>,
+    /// Members concerned, in fingerprint order.
+    pub refs: Vec<ObjectRef>,
+    /// Where (`at: [lon, lat]`) and measures (`min_distance_m`).
+    pub payload: Value,
+    /// `proposed` | `retained` | `rejected`.
+    pub status: String,
+    #[serde(default)]
+    pub reject_reason: Option<String>,
+    #[serde(default)]
+    pub event_id: Option<String>,
+}
+
+/// Retaining a proposal: the title of the event, written by the UI in the
+/// user's language.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ProposalRetain {
+    pub title: String,
+}
+
+/// Rejecting a proposal, with an optional reason (K45).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ProposalReject {
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+/// Signals request (K30): RFC 3339 bounds, defaulting to the span of the
+/// case events, then to the last 30 days.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct SignalsQuery {
+    #[serde(default)]
+    pub from: Option<String>,
+    #[serde(default)]
+    pub to: Option<String>,
+}
+
+/// One raw signal around the case members, computed on read; retaining it
+/// makes an event. `lane` is the member it concerns.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct SignalItem {
     pub at: String,
-    /// `link_open` | `link_close` | `change` | `range` | `notification`.
+    /// `link_open` | `link_close` | `change` | `range` | `notification` | `occurred`.
     pub kind: String,
     pub lane: String,
     #[serde(default)]
@@ -363,44 +579,20 @@ pub struct TimelineItem {
     /// A notification sent by a member flow (D86 journal).
     #[serde(default)]
     pub notification: Option<crate::notify::NotifyDelivery>,
-    /// `occurred`: a `fuzzy_time` property of a member (cases.md K5), drawn
-    /// as an interval at its precision; `title` is the member's title.
+    /// `occurred`: a `fuzzy_time` property of a member, at its precision;
+    /// `title` is the member's title.
     #[serde(default)]
     pub fuzzy: Option<Value>,
     #[serde(default)]
     pub title: Option<String>,
 }
 
-/// Opening a case (cases.md K3): from scratch, or from a dated event whose
-/// window and first members are filled in.
+/// Raw signals of a case over a window, oldest first.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct CaseOpenInput {
-    pub title: String,
-    #[serde(default)]
-    pub from: Option<CaseFrom>,
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct CaseFrom {
-    /// `notification` | `event`.
-    pub kind: String,
-    /// RFC 3339 instant of the triggering event.
-    pub at: String,
-    /// Flow that raised it: becomes the subject, its linked objects the context.
-    #[serde(default)]
-    pub flow_id: Option<i64>,
-    /// Window half-width around `at`; default 120, at most 7 days.
-    #[serde(default)]
-    pub margin_minutes: Option<i64>,
-}
-
-/// Members (open `in_case` links) and the merged timeline, oldest first.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct CaseTimeline {
+pub struct CaseSignals {
     pub from: String,
     pub to: String,
-    pub members: Vec<LinkView>,
-    pub items: Vec<TimelineItem>,
+    pub items: Vec<SignalItem>,
     /// False when the change journal (O2) could not be read.
     pub changes_available: bool,
     /// True when a source hit its cap: narrow the window.
@@ -439,43 +631,40 @@ pub struct CaseBoard {
     pub contradicted: Vec<BoardClaim>,
 }
 
-/// Export request (cases.md K12): the case as it stood at `as_of`
-/// (RFC 3339), default its freeze instant, else now.
+/// Tracks request (cases-workspace.md K27): an RFC 3339 window, the
+/// duration one timeline pixel stands for (drives the generalisation), and
+/// the gap beyond which two observations are a signal loss.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct CaseExportQuery {
+pub struct CaseTracksQuery {
+    pub from: String,
+    pub to: String,
     #[serde(default)]
-    pub as_of: Option<String>,
+    pub resolution_ms: Option<i64>,
+    #[serde(default)]
+    pub signal_gap_s: Option<i64>,
 }
 
-/// Where a member stands at the snapshot instant: its own `geo_point`
-/// (`via` empty) or the place reached by a location link open then.
+/// Track of one case member. Each segment is gap-free; each point is
+/// `[lon, lat, alt|null, dt_ms]` with `dt_ms` relative to `t0_ms`, so the
+/// map keeps its precision in float32 (kepler.gl school).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CasePlace {
+pub struct CaseTrack {
     pub object: ObjectRef,
-    pub lat: f64,
-    pub lon: f64,
-    #[serde(default)]
-    pub via: Option<ObjectRef>,
-    /// Location link type (`placed_at`, `located_at`, ...), empty for a
-    /// property.
-    #[serde(default)]
-    pub link_type: String,
+    pub t0_ms: i64,
+    pub segments: Vec<Vec<(f64, f64, Option<f64>, i64)>>,
+    /// Points read before generalisation.
+    pub raw_points: usize,
 }
 
-/// The case replayed at `as_of` (cases.md K14): members present then, the
-/// links valid then among them, and their places.
+/// Tracks of the case members over a window. `available` = false when the
+/// position history cannot be read (O2 absent or never provisioned).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct CaseSnapshot {
-    pub as_of: String,
-    pub graph: Neighborhood,
-    pub places: Vec<CasePlace>,
-}
-
-/// One member at the export instant: its `in_case` link and the object.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ExportMember {
-    pub link: LinkView,
-    pub object: ObjectView,
+pub struct CaseTracks {
+    pub from: String,
+    pub to: String,
+    pub available: bool,
+    pub truncated: bool,
+    pub tracks: Vec<CaseTrack>,
 }
 
 /// Integrity line of a `piece` member (K12).
@@ -491,22 +680,141 @@ pub struct PieceEntry {
     pub captured_at: Option<String>,
 }
 
-/// A whole case in one document: members, the links between them, the
-/// timeline, the board and the pieces manifest, all read at `as_of`.
+/// A whole case in one document (K33, schema `pnex.case/1`): its events
+/// with their attachments, its undated pieces, the hypotheses board and the
+/// pieces manifest, as they are now.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CaseExport {
+    pub schema: String,
     pub exported_at: String,
-    pub as_of: String,
-    pub case: ObjectView,
-    pub members: Vec<ExportMember>,
-    pub links: Vec<LinkView>,
-    pub timeline: CaseTimeline,
+    pub workspace: CaseWorkspace,
     pub board: CaseBoard,
     pub pieces: Vec<PieceEntry>,
     /// Members of type `person`: the UI warns before handing it out (K16).
     pub persons: usize,
-    /// Member properties and claim statuses were replayed at `as_of` from
-    /// the change journal; false = today's values (journal unavailable).
+}
+
+/// Expansion of a node of the case graph (K31). Without `pick`: the
+/// neighbours counted by link type and object type; with it: those
+/// neighbours and their links. `exclude` = nodes already shown.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ExpandInput {
+    pub object_id: String,
     #[serde(default)]
-    pub states_replayed: bool,
+    pub exclude: Vec<String>,
+    #[serde(default)]
+    pub pick: Option<Vec<ExpandFacet>>,
+}
+
+/// Neighbours of one link type and one object type.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ExpandFacet {
+    pub link_type: String,
+    pub type_key: String,
+    #[serde(default)]
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ExpandResult {
+    pub facets: Vec<ExpandFacet>,
+    pub nodes: Vec<ObjectRef>,
+    pub links: Vec<LinkView>,
+    /// More neighbours than returned.
+    pub truncated: bool,
+}
+
+/// Positions of the case graph's nodes, in layout coordinates, as the team
+/// arranged them by hand (K31). Empty = the automatic layout.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaseLayout {
+    pub positions: std::collections::BTreeMap<String, (f64, f64)>,
+}
+
+/// A logged read of persons' tracks (K38): who, for what (`tracks`,
+/// `detect`, `snapshot`), which objects (`gone` = purged since), which window.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CaseRead {
+    pub at: String,
+    pub who: Option<String>,
+    pub purpose: String,
+    pub objects: Vec<ObjectRef>,
+    #[serde(default)]
+    pub gone: usize,
+    pub from: String,
+    pub to: String,
+}
+
+/// A case re-created from an export (K33), in the same org: its events and
+/// their attachments; attachments and pieces whose object is gone (or lives
+/// in another org) are listed, not re-created.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CaseImported {
+    pub case: ObjectRef,
+    pub events: usize,
+    pub missing: Vec<ObjectRef>,
+}
+
+/// What a frozen state holds (K33): the export of the case, its reviewed
+/// detections and its tracks over the derived window, generalised.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CaseSnapshotContent {
+    pub export: CaseExport,
+    /// Retained or rejected proposals (pending ones are not a state).
+    pub proposals: Vec<CaseProposal>,
+    pub tracks: Option<CaseTracks>,
+    /// Tracks left out: over the size cap.
+    #[serde(default)]
+    pub tracks_omitted: bool,
+}
+
+impl CaseSnapshotContent {
+    /// Canonical bytes: object keys sorted at every level, no whitespace.
+    // shortcut: keys sort by UTF-8 bytes and numbers print as serde_json
+    // does, not the RFC 8785 forms; equal for our ASCII keys, and the
+    // fingerprint stays reproducible since the same code reads it back.
+    pub fn canonical(&self) -> String {
+        fn sorted(v: serde_json::Value) -> serde_json::Value {
+            use serde_json::Value as V;
+            match v {
+                V::Object(m) => {
+                    let mut kv: Vec<_> = m.into_iter().collect();
+                    kv.sort_by(|a, b| a.0.cmp(&b.0));
+                    V::Object(kv.into_iter().map(|(k, v)| (k, sorted(v))).collect())
+                }
+                V::Array(a) => V::Array(a.into_iter().map(sorted).collect()),
+                v => v,
+            }
+        }
+        serde_json::to_string(&sorted(serde_json::to_value(self).unwrap_or_default()))
+            .unwrap_or_default()
+    }
+}
+
+/// A frozen state of a case: never modified, fingerprinted.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaseSnapshot {
+    pub seq: i32,
+    pub label: Option<String>,
+    pub taken_at: String,
+    /// Display name of who froze it, if still known.
+    pub taken_by: Option<String>,
+    /// SHA-256 of `content`'s bytes.
+    pub sha256: String,
+    pub size_bytes: usize,
+}
+
+/// `POST /cases/{id}/snapshots`.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaseSnapshotInput {
+    #[serde(default)]
+    pub label: Option<String>,
+}
+
+/// A frozen state with its content: the canonical JSON of a
+/// [`CaseSnapshotContent`], byte for byte what was fingerprinted.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct CaseSnapshotFull {
+    pub snapshot: CaseSnapshot,
+    pub content: String,
 }

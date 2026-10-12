@@ -35,6 +35,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 // single classic script (assets/.map-worker.txt, inlined as text here) and we
 // hand it back to the lib as a blob URL before any Map is created.
 import workerSource from '../assets/.map-worker.txt';
+import { cut } from './track_cut.js';
 maplibreGl.setWorkerUrl(
   URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' }))
 );
@@ -43,6 +44,93 @@ maplibreGl.setWorkerUrl(
   'use strict';
 
   var VIEW_DEBOUNCE_MS = 300;
+  // Track layers (cases-workspace.md K28): whole route dashed, then the
+  // past up to the cursor in two opacity slices by age.
+  var TRACK_LAYERS = [
+    { id: 'pnex-trk-full', opacity: 0.35, width: 2, dash: [2, 2] },
+    { id: 'pnex-trk-older', opacity: 0.55, width: 3 },
+    { id: 'pnex-trk-recent', opacity: 0.95, width: 4 },
+  ];
+
+  function lines(parts) {
+    return {
+      type: 'FeatureCollection',
+      features: parts.map(function (p) {
+        return { type: 'Feature', properties: { color: p.color }, geometry: { type: 'LineString', coordinates: p.coords } };
+      }),
+    };
+  }
+
+  function ensureTrackLayers(map) {
+    TRACK_LAYERS.forEach(function (l) {
+      if (map.getSource(l.id)) return;
+      map.addSource(l.id, { type: 'geojson', data: lines([]) });
+      var paint = { 'line-color': ['get', 'color'], 'line-opacity': l.opacity, 'line-width': l.width };
+      if (l.dash) paint['line-dasharray'] = l.dash;
+      map.addLayer({ id: l.id, type: 'line', source: l.id, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: paint });
+    });
+  }
+
+  // Framed on the real container size: on the tracks and areas, until a
+  // track has been framed once in this mount.
+  function fit(host) {
+    var map = host._pnexMap;
+    if (!map || host._pnexTracksFitted) return;
+    var b = new (maplibreMod().LngLatBounds)();
+    var tracks = false;
+    ((host._pnexTracks && host._pnexTracks.tracks) || []).forEach(function (tr) {
+      (tr.segments || []).forEach(function (seg) {
+        seg.forEach(function (p) { b.extend([p[0], p[1]]); tracks = true; });
+      });
+    });
+    ((host._pnexZones && host._pnexZones.features) || []).forEach(function (f) {
+      f.geometry.coordinates[0].forEach(function (c) { b.extend(c); });
+    });
+    if (b.isEmpty()) return;
+    map.fitBounds(b, { padding: 32, maxZoom: 16, animate: false });
+    host._pnexTracksFitted = tracks;
+  }
+
+  // Areas of the case (K29): light fill, outlined.
+  function drawZones(host) {
+    var map = host._pnexMap;
+    if (!map || !host._pnexZones || !map.isStyleLoaded()) return;
+    if (!map.getSource('pnex-zones')) {
+      map.addSource('pnex-zones', { type: 'geojson', data: host._pnexZones });
+      var before = map.getLayer('pnex-trk-full') ? 'pnex-trk-full' : undefined;
+      map.addLayer({ id: 'pnex-zones-fill', type: 'fill', source: 'pnex-zones', paint: { 'fill-color': '#0b7285', 'fill-opacity': 0.12 } }, before);
+      map.addLayer({ id: 'pnex-zones-line', type: 'line', source: 'pnex-zones', paint: { 'line-color': '#0b7285', 'line-width': 1.5 } }, before);
+    } else {
+      map.getSource('pnex-zones').setData(host._pnexZones);
+    }
+    fit(host);
+  }
+
+  function drawTracks(host) {
+    var map = host._pnexMap;
+    var data = host._pnexTracks;
+    if (!map || !data || !map.isStyleLoaded()) return;
+    ensureTrackLayers(map);
+    var t = typeof host._pnexTime === 'number' ? host._pnexTime : Infinity;
+    var full = [];
+    var older = [];
+    var recent = [];
+    (data.tracks || []).forEach(function (tr) {
+      (tr.segments || []).forEach(function (seg) {
+        if (seg.length > 1) full.push({ color: tr.color, coords: seg.map(function (p) { return [p[0], p[1]]; }) });
+      });
+      var c = cut(tr.segments, t, data.recentMs || 0);
+      c.older.forEach(function (coords) { older.push({ color: tr.color, coords: coords }); });
+      c.recent.forEach(function (coords) { recent.push({ color: tr.color, coords: coords }); });
+    });
+    if (!host._pnexTracksDrawn) {
+      map.getSource('pnex-trk-full').setData(lines(full));
+      host._pnexTracksDrawn = true;
+      fit(host);
+    }
+    map.getSource('pnex-trk-older').setData(lines(older));
+    map.getSource('pnex-trk-recent').setData(lines(recent));
+  }
 
   function maplibreMod() {
     // Static ESM import first (bundled by esbuild); window.maplibregl
@@ -171,6 +259,7 @@ maplibreGl.setWorkerUrl(
         });
         host._pnexMap = map;
         host._pnexMapMarkers = [];
+        host._pnexTracksFitted = false;
         // Sequences survive a remount (basemap switch): the page polls for
         // a seq greater than the last one it saw.
         host._pnexMapClickSeq = host._pnexMapClickSeq || 0;
@@ -205,6 +294,9 @@ maplibreGl.setWorkerUrl(
         map.on('load', function () {
           pushView();
           if (opts.items) api.setItems(hostId, opts.items);
+          host._pnexTracksDrawn = false;
+          drawZones(host);
+          drawTracks(host);
         });
         return true;
       } catch (e) {
@@ -266,6 +358,43 @@ maplibreGl.setWorkerUrl(
         return Object.assign({ kind: 'pin' }, p);
       });
       return api.setItems(hostId, items);
+    },
+
+    /**
+     * Tracks of a window, sent once: {recentMs, tracks: [{id, color,
+     * segments: [[[lon, lat, t_ms], ...], ...]}]}. Survives a remount.
+     */
+    setTracks: function (hostId, data) {
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch (e) { return false; }
+      }
+      var host = hostOf(hostId);
+      if (!host) return false;
+      host._pnexTracks = data;
+      host._pnexTracksDrawn = false;
+      drawTracks(host);
+      return true;
+    },
+
+    /** Areas as a GeoJSON FeatureCollection of polygons. Survives a remount. */
+    setZones: function (hostId, data) {
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch (e) { return false; }
+      }
+      var host = hostOf(hostId);
+      if (!host) return false;
+      host._pnexZones = data;
+      drawZones(host);
+      return true;
+    },
+
+    /** Cursor instant (ms): only the past of each track is redrawn. */
+    setTime: function (hostId, t) {
+      var host = hostOf(hostId);
+      if (!host) return false;
+      host._pnexTime = t;
+      drawTracks(host);
+      return true;
     },
 
     /** Centre la carte (doux) sur un point. */

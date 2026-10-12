@@ -1,22 +1,21 @@
-//! "Add to a case" (cases.md K2): opens an `in_case` link from any object
-//! to an open case, with its role in the case.
+//! "Add to a case" (cases-workspace.md K22): puts any object among the
+//! undated pieces of an open case; its role is chosen when it is attached
+//! to an event of the case.
 
 use dioxus::prelude::*;
 use dioxus_i18n::prelude::i18n;
 use dioxus_i18n::t;
-use pnex_core::ontology::api::{FilterOp, LinkInput, OntologyQuery, PropertyFilter};
-use pnex_core::ontology::{
-    CASE_STATUS, IN_CASE_NOTE, IN_CASE_ROLE, IN_CASE_ROLES, KIND_CASE, REL_IN_CASE,
-};
-use serde_json::{Map, Value};
+use pnex_core::ontology::api::{CaseAttachInput, FilterOp, OntologyQuery, PropertyFilter};
+use pnex_core::ontology::{CASE_STATUS, KIND_CASE};
+use serde_json::Value;
 
 use crate::api;
 use crate::components::crud::form::FormDialog;
 use crate::components::icons;
-use crate::components::ui::{BTN_SECONDARY_SM as BTN, FIELD_LABEL as LABEL, INPUT};
+use crate::components::ui::{BTN_SECONDARY_SM as BTN, FIELD_HELP, FIELD_LABEL as LABEL, INPUT};
 use crate::state::toasts;
 
-/// Translated role of a member (`case-role-<role>`, else the raw value).
+/// Translated role of an attachment (`case-role-<role>`, else the raw value).
 pub fn role_label(role: &str) -> String {
     i18n()
         .try_translate(&format!("case-role-{role}"))
@@ -72,8 +71,6 @@ fn AddToCaseDialog(object_id: String, on_close: Callback<()>) -> Element {
         .filter(|c| c.id != me)
         .collect();
     let mut case_id = use_signal(String::new);
-    let mut role = use_signal(|| IN_CASE_ROLES[0].to_string());
-    let mut note = use_signal(String::new);
     let mut busy = use_signal(|| false);
     rsx! {
         FormDialog {
@@ -83,23 +80,15 @@ fn AddToCaseDialog(object_id: String, on_close: Callback<()>) -> Element {
             valid: !case_id().is_empty(),
             on_close: move |_| on_close.call(()),
             on_submit: move |_| {
-                let mut attrs = Map::new();
-                attrs.insert(IN_CASE_ROLE.into(), Value::String(role()));
-                let n = note().trim().to_string();
-                if !n.is_empty() {
-                    attrs.insert(IN_CASE_NOTE.into(), Value::String(n));
-                }
-                let input = LinkInput {
-                    link_type: REL_IN_CASE.to_string(),
-                    source_id: object_id.clone(),
-                    target_id: case_id(),
-                    attributes: attrs,
-                    valid_from: None,
+                let case = case_id();
+                let input = CaseAttachInput {
+                    object_id: object_id.clone(),
+                    ..Default::default()
                 };
                 let done = t!("case-added").to_string();
                 busy.set(true);
                 spawn(async move {
-                    let res = api::ontology::create_link(&input).await;
+                    let res = api::cases::attach(&case, &input).await;
                     busy.set(false);
                     match res {
                         Ok(_) => {
@@ -128,31 +117,7 @@ fn AddToCaseDialog(object_id: String, on_close: Callback<()>) -> Element {
                         }
                     }
                 }
-                div {
-                    label { class: LABEL, {t!("case-role")} }
-                    select {
-                        class: INPUT,
-                        "data-testid": "add-to-case-role",
-                        onchange: move |e| role.set(e.value()),
-                        for r in IN_CASE_ROLES {
-                            option {
-                                key: "{r}",
-                                value: "{r}",
-                                selected: r == role(),
-                                {role_label(r)}
-                            }
-                        }
-                    }
-                }
-                div {
-                    label { class: LABEL, {t!("case-note")} }
-                    input {
-                        class: INPUT,
-                        maxlength: 255,
-                        value: "{note}",
-                        oninput: move |e| note.set(e.value()),
-                    }
-                }
+                p { class: FIELD_HELP, {t!("case-add-help")} }
             }
         }
     }

@@ -1,17 +1,17 @@
-//! `/cases` — investigation cases (docs/architecture/cases.md): a case is
-//! an ontology object (`case`) whose members are `in_case` links. The list
-//! creates a case from a title dialog; the workspace (`workspace.rs`) gathers
-//! members, dated links and the timeline on one screen.
+//! `/cases` — investigation cases (docs/architecture/cases-workspace.md): a
+//! case holds dated events and undated pieces. The list creates a case from
+//! a title dialog, or from an exported case file; the workspace (`workspace/`) is the timeline, the map,
+//! the links and the inspector on one screen.
 
-mod pages_panel;
-mod purge_panel;
-mod snapshot;
 pub mod workspace;
 
 use dioxus::prelude::*;
 use dioxus_i18n::prelude::i18n;
 use dioxus_i18n::t;
-use pnex_core::ontology::api::{FilterOp, ObjectInput, ObjectView, OntologyQuery, PropertyFilter};
+use pnex_core::ontology::api::{
+    CaseExport, CaseSnapshotContent, FilterOp, ObjectInput, ObjectView, OntologyQuery,
+    PropertyFilter,
+};
 use pnex_core::ontology::{CASE_QUESTION, CASE_STATUS, CASE_STATUSES, KIND_CASE};
 use serde_json::{Map, Value};
 
@@ -21,7 +21,7 @@ use crate::components::crud::filters::FilterBar;
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::ListLayout;
 use crate::components::ontology::short_time;
-use crate::components::ui::{FIELD_LABEL, INPUT};
+use crate::components::ui::{BTN_SECONDARY_SM, FIELD_LABEL, INPUT};
 use crate::state::{org, toasts};
 
 pub use workspace::CaseWorkspace;
@@ -107,6 +107,28 @@ pub fn Cases() -> Element {
             }
         });
     };
+    // A `pnex.case/1` export, or a frozen state holding one.
+    let import = move |evt: FormEvent| async move {
+        let Some(file) = evt.files().first().cloned() else {
+            return;
+        };
+        let text = file.read_string().await.unwrap_or_default();
+        let doc = serde_json::from_str::<CaseExport>(&text)
+            .or_else(|_| serde_json::from_str::<CaseSnapshotContent>(&text).map(|c| c.export));
+        let Ok(doc) = doc else {
+            toasts::error(t!("cases-import-unreadable").to_string());
+            return;
+        };
+        match api::cases::import_case(&doc).await {
+            Ok(r) => {
+                if !r.missing.is_empty() {
+                    toasts::info(t!("cases-import-missing", count : r.missing.len()).to_string());
+                }
+                navigator.push(Route::CaseWorkspace { id: r.case.id });
+            }
+            Err(e) => toasts::error(e),
+        }
+    };
     let rows: Vec<ObjectView> = match &*list.read() {
         Some(Ok(r)) => r.rows.iter().map(|r| r.object.clone()).collect(),
         _ => Vec::new(),
@@ -158,6 +180,18 @@ pub fn Cases() -> Element {
                 }
             }
             FilterBar {
+                if can_write {
+                    label { class: "{BTN_SECONDARY_SM} cursor-pointer",
+                        {t!("cases-import")}
+                        input {
+                            class: "hidden",
+                            r#type: "file",
+                            accept: ".json,application/json",
+                            "data-testid": "case-import-file",
+                            onchange: import,
+                        }
+                    }
+                }
                 select {
                     class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                     "data-testid": "case-status-filter",

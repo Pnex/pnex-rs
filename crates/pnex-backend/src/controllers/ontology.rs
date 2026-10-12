@@ -122,6 +122,27 @@ pub(crate) fn onto_error(e: OntologyError) -> Result<Response> {
             err_codes::ONTOLOGY_CLAIM_UNSOURCED,
             "A claim is corroborated only with two pieces of distinct origins.",
         ),
+        OntologyError::CaseLegalBasisRequired => coded(
+            StatusCode::CONFLICT,
+            err_codes::CASE_LEGAL_BASIS_REQUIRED,
+            "Declare the processing basis of personal data before attaching a person.",
+        ),
+        OntologyError::CaseProposalStale => coded(
+            StatusCode::CONFLICT,
+            err_codes::CASE_PROPOSAL_STALE,
+            "This proposal was already reviewed the other way.",
+        ),
+        OntologyError::TrackImport(code) => coded(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            code,
+            match code {
+                err_codes::TRACK_IMPORT_TIMEZONE_REQUIRED => {
+                    "Times carry no offset: give the time zone of the recording."
+                }
+                err_codes::TRACK_IMPORT_EMPTY => "The file holds no usable point.",
+                _ => "Not a GPX file, or a CSV without time, latitude and longitude columns.",
+            },
+        ),
         OntologyError::Db(e) => {
             tracing::error!(error = %e, "ontology database error");
             Err(Error::InternalServerError)

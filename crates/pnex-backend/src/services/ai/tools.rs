@@ -405,8 +405,13 @@ pub fn tool_specs() -> Vec<ToolSpec> {
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"object_id":{"type":"string"}},"required":["object_id"]}"#).expect("static schema"),
         },
         ToolSpec {
-            name: "case_timeline",
-            description: "An investigation case (object of type case): its members with their role, and its timeline oldest first — links opened and closed, object changes, ranges set on members, notifications of member flows, approximate dates — over the case window or from/to (RFC 3339). At most 200 items (the newest). Read-only: never add or remove a member, never change a claim's status; propose it to the user.",
+            name: "case_workspace",
+            description: "An investigation case (object of type case) as its workspace shows it: its events oldest first (title, occurred as fuzzy time, origin, analysis note) with the objects each involves and their role (evidence, actor, context, hypothesis, source), and its undated pieces. Read-only: never attach, detach nor create an event; propose it to the user.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"case_id":{"type":"string"}},"required":["case_id"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "case_signals",
+            description: "Raw signals around the members of an investigation case, oldest first: links opened and closed, object changes, ranges set on members, notifications of member flows, approximate dates — over the span of the case events or from/to (RFC 3339). At most 200 items (the newest). Each may be worth an event: propose it to the user, never create it.",
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"case_id":{"type":"string"},"from":{"type":"string"},"to":{"type":"string"}},"required":["case_id"]}"#).expect("static schema"),
         },
         ToolSpec {
@@ -415,9 +420,9 @@ pub fn tool_specs() -> Vec<ToolSpec> {
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"case_id":{"type":"string"}},"required":["case_id"]}"#).expect("static schema"),
         },
         ToolSpec {
-            name: "case_snapshot",
-            description: "An investigation case replayed at an instant as_of (RFC 3339, default now): the members present then, the links valid then among them, and where each member stood (its own geo_point, or the POI or place reached by a placed_at, occurred_at or located_at link open then). Answers 'who was linked to whom, and where, on that date'. Read-only.",
-            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"case_id":{"type":"string"},"as_of":{"type":"string"}},"required":["case_id"]}"#).expect("static schema"),
+            name: "case_proposals",
+            description: "Detections proposed to an investigation case from the members' position tracks (co_presence of two members, stop, signal_loss), each with its span, members, place, thresholds and status (proposed, retained as an event, rejected with an optional reason). A detection is a lead, not a fact. Read-only: only the user retains or rejects a proposal.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"case_id":{"type":"string"}},"required":["case_id"]}"#).expect("static schema"),
         },
         ToolSpec {
             name: "create_object",
@@ -593,9 +598,10 @@ pub async fn execute(
         "describe_ontology" => super::ontology_tools::describe_ontology(deps).await,
         "query_ontology" => super::ontology_tools::query_ontology(deps, args).await,
         "get_object" => super::ontology_tools::get_object(deps, args).await,
-        "case_timeline" => super::ontology_tools::case_timeline(deps, args).await,
+        "case_workspace" => super::ontology_tools::case_workspace(deps, args).await,
+        "case_signals" => super::ontology_tools::case_signals(deps, args).await,
         "case_board" => super::ontology_tools::case_board(deps, args).await,
-        "case_snapshot" => super::ontology_tools::case_snapshot(deps, args).await,
+        "case_proposals" => super::ontology_tools::case_proposals(deps, args).await,
         "create_object" => super::ontology_tools::create_object(deps, args).await,
         "update_object" => super::ontology_tools::update_object(deps, args).await,
         "open_link" => super::ontology_tools::open_link(deps, args).await,
@@ -995,12 +1001,20 @@ pub fn summarize(name: &str, out: &ToolOutcome) -> TraceSummary {
                 format!("object \"{t}\""),
             )
         }
-        "case_timeline" => {
-            let (m, n) = (count(&v["members"]), shown(&v["items_total"]));
+        "case_workspace" => {
+            let (e, u) = (count(&v["events"]), count(&v["undated"]));
             s(
-                "ai-trace-case-timeline",
-                json!({"members": m, "count": n}),
-                format!("case: {m} member(s), {n} event(s)"),
+                "ai-trace-case-workspace",
+                json!({"events": e, "undated": u}),
+                format!("case: {e} event(s), {u} undated piece(s)"),
+            )
+        }
+        "case_signals" => {
+            let n = shown(&v["items_total"]);
+            s(
+                "ai-trace-case-signals",
+                json!({"count": n}),
+                format!("case signals: {n}"),
             )
         }
         "case_board" => {
@@ -1011,12 +1025,12 @@ pub fn summarize(name: &str, out: &ToolOutcome) -> TraceSummary {
                 format!("board: {h} hypothesis(es), {u} unsourced claim(s)"),
             )
         }
-        "case_snapshot" => {
-            let (n, p) = (count(&v["graph"]["nodes"]), count(&v["places"]));
+        "case_proposals" => {
+            let n = count(&v["proposals"]);
             s(
-                "ai-trace-case-snapshot",
-                json!({"members": n, "places": p}),
-                format!("snapshot: {n} member(s), {p} place(s)"),
+                "ai-trace-case-proposals",
+                json!({"count": n}),
+                format!("case proposals: {n}"),
             )
         }
         "create_object" | "update_object" => {
@@ -1610,9 +1624,10 @@ mod tests {
                 "describe_ontology",
                 "query_ontology",
                 "get_object",
-                "case_timeline",
+                "case_workspace",
+                "case_signals",
                 "case_board",
-                "case_snapshot",
+                "case_proposals",
                 "create_object",
                 "update_object",
                 "open_link",

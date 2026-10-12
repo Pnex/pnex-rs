@@ -8,6 +8,7 @@
 
 pub mod api;
 pub mod graph;
+pub mod layout;
 pub mod schema;
 
 use serde::{Deserialize, Serialize};
@@ -249,8 +250,9 @@ pub fn system_object_types() -> Vec<ObjectTypeDef> {
             may_contain: Some(TypeSet::Any),
             ..leaf(KIND_FOLDER)
         },
-        // Investigation case (cases.md K1): a lens on the ontology, its
-        // members are `in_case` links; sub-cases by containment.
+        // Investigation case (cases-workspace.md): its events and its undated
+        // pieces are `in_case` links, its other members are what the events
+        // involve; sub-cases by containment.
         ObjectTypeDef {
             icon: "book".into(),
             properties: case_properties(),
@@ -258,6 +260,44 @@ pub fn system_object_types() -> Vec<ObjectTypeDef> {
             may_be_contained_in: Some(TypeSet::only(&[KIND_FOLDER, KIND_CASE])),
             ..leaf(KIND_CASE)
         },
+        // Dated event, the pivot of a case (cases-workspace.md K20): an
+        // instant or a period, to which objects are attached by `involves`.
+        ObjectTypeDef {
+            icon: "layers".into(),
+            properties: event_properties(),
+            ..leaf(KIND_EVENT)
+        },
+        // Minimal analysis note (K34): a hypothesis or remark attached to an
+        // event without installing a pack.
+        ObjectTypeDef {
+            icon: "file-text".into(),
+            properties: vec![prop(
+                NOTE_BODY,
+                PropertyKind::Text {
+                    max_len: Some(4000),
+                },
+            )],
+            ..leaf(KIND_NOTE)
+        },
+    ]
+}
+
+fn event_properties() -> Vec<PropertyDef> {
+    vec![
+        prop(EVENT_OCCURRED, PropertyKind::FuzzyTime),
+        prop(
+            EVENT_NOTE,
+            PropertyKind::Text {
+                max_len: Some(4000),
+            },
+        ),
+        prop(
+            EVENT_ORIGIN,
+            PropertyKind::Enum {
+                values: EVENT_ORIGINS.iter().map(|v| v.to_string()).collect(),
+            },
+        ),
+        prop(EVENT_LOCATION, PropertyKind::GeoPoint),
     ]
 }
 
@@ -269,6 +309,17 @@ fn prop(key: &str, kind: PropertyKind) -> PropertyDef {
         required: false,
         indexed: false,
     }
+}
+
+fn threshold(key: &str, unit: &str, min: f64, max: f64) -> PropertyDef {
+    prop(
+        key,
+        PropertyKind::Number {
+            unit: Some(unit.into()),
+            min: Some(min),
+            max: Some(max),
+        },
+    )
 }
 
 fn case_properties() -> Vec<PropertyDef> {
@@ -289,11 +340,12 @@ fn case_properties() -> Vec<PropertyDef> {
                 },
             )
         },
-        prop(CASE_WINDOW_FROM, PropertyKind::DateTime),
-        prop(CASE_WINDOW_TO, PropertyKind::DateTime),
-        prop(CASE_TEMPLATE, PropertyKind::Text { max_len: Some(64) }),
         prop(CASE_LEGAL_BASIS, PropertyKind::Text { max_len: Some(255) }),
-        prop(CASE_FROZEN_AT, PropertyKind::DateTime),
+        threshold(CASE_COPRESENCE_DISTANCE_M, "m", 1.0, 1_000.0),
+        threshold(CASE_COPRESENCE_MIN_S, "s", 10.0, 86_400.0),
+        threshold(CASE_STOP_DIAMETER_M, "m", 1.0, 1_000.0),
+        threshold(CASE_STOP_MIN_S, "s", 60.0, 86_400.0),
+        threshold(CASE_SIGNAL_GAP_S, "s", 10.0, 86_400.0),
         prop(
             CASE_CONCLUSION_PAGE,
             PropertyKind::Ref {
@@ -309,28 +361,43 @@ pub const CASE_QUESTION: &str = "question";
 pub const CASE_STATUS: &str = "status";
 pub const CASE_STATUSES: [&str; 3] = ["open", CASE_CONCLUDED, "archived"];
 pub const CASE_CONCLUDED: &str = "concluded";
-pub const CASE_WINDOW_FROM: &str = "window_from";
-pub const CASE_WINDOW_TO: &str = "window_to";
-pub const CASE_TEMPLATE: &str = "template";
-/// Declared processing basis of the personal data in the case (K16).
+/// Declared processing basis of the personal data in the case: required
+/// before a person is attached (cases-workspace.md K38).
 pub const CASE_LEGAL_BASIS: &str = "legal_basis";
-/// Freeze instant (K12): the case is re-read as it stood then.
-pub const CASE_FROZEN_AT: &str = "frozen_at";
+/// Detector thresholds of the case (K30); unset = the detector default.
+pub const CASE_COPRESENCE_DISTANCE_M: &str = "copresence_distance_m";
+pub const CASE_COPRESENCE_MIN_S: &str = "copresence_min_s";
+pub const CASE_STOP_DIAMETER_M: &str = "stop_diameter_m";
+pub const CASE_STOP_MIN_S: &str = "stop_min_s";
+pub const CASE_SIGNAL_GAP_S: &str = "signal_gap_s";
 /// The page holding the conclusion (K8), versioned when the case concludes.
 pub const CASE_CONCLUSION_PAGE: &str = "conclusion_page";
-/// Case membership (cases.md K2): any object → case, temporal.
+/// An event of the case, or an undated piece of it (K22): any object →
+/// case; removing it closes the link. Roles live on `involves`.
 pub const REL_IN_CASE: &str = "in_case";
-pub const IN_CASE_ROLE: &str = "role";
-pub const IN_CASE_ROLES: [&str; 6] = [
-    "subject",
-    "actor",
-    "evidence",
-    "context",
-    "hypothesis",
-    "note",
-];
-pub const IN_CASE_PINNED: &str = "pinned";
-pub const IN_CASE_NOTE: &str = "note";
+
+/// Dated event (cases-workspace.md K20): system type without a native table.
+pub const KIND_EVENT: &str = "event";
+/// When it happened, at the precision known (instant or `range` period).
+pub const EVENT_OCCURRED: &str = "occurred";
+/// Analysis note: what is established, what is not, and from where.
+pub const EVENT_NOTE: &str = "note";
+/// How the event entered the case.
+pub const EVENT_ORIGIN: &str = "origin";
+pub const EVENT_ORIGINS: [&str; 4] = ["manual", "detection", "signal", "import"];
+/// Place set by hand when no attached object locates the event.
+pub const EVENT_LOCATION: &str = "location";
+/// Analysis note (K34): system type without a native table.
+pub const KIND_NOTE: &str = "note";
+pub const NOTE_BODY: &str = "body";
+/// Attachment of an object to an event (K21), role chosen at attach time.
+pub const REL_INVOLVES: &str = "involves";
+pub const INVOLVES_ROLE: &str = "role";
+pub const INVOLVES_ROLES: [&str; 5] = ["evidence", "actor", "context", "hypothesis", "source"];
+/// Free qualifier of the attachment ("witness", "operator on duty").
+pub const INVOLVES_DETAIL: &str = "detail";
+/// A tracker gives the position of an object while the link is open (K25).
+pub const REL_TRACKS: &str = "tracks";
 
 /// The system link types.
 pub fn system_link_types() -> Vec<LinkTypeDef> {
@@ -374,23 +441,27 @@ pub fn system_link_types() -> Vec<LinkTypeDef> {
             attributes: vec![text(MEASURES_METRIC), text(MEASURES_PROPERTY)],
             ..link(REL_MEASURES, TypeSet::only(&[KIND_DEVICE]), TypeSet::Any)
         },
-        // Case membership (cases.md K2): removing a member closes the link.
+        // Event or undated piece of a case (K22): removing it closes the link.
+        link(REL_IN_CASE, TypeSet::Any, TypeSet::only(&[KIND_CASE])),
+        // Object attached to an event (K21): detaching closes the link.
         LinkTypeDef {
             attributes: vec![
                 PropertyDef {
                     required: true,
                     ..prop(
-                        IN_CASE_ROLE,
+                        INVOLVES_ROLE,
                         PropertyKind::Enum {
-                            values: IN_CASE_ROLES.iter().map(|v| v.to_string()).collect(),
+                            values: INVOLVES_ROLES.iter().map(|v| v.to_string()).collect(),
                         },
                     )
                 },
-                prop(IN_CASE_PINNED, PropertyKind::Bool),
-                prop(IN_CASE_NOTE, PropertyKind::Text { max_len: Some(255) }),
+                prop(INVOLVES_DETAIL, PropertyKind::Text { max_len: Some(255) }),
             ],
-            ..link(REL_IN_CASE, TypeSet::Any, TypeSet::only(&[KIND_CASE]))
+            ..link(REL_INVOLVES, TypeSet::only(&[KIND_EVENT]), TypeSet::Any)
         },
+        // Tracker → tracked object (K25): the object's track is recomposed
+        // from successive links, like `measures` for series (D181).
+        link(REL_TRACKS, TypeSet::only(&[KIND_DEVICE]), TypeSet::Any),
     ]
 }
 

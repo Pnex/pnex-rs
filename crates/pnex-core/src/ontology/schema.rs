@@ -56,6 +56,8 @@ pub enum PropertyKind {
     },
     /// `{"lat": f64, "lon": f64}`.
     GeoPoint,
+    /// A circle or a one-ring polygon (`crate::geo_area`, K29).
+    GeoArea,
     /// `http(s)` only (R11).
     Url,
     /// Id (UUID) of an object of `to_type`.
@@ -98,6 +100,7 @@ impl PropertyKind {
             Self::DateTime => "date_time",
             Self::Enum { .. } => "enum",
             Self::GeoPoint => "geo_point",
+            Self::GeoArea => "geo_area",
             Self::Url => "url",
             Self::Ref { .. } => "ref",
             Self::Series { .. } => "series",
@@ -167,6 +170,7 @@ impl<'de> Deserialize<'de> for PropertyDef {
                 values: c.values.ok_or_else(|| missing("values"))?,
             },
             "geo_point" => PropertyKind::GeoPoint,
+            "geo_area" => PropertyKind::GeoArea,
             "url" => PropertyKind::Url,
             "ref" => PropertyKind::Ref {
                 to_type: c.to_type.ok_or_else(|| missing("to_type"))?,
@@ -325,6 +329,11 @@ fn check_value(d: &PropertyDef, v: &Value) -> Result<Value, String> {
             if o.len() != 2 || !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&lon) {
                 return Err(invalid());
             }
+            Ok(v.clone())
+        }
+        (PropertyKind::GeoArea, Value::Object(_))
+            if crate::geo_area::GeoArea::parse(v).is_some() =>
+        {
             Ok(v.clone())
         }
         (PropertyKind::Url, Value::String(s)) if s.len() <= 2048 && valid_http_url(s) => {

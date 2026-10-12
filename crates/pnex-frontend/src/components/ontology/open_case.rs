@@ -1,6 +1,6 @@
-//! "Open a case" on a dated event (cases.md K3): one click creates the case
-//! with its window around the event and the flow that raised it, then opens
-//! the case workspace.
+//! "Open a case" on a dated alert (cases-workspace.md K20): one click creates
+//! the case, its first event being the alert with the flow that raised it,
+//! then opens the case workspace.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -34,12 +34,11 @@ pub fn OpenCaseButton(kind: String, at_us: i64, flow_id: Option<i64>, title: Str
                 kind: kind.clone(),
                 at: at.clone(),
                 flow_id,
-                margin_minutes: None,
             }),
         };
         busy.set(true);
         spawn(async move {
-            let res = api::ontology::open_case(&input).await;
+            let res = api::cases::open(&input).await;
             busy.set(false);
             match res {
                 Ok(case) => {

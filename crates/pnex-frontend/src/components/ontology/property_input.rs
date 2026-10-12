@@ -176,6 +176,9 @@ fn PropertyField(
                 }
             }
         }
+        PropertyKind::GeoArea => rsx! {
+            GeoAreaField { name: key.clone(), doc, current }
+        },
         PropertyKind::Series { unit, .. } => {
             let unit = unit.unwrap_or_default();
             rsx! {
@@ -211,6 +214,119 @@ fn PropertyField(
                         let v = if is_dt && raw.len() == 16 { format!("{raw}:00Z") } else { raw };
                         set(doc, &key, Value::String(v));
                     },
+                }
+            }
+        }
+    }
+}
+
+/// The area value of a circle form, `Null` until it is complete and valid.
+fn circle_of(lat: &str, lon: &str, radius: &str) -> Value {
+    let n = |s: &str| s.trim().parse::<f64>().ok();
+    match (n(lat), n(lon), n(radius)) {
+        (Some(lat), Some(lon), Some(r)) => {
+            let v = json!({"center": {"lon": lon, "lat": lat}, "radius_m": r});
+            if pnex_core::geo_area::GeoArea::parse(&v).is_some() {
+                v
+            } else {
+                Value::Null
+            }
+        }
+        _ => Value::Null,
+    }
+}
+
+/// Polygon pasted as GeoJSON (a Polygon, or a Feature wrapping one),
+/// `None` when it is not a valid area.
+fn polygon_of(raw: &str) -> Option<Value> {
+    let v: Value = serde_json::from_str(raw.trim()).ok()?;
+    let geometry = if v.get("type").and_then(Value::as_str) == Some("Feature") {
+        v.get("geometry")?.clone()
+    } else {
+        v
+    };
+    let poly = json!({"type": "Polygon", "coordinates": geometry.get("coordinates")?});
+    pnex_core::geo_area::GeoArea::parse(&poly).map(|_| poly)
+}
+
+/// `geo_area` entry (K29): a circle (centre and radius in metres) or a
+/// polygon pasted as GeoJSON.
+#[component]
+fn GeoAreaField(name: String, doc: Signal<Map<String, Value>>, current: Option<Value>) -> Element {
+    let c = current.clone().unwrap_or_default();
+    let polygon = c.get("type").is_some();
+    let num = |v: Option<&Value>| v.map(|n| n.to_string()).unwrap_or_default();
+    let mut mode = use_signal(move || if polygon { "polygon" } else { "circle" }.to_string());
+    let mut lat = use_signal(|| num(c.pointer("/center/lat")));
+    let mut lon = use_signal(|| num(c.pointer("/center/lon")));
+    let mut radius = use_signal(|| num(c.get("radius_m")));
+    let pasted = if polygon {
+        c.to_string()
+    } else {
+        String::new()
+    };
+    let mut raw = use_signal(move || pasted);
+    let invalid = mode() == "polygon" && !raw().trim().is_empty() && polygon_of(&raw()).is_none();
+    let (n1, n2, n3, n4) = (name.clone(), name.clone(), name.clone(), name.clone());
+    rsx! {
+        div { class: "flex flex-col gap-2",
+            select {
+                class: "{INPUT} sm:w-40",
+                "data-testid": "geo-area-mode",
+                onchange: move |e| mode.set(e.value()),
+                option { value: "circle", selected: mode() == "circle", {t!("onto-area-circle")} }
+                option { value: "polygon", selected: mode() == "polygon", {t!("onto-area-polygon")} }
+            }
+            if mode() == "circle" {
+                div { class: "flex flex-wrap gap-2",
+                    input {
+                        r#type: "number",
+                        step: "any",
+                        class: INPUT,
+                        placeholder: t!("onto-lat"),
+                        value: lat(),
+                        oninput: move |e| {
+                            lat.set(e.value());
+                            set(doc, &n1, circle_of(&lat(), &lon(), &radius()));
+                        },
+                    }
+                    input {
+                        r#type: "number",
+                        step: "any",
+                        class: INPUT,
+                        placeholder: t!("onto-lon"),
+                        value: lon(),
+                        oninput: move |e| {
+                            lon.set(e.value());
+                            set(doc, &n2, circle_of(&lat(), &lon(), &radius()));
+                        },
+                    }
+                    input {
+                        r#type: "number",
+                        step: "any",
+                        min: "1",
+                        class: INPUT,
+                        placeholder: t!("onto-area-radius"),
+                        value: radius(),
+                        oninput: move |e| {
+                            radius.set(e.value());
+                            set(doc, &n3, circle_of(&lat(), &lon(), &radius()));
+                        },
+                    }
+                }
+            } else {
+                textarea {
+                    class: "{INPUT} font-mono text-xs",
+                    rows: 4,
+                    placeholder: t!("onto-area-geojson"),
+                    value: raw(),
+                    oninput: move |e| {
+                        raw.set(e.value());
+                        set(doc, &n4, polygon_of(&e.value()).unwrap_or(Value::Null));
+                    },
+                }
+                if invalid {
+                    p { class: "text-xs text-alarm", {t!("onto-area-invalid")} }
                 }
             }
         }
@@ -353,6 +469,15 @@ pub fn PropertyValue(
             let lon = o.get("lon").map(|v| v.to_string()).unwrap_or_default();
             rsx! {
                 span { class: "font-mono", "{lat}, {lon}" }
+            }
+        }
+        (PropertyKind::GeoArea, Value::Object(o)) => {
+            let text = match o.get("radius_m") {
+                Some(r) => t!("onto-area-circle-value", radius : r.to_string()).to_string(),
+                None => t!("onto-area-polygon").to_string(),
+            };
+            rsx! {
+                span { "{text}" }
             }
         }
         (PropertyKind::Number { unit, .. }, Value::Number(n)) => {

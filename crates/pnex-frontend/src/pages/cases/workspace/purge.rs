@@ -19,11 +19,7 @@ pub fn PurgePanel(case_id: String, types: Vec<ObjectTypeView>, on_purged: Callba
     let candidates = use_resource(move || {
         let id = cid.clone();
         let _ = reload();
-        async move {
-            api::ontology::case_purge_candidates(&id)
-                .await
-                .unwrap_or_default()
-        }
+        async move { api::cases::purge_candidates(&id).await.unwrap_or_default() }
     });
     // Unticked ids: every candidate is proposed, the user takes some out.
     let mut kept = use_signal(Vec::<String>::new);
@@ -45,7 +41,7 @@ pub fn PurgePanel(case_id: String, types: Vec<ObjectTypeView>, on_purged: Callba
         };
         let id = case_id.clone();
         spawn(async move {
-            match api::ontology::case_purge(&id, &input).await {
+            match api::cases::purge(&id, &input).await {
                 Ok(_) => {
                     toasts::success("case-purged");
                     reload.with_mut(|r| *r += 1);
@@ -58,7 +54,7 @@ pub fn PurgePanel(case_id: String, types: Vec<ObjectTypeView>, on_purged: Callba
 
     rsx! {
         div {
-            class: "bg-white rounded-lg border border-gray-200 p-4 space-y-3",
+            class: "space-y-3 rounded-md border border-alarm p-3",
             "data-testid": "case-purge",
             h2 { class: "font-semibold text-gray-900", {t!("case-purge")} }
             p { class: "text-sm text-gray-700", {t!("case-purge-help")} }

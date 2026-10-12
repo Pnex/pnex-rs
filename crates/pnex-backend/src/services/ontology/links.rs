@@ -131,8 +131,8 @@ pub async fn for_object(
     Ok(views(db, org_id, &rows).await?)
 }
 
-async fn open_exists(
-    db: &DatabaseConnection,
+async fn open_exists<C: ConnectionTrait>(
+    db: &C,
     org_id: i64,
     relation: &str,
     cond: Condition,
@@ -154,8 +154,9 @@ fn parse_id(field: &str, raw: &str) -> Result<Uuid> {
 
 /// Opens a link. Both ends must be live objects of the org, admitted by
 /// the link type; the caller's role must allow writing both ends (D188).
-pub async fn create(
-    db: &DatabaseConnection,
+/// Works inside a transaction (the journal entry is queued at once).
+pub async fn create<C: ConnectionTrait>(
+    db: &C,
     org_id: i64,
     actor: &Actor,
     input: &LinkInput,
@@ -276,8 +277,8 @@ pub async fn create(
 }
 
 /// Closes an open link at `valid_to` (default now): it stays as history.
-pub async fn close(
-    db: &DatabaseConnection,
+pub async fn close<C: ConnectionTrait>(
+    db: &C,
     org_id: i64,
     actor: &Actor,
     id: i64,

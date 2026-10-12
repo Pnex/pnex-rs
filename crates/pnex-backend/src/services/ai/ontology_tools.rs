@@ -11,7 +11,7 @@
 //! sensor to a property moves no actuator).
 
 use pnex_core::ontology::api::{
-    CaseExportQuery, LinkInput, ObjectInput, ObjectTypeInput, OntologyQuery, TimelineQuery,
+    LinkInput, ObjectInput, ObjectTypeInput, OntologyQuery, SignalsQuery,
 };
 use pnex_core::ontology::{ObjectTypeDef, WriteRole};
 use serde_json::{json, Value};
@@ -81,6 +81,21 @@ fn onto_error(e: OntologyError) -> ToolError {
             "a claim becomes corroborated only with two pieces of distinct origins linked by sourced_by; never change a claim's status yourself, the user does".into(),
             None,
         ),
+        OntologyError::CaseLegalBasisRequired => coded(
+            c::CASE_LEGAL_BASIS_REQUIRED,
+            "a person can be attached to this case only once the user has filled in its processing basis".into(),
+            None,
+        ),
+        OntologyError::CaseProposalStale => coded(
+            c::CASE_PROPOSAL_STALE,
+            "this proposal was already reviewed by the user; only the user retains or rejects proposals".into(),
+            None,
+        ),
+        OntologyError::TrackImport(code) => coded(
+            code,
+            "track files are imported by the user from the case workspace".into(),
+            None,
+        ),
         OntologyError::Db(e) => internal("using the ontology")(e),
     }
 }
@@ -122,37 +137,61 @@ pub async fn query_ontology(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOut
     outcome(json!({ "count": r.count, "rows": r.rows }))
 }
 
-/// Items of a case timeline handed to the model (newest kept).
-const TIMELINE_CAP: usize = 200;
+/// Signals of a case handed to the model (newest kept).
+const SIGNALS_CAP: usize = 200;
 
-/// A case's members and its merged timeline (cases.md K6, K15), compacted
-/// for the model: one line per item, the source objects by title and id.
-/// Read-only: the assistant never adds nor removes a member.
-pub async fn case_timeline(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
+/// A case as the workspace shows it (cases-workspace.md K22): its events
+/// oldest first with what each involves and the role, and its undated
+/// pieces. Read-only: the assistant never attaches nor detaches.
+pub async fn case_workspace(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     let id = uuid_arg(args, "case_id")?;
-    let s = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_string);
-    let q = TimelineQuery {
-        from: s("from"),
-        to: s("to"),
-    };
-    let tl = onto::timeline::for_case(deps.db, deps.o2, deps.org_id, id, &q)
+    let w = onto::cases::workspace(deps.db, deps.org_id, id)
         .await
         .map_err(onto_error)?;
-    let members: Vec<Value> = tl
-        .members
+    let events: Vec<Value> = w
+        .events
         .iter()
-        .map(|m| {
+        .map(|e| {
             json!({
-                "object_id": m.source.id, "title": m.source.title, "type": m.source.type_key,
-                "role": m.attributes.get("role"), "since": m.valid_from,
+                "event_id": e.event.id, "title": e.event.title,
+                "occurred": e.event.properties.get("occurred"),
+                "origin": e.event.properties.get("origin"),
+                "note": e.event.properties.get("note"),
+                "attachments": e.attachments.iter().map(|a| json!({
+                    "object_id": a.object.id, "title": a.object.title, "type": a.object.type_key,
+                    "role": a.role, "detail": a.detail,
+                })).collect::<Vec<_>>(),
             })
         })
         .collect();
-    let total = tl.items.len();
-    let items: Vec<Value> = tl
+    let undated: Vec<Value> = w
+        .undated
+        .iter()
+        .map(|o| json!({"object_id": o.id, "title": o.title, "type": o.type_key}))
+        .collect();
+    outcome(json!({
+        "case": {"id": w.case.id, "title": w.case.title, "properties": w.case.properties},
+        "events": events, "undated": undated,
+    }))
+}
+
+/// Raw signals around the case members (K30), compacted for the model: one
+/// line per item, the source objects by title and id. Read-only.
+pub async fn case_signals(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
+    let id = uuid_arg(args, "case_id")?;
+    let s = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_string);
+    let q = SignalsQuery {
+        from: s("from"),
+        to: s("to"),
+    };
+    let sig = onto::cases::signals(deps.db, deps.o2, deps.org_id, id, &q)
+        .await
+        .map_err(onto_error)?;
+    let total = sig.items.len();
+    let items: Vec<Value> = sig
         .items
         .iter()
-        .skip(total.saturating_sub(TIMELINE_CAP))
+        .skip(total.saturating_sub(SIGNALS_CAP))
         .map(|i| {
             let what = match (&i.link, &i.change, &i.range, &i.notification, &i.fuzzy) {
                 (Some(l), ..) => json!({
@@ -174,9 +213,9 @@ pub async fn case_timeline(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutc
         })
         .collect();
     outcome(json!({
-        "from": tl.from, "to": tl.to, "members": members, "items": items,
-        "items_total": total, "changes_available": tl.changes_available,
-        "truncated": tl.truncated || total > TIMELINE_CAP,
+        "from": sig.from, "to": sig.to, "items": items, "items_total": total,
+        "changes_available": sig.changes_available,
+        "truncated": sig.truncated || total > SIGNALS_CAP,
     }))
 }
 
@@ -189,16 +228,13 @@ pub async fn case_board(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome
     outcome(serde_json::to_value(b).map_err(|e| ToolError::from(e.to_string()))?)
 }
 
-/// The case at an instant: members, links among them, places (K14).
-pub async fn case_snapshot(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
+/// The detections proposed to a case and how they were reviewed (K30).
+pub async fn case_proposals(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     let id = uuid_arg(args, "case_id")?;
-    let q = CaseExportQuery {
-        as_of: args["as_of"].as_str().map(str::to_string),
-    };
-    let snap = onto::cases::snapshot(deps.db, deps.org_id, id, &q)
+    let p = onto::cases::proposals(deps.db, deps.org_id, id)
         .await
         .map_err(onto_error)?;
-    outcome(serde_json::to_value(snap).map_err(|e| ToolError::from(e.to_string()))?)
+    outcome(json!({ "proposals": p }))
 }
 
 /// One object with its links valid now.

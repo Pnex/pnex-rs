@@ -20,7 +20,7 @@ use crate::models::_entities::{
     tours,
 };
 
-use pnex_core::ontology::{LinkTypeDef, ObjectTypeDef, KIND_CASE};
+use pnex_core::ontology::{LinkTypeDef, ObjectTypeDef};
 use pnex_core::resources::{
     KIND_DASHBOARD, KIND_DEVICE, KIND_DOC, KIND_FLOW, KIND_FOLDER, KIND_MAP_PIN, KIND_MEDIA_ASSET,
     KIND_TOUR,
@@ -238,8 +238,9 @@ pub struct Registry {
 }
 
 impl Registry {
-    /// Derives the registry from type definitions; each type needs a
-    /// resolver (system types are native tables behind an adapter, D177).
+    /// Derives the registry from type definitions. A type with a native table
+    /// needs its adapter (D177); any other type resolves through its identity
+    /// rows in `objects`.
     fn derive(
         types: Vec<ObjectTypeDef>,
         links: Vec<LinkTypeDef>,
@@ -248,9 +249,11 @@ impl Registry {
         let kinds = types
             .into_iter()
             .map(|def| {
-                let resolver = resolvers
-                    .remove(def.key.as_str())
-                    .unwrap_or_else(|| panic!("no resolver for type {}", def.key));
+                let resolver = match resolvers.remove(def.key.as_str()) {
+                    Some(r) => r,
+                    None if !def.native() => Arc::new(ObjectKind(def.key.clone())),
+                    None => panic!("no resolver for native type {}", def.key),
+                };
                 (def.key.clone(), KindEntry { def, resolver })
             })
             .collect();
@@ -304,8 +307,6 @@ fn system_resolvers() -> HashMap<&'static str, Arc<dyn KindResolver>> {
         (KIND_FLOW, Arc::new(FlowKind)),
         (KIND_DOC, Arc::new(DocKind)),
         (KIND_FOLDER, Arc::new(FolderKind)),
-        // No native table: resolved through its identity rows like org types.
-        (KIND_CASE, Arc::new(ObjectKind(KIND_CASE.into()))),
     ])
 }
 
@@ -313,12 +314,7 @@ fn system_resolvers() -> HashMap<&'static str, Arc<dyn KindResolver>> {
 /// objects resolve through their identity rows.
 pub async fn for_org(db: &DatabaseConnection, org_id: i64) -> Result<Registry, sea_orm::DbErr> {
     let s = crate::services::ontology::schema(db, org_id).await?;
-    let mut resolvers: HashMap<&str, Arc<dyn KindResolver>> = system_resolvers();
-    for (t, _, _) in &s.types {
-        if !t.native() {
-            resolvers.insert(t.key.as_str(), Arc::new(ObjectKind(t.key.clone())));
-        }
-    }
+    let resolvers = system_resolvers();
     let types = s.types.iter().map(|(t, _, _)| t.clone()).collect();
     let links = s.links.iter().map(|(l, _, _)| l.clone()).collect();
     Ok(Registry::derive(types, links, resolvers))

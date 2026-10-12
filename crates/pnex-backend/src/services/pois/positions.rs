@@ -125,6 +125,19 @@ impl TelemetrySink for GpsTapSink {
                 if let Some(((lat, lon), half)) =
                     take_gps_half(point.device_registry_id, &point.metric_name, value)
                 {
+                    // Every complete pair goes to the history (K26); only the
+                    // latest one is upserted below.
+                    super::position_log::submit(super::position_log::PositionEntry {
+                        org_id: point.org_id,
+                        device_id: point.device_id.clone(),
+                        t_us: point.timestamp.timestamp_micros(),
+                        lon,
+                        lat,
+                        alt: half.altitude,
+                        accuracy_m: half.accuracy,
+                        speed_mps: half.speed,
+                        heading_deg: half.heading,
+                    });
                     self.enqueue(
                         point.device_registry_id,
                         PendingPosition {

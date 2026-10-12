@@ -1,119 +1,88 @@
-// Cases (cases.md K1, K2, K6): a case opened from one line, members added
-// as you type with their role, a dated link between two members, the
-// timeline (membership and link events, focus on a member), removal kept
-// as history, status changed in place. Objects are titled with the test
-// prefix: the ontology is not swept between runs.
+// Case workspace (cases-workspace.md): events placed on the timeline,
+// objects attached by drag and drop with a role, undated pieces, the
+// inspector, a case opened from an alert, the frame (pages, thresholds,
+// frozen states, purge), the Markdown export and the re-import. Objects
+// are titled with the test prefix: the ontology is not swept between runs.
 import { expect, test } from '../src/fixtures.ts';
 import { dialog } from '../src/pages/shell.ts';
 import { DocEditor } from '../src/pages/docs.ts';
 
+const instant = (t: string) => ({ from: t, to: t, precision: 'instant' });
+
 test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
   test.beforeEach(async ({ api }) => {
-    await api.post('/ontology/packs/maintenance/install', {}).catch(() =>
-      api.post('/ontology/packs/maintenance/install', {}),
-    );
+    // Parallel workers may install at once on a fresh base: retry once.
+    for (const pack of ['maintenance', 'investigation']) {
+      await api.post(`/ontology/packs/${pack}/install`, {}).catch(() =>
+        api.post(`/ontology/packs/${pack}/install`, {}),
+      );
+    }
   });
 
-  test('opens a case, gathers members, links them in time and reads the timeline', async ({
+  test('places an event, attaches an object by drag and drop, changes its role, detaches it', async ({
     app,
     page,
     api,
     prefix,
     capture,
   }) => {
-    // The ontology is not swept and the prefix is stable across runs: a run
-    // tag keeps the quick-add search off the objects of earlier runs.
     const run = Date.now().toString(36);
-    await api.post('/ontology/objects', {
+    const pump = await api.post('/ontology/objects', {
       type_key: 'pump',
       title: `${prefix} ${run} pump P-12`,
       properties: { serial: 'S-12', status: 'running' },
     });
-    await api.post('/ontology/objects', {
-      type_key: 'line',
-      title: `${prefix} ${run} line L2`,
-      properties: { code: 'L2' },
-    });
 
-    // New case: the header button opens the title dialog, Enter opens the case.
+    // New case from the list: the header button opens the title dialog.
     await app.goto('/cases');
-    await capture('cases-list', { caption: 'Cases: the list and its New case button' });
     await page.getByRole('button', { name: app.t('cases-new'), exact: true }).click();
     await page.getByTestId('case-new-title').fill(`${prefix} ${run} low pressure`);
     await page.getByTestId('case-new-title').press('Enter');
     await expect(page).toHaveURL(/\/cases\/[0-9a-f-]{36}/);
     const caseId = page.url().split('/').pop()!;
+    const inspector = page.getByTestId('case-inspector');
+    await expect(page.getByTestId('case-empty')).toContainText(app.t('cw-empty-title'));
+    await capture('case-empty', { caption: 'An empty case guides the first gesture' });
 
-    // Question saved when the field is left.
-    await page.getByTestId('case-question').fill('Why did the pressure drop at 10:02?');
-    await page.getByTestId('case-question').blur();
+    // A click on the Events line places an instant, selected and titled at once.
+    const lane = page.getByTestId('case-events-lane');
+    const box = (await lane.boundingBox())!;
+    await page.mouse.click(box.x + box.width * 0.5, box.y + 12);
+    const title = inspector.getByTestId('case-event-title');
+    await expect(title).toHaveValue(app.t('cw-new-event'));
+    await title.fill('Pressure drop');
+    await title.press('Enter');
+    await title.blur();
+    await expect(page.getByTestId('case-event')).toContainText('Pressure drop');
+
+    // Drag the pump from the "+" panel onto the event.
+    await page.getByTestId('case-add').click();
+    await page.getByTestId('case-search').fill(`${prefix} ${run} pump`);
+    const chip = page.getByTestId('case-object').filter({ hasText: `${prefix} ${run} pump P-12` });
+    await expect(chip).toBeVisible();
+    const from = (await chip.boundingBox())!;
+    const to = (await page.getByTestId('case-event').first().boundingBox())!;
+    await page.mouse.move(from.x + 20, from.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 60, from.y + 30, { steps: 4 });
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 });
+    await page.mouse.up();
+    await page.getByTestId('case-event').first().click();
+    const attachment = inspector.getByTestId('case-attachment').filter({ hasText: `${prefix} ${run} pump P-12` });
+    await expect(attachment).toBeVisible();
+    await expect(attachment.getByTestId('case-role')).toHaveValue('evidence');
+    await capture('case-event-attached', { caption: 'An event with an object attached as evidence' });
+
+    // Another role; then detached, it stays in the case, undated.
+    await attachment.getByTestId('case-role').selectOption('context');
     await expect
-      .poll(async () => (await api.get(`/ontology/objects/${caseId}`)).properties.question)
-      .toBe('Why did the pressure drop at 10:02?');
-
-    // Members as you type: role chip, then Enter on the first hit.
-    const quick = page.getByTestId('case-quick-add');
-    await page.locator('[data-role="subject"]').click();
-    await quick.fill(`${prefix} ${run} pump`);
-    await expect(page.getByRole('option').first()).toContainText(`${prefix} ${run} pump P-12`);
-    await quick.press('Enter');
-    const members = page.getByTestId('case-members');
-    await expect(members).toContainText(`${prefix} ${run} pump P-12`);
-    await expect(quick).toHaveValue('');
-    await page.locator('[data-role="context"]').click();
-    await quick.fill(`${prefix} ${run} line`);
-    await expect(page.getByRole('option').first()).toContainText(`${prefix} ${run} line L2`);
-    await page.getByRole('option').first().click();
-    await expect(members).toContainText(`${prefix} ${run} line L2`);
-    await expect(members).toContainText(app.t('case-role-context'));
-    await capture('case-members', { caption: 'Members grouped by role' });
-
-    // A dated link between two members.
-    const composer = page.getByTestId('case-link-composer');
-    // Both memberships committed before reading their ids (slow under load).
-    let memberIds: string[][] = [];
-    await expect
-      .poll(async () => {
-        memberIds = (await api.post(`/cases/${caseId}/timeline`, {})).members.map(
-          (m: any) => [m.source.title, m.source.id],
-        );
-        return memberIds.length;
-      })
-      .toBe(2);
-    const id = (t: string) => memberIds.find(([title]: string[]) => title.includes(t))[1];
-    await composer.getByTestId('case-link-src').selectOption(id('pump'));
-    await composer.getByTestId('case-link-tgt').selectOption(id('line'));
-    await composer.getByTestId('case-link-type').selectOption('feeds');
-    await composer.getByTestId('case-link-since').fill('2026-10-01T08:30');
-    await composer.getByTestId('case-link-submit').click();
-    await app.expectToast(app.t('case-link-created'));
-
-    // Timeline over a year: the dated link, the two memberships.
-    const timeline = page.getByTestId('case-timeline');
-    await timeline.locator('[data-range="8760"]').click();
-    await expect(timeline.locator('[data-kind="link_open"]')).toHaveCount(3);
-    await expect(timeline).toContainText('2026-10-01');
-    await capture('case-timeline', { caption: 'Timeline: memberships and a dated link' });
-
-    // Focus on the line: what touches it (its membership, the feeds link).
-    await members.locator('[data-member]', { hasText: `${prefix} ${run} line L2` }).locator('button').first().click();
-    await expect(timeline.locator('[data-kind="link_open"]')).toHaveCount(2);
-    await expect(timeline.locator('[data-kind="change"]')).toHaveCount(1);
-    await capture('case-focus', { caption: 'Focus on one member' });
-
-    // Remove the line: closed, kept in the timeline.
-    await members
-      .locator('[data-member]', { hasText: `${prefix} ${run} line L2` })
-      .getByTestId('case-remove-member')
-      .click();
-    await expect(members).not.toContainText(`${prefix} ${run} line L2`);
-    await expect(timeline.locator('[data-kind="link_close"]')).toHaveCount(1);
-
-    // Status in place.
-    await page.locator('[data-status="concluded"]').click();
-    await expect
-      .poll(async () => (await api.get(`/ontology/objects/${caseId}`)).properties.status)
-      .toBe('concluded');
+      .poll(async () => (await api.get(`/cases/${caseId}/workspace`)).events[0].attachments[0].role)
+      .toBe('context');
+    await attachment.getByRole('button').last().click();
+    await page.getByTestId('case-undated-tab').click();
+    await expect(page.getByTestId('case-tray')).toContainText(`${prefix} ${run} pump P-12`);
+    const w = await api.get(`/cases/${caseId}/workspace`);
+    expect(w.undated.map((o: any) => o.id)).toContain(pump.id);
   });
 
   test('adds an object to a case from its object page', async ({ app, page, api, prefix }) => {
@@ -131,140 +100,65 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
     await page.getByTestId('add-to-case').click();
     const form = dialog(page, app.t('case-add'));
     await form.getByTestId('add-to-case-case').selectOption(c.id);
-    await form.getByTestId('add-to-case-role').selectOption('evidence');
     await form.getByRole('button', { name: app.t('case-add-submit'), exact: true }).click();
     await app.expectToast(app.t('case-added'));
-    const tl = await api.post(`/cases/${c.id}/timeline`, {});
-    expect(tl.members.map((m: any) => m.source.id)).toContain(pump.id);
+    const w = await api.get(`/cases/${c.id}/workspace`);
+    expect(w.undated.map((o: any) => o.id)).toContain(pump.id);
   });
 
-  test('a case opened from an event gets its window; ranges of members join the timeline', async ({
+  test('a case opened from an alert starts with the alert as its first event', async ({
     app,
     page,
     api,
     prefix,
   }) => {
-    const pump = await api.post('/ontology/objects', {
-      type_key: 'pump',
-      title: `${prefix} pump P-9`,
-      properties: { serial: 'S-9', status: 'running' },
-    });
     const c = await api.post('/cases', {
       title: `${prefix} alarm`,
       from: { kind: 'event', at: '2026-10-03T10:02:00Z' },
     });
-    expect(c.properties.window_from).toMatch(/^2026-10-03T08:02:00/);
-    await api.post('/ontology/links', {
-      link_type: 'in_case',
-      source_id: pump.id,
-      target_id: c.id,
-      attributes: { role: 'subject' },
-    });
-    await api.post('/time-ranges', {
-      scope_kind: 'object',
-      scope_id: pump.id,
-      label: `${prefix} night shift`,
-      planned_start: '2026-10-03T06:00:00Z',
-      planned_end: '2026-10-03T14:00:00Z',
-    });
+    const w = await api.get(`/cases/${c.id}/workspace`);
+    expect(w.events[0].event.properties.occurred).toEqual(instant('2026-10-03T10:02:00Z'));
     await app.goto(`/cases/${c.id}`);
-    await expect(page.getByTestId('case-window-from')).toHaveValue('2026-10-03T08:02');
-    const timeline = page.getByTestId('case-timeline');
-    await expect(timeline.locator('[data-kind="range"]')).toContainText(`${prefix} night shift`);
+    await expect(page.getByTestId('case-event')).toContainText(`${prefix} alarm`);
+    await page.getByTestId('case-event').first().click();
+    await expect(page.getByTestId('case-inspector').getByTestId('case-event-title')).toHaveValue(`${prefix} alarm`);
   });
 
-  test('replays the case at an instant: graph, places and the timeline cursor', async ({
+  test('starts a page from a template in the frame, designates it, freezes it at the conclusion', async ({
     app,
     page,
     api,
     prefix,
     capture,
   }) => {
-    await api.post('/ontology/packs/investigation/install', {});
-    const obj = (type_key: string, title: string, properties = {}) =>
-      api.post('/ontology/objects', { type_key, title: `${prefix} ${title}`, properties });
-    const ann = await obj('person', 'Ann');
-    const bob = await obj('person', 'Bob');
-    const ev = await obj('event', 'break-in', { location: { lat: 45.76, lon: 4.83 } });
-    const flat = await obj('place', 'flat', { location: { lat: 45.75, lon: 4.85 } });
-    const c = await obj('case', 'theft', { status: 'open' });
-    const start = new Date(Date.now() - 3 * 3600_000).toISOString();
-    for (const o of [ann, bob, ev]) {
-      await api.post('/ontology/links', {
-        link_type: 'in_case',
-        source_id: o.id,
-        target_id: c.id,
-        attributes: { role: 'actor' },
-        valid_from: start,
-      });
-    }
-    const knows = await api.post('/ontology/links', {
-      link_type: 'knows', source_id: ann.id, target_id: bob.id, valid_from: start,
-    });
-    const lives = await api.post('/ontology/links', {
-      link_type: 'located_at', source_id: ann.id, target_id: flat.id,
-      attributes: { kind: 'lives' }, valid_from: start,
-    });
-    for (const l of [knows, lives]) await api.post(`/ontology/links/${l.id}/close`, {});
-
-    await app.goto(`/cases/${c.id}`);
-    const snap = page.getByTestId('case-snapshot');
-    const nodes = snap.getByTestId('ontology-graph').locator('g.cursor-pointer');
-    // Now: three members, the links are closed, only the event is placed.
-    await expect(nodes).toHaveCount(3);
-    await expect(snap.getByTestId('ontology-graph').locator('line')).toHaveCount(0);
-    await expect(snap.getByTestId('case-map')).toBeVisible();
-
-    // Step back to the last link opening: Ann knows Bob and lives at the flat.
-    const timeline = page.getByTestId('case-timeline');
-    await timeline.locator('[data-kind="link_open"]').last().locator('button').first().click();
-    await expect(snap.getByTestId('ontology-graph').locator('line')).toHaveCount(1);
-    // Ann is placed through her located_at link, open at that instant.
-    await expect(snap.getByTestId('case-map')).toContainText(`${prefix} Ann (${prefix} flat)`);
-    await expect(timeline.locator('li.opacity-40').first()).toBeVisible();
-    await capture('case-snapshot', { caption: 'The case at an instant: graph and places' });
-
-    // A graph node focuses its lane; Now returns to the current state.
-    await nodes.filter({ hasText: `${prefix} Bob` }).click();
-    await expect(page.getByTestId('case-timeline')).toContainText(`${prefix} Bob`);
-    await snap.getByRole('button', { name: app.t('case-snapshot-now'), exact: true }).click();
-    await expect(snap.getByTestId('ontology-graph').locator('line')).toHaveCount(0);
-  });
-
-  test('starts a page from a template, designates it, freezes it at the conclusion', async ({
-    app,
-    page,
-    api,
-    prefix,
-    capture,
-  }) => {
-    await api.post('/ontology/packs/investigation/install', {});
     const run = Date.now().toString(36);
     const c = await api.post('/ontology/objects', {
       type_key: 'case', title: `${prefix} trip ${run}`, properties: { status: 'open' },
     });
     await app.goto(`/cases/${c.id}`);
+    await page.getByTestId('case-frame').click();
     const panel = page.getByTestId('case-pages');
     await expect(panel.getByTestId('case-page-template').locator('option[value="five_whys"]')).toHaveCount(1);
     await panel.getByTestId('case-page-template').selectOption('five_whys');
     await panel.getByTestId('case-page-title').fill(`${prefix} why ${run}`);
     await panel.getByTestId('case-page-title').press('Enter');
 
-    // The page opens filled with the template's sections.
     const editor = new DocEditor(app, page);
     await editor.waitSynced();
     await expect(editor.content.locator('h2').first()).toHaveText('Problem');
-    await expect(editor.content.locator('ol li')).toHaveCount(5);
-    await capture('case-page-template', { caption: 'A 5 whys page started from the case' });
     const docId = editor.id;
 
     await app.goto(`/cases/${c.id}`);
+    await page.getByTestId('case-add').click();
+    await page.getByTestId('case-undated-tab').click();
+    await expect(page.getByTestId('case-tray')).toContainText(`${prefix} why ${run}`);
+    await page.getByTestId('case-add').click();
+    await page.getByTestId('case-frame').click();
     await panel.getByTestId('case-page-row').filter({ hasText: `${prefix} why ${run}` })
       .getByTestId('case-page-designate').click();
     await expect(panel.getByTestId('case-page-conclusion')).toBeVisible();
-    await capture('case-pages', { caption: 'Case pages with the conclusion designated' });
+    await capture('case-frame', { caption: 'The case frame: question, processing basis, pages' });
 
-    // Concluding the case freezes the conclusion page in a named version.
     await page.getByTestId('case-header').locator('[data-status="concluded"]').click();
     await expect.poll(async () => JSON.stringify(await api.get(`/docs/${docId}/versions`)))
       .toContain('"Conclusion"');
@@ -275,37 +169,140 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
     page,
     api,
     prefix,
-    capture,
   }) => {
-    await api.post('/ontology/packs/investigation/install', {});
     const run = Date.now().toString(36);
     const obj = (type_key: string, title: string, properties = {}) =>
       api.post('/ontology/objects', { type_key, title: `${prefix} ${title} ${run}`, properties });
-    const c = await obj('case', 'fraud', { status: 'open' });
+    const c = await obj('case', 'fraud', { status: 'open', legal_basis: 'legitimate interest' });
     const ann = await obj('person', 'Ann');
     const bob = await obj('person', 'Bob');
     const carl = await obj('person', 'Carl');
     for (const o of [ann, bob]) {
-      await api.post('/ontology/links', {
-        link_type: 'in_case', source_id: o.id, target_id: c.id, attributes: { role: 'actor' },
-      });
+      await api.post(`/cases/${c.id}/attach`, { object_id: o.id });
     }
     // Bob is also known outside the case: he is not proposed.
     await api.post('/ontology/links', { link_type: 'knows', source_id: bob.id, target_id: carl.id });
 
     await app.goto(`/cases/${c.id}`);
-    await expect(page.getByTestId('case-purge')).toHaveCount(0);
     await page.getByTestId('case-header').locator('[data-status="archived"]').click();
+    await page.getByTestId('case-frame').click();
     const panel = page.getByTestId('case-purge');
     await expect(panel).toContainText(`${prefix} Ann ${run}`);
     await expect(panel).not.toContainText(`${prefix} Bob ${run}`);
-    await capture('case-purge', { caption: 'Personal data proposed for purge at archiving' });
 
     await panel.getByTestId('case-purge-start').click();
     await page.getByRole('alertdialog').getByRole('button').last().click();
-    await expect(page.getByTestId('case-purge')).toHaveCount(0);
     await expect.poll(() => api.get(`/ontology/objects/${ann.id}`).then(() => 'kept', () => 'purged'))
       .toBe('purged');
     expect(await api.get(`/ontology/objects/${bob.id}`)).toHaveProperty('id', bob.id);
+  });
+
+  test('freezes a state, saves it as Markdown, imports the export as a new case', async ({
+    app,
+    page,
+    api,
+    prefix,
+    capture,
+  }) => {
+    const run = Date.now().toString(36);
+    const title = `${prefix} audit ${run}`;
+    const c = await api.post('/ontology/objects', {
+      type_key: 'case', title, properties: { status: 'open', question: 'Who opened the gate?' },
+    });
+    const gate = await api.post('/ontology/objects', { type_key: 'place', title: `${prefix} gate ${run}`, properties: {} });
+    await api.post(`/cases/${c.id}/events`, {
+      title: 'Gate opened', occurred: instant('2025-05-02T09:00:00Z'), attach: [{ object_id: gate.id }],
+    });
+    const text = async (d: Promise<any>) => {
+      let out = '';
+      for await (const chunk of await (await d).createReadStream()) out += chunk.toString();
+      return out;
+    };
+
+    await app.goto(`/cases/${c.id}`);
+    await page.getByTestId('case-frame').click();
+    // A case threshold, saved as a number.
+    const gap = page.getByTestId('case-thresholds').locator('input').last();
+    await gap.fill('120');
+    await gap.blur();
+    await expect.poll(async () => (await api.get(`/ontology/objects/${c.id}`)).properties.signal_gap_s).toBe(120);
+
+    const frozen = page.getByTestId('case-snapshots');
+    await frozen.locator('input').fill('Before the report');
+    await page.getByTestId('case-freeze').click();
+    const row = frozen.getByTestId('case-snapshot');
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText('Before the report');
+    await capture('case-frozen-states', { caption: 'Frozen states in the case frame, with their fingerprint' });
+    const md = await text(Promise.all([page.waitForEvent('download'), row.getByRole('button', { name: 'Markdown' }).click()]).then(([d]) => d));
+    expect(md).toContain(`# ${title}`);
+    expect(md).toContain('Gate opened');
+    expect(md).toContain('SHA-256');
+
+    // The export, imported back from the list, opens as a new case.
+    const json = await text(Promise.all([page.waitForEvent('download'), page.getByTestId('case-export').click()]).then(([d]) => d));
+    await app.goto('/cases');
+    await page.getByTestId('case-import-file').setInputFiles({ name: 'case.json', mimeType: 'application/json', buffer: Buffer.from(json) });
+    await expect(page).toHaveURL(/\/cases\/[0-9a-f-]{36}/);
+    const copy = page.url().split('/').pop()!;
+    expect(copy).not.toBe(c.id);
+    const w = await api.get(`/cases/${copy}/workspace`);
+    expect(w.events.map((e: any) => e.event.title)).toEqual(['Gate opened']);
+    expect(w.events[0].attachments[0].object.id).toBe(gate.id);
+  });
+
+  test('a node moved in the graph keeps its place after a reload, until re-layout', async ({
+    app,
+    page,
+    api,
+    prefix,
+  }) => {
+    const run = Date.now().toString(36);
+    const c = await api.post('/ontology/objects', {
+      type_key: 'case', title: `${prefix} layout ${run}`, properties: { status: 'open' },
+    });
+    const yard = await api.post('/ontology/objects', { type_key: 'place', title: `${prefix} yard ${run}`, properties: {} });
+    const gate = await api.post('/ontology/objects', { type_key: 'place', title: `${prefix} gate ${run}`, properties: {} });
+    await api.post(`/cases/${c.id}/events`, {
+      title: 'Seen', occurred: instant('2025-05-02T09:00:00Z'),
+      attach: [{ object_id: yard.id }, { object_id: gate.id }],
+    });
+    await app.goto(`/cases/${c.id}`);
+    const nodes = page.getByTestId('case-graph-node');
+    const centre = async (text: string) => {
+      const b = (await nodes.filter({ hasText: text }).locator('circle, rect').first().boundingBox())!;
+      return [b.x + b.width / 2, b.y + b.height / 2];
+    };
+    // Shape of the drawing, whatever its scale: |event–yard| / |event–gate|.
+    const shape = async () => {
+      const [e, y, g] = [await centre('Seen'), await centre(`yard ${run}`), await centre(`gate ${run}`)];
+      return Math.hypot(e[0] - y[0], e[1] - y[1]) / Math.hypot(e[0] - g[0], e[1] - g[1]);
+    };
+    await expect(nodes.filter({ hasText: `yard ${run}` })).toBeVisible();
+    const before = await shape();
+    const [x, y] = await centre(`yard ${run}`);
+    const panel = (await page.getByTestId('case-graph').boundingBox())!;
+    // Toward the middle of the panel, by a good third of the way.
+    const [tx, ty] = [x + (panel.x + panel.width / 2 - x) * 0.6, y + (panel.y + panel.height / 2 - y) * 0.6];
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(tx, ty, { steps: 8 });
+    await page.mouse.up();
+    // The node stays where it was let go.
+    const [dx, dy] = await centre(`yard ${run}`);
+    expect(Math.hypot(dx - tx, dy - ty)).toBeLessThan(4);
+    await expect.poll(async () => Object.keys((await api.get(`/cases/${c.id}/layout`)).positions)).toContain(yard.id);
+    const dropped = await shape();
+    expect(Math.abs(dropped - before)).toBeGreaterThan(0.05);
+
+    // After a reload, the same arrangement.
+    await page.reload();
+    await expect(nodes.filter({ hasText: `yard ${run}` })).toBeVisible();
+    await expect.poll(async () => Math.abs((await shape()) - dropped)).toBeLessThan(0.02);
+
+    // Re-layout: back to the automatic layout, nothing saved.
+    await page.getByRole('button', { name: app.t('cw-graph-relayout'), exact: true }).click();
+    await expect.poll(async () => Object.keys((await api.get(`/cases/${c.id}/layout`)).positions)).toEqual([]);
+    await expect.poll(async () => Math.abs((await shape()) - before)).toBeLessThan(0.02);
   });
 });

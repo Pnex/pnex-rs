@@ -585,64 +585,349 @@ async fn device_placements_become_placed_at_links() {
     .await;
 }
 
-/// Cases (cases.md K1, K2, K6): a case is a system type without a native
-/// table, written through the generic object API; members are `in_case`
-/// links (role required), removal closes them; the timeline merges member
-/// links over the window; another org never sees it (R1); a viewer reads
-/// but never writes (R2).
+/// Case tracks (cases-workspace.md K27): the window is bounded and
+/// validated; another org gets 404 (R1); without a readable position
+/// history the answer says so instead of failing.
 #[tokio::test]
 #[serial]
-async fn cases_members_and_timeline() {
+async fn case_tracks_window_isolation_and_unavailable_history() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let case = object(&server, &env.alice, org, "case", "Line 3", json!({"status": "open"})).await;
+        let cid = case["id"].as_str().unwrap();
+        let d1 = device(&server, &env, org, "t-07").await;
+        let (st, w) = call(&server, "POST", &format!("/api/v1/cases/{cid}/events"), &env.alice, org, Some(json!({
+            "title": "Truck enters the secure area", "occurred": instant("2026-10-10T14:03:00Z"), "attach": [{"object_id": d1}]
+        }))).await;
+        assert_eq!(st, 201, "{w}");
+
+        let path = format!("/api/v1/cases/{cid}/tracks");
+        let (st, e) = call(&server, "POST", &path, &env.alice, org, Some(json!({"from": "2026-10-10T14:00:00Z", "to": "2026-10-10T13:00:00Z"}))).await;
+        assert_eq!((st, e["to"].as_str()), (400, Some("invalid")), "{e}");
+        let (st, e) = call(&server, "POST", &path, &env.alice, org, Some(json!({"from": "2026-01-01T00:00:00Z", "to": "2026-03-01T00:00:00Z"}))).await;
+        assert_eq!((st, e["to"].as_str()), (400, Some("invalid")), "{e}");
+        let window = json!({"from": "2026-10-10T13:30:00Z", "to": "2026-10-10T16:00:00Z", "resolution_ms": 10000});
+        let (st, t) = call(&server, "POST", &path, &env.alice, org, Some(window.clone())).await;
+        assert_eq!(st, 200, "{t}");
+        assert_eq!(t["available"], false);
+        assert_eq!(t["tracks"], json!([]));
+
+        let org_b = personal_org(&server, &env.bob).await;
+        let (st, _) = call(&server, "POST", &path, &env.bob, org_b, Some(window)).await;
+        assert_eq!(st, 404);
+    })
+    .await;
+}
+
+/// Case detections (cases-workspace.md K30): without a readable position
+/// history nothing is proposed; a proposal is retained once (same event on a
+/// second retain, members attached as actors, provenance of the detector),
+/// a reviewed proposal is never reviewed the other way, a viewer only reads
+/// (R2) and another org sees nothing (R1).
+#[tokio::test]
+#[serial]
+async fn case_detections_are_proposed_and_reviewed_by_a_human() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let case = object(&server, &env.alice, org, "case", "Dock 2", json!({"status": "open"})).await;
+        let cid = case["id"].as_str().unwrap();
+        let (d1, d2) = (device(&server, &env, org, "t-07").await, device(&server, &env, org, "b-14").await);
+        for d in [&d1, &d2] {
+            let (st, w) = call(&server, "POST", &format!("/api/v1/cases/{cid}/attach"), &env.alice, org, Some(json!({"object_id": d}))).await;
+            assert_eq!(st, 200, "{w}");
+        }
+        let window = json!({"from": "2026-10-10T13:00:00Z", "to": "2026-10-10T16:00:00Z"});
+        let (st, d) = call(&server, "POST", &format!("/api/v1/cases/{cid}/detect"), &env.alice, org, Some(window.clone())).await;
+        assert_eq!(st, 200, "{d}");
+        assert_eq!((d["available"].as_bool(), d["inserted"].as_u64()), (Some(false), Some(0)), "{d}");
+
+        // Two proposals as the detectors would write them.
+        let mut pids = Vec::new();
+        for (kind, refs) in [("co_presence", format!("'{d1}', '{d2}'")), ("stop", format!("'{d1}'"))] {
+            let pid = uuid::Uuid::new_v4();
+            env.db
+                .execute_unprepared(&format!(
+                    "INSERT INTO case_proposals (id, org_id, case_id, kind, detector, params, fingerprint, t_start, t_end, refs, payload) \
+                     VALUES ('{pid}', {org}, '{cid}', '{kind}', '{kind}@1', '{{\"min_s\": 120}}', '{kind}-fp', \
+                             '2026-10-10T14:32:00Z', '2026-10-10T14:40:00Z', ARRAY[{refs}]::uuid[], '{{\"at\": [2.35, 48.85]}}')"
+                ))
+                .await
+                .unwrap();
+            pids.push(pid.to_string());
+        }
+        let (st, list) = call(&server, "GET", &format!("/api/v1/cases/{cid}/proposals"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{list}");
+        let row = |list: &Value, pid: &str| list.as_array().unwrap().iter().find(|p| p["id"] == pid).cloned().unwrap();
+        assert_eq!(list.as_array().unwrap().len(), 2);
+        assert_eq!(row(&list, &pids[0])["refs"].as_array().unwrap().len(), 2, "{list}");
+
+        let retain = format!("/api/v1/cases/{cid}/proposals/{}/retain", pids[0]);
+        let (st, w) = call(&server, "POST", &retain, &env.alice, org, Some(json!({"title": "Truck and badge together"}))).await;
+        assert_eq!(st, 200, "{w}");
+        assert_eq!(w["events"].as_array().unwrap().len(), 1, "{w}");
+        let ev = &w["events"][0];
+        assert_eq!(ev["event"]["properties"]["origin"], "detection");
+        assert_eq!(ev["event"]["properties"]["location"], json!({"lon": 2.35, "lat": 48.85}));
+        assert_eq!(ev["event"]["properties"]["occurred"]["precision"], "range");
+        assert_eq!(ev["event"]["source_ref"], "detector:co_presence@1");
+        assert_eq!(
+            attached(&w, "Truck and badge together"),
+            vec![("t-07".to_string(), "actor".to_string()), ("b-14".to_string(), "actor".to_string())]
+        );
+        let (st, again) = call(&server, "POST", &retain, &env.alice, org, Some(json!({"title": "Other title"}))).await;
+        assert_eq!(st, 200);
+        assert_eq!(again["events"].as_array().unwrap().len(), 1, "retaining twice gives the same event");
+        let (st, e) = call(&server, "POST", &format!("/api/v1/cases/{cid}/proposals/{}/reject", pids[0]), &env.alice, org, Some(json!({}))).await;
+        assert_eq!((st, e["error"].as_str()), (409, Some("case-proposal-stale")), "{e}");
+
+        let reject = format!("/api/v1/cases/{cid}/proposals/{}/reject", pids[1]);
+        let (st, list) = call(&server, "POST", &reject, &env.alice, org, Some(json!({"reason": "  parked at the depot  "}))).await;
+        assert_eq!(st, 200, "{list}");
+        assert_eq!(row(&list, &pids[1])["status"], "rejected");
+        assert_eq!(row(&list, &pids[1])["reject_reason"], "parked at the depot");
+        let (st, e) = call(&server, "POST", &format!("/api/v1/cases/{cid}/proposals/{}/retain", pids[1]), &env.alice, org, Some(json!({"title": "x"}))).await;
+        assert_eq!((st, e["error"].as_str()), (409, Some("case-proposal-stale")), "{e}");
+
+        // R1: another org sees nothing; R2: a viewer reads, never reviews.
+        let org_b = personal_org(&server, &env.bob).await;
+        let (st, _) = call(&server, "GET", &format!("/api/v1/cases/{cid}/proposals"), &env.bob, org_b, None).await;
+        assert_eq!(st, 404);
+        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
+        assert!(st < 300);
+        let (st, _) = call(&server, "GET", &format!("/api/v1/cases/{cid}/proposals"), &env.bob, org, None).await;
+        assert_eq!(st, 200);
+        for path in [format!("/api/v1/cases/{cid}/detect"), reject] {
+            let (st, _) = call(&server, "POST", &path, &env.bob, org, Some(json!({}))).await;
+            assert_eq!(st, 403, "{path}");
+        }
+    })
+    .await;
+}
+
+/// Imported tracks (cases-workspace.md K26, K29, K30): a GPX previewed then
+/// imported onto a member serves its track with no telemetry store, the same
+/// file twice is one import, a CSV without offset needs a time zone, the
+/// detectors see the import (a zone visit and a stop, nothing new on a
+/// second run), a viewer cannot import (R2), another org sees nothing (R1).
+#[tokio::test]
+#[serial]
+async fn imported_tracks_feed_the_tracks_and_the_detectors() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (st, _) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, Some(json!({}))).await;
+        assert!(st < 300);
+        let case = object(&server, &env.alice, org, "case", "Depot", json!({"status": "open"})).await;
+        let cid = case["id"].as_str().unwrap();
+        let d1 = device(&server, &env, org, "t-07").await;
+        let gate = object(&server, &env.alice, org, "place", "Gate", json!({"zone": {"center": {"lon": 2.0, "lat": 48.003}, "radius_m": 30.0}})).await;
+        for o in [d1.as_str(), gate["id"].as_str().unwrap()] {
+            let (st, w) = call(&server, "POST", &format!("/api/v1/cases/{cid}/attach"), &env.alice, org, Some(json!({"object_id": o}))).await;
+            assert_eq!(st, 200, "{w}");
+        }
+        let (_, w) = call(&server, "GET", &format!("/api/v1/cases/{cid}/workspace"), &env.alice, org, None).await;
+        assert_eq!(w["zones"][0]["object"]["title"], "Gate", "{w}");
+        // Located members: the zone's centre stands for the place.
+        assert_eq!(w["places"][0]["object"]["title"], "Gate", "{w}");
+        assert!((w["places"][0]["lat"].as_f64().unwrap() - 48.003).abs() < 1e-9, "{w}");
+
+        // Walks north for 5 min (through the gate), then waits 20 min there.
+        let mut pts = String::new();
+        let t0 = chrono::DateTime::parse_from_rfc3339("2026-03-01T10:00:00Z").unwrap();
+        for s in 0..=1_500i64 {
+            let lat = 48.0 + (s.min(300) as f64) * 0.00001;
+            let t = (t0 + chrono::Duration::seconds(s)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+            pts.push_str(&format!("<trkpt lat=\"{lat}\" lon=\"2.0\"><time>{t}</time></trkpt>"));
+        }
+        let gpx = format!("<?xml version=\"1.0\"?><gpx version=\"1.1\"><trk><trkseg>{pts}</trkseg></trk></gpx>");
+        let path = format!("/api/v1/cases/{cid}/tracks/import");
+        let body = |dry: bool| json!({"object_id": d1, "file_name": "t07.gpx", "format": "gpx", "content": gpx, "dry_run": dry});
+        let (st, pv) = call(&server, "POST", &path, &env.alice, org, Some(body(true))).await;
+        assert_eq!(st, 200, "{pv}");
+        assert_eq!((pv["points"].as_u64(), pv["needs_time_zone"].as_bool()), (Some(1_501), Some(false)));
+        assert!(pv["import"].is_null());
+        let (st, done) = call(&server, "POST", &path, &env.alice, org, Some(body(false))).await;
+        assert_eq!(st, 200, "{done}");
+        let import_id = done["import"]["id"].as_str().unwrap().to_string();
+        let (_, again) = call(&server, "POST", &path, &env.alice, org, Some(body(false))).await;
+        assert_eq!(again["import"]["id"], import_id.as_str(), "same file, same import");
+
+        // Local times: previewed as needing a zone, refused without one.
+        let csv = |dry: bool| json!({"object_id": d1, "file_name": "t07.csv", "format": "csv", "content": "time,lat,lon\n2026-03-01 11:00:00,48.0,2.0\n", "dry_run": dry});
+        let (st, pv) = call(&server, "POST", &path, &env.alice, org, Some(csv(true))).await;
+        assert_eq!((st, pv["needs_time_zone"].as_bool()), (200, Some(true)), "{pv}");
+        let (st, e) = call(&server, "POST", &path, &env.alice, org, Some(csv(false))).await;
+        assert_eq!((st, e["error"].as_str()), (422, Some("track-import-timezone-required")), "{e}");
+
+        let window = json!({"from": "2026-03-01T09:00:00Z", "to": "2026-03-01T12:00:00Z"});
+        let (st, t) = call(&server, "POST", &format!("/api/v1/cases/{cid}/tracks"), &env.alice, org, Some(window.clone())).await;
+        assert_eq!(st, 200, "{t}");
+        assert_eq!(t["available"], true);
+        assert_eq!(t["tracks"][0]["raw_points"], 1_501, "{t}");
+        // Thresholds of the case: bounded, then used by the detectors.
+        let put_case = |min_s: i64| json!({"title": "Depot", "properties": {"status": "open", "stop_min_s": min_s}, "expected_version": case["version"]});
+        let (st, e) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{cid}"), &env.alice, org, Some(put_case(5))).await;
+        assert_eq!((st, e["stop_min_s"].as_str()), (400, Some("invalid")), "{e}");
+        let (st, e) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{cid}"), &env.alice, org, Some(put_case(600))).await;
+        assert_eq!(st, 200, "{e}");
+        let (st, d) = call(&server, "POST", &format!("/api/v1/cases/{cid}/detect"), &env.alice, org, Some(window.clone())).await;
+        assert_eq!(st, 200, "{d}");
+        let (_, list) = call(&server, "GET", &format!("/api/v1/cases/{cid}/proposals"), &env.alice, org, None).await;
+        let kinds: Vec<&str> = list.as_array().unwrap().iter().map(|p| p["kind"].as_str().unwrap()).collect();
+        assert!(kinds.contains(&"zone") && kinds.contains(&"stop"), "{list}");
+        let stop = list.as_array().unwrap().iter().find(|p| p["kind"] == "stop").unwrap();
+        assert_eq!(stop["params"]["min_s"], 600, "{stop}");
+        let (_, d2) = call(&server, "POST", &format!("/api/v1/cases/{cid}/detect"), &env.alice, org, Some(window.clone())).await;
+        assert_eq!(d2["inserted"], 0, "a second run proposes nothing new");
+
+        // K38 log: unavailable without O2 (never invented), private to the org.
+        let (st, r) = call(&server, "GET", &format!("/api/v1/cases/{cid}/reads"), &env.alice, org, None).await;
+        assert_eq!((st, r), (200, Value::Null));
+
+        // R1 / R2, then the import goes and its track with it.
+        let org_b = personal_org(&server, &env.bob).await;
+        let (st, _) = call(&server, "GET", &format!("/api/v1/cases/{cid}/reads"), &env.bob, org_b, None).await;
+        assert_eq!(st, 404);
+        let (st, _) = call(&server, "GET", &format!("/api/v1/cases/{cid}/tracks/imports"), &env.bob, org_b, None).await;
+        assert_eq!(st, 404);
+        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
+        assert!(st < 300);
+        let (st, _) = call(&server, "POST", &path, &env.bob, org, Some(body(true))).await;
+        assert_eq!(st, 403);
+        let (st, list) = call(&server, "GET", &format!("/api/v1/cases/{cid}/tracks/imports"), &env.bob, org, None).await;
+        assert_eq!((st, list.as_array().map(Vec::len)), (200, Some(1)));
+        let (st, _) = call(&server, "DELETE", &format!("/api/v1/cases/{cid}/tracks/imports/{import_id}"), &env.alice, org, None).await;
+        assert_eq!(st, 204);
+        let (_, t) = call(&server, "POST", &format!("/api/v1/cases/{cid}/tracks"), &env.alice, org, Some(window)).await;
+        assert_eq!(t["tracks"], json!([]));
+    })
+    .await;
+}
+
+/// `fuzzy_time` value of an exact instant.
+fn instant(t: &str) -> Value {
+    json!({"from": t, "to": t, "precision": "instant"})
+}
+
+/// Titles of the attachments of the workspace event titled `event`.
+fn attached(w: &Value, event: &str) -> Vec<(String, String)> {
+    w["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["event"]["title"] == event)
+        .flat_map(|e| e["attachments"].as_array().unwrap().iter())
+        .map(|a| {
+            (
+                a["object"]["title"].as_str().unwrap().to_string(),
+                a["role"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect()
+}
+
+fn undated(w: &Value) -> Vec<String> {
+    let mut t: Vec<String> = w["undated"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o["title"].as_str().unwrap().to_string())
+        .collect();
+    t.sort();
+    t
+}
+
+/// Case workspace (cases-workspace.md K20–K22): events created with their
+/// first attachments in one gesture, roles defaulting by type and closed,
+/// undated pieces, detaching keeps a piece in the case, removing an event
+/// keeps its pieces; signals leave the workspace's own operations out;
+/// another org never sees it (R1); a viewer reads but never writes (R2).
+#[tokio::test]
+#[serial]
+async fn case_workspace_events_attachments_and_signals() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let (st, e) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(json!({"type_key": "case", "title": "P-12", "properties": {}}))).await;
         assert_eq!((st, e["status"].as_str()), (400, Some("required")), "{e}");
         let case = object(&server, &env.alice, org, "case", "Low pressure P-12", json!({"status": "open", "question": "Why?"})).await;
         let cid = case["id"].as_str().unwrap().to_string();
-        assert_eq!(case["system"], false, "{case}");
         let d1 = device(&server, &env, org, "c47").await;
         let d2 = device(&server, &env, org, "c88").await;
+        let note = object(&server, &env.alice, org, "note", "Valve left closed?", json!({"body": "To check"})).await;
+        let url = |p: &str| format!("/api/v1/cases/{cid}/{p}");
 
-        // Membership: role required, then open.
-        let (st, e) = link(&server, &env.alice, org, json!({"link_type": "in_case", "source_id": d1, "target_id": cid})).await;
-        assert_eq!(st, 400, "{e}");
-        for d in [&d1, &d2] {
-            let (st, l) = link(&server, &env.alice, org, json!({"link_type": "in_case", "source_id": d, "target_id": cid, "attributes": {"role": "evidence"}})).await;
-            assert_eq!(st, 201, "{l}");
-        }
-        // A case is not a member type of a device link.
-        let (st, _) = link(&server, &env.alice, org, json!({"link_type": "placed_at", "source_id": d1, "target_id": cid})).await;
+        let (st, w) = call(&server, "POST", &url("events"), &env.alice, org, Some(json!({
+            "title": "High pressure alarm", "occurred": instant("2026-10-10T14:32:00Z"),
+            "attach": [{"object_id": d1}, {"object_id": note["id"]}]
+        }))).await;
+        assert_eq!(st, 201, "{w}");
+        assert_eq!(attached(&w, "High pressure alarm"), vec![("c47".into(), "evidence".into()), ("Valve left closed?".into(), "hypothesis".into())], "{w}");
+        let ev = w["events"][0]["event"]["id"].as_str().unwrap().to_string();
+        assert_eq!(w["events"][0]["event"]["properties"]["origin"], "manual");
+        // An attachment role is a closed list; an event of another case is refused.
+        let (st, _) = call(&server, "POST", &url("attach"), &env.alice, org, Some(json!({"event_id": ev, "object_id": d2, "role": "suspect"}))).await;
+        assert_eq!(st, 400);
+        let (st, _) = call(&server, "POST", &url("attach"), &env.alice, org, Some(json!({"event_id": d1, "object_id": d2}))).await;
         assert_eq!(st, 400);
 
-        let (st, tl) = call(&server, "POST", &format!("/api/v1/cases/{cid}/timeline"), &env.alice, org, Some(json!({}))).await;
-        assert_eq!(st, 200, "{tl}");
-        assert_eq!(tl["members"].as_array().unwrap().len(), 2, "{tl}");
-        let opens = tl["items"].as_array().unwrap().iter().filter(|i| i["kind"] == "link_open").count();
-        assert_eq!(opens, 2, "{tl}");
+        // Undated, then dated: it leaves the undated pieces; attaching twice is a no-op.
+        let (st, w) = call(&server, "POST", &url("attach"), &env.alice, org, Some(json!({"object_id": d2}))).await;
+        assert_eq!((st, undated(&w)), (200, vec!["c88".to_string()]), "{w}");
+        for _ in 0..2 {
+            let (st, w) = call(&server, "POST", &url("attach"), &env.alice, org, Some(json!({"event_id": ev, "object_id": d2, "role": "context", "detail": "downstream sensor"}))).await;
+            assert_eq!(st, 200, "{w}");
+            assert!(undated(&w).is_empty(), "{w}");
+            assert_eq!(attached(&w, "High pressure alarm").len(), 3, "{w}");
+        }
+        // Another role: the attachment changes, still one.
+        let (st, w) = call(&server, "POST", &url("attach"), &env.alice, org, Some(json!({"event_id": ev, "object_id": d2, "role": "evidence"}))).await;
+        assert_eq!(st, 200, "{w}");
+        let a = w["events"][0]["attachments"].as_array().unwrap().iter().find(|a| a["object"]["title"] == "c88").unwrap().clone();
+        assert_eq!((a["role"].as_str(), a["detail"].as_str()), (Some("evidence"), Some("downstream sensor")), "{w}");
+        assert_eq!(attached(&w, "High pressure alarm").len(), 3, "{w}");
+        // Detached from the event, it stays in the case, undated.
+        let (st, w) = call(&server, "POST", &url("detach"), &env.alice, org, Some(json!({"event_id": ev, "object_id": d2}))).await;
+        assert_eq!((st, undated(&w)), (200, vec!["c88".to_string()]), "{w}");
 
-        // Removing a member closes its link: gone from members, kept as history.
-        let member = tl["members"][0]["id"].as_i64().unwrap();
-        let (st, _) = call(&server, "POST", &format!("/api/v1/ontology/links/{member}/close"), &env.alice, org, Some(json!({}))).await;
-        assert_eq!(st, 200);
-        let (_, tl) = call(&server, "POST", &format!("/api/v1/cases/{cid}/timeline"), &env.alice, org, Some(json!({}))).await;
-        assert_eq!(tl["members"].as_array().unwrap().len(), 1, "{tl}");
-        assert!(tl["items"].as_array().unwrap().iter().any(|i| i["kind"] == "link_close"), "{tl}");
+        // Signals: a link among members is one, the workspace's own links are not.
+        let (st, lt) = call(&server, "POST", "/api/v1/ontology/link-types", &env.alice, org, Some(json!({"key": "feeds", "name": "feeds", "from_types": ["device"], "to_types": ["device"]}))).await;
+        assert_eq!(st, 201, "{lt}");
+        let (st, l) = link(&server, &env.alice, org, json!({"link_type": "feeds", "source_id": d1, "target_id": d2})).await;
+        assert_eq!(st, 201, "{l}");
+        let around_now = json!({"from": (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339(), "to": (chrono::Utc::now() + chrono::Duration::minutes(1)).to_rfc3339()});
+        let (st, sig) = call(&server, "POST", &url("signals"), &env.alice, org, Some(around_now.clone())).await;
+        assert_eq!(st, 200, "{sig}");
+        let kinds: Vec<&str> = sig["items"].as_array().unwrap().iter().filter(|i| i["kind"] == "link_open").map(|i| i["link"]["link_type"].as_str().unwrap()).collect();
+        assert_eq!(kinds, vec!["feeds"], "{sig}");
+        // Default window: around the events.
+        let (st, sig) = call(&server, "POST", &url("signals"), &env.alice, org, Some(json!({}))).await;
+        assert_eq!(st, 200, "{sig}");
+        assert!(sig["from"].as_str().unwrap().starts_with("2026-10-10T13:32:00"), "{sig}");
+
+        // Removing the event: its pieces stay in the case, undated.
+        let (st, w) = call(&server, "POST", &url("detach"), &env.alice, org, Some(json!({"object_id": ev}))).await;
+        assert_eq!(st, 200, "{w}");
+        assert!(w["events"].as_array().unwrap().is_empty(), "{w}");
+        assert_eq!(undated(&w), vec!["Valve left closed?".to_string(), "c47".into(), "c88".into()], "{w}");
 
         // Bad window, not a case, another org.
-        let (st, _) = call(&server, "POST", &format!("/api/v1/cases/{cid}/timeline"), &env.alice, org, Some(json!({"from": "2026-10-02T00:00:00Z", "to": "2026-10-01T00:00:00Z"}))).await;
+        let (st, _) = call(&server, "POST", &url("signals"), &env.alice, org, Some(json!({"from": "2026-10-02T00:00:00Z", "to": "2026-10-01T00:00:00Z"}))).await;
         assert_eq!(st, 400);
-        let (st, _) = call(&server, "POST", &format!("/api/v1/cases/{d1}/timeline"), &env.alice, org, Some(json!({}))).await;
+        let (st, _) = call(&server, "GET", &format!("/api/v1/cases/{d1}/workspace"), &env.alice, org, None).await;
         assert_eq!(st, 404);
         let org_b = personal_org(&server, &env.bob).await;
-        let (st, _) = call(&server, "POST", &format!("/api/v1/cases/{cid}/timeline"), &env.bob, org_b, Some(json!({}))).await;
+        let (st, _) = call(&server, "GET", &url("workspace"), &env.bob, org_b, None).await;
+        assert_eq!(st, 404);
+        let (st, _) = call(&server, "POST", &url("attach"), &env.bob, org_b, Some(json!({"object_id": d1}))).await;
         assert_eq!(st, 404);
 
-        // Viewer: reads the timeline, cannot add a member nor edit the case.
+        // Viewer: reads the workspace, cannot attach nor create an event.
         let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
         assert!(st < 300);
-        let (st, _) = call(&server, "POST", &format!("/api/v1/cases/{cid}/timeline"), &env.bob, org, Some(json!({}))).await;
+        let (st, _) = call(&server, "GET", &url("workspace"), &env.bob, org, None).await;
         assert_eq!(st, 200);
-        let (st, _) = link(&server, &env.bob, org, json!({"link_type": "in_case", "source_id": d1, "target_id": cid, "attributes": {"role": "context"}})).await;
+        let (st, _) = call(&server, "POST", &url("attach"), &env.bob, org, Some(json!({"object_id": d1}))).await;
+        assert_eq!(st, 403);
+        let (st, _) = call(&server, "POST", &url("events"), &env.bob, org, Some(json!({"title": "x", "occurred": instant("2026-10-10T14:00:00Z")}))).await;
         assert_eq!(st, 403);
         let (st, _) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{cid}"), &env.bob, org, Some(json!({"title": "x", "properties": {"status": "concluded"}, "expected_version": 1}))).await;
         assert_eq!(st, 403);
@@ -650,13 +935,13 @@ async fn cases_members_and_timeline() {
     .await;
 }
 
-/// Opening a case from an event (cases.md K3): window around the event,
-/// the flow that raised it as subject, its neighbours at that instant as
-/// context; ranges scoped on a member join the timeline (K6); a viewer
-/// cannot open a case (R2); another org's flow adds nothing (R1).
+/// Opening a case from an alert (cases-workspace.md K20): its first event is
+/// the alert at its instant, the flow that raised it attached as source,
+/// its neighbours then as context; a range scoped on a member is a signal;
+/// another org's flow adds nothing (R1); a viewer cannot open a case (R2).
 #[tokio::test]
 #[serial]
-async fn case_opened_from_an_event() {
+async fn case_opened_from_an_alert() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let flow = |org: i64, name: &str| format!("INSERT INTO flows (name, status, org_id) VALUES ('{name}', 'draft', {org}) RETURNING id");
@@ -670,11 +955,9 @@ async fn case_opened_from_an_event() {
         let (st, e) = link(&server, &env.alice, org, json!({"link_type": "drives", "source_id": f["id"], "target_id": d1, "valid_from": "2026-10-01T00:00:00Z"})).await;
         assert_eq!(st, 201, "{e}");
 
-        // Bad inputs.
         for bad in [
             json!({"title": "x", "from": {"kind": "rumour", "at": "2026-10-03T10:02:00Z"}}),
             json!({"title": "x", "from": {"kind": "notification", "at": "yesterday"}}),
-            json!({"title": "x", "from": {"kind": "notification", "at": "2026-10-03T10:02:00Z", "margin_minutes": 0}}),
             json!({"title": "", "from": {"kind": "notification", "at": "2026-10-03T10:02:00Z"}}),
         ] {
             let (st, e) = call(&server, "POST", "/api/v1/cases", &env.alice, org, Some(bad)).await;
@@ -683,28 +966,25 @@ async fn case_opened_from_an_event() {
 
         let (st, c) = call(&server, "POST", "/api/v1/cases", &env.alice, org, Some(json!({
             "title": "Low pressure P-12",
-            "from": {"kind": "notification", "at": "2026-10-03T10:02:00Z", "flow_id": flow_id}
+            "from": {"kind": "notification", "at": "2026-10-03T12:02:00+02:00", "flow_id": flow_id}
         }))).await;
         assert_eq!(st, 201, "{c}");
-        assert!(c["properties"]["window_from"].as_str().unwrap().starts_with("2026-10-03T08:02:00"), "{c}");
-        assert!(c["properties"]["window_to"].as_str().unwrap().starts_with("2026-10-03T12:02:00"), "{c}");
         let cid = c["id"].as_str().unwrap().to_string();
+        let (_, w) = call(&server, "GET", &format!("/api/v1/cases/{cid}/workspace"), &env.alice, org, None).await;
+        let ev = &w["events"][0]["event"];
+        assert_eq!(ev["properties"]["occurred"], instant("2026-10-03T10:02:00Z"), "{w}");
+        assert_eq!(ev["properties"]["origin"], "signal");
+        assert_eq!(attached(&w, "Low pressure P-12"), vec![("pressure watch".into(), "source".into()), ("p12-sensor".into(), "context".into())], "{w}");
 
-        // A shift on the sensor, inside the window.
+        // A shift on the sensor around the alert: a signal of the case.
         let (st, r) = call(&server, "POST", "/api/v1/time-ranges", &env.alice, org, Some(json!({
             "scope_kind": "object", "scope_id": d1, "label": "Night shift",
             "planned_start": "2026-10-03T06:00:00Z", "planned_end": "2026-10-03T14:00:00Z"
         }))).await;
         assert_eq!(st, 201, "{r}");
-
-        let (st, tl) = call(&server, "POST", &format!("/api/v1/cases/{cid}/timeline"), &env.alice, org, Some(json!({}))).await;
-        assert_eq!(st, 200, "{tl}");
-        let roles: Vec<(String, String)> = tl["members"].as_array().unwrap().iter()
-            .map(|m| (m["source"]["type_key"].as_str().unwrap().to_string(), m["attributes"]["role"].as_str().unwrap().to_string()))
-            .collect();
-        assert!(roles.contains(&("flow".into(), "subject".into())), "{roles:?}");
-        assert!(roles.contains(&("device".into(), "context".into())), "{roles:?}");
-        let range = tl["items"].as_array().unwrap().iter().find(|i| i["kind"] == "range").expect("range item");
+        let (st, sig) = call(&server, "POST", &format!("/api/v1/cases/{cid}/signals"), &env.alice, org, Some(json!({}))).await;
+        assert_eq!(st, 200, "{sig}");
+        let range = sig["items"].as_array().unwrap().iter().find(|i| i["kind"] == "range").expect("range item");
         assert_eq!(range["range"]["label"], "Night shift");
         assert_eq!(range["lane"].as_str(), Some(d1.as_str()));
 
@@ -716,8 +996,8 @@ async fn case_opened_from_an_event() {
             "title": "Foreign", "from": {"kind": "event", "at": "2026-10-03T10:02:00Z", "flow_id": foreign}
         }))).await;
         assert_eq!(st, 201, "{c}");
-        let (_, tl) = call(&server, "POST", &format!("/api/v1/cases/{}/timeline", c["id"].as_str().unwrap()), &env.alice, org, Some(json!({}))).await;
-        assert_eq!(tl["members"].as_array().unwrap().len(), 0, "{tl}");
+        let (_, w) = call(&server, "GET", &format!("/api/v1/cases/{}/workspace", c["id"].as_str().unwrap()), &env.alice, org, None).await;
+        assert!(attached(&w, "Foreign").is_empty(), "{w}");
         let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
         assert!(st < 300);
         let (st, _) = call(&server, "POST", "/api/v1/cases", &env.bob, org, Some(json!({"title": "nope"}))).await;
@@ -726,34 +1006,39 @@ async fn case_opened_from_an_event() {
     .await;
 }
 
-/// Investigation pack (cases.md K4, K5, K7): approximate dates are
-/// validated and placed on the case timeline at their precision; a claim
-/// becomes corroborated only with two pieces of distinct origins.
+/// Investigation pack (cases.md K5, K7, cases-workspace.md K38): approximate
+/// dates are validated; a person joins a case only once its processing
+/// basis is declared; a claim becomes corroborated only with two pieces of
+/// distinct origins.
 #[tokio::test]
 #[serial]
-async fn investigation_pack_fuzzy_time_and_claims() {
+async fn investigation_pack_legal_basis_and_claims() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
         assert!(st < 300, "{p}");
-        let month = json!({"from": "2019-03-01T00:00:00Z", "to": "2019-03-31T23:59:59Z", "precision": "month"});
         let (st, e) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(json!({
             "type_key": "event", "title": "Meeting", "properties": {"occurred": {"from": "2019-03-31T00:00:00Z", "to": "2019-03-01T00:00:00Z", "precision": "range"}}
         }))).await;
         assert_eq!((st, e["occurred"].as_str()), (400, Some("invalid")), "{e}");
-        let ev = object(&server, &env.alice, org, "event", "Meeting at the port", json!({"occurred": month})).await;
-        let person = object(&server, &env.alice, org, "person", "X", json!({})).await;
-        let (st, l) = link(&server, &env.alice, org, json!({"link_type": "involves", "source_id": ev["id"], "target_id": person["id"], "attributes": {"role": "witness"}})).await;
-        assert_eq!(st, 201, "{l}");
 
-        let case = object(&server, &env.alice, org, "case", "Port affair", json!({"status": "open", "window_from": "2019-01-01T00:00:00Z", "window_to": "2019-12-31T00:00:00Z"})).await;
+        let case = object(&server, &env.alice, org, "case", "Port affair", json!({"status": "open"})).await;
         let cid = case["id"].as_str().unwrap();
-        let (st, _) = link(&server, &env.alice, org, json!({"link_type": "in_case", "source_id": ev["id"], "target_id": cid, "attributes": {"role": "subject"}})).await;
-        assert_eq!(st, 201);
-        let (_, tl) = call(&server, "POST", &format!("/api/v1/cases/{cid}/timeline"), &env.alice, org, Some(json!({}))).await;
-        let occ = tl["items"].as_array().unwrap().iter().find(|i| i["kind"] == "occurred").expect("occurred item");
-        assert_eq!(occ["fuzzy"], month);
-        assert_eq!(occ["title"], "Meeting at the port");
+        let month = json!({"from": "2019-03-01T00:00:00Z", "to": "2019-03-31T23:59:59Z", "precision": "month"});
+        let (st, w) = call(&server, "POST", &format!("/api/v1/cases/{cid}/events"), &env.alice, org, Some(json!({"title": "Meeting at the port", "occurred": month}))).await;
+        assert_eq!(st, 201, "{w}");
+        let ev = w["events"][0]["event"]["id"].clone();
+        let person = object(&server, &env.alice, org, "person", "X", json!({})).await;
+        let attach = json!({"event_id": ev, "object_id": person["id"], "detail": "witness"});
+        let (st, e) = call(&server, "POST", &format!("/api/v1/cases/{cid}/attach"), &env.alice, org, Some(attach.clone())).await;
+        assert_eq!((st, e["error"].as_str()), (409, Some("case-legal-basis-required")), "{e}");
+        let upd = json!({"title": "Port affair", "properties": {"status": "open", "legal_basis": "journalism (art. 85 GDPR)"}, "expected_version": case["version"]});
+        let (st, v) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{cid}"), &env.alice, org, Some(upd)).await;
+        assert_eq!(st, 200, "{v}");
+        let (st, w) = call(&server, "POST", &format!("/api/v1/cases/{cid}/attach"), &env.alice, org, Some(attach)).await;
+        assert_eq!(st, 200, "{w}");
+        assert_eq!(w["events"][0]["attachments"][0]["role"], "actor");
+        assert_eq!(w["events"][0]["attachments"][0]["detail"], "witness");
 
         // K7: corroborated needs two pieces of distinct origins.
         let claim = object(&server, &env.alice, org, "claim", "C1", json!({"statement": "X was at the port", "status": "unverified"})).await;
@@ -789,141 +1074,189 @@ async fn investigation_pack_fuzzy_time_and_claims() {
     .await;
 }
 
-/// Concluding a case (cases.md K8, K12, K16): the board puts claims for and
-/// against each hypothesis and flags unsourced and contradicted claims;
-/// the export re-reads the case at its freeze instant, counts persons,
-/// lists pieces; another org reads nothing (R1).
-/// K14: the case replayed at an instant: links and places of that instant.
+/// Board and export (cases.md K8, cases-workspace.md K33): the board puts
+/// claims for and against each hypothesis and flags unsourced and
+/// contradicted claims; the export (`pnex.case/1`) holds the workspace,
+/// counts persons and lists pieces; another org reads nothing (R1).
 #[tokio::test]
 #[serial]
-async fn case_snapshot_replays_links_and_places() {
+async fn case_board_and_export() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
-        let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
+        let (st, p) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/packs/investigation/install",
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
         assert!(st < 300, "{p}");
-        let dev = device(&server, &env, org, "p1").await;
-        env.db
-            .execute_unprepared(&format!(
-                "INSERT INTO map_pins (id, org_id, mode, label, latitude, longitude) VALUES
-                   ('00000000-0000-0000-0000-0000000000a1', {org}, 'geo', 'Plant', 48.85, 2.35);
-                 INSERT INTO device_placements (org_id, device_registry_id, device_id, pin_id)
-                   SELECT {org}, id, device_id, '00000000-0000-0000-0000-0000000000a1'
-                   FROM device_registries WHERE device_id = 'p1' AND org_id = {org};"
-            ))
-            .await
-            .unwrap();
-        let case = object(&server, &env.alice, org, "case", "Theft", json!({"status": "open"})).await;
+        let case = object(
+            &server,
+            &env.alice,
+            org,
+            "case",
+            "Leak",
+            json!({"status": "open", "legal_basis": "legitimate interest"}),
+        )
+        .await;
         let cid = case["id"].as_str().unwrap().to_string();
-        let a = object(&server, &env.alice, org, "person", "Ann", json!({})).await;
-        let b = object(&server, &env.alice, org, "person", "Bob", json!({})).await;
-        let ev = object(&server, &env.alice, org, "event", "Break-in", json!({"location": {"lat": 45.0, "lon": 5.0}})).await;
-        let home = object(&server, &env.alice, org, "place", "Flat", json!({"location": {"lat": 43.3, "lon": 5.4}})).await;
-        let start = (chrono::Utc::now() - chrono::Duration::hours(2)).to_rfc3339();
-        for o in [&a, &b, &ev] {
-            let (st, l) = link(&server, &env.alice, org, json!({"link_type": "in_case", "source_id": o["id"], "target_id": cid, "attributes": {"role": "actor"}, "valid_from": start})).await;
-            assert_eq!(st, 201, "{l}");
-        }
-        let (st, l) = link(&server, &env.alice, org, json!({"link_type": "in_case", "source_id": dev, "target_id": cid, "attributes": {"role": "context"}, "valid_from": start})).await;
-        assert_eq!(st, 201, "{l}");
-        let (st, knows) = link(&server, &env.alice, org, json!({"link_type": "knows", "source_id": a["id"], "target_id": b["id"], "valid_from": start})).await;
-        assert_eq!(st, 201, "{knows}");
-        let (st, lives) = link(&server, &env.alice, org, json!({"link_type": "located_at", "source_id": a["id"], "target_id": home["id"], "attributes": {"kind": "lives"}, "valid_from": start})).await;
-        assert_eq!(st, 201, "{lives}");
-        let then = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
-        for l in [&knows, &lives] {
-            let (st, _) = call(&server, "POST", &format!("/api/v1/ontology/links/{}/close", l["id"]), &env.alice, org, Some(json!({}))).await;
-            assert_eq!(st, 200);
-        }
-
-        let snap = |at: String| {
-            let (server, alice) = (&server, &env.alice);
-            let url = format!("/api/v1/cases/{cid}/snapshot?as_of={}", at.replace('+', "%2B"));
-            async move { call(server, "GET", &url, alice, org, None).await }
-        };
-        let (st, past) = snap(then).await;
-        assert_eq!(st, 200, "{past}");
-        assert_eq!(past["graph"]["nodes"].as_array().unwrap().len(), 4, "{past}");
-        assert_eq!(past["graph"]["links"].as_array().unwrap().len(), 1, "{past}");
-        let places = |v: &Value| {
-            let mut p: Vec<String> = v["places"].as_array().unwrap().iter()
-                .map(|p| format!("{}@{}", p["object"]["title"].as_str().unwrap(), p["lat"]))
-                .collect();
-            p.sort();
-            p
-        };
-        // The device was placed after that instant (placement made just now).
-        assert_eq!(places(&past), vec!["Ann@43.3", "Break-in@45.0"], "{past}");
-        let (_, now) = snap(chrono::Utc::now().to_rfc3339()).await;
-        assert_eq!(now["graph"]["links"].as_array().unwrap().len(), 0, "{now}");
-        assert_eq!(places(&now), vec!["Break-in@45.0", "p1@48.85"], "{now}");
-        let (st, _) = snap("yesterday".into()).await;
-        assert_eq!(st, 400);
-
-        let org_b = personal_org(&server, &env.bob).await;
-        let (st, _) = call(&server, "GET", &format!("/api/v1/cases/{cid}/snapshot"), &env.bob, org_b, None).await;
-        assert_eq!(st, 404);
-    })
-    .await;
-}
-
-#[tokio::test]
-#[serial]
-async fn case_board_freeze_and_export() {
-    with_app(|server, env| async move {
-        let org = personal_org(&server, &env.alice).await;
-        let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
-        assert!(st < 300, "{p}");
-        let case = object(&server, &env.alice, org, "case", "Leak", json!({"status": "open", "legal_basis": "legitimate interest"})).await;
-        let cid = case["id"].as_str().unwrap().to_string();
-        let h = object(&server, &env.alice, org, "hypothesis", "Seal worn", json!({"statement": "The seal wore out", "status": "open"})).await;
-        let c1 = object(&server, &env.alice, org, "claim", "Seal changed late", json!({"statement": "s1", "status": "unverified"})).await;
-        let c2 = object(&server, &env.alice, org, "claim", "Seal changed on time", json!({"statement": "s2", "status": "unverified"})).await;
-        let piece = object(&server, &env.alice, org, "piece", "Work order", json!({"sha256": "ab".repeat(32)})).await;
+        let h = object(
+            &server,
+            &env.alice,
+            org,
+            "hypothesis",
+            "Seal worn",
+            json!({"statement": "The seal wore out", "status": "open"}),
+        )
+        .await;
+        let c1 = object(
+            &server,
+            &env.alice,
+            org,
+            "claim",
+            "Seal changed late",
+            json!({"statement": "s1", "status": "unverified"}),
+        )
+        .await;
+        let c2 = object(
+            &server,
+            &env.alice,
+            org,
+            "claim",
+            "Seal changed on time",
+            json!({"statement": "s2", "status": "unverified"}),
+        )
+        .await;
+        let piece = object(
+            &server,
+            &env.alice,
+            org,
+            "piece",
+            "Work order",
+            json!({"sha256": "ab".repeat(32)}),
+        )
+        .await;
         let person = object(&server, &env.alice, org, "person", "Technician", json!({})).await;
-        let mut person_link = 0;
-        for (o, role) in [(&h, "hypothesis"), (&c1, "evidence"), (&c2, "evidence"), (&piece, "evidence"), (&person, "actor")] {
-            let (st, l) = link(&server, &env.alice, org, json!({"link_type": "in_case", "source_id": o["id"], "target_id": cid, "attributes": {"role": role}})).await;
-            assert_eq!(st, 201, "{l}");
-            person_link = l["id"].as_i64().unwrap();
+        for o in [&h, &c1, &c2, &piece, &person] {
+            let (st, w) = call(
+                &server,
+                "POST",
+                &format!("/api/v1/cases/{cid}/attach"),
+                &env.alice,
+                org,
+                Some(json!({"object_id": o["id"]})),
+            )
+            .await;
+            assert_eq!(st, 200, "{w}");
         }
-        for (t, s, d) in [("supports", &c1, &h), ("contradicts", &c2, &c1), ("sourced_by", &c2, &piece)] {
-            let (st, l) = link(&server, &env.alice, org, json!({"link_type": t, "source_id": s["id"], "target_id": d["id"]})).await;
+        for (t, s, d) in [
+            ("supports", &c1, &h),
+            ("contradicts", &c2, &c1),
+            ("sourced_by", &c2, &piece),
+        ] {
+            let (st, l) = link(
+                &server,
+                &env.alice,
+                org,
+                json!({"link_type": t, "source_id": s["id"], "target_id": d["id"]}),
+            )
+            .await;
             assert_eq!(st, 201, "{l}");
         }
 
-        let (st, b) = call(&server, "GET", &format!("/api/v1/cases/{cid}/board"), &env.alice, org, None).await;
+        let (st, b) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/cases/{cid}/board"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
         assert_eq!(st, 200, "{b}");
-        assert_eq!(b["hypotheses"][0]["supports"][0]["claim"]["title"], "Seal changed late", "{b}");
+        assert_eq!(
+            b["hypotheses"][0]["supports"][0]["claim"]["title"], "Seal changed late",
+            "{b}"
+        );
         assert_eq!(b["hypotheses"][0]["status"], "open");
-        let titles = |k: &str| b[k].as_array().unwrap().iter().map(|c| c["claim"]["title"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        let titles = |k: &str| {
+            b[k].as_array()
+                .unwrap()
+                .iter()
+                .map(|c| c["claim"]["title"].as_str().unwrap().to_string())
+                .collect::<Vec<_>>()
+        };
         assert_eq!(titles("unsourced"), vec!["Seal changed late"]);
         assert_eq!(titles("contradicted"), vec!["Seal changed late"]);
 
-        // Freeze, then the technician leaves the case: the export at the
-        // freeze still has them, the export now does not.
-        let frozen = chrono::Utc::now().to_rfc3339();
-        let (st, c) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{cid}"), &env.alice, org, Some(json!({
-            "title": "Leak", "properties": {"status": "concluded", "legal_basis": "legitimate interest", "frozen_at": frozen}, "expected_version": 1
-        }))).await;
-        assert_eq!(st, 200, "{c}");
-        let (st, _) = call(&server, "POST", &format!("/api/v1/ontology/links/{person_link}/close"), &env.alice, org, Some(json!({}))).await;
-        assert_eq!(st, 200);
-        let (st, x) = call(&server, "POST", &format!("/api/v1/cases/{cid}/export"), &env.alice, org, Some(json!({}))).await;
+        let (st, x) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/cases/{cid}/export"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
         assert_eq!(st, 200, "{x}");
-        assert_eq!((x["persons"].as_u64(), x["members"].as_array().unwrap().len()), (Some(1), 5), "{x}");
+        assert_eq!(x["schema"], "pnex.case/1");
+        assert_eq!(
+            (
+                x["persons"].as_u64(),
+                x["workspace"]["undated"].as_array().unwrap().len()
+            ),
+            (Some(1), 5),
+            "{x}"
+        );
         assert_eq!(x["pieces"][0]["sha256"], "ab".repeat(32));
-        assert_eq!(x["links"].as_array().unwrap().len(), 3, "{x}");
-        assert_eq!(x["case"]["properties"]["legal_basis"], "legitimate interest");
-        let now = chrono::Utc::now().to_rfc3339();
-        let (_, x) = call(&server, "POST", &format!("/api/v1/cases/{cid}/export"), &env.alice, org, Some(json!({"as_of": now}))).await;
+        assert_eq!(
+            x["workspace"]["case"]["properties"]["legal_basis"],
+            "legitimate interest"
+        );
+        let (st, _) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/cases/{cid}/detach"),
+            &env.alice,
+            org,
+            Some(json!({"object_id": person["id"]})),
+        )
+        .await;
+        assert_eq!(st, 200);
+        let (_, x) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/cases/{cid}/export"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
         assert_eq!(x["persons"].as_u64(), Some(0), "{x}");
-        let (st, _) = call(&server, "POST", &format!("/api/v1/cases/{cid}/export"), &env.alice, org, Some(json!({"as_of": "yesterday"}))).await;
-        assert_eq!(st, 400);
 
         let org_b = personal_org(&server, &env.bob).await;
-        let (st, _) = call(&server, "GET", &format!("/api/v1/cases/{cid}/board"), &env.bob, org_b, None).await;
+        let (st, _) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/cases/{cid}/board"),
+            &env.bob,
+            org_b,
+            None,
+        )
+        .await;
         assert_eq!(st, 404);
-        let (st, _) = call(&server, "POST", &format!("/api/v1/cases/{cid}/export"), &env.bob, org_b, Some(json!({}))).await;
+        let (st, _) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/cases/{cid}/export"),
+            &env.bob,
+            org_b,
+            None,
+        )
+        .await;
         assert_eq!(st, 404);
     })
     .await;
@@ -964,13 +1297,10 @@ async fn case_pages_from_templates_and_conclusion() {
         let (st, e) = call(&server, "POST", &url, &env.alice, org, Some(json!({"title": "  "}))).await;
         assert_eq!((st, e["title"].as_str()), (400, Some("required")));
 
-        // Both pages joined the case as notes.
-        let (_, links) = call(&server, "GET", &format!("/api/v1/ontology/objects/{cid}/links"), &env.alice, org, None).await;
-        let notes: Vec<&Value> = links.as_array().unwrap().iter()
-            .filter(|l| l["link_type"] == "in_case" && l["attributes"]["role"] == "note")
-            .collect();
-        assert_eq!(notes.len(), 2, "{links}");
-        let page_obj = notes.iter().find(|l| l["source"]["native_id"] == doc.as_str()).unwrap()["source"]["id"].clone();
+        // Both pages joined the case as undated pieces.
+        let (_, w) = call(&server, "GET", &format!("/api/v1/cases/{cid}/workspace"), &env.alice, org, None).await;
+        assert_eq!(undated(&w), vec!["Notes".to_string(), "Why it tripped".into()], "{w}");
+        let page_obj = w["undated"].as_array().unwrap().iter().find(|o| o["native_id"] == doc.as_str()).unwrap()["id"].clone();
 
         // Concluding versions the designated conclusion page.
         let upd = json!({"title": "Pump trip", "properties": {"status": "concluded", "conclusion_page": page_obj}, "expected_version": case["version"]});
@@ -991,6 +1321,212 @@ async fn case_pages_from_templates_and_conclusion() {
     .await;
 }
 
+/// Two installs of the same pack at once both succeed: the second waits,
+/// then finds the pack installed (they used to race into a 409).
+#[tokio::test]
+#[serial]
+async fn concurrent_pack_installs_both_succeed() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let url = "/api/v1/ontology/packs/investigation/install";
+        let (a, b) = tokio::join!(
+            call(&server, "POST", url, &env.alice, org, None),
+            call(&server, "POST", url, &env.alice, org, None),
+        );
+        assert!(a.0 < 300 && b.0 < 300, "{a:?} {b:?}");
+    })
+    .await;
+}
+
+/// The case graph (K31): relations among members with their history, and a
+/// node expanded in two steps (counted facets, then the picked neighbours).
+#[tokio::test]
+#[serial]
+async fn case_graph_relations_and_expansion() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
+        assert!(st < 300, "{p}");
+        let case = object(&server, &env.alice, org, "case", "Ring", json!({"status": "open", "legal_basis": "contract"})).await;
+        let cid = case["id"].as_str().unwrap().to_string();
+        let ann = object(&server, &env.alice, org, "person", "Ann", json!({})).await;
+        let bob = object(&server, &env.alice, org, "person", "Bob", json!({})).await;
+        let carl = object(&server, &env.alice, org, "person", "Carl", json!({})).await;
+        let phone = object(&server, &env.alice, org, "identifier", "Ann phone", json!({"kind": "phone", "value": "+33600000001"})).await;
+        for o in [&ann, &bob] {
+            let (st, w) = call(&server, "POST", &format!("/api/v1/cases/{cid}/attach"), &env.alice, org, Some(json!({"object_id": o["id"]}))).await;
+            assert_eq!(st, 200, "{w}");
+        }
+        for body in [
+            json!({"link_type": "knows", "source_id": ann["id"], "target_id": bob["id"]}),
+            json!({"link_type": "knows", "source_id": ann["id"], "target_id": carl["id"]}),
+            json!({"link_type": "uses_identifier", "source_id": ann["id"], "target_id": phone["id"]}),
+        ] {
+            let (st, l) = link(&server, &env.alice, org, body).await;
+            assert_eq!(st, 201, "{l}");
+        }
+        let (st, rel) = call(&server, "GET", &format!("/api/v1/cases/{cid}/relations"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{rel}");
+        let rel = rel.as_array().unwrap();
+        assert_eq!(rel.len(), 1, "only Ann–Bob joins two members: {rel:?}");
+        assert_eq!(rel[0]["link_type"], "knows");
+
+        let url = format!("/api/v1/cases/{cid}/expand");
+        let shown = json!([ann["id"], bob["id"]]);
+        let (st, f) = call(&server, "POST", &url, &env.alice, org, Some(json!({"object_id": ann["id"], "exclude": shown}))).await;
+        assert_eq!(st, 200, "{f}");
+        let facets: Vec<(String, String, u64)> = f["facets"].as_array().unwrap().iter()
+            .map(|x| (x["link_type"].as_str().unwrap().into(), x["type_key"].as_str().unwrap().into(), x["count"].as_u64().unwrap()))
+            .collect();
+        assert_eq!(facets, [("knows".into(), "person".into(), 1), ("uses_identifier".into(), "identifier".into(), 1)]);
+        assert_eq!(f["nodes"], json!([]));
+        let pick = json!({"object_id": ann["id"], "exclude": shown, "pick": [{"link_type": "knows", "type_key": "person"}]});
+        let (st, r) = call(&server, "POST", &url, &env.alice, org, Some(pick.clone())).await;
+        assert_eq!(st, 200, "{r}");
+        assert_eq!(r["nodes"][0]["title"], "Carl", "{r}");
+        assert_eq!(r["nodes"].as_array().map(Vec::len), Some(1));
+
+        // Positions arranged by hand are kept; none = the automatic layout.
+        let lay = format!("/api/v1/cases/{cid}/layout");
+        let (st, l) = call(&server, "GET", &lay, &env.alice, org, None).await;
+        assert_eq!((st, l), (200, json!({"positions": {}})));
+        let mine = json!({"positions": {ann["id"].as_str().unwrap(): [120.5, 80.0]}});
+        let (st, _) = call(&server, "PUT", &lay, &env.alice, org, Some(mine.clone())).await;
+        assert_eq!(st, 200);
+        let (_, l) = call(&server, "GET", &lay, &env.alice, org, None).await;
+        assert_eq!(l, mine);
+        let (st, e) = call(&server, "PUT", &lay, &env.alice, org, Some(json!({"positions": {"x": [1e9, 0.0]}}))).await;
+        assert_eq!((st, e["positions"].as_str()), (400, Some("invalid")), "{e}");
+
+        // R1: another org sees neither.
+        let org_b = personal_org(&server, &env.bob).await;
+        let (st, _) = call(&server, "GET", &format!("/api/v1/cases/{cid}/relations"), &env.bob, org_b, None).await;
+        assert_eq!(st, 404);
+        let (st, _) = call(&server, "POST", &url, &env.bob, org_b, Some(pick)).await;
+        assert_eq!(st, 404);
+        let (st, _) = call(&server, "GET", &lay, &env.bob, org_b, None).await;
+        assert_eq!(st, 404);
+        // R2: a viewer reads the arrangement, never saves one.
+        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
+        assert!(st < 300);
+        let (st, _) = call(&server, "PUT", &lay, &env.bob, org, Some(json!({"positions": {}}))).await;
+        assert_eq!(st, 403);
+        let (st, l) = call(&server, "GET", &lay, &env.bob, org, None).await;
+        assert_eq!((st, l), (200, mine));
+        // Re-layout: empty positions clear the arrangement.
+        let (st, _) = call(&server, "PUT", &lay, &env.alice, org, Some(json!({"positions": {}}))).await;
+        assert_eq!(st, 200);
+        let (_, l) = call(&server, "GET", &lay, &env.alice, org, None).await;
+        assert_eq!(l, json!({"positions": {}}));
+    })
+    .await;
+}
+
+/// Frozen states (K33) read back byte for byte with their fingerprint, are
+/// numbered, and an export imports back into an identical new case.
+#[tokio::test]
+#[serial]
+async fn case_snapshots_and_export_round_trip() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
+        assert!(st < 300, "{p}");
+        let case = object(&server, &env.alice, org, "case", "Leak", json!({"status": "concluded", "question": "Why?", "legal_basis": "contract", "stop_min_s": 600})).await;
+        let cid = case["id"].as_str().unwrap().to_string();
+        let ann = object(&server, &env.alice, org, "person", "Ann", json!({})).await;
+        let pump = object(&server, &env.alice, org, "place", "Pump room", json!({})).await;
+        let gone = object(&server, &env.alice, org, "place", "Old shed", json!({})).await;
+        let (st, w) = call(&server, "POST", &format!("/api/v1/cases/{cid}/events"), &env.alice, org, Some(json!({
+            "title": "Leak seen", "occurred": instant("2025-05-02T09:00:00Z"),
+            "attach": [{"object_id": ann["id"], "detail": "witness"}, {"object_id": pump["id"]}, {"object_id": gone["id"]}]
+        }))).await;
+        assert_eq!(st, 201, "{w}");
+        let (st, w) = call(&server, "POST", &format!("/api/v1/cases/{cid}/events"), &env.alice, org, Some(json!({
+            "title": "Valve closed", "occurred": instant("2025-05-02T09:30:00Z"), "origin": "signal"
+        }))).await;
+        assert_eq!(st, 201, "{w}");
+        let note = object(&server, &env.alice, org, "note", "Pressure log", json!({"body": "to check"})).await;
+        let (st, w) = call(&server, "POST", &format!("/api/v1/cases/{cid}/attach"), &env.alice, org, Some(json!({"object_id": note["id"]}))).await;
+        assert_eq!(st, 200, "{w}");
+
+        // Freeze twice: numbered, fingerprinted, read back as fingerprinted.
+        let url = format!("/api/v1/cases/{cid}/snapshots");
+        let (st, s1) = call(&server, "POST", &url, &env.alice, org, Some(json!({"label": "Before the report"}))).await;
+        assert_eq!((st, s1["seq"].as_i64()), (201, Some(1)), "{s1}");
+        let (_, s2) = call(&server, "POST", &url, &env.alice, org, Some(json!({}))).await;
+        assert_eq!(s2["seq"], 2);
+        let (st, list) = call(&server, "GET", &url, &env.alice, org, None).await;
+        assert_eq!(st, 200);
+        let seqs: Vec<i64> = list.as_array().unwrap().iter().map(|s| s["seq"].as_i64().unwrap()).collect();
+        assert_eq!(seqs, [2, 1]);
+        assert_eq!(list[1]["label"], "Before the report");
+        let (st, full) = call(&server, "GET", &format!("{url}/1"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{full}");
+        let content = full["content"].as_str().unwrap();
+        use sha2::Digest;
+        assert_eq!(format!("{:x}", sha2::Sha256::digest(content.as_bytes())), full["snapshot"]["sha256"].as_str().unwrap());
+        let frozen: Value = serde_json::from_str(content).unwrap();
+        assert_eq!(frozen["export"]["workspace"]["events"].as_array().map(Vec::len), Some(2));
+        // Never modified: no route writes a frozen state again.
+        let (st, _) = call(&server, "PUT", &format!("{url}/1"), &env.alice, org, Some(json!({"label": "x"}))).await;
+        assert_eq!(st, 405);
+        let (st, _) = call(&server, "GET", &format!("{url}/9"), &env.alice, org, None).await;
+        assert_eq!(st, 404);
+
+        // Round trip: the export, one object gone, imports into a new open case.
+        let (st, before) = call(&server, "GET", &format!("/api/v1/cases/{cid}/export"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{before}");
+        let (st, _) = call(&server, "DELETE", &format!("/api/v1/ontology/objects/{}", gone["id"].as_str().unwrap()), &env.alice, org, None).await;
+        assert!(st < 300, "{st}");
+        let (st, imp) = call(&server, "POST", "/api/v1/cases/import", &env.alice, org, Some(before.clone())).await;
+        assert_eq!(st, 201, "{imp}");
+        assert_eq!(imp["events"], 2);
+        assert_eq!(imp["missing"][0]["title"], "Old shed", "{imp}");
+        let nid = imp["case"]["id"].as_str().unwrap();
+        assert_ne!(nid, cid);
+        let (_, after) = call(&server, "GET", &format!("/api/v1/cases/{nid}/export"), &env.alice, org, None).await;
+        let (wb, wa) = (&before["workspace"], &after["workspace"]);
+        assert_eq!(wa["case"]["properties"]["status"], "open");
+        for k in ["question", "legal_basis", "stop_min_s"] {
+            assert_eq!(wa["case"]["properties"][k], wb["case"]["properties"][k], "{k}");
+        }
+        let shape = |w: &Value| -> Vec<(Value, Value, Vec<(Value, Value, Value)>)> {
+            w["events"].as_array().unwrap().iter().map(|e| {
+                let p = e["event"]["properties"].clone();
+                let atts = e["attachments"].as_array().unwrap().iter()
+                    .filter(|a| a["object"]["title"] != "Old shed")
+                    .map(|a| (a["object"]["id"].clone(), a["role"].clone(), a["detail"].clone())).collect();
+                (e["event"]["title"].clone(), p, atts)
+            }).collect()
+        };
+        assert_eq!(shape(wa), shape(wb));
+        assert_eq!(wa["undated"], wb["undated"]);
+        let mut other = before.clone();
+        other["schema"] = json!("other/1");
+        let (st, e) = call(&server, "POST", "/api/v1/cases/import", &env.alice, org, Some(other)).await;
+        assert_eq!((st, e["schema"].as_str()), (400, Some("invalid")), "{e}");
+
+        // R1 / R2.
+        let org_b = personal_org(&server, &env.bob).await;
+        let (st, _) = call(&server, "GET", &url, &env.bob, org_b, None).await;
+        assert_eq!(st, 404);
+        let (st, _) = call(&server, "GET", &format!("{url}/1"), &env.bob, org_b, None).await;
+        assert_eq!(st, 404);
+        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
+        assert!(st < 300);
+        let (st, _) = call(&server, "POST", &url, &env.bob, org, Some(json!({}))).await;
+        assert_eq!(st, 403);
+        let (st, _) = call(&server, "POST", "/api/v1/cases/import", &env.bob, org, Some(before)).await;
+        assert_eq!(st, 403);
+        let (st, l) = call(&server, "GET", &url, &env.bob, org, None).await;
+        assert_eq!((st, l.as_array().map(Vec::len)), (200, Some(2)));
+    })
+    .await;
+}
+
+/// Retention (cases.md K16): an archived case purges the persons and
+/// identifiers only it holds, whether attached to one of its events or
+/// undated; another case or an open link outside keeps them.
 #[tokio::test]
 #[serial]
 async fn archived_case_purges_its_own_persons_only() {
@@ -998,27 +1534,34 @@ async fn archived_case_purges_its_own_persons_only() {
         let org = personal_org(&server, &env.alice).await;
         let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
         assert!(st < 300, "{p}");
-        let case = object(&server, &env.alice, org, "case", "Fraud", json!({"status": "open"})).await;
+        let props = json!({"status": "open", "legal_basis": "legitimate interest"});
+        let case = object(&server, &env.alice, org, "case", "Fraud", props.clone()).await;
         let cid = case["id"].as_str().unwrap().to_string();
-        let other = object(&server, &env.alice, org, "case", "Other", json!({"status": "open"})).await;
+        let other = object(&server, &env.alice, org, "case", "Other", props).await;
         let ann = object(&server, &env.alice, org, "person", "Ann", json!({})).await;
         let phone = object(&server, &env.alice, org, "identifier", "Ann phone", json!({"kind": "phone", "value": "+33600000000"})).await;
         let bob = object(&server, &env.alice, org, "person", "Bob", json!({})).await;
         let carl = object(&server, &env.alice, org, "person", "Carl", json!({})).await;
         let dan = object(&server, &env.alice, org, "person", "Dan", json!({})).await;
-        for o in [&ann, &phone, &bob, &dan] {
-            let (st, l) = link(&server, &env.alice, org, json!({"link_type": "in_case", "source_id": o["id"], "target_id": cid, "attributes": {"role": "actor"}})).await;
-            assert_eq!(st, 201, "{l}");
+        // Ann on an event of the case, the others undated.
+        let (st, w) = call(&server, "POST", &format!("/api/v1/cases/{cid}/events"), &env.alice, org, Some(json!({
+            "title": "Transfer", "occurred": instant("2025-05-02T09:00:00Z"), "attach": [{"object_id": ann["id"]}]
+        }))).await;
+        assert_eq!(st, 201, "{w}");
+        for o in [&phone, &bob, &dan] {
+            let (st, w) = call(&server, "POST", &format!("/api/v1/cases/{cid}/attach"), &env.alice, org, Some(json!({"object_id": o["id"]}))).await;
+            assert_eq!(st, 200, "{w}");
         }
-        // Links among members do not hold; a link outside or another case does.
+        // Links among held objects do not hold; a link outside or another case does.
         for body in [
             json!({"link_type": "uses_identifier", "source_id": ann["id"], "target_id": phone["id"]}),
             json!({"link_type": "knows", "source_id": bob["id"], "target_id": carl["id"]}),
-            json!({"link_type": "in_case", "source_id": dan["id"], "target_id": other["id"], "attributes": {"role": "actor"}}),
         ] {
             let (st, l) = link(&server, &env.alice, org, body).await;
             assert_eq!(st, 201, "{l}");
         }
+        let (st, w) = call(&server, "POST", &format!("/api/v1/cases/{}/attach", other["id"].as_str().unwrap()), &env.alice, org, Some(json!({"object_id": dan["id"]}))).await;
+        assert_eq!(st, 200, "{w}");
         let url = format!("/api/v1/cases/{cid}/purge");
         let (st, cands) = call(&server, "GET", &url, &env.alice, org, None).await;
         assert_eq!(st, 200, "{cands}");
@@ -1027,10 +1570,17 @@ async fn archived_case_purges_its_own_persons_only() {
         assert_eq!(titles, ["Ann", "Ann phone"], "{cands}");
         let ids: Vec<Value> = cands.as_array().unwrap().iter().map(|c| c["id"].clone()).chain([bob["id"].clone()]).collect();
 
+        // Frozen states: the one that names Ann goes with her, the other stays.
+        let oid = other["id"].as_str().unwrap();
+        for c in [cid.as_str(), oid] {
+            let (st, s) = call(&server, "POST", &format!("/api/v1/cases/{c}/snapshots"), &env.alice, org, Some(json!({}))).await;
+            assert_eq!(st, 201, "{s}");
+        }
+
         // Only an archived case purges.
         let (st, e) = call(&server, "POST", &url, &env.alice, org, Some(json!({"ids": ids}))).await;
         assert_eq!((st, e["status"].as_str()), (400, Some("invalid")), "{e}");
-        let upd = json!({"title": "Fraud", "properties": {"status": "archived"}, "expected_version": case["version"]});
+        let upd = json!({"title": "Fraud", "properties": {"status": "archived", "legal_basis": "legitimate interest"}, "expected_version": case["version"]});
         let (st, v) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{cid}"), &env.alice, org, Some(upd)).await;
         assert_eq!(st, 200, "{v}");
         // Bob is not a candidate: asking for him purges nothing of his.
@@ -1040,6 +1590,10 @@ async fn archived_case_purges_its_own_persons_only() {
         assert_eq!(st, 404);
         let (st, _) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}", bob["id"].as_str().unwrap()), &env.alice, org, None).await;
         assert_eq!(st, 200);
+        let (_, l) = call(&server, "GET", &format!("/api/v1/cases/{cid}/snapshots"), &env.alice, org, None).await;
+        assert_eq!(l, json!([]), "the frozen state naming Ann is gone");
+        let (_, l) = call(&server, "GET", &format!("/api/v1/cases/{oid}/snapshots"), &env.alice, org, None).await;
+        assert_eq!(l.as_array().map(Vec::len), Some(1), "{l}");
 
         // R1: another org neither lists nor purges.
         let org_b = personal_org(&server, &env.bob).await;

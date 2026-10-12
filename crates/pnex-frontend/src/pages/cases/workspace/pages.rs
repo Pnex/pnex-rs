@@ -1,15 +1,14 @@
-//! Pages of a case (cases.md K8): start a page from a pack template
+//! Pages of a case (cases.md K8), in the case frame: start a page from a pack template
 //! (5 whys, Ishikawa…) and open it at once; designate the conclusion page,
 //! versioned when the case concludes.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::ontology::api::{CasePageInput, LinkView, ObjectInput, ObjectView};
+use pnex_core::ontology::api::{CasePageInput, ObjectInput, ObjectRef, ObjectView};
 use pnex_core::ontology::CASE_CONCLUSION_PAGE;
-use pnex_core::resources::KIND_DOC;
 use serde_json::Value;
 
-use super::prop_str;
+use super::super::prop_str;
 use crate::api;
 use crate::app::Route;
 use crate::components::ui::{BTN_GHOST, BTN_SECONDARY_SM, INPUT};
@@ -18,7 +17,7 @@ use crate::state::toasts;
 #[component]
 pub fn PagesPanel(
     case: ObjectView,
-    members: Vec<LinkView>,
+    pages: Vec<ObjectRef>,
     editable: bool,
     on_changed: Callback<()>,
 ) -> Element {
@@ -26,18 +25,13 @@ pub fn PagesPanel(
     let mut title = use_signal(String::new);
     let mut template = use_signal(String::new);
     let mut busy = use_signal(|| false);
-    let templates =
-        use_resource(|| async { api::ontology::case_templates().await.unwrap_or_default() });
+    let templates = use_resource(|| async { api::cases::templates().await.unwrap_or_default() });
     let templates = templates.read().clone().unwrap_or_default();
     let help = templates
         .iter()
         .find(|t| t.key == template())
         .map(|t| t.description.clone())
         .unwrap_or_default();
-    let pages: Vec<LinkView> = members
-        .into_iter()
-        .filter(|m| m.source.type_key == KIND_DOC)
-        .collect();
     let conclusion = prop_str(&case, CASE_CONCLUSION_PAGE);
 
     let case_id = case.id.clone();
@@ -53,7 +47,7 @@ pub fn PagesPanel(
         let id = case_id.clone();
         busy.set(true);
         spawn(async move {
-            let res = api::ontology::case_add_page(&id, &input).await;
+            let res = api::cases::add_page(&id, &input).await;
             busy.set(false);
             match res {
                 Ok(doc) => {
@@ -88,10 +82,8 @@ pub fn PagesPanel(
     });
 
     rsx! {
-        div {
-            class: "bg-white rounded-lg border border-gray-200 p-4 space-y-3",
-            "data-testid": "case-pages",
-            h2 { class: "font-semibold text-gray-900", {t!("case-pages")} }
+        div { class: "space-y-3", "data-testid": "case-pages",
+            h3 { class: "text-sm font-semibold text-ink", {t!("case-pages")} }
             if editable {
                 form {
                     class: "space-y-2",
@@ -145,11 +137,11 @@ pub fn PagesPanel(
                             Link {
                                 class: "flex-1 min-w-0 truncate text-sm text-gray-900 hover:text-signal hover:underline",
                                 to: Route::Docs {
-                                    id: p.source.native_id.clone(),
+                                    id: p.native_id.clone(),
                                 },
-                                "{p.source.title}"
+                                "{p.title}"
                             }
-                            if p.source.id == conclusion {
+                            if p.id == conclusion {
                                 span {
                                     class: "rounded bg-signal-soft px-1.5 py-0.5 text-xs font-medium text-signal",
                                     "data-testid": "case-page-conclusion",
@@ -169,7 +161,7 @@ pub fn PagesPanel(
                                     r#type: "button",
                                     "data-testid": "case-page-designate",
                                     onclick: {
-                                        let id = p.source.id.clone();
+                                        let id = p.id.clone();
                                         move |_| designate.call(Some(id.clone()))
                                     },
                                     {t!("case-page-designate")}

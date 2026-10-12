@@ -3,11 +3,14 @@
 # places, where anything was over time (`located_at`, dated by the link),
 # claims sourced by pieces at an exact locator (corroborated with two
 # origins, or one and a written justification), hypotheses they support or
-# contradict, identifiers. No "suspect" or "guilty" field (K16): an actor
-# has roles in events, legal qualification is not an object attribute.
+# contradict, identifiers. Events and the `involves` attachment are core
+# types since 1.3.0 (cases-workspace.md K20, K21): the pack uses them. Since
+# 1.4.0 a place may carry a zone (geo_area, K29) for the zone detector.
+# No "suspect" or "guilty" field (K16): an actor has roles in events, legal
+# qualification is not an object attribute.
 key: investigation
 name: Investigation
-version: "1.2.0"
+version: "1.4.0"
 description: People, organizations, events with approximate dates, sourced claims and hypotheses — for cases, newsrooms and root-cause analyses.
 types:
   - key: person
@@ -28,14 +31,6 @@ types:
         kind: enum
         values: [company, public_body, association, party, media, group, other]
       - { key: notes, name: Notes, kind: text, max_len: 2000 }
-  - key: event
-    name: Event
-    icon: layers
-    may_be_contained_in: [folder]
-    properties:
-      - { key: occurred, name: Occurred, kind: fuzzy_time }
-      - { key: summary, name: Summary, kind: text, max_len: 2000 }
-      - { key: location, name: Location, kind: geo_point }
   - key: place
     name: Place
     icon: map-pin
@@ -43,6 +38,7 @@ types:
     properties:
       - { key: address, name: Address, kind: text, max_len: 500 }
       - { key: location, name: Location, kind: geo_point }
+      - { key: zone, name: Zone, kind: geo_area }
       - { key: notes, name: Notes, kind: text, max_len: 2000 }
   - key: piece
     name: Piece
@@ -98,13 +94,6 @@ types:
         required: true
       - { key: value, name: Value, kind: text, max_len: 255, required: true, indexed: true }
 link_types:
-  - key: involves
-    name: involves
-    inverse_name: is involved in
-    from_types: [event]
-    to_types: "*"
-    attributes:
-      - { key: role, name: Role, kind: text, max_len: 255 }
   - key: occurred_at
     name: occurred at
     inverse_name: is the place of

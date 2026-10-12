@@ -8175,6 +8175,7 @@ dependencies = [
  "pnex-stitcher",
  "pnex-vision",
  "prost 0.13.5",
+ "quick-xml",
  "rand 0.10.3",
  "rcgen",
  "redis",
