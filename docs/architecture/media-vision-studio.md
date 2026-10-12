@@ -196,6 +196,70 @@ Pi, large sur worker : profils D164 + check par porteur D167.
   ce PRD rouvre donc D174 **pour l'usage interne** (consultation dans
   PNEX), sans publication. Décision à prendre à la validation.
 
+### 4.5bis Étage de décision rapide (`text_decide`)
+
+Entre les sorties texte du pipeline (segments ASR, événements de zone,
+légendes, description `media_fuse`) et l'alerting, un étage de
+**décision typée** classe chaque fenêtre sans générer de texte.
+
+- **Modèle candidat : Laya** (Convai Innovations, poids **Apache-2.0**,
+  conforme P8). Encodeur bidirectionnel + tête de décision, **non
+  génératif** : il reçoit un état (texte ou JSON) et des questions
+  typées, et renvoie une distribution de probabilités par question, en
+  une seule passe pour toutes les questions.
+- **Primitives exposées** :
+  - `choice` : une option parmi N, probabilité par option ;
+  - `score` : niveau attendu sur une échelle ordonnée + distribution ;
+  - `noul` : P(vrai) d'une affirmation. **Non utilisé en V1** (biais
+    connu sur les étiquettes) ; remplacé par un `choice` à deux options
+    neutres.
+- **Checkpoint** : **multilingue uniquement** (mmBERT-base, ~322M
+  paramètres, contexte 1 024 tokens). Le checkpoint anglais est exclu :
+  il s'effondre hors anglais tout en restant très confiant.
+- **Rôle 1 — Alerting calibré** : les probabilités alimentent
+  directement des seuils dans OpenObserve via `event_log` (D84), sans
+  parsing de sortie LLM. Exemple : P(incident) > 0,8 sur une fenêtre
+  → alerte (anti-spam N3).
+- **Rôle 2 — Filtre avant `media_fuse`** : le LLM de l'org n'est appelé
+  que sur les fenêtres signalées par `text_decide`, ce qui rend
+  tenable le plafond d'appels par org et par jour (§4.5).
+- **Traçabilité** : une décision est une distribution liée aux ids de
+  ses entrées (segments, événements, légendes), au format de provenance
+  D184. Aucun texte généré, donc rien à marquer « généré par IA »
+  au-delà du libellé de la décision.
+- **P6 inchangé** : `text_decide` décide et route, il n'émet aucune
+  commande. Seul un flow déployé par l'humain avec `device_write`
+  actionne (D128).
+- **Le zéro-shot ne suffit pas** : sur des décisions métier, les
+  checkpoints de base sont proches du hasard (0,34–0,36 de précision
+  contre 0,46 pour la classe majoritaire, selon la carte modèle).
+  L'usage en production suppose donc :
+  1. un **jeu annoté par l'org** (fenêtres réelles, ~200 à 500
+     exemples) ;
+  2. un **fine-tuning** (job sur worker GPU, P2.7) ;
+  3. une **calibration de température** par (type de question, nombre
+     d'options) sur les données de l'org, car le modèle sort
+     sur-confiant (ECE ~0,31 → ~0,11 après recalage selon la carte).
+  Le modèle fine-tuné est versionné dans le registre existant (média
+  `kind=model` + `ml_models`, D81/D100), comme les détecteurs du Lab.
+- **Limites de schéma** : 20 options maximum par `choice` (au-delà, la
+  précision chute) ; état tronqué au contexte du checkpoint, ce qui
+  reste compatible avec des fenêtres de 10 à 30 s.
+- **`act_probability` ignoré** (sans signal selon la carte) ; le seuil
+  porte sur la probabilité de la réponse.
+- **Inférence** : graphe ONNX unique (encodeur + tête) exportable
+  depuis le checkpoint HF (script `export_onnx.py` de
+  [`receptron/laya`](https://github.com/receptron/laya), MIT). Exécution
+  en Rust, sans Python ni Node. Le formatage d'entrée (marqueurs
+  d'options, sérialisation JSON) doit reproduire l'implémentation de
+  référence, vérifié par un test de non-régression sur les logits
+  (voir Q12).
+- **Ressources** : ~1,3 Go de poids en fp32 pour le multilingue
+  (estimation : ~322M paramètres × 4 octets ; la carte HF indique
+  ~647 Mo, sans doute en fp16), à mesurer. Les quelques centaines de ms
+  annoncées par appel sur CPU sont à confirmer sur Pi 5 8 Go ; profil
+  recommandé : worker GPU ou version quantifiée (Q13).
+
 ### 4.6 Vision Lab — génération de modèles de reconnaissance d'objets
 
 **Besoin (Shan) :** l'utilisateur joue une vidéo ou ouvre plusieurs
@@ -340,6 +404,7 @@ snake_case** comme l'existant :
 | `vision_track` | **nouveau** | détections → tracks (ByteTrack) |
 | `vision_zone` | **nouveau** | tracks + polygones → événements de zone |
 | `vision_caption` | **nouveau** | frames ou crops → légendes (endpoint VLM de l'org) |
+| `text_decide` | **nouveau** | segments / événements / légendes / description → décisions typées calibrées (`choice`, `score`) → `event_log` |
 | `media_fuse` | **nouveau** | segments + événements + légendes → description horodatée |
 
 - École D78 : le flow transporte des **références et du texte**, jamais
@@ -459,12 +524,16 @@ Les lots audio sont ceux de `media-ingest.md` ; ce PRD ne les duplique pas.
 | **M1 — Détection** | `vision_track` (ByteTrack Rust), `vision_zone` (éditeur de polygones sur l'image), événements dérivés via `event_log` + alerting (`vision_detect` existe déjà) | Événements objets en zone + alertes |
 | **M2 — Vision Lab v1** | Projets, import images/vidéos, annotation boîtes, interpolation vidéo, split par source, `lab_datasets` versionnés, job `train_detector` (image YOLOX figée), export ONNX → registre existant + check D100 | Modèle custom créé de bout en bout dans PNEX |
 | **M3 — Description** | `vision_caption` (VLM de l'org), `media_fuse`, résumé global, provenance D184 ; décision sur D174 (usage interne) | Description vidéo horodatée |
+| **M3bis — Décision rapide** | `text_decide` (Laya multilingue, ONNX), POC sur ~200 fenêtres réelles annotées : zéro-shot vs fine-tuné vs LLM de l'org, calibration de température, puis branchement en filtre devant `media_fuse` | Alerte calibrée sur fenêtre + réduction mesurée des appels LLM |
 | **M4 — Lab v2** | Pré-annotation, active learning (file « à revoir »), guidage de diversité, tracking pour la propagation, INT8 | Boucle d'amélioration continue |
 | **M5 — Studio rapports** | Décision D173/D174/D3 rouverte, puis rapports intégrés, corrélation IoT, export | Rapport généré sans sortir de PNEX |
 
 Dépendances : fabric de workers P2.7 (GPU distant ; contournable par un
 process `--worker=train` joint en mesh, comme D166) ; P2.13 lot 6 pour
 M0 (lot 1 livré) ; ontologie L4 (D182 plages, D187 rapports) pour M5.
+M3bis dépend de M0 (segments transcrits) et, pour le fine-tuning, de
+la fabric P2.7 ; le job d'entraînement relève de la même exception
+Python confinée que `train_detector` (§11, point 10).
 
 ---
 
@@ -512,6 +581,10 @@ M0 (lot 1 livré) ; ontologie L4 (D182 plages, D187 rapports) pour M5.
 | Q9 | Une détection peut-elle alimenter `device_write` via un flow humain (D128 le permet aujourd'hui), ou ce PRD l'interdit-il (porte de deploy) ? |
 | Q10 | Version cible : après la 0.2.0, ou exception au gel comme P2.13 (décision #17) ? |
 | Q11 | D174 : la description par fenêtre (M3) est-elle autorisée en usage interne, et sous quelles règles (marquage IA, relecture) ? |
+| Q12 | Inférence `text_decide` : tract supporte-t-il le graphe ModernBERT/mmBERT exporté, ou ce nœud justifie-t-il `ort` (cf. Q2) ? Le portage Rust du formatage d'entrée doit égaler la référence Python à 1e-4 près. |
+| Q13 | `text_decide` sur Pi : fp32 acceptable sur Pi 5 8 Go, ou quantification INT8 obligatoire (précision et calibration à re-mesurer) ? |
+| Q14 | Seuil de mise en production de `text_decide` : quel écart de précision avec le LLM de l'org est acceptable en échange d'un gain de latence et de coût ? Proposition : ≥ 80 % de précision sur le jeu annoté de l'org et un ECE ≤ 0,10 après calibration. |
+| Q15 | Maturité de l'écosystème Laya : modèle récent, benchmarks comparatifs auto-publiés, portage `receptron/laya` à un seul auteur (oct. 2026). Faut-il vendorer le script d'export et figer une révision du checkpoint (hash HF) plutôt que suivre `main` ? |
 
 ---
 
@@ -552,3 +625,9 @@ Corrections apportées à la v0.1 après lecture de la doc existante :
 13. Diagramme ASCII converti en Mermaid (convention des docs).
 14. Ajout des exigences sécurité (R1–R20) et assistant IA (NodeDoc, KB),
     obligatoires pour tout nouveau nœud.
+15. **Ajout §4.5bis (2026-10-12)** : étage de décision rapide
+    `text_decide` (Laya multilingue, Apache-2.0, non génératif) en
+    filtre devant `media_fuse` et en source d'alertes calibrées. Les
+    limites tirées de la carte modèle (zéro-shot faible, `noul` biaisé,
+    sur-confiance, `act_probability` inutilisable) sont intégrées comme
+    règles. Questions Q12–Q15 ajoutées, phase M3bis ajoutée.
