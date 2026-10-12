@@ -111,7 +111,7 @@ pub(crate) fn LanScanSection() -> Element {
                 div { class: "space-y-1",
                     div { class: "h-2 w-full bg-gray-200 rounded-full overflow-hidden",
                         div {
-                            class: "h-full bg-signal-600 rounded-full transition-all duration-200",
+                            class: "h-full bg-signal-600 rounded-full transition-[width] duration-200",
                             style: "width: {pct}%",
                         }
                     }

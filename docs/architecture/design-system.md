@@ -101,6 +101,38 @@ les compose hérite de l'identité.
   et ne sont pas ajoutés aux pages qui n'en ont pas (`ontology.md`, « Labels
   et ontologie »).
 
+### Mouvement (2026-10-12)
+
+Un poste d'instrumentation ne bouge pas pour décorer : le mouvement répond
+seulement à un geste de l'utilisateur, et seulement là où il ne l'utilise
+pas cent fois par jour (philosophie d'Emil Kowalski, « You don't need
+animations »).
+
+- **Animé** : entrée des modales et de la confirmation (fondu + `scale(0.96)`
+  250 ms, feuille du bas depuis le bord sous `sm`, 300 ms), tiroirs mobiles
+  (glissement 300 ms, seulement là où ils recouvrent la page), toasts
+  (entrée et sortie par le bord droit), appui des boutons pleine taille
+  (`scale(0.97)`, 150 ms), panneaux droits ouverts par un bouton
+  (`.pnex-drawer-in-right` : versions, debug, assistant, firmware), menus de
+  barre d'outils (`.pnex-pop-in` 150 ms depuis le bouton, `-up` pour le
+  sélecteur d'org), `+` qui tourne en ×, coche de flash réussi
+  (`.pnex-success-in`, seul moment « plaisir »), morph de l'explorateur de
+  dossier (re-layout et force ↔ chrono, 400 ms).
+- **En cours** : battement d'opacité `pnex-beat` (points de l'assistant,
+  `.pnex-live-dot` du build en cours), jamais le texte qui clignote ; spinner
+  de liste `.pnex-spinner-delayed` invisible pendant 250 ms (pas de flash
+  sur un chargement rapide).
+- **Jamais animé** : recherche globale et raccourcis clavier, navigation entre
+  pages, repli du rail (largeur = recalcul de mise en page), valeurs live,
+  graphiques, lignes de tables, accordéons d'inspecteur, panneaux ouverts par
+  une sélection (inspecteurs flow et dossier, fiche POI), onglets.
+- **Ingrédients** : courbes `--ease-out-ui` et `--ease-drawer` du `@theme`,
+  classes `.pnex-*-in` de `tailwind.css` (`@starting-style`, sans JS),
+  `transform` et `opacity` seulement, jamais `transition-all`.
+  `prefers-reduced-motion` garde les fondus et retire les déplacements.
+- Les sorties ne sont pas animées (Dioxus démonte tout de suite), sauf le
+  toast qui reste monté 200 ms (`.pnex-toast-leaving`).
+
 ## 5. Navigation par tâche
 
 Les URL ne changent pas, seul le menu est regroupé :

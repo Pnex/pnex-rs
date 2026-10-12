@@ -182,7 +182,7 @@ fn AssistantDrawer(on_close: Callback) -> Element {
     rsx! {
         div { class: "fixed inset-0 z-40",
             div { class: "absolute inset-0", onclick: close }
-            aside { class: "absolute inset-y-0 right-0 w-96 max-w-full bg-white shadow-xl border-l border-gray-200 flex flex-col",
+            aside { class: "pnex-drawer-in-right absolute inset-y-0 right-0 w-96 max-w-full bg-white shadow-xl border-l border-gray-200 flex flex-col",
                 header { class: "flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-200",
                     h3 { class: "text-sm font-semibold text-gray-900 flex-1", {t!("ai-title")} }
                     button {
@@ -232,13 +232,13 @@ fn AssistantDrawer(on_close: Callback) -> Element {
                             div { class: "flex justify-start", role: "status",
                                 div { class: "inline-flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-600",
                                     span { class: "flex gap-1",
-                                        span { class: "h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce" }
+                                        span { class: "h-1.5 w-1.5 rounded-full bg-gray-500 pnex-typing-dot" }
                                         span {
-                                            class: "h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce",
+                                            class: "h-1.5 w-1.5 rounded-full bg-gray-500 pnex-typing-dot",
                                             style: "animation-delay: 150ms",
                                         }
                                         span {
-                                            class: "h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce",
+                                            class: "h-1.5 w-1.5 rounded-full bg-gray-500 pnex-typing-dot",
                                             style: "animation-delay: 300ms",
                                         }
                                     }

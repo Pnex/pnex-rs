@@ -987,7 +987,7 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
             }
             if let Some(o) = offer() {
                 div {
-                    class: "absolute inset-x-3 top-12 z-10 space-y-2 rounded-md border border-line-strong bg-surface p-3 shadow-lg",
+                    class: "pnex-pop-in absolute inset-x-3 top-12 z-10 space-y-2 rounded-md border border-line-strong bg-surface p-3 shadow-lg",
                     role: "dialog",
                     "aria-label": t!("cw-expand-title", name : o.title.clone()),
                     "data-testid": "case-expand",

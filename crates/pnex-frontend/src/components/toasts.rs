@@ -1,5 +1,5 @@
-//! Conteneur de toasts — coin haut droit, animation slide-in (porté du
-//! `ToastContainer.tsx` React).
+//! Toast container, top right corner: slides in and out through the right
+//! edge (ported from the React `ToastContainer.tsx`).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -29,12 +29,25 @@ pub fn ToastContainer() -> Element {
 /// by a closing modal was never dismissed.
 #[component]
 fn ToastCard(id: u64, kind: ToastKind, message: ToastMessage) -> Element {
+    let mut leaving = use_signal(|| false);
+    // Exit leaves through the edge it came in from, then the card unmounts
+    // (200 ms = `.pnex-toast-leaving`).
+    let mut close = move || {
+        if leaving() {
+            return;
+        }
+        leaving.set(true);
+        spawn(async move {
+            crate::util::sleep(std::time::Duration::from_millis(200)).await;
+            crate::state::toasts::dismiss(id);
+        });
+    };
     use_future(move || async move {
         crate::util::sleep(std::time::Duration::from_secs(
             crate::state::toasts::AUTO_DISMISS_SECS,
         ))
         .await;
-        crate::state::toasts::dismiss(id);
+        close();
     });
     // Classes conditionnelles = littéraux complets (scan Tailwind).
     let (colors, icon) = match kind {
@@ -57,8 +70,9 @@ fn ToastCard(id: u64, kind: ToastKind, message: ToastMessage) -> Element {
             },
         ),
     };
+    let motion = if leaving() { "pnex-toast-leaving" } else { "" };
     rsx! {
-        div { class: "animate-slide-in border rounded-lg shadow-lg p-4 min-w-[320px] max-w-md flex items-start {colors}",
+        div { class: "pnex-toast {motion} border rounded-lg shadow-lg p-4 min-w-[320px] max-w-md flex items-start {colors}",
             {icon}
             p { class: "ml-3 flex-1 text-sm text-gray-800 break-words",
                 {
@@ -71,7 +85,7 @@ fn ToastCard(id: u64, kind: ToastKind, message: ToastMessage) -> Element {
             }
             button {
                 class: "ml-4 flex-shrink-0 text-gray-500 hover:text-gray-600 transition-colors",
-                onclick: move |_| crate::state::toasts::dismiss(id),
+                onclick: move |_| close(),
                 icons::X { class: "h-4 w-4" }
             }
         }

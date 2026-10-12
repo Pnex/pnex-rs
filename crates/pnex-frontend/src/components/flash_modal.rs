@@ -159,7 +159,7 @@ pub fn FlashModal(device_id: String, on_close: Callback<()>) -> Element {
                                         }
                                         div { class: "w-full bg-gray-200 rounded-full h-2.5",
                                             div {
-                                                class: "bg-signal-600 h-2.5 rounded-full transition-all duration-300",
+                                                class: "bg-signal-600 h-2.5 rounded-full transition-[width] duration-300",
                                                 style: "width: {percent}%",
                                             }
                                         }
@@ -168,7 +168,7 @@ pub fn FlashModal(device_id: String, on_close: Callback<()>) -> Element {
                                 },
                                 Some(FlashState::Done) => rsx! {
                                     div { class: "text-center space-y-4",
-                                        icons::CheckCircle { class: "h-10 w-10 text-green-500 mx-auto" }
+                                        icons::CheckCircle { class: "pnex-success-in h-10 w-10 text-green-500 mx-auto" }
                                         p { class: "text-sm text-gray-700", {t!("flash-done")} }
                                         button {
                                             class: BTN_PRIMARY,

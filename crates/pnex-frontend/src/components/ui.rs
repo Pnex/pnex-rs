@@ -9,10 +9,10 @@
 use dioxus::prelude::*;
 
 /// Main action of a screen: ink fill, one per screen.
-pub const BTN_PRIMARY: &str = "inline-flex items-center justify-center gap-1.5 min-h-10 px-4 py-2 rounded-md bg-ink text-white text-sm font-medium hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-40 disabled:cursor-not-allowed transition-colors";
+pub const BTN_PRIMARY: &str = "inline-flex items-center justify-center gap-1.5 min-h-10 px-4 py-2 rounded-md bg-ink text-white text-sm font-medium hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97] motion-reduce:active:scale-100 transition-[color,background-color,border-color,scale] duration-150 ease-out-ui";
 
 /// Secondary action (cancel, export…): bordered surface.
-pub const BTN_SECONDARY: &str = "inline-flex items-center justify-center gap-1.5 min-h-10 px-4 py-2 rounded-md border border-line-strong bg-surface text-ink text-sm font-medium hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-40 disabled:cursor-not-allowed transition-colors";
+pub const BTN_SECONDARY: &str = "inline-flex items-center justify-center gap-1.5 min-h-10 px-4 py-2 rounded-md border border-line-strong bg-surface text-ink text-sm font-medium hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97] motion-reduce:active:scale-100 transition-[color,background-color,border-color,scale] duration-150 ease-out-ui";
 
 /// Compact primary for toolbars and table rows.
 pub const BTN_PRIMARY_SM: &str = "inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md bg-ink text-white text-sm font-medium hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-40 disabled:cursor-not-allowed transition-colors";
@@ -27,7 +27,7 @@ pub const BTN_GHOST: &str = "inline-flex items-center justify-center gap-1.5 px-
 pub const BTN_DANGER: &str = "inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border border-red-200 bg-surface text-alarm text-sm font-medium hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-alarm disabled:opacity-40 transition-colors";
 
 /// Confirmed destruction only (inside the confirmation dialog).
-pub const BTN_DANGER_SOLID: &str = "inline-flex items-center justify-center gap-1.5 min-h-10 px-4 py-2 rounded-md bg-alarm text-white text-sm font-medium hover:bg-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-alarm disabled:opacity-40 transition-colors";
+pub const BTN_DANGER_SOLID: &str = "inline-flex items-center justify-center gap-1.5 min-h-10 px-4 py-2 rounded-md bg-alarm text-white text-sm font-medium hover:bg-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-alarm disabled:opacity-40 active:scale-[0.97] motion-reduce:active:scale-100 transition-[color,background-color,border-color,scale] duration-150 ease-out-ui";
 
 /// Text input, select and textarea.
 pub const INPUT: &str = "w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-gray-500 focus:border-signal focus:outline-none focus:ring-3 focus:ring-signal-200 disabled:bg-gray-50 disabled:text-gray-500";

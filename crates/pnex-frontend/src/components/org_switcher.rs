@@ -32,7 +32,7 @@ pub fn OrgSwitcher() -> Element {
                 icons::ChevronDown { class: "h-4 w-4 text-gray-500 flex-shrink-0" }
             }
             if open() {
-                div { class: "absolute bottom-full left-0 right-0 mb-1 rounded-md border border-line bg-surface shadow-lg overflow-hidden z-20",
+                div { class: "pnex-pop-in-up absolute bottom-full left-0 right-0 mb-1 rounded-md border border-line bg-surface shadow-lg overflow-hidden z-20",
                     for membership in orgs {
                         button {
                             key: "{membership.id}",

@@ -358,7 +358,7 @@ function show(h, animate) {
   const target = viewTarget(h);
   const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   if (animate && !reduced) {
-    animateNodes(h.graph, target, { duration: 700 });
+    animateNodes(h.graph, target, { duration: 400 });
   } else {
     h.graph.forEachNode((n) => target[n] && h.graph.mergeNodeAttributes(n, target[n]));
   }
@@ -428,7 +428,7 @@ function relayout(hostId) {
   h.force.clear();
   h.renderer.setCustomBBox(null);
   forcePositions(h, h.graph.copy());
-  show(h, false);
+  show(h, true);
   refresh(h);
   h.renderer.getCamera().animatedReset({ duration: 300 });
   return true;

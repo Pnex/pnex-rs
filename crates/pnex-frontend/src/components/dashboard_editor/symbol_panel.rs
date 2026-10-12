@@ -61,7 +61,7 @@ pub fn SymbolPanel(cx: EditorCx) -> Element {
     let no_result = groups.is_empty();
 
     rsx! {
-        div { class: "absolute left-0 top-12 z-30 flex max-h-[75vh] w-80 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl",
+        div { class: "pnex-pop-in absolute left-0 top-12 z-30 flex max-h-[75vh] w-80 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl",
             div { class: "flex items-center justify-between px-3 pt-3",
                 span { class: "text-sm font-semibold text-gray-900", {t!("sym-library")} }
                 button {

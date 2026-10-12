@@ -405,7 +405,7 @@ pub fn ServerUrl() -> Element {
                             button {
                                 class: "w-full flex justify-center items-center py-3 px-4 rounded-lg text-sm font-semibold text-white \
                                         bg-gradient-to-r from-signal-600 to-signal-700 hover:from-signal-700 hover:to-signal-800 \
-                                        shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-all \
+                                        shadow-md hover:shadow-lg transform hover:-translate-y-0.5 transition-[translate,box-shadow] duration-150 ease-out-ui \
                                         disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-md",
                                 disabled: busy(),
                                 onclick: connect,

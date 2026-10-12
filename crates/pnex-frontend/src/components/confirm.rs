@@ -14,10 +14,10 @@ pub fn ConfirmDialog(
 ) -> Element {
     rsx! {
         div {
-            class: "fixed inset-0 bg-ink/55 dark:bg-black/60 flex items-end sm:items-center justify-center z-50 sm:p-4",
+            class: "pnex-backdrop-in fixed inset-0 bg-ink/55 dark:bg-black/60 flex items-end sm:items-center justify-center z-50 sm:p-4",
             onclick: move |_| on_cancel.call(()),
             div {
-                class: "w-full max-w-md overflow-hidden rounded-t-xl sm:rounded-lg bg-surface shadow-2xl",
+                class: "pnex-dialog-in w-full max-w-md overflow-hidden rounded-t-xl sm:rounded-lg bg-surface shadow-2xl",
                 role: "alertdialog",
                 aria_modal: "true",
                 aria_label: "{title}",
