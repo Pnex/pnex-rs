@@ -34,6 +34,8 @@ pub mod ns {
     pub const DEVICE_CA: i32 = 0x504e_0008;
     /// Media stream quota (count + insert) of one org (media-ingest.md D159).
     pub const MEDIA_STREAM_QUOTA: i32 = 0x504e_0009;
+    /// Ontology pack install of one org (check installed + write types).
+    pub const ONTOLOGY_PACK: i32 = 0x504e_000a;
 }
 
 /// Advisory lock key used by the boot migration (single int8 form).
