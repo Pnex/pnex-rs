@@ -170,6 +170,16 @@ fn VersionRow(
             }
         });
     };
+    let pdf_name = format!("v{n} {}.pdf", version.label);
+    let pdf = move |_| {
+        let name = pdf_name.clone();
+        spawn(async move {
+            match api::docs::version_pdf(id, n).await {
+                Ok(bytes) => crate::util::save_blob(&name, &bytes),
+                Err(e) => notice.set(Some(crate::api::error_i18n::localize(&e))),
+            }
+        });
+    };
     let approve = move |_| {
         spawn(async move {
             match api::docs::approve_version(id, n).await {
@@ -217,6 +227,12 @@ fn VersionRow(
                         onclick: diff,
                         {t!("docs-version-diff")}
                     }
+                }
+                button {
+                    class: "text-signal-700 hover:underline",
+                    title: t!("docs-version-pdf-help").to_string(),
+                    onclick: pdf,
+                    {t!("docs-version-pdf")}
                 }
                 if can_write {
                     button {

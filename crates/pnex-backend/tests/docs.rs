@@ -866,7 +866,7 @@ async fn flow_writes_pages_and_versions_get_approved() {
         assert!(v1["label"].as_str().unwrap().starts_with("week 20"));
         assert!(v1.get("approved_at").is_none());
 
-        personal_org(&server, &env.bob).await;
+        let bob_org = personal_org(&server, &env.bob).await;
         add_viewer(&server, a, org).await;
         let (st, _) = call(
             &server,
@@ -900,6 +900,21 @@ async fn flow_writes_pages_and_versions_get_approved() {
         )
         .await;
         assert_eq!(again["approved_at"], first, "the first approval is kept");
+        // PDF of a version (D209): A4, attachment, other orgs' pages not found.
+        let res = server
+            .get(&format!("/api/v1/docs/{page}/versions/1/pdf?lang=fr"))
+            .add_header("Authorization", format!("Bearer {a}"))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert_eq!(res.status_code(), 200);
+        assert_eq!(res.header("content-type"), "application/pdf");
+        assert!(res.as_bytes().starts_with(b"%PDF-"));
+        let res = server
+            .get(&format!("/api/v1/docs/{page}/versions/1/pdf"))
+            .add_header("Authorization", format!("Bearer {}", env.bob))
+            .add_header("X-Org-Id", bob_org.to_string())
+            .await;
+        assert_eq!(res.status_code(), 404);
         unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
     })
     .await;

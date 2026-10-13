@@ -75,6 +75,8 @@ rand = "0.10"
 libc = "0.2"
 # Media capture chain (D160), shared with the edge agent (lot 6b).
 pnex-media-capture = { workspace = true }
+# PDF rendering of pages (D209).
+pnex-pdf = { workspace = true }
 # Speech-to-text protocol, family detection and WER (pure Rust: the runtime
 # runs in the separate pnex-asr process, media-ingest.md D166).
 pnex-asr = { workspace = true }

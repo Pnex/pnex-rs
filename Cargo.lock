@@ -8413,6 +8413,7 @@ dependencies = [
  "pnex-media-capture",
  "pnex-migration",
  "pnex-notify",
+ "pnex-pdf",
  "pnex-stitcher",
  "pnex-vision",
  "prost 0.13.5",

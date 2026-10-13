@@ -32,6 +32,7 @@ pub fn routes() -> Routes {
         .add("/{id}/versions", get(versions).post(create_version))
         .add("/{id}/versions/{n}", get(version_state))
         .add("/{id}/versions/{n}/approve", post(approve_version))
+        .add("/{id}/versions/{n}/pdf", get(version_pdf))
 }
 
 fn field_status(field: &str, msg: &str) -> Response {
@@ -356,6 +357,43 @@ async fn create_version(
         approved_at: None,
     };
     Ok((StatusCode::CREATED, format::json(dto)).into_response())
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct PdfQuery {
+    #[serde(default)]
+    lang: String,
+}
+
+/// `GET /api/v1/docs/{id}/versions/{n}/pdf?lang=fr` — the frozen version as
+/// an A4 PDF (D209). Read access; an AI version not yet approved carries
+/// the "not reviewed" notice.
+async fn version_pdf(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path((id, n)): Path<(Uuid, i64)>,
+    axum::extract::Query(q): axum::extract::Query<PdfQuery>,
+) -> Result<Response> {
+    let rendered = pages::pdf::render_version(&ctx.db, org.org.id, id, n, &q.lang)
+        .await
+        .map_err(|e| {
+            tracing::warn!(doc_id = %id, error = %e, "pages: pdf not rendered");
+            Error::InternalServerError
+        })?
+        .ok_or(Error::NotFound)?;
+    Ok((
+        StatusCode::OK,
+        [
+            ("content-type", "application/pdf".to_string()),
+            (
+                "content-disposition",
+                format!("attachment; filename=\"{}\"", rendered.filename),
+            ),
+            ("x-content-type-options", "nosniff".to_string()),
+        ],
+        rendered.bytes,
+    )
+        .into_response())
 }
 
 /// `POST /api/v1/docs/{id}/versions/{n}/approve` — a person approves a
