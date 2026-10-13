@@ -825,6 +825,11 @@ pub struct NotifyNodeConfig {
     /// côté runtime). `None` = pas de limite. Le passthrough n'est pas affecté.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anti_spam: Option<AntiSpamConfig>,
+    /// Path, in the render context, of the media id of a PDF to attach
+    /// (D209: `asset_id` after a `page_pdf` node). Empty = no attachment.
+    /// Only channels that carry files (`smtp`) attach it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub attach_field: String,
 }
 
 /// Règle anti-spam d'un nœud notify (compteur × durée, une seule règle

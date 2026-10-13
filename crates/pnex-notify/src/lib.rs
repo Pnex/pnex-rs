@@ -23,6 +23,7 @@
 //! (gotify/… = extensions ~30 l chacune — implémenter
 //! [`Channel`] + une entrée dans [`registry::CHANNELS`].)
 
+pub mod attachments;
 pub mod channels;
 pub mod error;
 pub mod journal;
@@ -65,4 +66,33 @@ pub trait Channel: Send + Sync {
     /// Envoi d'un message rendu. `config` = config du canal (snapshot au
     /// deploy pour le nœud flow, config DB pour les envois backend).
     async fn send(&self, config: &serde_json::Value, msg: &Message) -> Result<(), NotifyError>;
+
+    /// Send with attached files (D209: the PDF of a report). Default: the
+    /// channel cannot carry files and sends the message alone; `smtp`
+    /// attaches them.
+    async fn send_with_attachments(
+        &self,
+        config: &serde_json::Value,
+        msg: &Message,
+        attachments: &[Attachment],
+    ) -> Result<(), NotifyError> {
+        let _ = attachments;
+        self.send(config, msg).await
+    }
+
+    /// Whether [`Channel::send_with_attachments`] really attaches files.
+    fn carries_attachments(&self) -> bool {
+        false
+    }
 }
+
+/// A file attached to a notification (D209).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Attachment {
+    pub filename: String,
+    pub content_type: String,
+    pub data: Vec<u8>,
+}
+
+/// Largest attachment a notification carries, bytes.
+pub const ATTACHMENT_MAX_BYTES: usize = 10 * 1024 * 1024;

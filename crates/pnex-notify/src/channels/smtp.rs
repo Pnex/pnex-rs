@@ -10,13 +10,16 @@
 //! Message devient l'objet de l'e-mail ; `meta` jamais projeté.
 
 use async_trait::async_trait;
-use lettre::message::{Mailbox, Message as LettreMessage};
+use lettre::message::header::ContentType;
+use lettre::message::{
+    Attachment as Part, Mailbox, Message as LettreMessage, MultiPart, SinglePart,
+};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{transport::smtp::AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
 
 use crate::channels::{field, str_field};
 use crate::error::NotifyError;
-use crate::{Channel, Message};
+use crate::{Attachment, Channel, Message};
 
 pub struct SmtpChannel;
 
@@ -160,6 +163,19 @@ impl Channel for SmtpChannel {
     }
 
     async fn send(&self, config: &serde_json::Value, msg: &Message) -> Result<(), NotifyError> {
+        self.send_with_attachments(config, msg, &[]).await
+    }
+
+    fn carries_attachments(&self) -> bool {
+        true
+    }
+
+    async fn send_with_attachments(
+        &self,
+        config: &serde_json::Value,
+        msg: &Message,
+        attachments: &[Attachment],
+    ) -> Result<(), NotifyError> {
         let host = str_field(config, "host")
             .ok_or_else(|| NotifyError::Config("missing SMTP host".into()))?;
         // str_field filtre les vides : "" (quirk select) → défaut starttls.
@@ -178,7 +194,7 @@ impl Channel for SmtpChannel {
             builder = builder.credentials(Credentials::new(user.to_string(), pass.to_string()));
         }
         let transport = builder.build();
-        let email = build_email(config, msg)?;
+        let email = build_email(config, msg, attachments)?;
         transport.send(email).await.map(drop).map_err(|e| {
             if e.is_transient() || e.is_timeout() {
                 NotifyError::Network(e.to_string())
@@ -193,7 +209,11 @@ impl Channel for SmtpChannel {
 
 /// Construit l'e-mail (from/to/subject/body) — fonction pure, éprouvée en
 /// test (l'URL de production ne se prête pas à un récepteur local).
-fn build_email(config: &serde_json::Value, msg: &Message) -> Result<LettreMessage, NotifyError> {
+fn build_email(
+    config: &serde_json::Value,
+    msg: &Message,
+    attachments: &[Attachment],
+) -> Result<LettreMessage, NotifyError> {
     let from =
         str_field(config, "from").ok_or_else(|| NotifyError::Config("missing from".into()))?;
     let from: Mailbox = from
@@ -210,8 +230,19 @@ fn build_email(config: &serde_json::Value, msg: &Message) -> Result<LettreMessag
     if let Some(subject) = msg.subject.as_deref().filter(|s| !s.is_empty()) {
         builder = builder.subject(subject);
     }
+    if attachments.is_empty() {
+        return builder
+            .body(msg.body.clone())
+            .map_err(|e| NotifyError::Config(e.to_string()));
+    }
+    let mut parts = MultiPart::mixed().singlepart(SinglePart::plain(msg.body.clone()));
+    for a in attachments {
+        let kind = ContentType::parse(&a.content_type)
+            .unwrap_or_else(|_| ContentType::parse("application/octet-stream").expect("mime"));
+        parts = parts.singlepart(Part::new(a.filename.clone()).body(a.data.clone(), kind));
+    }
     builder
-        .body(msg.body.clone())
+        .multipart(parts)
         .map_err(|e| NotifyError::Config(e.to_string()))
 }
 
@@ -278,7 +309,7 @@ mod tests {
             body: "v=42".into(),
             meta: json!({}),
         };
-        let email = build_email(&cfg, &msg).unwrap();
+        let email = build_email(&cfg, &msg, &[]).unwrap();
         let rendu = String::from_utf8_lossy(&email.formatted()).to_string();
         assert!(rendu.contains("no-reply@example.com"), "{rendu}");
         assert!(rendu.contains("a@example.com"), "{rendu}");
@@ -293,11 +324,33 @@ mod tests {
                 body: "v=42".into(),
                 meta: json!({}),
             },
+            &[],
         )
         .unwrap();
         let rendu = String::from_utf8_lossy(&email.formatted()).to_string();
         assert!(!rendu.contains("Subject:"), "{rendu}");
         assert!(rendu.contains("v=42"), "{rendu}");
+    }
+
+    #[test]
+    fn attachments_make_a_mixed_email() {
+        let cfg = json!({"host": "h", "from": "x@y.z", "to": "a@b.c"});
+        let msg = Message {
+            subject: Some("Weekly report".into()),
+            body: "See attached.".into(),
+            meta: json!({}),
+        };
+        let pdf = Attachment {
+            filename: "Report v3.pdf".into(),
+            content_type: "application/pdf".into(),
+            data: b"%PDF-1.7".to_vec(),
+        };
+        let out = String::from_utf8_lossy(&build_email(&cfg, &msg, &[pdf]).unwrap().formatted())
+            .to_string();
+        assert!(out.contains("multipart/mixed"), "{out}");
+        assert!(out.contains("application/pdf"), "{out}");
+        assert!(out.contains("Report v3.pdf"), "{out}");
+        assert!(out.contains("See attached."), "{out}");
     }
 
     #[tokio::test]
@@ -310,6 +363,7 @@ mod tests {
                 body: "b".into(),
                 meta: json!({}),
             },
+            &[],
         )
         .unwrap_err();
         assert!(matches!(err, NotifyError::Config(_)));

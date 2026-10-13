@@ -946,6 +946,49 @@ async fn flow_writes_pages_and_versions_get_approved() {
         assert_eq!(media["kind"], "document");
         // Served as an opaque attachment (SEC-5), named .pdf.
         assert!(media["name"].as_str().unwrap().ends_with(".pdf"), "{media}");
+        // The runtime reads the export to attach it (pnex-notify, D209):
+        // token required, never another org's file.
+        let media_url = |o: i64| format!("/internal/flow/media/{asset}?org_id={o}");
+        let res = server.get(&media_url(org)).await;
+        assert_eq!(res.status_code(), 401);
+        let res = server
+            .get(&media_url(org))
+            .add_header("x-pnex-flow-token", "tok-pages")
+            .await;
+        assert_eq!(res.status_code(), 200);
+        let file = res.json::<serde_json::Value>();
+        assert_eq!(file["content_type"], "application/pdf");
+        assert!(file["filename"].as_str().unwrap().ends_with(".pdf"));
+        let bytes = {
+            use base64::Engine as _;
+            base64::engine::general_purpose::STANDARD
+                .decode(file["data"].as_str().unwrap())
+                .unwrap()
+        };
+        assert!(bytes.starts_with(b"%PDF-"));
+        let res = server
+            .get(&media_url(bob_org))
+            .add_header("x-pnex-flow-token", "tok-pages")
+            .await;
+        assert_eq!(res.status_code(), 404);
+        // Any other file of the library stays out of reach of the runtime.
+        let other = server
+            .post("/api/v1/media?name=notes.txt&filename=notes.txt&content_type=text%2Fplain")
+            .add_header("Authorization", format!("Bearer {a}"))
+            .add_header("X-Org-Id", org.to_string())
+            .add_header("Content-Type", "application/octet-stream")
+            .bytes(b"private".to_vec().into())
+            .await;
+        assert_eq!(other.status_code(), 201, "{}", other.text());
+        let other = other.json::<serde_json::Value>()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let res = server
+            .get(&format!("/internal/flow/media/{other}?org_id={org}"))
+            .add_header("x-pnex-flow-token", "tok-pages")
+            .await;
+        assert_eq!(res.status_code(), 404);
         // Latest sendable: version 2 (no AI text), once.
         let (_, first) = post_pdf(pdf_req("latest_sendable", None)).await;
         assert_eq!(first["status"], "ready", "{first}");

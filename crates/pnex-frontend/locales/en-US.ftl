@@ -1456,6 +1456,8 @@ flows-notify-add-channel = Add channel
 flows-notify-template = Message template
 flows-notify-no-template = — pick a template —
 flows-notify-vars = Variable values (literal or {"{{"} msg.x {"}}"})
+flows-notify-attach = PDF attachment
+flows-notify-attach-hint = Field holding the media id of a PDF made by a « Page PDF » node (e.g. asset_id). Only e-mail channels attach it; empty = no attachment.
 flows-notify-strict = Strict delivery
 flows-notify-strict-hint = Off: a failed send is logged and the message passes through. On: the failed send fails the node.
 flows-notify-antispam = Anti-spam — rate limit

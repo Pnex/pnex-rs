@@ -149,6 +149,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("template_vars", "[variable name] — exactly the template's variables, one input row each"),
             ("strict", "bool (default false: a failed send is logged and the message passes through)"),
             ("anti_spam", "optional {max_msgs, window_secs} rate limit, e.g. {\"max_msgs\": 3, \"window_secs\": 600}"),
+            ("attach_field", "optional path of the media id of a PDF made by page_pdf (e.g. \"asset_id\", or a template variable holding the page_pdf output); only SMTP channels attach it"),
         ],
         notes: "Named input rows: a MANDATORY boolean `trigger` row (sent while true, e.g. a calc `x_A0 > 500`) and one row per template variable. An unwired trigger is refused at save. inputs: [{\"pin\": \"trigger\", \"from\": id, \"from_port\": n}, {\"pin\": var, …}].",
     },

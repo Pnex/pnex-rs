@@ -383,6 +383,7 @@ pub fn to_red_flows_json_with(
                 // du snapshot `pnex_notify_template`.
                 "template_vars": config.template_vars,
                 "anti_spam": config.anti_spam,
+                "attach_field": config.attach_field,
                 // Deploy-derived: true iff a wire is annotated on the
                 // `trigger` gate row — the runtime gates sends on the
                 // boolean arriving with `topic = "trigger"`. Derived here

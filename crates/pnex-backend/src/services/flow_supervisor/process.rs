@@ -83,6 +83,12 @@ pub(crate) fn apply_runtime_env(cmd: &mut tokio::process::Command, settings: &Fl
                 "PNEX_FLOW_SECRET_URL",
                 url.replace("/internal/flow/device-write", "/internal/flow/secret"),
             )
+            // PDFs attached by pnex-notify nodes (D209): base of
+            // `/internal/flow/media/{id}`.
+            .env(
+                "PNEX_FLOW_MEDIA_URL",
+                url.replace("/internal/flow/device-write", "/internal/flow/media"),
+            )
             // Pages written by page-write nodes (D209).
             .env(
                 "PNEX_FLOW_PAGE_URL",
