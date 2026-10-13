@@ -56,6 +56,7 @@ relier une détection à `device_write`.
 | **Légende** (`vision_caption`, D195) | Le **LLM de l'org** (jamais un modèle de la plateforme, D119) décrit l'image, éventuellement recadrée sur l'objet détecté. Brancher le nœud = accepter d'envoyer l'image au fournisseur. | route interne `/internal/flow/ai/caption` | *Légende d'image* |
 | **Fusion** (`media_fuse`, D196) | Toutes les 30 s, assemble détections, transcription et légendes et demande au LLM une description **sourcée** : une phrase sans source vérifiable est rejetée. Hiérarchie de confiance : détections = faits, parole = fiable, légendes = indicatives. | `/internal/flow/ai/fuse` | *Fusion média* |
 | **Décision rapide** (`text_decide`, D197) | Un petit modèle (Laya, non génératif) répond à des questions typées (`choice`, `score`) avec des **probabilités** ; sert de filtre avant la fusion et de source d'alertes. Tourne sur le backend, en Rust (tract). | crate `pnex-decide` | *Décision* (bundle à installer) |
+| **Fichier comme source** (`media_asset`, D206) | Une vidéo ou un son de la médiathèque rejoué **une fois, à vitesse normale**, comme une caméra ou une radio en direct : tous les nœuds (détection, zones, légendes, transcription) s'appliquent à un fichier téléversé. Le flux s'éteint seul à la fin. | `capture/mod.rs::media_asset_file`, `FileSource` | Données › Flux audio : type `media_asset`, puis nœud *Source caméra* (source « flux ») |
 | **Plafond IA** | Légendes + fusions : 2000 appels par org et par jour (429 `flow-ai-quota`). | `settings.ai.flow_daily_calls` | — |
 
 ## 3. Le Vision Lab (créer son propre détecteur)
@@ -141,7 +142,7 @@ flowchart LR
 | **Propagation par suivi** | Sur une vidéo : le modèle propose les boîtes de l'image, et chacune reprend la classe de la boîte la plus proche (recouvrement ≥ 30 %) de l'image annotée précédente. Utile quand le modèle ne connaît pas vos noms de classes (ex. il dit « person », votre classe est « opérateur »). | bouton *Propager* (barre des propositions) ; `lab::propagate` |
 | **Guidage de diversité** | Le Lab signale ce qui manque pour qu'un modèle généralise : trop peu de sources pour une classe, objet toujours à la même taille (même distance), toujours au même endroit de l'image, toutes les images à la même luminosité. | panneau Statistiques ; `lab::stats` |
 | **Luminance moyenne** | Clarté moyenne d'une image (0 = noir, 255 = blanc), mesurée à l'import ; sert au dernier avertissement. | `lab_images.luma` |
-| **INT8** | Modèle quantifié (plus petit, plus rapide sur Pi). | à évaluer |
+| **INT8** | Modèle quantifié (entiers 8 bits au lieu de réels 32 bits) : plus petit, potentiellement plus rapide sur Pi. **Évalué, non livré** : tract sait l'exécuter, mais un gain réel demande une calibration (projet à part), à décider après une mesure sur Pi 5 ; YOLOX-nano à 1 image/s tient déjà sur CPU. | PRD §12, état des lots |
 
 ## 6. Ce qui reste hors de ce pilier
 
@@ -161,7 +162,8 @@ dans cet ordre :
 | `b88a2953` | D203 : vidéos dans la médiathèque et le Lab, interpolation |
 | `7a3931ae` | D204 : entraînement sans Python (tête YOLOX en Rust) |
 | `6c54180e` | D205 (partie) : guidage de diversité, propagation par suivi |
-| (suivant) | D205 : file « à revoir » (active learning) + ce guide |
+| `68c000c0` | D205 : file « à revoir » (active learning) + ce guide |
+| (suivant) | D206 : fichier de la médiathèque comme source de flux ; INT8 évalué |
 
 Avant de lancer le serveur de la branche : migrations `000015` à `000018`
 sur `pnex_vision_dev`. Tests : `TEST_DATABASE_URL=…/pnex_test_vision`,

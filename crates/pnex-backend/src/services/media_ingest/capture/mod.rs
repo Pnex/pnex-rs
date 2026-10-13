@@ -305,7 +305,7 @@ async fn run_stream(
         match result {
             Ok(RunEnd::Stopped) => return,
             Ok(RunEnd::Finished) => {
-                if stream.kind == MediaStreamKind::HttpFile.wire() {
+                if MediaStreamKind::from_wire(&stream.kind).is_some_and(MediaStreamKind::finite) {
                     // A file is captured once: the stream switches itself off.
                     let _ = media_streams::Entity::update_many()
                         .col_expr(media_streams::Column::Enabled, Expr::value(false))
@@ -493,8 +493,21 @@ async fn run_once(
     seq: &mut i64,
     stop: watch::Receiver<bool>,
 ) -> Result<RunEnd, CaptureError> {
-    let url = super::streams::clean_url(&stream.url).map_err(|_| CaptureError::Unreachable)?;
     let kind = MediaStreamKind::from_wire(&stream.kind).ok_or(CaptureError::FormatUnsupported)?;
+    // A library file is read here (org re-checked), never fetched.
+    let (url, file) = if kind == MediaStreamKind::MediaAsset {
+        let url = reqwest::Url::parse(&stream.url).map_err(|_| CaptureError::Unreachable)?;
+        let (bytes, format) = media_asset_file(ctx, stream).await?;
+        let file = pnex_media_capture::FileSource {
+            bytes,
+            format,
+            realtime: !matches!(sink, Sink::Probe(_)),
+        };
+        (url, Some(file))
+    } else {
+        let url = super::streams::clean_url(&stream.url).map_err(|_| CaptureError::Unreachable)?;
+        (url, None)
+    };
     let tracks = MediaTracks::from_wire(&stream.tracks).unwrap_or_default();
     let probe = matches!(sink, Sink::Probe(_));
     let secret = secret_of(ctx, stream).await?;
@@ -513,6 +526,7 @@ async fn run_once(
         segment_secs: stream.segment_secs.max(1) as u32,
         overlap_secs: stream.overlap_secs.max(0) as u32,
         metadata: !probe,
+        file,
     };
     let mut host = BackendHost {
         ctx,
@@ -523,6 +537,56 @@ async fn run_once(
         frame_seq: Utc::now().timestamp_millis() as u32,
     };
     pnex_media_capture::run_once(&mut host, settings, ffmpeg, &spec, seq, stop).await
+}
+
+/// Largest library file a stream replays (read in memory).
+const MEDIA_ASSET_MAX_BYTES: i64 = 512 * 1024 * 1024;
+
+/// Bytes and decoder format of the current version of a stream's library
+/// file, re-checked against the stream's org; an MP4 index at the end of
+/// the file is moved first (pipe input cannot seek).
+async fn media_asset_file(
+    ctx: &AppContext,
+    stream: &media_streams::Model,
+) -> Result<(axum::body::Bytes, pnex_media_capture::decoder::InputFormat), CaptureError> {
+    use crate::models::_entities::{media_assets, media_versions};
+    let id =
+        pnex_core::media_ingest::media_asset_id(&stream.url).ok_or(CaptureError::Unreachable)?;
+    let asset = media_assets::Entity::find_by_id(id)
+        .filter(media_assets::Column::OrgId.eq(stream.org_id))
+        .one(&ctx.db)
+        .await
+        .ok()
+        .flatten()
+        .ok_or(CaptureError::Unreachable)?;
+    let version = match asset.current_version_id {
+        Some(v) => media_versions::Entity::find_by_id(v)
+            .one(&ctx.db)
+            .await
+            .ok()
+            .flatten(),
+        None => None,
+    }
+    .ok_or(CaptureError::Unreachable)?;
+    if version.size_bytes > MEDIA_ASSET_MAX_BYTES {
+        return Err(CaptureError::TooLarge);
+    }
+    let format =
+        pnex_media_capture::decoder::input_format(Some(&version.content_type), &version.filename)
+            .ok_or(CaptureError::FormatUnsupported)?;
+    let store = MediaSettings::from_config(&ctx.config)
+        .store()
+        .map_err(|_| CaptureError::StoreFailed)?;
+    let bytes = store
+        .get(&version.storage_key)
+        .await
+        .map_err(|_| CaptureError::Unreachable)?;
+    let bytes = if format.demuxer == "mov" {
+        pnex_media_capture::mp4::faststart(bytes).ok_or(CaptureError::FormatUnsupported)?
+    } else {
+        bytes
+    };
+    Ok((axum::body::Bytes::from(bytes), format))
 }
 
 async fn store_segment(
