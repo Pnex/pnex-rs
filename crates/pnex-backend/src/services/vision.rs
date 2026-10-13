@@ -287,6 +287,47 @@ pub async fn prepare_spec(
     })?
 }
 
+/// Registry row of a checked detection model (`prepare_spec` passed):
+/// shared by the model form and the Vision Lab training (D204).
+#[allow(clippy::too_many_arguments)]
+pub async fn insert_model(
+    db: &sea_orm::DatabaseConnection,
+    org_id: i64,
+    name: &str,
+    description: Option<String>,
+    asset_id: Uuid,
+    asset_version: Option<i64>,
+    spec: &ModelSpec,
+    infer_ms: u64,
+) -> std::result::Result<ml_models::Model, sea_orm::DbErr> {
+    use sea_orm::{ActiveModelTrait, Set};
+    let now: chrono::DateTime<chrono::FixedOffset> = chrono::Utc::now().into();
+    ml_models::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        org_id: Set(org_id),
+        name: Set(name.trim().to_string()),
+        description: Set(description.filter(|d| !d.trim().is_empty())),
+        task: Set("detection".into()),
+        family: Set(spec.family.wire().into()),
+        asset_id: Set(asset_id),
+        asset_version: Set(asset_version),
+        input_width: Set(spec.input_width as i32),
+        input_height: Set(spec.input_height as i32),
+        labels: Set(serde_json::to_value(&spec.labels).unwrap_or_default()),
+        score_threshold: Set(spec.score_threshold),
+        nms_iou: Set(spec.nms_iou),
+        check_status: Set(ModelCheckStatus::Valid.wire().into()),
+        check_error: Set(None),
+        infer_ms: Set(Some(infer_ms as i64)),
+        checked_at: Set(Some(now)),
+        audio_meta: Set(None),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(db)
+    .await
+}
+
 /// Re-checks a stored model as is (no spec rewrite) and persists the
 /// outcome (the "Check" button).
 pub async fn check_model(ctx: &AppContext, m: ml_models::Model) -> Result<ml_models::Model> {

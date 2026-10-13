@@ -34,6 +34,7 @@ pub use super::geo_providers::Entity as GeoProviders;
 pub use super::lab_dataset_versions::Entity as LabDatasetVersions;
 pub use super::lab_images::Entity as LabImages;
 pub use super::lab_projects::Entity as LabProjects;
+pub use super::lab_training_runs::Entity as LabTrainingRuns;
 pub use super::link_types::Entity as LinkTypes;
 pub use super::llm_providers::Entity as LlmProviders;
 pub use super::map_pins::Entity as MapPins;

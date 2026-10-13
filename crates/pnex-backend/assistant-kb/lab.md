@@ -4,9 +4,9 @@ title: Vision Lab — teach PneX your own objects
 kind: feature
 pages: /lab, /lab/:id
 nodes: vision_detect
-err_codes: camera-unknown, camera-export-empty, ml-model-load-failed, ml-model-inference-failed, lab-project-not-found, lab-image-not-found, lab-version-not-found, lab-class-in-use, lab-annotations-conflict, lab-box-invalid, lab-asset-not-image, lab-dataset-empty, lab-video-unsupported, lab-video-too-large, lab-video-decode-failed, lab-interpolate-no-keyframes
+err_codes: camera-unknown, camera-export-empty, ml-model-load-failed, ml-model-inference-failed, lab-project-not-found, lab-image-not-found, lab-version-not-found, lab-class-in-use, lab-annotations-conflict, lab-box-invalid, lab-asset-not-image, lab-dataset-empty, lab-video-unsupported, lab-video-too-large, lab-video-decode-failed, lab-interpolate-no-keyframes, lab-train-busy, lab-train-base-invalid, lab-train-no-data, lab-train-interrupted, lab-train-failed
 tools: 
-tags: video, vidéo, mp4, mov, interpolate, interpoler, interpolation, recording, enregistrement, video frames, images de vidéo, pre-annotation, pré-annotation, suggest, proposer, vision lab, lab, dataset, annotation, annoter, boîte, bounding box, custom model, modèle personnalisé, reconnaissance d'objets, object recognition, training, entraînement, coco, yolox
+tags: train, entraîner, fine-tune, affiner, epochs, époques, video, vidéo, mp4, mov, interpolate, interpoler, interpolation, recording, enregistrement, video frames, images de vidéo, pre-annotation, pré-annotation, suggest, proposer, vision lab, lab, dataset, annotation, annoter, boîte, bounding box, custom model, modèle personnalisé, reconnaissance d'objets, object recognition, training, entraînement, coco, yolox
 ---
 Vision Lab (Media › Vision Lab) builds the dataset of a custom object detector: name the classes ("red_valve", "safety_helmet"…), add pictures from the media library, draw a box around every object, then freeze a dataset version and download it in COCO format.
 
@@ -22,8 +22,14 @@ Vision Lab (Media › Vision Lab) builds the dataset of a custom object detector
 - **Freeze a version**: copies the annotated images and their boxes into a numbered, read-only dataset version; later edits never change it.
 - **Export**: downloads a version as a zip (images + COCO annotations for train and validation), ready for a YOLOX training.
 
-## Using the trained model
-Training inside PneX is not available yet: train the exported dataset with YOLOX (Apache-2.0), export it to ONNX, then register the file in **Data › Models** (it is checked on upload) and pick it in an **Object detection** node.
+## Training
+In the **Training** panel: pick a frozen **Dataset version**, a **Starting model** (a YOLOX model of **Data › Models**, for example the YOLOX COCO model) and a number of **Epochs** (30 by default), then **Train**. PneX keeps the starting network and learns again only its last layers for your classes, on the server, without GPU: a few minutes for a few hundred pictures. The run shows its progress (reading the pictures, epochs with the loss, evaluation) and, once done, the **validation mAP@0.5** (how well it finds the objects of the validation pictures, 100 % = all found with no false alarm). The new model joins **Data › Models** with your class names, already checked: pick it in an **Object detection** node.
+
+- One training per project at a time ("already queued or running"); **Cancel** stops it.
+- No validation picture in the version = no mAP: give each class pictures from several imports or force some to validation.
+- A run stopped by a server restart shows "the training stopped": start it again.
+- Objects very different from everyday ones (the starting model knows people, vehicles, animals, objects of daily life) are learned less well with this method: add varied pictures, more epochs, and compare the mAP of the versions.
+- The exported COCO zip stays available to train elsewhere with any YOLOX tool; the ONNX is registered in **Data › Models** the same way.
 
 ## Good to know
 - Annotate the object in many situations: angles, distances, light, partly hidden. Twenty varied pictures beat a hundred identical ones.

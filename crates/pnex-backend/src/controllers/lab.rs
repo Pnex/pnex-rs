@@ -10,7 +10,8 @@ use loco_rs::controller::{format, ErrorDetail};
 use loco_rs::prelude::*;
 use pnex_core::err_codes;
 use pnex_core::lab::{
-    LabAnnotationsInput, LabProjectInput, LabRecordingImport, LabSuggestRequest, LabVideoImport,
+    LabAnnotationsInput, LabProjectInput, LabRecordingImport, LabSuggestRequest, LabTrainRequest,
+    LabVideoImport,
 };
 use serde::Deserialize;
 use uuid::Uuid;
@@ -40,6 +41,9 @@ pub fn routes() -> Routes {
         .add("/images/{id}/suggest", axum::routing::post(suggest))
         .add("/images/{id}/interpolate", axum::routing::post(interpolate))
         .add("/versions/{id}/export", get(export))
+        .add("/versions/{id}/train", axum::routing::post(train))
+        .add("/projects/{id}/runs", get(runs))
+        .add("/runs/{id}/cancel", axum::routing::post(cancel_run))
 }
 
 fn require_write(org: &OrgContext) -> Result<()> {
@@ -190,6 +194,38 @@ async fn import_recording(
 ) -> Result<Response> {
     require_write(&org)?;
     reply(lab::import_recording(&ctx, org.org.id, id, &req).await)
+}
+
+/// Training of a dataset version (D204): editors only, 201 + the queued run.
+async fn train(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Json(req): Json<LabTrainRequest>,
+) -> Result<Response> {
+    require_write(&org)?;
+    match crate::services::lab_train::start(&ctx, org.org.id, id, &req, &user_of(&org)).await {
+        Ok(run) => Ok((StatusCode::CREATED, format::json(run)).into_response()),
+        Err(e) => fail(e),
+    }
+}
+
+/// Training runs of a project (read access).
+async fn runs(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    reply(crate::services::lab_train::list(&ctx.db, org.org.id, id).await)
+}
+
+async fn cancel_run(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    require_write(&org)?;
+    reply(crate::services::lab_train::cancel(&ctx.db, org.org.id, id).await)
 }
 
 /// Frames of a video of the media library: editors only (confined decoder).

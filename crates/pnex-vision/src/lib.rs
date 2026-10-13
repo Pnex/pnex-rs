@@ -14,6 +14,8 @@ use pnex_core::vision::{Detection, DetectionResult, ModelInspection, ModelSpec, 
 use tract_onnx::prelude::*;
 use tract_onnx::tract_hir::infer::Factoid;
 
+pub mod train;
+
 #[derive(Debug, thiserror::Error)]
 pub enum VisionError {
     #[error("model load failed: {0}")]

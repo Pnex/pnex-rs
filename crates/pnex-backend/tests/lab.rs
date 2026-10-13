@@ -354,6 +354,16 @@ async fn org_isolation_and_viewer_read_only() {
             ),
             (
                 "POST",
+                "/api/v1/lab/versions/00000000-0000-0000-0000-000000000001/train".to_string(),
+                Some(json!({"base_model_id": "x"})),
+            ),
+            (
+                "POST",
+                "/api/v1/lab/runs/00000000-0000-0000-0000-000000000001/cancel".to_string(),
+                None,
+            ),
+            (
+                "POST",
                 format!("/api/v1/lab/projects/{pid}/import-video"),
                 Some(json!({"asset_id": "x", "from_secs": 0, "to_secs": 10, "every_secs": 2})),
             ),
@@ -579,6 +589,171 @@ async fn frames_of_a_video_and_box_interpolation() {
         )
         .await;
         assert_eq!(st, 422);
+    })
+    .await;
+}
+
+/// Synthetic picture: an orange square on a noisy background; returns the
+/// PNG and the normalized box.
+fn square_png(seed: u64) -> (Vec<u8>, [f32; 4]) {
+    let mut x = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+    let mut next = |n: u32| {
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        (x % u64::from(n)) as u32
+    };
+    let (w, h) = (320u32, 240u32);
+    let mut img = image::RgbImage::new(w, h);
+    for p in img.pixels_mut() {
+        let n = (next(60) + 60) as u8;
+        *p = image::Rgb([n, n, n.saturating_add(20)]);
+    }
+    let side = 30 + next(60);
+    let (x0, y0) = (next(w - side), next(h - side));
+    for yy in y0..y0 + side {
+        for xx in x0..x0 + side {
+            img.put_pixel(xx, yy, image::Rgb([240, 120, 20]));
+        }
+    }
+    let mut png = Vec::new();
+    image::DynamicImage::ImageRgb8(img)
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .unwrap();
+    let b = [
+        x0 as f32 / w as f32,
+        y0 as f32 / h as f32,
+        side as f32 / w as f32,
+        side as f32 / h as f32,
+    ];
+    (png, b)
+}
+
+/// Head fine-tuning end to end (D204): base YOLOX registered, synthetic
+/// pictures annotated, version frozen, training queued, polled until the
+/// new model (one class) is in the registry. Needs `PNEX_VISION_TEST_DIR`
+/// with `yolox_nano.onnx`.
+#[tokio::test]
+#[serial]
+async fn training_registers_a_fine_tuned_model() {
+    let Ok(dir) = std::env::var("PNEX_VISION_TEST_DIR") else {
+        eprintln!("PNEX_VISION_TEST_DIR missing: skipped");
+        return;
+    };
+    let onnx = std::fs::read(std::path::Path::new(&dir).join("yolox_nano.onnx")).unwrap();
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let a = &env.alice;
+        let upload = |name: String, filename: String, ct: &'static str, bytes: Vec<u8>| {
+            let server = &server;
+            async move {
+                let res = server
+                    .post(&format!(
+                        "/api/v1/media?name={name}&filename={filename}&content_type={ct}"
+                    ))
+                    .add_header("Authorization", format!("Bearer {a}"))
+                    .add_header("X-Org-Id", org.to_string())
+                    .add_header("Content-Type", "application/octet-stream")
+                    .bytes(bytes.into())
+                    .await;
+                assert_eq!(res.status_code(), 201, "{}", res.text());
+                res.json::<Value>()["id"].as_str().unwrap().to_string()
+            }
+        };
+        let base_asset = upload(
+            "nano".into(),
+            "yolox_nano.onnx".into(),
+            "application%2Foctet-stream",
+            onnx,
+        )
+        .await;
+        let (st, base) = call(
+            &server,
+            "POST",
+            "/api/v1/ml/models",
+            a,
+            org,
+            Some(json!({"name": "COCO nano", "asset_id": base_asset})),
+        )
+        .await;
+        assert_eq!(st, 201, "{base}");
+        let (_, p) = call(
+            &server,
+            "POST",
+            "/api/v1/lab/projects",
+            a,
+            org,
+            Some(json!({"name": "Squares", "classes": ["square"]})),
+        )
+        .await;
+        let pid = p["id"].as_str().unwrap().to_string();
+        let mut assets = Vec::new();
+        let mut truth = Vec::new();
+        for i in 0..12u64 {
+            let (png, b) = square_png(i + 1);
+            assets.push(upload(format!("sq{i}"), format!("sq{i}.png"), "image%2Fpng", png).await);
+            truth.push(b);
+        }
+        let (st, added) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/lab/projects/{pid}/images"),
+            a,
+            org,
+            Some(json!({"asset_ids": assets})),
+        )
+        .await;
+        assert_eq!(st, 200, "{added}");
+        for img in added.as_array().unwrap() {
+            let i = assets
+                .iter()
+                .position(|x| x == img["asset_id"].as_str().unwrap())
+                .unwrap();
+            let (st, saved) = call(
+                &server,
+                "PUT",
+                &format!("/api/v1/lab/images/{}/annotations", img["id"].as_str().unwrap()),
+                a,
+                org,
+                Some(json!({"boxes": [{"class": 0, "bbox": truth[i]}], "split": "train", "expected_version": 1})),
+            )
+            .await;
+            assert_eq!(st, 200, "{saved}");
+        }
+        let (st, v) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/lab/projects/{pid}/versions"),
+            a,
+            org,
+            Some(json!({})),
+        )
+        .await;
+        assert_eq!(st, 201, "{v}");
+        let train = format!("/api/v1/lab/versions/{}/train", v["id"].as_str().unwrap());
+        let body = json!({"base_model_id": base["id"], "epochs": 5});
+        let (st, run) = call(&server, "POST", &train, a, org, Some(body.clone())).await;
+        assert_eq!(st, 201, "{run}");
+        assert_eq!(run["status"], "queued");
+        let (st, busy) = call(&server, "POST", &train, a, org, Some(body)).await;
+        assert_eq!(st, 409, "{busy}");
+        assert_eq!(busy["error"], "lab-train-busy");
+        let runs = format!("/api/v1/lab/projects/{pid}/runs");
+        let mut last = Value::Null;
+        for _ in 0..240 {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let (_, list) = call(&server, "GET", &runs, a, org, None).await;
+            last = list[0].clone();
+            if !["queued", "running"].contains(&last["status"].as_str().unwrap_or("")) {
+                break;
+            }
+        }
+        assert_eq!(last["status"], "succeeded", "{last}");
+        let model = last["model_id"].as_str().unwrap();
+        let (st, m) = call(&server, "GET", &format!("/api/v1/ml/models/{model}"), a, org, None).await;
+        assert_eq!(st, 200, "{m}");
+        assert_eq!(m["spec"]["labels"], json!(["square"]), "{m}");
+        assert_eq!(m["check"]["status"], "valid", "{m}");
     })
     .await;
 }

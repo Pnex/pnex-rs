@@ -8312,6 +8312,7 @@ dependencies = [
  "form_urlencoded",
  "futures-util",
  "if-addrs",
+ "image",
  "include_dir",
  "jsonwebtoken",
  "libc",
@@ -8888,6 +8889,7 @@ version = "0.1.0"
 dependencies = [
  "image",
  "pnex-core",
+ "prost 0.14.4",
  "thiserror 2.0.21",
  "tract-onnx",
 ]

@@ -258,30 +258,16 @@ async fn create(
         Ok(ok) => ok,
         Err(p) => return Ok(spec_problem(p)),
     };
-    let now: chrono::DateTime<chrono::FixedOffset> = chrono::Utc::now().into();
-    let row = ml_models::ActiveModel {
-        id: Set(Uuid::new_v4()),
-        org_id: Set(org.org.id),
-        name: Set(input.name.trim().to_string()),
-        description: Set(input.description.filter(|d| !d.trim().is_empty())),
-        task: Set("detection".into()),
-        family: Set(spec.family.wire().into()),
-        asset_id: Set(input.asset_id),
-        asset_version: Set(input.asset_version),
-        input_width: Set(spec.input_width as i32),
-        input_height: Set(spec.input_height as i32),
-        labels: Set(serde_json::to_value(&spec.labels).unwrap_or_default()),
-        score_threshold: Set(spec.score_threshold),
-        nms_iou: Set(spec.nms_iou),
-        check_status: Set(ModelCheckStatus::Valid.wire().into()),
-        check_error: Set(None),
-        infer_ms: Set(Some(infer_ms as i64)),
-        checked_at: Set(Some(now)),
-        audio_meta: Set(None),
-        created_at: Set(now),
-        updated_at: Set(now),
-    }
-    .insert(&ctx.db)
+    let row = vision::insert_model(
+        &ctx.db,
+        org.org.id,
+        &input.name,
+        input.description,
+        input.asset_id,
+        input.asset_version,
+        &spec,
+        infer_ms,
+    )
     .await
     .map_err(|_| Error::InternalServerError)?;
     Ok((StatusCode::CREATED, format::json(vision::dto(&row))).into_response())

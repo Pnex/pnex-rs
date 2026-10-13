@@ -36,6 +36,7 @@ pub mod geo;
 /// Live last-value telemetry cache (Valkey) — write side (pnex-device-read
 /// acceleration).
 pub mod lab;
+pub mod lab_train;
 pub mod last_cache;
 pub mod media;
 pub mod media_ingest;

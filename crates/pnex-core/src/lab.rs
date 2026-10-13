@@ -295,6 +295,114 @@ impl LabVideoImport {
     }
 }
 
+/// Training epochs bounds (head fine-tuning, D204).
+pub const LAB_TRAIN_DEFAULT_EPOCHS: u32 = 30;
+pub const LAB_TRAIN_MAX_EPOCHS: u32 = 300;
+
+/// `POST /api/v1/lab/versions/{id}/train` — fine-tunes the head of a
+/// registered YOLOX model on a frozen dataset version.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LabTrainRequest {
+    /// `ml_models.id` of the base detector (YOLOX, fixed input).
+    pub base_model_id: String,
+    #[serde(default = "default_epochs")]
+    pub epochs: u32,
+}
+
+fn default_epochs() -> u32 {
+    LAB_TRAIN_DEFAULT_EPOCHS
+}
+
+impl LabTrainRequest {
+    pub fn check(&self) -> Option<(&'static str, String)> {
+        if !(1..=LAB_TRAIN_MAX_EPOCHS).contains(&self.epochs) {
+            return Some(("epochs", format!("range:1..{LAB_TRAIN_MAX_EPOCHS}")));
+        }
+        None
+    }
+}
+
+/// Lifecycle of a training run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LabRunStatus {
+    Queued,
+    Running,
+    Succeeded,
+    Failed,
+    Cancelled,
+}
+
+impl LabRunStatus {
+    pub fn wire(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Running => "running",
+            Self::Succeeded => "succeeded",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    pub fn from_wire(s: &str) -> Self {
+        match s {
+            "running" => Self::Running,
+            "succeeded" => Self::Succeeded,
+            "failed" => Self::Failed,
+            "cancelled" => Self::Cancelled,
+            _ => Self::Queued,
+        }
+    }
+
+    pub fn active(self) -> bool {
+        matches!(self, Self::Queued | Self::Running)
+    }
+}
+
+/// Where a running training is.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct LabRunProgress {
+    /// `features` | `epochs` | `evaluating`.
+    #[serde(default)]
+    pub phase: String,
+    #[serde(default)]
+    pub done: u32,
+    #[serde(default)]
+    pub total: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loss: Option<f32>,
+}
+
+/// A training run (`GET /api/v1/lab/projects/{id}/runs`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LabTrainingRun {
+    pub id: String,
+    pub dataset_version_id: String,
+    pub dataset_version: i32,
+    #[serde(default)]
+    pub base_model_id: Option<String>,
+    #[serde(default)]
+    pub base_model_name: String,
+    pub status: LabRunStatus,
+    pub epochs: u32,
+    #[serde(default)]
+    pub progress: LabRunProgress,
+    /// mAP@0.5 on the validation pictures, once evaluated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub map50: Option<f32>,
+    /// Failure code (`err-<code>` in the UI) and its runtime detail.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_detail: Option<String>,
+    /// Model registered on success (`ml_models.id`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+    pub created_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finished_at: Option<String>,
+}
+
 /// Boxes of an image between two annotated frames of the same source,
 /// linearly interpolated at `t_ms` (§4.6.1, Q3). Boxes are paired per
 /// class, nearest centres first; an unpaired box is left out. Empty when
@@ -579,6 +687,17 @@ mod tests {
         xs.sort_by(f32::total_cmp);
         assert!((xs[0] - 0.15).abs() < 1e-6 && (xs[1] - 0.65).abs() < 1e-6);
         assert!(interpolate((1000, &before), (3000, &after), 3000).is_empty());
+    }
+
+    #[test]
+    fn train_request_bounds() {
+        let r: LabTrainRequest = serde_json::from_str(r#"{"base_model_id": "m"}"#).unwrap();
+        assert_eq!(r.epochs, LAB_TRAIN_DEFAULT_EPOCHS);
+        assert!(r.check().is_none());
+        let bad = LabTrainRequest { epochs: 0, ..r };
+        assert_eq!(bad.check().unwrap().0, "epochs");
+        assert!(LabRunStatus::from_wire("running").active());
+        assert!(!LabRunStatus::from_wire("failed").active());
     }
 
     #[test]
