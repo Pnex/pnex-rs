@@ -9,6 +9,7 @@
 //! CRDT, which keeps loading and catch-up simple (no sequence bookkeeping).
 
 pub mod flow_write;
+pub mod pdf;
 pub mod room;
 pub mod schema;
 pub mod seed;
