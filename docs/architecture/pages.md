@@ -241,10 +241,13 @@ Deux niveaux, distincts :
   attachée à l'objet, figée à la clôture.
 - Une étape peut **proposer une action** déclarée (D183) : bouton
   « Mettre P-12 en maintenance ». L'action passe par son flow déployé,
-  avec confirmation si `confirm: true`, et est journalisée (`actions`).
+  avec confirmation si `confirm: true`, et est journalisée (provenance
+  `object_changes`, entrée `action.invoke`, D183 livré).
   La page ne commande jamais un device elle-même (D123, D128).
 - Lien GMAO : la procédure instanciée est la brique « bon de travail »
   attendue par le chantier GMAO ; ne pas la redéfinir là-bas.
+  (Hypothèse reprise par `ontology.md` annexe B8 : OT = procédure
+  instanciée depuis une occurrence du calendrier.)
 
 ### P10 — Carte : un morceau de MapLibre, pas une capture
 
@@ -412,7 +415,8 @@ assistant — conditions de « fini », pas des tâches à part.
 - Mode suggestion / branches de page avec fusion.
 - ACL par page, partage hors org, lien public (suit D188).
 - Base de connaissances publique, wiki inter-orgs.
-- Vues calendrier / chronologie / Gantt des collections.
+- Vues calendrier / chronologie / Gantt des collections. Étude en cours côté GMAO
+  (`ontology.md` annexe B, roadmap P2.20).
 - Diagrammes dessinés dans la page (renvoi vers l'éditeur de synoptiques).
 - Export `.docx` fidèle.
 
