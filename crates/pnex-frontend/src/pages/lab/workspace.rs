@@ -309,6 +309,29 @@ pub fn LabProjectPage(id: String) -> Element {
             suggesting.set(false);
         });
     };
+    let on_propagate = move |_| {
+        let Some(img) = images.peek().get(*selected.peek()).cloned() else {
+            return;
+        };
+        let req = LabSuggestRequest {
+            model_id: model.peek().clone(),
+            min_score: 0.0,
+        };
+        let none = t!("lab-propagate-none").to_string();
+        suggesting.set(true);
+        spawn(async move {
+            match api::lab::propagate(&img.id, &req).await {
+                Ok(list) => {
+                    if list.is_empty() {
+                        toasts::info(none);
+                    }
+                    suggestions.set((img.id, list));
+                }
+                Err(e) => toasts::error(e),
+            }
+            suggesting.set(false);
+        });
+    };
     let on_suggest = move |_| {
         let Some(img) = images.peek().get(*selected.peek()).cloned() else {
             return;
@@ -485,6 +508,7 @@ pub fn LabProjectPage(id: String) -> Element {
                                 on_model: move |m: String| model.set(m),
                                 on_suggest,
                                 on_interpolate,
+                                on_propagate,
                                 // Only the proposals whose label is a class: the
                                 // others are kept one by one, on purpose.
                                 on_keep_all: move |_| {
@@ -905,6 +929,7 @@ fn SuggestBar(
     on_model: EventHandler<String>,
     on_suggest: EventHandler<()>,
     on_interpolate: EventHandler<()>,
+    on_propagate: EventHandler<()>,
     on_keep_all: EventHandler<()>,
     on_dismiss: EventHandler<()>,
 ) -> Element {
@@ -930,6 +955,14 @@ fn SuggestBar(
                 {t!("lab-suggest")}
             }
             if can_interpolate {
+                button {
+                    class: BTN_SECONDARY_SM,
+                    title: t!("lab-propagate-help").to_string(),
+                    r#type: "button",
+                    disabled: model.is_empty() || busy,
+                    onclick: move |_| on_propagate.call(()),
+                    {t!("lab-propagate")}
+                }
                 button {
                     class: BTN_SECONDARY_SM,
                     title: t!("lab-interpolate-help").to_string(),
@@ -1110,6 +1143,12 @@ fn warning_text(w: &lab::LabWarning) -> String {
         "lab-warn-val-few" => t!("lab-warn-val-few", min : lab::LAB_MIN_VAL_IMAGES).to_string(),
         "lab-warn-no-negative" => t!("lab-warn-no-negative").to_string(),
         "lab-warn-no-class" => t!("lab-warn-no-class").to_string(),
+        "lab-warn-class-sources" => {
+            t!("lab-warn-class-sources", class : class, min : lab::LAB_MIN_SOURCES).to_string()
+        }
+        "lab-warn-class-same-size" => t!("lab-warn-class-same-size", class : class).to_string(),
+        "lab-warn-class-same-place" => t!("lab-warn-class-same-place", class : class).to_string(),
+        "lab-warn-light-uniform" => t!("lab-warn-light-uniform").to_string(),
         other => other.to_string(),
     }
 }

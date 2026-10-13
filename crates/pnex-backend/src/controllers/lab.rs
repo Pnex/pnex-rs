@@ -40,6 +40,7 @@ pub fn routes() -> Routes {
         .add("/images/{id}/annotations", put(save_annotations))
         .add("/images/{id}/suggest", axum::routing::post(suggest))
         .add("/images/{id}/interpolate", axum::routing::post(interpolate))
+        .add("/images/{id}/propagate", axum::routing::post(propagate))
         .add("/versions/{id}/export", get(export))
         .add("/versions/{id}/train", axum::routing::post(train))
         .add("/projects/{id}/runs", get(runs))
@@ -237,6 +238,20 @@ async fn import_video(
 ) -> Result<Response> {
     require_write(&org)?;
     reply(lab::import_video(&ctx, org.org.id, id, &req).await)
+}
+
+/// Propagation by tracking: editors only (vision pool), proposals only.
+async fn propagate(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Json(req): Json<LabSuggestRequest>,
+) -> Result<Response> {
+    require_write(&org)?;
+    let store = MediaSettings::from_config(&ctx.config)
+        .store()
+        .map_err(|_| Error::InternalServerError)?;
+    reply(lab::propagate(&ctx, store.as_ref(), org.org.id, id, &req).await)
 }
 
 /// Interpolated boxes between annotated frames: editors only, proposals

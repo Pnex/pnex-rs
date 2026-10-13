@@ -23,6 +23,8 @@ pub struct Model {
     #[sea_orm(column_type = "JsonBinary")]
     pub boxes: Json,
     pub negative: bool,
+    /// Mean luma 0–255 measured at import (diversity guidance).
+    pub luma: Option<f32>,
     /// Position in the source, ms (interpolation order); `None` = still.
     pub frame_ms: Option<i64>,
     /// Optimistic concurrency counter of the annotations.

@@ -16,6 +16,17 @@ pub const LAB_CLASS_MAX: usize = 64;
 pub const LAB_MIN_PER_CLASS: usize = 20;
 /// Indicative floor of validation images.
 pub const LAB_MIN_VAL_IMAGES: usize = 5;
+/// Diversity guidance (M4): a class seen in fewer sources than this.
+pub const LAB_MIN_SOURCES: usize = 3;
+/// Boxes of a class needed before judging its size or place spread.
+pub const LAB_SPREAD_MIN_BOXES: usize = 10;
+/// Largest / smallest box area of a class under this = always one distance.
+pub const LAB_SIZE_SPREAD: f32 = 4.0;
+/// Box centres of a class all within this distance (image fractions) of
+/// their mean = always at the same place.
+pub const LAB_PLACE_SPREAD: f32 = 0.1;
+/// Brightest − darkest mean luma (0–255) under this = one lighting only.
+pub const LAB_LIGHT_SPREAD: f32 = 50.0;
 /// One source in [`LAB_VAL_EVERY`] goes to validation (≈ 20 %).
 pub const LAB_VAL_EVERY: u64 = 5;
 
@@ -115,6 +126,10 @@ pub struct LabImage {
     /// Checked "no object here" (negative example).
     #[serde(default)]
     pub negative: bool,
+    /// Mean luma 0–255 measured at import (diversity guidance); `None` for
+    /// pictures added before it was measured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub luma: Option<f32>,
     /// Position in its source, ms (epoch for a camera recording, from the
     /// start of the file for a video): orders the frames of a source for
     /// box interpolation. `None` for a still image.
@@ -403,6 +418,54 @@ pub struct LabTrainingRun {
     pub finished_at: Option<String>,
 }
 
+/// Least overlap between a box of the previous frame and a proposal for
+/// the class to carry over (propagation, M4).
+pub const LAB_PROPAGATE_MIN_IOU: f32 = 0.3;
+
+fn box_iou(a: [f32; 4], b: [f32; 4]) -> f32 {
+    let iw = ((a[0] + a[2]).min(b[0] + b[2]) - a[0].max(b[0])).max(0.0);
+    let ih = ((a[1] + a[3]).min(b[1] + b[3]) - a[1].max(b[1])).max(0.0);
+    let inter = iw * ih;
+    let union = a[2] * a[3] + b[2] * b[3] - inter;
+    if union <= 0.0 {
+        0.0
+    } else {
+        inter / union
+    }
+}
+
+/// Propagation by tracking (§4.6.1, M4): each box of the previous annotated
+/// frame takes the model proposal that overlaps it most (≥
+/// [`LAB_PROPAGATE_MIN_IOU`], best pairs first) and gives it its class.
+/// Proposals matching no previous box are dropped; the model label is kept
+/// for display.
+pub fn propagate(previous: &[LabBox], proposals: Vec<LabSuggestion>) -> Vec<LabSuggestion> {
+    let mut pairs: Vec<(f32, usize, usize)> = Vec::new();
+    for (i, b) in previous.iter().enumerate() {
+        for (j, p) in proposals.iter().enumerate() {
+            let o = box_iou(b.bbox, p.bbox);
+            if o >= LAB_PROPAGATE_MIN_IOU {
+                pairs.push((o, i, j));
+            }
+        }
+    }
+    pairs.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let (mut used_b, mut used_p) = (vec![false; previous.len()], vec![false; proposals.len()]);
+    let mut out = Vec::new();
+    for (_, i, j) in pairs {
+        if used_b[i] || used_p[j] {
+            continue;
+        }
+        used_b[i] = true;
+        used_p[j] = true;
+        out.push(LabSuggestion {
+            class: Some(previous[i].class),
+            ..proposals[j].clone()
+        });
+    }
+    out
+}
+
 /// Boxes of an image between two annotated frames of the same source,
 /// linearly interpolated at `t_ms` (§4.6.1, Q3). Boxes are paired per
 /// class, nearest centres first; an unpaired box is left out. Empty when
@@ -564,7 +627,64 @@ pub fn stats(classes: &[String], images: &[LabImage]) -> LabStats {
     if s.annotated > 0 && s.negatives == 0 {
         s.warnings.push(warn("lab-warn-no-negative", None));
     }
+    diversity(classes, images, &mut s.warnings);
     s
+}
+
+/// Diversity guidance (§4.6.1 step 3, M4): what the annotated pictures
+/// lack — sources, object sizes, object places, lighting. Advice only.
+fn diversity(classes: &[String], images: &[LabImage], out: &mut Vec<LabWarning>) {
+    let annotated: Vec<&LabImage> = images.iter().filter(|i| i.annotated()).collect();
+    for (ci, name) in classes.iter().enumerate() {
+        let warn = |code: &str| LabWarning {
+            code: code.to_string(),
+            class: Some(name.clone()),
+        };
+        let mut sources = std::collections::BTreeSet::new();
+        let mut areas = Vec::new();
+        let mut centres = Vec::new();
+        for img in &annotated {
+            for b in img.boxes.iter().filter(|b| b.class as usize == ci) {
+                sources.insert(img.source.as_str());
+                areas.push(b.bbox[2] * b.bbox[3]);
+                centres.push((b.bbox[0] + b.bbox[2] / 2.0, b.bbox[1] + b.bbox[3] / 2.0));
+            }
+        }
+        if !sources.is_empty() && sources.len() < LAB_MIN_SOURCES {
+            out.push(warn("lab-warn-class-sources"));
+        }
+        if areas.len() < LAB_SPREAD_MIN_BOXES {
+            continue;
+        }
+        let (lo, hi) = areas
+            .iter()
+            .fold((f32::MAX, 0.0f32), |(lo, hi), a| (lo.min(*a), hi.max(*a)));
+        if lo > 0.0 && hi / lo < LAB_SIZE_SPREAD {
+            out.push(warn("lab-warn-class-same-size"));
+        }
+        let n = centres.len() as f32;
+        let (mx, my) = centres
+            .iter()
+            .fold((0.0, 0.0), |(x, y), c| (x + c.0 / n, y + c.1 / n));
+        if centres
+            .iter()
+            .all(|c| ((c.0 - mx).powi(2) + (c.1 - my).powi(2)).sqrt() < LAB_PLACE_SPREAD)
+        {
+            out.push(warn("lab-warn-class-same-place"));
+        }
+    }
+    let lumas: Vec<f32> = annotated.iter().filter_map(|i| i.luma).collect();
+    if lumas.len() >= LAB_SPREAD_MIN_BOXES {
+        let (lo, hi) = lumas
+            .iter()
+            .fold((f32::MAX, 0.0f32), |(lo, hi), l| (lo.min(*l), hi.max(*l)));
+        if hi - lo < LAB_LIGHT_SPREAD {
+            out.push(LabWarning {
+                code: "lab-warn-light-uniform".into(),
+                class: None,
+            });
+        }
+    }
 }
 
 /// One image of a frozen dataset version.
@@ -690,6 +810,94 @@ mod tests {
     }
 
     #[test]
+    fn propagation_carries_the_class_of_the_nearest_box() {
+        let prev = [
+            LabBox {
+                class: 2,
+                bbox: [0.1, 0.1, 0.2, 0.2],
+            },
+            LabBox {
+                class: 0,
+                bbox: [0.6, 0.6, 0.2, 0.2],
+            },
+        ];
+        let sug = |x: f32, label: &str| LabSuggestion {
+            label: label.into(),
+            score: 0.8,
+            class: None,
+            bbox: [x, x, 0.2, 0.2],
+        };
+        let out = propagate(
+            &prev,
+            vec![sug(0.12, "person"), sug(0.62, "car"), sug(0.35, "dog")],
+        );
+        assert_eq!(out.len(), 2, "the dog matches no previous box");
+        let by_label = |l: &str| out.iter().find(|s| s.label == l).unwrap().class;
+        assert_eq!(by_label("person"), Some(2));
+        assert_eq!(by_label("car"), Some(0));
+    }
+
+    #[test]
+    fn diversity_warnings() {
+        let classes = vec!["valve".to_string()];
+        // 10 pictures, one source, same box, same light.
+        let same: Vec<LabImage> = (0..10)
+            .map(|_| {
+                let mut i = image(
+                    "s1",
+                    vec![LabBox {
+                        class: 0,
+                        bbox: [0.4, 0.4, 0.1, 0.1],
+                    }],
+                    false,
+                );
+                i.luma = Some(120.0);
+                i
+            })
+            .collect();
+        let codes: Vec<String> = stats(&classes, &same)
+            .warnings
+            .into_iter()
+            .map(|w| w.code)
+            .collect();
+        for c in [
+            "lab-warn-class-sources",
+            "lab-warn-class-same-size",
+            "lab-warn-class-same-place",
+            "lab-warn-light-uniform",
+        ] {
+            assert!(codes.iter().any(|x| x == c), "{c} in {codes:?}");
+        }
+        // Varied sources, sizes, places and light: none of them.
+        let varied: Vec<LabImage> = (0..10)
+            .map(|k| {
+                let f = k as f32 / 10.0;
+                let mut i = image(
+                    &format!("s{k}"),
+                    vec![LabBox {
+                        class: 0,
+                        bbox: [f * 0.8, 0.1, 0.02 + f * 0.3, 0.02 + f * 0.3],
+                    }],
+                    false,
+                );
+                i.luma = Some(20.0 + f * 200.0);
+                i
+            })
+            .collect();
+        let codes: Vec<String> = stats(&classes, &varied)
+            .warnings
+            .into_iter()
+            .map(|w| w.code)
+            .collect();
+        assert!(
+            !codes
+                .iter()
+                .any(|c| c.starts_with("lab-warn-class-s") || c == "lab-warn-light-uniform"),
+            "{codes:?}"
+        );
+    }
+
+    #[test]
     fn train_request_bounds() {
         let r: LabTrainRequest = serde_json::from_str(r#"{"base_model_id": "m"}"#).unwrap();
         assert_eq!(r.epochs, LAB_TRAIN_DEFAULT_EPOCHS);
@@ -725,6 +933,7 @@ mod tests {
             split: LabSplit::Auto,
             boxes,
             negative,
+            luma: None,
             frame_ms: None,
             version: 1,
             updated_at: String::new(),

@@ -209,3 +209,14 @@ pub async fn cancel_run(id: &str) -> Result<pnex_core::lab::LabTrainingRun, ApiE
     )
     .await
 }
+
+/// `POST /api/v1/lab/images/{id}/propagate` — model proposals carrying the
+/// classes of the previous annotated frame (nothing is saved).
+pub async fn propagate(id: &str, req: &LabSuggestRequest) -> Result<Vec<LabSuggestion>, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/lab/images/{id}/propagate"),
+        body(req),
+    )
+    .await
+}

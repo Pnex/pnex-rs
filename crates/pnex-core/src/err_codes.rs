@@ -567,6 +567,8 @@ pub const LAB_TRAIN_INTERRUPTED: &str = "lab-train-interrupted";
 /// Training failed (`args.detail` = verbatim diagnostic).
 pub const LAB_TRAIN_FAILED: &str = "lab-train-failed";
 pub const LAB_RUN_NOT_FOUND: &str = "lab-run-not-found";
+/// Propagation needs an annotated frame before this one in the source.
+pub const LAB_PROPAGATE_NO_PREVIOUS: &str = "lab-propagate-no-previous";
 
 // ── Registered codes ─────────────────────────────────────────────────────
 
@@ -859,6 +861,7 @@ pub const ALL: &[&str] = &[
     LAB_TRAIN_INTERRUPTED,
     LAB_TRAIN_FAILED,
     LAB_RUN_NOT_FOUND,
+    LAB_PROPAGATE_NO_PREVIOUS,
     TIME_RANGE_IMPORT_TOO_LARGE,
     TIME_RANGE_IMPORT_INVALID,
     TIME_RANGE_SCOPE_UNKNOWN,
