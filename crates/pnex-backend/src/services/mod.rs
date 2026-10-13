@@ -16,6 +16,7 @@ pub mod dashboard;
 pub mod dashboards;
 /// Cross-pod serialization helpers (advisory locks, unique violations).
 pub mod db_lock;
+pub mod decide;
 pub mod device_bus;
 pub mod device_liveness;
 pub mod device_pki;
@@ -27,12 +28,15 @@ pub mod events;
 pub mod firmware;
 pub mod firmware_projects;
 pub mod flow;
+pub mod flow_ai;
 pub mod flow_cluster;
 pub mod flow_supervisor;
 pub mod functions;
 pub mod geo;
 /// Live last-value telemetry cache (Valkey) — write side (pnex-device-read
 /// acceleration).
+pub mod lab;
+pub mod lab_train;
 pub mod last_cache;
 pub mod media;
 pub mod media_ingest;

@@ -1,0 +1,14 @@
+[package]
+name = "pnex-pdf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "PNeX PDF rendering of pages (media-vision-studio.md D209): layout + krilla"
+
+[dependencies]
+# PDF writer (MIT OR Apache-2.0). Without its `simple-text` feature: that
+# one pulls rustybuzz and ttf-parser, unmaintained (RUSTSEC-2026-0206/0192).
+krilla = { version = "0.8", default-features = false }
+# Text shaping (MIT), the maintained successor of rustybuzz: the same
+# glyphs measure the lines and are drawn.
+harfrust = "0.14"

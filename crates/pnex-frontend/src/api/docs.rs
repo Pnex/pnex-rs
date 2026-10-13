@@ -73,6 +73,28 @@ pub async fn create_version(id: Uuid, label: String) -> Result<DocVersionSummary
     .await
 }
 
+/// `POST /api/v1/docs/{id}/versions/{n}/approve` — a person approves a
+/// frozen version (D210).
+pub async fn approve_version(id: Uuid, n: i64) -> Result<DocVersionSummary, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/docs/{id}/versions/{n}/approve"),
+        None,
+    )
+    .await
+}
+
+/// `GET /api/v1/docs/{id}/versions/{n}/pdf` — the version as a PDF, in
+/// the UI language (D209).
+pub async fn version_pdf(id: Uuid, n: i64) -> Result<Vec<u8>, ApiError> {
+    let lang = crate::i18n::current_tag();
+    client::request_bytes(
+        reqwest::Method::GET,
+        &format!("/api/v1/docs/{id}/versions/{n}/pdf?lang={lang}"),
+    )
+    .await
+}
+
 pub async fn version_state(id: Uuid, n: i64) -> Result<DocVersionState, ApiError> {
     client::request(
         reqwest::Method::GET,

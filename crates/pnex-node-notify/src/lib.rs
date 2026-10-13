@@ -49,6 +49,11 @@
 //! secret once the flow is marked deployed, which happens right after the
 //! runtime acknowledged the artifact) and keeps them in memory until the
 //! next deploy (D118). Values are never logged.
+//!
+//! Attachment (D209): `attach_field` names the media id of a PDF exported by
+//! `page_pdf` in the render context; the node reads it once per send from
+//! `PNEX_FLOW_MEDIA_URL` and hands it to the channels that carry files
+//! (`smtp`). No value at the path = sent without attachment.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -135,6 +140,9 @@ struct PnexNotifyNodeConfig {
     /// — `ensure_trigger_wired` refuses to build them (mandatory gate).
     #[serde(default, rename = "pnex_notify_trigger")]
     trigger: bool,
+    /// Path of the media id to attach (D209); empty = none.
+    #[serde(default)]
+    attach_field: String,
 }
 
 /// État muable du nœud (école vendor join.rs : `Mutex` std, scopes courts,
@@ -251,6 +259,8 @@ struct PnexNotifyNode {
     /// Vault endpoint + runtime token (D115) — set when a channel holds a
     /// secret reference.
     secret_source: Option<(String, String)>,
+    /// Media endpoint + runtime token (D209) — set when `attach_field` is.
+    media_source: Option<(String, String)>,
     /// Sendable configs resolved from the vault, by channel index.
     secret_cache: Mutex<BTreeMap<usize, serde_json::Value>>,
     /// État muable : accumulation + anti-spam.
@@ -349,6 +359,25 @@ impl PnexNotifyNode {
                 None
             };
 
+        let media_source = if cfg.attach_field.trim().is_empty() {
+            None
+        } else {
+            match (
+                std::env::var("PNEX_FLOW_MEDIA_URL"),
+                std::env::var("PNEX_FLOW_WRITE_TOKEN"),
+            ) {
+                (Ok(url), Ok(token)) if !url.is_empty() && !token.is_empty() => Some((url, token)),
+                _ => {
+                    return Err(EdgelinkError::InvalidOperation(
+                        "pnex-notify: PNEX_FLOW_MEDIA_URL/PNEX_FLOW_WRITE_TOKEN missing from the \
+                         runtime environment (attachment configured)"
+                            .into(),
+                    )
+                    .into())
+                }
+            }
+        };
+
         Ok(Box::new(PnexNotifyNode {
             base: base_node,
             config: cfg,
@@ -356,6 +385,7 @@ impl PnexNotifyNode {
             channel_ids,
             journal,
             secret_source,
+            media_source,
             secret_cache: Mutex::new(BTreeMap::new()),
             state: Mutex::new(NotifyNodeState::default()),
             commit_wake: tokio::sync::Notify::new(),
@@ -574,6 +604,8 @@ impl PnexNotifyNode {
             "org": self.config.pnex_org_id,
         });
 
+        let attachment = self.attachment(&context_payload).await;
+
         // 1) Render (once, shared by every channel).
         let rendered = match pnex_notify::render(
             self.config.template.subject.as_deref(),
@@ -650,6 +682,17 @@ impl PnexNotifyNode {
                 continue;
             };
             let outcome = match self.sendable(i, kind, config).await {
+                Ok(config) if ch.carries_attachments() => match &attachment {
+                    Ok(files) => {
+                        pnex_notify::with_retry(|| {
+                            ch.send_with_attachments(&config, &rendered, files)
+                        })
+                        .await
+                    }
+                    // No partial report: a channel that carries files fails
+                    // with its attachment.
+                    Err(e) => Err(pnex_notify::NotifyError::Config(e.clone())),
+                },
                 Ok(config) => pnex_notify::with_retry(|| ch.send(&config, &rendered)).await,
                 Err(e) => Err(e),
             };
@@ -695,6 +738,29 @@ impl PnexNotifyNode {
             st.ready = false;
         }
         Ok(())
+    }
+
+    /// The file named by `attach_field` in the render context (D209):
+    /// empty when not configured or when the message has no id there.
+    async fn attachment(
+        &self,
+        context: &serde_json::Value,
+    ) -> std::result::Result<Vec<pnex_notify::Attachment>, String> {
+        let Some((url, token)) = &self.media_source else {
+            return Ok(Vec::new());
+        };
+        let Some(id) = attachment_id(context, &self.config.attach_field) else {
+            log::debug!(
+                "pnex-notify [{}] : no media id at \"{}\", sent without attachment",
+                self.name(),
+                self.config.attach_field
+            );
+            return Ok(Vec::new());
+        };
+        pnex_notify::attachments::fetch(url, token, self.config.pnex_org_id, id)
+            .await
+            .map(|f| vec![f])
+            .map_err(|e| format!("attachment {id}: {e}"))
     }
 
     /// Commit task (one per node, alongside the message loop): waits for a
@@ -763,6 +829,14 @@ async fn fetch_secret(
             }
         }
     }
+}
+
+/// Media id at `path`: a uuid string, or an object holding `asset_id` (the
+/// whole `page_pdf` output).
+fn attachment_id(context: &serde_json::Value, path: &str) -> Option<uuid::Uuid> {
+    let v = pnex_core::resolve_msg_path(context, path.trim())?;
+    let s = v.get("asset_id").unwrap_or(v).as_str()?;
+    uuid::Uuid::parse_str(s).ok()
 }
 
 fn fill_vars(
@@ -924,6 +998,17 @@ impl FlowNodeBehavior for PnexNotifyNode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn attachment_id_from_a_string_or_a_page_pdf_output() {
+        let id = "6f1c2b9e-0d4a-4c7e-9a51-2f6d8e3b7c10";
+        let ctx = serde_json::json!({"asset_id": id, "report": {"asset_id": id}, "n": 3});
+        let want = uuid::Uuid::parse_str(id).ok();
+        assert_eq!(attachment_id(&ctx, "asset_id"), want);
+        assert_eq!(attachment_id(&ctx, "report"), want);
+        assert_eq!(attachment_id(&ctx, "n"), None);
+        assert_eq!(attachment_id(&ctx, "missing"), None);
+    }
     use edgelink_core::runtime::registry::RegistryBuilder;
 
     #[test]

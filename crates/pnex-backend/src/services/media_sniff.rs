@@ -27,6 +27,9 @@ const SPLAT_RECORD: usize = 32;
 pub struct Sniff {
     pub kind: &'static str,
     pub metadata: Option<serde_json::Value>,
+    /// Media type of the identified content, used when the client declares
+    /// none (pictures, video, audio only).
+    pub mime: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,6 +58,8 @@ pub enum Format {
     Ogg,
     Flac,
     M4a,
+    /// MP4 / QuickTime video (Vision Lab: frames of a video).
+    Mp4,
 }
 
 impl Format {
@@ -81,6 +86,7 @@ impl Format {
             Self::Ogg => &["ogg", "oga", "opus"],
             Self::Flac => &["flac"],
             Self::M4a => &["m4a"],
+            Self::Mp4 => &["mp4", "m4v", "mov"],
             // `format_of` already matched the extension.
             Self::Doc(_) => &[],
         }
@@ -99,7 +105,28 @@ impl Format {
             Self::Doc(d) if d.kind() == doc_extract::KIND_TABLE => &["table"],
             Self::Doc(_) => &["document"],
             Self::Wav | Self::Mp3 | Self::Ogg | Self::Flac | Self::M4a => &["audio"],
+            Self::Mp4 => &["video"],
         }
+    }
+
+    /// Media type of a picture, video or sound format; `None` otherwise.
+    fn mime(self, filename: &str) -> Option<&'static str> {
+        Some(match self {
+            Self::Jpeg => "image/jpeg",
+            Self::Png => "image/png",
+            Self::Gif => "image/gif",
+            Self::Webp => "image/webp",
+            Self::Avif => "image/avif",
+            Self::Heic => "image/heic",
+            Self::Wav => "audio/wav",
+            Self::Mp3 => "audio/mpeg",
+            Self::Ogg => "audio/ogg",
+            Self::Flac => "audio/flac",
+            Self::M4a => "audio/mp4",
+            Self::Mp4 if extension(filename) == "mov" => "video/quicktime",
+            Self::Mp4 => "video/mp4",
+            _ => return None,
+        })
     }
 
     fn label(self) -> &'static str {
@@ -139,6 +166,8 @@ fn by_magic(b: &[u8]) -> Option<Format> {
         _ if matches!(ftyp_brand, Some(b"M4A ")) => Format::M4a,
         _ if matches!(ftyp_brand, Some(b"avif" | b"avis")) => Format::Avif,
         _ if matches!(ftyp_brand, Some(b"heic" | b"heix" | b"mif1" | b"msf1")) => Format::Heic,
+        // Any other ISO base media brand (isom, mp41, mp42, avc1, qt…).
+        _ if ftyp_brand.is_some() => Format::Mp4,
         _ if b.starts_with(b"ply\n") || b.starts_with(b"ply\r\n") => Format::Ply,
         _ if b.starts_with(b"lmgg") || b.starts_with(b"GGUF") => Format::Ggml,
         _ if b.get(257..262) == Some(b"ustar") => Format::Tar,
@@ -186,12 +215,14 @@ pub fn detect(filename: &str, bytes: &[u8]) -> Option<Sniff> {
                 "projection": "equirectangular",
                 "source": "gpano"
             })),
+            mime: format.mime(filename),
         });
     }
     let label = format.label();
     Some(Sniff {
         kind: format.kinds()[0],
         metadata: (!label.is_empty()).then(|| serde_json::json!({ "format": label })),
+        mime: format.mime(filename),
     })
 }
 
@@ -248,6 +279,30 @@ mod tests {
         assert!(detect("a.docx", b"PK\x03\x04photos/a.jpg").is_none());
         // Text names over binary content.
         assert!(detect("notes.txt", b"\x00\x01\x02").is_none());
+    }
+
+    #[test]
+    fn identified_content_gives_its_media_type() {
+        let png = b"\x89PNG\r\n\x1a\n\0\0";
+        assert_eq!(detect("a.png", png).unwrap().mime, Some("image/png"));
+        let mov = b"\0\0\0\x14ftypqt  \0\0\0\0";
+        assert_eq!(
+            detect("clip.mov", mov).unwrap().mime,
+            Some("video/quicktime")
+        );
+    }
+
+    #[test]
+    fn videos_by_brand_and_extension() {
+        assert_eq!(
+            kind("clip.mp4", b"\0\0\0\x18ftypisom\0\0\x02\0"),
+            Some("video")
+        );
+        assert_eq!(
+            kind("clip.mov", b"\0\0\0\x14ftypqt  \0\0\0\0"),
+            Some("video")
+        );
+        assert_eq!(kind("clip.png", b"\0\0\0\x18ftypisom\0\0\x02\0"), None);
     }
 
     #[test]

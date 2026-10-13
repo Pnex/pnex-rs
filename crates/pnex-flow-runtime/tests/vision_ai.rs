@@ -1,0 +1,173 @@
+//! Video understanding nodes on the real engine (media-vision-studio.md
+//! D195–D197): `vision-caption`, `media-fuse` and `text-decide` against a
+//! canned backend (`/internal/flow/ai/{caption,fuse,decide}`) — the runtime side only: the
+//! backend reads the frame and calls the org model.
+
+mod common;
+
+use std::io::{Read, Write};
+use std::time::Duration;
+
+/// Canned backend: `/caption` → a caption, `/fuse` → one sourced sentence.
+fn start_ai_server() -> String {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr").to_string();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            std::thread::spawn(move || {
+                let mut buf = [0u8; 65536];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let head = String::from_utf8_lossy(&buf[..n]).into_owned();
+                let body = if head.starts_with("POST /internal/flow/ai/decide") {
+                    serde_json::json!({
+                        "answers": {"incident": {"best": "routine", "probability": 0.7,
+                            "probabilities": [["incident", 0.3], ["routine", 0.7]], "confidence": 0.12}},
+                        "model": "ml", "took_ms": 5
+                    })
+                } else if head.starts_with("POST /internal/flow/page-pdf") {
+                    assert!(head.contains("\"version\":1") && head.contains("\"require_approval\":true"));
+                    serde_json::json!({"status": "ready", "page_id": "00000000-0000-0000-0000-0000000000aa",
+                        "version": 1, "title": "Weekly 2026-W42",
+                        "asset_id": "00000000-0000-0000-0000-0000000000bb", "filename": "Weekly v1.pdf"})
+                } else if head.starts_with("POST /internal/flow/page-write") {
+                    assert!(head.contains("Weekly report") && head.contains("\"ai_generated\":true"));
+                    serde_json::json!({"page_id": "00000000-0000-0000-0000-0000000000aa",
+                        "title": "Weekly 2026-W42", "version": 1})
+                } else if head.starts_with("POST /internal/flow/ai/text") {
+                    assert!(head.contains("A cat sat on the chair."), "the fused text is the data");
+                    serde_json::json!({"text": "## Weekly report\n- A calm week.", "model": "m",
+                        "took_ms": 2, "data_truncated": false})
+                } else if head.starts_with("POST /internal/flow/ai/caption") {
+                    serde_json::json!({"caption": "a cat on a chair", "model": "m", "took_ms": 3})
+                } else {
+                    serde_json::json!({
+                        "sentences": [{"text": "A cat sat on the chair.", "sources": ["cap-1"]}],
+                        "rejected": 0, "model": "m", "took_ms": 4
+                    })
+                }
+                .to_string();
+                let _ = stream.write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                );
+            });
+        }
+    });
+    addr
+}
+
+fn flows() -> String {
+    let fake_frame = r#"
+msg.payload = { device_id: "cam-1", ts_ms: Date.now(), frame_key: "pnex:cam:v1:5:cam-1:f:1" };
+return msg;
+"#;
+    serde_json::json!([
+        { "id": "pnexflow8", "type": "tab", "label": "ai", "pnex_flow_id": 8 },
+        {
+            "id": "tick", "type": "inject", "z": "pnexflow8",
+            "props": [{ "p": "payload" }], "repeat": "0.5", "once": true,
+            "payload": "x", "payloadType": "str", "wires": [["frame"]]
+        },
+        {
+            "id": "frame", "type": "function", "z": "pnexflow8",
+            "outputs": 1, "func": fake_frame, "wires": [["cap"]]
+        },
+        {
+            "id": "cap", "type": "pnex-vision-caption", "z": "pnexflow8",
+            "prompt": "What is there?", "min_interval_secs": 1.0, "crop_best": false,
+            "pnex_org_id": 5, "pnex_node_id": "cap", "wires": [["fuse", "dbg"]]
+        },
+        {
+            "id": "fuse", "type": "pnex-media-fuse", "z": "pnexflow8",
+            "window_secs": 5.0, "language": "en",
+            "pnex_org_id": 5, "pnex_node_id": "fuse", "wires": [["dbg", "dec", "llm"]]
+        },
+        {
+            "id": "llm", "type": "pnex-llm-text", "z": "pnexflow8",
+            "prompt": "Write the weekly report", "data_field": "text", "language": "en",
+            "max_chars": 2000, "pnex_org_id": 5, "pnex_node_id": "llm", "wires": [["dbg", "page"]]
+        },
+        {
+            "id": "page", "type": "pnex-page-write", "z": "pnexflow8",
+            "mode": "new_page", "title": "Weekly {week}", "text_field": "text",
+            "version_label": "{date}", "pnex_org_id": 5, "pnex_flow_id": 8,
+            "pnex_node_id": "page", "wires": [["dbg", "pdf"]]
+        },
+        {
+            "id": "pdf", "type": "pnex-page-pdf", "z": "pnexflow8",
+            "source": "message", "require_approval": true, "language": "fr",
+            "pnex_org_id": 5, "pnex_flow_id": 8, "pnex_node_id": "pdf", "wires": [["dbg"], []]
+        },
+        {
+            "id": "dec", "type": "pnex-text-decide", "z": "pnexflow8",
+            "questions": [{"id": "incident", "kind": "choice", "instructions": "Incident?",
+                           "options": ["incident", "routine"]}],
+            "text_field": "text", "pnex_org_id": 5, "pnex_node_id": "dec", "wires": [["dbg"]]
+        },
+        {
+            "id": "dbg", "type": "debug", "z": "pnexflow8",
+            "active": true, "tosidebar": true, "console": false,
+            "complete": "payload", "wires": []
+        }
+    ])
+    .to_string()
+}
+
+#[test]
+fn caption_then_fused_description() {
+    let addr = start_ai_server();
+    let home = common::tmp_home("vai");
+    let path = home.join("flows.json");
+    std::fs::write(&path, flows()).unwrap();
+    let ai_url = format!("http://{addr}/internal/flow/ai");
+    let page_url = format!("http://{addr}/internal/flow/page-write");
+    let rt = common::RuntimeProc::spawn_with_env(
+        &path,
+        &home,
+        [
+            ("PNEX_FLOW_AI_URL", ai_url.as_str()),
+            ("PNEX_FLOW_PAGE_URL", page_url.as_str()),
+            ("PNEX_FLOW_WRITE_TOKEN", "t"),
+        ],
+    );
+    rt.wait_for(
+        |v| v.get("event").and_then(|e| e.as_str()) == Some("started"),
+        Duration::from_secs(30),
+    );
+    rt.wait_for(
+        |v| {
+            common::is_debug_with(v, "a cat on a chair") && common::is_debug_with(v, "ai_generated")
+        },
+        Duration::from_secs(15),
+    );
+    rt.wait_for(
+        |v| {
+            common::is_debug_with(v, "A cat sat on the chair.") && common::is_debug_with(v, "t0_ms")
+        },
+        Duration::from_secs(20),
+    );
+    // The fused text feeds the AI text node (D208), output marked as AI.
+    rt.wait_for(
+        |v| common::is_debug_with(v, "Weekly report") && common::is_debug_with(v, "ai_generated"),
+        Duration::from_secs(20),
+    );
+    // The AI text becomes a page with a named version (D209).
+    rt.wait_for(
+        |v| common::is_debug_with(v, "Weekly 2026-W42") && common::is_debug_with(v, "page_id"),
+        Duration::from_secs(20),
+    );
+    // The page version becomes a PDF of the media library (D209).
+    rt.wait_for(
+        |v| common::is_debug_with(v, "Weekly v1.pdf") && common::is_debug_with(v, "asset_id"),
+        Duration::from_secs(20),
+    );
+    // The fused text goes on to the decision node, which keeps the payload.
+    rt.wait_for(
+        |v| common::is_debug_with(v, "decisions") && common::is_debug_with(v, "A cat sat"),
+        Duration::from_secs(20),
+    );
+}

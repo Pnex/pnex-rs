@@ -14,8 +14,10 @@ const TICKET_REFRESH_SECS: u64 = 20;
 /// Live view: host div + `pnexViewers.camera` mount after the first render,
 /// unmount on drop (closes the socket — the server then lets an on-demand
 /// camera sleep after its grace delay).
+/// `fill`: take the parent's size instead of a 16:9 box (zone editor,
+/// whose box has the camera's own aspect ratio).
 #[component]
-pub(super) fn LiveView(device: i64) -> Element {
+pub(crate) fn LiveView(device: i64, #[props(default)] fill: bool) -> Element {
     let host_id = format!("pnex-camera-live-{device}");
     let mut failed = use_signal(|| false);
     let host_for_mount = host_id.clone();
@@ -52,7 +54,7 @@ pub(super) fn LiveView(device: i64) -> Element {
     });
 
     rsx! {
-        div { class: "relative aspect-video bg-gray-900 rounded-lg overflow-hidden",
+        div { class: if fill { "relative w-full h-full bg-gray-900 overflow-hidden" } else { "relative aspect-video bg-gray-900 rounded-lg overflow-hidden" },
             div { id: "{host_id}", class: "w-full h-full" }
             if failed() {
                 div { class: "absolute inset-0 flex items-center justify-center text-sm text-gray-300 p-4 text-center",

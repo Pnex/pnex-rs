@@ -60,6 +60,8 @@ time = "0.3"
 subtle = "2"
 # Vision inference (model registry test endpoint, D82).
 pnex-vision = { workspace = true }
+# Laya typed decisions (text-decide node, D197).
+pnex-decide = { workspace = true }
 # Ingestion metrics OpenObserve : Prometheus remote-write (protobuf+snappy)
 prost = "0.13"
 snap = "1"
@@ -73,6 +75,8 @@ rand = "0.10"
 libc = "0.2"
 # Media capture chain (D160), shared with the edge agent (lot 6b).
 pnex-media-capture = { workspace = true }
+# PDF rendering of pages (D209).
+pnex-pdf = { workspace = true }
 # Speech-to-text protocol, family detection and WER (pure Rust: the runtime
 # runs in the separate pnex-asr process, media-ingest.md D166).
 pnex-asr = { workspace = true }
@@ -135,5 +139,7 @@ axum-test = { version = "17", features = ["ws"] }
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 serial_test = { version = "3.1" }
+# Synthetic pictures of the Vision Lab training test (already a pnex-vision dep).
+image = { version = "0.25", default-features = false, features = ["png"] }
 # Temporary files and directories of the tests
 tempfile = "3"

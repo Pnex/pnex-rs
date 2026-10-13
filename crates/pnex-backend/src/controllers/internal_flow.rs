@@ -54,8 +54,22 @@ pub fn routes() -> Routes {
         // Time ranges from the `range-upsert` node (D169).
         .add("/internal/flow/time-range", post(flow_time_range))
         .add("/internal/flow/video-annotations", post(video_annotations))
+        // Org model calls of the vision-caption / media-fuse nodes (D195/D196).
+        .add("/internal/flow/ai/caption", post(flow_ai_caption))
+        // Pages written by page-write nodes (D209).
+        .add("/internal/flow/page-write", post(flow_page_write))
+        .add("/internal/flow/page-pdf", post(flow_page_pdf))
+        // Doubtful frames of vision-detect nodes → Vision Lab (M4).
+        .add("/internal/flow/lab-review", post(flow_lab_review))
+        .add("/internal/flow/ai/fuse", post(flow_ai_fuse))
+        // Generic text of the org model (llm-text node, D208).
+        .add("/internal/flow/ai/text", post(flow_ai_text))
+        // Typed decisions of the text-decide node, local Laya model (D197).
+        .add("/internal/flow/ai/decide", post(flow_ai_decide))
         // Vault secret of a deployed notify channel (D115, lot S4).
         .add("/internal/flow/secret/{id}", get(flow_secret))
+        // PDF exported by a page-pdf node, attached by pnex-notify (D209).
+        .add("/internal/flow/media/{id}", get(flow_media))
         .add(
             "/internal/flow/video-segment",
             post(video_segment)
@@ -155,6 +169,61 @@ async fn flow_secret(
             Err(Error::InternalServerError)
         }
     }
+}
+
+/// `GET /internal/flow/media/{id}?org_id=` — a file attached by a
+/// `pnex-notify` node (D209). Least privilege: only a PDF exported by a
+/// `page_pdf` node of that org is served, never any other media; unknown
+/// and not exported answer the same 404.
+async fn flow_media(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
+    axum::extract::Query(q): axum::extract::Query<SecretQuery>,
+) -> Result<Response> {
+    use crate::models::_entities::{doc_version_exports, media_assets, media_versions};
+    use base64::Engine as _;
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, q.org_id).await {
+        return Ok(r);
+    }
+    let exported = doc_version_exports::Entity::find()
+        .filter(doc_version_exports::Column::OrgId.eq(q.org_id))
+        .filter(doc_version_exports::Column::AssetId.eq(id))
+        .one(&ctx.db)
+        .await?
+        .is_some();
+    let version = match media_assets::Entity::find_by_id(id)
+        .filter(media_assets::Column::OrgId.eq(q.org_id))
+        .one(&ctx.db)
+        .await?
+        .and_then(|a| a.current_version_id)
+    {
+        Some(v) if exported => media_versions::Entity::find_by_id(v).one(&ctx.db).await?,
+        _ => None,
+    };
+    let Some(version) = version else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+    if version.size_bytes > pnex_notify::ATTACHMENT_MAX_BYTES as i64 {
+        return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+    }
+    let store = crate::services::media::MediaSettings::from_config(&ctx.config)
+        .store()
+        .map_err(|_| Error::InternalServerError)?;
+    let bytes = store
+        .get(&version.storage_key)
+        .await
+        .map_err(|_| Error::NotFound)?;
+    Ok(axum::Json(serde_json::json!({
+        "filename": version.filename,
+        // Exports are always PDFs; the stored type is octet-stream (SEC-5).
+        "content_type": "application/pdf",
+        "data": base64::engine::general_purpose::STANDARD.encode(bytes),
+    }))
+    .into_response())
 }
 
 #[derive(Debug, Deserialize)]
@@ -484,6 +553,182 @@ async fn flow_event(
                 .into_response())
         }
     }
+}
+
+/// Runtime-facing outcome of a model call: 200 + body, or a status with
+/// `{code, error}` (verbatim diagnostic shown in the node status).
+fn flow_ai_reply<T: serde::Serialize>(
+    org_id: i64,
+    res: Result<T, crate::services::flow_ai::FlowAiError>,
+) -> Response {
+    use crate::services::flow_ai::FlowAiError;
+    match res {
+        Ok(body) => axum::Json(body).into_response(),
+        Err(e) => {
+            let status = match &e {
+                FlowAiError::NotConfigured => StatusCode::CONFLICT,
+                FlowAiError::Quota(_) => StatusCode::TOO_MANY_REQUESTS,
+                FlowAiError::NoFrame => StatusCode::NOT_FOUND,
+                FlowAiError::Invalid(_) => StatusCode::BAD_REQUEST,
+                FlowAiError::Ai(_) => StatusCode::BAD_GATEWAY,
+                FlowAiError::Unavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
+            };
+            tracing::warn!(org_id, error = %e, "flow model call failed");
+            (
+                status,
+                axum::Json(serde_json::json!({ "code": e.code(), "error": e.to_string() })),
+            )
+                .into_response()
+        }
+    }
+}
+
+async fn flow_page_write(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::pages::PageWriteRequest>,
+) -> Result<Response> {
+    use crate::services::pages::flow_write::{self, FlowPageError};
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.org_id).await {
+        return Ok(r);
+    }
+    let valkey = crate::services::pages::valkey_url(&ctx.config);
+    Ok(match flow_write::write(&ctx.db, valkey, &req).await {
+        Ok(out) => (StatusCode::CREATED, axum::Json(out)).into_response(),
+        Err(e) => {
+            let status = match &e {
+                FlowPageError::Invalid(_) => StatusCode::BAD_REQUEST,
+                FlowPageError::NotFound => StatusCode::NOT_FOUND,
+                FlowPageError::Page(crate::services::pages::PageError::Refused(_)) => {
+                    StatusCode::UNPROCESSABLE_ENTITY
+                }
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            tracing::warn!(org_id = req.org_id, error = %e, "flow page write refused");
+            (
+                status,
+                axum::Json(serde_json::json!({ "code": e.code(), "error": e.to_string() })),
+            )
+                .into_response()
+        }
+    })
+}
+
+async fn flow_page_pdf(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::pages::PagePdfRequest>,
+) -> Result<Response> {
+    use crate::services::pages::flow_write::{self, FlowPageError};
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.org_id).await {
+        return Ok(r);
+    }
+    Ok(match flow_write::export_pdf(&ctx, &req).await {
+        Ok(out) => axum::Json(out).into_response(),
+        Err(e) => {
+            let status = match &e {
+                FlowPageError::Invalid(_) => StatusCode::BAD_REQUEST,
+                FlowPageError::NotFound => StatusCode::NOT_FOUND,
+                FlowPageError::Page(crate::services::pages::PageError::Refused(_)) => {
+                    StatusCode::UNPROCESSABLE_ENTITY
+                }
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            tracing::warn!(org_id = req.org_id, error = %e, "flow page pdf refused");
+            (
+                status,
+                axum::Json(serde_json::json!({ "code": e.code(), "error": e.to_string() })),
+            )
+                .into_response()
+        }
+    })
+}
+
+async fn flow_lab_review(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::lab::LabReviewRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.org_id).await {
+        return Ok(r);
+    }
+    Ok(match crate::services::lab::review(&ctx, &req).await {
+        Ok(img) => (StatusCode::CREATED, axum::Json(img)).into_response(),
+        Err(e) => (
+            e.status,
+            axum::Json(serde_json::json!({ "error": e.code, "description": e.message })),
+        )
+            .into_response(),
+    })
+}
+
+async fn flow_ai_caption(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::vision_ai::CaptionRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.org_id).await {
+        return Ok(r);
+    }
+    let res = crate::services::flow_ai::caption(&ctx, &req).await;
+    Ok(flow_ai_reply(req.org_id, res))
+}
+
+async fn flow_ai_text(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::vision_ai::LlmTextRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.org_id).await {
+        return Ok(r);
+    }
+    let res = crate::services::flow_ai::text(&ctx, &req).await;
+    Ok(flow_ai_reply(req.org_id, res))
+}
+
+async fn flow_ai_fuse(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::vision_ai::FuseRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.org_id).await {
+        return Ok(r);
+    }
+    let res = crate::services::flow_ai::fuse(&ctx, &req).await;
+    Ok(flow_ai_reply(req.org_id, res))
+}
+
+async fn flow_ai_decide(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::decide::DecideRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.org_id).await {
+        return Ok(r);
+    }
+    let res = crate::services::decide::decide(&ctx, &req).await;
+    Ok(flow_ai_reply(req.org_id, res))
 }
 
 /// Time range written by a `range-upsert` node (D169). The runtime is

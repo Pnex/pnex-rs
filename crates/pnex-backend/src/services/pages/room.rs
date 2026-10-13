@@ -388,6 +388,18 @@ fn publish(valkey_url: Option<String>, doc_id: Uuid, frame: Vec<u8>) {
     });
 }
 
+/// Hands a server-side update (already checked and logged, D209) to the
+/// editors of `doc_id` on this pod and to the other pods.
+pub fn server_update(valkey_url: Option<String>, doc_id: Uuid, update: Vec<u8>) {
+    let frame = Message::Sync(SyncMessage::Update(update.clone())).encode_v1();
+    let open = lock(&ROOMS).get(&doc_id).cloned();
+    if let Some(room) = open {
+        let _ = apply(&lock(&room.doc), &update);
+        room.broadcast_local(None, &frame);
+    }
+    publish(valkey_url, doc_id, frame);
+}
+
 /// Tag of the custom y-protocols message telling the editors of a page that
 /// its comments changed (no payload: they reload them).
 pub const MSG_COMMENTS_CHANGED: u8 = 100;

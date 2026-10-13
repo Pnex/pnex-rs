@@ -40,6 +40,7 @@ pub use fluid_mixture::*;
 pub mod thermo_quantities;
 pub use thermo_quantities::*;
 
+pub mod decide;
 pub mod devices;
 pub use devices::*;
 
@@ -121,6 +122,7 @@ pub mod weather;
 /// Vision contract (D81–D83): model spec, detections, registry DTOs,
 /// `vision-detect` node config.
 pub mod vision;
+pub mod vision_ai;
 
 /// Media ingest (media-ingest.md P2.13): streams, segments, ASR profiles,
 /// transcript records, server-built names.
@@ -149,6 +151,7 @@ pub mod predictive;
 /// Live last-value cache contract (backend write side / flow-runtime read
 /// side) — pure, wasm-safe: key builder, `CachedSample` payload, TTL const,
 /// freshness resolver.
+pub mod lab;
 pub mod last_cache;
 pub use last_cache::*;
 

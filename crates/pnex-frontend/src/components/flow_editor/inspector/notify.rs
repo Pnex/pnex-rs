@@ -14,6 +14,7 @@ const NIL_UUID: &str = "00000000-0000-0000-0000-000000000000";
 pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write: bool) -> Element {
     // Copiés avant le move d'`initial` dans les signaux (école DebugForm).
     let strict = initial.strict;
+    let attach_field = initial.attach_field.clone();
     let anti = initial.anti_spam;
     let mut channel_ids =
         use_signal::<Vec<String>>(|| initial.channel_ids.iter().map(|u| u.to_string()).collect());
@@ -265,6 +266,30 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
                         }
                     }
                 }
+            }
+
+            // ── PDF attachment (D209): path of a page_pdf media id ──
+            label { class: "block space-y-1",
+                span { class: "text-xs font-medium text-gray-500", {t!("flows-notify-attach")} }
+                input {
+                    class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
+                    r#type: "text",
+                    value: "{attach_field}",
+                    placeholder: "asset_id",
+                    disabled: !can_write,
+                    oninput: move |event| {
+                        let next = event.value();
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::PnexNotify { config } = &mut node.kind {
+                                    config.attach_field = next;
+                                }
+                            },
+                        );
+                    },
+                }
+                p { class: "text-xs text-gray-500", {t!("flows-notify-attach-hint")} }
             }
 
             // ── strict — plain checkbox + plain-language hint ──

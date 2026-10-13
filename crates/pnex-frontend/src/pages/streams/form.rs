@@ -49,6 +49,19 @@ pub fn StreamFormModal(
     let mut name = use_signal(|| init.as_ref().map(|s| s.name.clone()).unwrap_or_default());
     let mut kind = use_signal(|| init.as_ref().map(|s| s.kind).unwrap_or_default());
     let mut url = use_signal(|| init.as_ref().map(|s| s.url.clone()).unwrap_or_default());
+    // Library videos and sounds a `media_asset` stream can replay.
+    let files = use_resource(|| async {
+        let filters = api::media::MediaFilters {
+            kinds: vec![api::media::MediaKind::Video, api::media::MediaKind::Audio],
+            limit: Some(200),
+            ..Default::default()
+        };
+        api::media::list(&filters)
+            .await
+            .map(|p| p.results)
+            .unwrap_or_default()
+    });
+    let file_list = files.read().clone().unwrap_or_default();
     let mut tracks = use_signal(|| init.as_ref().map(|s| s.tracks).unwrap_or_default());
     let mut fps = use_signal(|| init.as_ref().map(|s| s.fps).unwrap_or(FPS_DEFAULT));
     let mut profile = use_signal(|| {
@@ -213,19 +226,47 @@ pub fn StreamFormModal(
                         }
                     }
                 }
-                div { class: "sm:col-span-2",
-                    label { r#for: "stream-url", class: LABEL, {t!("streams-url")} }
-                    input {
-                        id: "stream-url",
-                        class: INPUT,
-                        r#type: "url",
-                        value: "{url}",
-                        placeholder: "https://… | rtsp://…",
-                        oninput: move |e| url.set(e.value()),
+                if kind() == MediaStreamKind::MediaAsset {
+                    div { class: "sm:col-span-2",
+                        label { r#for: "stream-file", class: LABEL, {t!("streams-file")} }
+                        select {
+                            id: "stream-file",
+                            class: INPUT,
+                            onchange: move |e| url.set(e.value()),
+                            option {
+                                value: "",
+                                selected: !url().starts_with("media:"),
+                                {t!("streams-file-pick")}
+                            }
+                            for f in file_list.iter() {
+                                option {
+                                    key: "{f.id}",
+                                    value: "media:{f.id}",
+                                    selected: url() == format!("media:{}", f.id),
+                                    "{f.name}"
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    div { class: "sm:col-span-2",
+                        label { r#for: "stream-url", class: LABEL, {t!("streams-url")} }
+                        input {
+                            id: "stream-url",
+                            class: INPUT,
+                            r#type: "url",
+                            value: "{url}",
+                            placeholder: "https://… | rtsp://…",
+                            oninput: move |e| url.set(e.value()),
+                        }
                     }
                 }
             }
-            p { class: "text-xs text-gray-500", {t!("streams-url-help")} }
+            if kind() == MediaStreamKind::MediaAsset {
+                p { class: "text-xs text-gray-500", {t!("streams-file-help")} }
+            } else {
+                p { class: "text-xs text-gray-500", {t!("streams-url-help")} }
+            }
             if kind() == MediaStreamKind::Rtsp {
                 p { class: "text-xs text-gray-500", {t!("streams-rtsp-help")} }
             }

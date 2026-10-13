@@ -9,5 +9,7 @@ description = "PNeX vision inference — ONNX detectors (tract, pure Rust), YOLO
 pnex-core = { workspace = true }
 # Pure-Rust ONNX inference (ml-vision.md: tract first, Burn challenger).
 tract-onnx = "0.23"
+# ONNX protobuf (de)serialization for head fine-tuning (same major as tract-onnx).
+prost = "0.14"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 thiserror = { workspace = true }

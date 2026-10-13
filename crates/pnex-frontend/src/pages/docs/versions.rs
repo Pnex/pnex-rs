@@ -170,6 +170,29 @@ fn VersionRow(
             }
         });
     };
+    let pdf_name = format!("v{n} {}.pdf", version.label);
+    let pdf = move |_| {
+        let name = pdf_name.clone();
+        spawn(async move {
+            match api::docs::version_pdf(id, n).await {
+                Ok(bytes) => crate::util::save_blob(&name, &bytes),
+                Err(e) => notice.set(Some(crate::api::error_i18n::localize(&e))),
+            }
+        });
+    };
+    let approve = move |_| {
+        spawn(async move {
+            match api::docs::approve_version(id, n).await {
+                Ok(_) => reload.with_mut(|r| *r += 1),
+                Err(e) => notice.set(Some(crate::api::error_i18n::localize(&e))),
+            }
+        });
+    };
+    let approved = version.approved_at.as_ref().map(|at| {
+        let by = version.approved_by.clone().unwrap_or_default();
+        t!("docs-version-approved", by : by, date : super::short_date(at)).to_string()
+    });
+    let needs_review = version.ai_generated && approved.is_none();
     rsx! {
         li { class: "rounded border border-gray-100 p-2",
             div { class: "font-medium text-gray-900", "v{n} · {version.label}" }
@@ -177,6 +200,19 @@ fn VersionRow(
                 {super::short_date(&version.created_at)}
                 if let Some(by) = version.created_by.clone() {
                     " · {by}"
+                }
+                if version.flow_id.is_some() {
+                    " · "
+                    {t!("docs-version-by-flow")}
+                }
+            }
+            if needs_review {
+                div { class: "mt-1 inline-block rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-800",
+                    {t!("docs-version-ai-review")}
+                }
+            } else if let Some(text) = approved {
+                div { class: "mt-1 inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-800",
+                    "{text}"
                 }
             }
             div { class: "mt-1 flex flex-wrap gap-2 text-xs",
@@ -192,11 +228,24 @@ fn VersionRow(
                         {t!("docs-version-diff")}
                     }
                 }
+                button {
+                    class: "text-signal-700 hover:underline",
+                    title: t!("docs-version-pdf-help").to_string(),
+                    onclick: pdf,
+                    {t!("docs-version-pdf")}
+                }
                 if can_write {
                     button {
                         class: "text-signal-700 hover:underline",
                         onclick: restore,
                         {t!("docs-version-restore")}
+                    }
+                }
+                if can_write && needs_review {
+                    button {
+                        class: "font-medium text-emerald-700 hover:underline",
+                        onclick: approve,
+                        {t!("docs-version-approve")}
                     }
                 }
             }

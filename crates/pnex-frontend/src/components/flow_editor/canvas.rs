@@ -312,6 +312,14 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::RangeUpsert { .. } => kind_labels(PaletteKind::RangeUpsert),
         pnex_core::FlowNodeKind::VideoRecord { .. } => kind_labels(PaletteKind::VideoRecord),
         pnex_core::FlowNodeKind::VisionDetect { .. } => kind_labels(PaletteKind::VisionDetect),
+        pnex_core::FlowNodeKind::VisionTrack { .. } => kind_labels(PaletteKind::VisionTrack),
+        pnex_core::FlowNodeKind::VisionZone { .. } => kind_labels(PaletteKind::VisionZone),
+        pnex_core::FlowNodeKind::VisionCaption { .. } => kind_labels(PaletteKind::VisionCaption),
+        pnex_core::FlowNodeKind::MediaFuse { .. } => kind_labels(PaletteKind::MediaFuse),
+        pnex_core::FlowNodeKind::LlmText { .. } => kind_labels(PaletteKind::LlmText),
+        pnex_core::FlowNodeKind::PageWrite { .. } => kind_labels(PaletteKind::PageWrite),
+        pnex_core::FlowNodeKind::PagePdf { .. } => kind_labels(PaletteKind::PagePdf),
+        pnex_core::FlowNodeKind::TextDecide { .. } => kind_labels(PaletteKind::TextDecide),
         pnex_core::FlowNodeKind::EventLog { .. } => kind_labels(PaletteKind::EventLog),
         pnex_core::FlowNodeKind::MemoryWrite { .. } => kind_labels(PaletteKind::MemoryWrite),
         pnex_core::FlowNodeKind::MemoryRead { .. } => kind_labels(PaletteKind::MemoryRead),
@@ -374,10 +382,19 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::VideoRecord { .. } => {
             (geometry::VIDEO_RECORD_FILL, geometry::VIDEO_RECORD_STROKE)
         }
-        pnex_core::FlowNodeKind::VisionDetect { .. } => {
+        pnex_core::FlowNodeKind::VisionDetect { .. }
+        | pnex_core::FlowNodeKind::VisionTrack { .. }
+        | pnex_core::FlowNodeKind::VisionZone { .. }
+        | pnex_core::FlowNodeKind::VisionCaption { .. }
+        | pnex_core::FlowNodeKind::MediaFuse { .. }
+        | pnex_core::FlowNodeKind::LlmText { .. }
+        | pnex_core::FlowNodeKind::TextDecide { .. } => {
             (geometry::VISION_FILL, geometry::VISION_STROKE)
         }
-        pnex_core::FlowNodeKind::EventLog { .. } | pnex_core::FlowNodeKind::RangeUpsert { .. } => {
+        pnex_core::FlowNodeKind::EventLog { .. }
+        | pnex_core::FlowNodeKind::RangeUpsert { .. }
+        | pnex_core::FlowNodeKind::PageWrite { .. }
+        | pnex_core::FlowNodeKind::PagePdf { .. } => {
             (geometry::EVENT_LOG_FILL, geometry::EVENT_LOG_STROKE)
         }
         pnex_core::FlowNodeKind::Anomaly { .. } => {
@@ -422,7 +439,13 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::Debug { .. }
         | pnex_core::FlowNodeKind::CameraSource { .. }
         | pnex_core::FlowNodeKind::ControlSource { .. }
-        | pnex_core::FlowNodeKind::VisionDetect { .. } => {
+        | pnex_core::FlowNodeKind::VisionDetect { .. }
+        | pnex_core::FlowNodeKind::VisionCaption { .. }
+        | pnex_core::FlowNodeKind::MediaFuse { .. }
+        | pnex_core::FlowNodeKind::LlmText { .. }
+        | pnex_core::FlowNodeKind::PageWrite { .. }
+        | pnex_core::FlowNodeKind::PagePdf { .. }
+        | pnex_core::FlowNodeKind::TextDecide { .. } => {
             cx.display_values.read().get(&node.id).cloned()
         }
         _ => None,
@@ -566,6 +589,24 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                 .into_iter()
                 .enumerate()
                 .map(|(i, label)| (i, rel_y(i), label, node.id.clone()))
+                .collect()
+        }
+        pnex_core::FlowNodeKind::PagePdf { .. } => {
+            // Port 0 = PDF ready, port 1 = AI version awaiting approval.
+            let rel_y = |port: usize| node_h * (port + 1) as f64 / (out_count + 1) as f64;
+            [t!("flow-port-pdf-ready"), t!("flow-port-pdf-approval")]
+                .into_iter()
+                .enumerate()
+                .map(|(i, label)| (i, rel_y(i), label.to_string(), node.id.clone()))
+                .collect()
+        }
+        pnex_core::FlowNodeKind::VisionTrack { .. } => {
+            // Port 0 = current tracks (→ zones), port 1 = appear/disappear.
+            let rel_y = |port: usize| node_h * (port + 1) as f64 / (out_count + 1) as f64;
+            [t!("flow-port-tracks"), t!("flow-port-track-events")]
+                .into_iter()
+                .enumerate()
+                .map(|(i, label)| (i, rel_y(i), label.to_string(), node.id.clone()))
                 .collect()
         }
         pnex_core::FlowNodeKind::Anomaly { .. }
@@ -1062,6 +1103,80 @@ fn node_subtitle(node: &FlowNode) -> String {
             }
         }
         pnex_core::FlowNodeKind::VisionDetect { config } => vision_subtitle(config),
+        // Interval · crop.
+        pnex_core::FlowNodeKind::VisionCaption { config } => {
+            let crop = if config.crop_best { " · crop" } else { "" };
+            format!("1 / {} s{crop}", config.min_interval_secs)
+        }
+        // Question ids, or a dash until one is written.
+        pnex_core::FlowNodeKind::TextDecide { config } => {
+            let ids: Vec<&str> = config.questions.iter().map(|q| q.id.as_str()).collect();
+            let text = if ids.is_empty() {
+                "—".to_string()
+            } else {
+                ids.join(", ")
+            };
+            let short: String = text.chars().take(30).collect();
+            if text.chars().count() > 30 {
+                format!("{short}…")
+            } else {
+                text
+            }
+        }
+        // Source · approval.
+        pnex_core::FlowNodeKind::PagePdf { config } => {
+            let src = match config.source {
+                pnex_core::pages::PagePdfSource::Message => "msg",
+                pnex_core::pages::PagePdfSource::LatestSendable => "latest",
+            };
+            if config.require_approval {
+                format!("{src} · ✓")
+            } else {
+                src.to_string()
+            }
+        }
+        // New page title template, or "+ page" in append mode.
+        pnex_core::FlowNodeKind::PageWrite { config } => match config.mode {
+            pnex_core::pages::PageWriteMode::NewPage => config.title.clone(),
+            pnex_core::pages::PageWriteMode::Append => "+ …".to_string(),
+        },
+        // Start of the instruction.
+        pnex_core::FlowNodeKind::LlmText { config } => {
+            let text: String = config.prompt.chars().take(28).collect();
+            if config.prompt.chars().count() > 28 {
+                format!("{text}…")
+            } else {
+                text
+            }
+        }
+        // Window · language.
+        pnex_core::FlowNodeKind::MediaFuse { config } => {
+            let lang = if config.language.is_empty() {
+                "auto"
+            } else {
+                config.language.as_str()
+            };
+            format!("{} s · {lang}", config.window_secs)
+        }
+        // High score · lost delay.
+        pnex_core::FlowNodeKind::VisionTrack { config } => {
+            format!("≥ {} · {} s", config.high_score, config.lost_after_secs)
+        }
+        // Zone names, or a dash until one is drawn.
+        pnex_core::FlowNodeKind::VisionZone { config } => {
+            let names: Vec<&str> = config.zones.iter().map(|z| z.name.as_str()).collect();
+            let text = if names.is_empty() {
+                "—".to_string()
+            } else {
+                names.join(", ")
+            };
+            let short: String = text.chars().take(30).collect();
+            if text.chars().count() > 30 {
+                format!("{short}…")
+            } else {
+                text
+            }
+        }
         pnex_core::FlowNodeKind::EventLog { config } => {
             // Normalized stream name (what the events page lists) · level.
             let stream =

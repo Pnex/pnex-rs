@@ -14,6 +14,8 @@ use pnex_core::vision::{Detection, DetectionResult, ModelInspection, ModelSpec, 
 use tract_onnx::prelude::*;
 use tract_onnx::tract_hir::infer::Factoid;
 
+pub mod train;
+
 #[derive(Debug, thiserror::Error)]
 pub enum VisionError {
     #[error("model load failed: {0}")]
@@ -113,6 +115,46 @@ pub fn mean_luma(encoded: &[u8]) -> Option<f32> {
         .map(|p| 0.299 * f64::from(p[0]) + 0.587 * f64::from(p[1]) + 0.114 * f64::from(p[2]))
         .sum();
     Some((sum / n as f64) as f32)
+}
+
+/// Pixel size of a JPEG or PNG read from its header only (Vision Lab
+/// import, D198); `None` when the bytes are not such a picture.
+pub fn image_size(encoded: &[u8]) -> Option<(u32, u32)> {
+    image::ImageReader::new(Cursor::new(encoded))
+        .with_guessed_format()
+        .ok()?
+        .into_dimensions()
+        .ok()
+}
+
+/// JPEG sent to a vision-language model (D195): optionally cropped to a
+/// `[x, y, w, h]` box (source pixels, widened by 10 % on each side, clamped
+/// to the frame), then scaled down so the longest side is at most
+/// `max_side` — smaller uploads, same answer for a caption.
+pub fn prepare_jpeg(
+    encoded: &[u8],
+    crop: Option<[f32; 4]>,
+    max_side: u32,
+) -> Result<Vec<u8>, VisionError> {
+    let mut img =
+        image::load_from_memory(encoded).map_err(|e| VisionError::Image(e.to_string()))?;
+    if let Some([x, y, w, h]) = crop {
+        let (fw, fh) = (img.width() as f32, img.height() as f32);
+        let (mx, my) = (w * 0.1, h * 0.1);
+        let x0 = (x - mx).clamp(0.0, fw - 1.0);
+        let y0 = (y - my).clamp(0.0, fh - 1.0);
+        let x1 = (x + w + mx).clamp(x0 + 1.0, fw);
+        let y1 = (y + h + my).clamp(y0 + 1.0, fh);
+        img = img.crop_imm(x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32);
+    }
+    if img.width().max(img.height()) > max_side {
+        img = img.resize(max_side, max_side, image::imageops::FilterType::Triangle);
+    }
+    let mut out = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 85)
+        .encode_image(&img.to_rgb8())
+        .map_err(|e| VisionError::Image(e.to_string()))?;
+    Ok(out)
 }
 
 /// A loaded, optimized detector — `Send + Sync`, cheap to share behind an
@@ -337,6 +379,31 @@ fn nms(mut dets: Vec<Detection>, thr: f32) -> Vec<Detection> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_size_from_header() {
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgb8(image::RgbImage::new(30, 20))
+            .write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        assert_eq!(image_size(&png), Some((30, 20)));
+        assert_eq!(image_size(b"not an image"), None);
+    }
+
+    #[test]
+    fn prepare_jpeg_crops_and_scales() {
+        let img = image::RgbImage::from_pixel(2000, 1000, image::Rgb([200, 30, 30]));
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        let full = image::load_from_memory(&prepare_jpeg(&png, None, 1024).unwrap()).unwrap();
+        assert_eq!((full.width(), full.height()), (1024, 512));
+        let crop = prepare_jpeg(&png, Some([100.0, 100.0, 100.0, 50.0]), 1024).unwrap();
+        let crop = image::load_from_memory(&crop).unwrap();
+        assert_eq!((crop.width(), crop.height()), (120, 60));
+        assert!(prepare_jpeg(b"nope", None, 1024).is_err());
+    }
 
     fn det(class_id: u32, score: f32, bbox: [f32; 4]) -> Detection {
         Detection {
