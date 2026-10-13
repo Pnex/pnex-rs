@@ -12,6 +12,7 @@ pub mod decoder;
 pub mod fetch;
 pub mod hls;
 pub mod icy;
+pub mod mp4;
 pub mod rtsp;
 pub mod sandbox;
 pub mod segmenter;
@@ -173,6 +174,43 @@ pub struct Spec<'a> {
     pub overlap_secs: u32,
     /// Whether in-band metadata is handed to [`Host::metadata`].
     pub metadata: bool,
+    /// A file already read by the carrier (`media_asset` streams), fed to
+    /// the decoders instead of a fetch.
+    pub file: Option<FileSource>,
+}
+
+/// Input of a replayed library file.
+#[derive(Clone)]
+pub struct FileSource {
+    pub bytes: Bytes,
+    pub format: decoder::InputFormat,
+    /// Read at the natural speed (`-re`) like a live source; off for a
+    /// quick test extract.
+    pub realtime: bool,
+}
+
+/// `-re` before the input: read at the native rate (replayed file).
+fn realtime(mut argv: Vec<String>) -> Vec<String> {
+    if let Some(i) = argv.iter().position(|a| a == "-i") {
+        argv.insert(i, "-re".into());
+    }
+    argv
+}
+
+/// The bytes of a replayed file as a decoder input, in 64 KiB chunks.
+fn file_track(bytes: Bytes, format: decoder::InputFormat) -> Track {
+    let (tx, rx) = mpsc::channel(4);
+    tokio::spawn(async move {
+        let mut at = 0;
+        while at < bytes.len() {
+            let end = (at + 64 * 1024).min(bytes.len());
+            if tx.send(Ok(bytes.slice(at..end))).await.is_err() {
+                return;
+            }
+            at = end;
+        }
+    });
+    Track { format, chunks: rx }
 }
 
 /// Where a run's output goes: the carrier-specific part of the capture.
@@ -300,7 +338,21 @@ pub async fn run_once<H: Host>(
 ) -> Result<RunEnd, CaptureError> {
     let url = spec.url;
     let mut first_pdt = None;
-    let (audio, video) = if spec.kind == MediaStreamKind::Rtsp {
+    let (audio, video) = if let Some(FileSource { bytes, format, .. }) = spec.file.clone() {
+        let track = file_track(bytes, format);
+        match (
+            spec.want_audio && format.has_audio(),
+            spec.want_video && format.has_video(),
+        ) {
+            (true, true) => {
+                let (a, v) = tee(track);
+                (Some(a), Some(v))
+            }
+            (true, false) => (Some(track), None),
+            (false, true) => (None, Some(track)),
+            (false, false) => (None, None),
+        }
+    } else if spec.kind == MediaStreamKind::Rtsp {
         let creds = match spec.secret {
             Some(s) => Some(rtsp::credentials(s).ok_or(CaptureError::SecretUnreadable)?),
             None => None,
@@ -349,7 +401,10 @@ pub async fn run_once<H: Host>(
     let (tx, mut rx) = mpsc::channel::<Decoded>(8);
     let mut decoders: Vec<(Decoder, &'static str)> = Vec::new();
     if let Some(track) = audio {
-        let argv = decoder::argv(ffmpeg, track.format);
+        let mut argv = decoder::argv(ffmpeg, track.format);
+        if spec.file.as_ref().is_some_and(|f| f.realtime) {
+            argv = realtime(argv);
+        }
         let (d, mut out) = spawn_decoder(settings, argv, spec.slug, track)?;
         let tx = tx.clone();
         tokio::spawn(async move {
@@ -363,7 +418,10 @@ pub async fn run_once<H: Host>(
         decoders.push((d, "audio"));
     }
     if let Some(track) = video {
-        let argv = decoder::video_argv(ffmpeg, track.format, spec.fps, FRAME_MAX_WIDTH);
+        let mut argv = decoder::video_argv(ffmpeg, track.format, spec.fps, FRAME_MAX_WIDTH);
+        if spec.file.as_ref().is_some_and(|f| f.realtime) {
+            argv = realtime(argv);
+        }
         let (d, mut out) = spawn_decoder(settings, argv, spec.slug, track)?;
         let tx = tx.clone();
         let slug = spec.slug.to_string();
@@ -538,6 +596,75 @@ pub async fn decode_clip(
         .map(|b| i16::from_le_bytes([b[0], b[1]]))
         .collect();
     Ok((segmenter::wav_bytes(&samples), truncated))
+}
+
+/// Longest a video file decode may run.
+const VIDEO_FILE_DECODE: Duration = Duration::from_secs(300);
+
+/// Frames of an uploaded video file with the confined decoder (D160
+/// regime): from `from_secs`, one every `every_secs`, at most `max_frames`
+/// (the decoder is stopped there). MP4 with `moov` at the end is fixed in
+/// memory first ([`mp4::faststart`]).
+pub async fn decode_video_frames(
+    bytes: Vec<u8>,
+    format: decoder::InputFormat,
+    from_secs: f64,
+    every_secs: f64,
+    max_frames: usize,
+) -> Result<Vec<video::Jpeg>, CaptureError> {
+    let bytes = if format.demuxer == "mov" {
+        mp4::faststart(bytes).ok_or(CaptureError::FormatUnsupported)?
+    } else {
+        bytes
+    };
+    let settings = CaptureSettings::from_env();
+    let ffmpeg = decoder::resolve(&settings.ffmpeg).ok_or(CaptureError::DecoderMissing)?;
+    let argv = sandbox::wrap_argv(
+        &settings.sandbox,
+        decoder::file_video_argv(&ffmpeg, format, from_secs, every_secs, FRAME_MAX_WIDTH),
+    );
+    let mut cmd = tokio::process::Command::new(&argv[0]);
+    cmd.args(&argv[1..])
+        .env_clear()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    sandbox::confine(&mut cmd, &settings.sandbox, sandbox::DECODER_MAX_MEMORY);
+    let mut child = cmd.spawn().map_err(|_| CaptureError::DecoderMissing)?;
+    let mut stdin = child.stdin.take().ok_or(CaptureError::DecoderFailed)?;
+    let mut stdout = child.stdout.take().ok_or(CaptureError::DecoderFailed)?;
+    let feeder = tokio::spawn(async move {
+        let _ = stdin.write_all(&bytes).await;
+    });
+    let mut splitter = video::JpegSplitter::default();
+    let mut frames = Vec::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    let read = tokio::time::timeout(VIDEO_FILE_DECODE, async {
+        while frames.len() < max_frames {
+            let n = stdout
+                .read(&mut buf)
+                .await
+                .map_err(|_| CaptureError::DecoderFailed)?;
+            if n == 0 {
+                break;
+            }
+            let got = splitter
+                .push(&buf[..n])
+                .map_err(|_| CaptureError::DecoderFailed)?;
+            frames.extend(got);
+        }
+        Ok::<(), CaptureError>(())
+    })
+    .await;
+    feeder.abort();
+    let _ = child.start_kill();
+    read.map_err(|_| CaptureError::Stalled)??;
+    frames.truncate(max_frames);
+    if frames.is_empty() {
+        return Err(CaptureError::FormatUnsupported);
+    }
+    Ok(frames)
 }
 
 #[cfg(test)]

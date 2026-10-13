@@ -3,7 +3,7 @@ name = "pnex-node-vision"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Flow node PNeX — object detection on camera frames (registry models, tract)"
+description = "Flow nodes PNeX — object detection, tracking and zones on camera frames (registry models, tract)"
 
 [dependencies]
 edgelink-core = { path = "../../vendor/edgelinkd/crates/core", default-features = false, features = ["core", "js"] }

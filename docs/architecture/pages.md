@@ -1,6 +1,6 @@
 # PRD — PNEX Pages : documents collaboratifs reliés à l'ontologie
 
-**Statut :** Draft v0.1 — 2026-10-10. Zéro code avant validation.
+**Statut :** Draft v0.1 — 2026-10-10. **L1–L2 livrés sur `main` le 2026-10-11** (§15) ; export PDF des versions et versions écrites par un flow le 2026-10-13 (`media-vision-studio.md` D209–D210).
 **Auteur :** Shan
 **Périmètre :** nouvelle surface d'édition collaborative (texte riche, tableaux,
 mesures, procédures/workflows, cartes, médias), dont chaque bloc peut désigner
@@ -512,7 +512,7 @@ le snapshot compacté vit dans `docs.snapshot` (+ `snapshot_seq`) plutôt que
 dans une table `doc_snapshots` ; passage au MediaStore au-delà d'un seuil
 repoussé tant qu'aucune page ne l'atteint.
 
-## 15. État d'implémentation (2026-10-10, branche `feat/pages`, non commitée)
+## 15. État d'implémentation (2026-10-10, sur `main` depuis le 2026-10-11)
 
 Livré (L1 + cœur de L2) :
 

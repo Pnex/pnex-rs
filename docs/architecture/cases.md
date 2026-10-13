@@ -1,6 +1,6 @@
 # PRD — PNEX Dossiers : enquêter sur données × temps × ontologie × acteurs
 
-**Statut :** Draft v0.1 — 2026-10-11. Zéro code avant validation.
+**Statut :** Draft v0.1 — 2026-10-11. **C0–C7 livrés sur `main`** (2026-10-11, état en fin de document), puis espace de travail plein écran (`cases-workspace.md`, 2026-10-12).
 **Auteur :** Shan
 **Périmètre :** un espace de travail borné (« dossier ») qui rassemble, sans
 les copier, les objets, données, médias, documents et **acteurs humains**

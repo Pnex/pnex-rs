@@ -796,3 +796,222 @@ async fn ws_refuses_dangling_updates_and_owns_presence() {
     })
     .await;
 }
+
+/// Pages written by flows (D209/D210): a new page per message, then an
+/// append to it, each freezing a named version stamped with the flow and
+/// its AI provenance; approval by an editor (idempotent), refused to a
+/// viewer; another org's page is not found; the internal route needs the
+/// service token.
+#[tokio::test]
+#[serial]
+async fn flow_writes_pages_and_versions_get_approved() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let a = &env.alice;
+        let body = json!({
+            "org_id": org, "flow_id": 7, "mode": "new_page", "title": "Weekly {date}",
+            "markdown": "# Weekly\n\nA **calm** week.", "version_label": "week {week}",
+            "ai_generated": true
+        });
+        let denied = server.post("/internal/flow/page-write").json(&body).await;
+        assert_eq!(denied.status_code(), 401);
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-pages") };
+        let post = |b: serde_json::Value| {
+            let server = &server;
+            async move {
+                let res = server
+                    .post("/internal/flow/page-write")
+                    .add_header("x-pnex-flow-token", "tok-pages")
+                    .json(&b)
+                    .await;
+                (res.status_code().as_u16(), res.json::<serde_json::Value>())
+            }
+        };
+        let (st, created) = post(body.clone()).await;
+        assert_eq!(st, 201, "{created}");
+        assert!(created["title"].as_str().unwrap().starts_with("Weekly 20"));
+        assert_eq!(created["version"], 1);
+        let page = created["page_id"].as_str().unwrap().to_string();
+        let mut append = body.clone();
+        append["mode"] = json!("append");
+        append["page_id"] = json!(page);
+        append["markdown"] = json!("## Monday\n\n- one alert");
+        append["ai_generated"] = json!(false);
+        let (st, appended) = post(append.clone()).await;
+        assert_eq!(st, 201, "{appended}");
+        assert_eq!(appended["version"], 2);
+        let mut foreign = append.clone();
+        foreign["org_id"] = json!(org + 100_000);
+        let (st, _) = post(foreign).await;
+        assert_eq!(st, 404);
+
+        let (_, versions) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/docs/{page}/versions"),
+            a,
+            org,
+            None,
+        )
+        .await;
+        let v1 = versions["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|v| v["version_number"] == 1)
+            .unwrap()
+            .clone();
+        assert_eq!(v1["ai_generated"], true);
+        assert_eq!(v1["flow_id"], 7);
+        assert!(v1["label"].as_str().unwrap().starts_with("week 20"));
+        assert!(v1.get("approved_at").is_none());
+
+        let bob_org = personal_org(&server, &env.bob).await;
+        add_viewer(&server, a, org).await;
+        let (st, _) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/docs/{page}/versions/1/approve"),
+            &env.bob,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(st, 403);
+        let (st, approved) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/docs/{page}/versions/1/approve"),
+            a,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(st, 200, "{approved}");
+        assert!(approved["approved_at"].is_string());
+        let first = approved["approved_at"].clone();
+        let (_, again) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/docs/{page}/versions/1/approve"),
+            a,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(again["approved_at"], first, "the first approval is kept");
+        // page_pdf (D209/D210).
+        let pdf_req = |source: &str, version: Option<i64>| {
+            json!({"org_id": org, "flow_id": 7, "node_id": "pdf", "source": source,
+                   "page_id": page, "version": version, "require_approval": true, "language": "fr"})
+        };
+        let post_pdf = |b: serde_json::Value| {
+            let server = &server;
+            async move {
+                let res = server
+                    .post("/internal/flow/page-pdf")
+                    .add_header("x-pnex-flow-token", "tok-pages")
+                    .json(&b)
+                    .await;
+                (res.status_code().as_u16(), res.json::<serde_json::Value>())
+            }
+        };
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-pages") };
+        // Version 3: written by the flow with AI text, not approved yet.
+        let mut ai = body.clone();
+        ai["mode"] = json!("append");
+        ai["page_id"] = json!(page);
+        ai["markdown"] = json!("Tuesday: calm.");
+        let (_, v3) = post(ai).await;
+        assert_eq!(v3["version"], 3);
+        let (st, waiting) = post_pdf(pdf_req("message", Some(3))).await;
+        assert_eq!(st, 200, "{waiting}");
+        assert_eq!(waiting["status"], "needs_approval");
+        assert!(waiting.get("asset_id").is_none());
+        // Version 1 was approved above: its PDF goes to the media library.
+        let (st, ready) = post_pdf(pdf_req("message", Some(1))).await;
+        assert_eq!(st, 200, "{ready}");
+        assert_eq!(ready["status"], "ready");
+        let asset = ready["asset_id"].as_str().unwrap();
+        let (st, media) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/media/{asset}"),
+            a,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(st, 200, "{media}");
+        assert_eq!(media["kind"], "document");
+        // Served as an opaque attachment (SEC-5), named .pdf.
+        assert!(media["name"].as_str().unwrap().ends_with(".pdf"), "{media}");
+        // The runtime reads the export to attach it (pnex-notify, D209):
+        // token required, never another org's file.
+        let media_url = |o: i64| format!("/internal/flow/media/{asset}?org_id={o}");
+        let res = server.get(&media_url(org)).await;
+        assert_eq!(res.status_code(), 401);
+        let res = server
+            .get(&media_url(org))
+            .add_header("x-pnex-flow-token", "tok-pages")
+            .await;
+        assert_eq!(res.status_code(), 200);
+        let file = res.json::<serde_json::Value>();
+        assert_eq!(file["content_type"], "application/pdf");
+        assert!(file["filename"].as_str().unwrap().ends_with(".pdf"));
+        let bytes = {
+            use base64::Engine as _;
+            base64::engine::general_purpose::STANDARD
+                .decode(file["data"].as_str().unwrap())
+                .unwrap()
+        };
+        assert!(bytes.starts_with(b"%PDF-"));
+        let res = server
+            .get(&media_url(bob_org))
+            .add_header("x-pnex-flow-token", "tok-pages")
+            .await;
+        assert_eq!(res.status_code(), 404);
+        // Any other file of the library stays out of reach of the runtime.
+        let other = server
+            .post("/api/v1/media?name=notes.txt&filename=notes.txt&content_type=text%2Fplain")
+            .add_header("Authorization", format!("Bearer {a}"))
+            .add_header("X-Org-Id", org.to_string())
+            .add_header("Content-Type", "application/octet-stream")
+            .bytes(b"private".to_vec().into())
+            .await;
+        assert_eq!(other.status_code(), 201, "{}", other.text());
+        let other = other.json::<serde_json::Value>()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let res = server
+            .get(&format!("/internal/flow/media/{other}?org_id={org}"))
+            .add_header("x-pnex-flow-token", "tok-pages")
+            .await;
+        assert_eq!(res.status_code(), 404);
+        // Latest sendable: version 2 (no AI text), once.
+        let (_, first) = post_pdf(pdf_req("latest_sendable", None)).await;
+        assert_eq!(first["status"], "ready", "{first}");
+        assert_eq!(first["version"], 2);
+        let (_, again) = post_pdf(pdf_req("latest_sendable", None)).await;
+        assert_eq!(again["status"], "nothing_new");
+        unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
+        // PDF of a version (D209): A4, attachment, other orgs' pages not found.
+        let res = server
+            .get(&format!("/api/v1/docs/{page}/versions/1/pdf?lang=fr"))
+            .add_header("Authorization", format!("Bearer {a}"))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert_eq!(res.status_code(), 200);
+        assert_eq!(res.header("content-type"), "application/pdf");
+        assert!(res.as_bytes().starts_with(b"%PDF-"));
+        let res = server
+            .get(&format!("/api/v1/docs/{page}/versions/1/pdf"))
+            .add_header("Authorization", format!("Bearer {}", env.bob))
+            .add_header("X-Org-Id", bob_org.to_string())
+            .await;
+        assert_eq!(res.status_code(), 404);
+        unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
+    })
+    .await;
+}

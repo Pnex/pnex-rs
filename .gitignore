@@ -61,3 +61,6 @@ deploy/edge/edge.env
 # Pi simulation VM (deploy/vm): downloaded cloud images and VM disks
 deploy/vm/.cache/
 *.qcow2
+
+# Laya decision bundles (task laya:bundle, D197) — 1.3 GB, never committed
+/data/decide/

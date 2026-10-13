@@ -541,6 +541,44 @@ pub const DOCS_WRITE_FORBIDDEN: &str = "docs-write-forbidden";
 /// Only the author edits a comment; the author or an admin deletes it.
 pub const DOC_COMMENT_NOT_AUTHOR: &str = "doc-comment-not-author";
 
+// ── Vision Lab (media-vision-studio.md D198–D200) ─────────────────────
+
+pub const LAB_WRITE_FORBIDDEN: &str = "lab-write-forbidden";
+pub const LAB_PROJECT_NOT_FOUND: &str = "lab-project-not-found";
+pub const LAB_IMAGE_NOT_FOUND: &str = "lab-image-not-found";
+pub const LAB_VERSION_NOT_FOUND: &str = "lab-version-not-found";
+pub const LAB_CLASS_IN_USE: &str = "lab-class-in-use";
+pub const LAB_ANNOTATIONS_CONFLICT: &str = "lab-annotations-conflict";
+pub const LAB_BOX_INVALID: &str = "lab-box-invalid";
+pub const LAB_BOXES_TOO_MANY: &str = "lab-boxes-too-many";
+pub const LAB_NEGATIVE_WITH_BOXES: &str = "lab-negative-with-boxes";
+pub const LAB_ASSET_NOT_IMAGE: &str = "lab-asset-not-image";
+pub const LAB_DATASET_EMPTY: &str = "lab-dataset-empty";
+pub const LAB_EXPORT_TOO_LARGE: &str = "lab-export-too-large";
+/// Video import: not an MP4 / MOV with an H.264, H.265 or MJPEG track.
+pub const LAB_VIDEO_UNSUPPORTED: &str = "lab-video-unsupported";
+pub const LAB_VIDEO_TOO_LARGE: &str = "lab-video-too-large";
+/// Video import: the confined decoder failed, stalled or is missing.
+pub const LAB_VIDEO_DECODE_FAILED: &str = "lab-video-decode-failed";
+/// Interpolation needs an annotated frame before and after in the source.
+pub const LAB_INTERPOLATE_NO_KEYFRAMES: &str = "lab-interpolate-no-keyframes";
+/// Training (D204): a run of the project is already queued or running.
+pub const LAB_TRAIN_BUSY: &str = "lab-train-busy";
+/// Training: the base model is not a YOLOX head this trainer can tune
+/// (`args.detail` = verbatim diagnostic).
+pub const LAB_TRAIN_BASE_INVALID: &str = "lab-train-base-invalid";
+/// Training: no box in the training pictures of the version.
+pub const LAB_TRAIN_NO_DATA: &str = "lab-train-no-data";
+/// Training: the runner stopped (process restarted, pod gone).
+pub const LAB_TRAIN_INTERRUPTED: &str = "lab-train-interrupted";
+/// Training failed (`args.detail` = verbatim diagnostic).
+pub const LAB_TRAIN_FAILED: &str = "lab-train-failed";
+pub const LAB_RUN_NOT_FOUND: &str = "lab-run-not-found";
+/// Propagation needs an annotated frame before this one in the source.
+pub const LAB_PROPAGATE_NO_PREVIOUS: &str = "lab-propagate-no-previous";
+/// The review queue of a project holds its maximum of pending pictures.
+pub const LAB_REVIEW_FULL: &str = "lab-review-full";
+
 // ── Registered codes ─────────────────────────────────────────────────────
 
 /// All registered codes. A code not listed here falls back to the verbatim
@@ -813,6 +851,30 @@ pub const ALL: &[&str] = &[
     TAXONOMY_UNKNOWN,
     TIME_RANGE_NOT_FOUND,
     TIME_RANGE_WRITE_FORBIDDEN,
+    LAB_WRITE_FORBIDDEN,
+    LAB_PROJECT_NOT_FOUND,
+    LAB_IMAGE_NOT_FOUND,
+    LAB_VERSION_NOT_FOUND,
+    LAB_CLASS_IN_USE,
+    LAB_ANNOTATIONS_CONFLICT,
+    LAB_BOX_INVALID,
+    LAB_BOXES_TOO_MANY,
+    LAB_NEGATIVE_WITH_BOXES,
+    LAB_ASSET_NOT_IMAGE,
+    LAB_DATASET_EMPTY,
+    LAB_EXPORT_TOO_LARGE,
+    LAB_VIDEO_UNSUPPORTED,
+    LAB_VIDEO_TOO_LARGE,
+    LAB_VIDEO_DECODE_FAILED,
+    LAB_INTERPOLATE_NO_KEYFRAMES,
+    LAB_TRAIN_BUSY,
+    LAB_TRAIN_BASE_INVALID,
+    LAB_TRAIN_NO_DATA,
+    LAB_TRAIN_INTERRUPTED,
+    LAB_TRAIN_FAILED,
+    LAB_RUN_NOT_FOUND,
+    LAB_PROPAGATE_NO_PREVIOUS,
+    LAB_REVIEW_FULL,
     TIME_RANGE_IMPORT_TOO_LARGE,
     TIME_RANGE_IMPORT_INVALID,
     TIME_RANGE_SCOPE_UNKNOWN,

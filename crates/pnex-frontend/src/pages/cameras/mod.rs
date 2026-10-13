@@ -20,7 +20,7 @@ use crate::state::{org, session};
 use crate::util::sleep;
 
 mod flash;
-mod live;
+pub(crate) mod live;
 mod player;
 mod recordings;
 mod settings;

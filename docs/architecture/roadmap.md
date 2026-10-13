@@ -20,8 +20,8 @@
 > cours. Les PRD du 2026-10-10/11 (géo phase F, pages, recherche IA,
 > dossiers, empreinte vocale, ingestion média lots 0–6) ont du code sur
 > `main` ; Media & Vision Studio (M1→M5) et le calendrier de maintenance
-> (D183 + annexe B) attendent leur merge sur deux branches non poussées
-> (section « Branches en attente »). Versions : **0.1.0 épinglée**
+> (D183 + annexe B) sont mergés le même jour (section « Branches
+> mergées »). Versions : **0.1.0 épinglée**
 > (dernière pré-release `v0.1.0-beta.8`), la 0.2.0 annoncera ce qu'elle
 > livre sans promettre de fonctionnalités à l'avance, toujours en beta.
 
@@ -206,7 +206,7 @@ tâche).
 | **M2M résilient (M1–M3)** | PRD posé (`m2m-resilient.md`) | M1 POC zenoh-pico WiFi (zéro achat), M2 6LoWPAN à prototyper avant engagement |
 | **Android** | Build + login PKCE E2E validé ; storage persistant ; scan LAN ; APK arm64 publié à chaque `main` vert (CI Apps, pré-release `nightly`, signé debug → sideload) ; bouton Flash masqué (`flash::offered()`), package `io.pnex.app` (`[bundle]` Dioxus.toml) | Keystore de release (Play Store) ; libellé de l'app encore dérivé du nom du crate |
 | **Desktop natif** | **Livré 2026-10-01** — Linux x86_64 / aarch64 et Windows x86_64 (cross mingw) : login, flash USB par esptool embarqué ; validé mainteneur sur Linux et Windows ; publié à chaque `main` vert (CI Apps, pré-release `nightly`), smoke test de démarrage sur un runner Windows | Paquets installables (.deb/.msi), signature de code, macOS |
-| **Schéma de base** (D120) | **Livré 2026-10-01** — une migration de base ; **SQLite retiré** le 2026-10-10 (518a069, décision #19), PostgreSQL 18 seul ; migrations 0.2 en `000002`–`000013` sur `main` | Retrait du stockage `fs` (décision #25), `000014`–`000020` sur la branche vision |
+| **Schéma de base** (D120) | **Livré 2026-10-01** — une migration de base ; **SQLite retiré** le 2026-10-10 (518a069, décision #19), PostgreSQL 18 seul ; migrations 0.2 en `000002`–`000020` | Retrait du stockage `fs` (décision #25) |
 | **Organisations (D42)** | Backend livré (labels, containment, edges) | **UI arbre** (couches org dans l'UI) |
 | **Auth (D19)** | Rauthy livré, branding API, password grant, OIDC natif | — |
 | **CoolProp** | In-process mergé (d126225) | — |
@@ -219,26 +219,22 @@ tâche).
 | **API publique** | **Rien** — aucune API destinée aux programmes tiers en dehors de l'agent edge (push de valeurs) | Horizon P3 (abonnements live, jetons à portée, REST documentée) |
 | **Mémoire d'org** (Valkey) | Livré — `memory-write`/`memory-read` par org, source « Mémoire » des widgets | — |
 | **Flux média entrants** (D159–D175) | **Code des lots 0 → 6 sur `main`** (2026-10-10, `media-ingest.md` §16–§18) : capture confinée + porteur `worker`, santé et alerte « flux muet », `media_source`, taxonomies + `topic_classify` (mots-clés), plages + import CSV/ICS, agrégats par plage + widget, VAD + diarisation locale, piste vidéo RTSP, boîtier de capture `pnex-media-capture` | Runs 24 h (sorties des lots 1 et 6), image ffmpeg avec décodeurs vidéo, RTSP sur vraie caméra, cross-builds agent, classifieur LLM + reclassement, vérification navigateur — P2.13 |
-| **Ontologie / 0.2.0** (D176–D191) | **L0–L5 sur `main`** 2026-10-10 (`ontology.md` §10) : identité universelle, types et liens temporels, séries d'objets, requête et graphe, explorateur, dashboards de type, assistant, pack Maintenance. **Branche `feat/gmao-plans`** : D183 actions (flow déployé, `propose_action`) et calendrier de maintenance (récurrences, `/calendar`, pack Maintenance 1.2.0, SEC-35) | Merge de la branche ; éditeur d'actions, préconditions ; côté terrain : compteurs, OT = procédure (Pages L6), équipes, `.ics` ; mesures 100 k objets — P2.14 |
-| **Media & Vision Studio** (D192–D210) | **M1 → M5 sur la branche `feat/media-vision-studio`** (2026-10-12/13, non poussée) : suivi et zones, légendes VLM + fusion sourcée, `text_decide` (Laya sur tract), Vision Lab (annotation, vidéos, interpolation, COCO), **entraînement sans Python** (tête YOLOX en Rust), file « à revoir », fichier comme source de flux, **rapports** = pages écrites par des nœuds (`llm_text`, `page_write`, `page_pdf`, pièce jointe e-mail) avec approbation humaine | Merge (conflit sur ce fichier seulement) ; INT8 après banc Pi 5 ; essais caméra et fournisseur réels — P2.15 |
+| **Ontologie / 0.2.0** (D176–D191) | **L0–L5 sur `main`** 2026-10-10 (`ontology.md` §10) : identité universelle, types et liens temporels, séries d'objets, requête et graphe, explorateur, dashboards de type, assistant, pack Maintenance. **Mergé le 2026-10-13** : D183 actions (flow déployé, `propose_action`) et calendrier de maintenance (récurrences, `/calendar`, pack Maintenance 1.2.0, SEC-35) | Éditeur d'actions, préconditions ; côté terrain : compteurs, OT = procédure (Pages L6), équipes, `.ics` ; mesures 100 k objets — P2.14 |
+| **Media & Vision Studio** (D192–D210) | **M1 → M5 sur `main`** (2026-10-12/13, mergé le 13) : suivi et zones, légendes VLM + fusion sourcée, `text_decide` (Laya sur tract), Vision Lab (annotation, vidéos, interpolation, COCO), **entraînement sans Python** (tête YOLOX en Rust), file « à revoir », fichier comme source de flux, **rapports** = pages écrites par des nœuds (`llm_text`, `page_write`, `page_pdf`, pièce jointe e-mail) avec approbation humaine | INT8 après banc Pi 5 ; essais caméra et fournisseur réels — P2.15 |
 | **Couches géographiques** | **Phase F sur `main`** 2026-10-10 (`geo-layers.md`) : fournisseurs géo d'org (fond, géocodage, reverse, routage) en coffre + proxy serveur, aucun fond semé, recherche d'adresse sur /map | Itinéraire entre POI, nœuds `geo_geocode`/`geo_route`, outils assistant ; phases A–E (PostGIS, layers MVT) après la 0.2.0 — P2.16 |
-| **Pages collaboratives** | **L1–L2 sur `main`** 2026-10-10/11 (`pages.md` §15) : yrs serveur + Yjs client, édition live multi-pods, versions nommées, commentaires ancrés, import/export Markdown, éditeur façon Notion. Branche vision : versions écrites par un flow, approbation, **export PDF** (krilla, part de L7) | Indexation des pages, import .docx, test multi-pods réel ; L3+ (mentions, vues de collection, procédures) — P2.17 |
+| **Pages collaboratives** | **L1–L2 sur `main`** 2026-10-10/11 (`pages.md` §15) : yrs serveur + Yjs client, édition live multi-pods, versions nommées, commentaires ancrés, import/export Markdown, éditeur façon Notion. 2026-10-13 : versions écrites par un flow, approbation, **export PDF** (krilla, part de L7) | Indexation des pages, import .docx, test multi-pods réel ; L3+ (mentions, vues de collection, procédures) — P2.17 |
 | **Documents & recherche IA** | **P1 sur `main`** 2026-10-10 (`doc-search.md` §14) : extraction txt/md/docx/pdf/csv/xlsx/ods, `text_chunks` partagé, recherche lexicale, outils de l'assistant cités, **liste blanche stricte des téléversements** | Visionneuse PDF, outils testés avec un vrai LLM ; P2+ (pgvector, tableurs en SQL) après la 0.2.0 — P2.18 |
 | **Dossiers (enquête, RCA)** | **Sur `main`** 2026-10-11/12 (`cases.md`, `cases-workspace.md`) : dossiers à membres et liens datés, ouverture depuis un événement, pack `investigation`, hypothèses, gel et export, **espace de travail plein écran** frise × carte × graphe (sigma, repli SVG), traces O2 `positions`. **Empreinte vocale** K19 variante A (`voice-id.md`) : profils consentis par Personne | Détecteurs (co-présence, zones, arrêts), enquête média K42–K47, avis juridique K19, ACL par dossier (V2, D188) — P2.19 |
 | **Hub de kits** | **PRD gelé** 2026-10-10 (`hub.md`) — partage communautaire par Git + CI + index statique, slots et requirements | Rien avant la 0.2.0 — P3 |
 
-## Branches en attente (2026-10-13)
+## Branches mergées le 2026-10-13
 
-Commits locaux, **non poussés**, à relire puis merger dans cet ordre :
-
-| Branche (worktree) | Contenu | Merge |
-|---|---|---|
-| `feat/gmao-plans` (`../pnex-rust-wt/maintenance`) | D183 actions d'un type (flow déployé, `propose_action`), étude GMAO (`research/gmao-calendar/`, P2.20), calendrier de maintenance (annexe B13 de `ontology.md`), SEC-35 | Rebasée sur `main` le 2026-10-13 : avance rapide ; aucune migration |
-| `feat/media-vision-studio` (`../pnex-rust-wt/vision-studio`) | P2.15 M1 → M5 (27 commits, D192–D210), migrations `000014`–`000020`, SEC-30 à SEC-34 ; guide de relecture : `media-vision-studio-concepts.md` §8 | 5 commits de retard sur `main` ; seul conflit : ce fichier (garder la version de `main`). Conflits avec `feat/gmao-plans` sur `app.rs` et la palette de flows : merger la branche vision en second |
-
-`feat/ontology-actions` pointe sur un commit déjà contenu dans
-`feat/gmao-plans`, et `fix/device-ca-limits` est déjà mergée : les deux
-sont à supprimer.
+`feat/gmao-plans` (D183 actions, étude et premier lot du calendrier GMAO,
+SEC-35) puis `feat/media-vision-studio` (P2.15 M1 → M5, D192–D210,
+migrations `000014`–`000020`, SEC-30 à SEC-34) sont mergées dans `main`
+le 2026-10-13 après la suite de tests complète ; worktrees et branches
+locales supprimés. Ordre de relecture de la branche vision :
+`media-vision-studio-concepts.md` §8.
 
 ## P0 — Consolidation : fermer le livré non validé
 
@@ -637,7 +633,7 @@ seules les mentions nominatives (lot 2) attendent le pack « Couverture
 médiatique ».
 Décision #16.
 
-### P2.14 — 0.2.0 : noyau ontologique (objets, liens, temps, actions) (ajout 2026-10-09) — **L0–L5 livrés 2026-10-10, D183 + calendrier sur branche (2026-10-13)**
+### P2.14 — 0.2.0 : noyau ontologique (objets, liens, temps, actions) (ajout 2026-10-09) — **L0–L5 livrés 2026-10-10, D183 + calendrier livrés le 2026-10-13**
 
 PRD `ontology.md` (D176–D191), cible de la **version 0.2.0**, zéro code
 avant validation. Généralise la couche Resource D42 : types d'objets
@@ -659,7 +655,7 @@ destructive**.
 | L4 | D185–D187 : requête, explorateur, dashboards de type | dashboard de type Pompe |
 | L5 | D184, D189, D191 : provenance, assistant, migration | base 0.1 réelle migrée |
 | 0.2.0 | L0–L5 + pack « Maintenance augmentée » | release |
-| 0.3 | ~~D183 actions~~ (remontées dans la 0.2.0, branche `feat/gmao-plans`), packs Maison et Couverture médiatique, ACL par objet | — |
+| 0.3 | ~~D183 actions~~ (remontées dans la 0.2.0, livrées le 2026-10-13), packs Maison et Couverture médiatique, ACL par objet | — |
 
 **Calendrier de maintenance** (annexe B de `ontology.md`, premier lot
 2026-10-13) : propriété `recurrence` (tous les N jours, semaines, mois,
@@ -683,10 +679,10 @@ fonctionnel ne démarre (correctifs et finition seulement) — à arbitrer
 avec P2.13 et P2.1. Décision #17 — **exception P2.13** (2026-10-09) : le
 média démarre avant la 0.2.0 (`media-ingest.md`, en-tête).
 
-### P2.15 — Media & Vision Studio : tracking, zones, Vision Lab, description (ajout 2026-10-10) — **M1 → M5 sur branche (2026-10-12/13)**
+### P2.15 — Media & Vision Studio : tracking, zones, Vision Lab, description (ajout 2026-10-10) — **M1 → M5 livrés (2026-10-12/13)**
 
-**État 2026-10-13** : Q1–Q15 tranchées, D192–D210 codés sur
-`feat/media-vision-studio` (non poussée). Écarts au PRD initial, décidés
+**État 2026-10-13** : Q1–Q15 tranchées, D192–D210 livrés (mergés dans `main`
+le même jour). Écarts au PRD initial, décidés
 en route : **aucun Python nulle part** (entraînement = réapprentissage
 de la tête YOLOX en Rust, pas de job `train_detector` en image Python) ;
 M5 n'est **pas un studio de rapports** mais une page écrite par des
@@ -725,7 +721,7 @@ Phase F : fournisseurs géo d'org (fond, geocoding, reverse, routage,
 l'image Postgres étendue avec P2.18 (pgvector). **Phase F autorisée
 avant la 0.2.0 (consolidation), A–E après.** Décision #20.
 
-### P2.17 — Pages : documents collaboratifs reliés à l'ontologie (ajout 2026-10-10) — **L1–L2 sur `main` (2026-10-11)**, export PDF sur branche vision
+### P2.17 — Pages : documents collaboratifs reliés à l'ontologie (ajout 2026-10-10) — **L1–L2 sur `main` (2026-10-11)**, export PDF (2026-10-13)
 
 PRD `pages.md`, zéro code avant validation, décisions P1–P16
 provisoires. Page = type système `doc` de l'ontologie ; contenu CRDT
@@ -783,7 +779,7 @@ signal) **proposent** sans jamais ajouter. Deux tables seulement
 (**fait**, `docs/bench/dossier-enquete.md`) → design (maquettes aux
 jetons PNEX) → modèle → code, lots L0–L6.
 
-### P2.20 — Calendrier GMAO (ajout 2026-10-13) — **étude faite, premier lot de code sur `feat/gmao-plans`**
+### P2.20 — Calendrier GMAO (ajout 2026-10-13) — **étude faite, premier lot de code sur `main` (2026-10-13)**
 
 Annexe B de `ontology.md`. Étude clean-room d'un corpus open source (Atlas
 CMMS, Odoo Maintenance, ERPNext, openMAINT ; EventCalendar, FullCalendar,
@@ -924,7 +920,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 | 15 | Profils de sécurité : date de lancement de V1 (correctifs protocole, SEC-17 à SEC-19) ; socle de V4 (ESP-IDF C++ ou firmware Rust) ; statut CRA de PneX (avis juridique) | V1 : prochaine passe sécurité ; V4 : après 1 à 2 ans de communauté |
 | 14 | ~~Version firmware par rebuild~~ — tranché 2026-10-03 : 1 build = 1 enregistrement = 1 version, OTA en lot manuelle (O22) | ✅ |
 | 16 | Flux média : runtime ASR (sherpa-onnx, whisper.cpp ou les deux), ~~tags Loco ou queue dédiée~~ (tranché à la relecture du 2026-10-09 : tags, ASR configurable), superviseur de capture in-process (proposé), agrégation « par plage » (primitive D182), ~~plafond des extraits, amendement de D3~~ (sans objet : pas de publication), ordre vis-à-vis de l'ontologie (`media-ingest.md` §14) | Lot 0 (POC ASR) ; ordre à la validation |
-| 17 | Ontologie 0.2.0 : ~~**actions D183 remontées dans la 0.2.0 ?**~~ (oui : livrées le 2026-10-13 sur `feat/gmao-plans`) (au moins une action simple tracée : c'est ce qui rend la plateforme « opérationnelle », et le pack Maintenance et les procédures de `pages.md` en dépendent) ; ~~identifiant d'objet global (UUID vs `ResourceRef`)~~ (tranché 2026-10-10 : UUID par table d'identité universelle), moment du bitemporel, format du schéma de propriétés (maison vs JSON Schema), liaison device → objet (lien générique vs table dédiée), packs forkables ou surcouche, langage de requête textuel, spécification publique du noyau ; ordre P2.13 / P2.14 / P2.1 vu le gel des nouveaux piliers (`ontology.md` §9) | À la validation du PRD |
+| 17 | Ontologie 0.2.0 : ~~**actions D183 remontées dans la 0.2.0 ?**~~ (oui : livrées le 2026-10-13) (au moins une action simple tracée : c'est ce qui rend la plateforme « opérationnelle », et le pack Maintenance et les procédures de `pages.md` en dépendent) ; ~~identifiant d'objet global (UUID vs `ResourceRef`)~~ (tranché 2026-10-10 : UUID par table d'identité universelle), moment du bitemporel, format du schéma de propriétés (maison vs JSON Schema), liaison device → objet (lien générique vs table dédiée), packs forkables ou surcouche, langage de requête textuel, spécification publique du noyau ; ordre P2.13 / P2.14 / P2.1 vu le gel des nouveaux piliers (`ontology.md` §9) | À la validation du PRD |
 | 19 | ~~Garder SQLite à côté de PostgreSQL~~ — tranché 2026-10-10 : **PostgreSQL obligatoire, SQLite abandonné**. La parité coûte à chaque migration et chaque requête (`ilike`, FK par reconstruction de table, pas de PostGIS) et pèse de plus en plus lourd à mesure que le produit grandit ; l'argument Raspberry Pi ne tient pas, Postgres reste léger sur un Pi. Les nouveaux développements ne gèrent plus SQLite | ✅ |
 | 18 | ~~Media & Vision Studio : pose humaine ou poste de travail, tract vs `ort`, entraînement CPU, D174 en usage interne, détection → `device_write`, version cible~~ — **tranché 2026-10-13** (`media-vision-studio.md` §10) : poste de travail, tract seul, entraînement en Rust sans Python, détection → `device_write` régie par D128, pas d'attente de tag | ✅ |
 | 20 | Couches géographiques : ~~gel 0.2.0~~ (tranché 2026-10-10 : phase F avant, A–E après), ~~rétention des seeds~~ (génération courante), raster, OGC API – Features, plafonds par tier, lien ontologie (`geo-layers.md` §10) ; image Postgres étendue PostGIS + pgvector commune avec #22 | À la validation du PRD |

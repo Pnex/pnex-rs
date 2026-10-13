@@ -196,6 +196,7 @@ pub(crate) fn status_text(code: &str) -> String {
         "vision-model-load-failed" => t!("flow-status-vision-model-load-failed").to_string(),
         "vision-no-frames" => t!("flow-status-vision-no-frames").to_string(),
         "vision-running" => t!("flow-status-vision-running").to_string(),
+        "ai-call-failed" => t!("flow-status-ai-call-failed").to_string(),
         "control-listening" => t!("flow-status-control-listening").to_string(),
         "control-bus-unavailable" => t!("flow-status-control-bus-unavailable").to_string(),
         "weather-updated" => t!("flow-status-weather-updated").to_string(),

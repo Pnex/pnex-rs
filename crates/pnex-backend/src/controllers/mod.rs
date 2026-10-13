@@ -31,6 +31,8 @@ pub mod health;
 pub mod internal_flow;
 /// Endpoint interne de livraison websocket (runtime de flows / loopback).
 pub mod internal_notify;
+/// Time ranges (media-ingest.md D169).
+pub mod lab;
 pub mod media;
 /// Vision model registry (D81) + internal model fetch for the flow runtime.
 pub mod media_ingest;
@@ -57,7 +59,6 @@ pub mod system;
 /// Topic taxonomies (media-ingest.md D168).
 pub mod taxonomies;
 pub mod thermo;
-/// Time ranges (media-ingest.md D169).
 pub mod time_ranges;
 pub mod tours;
 pub mod user_info;

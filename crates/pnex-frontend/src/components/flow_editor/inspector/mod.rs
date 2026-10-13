@@ -154,6 +154,30 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::VisionDetect { config } => rsx! {
             VisionDetectForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::TextDecide { config } => rsx! {
+            TextDecideForm { cx, initial: config.clone(), can_write }
+        },
+        FlowNodeKind::VisionCaption { config } => rsx! {
+            VisionCaptionForm { cx, initial: config.clone(), can_write }
+        },
+        FlowNodeKind::PagePdf { config } => rsx! {
+            PagePdfForm { cx, initial: config.clone(), can_write }
+        },
+        FlowNodeKind::PageWrite { config } => rsx! {
+            PageWriteForm { cx, initial: config.clone(), can_write }
+        },
+        FlowNodeKind::LlmText { config } => rsx! {
+            LlmTextForm { cx, initial: config.clone(), can_write }
+        },
+        FlowNodeKind::MediaFuse { config } => rsx! {
+            MediaFuseForm { cx, initial: config.clone(), can_write }
+        },
+        FlowNodeKind::VisionTrack { config } => rsx! {
+            VisionTrackForm { cx, initial: config.clone(), can_write }
+        },
+        FlowNodeKind::VisionZone { config } => rsx! {
+            VisionZoneForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::EventLog { config } => rsx! {
             EventLogForm { cx, initial: config.clone(), can_write }
         },
@@ -244,15 +268,20 @@ mod json;
 mod media_source;
 mod memory;
 mod notify;
+mod page;
 mod predict;
 mod range_upsert;
 mod red;
 mod reg;
 mod simple;
+mod text_decide;
 mod topic_classify;
 mod value;
 mod video_record;
+mod vision_ai;
 mod vision_detect;
+mod vision_track;
+mod vision_zone;
 mod weather;
 
 use crate::components::ui::BTN_DANGER;
@@ -271,13 +300,18 @@ use json::{JsonMergeForm, JsonSplitForm};
 use media_source::MediaSourceForm;
 use memory::{MemoryReadForm, MemoryWriteForm};
 use notify::NotifyForm;
+use page::{PagePdfForm, PageWriteForm};
 use predict::{AnomalyForm, ForecastForm};
 use range_upsert::RangeUpsertForm;
 use red::RedForm;
 use reg::{RegPidForm, RegTtForm};
 use simple::{DebugForm, DisplayForm, MetricForm};
+use text_decide::TextDecideForm;
 use topic_classify::TopicClassifyForm;
 use value::{CalcForm, ValueForm};
 use video_record::VideoRecordForm;
+use vision_ai::{LlmTextForm, MediaFuseForm, VisionCaptionForm};
 use vision_detect::VisionDetectForm;
+use vision_track::VisionTrackForm;
+use vision_zone::VisionZoneForm;
 use weather::WeatherForm;

@@ -1,7 +1,7 @@
 use super::*;
 
 /// Liste canonique des kinds proposés à l'ajout (ordre de la maquette).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 32] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 40] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::ActionTrigger,
@@ -26,7 +26,15 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 32] = [
     PaletteKind::TopicClassify,
     PaletteKind::VideoRecord,
     PaletteKind::VisionDetect,
+    PaletteKind::VisionTrack,
+    PaletteKind::VisionZone,
+    PaletteKind::VisionCaption,
+    PaletteKind::MediaFuse,
+    PaletteKind::LlmText,
+    PaletteKind::TextDecide,
     PaletteKind::RangeUpsert,
+    PaletteKind::PageWrite,
+    PaletteKind::PagePdf,
     PaletteKind::EventLog,
     PaletteKind::MemoryWrite,
     PaletteKind::MemoryRead,
@@ -62,6 +70,14 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::RangeUpsert => "range-upsert",
         PaletteKind::VideoRecord => "video-record",
         PaletteKind::VisionDetect => "vision-detect",
+        PaletteKind::VisionTrack => "vision-track",
+        PaletteKind::VisionZone => "vision-zone",
+        PaletteKind::VisionCaption => "vision-caption",
+        PaletteKind::MediaFuse => "media-fuse",
+        PaletteKind::LlmText => "llm-text",
+        PaletteKind::PageWrite => "page-write",
+        PaletteKind::PagePdf => "page-pdf",
+        PaletteKind::TextDecide => "text-decide",
         PaletteKind::EventLog => "event-log",
         PaletteKind::MemoryWrite => "memory-write",
         PaletteKind::MemoryRead => "memory-read",
@@ -110,6 +126,14 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::RangeUpsert => (PaletteIcon::History, "bg-indigo-50 text-indigo-700"),
         PaletteKind::VideoRecord => (PaletteIcon::Video, "bg-red-50 text-red-600"),
         PaletteKind::VisionDetect => (PaletteIcon::Eye, "bg-fuchsia-50 text-fuchsia-600"),
+        PaletteKind::VisionTrack => (PaletteIcon::Activity, "bg-fuchsia-50 text-fuchsia-700"),
+        PaletteKind::VisionZone => (PaletteIcon::Layers, "bg-fuchsia-50 text-fuchsia-700"),
+        PaletteKind::VisionCaption => (PaletteIcon::Eye, "bg-violet-50 text-violet-700"),
+        PaletteKind::MediaFuse => (PaletteIcon::Braces, "bg-violet-50 text-violet-700"),
+        PaletteKind::LlmText => (PaletteIcon::Braces, "bg-violet-50 text-violet-800"),
+        PaletteKind::PageWrite => (PaletteIcon::Layers, "bg-amber-50 text-amber-700"),
+        PaletteKind::PagePdf => (PaletteIcon::Layers, "bg-amber-50 text-amber-800"),
+        PaletteKind::TextDecide => (PaletteIcon::Gauge, "bg-violet-50 text-violet-700"),
         PaletteKind::EventLog => (PaletteIcon::History, "bg-slate-100 text-slate-600"),
         PaletteKind::MemoryWrite => (PaletteIcon::Database, "bg-lime-50 text-lime-700"),
         PaletteKind::MemoryRead => (PaletteIcon::Database, "bg-green-50 text-green-700"),
@@ -151,6 +175,14 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::RangeUpsert { .. } => PaletteKind::RangeUpsert,
         FlowNodeKind::VideoRecord { .. } => PaletteKind::VideoRecord,
         FlowNodeKind::VisionDetect { .. } => PaletteKind::VisionDetect,
+        FlowNodeKind::VisionTrack { .. } => PaletteKind::VisionTrack,
+        FlowNodeKind::VisionZone { .. } => PaletteKind::VisionZone,
+        FlowNodeKind::VisionCaption { .. } => PaletteKind::VisionCaption,
+        FlowNodeKind::MediaFuse { .. } => PaletteKind::MediaFuse,
+        FlowNodeKind::LlmText { .. } => PaletteKind::LlmText,
+        FlowNodeKind::PageWrite { .. } => PaletteKind::PageWrite,
+        FlowNodeKind::PagePdf { .. } => PaletteKind::PagePdf,
+        FlowNodeKind::TextDecide { .. } => PaletteKind::TextDecide,
         FlowNodeKind::EventLog { .. } => PaletteKind::EventLog,
         FlowNodeKind::MemoryWrite { .. } => PaletteKind::MemoryWrite,
         FlowNodeKind::MemoryRead { .. } => PaletteKind::MemoryRead,
@@ -220,10 +252,18 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         | PaletteKind::MemoryRead
         | PaletteKind::VideoRecord
         | PaletteKind::RangeUpsert
+        | PaletteKind::PageWrite
+        | PaletteKind::PagePdf
         | PaletteKind::EventLog => PaletteCategory::Storage,
-        PaletteKind::VisionDetect | PaletteKind::Anomaly | PaletteKind::Forecast => {
-            PaletteCategory::Ai
-        }
+        PaletteKind::VisionDetect
+        | PaletteKind::VisionTrack
+        | PaletteKind::VisionZone
+        | PaletteKind::VisionCaption
+        | PaletteKind::MediaFuse
+        | PaletteKind::LlmText
+        | PaletteKind::TextDecide
+        | PaletteKind::Anomaly
+        | PaletteKind::Forecast => PaletteCategory::Ai,
         PaletteKind::PnexNotify | PaletteKind::HttpFetch => PaletteCategory::Integrations,
         PaletteKind::Debug => PaletteCategory::Debug,
     }
@@ -352,6 +392,38 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::VisionDetect => (
             t!("flows-palette-vision-detect").to_string(),
             t!("flows-palette-vision-detect-help").to_string(),
+        ),
+        PaletteKind::VisionTrack => (
+            t!("flows-palette-vision-track").to_string(),
+            t!("flows-palette-vision-track-help").to_string(),
+        ),
+        PaletteKind::VisionZone => (
+            t!("flows-palette-vision-zone").to_string(),
+            t!("flows-palette-vision-zone-help").to_string(),
+        ),
+        PaletteKind::VisionCaption => (
+            t!("flows-palette-vision-caption").to_string(),
+            t!("flows-palette-vision-caption-help").to_string(),
+        ),
+        PaletteKind::MediaFuse => (
+            t!("flows-palette-media-fuse").to_string(),
+            t!("flows-palette-media-fuse-help").to_string(),
+        ),
+        PaletteKind::LlmText => (
+            t!("flows-palette-llm-text").to_string(),
+            t!("flows-palette-llm-text-help").to_string(),
+        ),
+        PaletteKind::PageWrite => (
+            t!("flows-palette-page-write").to_string(),
+            t!("flows-palette-page-write-help").to_string(),
+        ),
+        PaletteKind::PagePdf => (
+            t!("flows-palette-page-pdf").to_string(),
+            t!("flows-palette-page-pdf-help").to_string(),
+        ),
+        PaletteKind::TextDecide => (
+            t!("flows-palette-text-decide").to_string(),
+            t!("flows-palette-text-decide-help").to_string(),
         ),
         PaletteKind::EventLog => (
             t!("flows-palette-event-log").to_string(),

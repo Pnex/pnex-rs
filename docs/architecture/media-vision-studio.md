@@ -1,16 +1,16 @@
 # PRD — PNEX Media & Vision Studio
 
-> **Statut :** Draft v0.2 — 10/10/2026 (v0.1 de Shan, **relue contre la
-> doc le 2026-10-10**, corrections au §11). Zéro code avant validation.
+> **Statut :** v0.3 — **validé et lancé le 2026-10-12** (Shan : « attaque
+> la partie studio », M1 en premier). v0.1 de Shan, relue contre la doc le
+> 2026-10-10 (§11). Décisions actées au §12 ; questions tranchées au §10.
 > **Auteur :** Shan
 > **Périmètre :** pilier « Ingestion média + Vision » de PNEX (audio,
 > vidéo, caméras IP, reconnaissance d'objets custom, description vidéo,
 > Vision Lab d'entraînement).
-> **Version cible :** **après la 0.2.0** (gel des nouveaux piliers pendant
-> la 0.2.0, `roadmap.md` P2.14), sauf exception explicite comme celle
-> accordée à P2.13 (décision #17). Entrée roadmap : P2.15, décision #18.
-> **Numérotation :** les décisions de ce PRD reçoivent leurs numéros D à
-> la validation (prochain libre : D192).
+> **Version cible :** pas d'attente de tag (Q10, 2026-10-13) : la 0.1.0
+> est épinglée, la 0.2.0 annoncera ce qu'elle livre sans promettre les
+> fonctionnalités à l'avance (beta). Entrée roadmap : P2.15, décision #18.
+> **Numérotation :** D192 et suivants, attribués au fil des lots (§12).
 > **Renvois :** `camera-video.md` (D73–D86 bus caméra, D81 registre de
 > modèles, D82 `pnex-vision`/tract, D83 `vision_detect`, D84 événements
 > O2, D100–D104 fiabilité, D105 calques de détection), `media-ingest.md`
@@ -452,7 +452,7 @@ flowchart LR
   - OpenObserve : événements, transcriptions, calques de détection ;
   - RustFS / fs (bibliothèque média D21) : médias bruts, frames de
     dataset, artefacts ONNX.
-- **Entraînement** :
+- **Entraînement** (paragraphe d'origine, **remplacé par D204** : pas de Python, ré-apprentissage de la tête en Rust dans le process API) :
   - Job `train_detector` dans la **queue Loco**, même mécanique que
     `stitch_panorama` / `transcribe_segment` (claim idempotent dans la
     ligne de domaine, état terminal écrit par le worker, timeout,
@@ -520,13 +520,13 @@ Les lots audio sont ceux de `media-ingest.md` ; ce PRD ne les duplique pas.
 
 | Phase | Contenu | Livrable |
 |---|---|---|
-| **M0 — Socle média** | P2.13 lot 1 **livré** (capture flux/vidéo/audio → texte : `media_streams`, ffmpeg, ASR, O2) ; reste lot 6 (D175 caméras IP sur le bus) + source « fichier uploadé » | Transcription horodatée d'une vidéo ou d'une caméra IP |
+| **M0 — Socle média** | **Terminé** : P2.13 lots 1–6 (capture flux/vidéo/audio → texte, `media_source`, D175 caméras IP sur le bus) + D206 (fichier de la médiathèque comme source) | Transcription horodatée d'une vidéo ou d'une caméra IP |
 | **M1 — Détection** | `vision_track` (ByteTrack Rust), `vision_zone` (éditeur de polygones sur l'image), événements dérivés via `event_log` + alerting (`vision_detect` existe déjà) | Événements objets en zone + alertes |
 | **M2 — Vision Lab v1** | Projets, import images/vidéos, annotation boîtes, interpolation vidéo, split par source, `lab_datasets` versionnés, job `train_detector` (image YOLOX figée), export ONNX → registre existant + check D100 | Modèle custom créé de bout en bout dans PNEX |
 | **M3 — Description** | `vision_caption` (VLM de l'org), `media_fuse`, résumé global, provenance D184 ; décision sur D174 (usage interne) | Description vidéo horodatée |
 | **M3bis — Décision rapide** | `text_decide` (Laya multilingue, ONNX), POC sur ~200 fenêtres réelles annotées : zéro-shot vs fine-tuné vs LLM de l'org, calibration de température, puis branchement en filtre devant `media_fuse` | Alerte calibrée sur fenêtre + réduction mesurée des appels LLM |
 | **M4 — Lab v2** | Pré-annotation, active learning (file « à revoir »), guidage de diversité, tracking pour la propagation, INT8 | Boucle d'amélioration continue |
-| **M5 — Studio rapports** | Décision D173/D174/D3 rouverte, puis rapports intégrés, corrélation IoT, export | Rapport généré sans sortir de PNEX |
+| **M5 — Rapports (D207–D210)** | Pas de studio : pages écrites par des nœuds génériques (`llm_text`, `page_write`, `page_pdf`, pièce jointe `pnex_notify`), approbation humaine par défaut — **livré sur la branche le 2026-10-13** | Rapport généré sans sortir de PNEX |
 
 Dépendances : fabric de workers P2.7 (GPU distant ; contournable par un
 process `--worker=train` joint en mesh, comme D166) ; P2.13 lot 6 pour
@@ -566,25 +566,25 @@ Python confinée que `train_detector` (§11, point 10).
 
 ---
 
-## 10. Questions ouvertes
+## 10. Questions (toutes tranchées au 2026-10-13)
 
 | # | Question |
 |---|---|
-| Q1 | « Reconnaissance poste » : **pose humaine** ou **poste de travail** ? Si pose : quel modèle sous licence permissive (RTMPose, MoveNet à vérifier) ? |
-| Q2 | Inférence : tract (en production) suffit-il pour YOLOX-s/m et l'INT8, ou faut-il ajouter `ort` ? Burn reste à benchmarker (`ml-vision.md` étape 1). |
-| Q3 | Propagation des boîtes dans le Lab avant tout modèle : interpolation seule (V1) ou suivi visuel dédié (tracker sans détecteur) ? |
-| Q4 | Entraînement sans GPU (CPU, Pi) : interdit, ou autorisé en mode « petit dataset / nano » avec avertissement ? |
-| Q5 | VLM par défaut : aucun (D119, l'org choisit) — quels modèles recommander dans la doc, licence vérifiée ? ASR : tranché au lot 0 (`media-asr-bench.md`). |
-| Q6 | Place des sources, modèles, datasets et zones dans l'ontologie 0.2.0 (types système D177, plages D182). |
-| Q7 | Rétention et stockage des médias bruts et datasets en SaaS : coût et quotas par tenant. |
+| Q1 | **Tranchée (2026-10-13)** : **poste de travail** (zones D193 + classes du Lab + plages D182). Pose humaine hors V1 ; si elle revient, famille `ml_models` distincte, licence relue. ~~« Reconnaissance poste » : **pose humaine** ou **poste de travail** ? Si pose : quel modèle sous licence permissive (RTMPose, MoveNet à vérifier) ?~~ |
+| Q2 | **Tranchée (2026-10-13)** : tract reste le seul runtime (confirmé par D197) ; `ort` seulement si un bench chiffré le justifie, derrière une feature de build, pour le nœud concerné. ~~Inférence : tract (en production) suffit-il pour YOLOX-s/m et l'INT8, ou faut-il ajouter `ort` ? Burn reste à benchmarker (`ml-vision.md` étape 1).~~ |
+| Q3 | **Tranchée (2026-10-13)** : interpolation linéaire entre keyframes en V1 ; propagation par `vision_track` en M4 ; pas de tracker visuel sans détecteur. ~~Propagation des boîtes dans le Lab avant tout modèle : interpolation seule (V1) ou suivi visuel dédié (tracker sans détecteur) ?~~ |
+| Q4 | **Tranchée (2026-10-13, révisée par D204)** : l'entraînement est un ré-apprentissage de la tête en Rust, sur CPU, Pi compris ; plus de presets ni d'image GPU. ~~Entraînement sans GPU (CPU, Pi) : interdit, ou autorisé en mode « petit dataset / nano » avec avertissement ?~~ |
+| Q5 | **Tranchée (2026-10-13)** : aucun VLM livré ni imposé (D119) ; la doc cite des modèles à licence relue à la rédaction, SPDX affiché à la configuration. ~~VLM par défaut : aucun (D119, l'org choisit) — quels modèles recommander dans la doc, licence vérifiée ? ASR : tranché au lot 0 (`media-asr-bench.md`).~~ |
+| Q6 | **Tranchée (2026-10-13)** : `media_stream` = type système par adaptateur (D177) ; zones (config du nœud), projets et jeux du Lab restent dans leurs tables en V1. ~~Place des sources, modèles, datasets et zones dans l'ontologie 0.2.0 (types système D177, plages D182).~~ |
+| Q7 | **Tranchée (2026-10-13)** : images et jeux du Lab comptent dans le stockage média de l'org ; quota = réglage plateforme, aucun plafond codé en self-hosted ; rétention séparée brut / événements (§4.1). ~~Rétention et stockage des médias bruts et datasets en SaaS : coût et quotas par tenant.~~ |
 | Q8 | ~~Diarisation dès M0 ?~~ — **déjà planifiée** : lot 5 de P2.13 (D166), labels locaux. |
-| Q9 | Une détection peut-elle alimenter `device_write` via un flow humain (D128 le permet aujourd'hui), ou ce PRD l'interdit-il (porte de deploy) ? |
-| Q10 | Version cible : après la 0.2.0, ou exception au gel comme P2.13 (décision #17) ? |
-| Q11 | D174 : la description par fenêtre (M3) est-elle autorisée en usage interne, et sous quelles règles (marquage IA, relecture) ? |
-| Q12 | Inférence `text_decide` : tract supporte-t-il le graphe ModernBERT/mmBERT exporté, ou ce nœud justifie-t-il `ort` (cf. Q2) ? Le portage Rust du formatage d'entrée doit égaler la référence Python à 1e-4 près. |
-| Q13 | `text_decide` sur Pi : fp32 acceptable sur Pi 5 8 Go, ou quantification INT8 obligatoire (précision et calibration à re-mesurer) ? |
-| Q14 | Seuil de mise en production de `text_decide` : quel écart de précision avec le LLM de l'org est acceptable en échange d'un gain de latence et de coût ? Proposition : ≥ 80 % de précision sur le jeu annoté de l'org et un ECE ≤ 0,10 après calibration. |
-| Q15 | Maturité de l'écosystème Laya : modèle récent, benchmarks comparatifs auto-publiés, portage `receptron/laya` à un seul auteur (oct. 2026). Faut-il vendorer le script d'export et figer une révision du checkpoint (hash HF) plutôt que suivre `main` ? |
+| Q9 | **Tranchée (2026-10-13, Shan)** : oui, régi par D128 — seul un flow déployé par un humain agit ; aucune porte de deploy spécifique à la vision. ~~Une détection peut-elle alimenter `device_write` via un flow humain (D128 le permet aujourd'hui), ou ce PRD l'interdit-il (porte de deploy) ?~~ |
+| Q10 | **Tranchée (2026-10-13, Shan)** : pas de gel ni d'attente de tag ; la 0.1.0 est épinglée, la 0.2.0 dira ce qu'elle livre, en beta. ~~Version cible : après la 0.2.0, ou exception au gel comme P2.13 (décision #17) ?~~ |
+| Q11 | **Tranchée (D194)** : usage interne autorisé, marqué IA, aucune publication hors de PNEX. ~~D174 : la description par fenêtre (M3) est-elle autorisée en usage interne, et sous quelles règles (marquage IA, relecture) ?~~ |
+| Q12 | **Tranchée (D197)** : tract suffit (écart ≤ 2e-5, 160–250 ms/question x86). ~~Inférence `text_decide` : tract supporte-t-il le graphe ModernBERT/mmBERT exporté, ou ce nœud justifie-t-il `ort` (cf. Q2) ? Le portage Rust du formatage d'entrée doit égaler la référence Python à 1e-4 près.~~ |
+| Q13 | **Tranchée (2026-10-13)** : fp32 non proposé sur Pi ; INT8 obligatoire sur Pi, calibration re-mesurée sur le modèle quantifié ; sinon worker. Mesure Pi 5 à faire. ~~`text_decide` sur Pi : fp32 acceptable sur Pi 5 8 Go, ou quantification INT8 obligatoire (précision et calibration à re-mesurer) ?~~ |
+| Q14 | **Tranchée (2026-10-13)** : seuil retenu ≥ 80 % de précision sur le jeu annoté de l'org et ECE ≤ 0,10 après calibration ; à appliquer au deploy quand le fine-tuning existera. ~~Seuil de mise en production de `text_decide` : quel écart de précision avec le LLM de l'org est acceptable en échange d'un gain de latence et de coût ? Proposition : ≥ 80 % de précision sur le jeu annoté de l'org et un ECE ≤ 0,10 après calibration.~~ |
+| Q15 | **Tranchée (D197)** : révision HF épinglée `7b928d82`, script d'export vendu (`scripts/laya/`). ~~Maturité de l'écosystème Laya : modèle récent, benchmarks comparatifs auto-publiés, portage `receptron/laya` à un seul auteur (oct. 2026). Faut-il vendorer le script d'export et figer une révision du checkpoint (hash HF) plutôt que suivre `main` ?~~ |
 
 ---
 
@@ -631,3 +631,94 @@ Corrections apportées à la v0.1 après lecture de la doc existante :
     limites tirées de la carte modèle (zéro-shot faible, `noul` biaisé,
     sur-confiance, `act_probability` inutilisable) sont intégrées comme
     règles. Questions Q12–Q15 ajoutées, phase M3bis ajoutée.
+
+---
+
+## 12. Décisions actées et état
+
+| # | Décision | Date |
+|---|---|---|
+| **D192** | **`vision_track`** : suivi par source (caméra device ou flux), ByteTrack réimplémenté en Rust sans dépendance (MIT, aucun code repris) : prédiction à vitesse constante du centre (lissée 0,5) au lieu d'un Kalman complet, association en deux étapes (détections ≥ `high_score` sur tous les suivis, puis détections faibles sur les suivis restants, sans jamais en ouvrir), par classe, par IoU ≥ `min_iou`, **appariement glouton** (meilleur IoU d'abord) au lieu du hongrois — suffisant pour les scènes clairsemées d'une caméra, à revoir si des foules échangent les identifiants. Suivi provisoire jusqu'à `min_hits` correspondances (puis `appear`), supprimé sans bruit s'il rate une image ; suivi confirmé perdu après `lost_after_secs` (`disappear`, avec `t0_ms`, `t1_ms`, `duration_s`, `conf_avg`). Port 0 = suivis courants de la source (à chaque image, **et** quand des suivis expirent sans nouvelle image : balayage horloge murale 1 s, nécessaire puisque `vision_detect` en `on_detection` n'émet rien quand la scène est vide) ; port 1 = événements. Identifiants propres au nœud, remis à zéro au redéploiement. Pas de statut D103 (nœud de calcul pur, aucun chargement ni dépendance externe). Défauts réglés pour 1 fps : `high_score` 0,5, `min_iou` 0,2, `min_hits` 2, `lost_after_secs` 3. | 2026-10-12 |
+| **D193** | **`vision_zone`** : polygones en **coordonnées image normalisées 0–1** (survivent à un changement de résolution), 1 à 16 zones de 3 à 32 sommets, noms uniques ; testés sur un **point d'ancrage** du cadre (bas-centre par défaut : pieds, roues ; ou centre). Entrée après `min_dwell_secs` de présence continue (« présent depuis plus de N s », 0 = immédiat), sortie quand l'ancrage quitte la zone **ou que le suivi disparaît** ; seule une entrée émise peut sortir (visite courte = silence). Un message par événement `{event: enter \| exit, zone, track_id, label, ts_ms, t0_ms, duration_s (sortie), count}`, `count` = occupation de la zone juste après l'événement (comptage sans nœud dédié). Les zones s'appliquent à **toutes** les sources qui arrivent au nœud (un nœud par point de vue) ; `preview_device` sert seulement de fond à l'éditeur. Éditeur dans l'inspecteur du nœud : vue live de la caméra (D75) à son propre ratio, clics → sommets, aucun stockage d'image. Événements vers `event_log` (O2 `ev_*`, D84) et alerting existant ; aucune commande (P6/D128). | 2026-10-12 |
+
+| **D194** | **Q11 / D174 tranchée pour l'usage interne** : les descriptions IA de M3 (légendes, description par fenêtre) sont autorisées **dans PNEX** (flows, événements, tableaux de bord), toujours marquées `ai_generated: true` et libellées « générée par IA » ; aucune publication hors de PNEX (D173 inchangée), aucune action sur une sortie IA (P6). Les rapports exportés (M5) restent à décider. | 2026-10-13 |
+| **D195** | **`vision_caption`** : le runtime n'envoie qu'une **référence** (`frame_key`) à la route interne `/internal/flow/ai/caption` (jeton de service + fencing D106) ; le backend relit l'image sur le bus caméra (clé préfixée par l'org, sinon 404), la recadre éventuellement (meilleure détection ou suivi, marge 10 %), la réduit à 1024 px et appelle le **fournisseur LLM par défaut de l'org** (D119) avec l'image (blocs image Anthropic / `image_url` OpenAI-compatible) ; la clé ne quitte jamais le backend (R6), l'appel sort par le client filtré R8. Une description par source au plus toutes les `min_interval_secs` (10 s par défaut) ; câbler le nœud **est** le choix explicite d'envoyer l'image au fournisseur (texte d'avertissement dans l'inspecteur). Pas de VLM plateforme ni de modèle par défaut (Q5 : la doc recommandera des modèles à poids ouverts servis en local). | 2026-10-13 |
+| **D196** | **`media_fuse`** : le nœud normalise ses entrées en éléments `{id, kind, ts_ms, source, text}` (`detection` = événements de détection/suivi/zone, `transcript` = segments ASR, `caption` = légendes) et envoie chaque fenêtre (30 s par défaut, ≤ 200 éléments, textes ≤ 2000 caractères) à `/internal/flow/ai/fuse`. Le prompt impose la hiérarchie de confiance (détections = faits, ASR = parole, légendes = indicatives), interdit d'inventer, traite les textes comme des **données délimitées** (aucun outil) ; la réponse JSON est filtrée côté serveur : **une phrase dont une source n'est pas un id de la fenêtre est rejetée** (compteur `rejected`). **Plafond commun** `vision_caption` + `media_fuse` : 2000 appels par org et par jour UTC (`settings.ai.flow_daily_calls`, compteur Valkey) → 429 `flow-ai-quota`. Statut de nœud D103 `ai-call-failed` avec le code serveur en détail. | 2026-10-13 |
+
+| **D197** | **`text_decide` (Laya)** — Q12 tranchée : **tract suffit**, pas d'`ort`. Mesures 2026-10-13 (x86, release) : checkpoint multilingue (mmBERT-base) exporté depuis la révision HF **épinglée** `7b928d82` (Q15), écart de logits tract / ONNX Runtime ≤ 2e-5 (exigence 1e-4), ids de tokens identiques à la référence Python (cas français compris), 160–250 ms par question sur CPU (ORT 70–150 ms), chargement + optimisation 3,4 s, ~1,3 Go de poids fp32. Le **bundle publié `receptron/laya-onnx` est le checkpoint anglais** (exclu, §4.5bis) : le bundle multilingue se construit avec `task laya:bundle` (outillage hors ligne uv + torch CPU, export MIT adapté ; PneX n'exécute jamais Python). Les jetons spéciaux viennent de `tokenizer_config.json` comme dans `rl_common.py` (le portage TS les code en dur `[CLS]`…, faux pour le multilingue). Inférence **dans le backend** (crate `pnex-decide`, une copie du modèle par serveur, chargement paresseux, un calcul à la fois), jamais dans le runtime d'org ; route interne `/internal/flow/ai/decide` (jeton + fencing, questions re-vérifiées). Bundle installé par l'admin (`settings.decide.model_dir` / `PNEX_DECIDE_MODEL_DIR`), absent → 503 `decide-unavailable`. Questions `choice` et `score` seulement (`noul` refusé, §4.5bis) ; état = texte (`text_field`, défaut `text`) : les objets JSON sont sérialisés clés triées (raccourci assumé, la référence garde l'ordre d'insertion). Le checkpoint multilingue est **non calibré** (températures 1,0) : l'UI le dit ; calibration et fine-tuning par org restent le POC M3bis. | 2026-10-13 |
+
+| **D198** | **Vision Lab — projets et annotation** : un projet = des classes **positionnelles** (une boîte référence l'index de sa classe ; renommer sur place ou ajouter à la fin, ne retirer que les dernières et seulement si aucune boîte ne les utilise → 409 `lab-class-in-use`) ; images = des **assets de la bibliothèque média** (D21, JPEG/PNG vérifiés à l'import par lecture de l'en-tête, jamais copiés) ; boîtes normalisées 0–1 en jsonb sur l'image, ≤ 200, marquage « sans objet » (exemple négatif) exclusif des boîtes ; concurrence optimiste par `version` (mise à jour conditionnelle atomique, 409 `lab-annotations-conflict`). **Split train/val par source** (§4.6.2) : un import = une source, répartie par hachage FNV-1a stable (≈ 20 % en validation), forçable image par image. Avertissements indicatifs, jamais bloquants : < 20 images par classe, < 5 images de validation, aucun négatif. UI `/lab` + `/lab/:id` : sélecteur multiple de photos (un import = une source, d'où l'abandon du sélecteur de ressources à choix unique), dessin à la souris sur l'image au ratio réel, couleurs par classe, raccourcis 1–9 / Suppr / ← → / N, enregistrement optimiste sérialisé par image, statistiques calculées localement par la même fonction que le serveur. Lecture pour tous les rôles, écriture owner/admin/member (R2). | 2026-10-13 |
+| **D199** | **Versions de jeu de données** : `lab_dataset_versions` append-only (école D18) ; une version **fige** les images annotées, leurs boîtes, le split effectif et la **version média** de chaque image (une image remplacée dans la médiathèque ne change pas un jeu figé) ; numéros consécutifs sous verrou de la ligne projet. C'est ce que liront l'export et, plus tard, `lab_training_runs` (M2b). | 2026-10-13 |
+| **D200** | **Export COCO et report de l'entraînement** : export d'une version en zip (`images/<id>.<ext>` aux versions figées, `annotations/train.json` et `val.json` au format COCO détection, boîtes en pixels, catégories 1..N dans l'ordre des classes, `classes.txt`), construit en mémoire (raccourci assumé : ≤ 3000 images). Téléchargeable par un lecteur. **L'entraînement dans PNEX (job `train_detector`, image YOLOX Python figée, M2b) est reporté** : il demande une image de plusieurs Go, idéalement un worker GPU (P2.7) et des choix à valider (Q4 entraînement CPU). D'ici là, le parcours est : Lab → export COCO → entraînement YOLOX hors PNEX → ONNX importé dans **Modèles** (vérifié D100) → `vision_detect`. | 2026-10-13 |
+
+| **D201** | **Pré-annotation dans le Lab** (anticipée de M4) : `POST /api/v1/lab/images/{id}/suggest {model_id, min_score}` exécute un modèle de détection du registre de l'org (cache et pool vision existants, D82/D104) sur l'image et renvoie des **propositions sans rien écrire** ; un libellé égal à un nom de classe (casse, espaces et tirets ignorés) prend cette classe. UI : propositions en pointillés, « Garder les N propositions reconnues » ne garde **que** les propositions mappées (une proposition grise ne devient boîte que par un clic explicite, jamais en masse), « Écarter » efface le reste. Réservé aux rôles d'écriture (calcul sur le pool partagé). Avec un premier modèle custom, c'est la boucle d'amélioration du §4.6.1 étape 4. | 2026-10-13 |
+
+| **D202** | **Images d'un enregistrement de caméra dans le Lab** (premier pas du parcours vidéo du §4.6.1, étape 2) : `POST /api/v1/lab/projects/{id}/import-recording {device, from, to, every_secs}` prend dans les segments MJPEG-AVI (D79) la trame la plus proche de chaque instant `from + k·N s` (aucun décodage ni ré-encodage : la trame est déjà un JPEG), la range comme `photo` de la médiathèque (chemin d'écriture partagé `write_version`) et l'ajoute au projet ; **un import = une source**, donc un extrait vidéo entier tombe du même côté du split. Bornes : 1 h d'extrait, 200 images, intervalle 0,5–600 s ; plage sans enregistrement → 404 `camera-export-empty`. UI : caméra, jour et heures **locales**, intervalle, estimation du nombre d'images avant import. Restent pour la vidéo : fichiers vidéo uploadés (ffmpeg), interpolation de boîtes entre trames clés (M2 complet), flux IP (D175). | 2026-10-13 |
+| **D203** | **Vidéos dans le Lab et interpolation des boîtes** (§4.6.1 étape 3, Q3) : la médiathèque accepte le kind `video` (MP4 / MOV reconnus par la marque `ftyp` + extension, servis inline). `POST /api/v1/lab/projects/{id}/import-video {asset_id, from_secs, to_secs, every_secs}` décode la version courante avec le **décodeur confiné de D160** (même bac à sable, pipe seulement, décodeurs h264/hevc/mjpeg ; `trim` + `fps` + JPEG en sortie), mêmes bornes que D202 (≤ 1 h, ≤ 200 images), fichier ≤ 512 Mo lu en mémoire. Un MP4 dont le `moov` est en fin de fichier (vidéos de téléphone) est remis en tête **en mémoire** avant décodage (décalage des `stco`/`co64`, raccourci : pas de passage `stco` → `co64`, fichier > 4 Gio refusé). Toutes les imports d'une même vidéo partagent la source `video-<asset>` (jamais à cheval entre entraînement et validation). Chaque image garde sa **position dans la source** (`lab_images.frame_ms`, migration `000015` ; époque pour un enregistrement, depuis le début du fichier pour une vidéo). `POST /api/v1/lab/images/{id}/interpolate` propose, sans rien écrire, les boîtes **interpolées linéairement** entre l'image annotée précédente et la suivante de la même source ; appariement par classe, centres les plus proches d'abord, une boîte sans partenaire n'est pas proposée. Éditeurs seulement (comme D201). Codes `lab-video-unsupported`, `lab-video-too-large`, `lab-video-decode-failed`, `lab-interpolate-no-keyframes`. | 2026-10-13 |
+| **D204** | **Entraînement sans Python : ré-apprentissage de la tête YOLOX en Rust** (Shan, 2026-10-13 : « python free toujours » ; remplace l'image YOLOX Python de D200/M2b). Le réseau d'un modèle YOLOX **déjà enregistré** (COCO ou un modèle du Lab) reste figé ; seules ses dernières convolutions 1×1 par niveau (classes K, objectivité, boîte) sont ré-apprises (`pnex_vision::train`) : caractéristiques extraites par tract (image + miroir horizontal), affectation SimOTA allégée (dans la boîte et à 2,5 pas du centre, k dynamique par l'IoU des boîtes pré-entraînées), Adam sur BCE (objectivité pondérée pour les négatifs échantillonnés, classes) + L1 (boîte), puis réécriture des initialiseurs dans l'ONNX (K classes, cible du `Reshape`, sortie ; indices de forme intermédiaires retirés). L'ONNX obtenu passe la vérification D100 et entre dans **Modèles** (média `kind=model` + `ml_models`, libellés = classes du projet), mAP@0,5 mesurée en validation avec le `Detector` de production. Exécution **dans le process API**, une à la fois par pod, file d'attente par sémaphore, vivacité par battement (10 s ; > 60 s = `lab-train-interrupted`), annulation par la ligne. `POST /api/v1/lab/versions/{id}/train {base_model_id, epochs ≤ 300}`, `GET /api/v1/lab/projects/{id}/runs`, `POST /api/v1/lab/runs/{id}/cancel` ; table `lab_training_runs` (migration `000016`). Limite assumée : moins précis qu'un entraînement complet pour des objets très éloignés de COCO ; l'entraînement complet (Burn) n'est pas planifié. | 2026-10-13 |
+| **D205** | **Boucle d'amélioration du Lab (M4)**. (1) **File « à revoir »** (active learning) : `vision_detect` gagne `review_project` (projet du Lab, vide = désactivé), une **bande de doute** `review_min`–`review_max` (0,25–0,6) et `review_every_secs` (60 s, 5–3600) ; une image dont un score candidat tombe dans la bande part **par référence** (`frame_key`) vers `/internal/flow/lab-review` (URL dérivée de `PNEX_FLOW_MODEL_URL`, jeton + fencing D106, envoi non bloquant). Le backend relit l'image sur le bus (clé préfixée par l'org), l'ajoute au projet avec `review = true` et les **propositions** du modèle (normalisées, classe reprise par nom, D201), source `review-<caméra>-<jour>` ; ≤ 500 images en attente par projet (429 `lab-review-full`). Une image sort de la file dès qu'elle a des boîtes ou est marquée sans objet. UI : point violet, filtre « Seulement les images à revoir », propositions affichées à l'ouverture. (2) **Propagation par suivi** : `POST /api/v1/lab/images/{id}/propagate {model_id, min_score}` = pré-annotation D201 sur l'image, puis chaque boîte de l'image annotée précédente de la source donne sa classe à la proposition qui la recouvre le plus (IoU ≥ 0,3, meilleurs couples d'abord), le reste est écarté ; sert quand le modèle ignore les noms de classes du projet. (3) **Guidage de diversité** : avertissements `lab-warn-class-sources` (< 3 sources), `lab-warn-class-same-size` (aire max/min < 4 sur ≥ 10 boîtes), `lab-warn-class-same-place` (centres tous à < 0,1 de leur moyenne), `lab-warn-light-uniform` (écart de luminance moyenne < 50 sur ≥ 10 images ; luminance mesurée à l'import, colonne `luma`). Migrations `000017`, `000018`. | 2026-10-13 |
+| **D206** | **Fichier de la médiathèque comme source de flux** (M0, §4.1) : nouveau type `media_asset` de `media_streams`, URL `media:<id d'asset>` (schéma `media`, aucun réseau, hors politique R8). À l'enregistrement : asset de l'org, version courante lisible par le décodeur (MP4/MOV, MP3, AAC, OGG, FLAC, WAV), jamais sur un boîtier de capture (`capture_on` refusé). À la capture : l'org est re-vérifiée, le fichier (≤ 512 Mo) est lu depuis le stockage, son `moov` remis en tête (D203), puis passé aux **mêmes décodeurs confinés** que les flux, avec `-re` : il est joué à sa **vitesse naturelle**, comme une source en direct (images sur le bus caméra au `fps` du flux, audio vers la transcription) ; horodatage = heure de relecture. Source **finie** comme `http_file` : le flux se désactive à la fin et sa fin n'est pas un silence. Le bouton Test d'un flux lit le fichier **sans** `-re` (extrait immédiat). | 2026-10-13 |
+| **D207** | **M5 = Pages + nœuds génériques, pas de studio de rapports** (Shan, 2026-10-13). Un rapport est une **page** (pages.md) écrite par un flow et exportée en PDF ; la chaîne type est `inject` (cron) → données (`event_log`, `media_fuse`, métriques) → `llm_text` → `page_write` → `page_pdf` → `pnex_notify` (pièce jointe). Chaque nœud ne fait qu'une chose et sert ailleurs (compte rendu sans IA, PDF d'une procédure, classification LLM sans page). D173 est rouverte **étroitement** : un PDF de page peut sortir de PneX par un export humain ou par un flow déployé par un humain (logique D128), jamais d'envoi décidé par l'assistant. | 2026-10-13 |
+| **D208** | **`llm_text`** : nœud générique, gabarit de consigne + données entrantes passées au LLM de l'org (D119) comme **données délimitées**, jamais comme instructions, aucun outil ; pas d'option « phrases sourcées » (des phrases sourcées s'obtiennent en amont avec `media_fuse`, dont la sortie peut nourrir `llm_text`) ; plafond quotidien d'appels IA commun (D196) ; sortie `{text, model, took_ms, data_truncated, ai_generated: true}` ; données ≤ 60 000 caractères (tronquées au-delà, signalé), consigne ≤ 4000, réponse 100–20 000 caractères. Route `/internal/flow/ai/text` (jeton + fencing). **Livré** le 2026-10-13. | 2026-10-13 |
+| **D209** | **`page_write` et `page_pdf`** : `page_write` écrit du Markdown dans une page de l'org (nouvelle page depuis un titre à gabarit, ou remplacement d'une section nommée), par le convertisseur serveur existant (`services/pages/seed.rs`), puis crée une **version nommée** ; auteur « flow #id ». `page_pdf` rend une version de page en PDF (en-tête org + titre + version, pied « page N / M » et date, bandeau « généré par IA » si la version contient du texte IA) et le range dans la médiathèque (`kind=document`). Moteur PDF : **krilla** (MIT/Apache, ~24 crates, polices sous-ensemblées, mise en forme du texte) + mise en page PneX (titres, paragraphes, listes, tableaux, images) ; **Typst écarté** (128 crates dont `yaml-rust` non maintenu et un interpréteur WASM inutile). Police : **DejaVu Sans** (licence Bitstream Vera, permissive ; DejaVu au domaine public), notice jointe, pas d'OFL. Le même rendu sert le bouton « Exporter en PDF » de Pages (lot L7). **`page_write` livré** le 2026-10-13 : route `/internal/flow/page-write` (jeton + fencing, page cherchée dans l'org), ajout validé comme une édition (schéma, tailles) et relayé en direct aux éditeurs ouverts, convertisseur Markdown enrichi (gras, italique, code, liens sûrs, citations, filets, blocs de code, titres 1–6 ; tableau → paragraphes), versions `doc_versions.ai_generated / flow_id / approved_by / approved_at` (migration `000019`), `POST /api/v1/docs/{id}/versions/{n}/approve` (éditeurs, idempotent) et badges dans Pages. **`page_pdf` livré** le 2026-10-13 : crate `pnex-pdf` (krilla 0.8 sans ses features par défaut ; mise en forme du texte par **harfrust 0.14**, rustybuzz/ttf-parser étant signalés non maintenus — RUSTSEC-2026-0206/0192), A4 en deux passes (numérotation « Page n / m »), titres, paragraphes, listes, citations, filets, code ; **tableaux et images non rendus** (le schéma des pages n'a pas de tableau ; images = lot ultérieur). Bouton **PDF** par version dans Pages (`GET /api/v1/docs/{id}/versions/{n}/pdf?lang=fr|en`). Nœud `page_pdf` : source « version du message » ou « dernière version envoyable, une fois » (table `doc_version_exports`, migration `000020`, unicité par nœud) ; sortie 0 prêt / sortie 1 à approuver. **Pièce jointe de `pnex_notify` livrée** : champ `attach_field` (chemin de l'id média), seul SMTP joint le fichier (`multipart/mixed`), fichier illisible = envoi en échec ; le runtime lit le PDF par `/internal/flow/media/{id}` (jeton + fencing), qui ne sert **que** les exports `page_pdf` de l'org. | 2026-10-13 |
+| **D210** | **Sortie d'un rapport IA : versions approuvées par défaut**. `page_pdf` et la pièce jointe de `pnex_notify` ont un mode : **« versions approuvées seulement »** (défaut : le flow crée la page et prévient un humain ; l'envoi n'a lieu qu'une fois la version approuvée dans Pages) ou **« automatique »** (envoi immédiat, bandeau « généré par IA, non relu » dans le PDF et le courriel). Raison : texte non fiable (transcriptions, légendes) → risque d'injection dans un document qui quitte PneX. **Livré** le 2026-10-13 : la porte est tenue par `page_pdf` (case « Approbation requise pour le texte IA », cochée par défaut) ; `pnex_notify` joint ce que `page_pdf` a laissé passer, il ne décide rien. Le PDF porte « relu et approuvé par X le … » ou « non relu ». | 2026-10-13 |
+
+### État des lots
+
+- **M1** (2026-10-12, branche `feat/media-vision-studio`) : `vision_track` et
+  `vision_zone` livrés (core + runtime + éditeur + NodeDoc + fiche KB
+  `cameras.md` + i18n), tests unitaires (suivi, zones, validation) et test
+  moteur réel (`pnex-flow-runtime/tests/vision_zone.rs`). Reste : essai sur
+  caméra réelle (ESP32-CAM) et éventuel calque de zones sur les
+  enregistrements de `/cameras`.
+- **M3** (2026-10-13, même branche) : `vision_caption` et `media_fuse`
+  livrés (D194–D196) : contrat `pnex-core::vision_ai`, routes internes
+  `/internal/flow/ai/{caption,fuse}`, image dans l'abstraction fournisseur,
+  `pnex_vision::prepare_jpeg`, formulaires, NodeDoc, fiche KB `cameras.md`.
+  Tests : unitaires, moteur réel contre un backend simulé
+  (`tests/vision_ai.rs`), routes (401 / 404 / 409). Reste : essai avec un
+  vrai fournisseur (Claude ou VLM local) et une vraie caméra.
+- **M3bis** (2026-10-13, même branche) : `text_decide` (D197) livré —
+  crate `pnex-decide` (port de la mise en séquence + tract), test de
+  parité `--ignored` contre la référence ONNX Runtime (anglais et
+  multilingue), service backend, nœud, formulaire de questions, NodeDoc,
+  fiche KB, `task laya:bundle`. Reste : POC calibration / fine-tuning sur
+  ~200 fenêtres réelles (Q14), mesure sur Pi 5 (Q13).
+- **M2a** (2026-10-13, même branche) : Vision Lab données (D198–D200) —
+  migration `000014_vision_lab`, service + contrôleur `/api/v1/lab`, pages
+  `/lab` et `/lab/:id`, fiche KB `lab.md`, 11 codes d'erreur. Tests :
+  backend (cycle complet + isolation org + lecteur 403), e2e `lab` et
+  `vision-studio` (en + fr) contre un serveur de la branche. **M2b
+  (entraînement) reporté**, voir D200. Pré-annotation (D201) vérifiée
+  avec YOLOX-nano réel sur `dog.jpg` (chien, vélo, voiture reconnus et
+  mappés, « chat 38 % » laissé en proposition grise). Import de trames
+  d'enregistrement (D202) testé (segments AVI réels, trou d'enregistrement,
+  bornes). Vidéos + interpolation (D203) : test réel du décodeur confiné sur un MP4
+  H.264 au `moov` final (crate `pnex-media-capture`, `tests/video_file.rs`)
+  et parcours backend complet (import, refus d'une image, interpolation
+  avant / après annotation, image fixe refusée). Reste : vérification
+  navigateur des deux nouveaux boutons et propagation par suivi (M4).
+- **M2b** (2026-10-13, même branche) : entraînement sans Python (D204).
+  Tests : `pnex-vision` (apprentissage réel d'une classe synthétique sur
+  YOLOX-nano, mAP@0,5 = 1,0 en validation, 3,9 s en release), backend
+  (parcours complet jusqu'au modèle enregistré, 409 si un entraînement est
+  déjà en cours, lecteur 403). Reste : vérification navigateur du panneau,
+  essai sur un vrai jeu de données.
+- **M4** (2026-10-13, même branche) : D205 — file « à revoir »,
+  propagation par suivi, guidage de diversité. Tests : cœur (bande de
+  doute, propagation, avertissements), backend (file via la route interne
+  avec Valkey réel : 401 sans jeton, 404 clé d'une autre org, classe
+  reprise, sortie de file à l'annotation ; propagation sans image
+  précédente → 422 ; lecteur 403). Reste : vérification navigateur.
+- **INT8** (évalué le 2026-10-13, **non livré**) : tract exécute les
+  opérateurs quantifiés ONNX (`QuantizeLinear`, `DequantizeLinear`,
+  `QLinearConv`, `ConvInteger`). Une quantification des **poids seuls**
+  réduirait le fichier par 4 mais tract la replie en float32 à
+  l'optimisation (aucun gain de vitesse) ; un vrai gain demande une
+  quantification **statique** avec calibration des activations
+  (`QLinearConv`), projet à part, à ne lancer qu'après la mesure sur Pi 5
+  (Q13) : YOLOX-nano à 1 image/s tient déjà sur CPU.
+- **M0 terminé** (2026-10-13) : D206 — fichier de la médiathèque comme
+  source de flux. Test backend avec un vrai MP4 (H.264 + AAC) : refus
+  d'une image et d'un boîtier, extrait de test décodé.
+

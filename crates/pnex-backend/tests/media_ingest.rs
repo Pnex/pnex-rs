@@ -677,3 +677,87 @@ async fn camera_stream_source_needs_a_video_stream_of_the_org() {
     })
     .await;
 }
+
+/// A library file as a stream source (`media_asset`): only a playable file
+/// of the org, never on a capture box; the test extract decodes its audio
+/// (no realtime pacing for a test). Needs `ffmpeg` on PATH.
+#[tokio::test]
+#[serial]
+async fn library_file_as_a_stream_source() {
+    if std::process::Command::new("ffmpeg")
+        .arg("-version")
+        .output()
+        .is_err()
+    {
+        eprintln!("ffmpeg missing: skipped");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("pnex-stream-file-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let clip = dir.join("clip.mp4");
+    assert!(std::process::Command::new("ffmpeg")
+        .args(["-y", "-loglevel", "error", "-f", "lavfi", "-i"])
+        .arg("testsrc=duration=6:size=320x240:rate=10")
+        .args(["-f", "lavfi", "-i", "sine=frequency=440:duration=6"])
+        .args(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-f", "mp4"])
+        .arg(&clip)
+        .status()
+        .unwrap()
+        .success());
+    let mp4 = std::fs::read(&clip).unwrap();
+    unsafe { std::env::set_var("PNEX_MEDIA_BACKEND", "fs") };
+    unsafe { std::env::set_var("PNEX_MEDIA_DIR", dir.join("store").display().to_string()) };
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let a = &env.alice;
+        let upload = |name: &'static str, ct: &'static str, bytes: Vec<u8>| {
+            let server = &server;
+            async move {
+                let res = server
+                    .post(&format!("/api/v1/media?name={name}&filename={name}&content_type={ct}"))
+                    .add_header("Authorization", format!("Bearer {a}"))
+                    .add_header("X-Org-Id", org.to_string())
+                    .add_header("Content-Type", "application/octet-stream")
+                    .bytes(bytes.into())
+                    .await;
+                assert_eq!(res.status_code(), 201, "{}", res.text());
+                res.json::<Value>()["id"].as_str().unwrap().to_string()
+            }
+        };
+        let video = upload("clip.mp4", "video%2Fmp4", mp4).await;
+        let png = base64::Engine::decode(&base64::engine::general_purpose::STANDARD,
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
+            .unwrap();
+        let still = upload("still.png", "image%2Fpng", png).await;
+        let body = |url: String, extra: Value| {
+            let mut b = json!({"name": "Replay", "kind": "media_asset", "url": url, "tracks": "audio+video"});
+            if let (Some(o), Some(e)) = (b.as_object_mut(), extra.as_object()) {
+                o.extend(e.clone());
+            }
+            b
+        };
+        let (s, e) = call(&server, "POST", "/api/v1/media/streams", a, org, Some(body(format!("media:{still}"), json!({})))).await;
+        assert_eq!(s, 400, "{e}");
+        assert_eq!(e["url"], "invalid");
+        let (s, e) = call(
+            &server,
+            "POST",
+            "/api/v1/media/streams",
+            a,
+            org,
+            Some(body(format!("media:{video}"), json!({"capture_on": "device:1"}))),
+        )
+        .await;
+        assert_eq!(s, 400, "{e}");
+        let (s, created) = call(&server, "POST", "/api/v1/media/streams", a, org, Some(body(format!("media:{video}"), json!({})))).await;
+        assert_eq!(s, 201, "{created}");
+        assert_eq!(created["kind"], "media_asset");
+        let id = created["id"].as_str().unwrap();
+        let (s, tested) = call(&server, "POST", &format!("/api/v1/media/streams/{id}/test"), a, org, None).await;
+        assert_eq!(s, 200, "{tested}");
+        assert!(tested["capture_error"].is_null(), "{tested}");
+        assert!(tested["audio_ms"].as_u64().unwrap() > 3000, "{tested}");
+    })
+    .await;
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -9,6 +9,7 @@ pub mod prelude;
 // Pages (pages.md #21)
 pub mod doc_comments;
 pub mod doc_updates;
+pub mod doc_version_exports;
 pub mod doc_versions;
 pub mod docs;
 
@@ -47,6 +48,10 @@ pub mod formula_data_sources;
 pub mod formulas;
 pub mod function_versions;
 pub mod functions;
+pub mod lab_dataset_versions;
+pub mod lab_images;
+pub mod lab_projects;
+pub mod lab_training_runs;
 pub mod link_types;
 pub mod map_pins;
 pub mod mcu_boards;

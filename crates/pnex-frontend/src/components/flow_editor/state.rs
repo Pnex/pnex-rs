@@ -32,6 +32,14 @@ pub enum PaletteKind {
     CameraSource,
     VideoRecord,
     VisionDetect,
+    VisionTrack,
+    VisionZone,
+    VisionCaption,
+    MediaFuse,
+    LlmText,
+    PageWrite,
+    PagePdf,
+    TextDecide,
     EventLog,
     MemoryWrite,
     MemoryRead,
@@ -184,7 +192,45 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
                     emit: pnex_core::vision::VisionEmit::OnDetection,
                     max_fps: 1.0,
                     record_layer: true,
+                    review_project: String::new(),
+                    review_min: pnex_core::vision::default_review_min(),
+                    review_max: pnex_core::vision::default_review_max(),
+                    review_every_secs: pnex_core::vision::default_review_every(),
                 },
+            },
+            // Usable as dropped: tuned for 1 fps detection.
+            PaletteKind::VisionTrack => FlowNodeKind::VisionTrack {
+                config: pnex_core::vision::VisionTrackConfig::default(),
+            },
+            // No zone yet on purpose: the `vision_zone_empty` violation in
+            // the banner sends the user to the zone editor.
+            PaletteKind::VisionZone => FlowNodeKind::VisionZone {
+                config: pnex_core::vision::VisionZoneConfig::default(),
+            },
+            // Usable as dropped: default prompt, one caption per 10 s.
+            PaletteKind::VisionCaption => FlowNodeKind::VisionCaption {
+                config: pnex_core::vision_ai::VisionCaptionConfig::default(),
+            },
+            // Usable as dropped: 30 s windows, language of the transcripts.
+            // Usable as dropped after a page writer; approval required (D210).
+            PaletteKind::PagePdf => FlowNodeKind::PagePdf {
+                config: pnex_core::pages::PagePdfConfig::default(),
+            },
+            // Title left empty on purpose: the violation banner guides.
+            PaletteKind::PageWrite => FlowNodeKind::PageWrite {
+                config: pnex_core::pages::PageWriteConfig::default(),
+            },
+            // Instruction left empty on purpose: the violation banner guides.
+            PaletteKind::LlmText => FlowNodeKind::LlmText {
+                config: pnex_core::vision_ai::LlmTextConfig::default(),
+            },
+            PaletteKind::MediaFuse => FlowNodeKind::MediaFuse {
+                config: pnex_core::vision_ai::MediaFuseConfig::default(),
+            },
+            // No question yet on purpose: the `text_decide_empty` violation in
+            // the banner sends the user to the question editor.
+            PaletteKind::TextDecide => FlowNodeKind::TextDecide {
+                config: pnex_core::decide::TextDecideConfig::default(),
             },
             // Usable as dropped: `ev_events` stream, info level.
             PaletteKind::EventLog => FlowNodeKind::EventLog {

@@ -25,6 +25,7 @@ pub(super) fn VisionDetectForm(
     initial: VisionDetectConfig,
     can_write: bool,
 ) -> Element {
+    let review_initial = initial.clone();
     let models = use_resource(move || async move {
         let page = api::ml_models::list(Some(100), None).await.ok()?;
         crate::state::vision::remember(&page.results);
@@ -32,7 +33,7 @@ pub(super) fn VisionDetectForm(
     });
     let mut model_id = use_signal(move || initial.model_id.clone());
     let mut labels = use_signal(move || initial.labels.clone());
-    let mut score_raw = use_signal(move || v_to_string(f64::from(initial.min_score)));
+    let mut score_raw = use_signal(move || initial.min_score.to_string());
     let mut score_invalid = use_signal(|| false);
     let mut fps_raw = use_signal(move || v_to_string(initial.max_fps));
     let mut fps_invalid = use_signal(|| false);
@@ -251,6 +252,153 @@ pub(super) fn VisionDetectForm(
                         {t!("flows-vision-record-layer-hint")}
                     }
                 }
+            }
+            ReviewSection { cx, initial: review_initial, can_write }
+        }
+    }
+}
+
+/// Which field of the doubt settings an input edits.
+#[derive(Clone, Copy, PartialEq)]
+enum ReviewField {
+    Min,
+    Max,
+    Every,
+}
+
+impl ReviewField {
+    fn apply(self, c: &mut VisionDetectConfig, v: f64) {
+        match self {
+            Self::Min => c.review_min = v as f32,
+            Self::Max => c.review_max = v as f32,
+            Self::Every => c.review_every_secs = v,
+        }
+    }
+}
+
+/// Active learning (M4): the Vision Lab project that receives the frames
+/// where the model hesitated, the doubt band and the rate.
+#[component]
+fn ReviewSection(mut cx: EditorCx, initial: VisionDetectConfig, can_write: bool) -> Element {
+    let projects = use_resource(|| async { api::lab::projects().await.unwrap_or_default() });
+    let mut project = use_signal({
+        let p = initial.review_project.clone();
+        move || p
+    });
+    let list = projects.read().clone().unwrap_or_default();
+    let on = !project().is_empty();
+    rsx! {
+        div { class: "space-y-2 border-t border-gray-100 pt-3",
+            span { class: FIELD_LABEL, {t!("flows-vision-review")} }
+            p { class: "text-xs text-gray-500", {t!("flows-vision-review-hint")} }
+            select {
+                class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
+                disabled: !can_write,
+                onchange: move |event| {
+                    let id = event.value();
+                    project.set(id.clone());
+                    patch_selected(
+                        &mut cx,
+                        move |node: &mut FlowNode| {
+                            if let FlowNodeKind::VisionDetect { config } = &mut node.kind {
+                                config.review_project = id;
+                            }
+                        },
+                    );
+                },
+                option { value: "", selected: !on, {t!("flows-vision-review-off")} }
+                for p in list {
+                    option {
+                        key: "{p.id}",
+                        value: "{p.id}",
+                        selected: p.id == project(),
+                        "{p.name}"
+                    }
+                }
+            }
+            if on {
+                div { class: "grid grid-cols-3 gap-2",
+                    ReviewInput {
+                        cx,
+                        base: initial.clone(),
+                        field: ReviewField::Min,
+                        initial: f64::from(initial.review_min),
+                        can_write,
+                    }
+                    ReviewInput {
+                        cx,
+                        base: initial.clone(),
+                        field: ReviewField::Max,
+                        initial: f64::from(initial.review_max),
+                        can_write,
+                    }
+                    ReviewInput {
+                        cx,
+                        base: initial.clone(),
+                        field: ReviewField::Every,
+                        initial: initial.review_every_secs,
+                        can_write,
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ReviewInput(
+    mut cx: EditorCx,
+    base: VisionDetectConfig,
+    field: ReviewField,
+    initial: f64,
+    can_write: bool,
+) -> Element {
+    let mut raw = use_signal(move || v_to_string(initial));
+    let mut invalid = use_signal(|| false);
+    let label = match field {
+        ReviewField::Min => t!("flows-vision-review-min"),
+        ReviewField::Max => t!("flows-vision-review-max"),
+        ReviewField::Every => t!("flows-vision-review-every"),
+    };
+    let class = if invalid() {
+        "w-full px-2 py-1.5 border border-red-400 bg-red-50 rounded-lg text-sm"
+    } else {
+        "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
+    };
+    rsx! {
+        label { class: "block",
+            span { class: "text-xs text-gray-600", {label} }
+            input {
+                class,
+                r#type: "number",
+                step: if field == ReviewField::Every { "5" } else { "0.05" },
+                value: "{raw}",
+                disabled: !can_write,
+                oninput: move |event| {
+                    let next = event.value();
+                    raw.set(next.clone());
+                    // Checked on the base config with only this field changed.
+                    let mut probe = base.clone();
+                    if probe.review_project.is_empty() {
+                        probe.review_project = "00000000-0000-0000-0000-000000000000".into();
+                    }
+                    let ok = parse_secs(&next)
+                        .filter(|v| {
+                            field.apply(&mut probe, *v);
+                            probe.check().is_none_or(|(code, _)| !code.starts_with("vision_review"))
+                        });
+                    invalid.set(ok.is_none());
+                    if let Some(v) = ok {
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::VisionDetect { config } = &mut node.kind {
+                                    field.apply(config, v);
+                                }
+                            },
+                        );
+                    }
+                },
             }
         }
     }

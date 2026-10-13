@@ -724,6 +724,29 @@ tasks:
     cmds:
       - cargo deny check advisories sources
 
+  laya:bundle:
+    desc: Build the Laya multilingual decision bundle for the text-decide node (D197) — OUT=dir (default data/decide/laya-ml); offline tooling (uv + torch CPU), PneX itself never runs Python
+    vars:
+      OUT: '{{.OUT | default "data/decide/laya-ml"}}'
+      # Pinned checkpoint revision (Q15: never follow main).
+      REV: 7b928d828b7b0e022f929d9bd2e44165aa270148
+      WORK: '{{.WORK | default "/tmp/pnex-laya-export"}}'
+    cmds:
+      - mkdir -p {{.WORK}}/ckpt/encoder {{.WORK}}/ckpt/tokenizer {{.OUT}}
+      - |
+        set -eu
+        base=https://huggingface.co/convaiinnovations/laya/resolve/{{.REV}}
+        for f in rl_common.py multilingual/encoder/config.json multilingual/rl_agent_config.json \
+                 multilingual/tokenizer/tokenizer.json multilingual/tokenizer/tokenizer_config.json \
+                 multilingual/model.safetensors; do
+          curl -sfL -o "{{.WORK}}/ckpt/${f#multilingual/}" "$base/$f"
+        done
+      - uv venv -q -p 3.12 {{.WORK}}/venv
+      - uv pip install -q -p {{.WORK}}/venv/bin/python --index-url https://download.pytorch.org/whl/cpu torch
+      - uv pip install -q -p {{.WORK}}/venv/bin/python transformers safetensors onnx onnxscript onnxruntime numpy
+      - scripts/guarded.sh {{.WORK}}/venv/bin/python -I scripts/laya/export_onnx.py {{.WORK}}/ckpt {{.OUT}}
+      - echo "bundle ready in {{.OUT}} — set PNEX_DECIDE_MODEL_DIR to its absolute path"
+
   # ---------- Local disk cleanup (dev only) ----------
 
   tools:sweep:

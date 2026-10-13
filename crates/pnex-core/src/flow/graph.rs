@@ -120,6 +120,48 @@ pub enum FlowNodeKind {
     VisionDetect {
         config: crate::vision::VisionDetectConfig,
     },
+    /// Typed questions about a text → calibrated probabilities (Laya, D197).
+    TextDecide {
+        #[serde(default)]
+        config: crate::decide::TextDecideConfig,
+    },
+    /// Frame or detection → caption by the org vision-language model (D195).
+    VisionCaption {
+        #[serde(default)]
+        config: crate::vision_ai::VisionCaptionConfig,
+    },
+    /// Window of transcripts, events and captions → sourced description by
+    /// the org LLM (D196).
+    MediaFuse {
+        #[serde(default)]
+        config: crate::vision_ai::MediaFuseConfig,
+    },
+    /// A page version → PDF in the media library; AI versions wait for a
+    /// person's approval (D209, D210). Port 0 ready, port 1 approval needed.
+    PagePdf {
+        #[serde(default)]
+        config: crate::pages::PagePdfConfig,
+    },
+    /// Markdown of the message → a page of the org + named version (D209).
+    PageWrite {
+        #[serde(default)]
+        config: crate::pages::PageWriteConfig,
+    },
+    /// Instruction + incoming data → text of the org's LLM (D208).
+    LlmText {
+        #[serde(default)]
+        config: crate::vision_ai::LlmTextConfig,
+    },
+    /// Per-source object tracking over detections (D192).
+    VisionTrack {
+        #[serde(default)]
+        config: crate::vision::VisionTrackConfig,
+    },
+    /// Enter / exit events of tracked objects in image zones (D193).
+    VisionZone {
+        #[serde(default)]
+        config: crate::vision::VisionZoneConfig,
+    },
     /// Stores `msg.payload` in the org shared memory (Valkey) under a key,
     /// with a lifetime; passes the message through.
     MemoryWrite {
@@ -277,6 +319,30 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                 }),
                 "vision_detect" => Ok(Self::VisionDetect {
                     config: req_config(config)?,
+                }),
+                "text_decide" => Ok(Self::TextDecide {
+                    config: opt_config(config)?,
+                }),
+                "vision_caption" => Ok(Self::VisionCaption {
+                    config: opt_config(config)?,
+                }),
+                "media_fuse" => Ok(Self::MediaFuse {
+                    config: opt_config(config)?,
+                }),
+                "page_pdf" => Ok(Self::PagePdf {
+                    config: opt_config(config)?,
+                }),
+                "page_write" => Ok(Self::PageWrite {
+                    config: opt_config(config)?,
+                }),
+                "llm_text" => Ok(Self::LlmText {
+                    config: opt_config(config)?,
+                }),
+                "vision_track" => Ok(Self::VisionTrack {
+                    config: opt_config(config)?,
+                }),
+                "vision_zone" => Ok(Self::VisionZone {
+                    config: opt_config(config)?,
                 }),
                 "memory_write" => Ok(Self::MemoryWrite {
                     config: opt_config(config)?,

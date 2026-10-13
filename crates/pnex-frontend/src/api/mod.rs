@@ -37,6 +37,7 @@ pub mod flows;
 /// Registre « Fonctions » (groupe « Automation ») — fonctions versionnées.
 pub mod functions;
 pub mod geo;
+pub mod lab;
 pub mod media;
 /// Vision model registry (camera-video.md D81).
 pub mod media_streams;

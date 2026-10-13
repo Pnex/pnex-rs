@@ -497,6 +497,7 @@ flow-status-vision-model-loading = Chargement du modèle
 flow-status-vision-model-load-failed = Modèle en erreur
 flow-status-vision-no-frames = Aucune image
 flow-status-vision-running = Actif
+flow-status-ai-call-failed = Échec de l'appel au modèle d'IA
 flow-status-count-analysed = { $analysed } an. / { $emitted } env.
 flow-status-count-frames = { $received } images
 flow-status-stat-received = Images reçues
@@ -584,6 +585,8 @@ flows-palette-device-read-help = Lit les dernières valeurs des pins d'un seul a
 flows-palette-device-write = Appareil (écriture)
 flows-palette-device-write-help = Écrit les sorties d'un seul appareil — payload map pin → valeur (1/0 ou PWM duty 0-100)
 flow-port-device-name = nom
+flow-port-tracks = suivis
+flow-port-track-events = événements
 flow-port-device-all = tout
 flows-palette-calc = Calcul
 flows-palette-calc-help = Expression sur les lectures (variables = clés de payload)
@@ -1452,6 +1455,8 @@ flows-notify-add-channel = Ajouter un canal
 flows-notify-template = Modèle de message
 flows-notify-no-template = — choisir un modèle —
 flows-notify-vars = Valeurs des variables (littéral ou {"{{"} msg.x {"}}"})
+flows-notify-attach = Pièce jointe PDF
+flows-notify-attach-hint = Champ portant l'id média d'un PDF produit par un nœud « PDF d'une page » (ex. asset_id). Seuls les canaux e-mail le joignent ; vide = sans pièce jointe.
 flows-notify-strict = Envoi strict
 flows-notify-strict-hint = Désactivé : un envoi raté est journalisé et le message passe quand même. Activé : l'échec tombe le nœud.
 flows-notify-pick-channel = — choisir un canal —
@@ -2327,6 +2332,7 @@ media-kind-model = Modèle de vision
 media-kind-document = Document
 media-kind-table = Tableau
 media-kind-audio = Audio
+media-kind-video = Vidéo
 media-doc-search-placeholder = Rechercher dans les documents
 media-doc-search-empty = Aucun passage ne correspond à cette recherche
 media-doc-search-page = page { $n }
@@ -2345,10 +2351,75 @@ err-vision-model-missing = Choisissez un modèle de vision
 err-vision-model-unknown = Le modèle de vision choisi n'existe plus
 err-vision-model-invalid = Le modèle de vision { $model } ne fonctionne pas : { $detail } (à corriger dans Modèles)
 err-vision-score-invalid = Le score minimal doit être entre 0 et 1
+err-vision-review-project-invalid = Choisissez un projet du Vision Lab.
+err-vision-review-band-invalid = La bande de doute doit vérifier 0 ≤ min < max ≤ 1.
+err-vision-review-every-invalid = Envoyez au plus une image toutes les 5 à 3600 s.
+err-vision-track-invalid = Réglages de suivi hors limites : score 0 à 1, recouvrement au-dessus de 0 jusqu'à 1, 1 à 100 images, perte après 0,1 à 3600 s
+err-vision-zone-empty = Dessinez au moins une zone sur l'image de la caméra
+err-vision-zone-invalid = Zones invalides : noms uniques (1 à 64 caractères), 3 à 32 points dans l'image, 16 zones au plus, présence 0 à 3600 s
+err-vision-caption-invalid = Réglages de description hors limites : question de 500 caractères au plus, intervalle de 1 à 86400 s
+err-media-fuse-invalid = Réglages de synthèse hors limites : fenêtre de 5 à 3600 s, langue en code court (fr, en-US)
+err-text-decide-empty = Ajoutez au moins une question
+err-text-decide-invalid = Questions invalides : identifiants uniques (a-z, 0-9, _), 1 à 8 questions, consigne de 300 caractères au plus, 2 à 20 options uniques
 err-event-message-too-long = Le message de l'événement est limité à 500 caractères
 err-unique = Cette valeur est déjà utilisée
 flows-palette-vision-detect = Détection d'objets
 flows-palette-vision-detect-help = Détecte des objets (personnes, véhicules, animaux…) dans les images d'une caméra avec un modèle enregistré
+flows-palette-vision-track = Suivi d'objets
+flows-palette-vision-track-help = Suit les objets détectés d'une image à l'autre (identifiant stable, événements apparition / disparition)
+flows-palette-vision-zone = Zones d'image
+flows-palette-vision-zone-help = Zones dessinées sur l'image de la caméra : événements entrée / sortie et nombre d'objets présents
+flows-palette-vision-caption = Description d'image
+flows-palette-vision-caption-help = Décrit en mots les images d'une caméra avec le modèle d'IA de votre organisation (indicatif)
+flows-palette-media-fuse = Description vidéo
+flows-palette-media-fuse-help = À chaque fenêtre, rédige une courte description sourcée de ce qui a été dit, détecté et vu
+flows-palette-llm-text = Texte IA
+flows-palette-llm-text-help = Le LLM de l'organisation écrit un texte (rapport, synthèse, classement) à partir d'une consigne et des données reçues
+flows-palette-page-write = Écrire une page
+flows-palette-page-write-help = Écrit le Markdown du message dans une page (Pages) et fige une version nommée : un rapport par exécution, ou un journal complété
+flows-palette-page-pdf = PDF d'une page
+flows-palette-page-pdf-help = Rend une version de page en PDF (A4, numéros de page) rangé dans la médiathèque, prêt à être envoyé
+flows-pdf-help = Sortie 1 : le PDF est prêt (identifiant du fichier dans la médiathèque). Sortie 2 : une version qui contient du texte IA attend qu'une personne l'approuve dans Pages : branchez-y une notification « rapport à relire ».
+flows-pdf-source = Version
+flows-pdf-source-message = Celle du message (après « Écrire une page »)
+flows-pdf-source-latest = La dernière version envoyable d'une page, une seule fois
+flows-pdf-approval = Approbation obligatoire pour le texte IA
+flows-pdf-approval-hint = Une version IA ne devient un PDF qu'après approbation dans Pages.
+flows-pdf-no-approval-warning = Sans approbation, un rapport IA peut partir sans relecture : le PDF portera « non relu ». Le texte des transcriptions et des légendes n'est pas fiable.
+flows-pdf-language = Langue du PDF
+flows-pdf-language-en = Anglais
+flows-pdf-language-fr = Français
+flow-port-pdf-ready = PDF prêt
+flow-port-pdf-approval = À approuver
+flow-status-page-pdf-failed = PDF refusé
+err-page-pdf-page-missing = Choisissez la page.
+err-page-pdf-options-invalid = Langue en code court (fr, en).
+flows-page-help = Le texte du message (par exemple la sortie de Texte IA) devient une page de l'organisation, puis une version nommée est figée.
+flows-page-mode = Mode
+flows-page-mode-new = Une nouvelle page à chaque message
+flows-page-mode-append = Ajouter à la fin d'une page
+flows-page-target = Page complétée
+flows-page-title = Titre des nouvelles pages
+flows-page-title-placeholder = Rapport hebdomadaire {"{"}week{"}"}
+flows-page-text-field = Texte (chemin dans le message)
+flows-page-version-label = Nom de la version
+flows-page-placeholders = Dans le titre et le nom de version, {"{"}date{"}"}, {"{"}time{"}"} et {"{"}week{"}"} sont remplacés (UTC).
+flows-page-review = Une version qui contient du texte IA est marquée comme telle : une personne doit l'approuver dans Pages avant qu'un rapport IA quitte l'organisation.
+flow-status-page-write-failed = Écriture de la page refusée
+flows-llm-help = Une consigne et les données du message deviennent un texte du LLM de l'organisation (Markdown). Typique : déclencheur cron → données de la semaine → Texte IA → Écrire une page.
+flows-llm-prompt = Consigne
+flows-llm-prompt-placeholder = Rédige le rapport hebdomadaire de ces événements : ce qui s'est passé, quand, ce qui sort de l'ordinaire.
+flows-llm-data-field = Données (chemin dans le message)
+flows-llm-data-field-hint = Vide = tout le contenu du message. Exemple : events
+flows-llm-max-chars = Longueur maximale (caractères)
+flows-llm-trust = Les données sont transmises comme des données : les instructions qu'elles contiennent sont ignorées. Chaque appel compte dans le quota IA quotidien de l'organisation.
+err-llm-text-prompt-invalid = Écrivez une consigne de 1 à 4000 caractères.
+err-llm-text-options-invalid = Langue en code court, réponse de 100 à 20000 caractères, chemin de données en lettres, chiffres, _ - .
+err-page-write-title-invalid = Écrivez un titre de 1 à 255 caractères.
+err-page-write-page-missing = Choisissez la page à compléter.
+err-page-write-options-invalid = Chemin du texte en lettres, chiffres, _ - . et nom de version de 1 à 255 caractères.
+flows-palette-text-decide = Décision sur texte
+flows-palette-text-decide-help = Répond à des questions typées sur un texte avec des probabilités (modèle local, aucun texte généré)
 flows-palette-event-log = Journal d'événements
 flows-palette-event-log-help = Stocke le payload du message comme événement JSON consultable (page Événements)
 flows-palette-memory-write = Écriture mémoire
@@ -2386,6 +2457,71 @@ flows-vision-emit-always = Pour chaque image analysée
 flows-vision-max-fps-hint = Images analysées par seconde (1 par défaut, 0 = toutes)
 flows-vision-record-layer = Enregistrer les détections comme calque de la caméra
 flows-vision-record-layer-hint = Stocke seulement les cadres (OpenObserve, aucune image) : cochez le calque dans Caméras › Enregistrements pour les superposer à la vidéo.
+flows-vision-review = Images douteuses vers le Vision Lab
+flows-vision-review-hint = Quand le modèle hésite (un score dans la bande ci-dessous), l'image part dans la file « à revoir » du projet choisi, avec ses propositions. Annotez-les puis réentraînez : c'est la boucle d'amélioration.
+flows-vision-review-off = Désactivé
+flows-vision-review-min = Score min
+flows-vision-review-max = Score max
+flows-vision-review-every = Au plus toutes les (s)
+flows-track-help = Suit les objets d'un nœud Détection d'objets : chacun garde le même track_id tant qu'il reste visible. Sortie 1 = suivis en cours (vers Zones d'image), sortie 2 = événements apparition / disparition (vers Journal d'événements).
+flows-track-high-score = Score pour ouvrir un suivi
+flows-track-high-score-hint = Les détections plus faibles ne font que prolonger un suivi existant (réglez le score minimal de la détection en dessous)
+flows-track-min-iou = Recouvrement minimal (IoU)
+flows-track-min-iou-hint = Recouvrement nécessaire avec le cadre précédent pour rester le même objet (à baisser à faible fps)
+flows-track-min-hits = Images avant apparition
+flows-track-min-hits-hint = Une détection vue sur moins d'images consécutives est traitée comme du bruit
+flows-track-lost-after = Perdu après (s)
+flows-track-lost-after-hint = Un objet invisible pendant cette durée disparaît (3 s ou plus à 1 fps)
+flows-zone-help = À brancher sur la sortie 1 de Suivi d'objets. Chaque objet qui entre dans une zone ou en sort émet un événement avec l'occupation de la zone ; les zones s'appliquent à toutes les caméras qui arrivent au nœud.
+flows-zone-preview = Caméra affichée sous les zones
+flows-zone-preview-none = Aucune (image vide)
+flows-zone-draw-hint = Cliquez sur l'image pour placer les points d'une zone (3 à { $max }), puis fermez-la.
+flows-zone-close = Fermer la zone
+flows-zone-undo = Annuler le point
+flows-zone-name = Nom de la zone
+flows-zone-none = Aucune zone : dessinez-en une sur l'image.
+flows-zone-points = { $count ->
+    [one] { $count } point
+   *[other] { $count } points
+}
+flows-zone-delete = Supprimer
+flows-zone-labels = Classes comptées
+flows-zone-labels-hint = Séparées par des virgules, vide = toutes les classes
+flows-zone-anchor = Point testé
+flows-zone-anchor-bottom = Bas du cadre (pieds, roues)
+flows-zone-anchor-center = Centre du cadre
+flows-zone-min-dwell = Présence minimale (s)
+flows-zone-min-dwell-hint = Temps dans la zone avant l'événement d'entrée (0 = immédiat)
+flows-caption-help = À brancher sur Source caméra, Détection d'objets ou Suivi d'objets. Chaque description est un appel au modèle d'IA de votre organisation (Organisations → détail de l'organisation → Fournisseurs LLM ; celui par défaut doit accepter les images).
+flows-caption-privacy = L'image est envoyée au fournisseur d'IA de votre organisation : utilisez un modèle local si les images doivent rester sur site.
+flows-caption-prompt = Question sur l'image
+flows-caption-prompt-hint = { $count } / { $max } caractères — vide = une description factuelle des personnes, objets, actions et textes lisibles
+flows-caption-interval = Une description toutes les (s) par caméra
+flows-caption-interval-hint = Chaque description est un appel payant au modèle : 10 s ou plus sur une caméra en direct
+flows-caption-crop = Décrire seulement la meilleure détection
+flows-caption-crop-hint = Recadre l'objet détecté ou suivi le plus sûr (état, couleur, texte lisible) au lieu de l'image entière
+flows-fuse-help = Branchez-y des transcriptions (Source média), des détections, des événements de suivi ou de zone et des descriptions d'image. À chaque fenêtre, le modèle d'IA de votre organisation rédige une courte description ; chaque phrase cite les entrées sur lesquelles elle repose.
+flows-fuse-window = Fenêtre (s)
+flows-fuse-window-hint = Tout ce qui arrive pendant une fenêtre est décrit ensemble (30 s par défaut)
+flows-fuse-language = Langue de la description
+flows-fuse-language-auto = Celle des transcriptions
+flows-fuse-trust = Les détections valent des faits, la parole est fiable, les descriptions d'image sont seulement indicatives. Une phrase sans source est écartée. La sortie est générée par IA : stockez-la ou affichez-la, n'agissez jamais dessus.
+flows-decide-help = Pose vos questions sur le texte de chaque message (une description, une transcription…) et ajoute la probabilité de chaque réponse dans payload.decisions. Le modèle de décision tourne sur le serveur PneX : rien n'en sort.
+flows-decide-calibration = Sans réglage, le modèle est proche du hasard sur des questions métier et trop sûr de lui : utilisez les probabilités comme un classement et vérifiez-les sur des exemples réels avant d'alerter sur un seuil.
+flows-decide-text-field = Texte à lire (champ du payload)
+flows-decide-none = Aucune question : ajoutez-en une.
+flows-decide-add = Ajouter une question
+flows-decide-remove = Retirer
+flows-decide-id = Identifiant de la question (clé dans payload.decisions)
+flows-decide-kind-choice = Un choix
+flows-decide-kind-score = Niveau
+flows-decide-instructions-placeholder = La question, par ex. Cette fenêtre décrit-elle un incident ?
+flows-decide-options-placeholder = Une option par ligne, par ex.
+    incident: personne en danger ou dégât
+    routine: activité normale
+flows-decide-levels-placeholder = Un niveau par ligne, du plus bas au plus haut
+flows-decide-options-hint = { $count } options (2 à 20) — « libellé: description », le libellé sert au routage du flow
+flows-decide-levels-hint = { $count } niveaux (2 à 20), du plus bas au plus haut
 flows-event-log-help = Écrit le payload du message comme événement JSON, consultable sur la page Événements. Le message passe inchangé.
 flows-event-log-stream = Flux
 flows-event-log-stream-preview = Stocké dans
@@ -3691,6 +3827,9 @@ streams-name = Nom
 streams-kind = Type
 streams-url = URL du flux
 streams-url-help = L'URL ne contient jamais de jeton ni de mot de passe : mettez-les dans le secret ci-dessous, envoyé uniquement à l'hôte de l'URL.
+streams-file = Fichier de la médiathèque
+streams-file-pick = Choisir une vidéo ou un son
+streams-file-help = Le fichier est rejoué une fois, à sa vitesse normale, comme un flux en direct : ses images vont sur le bus caméra (nœuds Source caméra, Détection…) et son audio vers la transcription. Le flux se désactive tout seul à la fin. MP4 / MOV (H.264, H.265, MJPEG) ou audio (MP3, AAC, OGG, FLAC, WAV).
 streams-rtsp-help = Caméra RTSP : transport TCP uniquement, aucune redirection suivie. Mettez « utilisateur:mot de passe » dans le secret.
 streams-tracks = Pistes
 streams-tracks-audio = Audio (transcription)
@@ -4185,6 +4324,12 @@ docs-version-save = Enregistrer
 docs-version-view = Voir
 docs-version-diff = Comparer à la précédente
 docs-version-restore = Restaurer
+docs-version-by-flow = écrite par un flow
+docs-version-ai-review = Contient du texte IA · à relire avant tout envoi
+docs-version-approved = Approuvée par { $by } le { $date }
+docs-version-approve = Approuver
+docs-version-pdf = PDF
+docs-version-pdf-help = Télécharger cette version en PDF (A4, numéros de page)
 docs-version-view-title = Version { $n }
 docs-version-diff-title = Changements de la version { $n }
 docs-version-load-failed = Cette version n'a pas pu être chargée.
@@ -4622,3 +4767,179 @@ cw-board-unsourced = Affirmations sans source
 cw-board-contradicted = Affirmations contredites
 case-add-help = L'objet rejoint les pièces non datées de l'enquête ; vous choisirez son rôle en l'attachant à un événement.
 case-role-source = Source
+
+## Vision Lab (D198–D200)
+err-lab-write-forbidden = Rôle lecteur : les projets du Vision Lab sont en lecture seule.
+err-lab-project-not-found = Projet du Vision Lab introuvable.
+err-lab-image-not-found = Image introuvable dans ce projet.
+err-lab-version-not-found = Version du jeu de données introuvable.
+err-lab-class-in-use = La classe { $class } a encore des boîtes : retirez-les avant de supprimer la classe.
+err-lab-annotations-conflict = Cette image a changé entre-temps : rechargez-la et refaites votre modification.
+err-lab-box-invalid = Une boîte sort de l'image ou désigne une classe inconnue.
+err-lab-boxes-too-many = 200 boîtes au plus par image.
+err-lab-negative-with-boxes = Une image marquée sans objet ne peut pas avoir de boîtes.
+err-lab-asset-not-image = { $name } n'est pas une image lisible (JPEG ou PNG).
+err-lab-dataset-empty = Aucune image annotée : annotez au moins une image avant de figer une version.
+
+## Vision Lab page (D198–D200)
+nav-lab = Vision Lab
+lab-subtitle = Apprenez à PneX à reconnaître vos objets : nommez les classes, entourez-les sur vos images, figez un jeu de données et exportez-le pour l'entraînement.
+lab-new = Nouveau projet
+lab-edit = Modifier le projet
+lab-edit-short = Modifier
+lab-open = Ouvrir
+lab-empty = Aucun projet Vision Lab. Créez-en un pour annoter vos images.
+lab-col-project = Projet
+lab-col-classes = Classes
+lab-col-images = Images annotées
+lab-col-versions = Versions
+lab-images-count = { $annotated } / { $total }
+lab-delete = Supprimer le projet
+lab-delete-confirm = Supprimer le projet { $name } avec ses annotations et ses versions de jeu de données ? Les images restent dans la médiathèque.
+lab-deleted = Projet supprimé
+lab-saved = Projet enregistré
+lab-form-name = Nom
+lab-form-description = Description
+lab-form-classes = Classes (une par ligne)
+lab-form-classes-help = Renommez une classe sur place ou ajoutez-en à la fin. Seules les dernières classes peuvent être retirées, et seulement si aucune boîte ne les utilise.
+lab-add-images = Ajouter des images
+lab-saving = Enregistrement…
+lab-no-class = Ajoutez au moins une classe (Modifier) avant de dessiner des boîtes.
+lab-no-image = Aucune image dans ce projet.
+lab-no-image-help = Déposez des photos dans Médias, puis utilisez Ajouter des images. Variez les situations : angles, distances, lumière.
+lab-strip-empty = Aucune image.
+lab-state-todo = À annoter
+lab-state-negative = Sans objet
+lab-state-boxes = { $count ->
+    [one] { $count } boîte
+   *[other] { $count } boîtes
+}
+lab-class-label = Classe de la prochaine boîte :
+lab-remove-box = Retirer la boîte
+lab-negative = Aucun objet sur cette image
+lab-split = Ensemble :
+lab-split-auto = Automatique ({ $side })
+lab-split-train = Entraînement
+lab-split-val = Validation
+lab-keys-help = Glissez sur l'image pour dessiner une boîte. Touches : 1–9 classe, Suppr retire la boîte choisie, ← → image précédente / suivante, N sans objet.
+lab-stats-title = Jeu de données
+lab-stats-summary = { $annotated ->
+    [one] { $annotated } image annotée
+   *[other] { $annotated } images annotées
+} sur { $total }, { $negatives } sans objet
+lab-stats-split = Entraînement { $train } · validation { $val }
+lab-stats-class = { $images } img · { $boxes ->
+    [one] { $boxes } boîte
+   *[other] { $boxes } boîtes
+}
+lab-warn-class-few = Moins de { $min } images montrent { $class } : ajoutez-en d'autres, variées.
+lab-warn-val-few = Moins de { $min } images de validation : les scores d'un entraînement ne seront pas fiables.
+lab-warn-no-negative = Aucune image sans objet : ajoutez-en quelques-unes, elles réduisent les fausses détections.
+lab-warn-no-class = Aucune classe.
+lab-warn-class-sources = { $class } ne vient que de moins de { $min } sources (imports, vidéos, enregistrements) : ajoutez des images prises ailleurs ou un autre jour.
+lab-warn-class-same-size = { $class } a toujours à peu près la même taille : ajoutez des images où l'objet est plus près et plus loin.
+lab-warn-class-same-place = { $class } est toujours au même endroit de l'image : ajoutez des images où il est ailleurs dans le cadre.
+lab-warn-light-uniform = Toutes les images ont la même luminosité : ajoutez des images plus sombres et plus claires (nuit, contre-jour, éclairage artificiel).
+lab-versions-title = Versions du jeu de données
+lab-versions-help = Une version fige les images annotées et leurs boîtes ; les modifications suivantes ne la changent pas. Téléchargez-la au format COCO pour un entraînement YOLOX.
+lab-version-note = Note (facultative)
+lab-freeze = Figer une version
+lab-frozen = Version du jeu de données figée
+lab-version-label = Version { $n }
+lab-version-detail = { $images ->
+    [one] { $images } image
+   *[other] { $images } images
+}, dont { $val } en validation
+lab-export = Télécharger (COCO)
+lab-images-added = Images ajoutées
+lab-picker-title = Ajouter des images de la médiathèque
+lab-picker-search = Rechercher une image…
+lab-picker-help = Les images ajoutées ensemble forment une source : elles vont toutes à l'entraînement ou toutes à la validation, pour que des prises quasi identiques ne gonflent jamais les scores.
+lab-picker-empty = Aucune photo dans la médiathèque.
+lab-picker-add = { $count ->
+    [one] Ajouter { $count } image
+   *[other] Ajouter { $count } images
+}
+lab-remove-image = Retirer du projet
+lab-image-removed = Image retirée du projet (elle reste dans la médiathèque)
+lab-suggest-label = Pré-annoter avec un modèle :
+lab-suggest-model = Choisir un modèle
+lab-suggest = Proposer des boîtes
+lab-suggest-none = Le modèle n'a rien trouvé sur cette image
+lab-suggest-keep-one = Cliquez pour garder cette boîte
+lab-suggest-keep-all = { $count ->
+    [one] Garder la proposition reconnue
+   *[other] Garder les { $count } propositions reconnues
+}
+lab-suggest-dismiss = Écarter
+lab-suggest-keep-all-help = Garde les propositions dont le libellé est une classe du projet ; cliquez sur une grise pour la garder dans la classe courante
+lab-from-recording = Depuis un enregistrement
+lab-train-title = Entraînement
+lab-train-help = Affine un modèle YOLOX enregistré sur une version figée : seules ses dernières couches sont ré-apprises, sur ce serveur, en quelques minutes. Le modèle obtenu rejoint Modèles, prêt pour un nœud Détection d'objets.
+lab-train-no-base = Aucun modèle YOLOX dans Modèles : enregistrez d'abord un modèle de départ (par exemple YOLOX COCO).
+lab-train-no-version = Aucune version figée : figez d'abord une version du jeu de données (panneau ci-dessus).
+lab-train-version = Version du jeu de données
+lab-train-base = Modèle de départ
+lab-train-epochs = Époques
+lab-train-start = Entraîner
+lab-train-queued = Entraînement lancé.
+lab-run-queued = En attente
+lab-run-running = En cours
+lab-run-succeeded = Terminé
+lab-run-failed = Échec
+lab-run-cancelled = Annulé
+lab-run-features = Lecture des images : { $done } / { $total }
+lab-run-epoch = Époque { $done } / { $total } · perte { $loss }
+lab-run-evaluating = Évaluation sur les images de validation
+lab-run-map = mAP@0,5 en validation : { $value }
+lab-run-open-models = Voir dans Modèles
+lab-from-video = Depuis une vidéo
+lab-video-title = Images d'une vidéo
+lab-video-help = Choisissez une vidéo de la médiathèque (MP4 ou MOV) : une image est prise toutes les N secondes entre le début et la fin indiqués. Toutes les images d'une même vidéo restent du même côté entraînement / validation.
+lab-video-asset = Vidéo
+lab-video-pick = Choisir une vidéo
+lab-video-none = Aucune vidéo dans la médiathèque : ajoutez d'abord un fichier MP4 ou MOV dans Médias › Bibliothèque.
+lab-video-from = Début (s)
+lab-video-to = Fin (s)
+lab-video-invalid = Choisissez une vidéo et un extrait d'au plus { $minutes } minutes donnant au plus { $max } images.
+lab-interpolate = Interpoler
+lab-interpolate-help = Propose les boîtes entre l'image annotée précédente et la suivante de la même vidéo ou du même enregistrement.
+lab-interpolate-none = Aucune boîte à interpoler : les images voisines n'ont pas de classe en commun.
+lab-interpolated = interpolée
+lab-state-review = À revoir (le modèle a hésité)
+lab-review-only = Seulement les images à revoir ({ $count })
+lab-review-all = Toutes les images
+lab-propagate = Propager
+lab-propagate-help = Le modèle choisi propose les boîtes de cette image, et chacune reprend la classe de la boîte la plus proche sur l'image annotée précédente de la même vidéo.
+lab-propagate-none = Aucune proposition du modèle ne recouvre les boîtes de l'image précédente.
+lab-rec-title = Images d'un enregistrement de caméra
+lab-rec-help = Prend une image toutes les N secondes dans ce que la caméra a enregistré (Caméras › Enregistrements) et les ajoute au projet. Un extrait entier compte comme une source : il va tout entier à l'entraînement ou tout entier à la validation.
+lab-rec-camera = Caméra
+lab-rec-camera-none = Choisir une caméra
+lab-rec-day = Jour
+lab-rec-from = De
+lab-rec-to = À
+lab-rec-every = Une image toutes les (s)
+lab-rec-estimate = { $count ->
+    [one] Environ { $count } image (seulement là où quelque chose a été enregistré)
+   *[other] Environ { $count } images (seulement là où quelque chose a été enregistré)
+}
+lab-rec-invalid = Choisissez une plage de { $minutes } minutes au plus donnant { $max } images au plus.
+lab-rec-import = Importer
+lab-rec-done = { $count ->
+    [one] { $count } image ajoutée
+   *[other] { $count } images ajoutées
+}
+err-lab-export-too-large = Cette version du jeu de données est trop grosse pour une seule archive (512 Mo d'images au plus).
+err-lab-video-unsupported = { $name } n'est pas une vidéo lisible (MP4 ou MOV en H.264, H.265 ou MJPEG).
+err-lab-video-too-large = Cette vidéo est trop grosse pour le Vision Lab (512 Mo au plus).
+err-lab-video-decode-failed = La vidéo n'a pas pu être décodée ({ $detail }).
+err-lab-interpolate-no-keyframes = Annotez une image avant et une image après celle-ci dans la même vidéo ou le même enregistrement.
+err-lab-train-busy = Un entraînement de cette organisation est déjà en attente ou en cours.
+err-lab-train-base-invalid = Ce modèle de base ne peut pas être affiné ici (il faut un modèle YOLOX à taille d'entrée fixe).
+err-lab-train-no-data = Aucune boîte dans les images d'entraînement de cette version.
+err-lab-train-interrupted = L'entraînement s'est interrompu (serveur redémarré). Relancez-le.
+err-lab-train-failed = L'entraînement a échoué.
+err-lab-run-not-found = Entraînement introuvable.
+err-lab-review-full = La file « à revoir » de ce projet est pleine (500 images) : annotez ou retirez des images.
+err-lab-propagate-no-previous = Annotez une image avant celle-ci dans la même vidéo ou le même enregistrement.

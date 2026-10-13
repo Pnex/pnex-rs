@@ -99,6 +99,17 @@ pub struct DocVersionSummary {
     /// Display name of the author, if still known.
     pub created_by: Option<String>,
     pub created_at: String,
+    /// Holds AI-generated text (D210).
+    #[serde(default)]
+    pub ai_generated: bool,
+    /// Flow that wrote it (`page_write`, D209).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flow_id: Option<i64>,
+    /// Display name of who approved it, once approved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved_at: Option<String>,
 }
 
 /// `POST /api/v1/docs/{id}/versions`: freezes the current content.
@@ -158,9 +169,257 @@ pub struct PatchDocComment {
     pub resolved: Option<bool>,
 }
 
+/// How a `page_write` node writes (D209).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PageWriteMode {
+    /// A new page per message, titled from the template.
+    #[default]
+    NewPage,
+    /// Appended at the end of one existing page.
+    Append,
+}
+
+/// Config of the `page_write` flow node (media-vision-studio.md D209).
+/// Templates (`title`, `version_label`) accept `{date}`, `{time}`,
+/// `{week}` (UTC at write time).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PageWriteConfig {
+    #[serde(default)]
+    pub mode: PageWriteMode,
+    /// Title of each new page (`new_page`).
+    #[serde(default)]
+    pub title: String,
+    /// The page appended to (`append`).
+    #[serde(default)]
+    pub page_id: String,
+    /// Dotted path of the Markdown inside `msg.payload`.
+    #[serde(default = "default_text_field")]
+    pub text_field: String,
+    /// Label of the named version created after each write.
+    #[serde(default = "default_version_label")]
+    pub version_label: String,
+}
+
+fn default_text_field() -> String {
+    "text".into()
+}
+
+fn default_version_label() -> String {
+    "{date}".into()
+}
+
+impl Default for PageWriteConfig {
+    fn default() -> Self {
+        Self {
+            mode: PageWriteMode::NewPage,
+            title: String::new(),
+            page_id: String::new(),
+            text_field: default_text_field(),
+            version_label: default_version_label(),
+        }
+    }
+}
+
+impl PageWriteConfig {
+    pub fn check(&self) -> Option<(&'static str, String)> {
+        match self.mode {
+            PageWriteMode::NewPage => {
+                let n = self.title.trim().chars().count();
+                if n == 0 || n > MAX_TITLE_CHARS {
+                    return Some((
+                        "page_write_title_invalid",
+                        format!("write a title of 1 to {MAX_TITLE_CHARS} characters"),
+                    ));
+                }
+            }
+            PageWriteMode::Append => {
+                if Uuid::parse_str(self.page_id.trim()).is_err() {
+                    return Some(("page_write_page_missing", "pick a page".into()));
+                }
+            }
+        }
+        let path_ok = !self.text_field.trim().is_empty()
+            && self.text_field.len() <= 128
+            && self
+                .text_field
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'));
+        let label_n = self.version_label.trim().chars().count();
+        if !path_ok || label_n == 0 || label_n > MAX_VERSION_LABEL_CHARS {
+            return Some((
+                "page_write_options_invalid",
+                "text path made of letters, digits, _ - . and a version label of 1 to 255 characters".into(),
+            ));
+        }
+        None
+    }
+}
+
+/// Which version a `page_pdf` node renders (D209).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PagePdfSource {
+    /// `payload.page_id` + `payload.version` (what `page_write` emits).
+    #[default]
+    Message,
+    /// The latest version of `page_id` allowed to leave (approved, or
+    /// without AI text) not yet exported by this node.
+    LatestSendable,
+}
+
+/// Config of the `page_pdf` flow node (D209, D210).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PagePdfConfig {
+    #[serde(default)]
+    pub source: PagePdfSource,
+    /// The page (`latest_sendable`).
+    #[serde(default)]
+    pub page_id: String,
+    /// An AI version waits for a person's approval (D210); off = sent with
+    /// a "not reviewed" notice.
+    #[serde(default = "default_true")]
+    pub require_approval: bool,
+    /// Language of the PDF words (`fr`, else English).
+    #[serde(default)]
+    pub language: String,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for PagePdfConfig {
+    fn default() -> Self {
+        Self {
+            source: PagePdfSource::Message,
+            page_id: String::new(),
+            require_approval: true,
+            language: String::new(),
+        }
+    }
+}
+
+impl PagePdfConfig {
+    pub fn check(&self) -> Option<(&'static str, String)> {
+        if self.source == PagePdfSource::LatestSendable
+            && Uuid::parse_str(self.page_id.trim()).is_err()
+        {
+            return Some(("page_pdf_page_missing", "pick a page".into()));
+        }
+        if self.language.len() > 16
+            || !self
+                .language
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-')
+        {
+            return Some((
+                "page_pdf_options_invalid",
+                "language as a short code (fr, en)".into(),
+            ));
+        }
+        None
+    }
+}
+
+/// `POST /internal/flow/page-pdf` (D209).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PagePdfRequest {
+    pub org_id: i64,
+    pub flow_id: i64,
+    /// Canvas id of the node: with the flow, what "already exported" means.
+    pub node_id: String,
+    pub source: PagePdfSource,
+    pub page_id: String,
+    /// The version (`message` source).
+    #[serde(default)]
+    pub version: Option<i64>,
+    pub require_approval: bool,
+    #[serde(default)]
+    pub language: String,
+}
+
+/// What `page_pdf` got.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PagePdfStatus {
+    /// The PDF is in the media library.
+    Ready,
+    /// An AI version waits for a person's approval in Pages.
+    NeedsApproval,
+    /// `latest_sendable`: nothing new since the last export.
+    NothingNew,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PagePdfResponse {
+    pub status: PagePdfStatus,
+    pub page_id: String,
+    #[serde(default)]
+    pub version: Option<i64>,
+    #[serde(default)]
+    pub title: String,
+    /// Media asset of the PDF (`ready`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asset_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
+}
+
+/// Largest Markdown a flow writes in one message, chars.
+pub const MAX_FLOW_MARKDOWN: usize = 100_000;
+
+/// `POST /internal/flow/page-write` (D209).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PageWriteRequest {
+    pub org_id: i64,
+    pub flow_id: i64,
+    pub mode: PageWriteMode,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub page_id: String,
+    pub markdown: String,
+    pub version_label: String,
+    /// The Markdown holds AI-generated text (`payload.ai_generated`).
+    #[serde(default)]
+    pub ai_generated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PageWriteResponse {
+    pub page_id: String,
+    pub title: String,
+    /// Number of the named version created.
+    pub version: i64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn page_pdf_check() {
+        let mut c = PagePdfConfig::default();
+        assert!(c.require_approval && c.check().is_none());
+        c.source = PagePdfSource::LatestSendable;
+        assert_eq!(c.check().unwrap().0, "page_pdf_page_missing");
+        c.page_id = "00000000-0000-0000-0000-000000000001".into();
+        assert!(c.check().is_none());
+    }
+
+    #[test]
+    fn page_write_check() {
+        let mut c = PageWriteConfig::default();
+        assert_eq!(c.check().unwrap().0, "page_write_title_invalid");
+        c.title = "Weekly report {date}".into();
+        assert!(c.check().is_none());
+        c.mode = PageWriteMode::Append;
+        assert_eq!(c.check().unwrap().0, "page_write_page_missing");
+        c.page_id = "00000000-0000-0000-0000-000000000001".into();
+        c.text_field = String::new();
+        assert_eq!(c.check().unwrap().0, "page_write_options_invalid");
+    }
 
     #[test]
     fn links_are_allowlisted() {

@@ -20,6 +20,13 @@ mod m20261011_000010_placed_at_links;
 mod m20261011_000011_media_ingest_catchup;
 mod m20261011_000012_voice_profiles;
 mod m20261012_000013_case_workspace;
+mod m20261013_000014_vision_lab;
+mod m20261013_000015_lab_frame_position;
+mod m20261013_000016_lab_training_runs;
+mod m20261013_000017_lab_image_luma;
+mod m20261013_000018_lab_review_queue;
+mod m20261013_000019_doc_version_review;
+mod m20261013_000020_doc_version_exports;
 
 pub struct Migrator;
 
@@ -36,6 +43,13 @@ impl MigratorTrait for Migrator {
             Box::new(m20261011_000011_media_ingest_catchup::Migration),
             Box::new(m20261011_000012_voice_profiles::Migration),
             Box::new(m20261012_000013_case_workspace::Migration),
+            Box::new(m20261013_000014_vision_lab::Migration),
+            Box::new(m20261013_000015_lab_frame_position::Migration),
+            Box::new(m20261013_000016_lab_training_runs::Migration),
+            Box::new(m20261013_000017_lab_image_luma::Migration),
+            Box::new(m20261013_000018_lab_review_queue::Migration),
+            Box::new(m20261013_000019_doc_version_review::Migration),
+            Box::new(m20261013_000020_doc_version_exports::Migration),
         ]
     }
 }

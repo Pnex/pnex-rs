@@ -497,6 +497,7 @@ flow-status-vision-model-loading = Loading model
 flow-status-vision-model-load-failed = Model error
 flow-status-vision-no-frames = No frames
 flow-status-vision-running = Running
+flow-status-ai-call-failed = AI model call failed
 flow-status-count-analysed = { $analysed } an. / { $emitted } out
 flow-status-count-frames = { $received } frames
 flow-status-stat-received = Frames received
@@ -584,6 +585,8 @@ flows-palette-device-read-help = Reads the latest pin values of a single device 
 flows-palette-device-write = Device (write)
 flows-palette-device-write-help = Writes a single device's outputs — payload map pin → value (1/0 or PWM duty 0-100)
 flow-port-device-name = name
+flow-port-tracks = tracks
+flow-port-track-events = events
 flow-port-device-all = all
 flows-palette-calc = Calc
 flows-palette-calc-help = Expression over the readings (variables = payload keys)
@@ -1453,6 +1456,8 @@ flows-notify-add-channel = Add channel
 flows-notify-template = Message template
 flows-notify-no-template = — pick a template —
 flows-notify-vars = Variable values (literal or {"{{"} msg.x {"}}"})
+flows-notify-attach = PDF attachment
+flows-notify-attach-hint = Field holding the media id of a PDF made by a « Page PDF » node (e.g. asset_id). Only e-mail channels attach it; empty = no attachment.
 flows-notify-strict = Strict delivery
 flows-notify-strict-hint = Off: a failed send is logged and the message passes through. On: the failed send fails the node.
 flows-notify-antispam = Anti-spam — rate limit
@@ -2328,6 +2333,7 @@ media-kind-model = Vision model
 media-kind-document = Document
 media-kind-table = Table
 media-kind-audio = Audio
+media-kind-video = Video
 media-doc-search-placeholder = Search in documents
 media-doc-search-empty = No passage matches this search
 media-doc-search-page = page { $n }
@@ -2346,10 +2352,75 @@ err-vision-model-missing = Select a vision model
 err-vision-model-unknown = The selected vision model no longer exists
 err-vision-model-invalid = The vision model { $model } does not work: { $detail } (fix it in Models)
 err-vision-score-invalid = Min score must be between 0 and 1
+err-vision-review-project-invalid = Pick a Vision Lab project.
+err-vision-review-band-invalid = The doubt band must satisfy 0 ≤ min < max ≤ 1.
+err-vision-review-every-invalid = Send at most one picture every 5 to 3600 s.
+err-vision-track-invalid = Tracking settings out of range: high score 0 to 1, min overlap above 0 up to 1, 1 to 100 frames, lost after 0.1 to 3600 s
+err-vision-zone-empty = Draw at least one zone over the camera image
+err-vision-zone-invalid = Invalid zones: unique names (1 to 64 characters), 3 to 32 points inside the image, at most 16 zones, dwell 0 to 3600 s
+err-vision-caption-invalid = Caption settings out of range: prompt up to 500 characters, interval 1 to 86400 s
+err-media-fuse-invalid = Description settings out of range: window 5 to 3600 s, language as a short code (fr, en-US)
+err-text-decide-empty = Add at least one question
+err-text-decide-invalid = Invalid questions: unique ids (a-z, 0-9, _), 1 to 8 questions, instructions up to 300 characters, 2 to 20 unique options
 err-event-message-too-long = The event message is limited to 500 characters
 err-unique = This value is already used
 flows-palette-vision-detect = Object detection
 flows-palette-vision-detect-help = Detect objects (people, vehicles, animals…) in camera frames with a registered model
+flows-palette-vision-track = Object tracking
+flows-palette-vision-track-help = Follow detected objects from frame to frame (stable id, appear / disappear events)
+flows-palette-vision-zone = Image zones
+flows-palette-vision-zone-help = Zones drawn over the camera image: enter / exit events and the number of objects inside
+flows-palette-vision-caption = Image description
+flows-palette-vision-caption-help = Describe camera frames in words with your organization's AI model (indicative)
+flows-palette-media-fuse = Video description
+flows-palette-media-fuse-help = Every window, write a short sourced description of what was said, detected and seen
+flows-palette-llm-text = AI text
+flows-palette-llm-text-help = The organization's LLM writes a text (report, summary, classification) from an instruction and the incoming data
+flows-palette-page-write = Write a page
+flows-palette-page-write-help = Writes the Markdown of the message into a page (Pages) and freezes a named version: one report per run, or a log appended to
+flows-palette-page-pdf = Page PDF
+flows-palette-page-pdf-help = Renders a page version as a PDF (A4, page numbers) stored in the media library, ready to send
+flows-pdf-help = Output 1: the PDF is ready (file id in the media library). Output 2: a version holding AI text waits for a person to approve it in Pages: wire a "report to review" notification to it.
+flows-pdf-source = Version
+flows-pdf-source-message = The one of the message (after "Write a page")
+flows-pdf-source-latest = The latest sendable version of a page, once
+flows-pdf-approval = Approval required for AI text
+flows-pdf-approval-hint = An AI version becomes a PDF only once approved in Pages.
+flows-pdf-no-approval-warning = Without approval, an AI report can leave without review: the PDF will say "not reviewed". Transcripts and captions are not reliable text.
+flows-pdf-language = PDF language
+flows-pdf-language-en = English
+flows-pdf-language-fr = French
+flow-port-pdf-ready = PDF ready
+flow-port-pdf-approval = To approve
+flow-status-page-pdf-failed = PDF refused
+err-page-pdf-page-missing = Pick the page.
+err-page-pdf-options-invalid = Language as a short code (fr, en).
+flows-page-help = The message text (for example the output of AI text) becomes a page of the organization, then a named version is frozen.
+flows-page-mode = Mode
+flows-page-mode-new = A new page for each message
+flows-page-mode-append = Append at the end of a page
+flows-page-target = Page appended to
+flows-page-title = Title of the new pages
+flows-page-title-placeholder = Weekly report {"{"}week{"}"}
+flows-page-text-field = Text (path in the message)
+flows-page-version-label = Version name
+flows-page-placeholders = In the title and the version name, {"{"}date{"}"}, {"{"}time{"}"} and {"{"}week{"}"} are replaced (UTC).
+flows-page-review = A version holding AI text is marked as such: a person must approve it in Pages before an AI report leaves the organization.
+flow-status-page-write-failed = Page write refused
+flows-llm-help = An instruction and the message data become a text of the organization's LLM (Markdown). Typical: cron trigger → the week's data → AI text → Write a page.
+flows-llm-prompt = Instruction
+flows-llm-prompt-placeholder = Write the weekly report of these events: what happened, when, anything unusual.
+flows-llm-data-field = Data (path in the message)
+flows-llm-data-field-hint = Empty = the whole message content. Example: events
+flows-llm-max-chars = Maximum length (characters)
+flows-llm-trust = The data is passed as data: instructions it contains are ignored. Every call counts in the organization's daily AI quota.
+err-llm-text-prompt-invalid = Write an instruction of 1 to 4000 characters.
+err-llm-text-options-invalid = Language as a short code, answer of 100 to 20000 characters, data path made of letters, digits, _ - .
+err-page-write-title-invalid = Write a title of 1 to 255 characters.
+err-page-write-page-missing = Pick the page to append to.
+err-page-write-options-invalid = Text path made of letters, digits, _ - . and a version name of 1 to 255 characters.
+flows-palette-text-decide = Text decision
+flows-palette-text-decide-help = Answer typed questions about a text with probabilities (local model, no text generated)
 flows-palette-event-log = Event log
 flows-palette-event-log-help = Store the message payload as a searchable JSON event (Events page)
 flows-palette-memory-write = Memory write
@@ -2387,6 +2458,71 @@ flows-vision-emit-always = For every analyzed frame
 flows-vision-max-fps-hint = Frames analyzed per second (default 1, 0 = every frame)
 flows-vision-record-layer = Record the detections as a camera layer
 flows-vision-record-layer-hint = Stores only the boxes (OpenObserve, no image): tick the layer in Cameras › Recordings to draw them over the video.
+flows-vision-review = Doubtful frames to the Vision Lab
+flows-vision-review-hint = When the model hesitates (a score inside the band below), the frame joins the review queue of the chosen project, with its proposals. Annotate them and train again: that is the improvement loop.
+flows-vision-review-off = Off
+flows-vision-review-min = Min score
+flows-vision-review-max = Max score
+flows-vision-review-every = At most every (s)
+flows-track-help = Follows the objects of an Object detection node: each one keeps the same track_id while it stays in view. Output 1 = current tracks (feed Image zones), output 2 = appear / disappear events (feed Event log).
+flows-track-high-score = Score to open a track
+flows-track-high-score-hint = Weaker detections only keep an existing track alive (set the detection min score below this one)
+flows-track-min-iou = Min overlap (IoU)
+flows-track-min-iou-hint = How much a box must overlap its track's previous box to stay the same object (lower it at low fps)
+flows-track-min-hits = Frames before appearing
+flows-track-min-hits-hint = A detection seen on fewer consecutive frames is treated as noise
+flows-track-lost-after = Lost after (s)
+flows-track-lost-after-hint = An object unseen for this long disappears (3 s or more at 1 fps)
+flows-zone-help = Feed it with output 1 of Object tracking. Each object entering or leaving a zone emits an event with the zone occupancy; the zones apply to every camera reaching the node.
+flows-zone-preview = Camera shown behind the zones
+flows-zone-preview-none = None (blank image)
+flows-zone-draw-hint = Click on the image to place the points of a zone (3 to { $max }), then close it.
+flows-zone-close = Close the zone
+flows-zone-undo = Undo point
+flows-zone-name = Zone name
+flows-zone-none = No zone yet: draw one over the image.
+flows-zone-points = { $count ->
+    [one] { $count } point
+   *[other] { $count } points
+}
+flows-zone-delete = Delete
+flows-zone-labels = Labels counted
+flows-zone-labels-hint = Comma-separated, empty = every label
+flows-zone-anchor = Point tested
+flows-zone-anchor-bottom = Bottom of the box (feet, wheels)
+flows-zone-anchor-center = Centre of the box
+flows-zone-min-dwell = Min presence (s)
+flows-zone-min-dwell-hint = Time in the zone before the enter event (0 = at once)
+flows-caption-help = Feed it with Camera source, Object detection or Object tracking. Each caption is a call to the AI model of your organization (Organizations → organization detail → LLM providers; the default one must accept images).
+flows-caption-privacy = The image is sent to your organization's AI provider: use a local model if the images must stay on site.
+flows-caption-prompt = Question about the image
+flows-caption-prompt-hint = { $count } / { $max } characters — empty = a factual description of people, objects, actions and readable text
+flows-caption-interval = One caption every (s) per camera
+flows-caption-interval-hint = Each caption is a paid model call: 10 s or more on a live camera
+flows-caption-crop = Describe the best detection only
+flows-caption-crop-hint = Crops the most confident detected or tracked object (state, colour, readable text) instead of the whole frame
+flows-fuse-help = Wire transcripts (Media source), detections, tracking or zone events and image descriptions into it. Every window, your organization's AI model writes a short description; each sentence cites the inputs it rests on.
+flows-fuse-window = Window (s)
+flows-fuse-window-hint = Everything received during a window is described together (30 s by default)
+flows-fuse-language = Description language
+flows-fuse-language-auto = Same as the transcripts
+flows-fuse-trust = Detections count as facts, speech as reliable, image descriptions as indicative only. A sentence without a source is dropped. The output is AI-generated: store or show it, never act on it.
+flows-decide-help = Asks your questions about the text of each message (a description, a transcript…) and adds the probability of each answer under payload.decisions. The decision model runs on the PneX server: nothing leaves it.
+flows-decide-calibration = Out of the box the model is close to chance on business questions and over-confident: use the probabilities as a ranking and check them on real examples before alerting on a threshold.
+flows-decide-text-field = Text to read (field of payload)
+flows-decide-none = No question yet: add one.
+flows-decide-add = Add a question
+flows-decide-remove = Remove
+flows-decide-id = Question id (used in payload.decisions)
+flows-decide-kind-choice = One choice
+flows-decide-kind-score = Level
+flows-decide-instructions-placeholder = The question, e.g. Does this window describe an incident?
+flows-decide-options-placeholder = One option per line, e.g.
+    incident: someone at risk or damage
+    routine: normal activity
+flows-decide-levels-placeholder = One level per line, lowest first
+flows-decide-options-hint = { $count } options (2 to 20) — "label: description", the label is what the flow routes on
+flows-decide-levels-hint = { $count } levels (2 to 20), lowest first
 flows-event-log-help = Writes the message payload as a JSON event, searchable on the Events page. The message passes through unchanged.
 flows-event-log-stream = Stream
 flows-event-log-stream-preview = Stored in
@@ -3692,6 +3828,9 @@ streams-name = Name
 streams-kind = Kind
 streams-url = Stream URL
 streams-url-help = The URL never holds a token or a password: put them in the secret below, sent to the URL's host only.
+streams-file = Media library file
+streams-file-pick = Pick a video or a sound
+streams-file-help = The file is replayed once, at its normal speed, like a live stream: its frames go to the camera bus (Camera source, Object detection… nodes) and its audio to transcription. The stream switches itself off at the end. MP4 / MOV (H.264, H.265, MJPEG) or audio (MP3, AAC, OGG, FLAC, WAV).
 streams-rtsp-help = RTSP camera: TCP transport only, no redirect followed. Put “user:password” in the secret.
 streams-tracks = Tracks
 streams-tracks-audio = Audio (transcription)
@@ -4186,6 +4325,12 @@ docs-version-save = Save
 docs-version-view = View
 docs-version-diff = Compare with previous
 docs-version-restore = Restore
+docs-version-by-flow = written by a flow
+docs-version-ai-review = Holds AI text · review it before it is sent
+docs-version-approved = Approved by { $by } on { $date }
+docs-version-approve = Approve
+docs-version-pdf = PDF
+docs-version-pdf-help = Download this version as a PDF (A4, page numbers)
 docs-version-view-title = Version { $n }
 docs-version-diff-title = Changes in version { $n }
 docs-version-load-failed = This version could not be loaded.
@@ -4626,3 +4771,176 @@ cw-board-unsourced = Unsourced claims
 cw-board-contradicted = Contradicted claims
 case-add-help = The object joins the undated pieces of the investigation; you choose its role when you attach it to an event.
 case-role-source = Source
+
+## Vision Lab (D198–D200)
+err-lab-write-forbidden = Viewer role: Vision Lab projects are read-only.
+err-lab-project-not-found = Vision Lab project not found.
+err-lab-image-not-found = Image not found in this project.
+err-lab-version-not-found = Dataset version not found.
+err-lab-class-in-use = The class { $class } still has boxes: remove them before deleting the class.
+err-lab-annotations-conflict = This image changed meanwhile: reload it and redo your change.
+err-lab-box-invalid = A box is outside the image or refers to an unknown class.
+err-lab-boxes-too-many = At most 200 boxes per image.
+err-lab-negative-with-boxes = An image marked as having no object cannot have boxes.
+err-lab-asset-not-image = { $name } is not a readable picture (JPEG or PNG).
+err-lab-dataset-empty = No annotated image yet: annotate at least one image before freezing a version.
+
+## Vision Lab page (D198–D200)
+nav-lab = Vision Lab
+lab-subtitle = Teach PneX your own objects: name the classes, draw boxes on your pictures, freeze a dataset and export it for training.
+lab-new = New project
+lab-edit = Edit the project
+lab-edit-short = Edit
+lab-open = Open
+lab-empty = No Vision Lab project yet. Create one to annotate your pictures.
+lab-col-project = Project
+lab-col-classes = Classes
+lab-col-images = Annotated images
+lab-col-versions = Versions
+lab-images-count = { $annotated } / { $total }
+lab-delete = Delete the project
+lab-delete-confirm = Delete the project { $name } with its annotations and dataset versions? The pictures stay in the media library.
+lab-deleted = Project deleted
+lab-saved = Project saved
+lab-form-name = Name
+lab-form-description = Description
+lab-form-classes = Classes (one per line)
+lab-form-classes-help = Rename a class in place or add new ones at the end. Only the last classes can be removed, and only when no box uses them.
+lab-add-images = Add images
+lab-saving = Saving…
+lab-no-class = Add at least one class (Edit) before drawing boxes.
+lab-no-image = No picture in this project yet.
+lab-no-image-help = Upload photos in Media, then use Add images. Prefer varied situations: angles, distances, light.
+lab-strip-empty = No image yet.
+lab-state-todo = To annotate
+lab-state-negative = No object
+lab-state-boxes = { $count ->
+    [one] { $count } box
+   *[other] { $count } boxes
+}
+lab-class-label = Class of the next box:
+lab-remove-box = Remove the box
+lab-negative = No object in this image
+lab-split = Set:
+lab-split-auto = Automatic ({ $side })
+lab-split-train = Training
+lab-split-val = Validation
+lab-keys-help = Drag on the picture to draw a box. Keys: 1–9 class, Delete removes the selected box, ← → previous / next image, N no object.
+lab-stats-title = Dataset
+lab-stats-summary = { $annotated } of { $total } images annotated, { $negatives } without object
+lab-stats-split = Training { $train } · validation { $val }
+lab-stats-class = { $images } img · { $boxes ->
+    [one] { $boxes } box
+   *[other] { $boxes } boxes
+}
+lab-warn-class-few = Fewer than { $min } images show { $class }: add more varied pictures of it.
+lab-warn-val-few = Fewer than { $min } validation images: the scores of a training will not be reliable.
+lab-warn-no-negative = No picture without object: add a few, they reduce false detections.
+lab-warn-no-class = No class yet.
+lab-warn-class-sources = { $class } comes from fewer than { $min } sources (imports, videos, recordings): add pictures taken elsewhere or another day.
+lab-warn-class-same-size = { $class } always has about the same size: add pictures where the object is nearer and farther.
+lab-warn-class-same-place = { $class } is always at the same place in the picture: add pictures where it is elsewhere in the frame.
+lab-warn-light-uniform = Every picture has the same brightness: add darker and brighter ones (night, backlight, artificial light).
+lab-versions-title = Dataset versions
+lab-versions-help = A version freezes the annotated images and their boxes; later edits never change it. Download it in COCO format for a YOLOX training.
+lab-version-note = Note (optional)
+lab-freeze = Freeze a version
+lab-frozen = Dataset version frozen
+lab-version-label = Version { $n }
+lab-version-detail = { $images ->
+    [one] { $images } image
+   *[other] { $images } images
+}, { $val } in validation
+lab-export = Download (COCO)
+lab-images-added = Images added
+lab-picker-title = Add pictures from the media library
+lab-picker-search = Search a picture…
+lab-picker-help = The pictures added together form one source: they all go to training or all to validation, so near-identical shots never inflate the scores.
+lab-picker-empty = No photo in the media library.
+lab-picker-add = { $count ->
+    [one] Add { $count } image
+   *[other] Add { $count } images
+}
+lab-remove-image = Remove from the project
+lab-image-removed = Image removed from the project (it stays in the media library)
+lab-suggest-label = Pre-annotate with a model:
+lab-suggest-model = Choose a model
+lab-suggest = Suggest boxes
+lab-suggest-none = The model found nothing on this image
+lab-suggest-keep-one = Click to keep this box
+lab-suggest-keep-all = { $count ->
+    [one] Keep the matching proposal
+   *[other] Keep the { $count } matching proposals
+}
+lab-suggest-dismiss = Dismiss
+lab-suggest-keep-all-help = Keeps the proposals whose label is a class of the project; click a grey one to keep it in the current class
+lab-from-recording = From a recording
+lab-train-title = Training
+lab-train-help = Fine-tunes a registered YOLOX model on a frozen version: only its last layers are learned again, on this server, in a few minutes. The new model joins Models, ready for an Object detection node.
+lab-train-no-base = No YOLOX model in Models: register a starting model first (for example YOLOX COCO).
+lab-train-no-version = No frozen version yet: freeze a dataset version first (panel above).
+lab-train-version = Dataset version
+lab-train-base = Starting model
+lab-train-epochs = Epochs
+lab-train-start = Train
+lab-train-queued = Training started.
+lab-run-queued = Queued
+lab-run-running = Running
+lab-run-succeeded = Done
+lab-run-failed = Failed
+lab-run-cancelled = Cancelled
+lab-run-features = Reading pictures: { $done } / { $total }
+lab-run-epoch = Epoch { $done } / { $total } · loss { $loss }
+lab-run-evaluating = Evaluating on the validation pictures
+lab-run-map = Validation mAP@0.5: { $value }
+lab-run-open-models = Open in Models
+lab-from-video = From a video
+lab-video-title = Pictures from a video
+lab-video-help = Pick a video of the media library (MP4 or MOV): one picture is taken every N seconds between the start and end given. All the pictures of one video stay on the same side of training / validation.
+lab-video-asset = Video
+lab-video-pick = Pick a video
+lab-video-none = No video in the media library: first add an MP4 or MOV file in Media › Library.
+lab-video-from = Start (s)
+lab-video-to = End (s)
+lab-video-invalid = Pick a video and an extract of at most { $minutes } minutes giving at most { $max } pictures.
+lab-interpolate = Interpolate
+lab-interpolate-help = Proposes the boxes between the previous and the next annotated picture of the same video or recording.
+lab-interpolate-none = No box to interpolate: the neighbouring pictures have no class in common.
+lab-interpolated = interpolated
+lab-state-review = To review (the model hesitated)
+lab-review-only = Only the pictures to review ({ $count })
+lab-review-all = All pictures
+lab-propagate = Propagate
+lab-propagate-help = The chosen model proposes the boxes of this picture, and each takes the class of the nearest box on the previous annotated picture of the same video.
+lab-propagate-none = No proposal of the model overlaps the boxes of the previous picture.
+lab-rec-title = Pictures from a camera recording
+lab-rec-help = Takes one frame every N seconds from what the camera recorded (Cameras › Recordings) and adds them as pictures. A whole extract counts as one source: it all goes to training or all to validation.
+lab-rec-camera = Camera
+lab-rec-camera-none = Choose a camera
+lab-rec-day = Day
+lab-rec-from = From
+lab-rec-to = To
+lab-rec-every = One picture every (s)
+lab-rec-estimate = { $count ->
+    [one] About { $count } picture (only where something was recorded)
+   *[other] About { $count } pictures (only where something was recorded)
+}
+lab-rec-invalid = Pick a range of at most { $minutes } minutes giving at most { $max } pictures.
+lab-rec-import = Import
+lab-rec-done = { $count ->
+    [one] { $count } picture added
+   *[other] { $count } pictures added
+}
+err-lab-export-too-large = This dataset version is too large for one archive (512 MB of pictures at most).
+err-lab-video-unsupported = { $name } is not a readable video (MP4 or MOV in H.264, H.265 or MJPEG).
+err-lab-video-too-large = This video is too large for the Vision Lab (512 MB at most).
+err-lab-video-decode-failed = The video could not be decoded ({ $detail }).
+err-lab-interpolate-no-keyframes = Annotate a frame before and a frame after this one in the same video or recording.
+err-lab-train-busy = A training of this organization is already queued or running.
+err-lab-train-base-invalid = This base model cannot be fine-tuned here (a YOLOX model with a fixed input size is needed).
+err-lab-train-no-data = No box in the training pictures of this version.
+err-lab-train-interrupted = The training stopped (server restarted). Start it again.
+err-lab-train-failed = The training failed.
+err-lab-run-not-found = Training not found.
+err-lab-review-full = The review queue of this project is full (500 pictures): annotate or remove some.
+err-lab-propagate-no-previous = Annotate a picture before this one in the same video or recording.
