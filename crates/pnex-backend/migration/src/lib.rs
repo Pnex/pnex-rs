@@ -23,6 +23,7 @@ mod m20261012_000013_case_workspace;
 mod m20261013_000014_vision_lab;
 mod m20261013_000015_lab_frame_position;
 mod m20261013_000016_lab_training_runs;
+mod m20261013_000017_lab_image_luma;
 
 pub struct Migrator;
 
@@ -42,6 +43,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261013_000014_vision_lab::Migration),
             Box::new(m20261013_000015_lab_frame_position::Migration),
             Box::new(m20261013_000016_lab_training_runs::Migration),
+            Box::new(m20261013_000017_lab_image_luma::Migration),
         ]
     }
 }

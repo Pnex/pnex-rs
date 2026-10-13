@@ -364,6 +364,11 @@ async fn org_isolation_and_viewer_read_only() {
             ),
             (
                 "POST",
+                "/api/v1/lab/images/00000000-0000-0000-0000-000000000001/propagate".to_string(),
+                Some(json!({"model_id": "x"})),
+            ),
+            (
+                "POST",
                 format!("/api/v1/lab/projects/{pid}/import-video"),
                 Some(json!({"asset_id": "x", "from_secs": 0, "to_secs": 10, "every_secs": 2})),
             ),
@@ -546,6 +551,18 @@ async fn frames_of_a_video_and_box_interpolation() {
         assert_eq!(list[0]["width"], 320);
         assert!(list.iter().all(|i| i["source"] == format!("video-{video}")));
         let id = |i: usize| list[i]["id"].as_str().unwrap().to_string();
+        // Nothing annotated before the first frame: no propagation.
+        let (st, err) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/lab/images/{}/propagate", id(0)),
+            a,
+            org,
+            Some(json!({"model_id": "00000000-0000-0000-0000-000000000000"})),
+        )
+        .await;
+        assert_eq!(st, 422, "{err}");
+        assert_eq!(err["error"], "lab-propagate-no-previous");
         let interp = format!("/api/v1/lab/images/{}/interpolate", id(2));
         let (st, err) = call(&server, "POST", &interp, a, org, None).await;
         assert_eq!(st, 422);

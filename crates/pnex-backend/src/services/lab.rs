@@ -107,6 +107,7 @@ pub fn image_view(m: &lab_images::Model) -> LabImage {
         split: split_of(&m.split),
         boxes: serde_json::from_value(m.boxes.clone()).unwrap_or_default(),
         negative: m.negative,
+        luma: m.luma,
         frame_ms: m.frame_ms,
         version: m.version,
         updated_at: m.updated_at.to_rfc3339(),
@@ -373,6 +374,7 @@ pub async fn add_images(
         let Some((w, h)) = pnex_vision::image_size(&bytes) else {
             return Err(not_image(&asset.name));
         };
+        let luma = luma_of(bytes).await;
         let now = chrono::Utc::now().fixed_offset();
         rows.push(lab_images::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -386,6 +388,7 @@ pub async fn add_images(
             split: Set("auto".into()),
             boxes: Set(serde_json::json!([])),
             negative: Set(false),
+            luma: Set(luma),
             frame_ms: Set(None),
             version: Set(1),
             created_at: Set(now),
@@ -721,6 +724,14 @@ pub async fn import_recording(
     Ok(out)
 }
 
+/// Mean luma of a picture, decoded off the async workers.
+async fn luma_of(bytes: Vec<u8>) -> Option<f32> {
+    tokio::task::spawn_blocking(move || pnex_vision::mean_luma(&bytes))
+        .await
+        .ok()
+        .flatten()
+}
+
 /// One extracted frame to store as a picture of a project.
 struct Frame<'a> {
     name: String,
@@ -774,6 +785,7 @@ async fn store_frame(
         let _ = media_assets::Entity::delete_by_id(asset.id).exec(db).await;
         return Ok(None);
     }
+    let luma = luma_of(frame.jpeg.to_vec()).await;
     let now = chrono::Utc::now().fixed_offset();
     let row = lab_images::ActiveModel {
         id: Set(Uuid::new_v4()),
@@ -787,6 +799,7 @@ async fn store_frame(
         split: Set("auto".into()),
         boxes: Set(serde_json::json!([])),
         negative: Set(false),
+        luma: Set(luma),
         frame_ms: Set(Some(frame.frame_ms)),
         version: Set(1),
         created_at: Set(now),
@@ -900,6 +913,55 @@ pub async fn import_video(
     Ok(out)
 }
 
+/// Nearest frame of `img`'s source holding boxes, before or after `t_ms`.
+async fn annotated_neighbour(
+    db: &DatabaseConnection,
+    img: &lab_images::Model,
+    t_ms: i64,
+    before: bool,
+) -> Res<Option<lab_images::Model>> {
+    use sea_orm::sea_query::Expr;
+    let q = lab_images::Entity::find()
+        .filter(lab_images::Column::ProjectId.eq(img.project_id))
+        .filter(lab_images::Column::Source.eq(img.source.clone()))
+        .filter(Expr::cust("jsonb_array_length(boxes) > 0"));
+    let q = if before {
+        q.filter(lab_images::Column::FrameMs.lt(t_ms))
+            .order_by_desc(lab_images::Column::FrameMs)
+    } else {
+        q.filter(lab_images::Column::FrameMs.gt(t_ms))
+            .order_by_asc(lab_images::Column::FrameMs)
+    };
+    q.limit(1).one(db).await.map_err(LabError::db)
+}
+
+/// Propagation by tracking (M4): a registry model proposes boxes on this
+/// frame, and each box of the previous annotated frame of the source gives
+/// its class to the proposal overlapping it most. Proposals only.
+pub async fn propagate(
+    ctx: &loco_rs::app::AppContext,
+    store: &dyn MediaStore,
+    org_id: i64,
+    image_id: Uuid,
+    req: &lab::LabSuggestRequest,
+) -> Res<Vec<lab::LabSuggestion>> {
+    let img = find_image(&ctx.db, org_id, image_id).await?;
+    let no_previous = || {
+        LabError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            err_codes::LAB_PROPAGATE_NO_PREVIOUS,
+            "Annotate a frame before this one in the same video.",
+        )
+    };
+    let t_ms = img.frame_ms.ok_or_else(no_previous)?;
+    let prev = annotated_neighbour(&ctx.db, &img, t_ms, true)
+        .await?
+        .ok_or_else(no_previous)?;
+    let boxes: Vec<LabBox> = serde_json::from_value(prev.boxes).unwrap_or_default();
+    let proposals = suggest(ctx, store, org_id, image_id, req).await?;
+    Ok(lab::propagate(&boxes, proposals))
+}
+
 /// Boxes proposed for a frame by linear interpolation between the nearest
 /// annotated frames of its source, before and after (Q3). Proposals only,
 /// nothing is written; `label` is empty (not a model label).
@@ -908,7 +970,6 @@ pub async fn interpolate(
     org_id: i64,
     image_id: Uuid,
 ) -> Res<Vec<lab::LabSuggestion>> {
-    use sea_orm::sea_query::Expr;
     let img = find_image(db, org_id, image_id).await?;
     let project = find_project(db, org_id, img.project_id).await?;
     let no_keyframes = || {
@@ -921,23 +982,9 @@ pub async fn interpolate(
     let Some(t_ms) = img.frame_ms else {
         return Err(no_keyframes());
     };
-    let neighbour = |before: bool| {
-        let q = lab_images::Entity::find()
-            .filter(lab_images::Column::ProjectId.eq(img.project_id))
-            .filter(lab_images::Column::Source.eq(img.source.clone()))
-            .filter(Expr::cust("jsonb_array_length(boxes) > 0"));
-        let q = if before {
-            q.filter(lab_images::Column::FrameMs.lt(t_ms))
-                .order_by_desc(lab_images::Column::FrameMs)
-        } else {
-            q.filter(lab_images::Column::FrameMs.gt(t_ms))
-                .order_by_asc(lab_images::Column::FrameMs)
-        };
-        q.limit(1).one(db)
-    };
     let (Some(a), Some(b)) = (
-        neighbour(true).await.map_err(LabError::db)?,
-        neighbour(false).await.map_err(LabError::db)?,
+        annotated_neighbour(db, &img, t_ms, true).await?,
+        annotated_neighbour(db, &img, t_ms, false).await?,
     ) else {
         return Err(no_keyframes());
     };
