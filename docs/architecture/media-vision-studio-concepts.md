@@ -144,14 +144,39 @@ flowchart LR
 | **Luminance moyenne** | Clarté moyenne d'une image (0 = noir, 255 = blanc), mesurée à l'import ; sert au dernier avertissement. | `lab_images.luma` |
 | **INT8** | Modèle quantifié (entiers 8 bits au lieu de réels 32 bits) : plus petit, potentiellement plus rapide sur Pi. **Évalué, non livré** : tract sait l'exécuter, mais un gain réel demande une calibration (projet à part), à décider après une mesure sur Pi 5 ; YOLOX-nano à 1 image/s tient déjà sur CPU. | PRD §12, état des lots |
 
-## 6. Ce qui reste hors de ce pilier
+## 6. Rapports (M5, D207–D210) — en cours
+
+Pas de studio de rapports : **un rapport est une page**, écrite par un flow
+et exportée en PDF.
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  CRON["inject<br/>(cron : lundi 7 h)"] --> DATA["données de la semaine<br/>(événements, descriptions, mesures)"]
+  DATA --> LLM["llm_text<br/>(consigne + données → Markdown sourcé)"]
+  LLM --> PAGE["page_write<br/>(page + version nommée)"]
+  PAGE --> PDF["page_pdf<br/>(version → PDF dans la médiathèque)"]
+  PDF --> SEND["pnex_notify<br/>(+ pièce jointe)"]
+```
+
+| Concept | En une phrase |
+|---|---|
+| **`llm_text`** | Nœud générique : une consigne et des données → un texte du LLM de l'org. Les données sont passées comme *données*, jamais comme ordres (protection contre l'injection). |
+| **`page_write`** | Écrit du Markdown dans une page (nouvelle page « Rapport du {date} » ou section remplacée) et crée une **version nommée** (figée, citable). |
+| **`page_pdf`** | Transforme une version de page en PDF : en-tête, numéros de page, date, bandeau « généré par IA ». Rangé dans la médiathèque. |
+| **Version approuvée** | Par défaut, un rapport IA ne part par courriel qu'**après relecture** humaine (version approuvée dans Pages) ; le mode « automatique » existe, avec un bandeau « non relu ». |
+| **krilla** | La bibliothèque Rust qui écrit les PDF (choisie plutôt que Typst, trop lourd). |
+| **DejaVu Sans** | La police embarquée dans les PDF (licence permissive). |
+
+## 7. Ce qui reste hors de ce pilier
 
 - Reconnaissance faciale, identification de personnes par l'image, pose
   humaine (Q1 : « poste » = poste de travail).
-- Studio de rapports (M5) : attend une décision sur D173/D174 (rien ne sort
-  de PneX aujourd'hui).
 
-## 7. Relecture du soir (2026-10-13)
+## 8. Relecture du soir (2026-10-13)
 
 Commits de la branche `feat/media-vision-studio` (non poussés), à relire
 dans cet ordre :
