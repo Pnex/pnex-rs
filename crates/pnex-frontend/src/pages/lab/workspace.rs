@@ -80,6 +80,7 @@ pub fn LabProjectPage(id: String) -> Element {
     let mut recording_open = use_signal(|| false);
     let mut video_open = use_signal(|| false);
     let mut versions_tick = use_signal(|| 0u32);
+    let mut review_only = use_signal(|| false);
     let mut editing = use_signal(|| false);
     let mut save_state = use_signal(SaveState::default);
     // Proposals of a registry model, for one image: (image id, boxes).
@@ -113,6 +114,17 @@ pub fn LabProjectPage(id: String) -> Element {
                 }
                 loaded.set(true);
             });
+        }
+    });
+
+    // A picture of the review queue opens with the model's proposals shown.
+    use_effect(move || {
+        let list = images.read();
+        let i = selected().min(list.len().saturating_sub(1));
+        if let Some(img) = list.get(i) {
+            if img.review && !img.proposals.is_empty() && suggestions.peek().0 != img.id {
+                suggestions.set((img.id.clone(), img.proposals.clone()));
+            }
         }
     });
 
@@ -402,6 +414,8 @@ pub fn LabProjectPage(id: String) -> Element {
                     images: list.clone(),
                     selected: index,
                     loaded: loaded(),
+                    review_only: review_only(),
+                    on_review_only: move |on: bool| review_only.set(on),
                     on_select: move |i: usize| {
                         selected.set(i);
                         selected_box.set(None);
@@ -610,14 +624,31 @@ fn ImageStrip(
     images: Vec<LabImage>,
     selected: usize,
     loaded: bool,
+    /// Only the pictures of the review queue (M4).
+    review_only: bool,
+    on_review_only: EventHandler<bool>,
     on_select: EventHandler<usize>,
 ) -> Element {
+    let pending = images.iter().filter(|i| i.review).count();
+    let toggle = if review_only {
+        t!("lab-review-all").to_string()
+    } else {
+        t!("lab-review-only", count : pending).to_string()
+    };
     rsx! {
         div { class: "rounded-lg border border-gray-200 bg-white max-h-[70vh] overflow-y-auto",
+            if pending > 0 || review_only {
+                button {
+                    class: "w-full px-3 py-2 text-left text-xs font-medium text-violet-700 bg-violet-50 hover:bg-violet-100",
+                    r#type: "button",
+                    onclick: move |_| on_review_only.call(!review_only),
+                    "{toggle}"
+                }
+            }
             if images.is_empty() && loaded {
                 p { class: "p-3 text-xs text-gray-500", {t!("lab-strip-empty")} }
             }
-            for (i, img) in images.iter().enumerate() {
+            for (i, img) in images.iter().enumerate().filter(|(_, img)| !review_only || img.review) {
                 ImageRow {
                     key: "{img.id}",
                     image: img.clone(),
@@ -631,7 +662,9 @@ fn ImageStrip(
 
 #[component]
 fn ImageRow(image: LabImage, active: bool, on_click: EventHandler<()>) -> Element {
-    let (dot, state) = if image.negative {
+    let (dot, state) = if image.review {
+        ("bg-violet-500", t!("lab-state-review").to_string())
+    } else if image.negative {
         ("bg-gray-400", t!("lab-state-negative").to_string())
     } else if image.boxes.is_empty() {
         ("bg-amber-400", t!("lab-state-todo").to_string())

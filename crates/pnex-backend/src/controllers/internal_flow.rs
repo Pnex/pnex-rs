@@ -56,6 +56,8 @@ pub fn routes() -> Routes {
         .add("/internal/flow/video-annotations", post(video_annotations))
         // Org model calls of the vision-caption / media-fuse nodes (D195/D196).
         .add("/internal/flow/ai/caption", post(flow_ai_caption))
+        // Doubtful frames of vision-detect nodes → Vision Lab (M4).
+        .add("/internal/flow/lab-review", post(flow_lab_review))
         .add("/internal/flow/ai/fuse", post(flow_ai_fuse))
         // Typed decisions of the text-decide node, local Laya model (D197).
         .add("/internal/flow/ai/decide", post(flow_ai_decide))
@@ -517,6 +519,27 @@ fn flow_ai_reply<T: serde::Serialize>(
                 .into_response()
         }
     }
+}
+
+async fn flow_lab_review(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::lab::LabReviewRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.org_id).await {
+        return Ok(r);
+    }
+    Ok(match crate::services::lab::review(&ctx, &req).await {
+        Ok(img) => (StatusCode::CREATED, axum::Json(img)).into_response(),
+        Err(e) => (
+            e.status,
+            axum::Json(serde_json::json!({ "error": e.code, "description": e.message })),
+        )
+            .into_response(),
+    })
 }
 
 async fn flow_ai_caption(

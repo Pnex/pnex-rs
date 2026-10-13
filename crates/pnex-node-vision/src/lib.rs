@@ -81,6 +81,15 @@ struct DetectNodeConfig {
     /// Store the matched boxes as an annotation layer (D105).
     #[serde(default)]
     record_layer: bool,
+    /// Vision Lab project of the doubtful frames (M4); empty = off.
+    #[serde(default)]
+    review_project: String,
+    #[serde(default = "pnex_core::vision::default_review_min")]
+    review_min: f32,
+    #[serde(default = "pnex_core::vision::default_review_max")]
+    review_max: f32,
+    #[serde(default = "pnex_core::vision::default_review_every")]
+    review_every_secs: f64,
     #[serde(default)]
     pnex_org_id: i64,
     #[serde(default)]
@@ -162,6 +171,10 @@ struct VisionDetectNode {
     model_name: std::sync::Mutex<String>,
     /// Annotations waiting for the next layer post, per camera.
     layer_buf: Mutex<HashMap<String, Vec<FrameAnnotation>>>,
+    /// `/internal/flow/lab-review` when a review project is set (M4).
+    review_url: Option<String>,
+    /// Last doubtful frame sent, per camera (frame time, ms).
+    last_review: Mutex<HashMap<String, i64>>,
 }
 
 impl VisionDetectNode {
@@ -190,6 +203,10 @@ impl VisionDetectNode {
             emit,
             max_fps: cfg.max_fps,
             record_layer: cfg.record_layer,
+            review_project: cfg.review_project.clone(),
+            review_min: cfg.review_min,
+            review_max: cfg.review_max,
+            review_every_secs: cfg.review_every_secs,
         };
         if let Some((code, message)) = check.check() {
             return Err(EdgelinkError::BadFlowsJson(format!("{NODE} [{code}] : {message}")).into());
@@ -241,6 +258,9 @@ impl VisionDetectNode {
         } else {
             None
         };
+        // Same host and token as the model routes.
+        let review_url = (!cfg.review_project.is_empty())
+            .then(|| model_url.replace("/internal/flow/ml-model", "/internal/flow/lab-review"));
         Ok(Box::new(VisionDetectNode {
             base: base_node,
             config: cfg,
@@ -256,6 +276,8 @@ impl VisionDetectNode {
             layer_url,
             model_name: std::sync::Mutex::new(String::new()),
             layer_buf: Mutex::new(HashMap::new()),
+            review_url,
+            last_review: Mutex::new(HashMap::new()),
         }))
     }
 
@@ -360,6 +382,75 @@ impl VisionDetectNode {
         } else {
             model
         }
+    }
+
+    /// Active learning (M4): a frame where the model hesitated goes to the
+    /// review queue of a Vision Lab project, by reference, at most once per
+    /// `review_every_secs` per camera. Fire and forget: a refused or failed
+    /// post is logged, detection goes on.
+    async fn send_review(
+        &self,
+        source: &str,
+        frame_key: &str,
+        ts_ms: i64,
+        detections: &[Detection],
+        below: &[Detection],
+    ) {
+        let Some(url) = self.review_url.clone() else {
+            return;
+        };
+        let all = || detections.iter().chain(below);
+        if !pnex_core::lab::doubtful(
+            all().map(|d| d.score),
+            self.config.review_min,
+            self.config.review_max,
+        ) {
+            return;
+        }
+        let every_ms = (self.config.review_every_secs * 1000.0) as i64;
+        {
+            let mut last = self.last_review.lock().await;
+            if last.get(source).is_some_and(|t| ts_ms - t < every_ms) {
+                return;
+            }
+            last.insert(source.to_string(), ts_ms);
+        }
+        let req = pnex_core::lab::LabReviewRequest {
+            org_id: self.config.pnex_org_id,
+            project_id: self.config.review_project.clone(),
+            frame_key: frame_key.to_string(),
+            source: source.to_string(),
+            ts_ms,
+            proposals: all()
+                .map(|d| pnex_core::lab::LabReviewProposal {
+                    label: d.label.clone(),
+                    score: d.score,
+                    bbox: d.bbox,
+                })
+                .collect(),
+        };
+        let (http, token, name) = (
+            self.http.clone(),
+            self.token.clone(),
+            self.name().to_string(),
+        );
+        tokio::spawn(async move {
+            let res = http
+                .post(&url)
+                .header(FLOW_TOKEN_HEADER, &token)
+                .header(
+                    pnex_core::FLOW_WORKER_HEADER,
+                    pnex_core::flow_worker_fence().unwrap_or_default(),
+                )
+                .json(&req)
+                .send()
+                .await;
+            match res {
+                Ok(r) if r.status().is_success() => {}
+                Ok(r) => log::warn!("{NODE} [{name}] : review frame refused ({})", r.status()),
+                Err(e) => log::warn!("{NODE} [{name}] : review frame post failed: {e}"),
+            }
+        });
     }
 
     /// Posts the buffered annotations (one batch per camera).
@@ -529,6 +620,8 @@ impl VisionDetectNode {
                 self.flush_layer().await;
             }
         }
+        self.send_review(&device_id, &key, ts_ms, &detections, &below)
+            .await;
         if detections.is_empty() && self.emit == VisionEmit::OnDetection {
             return Ok(());
         }

@@ -107,6 +107,8 @@ pub fn image_view(m: &lab_images::Model) -> LabImage {
         split: split_of(&m.split),
         boxes: serde_json::from_value(m.boxes.clone()).unwrap_or_default(),
         negative: m.negative,
+        review: m.review,
+        proposals: serde_json::from_value(m.proposals.clone()).unwrap_or_default(),
         luma: m.luma,
         frame_ms: m.frame_ms,
         version: m.version,
@@ -388,6 +390,8 @@ pub async fn add_images(
             split: Set("auto".into()),
             boxes: Set(serde_json::json!([])),
             negative: Set(false),
+            review: Set(false),
+            proposals: Set(serde_json::json!([])),
             luma: Set(luma),
             frame_ms: Set(None),
             version: Set(1),
@@ -460,7 +464,9 @@ pub async fn save_annotations(
     let res = db
         .execute_raw(Statement::from_sql_and_values(
             db.get_database_backend(),
+            // An annotated picture leaves the review queue (M4).
             "UPDATE lab_images SET boxes = $1, negative = $2, split = $3, version = version + 1, \
+             review = review AND NOT ($2 OR jsonb_array_length($1::jsonb) > 0), \
              updated_at = now() WHERE id = $4 AND org_id = $5 AND version = $6",
             [
                 serde_json::json!(input.boxes).into(),
@@ -715,6 +721,7 @@ pub async fn import_recording(
             jpeg,
             size: (w, h),
             frame_ms: t_ms,
+            review: None,
         };
         if let Some(img) = store_frame(ctx, &settings, org_id, project, &source, frame).await? {
             out.push(img);
@@ -740,6 +747,8 @@ struct Frame<'a> {
     jpeg: &'a [u8],
     size: (u32, u32),
     frame_ms: i64,
+    /// `Some(proposals)` for a picture of the review queue.
+    review: Option<Vec<lab::LabSuggestion>>,
 }
 
 /// Stores a frame as a `photo` of the media library and adds it to the
@@ -799,6 +808,8 @@ async fn store_frame(
         split: Set("auto".into()),
         boxes: Set(serde_json::json!([])),
         negative: Set(false),
+        review: Set(frame.review.is_some()),
+        proposals: Set(serde_json::json!(frame.review.unwrap_or_default())),
         luma: Set(luma),
         frame_ms: Set(Some(frame.frame_ms)),
         version: Set(1),
@@ -904,6 +915,7 @@ pub async fn import_video(
             jpeg: &jpeg.bytes,
             size: (u32::from(jpeg.width), u32::from(jpeg.height)),
             frame_ms: t_ms,
+            review: None,
         };
         if let Some(img) = store_frame(ctx, &settings, org_id, project, &source, frame).await? {
             out.push(img);
@@ -911,6 +923,83 @@ pub async fn import_video(
     }
     touch_project(db, project).await?;
     Ok(out)
+}
+
+/// Active learning (M4): a doubtful frame sent by a `vision-detect` node
+/// joins the project's review queue, with the model proposals. One source
+/// per camera and day (split unit). The frame is read on the camera bus by
+/// a key of the request's org only; the queue is capped per project.
+pub async fn review(ctx: &loco_rs::app::AppContext, req: &lab::LabReviewRequest) -> Res<LabImage> {
+    use crate::services::media::MediaSettings;
+    use sea_orm::PaginatorTrait;
+    let db = &ctx.db;
+    let project_id = Uuid::parse_str(&req.project_id)
+        .map_err(|_| not_found(err_codes::LAB_PROJECT_NOT_FOUND, "Project"))?;
+    let project = find_project(db, req.org_id, project_id).await?;
+    let no_frame = || not_found(err_codes::CAMERA_NO_FRAME, "Frame");
+    if !pnex_core::camera::frame_key_in_org(req.org_id, &req.frame_key) {
+        return Err(no_frame());
+    }
+    let pending = lab_images::Entity::find()
+        .filter(lab_images::Column::ProjectId.eq(project.id))
+        .filter(lab_images::Column::Review.eq(true))
+        .count(db)
+        .await
+        .map_err(LabError::db)?;
+    if pending as usize >= lab::LAB_REVIEW_MAX_PENDING {
+        return Err(LabError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            err_codes::LAB_REVIEW_FULL,
+            "The review queue of this project is full.",
+        ));
+    }
+    let mut conn = crate::services::shared_valkey::conn(&ctx.config)
+        .await
+        .ok_or_else(no_frame)?;
+    let jpeg: Option<Vec<u8>> = redis::AsyncCommands::get(&mut conn, &req.frame_key)
+        .await
+        .map_err(|_| no_frame())?;
+    let jpeg = jpeg.ok_or_else(no_frame)?;
+    let (w, h) = pnex_vision::image_size(&jpeg).ok_or_else(no_frame)?;
+    let classes = classes_of(&project);
+    let (fw, fh) = (w.max(1) as f32, h.max(1) as f32);
+    let proposals: Vec<lab::LabSuggestion> = req
+        .proposals
+        .iter()
+        .take(lab::LAB_MAX_SUGGESTIONS)
+        .map(|p| {
+            let x0 = (p.bbox[0] / fw).clamp(0.0, 1.0);
+            let y0 = (p.bbox[1] / fh).clamp(0.0, 1.0);
+            lab::LabSuggestion {
+                class: lab::class_for_label(&classes, &p.label),
+                label: p.label.clone(),
+                score: p.score,
+                bbox: [
+                    x0,
+                    y0,
+                    (p.bbox[2] / fw).min(1.0 - x0),
+                    (p.bbox[3] / fh).min(1.0 - y0),
+                ],
+            }
+        })
+        .collect();
+    let at = chrono::DateTime::from_timestamp_millis(req.ts_ms).unwrap_or_default();
+    let source = format!("review-{}-{}", req.source, at.format("%Y-%m-%d"));
+    let settings = MediaSettings::from_config(&ctx.config);
+    let frame = Frame {
+        name: format!("{} {}", req.source, at.format("%Y-%m-%d %H:%M:%S UTC")),
+        filename: format!("review-{}-{}.jpg", req.source, req.ts_ms),
+        description: "Doubtful frame sent by a detection node (Vision Lab review).",
+        jpeg: &jpeg,
+        size: (w, h),
+        frame_ms: req.ts_ms,
+        review: Some(proposals),
+    };
+    let img = store_frame(ctx, &settings, req.org_id, project.id, &source, frame)
+        .await?
+        .ok_or_else(|| LabError::db(sea_orm::DbErr::Custom("review frame not stored".into())))?;
+    touch_project(db, project.id).await?;
+    Ok(img)
 }
 
 /// Nearest frame of `img`'s source holding boxes, before or after `t_ms`.
