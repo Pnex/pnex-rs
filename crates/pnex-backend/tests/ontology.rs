@@ -1612,3 +1612,68 @@ async fn archived_case_purges_its_own_persons_only() {
     })
     .await;
 }
+
+/// D183: an action declared by the Maintenance pack is checked (parameters,
+/// role) and refused while no deployed flow handles it; the deploy refuses
+/// a trigger naming an unknown action; once a flow holds the trigger the
+/// invocation is dispatched to it (or refused cleanly without Valkey).
+#[tokio::test]
+#[serial]
+async fn actions_are_checked_and_need_a_deployed_flow() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (st, _) = call(&server, "POST", "/api/v1/ontology/packs/maintenance/install", &env.alice, org, None).await;
+        assert_eq!(st, 200);
+        let pump = object(&server, &env.alice, org, "pump", "P12", json!({"serial": "S-12"})).await;
+        let url = format!("/api/v1/ontology/objects/{}/actions/start_maintenance", pump["id"].as_str().unwrap());
+
+        let (st, e) = call(&server, "POST", &url, &env.alice, org, Some(json!({"params": {}}))).await;
+        assert_eq!((st, e["params.reason"].as_str()), (400, Some("required")), "{e}");
+        let bad = url.replace("start_maintenance", "explode");
+        let (st, _) = call(&server, "POST", &bad, &env.alice, org, Some(json!({}))).await;
+        assert_eq!(st, 404);
+        let ok = json!({"params": {"reason": "bearing noise", "planned_end": "2026-10-20"}});
+        let (st, e) = call(&server, "POST", &url, &env.alice, org, Some(ok.clone())).await;
+        assert_eq!((st, e["error"].as_str()), (409, Some("ontology-action-no-flow")), "{e}");
+
+        // Deploy gate: unknown action refused.
+        let graph = |action: &str| json!({"nodes": [
+            {"id": "at", "kind": "action_trigger", "config": {"object_type": "pump", "action": action},
+             "outputs": [{"port": 0, "targets": ["dbg"]}]},
+            {"id": "dbg", "kind": "debug"}
+        ]});
+        let (st, f) = call(&server, "POST", "/api/v1/flows", &env.alice, org, Some(json!({"name": "Maint", "graph": graph("explode")}))).await;
+        assert_eq!(st, 201, "{f}");
+        let flow_id = f["id"].as_i64().unwrap();
+        let (st, d) = call(&server, "POST", &format!("/api/v1/flows/{flow_id}/deploy"), &env.alice, org, Some(json!({}))).await;
+        assert_eq!(st, 400, "{d}");
+        assert_eq!(d["violations"][0]["code"], "ontology-action-unknown", "{d}");
+
+        // A deployed flow holding the trigger (engine off in tests: marked
+        // deployed in the database).
+        let (st, f) = call(&server, "POST", "/api/v1/flows", &env.alice, org, Some(json!({"name": "Maint ok", "graph": graph("start_maintenance")}))).await;
+        assert_eq!(st, 201, "{f}");
+        let ok_id = f["id"].as_i64().unwrap();
+        env.db
+            .execute_unprepared(&format!(
+                "UPDATE flows SET status = 'deployed', deployed_version_id = \
+                 (SELECT max(id) FROM flow_versions WHERE flow_id = {ok_id}) WHERE id = {ok_id}"
+            ))
+            .await
+            .unwrap();
+        let (st, r) = call(&server, "POST", &url, &env.alice, org, Some(ok.clone())).await;
+        match st {
+            202 => assert_eq!(r["flows"][0]["flow_id"], ok_id, "{r}"),
+            503 => assert_eq!(r["error"], "ontology-action-unavailable", "{r}"),
+            _ => panic!("{st} {r}"),
+        }
+
+        // R2: a viewer never invokes.
+        personal_org(&server, &env.bob).await;
+        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
+        assert!(st < 300, "{st}");
+        let (st, _) = call(&server, "POST", &url, &env.bob, org, Some(ok)).await;
+        assert_eq!(st, 403);
+    })
+    .await;
+}

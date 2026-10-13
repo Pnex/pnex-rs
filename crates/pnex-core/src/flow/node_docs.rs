@@ -31,7 +31,7 @@ pub const FLOW_AUTHORING_RULES: &[(&str, &str)] = &[
     ),
     (
         "canonical_pipeline",
-        "inject (trigger) → device_read → calc → metric. A flow runs continuously: a periodic inject (repeat_secs) is the default idiom. Event sources (camera_source, control_source, media_source) need no inject.",
+        "inject (trigger) → device_read → calc → metric. A flow runs continuously: a periodic inject (repeat_secs) is the default idiom. Event sources (camera_source, control_source, action_trigger, media_source) need no inject.",
     ),
     (
         "payload_key_rule",
@@ -51,7 +51,7 @@ pub const FLOW_AUTHORING_RULES: &[(&str, &str)] = &[
     ),
     (
         "physical_boundary",
-        "Only a deployed flow acts on devices (device_write, regulation cards). Dashboards and annotations write controls; a control_source node turns them into messages.",
+        "Only a deployed flow acts on devices (device_write, regulation cards). Dashboards and annotations write controls; a control_source node turns them into messages. Ontology actions invoked from an object page reach the flow through an action_trigger node.",
     ),
 ];
 
@@ -359,6 +359,15 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("max_age_secs", "freshness, 0 (default) = any age"),
         ],
         notes: "Ports: 0 = object {key: value|null}, then one port per key (payload = value, topic = key; silent when missing or too old).",
+    },
+    NodeDoc {
+        kind: "action_trigger",
+        summary: "Event source fed by the invocations of one ontology action (e.g. \"start_maintenance\" on a pump), made by a user from the object page. One output port.",
+        config: &[
+            ("object_type", "object type key, e.g. \"pump\" — must exist with this action at deploy"),
+            ("action", "action key declared on the type"),
+        ],
+        notes: "Message: payload = the action parameters (object), topic = action key, msg.object = {id, type, title}, msg.action = {invocation_id, key, by, ts_ms}. Invoking an action with no deployed flow holding its trigger is refused. Several flows may listen to the same action; each gets every invocation.",
     },
     NodeDoc {
         kind: "control_source",

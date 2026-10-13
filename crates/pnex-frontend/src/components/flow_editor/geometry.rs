@@ -215,6 +215,7 @@ pub fn accepts_input(node: &FlowNode) -> bool {
     !matches!(
         node.kind,
         FlowNodeKind::ControlSource { .. }
+            | FlowNodeKind::ActionTrigger { .. }
             | FlowNodeKind::Weather { .. }
             | FlowNodeKind::MediaSource { .. }
     )

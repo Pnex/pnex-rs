@@ -166,6 +166,9 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::ControlSource { config } => rsx! {
             ControlSourceForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::ActionTrigger { config } => rsx! {
+            ActionTriggerForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::MediaSource { config } => rsx! {
             MediaSourceForm { cx, initial: config.clone(), can_write }
         },
@@ -227,6 +230,7 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
     }
 }
 
+mod action_trigger;
 mod camera_source;
 mod control_source;
 mod coolprop;
@@ -253,6 +257,7 @@ mod weather;
 
 use crate::components::ui::BTN_DANGER;
 use crate::components::ui::FIELD_LABEL;
+use action_trigger::ActionTriggerForm;
 use camera_source::CameraSourceForm;
 use control_source::ControlSourceForm;
 use coolprop::CoolPropForm;

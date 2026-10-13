@@ -170,6 +170,7 @@ async fn install_locked(
                 may_contain: None,
                 may_be_contained_in: None,
                 properties: Vec::new(),
+                actions: Vec::new(),
                 ..t.clone()
             };
             types::create(db, org_id, user_id, &stub, Some(&pack.key)).await?;

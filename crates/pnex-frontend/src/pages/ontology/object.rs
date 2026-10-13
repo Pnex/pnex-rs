@@ -45,6 +45,8 @@ pub fn OntologyObject(id: String) -> Element {
     let mut tab = use_signal(|| "properties".to_string());
     let mut editing = use_signal(|| false);
     let mut archiving = use_signal(|| false);
+    // Action being invoked (D183).
+    let mut invoking = use_signal(|| None::<String>);
     let can_write = org::current_can_write();
 
     let o = match &*object.read() {
@@ -104,6 +106,17 @@ pub fn OntologyObject(id: String) -> Element {
                         "data-testid": "onto-edit",
                         onclick: move |_| editing.set(true),
                         {t!("onto-edit")}
+                    }
+                }
+                if can_write && !archived {
+                    for a in tv.def.actions.clone() {
+                        button {
+                            key: "{a.key}",
+                            class: BTN,
+                            "data-action": "{a.key}",
+                            onclick: move |_| invoking.set(Some(a.key.clone())),
+                            "{a.name}"
+                        }
                     }
                 }
                 if can_write && !archived && o.type_key != pnex_core::ontology::KIND_CASE {
@@ -177,6 +190,13 @@ pub fn OntologyObject(id: String) -> Element {
                         editing.set(false);
                         reload.with_mut(|r| *r += 1);
                     },
+                }
+            }
+            if let Some(key) = invoking() {
+                crate::components::ontology::action_dialog::ActionDialog {
+                    object_id: o.id.clone(),
+                    action_key: key,
+                    on_close: move |_| invoking.set(None),
                 }
             }
             if archiving() {

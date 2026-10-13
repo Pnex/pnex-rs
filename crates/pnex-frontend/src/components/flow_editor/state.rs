@@ -36,6 +36,7 @@ pub enum PaletteKind {
     MemoryWrite,
     MemoryRead,
     ControlSource,
+    ActionTrigger,
     MediaSource,
     TopicClassify,
     RangeUpsert,
@@ -199,6 +200,9 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             // No control picked yet: the violation banner guides the user.
             PaletteKind::ControlSource => FlowNodeKind::ControlSource {
                 config: pnex_core::ui_control::ControlSourceConfig::default(),
+            },
+            PaletteKind::ActionTrigger => FlowNodeKind::ActionTrigger {
+                config: Default::default(),
             },
             // No stream picked yet: the violation banner guides the user.
             PaletteKind::MediaSource => FlowNodeKind::MediaSource {

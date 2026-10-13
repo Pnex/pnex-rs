@@ -514,6 +514,13 @@ pub const ONTOLOGY_LINK_NOT_ALLOWED: &str = "ontology-link-not-allowed";
 pub const ONTOLOGY_LINK_CARDINALITY: &str = "ontology-link-cardinality";
 /// A claim is corroborated only with two pieces of distinct origins (cases.md K7).
 pub const ONTOLOGY_CLAIM_UNSOURCED: &str = "ontology-claim-unsourced";
+/// No deployed flow holds an `action-trigger` for this action (D183).
+pub const ONTOLOGY_ACTION_NO_FLOW: &str = "ontology-action-no-flow";
+/// The action bus (Valkey) is unavailable: the action was not sent.
+pub const ONTOLOGY_ACTION_UNAVAILABLE: &str = "ontology-action-unavailable";
+/// An `action-trigger` names a type or action absent from the org schema;
+/// `args.object_type`, `args.action`.
+pub const ONTOLOGY_ACTION_UNKNOWN: &str = "ontology-action-unknown";
 /// A person is attached to a case only once its processing basis is declared
 /// (cases-workspace.md K38).
 pub const CASE_LEGAL_BASIS_REQUIRED: &str = "case-legal-basis-required";
@@ -549,6 +556,9 @@ pub const ALL: &[&str] = &[
     ONTOLOGY_LINK_NOT_ALLOWED,
     ONTOLOGY_LINK_CARDINALITY,
     ONTOLOGY_CLAIM_UNSOURCED,
+    ONTOLOGY_ACTION_NO_FLOW,
+    ONTOLOGY_ACTION_UNAVAILABLE,
+    ONTOLOGY_ACTION_UNKNOWN,
     CASE_LEGAL_BASIS_REQUIRED,
     CASE_PROPOSAL_STALE,
     TRACK_IMPORT_TIMEZONE_REQUIRED,

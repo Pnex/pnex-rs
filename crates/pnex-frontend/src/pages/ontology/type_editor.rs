@@ -45,6 +45,7 @@ fn blank(key: &str) -> ObjectTypeDef {
         write_role: WriteRole::Member,
         may_contain: None,
         may_be_contained_in: Some(TypeSet::Only(vec!["folder".into()])),
+        actions: Vec::new(),
     }
 }
 

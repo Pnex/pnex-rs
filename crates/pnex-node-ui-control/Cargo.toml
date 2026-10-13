@@ -3,7 +3,7 @@ name = "pnex-node-ui-control"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Flow node PNeX — control-source: org controls written from the surfaces (Valkey pub/sub)"
+description = "Flow nodes PNeX — control-source (org controls written from the surfaces) and action-trigger (ontology actions), over Valkey pub/sub"
 
 [dependencies]
 edgelink-core = { path = "../../vendor/edgelinkd/crates/core", default-features = false, features = ["core", "js"] }

@@ -171,6 +171,15 @@ pub fn to_red_flows_json_with(
                     "pnex_org_id": meta.org_id,
                 })
             }
+            FlowNodeKind::ActionTrigger { config } => serde_json::json!({
+                "type": "pnex-action-trigger",
+                "object_type": config.object_type,
+                "action": config.action,
+                "pnex_node_id": n.id,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+                "pnex_org_id": meta.org_id,
+            }),
             FlowNodeKind::MediaSource { config } => serde_json::json!({
                 "type": "pnex-media-source",
                 "streams": config.streams,

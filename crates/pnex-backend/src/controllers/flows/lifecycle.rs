@@ -247,6 +247,50 @@ pub(crate) async fn video_record_conflicts_for_deploy(
         .collect())
 }
 
+/// Ontology actions gate (D183): an `action-trigger` names a type and an
+/// action of the org schema, otherwise it would never fire.
+pub(crate) async fn unknown_actions_for_deploy(
+    ctx: &AppContext,
+    org_id: i64,
+    candidate_graph: &FlowGraph,
+) -> Result<Vec<pnex_core::FlowViolation>> {
+    let mut violations = Vec::new();
+    let mut schema = None;
+    for n in &candidate_graph.nodes {
+        let pnex_core::FlowNodeKind::ActionTrigger { config } = &n.kind else {
+            continue;
+        };
+        if let Some((code, message)) = config.check_deployable() {
+            violations.push(pnex_core::FlowViolation::new(
+                Some(n.id.as_str()),
+                code,
+                message,
+            ));
+            continue;
+        }
+        if schema.is_none() {
+            schema = Some(
+                crate::services::ontology::schema(&ctx.db, org_id)
+                    .await
+                    .map_err(|_| Error::InternalServerError)?,
+            );
+        }
+        let known = schema
+            .as_ref()
+            .and_then(|s| s.object_type(&config.object_type))
+            .is_some_and(|t| t.action(&config.action).is_some());
+        if !known {
+            violations.push(pnex_core::FlowViolation::with_args(
+                Some(n.id.as_str()),
+                pnex_core::err_codes::ONTOLOGY_ACTION_UNKNOWN,
+                "action-trigger names an action absent from the organization ontology",
+                serde_json::json!({ "object_type": config.object_type, "action": config.action }),
+            ));
+        }
+    }
+    Ok(violations)
+}
+
 /// Org controls gate (D127, D133): a `control-source` listens to at least
 /// one control (an empty node saves as a draft, never deploys), and every
 /// listed control must exist in the org, otherwise the node would wait
@@ -579,6 +623,7 @@ async fn deploy_version(
             video_record_conflicts_for_deploy(&ctx, org.org.id, flow.id, &candidate_graph).await?,
         );
         conflicts.extend(unknown_controls_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
+        conflicts.extend(unknown_actions_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         conflicts
             .extend(unknown_media_streams_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         conflicts

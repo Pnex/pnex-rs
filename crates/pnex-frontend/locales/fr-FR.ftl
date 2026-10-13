@@ -3068,6 +3068,11 @@ err-control-unknown = Le contrôle { $control } n'existe pas (ou plus) dans l'or
 err-control-store-unavailable = Le stockage des contrôles (Valkey) est indisponible : la valeur n'a pas été envoyée.
 
 ## Control source node (D127)
+flows-palette-action-trigger = Déclencheur d'action
+flows-palette-action-trigger-help = Reçoit les déclenchements d'une action de l'ontologie faits depuis une page objet (par ex. « Mettre en maintenance » sur une pompe)
+flows-action-trigger-help = Un message par déclenchement : payload = les paramètres, msg.object = l'objet, msg.action = qui et quand.
+flows-action-trigger-action = Action
+flows-action-trigger-none = Aucune action n'est encore déclarée dans l'ontologie : ajoutez-en une à un type (ou installez le pack Maintenance).
 flows-palette-control-source = Source de contrôle
 flows-palette-control-source-help = Reçoit les valeurs actionnées depuis les tableaux de bord et les annotations (un port par source)
 flows-control-source-help = Émet un message à chaque fois qu'une source cochée est actionnée : les interrupteurs, curseurs et boutons posés sur les tableaux de bord et les annotations apparaissent ici, groupés par surface, dès l'enregistrement de leur surface. payload = valeur, topic = clé du contrôle. Un port de sortie par source, dans l'ordre de sélection.
@@ -3168,6 +3173,8 @@ flow-status-control-listening = À l'écoute
 flow-status-control-bus-unavailable = Bus des contrôles indisponible
 flow-status-count-commands = { $commands } commandes
 flow-status-stat-commands = Commandes reçues
+err-action-trigger-unset = Choisissez un type d'objet et une action
+err-action-trigger-invalid = Clé de type d'objet ou d'action invalide
 err-control-source-empty = Cochez au moins un contrôle à écouter
 err-control-source-too-many = 32 contrôles au plus par nœud
 err-control-source-unset = Choisissez un contrôle
@@ -3911,6 +3918,9 @@ err-ontology-admin-required = Seul un propriétaire ou un administrateur de l'or
 err-ontology-system-read-only = Les types et objets système se modifient depuis leur page dédiée (appareils, médias, flows…).
 err-ontology-link-not-allowed = Ce type de lien ne relie pas des objets de ces types.
 err-ontology-link-cardinality = Un lien ouvert occupe déjà cette place : fermez-le d'abord (par exemple au remplacement d'un capteur).
+err-ontology-action-no-flow = Aucun flow déployé ne traite cette action : ajoutez-lui un nœud « Déclencheur d'action » dans un flow, puis déployez ce flow.
+err-ontology-action-unavailable = Le bus d'actions (Valkey) est indisponible : l'action n'a pas été envoyée.
+err-ontology-action-unknown = L'action { $action } du type { $object_type } n'existe pas dans l'ontologie de l'organisation : choisissez-en une autre dans le nœud.
 err-ontology-claim-unsourced = Une affirmation n'est corroborée qu'avec au moins deux pièces d'origines distinctes : reliez-la à ses sources (« est sourcée par »), ou écrivez pourquoi dans « Corroboration justification ».
 err-track-import-timezone-required = Les heures du fichier n'indiquent pas leur fuseau : choisissez le fuseau horaire de l'enregistrement.
 err-track-import-empty = Le fichier ne contient aucun point utilisable.
@@ -4075,6 +4085,15 @@ onto-kind-series = Série temporelle
 onto-kind-events = Événements
 onto-action-object-create = Création
 onto-action-object-update = Modification
+onto-action-action-invoke = Action déclenchée
+onto-action-run = Exécuter
+onto-action-title = { $action } — { $object }
+onto-action-hint = L'action est envoyée aux flows déployés qui la traitent : ce sont eux qui décident de ce qui se passe. Le déclenchement est conservé dans l'onglet Provenance.
+onto-action-confirm-hint = Cette action demande votre confirmation explicite : vérifiez les paramètres avant de l'exécuter.
+onto-action-sent = Action envoyée à { $count ->
+    [one] 1 flow
+   *[other] { $count } flows
+}
 onto-action-object-archive = Archivage
 onto-action-link-open = Lien ouvert
 onto-action-link-close = Lien fermé
@@ -4093,6 +4112,8 @@ ai-trace-case-workspace = dossier : { $events } événement(s), { $undated } pi�
 ai-trace-case-signals = dossier : { $count } signal(aux)
 ai-trace-case-proposals = dossier : { $count } proposition(s)
 ai-trace-case-board = tableau : { $hypotheses } hypothèse(s), { $unsourced } affirmation(s) sans source
+ai-trace-action-proposed = « { $action } » proposée sur « { $title } »
+ai-review-action = Vérifier et exécuter « { $action } »
 ai-trace-ontology-object-saved = objet « { $title } » v{ $version }
 ai-trace-ontology-link-opened = lien ouvert : { $source } —{ $link }→ { $target }
 ai-trace-ontology-link-closed = lien fermé : { $source } —{ $link }→ { $target }
