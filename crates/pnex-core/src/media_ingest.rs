@@ -41,10 +41,19 @@ pub enum MediaStreamKind {
     HttpFile,
     /// IP camera over RTSP (TCP interleaved only, D160).
     Rtsp,
+    /// A video or audio file of the media library replayed at its natural
+    /// speed (URL `media:<asset id>`, server or worker carriers only).
+    MediaAsset,
 }
 
 impl MediaStreamKind {
-    pub const ALL: [MediaStreamKind; 4] = [Self::Icecast, Self::Hls, Self::HttpFile, Self::Rtsp];
+    pub const ALL: [MediaStreamKind; 5] = [
+        Self::Icecast,
+        Self::Hls,
+        Self::HttpFile,
+        Self::Rtsp,
+        Self::MediaAsset,
+    ];
 
     pub fn wire(self) -> &'static str {
         match self {
@@ -52,13 +61,20 @@ impl MediaStreamKind {
             Self::Hls => "hls",
             Self::HttpFile => "http_file",
             Self::Rtsp => "rtsp",
+            Self::MediaAsset => "media_asset",
         }
+    }
+
+    /// A source with an end (a file): a finished run is not a failure.
+    pub fn finite(self) -> bool {
+        matches!(self, Self::HttpFile | Self::MediaAsset)
     }
 
     /// URL scheme(s) a stream of this kind accepts.
     pub fn scheme_ok(self, scheme: &str) -> bool {
         match self {
             Self::Rtsp => scheme == "rtsp",
+            Self::MediaAsset => scheme == "media",
             _ => matches!(scheme, "http" | "https"),
         }
     }
@@ -66,6 +82,16 @@ impl MediaStreamKind {
     pub fn from_wire(s: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|k| k.wire() == s)
     }
+}
+
+/// Asset id of a `media:<uuid>` source URL.
+pub fn media_asset_id(url: &str) -> Option<uuid::Uuid> {
+    uuid::Uuid::parse_str(url.trim().strip_prefix("media:")?).ok()
+}
+
+/// URL of a media library asset used as a stream source.
+pub fn media_asset_url(id: uuid::Uuid) -> String {
+    format!("media:{id}")
 }
 
 /// Tracks captured from a stream (D175): audio goes to the ASR path,
@@ -934,6 +960,11 @@ mod tests {
         assert!(MediaStreamKind::Rtsp.scheme_ok("rtsp"));
         assert!(!MediaStreamKind::Rtsp.scheme_ok("http"));
         assert!(!MediaStreamKind::Hls.scheme_ok("rtsp"));
+        assert!(MediaStreamKind::MediaAsset.scheme_ok("media"));
+        assert!(MediaStreamKind::MediaAsset.finite() && !MediaStreamKind::Rtsp.finite());
+        let id = uuid::Uuid::from_u128(7);
+        assert_eq!(media_asset_id(&media_asset_url(id)), Some(id));
+        assert_eq!(media_asset_id("https://x/y"), None);
     }
 
     #[test]

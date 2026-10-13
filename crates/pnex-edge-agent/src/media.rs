@@ -20,8 +20,7 @@ use std::time::{Duration, Instant};
 use futures_util::{SinkExt, StreamExt};
 use pnex_core::frame::{Initiator, Link as NoiseLink};
 use pnex_core::media_ingest::{
-    encode_segment, CaptureState, DeviceStream, MediaDownMsg, MediaStreamKind, MediaUpMsg,
-    SegmentHeader,
+    encode_segment, CaptureState, DeviceStream, MediaDownMsg, MediaUpMsg, SegmentHeader,
 };
 use pnex_media_capture::{
     decoder, CaptureError, CaptureSettings, Host, RunEnd, Segment, Spec, BACKOFF_MAX, BACKOFF_MIN,
@@ -185,6 +184,8 @@ async fn supervise(ctx: Arc<Ctx>, stream: DeviceStream, mut stop: watch::Receive
                     segment_secs: stream.segment_secs.max(1) as u32,
                     overlap_secs: stream.overlap_secs.max(0) as u32,
                     metadata: false,
+                    // A box never replays a library file (refused at save).
+                    file: None,
                 };
                 pnex_media_capture::run_once(
                     &mut host,
@@ -200,7 +201,7 @@ async fn supervise(ctx: Arc<Ctx>, stream: DeviceStream, mut stop: watch::Receive
         match result {
             Ok(RunEnd::Stopped) => return,
             // A file is captured once; the task idles until reassigned.
-            Ok(RunEnd::Finished) if stream.kind == MediaStreamKind::HttpFile => {
+            Ok(RunEnd::Finished) if stream.kind.finite() => {
                 ctx.book.set(&id, CaptureState::Stopped, None);
                 let _ = stop.changed().await;
                 return;
@@ -487,6 +488,7 @@ async fn send_bin(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pnex_core::media_ingest::MediaStreamKind;
 
     fn stream(id: &str, enabled: bool) -> DeviceStream {
         DeviceStream {

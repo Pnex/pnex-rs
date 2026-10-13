@@ -115,7 +115,9 @@ pub fn input_format(content_type: Option<&str>, path: &str) -> Option<InputForma
         "audio/flac" | "audio/x-flac" => Some(FLAC),
         "audio/wav" | "audio/x-wav" | "audio/wave" => Some(WAV),
         "video/mp2t" | "video/mpeg" => Some(MPEGTS),
-        "audio/mp4" | "audio/x-m4a" | "video/mp4" | "video/iso.segment" => Some(MP4),
+        "audio/mp4" | "audio/x-m4a" | "video/mp4" | "video/quicktime" | "video/iso.segment" => {
+            Some(MP4)
+        }
         _ => None,
     };
     by_type.or_else(|| {
@@ -131,7 +133,7 @@ pub fn input_format(content_type: Option<&str>, path: &str) -> Option<InputForma
             "flac" => Some(FLAC),
             "wav" => Some(WAV),
             "ts" => Some(MPEGTS),
-            "m4a" | "mp4" | "m4s" | "cmfa" => Some(MP4),
+            "m4a" | "mp4" | "m4s" | "cmfa" | "m4v" | "mov" => Some(MP4),
             _ => None,
         }
     })

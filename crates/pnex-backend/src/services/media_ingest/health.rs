@@ -152,7 +152,7 @@ pub async fn tick(ctx: &AppContext, alerted: &mut HashSet<Uuid>) -> Result<(), D
             .or_default()
             .extend(points(&stream.slug, &health, now));
         // A file ends by itself: its end is not a silence.
-        if stream.kind == MediaStreamKind::HttpFile.wire() {
+        if MediaStreamKind::from_wire(&stream.kind).is_some_and(MediaStreamKind::finite) {
             continue;
         }
         live.insert(stream.id);

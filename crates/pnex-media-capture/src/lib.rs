@@ -174,6 +174,43 @@ pub struct Spec<'a> {
     pub overlap_secs: u32,
     /// Whether in-band metadata is handed to [`Host::metadata`].
     pub metadata: bool,
+    /// A file already read by the carrier (`media_asset` streams), fed to
+    /// the decoders instead of a fetch.
+    pub file: Option<FileSource>,
+}
+
+/// Input of a replayed library file.
+#[derive(Clone)]
+pub struct FileSource {
+    pub bytes: Bytes,
+    pub format: decoder::InputFormat,
+    /// Read at the natural speed (`-re`) like a live source; off for a
+    /// quick test extract.
+    pub realtime: bool,
+}
+
+/// `-re` before the input: read at the native rate (replayed file).
+fn realtime(mut argv: Vec<String>) -> Vec<String> {
+    if let Some(i) = argv.iter().position(|a| a == "-i") {
+        argv.insert(i, "-re".into());
+    }
+    argv
+}
+
+/// The bytes of a replayed file as a decoder input, in 64 KiB chunks.
+fn file_track(bytes: Bytes, format: decoder::InputFormat) -> Track {
+    let (tx, rx) = mpsc::channel(4);
+    tokio::spawn(async move {
+        let mut at = 0;
+        while at < bytes.len() {
+            let end = (at + 64 * 1024).min(bytes.len());
+            if tx.send(Ok(bytes.slice(at..end))).await.is_err() {
+                return;
+            }
+            at = end;
+        }
+    });
+    Track { format, chunks: rx }
 }
 
 /// Where a run's output goes: the carrier-specific part of the capture.
@@ -301,7 +338,21 @@ pub async fn run_once<H: Host>(
 ) -> Result<RunEnd, CaptureError> {
     let url = spec.url;
     let mut first_pdt = None;
-    let (audio, video) = if spec.kind == MediaStreamKind::Rtsp {
+    let (audio, video) = if let Some(FileSource { bytes, format, .. }) = spec.file.clone() {
+        let track = file_track(bytes, format);
+        match (
+            spec.want_audio && format.has_audio(),
+            spec.want_video && format.has_video(),
+        ) {
+            (true, true) => {
+                let (a, v) = tee(track);
+                (Some(a), Some(v))
+            }
+            (true, false) => (Some(track), None),
+            (false, true) => (None, Some(track)),
+            (false, false) => (None, None),
+        }
+    } else if spec.kind == MediaStreamKind::Rtsp {
         let creds = match spec.secret {
             Some(s) => Some(rtsp::credentials(s).ok_or(CaptureError::SecretUnreadable)?),
             None => None,
@@ -350,7 +401,10 @@ pub async fn run_once<H: Host>(
     let (tx, mut rx) = mpsc::channel::<Decoded>(8);
     let mut decoders: Vec<(Decoder, &'static str)> = Vec::new();
     if let Some(track) = audio {
-        let argv = decoder::argv(ffmpeg, track.format);
+        let mut argv = decoder::argv(ffmpeg, track.format);
+        if spec.file.as_ref().is_some_and(|f| f.realtime) {
+            argv = realtime(argv);
+        }
         let (d, mut out) = spawn_decoder(settings, argv, spec.slug, track)?;
         let tx = tx.clone();
         tokio::spawn(async move {
@@ -364,7 +418,10 @@ pub async fn run_once<H: Host>(
         decoders.push((d, "audio"));
     }
     if let Some(track) = video {
-        let argv = decoder::video_argv(ffmpeg, track.format, spec.fps, FRAME_MAX_WIDTH);
+        let mut argv = decoder::video_argv(ffmpeg, track.format, spec.fps, FRAME_MAX_WIDTH);
+        if spec.file.as_ref().is_some_and(|f| f.realtime) {
+            argv = realtime(argv);
+        }
         let (d, mut out) = spawn_decoder(settings, argv, spec.slug, track)?;
         let tx = tx.clone();
         let slug = spec.slug.to_string();

@@ -240,6 +240,40 @@ fn clean_url_under(raw: &str, policy: egress::EgressPolicy) -> Result<reqwest::U
     Ok(url)
 }
 
+/// Source of a stream: a checked URL, or for `media_asset` a file of the
+/// org's media library that the decoder can read (`media:<asset id>`),
+/// never captured by a box (the file lives on the server, R1).
+async fn clean_source<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    kind: MediaStreamKind,
+    raw: &str,
+    carrier: Option<CaptureOn>,
+) -> Result<String, StreamError> {
+    use crate::models::_entities::{media_assets, media_versions};
+    if kind != MediaStreamKind::MediaAsset {
+        return Ok(clean_url_for(raw, carrier)?.to_string());
+    }
+    if matches!(carrier, Some(CaptureOn::Device(_))) {
+        return Err(invalid("capture_on", err_codes::FIELD_INVALID));
+    }
+    let bad = || invalid("url", err_codes::FIELD_INVALID);
+    let id = pnex_core::media_ingest::media_asset_id(raw).ok_or_else(bad)?;
+    let asset = media_assets::Entity::find_by_id(id)
+        .filter(media_assets::Column::OrgId.eq(org_id))
+        .one(db)
+        .await?
+        .ok_or_else(bad)?;
+    let version = match asset.current_version_id {
+        Some(v) => media_versions::Entity::find_by_id(v).one(db).await?,
+        None => None,
+    }
+    .ok_or_else(bad)?;
+    pnex_media_capture::decoder::input_format(Some(&version.content_type), &version.filename)
+        .ok_or_else(bad)?;
+    Ok(pnex_core::media_ingest::media_asset_url(id))
+}
+
 /// A capture box captures audio only: its frames would have no camera bus
 /// to reach (the bus lives on the server's Valkey).
 fn check_box_tracks(am: &media_streams::ActiveModel) -> Result<(), StreamError> {
@@ -253,9 +287,18 @@ fn check_box_tracks(am: &media_streams::ActiveModel) -> Result<(), StreamError> 
     Ok(())
 }
 
-/// The URL scheme must match the stream kind (rtsp ⇔ `rtsp`).
+/// The URL scheme must match the stream kind (rtsp ⇔ `rtsp`, library file
+/// ⇔ `media`, never on a capture box).
 fn check_kind_url(am: &media_streams::ActiveModel) -> Result<(), StreamError> {
     let kind = MediaStreamKind::from_wire(am.kind.as_ref()).unwrap_or_default();
+    if kind == MediaStreamKind::MediaAsset
+        && matches!(
+            CaptureOn::from_wire(am.capture_on.as_ref()),
+            Some(CaptureOn::Device(_))
+        )
+    {
+        return Err(invalid("capture_on", err_codes::FIELD_INVALID));
+    }
     let ok = reqwest::Url::parse(am.url.as_ref()).is_ok_and(|u| kind.scheme_ok(u.scheme()));
     if ok {
         Ok(())
@@ -479,7 +522,14 @@ pub async fn create(
         .capture_on
         .as_deref()
         .and_then(|c| CaptureOn::from_wire(c.trim()));
-    let url = clean_url_for(input.url.as_deref().unwrap_or_default(), carrier)?;
+    let url = clean_source(
+        db,
+        org_id,
+        kind,
+        input.url.as_deref().unwrap_or_default(),
+        carrier,
+    )
+    .await?;
     let txn = db.begin().await?;
     db_lock::xact_lock(&txn, db_lock::ns::MEDIA_STREAM_QUOTA, org_id).await?;
     let count = media_streams::Entity::find()
@@ -499,7 +549,7 @@ pub async fn create(
         name: Set(name),
         slug: Set(slug.clone()),
         kind: Set(kind.wire().to_string()),
-        url: Set(url.to_string()),
+        url: Set(url),
         secret_id: Set(None),
         enabled: Set(false),
         capture_on: Set(CaptureOn::Server.wire()),
@@ -563,9 +613,15 @@ pub async fn update(
         .map(str::trim)
         .unwrap_or(&row.capture_on);
     if let Some(raw) = &input.url {
-        let url = clean_url_for(raw, CaptureOn::from_wire(carrier))?;
+        let kind = input
+            .kind
+            .or_else(|| MediaStreamKind::from_wire(&row.kind))
+            .unwrap_or_default();
+        let url = clean_source(&txn, org_id, kind, raw, CaptureOn::from_wire(carrier)).await?;
         let before = reqwest::Url::parse(&row.url).ok();
-        let moved = before.as_ref().map(origin) != Some(origin(&url));
+        let after =
+            reqwest::Url::parse(&url).map_err(|_| invalid("url", err_codes::FIELD_INVALID))?;
+        let moved = before.as_ref().map(origin) != Some(origin(&after));
         // R9: a stream holding a secret keeps its origin unless an
         // owner/admin moves it.
         if moved && row.secret_id.is_some() && !by.can_manage_secrets {
