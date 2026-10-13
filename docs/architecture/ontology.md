@@ -890,3 +890,77 @@ livrées**, ne rien redéfinir.
 - [ ] `modele-cible.md` relu, hypothèses B8 tranchées (proposition
   écrite 2026-10-13, relecture à faire).
 - [ ] Relecture finale : aucun extrait de code tiers dans `research/`.
+
+### B13. Premier lot de code (2026-10-13, branche `feat/gmao-plans`, 21f68103)
+
+Lancé sur l'accord de l'user, avant la relecture complète de
+`modele-cible.md`. Ce qui est fait, et en quoi cela s'écarte de la
+proposition :
+
+- **Noyau** :
+  - type de propriété **`recurrence`** dans `pnex-core`
+    (`ontology/recurrence.rs`) : début, tous les N jours, semaines, mois ou
+    ans, fin facultative, `floating`, durée en jours ;
+  - énumération bornée (1000 dates au plus) et fins de mois sans dérive.
+
+  **Écart** : pas de RRULE ni de crate `rrule`. Une période simple
+  couvre S1, S2 en date et S4. Il faudra passer à `rrule` quand un plan
+  demandera BYDAY ou une heure. La crate `chrono` (sans horloge) entre
+  dans `pnex-core`.
+- **Matérialiseur** (`services/ontology/recurrence.rs`) :
+  - fonctionnement :
+    - horizon de 90 jours ;
+    - `external_id = rec:<propriété>:<date>`, origine `grid` ;
+    - recalcul après chaque création, modification ou archivage d'objet, et
+      après la modification d'une occurrence ;
+    - balayage toutes les 6 h, sur un seul pod (D106).
+  - **ce qu'un utilisateur a touché n'est jamais réécrit** (réalisée,
+    statut posé, ou déplacée). Les occurrences futures intactes sortent de
+    la série quand la règle change ou que l'objet est archivé.
+  - **Écart** : les occurrences portent sur **l'objet qui tient la
+    récurrence** (le plan), pas sur la cible. La cible se rejoint par le
+    lien `maintains`, et le mécanisme reste générique : toute propriété
+    `recurrence` de tout type produit ses plages.
+- **Pack Maintenance 1.2.0** : type `maintenance_plan` (`schedule`,
+  `instructions` ; `immobilizes` retiré tant qu'il ne fait rien) et lien `maintains` vers
+  n'importe quel type, device compris.
+- **UI** :
+  - saisie de la récurrence avec aperçu des 5 prochaines dates (même code
+    que le serveur) ;
+  - page **`/calendar`** : grille du mois native Dioxus, états planifiée,
+    en retard (calculé), réalisée, annulée ;
+  - dialogue d'occurrence : marquer réalisée, annuler, déplacer ;
+    l'occurrence seule change, jamais le plan.
+  
+  **Écart** : ni EventCalendar ni vue de charge pour l'instant (pas encore
+  d'équipes).
+- **Sécurité** : une plage d'objet (création, modification, suppression,
+  import) exige désormais le `write_role` du type de l'objet (D188), comme
+  l'objet lui-même. Cet écart préexistait (D182) ; test viewer/member →
+  403 `ontology-write-forbidden`. Le nœud `range_upsert` (flow déployé
+  par un humain) n'est pas concerné.
+- **Assistant** :
+  - fiche `assistant-kb/calendar.md` ;
+  - les plans se créent par `create_object`, dont la description donne
+    la forme d'une récurrence ;
+  - **`list_calendar`** (lecture, avec l'état calculé) ;
+  - **`propose_occurrence_change`** : réalisée, déplacer ou annuler. Rien
+    n'est écrit ; mêmes règles que l'API (`scope_writable`, partagé avec
+    le contrôleur) ; le bouton « Vérifier » sous la réponse ouvre le
+    dialogue du calendrier pré-rempli.
+- **Second passage (même jour)** :
+  - **état d'occurrence partagé** dans `pnex-core`
+    (`time_range::occurrence_state`) : planifiée, à préparer
+    (`lead_days`, devenu un champ de la récurrence), en retard, réalisée,
+    annulée ;
+  - les occurrences intactes suivent le titre et le délai du plan ;
+  - **clôture** avec date et temps passé ;
+  - `GET /time-ranges/{id}` ;
+  - **carte « Occurrences »** dans l'onglet Temps de l'objet qui porte la
+    récurrence **et de tout objet lié à lui** (la pompe montre son
+    prochain graissage) : générique, sans connaître le lien `maintains`.
+- **Reste à faire** :
+  - **côté terrain** : compteur (S2 en heures de marche), OT = procédure
+    (Pages L6), équipes et vue de charge, Gantt d'arrêt, flux `.ics` ;
+  - **côté occurrences** : proposer l'action D183 (`start_maintenance`) à
+    l'ouverture d'une occurrence ; jours en UTC.
