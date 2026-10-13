@@ -376,6 +376,17 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         notes: "The image leaves PneX for the organization's provider: wiring this node is that choice. Needs an LLM provider in the organization settings (none = node error status). Model calls of caption and media_fuse nodes share a daily cap per organization (2000 by default). The caption is indicative, never a fact: feed it to media_fuse, an event_log, or a notify for a human, never to anything that acts. Frames older than 15 s are gone from the camera bus: keep it right after the source or detection.",
     },
     NodeDoc {
+        kind: "page_pdf",
+        summary: "Renders a page version as an A4 PDF (header, page N / M, AI notice) stored in the media library. Port 0 = PDF ready: payload = {asset_id, filename, page_id, version, title}. Port 1 = an AI version waits for a person's approval in Pages: payload = {page_id, version, title}.",
+        config: &[
+            ("source", "\"message\" (default: payload.page_id + payload.version, what page_write emits) | \"latest_sendable\" (the latest approved or non-AI version of page_id not yet exported by this node)"),
+            ("page_id", "the page (source latest_sendable)"),
+            ("require_approval", "default true: an AI version goes to port 1 until a person approves it; false = PDF with a \"not reviewed\" notice"),
+            ("language", "language of the PDF words: \"fr\" or English (default)"),
+        ],
+        notes: "Typical report: inject (cron) -> data -> llm_text -> page_write -> page_pdf; port 1 -> pnex_notify (\"report ready to review\"). To send once approved, a second flow: inject (every 15 min) -> page_pdf (latest_sendable) -> pnex_notify with the PDF attached; a version is never sent twice by the same node.",
+    },
+    NodeDoc {
         kind: "page_write",
         summary: "Writes the Markdown of the message into a page (Pages) of the organization and freezes a named version: a report page per run, or a log page appended to. payload = {page_id, title, version, ai_generated}.",
         config: &[

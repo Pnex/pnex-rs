@@ -132,6 +132,7 @@ pub fn port_counts_of(node: &FlowNode) -> (usize, usize) {
         FlowNodeKind::VisionDetect { .. } | FlowNodeKind::EventLog { .. } => (1, 0),
         // Vision track: current tracks + appear/disappear events.
         FlowNodeKind::VisionTrack { .. } => (2, 0),
+        FlowNodeKind::PagePdf { .. } => (2, 0),
         _ => (1, 0),
     }
 }

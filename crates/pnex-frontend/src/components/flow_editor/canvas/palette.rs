@@ -1,7 +1,7 @@
 use super::*;
 
 /// Liste canonique des kinds proposés à l'ajout (ordre de la maquette).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 38] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 39] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::Weather,
@@ -33,6 +33,7 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 38] = [
     PaletteKind::TextDecide,
     PaletteKind::RangeUpsert,
     PaletteKind::PageWrite,
+    PaletteKind::PagePdf,
     PaletteKind::EventLog,
     PaletteKind::MemoryWrite,
     PaletteKind::MemoryRead,
@@ -74,6 +75,7 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::MediaFuse => "media-fuse",
         PaletteKind::LlmText => "llm-text",
         PaletteKind::PageWrite => "page-write",
+        PaletteKind::PagePdf => "page-pdf",
         PaletteKind::TextDecide => "text-decide",
         PaletteKind::EventLog => "event-log",
         PaletteKind::MemoryWrite => "memory-write",
@@ -128,6 +130,7 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::MediaFuse => (PaletteIcon::Braces, "bg-violet-50 text-violet-700"),
         PaletteKind::LlmText => (PaletteIcon::Braces, "bg-violet-50 text-violet-800"),
         PaletteKind::PageWrite => (PaletteIcon::Layers, "bg-amber-50 text-amber-700"),
+        PaletteKind::PagePdf => (PaletteIcon::Layers, "bg-amber-50 text-amber-800"),
         PaletteKind::TextDecide => (PaletteIcon::Gauge, "bg-violet-50 text-violet-700"),
         PaletteKind::EventLog => (PaletteIcon::History, "bg-slate-100 text-slate-600"),
         PaletteKind::MemoryWrite => (PaletteIcon::Database, "bg-lime-50 text-lime-700"),
@@ -175,6 +178,7 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::MediaFuse { .. } => PaletteKind::MediaFuse,
         FlowNodeKind::LlmText { .. } => PaletteKind::LlmText,
         FlowNodeKind::PageWrite { .. } => PaletteKind::PageWrite,
+        FlowNodeKind::PagePdf { .. } => PaletteKind::PagePdf,
         FlowNodeKind::TextDecide { .. } => PaletteKind::TextDecide,
         FlowNodeKind::EventLog { .. } => PaletteKind::EventLog,
         FlowNodeKind::MemoryWrite { .. } => PaletteKind::MemoryWrite,
@@ -244,6 +248,7 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         | PaletteKind::VideoRecord
         | PaletteKind::RangeUpsert
         | PaletteKind::PageWrite
+        | PaletteKind::PagePdf
         | PaletteKind::EventLog => PaletteCategory::Storage,
         PaletteKind::VisionDetect
         | PaletteKind::VisionTrack
@@ -406,6 +411,10 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::PageWrite => (
             t!("flows-palette-page-write").to_string(),
             t!("flows-palette-page-write-help").to_string(),
+        ),
+        PaletteKind::PagePdf => (
+            t!("flows-palette-page-pdf").to_string(),
+            t!("flows-palette-page-pdf-help").to_string(),
         ),
         PaletteKind::TextDecide => (
             t!("flows-palette-text-decide").to_string(),

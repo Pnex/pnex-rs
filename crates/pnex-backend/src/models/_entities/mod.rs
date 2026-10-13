@@ -9,6 +9,7 @@ pub mod prelude;
 // Pages (pages.md #21)
 pub mod doc_comments;
 pub mod doc_updates;
+pub mod doc_version_exports;
 pub mod doc_versions;
 pub mod docs;
 

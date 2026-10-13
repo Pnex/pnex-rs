@@ -3,7 +3,7 @@ id: reports
 title: Reports written by a flow
 kind: howto
 pages: /flows
-nodes: llm_text, page_write, inject
+nodes: llm_text, page_write, page_pdf, inject, pnex_notify
 err_codes: ai-not-configured
 tools: 
 tags: report, rapport, weekly report, rapport hebdomadaire, summary, synthèse, résumé, llm, ai text, texte ia, cron, schedule, planification
@@ -15,7 +15,11 @@ A report is written by a flow: a trigger on a schedule gathers data, the organiz
 2. Gather the data of the period: an **HTTP fetch**, a **Memory read**, the descriptions of a **Media fusion**, events…
 3. **AI text**: write the **Instruction** ("Write the weekly report of these events: what happened, when, anything unusual"), and if needed the **Data** path inside the message. The answer is Markdown (`payload.text`), marked as AI-generated.
 4. **Write a page**: a **new page for each message** (title such as "Weekly report {week}"; {date}, {time}, {week} are replaced) or **append at the end of a page** (a running log). Each write freezes a named version ("{date}" by default) marked "written by a flow" and, when the text comes from the AI, "Holds AI text · review it before it is sent".
-5. A person reads the version in **Pages** and clicks **Approve**. The PDF export and sending by notification come next.
+5. **Page PDF** after **Write a page**: output **PDF ready** gives the file of the media library; output **To approve** fires when the version holds AI text not yet approved: wire a **Notification** there ("weekly report to review", with the page link).
+6. A person reads the version in **Pages** and clicks **Approve** (the **PDF** button of a version downloads it at any time).
+7. To send it once approved: a second flow, **Inject** every 15 minutes → **Page PDF** with **The latest sendable version of a page, once** → **Notification** with the PDF attached. A version is never sent twice by the same node.
+
+Unticking **Approval required for AI text** sends AI reports without review; the PDF then says "not reviewed". Keep it ticked unless the data cannot carry hostile text.
 
 ## Good to know
 - The organization needs an AI provider (Organization settings); without one the node shows "AI call failed" with the code `ai-not-configured`.

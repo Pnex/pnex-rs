@@ -160,6 +160,9 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::VisionCaption { config } => rsx! {
             VisionCaptionForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::PagePdf { config } => rsx! {
+            PagePdfForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::PageWrite { config } => rsx! {
             PageWriteForm { cx, initial: config.clone(), can_write }
         },
@@ -292,7 +295,7 @@ use json::{JsonMergeForm, JsonSplitForm};
 use media_source::MediaSourceForm;
 use memory::{MemoryReadForm, MemoryWriteForm};
 use notify::NotifyForm;
-use page::PageWriteForm;
+use page::{PagePdfForm, PageWriteForm};
 use predict::{AnomalyForm, ForecastForm};
 use range_upsert::RangeUpsertForm;
 use red::RedForm;

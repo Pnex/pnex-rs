@@ -318,6 +318,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::MediaFuse { .. } => kind_labels(PaletteKind::MediaFuse),
         pnex_core::FlowNodeKind::LlmText { .. } => kind_labels(PaletteKind::LlmText),
         pnex_core::FlowNodeKind::PageWrite { .. } => kind_labels(PaletteKind::PageWrite),
+        pnex_core::FlowNodeKind::PagePdf { .. } => kind_labels(PaletteKind::PagePdf),
         pnex_core::FlowNodeKind::TextDecide { .. } => kind_labels(PaletteKind::TextDecide),
         pnex_core::FlowNodeKind::EventLog { .. } => kind_labels(PaletteKind::EventLog),
         pnex_core::FlowNodeKind::MemoryWrite { .. } => kind_labels(PaletteKind::MemoryWrite),
@@ -391,7 +392,8 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         }
         pnex_core::FlowNodeKind::EventLog { .. }
         | pnex_core::FlowNodeKind::RangeUpsert { .. }
-        | pnex_core::FlowNodeKind::PageWrite { .. } => {
+        | pnex_core::FlowNodeKind::PageWrite { .. }
+        | pnex_core::FlowNodeKind::PagePdf { .. } => {
             (geometry::EVENT_LOG_FILL, geometry::EVENT_LOG_STROKE)
         }
         pnex_core::FlowNodeKind::Anomaly { .. } => {
@@ -440,6 +442,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::MediaFuse { .. }
         | pnex_core::FlowNodeKind::LlmText { .. }
         | pnex_core::FlowNodeKind::PageWrite { .. }
+        | pnex_core::FlowNodeKind::PagePdf { .. }
         | pnex_core::FlowNodeKind::TextDecide { .. } => {
             cx.display_values.read().get(&node.id).cloned()
         }
@@ -584,6 +587,15 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                 .into_iter()
                 .enumerate()
                 .map(|(i, label)| (i, rel_y(i), label, node.id.clone()))
+                .collect()
+        }
+        pnex_core::FlowNodeKind::PagePdf { .. } => {
+            // Port 0 = PDF ready, port 1 = AI version awaiting approval.
+            let rel_y = |port: usize| node_h * (port + 1) as f64 / (out_count + 1) as f64;
+            [t!("flow-port-pdf-ready"), t!("flow-port-pdf-approval")]
+                .into_iter()
+                .enumerate()
+                .map(|(i, label)| (i, rel_y(i), label.to_string(), node.id.clone()))
                 .collect()
         }
         pnex_core::FlowNodeKind::VisionTrack { .. } => {
@@ -1107,6 +1119,18 @@ fn node_subtitle(node: &FlowNode) -> String {
                 format!("{short}…")
             } else {
                 text
+            }
+        }
+        // Source · approval.
+        pnex_core::FlowNodeKind::PagePdf { config } => {
+            let src = match config.source {
+                pnex_core::pages::PagePdfSource::Message => "msg",
+                pnex_core::pages::PagePdfSource::LatestSendable => "latest",
+            };
+            if config.require_approval {
+                format!("{src} · ✓")
+            } else {
+                src.to_string()
             }
         }
         // New page title template, or "+ page" in append mode.

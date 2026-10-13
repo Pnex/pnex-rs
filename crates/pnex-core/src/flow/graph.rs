@@ -136,6 +136,12 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::vision_ai::MediaFuseConfig,
     },
+    /// A page version → PDF in the media library; AI versions wait for a
+    /// person's approval (D209, D210). Port 0 ready, port 1 approval needed.
+    PagePdf {
+        #[serde(default)]
+        config: crate::pages::PagePdfConfig,
+    },
     /// Markdown of the message → a page of the org + named version (D209).
     PageWrite {
         #[serde(default)]
@@ -316,6 +322,9 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "media_fuse" => Ok(Self::MediaFuse {
+                    config: opt_config(config)?,
+                }),
+                "page_pdf" => Ok(Self::PagePdf {
                     config: opt_config(config)?,
                 }),
                 "page_write" => Ok(Self::PageWrite {

@@ -256,6 +256,116 @@ impl PageWriteConfig {
     }
 }
 
+/// Which version a `page_pdf` node renders (D209).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PagePdfSource {
+    /// `payload.page_id` + `payload.version` (what `page_write` emits).
+    #[default]
+    Message,
+    /// The latest version of `page_id` allowed to leave (approved, or
+    /// without AI text) not yet exported by this node.
+    LatestSendable,
+}
+
+/// Config of the `page_pdf` flow node (D209, D210).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PagePdfConfig {
+    #[serde(default)]
+    pub source: PagePdfSource,
+    /// The page (`latest_sendable`).
+    #[serde(default)]
+    pub page_id: String,
+    /// An AI version waits for a person's approval (D210); off = sent with
+    /// a "not reviewed" notice.
+    #[serde(default = "default_true")]
+    pub require_approval: bool,
+    /// Language of the PDF words (`fr`, else English).
+    #[serde(default)]
+    pub language: String,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for PagePdfConfig {
+    fn default() -> Self {
+        Self {
+            source: PagePdfSource::Message,
+            page_id: String::new(),
+            require_approval: true,
+            language: String::new(),
+        }
+    }
+}
+
+impl PagePdfConfig {
+    pub fn check(&self) -> Option<(&'static str, String)> {
+        if self.source == PagePdfSource::LatestSendable
+            && Uuid::parse_str(self.page_id.trim()).is_err()
+        {
+            return Some(("page_pdf_page_missing", "pick a page".into()));
+        }
+        if self.language.len() > 16
+            || !self
+                .language
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-')
+        {
+            return Some((
+                "page_pdf_options_invalid",
+                "language as a short code (fr, en)".into(),
+            ));
+        }
+        None
+    }
+}
+
+/// `POST /internal/flow/page-pdf` (D209).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PagePdfRequest {
+    pub org_id: i64,
+    pub flow_id: i64,
+    /// Canvas id of the node: with the flow, what "already exported" means.
+    pub node_id: String,
+    pub source: PagePdfSource,
+    pub page_id: String,
+    /// The version (`message` source).
+    #[serde(default)]
+    pub version: Option<i64>,
+    pub require_approval: bool,
+    #[serde(default)]
+    pub language: String,
+}
+
+/// What `page_pdf` got.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PagePdfStatus {
+    /// The PDF is in the media library.
+    Ready,
+    /// An AI version waits for a person's approval in Pages.
+    NeedsApproval,
+    /// `latest_sendable`: nothing new since the last export.
+    NothingNew,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PagePdfResponse {
+    pub status: PagePdfStatus,
+    pub page_id: String,
+    #[serde(default)]
+    pub version: Option<i64>,
+    #[serde(default)]
+    pub title: String,
+    /// Media asset of the PDF (`ready`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asset_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
+}
+
 /// Largest Markdown a flow writes in one message, chars.
 pub const MAX_FLOW_MARKDOWN: usize = 100_000;
 
@@ -287,6 +397,16 @@ pub struct PageWriteResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn page_pdf_check() {
+        let mut c = PagePdfConfig::default();
+        assert!(c.require_approval && c.check().is_none());
+        c.source = PagePdfSource::LatestSendable;
+        assert_eq!(c.check().unwrap().0, "page_pdf_page_missing");
+        c.page_id = "00000000-0000-0000-0000-000000000001".into();
+        assert!(c.check().is_none());
+    }
 
     #[test]
     fn page_write_check() {

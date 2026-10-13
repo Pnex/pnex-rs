@@ -6,14 +6,17 @@
 
 use chrono::{DateTime, Utc};
 use pnex_core::pages::{
-    PageWriteMode, PageWriteRequest, PageWriteResponse, MAX_DOC_BYTES, MAX_FLOW_MARKDOWN,
-    MAX_TITLE_CHARS, MAX_VERSION_LABEL_CHARS,
+    PagePdfRequest, PagePdfResponse, PagePdfSource, PagePdfStatus, PageWriteMode, PageWriteRequest,
+    PageWriteResponse, MAX_DOC_BYTES, MAX_FLOW_MARKDOWN, MAX_TITLE_CHARS, MAX_VERSION_LABEL_CHARS,
 };
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::sea_query::Condition;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+};
 use uuid::Uuid;
 
 use super::{create_version_by, load, seed, write_server, PageError, VersionAuthor};
-use crate::models::_entities::docs;
+use crate::models::_entities::{doc_version_exports, doc_versions, docs, media_assets};
 
 /// Why a flow write was refused (`code` for the node status).
 #[derive(Debug, thiserror::Error)]
@@ -119,6 +122,119 @@ pub async fn write(
         page_id: doc_id.to_string(),
         title,
         version: version.version_number,
+    })
+}
+
+/// PDF of a page version for a `page_pdf` node (D209, D210): the version
+/// from the message, or the latest one allowed to leave not yet exported
+/// by this node; an AI version waits for approval when required. The PDF
+/// becomes a `document` of the media library; the export is recorded.
+pub async fn export_pdf(
+    ctx: &loco_rs::app::AppContext,
+    req: &PagePdfRequest,
+) -> Result<PagePdfResponse, FlowPageError> {
+    let db = &ctx.db;
+    let id = Uuid::parse_str(req.page_id.trim()).map_err(|_| FlowPageError::NotFound)?;
+    let page = docs::Entity::find_by_id(id)
+        .filter(docs::Column::OrgId.eq(req.org_id))
+        .one(db)
+        .await?
+        .ok_or(FlowPageError::NotFound)?;
+    let node_key = format!("{}:{}", req.flow_id, req.node_id);
+    let answer = |status, version: Option<i64>| PagePdfResponse {
+        status,
+        page_id: id.to_string(),
+        version,
+        title: page.title.clone(),
+        asset_id: None,
+        filename: None,
+    };
+    let version = match req.source {
+        PagePdfSource::Message => {
+            let n = req.version.ok_or(FlowPageError::Invalid("version"))?;
+            doc_versions::Entity::find()
+                .filter(doc_versions::Column::DocId.eq(id))
+                .filter(doc_versions::Column::VersionNumber.eq(n))
+                .one(db)
+                .await?
+                .ok_or(FlowPageError::NotFound)?
+        }
+        PagePdfSource::LatestSendable => {
+            let sendable = Condition::any()
+                .add(doc_versions::Column::ApprovedAt.is_not_null())
+                .add(doc_versions::Column::AiGenerated.eq(false));
+            let Some(v) = doc_versions::Entity::find()
+                .filter(doc_versions::Column::DocId.eq(id))
+                .filter(sendable)
+                .order_by_desc(doc_versions::Column::VersionNumber)
+                .one(db)
+                .await?
+            else {
+                return Ok(answer(PagePdfStatus::NothingNew, None));
+            };
+            let sent = doc_version_exports::Entity::find()
+                .filter(doc_version_exports::Column::DocVersionId.eq(v.id))
+                .filter(doc_version_exports::Column::NodeKey.eq(node_key.clone()))
+                .one(db)
+                .await?;
+            if sent.is_some() {
+                return Ok(answer(PagePdfStatus::NothingNew, Some(v.version_number)));
+            }
+            v
+        }
+    };
+    if req.require_approval && version.ai_generated && version.approved_at.is_none() {
+        return Ok(answer(
+            PagePdfStatus::NeedsApproval,
+            Some(version.version_number),
+        ));
+    }
+    let rendered =
+        super::pdf::render_version(db, req.org_id, id, version.version_number, &req.language)
+            .await?
+            .ok_or(FlowPageError::NotFound)?;
+    let settings = crate::services::media::MediaSettings::from_config(&ctx.config);
+    let asset = media_assets::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        org_id: Set(req.org_id),
+        kind: Set("document".into()),
+        name: Set(rendered.filename.clone()),
+        description: Set(Some(format!(
+            "PDF of version {} of the page \"{}\" (flow #{}).",
+            version.version_number, page.title, req.flow_id
+        ))),
+        metadata: Set(None),
+        ..Default::default()
+    }
+    .insert(db)
+    .await?;
+    crate::controllers::media::write_version(
+        ctx,
+        req.org_id,
+        &asset,
+        crate::controllers::media::IncomingVersion {
+            filename: rendered.filename.clone(),
+            content_type: "application/pdf".into(),
+            note: None,
+            bytes: axum::body::Bytes::from(rendered.bytes),
+        },
+        &settings,
+    )
+    .await
+    .map_err(|e| PageError::Refused(format!("pdf not stored: {e}")))?;
+    doc_version_exports::ActiveModel {
+        org_id: Set(req.org_id),
+        doc_version_id: Set(version.id),
+        node_key: Set(node_key),
+        asset_id: Set(Some(asset.id)),
+        ..Default::default()
+    }
+    .insert(db)
+    .await?;
+    Ok(PagePdfResponse {
+        asset_id: Some(asset.id.to_string()),
+        filename: Some(rendered.filename),
+        ..answer(PagePdfStatus::Ready, Some(version.version_number))
     })
 }
 

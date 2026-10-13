@@ -38,6 +38,7 @@ pub enum PaletteKind {
     MediaFuse,
     LlmText,
     PageWrite,
+    PagePdf,
     TextDecide,
     EventLog,
     MemoryWrite,
@@ -210,6 +211,10 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
                 config: pnex_core::vision_ai::VisionCaptionConfig::default(),
             },
             // Usable as dropped: 30 s windows, language of the transcripts.
+            // Usable as dropped after a page writer; approval required (D210).
+            PaletteKind::PagePdf => FlowNodeKind::PagePdf {
+                config: pnex_core::pages::PagePdfConfig::default(),
+            },
             // Title left empty on purpose: the violation banner guides.
             PaletteKind::PageWrite => FlowNodeKind::PageWrite {
                 config: pnex_core::pages::PageWriteConfig::default(),
