@@ -654,6 +654,8 @@ Corrections apportées à la v0.1 après lecture de la doc existante :
 
 | **D201** | **Pré-annotation dans le Lab** (anticipée de M4) : `POST /api/v1/lab/images/{id}/suggest {model_id, min_score}` exécute un modèle de détection du registre de l'org (cache et pool vision existants, D82/D104) sur l'image et renvoie des **propositions sans rien écrire** ; un libellé égal à un nom de classe (casse, espaces et tirets ignorés) prend cette classe. UI : propositions en pointillés, « Garder les N propositions reconnues » ne garde **que** les propositions mappées (une proposition grise ne devient boîte que par un clic explicite, jamais en masse), « Écarter » efface le reste. Réservé aux rôles d'écriture (calcul sur le pool partagé). Avec un premier modèle custom, c'est la boucle d'amélioration du §4.6.1 étape 4. | 2026-10-13 |
 
+| **D202** | **Images d'un enregistrement de caméra dans le Lab** (premier pas du parcours vidéo du §4.6.1, étape 2) : `POST /api/v1/lab/projects/{id}/import-recording {device, from, to, every_secs}` prend dans les segments MJPEG-AVI (D79) la trame la plus proche de chaque instant `from + k·N s` (aucun décodage ni ré-encodage : la trame est déjà un JPEG), la range comme `photo` de la médiathèque (chemin d'écriture partagé `write_version`) et l'ajoute au projet ; **un import = une source**, donc un extrait vidéo entier tombe du même côté du split. Bornes : 1 h d'extrait, 200 images, intervalle 0,5–600 s ; plage sans enregistrement → 404 `camera-export-empty`. UI : caméra, jour et heures **locales**, intervalle, estimation du nombre d'images avant import. Restent pour la vidéo : fichiers vidéo uploadés (ffmpeg), interpolation de boîtes entre trames clés (M2 complet), flux IP (D175). | 2026-10-13 |
+
 ### État des lots
 
 - **M1** (2026-10-12, branche `feat/media-vision-studio`) : `vision_track` et
@@ -682,5 +684,7 @@ Corrections apportées à la v0.1 après lecture de la doc existante :
   `vision-studio` (en + fr) contre un serveur de la branche. **M2b
   (entraînement) reporté**, voir D200. Pré-annotation (D201) vérifiée
   avec YOLOX-nano réel sur `dog.jpg` (chien, vélo, voiture reconnus et
-  mappés, « chat 38 % » laissé en proposition grise).
+  mappés, « chat 38 % » laissé en proposition grise). Import de trames
+  d'enregistrement (D202) testé (segments AVI réels, trou d'enregistrement,
+  bornes).
 

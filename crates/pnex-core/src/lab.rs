@@ -219,6 +219,78 @@ pub fn class_for_label(classes: &[String], label: &str) -> Option<u32> {
         .map(|i| i as u32)
 }
 
+/// `POST /api/v1/lab/projects/{id}/import-recording` — frames of a camera
+/// recording (D79) added as pictures, one import = one source (D202).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LabRecordingImport {
+    /// `device_registries.id` of the camera.
+    pub device: i64,
+    /// RFC 3339 bounds of the extract.
+    pub from: String,
+    pub to: String,
+    /// One frame every N seconds.
+    pub every_secs: f64,
+}
+
+/// Longest extract of one import, s.
+pub const LAB_RECORDING_MAX_SECS: i64 = 3600;
+/// Most frames of one import.
+pub const LAB_RECORDING_MAX_FRAMES: usize = 200;
+
+impl LabRecordingImport {
+    /// Field token of the first problem, given the parsed span in ms.
+    pub fn check(&self, span_ms: i64) -> Option<(&'static str, String)> {
+        if span_ms <= 0 || span_ms > LAB_RECORDING_MAX_SECS * 1000 {
+            return Some(("to", format!("range:1..{LAB_RECORDING_MAX_SECS}")));
+        }
+        if !self.every_secs.is_finite() || !(0.5..=600.0).contains(&self.every_secs) {
+            return Some(("every_secs", "range:0.5..600".into()));
+        }
+        let frames = (span_ms as f64 / (self.every_secs * 1000.0)).ceil() as usize;
+        if frames > LAB_RECORDING_MAX_FRAMES {
+            return Some((
+                "every_secs",
+                format!("max_frames:{LAB_RECORDING_MAX_FRAMES}"),
+            ));
+        }
+        None
+    }
+}
+
+/// Frames to extract: for each instant `from + k·every` inside a segment,
+/// the nearest frame of that segment. Segments are `(start_ms, end_ms,
+/// frame count)`, frames evenly spread over the segment. Returns
+/// `(segment index, frame index, instant)`; instants with no recording are
+/// skipped, a frame is never picked twice.
+pub fn pick_frames(
+    segments: &[(i64, i64, usize)],
+    from_ms: i64,
+    to_ms: i64,
+    every_ms: i64,
+) -> Vec<(usize, usize, i64)> {
+    let mut out: Vec<(usize, usize, i64)> = Vec::new();
+    if every_ms <= 0 {
+        return out;
+    }
+    let mut t = from_ms;
+    while t < to_ms {
+        let hit = segments
+            .iter()
+            .enumerate()
+            .find(|(_, (s, e, n))| *n > 0 && t >= *s && t < *e);
+        if let Some((si, (s, e, n))) = hit {
+            let span = (e - s).max(1) as f64;
+            let fi = (((t - s) as f64 / span) * *n as f64).floor() as usize;
+            let fi = fi.min(n - 1);
+            if !out.iter().any(|(a, b, _)| *a == si && *b == fi) {
+                out.push((si, fi, t));
+            }
+        }
+        t += every_ms;
+    }
+    out
+}
+
 /// FNV-1a 64: a stable hash (the std one may change between releases).
 fn fnv1a(s: &str) -> u64 {
     s.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| {
@@ -465,6 +537,28 @@ mod tests {
             ..ok.clone()
         };
         assert_eq!(neg.check(2), Some("lab-negative-with-boxes"));
+    }
+
+    #[test]
+    fn recording_frames() {
+        // Two 10 s segments of 10 frames, a gap between them.
+        let segs = [(0, 10_000, 10), (20_000, 30_000, 10)];
+        let picks = pick_frames(&segs, 0, 30_000, 5_000);
+        assert_eq!(
+            picks,
+            vec![(0, 0, 0), (0, 5, 5_000), (1, 0, 20_000), (1, 5, 25_000)]
+        );
+        // Faster than the frames: no duplicate.
+        assert_eq!(pick_frames(&[(0, 1_000, 1)], 0, 1_000, 200).len(), 1);
+        let imp = LabRecordingImport {
+            device: 1,
+            from: String::new(),
+            to: String::new(),
+            every_secs: 1.0,
+        };
+        assert!(imp.check(60_000).is_none());
+        assert_eq!(imp.check(0).unwrap().0, "to");
+        assert_eq!(imp.check(3_600_000).unwrap().1, "max_frames:200");
     }
 
     #[test]

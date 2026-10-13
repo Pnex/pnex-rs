@@ -2423,7 +2423,10 @@ flows-zone-close = Fermer la zone
 flows-zone-undo = Annuler le point
 flows-zone-name = Nom de la zone
 flows-zone-none = Aucune zone : dessinez-en une sur l'image.
-flows-zone-points = { $count } points
+flows-zone-points = { $count ->
+    [one] { $count } point
+   *[other] { $count } points
+}
 flows-zone-delete = Supprimer
 flows-zone-labels = Classes comptées
 flows-zone-labels-hint = Séparées par des virgules, vide = toutes les classes
@@ -4637,7 +4640,7 @@ lab-strip-empty = Aucune image.
 lab-state-todo = À annoter
 lab-state-negative = Sans objet
 lab-state-boxes = { $count ->
-    [one] 1 boîte
+    [one] { $count } boîte
    *[other] { $count } boîtes
 }
 lab-class-label = Classe de la prochaine boîte :
@@ -4650,12 +4653,12 @@ lab-split-val = Validation
 lab-keys-help = Glissez sur l'image pour dessiner une boîte. Touches : 1–9 classe, Suppr retire la boîte choisie, ← → image précédente / suivante, N sans objet.
 lab-stats-title = Jeu de données
 lab-stats-summary = { $annotated ->
-    [one] 1 image annotée
+    [one] { $annotated } image annotée
    *[other] { $annotated } images annotées
 } sur { $total }, { $negatives } sans objet
 lab-stats-split = Entraînement { $train } · validation { $val }
 lab-stats-class = { $images } img · { $boxes ->
-    [one] 1 boîte
+    [one] { $boxes } boîte
    *[other] { $boxes } boîtes
 }
 lab-warn-class-few = Moins de { $min } images montrent { $class } : ajoutez-en d'autres, variées.
@@ -4669,7 +4672,7 @@ lab-freeze = Figer une version
 lab-frozen = Version du jeu de données figée
 lab-version-label = Version { $n }
 lab-version-detail = { $images ->
-    [one] 1 image
+    [one] { $images } image
    *[other] { $images } images
 }, dont { $val } en validation
 lab-export = Télécharger (COCO)
@@ -4679,7 +4682,7 @@ lab-picker-search = Rechercher une image…
 lab-picker-help = Les images ajoutées ensemble forment une source : elles vont toutes à l'entraînement ou toutes à la validation, pour que des prises quasi identiques ne gonflent jamais les scores.
 lab-picker-empty = Aucune photo dans la médiathèque.
 lab-picker-add = { $count ->
-    [one] Ajouter 1 image
+    [one] Ajouter { $count } image
    *[other] Ajouter { $count } images
 }
 lab-remove-image = Retirer du projet
@@ -4695,3 +4698,22 @@ lab-suggest-keep-all = { $count ->
 }
 lab-suggest-dismiss = Écarter
 lab-suggest-keep-all-help = Garde les propositions dont le libellé est une classe du projet ; cliquez sur une grise pour la garder dans la classe courante
+lab-from-recording = Depuis un enregistrement
+lab-rec-title = Images d'un enregistrement de caméra
+lab-rec-help = Prend une image toutes les N secondes dans ce que la caméra a enregistré (Caméras › Enregistrements) et les ajoute au projet. Un extrait entier compte comme une source : il va tout entier à l'entraînement ou tout entier à la validation.
+lab-rec-camera = Caméra
+lab-rec-camera-none = Choisir une caméra
+lab-rec-day = Jour
+lab-rec-from = De
+lab-rec-to = À
+lab-rec-every = Une image toutes les (s)
+lab-rec-estimate = { $count ->
+    [one] Environ { $count } image (seulement là où quelque chose a été enregistré)
+   *[other] Environ { $count } images (seulement là où quelque chose a été enregistré)
+}
+lab-rec-invalid = Choisissez une plage de { $minutes } minutes au plus donnant { $max } images au plus.
+lab-rec-import = Importer
+lab-rec-done = { $count ->
+    [one] { $count } image ajoutée
+   *[other] { $count } images ajoutées
+}

@@ -591,6 +591,156 @@ pub async fn freeze(
     Ok(version_view(&row))
 }
 
+/// Frames of a camera recording (D79) added as pictures (D202): the frame
+/// nearest to every `every_secs` instant is stored as a `photo` of the
+/// media library (the JPEG of the MJPEG-AVI segment, no re-encoding), then
+/// added to the project — one import = one source, so a whole video lands
+/// on the same side of the train / validation split.
+pub async fn import_recording(
+    ctx: &loco_rs::app::AppContext,
+    org_id: i64,
+    project: Uuid,
+    req: &lab::LabRecordingImport,
+) -> Res<Vec<LabImage>> {
+    use crate::controllers::media::{write_version, IncomingVersion};
+    use crate::models::_entities::{device_registries, video_segments};
+    use crate::services::media::MediaSettings;
+    let db = &ctx.db;
+    find_project(db, org_id, project).await?;
+    let parse = |raw: &str| chrono::DateTime::parse_from_rfc3339(raw.trim()).ok();
+    let (Some(from), Some(to)) = (parse(&req.from), parse(&req.to)) else {
+        return Err(LabError::fields(vec![(
+            "from",
+            err_codes::FIELD_INVALID.to_string(),
+        )]));
+    };
+    let (from_ms, to_ms) = (from.timestamp_millis(), to.timestamp_millis());
+    if let Some((field, token)) = req.check(to_ms - from_ms) {
+        return Err(LabError::fields(vec![(field, token)]));
+    }
+    let device = device_registries::Entity::find_by_id(req.device)
+        .filter(device_registries::Column::OrgId.eq(org_id))
+        .one(db)
+        .await
+        .map_err(LabError::db)?
+        .ok_or_else(|| not_found(err_codes::CAMERA_UNKNOWN, "Camera"))?;
+    let segments = video_segments::Entity::find()
+        .filter(video_segments::Column::OrgId.eq(org_id))
+        .filter(video_segments::Column::DeviceRegistryId.eq(device.id))
+        .filter(video_segments::Column::StartedAt.lt(to))
+        .filter(video_segments::Column::EndedAt.gt(from))
+        .order_by_asc(video_segments::Column::StartedAt)
+        .all(db)
+        .await
+        .map_err(LabError::db)?;
+    let settings = MediaSettings::from_config(&ctx.config);
+    let store = settings
+        .store()
+        .map_err(|e| LabError::db(sea_orm::DbErr::Custom(e)))?;
+    // Segment bytes + frame index, unreadable segments left out.
+    let mut loaded: Vec<(&video_segments::Model, Vec<u8>, pnex_core::avi::AviIndex)> = Vec::new();
+    for seg in &segments {
+        let Ok(bytes) = store.get(&seg.storage_key).await else {
+            continue;
+        };
+        if let Ok(index) = pnex_core::avi::read_avi(&bytes) {
+            loaded.push((seg, bytes, index));
+        }
+    }
+    let spans: Vec<(i64, i64, usize)> = loaded
+        .iter()
+        .map(|(seg, _, idx)| {
+            (
+                seg.started_at.timestamp_millis(),
+                seg.ended_at.timestamp_millis(),
+                idx.frames.len(),
+            )
+        })
+        .collect();
+    let picks = lab::pick_frames(&spans, from_ms, to_ms, (req.every_secs * 1000.0) as i64);
+    if picks.is_empty() {
+        return Err(LabError::new(
+            StatusCode::NOT_FOUND,
+            err_codes::CAMERA_EXPORT_EMPTY,
+            "No recording in this range.",
+        ));
+    }
+    let source = format!("rec-{}-{}", device.device_id, from.to_rfc3339());
+    let mut out = Vec::with_capacity(picks.len());
+    for (si, fi, t_ms) in picks {
+        let (_, bytes, index) = &loaded[si];
+        let (start, len) = index.frames[fi];
+        let Some(jpeg) = bytes.get(start..start + len) else {
+            continue;
+        };
+        let Some((w, h)) = pnex_vision::image_size(jpeg) else {
+            continue;
+        };
+        let at = chrono::DateTime::from_timestamp_millis(t_ms).unwrap_or_default();
+        let name = format!(
+            "{} {}",
+            device.device_id,
+            at.format("%Y-%m-%d %H:%M:%S UTC")
+        );
+        let asset = media_assets::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            org_id: Set(org_id),
+            kind: Set("photo".into()),
+            name: Set(name.clone()),
+            description: Set(Some(
+                "Frame of a camera recording (Vision Lab import).".into(),
+            )),
+            metadata: Set(None),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+        .map_err(LabError::db)?;
+        let filename = format!("{}-{}.jpg", device.device_id, t_ms);
+        if let Err(e) = write_version(
+            ctx,
+            org_id,
+            &asset,
+            IncomingVersion {
+                filename,
+                content_type: "image/jpeg".into(),
+                note: None,
+                bytes: axum::body::Bytes::copy_from_slice(jpeg),
+            },
+            &settings,
+        )
+        .await
+        {
+            tracing::warn!(error = %e, "lab recording import: frame not stored");
+            let _ = media_assets::Entity::delete_by_id(asset.id).exec(db).await;
+            continue;
+        }
+        let now = chrono::Utc::now().fixed_offset();
+        let row = lab_images::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            org_id: Set(org_id),
+            project_id: Set(project),
+            media_asset_id: Set(asset.id),
+            name: Set(name),
+            width: Set(w as i32),
+            height: Set(h as i32),
+            source: Set(source.clone()),
+            split: Set("auto".into()),
+            boxes: Set(serde_json::json!([])),
+            negative: Set(false),
+            version: Set(1),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(db)
+        .await
+        .map_err(LabError::db)?;
+        out.push(image_view(&row));
+    }
+    touch_project(db, project).await?;
+    Ok(out)
+}
+
 /// Pre-annotation (§4.6.1 step 4): runs a detection model of the org's
 /// registry on the image and returns proposals (nothing is written). A
 /// model label equal to a class name maps to that class.

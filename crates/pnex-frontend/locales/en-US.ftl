@@ -2424,7 +2424,10 @@ flows-zone-close = Close the zone
 flows-zone-undo = Undo point
 flows-zone-name = Zone name
 flows-zone-none = No zone yet: draw one over the image.
-flows-zone-points = { $count } points
+flows-zone-points = { $count ->
+    [one] { $count } point
+   *[other] { $count } points
+}
 flows-zone-delete = Delete
 flows-zone-labels = Labels counted
 flows-zone-labels-hint = Comma-separated, empty = every label
@@ -4641,7 +4644,7 @@ lab-strip-empty = No image yet.
 lab-state-todo = To annotate
 lab-state-negative = No object
 lab-state-boxes = { $count ->
-    [one] 1 box
+    [one] { $count } box
    *[other] { $count } boxes
 }
 lab-class-label = Class of the next box:
@@ -4656,7 +4659,7 @@ lab-stats-title = Dataset
 lab-stats-summary = { $annotated } of { $total } images annotated, { $negatives } without object
 lab-stats-split = Training { $train } · validation { $val }
 lab-stats-class = { $images } img · { $boxes ->
-    [one] 1 box
+    [one] { $boxes } box
    *[other] { $boxes } boxes
 }
 lab-warn-class-few = Fewer than { $min } images show { $class }: add more varied pictures of it.
@@ -4670,7 +4673,7 @@ lab-freeze = Freeze a version
 lab-frozen = Dataset version frozen
 lab-version-label = Version { $n }
 lab-version-detail = { $images ->
-    [one] 1 image
+    [one] { $images } image
    *[other] { $images } images
 }, { $val } in validation
 lab-export = Download (COCO)
@@ -4680,7 +4683,7 @@ lab-picker-search = Search a picture…
 lab-picker-help = The pictures added together form one source: they all go to training or all to validation, so near-identical shots never inflate the scores.
 lab-picker-empty = No photo in the media library.
 lab-picker-add = { $count ->
-    [one] Add 1 image
+    [one] Add { $count } image
    *[other] Add { $count } images
 }
 lab-remove-image = Remove from the project
@@ -4696,3 +4699,22 @@ lab-suggest-keep-all = { $count ->
 }
 lab-suggest-dismiss = Dismiss
 lab-suggest-keep-all-help = Keeps the proposals whose label is a class of the project; click a grey one to keep it in the current class
+lab-from-recording = From a recording
+lab-rec-title = Pictures from a camera recording
+lab-rec-help = Takes one frame every N seconds from what the camera recorded (Cameras › Recordings) and adds them as pictures. A whole extract counts as one source: it all goes to training or all to validation.
+lab-rec-camera = Camera
+lab-rec-camera-none = Choose a camera
+lab-rec-day = Day
+lab-rec-from = From
+lab-rec-to = To
+lab-rec-every = One picture every (s)
+lab-rec-estimate = { $count ->
+    [one] About { $count } picture (only where something was recorded)
+   *[other] About { $count } pictures (only where something was recorded)
+}
+lab-rec-invalid = Pick a range of at most { $minutes } minutes giving at most { $max } pictures.
+lab-rec-import = Import
+lab-rec-done = { $count ->
+    [one] { $count } picture added
+   *[other] { $count } pictures added
+}

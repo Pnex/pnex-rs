@@ -137,3 +137,17 @@ pub async fn suggest(id: &str, req: &LabSuggestRequest) -> Result<Vec<LabSuggest
     )
     .await
 }
+
+/// `POST /api/v1/lab/projects/{id}/import-recording` — frames of a camera
+/// recording added as pictures (one source).
+pub async fn import_recording(
+    project: &str,
+    req: &pnex_core::lab::LabRecordingImport,
+) -> Result<Vec<LabImage>, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/lab/projects/{project}/import-recording"),
+        body(req),
+    )
+    .await
+}
