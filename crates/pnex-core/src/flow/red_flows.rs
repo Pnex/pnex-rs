@@ -159,6 +159,16 @@ pub fn to_red_flows_json_with(
                 "pnex_version": meta.version_number,
                 "pnex_org_id": meta.org_id,
             }),
+            FlowNodeKind::PagePdf { config } => serde_json::json!({
+                "type": "pnex-page-pdf",
+                "source": config.source,
+                "page_id": config.page_id,
+                "require_approval": config.require_approval,
+                "language": config.language,
+                "pnex_node_id": n.id,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_org_id": meta.org_id,
+            }),
             FlowNodeKind::PageWrite { config } => serde_json::json!({
                 "type": "pnex-page-write",
                 "mode": config.mode,

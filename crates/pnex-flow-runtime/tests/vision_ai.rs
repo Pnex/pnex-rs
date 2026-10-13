@@ -25,6 +25,11 @@ fn start_ai_server() -> String {
                             "probabilities": [["incident", 0.3], ["routine", 0.7]], "confidence": 0.12}},
                         "model": "ml", "took_ms": 5
                     })
+                } else if head.starts_with("POST /internal/flow/page-pdf") {
+                    assert!(head.contains("\"version\":1") && head.contains("\"require_approval\":true"));
+                    serde_json::json!({"status": "ready", "page_id": "00000000-0000-0000-0000-0000000000aa",
+                        "version": 1, "title": "Weekly 2026-W42",
+                        "asset_id": "00000000-0000-0000-0000-0000000000bb", "filename": "Weekly v1.pdf"})
                 } else if head.starts_with("POST /internal/flow/page-write") {
                     assert!(head.contains("Weekly report") && head.contains("\"ai_generated\":true"));
                     serde_json::json!({"page_id": "00000000-0000-0000-0000-0000000000aa",
@@ -90,7 +95,12 @@ return msg;
             "id": "page", "type": "pnex-page-write", "z": "pnexflow8",
             "mode": "new_page", "title": "Weekly {week}", "text_field": "text",
             "version_label": "{date}", "pnex_org_id": 5, "pnex_flow_id": 8,
-            "pnex_node_id": "page", "wires": [["dbg"]]
+            "pnex_node_id": "page", "wires": [["dbg", "pdf"]]
+        },
+        {
+            "id": "pdf", "type": "pnex-page-pdf", "z": "pnexflow8",
+            "source": "message", "require_approval": true, "language": "fr",
+            "pnex_org_id": 5, "pnex_flow_id": 8, "pnex_node_id": "pdf", "wires": [["dbg"], []]
         },
         {
             "id": "dec", "type": "pnex-text-decide", "z": "pnexflow8",
@@ -148,6 +158,11 @@ fn caption_then_fused_description() {
     // The AI text becomes a page with a named version (D209).
     rt.wait_for(
         |v| common::is_debug_with(v, "Weekly 2026-W42") && common::is_debug_with(v, "page_id"),
+        Duration::from_secs(20),
+    );
+    // The page version becomes a PDF of the media library (D209).
+    rt.wait_for(
+        |v| common::is_debug_with(v, "Weekly v1.pdf") && common::is_debug_with(v, "asset_id"),
         Duration::from_secs(20),
     );
     // The fused text goes on to the decision node, which keeps the payload.

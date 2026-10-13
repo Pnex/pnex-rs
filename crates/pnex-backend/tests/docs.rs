@@ -900,6 +900,59 @@ async fn flow_writes_pages_and_versions_get_approved() {
         )
         .await;
         assert_eq!(again["approved_at"], first, "the first approval is kept");
+        // page_pdf (D209/D210).
+        let pdf_req = |source: &str, version: Option<i64>| {
+            json!({"org_id": org, "flow_id": 7, "node_id": "pdf", "source": source,
+                   "page_id": page, "version": version, "require_approval": true, "language": "fr"})
+        };
+        let post_pdf = |b: serde_json::Value| {
+            let server = &server;
+            async move {
+                let res = server
+                    .post("/internal/flow/page-pdf")
+                    .add_header("x-pnex-flow-token", "tok-pages")
+                    .json(&b)
+                    .await;
+                (res.status_code().as_u16(), res.json::<serde_json::Value>())
+            }
+        };
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-pages") };
+        // Version 3: written by the flow with AI text, not approved yet.
+        let mut ai = body.clone();
+        ai["mode"] = json!("append");
+        ai["page_id"] = json!(page);
+        ai["markdown"] = json!("Tuesday: calm.");
+        let (_, v3) = post(ai).await;
+        assert_eq!(v3["version"], 3);
+        let (st, waiting) = post_pdf(pdf_req("message", Some(3))).await;
+        assert_eq!(st, 200, "{waiting}");
+        assert_eq!(waiting["status"], "needs_approval");
+        assert!(waiting.get("asset_id").is_none());
+        // Version 1 was approved above: its PDF goes to the media library.
+        let (st, ready) = post_pdf(pdf_req("message", Some(1))).await;
+        assert_eq!(st, 200, "{ready}");
+        assert_eq!(ready["status"], "ready");
+        let asset = ready["asset_id"].as_str().unwrap();
+        let (st, media) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/media/{asset}"),
+            a,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(st, 200, "{media}");
+        assert_eq!(media["kind"], "document");
+        // Served as an opaque attachment (SEC-5), named .pdf.
+        assert!(media["name"].as_str().unwrap().ends_with(".pdf"), "{media}");
+        // Latest sendable: version 2 (no AI text), once.
+        let (_, first) = post_pdf(pdf_req("latest_sendable", None)).await;
+        assert_eq!(first["status"], "ready", "{first}");
+        assert_eq!(first["version"], 2);
+        let (_, again) = post_pdf(pdf_req("latest_sendable", None)).await;
+        assert_eq!(again["status"], "nothing_new");
+        unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
         // PDF of a version (D209): A4, attachment, other orgs' pages not found.
         let res = server
             .get(&format!("/api/v1/docs/{page}/versions/1/pdf?lang=fr"))

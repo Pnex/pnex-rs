@@ -26,6 +26,7 @@ mod m20261013_000016_lab_training_runs;
 mod m20261013_000017_lab_image_luma;
 mod m20261013_000018_lab_review_queue;
 mod m20261013_000019_doc_version_review;
+mod m20261013_000020_doc_version_exports;
 
 pub struct Migrator;
 
@@ -48,6 +49,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261013_000017_lab_image_luma::Migration),
             Box::new(m20261013_000018_lab_review_queue::Migration),
             Box::new(m20261013_000019_doc_version_review::Migration),
+            Box::new(m20261013_000020_doc_version_exports::Migration),
         ]
     }
 }
