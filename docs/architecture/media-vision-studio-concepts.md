@@ -163,7 +163,48 @@ dans cet ordre :
 | `7a3931ae` | D204 : entraînement sans Python (tête YOLOX en Rust) |
 | `6c54180e` | D205 (partie) : guidage de diversité, propagation par suivi |
 | `68c000c0` | D205 : file « à revoir » (active learning) + ce guide |
-| (suivant) | D206 : fichier de la médiathèque comme source de flux ; INT8 évalué |
+| `14a50fd2` | D206 : fichier de la médiathèque comme source de flux ; INT8 évalué |
+| (suivant) | Test navigateur `e2e/tests/vision-loop.spec.ts` + correctif : un fichier téléversé sans type déclaré prend le type de son contenu reconnu (sinon le Lab refusait une PNG valide depuis SEC-30) |
+
+**Vérification navigateur (2026-10-13, serveur de branche :5151)** :
+`vision-loop` 3/3 (import vidéo + interpolation, entraînement lancé du
+panneau jusqu'au modèle enregistré, fichier comme source de flux) et
+`lab` en anglais et en français : 5/5.
+
+### Lancer la branche pour la relire
+
+```bash
+cd ../pnex-rust-wt/vision-studio
+task build:frontend                                   # front release (wasm)
+scripts/guarded.sh cargo build -p pnex-backend --bin pnex-server
+cd crates/pnex-backend
+set -a; . ../../../pnex-rust/deploy/edge/edge.env; set +a
+export DATABASE_URL=postgres://pnex:pnex@localhost:5432/pnex_vision_dev
+../../target/debug/pnex-server db migrate             # 000015 → 000018
+PNEX_GUARD_NO_LOCK=1 ../../scripts/guarded.sh ../../target/debug/pnex-server start -p 5151 -b 127.0.0.1
+# puis http://localhost:5151 (login Rauthy habituel)
+```
+
+Parcours à essayer, dans l'ordre :
+
+1. **Médias › Bibliothèque** : téléverser une vidéo de téléphone (MP4 /
+   MOV) → elle apparaît en kind « Vidéo » avec un lecteur.
+2. **Médias › Vision Lab** : nouveau projet (classes), **Depuis une
+   vidéo** → images toutes les N s ; annoter la 1re et la 5e, puis
+   **Interpoler** sur la 3e ; choisir un modèle et **Propager** sur la 6e.
+3. Panneau **Statistiques** : avertissements de diversité.
+4. **Figer** une version, puis panneau **Entraînement** : modèle de départ
+   (un YOLOX COCO de Modèles), 30 époques, **Entraîner** → progression,
+   mAP, lien vers Modèles.
+5. **Automatisation › Flows** : nœud *Détection d'objets* → section
+   *Images douteuses vers le Vision Lab* → choisir le projet ; les images
+   « à revoir » arrivent avec un point violet.
+6. **Données › Flux audio** : type `media_asset`, choisir la vidéo → la
+   rejouer comme une caméra (nœud *Source caméra*, source « flux »).
+
+Tests automatiques du navigateur : `cd e2e && PNEX_E2E_BASE_URL=http://localhost:5151
+PNEX_E2E_ISSUER=https://192.168.1.185/auth/v1/ PNEX_VISION_TEST_DIR=~/.cache/pnex-vision-test
+bunx playwright test vision-loop lab`.
 
 Avant de lancer le serveur de la branche : migrations `000015` à `000018`
 sur `pnex_vision_dev`. Tests : `TEST_DATABASE_URL=…/pnex_test_vision`,
