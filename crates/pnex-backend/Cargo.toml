@@ -137,5 +137,7 @@ axum-test = { version = "17", features = ["ws"] }
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 serial_test = { version = "3.1" }
+# Synthetic pictures of the Vision Lab training test (already a pnex-vision dep).
+image = { version = "0.25", default-features = false, features = ["png"] }
 # Temporary files and directories of the tests
 tempfile = "3"

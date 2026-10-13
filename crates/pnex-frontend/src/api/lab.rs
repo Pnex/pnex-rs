@@ -176,3 +176,36 @@ pub async fn interpolate(id: &str) -> Result<Vec<LabSuggestion>, ApiError> {
     )
     .await
 }
+
+/// `POST /api/v1/lab/versions/{id}/train` — queues a training (D204).
+pub async fn train(
+    version: &str,
+    req: &pnex_core::lab::LabTrainRequest,
+) -> Result<pnex_core::lab::LabTrainingRun, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/lab/versions/{version}/train"),
+        body(req),
+    )
+    .await
+}
+
+/// `GET /api/v1/lab/projects/{id}/runs` — trainings, newest first.
+pub async fn runs(project: &str) -> Result<Vec<pnex_core::lab::LabTrainingRun>, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/lab/projects/{project}/runs"),
+        None,
+    )
+    .await
+}
+
+/// `POST /api/v1/lab/runs/{id}/cancel`.
+pub async fn cancel_run(id: &str) -> Result<pnex_core::lab::LabTrainingRun, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/lab/runs/{id}/cancel"),
+        None,
+    )
+    .await
+}

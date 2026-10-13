@@ -32,7 +32,7 @@ pub struct LabError {
 }
 
 impl LabError {
-    fn new(status: StatusCode, code: &'static str, message: impl Into<String>) -> Self {
+    pub(crate) fn new(status: StatusCode, code: &'static str, message: impl Into<String>) -> Self {
         Self {
             status,
             code,
@@ -41,12 +41,12 @@ impl LabError {
         }
     }
 
-    fn args(mut self, args: serde_json::Value) -> Self {
+    pub(crate) fn args(mut self, args: serde_json::Value) -> Self {
         self.args = Some(args);
         self
     }
 
-    fn db(e: sea_orm::DbErr) -> Self {
+    pub(crate) fn db(e: sea_orm::DbErr) -> Self {
         tracing::error!(error = %e, "vision lab database error");
         Self::new(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -70,9 +70,9 @@ impl LabError {
     }
 }
 
-type Res<T> = Result<T, LabError>;
+pub(crate) type Res<T> = Result<T, LabError>;
 
-fn not_found(code: &'static str, what: &str) -> LabError {
+pub(crate) fn not_found(code: &'static str, what: &str) -> LabError {
     LabError::new(StatusCode::NOT_FOUND, code, format!("{what} not found."))
 }
 
@@ -166,7 +166,7 @@ pub async fn list_projects(db: &DatabaseConnection, org_id: i64) -> Res<Vec<LabP
         .collect())
 }
 
-async fn find_project<C: ConnectionTrait>(
+pub(crate) async fn find_project<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
     id: Uuid,

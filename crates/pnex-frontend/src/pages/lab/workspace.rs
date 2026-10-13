@@ -24,6 +24,7 @@ use crate::state::{org, toasts};
 
 use super::picker::PhotoPicker;
 use super::recording::RecordingImport;
+use super::training::TrainingPanel;
 use super::video::VideoImport;
 use super::ProjectForm;
 
@@ -78,6 +79,7 @@ pub fn LabProjectPage(id: String) -> Element {
     let mut picker_open = use_signal(|| false);
     let mut recording_open = use_signal(|| false);
     let mut video_open = use_signal(|| false);
+    let mut versions_tick = use_signal(|| 0u32);
     let mut editing = use_signal(|| false);
     let mut save_state = use_signal(SaveState::default);
     // Proposals of a registry model, for one image: (image id, boxes).
@@ -508,7 +510,17 @@ pub fn LabProjectPage(id: String) -> Element {
                 }
                 div { class: "space-y-4",
                     StatsPanel { classes: classes.clone(), stats }
-                    VersionsPanel { project: pid.clone(), can_write }
+                    VersionsPanel {
+                        project: pid.clone(),
+                        can_write,
+                        on_frozen: move |_| versions_tick.with_mut(|t| *t += 1),
+                    }
+                    TrainingPanel {
+                        project: pid.clone(),
+                        can_write,
+                        models: models.read().clone().unwrap_or_default(),
+                        versions_tick: versions_tick(),
+                    }
                 }
             }
             if picker_open() {
@@ -1104,7 +1116,7 @@ fn warning_text(w: &lab::LabWarning) -> String {
 
 /// Frozen dataset versions: freeze the current annotations, download one.
 #[component]
-fn VersionsPanel(project: String, can_write: bool) -> Element {
+fn VersionsPanel(project: String, can_write: bool, on_frozen: EventHandler<()>) -> Element {
     let mut reload = use_signal(|| 0u32);
     let mut note = use_signal(String::new);
     let mut busy = use_signal(|| false);
@@ -1130,6 +1142,7 @@ fn VersionsPanel(project: String, can_write: bool) -> Element {
                     toasts::success(done);
                     note.set(String::new());
                     reload.with_mut(|r| *r += 1);
+                    on_frozen.call(());
                 }
                 Err(e) => toasts::error(e),
             }

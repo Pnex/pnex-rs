@@ -555,6 +555,18 @@ pub const LAB_VIDEO_TOO_LARGE: &str = "lab-video-too-large";
 pub const LAB_VIDEO_DECODE_FAILED: &str = "lab-video-decode-failed";
 /// Interpolation needs an annotated frame before and after in the source.
 pub const LAB_INTERPOLATE_NO_KEYFRAMES: &str = "lab-interpolate-no-keyframes";
+/// Training (D204): a run of the project is already queued or running.
+pub const LAB_TRAIN_BUSY: &str = "lab-train-busy";
+/// Training: the base model is not a YOLOX head this trainer can tune
+/// (`args.detail` = verbatim diagnostic).
+pub const LAB_TRAIN_BASE_INVALID: &str = "lab-train-base-invalid";
+/// Training: no box in the training pictures of the version.
+pub const LAB_TRAIN_NO_DATA: &str = "lab-train-no-data";
+/// Training: the runner stopped (process restarted, pod gone).
+pub const LAB_TRAIN_INTERRUPTED: &str = "lab-train-interrupted";
+/// Training failed (`args.detail` = verbatim diagnostic).
+pub const LAB_TRAIN_FAILED: &str = "lab-train-failed";
+pub const LAB_RUN_NOT_FOUND: &str = "lab-run-not-found";
 
 // ── Registered codes ─────────────────────────────────────────────────────
 
@@ -841,6 +853,12 @@ pub const ALL: &[&str] = &[
     LAB_VIDEO_TOO_LARGE,
     LAB_VIDEO_DECODE_FAILED,
     LAB_INTERPOLATE_NO_KEYFRAMES,
+    LAB_TRAIN_BUSY,
+    LAB_TRAIN_BASE_INVALID,
+    LAB_TRAIN_NO_DATA,
+    LAB_TRAIN_INTERRUPTED,
+    LAB_TRAIN_FAILED,
+    LAB_RUN_NOT_FOUND,
     TIME_RANGE_IMPORT_TOO_LARGE,
     TIME_RANGE_IMPORT_INVALID,
     TIME_RANGE_SCOPE_UNKNOWN,
