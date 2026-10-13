@@ -115,6 +115,16 @@ pub fn mean_luma(encoded: &[u8]) -> Option<f32> {
     Some((sum / n as f64) as f32)
 }
 
+/// Pixel size of a JPEG or PNG read from its header only (Vision Lab
+/// import, D198); `None` when the bytes are not such a picture.
+pub fn image_size(encoded: &[u8]) -> Option<(u32, u32)> {
+    image::ImageReader::new(Cursor::new(encoded))
+        .with_guessed_format()
+        .ok()?
+        .into_dimensions()
+        .ok()
+}
+
 /// JPEG sent to a vision-language model (D195): optionally cropped to a
 /// `[x, y, w, h]` box (source pixels, widened by 10 % on each side, clamped
 /// to the frame), then scaled down so the longest side is at most
@@ -367,6 +377,16 @@ fn nms(mut dets: Vec<Detection>, thr: f32) -> Vec<Detection> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_size_from_header() {
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgb8(image::RgbImage::new(30, 20))
+            .write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        assert_eq!(image_size(&png), Some((30, 20)));
+        assert_eq!(image_size(b"not an image"), None);
+    }
 
     #[test]
     fn prepare_jpeg_crops_and_scales() {

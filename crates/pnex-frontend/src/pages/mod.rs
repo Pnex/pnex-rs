@@ -27,6 +27,8 @@ pub mod flows;
 pub mod fluid_mixtures;
 pub mod functions;
 pub mod gate;
+/// Consented voice profiles (voice-id.md).
+pub mod lab;
 pub mod lan_scan;
 pub mod login;
 pub mod map;
@@ -51,7 +53,6 @@ pub mod system;
 /// Trust-on-first-use dialog for a self-hosted server root CA (D70).
 pub mod trust_ca;
 pub mod visualisation;
-/// Consented voice profiles (voice-id.md).
 pub mod voice_id;
 
 pub use admin_status::AdminStatus;
@@ -70,6 +71,7 @@ pub use firmware::Firmware;
 pub use flows::Flows;
 pub use fluid_mixtures::FluidMixtures;
 pub use functions::Functions;
+pub use lab::{Lab, LabProjectPage};
 pub use map::{Map, Sites};
 pub use media::Media;
 pub use models::Models;

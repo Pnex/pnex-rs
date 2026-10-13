@@ -1,13 +1,15 @@
 // Media & Vision Studio nodes in the flow editor (media-vision-studio.md
 // D192–D197): zones drawn over the image, tracking ports, caption / fusion
-// settings and the decision question editor. Editor only — nothing is
-// saved, so no model, camera or LLM provider is needed.
+// settings and the decision question editor. The flow is saved and
+// validated by the server (no deploy), so no model, camera or LLM provider
+// is needed.
 import { expect, test } from '../src/fixtures.ts';
 import { FlowsPage } from '../src/pages/flows.ts';
 
 test.describe('vision studio', { tag: ['@flows', '@i18n'] }, () => {
   test('zones, tracking, captions, fusion and decisions are configured in the inspector', async ({
     app,
+    api,
     page,
     prefix,
     capture,
@@ -56,5 +58,13 @@ test.describe('vision studio', { tag: ['@flows', '@i18n'] }, () => {
     await areas.nth(1).fill('incident: someone at risk or damage\nroutine: normal activity');
     await expect(editor.inspector.getByText(app.tr('flows-decide-options-hint'))).toContainText('2');
     await capture('text-decide-questions', { caption: 'Text decision: a typed question with its options' });
+
+    // The server accepts the graph: every new kind validates and projects.
+    await editor.save();
+    const flows_ = await api.named<{ id: number; name: string }>('/flows', `${prefix} vision studio`);
+    const graph = JSON.stringify(await api.get(`/flows/${flows_[0].id}`));
+    for (const kind of ['vision_zone', 'vision_track', 'vision_caption', 'media_fuse', 'text_decide']) {
+      expect(graph).toContain(kind);
+    }
   });
 });

@@ -11,10 +11,10 @@
 use crate::pages::edge_refs::EdgeRefs;
 use crate::pages::{
     self, AdminStatus, Annotations, AuthCallback, Cameras, CaseWorkspace, Cases, Catalog, Controls,
-    Dashboard, Dashboards, Devices, Docs, Events, Firmware, Flows, FluidMixtures, Functions, Map,
-    Media, Models, NotFound, Notifications, Ontology, OntologyObject, OntologyType, Orgs,
-    OrgsCurrent, Profile, Secrets, ShareTour, Showcase, Sites, Streams, Studio, System,
-    Visualisation, VoiceId,
+    Dashboard, Dashboards, Devices, Docs, Events, Firmware, Flows, FluidMixtures, Functions, Lab,
+    LabProjectPage, Map, Media, Models, NotFound, Notifications, Ontology, OntologyObject,
+    OntologyType, Orgs, OrgsCurrent, Profile, Secrets, ShareTour, Showcase, Sites, Streams, Studio,
+    System, Visualisation, VoiceId,
 };
 use dioxus::prelude::*;
 
@@ -70,6 +70,13 @@ pub enum Route {
         // Consented voice profiles of persons (voice-id.md).
         #[route("/voice-id")]
         VoiceId {},
+
+        // Vision Lab: datasets of custom object detectors (media-vision-studio.md D198).
+        #[route("/lab")]
+        Lab {},
+
+        #[route("/lab/:id")]
+        LabProjectPage { id: String },
 
         // JSON events stored in OpenObserve (camera-video.md D84).
         #[route("/events")]

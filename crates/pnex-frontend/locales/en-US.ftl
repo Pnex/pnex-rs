@@ -4597,3 +4597,91 @@ cw-board-unsourced = Unsourced claims
 cw-board-contradicted = Contradicted claims
 case-add-help = The object joins the undated pieces of the investigation; you choose its role when you attach it to an event.
 case-role-source = Source
+
+## Vision Lab (D198–D200)
+err-lab-write-forbidden = Viewer role: Vision Lab projects are read-only.
+err-lab-project-not-found = Vision Lab project not found.
+err-lab-image-not-found = Image not found in this project.
+err-lab-version-not-found = Dataset version not found.
+err-lab-class-in-use = The class { $class } still has boxes: remove them before deleting the class.
+err-lab-annotations-conflict = This image changed meanwhile: reload it and redo your change.
+err-lab-box-invalid = A box is outside the image or refers to an unknown class.
+err-lab-boxes-too-many = At most 200 boxes per image.
+err-lab-negative-with-boxes = An image marked as having no object cannot have boxes.
+err-lab-asset-not-image = { $name } is not a readable picture (JPEG or PNG).
+err-lab-dataset-empty = No annotated image yet: annotate at least one image before freezing a version.
+
+## Vision Lab page (D198–D200)
+nav-lab = Vision Lab
+lab-subtitle = Teach PneX your own objects: name the classes, draw boxes on your pictures, freeze a dataset and export it for training.
+lab-new = New project
+lab-edit = Edit the project
+lab-edit-short = Edit
+lab-open = Open
+lab-empty = No Vision Lab project yet. Create one to annotate your pictures.
+lab-col-project = Project
+lab-col-classes = Classes
+lab-col-images = Annotated images
+lab-col-versions = Versions
+lab-images-count = { $annotated } / { $total }
+lab-delete = Delete the project
+lab-delete-confirm = Delete the project { $name } with its annotations and dataset versions? The pictures stay in the media library.
+lab-deleted = Project deleted
+lab-saved = Project saved
+lab-form-name = Name
+lab-form-description = Description
+lab-form-classes = Classes (one per line)
+lab-form-classes-help = Rename a class in place or add new ones at the end. Only the last classes can be removed, and only when no box uses them.
+lab-add-images = Add images
+lab-saving = Saving…
+lab-no-class = Add at least one class (Edit) before drawing boxes.
+lab-no-image = No picture in this project yet.
+lab-no-image-help = Upload photos in Media, then use Add images. Prefer varied situations: angles, distances, light.
+lab-strip-empty = No image yet.
+lab-state-todo = To annotate
+lab-state-negative = No object
+lab-state-boxes = { $count ->
+    [one] 1 box
+   *[other] { $count } boxes
+}
+lab-class-label = Class of the next box:
+lab-remove-box = Remove the box
+lab-negative = No object in this image
+lab-split = Set:
+lab-split-auto = Automatic ({ $side })
+lab-split-train = Training
+lab-split-val = Validation
+lab-keys-help = Drag on the picture to draw a box. Keys: 1–9 class, Delete removes the selected box, ← → previous / next image, N no object.
+lab-stats-title = Dataset
+lab-stats-summary = { $annotated } of { $total } images annotated, { $negatives } without object
+lab-stats-split = Training { $train } · validation { $val }
+lab-stats-class = { $images } img · { $boxes ->
+    [one] 1 box
+   *[other] { $boxes } boxes
+}
+lab-warn-class-few = Fewer than { $min } images show { $class }: add more varied pictures of it.
+lab-warn-val-few = Fewer than { $min } validation images: the scores of a training will not be reliable.
+lab-warn-no-negative = No picture without object: add a few, they reduce false detections.
+lab-warn-no-class = No class yet.
+lab-versions-title = Dataset versions
+lab-versions-help = A version freezes the annotated images and their boxes; later edits never change it. Download it in COCO format for a YOLOX training.
+lab-version-note = Note (optional)
+lab-freeze = Freeze a version
+lab-frozen = Dataset version frozen
+lab-version-label = Version { $n }
+lab-version-detail = { $images ->
+    [one] 1 image
+   *[other] { $images } images
+}, { $val } in validation
+lab-export = Download (COCO)
+lab-images-added = Images added
+lab-picker-title = Add pictures from the media library
+lab-picker-search = Search a picture…
+lab-picker-help = The pictures added together form one source: they all go to training or all to validation, so near-identical shots never inflate the scores.
+lab-picker-empty = No photo in the media library.
+lab-picker-add = { $count ->
+    [one] Add 1 image
+   *[other] Add { $count } images
+}
+lab-remove-image = Remove from the project
+lab-image-removed = Image removed from the project (it stays in the media library)

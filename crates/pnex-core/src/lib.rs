@@ -151,6 +151,7 @@ pub mod predictive;
 /// Live last-value cache contract (backend write side / flow-runtime read
 /// side) — pure, wasm-safe: key builder, `CachedSample` payload, TTL const,
 /// freshness resolver.
+pub mod lab;
 pub mod last_cache;
 pub use last_cache::*;
 
