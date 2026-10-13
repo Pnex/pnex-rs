@@ -652,6 +652,8 @@ Corrections apportées à la v0.1 après lecture de la doc existante :
 | **D199** | **Versions de jeu de données** : `lab_dataset_versions` append-only (école D18) ; une version **fige** les images annotées, leurs boîtes, le split effectif et la **version média** de chaque image (une image remplacée dans la médiathèque ne change pas un jeu figé) ; numéros consécutifs sous verrou de la ligne projet. C'est ce que liront l'export et, plus tard, `lab_training_runs` (M2b). | 2026-10-13 |
 | **D200** | **Export COCO et report de l'entraînement** : export d'une version en zip (`images/<id>.<ext>` aux versions figées, `annotations/train.json` et `val.json` au format COCO détection, boîtes en pixels, catégories 1..N dans l'ordre des classes, `classes.txt`), construit en mémoire (raccourci assumé : ≤ 3000 images). Téléchargeable par un lecteur. **L'entraînement dans PNEX (job `train_detector`, image YOLOX Python figée, M2b) est reporté** : il demande une image de plusieurs Go, idéalement un worker GPU (P2.7) et des choix à valider (Q4 entraînement CPU). D'ici là, le parcours est : Lab → export COCO → entraînement YOLOX hors PNEX → ONNX importé dans **Modèles** (vérifié D100) → `vision_detect`. | 2026-10-13 |
 
+| **D201** | **Pré-annotation dans le Lab** (anticipée de M4) : `POST /api/v1/lab/images/{id}/suggest {model_id, min_score}` exécute un modèle de détection du registre de l'org (cache et pool vision existants, D82/D104) sur l'image et renvoie des **propositions sans rien écrire** ; un libellé égal à un nom de classe (casse, espaces et tirets ignorés) prend cette classe. UI : propositions en pointillés, « Garder les N propositions reconnues » ne garde **que** les propositions mappées (une proposition grise ne devient boîte que par un clic explicite, jamais en masse), « Écarter » efface le reste. Réservé aux rôles d'écriture (calcul sur le pool partagé). Avec un premier modèle custom, c'est la boucle d'amélioration du §4.6.1 étape 4. | 2026-10-13 |
+
 ### État des lots
 
 - **M1** (2026-10-12, branche `feat/media-vision-studio`) : `vision_track` et
@@ -678,5 +680,7 @@ Corrections apportées à la v0.1 après lecture de la doc existante :
   `/lab` et `/lab/:id`, fiche KB `lab.md`, 11 codes d'erreur. Tests :
   backend (cycle complet + isolation org + lecteur 403), e2e `lab` et
   `vision-studio` (en + fr) contre un serveur de la branche. **M2b
-  (entraînement) reporté**, voir D200.
+  (entraînement) reporté**, voir D200. Pré-annotation (D201) vérifiée
+  avec YOLOX-nano réel sur `dog.jpg` (chien, vélo, voiture reconnus et
+  mappés, « chat 38 % » laissé en proposition grise).
 

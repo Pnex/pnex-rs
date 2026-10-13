@@ -12,7 +12,10 @@ use std::rc::Rc;
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::lab::{self, LabAnnotationsInput, LabBox, LabImage, LabProject, LabSplit};
+use pnex_core::lab::{
+    self, LabAnnotationsInput, LabBox, LabImage, LabProject, LabSplit, LabSuggestRequest,
+    LabSuggestion,
+};
 
 use crate::api;
 use crate::app::Route;
@@ -73,6 +76,16 @@ pub fn LabProjectPage(id: String) -> Element {
     let mut picker_open = use_signal(|| false);
     let mut editing = use_signal(|| false);
     let mut save_state = use_signal(SaveState::default);
+    // Proposals of a registry model, for one image: (image id, boxes).
+    let mut suggestions = use_signal(|| (String::new(), Vec::<LabSuggestion>::new()));
+    let mut model = use_signal(String::new);
+    let mut suggesting = use_signal(|| false);
+    let models = use_resource(|| async {
+        api::ml_models::list(Some(100), None)
+            .await
+            .map(|p| p.results)
+            .unwrap_or_default()
+    });
 
     let project = use_resource({
         let pid = pid.clone();
@@ -229,6 +242,71 @@ pub fn LabProjectPage(id: String) -> Element {
         .unwrap_or_default();
     let present: Vec<String> = list.iter().map(|i| i.asset_id.clone()).collect();
     let saving = save_state().saving;
+    let shown: Vec<LabSuggestion> = {
+        let (sid, list) = &*suggestions.read();
+        if current.as_ref().is_some_and(|c| &c.id == sid) {
+            list.clone()
+        } else {
+            Vec::new()
+        }
+    };
+    let model_options: Vec<(String, String)> = models
+        .read()
+        .clone()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|m| (m.id, m.name))
+        .collect();
+
+    // Keeps proposals as boxes (their mapped class, else the current one).
+    let mut accept = move |picked: Vec<usize>| {
+        let (sid, list) = suggestions.peek().clone();
+        let c = *class.peek();
+        let boxes: Vec<LabBox> = picked
+            .iter()
+            .filter_map(|i| list.get(*i))
+            .map(|s| LabBox {
+                class: s.class.unwrap_or(c),
+                bbox: s.bbox,
+            })
+            .collect();
+        let rest: Vec<LabSuggestion> = list
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| !picked.contains(i))
+            .map(|(_, s)| s)
+            .collect();
+        suggestions.set((sid, rest));
+        if !boxes.is_empty() {
+            edit(Box::new(move |img: &mut LabImage| {
+                img.negative = false;
+                img.boxes.extend(boxes);
+            }));
+        }
+    };
+    let on_suggest = move |_| {
+        let Some(img) = images.peek().get(*selected.peek()).cloned() else {
+            return;
+        };
+        let req = LabSuggestRequest {
+            model_id: model.peek().clone(),
+            min_score: 0.0,
+        };
+        let none = t!("lab-suggest-none").to_string();
+        suggesting.set(true);
+        spawn(async move {
+            match api::lab::suggest(&img.id, &req).await {
+                Ok(list) => {
+                    if list.is_empty() {
+                        toasts::info(none);
+                    }
+                    suggestions.set((img.id, list));
+                }
+                Err(e) => toasts::error(e),
+            }
+            suggesting.set(false);
+        });
+    };
 
     rsx! {
         div { class: "flex flex-col gap-4 p-4 lg:p-6 min-h-0",
@@ -299,6 +377,8 @@ pub fn LabProjectPage(id: String) -> Element {
                             class: class(),
                             can_write: can_write && !classes.is_empty(),
                             selected_box: selected_box(),
+                            suggestions: shown.clone(),
+                            on_accept: move |i: usize| accept(vec![i]),
                             on_select_box: move |b: Option<usize>| selected_box.set(b),
                             on_add_box: move |bbox: [f32; 4]| {
                                 let c = *class.peek();
@@ -358,6 +438,31 @@ pub fn LabProjectPage(id: String) -> Element {
                                     }
                                 });
                             },
+                        }
+                        if can_write && !classes.is_empty() {
+                            SuggestBar {
+                                models: model_options.clone(),
+                                model: model(),
+                                busy: suggesting(),
+                                count: shown.iter().filter(|s| s.class.is_some()).count(),
+                                total: shown.len(),
+                                on_model: move |m: String| model.set(m),
+                                on_suggest,
+                                // Only the proposals whose label is a class: the
+                                // others are kept one by one, on purpose.
+                                on_keep_all: move |_| {
+                                    let mapped: Vec<usize> = suggestions
+                                        .peek()
+                                        .1
+                                        .iter()
+                                        .enumerate()
+                                        .filter(|(_, s)| s.class.is_some())
+                                        .map(|(i, _)| i)
+                                        .collect();
+                                    accept(mapped);
+                                },
+                                on_dismiss: move |_| suggestions.set((String::new(), Vec::new())),
+                            }
                         }
                     } else if loaded() {
                         div { class: "rounded-lg border border-dashed border-gray-300 bg-gray-50 p-8 text-center",
@@ -517,6 +622,8 @@ fn Annotator(
     class: u32,
     can_write: bool,
     selected_box: Option<usize>,
+    suggestions: Vec<LabSuggestion>,
+    on_accept: EventHandler<usize>,
     on_select_box: EventHandler<Option<usize>>,
     on_add_box: EventHandler<[f32; 4]>,
 ) -> Element {
@@ -630,6 +737,15 @@ fn Annotator(
                         on_select: move |i: usize| on_select_box.call(Some(i)),
                     }
                 }
+                for (i, sug) in suggestions.iter().enumerate() {
+                    SuggestionView {
+                        key: "s{i}",
+                        index: i,
+                        suggestion: sug.clone(),
+                        class_name: sug.class.and_then(|c| classes.get(c as usize).cloned()),
+                        on_accept,
+                    }
+                }
                 if let Some(style) = draft_style {
                     div {
                         class: "absolute border-2 border-dashed pointer-events-none",
@@ -668,6 +784,95 @@ fn BoxView(
                 class: "absolute left-0 -top-5 px-1 rounded text-xs font-medium text-white whitespace-nowrap",
                 style: "background: {color};",
                 "{label}"
+            }
+        }
+    }
+}
+
+/// A proposal of the model: dashed, click to keep it as a box.
+#[component]
+fn SuggestionView(
+    index: usize,
+    suggestion: LabSuggestion,
+    class_name: Option<String>,
+    on_accept: EventHandler<usize>,
+) -> Element {
+    let color = suggestion.class.map(class_color).unwrap_or("#6b7280");
+    let style = box_style(&suggestion.bbox, color);
+    let percent = (suggestion.score * 100.0).round();
+    let label = match class_name {
+        Some(c) => format!("{c} ← {} {percent}%", suggestion.label),
+        None => format!("{} {percent}%", suggestion.label),
+    };
+    let title = t!("lab-suggest-keep-one").to_string();
+    rsx! {
+        div {
+            class: "absolute border-2 border-dashed cursor-pointer hover:bg-white/20",
+            style: "{style}",
+            title: "{title}",
+            onpointerdown: move |e: PointerEvent| {
+                e.stop_propagation();
+                on_accept.call(index);
+            },
+            span {
+                class: "absolute left-0 -bottom-5 px-1 rounded text-xs text-white whitespace-nowrap opacity-90",
+                style: "background: {color};",
+                "{label}"
+            }
+        }
+    }
+}
+
+/// Pre-annotation: a model of the registry proposes boxes (§4.6.1 step 4).
+#[component]
+fn SuggestBar(
+    models: Vec<(String, String)>,
+    model: String,
+    busy: bool,
+    count: usize,
+    total: usize,
+    on_model: EventHandler<String>,
+    on_suggest: EventHandler<()>,
+    on_keep_all: EventHandler<()>,
+    on_dismiss: EventHandler<()>,
+) -> Element {
+    // `count` = proposals whose label matches a class.
+    let keep_all = t!("lab-suggest-keep-all", count : count).to_string();
+    rsx! {
+        div { class: "flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white p-2",
+            span { class: "text-xs text-gray-600", {t!("lab-suggest-label")} }
+            select {
+                class: "px-2 py-1 border border-gray-300 rounded-lg text-sm max-w-56",
+                aria_label: t!("lab-suggest-model").to_string(),
+                onchange: move |e| on_model.call(e.value()),
+                option { value: "", selected: model.is_empty(), {t!("lab-suggest-model")} }
+                for (id, name) in models {
+                    option { key: "{id}", value: "{id}", selected: id == model, "{name}" }
+                }
+            }
+            button {
+                class: BTN_SECONDARY_SM,
+                r#type: "button",
+                disabled: model.is_empty() || busy,
+                onclick: move |_| on_suggest.call(()),
+                {t!("lab-suggest")}
+            }
+            if count > 0 {
+                button {
+                    class: BTN_PRIMARY_SM,
+                    title: t!("lab-suggest-keep-all-help").to_string(),
+                    r#type: "button",
+                    onclick: move |_| on_keep_all.call(()),
+                    "{keep_all}"
+                }
+            }
+            if total > 0 {
+                button {
+                    class: "text-xs text-gray-600 hover:underline",
+                    r#type: "button",
+                    onclick: move |_| on_dismiss.call(()),
+                    {t!("lab-suggest-dismiss")}
+                }
             }
         }
     }

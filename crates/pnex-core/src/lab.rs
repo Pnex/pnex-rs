@@ -174,6 +174,51 @@ impl LabAnnotationsInput {
     }
 }
 
+/// `POST /api/v1/lab/images/{id}/suggest` — pre-annotation with a model
+/// of the registry (§4.6.1 step 4): proposals only, nothing is written.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LabSuggestRequest {
+    /// `ml_models.id` (detection model of the org).
+    pub model_id: String,
+    /// Overrides the model threshold when > 0.
+    #[serde(default)]
+    pub min_score: f32,
+}
+
+/// One proposed box.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LabSuggestion {
+    /// Label of the model.
+    pub label: String,
+    pub score: f32,
+    /// Project class whose name matches the label, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub class: Option<u32>,
+    /// Normalized `[x, y, w, h]`.
+    pub bbox: [f32; 4],
+}
+
+/// Most proposals returned for one image.
+pub const LAB_MAX_SUGGESTIONS: usize = 100;
+
+/// `Red Valve`, `red-valve` and `red_valve` name the same class.
+fn class_key(s: &str) -> String {
+    s.trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| if c == ' ' || c == '-' { '_' } else { c })
+        .collect()
+}
+
+/// Project class matching a model label.
+pub fn class_for_label(classes: &[String], label: &str) -> Option<u32> {
+    let key = class_key(label);
+    classes
+        .iter()
+        .position(|c| class_key(c) == key)
+        .map(|i| i as u32)
+}
+
 /// FNV-1a 64: a stable hash (the std one may change between releases).
 fn fnv1a(s: &str) -> u64 {
     s.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| {
@@ -420,6 +465,14 @@ mod tests {
             ..ok.clone()
         };
         assert_eq!(neg.check(2), Some("lab-negative-with-boxes"));
+    }
+
+    #[test]
+    fn labels_map_to_classes() {
+        let classes = vec!["Red valve".to_string(), "person".to_string()];
+        assert_eq!(class_for_label(&classes, "red_valve"), Some(0));
+        assert_eq!(class_for_label(&classes, "Person"), Some(1));
+        assert_eq!(class_for_label(&classes, "dog"), None);
     }
 
     #[test]

@@ -186,6 +186,18 @@ async fn project_images_boxes_versions_export() {
         .await;
         assert_eq!(st, 400);
         assert_eq!(out["error"], "lab-box-invalid");
+        // Pre-annotation needs a detection model of the org.
+        let (st, bad) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/lab/images/{image}/suggest"),
+            a,
+            org,
+            Some(json!({"model_id": "00000000-0000-0000-0000-000000000009"})),
+        )
+        .await;
+        assert_eq!(st, 400, "{bad}");
+        assert_eq!(bad["model_id"], "invalid");
         // The second picture: a negative example.
         let neg = added[1]["id"].as_str().unwrap();
         let (st, _) = call(
@@ -328,6 +340,11 @@ async fn org_isolation_and_viewer_read_only() {
                 "DELETE",
                 "/api/v1/lab/images/00000000-0000-0000-0000-000000000001".to_string(),
                 None,
+            ),
+            (
+                "POST",
+                "/api/v1/lab/images/00000000-0000-0000-0000-000000000001/suggest".to_string(),
+                Some(json!({"model_id": "x"})),
             ),
         ];
         for (m, path, body) in writes {

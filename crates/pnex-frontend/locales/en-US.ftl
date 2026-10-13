@@ -4685,3 +4685,14 @@ lab-picker-add = { $count ->
 }
 lab-remove-image = Remove from the project
 lab-image-removed = Image removed from the project (it stays in the media library)
+lab-suggest-label = Pre-annotate with a model:
+lab-suggest-model = Choose a model
+lab-suggest = Suggest boxes
+lab-suggest-none = The model found nothing on this image
+lab-suggest-keep-one = Click to keep this box
+lab-suggest-keep-all = { $count ->
+    [one] Keep the matching proposal
+   *[other] Keep the { $count } matching proposals
+}
+lab-suggest-dismiss = Dismiss
+lab-suggest-keep-all-help = Keeps the proposals whose label is a class of the project; click a grey one to keep it in the current class
