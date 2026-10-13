@@ -316,6 +316,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::MemoryWrite { .. } => kind_labels(PaletteKind::MemoryWrite),
         pnex_core::FlowNodeKind::MemoryRead { .. } => kind_labels(PaletteKind::MemoryRead),
         pnex_core::FlowNodeKind::ControlSource { .. } => kind_labels(PaletteKind::ControlSource),
+        pnex_core::FlowNodeKind::ActionTrigger { .. } => kind_labels(PaletteKind::ActionTrigger),
         pnex_core::FlowNodeKind::Weather { .. } => kind_labels(PaletteKind::Weather),
         pnex_core::FlowNodeKind::Anomaly { .. } => kind_labels(PaletteKind::Anomaly),
         pnex_core::FlowNodeKind::Forecast { .. } => kind_labels(PaletteKind::Forecast),
@@ -392,6 +393,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
             (geometry::MEMORY_READ_FILL, geometry::MEMORY_READ_STROKE)
         }
         pnex_core::FlowNodeKind::ControlSource { .. }
+        | pnex_core::FlowNodeKind::ActionTrigger { .. }
         | pnex_core::FlowNodeKind::Weather { .. }
         | pnex_core::FlowNodeKind::MediaSource { .. } => (
             geometry::CONTROL_SOURCE_FILL,
@@ -1085,6 +1087,13 @@ fn node_subtitle(node: &FlowNode) -> String {
                 format!("{} +{}", crate::api::controls::key_of(first), rest.len())
             }
         },
+        pnex_core::FlowNodeKind::ActionTrigger { config } => {
+            if config.action.is_empty() {
+                "—".into()
+            } else {
+                format!("{} · {}", config.object_type, config.action)
+            }
+        }
         pnex_core::FlowNodeKind::MediaSource { config } => match config.streams.as_slice() {
             [] => "—".into(),
             [one] => one.clone(),

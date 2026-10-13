@@ -35,6 +35,8 @@ use edgelink_core::runtime::nodes::*;
 use edgelink_core::{EdgelinkError, Result};
 use edgelink_macro::*;
 
+mod action;
+
 use pnex_core::ui_control::{
     control_channel, control_value_key, ControlEvent, ControlSourceConfig,
 };

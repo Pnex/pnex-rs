@@ -101,6 +101,20 @@ pub async fn update_object(id: &str, input: &ObjectInput) -> Result<ObjectView, 
     client::request(Method::PUT, &format!("{BASE}/objects/{id}"), body(input)).await
 }
 
+/// Invokes an action of the object's type (D183): the flows it was sent to.
+pub async fn invoke_action(
+    id: &str,
+    action: &str,
+    params: &serde_json::Map<String, serde_json::Value>,
+) -> Result<pnex_core::ontology::action::ActionInvocation, ApiError> {
+    client::request(
+        Method::POST,
+        &format!("{BASE}/objects/{id}/actions/{}", urlencode(action)),
+        Some(serde_json::json!({ "params": params })),
+    )
+    .await
+}
+
 pub async fn archive_object(id: &str) -> Result<Option<()>, ApiError> {
     client::request_opt(Method::DELETE, &format!("{BASE}/objects/{id}"), None).await
 }

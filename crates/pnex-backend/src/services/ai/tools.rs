@@ -445,6 +445,11 @@ pub fn tool_specs() -> Vec<ToolSpec> {
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"link_id":{"type":"integer"},"valid_to":{"type":"string"}},"required":["link_id"]}"#).expect("static schema"),
         },
         ToolSpec {
+            name: "propose_action",
+            description: "Proposes to the user an action declared on the object's type (actions in describe_ontology, e.g. start_maintenance on a pump), with its parameters pre-filled. Nothing is executed: the user reviews the proposal and runs it from the button shown under your answer; a deployed flow then acts. Tells which deployed flows would receive it (none = the user must first deploy a flow with an action_trigger node). Never claim the action was done.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"object_id":{"type":"string"},"action":{"type":"string"},"params":{"type":"object"}},"required":["object_id","action"]}"#).expect("static schema"),
+        },
+        ToolSpec {
             name: "save_object_type",
             description: "Creates an organization object type (no expected_version) or saves a new version of one on top of expected_version (from describe_ontology). def = {key [a-z][a-z0-9_]*, name, icon, properties: [{key, name, kind: text|number|bool|date|date_time|enum|geo_point|url|ref|series|events, required, indexed, unit, min, max, values, to_type, stream, max_len}], may_contain / may_be_contained_in: '*' or a list of type keys or null, write_role: member|admin|owner}. For a system type only properties are taken. Organization owners and admins only.",
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"def":{"type":"object"},"expected_version":{"type":"integer"}},"required":["def"]}"#).expect("static schema"),
@@ -606,6 +611,7 @@ pub async fn execute(
         "update_object" => super::ontology_tools::update_object(deps, args).await,
         "open_link" => super::ontology_tools::open_link(deps, args).await,
         "close_link" => super::ontology_tools::close_link(deps, args).await,
+        "propose_action" => super::ontology_tools::propose_action(deps, args).await,
         "save_object_type" => super::ontology_tools::save_object_type(deps, args).await,
         "search_docs" => super::doc_tools::search_docs(deps, args).await,
         "read_chunk" => super::doc_tools::read_chunk(deps, args).await,
@@ -1039,6 +1045,14 @@ pub fn summarize(name: &str, out: &ToolOutcome) -> TraceSummary {
                 "ai-trace-ontology-object-saved",
                 json!({"title": t, "version": ver}),
                 format!("object \"{t}\" v{ver}"),
+            )
+        }
+        "propose_action" => {
+            let (a, t) = (shown(&v["action_name"]), shown(&v["title"]));
+            s(
+                "ai-trace-action-proposed",
+                json!({"action": a, "title": t}),
+                format!("proposed \"{a}\" on \"{t}\""),
             )
         }
         "open_link" | "close_link" => {
@@ -1632,6 +1646,7 @@ mod tests {
                 "update_object",
                 "open_link",
                 "close_link",
+                "propose_action",
                 "save_object_type",
                 "search_docs",
                 "read_chunk",

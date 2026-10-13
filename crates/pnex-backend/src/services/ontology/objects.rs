@@ -86,7 +86,7 @@ fn check_title(title: &str) -> Result<String> {
 
 /// Validates the property document, then that every `ref` names a live
 /// object of the expected type in the org (R1: never another org's).
-async fn check_properties<C: ConnectionTrait>(
+pub(super) async fn check_properties<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
     def: &ObjectTypeDef,

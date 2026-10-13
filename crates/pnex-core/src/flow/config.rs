@@ -785,6 +785,25 @@ pub fn control_refs_of(g: &FlowGraph) -> Vec<Uuid> {
     ids
 }
 
+/// Ontology actions handled by a graph (`action-trigger` nodes), as
+/// `(object_type, action)`, deduplicated and sorted: invocation listener
+/// lookup and deploy existence check (D183).
+pub fn action_refs_of(g: &FlowGraph) -> Vec<(String, String)> {
+    let mut refs: Vec<(String, String)> = g
+        .nodes
+        .iter()
+        .filter_map(|n| match &n.kind {
+            FlowNodeKind::ActionTrigger { config } => {
+                Some((config.object_type.clone(), config.action.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    refs.sort();
+    refs.dedup();
+    refs
+}
+
 /// Reserved name of the notify node's permanent boolean gate input: a wire
 /// annotated with this pin feeds the trigger gate (`topic = "trigger"` at
 /// runtime), never a template var.

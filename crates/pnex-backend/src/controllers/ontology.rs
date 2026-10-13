@@ -51,6 +51,7 @@ pub fn routes() -> Routes {
         .add("/objects/{id}/series/{property}", get(object_series))
         .add("/objects/{id}/bindings", get(object_bindings))
         .add("/objects/{id}/changes", get(object_changes))
+        .add("/objects/{id}/actions/{key}", post(invoke_action))
         .add("/resolve/{kind}/{native_id}", get(resolve))
         .add("/path", get(path))
         .add("/links", post(create_link))
@@ -142,6 +143,16 @@ pub(crate) fn onto_error(e: OntologyError) -> Result<Response> {
                 err_codes::TRACK_IMPORT_EMPTY => "The file holds no usable point.",
                 _ => "Not a GPX file, or a CSV without time, latitude and longitude columns.",
             },
+        ),
+        OntologyError::ActionNoFlow => coded(
+            StatusCode::CONFLICT,
+            err_codes::ONTOLOGY_ACTION_NO_FLOW,
+            "No deployed flow handles this action.",
+        ),
+        OntologyError::ActionUnavailable => coded(
+            StatusCode::SERVICE_UNAVAILABLE,
+            err_codes::ONTOLOGY_ACTION_UNAVAILABLE,
+            "The action bus is unavailable: the action was not sent.",
         ),
         OntologyError::Db(e) => {
             tracing::error!(error = %e, "ontology database error");
@@ -315,6 +326,45 @@ async fn create_object(
 ) -> Result<Response> {
     require_write(&org)?;
     created(objects::create(&ctx.db, org.org.id, &actor(&org), &input).await)
+}
+
+#[derive(Debug, Deserialize)]
+struct InvokeBody {
+    #[serde(default)]
+    params: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Invokes an action of the object's type (D183): 202 with the flows it
+/// was dispatched to, 409 `ontology-action-no-flow` when none listens.
+async fn invoke_action(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path((id, key)): Path<(String, String)>,
+    Json(body): Json<InvokeBody>,
+) -> Result<Response> {
+    require_write(&org)?;
+    let user = &org.auth.user;
+    let by = user
+        .full_name
+        .clone()
+        .filter(|n| !n.trim().is_empty())
+        .unwrap_or_else(|| user.email.clone());
+    let valkey = crate::services::shared_valkey::conn(&ctx.config).await;
+    match onto::actions::invoke(
+        &ctx.db,
+        valkey,
+        org.org.id,
+        &actor(&org),
+        &by,
+        parse_uuid(&id)?,
+        &key,
+        &body.params,
+    )
+    .await
+    {
+        Ok(v) => Ok((StatusCode::ACCEPTED, format::json(v)).into_response()),
+        Err(e) => onto_error(e),
+    }
 }
 
 async fn get_object(

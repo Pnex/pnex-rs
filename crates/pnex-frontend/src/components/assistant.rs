@@ -488,6 +488,12 @@ fn Bubble(bubble: ChatBubble) -> Element {
                 .filter(|e| e.ok && e.flow_id.is_some())
                 .cloned()
                 .collect();
+            // Action proposals (D183): the user runs them, never the assistant.
+            let proposals: Vec<AiToolTrace> = trace
+                .iter()
+                .filter(|e| e.ok && e.name == "propose_action")
+                .cloned()
+                .collect();
             rsx! {
                 div { class: "flex justify-start",
                     div { class: "max-w-[90%] space-y-2",
@@ -530,6 +536,9 @@ fn Bubble(bubble: ChatBubble) -> Element {
                                 }
                             }
                         }
+                        for (i, entry) in proposals.into_iter().enumerate() {
+                            ProposalButton { key: "{i}", entry }
+                        }
                         // Carte flow : l'outil a touché un flow → deep link.
                         for entry in flow_entries {
                             button {
@@ -548,6 +557,51 @@ fn Bubble(bubble: ChatBubble) -> Element {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/// Button of an assistant action proposal: opens the invocation dialog
+/// pre-filled with the proposed parameters.
+#[component]
+fn ProposalButton(entry: AiToolTrace) -> Element {
+    let mut open = use_signal(|| false);
+    let arg = |k: &str| {
+        entry
+            .arguments
+            .get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string()
+    };
+    let (object_id, action) = (arg("object_id"), arg("action"));
+    let params = entry
+        .arguments
+        .get("params")
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+    let label = entry
+        .args
+        .as_ref()
+        .and_then(|a| a.get("action"))
+        .and_then(|v| v.as_str())
+        .unwrap_or(&action)
+        .to_string();
+    rsx! {
+        button {
+            class: "px-3 py-1.5 rounded-md border border-signal-600 text-signal-600 text-sm hover:bg-signal-50",
+            "data-testid": "ai-review-action",
+            onclick: move |_| open.set(true),
+            {t!("ai-review-action", action : label.clone())}
+        }
+        if open() {
+            crate::components::ontology::action_dialog::ActionDialog {
+                object_id,
+                action_key: action,
+                initial: params,
+                on_close: move |_| open.set(false),
             }
         }
     }

@@ -9,6 +9,7 @@
 //! Identity rows of system objects are written by database triggers
 //! (migration `m20261011_000002_ontology`); this module never inserts them.
 
+pub mod actions;
 pub mod cases;
 pub mod changes;
 pub mod graph;
@@ -65,6 +66,12 @@ pub enum OntologyError {
     /// A track file that cannot be imported (`err_codes::TRACK_IMPORT_*`).
     #[error("track import: {0}")]
     TrackImport(&'static str),
+    /// No deployed flow holds a trigger for the invoked action (D183).
+    #[error("action has no flow")]
+    ActionNoFlow,
+    /// The action bus (Valkey) is down: nothing was sent.
+    #[error("action bus unavailable")]
+    ActionUnavailable,
     #[error(transparent)]
     Db(#[from] DbErr),
 }

@@ -6,6 +6,7 @@
 //! gone). Org types (lot L1) use the same serde format, loaded from the
 //! database and exported as YAML (D186, D190). serde-only, wasm32-safe.
 
+pub mod action;
 pub mod api;
 pub mod graph;
 pub mod layout;
@@ -105,6 +106,25 @@ pub struct ObjectTypeDef {
     /// Types this one may be contained in; `None` = never contained.
     #[serde(default)]
     pub may_be_contained_in: Option<TypeSet>,
+    /// Operations invocable on the objects of this type (D183).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<ActionDef>,
+}
+
+/// An action declared on a type (D183): invoked from the object page,
+/// executed by the deployed flows holding a matching `action_trigger` node,
+/// journaled. Never executed by the server itself (D123).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ActionDef {
+    /// `[a-z][a-z0-9_]*`, unique within the type.
+    pub key: String,
+    pub name: String,
+    /// Parameters asked at invocation (scalar properties only).
+    #[serde(default)]
+    pub params: Vec<PropertyDef>,
+    /// The UI asks for an explicit confirmation before invoking.
+    #[serde(default)]
+    pub confirm: bool,
 }
 
 /// A link type (D179): directed, from a set of types to a set of types.
@@ -192,7 +212,26 @@ impl ObjectTypeDef {
         }
         check_set("may_contain", &self.may_contain, known)?;
         check_set("may_be_contained_in", &self.may_be_contained_in, known)?;
-        schema::check_defs(&self.properties, "properties", known)
+        schema::check_defs(&self.properties, "properties", known)?;
+        for (i, a) in self.actions.iter().enumerate() {
+            let field = format!("actions.{i}");
+            if !schema::valid_key(&a.key) {
+                return Err((format!("{field}.key"), FIELD_INVALID.into()));
+            }
+            if self.actions[..i].iter().any(|b| b.key == a.key) {
+                return Err((format!("{field}.key"), "duplicate".into()));
+            }
+            check_name(&format!("{field}.name"), &a.name)?;
+            if a.params.iter().any(|p| p.kind.is_temporal()) {
+                return Err((format!("{field}.params"), FIELD_INVALID.into()));
+            }
+            schema::check_defs(&a.params, &format!("{field}.params"), known)?;
+        }
+        Ok(())
+    }
+
+    pub fn action(&self, key: &str) -> Option<&ActionDef> {
+        self.actions.iter().find(|a| a.key == key)
     }
 }
 
@@ -232,6 +271,7 @@ pub fn system_object_types() -> Vec<ObjectTypeDef> {
         write_role: WriteRole::Member,
         may_contain: None,
         may_be_contained_in: Some(TypeSet::only(&[KIND_FOLDER])),
+        actions: Vec::new(),
     };
     vec![
         leaf(KIND_DEVICE),

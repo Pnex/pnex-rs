@@ -2,9 +2,11 @@
 # sites, production lines, machines and pumps, with their sensors bound to
 # object series (D181). Installing it creates org types: they stay editable
 # by the org; a newer pack version appends new type versions.
+# Since 1.1.0 machines and pumps declare the "start_maintenance" action
+# (D183): a deployed flow with an action_trigger node decides what it does.
 key: maintenance
 name: Augmented maintenance
-version: "1.0.0"
+version: "1.1.0"
 description: Sites, lines, machines and pumps; sensors bound to equipment series survive sensor replacements.
 types:
   - key: site
@@ -41,6 +43,13 @@ types:
         indexed: true
       - { key: manual, name: Manual, kind: url }
       - { key: power, name: Power, kind: series, unit: kW }
+    actions:
+      - key: start_maintenance
+        name: Start maintenance
+        confirm: true
+        params:
+          - { key: reason, name: Reason, kind: text, max_len: 500, required: true }
+          - { key: planned_end, name: Planned end, kind: date }
   - key: pump
     name: Pump
     icon: droplet
@@ -57,6 +66,13 @@ types:
       - { key: temperature, name: Temperature, kind: series, unit: "°C" }
       - { key: vibration, name: Vibration, kind: series, unit: mm/s }
       - { key: pressure, name: Pressure, kind: series, unit: bar }
+    actions:
+      - key: start_maintenance
+        name: Start maintenance
+        confirm: true
+        params:
+          - { key: reason, name: Reason, kind: text, max_len: 500, required: true }
+          - { key: planned_end, name: Planned end, kind: date }
 link_types:
   - key: feeds
     name: feeds

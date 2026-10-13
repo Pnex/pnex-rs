@@ -3069,6 +3069,11 @@ err-control-unknown = Control { $control } does not exist (anymore) in the organ
 err-control-store-unavailable = The control store (Valkey) is unavailable: the value was not sent.
 
 ## Control source node (D127)
+flows-palette-action-trigger = Action trigger
+flows-palette-action-trigger-help = Receives the invocations of an ontology action made from an object page (e.g. "Start maintenance" on a pump)
+flows-action-trigger-help = One message per invocation: payload = the parameters, msg.object = the object, msg.action = who and when.
+flows-action-trigger-action = Action
+flows-action-trigger-none = No action is declared in the ontology yet: add one to a type (or install the Maintenance pack).
 flows-palette-control-source = Control source
 flows-palette-control-source-help = Receives the values operated from dashboards and annotations (one port per source)
 flows-control-source-help = Emits a message every time a checked source is operated: the switches, sliders and buttons placed on dashboards and annotations appear here, grouped by surface, once their surface is saved. payload = value, topic = control key. One output port per source, in pick order.
@@ -3169,6 +3174,8 @@ flow-status-control-listening = Listening
 flow-status-control-bus-unavailable = Control bus unavailable
 flow-status-count-commands = { $commands } commands
 flow-status-stat-commands = Commands received
+err-action-trigger-unset = Pick an object type and an action
+err-action-trigger-invalid = Invalid object type or action key
 err-control-source-empty = Check at least one control to listen to
 err-control-source-too-many = At most 32 controls per node
 err-control-source-unset = Pick a control
@@ -3912,6 +3919,9 @@ err-ontology-admin-required = Only an organization owner or admin can change the
 err-ontology-system-read-only = System types and objects are edited from their own pages (devices, media, flows…).
 err-ontology-link-not-allowed = This link type does not connect objects of these types.
 err-ontology-link-cardinality = An open link already takes this place: close it first (for example when replacing a sensor).
+err-ontology-action-no-flow = No deployed flow handles this action: add an "Action trigger" node for it in a flow, then deploy the flow.
+err-ontology-action-unavailable = The action bus (Valkey) is unavailable: the action was not sent.
+err-ontology-action-unknown = The action { $action } of type { $object_type } does not exist in the organization's ontology: pick another one in the node.
 err-ontology-claim-unsourced = A claim is corroborated only with at least two pieces of distinct origins: link it to its sources ("is sourced by"), or write why in "Corroboration justification".
 err-track-import-timezone-required = The file's times do not state their offset: choose the time zone of the recording.
 err-track-import-empty = The file holds no usable point.
@@ -4077,6 +4087,15 @@ onto-kind-events = Events
 onto-action-object-create = Created
 onto-action-object-update = Updated
 onto-action-object-archive = Archived
+onto-action-action-invoke = Action invoked
+onto-action-run = Run
+onto-action-title = { $action } — { $object }
+onto-action-hint = The action is sent to the deployed flows that handle it; they decide what happens. The invocation is kept in the Provenance tab.
+onto-action-confirm-hint = This action needs your explicit confirmation: check the parameters before running it.
+onto-action-sent = Action sent to { $count ->
+    [one] 1 flow
+   *[other] { $count } flows
+}
 onto-action-link-open = Link opened
 onto-action-link-close = Link closed
 err-unknown = Unknown field for this type.
@@ -4094,6 +4113,8 @@ ai-trace-case-workspace = case: { $events } event(s), { $undated } undated piece
 ai-trace-case-signals = case: { $count } signal(s)
 ai-trace-case-proposals = case: { $count } proposal(s)
 ai-trace-case-board = board: { $hypotheses } hypothesis(es), { $unsourced } unsourced claim(s)
+ai-trace-action-proposed = proposed "{ $action }" on "{ $title }"
+ai-review-action = Review and run "{ $action }"
 ai-trace-ontology-object-saved = object "{ $title }" v{ $version }
 ai-trace-ontology-link-opened = link opened: { $source } —{ $link }→ { $target }
 ai-trace-ontology-link-closed = link closed: { $source } —{ $link }→ { $target }

@@ -96,6 +96,9 @@ fn onto_error(e: OntologyError) -> ToolError {
             "track files are imported by the user from the case workspace".into(),
             None,
         ),
+        // The assistant never invokes an action (D183); only kept exhaustive.
+        OntologyError::ActionNoFlow => coded(c::ONTOLOGY_ACTION_NO_FLOW, "no deployed flow handles this action".into(), None),
+        OntologyError::ActionUnavailable => coded(c::ONTOLOGY_ACTION_UNAVAILABLE, "the action bus is unavailable".into(), None),
         OntologyError::Db(e) => internal("using the ontology")(e),
     }
 }
@@ -259,6 +262,43 @@ pub async fn create_object(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutc
     outcome(
         json!({ "object_id": o.id, "title": o.title, "type_key": o.type_key, "version": o.version }),
     )
+}
+
+/// Checks an action invocation and hands it to the user (D183): never
+/// dispatched here, the UI shows a button that opens the invocation dialog
+/// pre-filled with these arguments (D123).
+pub async fn propose_action(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
+    require_write(deps)?;
+    let id = uuid_arg(args, "object_id")?;
+    let key = args
+        .get("action")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ToolError::from("action is required"))?;
+    let params = args
+        .get("params")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let c = onto::actions::check(deps.db, deps.org_id, id, key, &params)
+        .await
+        .map_err(onto_error)?;
+    let flows = onto::actions::listeners(deps.db, deps.org_id, &c.object.type_key, key)
+        .await
+        .map_err(onto_error)?;
+    outcome(json!({
+        "object_id": id,
+        "title": c.object.title,
+        "action": key,
+        "action_name": c.action.name,
+        "params": c.params,
+        "flows": flows,
+        "executed": false,
+        "next": if flows.is_empty() {
+            "no deployed flow handles this action: the user must deploy a flow with an action_trigger node for it before running it"
+        } else {
+            "the user reviews the parameters and runs the action from the button under your answer"
+        },
+    }))
 }
 
 /// Writes the COMPLETE property document on top of `expected_version`.

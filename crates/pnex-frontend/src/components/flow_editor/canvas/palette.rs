@@ -1,9 +1,10 @@
 use super::*;
 
 /// Liste canonique des kinds proposés à l'ajout (ordre de la maquette).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 31] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 32] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
+    PaletteKind::ActionTrigger,
     PaletteKind::Weather,
     PaletteKind::Value,
     PaletteKind::DeviceRead,
@@ -65,6 +66,7 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::MemoryWrite => "memory-write",
         PaletteKind::MemoryRead => "memory-read",
         PaletteKind::ControlSource => "control-source",
+        PaletteKind::ActionTrigger => "action-trigger",
         PaletteKind::Weather => "weather",
         PaletteKind::Anomaly => "anomaly",
         PaletteKind::Forecast => "forecast",
@@ -112,6 +114,7 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::MemoryWrite => (PaletteIcon::Database, "bg-lime-50 text-lime-700"),
         PaletteKind::MemoryRead => (PaletteIcon::Database, "bg-green-50 text-green-700"),
         PaletteKind::ControlSource => (PaletteIcon::Gauge, "bg-signal-50 text-signal-600"),
+        PaletteKind::ActionTrigger => (PaletteIcon::Gauge, "bg-amber-50 text-amber-700"),
         PaletteKind::Weather => (
             PaletteIcon::Home("home-partly-cloudy"),
             "bg-sky-50 text-sky-600",
@@ -152,6 +155,7 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::MemoryWrite { .. } => PaletteKind::MemoryWrite,
         FlowNodeKind::MemoryRead { .. } => PaletteKind::MemoryRead,
         FlowNodeKind::ControlSource { .. } => PaletteKind::ControlSource,
+        FlowNodeKind::ActionTrigger { .. } => PaletteKind::ActionTrigger,
         FlowNodeKind::Weather { .. } => PaletteKind::Weather,
         FlowNodeKind::Anomaly { .. } => PaletteKind::Anomaly,
         FlowNodeKind::Forecast { .. } => PaletteKind::Forecast,
@@ -194,6 +198,7 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
     match kind {
         PaletteKind::Inject
         | PaletteKind::ControlSource
+        | PaletteKind::ActionTrigger
         | PaletteKind::CameraSource
         | PaletteKind::MediaSource
         | PaletteKind::Weather => PaletteCategory::Triggers,
@@ -363,6 +368,10 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::ControlSource => (
             t!("flows-palette-control-source").to_string(),
             t!("flows-palette-control-source-help").to_string(),
+        ),
+        PaletteKind::ActionTrigger => (
+            t!("flows-palette-action-trigger").to_string(),
+            t!("flows-palette-action-trigger-help").to_string(),
         ),
         PaletteKind::MediaSource => (
             t!("flows-palette-media-source").to_string(),

@@ -138,6 +138,11 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::ui_control::ControlSourceConfig,
     },
+    /// Event source fed by the invocations of one ontology action (D183).
+    ActionTrigger {
+        #[serde(default)]
+        config: crate::ontology::action::ActionTriggerConfig,
+    },
     /// Event source of transcribed media segments (media-ingest.md D163):
     /// one message per segment (or sentence) of the listed streams.
     MediaSource {
@@ -280,6 +285,9 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "control_source" => Ok(Self::ControlSource {
+                    config: opt_config(config)?,
+                }),
+                "action_trigger" => Ok(Self::ActionTrigger {
                     config: opt_config(config)?,
                 }),
                 "media_source" => Ok(Self::MediaSource {
