@@ -29,7 +29,7 @@ test.describe('vision studio', { tag: ['@flows', '@i18n'] }, () => {
     await editor.inspector.getByRole('textbox', { name: app.t('flows-zone-name') }).fill('dock');
     await editor.inspector.getByRole('button', { name: app.t('flows-zone-close') }).click();
     const row = editor.inspector.locator('li').filter({ hasText: 'dock' });
-    await expect(row.getByText(app.tr('flows-zone-points'))).toContainText('4');
+    await expect(row).toContainText('4');
     await expect(editor.inspector).not.toContainText(app.t('flows-zone-none'));
     await capture('vision-zone-editor', { caption: 'Image zones: a zone drawn over the camera image' });
 

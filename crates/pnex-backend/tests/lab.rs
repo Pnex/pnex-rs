@@ -56,7 +56,8 @@ where
     };
     loco_rs::testing::request::request_with_config::<App, _, _>(
         config,
-        move |server, _ctx| async move {
+        move |server, ctx| async move {
+            common::seed_catalogue(&ctx.db).await;
             f(server, env).await;
         },
     )
@@ -352,6 +353,99 @@ async fn org_isolation_and_viewer_read_only() {
             assert_eq!(st, 403, "{m} {path}");
             assert_eq!(e["error"], "lab-write-forbidden");
         }
+    })
+    .await;
+}
+
+/// Frames of a camera recording become pictures of the project (D202):
+/// one per interval inside the recorded spans, all of one source, each a
+/// photo of the media library.
+#[tokio::test]
+#[serial]
+async fn frames_imported_from_a_recording() {
+    with_app(|server, env| async move {
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-lab") };
+        let org = personal_org(&server, &env.alice).await;
+        let a = &env.alice;
+        let res = server
+            .post("/api/v1/devices")
+            .add_header("Authorization", format!("Bearer {a}"))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&json!({"device_id": "cam-lab", "predefined_device_name": "generic_esp8266"}))
+            .await;
+        assert_eq!(res.status_code(), 201, "{}", res.text());
+        let device = res.json::<Value>()["id"].as_i64().unwrap();
+        let png = base64::engine::general_purpose::STANDARD.decode(PNG_1X1).unwrap();
+        let jpeg = pnex_vision::prepare_jpeg(&png, None, 64).unwrap();
+        // 10 s of recording, 5 frames, then a 10 s gap, then 10 s more.
+        let base = 1_790_000_000_000i64;
+        for start in [base, base + 20_000] {
+            let mut w = pnex_core::avi::AviWriter::new(1, 1);
+            for _ in 0..5 {
+                w.push(jpeg.clone());
+            }
+            let end = start + 10_000;
+            server
+                .post(&format!(
+                    "/internal/flow/video-segment?org_id={org}&device_id=cam-lab&node_id=n1&stream=front\
+                     &started_ms={start}&ended_ms={end}&frames=5&width=1&height=1&retention_days=7"
+                ))
+                .add_header("x-pnex-flow-token", "tok-lab")
+                .bytes(w.finish(0.5).into())
+                .await
+                .assert_status_ok();
+        }
+        let (_, p) = call(
+            &server,
+            "POST",
+            "/api/v1/lab/projects",
+            a,
+            org,
+            Some(json!({"name": "Dock", "classes": ["forklift"]})),
+        )
+        .await;
+        let pid = p["id"].as_str().unwrap().to_string();
+        let at = |ms: i64| chrono::DateTime::from_timestamp_millis(ms).unwrap().to_rfc3339();
+        let path = format!("/api/v1/lab/projects/{pid}/import-recording");
+        let (st, too_many) = call(
+            &server,
+            "POST",
+            &path,
+            a,
+            org,
+            Some(json!({"device": device, "from": at(base), "to": at(base + 3_600_000), "every_secs": 1.0})),
+        )
+        .await;
+        assert_eq!(st, 400);
+        assert_eq!(too_many["every_secs"], "max_frames:200");
+        let (st, imported) = call(
+            &server,
+            "POST",
+            &path,
+            a,
+            org,
+            Some(json!({"device": device, "from": at(base), "to": at(base + 30_000), "every_secs": 2.0})),
+        )
+        .await;
+        assert_eq!(st, 200, "{imported}");
+        // 0, 2, 4, 6, 8 s in the first segment, 20…28 s in the second.
+        let list = imported.as_array().unwrap();
+        assert_eq!(list.len(), 10, "{imported}");
+        assert!(list.iter().all(|i| i["source"] == list[0]["source"]));
+        let (_, media) = call(&server, "GET", "/api/v1/media?kind=photo", a, org, None).await;
+        assert_eq!(media["count"], 10);
+        let (st, none) = call(
+            &server,
+            "POST",
+            &path,
+            a,
+            org,
+            Some(json!({"device": device, "from": at(base + 11_000), "to": at(base + 19_000), "every_secs": 2.0})),
+        )
+        .await;
+        assert_eq!(st, 404);
+        assert_eq!(none["error"], "camera-export-empty");
+        unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
     })
     .await;
 }

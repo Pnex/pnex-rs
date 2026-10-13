@@ -20,6 +20,7 @@ use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY, BTN_SECONDARY_SM, FIELD_
 use crate::state::{org, toasts};
 
 mod picker;
+mod recording;
 mod workspace;
 
 pub use workspace::LabProjectPage;

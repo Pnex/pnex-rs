@@ -9,7 +9,7 @@ use axum::Json;
 use loco_rs::controller::{format, ErrorDetail};
 use loco_rs::prelude::*;
 use pnex_core::err_codes;
-use pnex_core::lab::{LabAnnotationsInput, LabProjectInput, LabSuggestRequest};
+use pnex_core::lab::{LabAnnotationsInput, LabProjectInput, LabRecordingImport, LabSuggestRequest};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -24,6 +24,10 @@ pub fn routes() -> Routes {
         .add("/projects/{id}", get(show).put(update).delete(remove))
         .add("/projects/{id}/images", get(images).post(add_images))
         .add("/projects/{id}/stats", get(stats))
+        .add(
+            "/projects/{id}/import-recording",
+            axum::routing::post(import_recording),
+        )
         .add("/projects/{id}/versions", get(versions).post(freeze))
         .add("/images/{id}", delete(remove_image))
         .add("/images/{id}/annotations", put(save_annotations))
@@ -168,6 +172,17 @@ async fn save_annotations(
 ) -> Result<Response> {
     require_write(&org)?;
     reply(lab::save_annotations(&ctx.db, org.org.id, id, &input).await)
+}
+
+/// Frames of a camera recording as pictures of the project (D202).
+async fn import_recording(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Json(req): Json<LabRecordingImport>,
+) -> Result<Response> {
+    require_write(&org)?;
+    reply(lab::import_recording(&ctx, org.org.id, id, &req).await)
 }
 
 /// Pre-annotation with a registry model: editors only (CPU on the

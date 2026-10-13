@@ -23,6 +23,7 @@ use crate::components::ui::{BTN_PRIMARY_SM, BTN_SECONDARY_SM, FIELD_LABEL, INPUT
 use crate::state::{org, toasts};
 
 use super::picker::PhotoPicker;
+use super::recording::RecordingImport;
 use super::ProjectForm;
 
 /// Box colours by class index (cycled), readable on photos.
@@ -74,6 +75,7 @@ pub fn LabProjectPage(id: String) -> Element {
     let mut class = use_signal(|| 0u32);
     let mut selected_box = use_signal(|| None::<usize>);
     let mut picker_open = use_signal(|| false);
+    let mut recording_open = use_signal(|| false);
     let mut editing = use_signal(|| false);
     let mut save_state = use_signal(SaveState::default);
     // Proposals of a registry model, for one image: (image id, boxes).
@@ -334,6 +336,11 @@ pub fn LabProjectPage(id: String) -> Element {
                         onclick: move |_| picker_open.set(true),
                         {t!("lab-add-images")}
                     }
+                    button {
+                        class: BTN_SECONDARY_SM,
+                        onclick: move |_| recording_open.set(true),
+                        {t!("lab-from-recording")}
+                    }
                 }
             }
             if classes.is_empty() && project_now.is_some() {
@@ -496,6 +503,16 @@ pub fn LabProjectPage(id: String) -> Element {
                                 }
                             });
                         }
+                    },
+                }
+            }
+            if recording_open() {
+                RecordingImport {
+                    project: pid.clone(),
+                    on_close: move |_| recording_open.set(false),
+                    on_done: move |_| {
+                        recording_open.set(false);
+                        reload.with_mut(|r| *r += 1);
                     },
                 }
             }
