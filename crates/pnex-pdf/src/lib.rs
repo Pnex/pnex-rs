@@ -167,6 +167,9 @@ fn face_of(s: &Span, heading: bool) -> Face {
     }
 }
 
+/// A word to lay out: text, face, colour, glued to the previous one.
+type Word = (String, Face, (u8, u8, u8), bool);
+
 /// A word placed on a line.
 struct Piece {
     x: f32,
@@ -227,7 +230,7 @@ impl<'f> Layout<'f> {
         let mut x = x0;
         // (word, face, colour, glued to the previous word: no space between
         // two spans that touch, e.g. "**calm**.").
-        let mut words: Vec<(String, Face, (u8, u8, u8), bool)> = Vec::new();
+        let mut words: Vec<Word> = Vec::new();
         let mut prev_ws = true;
         for sp in spans {
             let face = face_of(sp, heading);
