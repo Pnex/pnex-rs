@@ -25,6 +25,8 @@ pub enum MediaKind {
     Table,
     /// Voice clip (voice-id.md: enrolment of a voice profile).
     Audio,
+    /// MP4 / MOV clip (Vision Lab: frames of a video).
+    Video,
 }
 
 impl MediaKind {
@@ -38,6 +40,7 @@ impl MediaKind {
             MediaKind::Document => "document",
             MediaKind::Table => "table",
             MediaKind::Audio => "audio",
+            MediaKind::Video => "video",
         }
     }
 }
@@ -88,6 +91,7 @@ impl MediaAsset {
             "document" => MediaKind::Document,
             "table" => MediaKind::Table,
             "audio" => MediaKind::Audio,
+            "video" => MediaKind::Video,
             _ => MediaKind::Photo,
         }
     }

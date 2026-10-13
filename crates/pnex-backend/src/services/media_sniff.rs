@@ -55,6 +55,8 @@ pub enum Format {
     Ogg,
     Flac,
     M4a,
+    /// MP4 / QuickTime video (Vision Lab: frames of a video).
+    Mp4,
 }
 
 impl Format {
@@ -81,6 +83,7 @@ impl Format {
             Self::Ogg => &["ogg", "oga", "opus"],
             Self::Flac => &["flac"],
             Self::M4a => &["m4a"],
+            Self::Mp4 => &["mp4", "m4v", "mov"],
             // `format_of` already matched the extension.
             Self::Doc(_) => &[],
         }
@@ -99,6 +102,7 @@ impl Format {
             Self::Doc(d) if d.kind() == doc_extract::KIND_TABLE => &["table"],
             Self::Doc(_) => &["document"],
             Self::Wav | Self::Mp3 | Self::Ogg | Self::Flac | Self::M4a => &["audio"],
+            Self::Mp4 => &["video"],
         }
     }
 
@@ -139,6 +143,8 @@ fn by_magic(b: &[u8]) -> Option<Format> {
         _ if matches!(ftyp_brand, Some(b"M4A ")) => Format::M4a,
         _ if matches!(ftyp_brand, Some(b"avif" | b"avis")) => Format::Avif,
         _ if matches!(ftyp_brand, Some(b"heic" | b"heix" | b"mif1" | b"msf1")) => Format::Heic,
+        // Any other ISO base media brand (isom, mp41, mp42, avc1, qt…).
+        _ if ftyp_brand.is_some() => Format::Mp4,
         _ if b.starts_with(b"ply\n") || b.starts_with(b"ply\r\n") => Format::Ply,
         _ if b.starts_with(b"lmgg") || b.starts_with(b"GGUF") => Format::Ggml,
         _ if b.get(257..262) == Some(b"ustar") => Format::Tar,
@@ -248,6 +254,19 @@ mod tests {
         assert!(detect("a.docx", b"PK\x03\x04photos/a.jpg").is_none());
         // Text names over binary content.
         assert!(detect("notes.txt", b"\x00\x01\x02").is_none());
+    }
+
+    #[test]
+    fn videos_by_brand_and_extension() {
+        assert_eq!(
+            kind("clip.mp4", b"\0\0\0\x18ftypisom\0\0\x02\0"),
+            Some("video")
+        );
+        assert_eq!(
+            kind("clip.mov", b"\0\0\0\x14ftypqt  \0\0\0\0"),
+            Some("video")
+        );
+        assert_eq!(kind("clip.png", b"\0\0\0\x18ftypisom\0\0\x02\0"), None);
     }
 
     #[test]

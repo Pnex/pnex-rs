@@ -548,6 +548,13 @@ pub const LAB_NEGATIVE_WITH_BOXES: &str = "lab-negative-with-boxes";
 pub const LAB_ASSET_NOT_IMAGE: &str = "lab-asset-not-image";
 pub const LAB_DATASET_EMPTY: &str = "lab-dataset-empty";
 pub const LAB_EXPORT_TOO_LARGE: &str = "lab-export-too-large";
+/// Video import: not an MP4 / MOV with an H.264, H.265 or MJPEG track.
+pub const LAB_VIDEO_UNSUPPORTED: &str = "lab-video-unsupported";
+pub const LAB_VIDEO_TOO_LARGE: &str = "lab-video-too-large";
+/// Video import: the confined decoder failed, stalled or is missing.
+pub const LAB_VIDEO_DECODE_FAILED: &str = "lab-video-decode-failed";
+/// Interpolation needs an annotated frame before and after in the source.
+pub const LAB_INTERPOLATE_NO_KEYFRAMES: &str = "lab-interpolate-no-keyframes";
 
 // ── Registered codes ─────────────────────────────────────────────────────
 
@@ -830,6 +837,10 @@ pub const ALL: &[&str] = &[
     LAB_ASSET_NOT_IMAGE,
     LAB_DATASET_EMPTY,
     LAB_EXPORT_TOO_LARGE,
+    LAB_VIDEO_UNSUPPORTED,
+    LAB_VIDEO_TOO_LARGE,
+    LAB_VIDEO_DECODE_FAILED,
+    LAB_INTERPOLATE_NO_KEYFRAMES,
     TIME_RANGE_IMPORT_TOO_LARGE,
     TIME_RANGE_IMPORT_INVALID,
     TIME_RANGE_SCOPE_UNKNOWN,

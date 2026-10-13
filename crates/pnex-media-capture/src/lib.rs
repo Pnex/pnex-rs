@@ -12,6 +12,7 @@ pub mod decoder;
 pub mod fetch;
 pub mod hls;
 pub mod icy;
+pub mod mp4;
 pub mod rtsp;
 pub mod sandbox;
 pub mod segmenter;
@@ -531,6 +532,75 @@ pub async fn decode_clip(
         .map(|b| i16::from_le_bytes([b[0], b[1]]))
         .collect();
     Ok((segmenter::wav_bytes(&samples), truncated))
+}
+
+/// Longest a video file decode may run.
+const VIDEO_FILE_DECODE: Duration = Duration::from_secs(300);
+
+/// Frames of an uploaded video file with the confined decoder (D160
+/// regime): from `from_secs`, one every `every_secs`, at most `max_frames`
+/// (the decoder is stopped there). MP4 with `moov` at the end is fixed in
+/// memory first ([`mp4::faststart`]).
+pub async fn decode_video_frames(
+    bytes: Vec<u8>,
+    format: decoder::InputFormat,
+    from_secs: f64,
+    every_secs: f64,
+    max_frames: usize,
+) -> Result<Vec<video::Jpeg>, CaptureError> {
+    let bytes = if format.demuxer == "mov" {
+        mp4::faststart(bytes).ok_or(CaptureError::FormatUnsupported)?
+    } else {
+        bytes
+    };
+    let settings = CaptureSettings::from_env();
+    let ffmpeg = decoder::resolve(&settings.ffmpeg).ok_or(CaptureError::DecoderMissing)?;
+    let argv = sandbox::wrap_argv(
+        &settings.sandbox,
+        decoder::file_video_argv(&ffmpeg, format, from_secs, every_secs, FRAME_MAX_WIDTH),
+    );
+    let mut cmd = tokio::process::Command::new(&argv[0]);
+    cmd.args(&argv[1..])
+        .env_clear()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    sandbox::confine(&mut cmd, &settings.sandbox, sandbox::DECODER_MAX_MEMORY);
+    let mut child = cmd.spawn().map_err(|_| CaptureError::DecoderMissing)?;
+    let mut stdin = child.stdin.take().ok_or(CaptureError::DecoderFailed)?;
+    let mut stdout = child.stdout.take().ok_or(CaptureError::DecoderFailed)?;
+    let feeder = tokio::spawn(async move {
+        let _ = stdin.write_all(&bytes).await;
+    });
+    let mut splitter = video::JpegSplitter::default();
+    let mut frames = Vec::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    let read = tokio::time::timeout(VIDEO_FILE_DECODE, async {
+        while frames.len() < max_frames {
+            let n = stdout
+                .read(&mut buf)
+                .await
+                .map_err(|_| CaptureError::DecoderFailed)?;
+            if n == 0 {
+                break;
+            }
+            let got = splitter
+                .push(&buf[..n])
+                .map_err(|_| CaptureError::DecoderFailed)?;
+            frames.extend(got);
+        }
+        Ok::<(), CaptureError>(())
+    })
+    .await;
+    feeder.abort();
+    let _ = child.start_kill();
+    read.map_err(|_| CaptureError::Stalled)??;
+    frames.truncate(max_frames);
+    if frames.is_empty() {
+        return Err(CaptureError::FormatUnsupported);
+    }
+    Ok(frames)
 }
 
 #[cfg(test)]

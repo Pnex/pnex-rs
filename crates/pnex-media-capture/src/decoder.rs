@@ -84,6 +84,20 @@ pub const HEVC: InputFormat = InputFormat {
 /// ADTS AAC (RTSP audio track).
 pub const ADTS: InputFormat = AAC;
 
+/// Video file formats the Vision Lab imports (MP4 / MOV).
+pub fn video_file_format(content_type: &str) -> Option<InputFormat> {
+    match content_type
+        .split(';')
+        .next()?
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "video/mp4" | "video/quicktime" => Some(MP4),
+        _ => None,
+    }
+}
+
 /// Format of an HTTP body from its `Content-Type`, then from the URL path
 /// extension. `None` = refused (`format-unsupported`).
 pub fn input_format(content_type: Option<&str>, path: &str) -> Option<InputFormat> {
@@ -166,6 +180,34 @@ pub fn argv(ffmpeg: &Path, format: InputFormat) -> Vec<String> {
 /// scaled down to at most `max_width` (even height), one JPEG per frame on
 /// `pipe:1`. Same input confinement as [`argv`].
 pub fn video_argv(ffmpeg: &Path, format: InputFormat, fps: u32, max_width: u32) -> Vec<String> {
+    video_argv_with(
+        ffmpeg,
+        format,
+        format!("fps={fps},scale=w='min({max_width},iw)':h=-2,format=yuvj420p"),
+    )
+}
+
+/// Video decoder argv of a file (Vision Lab import): frames from
+/// `from_secs`, one every `every_secs`, same confinement and output as
+/// [`video_argv`].
+pub fn file_video_argv(
+    ffmpeg: &Path,
+    format: InputFormat,
+    from_secs: f64,
+    every_secs: f64,
+    max_width: u32,
+) -> Vec<String> {
+    video_argv_with(
+        ffmpeg,
+        format,
+        format!(
+            "trim=start={from_secs:.3},setpts=PTS-STARTPTS,fps=1/{every_secs:.3},\
+             scale=w='min({max_width},iw)':h=-2,format=yuvj420p"
+        ),
+    )
+}
+
+fn video_argv_with(ffmpeg: &Path, format: InputFormat, filter: String) -> Vec<String> {
     let mut out = vec![ffmpeg.display().to_string()];
     out.extend(
         [
@@ -198,9 +240,7 @@ pub fn video_argv(ffmpeg: &Path, format: InputFormat, fps: u32, max_width: u32) 
         ]
         .map(String::from),
     );
-    out.push(format!(
-        "fps={fps},scale=w='min({max_width},iw)':h=-2,format=yuvj420p"
-    ));
+    out.push(filter);
     out.extend(
         [
             "-c:v",

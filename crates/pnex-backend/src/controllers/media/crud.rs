@@ -15,7 +15,8 @@ pub(super) struct UploadQuery {
 /// `model` = ONNX model of the vision registry (camera-video.md D81).
 /// `document` / `table` = indexed for search (doc-search.md P1).
 /// `audio` = voice clips (voice-id.md: enrolment of a voice profile).
-const KINDS: [&str; 8] = [
+/// `video` = MP4 / MOV clips (Vision Lab frames, media-vision-studio.md).
+const KINDS: [&str; 9] = [
     "photo",
     "panorama",
     "splat",
@@ -24,6 +25,7 @@ const KINDS: [&str; 8] = [
     "document",
     "table",
     "audio",
+    "video",
 ];
 
 /// `POST /api/v1/media` — upload octet-stream, crée asset + version 1.

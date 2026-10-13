@@ -9,7 +9,9 @@ use axum::Json;
 use loco_rs::controller::{format, ErrorDetail};
 use loco_rs::prelude::*;
 use pnex_core::err_codes;
-use pnex_core::lab::{LabAnnotationsInput, LabProjectInput, LabRecordingImport, LabSuggestRequest};
+use pnex_core::lab::{
+    LabAnnotationsInput, LabProjectInput, LabRecordingImport, LabSuggestRequest, LabVideoImport,
+};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -28,10 +30,15 @@ pub fn routes() -> Routes {
             "/projects/{id}/import-recording",
             axum::routing::post(import_recording),
         )
+        .add(
+            "/projects/{id}/import-video",
+            axum::routing::post(import_video),
+        )
         .add("/projects/{id}/versions", get(versions).post(freeze))
         .add("/images/{id}", delete(remove_image))
         .add("/images/{id}/annotations", put(save_annotations))
         .add("/images/{id}/suggest", axum::routing::post(suggest))
+        .add("/images/{id}/interpolate", axum::routing::post(interpolate))
         .add("/versions/{id}/export", get(export))
 }
 
@@ -183,6 +190,28 @@ async fn import_recording(
 ) -> Result<Response> {
     require_write(&org)?;
     reply(lab::import_recording(&ctx, org.org.id, id, &req).await)
+}
+
+/// Frames of a video of the media library: editors only (confined decoder).
+async fn import_video(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Json(req): Json<LabVideoImport>,
+) -> Result<Response> {
+    require_write(&org)?;
+    reply(lab::import_video(&ctx, org.org.id, id, &req).await)
+}
+
+/// Interpolated boxes between annotated frames: editors only, proposals
+/// only (same gate as pre-annotation).
+async fn interpolate(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    require_write(&org)?;
+    reply(lab::interpolate(&ctx.db, org.org.id, id).await)
 }
 
 /// Pre-annotation with a registry model: editors only (CPU on the

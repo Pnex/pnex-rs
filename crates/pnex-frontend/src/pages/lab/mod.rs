@@ -21,6 +21,7 @@ use crate::state::{org, toasts};
 
 mod picker;
 mod recording;
+mod video;
 mod workspace;
 
 pub use workspace::LabProjectPage;

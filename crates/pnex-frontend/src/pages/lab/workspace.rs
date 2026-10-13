@@ -24,6 +24,7 @@ use crate::state::{org, toasts};
 
 use super::picker::PhotoPicker;
 use super::recording::RecordingImport;
+use super::video::VideoImport;
 use super::ProjectForm;
 
 /// Box colours by class index (cycled), readable on photos.
@@ -76,6 +77,7 @@ pub fn LabProjectPage(id: String) -> Element {
     let mut selected_box = use_signal(|| None::<usize>);
     let mut picker_open = use_signal(|| false);
     let mut recording_open = use_signal(|| false);
+    let mut video_open = use_signal(|| false);
     let mut editing = use_signal(|| false);
     let mut save_state = use_signal(SaveState::default);
     // Proposals of a registry model, for one image: (image id, boxes).
@@ -286,6 +288,25 @@ pub fn LabProjectPage(id: String) -> Element {
             }));
         }
     };
+    let on_interpolate = move |_| {
+        let Some(img) = images.peek().get(*selected.peek()).cloned() else {
+            return;
+        };
+        let none = t!("lab-interpolate-none").to_string();
+        suggesting.set(true);
+        spawn(async move {
+            match api::lab::interpolate(&img.id).await {
+                Ok(list) => {
+                    if list.is_empty() {
+                        toasts::info(none);
+                    }
+                    suggestions.set((img.id, list));
+                }
+                Err(e) => toasts::error(e),
+            }
+            suggesting.set(false);
+        });
+    };
     let on_suggest = move |_| {
         let Some(img) = images.peek().get(*selected.peek()).cloned() else {
             return;
@@ -340,6 +361,11 @@ pub fn LabProjectPage(id: String) -> Element {
                         class: BTN_SECONDARY_SM,
                         onclick: move |_| recording_open.set(true),
                         {t!("lab-from-recording")}
+                    }
+                    button {
+                        class: BTN_SECONDARY_SM,
+                        onclick: move |_| video_open.set(true),
+                        {t!("lab-from-video")}
                     }
                 }
             }
@@ -453,8 +479,10 @@ pub fn LabProjectPage(id: String) -> Element {
                                 busy: suggesting(),
                                 count: shown.iter().filter(|s| s.class.is_some()).count(),
                                 total: shown.len(),
+                                can_interpolate: current.as_ref().is_some_and(|c| c.frame_ms.is_some()),
                                 on_model: move |m: String| model.set(m),
                                 on_suggest,
+                                on_interpolate,
                                 // Only the proposals whose label is a class: the
                                 // others are kept one by one, on purpose.
                                 on_keep_all: move |_| {
@@ -503,6 +531,16 @@ pub fn LabProjectPage(id: String) -> Element {
                                 }
                             });
                         }
+                    },
+                }
+            }
+            if video_open() {
+                VideoImport {
+                    project: pid.clone(),
+                    on_close: move |_| video_open.set(false),
+                    on_done: move |_| {
+                        video_open.set(false);
+                        reload.with_mut(|r| *r += 1);
                     },
                 }
             }
@@ -817,7 +855,9 @@ fn SuggestionView(
     let color = suggestion.class.map(class_color).unwrap_or("#6b7280");
     let style = box_style(&suggestion.bbox, color);
     let percent = (suggestion.score * 100.0).round();
+    // An empty label = an interpolated box, not a model proposal.
     let label = match class_name {
+        Some(c) if suggestion.label.is_empty() => format!("{c} · {}", t!("lab-interpolated")),
         Some(c) => format!("{c} ← {} {percent}%", suggestion.label),
         None => format!("{} {percent}%", suggestion.label),
     };
@@ -848,8 +888,11 @@ fn SuggestBar(
     busy: bool,
     count: usize,
     total: usize,
+    /// The image has a position in its source (video, recording).
+    can_interpolate: bool,
     on_model: EventHandler<String>,
     on_suggest: EventHandler<()>,
+    on_interpolate: EventHandler<()>,
     on_keep_all: EventHandler<()>,
     on_dismiss: EventHandler<()>,
 ) -> Element {
@@ -873,6 +916,16 @@ fn SuggestBar(
                 disabled: model.is_empty() || busy,
                 onclick: move |_| on_suggest.call(()),
                 {t!("lab-suggest")}
+            }
+            if can_interpolate {
+                button {
+                    class: BTN_SECONDARY_SM,
+                    title: t!("lab-interpolate-help").to_string(),
+                    r#type: "button",
+                    disabled: busy,
+                    onclick: move |_| on_interpolate.call(()),
+                    {t!("lab-interpolate")}
+                }
             }
             if count > 0 {
                 button {
