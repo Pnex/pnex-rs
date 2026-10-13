@@ -2,15 +2,14 @@
 
 > **Statut :** v0.3 — **validé et lancé le 2026-10-12** (Shan : « attaque
 > la partie studio », M1 en premier). v0.1 de Shan, relue contre la doc le
-> 2026-10-10 (§11). Décisions actées au §12 ; questions encore ouvertes
-> au §10.
+> 2026-10-10 (§11). Décisions actées au §12 ; questions tranchées au §10.
 > **Auteur :** Shan
 > **Périmètre :** pilier « Ingestion média + Vision » de PNEX (audio,
 > vidéo, caméras IP, reconnaissance d'objets custom, description vidéo,
 > Vision Lab d'entraînement).
-> **Version cible :** **après la 0.2.0** (gel des nouveaux piliers pendant
-> la 0.2.0, `roadmap.md` P2.14), sauf exception explicite comme celle
-> accordée à P2.13 (décision #17). Entrée roadmap : P2.15, décision #18.
+> **Version cible :** pas d'attente de tag (Q10, 2026-10-13) : la 0.1.0
+> est épinglée, la 0.2.0 annoncera ce qu'elle livre sans promettre les
+> fonctionnalités à l'avance (beta). Entrée roadmap : P2.15, décision #18.
 > **Numérotation :** D192 et suivants, attribués au fil des lots (§12).
 > **Renvois :** `camera-video.md` (D73–D86 bus caméra, D81 registre de
 > modèles, D82 `pnex-vision`/tract, D83 `vision_detect`, D84 événements
@@ -567,24 +566,24 @@ Python confinée que `train_detector` (§11, point 10).
 
 ---
 
-## 10. Questions ouvertes
+## 10. Questions (toutes tranchées au 2026-10-13)
 
 | # | Question |
 |---|---|
-| Q1 | « Reconnaissance poste » : **pose humaine** ou **poste de travail** ? Si pose : quel modèle sous licence permissive (RTMPose, MoveNet à vérifier) ? |
-| Q2 | Inférence : tract (en production) suffit-il pour YOLOX-s/m et l'INT8, ou faut-il ajouter `ort` ? Burn reste à benchmarker (`ml-vision.md` étape 1). |
-| Q3 | Propagation des boîtes dans le Lab avant tout modèle : interpolation seule (V1) ou suivi visuel dédié (tracker sans détecteur) ? |
-| Q4 | Entraînement sans GPU (CPU, Pi) : interdit, ou autorisé en mode « petit dataset / nano » avec avertissement ? |
-| Q5 | VLM par défaut : aucun (D119, l'org choisit) — quels modèles recommander dans la doc, licence vérifiée ? ASR : tranché au lot 0 (`media-asr-bench.md`). |
-| Q6 | Place des sources, modèles, datasets et zones dans l'ontologie 0.2.0 (types système D177, plages D182). |
-| Q7 | Rétention et stockage des médias bruts et datasets en SaaS : coût et quotas par tenant. |
+| Q1 | **Tranchée (2026-10-13)** : **poste de travail** (zones D193 + classes du Lab + plages D182). Pose humaine hors V1 ; si elle revient, famille `ml_models` distincte, licence relue. ~~« Reconnaissance poste » : **pose humaine** ou **poste de travail** ? Si pose : quel modèle sous licence permissive (RTMPose, MoveNet à vérifier) ?~~ |
+| Q2 | **Tranchée (2026-10-13)** : tract reste le seul runtime (confirmé par D197) ; `ort` seulement si un bench chiffré le justifie, derrière une feature de build, pour le nœud concerné. ~~Inférence : tract (en production) suffit-il pour YOLOX-s/m et l'INT8, ou faut-il ajouter `ort` ? Burn reste à benchmarker (`ml-vision.md` étape 1).~~ |
+| Q3 | **Tranchée (2026-10-13)** : interpolation linéaire entre keyframes en V1 ; propagation par `vision_track` en M4 ; pas de tracker visuel sans détecteur. ~~Propagation des boîtes dans le Lab avant tout modèle : interpolation seule (V1) ou suivi visuel dédié (tracker sans détecteur) ?~~ |
+| Q4 | **Tranchée (2026-10-13)** : autorisé sans GPU pour le preset Edge seul, avec avertissement et durée estimée, timeout du job ; refusé sur porteur ARM. ~~Entraînement sans GPU (CPU, Pi) : interdit, ou autorisé en mode « petit dataset / nano » avec avertissement ?~~ |
+| Q5 | **Tranchée (2026-10-13)** : aucun VLM livré ni imposé (D119) ; la doc cite des modèles à licence relue à la rédaction, SPDX affiché à la configuration. ~~VLM par défaut : aucun (D119, l'org choisit) — quels modèles recommander dans la doc, licence vérifiée ? ASR : tranché au lot 0 (`media-asr-bench.md`).~~ |
+| Q6 | **Tranchée (2026-10-13)** : `media_stream` = type système par adaptateur (D177) ; zones (config du nœud), projets et jeux du Lab restent dans leurs tables en V1. ~~Place des sources, modèles, datasets et zones dans l'ontologie 0.2.0 (types système D177, plages D182).~~ |
+| Q7 | **Tranchée (2026-10-13)** : images et jeux du Lab comptent dans le stockage média de l'org ; quota = réglage plateforme, aucun plafond codé en self-hosted ; rétention séparée brut / événements (§4.1). ~~Rétention et stockage des médias bruts et datasets en SaaS : coût et quotas par tenant.~~ |
 | Q8 | ~~Diarisation dès M0 ?~~ — **déjà planifiée** : lot 5 de P2.13 (D166), labels locaux. |
-| Q9 | Une détection peut-elle alimenter `device_write` via un flow humain (D128 le permet aujourd'hui), ou ce PRD l'interdit-il (porte de deploy) ? |
-| Q10 | Version cible : après la 0.2.0, ou exception au gel comme P2.13 (décision #17) ? |
-| Q11 | D174 : la description par fenêtre (M3) est-elle autorisée en usage interne, et sous quelles règles (marquage IA, relecture) ? |
+| Q9 | **Tranchée (2026-10-13, Shan)** : oui, régi par D128 — seul un flow déployé par un humain agit ; aucune porte de deploy spécifique à la vision. ~~Une détection peut-elle alimenter `device_write` via un flow humain (D128 le permet aujourd'hui), ou ce PRD l'interdit-il (porte de deploy) ?~~ |
+| Q10 | **Tranchée (2026-10-13, Shan)** : pas de gel ni d'attente de tag ; la 0.1.0 est épinglée, la 0.2.0 dira ce qu'elle livre, en beta. ~~Version cible : après la 0.2.0, ou exception au gel comme P2.13 (décision #17) ?~~ |
+| Q11 | **Tranchée (D194)** : usage interne autorisé, marqué IA, aucune publication hors de PNEX. ~~D174 : la description par fenêtre (M3) est-elle autorisée en usage interne, et sous quelles règles (marquage IA, relecture) ?~~ |
 | Q12 | **Tranchée (D197)** : tract suffit (écart ≤ 2e-5, 160–250 ms/question x86). ~~Inférence `text_decide` : tract supporte-t-il le graphe ModernBERT/mmBERT exporté, ou ce nœud justifie-t-il `ort` (cf. Q2) ? Le portage Rust du formatage d'entrée doit égaler la référence Python à 1e-4 près.~~ |
-| Q13 | `text_decide` sur Pi : fp32 acceptable sur Pi 5 8 Go, ou quantification INT8 obligatoire (précision et calibration à re-mesurer) ? |
-| Q14 | Seuil de mise en production de `text_decide` : quel écart de précision avec le LLM de l'org est acceptable en échange d'un gain de latence et de coût ? Proposition : ≥ 80 % de précision sur le jeu annoté de l'org et un ECE ≤ 0,10 après calibration. |
+| Q13 | **Tranchée (2026-10-13)** : fp32 non proposé sur Pi ; INT8 obligatoire sur Pi, calibration re-mesurée sur le modèle quantifié ; sinon worker. Mesure Pi 5 à faire. ~~`text_decide` sur Pi : fp32 acceptable sur Pi 5 8 Go, ou quantification INT8 obligatoire (précision et calibration à re-mesurer) ?~~ |
+| Q14 | **Tranchée (2026-10-13)** : seuil retenu ≥ 80 % de précision sur le jeu annoté de l'org et ECE ≤ 0,10 après calibration ; à appliquer au deploy quand le fine-tuning existera. ~~Seuil de mise en production de `text_decide` : quel écart de précision avec le LLM de l'org est acceptable en échange d'un gain de latence et de coût ? Proposition : ≥ 80 % de précision sur le jeu annoté de l'org et un ECE ≤ 0,10 après calibration.~~ |
 | Q15 | **Tranchée (D197)** : révision HF épinglée `7b928d82`, script d'export vendu (`scripts/laya/`). ~~Maturité de l'écosystème Laya : modèle récent, benchmarks comparatifs auto-publiés, portage `receptron/laya` à un seul auteur (oct. 2026). Faut-il vendorer le script d'export et figer une révision du checkpoint (hash HF) plutôt que suivre `main` ?~~ |
 
 ---
