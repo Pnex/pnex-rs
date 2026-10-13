@@ -151,3 +151,28 @@ pub async fn import_recording(
     )
     .await
 }
+
+/// `POST /api/v1/lab/projects/{id}/import-video` — frames of a video of
+/// the media library added as pictures.
+pub async fn import_video(
+    project: &str,
+    req: &pnex_core::lab::LabVideoImport,
+) -> Result<Vec<LabImage>, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/lab/projects/{project}/import-video"),
+        body(req),
+    )
+    .await
+}
+
+/// `POST /api/v1/lab/images/{id}/interpolate` — boxes interpolated between
+/// the annotated frames around this one (nothing is saved).
+pub async fn interpolate(id: &str) -> Result<Vec<LabSuggestion>, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/lab/images/{id}/interpolate"),
+        None,
+    )
+    .await
+}

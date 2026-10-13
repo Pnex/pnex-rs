@@ -109,6 +109,7 @@ pub fn Media() -> Element {
                 "document" => vec![MediaKind::Document],
                 "table" => vec![MediaKind::Table],
                 "audio" => vec![MediaKind::Audio],
+                "video" => vec![MediaKind::Video],
                 _ => vec![MediaKind::Splat],
             },
             search: {
@@ -342,6 +343,7 @@ pub fn Media() -> Element {
                         option { value: "document", {t!("media-kind-document")} }
                         option { value: "table", {t!("media-kind-table")} }
                         option { value: "audio", {t!("media-kind-audio")} }
+                        option { value: "video", {t!("media-kind-video")} }
                     }
                     SearchInput {
                         placeholder: t!("media-search-placeholder").to_string(),

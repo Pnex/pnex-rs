@@ -261,6 +261,9 @@ pub(super) fn MediaDetail(
                                             MediaKind::Audio => rsx! {
                                                 icons::Activity { class: "h-3 w-3" }
                                             },
+                                            MediaKind::Video => rsx! {
+                                                icons::Video { class: "h-3 w-3" }
+                                            },
                                         }
                                         {kind_label(&asset)}
                                     }
@@ -567,6 +570,9 @@ fn VersionRow(
                         },
                         MediaKind::Audio => rsx! {
                             icons::Activity { class: "h-4 w-4 text-white/90" }
+                        },
+                        MediaKind::Video => rsx! {
+                            icons::Video { class: "h-4 w-4 text-white/90" }
                         },
                     }
                 }

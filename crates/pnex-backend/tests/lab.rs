@@ -347,6 +347,16 @@ async fn org_isolation_and_viewer_read_only() {
                 "/api/v1/lab/images/00000000-0000-0000-0000-000000000001/suggest".to_string(),
                 Some(json!({"model_id": "x"})),
             ),
+            (
+                "POST",
+                "/api/v1/lab/images/00000000-0000-0000-0000-000000000001/interpolate".to_string(),
+                None,
+            ),
+            (
+                "POST",
+                format!("/api/v1/lab/projects/{pid}/import-video"),
+                Some(json!({"asset_id": "x", "from_secs": 0, "to_secs": 10, "every_secs": 2})),
+            ),
         ];
         for (m, path, body) in writes {
             let (st, e) = call(&server, m, &path, &env.bob, org_a, body).await;
@@ -446,6 +456,129 @@ async fn frames_imported_from_a_recording() {
         assert_eq!(st, 404);
         assert_eq!(none["error"], "camera-export-empty");
         unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn frames_of_a_video_and_box_interpolation() {
+    if std::process::Command::new("ffmpeg")
+        .arg("-version")
+        .output()
+        .is_err()
+    {
+        eprintln!("ffmpeg missing: skipped");
+        return;
+    }
+    // 10 s H.264 MP4, moov at the end (phone layout).
+    let dir = std::env::temp_dir().join(format!("pnex-lab-video-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let clip = dir.join("clip.mp4");
+    assert!(std::process::Command::new("ffmpeg")
+        .args(["-y", "-loglevel", "error", "-f", "lavfi", "-i"])
+        .arg("testsrc=duration=10:size=320x240:rate=10")
+        .args(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-f", "mp4"])
+        .arg(&clip)
+        .status()
+        .unwrap()
+        .success());
+    let mp4 = std::fs::read(&clip).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let a = &env.alice;
+        let res = server
+            .post("/api/v1/media?name=clip&filename=clip.mp4&content_type=video%2Fmp4")
+            .add_header("Authorization", format!("Bearer {a}"))
+            .add_header("X-Org-Id", org.to_string())
+            .add_header("Content-Type", "application/octet-stream")
+            .bytes(mp4.into())
+            .await;
+        assert_eq!(res.status_code(), 201, "{}", res.text());
+        let video = res.json::<Value>()["id"].as_str().unwrap().to_string();
+        let still = upload_png(&server, a, org, "still").await;
+        let (_, p) = call(
+            &server,
+            "POST",
+            "/api/v1/lab/projects",
+            a,
+            org,
+            Some(json!({"name": "Yard", "classes": ["cart"]})),
+        )
+        .await;
+        let pid = p["id"].as_str().unwrap().to_string();
+        let path = format!("/api/v1/lab/projects/{pid}/import-video");
+        let (st, err) = call(
+            &server,
+            "POST",
+            &path,
+            a,
+            org,
+            Some(json!({"asset_id": still, "from_secs": 0, "to_secs": 10, "every_secs": 2})),
+        )
+        .await;
+        assert_eq!(st, 422, "{err}");
+        assert_eq!(err["error"], "lab-video-unsupported");
+        let (st, imported) = call(
+            &server,
+            "POST",
+            &path,
+            a,
+            org,
+            Some(json!({"asset_id": video, "from_secs": 0, "to_secs": 10, "every_secs": 2})),
+        )
+        .await;
+        assert_eq!(st, 200, "{imported}");
+        let list = imported.as_array().unwrap();
+        let at: Vec<i64> = list.iter().map(|i| i["frame_ms"].as_i64().unwrap()).collect();
+        assert_eq!(at, [0, 2000, 4000, 6000, 8000]);
+        assert_eq!(list[0]["width"], 320);
+        assert!(list.iter().all(|i| i["source"] == format!("video-{video}")));
+        let id = |i: usize| list[i]["id"].as_str().unwrap().to_string();
+        let interp = format!("/api/v1/lab/images/{}/interpolate", id(2));
+        let (st, err) = call(&server, "POST", &interp, a, org, None).await;
+        assert_eq!(st, 422);
+        assert_eq!(err["error"], "lab-interpolate-no-keyframes");
+        for (i, x) in [(0, 0.1), (4, 0.5)] {
+            let (st, saved) = call(
+                &server,
+                "PUT",
+                &format!("/api/v1/lab/images/{}/annotations", id(i)),
+                a,
+                org,
+                Some(json!({"boxes": [{"class": 0, "bbox": [x, 0.2, 0.2, 0.2]}], "expected_version": 1})),
+            )
+            .await;
+            assert_eq!(st, 200, "{saved}");
+        }
+        let (st, sug) = call(&server, "POST", &interp, a, org, None).await;
+        assert_eq!(st, 200, "{sug}");
+        let x = sug[0]["bbox"][0].as_f64().unwrap();
+        assert!((x - 0.3).abs() < 1e-4, "{sug}");
+        assert_eq!(sug[0]["class"], 0);
+        assert_eq!(sug[0]["label"], "");
+        // A still picture has no position: nothing to interpolate.
+        let (_, added) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/lab/projects/{pid}/images"),
+            a,
+            org,
+            Some(json!({"asset_ids": [still]})),
+        )
+        .await;
+        let sid = added[0]["id"].as_str().unwrap();
+        let (st, _) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/lab/images/{sid}/interpolate"),
+            a,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(st, 422);
     })
     .await;
 }

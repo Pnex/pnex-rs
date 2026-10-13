@@ -23,6 +23,8 @@ pub struct Model {
     #[sea_orm(column_type = "JsonBinary")]
     pub boxes: Json,
     pub negative: bool,
+    /// Position in the source, ms (interpolation order); `None` = still.
+    pub frame_ms: Option<i64>,
     /// Optimistic concurrency counter of the annotations.
     pub version: i32,
     pub created_at: DateTimeWithTimeZone,

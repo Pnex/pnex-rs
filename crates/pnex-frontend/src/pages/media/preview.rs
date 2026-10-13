@@ -30,6 +30,7 @@ pub(super) fn MediaPreview(
     let is_floorplan = asset.media_kind() == MediaKind::Floorplan;
     let is_image = is_photo || is_floorplan;
     let is_audio = asset.media_kind() == MediaKind::Audio;
+    let is_video = asset.media_kind() == MediaKind::Video;
 
     // Mime cloned BEFORE the effects: a `move` capturing
     // `asset.content_type` = partial move of `asset`, clashing with the
@@ -133,6 +134,9 @@ pub(super) fn MediaPreview(
                         MediaKind::Audio => rsx! {
                             icons::Activity { class: "h-3 w-3" }
                         },
+                        MediaKind::Video => rsx! {
+                            icons::Video { class: "h-3 w-3" }
+                        },
                     }
                     {kind_label(&asset)}
                 }
@@ -173,6 +177,15 @@ pub(super) fn MediaPreview(
                         div { class: "w-full p-6",
                             audio { src: "{url}", controls: true, class: "w-full" }
                         }
+                    },
+                    None => rsx! {
+                        span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-white" }
+                    },
+                }
+            } else if is_video {
+                match blob_url() {
+                    Some(url) => rsx! {
+                        video { src: "{url}", controls: true, class: "w-full max-h-[420px]" }
                     },
                     None => rsx! {
                         span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-white" }

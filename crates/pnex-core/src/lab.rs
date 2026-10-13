@@ -115,6 +115,11 @@ pub struct LabImage {
     /// Checked "no object here" (negative example).
     #[serde(default)]
     pub negative: bool,
+    /// Position in its source, ms (epoch for a camera recording, from the
+    /// start of the file for a video): orders the frames of a source for
+    /// box interpolation. `None` for a still image.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_ms: Option<i64>,
     /// Optimistic concurrency counter of the annotations.
     pub version: i32,
     pub updated_at: String,
@@ -188,7 +193,7 @@ pub struct LabSuggestRequest {
 /// One proposed box.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LabSuggestion {
-    /// Label of the model.
+    /// Label of the model; empty for an interpolated box.
     pub label: String,
     pub score: f32,
     /// Project class whose name matches the label, if any.
@@ -240,21 +245,94 @@ pub const LAB_RECORDING_MAX_FRAMES: usize = 200;
 impl LabRecordingImport {
     /// Field token of the first problem, given the parsed span in ms.
     pub fn check(&self, span_ms: i64) -> Option<(&'static str, String)> {
-        if span_ms <= 0 || span_ms > LAB_RECORDING_MAX_SECS * 1000 {
+        check_extract(span_ms, self.every_secs)
+    }
+}
+
+/// Shared bounds of a recording or video extract: span, rate, frame count.
+fn check_extract(span_ms: i64, every_secs: f64) -> Option<(&'static str, String)> {
+    if span_ms <= 0 || span_ms > LAB_RECORDING_MAX_SECS * 1000 {
+        return Some(("to", format!("range:1..{LAB_RECORDING_MAX_SECS}")));
+    }
+    if !every_secs.is_finite() || !(0.5..=600.0).contains(&every_secs) {
+        return Some(("every_secs", "range:0.5..600".into()));
+    }
+    let frames = (span_ms as f64 / (every_secs * 1000.0)).ceil() as usize;
+    if frames > LAB_RECORDING_MAX_FRAMES {
+        return Some((
+            "every_secs",
+            format!("max_frames:{LAB_RECORDING_MAX_FRAMES}"),
+        ));
+    }
+    None
+}
+
+/// `POST /api/v1/lab/projects/{id}/import-video` — frames of a video of
+/// the media library (MP4 / MOV) added as pictures, one import = one source.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LabVideoImport {
+    /// Media asset holding the video (its current version is read).
+    pub asset_id: String,
+    /// Extract bounds, seconds from the start of the file.
+    pub from_secs: f64,
+    pub to_secs: f64,
+    /// One frame every N seconds.
+    pub every_secs: f64,
+}
+
+impl LabVideoImport {
+    pub fn check(&self) -> Option<(&'static str, String)> {
+        if !self.from_secs.is_finite() || self.from_secs < 0.0 {
+            return Some(("from_secs", "range:0..".into()));
+        }
+        if !self.to_secs.is_finite() {
             return Some(("to", format!("range:1..{LAB_RECORDING_MAX_SECS}")));
         }
-        if !self.every_secs.is_finite() || !(0.5..=600.0).contains(&self.every_secs) {
-            return Some(("every_secs", "range:0.5..600".into()));
-        }
-        let frames = (span_ms as f64 / (self.every_secs * 1000.0)).ceil() as usize;
-        if frames > LAB_RECORDING_MAX_FRAMES {
-            return Some((
-                "every_secs",
-                format!("max_frames:{LAB_RECORDING_MAX_FRAMES}"),
-            ));
-        }
-        None
+        check_extract(
+            ((self.to_secs - self.from_secs) * 1000.0) as i64,
+            self.every_secs,
+        )
     }
+}
+
+/// Boxes of an image between two annotated frames of the same source,
+/// linearly interpolated at `t_ms` (§4.6.1, Q3). Boxes are paired per
+/// class, nearest centres first; an unpaired box is left out. Empty when
+/// `t_ms` is not strictly between the two frames.
+pub fn interpolate(before: (i64, &[LabBox]), after: (i64, &[LabBox]), t_ms: i64) -> Vec<LabBox> {
+    let ((t0, a), (t1, b)) = (before, after);
+    if !(t0 < t_ms && t_ms < t1) {
+        return Vec::new();
+    }
+    let r = (t_ms - t0) as f32 / (t1 - t0) as f32;
+    let centre = |x: &LabBox| (x.bbox[0] + x.bbox[2] / 2.0, x.bbox[1] + x.bbox[3] / 2.0);
+    let mut pairs: Vec<(f32, usize, usize)> = Vec::new();
+    for (i, x) in a.iter().enumerate() {
+        for (j, y) in b.iter().enumerate() {
+            if x.class == y.class {
+                let ((ax, ay), (bx, by)) = (centre(x), centre(y));
+                pairs.push(((ax - bx).powi(2) + (ay - by).powi(2), i, j));
+            }
+        }
+    }
+    pairs.sort_by(|p, q| p.0.total_cmp(&q.0));
+    let (mut used_a, mut used_b) = (vec![false; a.len()], vec![false; b.len()]);
+    let mut out = Vec::new();
+    for (_, i, j) in pairs {
+        if used_a[i] || used_b[j] {
+            continue;
+        }
+        used_a[i] = true;
+        used_b[j] = true;
+        let bbox: [f32; 4] = std::array::from_fn(|k| {
+            (a[i].bbox[k] + (b[j].bbox[k] - a[i].bbox[k]) * r).clamp(0.0, 1.0)
+        });
+        out.push(LabBox {
+            class: a[i].class,
+            bbox,
+        });
+    }
+    out
 }
 
 /// Frames to extract: for each instant `from + k·every` inside a segment,
@@ -486,6 +564,37 @@ pub fn snapshot_split_counts(snapshot: &DatasetSnapshot) -> BTreeMap<&'static st
 mod tests {
     use super::*;
 
+    #[test]
+    fn interpolation_pairs_by_class_and_nearest_centre() {
+        let bx = |class, x: f32| LabBox {
+            class,
+            bbox: [x, 0.2, 0.1, 0.2],
+        };
+        let before = [bx(0, 0.1), bx(0, 0.6), bx(1, 0.3)];
+        let after = [bx(0, 0.7), bx(0, 0.2), bx(2, 0.5)];
+        let mid = interpolate((1000, &before), (3000, &after), 2000);
+        // Class 0 pairs 0.1→0.2 and 0.6→0.7; classes 1 and 2 have no pair.
+        assert_eq!(mid.len(), 2);
+        let mut xs: Vec<f32> = mid.iter().map(|b| b.bbox[0]).collect();
+        xs.sort_by(f32::total_cmp);
+        assert!((xs[0] - 0.15).abs() < 1e-6 && (xs[1] - 0.65).abs() < 1e-6);
+        assert!(interpolate((1000, &before), (3000, &after), 3000).is_empty());
+    }
+
+    #[test]
+    fn video_import_bounds() {
+        let req = |from, to, every| LabVideoImport {
+            asset_id: "a".into(),
+            from_secs: from,
+            to_secs: to,
+            every_secs: every,
+        };
+        assert!(req(0.0, 60.0, 1.0).check().is_none());
+        assert_eq!(req(10.0, 5.0, 1.0).check().unwrap().0, "to");
+        assert_eq!(req(-1.0, 5.0, 1.0).check().unwrap().0, "from_secs");
+        assert_eq!(req(0.0, 600.0, 1.0).check().unwrap().0, "every_secs");
+    }
+
     fn image(source: &str, boxes: Vec<LabBox>, negative: bool) -> LabImage {
         LabImage {
             id: format!("i-{source}"),
@@ -497,6 +606,7 @@ mod tests {
             split: LabSplit::Auto,
             boxes,
             negative,
+            frame_ms: None,
             version: 1,
             updated_at: String::new(),
         }

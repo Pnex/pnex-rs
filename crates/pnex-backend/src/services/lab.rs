@@ -13,7 +13,7 @@ use pnex_core::lab::{
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
-    FromQueryResult, QueryFilter, QueryOrder, Set, Statement, TransactionTrait,
+    FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Set, Statement, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -107,6 +107,7 @@ pub fn image_view(m: &lab_images::Model) -> LabImage {
         split: split_of(&m.split),
         boxes: serde_json::from_value(m.boxes.clone()).unwrap_or_default(),
         negative: m.negative,
+        frame_ms: m.frame_ms,
         version: m.version,
         updated_at: m.updated_at.to_rfc3339(),
     }
@@ -385,6 +386,7 @@ pub async fn add_images(
             split: Set("auto".into()),
             boxes: Set(serde_json::json!([])),
             negative: Set(false),
+            frame_ms: Set(None),
             version: Set(1),
             created_at: Set(now),
             updated_at: Set(now),
@@ -606,7 +608,6 @@ pub async fn import_recording(
     project: Uuid,
     req: &lab::LabRecordingImport,
 ) -> Res<Vec<LabImage>> {
-    use crate::controllers::media::{write_version, IncomingVersion};
     use crate::models::_entities::{device_registries, video_segments};
     use crate::services::media::MediaSettings;
     let db = &ctx.db;
@@ -704,63 +705,261 @@ pub async fn import_recording(
             device.device_id,
             at.format("%Y-%m-%d %H:%M:%S UTC")
         );
-        let asset = media_assets::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            org_id: Set(org_id),
-            kind: Set("photo".into()),
-            name: Set(name.clone()),
-            description: Set(Some(
-                "Frame of a camera recording (Vision Lab import).".into(),
-            )),
-            metadata: Set(None),
-            ..Default::default()
+        let frame = Frame {
+            name,
+            filename: format!("{}-{}.jpg", device.device_id, t_ms),
+            description: "Frame of a camera recording (Vision Lab import).",
+            jpeg,
+            size: (w, h),
+            frame_ms: t_ms,
+        };
+        if let Some(img) = store_frame(ctx, &settings, org_id, project, &source, frame).await? {
+            out.push(img);
         }
-        .insert(db)
-        .await
-        .map_err(LabError::db)?;
-        let filename = format!("{}-{}.jpg", device.device_id, t_ms);
-        if let Err(e) = write_version(
-            ctx,
-            org_id,
-            &asset,
-            IncomingVersion {
-                filename,
-                content_type: "image/jpeg".into(),
-                note: None,
-                bytes: axum::body::Bytes::copy_from_slice(jpeg),
-            },
-            &settings,
-        )
-        .await
-        {
-            tracing::warn!(error = %e, "lab recording import: frame not stored");
-            let _ = media_assets::Entity::delete_by_id(asset.id).exec(db).await;
-            continue;
-        }
-        let now = chrono::Utc::now().fixed_offset();
-        let row = lab_images::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            org_id: Set(org_id),
-            project_id: Set(project),
-            media_asset_id: Set(asset.id),
-            name: Set(name),
-            width: Set(w as i32),
-            height: Set(h as i32),
-            source: Set(source.clone()),
-            split: Set("auto".into()),
-            boxes: Set(serde_json::json!([])),
-            negative: Set(false),
-            version: Set(1),
-            created_at: Set(now),
-            updated_at: Set(now),
-        }
-        .insert(db)
-        .await
-        .map_err(LabError::db)?;
-        out.push(image_view(&row));
     }
     touch_project(db, project).await?;
     Ok(out)
+}
+
+/// One extracted frame to store as a picture of a project.
+struct Frame<'a> {
+    name: String,
+    filename: String,
+    description: &'static str,
+    jpeg: &'a [u8],
+    size: (u32, u32),
+    frame_ms: i64,
+}
+
+/// Stores a frame as a `photo` of the media library and adds it to the
+/// project under `source`. `None` = the bytes could not be stored (logged,
+/// the import goes on).
+async fn store_frame(
+    ctx: &loco_rs::app::AppContext,
+    settings: &crate::services::media::MediaSettings,
+    org_id: i64,
+    project: Uuid,
+    source: &str,
+    frame: Frame<'_>,
+) -> Res<Option<LabImage>> {
+    use crate::controllers::media::{write_version, IncomingVersion};
+    let db = &ctx.db;
+    let asset = media_assets::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        org_id: Set(org_id),
+        kind: Set("photo".into()),
+        name: Set(frame.name.clone()),
+        description: Set(Some(frame.description.into())),
+        metadata: Set(None),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .map_err(LabError::db)?;
+    if let Err(e) = write_version(
+        ctx,
+        org_id,
+        &asset,
+        IncomingVersion {
+            filename: frame.filename,
+            content_type: "image/jpeg".into(),
+            note: None,
+            bytes: axum::body::Bytes::copy_from_slice(frame.jpeg),
+        },
+        settings,
+    )
+    .await
+    {
+        tracing::warn!(error = %e, "lab frame import: frame not stored");
+        let _ = media_assets::Entity::delete_by_id(asset.id).exec(db).await;
+        return Ok(None);
+    }
+    let now = chrono::Utc::now().fixed_offset();
+    let row = lab_images::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        org_id: Set(org_id),
+        project_id: Set(project),
+        media_asset_id: Set(asset.id),
+        name: Set(frame.name),
+        width: Set(frame.size.0 as i32),
+        height: Set(frame.size.1 as i32),
+        source: Set(source.to_string()),
+        split: Set("auto".into()),
+        boxes: Set(serde_json::json!([])),
+        negative: Set(false),
+        frame_ms: Set(Some(frame.frame_ms)),
+        version: Set(1),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(db)
+    .await
+    .map_err(LabError::db)?;
+    Ok(Some(image_view(&row)))
+}
+
+/// Largest video file the Lab decodes (read in memory, D160 decoder).
+pub const VIDEO_MAX_BYTES: i64 = 512 * 1024 * 1024;
+/// One video import at a time per process: a 512 MB file peaks near 1 GB
+/// (bytes + the fast-start copy), never several at once.
+static VIDEO_IMPORTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+
+/// Frames of a video of the media library (MP4 / MOV) added as pictures.
+/// Every import of the same video shares one source (`video-<asset>`), so
+/// its frames never straddle train and validation.
+pub async fn import_video(
+    ctx: &loco_rs::app::AppContext,
+    org_id: i64,
+    project: Uuid,
+    req: &lab::LabVideoImport,
+) -> Res<Vec<LabImage>> {
+    use crate::services::media::MediaSettings;
+    let db = &ctx.db;
+    find_project(db, org_id, project).await?;
+    if let Some((field, token)) = req.check() {
+        return Err(LabError::fields(vec![(field, token)]));
+    }
+    let asset_field = || LabError::fields(vec![("asset_id", err_codes::FIELD_INVALID.to_string())]);
+    let asset_id = Uuid::parse_str(&req.asset_id).map_err(|_| asset_field())?;
+    let Some((asset, version)) = current_version(db, org_id, asset_id).await? else {
+        return Err(asset_field());
+    };
+    let unsupported = || {
+        LabError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            err_codes::LAB_VIDEO_UNSUPPORTED,
+            format!("{} is not a readable video.", asset.name),
+        )
+        .args(serde_json::json!({ "name": asset.name }))
+    };
+    let Some(format) = pnex_media_capture::decoder::video_file_format(&version.content_type) else {
+        return Err(unsupported());
+    };
+    if version.size_bytes > VIDEO_MAX_BYTES {
+        return Err(LabError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            err_codes::LAB_VIDEO_TOO_LARGE,
+            "This video is too large for the Vision Lab (512 MB at most).",
+        ));
+    }
+    let _permit = VIDEO_IMPORTS
+        .acquire()
+        .await
+        .map_err(|_| LabError::db(sea_orm::DbErr::Custom("video import gate closed".into())))?;
+    let settings = MediaSettings::from_config(&ctx.config);
+    let store = settings
+        .store()
+        .map_err(|e| LabError::db(sea_orm::DbErr::Custom(e)))?;
+    let bytes = store
+        .get(&version.storage_key)
+        .await
+        .map_err(|_| asset_field())?;
+    let frames = pnex_media_capture::decode_video_frames(
+        bytes,
+        format,
+        req.from_secs,
+        req.every_secs,
+        lab::LAB_RECORDING_MAX_FRAMES,
+    )
+    .await
+    .map_err(|e| match e {
+        pnex_media_capture::CaptureError::FormatUnsupported => unsupported(),
+        other => LabError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            err_codes::LAB_VIDEO_DECODE_FAILED,
+            format!("The video could not be decoded ({}).", other.code()),
+        )
+        .args(serde_json::json!({ "detail": other.code() })),
+    })?;
+    let from_ms = (req.from_secs * 1000.0) as i64;
+    let (every_ms, to_ms) = (
+        (req.every_secs * 1000.0) as i64,
+        (req.to_secs * 1000.0) as i64,
+    );
+    let source = format!("video-{}", asset.id);
+    let mut out = Vec::new();
+    for (k, jpeg) in frames.iter().enumerate() {
+        let t_ms = from_ms + k as i64 * every_ms;
+        if t_ms >= to_ms {
+            break;
+        }
+        let secs = t_ms / 1000;
+        let frame = Frame {
+            name: format!("{} {:02}:{:02}", asset.name, secs / 60, secs % 60),
+            filename: format!("{}-{}.jpg", asset.id, t_ms),
+            description: "Frame of a video (Vision Lab import).",
+            jpeg: &jpeg.bytes,
+            size: (u32::from(jpeg.width), u32::from(jpeg.height)),
+            frame_ms: t_ms,
+        };
+        if let Some(img) = store_frame(ctx, &settings, org_id, project, &source, frame).await? {
+            out.push(img);
+        }
+    }
+    touch_project(db, project).await?;
+    Ok(out)
+}
+
+/// Boxes proposed for a frame by linear interpolation between the nearest
+/// annotated frames of its source, before and after (Q3). Proposals only,
+/// nothing is written; `label` is empty (not a model label).
+pub async fn interpolate(
+    db: &DatabaseConnection,
+    org_id: i64,
+    image_id: Uuid,
+) -> Res<Vec<lab::LabSuggestion>> {
+    use sea_orm::sea_query::Expr;
+    let img = find_image(db, org_id, image_id).await?;
+    let project = find_project(db, org_id, img.project_id).await?;
+    let no_keyframes = || {
+        LabError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            err_codes::LAB_INTERPOLATE_NO_KEYFRAMES,
+            "Annotate a frame before and a frame after this one in the same video.",
+        )
+    };
+    let Some(t_ms) = img.frame_ms else {
+        return Err(no_keyframes());
+    };
+    let neighbour = |before: bool| {
+        let q = lab_images::Entity::find()
+            .filter(lab_images::Column::ProjectId.eq(img.project_id))
+            .filter(lab_images::Column::Source.eq(img.source.clone()))
+            .filter(Expr::cust("jsonb_array_length(boxes) > 0"));
+        let q = if before {
+            q.filter(lab_images::Column::FrameMs.lt(t_ms))
+                .order_by_desc(lab_images::Column::FrameMs)
+        } else {
+            q.filter(lab_images::Column::FrameMs.gt(t_ms))
+                .order_by_asc(lab_images::Column::FrameMs)
+        };
+        q.limit(1).one(db)
+    };
+    let (Some(a), Some(b)) = (
+        neighbour(true).await.map_err(LabError::db)?,
+        neighbour(false).await.map_err(LabError::db)?,
+    ) else {
+        return Err(no_keyframes());
+    };
+    let boxes = |m: &lab_images::Model| -> Vec<LabBox> {
+        serde_json::from_value(m.boxes.clone()).unwrap_or_default()
+    };
+    let (ba, bb) = (boxes(&a), boxes(&b));
+    let classes = classes_of(&project);
+    Ok(lab::interpolate(
+        (a.frame_ms.unwrap_or_default(), &ba),
+        (b.frame_ms.unwrap_or_default(), &bb),
+        t_ms,
+    )
+    .into_iter()
+    .filter(|x| (x.class as usize) < classes.len())
+    .map(|x| lab::LabSuggestion {
+        label: String::new(),
+        score: 1.0,
+        class: Some(x.class),
+        bbox: x.bbox,
+    })
+    .collect())
 }
 
 /// Pre-annotation (§4.6.1 step 4): runs a detection model of the org's

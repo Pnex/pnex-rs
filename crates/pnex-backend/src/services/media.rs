@@ -506,6 +506,7 @@ const INLINE_CONTENT_TYPES: &[&str] = &[
     "image/gif",
     "image/avif",
     "video/mp4",
+    "video/quicktime",
     "video/webm",
     // Voice clips (voice-id.md), played by an <audio> element.
     "audio/wav",
