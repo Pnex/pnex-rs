@@ -144,7 +144,7 @@ flowchart LR
 | **Luminance moyenne** | Clarté moyenne d'une image (0 = noir, 255 = blanc), mesurée à l'import ; sert au dernier avertissement. | `lab_images.luma` |
 | **INT8** | Modèle quantifié (entiers 8 bits au lieu de réels 32 bits) : plus petit, potentiellement plus rapide sur Pi. **Évalué, non livré** : tract sait l'exécuter, mais un gain réel demande une calibration (projet à part), à décider après une mesure sur Pi 5 ; YOLOX-nano à 1 image/s tient déjà sur CPU. | PRD §12, état des lots |
 
-## 6. Rapports (M5, D207–D210) — en cours
+## 6. Rapports (M5, D207–D210)
 
 Pas de studio de rapports : **un rapport est une page**, écrite par un flow
 et exportée en PDF.
@@ -162,14 +162,21 @@ flowchart LR
   PDF --> SEND["pnex_notify<br/>(+ pièce jointe)"]
 ```
 
-| Concept | En une phrase |
-|---|---|
-| **`llm_text`** | Nœud générique : une consigne et des données → un texte du LLM de l'org. Les données sont passées comme *données*, jamais comme ordres (protection contre l'injection). |
-| **`page_write`** | Écrit du Markdown dans une page (nouvelle page « Rapport du {date} » ou section remplacée) et crée une **version nommée** (figée, citable). |
-| **`page_pdf`** | Transforme une version de page en PDF : en-tête, numéros de page, date, bandeau « généré par IA ». Rangé dans la médiathèque. |
-| **Version approuvée** | Par défaut, un rapport IA ne part par courriel qu'**après relecture** humaine (version approuvée dans Pages) ; le mode « automatique » existe, avec un bandeau « non relu ». |
-| **krilla** | La bibliothèque Rust qui écrit les PDF (choisie plutôt que Typst, trop lourd). |
-| **DejaVu Sans** | La police embarquée dans les PDF (licence permissive). |
+| Concept | En une phrase | Où dans le code |
+|---|---|---|
+| **`llm_text`** (D208) | Nœud générique : une consigne et des données → un texte Markdown du LLM de l'org, marqué `ai_generated`. Les données sont passées comme *données*, jamais comme ordres (protection contre l'injection). Compte dans le plafond IA de 2000 appels/jour. | `pnex-node-vision/src/llm_text.rs`, `/internal/flow/ai/text` |
+| **`page_write`** (D209) | Écrit du Markdown dans une page : **une nouvelle page par message** (titre « Rapport {week} » ; `{date}`, `{time}`, `{week}` remplacés) ou **ajout en fin de page** (journal courant). Chaque écriture fige une **version nommée** marquée « écrite par un flow ». Les tableaux Markdown deviennent des paragraphes (le schéma des pages n'a pas de tableau). | `services/pages/flow_write.rs`, `seed.rs::append_markdown` |
+| **Version IA** (D210) | Une version qui contient du texte venu de `llm_text` porte le badge « Texte IA · à relire ». | `doc_versions.ai_generated`, `flow_id` (migration 000019) |
+| **Approbation** (D210) | Un humain lit la version dans **Pages › Versions** et clique **Approuver** ; on garde la première approbation (qui, quand). Par défaut une version IA non approuvée **ne part pas** ; décocher « Approbation requise » l'envoie quand même, avec la mention « non relu » dans le PDF. | `POST /api/v1/docs/{id}/versions/{n}/approve` |
+| **`page_pdf`** (D209) | Transforme une version en PDF A4 (titre, en-tête org · version, numéros « Page n / m », date, mention IA relue / non relue), rangé dans la médiathèque. Sortie 0 **PDF prêt**, sortie 1 **À approuver** (y brancher une notification « rapport à relire »). | `flow_write::export_pdf`, `/internal/flow/page-pdf`, `pnex-node-vision/src/page.rs` |
+| **« Dernière version envoyable, une fois »** | Mode de `page_pdf` pour un 2ᵉ flow (inject toutes les 15 min) : prend la dernière version approuvée (ou sans IA) pas encore envoyée par **ce** nœud. Jamais deux fois la même version. | table `doc_version_exports` (migration 000020) |
+| **Bouton PDF** | Dans Pages › Versions, télécharge le PDF de n'importe quelle version, en français ou en anglais. | `GET /api/v1/docs/{id}/versions/{n}/pdf?lang=` |
+| **Pièce jointe** | Le nœud *Notification* a un champ **Pièce jointe PDF** : le chemin (dans le message ou une variable du template) de l'id média produit par `page_pdf`. Seul le canal **e-mail (SMTP)** joint le fichier ; les autres envoient le message seul. Fichier illisible = e-mail non envoyé (jamais de rapport sans son PDF). | `attach_field`, `pnex-notify` (`send_with_attachments`, `attachments.rs`) |
+| **Moindre privilège** | Le runtime de flows ne lit, pour joindre, **que** les PDF exportés par un `page_pdf` de la même org ; tout autre fichier de la médiathèque répond 404. | `/internal/flow/media/{id}` |
+| **Déclencheur du nœud Notification** | Toujours obligatoire : pour un rapport, un *Inject* qui envoie `true` au démarrage du flow suffit, chaque nouveau PDF part ensuite. | fiche assistant `reports.md` |
+| **krilla + harfrust** | krilla écrit les PDF (choisi plutôt que Typst, trop lourd) ; harfrust met en forme le texte (accents, ligatures). Les crates de mise en forme plus anciennes (rustybuzz, ttf-parser) sont désactivées : non maintenues (RUSTSEC). | crate `pnex-pdf` |
+| **DejaVu Sans** | Polices embarquées dans les PDF (licence permissive, pas OFL). | `pnex-pdf/fonts/` |
+| **Pourquoi pas un studio de rapports** | Tout est fait de nœuds génériques (`inject`, `llm_text`, `page_write`, `page_pdf`, `pnex_notify`) réutilisables ailleurs ; une page reste éditable à plusieurs avant l'envoi. | PRD D207 |
 
 ## 7. Ce qui reste hors de ce pilier
 
@@ -189,7 +196,14 @@ dans cet ordre :
 | `6c54180e` | D205 (partie) : guidage de diversité, propagation par suivi |
 | `68c000c0` | D205 : file « à revoir » (active learning) + ce guide |
 | `14a50fd2` | D206 : fichier de la médiathèque comme source de flux ; INT8 évalué |
-| (suivant) | Test navigateur `e2e/tests/vision-loop.spec.ts` + correctif : un fichier téléversé sans type déclaré prend le type de son contenu reconnu (sinon le Lab refusait une PNG valide depuis SEC-30) |
+| `a325b12b` | Test navigateur `e2e/tests/vision-loop.spec.ts` + correctif : un fichier téléversé sans type déclaré prend le type de son contenu reconnu (sinon le Lab refusait une PNG valide depuis SEC-30) |
+| `21f3cf97` | PRD : rapports = pages écrites par des nœuds génériques (D207–D210) |
+| `07640c99` | D208 : nœud `llm_text` |
+| `6e99f61c` | D209/D210 : nœud `page_write`, versions IA, bouton Approuver |
+| `7229d8b4`, `1022e170` | crate `pnex-pdf` (krilla + harfrust, DejaVu) |
+| `e7214992` | PDF d'une version de page (bouton PDF) |
+| `61b95677` | D209/D210 : nœud `page_pdf` (prêt / à approuver, « dernière envoyable ») |
+| `e2a6bb46` | Pièce jointe PDF des notifications e-mail |
 
 **Vérification navigateur (2026-10-13, serveur de branche :5151)** :
 `vision-loop` 3/3 (import vidéo + interpolation, entraînement lancé du
@@ -205,7 +219,7 @@ scripts/guarded.sh cargo build -p pnex-backend --bin pnex-server
 cd crates/pnex-backend
 set -a; . ../../../pnex-rust/deploy/edge/edge.env; set +a
 export DATABASE_URL=postgres://pnex:pnex@localhost:5432/pnex_vision_dev
-../../target/debug/pnex-server db migrate             # 000015 → 000018
+../../target/debug/pnex-server db migrate             # 000015 → 000020
 PNEX_GUARD_NO_LOCK=1 ../../scripts/guarded.sh ../../target/debug/pnex-server start -p 5151 -b 127.0.0.1
 # puis http://localhost:5151 (login Rauthy habituel)
 ```
@@ -226,12 +240,17 @@ Parcours à essayer, dans l'ordre :
    « à revoir » arrivent avec un point violet.
 6. **Données › Flux audio** : type `media_asset`, choisir la vidéo → la
    rejouer comme une caméra (nœud *Source caméra*, source « flux »).
+7. **Rapport** : flow *Inject* (cron) → *Texte IA* → *Écrire une page* →
+   *PDF d'une page* ; sortie « À approuver » vers une *Notification*. Dans
+   **Pages**, ouvrir la page → Versions : badge « Texte IA », **Approuver**,
+   bouton **PDF**. 2ᵉ flow : *Inject* 15 min → *PDF d'une page* (« dernière
+   envoyable ») → *Notification* e-mail avec **Pièce jointe PDF** = `asset_id`.
 
 Tests automatiques du navigateur : `cd e2e && PNEX_E2E_BASE_URL=http://localhost:5151
 PNEX_E2E_ISSUER=https://192.168.1.185/auth/v1/ PNEX_VISION_TEST_DIR=~/.cache/pnex-vision-test
 bunx playwright test vision-loop lab`.
 
-Avant de lancer le serveur de la branche : migrations `000015` à `000018`
+Avant de lancer le serveur de la branche : migrations `000015` à `000020`
 sur `pnex_vision_dev`. Tests : `TEST_DATABASE_URL=…/pnex_test_vision`,
 `PNEX_VISION_TEST_DIR=~/.cache/pnex-vision-test` pour les tests avec le
 vrai YOLOX-nano.
