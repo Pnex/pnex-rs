@@ -56,6 +56,8 @@ pub fn routes() -> Routes {
         .add("/internal/flow/video-annotations", post(video_annotations))
         // Org model calls of the vision-caption / media-fuse nodes (D195/D196).
         .add("/internal/flow/ai/caption", post(flow_ai_caption))
+        // Pages written by page-write nodes (D209).
+        .add("/internal/flow/page-write", post(flow_page_write))
         // Doubtful frames of vision-detect nodes → Vision Lab (M4).
         .add("/internal/flow/lab-review", post(flow_lab_review))
         .add("/internal/flow/ai/fuse", post(flow_ai_fuse))
@@ -521,6 +523,40 @@ fn flow_ai_reply<T: serde::Serialize>(
                 .into_response()
         }
     }
+}
+
+async fn flow_page_write(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::pages::PageWriteRequest>,
+) -> Result<Response> {
+    use crate::services::pages::flow_write::{self, FlowPageError};
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.org_id).await {
+        return Ok(r);
+    }
+    let valkey = crate::services::pages::valkey_url(&ctx.config);
+    Ok(match flow_write::write(&ctx.db, valkey, &req).await {
+        Ok(out) => (StatusCode::CREATED, axum::Json(out)).into_response(),
+        Err(e) => {
+            let status = match &e {
+                FlowPageError::Invalid(_) => StatusCode::BAD_REQUEST,
+                FlowPageError::NotFound => StatusCode::NOT_FOUND,
+                FlowPageError::Page(crate::services::pages::PageError::Refused(_)) => {
+                    StatusCode::UNPROCESSABLE_ENTITY
+                }
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            tracing::warn!(org_id = req.org_id, error = %e, "flow page write refused");
+            (
+                status,
+                axum::Json(serde_json::json!({ "code": e.code(), "error": e.to_string() })),
+            )
+                .into_response()
+        }
+    })
 }
 
 async fn flow_lab_review(

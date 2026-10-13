@@ -136,6 +136,11 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::vision_ai::MediaFuseConfig,
     },
+    /// Markdown of the message → a page of the org + named version (D209).
+    PageWrite {
+        #[serde(default)]
+        config: crate::pages::PageWriteConfig,
+    },
     /// Instruction + incoming data → text of the org's LLM (D208).
     LlmText {
         #[serde(default)]
@@ -311,6 +316,9 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "media_fuse" => Ok(Self::MediaFuse {
+                    config: opt_config(config)?,
+                }),
+                "page_write" => Ok(Self::PageWrite {
                     config: opt_config(config)?,
                 }),
                 "llm_text" => Ok(Self::LlmText {

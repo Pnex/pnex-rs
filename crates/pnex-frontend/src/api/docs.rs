@@ -73,6 +73,17 @@ pub async fn create_version(id: Uuid, label: String) -> Result<DocVersionSummary
     .await
 }
 
+/// `POST /api/v1/docs/{id}/versions/{n}/approve` — a person approves a
+/// frozen version (D210).
+pub async fn approve_version(id: Uuid, n: i64) -> Result<DocVersionSummary, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/docs/{id}/versions/{n}/approve"),
+        None,
+    )
+    .await
+}
+
 pub async fn version_state(id: Uuid, n: i64) -> Result<DocVersionState, ApiError> {
     client::request(
         reqwest::Method::GET,

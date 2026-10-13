@@ -8,6 +8,7 @@
 //! page from the database alone. Applying an update twice is a no-op in a
 //! CRDT, which keeps loading and catch-up simple (no sequence bookkeeping).
 
+pub mod flow_write;
 pub mod room;
 pub mod schema;
 pub mod seed;
@@ -32,6 +33,9 @@ pub enum PageError {
     Db(#[from] DbErr),
     #[error("stored page state is unreadable: {0}")]
     Corrupt(String),
+    /// A server-side write refused by the size or schema checks.
+    #[error("refused page content: {0}")]
+    Refused(String),
 }
 
 /// Valkey URL of the cross-pod fan-out, `None` on a single node.
@@ -163,6 +167,56 @@ pub async fn compact(db: &DatabaseConnection, doc_id: Uuid) -> Result<(), PageEr
     Ok(())
 }
 
+/// Server-side write (flows, D209): `update` is checked like a browser
+/// session's (size, applies on the stored page, schema allowlist, page
+/// size), logged without a user, then applied to this pod's open room and
+/// relayed to the other pods.
+pub async fn write_server(
+    db: &DatabaseConnection,
+    valkey_url: Option<String>,
+    doc_id: Uuid,
+    update: Vec<u8>,
+) -> Result<(), PageError> {
+    use pnex_core::pages::{MAX_DOC_BYTES, MAX_UPDATE_BYTES};
+    if update.len() > MAX_UPDATE_BYTES {
+        return Err(PageError::Refused("update too large".into()));
+    }
+    let doc = load(db, doc_id).await?;
+    apply(&doc, &update)?;
+    schema::validate(&doc).map_err(|e| PageError::Refused(e.0))?;
+    if encode(&doc).len() > MAX_DOC_BYTES {
+        return Err(PageError::Refused("page too large".into()));
+    }
+    doc_updates::ActiveModel {
+        doc_id: Set(doc_id),
+        data: Set(update.clone()),
+        user_id: Set(None),
+        ..Default::default()
+    }
+    .insert(db)
+    .await?;
+    docs::Entity::update_many()
+        .col_expr(
+            docs::Column::UpdatedAt,
+            sea_orm::sea_query::Expr::current_timestamp(),
+        )
+        .filter(docs::Column::Id.eq(doc_id))
+        .exec(db)
+        .await?;
+    room::server_update(valkey_url, doc_id, update);
+    Ok(())
+}
+
+/// Who froze a named version.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct VersionAuthor {
+    pub user_id: Option<i64>,
+    /// Flow that wrote the page (`page_write`, D209).
+    pub flow_id: Option<i64>,
+    /// The content holds AI-generated text (D210).
+    pub ai_generated: bool,
+}
+
 /// Freezes the current content as named version `label`; returns it.
 pub async fn create_version(
     db: &DatabaseConnection,
@@ -170,6 +224,27 @@ pub async fn create_version(
     org_id: i64,
     label: &str,
     user_id: Option<i64>,
+) -> Result<doc_versions::Model, PageError> {
+    create_version_by(
+        db,
+        doc_id,
+        org_id,
+        label,
+        VersionAuthor {
+            user_id,
+            ..Default::default()
+        },
+    )
+    .await
+}
+
+/// [`create_version`] with the flow and AI provenance of the version.
+pub async fn create_version_by(
+    db: &DatabaseConnection,
+    doc_id: Uuid,
+    org_id: i64,
+    label: &str,
+    by: VersionAuthor,
 ) -> Result<doc_versions::Model, PageError> {
     let txn = db.begin().await?;
     // Row lock: serializes version numbering of this page.
@@ -192,7 +267,9 @@ pub async fn create_version(
         version_number: Set(last.unwrap_or(0) + 1),
         label: Set(label.to_string()),
         snapshot: Set(state),
-        created_by: Set(user_id),
+        created_by: Set(by.user_id),
+        flow_id: Set(by.flow_id),
+        ai_generated: Set(by.ai_generated),
         ..Default::default()
     }
     .insert(&txn)

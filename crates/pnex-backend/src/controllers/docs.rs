@@ -31,6 +31,7 @@ pub fn routes() -> Routes {
         .add("/{id}", get(detail).patch(rename).delete(remove))
         .add("/{id}/versions", get(versions).post(create_version))
         .add("/{id}/versions/{n}", get(version_state))
+        .add("/{id}/versions/{n}/approve", post(approve_version))
 }
 
 fn field_status(field: &str, msg: &str) -> Response {
@@ -258,6 +259,10 @@ async fn versions(
             doc_versions::Column::Label,
             doc_versions::Column::CreatedBy,
             doc_versions::Column::CreatedAt,
+            doc_versions::Column::AiGenerated,
+            doc_versions::Column::FlowId,
+            doc_versions::Column::ApprovedBy,
+            doc_versions::Column::ApprovedAt,
         ])
         .filter(doc_versions::Column::DocId.eq(d.id))
         .order_by_desc(doc_versions::Column::VersionNumber)
@@ -265,7 +270,11 @@ async fn versions(
         .all(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    let authors: Vec<i64> = rows.iter().filter_map(|v| v.created_by).collect();
+    let authors: Vec<i64> = rows
+        .iter()
+        .flat_map(|v| [v.created_by, v.approved_by])
+        .flatten()
+        .collect();
     let names: std::collections::HashMap<i64, String> = if authors.is_empty() {
         Default::default()
     } else {
@@ -285,6 +294,10 @@ async fn versions(
             label: v.label.clone(),
             created_by: v.created_by.and_then(|u| names.get(&u).cloned()),
             created_at: v.created_at.to_rfc3339(),
+            ai_generated: v.ai_generated,
+            flow_id: v.flow_id,
+            approved_by: v.approved_by.and_then(|u| names.get(&u).cloned()),
+            approved_at: v.approved_at.map(|t| t.to_rfc3339()),
         })
         .collect();
     Ok(
@@ -299,6 +312,10 @@ struct VersionHead {
     label: String,
     created_by: Option<i64>,
     created_at: sea_orm::prelude::DateTimeWithTimeZone,
+    ai_generated: bool,
+    flow_id: Option<i64>,
+    approved_by: Option<i64>,
+    approved_at: Option<sea_orm::prelude::DateTimeWithTimeZone>,
 }
 
 /// `POST /api/v1/docs/{id}/versions` — freezes the current content.
@@ -333,8 +350,63 @@ async fn create_version(
                 .unwrap_or(org.auth.user.email.clone()),
         ),
         created_at: v.created_at.to_rfc3339(),
+        ai_generated: v.ai_generated,
+        flow_id: v.flow_id,
+        approved_by: None,
+        approved_at: None,
     };
     Ok((StatusCode::CREATED, format::json(dto)).into_response())
+}
+
+/// `POST /api/v1/docs/{id}/versions/{n}/approve` — a person approves a
+/// frozen version (D210: an AI report of a flow leaves PneX once
+/// approved). Editors only; idempotent (the first approval is kept).
+async fn approve_version(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path((id, n)): Path<(Uuid, i64)>,
+) -> Result<Response> {
+    if !org.can_write() {
+        return Err(forbidden());
+    }
+    let d = find_doc(&ctx.db, org.org.id, id).await?;
+    let v = doc_versions::Entity::find()
+        .filter(doc_versions::Column::DocId.eq(d.id))
+        .filter(doc_versions::Column::VersionNumber.eq(n))
+        .one(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?
+        .ok_or(Error::NotFound)?;
+    let v = if v.approved_at.is_some() {
+        v
+    } else {
+        let mut a: doc_versions::ActiveModel = v.into();
+        a.approved_by = sea_orm::Set(Some(org.auth.user.id));
+        a.approved_at = sea_orm::Set(Some(chrono::Utc::now().into()));
+        sea_orm::ActiveModelTrait::update(a, &ctx.db)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+    };
+    let name = |uid: Option<i64>| {
+        (uid == Some(org.auth.user.id)).then(|| {
+            org.auth
+                .user
+                .full_name
+                .clone()
+                .unwrap_or(org.auth.user.email.clone())
+        })
+    };
+    Ok(format::json(DocVersionSummary {
+        version_number: v.version_number,
+        label: v.label,
+        created_by: name(v.created_by),
+        created_at: v.created_at.to_rfc3339(),
+        ai_generated: v.ai_generated,
+        flow_id: v.flow_id,
+        approved_by: name(v.approved_by),
+        approved_at: v.approved_at.map(|t| t.to_rfc3339()),
+    })
+    .into_response())
 }
 
 /// `GET /api/v1/docs/{id}/versions/{n}` — frozen state of version `n`.

@@ -796,3 +796,111 @@ async fn ws_refuses_dangling_updates_and_owns_presence() {
     })
     .await;
 }
+
+/// Pages written by flows (D209/D210): a new page per message, then an
+/// append to it, each freezing a named version stamped with the flow and
+/// its AI provenance; approval by an editor (idempotent), refused to a
+/// viewer; another org's page is not found; the internal route needs the
+/// service token.
+#[tokio::test]
+#[serial]
+async fn flow_writes_pages_and_versions_get_approved() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let a = &env.alice;
+        let body = json!({
+            "org_id": org, "flow_id": 7, "mode": "new_page", "title": "Weekly {date}",
+            "markdown": "# Weekly\n\nA **calm** week.", "version_label": "week {week}",
+            "ai_generated": true
+        });
+        let denied = server.post("/internal/flow/page-write").json(&body).await;
+        assert_eq!(denied.status_code(), 401);
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-pages") };
+        let post = |b: serde_json::Value| {
+            let server = &server;
+            async move {
+                let res = server
+                    .post("/internal/flow/page-write")
+                    .add_header("x-pnex-flow-token", "tok-pages")
+                    .json(&b)
+                    .await;
+                (res.status_code().as_u16(), res.json::<serde_json::Value>())
+            }
+        };
+        let (st, created) = post(body.clone()).await;
+        assert_eq!(st, 201, "{created}");
+        assert!(created["title"].as_str().unwrap().starts_with("Weekly 20"));
+        assert_eq!(created["version"], 1);
+        let page = created["page_id"].as_str().unwrap().to_string();
+        let mut append = body.clone();
+        append["mode"] = json!("append");
+        append["page_id"] = json!(page);
+        append["markdown"] = json!("## Monday\n\n- one alert");
+        append["ai_generated"] = json!(false);
+        let (st, appended) = post(append.clone()).await;
+        assert_eq!(st, 201, "{appended}");
+        assert_eq!(appended["version"], 2);
+        let mut foreign = append.clone();
+        foreign["org_id"] = json!(org + 100_000);
+        let (st, _) = post(foreign).await;
+        assert_eq!(st, 404);
+
+        let (_, versions) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/docs/{page}/versions"),
+            a,
+            org,
+            None,
+        )
+        .await;
+        let v1 = versions["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|v| v["version_number"] == 1)
+            .unwrap()
+            .clone();
+        assert_eq!(v1["ai_generated"], true);
+        assert_eq!(v1["flow_id"], 7);
+        assert!(v1["label"].as_str().unwrap().starts_with("week 20"));
+        assert!(v1.get("approved_at").is_none());
+
+        personal_org(&server, &env.bob).await;
+        add_viewer(&server, a, org).await;
+        let (st, _) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/docs/{page}/versions/1/approve"),
+            &env.bob,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(st, 403);
+        let (st, approved) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/docs/{page}/versions/1/approve"),
+            a,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(st, 200, "{approved}");
+        assert!(approved["approved_at"].is_string());
+        let first = approved["approved_at"].clone();
+        let (_, again) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/docs/{page}/versions/1/approve"),
+            a,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(again["approved_at"], first, "the first approval is kept");
+        unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
+    })
+    .await;
+}
