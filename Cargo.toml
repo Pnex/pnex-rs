@@ -40,6 +40,7 @@ members = [
     # Media stream capture chain (D160), shared by the backend and the edge
     # agent's capture boxes (lot 6b).
     "crates/pnex-media-capture",
+    "crates/pnex-pdf",
     "crates/pnex-node-memory",
     # Predictive telemetry (augurs): anomaly + forecast flow nodes.
     "crates/pnex-node-predict",
@@ -97,6 +98,7 @@ pnex-vision = { path = "crates/pnex-vision" }
 pnex-decide = { path = "crates/pnex-decide" }
 pnex-asr = { path = "crates/pnex-asr" }
 pnex-media-capture = { path = "crates/pnex-media-capture" }
+pnex-pdf = { path = "crates/pnex-pdf" }
 pnex-node-vision = { path = "crates/pnex-node-vision" }
 pnex-node-memory = { path = "crates/pnex-node-memory" }
 pnex-node-predict = { path = "crates/pnex-node-predict" }
