@@ -1,7 +1,7 @@
 use super::*;
 
 /// Liste canonique des kinds proposés à l'ajout (ordre de la maquette).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 36] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 37] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::Weather,
@@ -29,6 +29,7 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 36] = [
     PaletteKind::VisionZone,
     PaletteKind::VisionCaption,
     PaletteKind::MediaFuse,
+    PaletteKind::LlmText,
     PaletteKind::TextDecide,
     PaletteKind::RangeUpsert,
     PaletteKind::EventLog,
@@ -70,6 +71,7 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::VisionZone => "vision-zone",
         PaletteKind::VisionCaption => "vision-caption",
         PaletteKind::MediaFuse => "media-fuse",
+        PaletteKind::LlmText => "llm-text",
         PaletteKind::TextDecide => "text-decide",
         PaletteKind::EventLog => "event-log",
         PaletteKind::MemoryWrite => "memory-write",
@@ -122,6 +124,7 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::VisionZone => (PaletteIcon::Layers, "bg-fuchsia-50 text-fuchsia-700"),
         PaletteKind::VisionCaption => (PaletteIcon::Eye, "bg-violet-50 text-violet-700"),
         PaletteKind::MediaFuse => (PaletteIcon::Braces, "bg-violet-50 text-violet-700"),
+        PaletteKind::LlmText => (PaletteIcon::Braces, "bg-violet-50 text-violet-800"),
         PaletteKind::TextDecide => (PaletteIcon::Gauge, "bg-violet-50 text-violet-700"),
         PaletteKind::EventLog => (PaletteIcon::History, "bg-slate-100 text-slate-600"),
         PaletteKind::MemoryWrite => (PaletteIcon::Database, "bg-lime-50 text-lime-700"),
@@ -167,6 +170,7 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::VisionZone { .. } => PaletteKind::VisionZone,
         FlowNodeKind::VisionCaption { .. } => PaletteKind::VisionCaption,
         FlowNodeKind::MediaFuse { .. } => PaletteKind::MediaFuse,
+        FlowNodeKind::LlmText { .. } => PaletteKind::LlmText,
         FlowNodeKind::TextDecide { .. } => PaletteKind::TextDecide,
         FlowNodeKind::EventLog { .. } => PaletteKind::EventLog,
         FlowNodeKind::MemoryWrite { .. } => PaletteKind::MemoryWrite,
@@ -241,6 +245,7 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         | PaletteKind::VisionZone
         | PaletteKind::VisionCaption
         | PaletteKind::MediaFuse
+        | PaletteKind::LlmText
         | PaletteKind::TextDecide
         | PaletteKind::Anomaly
         | PaletteKind::Forecast => PaletteCategory::Ai,
@@ -388,6 +393,10 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::MediaFuse => (
             t!("flows-palette-media-fuse").to_string(),
             t!("flows-palette-media-fuse-help").to_string(),
+        ),
+        PaletteKind::LlmText => (
+            t!("flows-palette-llm-text").to_string(),
+            t!("flows-palette-llm-text-help").to_string(),
         ),
         PaletteKind::TextDecide => (
             t!("flows-palette-text-decide").to_string(),

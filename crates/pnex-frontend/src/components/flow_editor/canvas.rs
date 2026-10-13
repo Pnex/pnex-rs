@@ -316,6 +316,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::VisionZone { .. } => kind_labels(PaletteKind::VisionZone),
         pnex_core::FlowNodeKind::VisionCaption { .. } => kind_labels(PaletteKind::VisionCaption),
         pnex_core::FlowNodeKind::MediaFuse { .. } => kind_labels(PaletteKind::MediaFuse),
+        pnex_core::FlowNodeKind::LlmText { .. } => kind_labels(PaletteKind::LlmText),
         pnex_core::FlowNodeKind::TextDecide { .. } => kind_labels(PaletteKind::TextDecide),
         pnex_core::FlowNodeKind::EventLog { .. } => kind_labels(PaletteKind::EventLog),
         pnex_core::FlowNodeKind::MemoryWrite { .. } => kind_labels(PaletteKind::MemoryWrite),
@@ -383,6 +384,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::VisionZone { .. }
         | pnex_core::FlowNodeKind::VisionCaption { .. }
         | pnex_core::FlowNodeKind::MediaFuse { .. }
+        | pnex_core::FlowNodeKind::LlmText { .. }
         | pnex_core::FlowNodeKind::TextDecide { .. } => {
             (geometry::VISION_FILL, geometry::VISION_STROKE)
         }
@@ -433,6 +435,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::VisionDetect { .. }
         | pnex_core::FlowNodeKind::VisionCaption { .. }
         | pnex_core::FlowNodeKind::MediaFuse { .. }
+        | pnex_core::FlowNodeKind::LlmText { .. }
         | pnex_core::FlowNodeKind::TextDecide { .. } => {
             cx.display_values.read().get(&node.id).cloned()
         }
@@ -1098,6 +1101,15 @@ fn node_subtitle(node: &FlowNode) -> String {
             let short: String = text.chars().take(30).collect();
             if text.chars().count() > 30 {
                 format!("{short}…")
+            } else {
+                text
+            }
+        }
+        // Start of the instruction.
+        pnex_core::FlowNodeKind::LlmText { config } => {
+            let text: String = config.prompt.chars().take(28).collect();
+            if config.prompt.chars().count() > 28 {
+                format!("{text}…")
             } else {
                 text
             }

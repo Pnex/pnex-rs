@@ -123,7 +123,15 @@ async fn internal_ai_caption_and_fuse() {
             "org_id": 1, "state": "a forklift entered the dock",
             "questions": [{"id": "incident", "kind": "choice", "instructions": "Incident?", "options": ["yes", "no"]}]
         });
-        for (path, body) in [("caption", &caption), ("fuse", &fuse), ("decide", &decide)] {
+        let text = serde_json::json!({
+            "org_id": 1, "prompt": "Summarize", "data": {"events": ["a"]}, "max_chars": 500
+        });
+        for (path, body) in [
+            ("caption", &caption),
+            ("fuse", &fuse),
+            ("decide", &decide),
+            ("text", &text),
+        ] {
             let denied = server
                 .post(&format!("/internal/flow/ai/{path}"))
                 .json(body)
@@ -145,6 +153,16 @@ async fn internal_ai_caption_and_fuse() {
             .post("/internal/flow/ai/fuse")
             .add_header("x-pnex-flow-token", "tok-test-123")
             .json(&fuse)
+            .await;
+        assert_eq!(unconfigured.status_code(), 409);
+        assert_eq!(
+            unconfigured.json::<serde_json::Value>()["code"],
+            pnex_core::err_codes::AI_NOT_CONFIGURED
+        );
+        let unconfigured = server
+            .post("/internal/flow/ai/text")
+            .add_header("x-pnex-flow-token", "tok-test-123")
+            .json(&text)
             .await;
         assert_eq!(unconfigured.status_code(), 409);
         assert_eq!(

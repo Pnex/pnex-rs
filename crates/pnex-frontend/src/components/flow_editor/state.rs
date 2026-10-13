@@ -36,6 +36,7 @@ pub enum PaletteKind {
     VisionZone,
     VisionCaption,
     MediaFuse,
+    LlmText,
     TextDecide,
     EventLog,
     MemoryWrite,
@@ -208,6 +209,10 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
                 config: pnex_core::vision_ai::VisionCaptionConfig::default(),
             },
             // Usable as dropped: 30 s windows, language of the transcripts.
+            // Instruction left empty on purpose: the violation banner guides.
+            PaletteKind::LlmText => FlowNodeKind::LlmText {
+                config: pnex_core::vision_ai::LlmTextConfig::default(),
+            },
             PaletteKind::MediaFuse => FlowNodeKind::MediaFuse {
                 config: pnex_core::vision_ai::MediaFuseConfig::default(),
             },

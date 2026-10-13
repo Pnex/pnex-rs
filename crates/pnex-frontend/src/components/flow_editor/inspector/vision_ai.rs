@@ -3,7 +3,8 @@ use super::*;
 
 use crate::components::ui::FIELD_LABEL;
 use pnex_core::vision_ai::{
-    MediaFuseConfig, VisionCaptionConfig, CAPTION_PROMPT_MAX, DEFAULT_CAPTION_PROMPT,
+    LlmTextConfig, MediaFuseConfig, VisionCaptionConfig, CAPTION_PROMPT_MAX,
+    DEFAULT_CAPTION_PROMPT, LLM_OUTPUT_CHARS, LLM_PROMPT_MAX,
 };
 
 // ─────────────── vision-caption / media-fuse (D195, D196) ───────────────
@@ -176,6 +177,113 @@ pub(super) fn MediaFuseForm(
                 }
             }
             p { class: "text-xs text-gray-500", {t!("flows-fuse-trust")} }
+        }
+    }
+}
+
+fn patch_llm(cx: &mut EditorCx, f: impl FnOnce(&mut LlmTextConfig) + 'static) {
+    patch_selected(cx, move |node: &mut FlowNode| {
+        if let FlowNodeKind::LlmText { config } = &mut node.kind {
+            f(config);
+        }
+    });
+}
+
+/// `llm_text` inspector (D208): instruction, data path, language, length.
+#[component]
+pub(super) fn LlmTextForm(mut cx: EditorCx, initial: LlmTextConfig, can_write: bool) -> Element {
+    let mut max_raw = use_signal(|| initial.max_chars.to_string());
+    let max_now = max_raw();
+    let (lo, hi) = LLM_OUTPUT_CHARS;
+    let max_invalid = max_now
+        .trim()
+        .parse::<u32>()
+        .map_or(true, |v| !(lo..=hi).contains(&v));
+    let current = initial.language.clone();
+    let custom = !FUSE_LANGUAGES.contains(&current.as_str());
+    let prompt_max = LLM_PROMPT_MAX.to_string();
+    rsx! {
+        div { class: "space-y-3",
+            p { class: "text-xs text-gray-500", {t!("flows-llm-help")} }
+            label { class: "block",
+                span { class: FIELD_LABEL, {t!("flows-llm-prompt")} }
+                textarea {
+                    class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
+                    rows: "6",
+                    maxlength: "{prompt_max}",
+                    disabled: !can_write,
+                    placeholder: t!("flows-llm-prompt-placeholder").to_string(),
+                    value: "{initial.prompt}",
+                    oninput: move |event| {
+                        let next = event.value();
+                        patch_llm(&mut cx, move |c| c.prompt = next);
+                    },
+                }
+            }
+            label { class: "block",
+                span { class: FIELD_LABEL, {t!("flows-llm-data-field")} }
+                input {
+                    class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
+                    r#type: "text",
+                    value: "{initial.data_field}",
+                    placeholder: "payload",
+                    disabled: !can_write,
+                    oninput: move |event| {
+                        let next = event.value();
+                        patch_llm(&mut cx, move |c| c.data_field = next);
+                    },
+                }
+                span { class: "text-xs text-gray-500 mt-1 block", {t!("flows-llm-data-field-hint")} }
+            }
+            div { class: "grid grid-cols-2 gap-2",
+                label { class: "block",
+                    span { class: FIELD_LABEL, {t!("flows-fuse-language")} }
+                    select {
+                        class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
+                        disabled: !can_write,
+                        onchange: move |event| {
+                            let next = event.value();
+                            patch_llm(&mut cx, move |c| c.language = next);
+                        },
+                        for code in FUSE_LANGUAGES {
+                            option {
+                                key: "{code}",
+                                value: "{code}",
+                                selected: code == current,
+                                if code.is_empty() {
+                                    {t!("flows-fuse-language-auto")}
+                                } else {
+                                    "{code}"
+                                }
+                            }
+                        }
+                        if custom {
+                            option { value: "{current}", selected: true, "{current}" }
+                        }
+                    }
+                }
+                label { class: "block",
+                    span { class: FIELD_LABEL, {t!("flows-llm-max-chars")} }
+                    input {
+                        class: number_class(max_invalid),
+                        r#type: "number",
+                        min: "{lo}",
+                        max: "{hi}",
+                        step: "100",
+                        value: "{max_raw}",
+                        disabled: !can_write,
+                        oninput: move |event| {
+                            let raw = event.value();
+                            max_raw.set(raw.clone());
+                            if let Some(v) = raw.trim().parse::<u32>().ok().filter(|v| (lo..=hi).contains(v))
+                            {
+                                patch_llm(&mut cx, move |c| c.max_chars = v);
+                            }
+                        },
+                    }
+                }
+            }
+            p { class: "text-xs text-gray-500", {t!("flows-llm-trust")} }
         }
     }
 }

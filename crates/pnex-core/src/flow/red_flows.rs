@@ -159,6 +159,15 @@ pub fn to_red_flows_json_with(
                 "pnex_version": meta.version_number,
                 "pnex_org_id": meta.org_id,
             }),
+            FlowNodeKind::LlmText { config } => serde_json::json!({
+                "type": "pnex-llm-text",
+                "prompt": config.prompt,
+                "data_field": config.data_field,
+                "language": config.language,
+                "max_chars": config.max_chars,
+                "pnex_node_id": n.id,
+                "pnex_org_id": meta.org_id,
+            }),
             FlowNodeKind::MediaFuse { config } => serde_json::json!({
                 "type": "pnex-media-fuse",
                 "window_secs": config.window_secs,

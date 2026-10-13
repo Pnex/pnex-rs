@@ -2371,6 +2371,17 @@ flows-palette-vision-caption = Description d'image
 flows-palette-vision-caption-help = Décrit en mots les images d'une caméra avec le modèle d'IA de votre organisation (indicatif)
 flows-palette-media-fuse = Description vidéo
 flows-palette-media-fuse-help = À chaque fenêtre, rédige une courte description sourcée de ce qui a été dit, détecté et vu
+flows-palette-llm-text = Texte IA
+flows-palette-llm-text-help = Le LLM de l'organisation écrit un texte (rapport, synthèse, classement) à partir d'une consigne et des données reçues
+flows-llm-help = Une consigne et les données du message deviennent un texte du LLM de l'organisation (Markdown). Typique : déclencheur cron → données de la semaine → Texte IA → Écrire une page.
+flows-llm-prompt = Consigne
+flows-llm-prompt-placeholder = Rédige le rapport hebdomadaire de ces événements : ce qui s'est passé, quand, ce qui sort de l'ordinaire.
+flows-llm-data-field = Données (chemin dans le message)
+flows-llm-data-field-hint = Vide = tout le contenu du message. Exemple : events
+flows-llm-max-chars = Longueur maximale (caractères)
+flows-llm-trust = Les données sont transmises comme des données : les instructions qu'elles contiennent sont ignorées. Chaque appel compte dans le quota IA quotidien de l'organisation.
+err-llm-text-prompt-invalid = Écrivez une consigne de 1 à 4000 caractères.
+err-llm-text-options-invalid = Langue en code court, réponse de 100 à 20000 caractères, chemin de données en lettres, chiffres, _ - .
 flows-palette-text-decide = Décision sur texte
 flows-palette-text-decide-help = Répond à des questions typées sur un texte avec des probabilités (modèle local, aucun texte généré)
 flows-palette-event-log = Journal d'événements

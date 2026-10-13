@@ -2372,6 +2372,17 @@ flows-palette-vision-caption = Image description
 flows-palette-vision-caption-help = Describe camera frames in words with your organization's AI model (indicative)
 flows-palette-media-fuse = Video description
 flows-palette-media-fuse-help = Every window, write a short sourced description of what was said, detected and seen
+flows-palette-llm-text = AI text
+flows-palette-llm-text-help = The organization's LLM writes a text (report, summary, classification) from an instruction and the incoming data
+flows-llm-help = An instruction and the message data become a text of the organization's LLM (Markdown). Typical: cron trigger → the week's data → AI text → Write a page.
+flows-llm-prompt = Instruction
+flows-llm-prompt-placeholder = Write the weekly report of these events: what happened, when, anything unusual.
+flows-llm-data-field = Data (path in the message)
+flows-llm-data-field-hint = Empty = the whole message content. Example: events
+flows-llm-max-chars = Maximum length (characters)
+flows-llm-trust = The data is passed as data: instructions it contains are ignored. Every call counts in the organization's daily AI quota.
+err-llm-text-prompt-invalid = Write an instruction of 1 to 4000 characters.
+err-llm-text-options-invalid = Language as a short code, answer of 100 to 20000 characters, data path made of letters, digits, _ - .
 flows-palette-text-decide = Text decision
 flows-palette-text-decide-help = Answer typed questions about a text with probabilities (local model, no text generated)
 flows-palette-event-log = Event log
