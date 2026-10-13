@@ -875,3 +875,30 @@ Contexte : réinstallation à neuf du cluster perso (chart pnex 0.2.0,
 - Firmwares compilés pour le WiFi « Chez Shan » : changement de réseau =
   rebuild + reflash (le WiFi est compilé dans l'image).
 - **Statut** : informatif.
+
+## 2026-10-13 — refonte du site pnex-website (stack locale 192.168.1.185, image du 2026-10-12)
+
+### O41 — Org personnelle nommée en français quelle que soit la langue
+
+- **Symptôme** : l'UI en anglais affiche « Organisation de admin@example.com »
+  (accueil, sélecteur d'org, cartes d'org).
+- **Cause** : le nom est figé en base à la création JIT,
+  `format!("Organisation de {display}")`
+  (`crates/pnex-backend/src/auth/provisioning.rs:216`) : texte français en dur
+  côté serveur, contraire à la règle i18n (l'UI résout au rendu).
+- **Correction proposée** : nom neutre stocké (`{display}`, ou « {display}'s
+  org » en anglais canonique), ou drapeau `personal` rendu par une clé fluent
+  au rendu ; renommage possible par l'utilisateur inchangé.
+- **Statut** : ouvert.
+
+### O42 — Stack de démo vidée : données « Demo – … » et appareils perdus
+
+- **Constat** : org 1 sans aucune ressource « Demo – … » (recherche « demo » :
+  aucun résultat), appareils jamais revus depuis le 2026-10-10, accueil
+  « Telemetry unavailable » (org O2 non configurée). Probablement le
+  `task db:reset` imposé par la baseline d'ingestion média du 2026-10-10.
+- **Effet** : les cartes branchées (ESP32-C6 en boucle de connexion Wi-Fi sur
+  le port série, ESP32-CAM muette) ne correspondent plus à la base ; le
+  scénario de captures du site (`pnex-website/scripts/capture`) ne peut pas
+  être rejoué sans réenregistrer + reflasher les cartes et reconfigurer O2.
+- **Statut** : informatif (session de captures à planifier avec l'opérateur).
