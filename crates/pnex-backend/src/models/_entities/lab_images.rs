@@ -23,6 +23,11 @@ pub struct Model {
     #[sea_orm(column_type = "JsonBinary")]
     pub boxes: Json,
     pub negative: bool,
+    /// Sent by a detection node, waiting for an annotation (M4).
+    pub review: bool,
+    /// Model proposals of a review picture (`[LabSuggestion]`, normalized).
+    #[sea_orm(column_type = "JsonBinary")]
+    pub proposals: Json,
     /// Mean luma 0–255 measured at import (diversity guidance).
     pub luma: Option<f32>,
     /// Position in the source, ms (interpolation order); `None` = still.

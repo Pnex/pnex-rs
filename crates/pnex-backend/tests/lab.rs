@@ -774,3 +774,86 @@ async fn training_registers_a_fine_tuned_model() {
     })
     .await;
 }
+
+/// Active learning (M4): a doubtful frame posted by a detection node joins
+/// the review queue with its proposals (class mapped by name), leaves it
+/// once annotated; foreign frame keys and missing tokens are refused.
+#[tokio::test]
+#[serial]
+async fn doubtful_frames_join_the_review_queue() {
+    let url = std::env::var("PNEX_TEST_APP_VALKEY_URL")
+        .unwrap_or_else(|_| "redis://127.0.0.1:6379/14".to_string());
+    let Ok(mut valkey) = redis::Client::open(url).and_then(|c| c.get_connection()) else {
+        eprintln!("valkey unreachable: skipped");
+        return;
+    };
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let a = &env.alice;
+        let (_, p) = call(
+            &server,
+            "POST",
+            "/api/v1/lab/projects",
+            a,
+            org,
+            Some(json!({"name": "Dock", "classes": ["person"]})),
+        )
+        .await;
+        let pid = p["id"].as_str().unwrap().to_string();
+        let (png, _) = square_png(3);
+        let jpeg = pnex_vision::prepare_jpeg(&png, None, 320).unwrap();
+        let key = format!("pnex:cam:v1:{org}:cam-dock:f:1");
+        let _: () = redis::cmd("SET")
+            .arg(&key)
+            .arg(jpeg)
+            .arg("EX")
+            .arg(60)
+            .query(&mut valkey)
+            .unwrap();
+        let body = json!({
+            "org_id": org, "project_id": pid, "frame_key": key, "source": "cam-dock",
+            "ts_ms": 1_790_000_000_000i64,
+            "proposals": [
+                {"label": "person", "score": 0.4, "bbox": [32.0, 24.0, 64.0, 48.0]},
+                {"label": "dog", "score": 0.3, "bbox": [0.0, 0.0, 10.0, 10.0]}
+            ]
+        });
+        let denied = server.post("/internal/flow/lab-review").json(&body).await;
+        assert_eq!(denied.status_code(), 401);
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-lab") };
+        let mut foreign = body.clone();
+        foreign["frame_key"] = json!("pnex:cam:v1:999999:cam-dock:f:1");
+        let res = server
+            .post("/internal/flow/lab-review")
+            .add_header("x-pnex-flow-token", "tok-lab")
+            .json(&foreign)
+            .await;
+        assert_eq!(res.status_code(), 404);
+        let res = server
+            .post("/internal/flow/lab-review")
+            .add_header("x-pnex-flow-token", "tok-lab")
+            .json(&body)
+            .await;
+        assert_eq!(res.status_code(), 201, "{}", res.text());
+        let img: Value = res.json();
+        assert_eq!(img["review"], true);
+        assert_eq!(img["source"], "review-cam-dock-2026-09-21");
+        assert_eq!(img["proposals"][0]["class"], 0, "person maps to the class");
+        assert!(img["proposals"][1]["class"].is_null());
+        assert!((img["proposals"][0]["bbox"][0].as_f64().unwrap() - 0.1).abs() < 1e-4);
+        let id = img["id"].as_str().unwrap();
+        let (st, saved) = call(
+            &server,
+            "PUT",
+            &format!("/api/v1/lab/images/{id}/annotations"),
+            a,
+            org,
+            Some(json!({"boxes": [{"class": 0, "bbox": [0.1, 0.1, 0.2, 0.2]}], "expected_version": 1})),
+        )
+        .await;
+        assert_eq!(st, 200, "{saved}");
+        assert_eq!(saved["review"], false);
+        unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
+    })
+    .await;
+}

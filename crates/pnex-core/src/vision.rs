@@ -390,11 +390,39 @@ pub struct VisionDetectConfig {
     /// camera (D105) — drawn over the recordings in Cameras, boxes only.
     #[serde(default)]
     pub record_layer: bool,
+    /// Vision Lab project receiving the doubtful frames (M4, active
+    /// learning); empty = off.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub review_project: String,
+    /// A frame is doubtful when a candidate score lies in
+    /// `[review_min, review_max]`.
+    #[serde(default = "default_review_min")]
+    pub review_min: f32,
+    #[serde(default = "default_review_max")]
+    pub review_max: f32,
+    /// At most one doubtful frame per camera this often.
+    #[serde(default = "default_review_every")]
+    pub review_every_secs: f64,
 }
 
 fn default_detect_fps() -> f64 {
     1.0
 }
+
+pub fn default_review_min() -> f32 {
+    0.25
+}
+
+pub fn default_review_max() -> f32 {
+    0.6
+}
+
+pub fn default_review_every() -> f64 {
+    60.0
+}
+
+/// Bounds of `review_every_secs`.
+pub const REVIEW_EVERY_SECS: (f64, f64) = (5.0, 3600.0);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -414,6 +442,30 @@ impl VisionDetectConfig {
                 "vision_score_invalid",
                 "min score must be between 0 and 1".into(),
             ));
+        }
+        if !self.review_project.is_empty() {
+            if uuid::Uuid::parse_str(self.review_project.trim()).is_err() {
+                return Some((
+                    "vision_review_project_invalid",
+                    "pick a Vision Lab project".into(),
+                ));
+            }
+            let band_ok = (0.0..=1.0).contains(&self.review_min)
+                && (0.0..=1.0).contains(&self.review_max)
+                && self.review_min < self.review_max;
+            if !band_ok {
+                return Some((
+                    "vision_review_band_invalid",
+                    "the doubt band must be 0 ≤ min < max ≤ 1".into(),
+                ));
+            }
+            let (lo, hi) = REVIEW_EVERY_SECS;
+            if !self.review_every_secs.is_finite() || !(lo..=hi).contains(&self.review_every_secs) {
+                return Some((
+                    "vision_review_every_invalid",
+                    format!("send at most one frame every {lo} to {hi} s"),
+                ));
+            }
         }
         if !self.max_fps.is_finite()
             || self.max_fps < 0.0
@@ -680,7 +732,23 @@ mod tests {
             emit: VisionEmit::OnDetection,
             max_fps: 1.0,
             record_layer: false,
+            review_project: String::new(),
+            review_min: default_review_min(),
+            review_max: default_review_max(),
+            review_every_secs: default_review_every(),
         };
         assert_eq!(c.check().unwrap().0, "vision_model_missing");
+        let c = VisionDetectConfig {
+            model_id: "m".into(),
+            review_project: "not-a-uuid".into(),
+            ..c
+        };
+        assert_eq!(c.check().unwrap().0, "vision_review_project_invalid");
+        let c = VisionDetectConfig {
+            review_project: "00000000-0000-0000-0000-000000000001".into(),
+            review_min: 0.7,
+            ..c
+        };
+        assert_eq!(c.check().unwrap().0, "vision_review_band_invalid");
     }
 }

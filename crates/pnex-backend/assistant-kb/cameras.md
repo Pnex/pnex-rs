@@ -34,6 +34,8 @@ In **Automation › Flows**: the **Camera source** node reads a camera device (s
 - The descriptions are AI-generated and indicative: show or store them, never let them drive a device.
 - **Text decision** answers typed questions about a text (a Video description, a transcript) with a probability per answer — e.g. "incident" or "routine", or an urgency level — without writing any text. The model runs on the PneX server, nothing leaves it. Route with a **Switch** on the best answer and its probability, or put it before Video description so the AI model only describes the windows that matter. Out of the box the probabilities are a ranking, not a calibrated truth: check them on real examples before alerting on a threshold. "AI model call failed" with decide-unavailable: the decision model is not installed on this server (ask the platform administrator).
 
+In **Object detection**, **Doubtful frames to the Vision Lab** sends the frames where the model hesitated to a Vision Lab project, to annotate them and train a better model (see the Vision Lab card).
+
 ## Good to know
 - No **Video recording** node = nothing is stored. Recordings show "No recording" until such a flow is deployed.
 - One camera has exactly one recorder in the organization; a second Video recording on the same camera is refused.

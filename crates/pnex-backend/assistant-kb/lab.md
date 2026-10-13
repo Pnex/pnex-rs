@@ -4,7 +4,7 @@ title: Vision Lab — teach PneX your own objects
 kind: feature
 pages: /lab, /lab/:id
 nodes: vision_detect
-err_codes: camera-unknown, camera-export-empty, ml-model-load-failed, ml-model-inference-failed, lab-project-not-found, lab-image-not-found, lab-version-not-found, lab-class-in-use, lab-annotations-conflict, lab-box-invalid, lab-asset-not-image, lab-dataset-empty, lab-video-unsupported, lab-video-too-large, lab-video-decode-failed, lab-interpolate-no-keyframes, lab-train-busy, lab-train-base-invalid, lab-train-no-data, lab-train-interrupted, lab-train-failed
+err_codes: camera-unknown, camera-export-empty, ml-model-load-failed, ml-model-inference-failed, lab-project-not-found, lab-image-not-found, lab-version-not-found, lab-class-in-use, lab-annotations-conflict, lab-box-invalid, lab-asset-not-image, lab-dataset-empty, lab-video-unsupported, lab-video-too-large, lab-video-decode-failed, lab-interpolate-no-keyframes, lab-train-busy, lab-train-base-invalid, lab-train-no-data, lab-train-interrupted, lab-train-failed, lab-propagate-no-previous, lab-review-full
 tools: 
 tags: train, entraîner, fine-tune, affiner, epochs, époques, video, vidéo, mp4, mov, interpolate, interpoler, interpolation, recording, enregistrement, video frames, images de vidéo, pre-annotation, pré-annotation, suggest, proposer, vision lab, lab, dataset, annotation, annoter, boîte, bounding box, custom model, modèle personnalisé, reconnaissance d'objets, object recognition, training, entraînement, coco, yolox
 ---
@@ -21,6 +21,11 @@ Vision Lab (Media › Vision Lab) builds the dataset of a custom object detector
 - **Statistics**: boxes and images per class, train / validation counts, and warnings: fewer than 20 annotated images for a class, fewer than 5 validation images, no negative example. They are advice, never a blocker.
 - **Freeze a version**: copies the annotated images and their boxes into a numbered, read-only dataset version; later edits never change it.
 - **Export**: downloads a version as a zip (images + COCO annotations for train and validation), ready for a YOLOX training.
+
+## Improvement loop
+- **To review**: in an **Object detection** node, **Doubtful frames to the Vision Lab** picks a project; when the model hesitates (a score between **Min score** and **Max score**, 0.25 to 0.6 by default), the frame joins that project with the model's proposals, at most one per camera every 60 s. In the Lab those pictures carry a purple dot ("To review"), **Only the pictures to review** filters them, and opening one shows the proposals ready to keep. A picture leaves the queue once it has boxes or is marked without object. At most 500 pictures wait per project.
+- **Propagate** (pictures from a video or a recording, a model chosen in the proposals bar): the model proposes the boxes of the picture, and each takes the class of the nearest box on the previous annotated picture of the same video. Useful when the model does not know your class names.
+- **Diversity warnings**: besides the counts, the Lab warns when a class comes from fewer than 3 sources, always has the same size (always at the same distance) or the same place in the picture, and when all pictures have the same brightness. Add the missing kind of pictures, then train again.
 
 ## Training
 In the **Training** panel: pick a frozen **Dataset version**, a **Starting model** (a YOLOX model of **Data › Models**, for example the YOLOX COCO model) and a number of **Epochs** (30 by default), then **Train**. PneX keeps the starting network and learns again only its last layers for your classes, on the server, without GPU: a few minutes for a few hundred pictures. The run shows its progress (reading the pictures, epochs with the loss, evaluation) and, once done, the **validation mAP@0.5** (how well it finds the objects of the validation pictures, 100 % = all found with no false alarm). The new model joins **Data › Models** with your class names, already checked: pick it in an **Object detection** node.

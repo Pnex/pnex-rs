@@ -188,6 +188,10 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
                     emit: pnex_core::vision::VisionEmit::OnDetection,
                     max_fps: 1.0,
                     record_layer: true,
+                    review_project: String::new(),
+                    review_min: pnex_core::vision::default_review_min(),
+                    review_max: pnex_core::vision::default_review_max(),
+                    review_every_secs: pnex_core::vision::default_review_every(),
                 },
             },
             // Usable as dropped: tuned for 1 fps detection.

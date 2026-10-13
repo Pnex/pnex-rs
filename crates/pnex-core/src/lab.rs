@@ -126,6 +126,13 @@ pub struct LabImage {
     /// Checked "no object here" (negative example).
     #[serde(default)]
     pub negative: bool,
+    /// Sent by a detection node because the model hesitated; cleared once
+    /// the picture is annotated (active learning, M4).
+    #[serde(default)]
+    pub review: bool,
+    /// What the model proposed on a review picture (normalized boxes).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub proposals: Vec<LabSuggestion>,
     /// Mean luma 0–255 measured at import (diversity guidance); `None` for
     /// pictures added before it was measured.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -416,6 +423,38 @@ pub struct LabTrainingRun {
     pub created_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finished_at: Option<String>,
+}
+
+/// Pending "to review" pictures a project accepts (active learning, M4).
+pub const LAB_REVIEW_MAX_PENDING: usize = 500;
+
+/// One detection of a doubtful frame, in source pixels.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LabReviewProposal {
+    pub label: String,
+    pub score: f32,
+    pub bbox: [f32; 4],
+}
+
+/// `POST /internal/flow/lab-review` — a `vision-detect` node hands a
+/// doubtful frame (by reference) to a Vision Lab project.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LabReviewRequest {
+    pub org_id: i64,
+    pub project_id: String,
+    /// Frame on the camera bus (`frame_key_in_org` checked).
+    pub frame_key: String,
+    /// Camera device or stream slug.
+    pub source: String,
+    pub ts_ms: i64,
+    #[serde(default)]
+    pub proposals: Vec<LabReviewProposal>,
+}
+
+/// A frame is doubtful when some candidate score lies in `[min, max]`:
+/// the model saw something but was not sure.
+pub fn doubtful(scores: impl IntoIterator<Item = f32>, min: f32, max: f32) -> bool {
+    scores.into_iter().any(|s| (min..=max).contains(&s))
 }
 
 /// Least overlap between a box of the previous frame and a proposal for
@@ -810,6 +849,13 @@ mod tests {
     }
 
     #[test]
+    fn doubt_band() {
+        assert!(doubtful([0.1, 0.3], 0.25, 0.6));
+        assert!(!doubtful([0.1, 0.9], 0.25, 0.6));
+        assert!(!doubtful([], 0.25, 0.6));
+    }
+
+    #[test]
     fn propagation_carries_the_class_of_the_nearest_box() {
         let prev = [
             LabBox {
@@ -933,6 +979,8 @@ mod tests {
             split: LabSplit::Auto,
             boxes,
             negative,
+            review: false,
+            proposals: Vec::new(),
             luma: None,
             frame_ms: None,
             version: 1,
