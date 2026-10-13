@@ -9,7 +9,7 @@ use axum::Json;
 use loco_rs::controller::{format, ErrorDetail};
 use loco_rs::prelude::*;
 use pnex_core::err_codes;
-use pnex_core::lab::{LabAnnotationsInput, LabProjectInput};
+use pnex_core::lab::{LabAnnotationsInput, LabProjectInput, LabSuggestRequest};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -27,6 +27,7 @@ pub fn routes() -> Routes {
         .add("/projects/{id}/versions", get(versions).post(freeze))
         .add("/images/{id}", delete(remove_image))
         .add("/images/{id}/annotations", put(save_annotations))
+        .add("/images/{id}/suggest", axum::routing::post(suggest))
         .add("/versions/{id}/export", get(export))
 }
 
@@ -167,6 +168,21 @@ async fn save_annotations(
 ) -> Result<Response> {
     require_write(&org)?;
     reply(lab::save_annotations(&ctx.db, org.org.id, id, &input).await)
+}
+
+/// Pre-annotation with a registry model: editors only (CPU on the
+/// shared vision pool), proposals only.
+async fn suggest(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Json(req): Json<LabSuggestRequest>,
+) -> Result<Response> {
+    require_write(&org)?;
+    let store = MediaSettings::from_config(&ctx.config)
+        .store()
+        .map_err(|_| Error::InternalServerError)?;
+    reply(lab::suggest(&ctx, store.as_ref(), org.org.id, id, &req).await)
 }
 
 async fn stats(

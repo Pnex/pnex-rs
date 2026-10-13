@@ -3,6 +3,7 @@
 
 use pnex_core::lab::{
     LabAnnotationsInput, LabDatasetVersion, LabImage, LabProject, LabProjectInput,
+    LabSuggestRequest, LabSuggestion,
 };
 
 use crate::api::client;
@@ -122,6 +123,17 @@ pub async fn export(version: &str) -> Result<Vec<u8>, ApiError> {
     client::request_bytes(
         reqwest::Method::GET,
         &format!("/api/v1/lab/versions/{version}/export"),
+    )
+    .await
+}
+
+/// `POST /api/v1/lab/images/{id}/suggest` — boxes proposed by a registry
+/// model (nothing is saved).
+pub async fn suggest(id: &str, req: &LabSuggestRequest) -> Result<Vec<LabSuggestion>, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/lab/images/{id}/suggest"),
+        body(req),
     )
     .await
 }

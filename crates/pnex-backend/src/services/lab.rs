@@ -591,6 +591,100 @@ pub async fn freeze(
     Ok(version_view(&row))
 }
 
+/// Pre-annotation (§4.6.1 step 4): runs a detection model of the org's
+/// registry on the image and returns proposals (nothing is written). A
+/// model label equal to a class name maps to that class.
+pub async fn suggest(
+    ctx: &loco_rs::app::AppContext,
+    store: &dyn MediaStore,
+    org_id: i64,
+    image_id: Uuid,
+    req: &lab::LabSuggestRequest,
+) -> Res<Vec<lab::LabSuggestion>> {
+    use crate::models::_entities::ml_models;
+    use crate::services::vision;
+    let db = &ctx.db;
+    let img = find_image(db, org_id, image_id).await?;
+    let project = find_project(db, org_id, img.project_id).await?;
+    let classes = classes_of(&project);
+    let model_field = || LabError::fields(vec![("model_id", err_codes::FIELD_INVALID.to_string())]);
+    let model_id = Uuid::parse_str(&req.model_id).map_err(|_| model_field())?;
+    if !(0.0..=1.0).contains(&req.min_score) {
+        return Err(LabError::fields(vec![("min_score", "range:0..1".into())]));
+    }
+    let m = ml_models::Entity::find_by_id(model_id)
+        .filter(ml_models::Column::OrgId.eq(org_id))
+        .filter(ml_models::Column::Task.eq(vision::VISION_TASK))
+        .one(db)
+        .await
+        .map_err(LabError::db)?
+        .ok_or_else(model_field)?;
+    let det = match vision::detector(ctx, &m).await {
+        Ok(Some(d)) => d,
+        Ok(None) => {
+            return Err(LabError::new(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                err_codes::ML_MODEL_MISSING_BYTES,
+                "The model file is missing.",
+            ))
+        }
+        Err(e) => {
+            return Err(LabError::new(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                err_codes::ML_MODEL_LOAD_FAILED,
+                format!("The model could not be loaded: {e}"),
+            )
+            .args(serde_json::json!({ "detail": e })))
+        }
+    };
+    let threshold = if req.min_score > 0.0 {
+        req.min_score
+    } else {
+        det.spec().score_threshold
+    };
+    let Some((_, version)) = current_version(db, org_id, img.media_asset_id).await? else {
+        return Err(not_found(err_codes::LAB_IMAGE_NOT_FOUND, "Image"));
+    };
+    let bytes = store
+        .get(&version.storage_key)
+        .await
+        .map_err(|_| not_found(err_codes::LAB_IMAGE_NOT_FOUND, "Image"))?;
+    let res = vision::detect(det, bytes).await.map_err(|e| match e {
+        vision::VisionError::Busy(_) => LabError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            err_codes::ML_MODEL_INFERENCE_FAILED,
+            "The vision workers are busy: try again in a moment.",
+        ),
+        vision::VisionError::Failed(e) => LabError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            err_codes::ML_MODEL_INFERENCE_FAILED,
+            format!("Inference failed: {e}"),
+        )
+        .args(serde_json::json!({ "detail": e })),
+    })?;
+    let (w, h) = (res.width.max(1) as f32, res.height.max(1) as f32);
+    let mut out: Vec<lab::LabSuggestion> = res
+        .detections
+        .into_iter()
+        .filter(|d| d.score >= threshold)
+        .map(|d| {
+            let [x, y, bw, bh] = d.bbox;
+            let x0 = (x / w).clamp(0.0, 1.0);
+            let y0 = (y / h).clamp(0.0, 1.0);
+            lab::LabSuggestion {
+                class: lab::class_for_label(&classes, &d.label),
+                label: d.label,
+                score: d.score,
+                bbox: [x0, y0, (bw / w).min(1.0 - x0), (bh / h).min(1.0 - y0)],
+            }
+        })
+        .filter(|s| s.bbox[2] > 0.0 && s.bbox[3] > 0.0)
+        .collect();
+    out.sort_by(|a, b| b.score.total_cmp(&a.score));
+    out.truncate(lab::LAB_MAX_SUGGESTIONS);
+    Ok(out)
+}
+
 fn ext_of(content_type: &str) -> &'static str {
     if content_type.contains("png") {
         "png"
