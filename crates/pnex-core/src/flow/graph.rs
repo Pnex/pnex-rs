@@ -136,6 +136,11 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::vision_ai::MediaFuseConfig,
     },
+    /// Instruction + incoming data → text of the org's LLM (D208).
+    LlmText {
+        #[serde(default)]
+        config: crate::vision_ai::LlmTextConfig,
+    },
     /// Per-source object tracking over detections (D192).
     VisionTrack {
         #[serde(default)]
@@ -306,6 +311,9 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "media_fuse" => Ok(Self::MediaFuse {
+                    config: opt_config(config)?,
+                }),
+                "llm_text" => Ok(Self::LlmText {
                     config: opt_config(config)?,
                 }),
                 "vision_track" => Ok(Self::VisionTrack {

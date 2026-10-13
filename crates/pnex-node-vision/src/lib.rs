@@ -27,6 +27,7 @@
 pub mod caption;
 pub mod decide;
 pub mod fuse;
+pub mod llm_text;
 pub mod track;
 pub mod zone;
 

@@ -160,6 +160,9 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::VisionCaption { config } => rsx! {
             VisionCaptionForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::LlmText { config } => rsx! {
+            LlmTextForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::MediaFuse { config } => rsx! {
             MediaFuseForm { cx, initial: config.clone(), can_write }
         },
@@ -294,7 +297,7 @@ use text_decide::TextDecideForm;
 use topic_classify::TopicClassifyForm;
 use value::{CalcForm, ValueForm};
 use video_record::VideoRecordForm;
-use vision_ai::{MediaFuseForm, VisionCaptionForm};
+use vision_ai::{LlmTextForm, MediaFuseForm, VisionCaptionForm};
 use vision_detect::VisionDetectForm;
 use vision_track::VisionTrackForm;
 use vision_zone::VisionZoneForm;

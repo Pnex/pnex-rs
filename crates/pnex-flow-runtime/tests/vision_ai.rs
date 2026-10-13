@@ -25,6 +25,10 @@ fn start_ai_server() -> String {
                             "probabilities": [["incident", 0.3], ["routine", 0.7]], "confidence": 0.12}},
                         "model": "ml", "took_ms": 5
                     })
+                } else if head.starts_with("POST /internal/flow/ai/text") {
+                    assert!(head.contains("A cat sat on the chair."), "the fused text is the data");
+                    serde_json::json!({"text": "## Weekly report\n- A calm week.", "model": "m",
+                        "took_ms": 2, "data_truncated": false})
                 } else if head.starts_with("POST /internal/flow/ai/caption") {
                     serde_json::json!({"caption": "a cat on a chair", "model": "m", "took_ms": 3})
                 } else {
@@ -71,7 +75,12 @@ return msg;
         {
             "id": "fuse", "type": "pnex-media-fuse", "z": "pnexflow8",
             "window_secs": 5.0, "language": "en",
-            "pnex_org_id": 5, "pnex_node_id": "fuse", "wires": [["dbg", "dec"]]
+            "pnex_org_id": 5, "pnex_node_id": "fuse", "wires": [["dbg", "dec", "llm"]]
+        },
+        {
+            "id": "llm", "type": "pnex-llm-text", "z": "pnexflow8",
+            "prompt": "Write the weekly report", "data_field": "text", "language": "en",
+            "max_chars": 2000, "pnex_org_id": 5, "pnex_node_id": "llm", "wires": [["dbg"]]
         },
         {
             "id": "dec", "type": "pnex-text-decide", "z": "pnexflow8",
@@ -117,6 +126,11 @@ fn caption_then_fused_description() {
         |v| {
             common::is_debug_with(v, "A cat sat on the chair.") && common::is_debug_with(v, "t0_ms")
         },
+        Duration::from_secs(20),
+    );
+    // The fused text feeds the AI text node (D208), output marked as AI.
+    rt.wait_for(
+        |v| common::is_debug_with(v, "Weekly report") && common::is_debug_with(v, "ai_generated"),
         Duration::from_secs(20),
     );
     // The fused text goes on to the decision node, which keeps the payload.

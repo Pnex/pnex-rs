@@ -376,6 +376,17 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         notes: "The image leaves PneX for the organization's provider: wiring this node is that choice. Needs an LLM provider in the organization settings (none = node error status). Model calls of caption and media_fuse nodes share a daily cap per organization (2000 by default). The caption is indicative, never a fact: feed it to media_fuse, an event_log, or a notify for a human, never to anything that acts. Frames older than 15 s are gone from the camera bus: keep it right after the source or detection.",
     },
     NodeDoc {
+        kind: "llm_text",
+        summary: "Writes a text with the organization's LLM from an instruction and the incoming data: a weekly report, a summary of events, a classification. payload = {text (Markdown), model, ai_generated: true, data_truncated}.",
+        config: &[
+            ("prompt", "the instruction, 1..4000 chars (e.g. \"Write a weekly report of these events: what happened, when, anything unusual\")"),
+            ("data_field", "dotted path of the data inside msg.payload (empty = the whole payload)"),
+            ("language", "answer language code (fr, en…), empty = the language of the data"),
+            ("max_chars", "longest answer, 100..20000, default 4000"),
+        ],
+        notes: "The data is passed to the model as data only: instructions found inside it are ignored. Calls count in the organization's daily AI quota (2000 per day with vision_caption and media_fuse). Typical chain: inject (cron) -> data (memory_read, http_fetch, media_fuse output…) -> llm_text -> page_write -> page_pdf -> pnex_notify. Requires an AI provider configured for the organization.",
+    },
+    NodeDoc {
         kind: "media_fuse",
         summary: "Every window (default 30 s), turns what the flow received (transcripts from media_source, detection, tracking or zone events, captions from vision_caption) into a short time-stamped description written by the organization's LLM. Output once per non-empty window: payload = {t0_ms, t1_ms, sentences: [{text, sources: [item ids]}], items, rejected, model, ai_generated: true}.",
         config: &[

@@ -121,6 +121,99 @@ impl MediaFuseConfig {
     }
 }
 
+/// Longest `llm_text` instruction, chars.
+pub const LLM_PROMPT_MAX: usize = 4000;
+/// Data sent with one `llm_text` call (serialized JSON), chars.
+pub const LLM_DATA_MAX: usize = 60_000;
+/// Bounds of the `llm_text` answer length, chars.
+pub const LLM_OUTPUT_CHARS: (u32, u32) = (100, 20_000);
+
+/// Config of the `llm_text` flow node (D208): an instruction written by
+/// the flow author and the incoming data → a text of the org's LLM.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LlmTextConfig {
+    /// What to write (trusted: the author of the flow).
+    #[serde(default)]
+    pub prompt: String,
+    /// Dotted path of the data inside `msg.payload` (empty = the whole
+    /// payload). The data is untrusted and passed as data only.
+    #[serde(default)]
+    pub data_field: String,
+    /// Answer language (`fr`, `en`…; empty = the language of the data).
+    #[serde(default)]
+    pub language: String,
+    /// Longest answer, chars.
+    #[serde(default = "default_llm_max_chars")]
+    pub max_chars: u32,
+}
+
+fn default_llm_max_chars() -> u32 {
+    4000
+}
+
+impl Default for LlmTextConfig {
+    fn default() -> Self {
+        Self {
+            prompt: String::new(),
+            data_field: String::new(),
+            language: String::new(),
+            max_chars: default_llm_max_chars(),
+        }
+    }
+}
+
+fn language_ok(l: &str) -> bool {
+    l.len() <= 16 && l.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+impl LlmTextConfig {
+    pub fn check(&self) -> Option<(&'static str, String)> {
+        let n = self.prompt.trim().chars().count();
+        if n == 0 || n > LLM_PROMPT_MAX {
+            return Some((
+                "llm_text_prompt_invalid",
+                format!("write an instruction of 1 to {LLM_PROMPT_MAX} characters"),
+            ));
+        }
+        let (lo, hi) = LLM_OUTPUT_CHARS;
+        let path_ok = self.data_field.len() <= 128
+            && self
+                .data_field
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'));
+        if !language_ok(&self.language) || !(lo..=hi).contains(&self.max_chars) || !path_ok {
+            return Some((
+                "llm_text_options_invalid",
+                format!("language as a short code, answer of {lo} to {hi} characters, data path made of letters, digits, _ - ."),
+            ));
+        }
+        None
+    }
+}
+
+/// `POST /internal/flow/ai/text` (D208).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LlmTextRequest {
+    pub org_id: i64,
+    pub prompt: String,
+    /// Untrusted data the instruction works on.
+    #[serde(default)]
+    pub data: serde_json::Value,
+    #[serde(default)]
+    pub language: String,
+    pub max_chars: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LlmTextResponse {
+    pub text: String,
+    pub model: String,
+    pub took_ms: u64,
+    /// The data was cut to [`LLM_DATA_MAX`] chars before the call.
+    #[serde(default)]
+    pub data_truncated: bool,
+}
+
 /// `POST /internal/flow/ai/caption` — the backend reads the frame itself
 /// (org-prefixed key), never trusts image bytes from the runtime.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -220,6 +313,19 @@ pub fn clip(text: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn llm_text_check() {
+        let mut c = LlmTextConfig::default();
+        assert_eq!(c.check().unwrap().0, "llm_text_prompt_invalid");
+        c.prompt = "Summarize the week".into();
+        assert!(c.check().is_none());
+        c.data_field = "a b".into();
+        assert_eq!(c.check().unwrap().0, "llm_text_options_invalid");
+        c.data_field = "items".into();
+        c.max_chars = 10;
+        assert_eq!(c.check().unwrap().0, "llm_text_options_invalid");
+    }
 
     #[test]
     fn configs_check() {

@@ -59,6 +59,8 @@ pub fn routes() -> Routes {
         // Doubtful frames of vision-detect nodes → Vision Lab (M4).
         .add("/internal/flow/lab-review", post(flow_lab_review))
         .add("/internal/flow/ai/fuse", post(flow_ai_fuse))
+        // Generic text of the org model (llm-text node, D208).
+        .add("/internal/flow/ai/text", post(flow_ai_text))
         // Typed decisions of the text-decide node, local Laya model (D197).
         .add("/internal/flow/ai/decide", post(flow_ai_decide))
         // Vault secret of a deployed notify channel (D115, lot S4).
@@ -554,6 +556,21 @@ async fn flow_ai_caption(
         return Ok(r);
     }
     let res = crate::services::flow_ai::caption(&ctx, &req).await;
+    Ok(flow_ai_reply(req.org_id, res))
+}
+
+async fn flow_ai_text(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::vision_ai::LlmTextRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.org_id).await {
+        return Ok(r);
+    }
+    let res = crate::services::flow_ai::text(&ctx, &req).await;
     Ok(flow_ai_reply(req.org_id, res))
 }
 
