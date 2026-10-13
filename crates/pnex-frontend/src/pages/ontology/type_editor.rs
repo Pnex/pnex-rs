@@ -33,6 +33,7 @@ const KINDS: &[&str] = &[
     "series",
     "events",
     "fuzzy_time",
+    "recurrence",
 ];
 
 fn blank(key: &str) -> ObjectTypeDef {
@@ -74,6 +75,7 @@ fn kind_default(kind: &str) -> PropertyKind {
             stream: String::new(),
         },
         "fuzzy_time" => PropertyKind::FuzzyTime,
+        "recurrence" => PropertyKind::Recurrence,
         _ => PropertyKind::Text { max_len: None },
     }
 }

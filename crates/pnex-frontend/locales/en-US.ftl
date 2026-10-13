@@ -4115,6 +4115,17 @@ ai-trace-case-proposals = case: { $count } proposal(s)
 ai-trace-case-board = board: { $hypotheses } hypothesis(es), { $unsourced } unsourced claim(s)
 ai-trace-action-proposed = proposed "{ $action }" on "{ $title }"
 ai-review-action = Review and run "{ $action }"
+ai-trace-calendar = { $count } calendar occurrence(s)
+ai-trace-occurrence-proposed = proposed to { $change ->
+    [done] mark as done
+    [move] move
+   *[cancel] cancel
+} "{ $label }"
+ai-review-occurrence = Review: { $change ->
+    [done] mark as done
+    [move] move
+   *[cancel] cancel
+} "{ $label }"
 ai-trace-ontology-object-saved = object "{ $title }" v{ $version }
 ai-trace-ontology-link-opened = link opened: { $source } —{ $link }→ { $target }
 ai-trace-ontology-link-closed = link closed: { $source } —{ $link }→ { $target }
@@ -4205,6 +4216,46 @@ err-docs-write-forbidden = Only owners, admins and members can edit pages.
 
 # Cases (cases.md)
 nav-cases = Cases
+nav-calendar = Calendar
+calendar-title = Calendar
+calendar-subtitle = Time ranges of the organization, maintenance plan occurrences included
+calendar-today = Today
+calendar-weekday = { $day ->
+    [0] Mon
+    [1] Tue
+    [2] Wed
+    [3] Thu
+    [4] Fri
+    [5] Sat
+   *[6] Sun
+}
+calendar-state = { $state ->
+    [done] Done
+    [cancelled] Cancelled
+    [late] Late
+    [due] To prepare
+   *[planned] Planned
+}
+calendar-change = { $change ->
+    [done] Done
+    [move] Move
+   *[cancel] Cancel
+}
+calendar-apply = { $change ->
+    [done] Mark as done
+    [move] Move
+   *[cancel] Cancel this occurrence
+}
+calendar-date = { $change ->
+    [done] Done on
+   *[move] Move to
+}
+calendar-hours = Time spent (hours)
+calendar-planned = Planned on { $date }
+calendar-open-object = Open the object
+calendar-saved = Occurrence updated
+calendar-occurrences = Occurrences (30 days back, 90 ahead)
+calendar-no-occurrence = No occurrence in this window.
 onto-type-case = Case
 onto-link-in_case = in case
 onto-link-in_case-inverse = contains
@@ -4259,6 +4310,29 @@ case-add-submit = Add
 case-added = Added to the case
 case-pick = Case
 onto-kind-fuzzy-time = Approximate date
+onto-kind-recurrence = Recurrence
+onto-rec-every = Every
+onto-rec-unit = { $unit ->
+    [day] day(s)
+    [week] week(s)
+    [month] month(s)
+   *[year] year(s)
+}
+onto-rec-from = from
+onto-rec-until = Until (optional)
+onto-rec-days = Length (days)
+onto-rec-lead = Prepare (days before)
+onto-rec-floating = Count from the last completion
+onto-rec-floating-help = Floating: a late job pushes the next one back. Unticked, the dates follow the plan whatever happens.
+onto-rec-next = Next: { $dates }
+onto-rec-summary = Every { $every } { $unit ->
+    [day] day(s)
+    [week] week(s)
+    [month] month(s)
+   *[year] year(s)
+} from { $start }
+onto-rec-summary-until = {" "}until { $until }
+onto-rec-summary-floating = {" "}(from the last completion)
 fuzzy-precision-instant = Exact instant
 fuzzy-precision-minute = To the minute
 fuzzy-precision-hour = To the hour

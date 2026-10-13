@@ -43,6 +43,16 @@ pub async fn create(input: &TimeRangeInput) -> Result<TimeRange, ApiError> {
     .await
 }
 
+/// `GET /api/v1/time-ranges/{id}`.
+pub async fn get(id: &str) -> Result<TimeRange, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/time-ranges/{id}"),
+        None,
+    )
+    .await
+}
+
 /// `PATCH /api/v1/time-ranges/{id}` — absent fields kept, empty cleared.
 pub async fn update(id: &str, input: &TimeRangeInput) -> Result<TimeRange, ApiError> {
     client::request(

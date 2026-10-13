@@ -301,6 +301,7 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
             | Route::OntologyType { .. }
             | Route::Cases {}
             | Route::CaseWorkspace { .. }
+            | Route::Calendar {}
     );
     let media = at(Route::Media {})
         || at(Route::Cameras {})
@@ -408,6 +409,12 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     to: Route::Cases {},
                     label: t!("nav-cases"),
                     active: matches!(route, Route::Cases {} | Route::CaseWorkspace { .. }),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Calendar {},
+                    label: t!("nav-calendar"),
+                    active: at(Route::Calendar {}),
                     on_navigate,
                 }
             }

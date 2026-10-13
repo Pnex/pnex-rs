@@ -491,7 +491,12 @@ fn Bubble(bubble: ChatBubble) -> Element {
             // Action proposals (D183): the user runs them, never the assistant.
             let proposals: Vec<AiToolTrace> = trace
                 .iter()
-                .filter(|e| e.ok && e.name == "propose_action")
+                .filter(|e| {
+                    e.ok && matches!(
+                        e.name.as_str(),
+                        "propose_action" | "propose_occurrence_change"
+                    )
+                })
                 .cloned()
                 .collect();
             rsx! {
@@ -566,6 +571,11 @@ fn Bubble(bubble: ChatBubble) -> Element {
 /// pre-filled with the proposed parameters.
 #[component]
 fn ProposalButton(entry: AiToolTrace) -> Element {
+    if entry.name == "propose_occurrence_change" {
+        return rsx! {
+            OccurrenceProposal { entry }
+        };
+    }
     let mut open = use_signal(|| false);
     let arg = |k: &str| {
         entry
@@ -602,6 +612,68 @@ fn ProposalButton(entry: AiToolTrace) -> Element {
                 action_key: action,
                 initial: params,
                 on_close: move |_| open.set(false),
+            }
+        }
+    }
+}
+
+/// Button of an occurrence change proposal: loads the occurrence, then
+/// opens the Calendar dialog pre-filled with the proposed change.
+#[component]
+fn OccurrenceProposal(entry: AiToolTrace) -> Element {
+    let mut open = use_signal(|| false);
+    let arg = |k: &str| {
+        entry
+            .arguments
+            .get(k)
+            .and_then(|v| v.as_str())
+            .map(String::from)
+    };
+    let (id, change, date) = (
+        arg("range_id").unwrap_or_default(),
+        arg("change"),
+        arg("date"),
+    );
+    let label = entry
+        .args
+        .as_ref()
+        .and_then(|a| a.get("label"))
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let range = use_resource(move || {
+        let id = id.clone();
+        async move {
+            if open() {
+                crate::api::time_ranges::get(&id).await.ok()
+            } else {
+                None
+            }
+        }
+    });
+    let loaded = range.read().clone().flatten();
+    rsx! {
+        button {
+            class: "px-3 py-1.5 rounded-md border border-signal-600 text-signal-600 text-sm hover:bg-signal-50",
+            "data-testid": "ai-review-occurrence",
+            onclick: move |_| open.set(true),
+            {
+                t!(
+                    "ai-review-occurrence", change : change.clone().unwrap_or_default(), label :
+                    label.clone()
+                )
+            }
+        }
+        if open() {
+            if let Some(r) = loaded {
+                crate::pages::calendar::OccurrenceDialog {
+                    range: r,
+                    can_write: crate::state::org::current_can_write(),
+                    initial_change: change.clone(),
+                    initial_date: date.clone(),
+                    on_close: move |_| open.set(false),
+                    on_done: move |_| open.set(false),
+                }
             }
         }
     }

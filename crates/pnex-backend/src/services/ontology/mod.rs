@@ -18,6 +18,7 @@ pub mod links;
 pub mod objects;
 pub mod packs;
 pub mod query;
+pub mod recurrence;
 pub mod series;
 pub mod types;
 

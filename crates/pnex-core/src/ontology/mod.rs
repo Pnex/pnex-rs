@@ -10,6 +10,7 @@ pub mod action;
 pub mod api;
 pub mod graph;
 pub mod layout;
+pub mod recurrence;
 pub mod schema;
 
 use serde::{Deserialize, Serialize};

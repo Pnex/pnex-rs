@@ -236,6 +236,8 @@ impl Hooks for App {
         crate::services::retention::spawn_reconciler(ctx);
         // Erasure of inactive assistant conversations (D145).
         crate::services::ai::conversations::spawn_purger(ctx);
+        // Recurrence occurrences roll forward (ontology.md annex B).
+        crate::services::ontology::recurrence::spawn_sweeper(ctx);
         // Flow execution cluster (D106): this process as a flow worker (one
         // supervised runtime for the orgs placed on it) and as a placement
         // controller candidate — here and not connect_workers (ServerOnly

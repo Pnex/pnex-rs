@@ -5,7 +5,7 @@
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::routing::{get, patch, post};
+use axum::routing::{get, post};
 use axum::Json;
 use loco_rs::controller::{format, ErrorDetail};
 use loco_rs::prelude::*;
@@ -30,7 +30,10 @@ pub fn routes() -> Routes {
             // Room above the 1 MiB cap so the handler answers the coded error.
             post(import_ranges).layer(axum::extract::DefaultBodyLimit::max(IMPORT_MAX_BYTES * 2)),
         )
-        .add("/time-ranges/{id}", patch(update).delete(remove))
+        .add(
+            "/time-ranges/{id}",
+            get(get_one).patch(update).delete(remove),
+        )
 }
 
 fn detail(status: StatusCode, code: &str, msg: &str) -> Error {
@@ -46,6 +49,37 @@ fn require_write(org: &OrgContext) -> Result<()> {
         err_codes::TIME_RANGE_WRITE_FORBIDDEN,
         "Viewer role: time ranges are read-only.",
     ))
+}
+
+/// The object-type write role on top of `can_write` (shared rule:
+/// [`time_ranges::scope_writable`]).
+async fn require_object_role(
+    ctx: &AppContext,
+    org: &OrgContext,
+    scope_kind: &str,
+    scope_id: &str,
+) -> Result<()> {
+    match time_ranges::scope_writable(&ctx.db, org.org.id, &org.role, scope_kind, scope_id).await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(detail(
+            StatusCode::FORBIDDEN,
+            err_codes::ONTOLOGY_WRITE_FORBIDDEN,
+            "This object type needs a higher role to write.",
+        )),
+        Err(e) => {
+            tracing::error!(error = %e, "time range role check");
+            Err(Error::InternalServerError)
+        }
+    }
+}
+
+/// [`require_object_role`] for an existing range (unknown id: the service
+/// answers the 404).
+async fn require_range_role(ctx: &AppContext, org: &OrgContext, id: Uuid) -> Result<()> {
+    match time_ranges::find(&ctx.db, org.org.id, id).await {
+        Ok(r) => require_object_role(ctx, org, &r.scope_kind, &r.scope_id).await,
+        Err(_) => Ok(()),
+    }
 }
 
 fn field(field: &str, token: &str) -> Result<Response> {
@@ -153,6 +187,13 @@ async fn create(
     Json(input): Json<TimeRangeInput>,
 ) -> Result<Response> {
     require_write(&org)?;
+    require_object_role(
+        &ctx,
+        &org,
+        input.scope_kind.as_deref().unwrap_or_default(),
+        input.scope_id.as_deref().unwrap_or_default(),
+    )
+    .await?;
     let scope = match time_ranges::resolve_scope(
         &ctx.db,
         org.org.id,
@@ -181,6 +222,18 @@ async fn create(
     }
 }
 
+/// `GET /api/v1/time-ranges/{id}` — every member.
+async fn get_one(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    match time_ranges::find(&ctx.db, org.org.id, id).await {
+        Ok(row) => format::json(time_ranges::view(&row)),
+        Err(e) => range_error(e),
+    }
+}
+
 /// `PATCH /api/v1/time-ranges/{id}` — `can_write`. Absent fields keep their
 /// value, an empty string clears; scope, origin and provenance are kept.
 async fn update(
@@ -190,8 +243,23 @@ async fn update(
     Json(input): Json<TimeRangeInput>,
 ) -> Result<Response> {
     require_write(&org)?;
+    require_range_role(&ctx, &org, id).await?;
     match time_ranges::update(&ctx.db, org.org.id, id, &input).await {
-        Ok(row) => format::json(time_ranges::view(&row)),
+        Ok(row) => {
+            // A completed occurrence restarts a floating series.
+            if row.scope_kind == "object"
+                && row
+                    .external_id
+                    .as_deref()
+                    .is_some_and(|e| e.starts_with("rec:"))
+            {
+                if let Ok(obj) = Uuid::parse_str(&row.scope_id) {
+                    crate::services::ontology::recurrence::refresh_logged(&ctx.db, org.org.id, obj)
+                        .await;
+                }
+            }
+            format::json(time_ranges::view(&row))
+        }
         Err(e) => range_error(e),
     }
 }
@@ -203,6 +271,7 @@ async fn remove(
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
     require_write(&org)?;
+    require_range_role(&ctx, &org, id).await?;
     match time_ranges::delete(&ctx.db, org.org.id, id).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => range_error(e),
@@ -245,6 +314,13 @@ async fn import_ranges(
     if body.len() > IMPORT_MAX_BYTES {
         return Err(too_large());
     }
+    require_object_role(
+        &ctx,
+        &org,
+        q.scope_kind.as_deref().unwrap_or_default(),
+        q.scope_id.as_deref().unwrap_or_default(),
+    )
+    .await?;
     let scope = match time_ranges::resolve_scope(
         &ctx.db,
         org.org.id,

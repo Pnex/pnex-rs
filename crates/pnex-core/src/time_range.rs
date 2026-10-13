@@ -132,6 +132,36 @@ pub struct TimeRange {
     pub updated_at: String,
 }
 
+/// Lifecycle of an occurrence (ontology.md annex B), computed, never
+/// stored: `cancelled` / `done` come from `attrs.status` or the actual end;
+/// `late` = planned end passed; `due` = within `attrs.lead_days` of the
+/// planned start.
+pub fn occurrence_state(r: &TimeRange, now: chrono::DateTime<chrono::Utc>) -> &'static str {
+    let at = |s: &Option<String>| {
+        s.as_deref()
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+    };
+    let status = r.attrs.get("status").and_then(|s| s.as_str());
+    if status == Some("cancelled") {
+        return "cancelled";
+    }
+    if r.actual_end.is_some() || status == Some("done") {
+        return "done";
+    }
+    if at(&r.planned_end).is_some_and(|e| e < now) {
+        return "late";
+    }
+    let lead = r
+        .attrs
+        .get("lead_days")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    if at(&r.planned_start).is_some_and(|s| s - chrono::Duration::days(lead) <= now) {
+        return "due";
+    }
+    "planned"
+}
+
 /// Create / update body (and the payload of `range_upsert`). On update,
 /// an absent field keeps its value and an empty string clears it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -327,5 +357,67 @@ mod tests {
         }
         assert_eq!(ScopeKind::from_wire("org"), Some(ScopeKind::Org));
         assert_eq!(flow_ref(4, 2), "flow:4@2");
+    }
+
+    #[test]
+    fn occurrence_states() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-03-10T12:00:00Z")
+            .unwrap()
+            .to_utc();
+        let r = |start: &str, end: &str, attrs: serde_json::Value| TimeRange {
+            id: String::new(),
+            scope_kind: ScopeKind::Object,
+            scope_id: String::new(),
+            label: String::new(),
+            external_id: None,
+            category: None,
+            planned_start: Some(start.into()),
+            planned_end: Some(end.into()),
+            actual_start: None,
+            actual_end: None,
+            origin: RangeOrigin::Grid,
+            confidence: None,
+            source_url: None,
+            source_ref: None,
+            attrs,
+            created_at: String::new(),
+            updated_at: String::new(),
+        };
+        let s = |x: &TimeRange| occurrence_state(x, now);
+        assert_eq!(
+            s(&r(
+                "2026-03-01T00:00:00Z",
+                "2026-03-02T00:00:00Z",
+                serde_json::json!({})
+            )),
+            "late"
+        );
+        assert_eq!(
+            s(&r(
+                "2026-03-20T00:00:00Z",
+                "2026-03-21T00:00:00Z",
+                serde_json::json!({})
+            )),
+            "planned"
+        );
+        let lead = serde_json::json!({"lead_days": 14});
+        assert_eq!(
+            s(&r("2026-03-20T00:00:00Z", "2026-03-21T00:00:00Z", lead)),
+            "due"
+        );
+        let done = serde_json::json!({"status": "done"});
+        assert_eq!(
+            s(&r("2026-03-01T00:00:00Z", "2026-03-02T00:00:00Z", done)),
+            "done"
+        );
+        let cancelled = serde_json::json!({"status": "cancelled"});
+        assert_eq!(
+            s(&r(
+                "2026-03-01T00:00:00Z",
+                "2026-03-02T00:00:00Z",
+                cancelled
+            )),
+            "cancelled"
+        );
     }
 }

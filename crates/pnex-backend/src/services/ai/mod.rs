@@ -13,6 +13,7 @@
 //!   référencé nulle part dans ce module.
 
 pub mod agent;
+pub mod calendar_tools;
 pub mod config;
 pub mod context;
 pub mod conversations;

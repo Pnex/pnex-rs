@@ -6,7 +6,7 @@ pages: /ontology, /ontology/object/:id, /ontology/types/:type_key
 nodes: action_trigger
 err_codes: ontology-not-found, ontology-already-exists, ontology-version-conflict, ontology-type-in-use, ontology-write-forbidden, ontology-admin-required, ontology-system-read-only, ontology-link-not-allowed, ontology-link-cardinality, ontology-action-no-flow, ontology-action-unavailable, ontology-action-unknown
 tools: describe_ontology, query_ontology, get_object, create_object, update_object, open_link, close_link, propose_action, save_object_type
-tags: ontology, ontologie, object, objet, type, link, lien, relation, pump, pompe, machine, site, line, ligne, equipment, équipement, asset, actif, sensor replacement, remplacement capteur, history, historique, as of, graph, graphe, pack, maintenance, yaml, provenance, action, start maintenance, mettre en maintenance, trigger, déclencheur
+tags: recurrence, récurrence, maintenance plan, plan de maintenance, ontology, ontologie, object, objet, type, link, lien, relation, pump, pompe, machine, site, line, ligne, equipment, équipement, asset, actif, sensor replacement, remplacement capteur, history, historique, as of, graph, graphe, pack, maintenance, yaml, provenance, action, start maintenance, mettre en maintenance, trigger, déclencheur
 ---
 The Ontology page (sidebar › Ontology) models the real things of the organization — sites, lines, machines, pumps, or any type you define — as objects with typed properties, linked to each other over time. Devices, media, dashboards, tours, POIs, flows and folders are objects too (system types): they keep their own pages, and each of those pages has an **Object page** button.
 
@@ -18,7 +18,7 @@ The Ontology page (sidebar › Ontology) models the real things of the organizat
 - A **type dashboard** (Dashboards › edit › select a gauge, chart, value or indicator › *Type dashboard*) is drawn for any object of a type: each widget reads a series property of the object chosen at the top of the dashboard.
 
 ## Property kinds
-Text, number (unit, min, max), yes/no, date, date and time, list of values, position, web link, reference to another object, **time series** and **events**. A time series holds no value in the object: it is fed by a sensor bound to it.
+Text, number (unit, min, max), yes/no, date, date and time, list of values, position, web link, reference to another object, **recurrence** (every N days/weeks/months/years: its occurrences show in the Calendar), **time series** and **events**. A time series holds no value in the object: it is fed by a sensor bound to it.
 
 ## Binding and replacing a sensor
 On the object page, *Time* › **Bind a sensor**: choose the device and the metric it publishes. When the sensor is replaced, **Replace the sensor**: the old binding is closed and a new one opens from the new device. The object's curve stays continuous across both sensors, and a type dashboard follows the new sensor without any change.
