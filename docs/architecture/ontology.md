@@ -216,6 +216,30 @@ devient une primitive de lecture du noyau, pas une fonction média.
 - L'assistant IA peut **proposer** une invocation (pré-remplie), jamais
   l'exécuter (D123 : seul un flow déployé par un humain agit).
 
+> **Livré 2026-10-13 (0.2.0, question #17 tranchée : oui)** — écarts au
+> texte ci-dessus, assumés :
+> - Journal : pas de stream O2 `actions` dédié ; l'invocation est une
+>   entrée `action.invoke` du journal de provenance `object_changes`
+>   (paramètres, flows destinataires), visible dans l'onglet Provenance.
+>   Un seul lecteur, une seule rétention.
+> - Pas de préconditions ni d'action système en V1 ; pas de résultat
+>   remonté par le flow (fire-and-forget, comme les contrôles D127) : le
+>   journal dit « envoyé à ces flows (id, version) ».
+> - Bus : `PUBLISH pnex:act:v1:{org}` (Valkey), nœud `pnex-action-trigger`
+>   (crate `pnex-node-ui-control`, à côté de `control-source`). Une
+>   invocation sans flow déployé tenant le déclencheur est refusée (409
+>   `ontology-action-no-flow`) ; le deploy refuse un déclencheur dont
+>   l'action n'existe plus (`ontology-action-unknown`).
+> - `confirm: true` = avertissement dans le dialogue ; toute invocation
+>   UI passe de toute façon par un dialogue et un clic explicite.
+> - Garde : `can_write` + `write_role` du type (D188), paramètres validés
+>   comme des propriétés (refs vérifiées dans l'org, R1).
+> - Assistant : outil `propose_action` (vérifie, liste les flows
+>   destinataires, n'envoie rien) ; l'UI affiche « Vérifier et exécuter »
+>   qui ouvre le même dialogue pré-rempli.
+> - Déclaration : dans le schéma du type (`actions`), via un pack ou
+>   l'import YAML ; pas encore d'éditeur d'actions dans l'éditeur de type.
+
 ### D184 — Provenance obligatoire sur chaque fait
 
 - `source_ref` sur chaque objet, valeur de propriété modifiée et lien :
@@ -373,7 +397,7 @@ modélisation :
 | `time_ranges` | plages sur tout objet (D182) |
 | `packs` / `pack_versions` | packs installés (D190) |
 | O2 `object_changes` | historique et provenance (D184) |
-| O2 `actions` | journal des invocations (D183) |
+| O2 `object_changes` (`action.invoke`) | journal des invocations (D183, amendé) |
 
 ## 6. Exemple bout en bout (pack maintenance)
 
@@ -400,8 +424,8 @@ modélisation :
 | **L3** ✅ | D178 temporel + D181 : propriétés `series`/`events`, liaisons device → objet | remplacement de capteur sans rupture de courbe — **livré 2026-10-10** |
 | **L4** ✅ | D185–D187 : API de requête, interface graphe (CTE + `petgraph`), explorateur, **vue graphe Dioxus**, dashboards de type, verrou par type (D188) | dashboard de type Pompe, recherche globale sur objets — **livré 2026-10-10** (7318940c) |
 | **L5** ✅ | D184, D189, D191 : provenance, assistant, migration 0.1 → 0.2 | migration d'une base 0.1 réelle, onglet provenance — **livré 2026-10-10** (e0298159) |
-| **0.2.0** | L0–L5 + pack « Maintenance augmentée » | release |
-| **0.3** | D183 actions, packs Maison et Couverture médiatique, ACL par objet (décision) | |
+| **0.2.0** | L0–L5 + pack « Maintenance augmentée » (1.1.0 : action `start_maintenance`, D183 livré 2026-10-13) | release |
+| **0.3** | packs Maison et Couverture médiatique, ACL par objet (décision) | |
 
 Le PRD `media-ingest.md` s'aligne : `media_stream` et `time_range`
 naissent directement comme types système de l'ontologie si leur
@@ -662,9 +686,9 @@ clés, lisible en YAML.
 
 ### 10.6 Reste ouvert
 
-- **D183 actions** : non livrées (lot 0.3 du tableau §7 ; question #17
-  de la roadmap toujours ouverte). Le pack Maintenance n'a donc pas
-  l'action « Mettre en maintenance ».
+- **D183 actions** : livrées 2026-10-13 (voir l'encadré sous D183). Restent
+  l'éditeur d'actions dans l'éditeur de type, les préconditions, le retour
+  de résultat par le flow et un plafond de débit par objet.
 - Étiquetage d'ingestion `object=<kind>/<id>` (D181, dernier point) : non
   fait ; la liaison `measures` couvre le besoin.
 - Mesures de performance sur 100 k objets (§8) : non faites.
@@ -673,3 +697,196 @@ clés, lisible en YAML.
 - `/api/v1/resources/*` reste servi tel quel (pas encore marqué
   déprécié), `CONTRACT` inchangé : les routes `/ontology/*` sont
   additives.
+
+## Annexe B — Calendrier GMAO : étude de l'existant (pré-PRD, 2026-10-13)
+
+> Statut : brouillon v0.1, phase de recherche. Aucun code, aucun numéro
+> D : ils seront attribués au PRD « Calendrier GMAO » que cette étude
+> alimente (roadmap P2.20, décision #26). La GMAO est un **pack** (D190) :
+> le noyau ne gagne que ce qui sert aussi hors maintenance (récurrence,
+> vue calendrier des plages).
+
+### B1. Objectif
+
+Avant de concevoir le calendrier de la GMAO, étudier une sélection de
+projets open source sur quatre plans, et en tirer des **constats**, des
+**patterns** et des **décisions** en langage naturel, réécrits ensuite
+from scratch en Rust (Loco, Dioxus, `pnex-core`) :
+
+1. **Modèle métier** : plan de maintenance, déclencheurs, occurrences,
+   ordres de travail (OT), ressources.
+2. **UX** : vues, interactions, densité d'information, conflits.
+3. **Moteur** : récurrence, matérialisation, interop iCal/CalDAV.
+4. **Optimisation** : affectation des équipes, contraintes.
+
+### B2. Règles d'étude (clean-room)
+
+PNEX est sous MIT ; une partie du corpus est sous copyleft
+(GPL/AGPL/LGPL).
+
+| Règle | Détail |
+|---|---|
+| Aucun extrait de code dans les notes | Ni copier-coller, ni pseudo-code calqué ligne à ligne sur une source copyleft. |
+| Comportements, pas implémentations | « La date suivante est recalculée depuis la clôture de l'OT » ✅ ; « la fonction X appelle Y puis Z » ❌ |
+| Schéma au niveau concept | Entités, relations, cardinalités, états ; jamais les noms de tables ou de colonnes. |
+| Captures = usage interne | Elles servent à l'analyse UX et ne sont **pas versionnées** (`shots/` ignoré par git). |
+| Séparation | Notes dans `research/gmao-calendar/`, hors du code ; le code s'écrit depuis le PRD, pas depuis les notes brutes. |
+| Projets permissifs aussi | On réécrit par défaut. Seules des crates Rust s'utilisent telles quelles, à licence MIT/BSD/Apache vérifiée sur le `LICENSE` réel (règle des dépendances). |
+
+### B3. Corpus
+
+**GMAO — modèle métier**
+
+| Projet | Licence | Ce qu'on cherche |
+|---|---|---|
+| Atlas CMMS (grashjs/cmms) | AGPLv3 (+ commerciale ; vérifié 2026-10-13) | Préventif **calendrier vs compteur**, génération automatique d'OT, règles d'automatisation, vue calendrier, portail de demandes, app terrain |
+| Odoo Maintenance (Community) | LGPLv3 | Équipement → périodicité → demande ; calendrier/kanban des demandes ; équipes ; durée prévue vs réelle |
+| ERPNext — Maintenance Schedule / Visit | GPLv3 | Échéancier généré depuis une périodicité ; plan vs visite réalisée |
+| openMAINT | AGPL (numéro de version à confirmer) ; mobile propriétaire | Maintenance patrimoniale, lien bâtiments/localisations (POI, carte) |
+
+**UI calendrier — vues et interactions**
+
+| Projet | Licence | Ce qu'on cherche |
+|---|---|---|
+| vkurko/calendar (EventCalendar) | MIT | Vues **ressource et timeline** gratuites, drag & drop, resize, sélection de créneau, chevauchements, performances, architecture des vues |
+| FullCalendar | MIT (core) / commercial (premium) | Référence d'interaction : sélection, heures ouvrées, événements de fond ; *resource timeline* observée sur la démo seulement, jamais dans le code premium |
+| Frappe Gantt | MIT | Gantt léger pour les arrêts techniques, dépendances, glisser pour replanifier |
+
+**Moteur — récurrence et interop**
+
+| Projet | Licence | Usage |
+|---|---|---|
+| `rrule` (rust-rrule) | MIT OR Apache-2.0 (vérifié) | Dépendance candidate de `pnex-core` : wasm32 ? bornes anti-abus, fuseaux, `after`/`before` |
+| `icalendar` (crate) | MIT/Apache-2.0 (vérifié) | Dépendance candidate pour l'export `.ics` |
+| RustiCal | AGPL-3.0 (vérifié) : étude seulement | Étude seulement : faisabilité d'un CalDAV exposé plus tard |
+
+**Optimisation**
+
+| Projet | Licence | Ce qu'on cherche |
+|---|---|---|
+| Timefold — quickstart *maintenance scheduling* | Apache-2.0 | **Catalogue de contraintes** (conflit d'équipe, compétence, fenêtre au plus tôt / date limite, pénalité prématuré vs retard), modèle *TimeGrain*. Le solveur Java n'est pas repris. |
+
+### B4. Méthode par projet
+
+1. Lancer en local (docker compose ou démo officielle) avec un jeu
+   réaliste : 3 sites, 20 équipements, 3 équipes, 10 plans préventifs
+   mixtes (date + compteur).
+2. Parcours UX chronométré sur les 6 scénarios (B6) : clics, frictions,
+   ce qui est élégant.
+3. Lecture du modèle de données au niveau concept (entités, états,
+   transitions).
+4. Lecture ciblée des sources pour un comportement précis ; seule la
+   règle métier observée entre dans les notes.
+5. Captures des vues clés dans `research/gmao-calendar/<projet>/shots/`.
+6. Verdict : *à reprendre* / *à améliorer* / *à éviter*.
+
+### B5. Gabarit de fiche
+
+`research/gmao-calendar/<projet>.md` :
+
+- **Identité** : version étudiée, date, licence, stack (contexte seul).
+- **Modèle métier observé** : entités et relations ; cycle de vie d'un OT
+  (états, transitions, qui déclenche) ; déclencheurs (date fixe, date
+  flottante, compteur, condition) ; matérialisation des occurrences (à la
+  volée, en base, horizon).
+- **UX calendrier** : vues et usage de chacune ; interactions (drag,
+  resize, création, replanification, multi-sélection) ; conflits,
+  surcharge, absences ; filtres (site, équipe, équipement, criticité) ;
+  mobile/terrain.
+- **Points forts** (à reprendre), **faiblesses** (à éviter), **idées pour
+  PNEX**, **verdict global**.
+
+### B6. Scénarios communs
+
+| # | Scénario | Ce qu'on observe |
+|---|---|---|
+| S1 | Plan « graissage tous les 3 mois » sur une pompe | Saisie de la récurrence, aperçu des prochaines dates |
+| S2 | Plan « vidange toutes les 500 h de marche » | Déclencheur compteur, source, seuil, prévisionnel |
+| S3 | Décaler une occurrence d'une semaine sans toucher la règle | Exception vs modification de série |
+| S4 | Clôturer un OT en retard de 10 jours | Échéance suivante fixe ou flottante ? paramétrable ? |
+| S5 | Charge d'une équipe sur 4 semaines et réaffectation | Vue ressource/timeline, détection de conflit |
+| S6 | Arrêt technique de 3 jours avec 8 OT dépendants | Gantt, dépendances, fenêtre d'arrêt |
+
+### B7. Grille comparative
+
+`research/gmao-calendar/matrice.md` : note 0–3 par projet et par critère,
+avec un commentaire court. Critères : expressivité de la récurrence
+(RRULE complète, exceptions, fuseaux) ; déclencheurs compteur/condition ;
+mode fixe vs flottant ; matérialisation et horizon ; vue mois/semaine ;
+vue ressource/timeline (technicien, équipe, équipement) ; Gantt/arrêts ;
+drag & drop et replanification ; conflits et surcharge ; filtres et
+densité ; mobile/terrain ; interop (`.ics`, CalDAV) ; performance perçue
+sur un gros jeu.
+
+### B8. Hypothèses de modèle, ancrées sur l'existant
+
+À confirmer ou invalider par l'étude. Règle : **réutiliser les briques
+livrées**, ne rien redéfinir.
+
+| Hypothèse | Brique PNEX existante |
+|---|---|
+| Un **plan de maintenance** est rattaché à un objet : device, équipement ou POI | identité universelle (annexe A2) : un device est déjà un objet ; **un plan sur un device seul marche sans aucun type utilisateur** (la GMAO n'impose pas l'ontologie) |
+| Déclencheur `rrule` (date) | nouveau : types et validation de la récurrence dans `pnex-core`, compilés en wasm32, comme `check_values` (même code pour l'aperçu dans l'éditeur Dioxus et pour le backend) |
+| Déclencheur `meter` : seuil sur une mesure O2 (heures de marche, cycles, vibrations) | propriété `series` (D178/D181) ; cas M5 de `use-cases.md` (cumul calculé par flow) |
+| Déclencheur `condition` : alerte issue d'un flow | flows + notifications (D86) ; nœuds anomalie/forecast (M2–M4) |
+| Mode de recalcul `fixed` (depuis la date prévue) ou `floating` (depuis la clôture) | nouveau (scénario S4) |
+| **Occurrences** matérialisées en Postgres sur un horizon glissant (ex. 90 j) par un worker Loco ; exceptions (déplacée, annulée) portées par l'occurrence, pas par la règle | une occurrence est une **plage** `time_ranges` à portée objet (D182) ; à trancher : plage seule ou table dédiée |
+| **OT** généré depuis une occurrence : automatique, à J-n ou manuel | l'OT est la **procédure instanciée** des Pages (`pages.md` P9), jamais un nouvel objet « bon de travail » |
+| Ce qui doit agir au début d'une occurrence (mise en maintenance, consignation) | **action** déclarée (D183, ex. `start_maintenance`), exécutée par un flow déployé, jamais par le calendrier (D123) |
+| **Ressources** : technicien, équipe, compétence, équipement immobilisé | types et liens du pack Maintenance (D179) ; personnes = utilisateurs de l'org ou objets du pack, à trancher |
+| Assistant IA | il propose un plan ou un décalage (pré-rempli), jamais d'écriture silencieuse (D142–D145) |
+
+### B9. Livrables de la phase
+
+1. `research/gmao-calendar/<projet>.md` : une fiche par projet (B5).
+2. `research/gmao-calendar/matrice.md` : la grille (B7).
+3. `research/gmao-calendar/patterns.md` : le best-of en règles métier et
+   patterns UX, sans référence au code.
+4. `research/gmao-calendar/modele-cible.md` : le modèle de domaine
+   proposé (B8 tranché) et les questions ouvertes.
+5. Maquettes des vues retenues aux jetons PNEX (`design-system.md`),
+   avant tout code (« UI design d'abord »).
+
+### B10. Hors périmètre de la phase
+
+- Toute implémentation Rust.
+- Stock, pièces détachées, achats, coûts (notés seulement s'ils
+  touchent le calendrier).
+- Le solveur d'optimisation (seul le catalogue de contraintes est
+  collecté).
+- Le serveur CalDAV (faisabilité seulement).
+
+### B11. Questions ouvertes
+
+1. Le compteur produit-il une **date prévisionnelle** (extrapolation de
+   la tendance) affichée au calendrier ? Avec quel modèle (le nœud
+   forecast existant ?) ?
+2. Granularité de l'horizon de matérialisation, configurable par org ?
+3. **Calendriers ouvrés** (fériés, astreintes, horaires d'équipe) dès la
+   v1 ?
+4. Représentation d'un OT **correctif** (non planifié) pour voir la
+   charge réelle ?
+5. Mode hors ligne pour le terrain en v1 ?
+6. Le calendrier est-il une vue **générique des plages** (noyau, utile
+   au média et aux dossiers) dont la GMAO n'est qu'un usage, ou une vue
+   du pack ? (lien `pages.md` §10 : vues calendrier/Gantt des
+   collections, repoussées)
+
+### B12. Critères de fin de phase
+
+> État 2026-10-13 : étude **documentaire** faite (docs, démos, tickets
+> publics ; aucune instance lancée), livrables dans `research/gmao-calendar/`.
+> Constats clés : aucun projet ne couvre à la fois modèle, vue de charge
+> et Gantt ; le compteur est partout manuel (avantage PNEX : télémétrie) ;
+> aucune interop calendrier ; FullCalendar premium exclu (licence) →
+> EventCalendar (MIT) embarqué + Gantt Dioxus natif proposés ; `rrule`
+> MIT/Apache mais maintenance ralentie et wasm32 non prouvé.
+
+- [ ] Les 6 scénarios joués sur au moins Atlas, Odoo et EventCalendar.
+- [x] Une fiche par projet du corpus (B3) — étude documentaire
+  2026-10-13, scénarios « à jouer » encore ouverts.
+- [x] Matrice comparative remplie (version documentaire).
+- [x] `patterns.md` : 18 patterns et 9 anti-patterns.
+- [ ] `modele-cible.md` relu, hypothèses B8 tranchées (proposition
+  écrite 2026-10-13, relecture à faire).
+- [ ] Relecture finale : aucun extrait de code tiers dans `research/`.

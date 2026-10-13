@@ -53,6 +53,10 @@ sur les devices), **Thermo** (CoolProp), **Régulation** (cartes castées D20).
 | M11 | **Comparer des machines identiques** (quelle pompe sur 10 se comporte différemment) | même capteur × N | Anomalie multi-séries (augurs outlier) | 🔭 (v2 du nœud) |
 | M12 | **Durée de vie résiduelle (RUL)** apprise sur historique de pannes | historique + étiquettes | Model Lab (linfa) | 🔭 |
 
+Planification (plans préventifs date/compteur, occurrences, OT,
+calendrier d'équipe, arrêts techniques) : étude de l'existant en cours,
+`ontology.md` annexe B (roadmap P2.20).
+
 ## 3. Froid, CVC, thermique
 
 | # | Cas | Capteurs | Briques | Statut |
