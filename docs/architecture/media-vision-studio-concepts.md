@@ -204,11 +204,16 @@ dans cet ordre :
 | `e7214992` | PDF d'une version de page (bouton PDF) |
 | `61b95677` | D209/D210 : nœud `page_pdf` (prêt / à approuver, « dernière envoyable ») |
 | `e2a6bb46` | Pièce jointe PDF des notifications e-mail |
+| `cb18d110` | PRD + ce guide à jour (rapports livrés) |
+| `25cb2e60` | Test navigateur `e2e/tests/reports.spec.ts` : version IA → Approuver → PDF |
 
 **Vérification navigateur (2026-10-13, serveur de branche :5151)** :
 `vision-loop` 3/3 (import vidéo + interpolation, entraînement lancé du
 panneau jusqu'au modèle enregistré, fichier comme source de flux) et
-`lab` en anglais et en français : 5/5.
+`lab` en anglais et en français : 5/5. `reports` (version écrite par un
+flow, badge IA, Approuver, téléchargement du PDF) : 1/1 ; il lui faut le
+jeton runtime du serveur (`PNEX_FLOW_RUNTIME_TOKEN` au démarrage, même
+valeur dans `PNEX_E2E_FLOW_TOKEN`).
 
 ### Lancer la branche pour la relire
 
