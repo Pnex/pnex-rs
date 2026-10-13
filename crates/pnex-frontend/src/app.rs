@@ -10,10 +10,10 @@
 
 use crate::pages::edge_refs::EdgeRefs;
 use crate::pages::{
-    self, AdminStatus, Annotations, AuthCallback, Cameras, CaseWorkspace, Cases, Catalog, Controls,
-    Dashboard, Dashboards, Devices, Docs, Events, Firmware, Flows, FluidMixtures, Functions, Map,
-    Media, Models, NotFound, Notifications, Ontology, OntologyObject, OntologyType, Orgs,
-    OrgsCurrent, Profile, Secrets, ShareTour, Showcase, Sites, Streams, Studio, System,
+    self, AdminStatus, Annotations, AuthCallback, Calendar, Cameras, CaseWorkspace, Cases, Catalog,
+    Controls, Dashboard, Dashboards, Devices, Docs, Events, Firmware, Flows, FluidMixtures,
+    Functions, Map, Media, Models, NotFound, Notifications, Ontology, OntologyObject, OntologyType,
+    Orgs, OrgsCurrent, Profile, Secrets, ShareTour, Showcase, Sites, Streams, Studio, System,
     Visualisation, VoiceId,
 };
 use dioxus::prelude::*;
@@ -83,6 +83,10 @@ pub enum Route {
 
         #[route("/controls")]
         Controls {},
+
+        // Org time ranges, recurrence occurrences included (ontology.md annex B).
+        #[route("/calendar")]
+        Calendar {},
 
         // Investigation cases and their workspace (cases.md).
         #[route("/cases")]

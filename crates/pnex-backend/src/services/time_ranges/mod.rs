@@ -422,6 +422,32 @@ pub async fn delete<C: ConnectionTrait>(db: &C, org_id: i64, id: Uuid) -> Result
     Ok(())
 }
 
+/// May `role` write ranges of this scope? A range of an object is written
+/// with the type write role of the object (D188), like the object itself;
+/// other scopes need nothing more than `can_write`. An unknown object is
+/// left to the caller (its own 404 / field error).
+pub async fn scope_writable<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    role: &crate::models::_entities::sea_orm_active_enums::OrgMemberRole,
+    scope_kind: &str,
+    scope_id: &str,
+) -> Result<bool, DbErr> {
+    use crate::services::ontology::{objects, role_allows, schema};
+    if scope_kind.trim() != ScopeKind::Object.wire() {
+        return Ok(true);
+    }
+    let Ok(id) = Uuid::parse_str(scope_id.trim()) else {
+        return Ok(true);
+    };
+    let Ok(obj) = objects::find(db, org_id, id).await else {
+        return Ok(true);
+    };
+    let s = schema(db, org_id).await?;
+    Ok(s.object_type(&obj.type_key)
+        .is_none_or(|def| role_allows(role, def.write_role)))
+}
+
 /// List filter: an optional scope (already resolved) and time window.
 #[derive(Debug, Clone, Default)]
 pub struct ListFilter {

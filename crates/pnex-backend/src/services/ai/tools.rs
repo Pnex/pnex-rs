@@ -426,7 +426,7 @@ pub fn tool_specs() -> Vec<ToolSpec> {
         },
         ToolSpec {
             name: "create_object",
-            description: "Creates an object of an organization type (not a system type: devices, media… are created from their own pages). properties must follow the type's schema (describe_ontology); series and events properties hold no value.",
+            description: "Creates an object of an organization type (not a system type: devices, media… are created from their own pages). properties must follow the type's schema (describe_ontology); series and events properties hold no value. A recurrence value is {start: YYYY-MM-DD, every: 1-999, unit: day|week|month|year, until?: YYYY-MM-DD, floating?: true (count from the last completion), days?: length, lead_days?: days to prepare}: its occurrences appear in the calendar (list_calendar).",
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"type_key":{"type":"string"},"title":{"type":"string"},"properties":{"type":"object"}},"required":["type_key","title"]}"#).expect("static schema"),
         },
         ToolSpec {
@@ -450,8 +450,18 @@ pub fn tool_specs() -> Vec<ToolSpec> {
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"object_id":{"type":"string"},"action":{"type":"string"},"params":{"type":"object"}},"required":["object_id","action"]}"#).expect("static schema"),
         },
         ToolSpec {
+            name: "list_calendar",
+            description: "Lists the organization's calendar: time ranges and the occurrences of maintenance plans (objects with a recurrence property), each with its state: planned, due (inside its lead time, to prepare), late (planned end passed, not done), done, cancelled. Window from/to as YYYY-MM-DD (default 30 days back to 90 days ahead, at most 366 days); optional state filter. Read-only.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"from":{"type":"string"},"to":{"type":"string"},"state":{"type":"string","enum":["planned","due","late","done","cancelled"]}}}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "propose_occurrence_change",
+            description: "Proposes to the user one change to an occurrence from list_calendar: done (date = day it was done, default today), move (date = new day, required) or cancel (this occurrence only). Nothing is written: the user reviews and applies it from the button under your answer; the plan itself never changes. Done and cancelled occurrences are history and cannot be changed. To change the plan (period, start, floating), use update_object on the plan.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"range_id":{"type":"string"},"change":{"type":"string","enum":["done","move","cancel"]},"date":{"type":"string"}},"required":["range_id","change"]}"#).expect("static schema"),
+        },
+        ToolSpec {
             name: "save_object_type",
-            description: "Creates an organization object type (no expected_version) or saves a new version of one on top of expected_version (from describe_ontology). def = {key [a-z][a-z0-9_]*, name, icon, properties: [{key, name, kind: text|number|bool|date|date_time|enum|geo_point|url|ref|series|events, required, indexed, unit, min, max, values, to_type, stream, max_len}], may_contain / may_be_contained_in: '*' or a list of type keys or null, write_role: member|admin|owner}. For a system type only properties are taken. Organization owners and admins only.",
+            description: "Creates an organization object type (no expected_version) or saves a new version of one on top of expected_version (from describe_ontology). def = {key [a-z][a-z0-9_]*, name, icon, properties: [{key, name, kind: text|number|bool|date|date_time|enum|geo_point|url|ref|series|events|fuzzy_time|recurrence, required, indexed, unit, min, max, values, to_type, stream, max_len}], may_contain / may_be_contained_in: '*' or a list of type keys or null, write_role: member|admin|owner}. For a system type only properties are taken. Organization owners and admins only.",
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"def":{"type":"object"},"expected_version":{"type":"integer"}},"required":["def"]}"#).expect("static schema"),
         },
         ToolSpec {
@@ -613,6 +623,10 @@ pub async fn execute(
         "close_link" => super::ontology_tools::close_link(deps, args).await,
         "propose_action" => super::ontology_tools::propose_action(deps, args).await,
         "save_object_type" => super::ontology_tools::save_object_type(deps, args).await,
+        "list_calendar" => super::calendar_tools::list_calendar(deps, args).await,
+        "propose_occurrence_change" => {
+            super::calendar_tools::propose_occurrence_change(deps, args).await
+        }
         "search_docs" => super::doc_tools::search_docs(deps, args).await,
         "read_chunk" => super::doc_tools::read_chunk(deps, args).await,
         "open_page" => super::doc_tools::open_page(deps, args).await,
@@ -1045,6 +1059,22 @@ pub fn summarize(name: &str, out: &ToolOutcome) -> TraceSummary {
                 "ai-trace-ontology-object-saved",
                 json!({"title": t, "version": ver}),
                 format!("object \"{t}\" v{ver}"),
+            )
+        }
+        "list_calendar" => {
+            let n = count(&v["occurrences"]);
+            s(
+                "ai-trace-calendar",
+                json!({"count": n}),
+                format!("{n} calendar occurrence(s)"),
+            )
+        }
+        "propose_occurrence_change" => {
+            let (c, l) = (shown(&v["change"]), shown(&v["label"]));
+            s(
+                "ai-trace-occurrence-proposed",
+                json!({"change": c, "label": l}),
+                format!("proposed \"{c}\" on \"{l}\""),
             )
         }
         "propose_action" => {
@@ -1647,6 +1677,8 @@ mod tests {
                 "open_link",
                 "close_link",
                 "propose_action",
+                "list_calendar",
+                "propose_occurrence_change",
                 "save_object_type",
                 "search_docs",
                 "read_chunk",

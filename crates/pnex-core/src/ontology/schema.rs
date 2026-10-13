@@ -79,6 +79,9 @@ pub enum PropertyKind {
     /// An instant known only up to a precision (cases.md K5):
     /// `{"from": RFC 3339 UTC, "to": RFC 3339 UTC, "precision": …}`.
     FuzzyTime,
+    /// A day-granular period (`super::recurrence::Recurrence`): its
+    /// occurrences are materialized as time ranges of the object.
+    Recurrence,
 }
 
 /// Precisions of a `fuzzy_time` value (cases.md K5).
@@ -106,6 +109,7 @@ impl PropertyKind {
             Self::Series { .. } => "series",
             Self::Events { .. } => "events",
             Self::FuzzyTime => "fuzzy_time",
+            Self::Recurrence => "recurrence",
         }
     }
 }
@@ -183,6 +187,7 @@ impl<'de> Deserialize<'de> for PropertyDef {
                 stream: c.stream.ok_or_else(|| missing("stream"))?,
             },
             "fuzzy_time" => PropertyKind::FuzzyTime,
+            "recurrence" => PropertyKind::Recurrence,
             other => {
                 return Err(D::Error::unknown_variant(
                     other,
@@ -199,6 +204,7 @@ impl<'de> Deserialize<'de> for PropertyDef {
                         "series",
                         "events",
                         "fuzzy_time",
+                        "recurrence",
                     ],
                 ))
             }
@@ -343,6 +349,9 @@ fn check_value(d: &PropertyDef, v: &Value) -> Result<Value, String> {
             Ok(v.clone())
         }
         (PropertyKind::FuzzyTime, Value::Object(o)) => check_fuzzy(o).ok_or_else(invalid),
+        (PropertyKind::Recurrence, Value::Object(_)) => super::recurrence::Recurrence::parse(v)
+            .map(|r| r.to_value())
+            .ok_or_else(invalid),
         _ => Err(invalid()),
     }
 }

@@ -753,15 +753,31 @@ fn TimePanel(object: ObjectView, type_view: ObjectTypeView, can_write: bool) -> 
         .cloned()
         .collect();
     let mut window = use_signal(|| "24h".to_string());
+    let recurring = type_view
+        .def
+        .properties
+        .iter()
+        .any(|p| matches!(p.kind, PropertyKind::Recurrence));
     if series.is_empty() {
         return rsx! {
-            div { class: SECTION,
-                p { class: "text-sm text-gray-500", {t!("onto-no-series")} }
+            div { class: "space-y-3",
+                if recurring {
+                    crate::pages::calendar::OccurrencesCard { object_id: object.id.clone(), can_write }
+                } else {
+                    div { class: SECTION,
+                        p { class: "text-sm text-gray-500", {t!("onto-no-series")} }
+                    }
+                }
+                crate::pages::calendar::LinkedOccurrences { object_id: object.id.clone(), can_write }
             }
         };
     }
     rsx! {
         div { class: "space-y-3",
+            if recurring {
+                crate::pages::calendar::OccurrencesCard { object_id: object.id.clone(), can_write }
+            }
+            crate::pages::calendar::LinkedOccurrences { object_id: object.id.clone(), can_write }
             div { class: "flex items-center gap-3",
                 label { class: "text-sm text-gray-700", {t!("onto-window")} }
                 select { class: INPUT, onchange: move |e| window.set(e.value()),

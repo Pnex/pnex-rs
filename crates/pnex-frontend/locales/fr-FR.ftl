@@ -4114,6 +4114,17 @@ ai-trace-case-proposals = dossier : { $count } proposition(s)
 ai-trace-case-board = tableau : { $hypotheses } hypothèse(s), { $unsourced } affirmation(s) sans source
 ai-trace-action-proposed = « { $action } » proposée sur « { $title } »
 ai-review-action = Vérifier et exécuter « { $action } »
+ai-trace-calendar = { $count } occurrence(s) au calendrier
+ai-trace-occurrence-proposed = proposé : { $change ->
+    [done] marquer réalisée
+    [move] déplacer
+   *[cancel] annuler
+} « { $label } »
+ai-review-occurrence = Vérifier : { $change ->
+    [done] marquer réalisée
+    [move] déplacer
+   *[cancel] annuler
+} « { $label } »
 ai-trace-ontology-object-saved = objet « { $title } » v{ $version }
 ai-trace-ontology-link-opened = lien ouvert : { $source } —{ $link }→ { $target }
 ai-trace-ontology-link-closed = lien fermé : { $source } —{ $link }→ { $target }
@@ -4204,6 +4215,46 @@ err-docs-write-forbidden = Seuls les owners, admins et membres peuvent modifier 
 
 # Cases (cases.md)
 nav-cases = Dossiers d'enquête
+nav-calendar = Calendrier
+calendar-title = Calendrier
+calendar-subtitle = Plages de l'organisation, occurrences des plans de maintenance comprises
+calendar-today = Aujourd'hui
+calendar-weekday = { $day ->
+    [0] Lun
+    [1] Mar
+    [2] Mer
+    [3] Jeu
+    [4] Ven
+    [5] Sam
+   *[6] Dim
+}
+calendar-state = { $state ->
+    [done] Réalisée
+    [cancelled] Annulée
+    [late] En retard
+    [due] À préparer
+   *[planned] Planifiée
+}
+calendar-change = { $change ->
+    [done] Réalisée
+    [move] Déplacer
+   *[cancel] Annuler
+}
+calendar-apply = { $change ->
+    [done] Marquer réalisée
+    [move] Déplacer
+   *[cancel] Annuler cette occurrence
+}
+calendar-date = { $change ->
+    [done] Réalisée le
+   *[move] Déplacer au
+}
+calendar-hours = Temps passé (heures)
+calendar-planned = Prévue le { $date }
+calendar-open-object = Ouvrir l'objet
+calendar-saved = Occurrence mise à jour
+calendar-occurrences = Occurrences (30 jours avant, 90 après)
+calendar-no-occurrence = Aucune occurrence sur cette période.
 onto-type-case = Dossier d'enquête
 onto-link-in_case = dans le dossier
 onto-link-in_case-inverse = contient
@@ -4258,6 +4309,29 @@ case-add-submit = Ajouter
 case-added = Ajouté au dossier
 case-pick = Dossier
 onto-kind-fuzzy-time = Date approximative
+onto-kind-recurrence = Récurrence
+onto-rec-every = Tous les
+onto-rec-unit = { $unit ->
+    [day] jour(s)
+    [week] semaine(s)
+    [month] mois
+   *[year] an(s)
+}
+onto-rec-from = à partir du
+onto-rec-until = Jusqu'au (facultatif)
+onto-rec-days = Durée (jours)
+onto-rec-lead = Préparer (jours avant)
+onto-rec-floating = Compter depuis la dernière réalisation
+onto-rec-floating-help = Flottant : une intervention en retard repousse la suivante. Décoché, les dates suivent le plan quoi qu'il arrive.
+onto-rec-next = Prochaines : { $dates }
+onto-rec-summary = Tous les { $every } { $unit ->
+    [day] jour(s)
+    [week] semaine(s)
+    [month] mois
+   *[year] an(s)
+} à partir du { $start }
+onto-rec-summary-until = {" "}jusqu'au { $until }
+onto-rec-summary-floating = {" "}(depuis la dernière réalisation)
 fuzzy-precision-instant = Instant exact
 fuzzy-precision-minute = À la minute
 fuzzy-precision-hour = À l'heure

@@ -7,6 +7,7 @@ pub mod admin_status;
 pub mod annotations;
 pub mod auth_callback;
 /// Cameras: live view, capture settings and recordings (camera-video.md D80).
+pub mod calendar;
 pub mod cameras;
 pub mod catalog;
 pub mod controls;
@@ -57,6 +58,7 @@ pub mod voice_id;
 pub use admin_status::AdminStatus;
 pub use annotations::Annotations;
 pub use auth_callback::AuthCallback;
+pub use calendar::Calendar;
 pub use cameras::Cameras;
 pub use cases::{CaseWorkspace, Cases};
 pub use catalog::Catalog;

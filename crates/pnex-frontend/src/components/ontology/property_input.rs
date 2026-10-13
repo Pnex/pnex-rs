@@ -191,6 +191,9 @@ fn PropertyField(
         PropertyKind::FuzzyTime => rsx! {
             FuzzyField { name: key.clone(), doc, current }
         },
+        PropertyKind::Recurrence => rsx! {
+            RecurrenceField { name: key.clone(), doc, current }
+        },
         kind => {
             let input_type = match kind {
                 PropertyKind::Date => "date",
@@ -486,6 +489,12 @@ pub fn PropertyValue(
                 span { class: "font-mono", "{n} {unit}" }
             }
         }
+        (PropertyKind::Recurrence, Value::Object(_)) => {
+            let text = recurrence_label(&v);
+            rsx! {
+                span { "{text}" }
+            }
+        }
         (PropertyKind::FuzzyTime, Value::Object(_)) => {
             let text = super::fuzzy_label(&v);
             rsx! {
@@ -512,6 +521,203 @@ pub fn PropertyValue(
             let s = v.to_string();
             rsx! {
                 span { "{s}" }
+            }
+        }
+    }
+}
+
+const RECURRENCE_UNITS: [&str; 4] = ["day", "week", "month", "year"];
+/// Dates shown under a recurrence being edited.
+const RECURRENCE_PREVIEW: usize = 5;
+
+/// « Every 3 months from 2026-01-15 (floating) ».
+pub fn recurrence_label(v: &Value) -> String {
+    use pnex_core::ontology::recurrence::Recurrence;
+    let Some(r) = Recurrence::parse(v) else {
+        return v.to_string();
+    };
+    let unit = serde_json::to_value(r.unit)
+        .ok()
+        .and_then(|u| u.as_str().map(String::from))
+        .unwrap_or_default();
+    let mut s = t!(
+        "onto-rec-summary", every : r.every, unit : unit, start : r.start.to_string()
+    )
+    .to_string();
+    if let Some(u) = r.until {
+        s.push_str(&t!("onto-rec-summary-until", until : u.to_string()));
+    }
+    if r.floating {
+        s.push_str(&t!("onto-rec-summary-floating"));
+    }
+    s
+}
+
+/// The value of the recurrence form, `None` while incomplete or invalid.
+fn build_recurrence(
+    start: &str,
+    every: &str,
+    unit: &str,
+    until: &str,
+    floating: bool,
+    days: &str,
+    lead: &str,
+) -> Option<pnex_core::ontology::recurrence::Recurrence> {
+    let mut v = json!({"start": start, "unit": unit});
+    if let Ok(n) = every.trim().parse::<u32>() {
+        v["every"] = json!(n);
+    }
+    if let Ok(n) = days.trim().parse::<u32>() {
+        v["days"] = json!(n);
+    }
+    if !until.is_empty() {
+        v["until"] = json!(until);
+    }
+    if floating {
+        v["floating"] = json!(true);
+    }
+    if let Ok(n) = lead.trim().parse::<u32>() {
+        v["lead_days"] = json!(n);
+    }
+    pnex_core::ontology::recurrence::Recurrence::parse(&v)
+}
+
+/// `recurrence` entry: start, period, optional end, fixed or floating,
+/// with a preview of the next dates computed by the shared core.
+#[component]
+fn RecurrenceField(
+    name: String,
+    doc: Signal<Map<String, Value>>,
+    current: Option<Value>,
+) -> Element {
+    let get = |k: &str| current.as_ref().and_then(|v| v.get(k)).cloned();
+    let s = |v: Option<Value>| {
+        v.map(|v| {
+            v.as_str()
+                .map(String::from)
+                .unwrap_or_else(|| v.to_string())
+        })
+    };
+    let mut start = use_signal(|| s(get("start")).unwrap_or_default());
+    let mut every = use_signal(|| s(get("every")).unwrap_or_else(|| "1".into()));
+    let mut unit = use_signal(|| s(get("unit")).unwrap_or_else(|| "month".into()));
+    let mut until = use_signal(|| s(get("until")).unwrap_or_default());
+    let mut floating = use_signal(|| get("floating").and_then(|v| v.as_bool()).unwrap_or(false));
+    let mut days = use_signal(|| s(get("days")).unwrap_or_else(|| "1".into()));
+    let mut lead = use_signal(|| s(get("lead_days")).unwrap_or_default());
+    let value = build_recurrence(
+        &start(),
+        &every(),
+        &unit(),
+        &until(),
+        floating(),
+        &days(),
+        &lead(),
+    );
+    let next: Vec<String> = value
+        .as_ref()
+        .map(|r| {
+            let today = chrono::Utc::now().date_naive();
+            // Same as the server: an overdue first date of a floating plan stays.
+            let today = if r.floating {
+                r.start.min(today)
+            } else {
+                today
+            };
+            let far = today + chrono::Days::new(3660);
+            r.dates(today, far, RECURRENCE_PREVIEW)
+                .iter()
+                .map(|d| d.to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    let next = next.join(" · ");
+    // Signals read here: the document follows every edit.
+    use_effect(move || {
+        let r = build_recurrence(
+            &start(),
+            &every(),
+            &unit(),
+            &until(),
+            floating(),
+            &days(),
+            &lead(),
+        );
+        set(doc, &name, r.map_or(Value::Null, |r| r.to_value()));
+    });
+    rsx! {
+        div { class: "space-y-2",
+            div { class: "flex flex-wrap items-center gap-2",
+                span { class: "text-sm", {t!("onto-rec-every")} }
+                input {
+                    r#type: "number",
+                    min: "1",
+                    class: "{INPUT} sm:w-20",
+                    "data-testid": "rec-every",
+                    value: "{every}",
+                    oninput: move |e| every.set(e.value()),
+                }
+                select {
+                    class: "{INPUT} sm:w-32",
+                    "data-testid": "rec-unit",
+                    onchange: move |e| unit.set(e.value()),
+                    for u in RECURRENCE_UNITS {
+                        option { key: "{u}", value: "{u}", selected: u == unit(),
+                            {t!("onto-rec-unit", unit : u)}
+                        }
+                    }
+                }
+                span { class: "text-sm", {t!("onto-rec-from")} }
+                input {
+                    r#type: "date",
+                    class: "{INPUT} sm:w-40",
+                    "data-testid": "rec-start",
+                    value: "{start}",
+                    oninput: move |e| start.set(e.value()),
+                }
+            }
+            div { class: "flex flex-wrap items-center gap-2",
+                span { class: "text-sm", {t!("onto-rec-until")} }
+                input {
+                    r#type: "date",
+                    class: "{INPUT} sm:w-40",
+                    value: "{until}",
+                    oninput: move |e| until.set(e.value()),
+                }
+                span { class: "text-sm", {t!("onto-rec-days")} }
+                input {
+                    r#type: "number",
+                    min: "1",
+                    class: "{INPUT} sm:w-20",
+                    value: "{days}",
+                    oninput: move |e| days.set(e.value()),
+                }
+                span { class: "text-sm", {t!("onto-rec-lead")} }
+                input {
+                    r#type: "number",
+                    min: "0",
+                    class: "{INPUT} sm:w-20",
+                    "data-testid": "rec-lead",
+                    value: "{lead}",
+                    oninput: move |e| lead.set(e.value()),
+                }
+            }
+            label { class: "flex items-start gap-2 text-sm",
+                input {
+                    r#type: "checkbox",
+                    "data-testid": "rec-floating",
+                    checked: floating(),
+                    onchange: move |e| floating.set(e.checked()),
+                }
+                span {
+                    {t!("onto-rec-floating")}
+                    span { class: "block text-xs text-gray-500", {t!("onto-rec-floating-help")} }
+                }
+            }
+            if !next.is_empty() {
+                p { class: "text-xs text-gray-500", "data-testid": "rec-next",
+                    {t!("onto-rec-next", dates : next.clone())}
+                }
             }
         }
     }

@@ -4,9 +4,12 @@
 # by the org; a newer pack version appends new type versions.
 # Since 1.1.0 machines and pumps declare the "start_maintenance" action
 # (D183): a deployed flow with an action_trigger node decides what it does.
+# Since 1.2.0 maintenance plans carry a recurrence: their occurrences are
+# time ranges of the plan (ontology.md annex B); a plan maintains any
+# object, a bare device included.
 key: maintenance
 name: Augmented maintenance
-version: "1.1.0"
+version: "1.2.0"
 description: Sites, lines, machines and pumps; sensors bound to equipment series survive sensor replacements.
 types:
   - key: site
@@ -73,7 +76,19 @@ types:
         params:
           - { key: reason, name: Reason, kind: text, max_len: 500, required: true }
           - { key: planned_end, name: Planned end, kind: date }
+  - key: maintenance_plan
+    name: Maintenance plan
+    icon: cog
+    may_be_contained_in: [folder]
+    properties:
+      - { key: schedule, name: Schedule, kind: recurrence, required: true }
+      - { key: instructions, name: Instructions, kind: text, max_len: 2000 }
 link_types:
+  - key: maintains
+    name: maintains
+    inverse_name: is maintained by
+    from_types: [maintenance_plan]
+    to_types: "*"
   - key: feeds
     name: feeds
     inverse_name: is fed by

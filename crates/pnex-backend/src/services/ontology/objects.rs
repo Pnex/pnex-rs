@@ -210,6 +210,7 @@ pub async fn create<C: ConnectionTrait>(
     .insert(db)
     .await?;
     let v = view(&row, &s);
+    super::recurrence::refresh_logged(db, org_id, id).await;
     changes::submit(Change::object(
         org_id,
         "object.create",
@@ -291,6 +292,7 @@ pub async fn update(
     }
     let before = view(&row, &s);
     let after = view(&find(db, org_id, id).await?, &s);
+    super::recurrence::refresh_logged(db, org_id, id).await;
     changes::submit(Change::object(
         org_id,
         "object.update",
@@ -331,6 +333,7 @@ pub async fn archive(db: &DatabaseConnection, org_id: i64, actor: &Actor, id: Uu
     // Labels and containment go like for any deleted resource (D42 purge,
     // links closed rather than deleted).
     crate::services::resources::purge_for(db, org_id, &row.type_key, &row.native_id).await?;
+    super::recurrence::refresh_logged(db, org_id, id).await;
     let before = view(&row, &s);
     changes::submit(Change {
         org_id,

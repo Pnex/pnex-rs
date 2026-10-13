@@ -1677,3 +1677,122 @@ async fn actions_are_checked_and_need_a_deployed_flow() {
     })
     .await;
 }
+
+#[tokio::test]
+#[serial]
+async fn recurrence_occurrences_are_materialized_and_kept_by_history() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (st, _) = call(&server, "POST", "/api/v1/ontology/packs/maintenance/install", &env.alice, org, None).await;
+        assert_eq!(st, 200);
+        let today = chrono::Utc::now().date_naive();
+        let day = |n: i64| (today + chrono::Duration::days(n)).to_string();
+        let ranges = |id: String| {
+            let server = &server;
+            let token = env.alice.clone();
+            async move {
+                let (st, l) = call(server, "GET", &format!("/api/v1/time-ranges?scope_kind=object&scope_id={id}&limit=100"), &token, org, None).await;
+                assert_eq!(st, 200, "{l}");
+                l["results"].as_array().unwrap().clone()
+            }
+        };
+
+        // Fixed, every 30 days from yesterday: today + 29, + 59, + 89.
+        let (st, e) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(json!({
+            "type_key": "maintenance_plan", "title": "Bad",
+            "properties": {"schedule": {"start": day(0), "every": 0, "unit": "day"}}}))).await;
+        assert_eq!((st, e["schedule"].as_str()), (400, Some("invalid")), "{e}");
+        let fixed = object(&server, &env.alice, org, "maintenance_plan", "Greasing",
+            json!({"schedule": {"start": day(-1), "every": 30, "unit": "day"}})).await;
+        let fixed_id = fixed["id"].as_str().unwrap().to_string();
+        let occ = ranges(fixed_id.clone()).await;
+        let starts: Vec<&str> = occ.iter().map(|r| &r["planned_start"].as_str().unwrap()[..10]).collect();
+        assert_eq!(starts, [day(29), day(59), day(89)], "{occ:?}");
+        assert_eq!(occ[0]["origin"], "grid");
+        assert_eq!(occ[0]["label"], "Greasing");
+        assert_eq!(occ[0]["category"], "schedule");
+
+        // A moved occurrence survives a rule change; untouched ones follow.
+        let moved = occ[1]["id"].as_str().unwrap();
+        let (st, _) = call(&server, "PATCH", &format!("/api/v1/time-ranges/{moved}"), &env.alice, org,
+            Some(json!({"planned_start": format!("{}T00:00:00Z", day(62)), "planned_end": format!("{}T00:00:00Z", day(63))}))).await;
+        assert_eq!(st, 200);
+        let upd = json!({"title": "Greasing pumps", "expected_version": fixed["version"],
+            "properties": {"schedule": {"start": day(-1), "every": 45, "unit": "day", "lead_days": 7}}});
+        let (st, v) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{fixed_id}"), &env.alice, org, Some(upd)).await;
+        assert_eq!(st, 200, "{v}");
+        let starts: Vec<String> = ranges(fixed_id.clone()).await.iter().map(|r| r["planned_start"].as_str().unwrap()[..10].to_string()).collect();
+        assert_eq!(starts, [day(44), day(62), day(89)]);
+        // Untouched occurrences follow the title and the lead time; the
+        // moved one keeps what it had.
+        let occ = ranges(fixed_id.clone()).await;
+        assert_eq!((occ[0]["label"].as_str(), occ[0]["attrs"]["lead_days"].as_i64()), (Some("Greasing pumps"), Some(7)), "{occ:?}");
+        assert_eq!(occ[1]["label"], "Greasing");
+
+        // Floating, never done: the overdue first date stays; done late,
+        // the series restarts one period after the completion.
+        let floating = object(&server, &env.alice, org, "maintenance_plan", "Oil",
+            json!({"schedule": {"start": day(-10), "every": 60, "unit": "day", "floating": true}})).await;
+        let fl_id = floating["id"].as_str().unwrap().to_string();
+        let occ = ranges(fl_id.clone()).await;
+        assert_eq!(&occ[0]["planned_start"].as_str().unwrap()[..10], day(-10));
+        let first = occ[0]["id"].as_str().unwrap();
+        let (st, _) = call(&server, "PATCH", &format!("/api/v1/time-ranges/{first}"), &env.alice, org,
+            Some(json!({"actual_start": format!("{}T08:00:00Z", day(-1)), "actual_end": format!("{}T12:00:00Z", day(-1)), "attrs": {"status": "done"}}))).await;
+        assert_eq!(st, 200);
+        let starts: Vec<String> = ranges(fl_id.clone()).await.iter().map(|r| r["planned_start"].as_str().unwrap()[..10].to_string()).collect();
+        assert_eq!(starts, [day(-10), day(59)]);
+
+        // D188: an occurrence is written with the type's write role.
+        personal_org(&server, &env.bob).await;
+        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "member"}))).await;
+        assert!(st < 300, "{st}");
+        env.db
+            .execute_unprepared(&format!(
+                "UPDATE object_type_versions v SET definition = jsonb_set(definition, '{{write_role}}', '\"admin\"') \
+                 FROM object_types t WHERE v.object_type_id = t.id AND t.org_id = {org} AND t.key = 'maintenance_plan'"
+            ))
+            .await
+            .unwrap();
+        let occ = ranges(fl_id.clone()).await;
+        let last = occ.last().unwrap()["id"].as_str().unwrap().to_string();
+        let (st, e) = call(&server, "PATCH", &format!("/api/v1/time-ranges/{last}"), &env.bob, org, Some(json!({"attrs": {"status": "cancelled"}}))).await;
+        assert_eq!((st, e["error"].as_str()), (403, Some("ontology-write-forbidden")), "{e}");
+
+        // Assistant: reads the calendar, proposes without writing, same rules.
+        {
+            use pnex_backend::models::_entities::sea_orm_active_enums::OrgMemberRole;
+            use pnex_backend::services::ai::tools::{execute, ToolDeps};
+            use pnex_backend::services::ontology::Actor;
+            let deps = |role: OrgMemberRole| ToolDeps {
+                db: &env.db,
+                org_id: org,
+                can_write: true,
+                author: None,
+                o2: None,
+                config: None,
+                actor: Some(Actor::manual(1, role)),
+            };
+            let cal = execute(&deps(OrgMemberRole::Admin), "list_calendar", &json!({})).await.unwrap().value;
+            let states: Vec<&str> = cal["occurrences"].as_array().unwrap().iter().filter_map(|o| o["state"].as_str()).collect();
+            assert!(states.contains(&"done") && states.contains(&"planned"), "{cal}");
+            let p = execute(&deps(OrgMemberRole::Admin), "propose_occurrence_change", &json!({"range_id": last, "change": "move", "date": day(70)})).await.unwrap().value;
+            assert_eq!((p["executed"].as_bool(), p["change"].as_str()), (Some(false), Some("move")), "{p}");
+            let (_, still) = call(&server, "GET", &format!("/api/v1/time-ranges/{last}"), &env.alice, org, None).await;
+            assert_ne!(&still["planned_start"].as_str().unwrap()[..10], day(70), "a proposal writes nothing");
+            let e = execute(&deps(OrgMemberRole::Member), "propose_occurrence_change", &json!({"range_id": last, "change": "cancel"})).await.unwrap_err();
+            assert_eq!(e.code, Some("ontology-write-forbidden"));
+            assert!(execute(&deps(OrgMemberRole::Admin), "propose_occurrence_change", &json!({"range_id": last, "change": "move"})).await.is_err());
+        }
+
+        // Archived: untouched future occurrences go, history stays.
+        let (st, _) = call(&server, "DELETE", &format!("/api/v1/ontology/objects/{fl_id}"), &env.alice, org, None).await;
+        assert!(st < 300, "{st}");
+        // An archived scope is no longer listable by scope: read the org list.
+        let (_, all) = call(&server, "GET", "/api/v1/time-ranges?limit=100", &env.alice, org, None).await;
+        let left: Vec<&Value> = all["results"].as_array().unwrap().iter().filter(|r| r["scope_id"] == fl_id.as_str()).collect();
+        assert_eq!(left.len(), 1, "{left:?}");
+        assert_eq!(left[0]["attrs"]["status"], "done");
+    })
+    .await;
+}
