@@ -4593,3 +4593,94 @@ cw-board-unsourced = Affirmations sans source
 cw-board-contradicted = Affirmations contredites
 case-add-help = L'objet rejoint les pièces non datées de l'enquête ; vous choisirez son rôle en l'attachant à un événement.
 case-role-source = Source
+
+## Vision Lab (D198–D200)
+err-lab-write-forbidden = Rôle lecteur : les projets du Vision Lab sont en lecture seule.
+err-lab-project-not-found = Projet du Vision Lab introuvable.
+err-lab-image-not-found = Image introuvable dans ce projet.
+err-lab-version-not-found = Version du jeu de données introuvable.
+err-lab-class-in-use = La classe { $class } a encore des boîtes : retirez-les avant de supprimer la classe.
+err-lab-annotations-conflict = Cette image a changé entre-temps : rechargez-la et refaites votre modification.
+err-lab-box-invalid = Une boîte sort de l'image ou désigne une classe inconnue.
+err-lab-boxes-too-many = 200 boîtes au plus par image.
+err-lab-negative-with-boxes = Une image marquée sans objet ne peut pas avoir de boîtes.
+err-lab-asset-not-image = { $name } n'est pas une image lisible (JPEG ou PNG).
+err-lab-dataset-empty = Aucune image annotée : annotez au moins une image avant de figer une version.
+
+## Vision Lab page (D198–D200)
+nav-lab = Vision Lab
+lab-subtitle = Apprenez à PneX à reconnaître vos objets : nommez les classes, entourez-les sur vos images, figez un jeu de données et exportez-le pour l'entraînement.
+lab-new = Nouveau projet
+lab-edit = Modifier le projet
+lab-edit-short = Modifier
+lab-open = Ouvrir
+lab-empty = Aucun projet Vision Lab. Créez-en un pour annoter vos images.
+lab-col-project = Projet
+lab-col-classes = Classes
+lab-col-images = Images annotées
+lab-col-versions = Versions
+lab-images-count = { $annotated } / { $total }
+lab-delete = Supprimer le projet
+lab-delete-confirm = Supprimer le projet { $name } avec ses annotations et ses versions de jeu de données ? Les images restent dans la médiathèque.
+lab-deleted = Projet supprimé
+lab-saved = Projet enregistré
+lab-form-name = Nom
+lab-form-description = Description
+lab-form-classes = Classes (une par ligne)
+lab-form-classes-help = Renommez une classe sur place ou ajoutez-en à la fin. Seules les dernières classes peuvent être retirées, et seulement si aucune boîte ne les utilise.
+lab-add-images = Ajouter des images
+lab-saving = Enregistrement…
+lab-no-class = Ajoutez au moins une classe (Modifier) avant de dessiner des boîtes.
+lab-no-image = Aucune image dans ce projet.
+lab-no-image-help = Déposez des photos dans Médias, puis utilisez Ajouter des images. Variez les situations : angles, distances, lumière.
+lab-strip-empty = Aucune image.
+lab-state-todo = À annoter
+lab-state-negative = Sans objet
+lab-state-boxes = { $count ->
+    [one] 1 boîte
+   *[other] { $count } boîtes
+}
+lab-class-label = Classe de la prochaine boîte :
+lab-remove-box = Retirer la boîte
+lab-negative = Aucun objet sur cette image
+lab-split = Ensemble :
+lab-split-auto = Automatique ({ $side })
+lab-split-train = Entraînement
+lab-split-val = Validation
+lab-keys-help = Glissez sur l'image pour dessiner une boîte. Touches : 1–9 classe, Suppr retire la boîte choisie, ← → image précédente / suivante, N sans objet.
+lab-stats-title = Jeu de données
+lab-stats-summary = { $annotated ->
+    [one] 1 image annotée
+   *[other] { $annotated } images annotées
+} sur { $total }, { $negatives } sans objet
+lab-stats-split = Entraînement { $train } · validation { $val }
+lab-stats-class = { $images } img · { $boxes ->
+    [one] 1 boîte
+   *[other] { $boxes } boîtes
+}
+lab-warn-class-few = Moins de { $min } images montrent { $class } : ajoutez-en d'autres, variées.
+lab-warn-val-few = Moins de { $min } images de validation : les scores d'un entraînement ne seront pas fiables.
+lab-warn-no-negative = Aucune image sans objet : ajoutez-en quelques-unes, elles réduisent les fausses détections.
+lab-warn-no-class = Aucune classe.
+lab-versions-title = Versions du jeu de données
+lab-versions-help = Une version fige les images annotées et leurs boîtes ; les modifications suivantes ne la changent pas. Téléchargez-la au format COCO pour un entraînement YOLOX.
+lab-version-note = Note (facultative)
+lab-freeze = Figer une version
+lab-frozen = Version du jeu de données figée
+lab-version-label = Version { $n }
+lab-version-detail = { $images ->
+    [one] 1 image
+   *[other] { $images } images
+}, dont { $val } en validation
+lab-export = Télécharger (COCO)
+lab-images-added = Images ajoutées
+lab-picker-title = Ajouter des images de la médiathèque
+lab-picker-search = Rechercher une image…
+lab-picker-help = Les images ajoutées ensemble forment une source : elles vont toutes à l'entraînement ou toutes à la validation, pour que des prises quasi identiques ne gonflent jamais les scores.
+lab-picker-empty = Aucune photo dans la médiathèque.
+lab-picker-add = { $count ->
+    [one] Ajouter 1 image
+   *[other] Ajouter { $count } images
+}
+lab-remove-image = Retirer du projet
+lab-image-removed = Image retirée du projet (elle reste dans la médiathèque)
