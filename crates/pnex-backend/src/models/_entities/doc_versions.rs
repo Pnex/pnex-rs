@@ -16,6 +16,12 @@ pub struct Model {
     pub snapshot: Vec<u8>,
     pub created_by: Option<i64>,
     pub created_at: DateTimeWithTimeZone,
+    /// Holds AI-generated text (D210: leaves PneX approved by default).
+    pub ai_generated: bool,
+    /// Flow that wrote it (`page_write`, D209), else `None`.
+    pub flow_id: Option<i64>,
+    pub approved_by: Option<i64>,
+    pub approved_at: Option<DateTimeWithTimeZone>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

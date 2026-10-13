@@ -25,6 +25,10 @@ fn start_ai_server() -> String {
                             "probabilities": [["incident", 0.3], ["routine", 0.7]], "confidence": 0.12}},
                         "model": "ml", "took_ms": 5
                     })
+                } else if head.starts_with("POST /internal/flow/page-write") {
+                    assert!(head.contains("Weekly report") && head.contains("\"ai_generated\":true"));
+                    serde_json::json!({"page_id": "00000000-0000-0000-0000-0000000000aa",
+                        "title": "Weekly 2026-W42", "version": 1})
                 } else if head.starts_with("POST /internal/flow/ai/text") {
                     assert!(head.contains("A cat sat on the chair."), "the fused text is the data");
                     serde_json::json!({"text": "## Weekly report\n- A calm week.", "model": "m",
@@ -80,7 +84,13 @@ return msg;
         {
             "id": "llm", "type": "pnex-llm-text", "z": "pnexflow8",
             "prompt": "Write the weekly report", "data_field": "text", "language": "en",
-            "max_chars": 2000, "pnex_org_id": 5, "pnex_node_id": "llm", "wires": [["dbg"]]
+            "max_chars": 2000, "pnex_org_id": 5, "pnex_node_id": "llm", "wires": [["dbg", "page"]]
+        },
+        {
+            "id": "page", "type": "pnex-page-write", "z": "pnexflow8",
+            "mode": "new_page", "title": "Weekly {week}", "text_field": "text",
+            "version_label": "{date}", "pnex_org_id": 5, "pnex_flow_id": 8,
+            "pnex_node_id": "page", "wires": [["dbg"]]
         },
         {
             "id": "dec", "type": "pnex-text-decide", "z": "pnexflow8",
@@ -104,11 +114,13 @@ fn caption_then_fused_description() {
     let path = home.join("flows.json");
     std::fs::write(&path, flows()).unwrap();
     let ai_url = format!("http://{addr}/internal/flow/ai");
+    let page_url = format!("http://{addr}/internal/flow/page-write");
     let rt = common::RuntimeProc::spawn_with_env(
         &path,
         &home,
         [
             ("PNEX_FLOW_AI_URL", ai_url.as_str()),
+            ("PNEX_FLOW_PAGE_URL", page_url.as_str()),
             ("PNEX_FLOW_WRITE_TOKEN", "t"),
         ],
     );
@@ -131,6 +143,11 @@ fn caption_then_fused_description() {
     // The fused text feeds the AI text node (D208), output marked as AI.
     rt.wait_for(
         |v| common::is_debug_with(v, "Weekly report") && common::is_debug_with(v, "ai_generated"),
+        Duration::from_secs(20),
+    );
+    // The AI text becomes a page with a named version (D209).
+    rt.wait_for(
+        |v| common::is_debug_with(v, "Weekly 2026-W42") && common::is_debug_with(v, "page_id"),
         Duration::from_secs(20),
     );
     // The fused text goes on to the decision node, which keeps the payload.

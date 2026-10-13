@@ -317,6 +317,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::VisionCaption { .. } => kind_labels(PaletteKind::VisionCaption),
         pnex_core::FlowNodeKind::MediaFuse { .. } => kind_labels(PaletteKind::MediaFuse),
         pnex_core::FlowNodeKind::LlmText { .. } => kind_labels(PaletteKind::LlmText),
+        pnex_core::FlowNodeKind::PageWrite { .. } => kind_labels(PaletteKind::PageWrite),
         pnex_core::FlowNodeKind::TextDecide { .. } => kind_labels(PaletteKind::TextDecide),
         pnex_core::FlowNodeKind::EventLog { .. } => kind_labels(PaletteKind::EventLog),
         pnex_core::FlowNodeKind::MemoryWrite { .. } => kind_labels(PaletteKind::MemoryWrite),
@@ -388,7 +389,9 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::TextDecide { .. } => {
             (geometry::VISION_FILL, geometry::VISION_STROKE)
         }
-        pnex_core::FlowNodeKind::EventLog { .. } | pnex_core::FlowNodeKind::RangeUpsert { .. } => {
+        pnex_core::FlowNodeKind::EventLog { .. }
+        | pnex_core::FlowNodeKind::RangeUpsert { .. }
+        | pnex_core::FlowNodeKind::PageWrite { .. } => {
             (geometry::EVENT_LOG_FILL, geometry::EVENT_LOG_STROKE)
         }
         pnex_core::FlowNodeKind::Anomaly { .. } => {
@@ -436,6 +439,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::VisionCaption { .. }
         | pnex_core::FlowNodeKind::MediaFuse { .. }
         | pnex_core::FlowNodeKind::LlmText { .. }
+        | pnex_core::FlowNodeKind::PageWrite { .. }
         | pnex_core::FlowNodeKind::TextDecide { .. } => {
             cx.display_values.read().get(&node.id).cloned()
         }
@@ -1105,6 +1109,11 @@ fn node_subtitle(node: &FlowNode) -> String {
                 text
             }
         }
+        // New page title template, or "+ page" in append mode.
+        pnex_core::FlowNodeKind::PageWrite { config } => match config.mode {
+            pnex_core::pages::PageWriteMode::NewPage => config.title.clone(),
+            pnex_core::pages::PageWriteMode::Append => "+ …".to_string(),
+        },
         // Start of the instruction.
         pnex_core::FlowNodeKind::LlmText { config } => {
             let text: String = config.prompt.chars().take(28).collect();

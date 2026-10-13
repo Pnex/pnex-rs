@@ -376,6 +376,18 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         notes: "The image leaves PneX for the organization's provider: wiring this node is that choice. Needs an LLM provider in the organization settings (none = node error status). Model calls of caption and media_fuse nodes share a daily cap per organization (2000 by default). The caption is indicative, never a fact: feed it to media_fuse, an event_log, or a notify for a human, never to anything that acts. Frames older than 15 s are gone from the camera bus: keep it right after the source or detection.",
     },
     NodeDoc {
+        kind: "page_write",
+        summary: "Writes the Markdown of the message into a page (Pages) of the organization and freezes a named version: a report page per run, or a log page appended to. payload = {page_id, title, version, ai_generated}.",
+        config: &[
+            ("mode", "\"new_page\" (default: a page per message) | \"append\" (at the end of page_id)"),
+            ("title", "title of each new page; {date}, {time}, {week} are replaced (UTC), e.g. \"Weekly report {week}\""),
+            ("page_id", "the page appended to (mode append)"),
+            ("text_field", "dotted path of the Markdown inside msg.payload, default \"text\" (what llm_text emits)"),
+            ("version_label", "label of the named version created after each write, default \"{date}\""),
+        ],
+        notes: "Markdown kept: # headings, paragraphs, - and 1. lists, > quotes, ---, code fences, **bold**, *italic*, `code`, [links](https://…); a table becomes one paragraph per row. A version holding AI text (payload.ai_generated from llm_text or media_fuse) is marked as such and waits for a person to approve it in Pages before an AI report leaves the organization. Open editors see an append live.",
+    },
+    NodeDoc {
         kind: "llm_text",
         summary: "Writes a text with the organization's LLM from an instruction and the incoming data: a weekly report, a summary of events, a classification. payload = {text (Markdown), model, ai_generated: true, data_truncated}.",
         config: &[
