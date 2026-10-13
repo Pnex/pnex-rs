@@ -36,6 +36,11 @@ use edgelink_macro::*;
 use pnex_core::vision::{Detection, VisionTrackConfig};
 
 const NODE: &str = "pnex-vision-track";
+/// Detections of one frame taken into account.
+const MAX_DETECTIONS: usize = 300;
+/// Sources followed at once; past it the oldest-unseen state is dropped.
+pub const MAX_SOURCES: usize = 256;
+
 /// Period of the expiry sweep for sources that stopped sending frames.
 const SWEEP: Duration = Duration::from_secs(1);
 
@@ -354,14 +359,21 @@ impl VisionTrackNode {
             );
             return Vec::new();
         };
-        let dets: Vec<Detection> = payload
+        let mut dets: Vec<Detection> = payload
             .get("detections")
             .cloned()
             .and_then(|d| serde_json::from_value(d).ok())
             .unwrap_or_default();
+        // Matching is detections × tracks: a forged frame stays bounded.
+        dets.truncate(MAX_DETECTIONS);
         let mut out = Vec::new();
         let mut guard = self.state.lock().expect("track state");
         let (sources, next_id) = &mut *guard;
+        // shortcut: past MAX_SOURCES the whole state restarts (tracks reopen);
+        // an LRU is only worth it if real flows ever follow that many cameras.
+        if sources.len() >= MAX_SOURCES && !sources.contains_key(&(field, id.clone())) {
+            sources.clear();
+        }
         let st = sources.entry((field, id.clone())).or_default();
         let dim = |k: &str| int_field(payload, k).map(|v| v.clamp(0, i64::from(u32::MAX)) as u32);
         st.width = dim("width").unwrap_or(st.width);

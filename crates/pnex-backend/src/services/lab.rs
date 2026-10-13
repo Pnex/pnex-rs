@@ -361,6 +361,10 @@ pub async fn add_images(
         let Some((asset, version)) = current_version(db, org_id, *id).await? else {
             return Err(not_image(&id.to_string()));
         };
+        // Only pictures of a sane size are read at all.
+        if !version.content_type.starts_with("image/") || version.size_bytes > IMAGE_MAX_BYTES {
+            return Err(not_image(&asset.name));
+        }
         let bytes = store
             .get(&version.storage_key)
             .await
@@ -637,27 +641,25 @@ pub async fn import_recording(
     let store = settings
         .store()
         .map_err(|e| LabError::db(sea_orm::DbErr::Custom(e)))?;
-    // Segment bytes + frame index, unreadable segments left out.
-    let mut loaded: Vec<(&video_segments::Model, Vec<u8>, pnex_core::avi::AviIndex)> = Vec::new();
-    for seg in &segments {
-        let Ok(bytes) = store.get(&seg.storage_key).await else {
-            continue;
-        };
-        if let Ok(index) = pnex_core::avi::read_avi(&bytes) {
-            loaded.push((seg, bytes, index));
-        }
-    }
-    let spans: Vec<(i64, i64, usize)> = loaded
+    // Frames picked from the segment metadata: only the segments holding a
+    // picked frame are read, one at a time.
+    let spans: Vec<(i64, i64, usize)> = segments
         .iter()
-        .map(|(seg, _, idx)| {
+        .map(|seg| {
             (
                 seg.started_at.timestamp_millis(),
                 seg.ended_at.timestamp_millis(),
-                idx.frames.len(),
+                seg.frame_count.max(0) as usize,
             )
         })
         .collect();
     let picks = lab::pick_frames(&spans, from_ms, to_ms, (req.every_secs * 1000.0) as i64);
+    let mut needed: Vec<usize> = picks.iter().map(|(si, _, _)| *si).collect();
+    needed.dedup();
+    let read_bytes: i64 = needed.iter().map(|si| segments[*si].size_bytes).sum();
+    if read_bytes > RECORDING_MAX_BYTES {
+        return Err(LabError::fields(vec![("to", "too_large".into())]));
+    }
     if picks.is_empty() {
         return Err(LabError::new(
             StatusCode::NOT_FOUND,
@@ -667,9 +669,29 @@ pub async fn import_recording(
     }
     let source = format!("rec-{}-{}", device.device_id, from.to_rfc3339());
     let mut out = Vec::with_capacity(picks.len());
+    let mut current: Option<(usize, Vec<u8>, pnex_core::avi::AviIndex)> = None;
     for (si, fi, t_ms) in picks {
-        let (_, bytes, index) = &loaded[si];
-        let (start, len) = index.frames[fi];
+        if current.as_ref().is_none_or(|(c, _, _)| *c != si) {
+            // The previous segment is dropped here: one in memory at once.
+            current = None;
+            let Ok(bytes) = store.get(&segments[si].storage_key).await else {
+                continue;
+            };
+            let Ok(index) = pnex_core::avi::read_avi(&bytes) else {
+                continue;
+            };
+            current = Some((si, bytes, index));
+        }
+        let Some((_, bytes, index)) = current.as_ref() else {
+            continue;
+        };
+        // The stored frame count may differ from the file: clamp.
+        let Some(&(start, len)) = index
+            .frames
+            .get(fi.min(index.frames.len().saturating_sub(1)))
+        else {
+            continue;
+        };
         let Some(jpeg) = bytes.get(start..start + len) else {
             continue;
         };
@@ -845,6 +867,12 @@ fn ext_of(content_type: &str) -> &'static str {
 
 /// Most images of one export (the archive is built in memory).
 pub const EXPORT_MAX_IMAGES: usize = 3000;
+/// Most bytes of the pictures of one export (peak memory ≈ twice that).
+pub const EXPORT_MAX_BYTES: i64 = 512 * 1024 * 1024;
+/// Largest picture added to a project.
+pub const IMAGE_MAX_BYTES: i64 = 50 * 1024 * 1024;
+/// Most recording bytes read by one import (one segment in memory at once).
+pub const RECORDING_MAX_BYTES: i64 = 2 * 1024 * 1024 * 1024;
 
 /// COCO archive of a dataset version: `images/<id>.<ext>` at the frozen
 /// media versions, `annotations/{train,val}.json`, `classes.txt`.
@@ -872,22 +900,34 @@ pub async fn export(
             format!("range:1..{EXPORT_MAX_IMAGES}"),
         )]));
     }
-    let mut exts = std::collections::HashMap::new();
-    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut versions = Vec::with_capacity(snap.images.len());
     for img in &snap.images {
         let Ok(asset_id) = Uuid::parse_str(&img.asset_id) else {
             continue;
         };
-        let Some(mv) = media_versions::Entity::find()
+        if let Some(mv) = media_versions::Entity::find()
             .filter(media_versions::Column::AssetId.eq(asset_id))
             .filter(media_versions::Column::OrgId.eq(org_id))
             .filter(media_versions::Column::VersionNumber.eq(img.asset_version))
             .one(db)
             .await
             .map_err(LabError::db)?
-        else {
-            continue;
-        };
+        {
+            versions.push((img, mv));
+        }
+    }
+    // Sizes are checked before anything is read (the archive is in memory).
+    let total: i64 = versions.iter().map(|(_, mv)| mv.size_bytes).sum();
+    if total > EXPORT_MAX_BYTES {
+        return Err(LabError::new(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            err_codes::LAB_EXPORT_TOO_LARGE,
+            "This dataset is too large for one archive.",
+        ));
+    }
+    let mut exts = std::collections::HashMap::new();
+    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+    for (img, mv) in versions {
         let Ok(bytes) = store.get(&mv.storage_key).await else {
             continue;
         };

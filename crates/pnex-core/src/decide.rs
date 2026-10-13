@@ -46,6 +46,9 @@ pub const DECIDE_OPTION_MAX: usize = 120;
 /// Longest state text sent to the model, chars (the model reads ≤ 1024
 /// tokens anyway).
 pub const DECIDE_STATE_MAX: usize = 8000;
+/// Decisions per organization and per UTC day: the model is shared by the
+/// whole server, one org must not monopolize it.
+pub const DECIDE_DAILY_CALLS: u64 = 20_000;
 
 /// Config of the `text_decide` flow node.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

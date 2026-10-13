@@ -15,7 +15,8 @@ use std::time::{Duration, Instant};
 
 use loco_rs::app::AppContext;
 use pnex_core::decide::{
-    DecideAnswer, DecideRequest, DecideResponse, TextDecideConfig, DECIDE_STATE_MAX,
+    DecideAnswer, DecideRequest, DecideResponse, TextDecideConfig, DECIDE_DAILY_CALLS,
+    DECIDE_STATE_MAX,
 };
 use pnex_decide::Laya;
 use serde::Deserialize;
@@ -83,7 +84,7 @@ async fn model(ctx: &AppContext) -> Result<(Arc<Laya>, String), FlowAiError> {
     }
     let loaded = tokio::task::spawn_blocking(move || Laya::load(&dir))
         .await
-        .map_err(|e| FlowAiError::Unavailable(e.to_string()))?;
+        .map_err(|_| FlowAiError::Unavailable("the decision model failed to load".into()))?;
     let mut slot = MODEL.lock().expect("decide model");
     match loaded {
         Ok(m) => {
@@ -92,9 +93,11 @@ async fn model(ctx: &AppContext) -> Result<(Arc<Laya>, String), FlowAiError> {
             Ok((m, name))
         }
         Err(e) => {
+            // The detail (paths of the server) stays in the platform logs.
             tracing::error!(error = %e, "decision model load failed");
-            *slot = Slot::Failed(Instant::now(), e.to_string());
-            Err(FlowAiError::Unavailable(e.to_string()))
+            let public = "the decision model failed to load".to_string();
+            *slot = Slot::Failed(Instant::now(), public.clone());
+            Err(FlowAiError::Unavailable(public))
         }
     }
 }
@@ -110,6 +113,7 @@ pub async fn decide(ctx: &AppContext, req: &DecideRequest) -> Result<DecideRespo
         return Err(FlowAiError::Invalid(format!("{code}: {message}")));
     }
     let (laya, name) = model(ctx).await?;
+    crate::services::flow_ai::count_daily(ctx, "decide", req.org_id, DECIDE_DAILY_CALLS).await?;
     let _permit = tokio::time::timeout(QUEUE_WAIT, GATE.acquire())
         .await
         .map_err(|_| FlowAiError::Unavailable("decision model busy".into()))?

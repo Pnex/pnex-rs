@@ -547,6 +547,7 @@ pub const LAB_BOXES_TOO_MANY: &str = "lab-boxes-too-many";
 pub const LAB_NEGATIVE_WITH_BOXES: &str = "lab-negative-with-boxes";
 pub const LAB_ASSET_NOT_IMAGE: &str = "lab-asset-not-image";
 pub const LAB_DATASET_EMPTY: &str = "lab-dataset-empty";
+pub const LAB_EXPORT_TOO_LARGE: &str = "lab-export-too-large";
 
 // ── Registered codes ─────────────────────────────────────────────────────
 
@@ -828,6 +829,7 @@ pub const ALL: &[&str] = &[
     LAB_NEGATIVE_WITH_BOXES,
     LAB_ASSET_NOT_IMAGE,
     LAB_DATASET_EMPTY,
+    LAB_EXPORT_TOO_LARGE,
     TIME_RANGE_IMPORT_TOO_LARGE,
     TIME_RANGE_IMPORT_INVALID,
     TIME_RANGE_SCOPE_UNKNOWN,
