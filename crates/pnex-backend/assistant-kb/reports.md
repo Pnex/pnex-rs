@@ -19,6 +19,13 @@ A report is written by a flow: a trigger on a schedule gathers data, the organiz
 6. A person reads the version in **Pages** and clicks **Approve** (the **PDF** button of a version downloads it at any time).
 7. To send it once approved: a second flow, **Inject** every 15 minutes → **Page PDF** with **The latest sendable version of a page, once** → **Notification** with the PDF attached. A version is never sent twice by the same node.
 
+## Attach the PDF to the e-mail
+- Use a notification template with a variable, for example `report` (subject "Report {{ report.title }} v{{ report.version }}"), and wire the **PDF ready** output of **Page PDF** to the `report` row of the **Notification**.
+- In the **Notification**, set **PDF attachment** to `report` (the variable holding the Page PDF output) or `asset_id` when the template has no variable.
+- The **trigger** row is mandatory: wire an **Inject** that sends `true` once when the flow starts, so every new PDF is sent.
+- Only e-mail (SMTP) channels carry the file; other channels get the message alone. If the file cannot be read, the e-mail is not sent (no report without its PDF) and the delivery shows as failed in the notification journal.
+- Only PDFs made by a **Page PDF** node can be attached, never another file of the media library.
+
 Unticking **Approval required for AI text** sends AI reports without review; the PDF then says "not reviewed". Keep it ticked unless the data cannot carry hostile text.
 
 ## Good to know

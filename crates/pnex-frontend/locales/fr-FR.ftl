@@ -1455,6 +1455,8 @@ flows-notify-add-channel = Ajouter un canal
 flows-notify-template = Modèle de message
 flows-notify-no-template = — choisir un modèle —
 flows-notify-vars = Valeurs des variables (littéral ou {"{{"} msg.x {"}}"})
+flows-notify-attach = Pièce jointe PDF
+flows-notify-attach-hint = Champ portant l'id média d'un PDF produit par un nœud « PDF d'une page » (ex. asset_id). Seuls les canaux e-mail le joignent ; vide = sans pièce jointe.
 flows-notify-strict = Envoi strict
 flows-notify-strict-hint = Désactivé : un envoi raté est journalisé et le message passe quand même. Activé : l'échec tombe le nœud.
 flows-notify-pick-channel = — choisir un canal —
