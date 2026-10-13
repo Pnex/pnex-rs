@@ -138,6 +138,9 @@ pub(super) fn TrainingPanel(
                 if base_list.is_empty() {
                     p { class: "text-xs text-amber-700", {t!("lab-train-no-base")} }
                 }
+                if version_list.is_empty() {
+                    p { class: "text-xs text-amber-700", {t!("lab-train-no-version")} }
+                }
                 label { class: "block",
                     span { class: FIELD_LABEL, {t!("lab-train-version")} }
                     select {

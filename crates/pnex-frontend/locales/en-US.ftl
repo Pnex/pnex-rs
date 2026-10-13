@@ -4720,6 +4720,7 @@ lab-from-recording = From a recording
 lab-train-title = Training
 lab-train-help = Fine-tunes a registered YOLOX model on a frozen version: only its last layers are learned again, on this server, in a few minutes. The new model joins Models, ready for an Object detection node.
 lab-train-no-base = No YOLOX model in Models: register a starting model first (for example YOLOX COCO).
+lab-train-no-version = No frozen version yet: freeze a dataset version first (panel above).
 lab-train-version = Dataset version
 lab-train-base = Starting model
 lab-train-epochs = Epochs

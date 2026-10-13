@@ -4719,6 +4719,7 @@ lab-from-recording = Depuis un enregistrement
 lab-train-title = Entraînement
 lab-train-help = Affine un modèle YOLOX enregistré sur une version figée : seules ses dernières couches sont ré-apprises, sur ce serveur, en quelques minutes. Le modèle obtenu rejoint Modèles, prêt pour un nœud Détection d'objets.
 lab-train-no-base = Aucun modèle YOLOX dans Modèles : enregistrez d'abord un modèle de départ (par exemple YOLOX COCO).
+lab-train-no-version = Aucune version figée : figez d'abord une version du jeu de données (panneau ci-dessus).
 lab-train-version = Version du jeu de données
 lab-train-base = Modèle de départ
 lab-train-epochs = Époques

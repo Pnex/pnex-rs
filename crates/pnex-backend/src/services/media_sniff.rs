@@ -27,6 +27,9 @@ const SPLAT_RECORD: usize = 32;
 pub struct Sniff {
     pub kind: &'static str,
     pub metadata: Option<serde_json::Value>,
+    /// Media type of the identified content, used when the client declares
+    /// none (pictures, video, audio only).
+    pub mime: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,6 +107,26 @@ impl Format {
             Self::Wav | Self::Mp3 | Self::Ogg | Self::Flac | Self::M4a => &["audio"],
             Self::Mp4 => &["video"],
         }
+    }
+
+    /// Media type of a picture, video or sound format; `None` otherwise.
+    fn mime(self, filename: &str) -> Option<&'static str> {
+        Some(match self {
+            Self::Jpeg => "image/jpeg",
+            Self::Png => "image/png",
+            Self::Gif => "image/gif",
+            Self::Webp => "image/webp",
+            Self::Avif => "image/avif",
+            Self::Heic => "image/heic",
+            Self::Wav => "audio/wav",
+            Self::Mp3 => "audio/mpeg",
+            Self::Ogg => "audio/ogg",
+            Self::Flac => "audio/flac",
+            Self::M4a => "audio/mp4",
+            Self::Mp4 if extension(filename) == "mov" => "video/quicktime",
+            Self::Mp4 => "video/mp4",
+            _ => return None,
+        })
     }
 
     fn label(self) -> &'static str {
@@ -192,12 +215,14 @@ pub fn detect(filename: &str, bytes: &[u8]) -> Option<Sniff> {
                 "projection": "equirectangular",
                 "source": "gpano"
             })),
+            mime: format.mime(filename),
         });
     }
     let label = format.label();
     Some(Sniff {
         kind: format.kinds()[0],
         metadata: (!label.is_empty()).then(|| serde_json::json!({ "format": label })),
+        mime: format.mime(filename),
     })
 }
 
@@ -254,6 +279,17 @@ mod tests {
         assert!(detect("a.docx", b"PK\x03\x04photos/a.jpg").is_none());
         // Text names over binary content.
         assert!(detect("notes.txt", b"\x00\x01\x02").is_none());
+    }
+
+    #[test]
+    fn identified_content_gives_its_media_type() {
+        let png = b"\x89PNG\r\n\x1a\n\0\0";
+        assert_eq!(detect("a.png", png).unwrap().mime, Some("image/png"));
+        let mov = b"\0\0\0\x14ftypqt  \0\0\0\0";
+        assert_eq!(
+            detect("clip.mov", mov).unwrap().mime,
+            Some("video/quicktime")
+        );
     }
 
     #[test]
