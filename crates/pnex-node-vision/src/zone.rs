@@ -195,6 +195,12 @@ impl VisionZoneNode {
             return Vec::new();
         }
         let mut sources = self.state.lock().expect("zone state");
+        // shortcut: bounded like the tracker (forged source ids cannot grow
+        // it); past the bound the memberships restart.
+        if sources.len() >= crate::track::MAX_SOURCES && !sources.contains_key(&(field, id.clone()))
+        {
+            sources.clear();
+        }
         let st = sources.entry((field, id.clone())).or_default();
         st.update(&self.config, ts_ms, w, h, &tracks)
             .into_iter()

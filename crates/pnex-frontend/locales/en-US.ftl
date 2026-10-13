@@ -4718,3 +4718,4 @@ lab-rec-done = { $count ->
     [one] { $count } picture added
    *[other] { $count } pictures added
 }
+err-lab-export-too-large = This dataset version is too large for one archive (512 MB of pictures at most).

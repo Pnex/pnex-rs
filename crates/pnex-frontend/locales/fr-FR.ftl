@@ -4717,3 +4717,4 @@ lab-rec-done = { $count ->
     [one] { $count } image ajoutée
    *[other] { $count } images ajoutées
 }
+err-lab-export-too-large = Cette version du jeu de données est trop grosse pour une seule archive (512 Mo d'images au plus).

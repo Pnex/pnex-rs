@@ -73,14 +73,24 @@ fn daily_cap(ctx: &AppContext) -> u64 {
 
 /// Counts one call against the org's daily cap.
 async fn take_quota(ctx: &AppContext, org_id: i64) -> Result<(), FlowAiError> {
-    let cap = daily_cap(ctx);
+    count_daily(ctx, "flow-ai", org_id, daily_cap(ctx)).await
+}
+
+/// Per-org daily counter `pnex:<what>:v1:<org>:<UTC day>` (Valkey);
+/// `Quota` once `cap` is passed.
+pub(crate) async fn count_daily(
+    ctx: &AppContext,
+    what: &str,
+    org_id: i64,
+    cap: u64,
+) -> Result<(), FlowAiError> {
     // shortcut: without Valkey (dev only, D108 makes it mandatory) the cap
     // is not enforced; upgrade if a Valkey-less deployment ever ships.
     let Some(mut conn) = crate::services::shared_valkey::conn(&ctx.config).await else {
         return Ok(());
     };
     let key = format!(
-        "pnex:flow-ai:v1:{org_id}:{}",
+        "pnex:{what}:v1:{org_id}:{}",
         chrono::Utc::now().format("%Y%m%d")
     );
     let n: u64 = redis::AsyncCommands::incr(&mut conn, &key, 1u64)

@@ -212,6 +212,10 @@ impl VisionCaptionNode {
         };
         {
             let mut last = self.last.lock().expect("caption last");
+            // Bounded like the tracker: a forged source id cannot grow it.
+            if last.len() >= crate::track::MAX_SOURCES && !last.contains_key(&id) {
+                last.clear();
+            }
             let gap = (self.config.cfg.min_interval_secs * 1000.0) as i64;
             if last.get(&id).is_some_and(|t| now - t < gap) {
                 self.stats.throttled.fetch_add(1, Ordering::Relaxed);
