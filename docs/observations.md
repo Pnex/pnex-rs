@@ -1406,7 +1406,8 @@ page qui demande « tout » ou plus de 100 tronque sans le dire.
   and flow runtime in the same cgroup » des pods.
 - **Statut** : corrigé et déployé sur dev.pnex.io (rejoué : 1 timeout sur
   743, 50 s après le roulement, dû à un contrôleur ingress microk8s en
-  CrashLoopBackOff depuis 15 jours sur un nœud — infra, hors PneX).
+  CrashLoopBackOff depuis 15 jours sur un nœud — infra, hors PneX). Contrôleur
+  réparé puis rejoué le même soir : 572 requêtes sur 572 en 200, aucun timeout.
 
 ### O68 — Device (écriture) : appareil hors ligne absent du sélecteur
 
