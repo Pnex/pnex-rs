@@ -690,6 +690,8 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
             .await
             .json::<serde_json::Value>();
         assert_eq!(runtime["engine_status"], "stopped", "{runtime}");
+        // The shared runtime process is still alive, the stopped flow is not (O60).
+        assert_eq!(runtime["running"], false, "{runtime}");
         let artifact = read_state_flows_json().await;
         assert!(
             artifact
