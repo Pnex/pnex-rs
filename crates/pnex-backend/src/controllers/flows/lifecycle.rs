@@ -951,6 +951,9 @@ pub(super) async fn runtime(
     // runtime), au prisme du flow demandé.
     let mut status =
         crate::services::flow_cluster::runtime_status(&ctx.db, &ctx.config, flow.org_id, id).await;
+    // The runtime process serves every flow of the org: alive does not mean
+    // THIS flow runs once it is stopped (O60, green "Deployed" next to Start).
+    status.running &= flow.status == pnex_core::FLOW_STATUS_DEPLOYED;
     // Point de vue du flow : sa version déployée (DB) — jamais une version
     // « globale » du moteur qui appartiendrait à un autre flow.
     status.deployed_flow_id = Some(id);
