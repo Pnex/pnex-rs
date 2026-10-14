@@ -246,20 +246,29 @@ consolidée la dissipe d'un coup.
 
 Un banc (ESP32, NodeMCU, TFT, relais) déroule la liste :
 
-1. **Write pin + PWM** (duty 0-100) sur device réel — le write routé par
-   topic (90f23e0) et l'exclusivité write (8d60950) n'ont jamais vu de
-   carte.
+> **Banc du 2026-10-14** (XIAO C3, NodeMCU V3 OLED, ESP32 38p TXD + TFT,
+> ESP32-CAM-MB) : suites `@hardware` vertes (C3 7/7, NodeMCU 2/2, ESP32
+> 3/3 avec OTA ajoutée, caméra 2/2) ; points 1, 3–7 validés. Reste le
+> point 8 (firmware `regulator` pas encore écrit). Constats : O65, O66.
+
+1. ~~**Write pin + PWM**~~ — validé le 2026-10-14 : flow déployé →
+   `device_write` duty 100/75/50/25/0 sur la LED D4 du NodeMCU, paliers
+   visibles, état confirmé par la carte et affiché sur l'OLED.
 2. ~~**OTA sur ESP32 réel**~~ — validée le 2026-10-09 sur ESP32-C6
    (OTA signée, anti-downgrade ; SEC-18).
-3. **TFT** : barre dès boot, timeline OTA, panneau de pins (tft_dev).
-4. **Read** : fraîcheur cache-first Valkey contre un device réel.
-5. **Écran debug local** (ScreenChoice) et Brick 0 sur carte réelle (DoD
-   §9 de brick0.md — à vivre avec l'utilisateur).
-6. **Chaîne caméra complète** (ajout 2026-10-01) : ESP32-CAM →
-   `camera-source` → `vision-detect` → `event-log` → notification.
-7. **Firmware custom** (ajout 2026-10-01) : `main.cpp` utilisateur →
-   build isolé → flash/OTA → métrique dans O2 (E2E cible de
-   `custom-firmware.md`).
+3. ~~**TFT**~~ — validé le 2026-10-14 (ESP32 38p TXD) : barre dès le boot,
+   panneau de pins, page OTA ; la progression reste à 0 % pendant le
+   téléchargement (O65, visuel).
+4. ~~**Read**~~ — validé le 2026-10-14 : `device_read` A0 toutes les 2 s
+   suit la carte (valeurs changeantes, pas de zéro inventé).
+5. ~~**Écran debug local**~~ — validé le 2026-10-14 sur l'OLED soudé du
+   NodeMCU (barre, pins, ADC et duty live). Brick 0 DoD §9 non rejouée.
+6. ~~**Chaîne caméra complète**~~ — validée le 2026-10-14 : ESP32-CAM →
+   `camera_source` → `vision_detect` (YOLOX nano, personne 87 %) →
+   `event_log` + `json_split` → `pnex_notify` in-app envoyée. Le câblage
+   via `calc` échoue en silence (O66).
+7. ~~**Firmware custom**~~ — validé le 2026-10-14 sur C3 (e2e
+   `custom-fw` : IDE → build → flash → métrique, générique restauré).
 8. **F3 regulator** (P1.3) sur le même banc.
 
 Critère de sortie : chaque entrée « reste E2E matériel » de la mémoire et

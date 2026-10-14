@@ -1357,3 +1357,34 @@ page qui demande « tout » ou plus de 100 tronque sans le dire.
 - **Statut** : ouvert pour la suite (pagers sur API existante — contrôles,
   documents, références Edge, annotations —, harmonisation de forme,
   pagination backend).
+
+### O65 — TFT : progression OTA figée à 0 %
+
+- **Constat** (banc P0.1, 2026-10-14, ESP32 38p TXD + ST7735) : pendant une
+  OTA réussie, la page OTA du TFT affiche « Downloading » et **0 %** jusqu'à
+  la fin, puis la carte redémarre normalement. Purement visuel.
+- **Vérifié** : la taille est annoncée (`[OTA] 1018064 octets annoncés`,
+  pas de chunked), le téléchargement dure ~17 s (nginx 18:17:50 → 18:18:05),
+  `pnex_ota.cpp` publie `set_ota("downloading", pct)` à chaque palier et
+  appelle `hooks.tick` (= `pnex_screen::tick`) à chaque tour de boucle ;
+  `tickOtaPage` / `drawOtaNumber` redessinent sur changement à la lecture.
+- **Piste** : tracer en série les appels de `tickOtaPage` (pct lu, page
+  courante) pendant le téléchargement ; vérifier aussi l'OLED (même chemin).
+- **Statut** : ouvert.
+
+### O66 — Calc : message rejeté en silence (payload non numérique)
+
+- **Constat** (banc P0.1, 2026-10-14, chaîne caméra) : `vision_detect → calc
+  "count > 0" → pnex_notify` ne notifie jamais. Le calc n'accepte qu'un
+  payload plat `clé → nombre` (`pnex-node-device/src/calc.rs`) ; la sortie de
+  `vision_detect` porte des tableaux/objets (`detections`, `labels`,
+  `best_below`) → message rejeté par un `log::warn` côté runtime, **rien**
+  dans le statut de nœud ni dans le panneau Debug : l'utilisateur voit un
+  flow « vert » qui ne fait rien.
+- **Contournement validé** : `json_split` (keys `["count"]`) branché sur la
+  ligne `trigger` du notify (nombre non nul = armé).
+- **Correction proposée** : remonter le rejet en statut de nœud (`warn`,
+  code machine + clé fluent) ; ajouter le contrat d'entrée dans la `NodeDoc`
+  du calc (`notes` vide aujourd'hui) pour que l'assistant ne génère pas ce
+  câblage ; éventuellement accepter les clés numériques et ignorer les autres.
+- **Statut** : ouvert.
