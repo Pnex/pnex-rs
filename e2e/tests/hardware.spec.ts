@@ -19,6 +19,7 @@ test.describe('hardware', { tag: '@hardware' }, () => {
   // ESP32 DevKit 38 pins + TFT: G25 output, G34 (ADC1, input-only) analog.
   registerAndFlash('esp32');
   pinIoTest('esp32', 25, 34);
+  otaTests('esp32');
   // ESP32 DevKit 38 pins WROOM-32U (external antenna) + TFT: same pin map.
   registerAndFlash('esp32u');
   pinIoTest('esp32u', 25, 34);

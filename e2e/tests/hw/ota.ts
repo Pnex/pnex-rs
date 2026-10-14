@@ -1,5 +1,5 @@
-// Over-the-air update of a live board (C3, C6): rebuild from the device row,
-// deploy over the air, the board downloads, flashes, reboots and reports
+// Over-the-air update of a live board (C3, ESP32 + TFT, C6): rebuild from the
+// device row, deploy over the air, the board downloads, flashes, reboots and reports
 // success. Every build is a new record (new id = new, higher firmware
 // version), so the deployment is a normal update, never a forced redeploy.
 import { expect, test } from '../../src/fixtures.ts';
