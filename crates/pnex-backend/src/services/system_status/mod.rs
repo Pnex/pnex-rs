@@ -5,8 +5,8 @@
 //! keys are machine tokens resolved by the UI (`system-metric-<key>`).
 
 pub mod host;
+mod topology;
 
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use loco_rs::app::AppContext;
@@ -26,15 +26,9 @@ use crate::services::flow::FlowSettings;
 use crate::services::last_cache::ValkeySettings;
 use crate::services::openobserve::{Client as O2Client, OpenobserveSettings};
 use crate::services::retention::DeploymentMode;
-use crate::services::stitch::StitchSettings;
 
 /// Upper bound of every network probe.
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
-
-/// Directory walks are expensive on an SD card: cached this long.
-const DIR_CACHE_TTL: Duration = Duration::from_secs(300);
-/// Entry bound of one directory walk (result flagged partial beyond).
-const DIR_MAX_ENTRIES: usize = 200_000;
 
 const OK: &str = "ok";
 const DEGRADED: &str = "degraded";
@@ -75,14 +69,14 @@ fn elapsed_ms(started: Instant) -> Option<u64> {
 
 /// Full status report (every probe concurrently).
 pub async fn collect(ctx: &AppContext) -> SystemStatus {
-    let (database, rauthy, openobserve, valkey, objects, local, host_status, ai, secrets) = tokio::join!(
+    let (database, rauthy, openobserve, valkey, objects, host_status, topology, ai, secrets) = tokio::join!(
         probe_database(ctx),
         probe_rauthy(ctx),
         probe_openobserve(ctx),
         probe_valkey(ctx),
         probe_object_storage(ctx),
-        probe_local_storage(ctx),
         probe_host(ctx),
+        topology::probe(ctx),
         probe_ai(ctx),
         probe_secrets(ctx),
     );
@@ -96,8 +90,8 @@ pub async fn collect(ctx: &AppContext) -> SystemStatus {
             openobserve,
             valkey,
             objects,
-            local,
             host_status,
+            topology,
             ai,
             secrets,
         ],
@@ -400,64 +394,6 @@ async fn probe_object_storage(ctx: &AppContext) -> ComponentStatus {
     out
 }
 
-type DirCache = Option<(Instant, Vec<(String, String, Option<(u64, bool)>)>)>;
-static DIR_CACHE: Mutex<DirCache> = Mutex::new(None);
-
-async fn probe_local_storage(ctx: &AppContext) -> ComponentStatus {
-    let mut out = component("local_storage", OK);
-    let dirs: Vec<(String, String)> = vec![
-        (
-            "flow_state".into(),
-            FlowSettings::from_config(&ctx.config).state_dir,
-        ),
-        (
-            "stitch_models".into(),
-            StitchSettings::from_config(&ctx.config).models_dir,
-        ),
-    ];
-    let cached = DIR_CACHE
-        .lock()
-        .ok()
-        .and_then(|guard| guard.clone())
-        .filter(|(at, _)| at.elapsed() < DIR_CACHE_TTL)
-        .map(|(_, sizes)| sizes);
-    let sizes = match cached {
-        Some(sizes) => sizes,
-        None => {
-            let walk = dirs.clone();
-            let sizes = tokio::task::spawn_blocking(move || {
-                walk.into_iter()
-                    .map(|(key, path)| {
-                        let size = host::dir_size(&path, DIR_MAX_ENTRIES);
-                        (key, path, size)
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .await
-            .unwrap_or_default();
-            if let Ok(mut guard) = DIR_CACHE.lock() {
-                *guard = Some((Instant::now(), sizes.clone()));
-            }
-            sizes
-        }
-    };
-    for (key, path, size) in sizes {
-        let mut m = metric(
-            &format!("dir_{key}"),
-            "bytes",
-            size.map(|(bytes, _)| bytes as f64),
-        );
-        let partial = size.is_some_and(|(_, partial)| partial);
-        m.label = Some(if partial {
-            format!("{path} (partial)")
-        } else {
-            path
-        });
-        out.metrics.push(m);
-    }
-    out
-}
-
 async fn probe_host(ctx: &AppContext) -> ComponentStatus {
     let mut out = component("host", OK);
     if !cfg!(target_os = "linux") {
@@ -596,6 +532,10 @@ async fn probe_ai(ctx: &AppContext) -> ComponentStatus {
         "count",
         Some(org_providers as f64),
     ));
-    // Users bring their own LLM (D119): only the org providers count.
+    // Users bring their own LLM (D119): only the org providers count, and
+    // none means the assistant cannot answer anyone yet.
+    if org_providers == 0 {
+        out.status = NOT_CONFIGURED.into();
+    }
     out
 }
