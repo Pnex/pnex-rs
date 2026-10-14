@@ -13,8 +13,8 @@ An enabled audio stream brings no new audio, or its transcriptions arrive late.
 ## Symptom
 
 - An in-app notification (and a message on the stream's alert channel) says "Stream X is silent": no audio for 2 minutes.
-- On **Audio streams**, the stream shows **Backoff** or **Starting** instead of **Running**, with a short reason (stream unreachable, stopped delivering audio, format not supported, encrypted stream, access secret unreadable, capture box offline…).
-- Or the stream runs, but the newest transcription is minutes old and segments pile up as **queued**; some end as **skipped (backlog)**.
+- On **Audio streams**, the stream shows **Retrying soon** or **Starting** instead of **Capturing**, with a short reason (stream unreachable, stopped delivering audio, format not supported, encrypted stream, access secret unreadable, capture box offline…).
+- Or the stream runs, but the newest transcription is minutes old and segments pile up as **Queued**; some end as **Too late (skipped)**.
 
 ## Cause
 
@@ -24,7 +24,7 @@ An enabled audio stream brings no new audio, or its transcriptions arrive late.
 ## Fix (in the UI)
 
 1. Open **Audio streams**, read the reason under the stream, then **Edit** it: check the **Stream URL** (open it in a browser), the **Kind** (`hls` for an `.m3u8` playlist, `icecast` for a continuous stream) and the **Access secret**.
-2. If the stream is captured by a **capture worker**, switch **Capture location** to **This server** unless the platform confirmed a worker runs. If it is captured by a **capture box**, open **Devices / Agents** and check that the agent is connected; bring the box back online, or switch **Capture location** to **This server** when the server can reach the source.
+2. If the stream is captured by a **capture worker**, switch **Capture location** to **This server** unless the platform confirmed a worker runs. If it is captured by a **capture box**, open **Devices & agents** and check that the agent is connected; bring the box back online, or switch **Capture location** to **This server** when the server can reach the source.
 3. For late transcriptions, open the **Models and profiles** tab: pick a model whose sustained streams exceed your enabled streams, set it in the profile, or disable some streams.
 4. Open **Segments** on the stream to see which slices failed and why; **Retry failed segments** sends back those whose audio is still kept.
 

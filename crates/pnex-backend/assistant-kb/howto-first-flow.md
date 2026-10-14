@@ -8,11 +8,11 @@ err_codes:
 tools: 
 tags: first flow, getting started, tutorial, read sensor, compute, metric, deploy, premier flow, tutoriel, démarrer
 ---
-Recipe for the canonical pipeline: Inject → Device (read) → Calc → Metric. It reads a device pin periodically, converts the value, and stores the result as a series you can chart on the Visualization page or in dashboards.
+Recipe for the canonical pipeline: Inject → Device (read) → Calc → Metric. It reads a device pin periodically, converts the value, and stores the result as a series you can chart in Monitor › Quick charts or in dashboards.
 
 ## Before you start
 
-The device must be online and the pin you read must have a **Read interval** (Devices / Agents → **Detail** → click the pin → Read interval → **Apply**); otherwise the flow only sees empty payloads.
+The device must be online and the pin you read must have a **Read interval** (Devices & agents → **Detail** → click the pin → Read interval → **Apply**); otherwise the flow only sees empty payloads.
 
 ## Steps
 
@@ -24,7 +24,7 @@ The device must be online and the pin you read must have a **Read interval** (De
 6. Wire the nodes: drag from Inject's output to Device (read), from the pin's port to Calc, from Calc to Metric. Optionally branch a **Display** or **Debug** node after Calc to watch the values.
 7. Click **Save Changes**. Fix anything listed in the "Invalid graph" banner.
 8. Click **Deploy**. The status chip shows "Deployed".
-9. Open **Visualization** → Quick charts and look for the new `etl_` series.
+9. Open **Monitor › Quick charts** and look for the new `etl_` series.
 
 ## Good to know
 

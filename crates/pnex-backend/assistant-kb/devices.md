@@ -1,6 +1,6 @@
 ---
 id: devices
-title: Devices / Agents
+title: Devices & agents
 kind: feature
 pages: /devices
 nodes: device_read, device_write
@@ -8,12 +8,12 @@ err_codes: device-write-forbidden, build-in-progress, build-create-forbidden, pi
 tools: 
 tags: device, devices, agent, board, pinout, pins, firmware, ota, flash, provisioning, token, capteur, carte, appareil
 ---
-The Devices / Agents page (Edges menu) is the registry of the organization's boards and edge agents: register them, build and flash their firmware, update them over the air, and configure their pins from an interactive board pinout.
+The Devices & agents page (Devices menu) is the registry of the organization's boards and edge agents: register them, build and flash their firmware, update them over the air, and configure their pins from an interactive board pinout.
 
 ## What you can do
 
-- **Register** opens a 4-step wizard: Identifier (unique device id, 16 characters max, optional labels), Model (Generic PneX, Predefined boards or Agents), WiFi (credential and PNeX server picked from the Edge referentials), Review. **Create & build** starts the firmware build right away; you can close the window, the build runs on the server.
-- The list filters by type (Sensor, Actuator, Mixed), status and capability, filters by label (**Filter by label (site:serre)**, inherited labels included), and shows the firmware state: Up to date, Update available, Build in progress, Build failed, Offline.
+- **Register** opens a 4-step wizard: Identifier (unique device id, 16 characters max, optional labels), Model (Generic PNeX, Predefined boards or Agents), Wi-Fi (credential and PNeX server picked from the Edge referentials), Review. **Create & build** starts the firmware build right away; you can close the window, the build runs on the server.
+- The list filters by type (Sensor, Actuator, Mixed), status and capability, filters by label (**Filter by label**, e.g. `site:serre`, inherited labels included), and shows the firmware state: Up to date, Update available, Build in progress, Build failed, Offline.
 - Row actions: **Flash** (Web Serial in Chrome/Edge, or the desktop app), **Update over the air**, **Rebuild**, **Download**, **Detail**. Select several rows for **Build selected** or **OTA selected**.
 - **Detail** shows capabilities, the provisioning token and encryption key (Reveal / Copy, never share them), the **Labels** card (type `name:value` or `name`, Enter, then **Save**), and the board pinout. Click a pin to set its Mode (digital in/out, PWM, analog), Safe state and **Read interval**, or to write HIGH/LOW or a PWM duty by hand.
 - **Change board** (next to the board name in the detail, write roles): when the device was registered on the wrong variant — for example a NodeMCU with a soldered OLED registered as a plain NodeMCU, whose screen then stays black — pick the board actually wired among the boards with the same chip. Pin settings are kept and a soldered screen follows the board; rebuild the firmware, then update the device. No need to delete and register it again.

@@ -4,11 +4,11 @@ title: Documents and search
 kind: feature
 pages: 
 nodes: 
-err_codes: media-index-unsupported, media-index-too-large, media-index-malformed, media-index-unreadable, media-index-not-a-document
+err_codes: media-format-unsupported, media-index-unsupported, media-index-too-large, media-index-malformed, media-index-unreadable, media-index-not-a-document
 tools: search_docs, read_chunk, open_page
 tags: document, documents, search, recherche, manual, manuel, procedure, procédure, pdf, word, docx, excel, xlsx, csv, ods, text, markdown, datasheet, fault code, code défaut, index
 ---
-Manuals, procedures, reports, datasheets and exports uploaded to the Media library (Data › Library) are indexed for search: PDF (with a text layer), Word (.docx), text (.txt), Markdown (.md), CSV, Excel (.xlsx) and OpenDocument spreadsheets (.ods). They appear with the kind **Document** (text) or **Table** (spreadsheets).
+Manuals, procedures, reports, datasheets and exports uploaded to the Media library (Media › Library) are indexed for search: PDF (with a text layer), Word (.docx), text (.txt), Markdown (.md), CSV, Excel (.xlsx) and OpenDocument spreadsheets (.ods). They appear with the kind **Document** (text) or **Table** (spreadsheets).
 
 ## What you can do
 - **Upload** the file in the Library like any media: the kind is detected from the file itself and indexing starts at once.
@@ -17,6 +17,7 @@ Manuals, procedures, reports, datasheets and exports uploaded to the Media libra
 - **Ask the assistant**: it searches your documents (`search_docs`), reads a passage with its neighbours (`read_chunk`) or a whole PDF page (`open_page`), and cites the document and page or section of what it quotes.
 
 ## Good to know
+- Uploads follow a strict list of accepted formats: the content must be one of the formats above (or another media format of the Library) and the extension must match it. A renamed file (a `.zip` named `.docx`, a picture named `.pdf`) is refused with *media-format-unsupported*: export it again in its real format.
 - A scanned PDF (images only) has no text to index: its state says so. Text recognition (OCR) is not available yet.
 - Spreadsheets are searched as text (one line per row); questions computed over their columns are not available yet.
 - Word headings (Heading/Titre styles) and Markdown `#` titles become the section shown in results.

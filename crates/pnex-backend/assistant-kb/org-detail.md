@@ -12,7 +12,7 @@ The organization detail page (Organizations → **Manage**, or directly the acti
 
 ## What you can do
 - **Rename** (Owner or Admin): type the new name and click **Rename**.
-- **Add member** (Owner or Admin): enter the person's email, pick a **Role** (Viewer is preselected, least privilege) and click **Add member**. The person must have signed in to PneX at least once, otherwise the server answers "This user has never signed in, so they cannot be added yet."
+- **Add member** (Owner or Admin): enter the person's email, pick a **Role** (Viewer is preselected, least privilege) and click **Add member**. The person must have signed in to PNeX at least once, otherwise the server answers "This user has never signed in, so they cannot be added yet."
 - **Change a role** (Owner or Admin): use the role selector on the member row.
 - **Remove member** (Owner or Admin): trash button on the member row.
 - **LLM providers**: configure the organization's own LLM for the assistant (see the LLM providers card).

@@ -19,6 +19,6 @@ The Profile page holds your personal account settings: identity (read-only), pre
 - **Server root certificate**: download pnex-ca.crt (or scan its QR code from a phone) and install it so phones and computers trust this server's HTTPS connection; the SHA-256 fingerprint lets you check it.
 
 ## Good to know
-- The theme is stored in your profile, but its application to the interface comes with a later dark-mode release.
+- The theme (Light, Dark or Auto) is stored in your profile and applied to the whole interface.
 - Preferences are personal: they do not change anything for other members of your organizations.
 - Organization settings (members, roles, LLM providers) are not here: they live in Organizations.

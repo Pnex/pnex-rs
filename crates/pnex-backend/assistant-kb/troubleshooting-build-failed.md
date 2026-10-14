@@ -12,7 +12,7 @@ A device shows the **Build failed** badge: the server could not produce its firm
 
 ## Symptom
 
-- In **Devices / Agents**, the firmware column shows **Build failed**; hovering the badge shows the reason.
+- In **Devices & agents**, the firmware column shows **Build failed**; hovering the badge shows the reason.
 - The device detail shows a red **Why the build failed** box under its header; for a compilation error, **Compiler output** unfolds the last lines of the compiler (device credentials are masked).
 - The registration wizard shows the same box when the build launched by **Create & build** fails.
 
@@ -21,7 +21,7 @@ A device shows the **Build failed** badge: the server could not produce its firm
 The reason shown tells which step failed:
 
 - **The firmware does not compile**: for a custom firmware, an error in its code; the compiler output names the file and line.
-- **The WiFi password is missing from the vault**: the WiFi network picked for the device was deleted or its secret removed.
+- **The Wi-Fi password is missing from the vault**: the Wi-Fi network picked for the device was deleted or its secret removed.
 - **The build ran out of time**: the build server is busy or slow.
 - **No certificate authority to pin**: the server is missing its device certificate (an installation problem).
 - **The certificate authority to pin is too large for this chip**: the server pins a CA bundle bigger than the firmware accepts (one root on ESP8266, two on ESP32) — an installation problem.
@@ -29,8 +29,8 @@ The reason shown tells which step failed:
 
 ## Fix (in the UI)
 
-1. **Compilation error (custom firmware)**: open the project in **Firmware**, fix the code, click **Verify** until it passes, then **Rebuild** the device from its row in **Devices / Agents**.
-2. **WiFi password missing**: in **Edge referentials**, save the WiFi network again (or pick another one on the device), then **Rebuild**.
+1. **Compilation error (custom firmware)**: open the project in **Firmware**, fix the code, click **Verify** until it passes, then **Rebuild** the device from its row in **Devices & agents**.
+2. **Wi-Fi password missing**: in **Edge referentials**, save the Wi-Fi network again (or pick another one on the device), then **Rebuild**.
 3. **Out of time** or an unexpected server error: click **Rebuild** a little later.
 4. **No certificate authority** or **certificate authority too large**: ask the platform administrator (it keeps only the root that signs the server certificate); nothing can be fixed from the organization. Then **Rebuild**.
 

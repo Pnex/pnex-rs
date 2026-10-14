@@ -20,6 +20,6 @@ The Home page is the organization overview: device counts and online status, fir
 ## Good to know
 - Everything shown belongs to the **active organization**: switch organization from the sidebar to see another one.
 - On a self-hosted server the tier shows **Self-hosted**: there is no subscription.
-- "Telemetry unavailable (OpenObserve not configured or unreachable)" means the measurement store cannot be reached; counts and statuses still work, only the measurements block is empty.
+- "Telemetry unavailable (telemetry store not configured or unreachable)" means the measurement store cannot be reached; counts and statuses still work, only the measurements block is empty.
 - "No measurements yet" on a connected generic-firmware device usually means no pin is subscribed: open **Devices**, then the device's **Pins** tab, and pick a read interval.
-- For curves rather than last values, use **Visualization › Quick charts**; for a composed screen, use **Dashboards**.
+- For curves rather than last values, use **Monitor › Quick charts**; for a composed screen, use **Dashboards**.

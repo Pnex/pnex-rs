@@ -8,7 +8,7 @@ err_codes: voice-id-write-forbidden, voice-id-not-person, voice-id-profile-exist
 tools:
 tags: voice, voix, voice profile, empreinte vocale, speaker recognition, reconnaissance vocale, reconnaissance du locuteur, speaker verification, identification, person, personne, enrolment, enrôlement, consent, consentement, biometric, biométrie, rgpd, gdpr, speaker embedding, empreinte de locuteur
 ---
-A **voice profile** recognizes one person in another recording. It is attached to a **Person** object of the ontology (pack Investigation) and lives in its **Voice** tab; **Media › Voice profiles** lists every profile of the organization and recognizes a recording among them.
+A **voice profile** recognizes one person in another recording. It is attached to a **Person** object of the ontology (pack Investigation) and lives in its **Voice** tab; **Media › Voice profiles** lists every profile of the organization and recognizes a recording among them; its **New voice profile** button (owners and admins) asks which person to enrol and opens their Voice tab.
 
 A voice profile is biometric data: it exists only with the person's **explicit consent**, and only owners and admins create, feed or delete one. The assistant never reads a profile and cannot create one.
 

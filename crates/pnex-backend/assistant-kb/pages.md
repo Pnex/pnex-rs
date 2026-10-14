@@ -8,7 +8,7 @@ err_codes: docs-write-forbidden, doc-comment-not-author
 tools: 
 tags: page, pages, comment, comments, commentaire, document, notes, procedure, report, collaborative, rich text, markdown, version, note, compte rendu, procédure
 ---
-Pages (menu entry right under Visualisation) are documents of the organization written together, live: procedures, incident reports, meeting notes, project logs. Every member of the organization sees every page.
+Pages (Knowledge › Pages) are documents of the organization written together, live: procedures, incident reports, meeting notes, project logs. Every member of the organization sees every page.
 
 ## What you can do
 

@@ -8,7 +8,7 @@ err_codes: poi-write-forbidden, poi-link-write-forbidden, poi-position-write-for
 tools: 
 tags: map, carte, poi, point of interest, location, gps, emplacement, site, attach, cluster, géolocalisation
 ---
-The Map (Visualization › Map) places the organization's points of interest (POIs) on a world map. A POI has a label, a pictogram, a free location text and coordinates; devices, media, 3D tours and dashboards are attached to it, so the map is the geographic entry point to everything installed somewhere. The basemap under the points comes from the organization's geo providers (see the geo-providers card); with several basemaps, a selector at the top right switches between them. **List view** (top of the panel) opens Sites, the same tree without the map.
+The Map (Monitor › Map) places the organization's points of interest (POIs) on a world map. A POI has a label, a pictogram, a free location text and coordinates; devices, media, 3D tours and dashboards are attached to it, so the map is the geographic entry point to everything installed somewhere. The basemap under the points comes from the organization's geo providers (see the geo-providers card); with several basemaps, a selector at the top right switches between them. **List view** (top of the panel) opens Sites, the same tree without the map.
 
 ## What you can do
 - **Search an address…** next to **＋ Add POI** finds a place with the organization's geocoder (see the geo-providers card); **+ POI** on a result creates a POI there, prefilled.
@@ -18,7 +18,7 @@ The Map (Visualization › Map) places the organization's points of interest (PO
 - The POI detail has a **Labels** section for the POI itself; the tag icon of a folder in **Attached objects** edits that folder's labels, inherited by the objects stored in it.
 - **＋ Attach an object** opens a picker with tabs **Media**, **3D tour**, **Dashboard** and **Device**.
 - **Pin as default preview** chooses which attached object is previewed when the POI opens (**Unpin** to undo).
-- The preview of an attached media or tour shows its published annotations: dots, and the control and reading cards (switch **Hide** / **Dots** / **Cards**). Controls can be operated there; annotations are edited in Data › Annotations.
+- The preview of an attached media or tour shows its published annotations: dots, and the control and reading cards (switch **Hide** / **Dots** / **Cards**). Controls can be operated there; annotations are edited in Media › Annotations.
 
 ## Good to know
 - Markers are grouped into clusters when zoomed out; zoom in to separate them.

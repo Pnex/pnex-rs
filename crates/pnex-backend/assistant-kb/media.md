@@ -8,7 +8,7 @@ err_codes: media-write-forbidden, media-last-version, media-file-too-large, medi
 tools: 
 tags: media, médias, library, bibliothèque, video, vidéo, mp4, photo, panorama, 360, splat, floor plan, plan, upload, version, take 360, onnx
 ---
-The Media library (Data › Library) stores the organization's versioned files: photos, 360° panoramas, 3D splats, floor plans, videos (MP4, MOV) and vision model files. They are reused by 3D tours (Studio), annotations, map POIs, the Vision Lab (frames of a video) and object detection models.
+The Media library (Media › Library) stores the organization's versioned files: photos, 360° panoramas, 3D splats, floor plans, videos (MP4, MOV) and vision model files. They are reused by 3D tours (Studio), annotations, map POIs, the Vision Lab (frames of a video) and object detection models.
 
 ## What you can do
 - **Upload** a file: choose a **Name** and a **Type** (auto-detected when "auto": a 360 panorama is recognised automatically).

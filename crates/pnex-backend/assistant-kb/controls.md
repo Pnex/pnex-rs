@@ -8,7 +8,7 @@ err_codes: control-write-forbidden, control-key-taken, control-value-invalid, co
 tools: 
 tags: controls, contrôles, switch, interrupteur, slider, curseur, button, bouton, command, commande, setpoint, consigne, operate, piloter, actuator
 ---
-Controls (Data › Controls) lists the organization's controls: the switches, sliders, buttons and inputs operated from dashboards and annotations. A control drives nothing by itself: it stores the last value a person sent, and a deployed flow with a **Control source** node decides the effect on the devices.
+Controls (Automation › Controls) lists the organization's controls: the switches, sliders, buttons and inputs operated from dashboards and annotations. A control drives nothing by itself: it stores the last value a person sent, and a deployed flow with a **Control source** node decides the effect on the devices.
 
 ## What you can do
 - See every control with **Control**, **Declared by** (the dashboard or annotation set that placed it, or **Standalone controls**), **Kind**, **Last value** and **Listened by** (the deployed flows using it).

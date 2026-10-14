@@ -8,7 +8,7 @@ err_codes: geo-provider-forbidden, geo-provider-not-found, geo-provider-name-tak
 tools: 
 tags: photon, graphhopper, api key, clé, maptiler, google, mapbox, map, carte, basemap, fond de carte, tiles, tuiles, style, maplibre, geocoding, géocodage, address, adresse, nominatim, valhalla, route, itinéraire, routing, provider, fournisseur
 ---
-Your organization plugs in its own map engines, like it brings its own LLM: the **basemap** under the map, a **geocoder** (address → position, position → address) and a **router** (itinerary). PneX supplies none: until a provider is added, the map shows a plain background with "No basemap: add a basemap provider…", and address search and routing are unavailable.
+Your organization plugs in its own map engines, like it brings its own LLM: the **basemap** under the map, a **geocoder** (address → position, position → address) and a **router** (itinerary). PNeX supplies none: until a provider is added, the map shows a plain background with "No basemap: add a basemap provider…", and address search and routing are unavailable.
 
 ## What you can do
 In the **Geo providers** section of the organization detail (Owner or Admin):
@@ -29,6 +29,6 @@ The first provider of a use becomes its default; ★ marks the defaults in the t
 - *geo-not-configured*: no default provider for that use — add one or tick **Default** on an existing one.
 - *geo-rate-limited*: the provider's request budget is used up; retry after the indicated delay or raise **Max requests per second** if your provider allows it.
 - *geo-provider-failed*: the provider is unreachable or answered unexpectedly — use **Test** on the provider to see the reason.
-- A basemap key is a **browser key**: the browser loads the tiles itself, so every member can see it. Restrict it to your PneX address in the provider's console (as for any Google Maps or MapTiler key). Geocoding and routing keys never leave the server.
+- A basemap key is a **browser key**: the browser loads the tiles itself, so every member can see it. Restrict it to your PNeX address in the provider's console (as for any Google Maps or MapTiler key). Geocoding and routing keys never leave the server.
 - The server refuses provider addresses that point at itself or at its internal services; use the LAN address of the machine running the engine.
 - Members and Viewers see the list and use the map, but cannot change providers. Provider names are unique within the organization.

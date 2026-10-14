@@ -20,7 +20,7 @@ A dashboard switch, slider or home card never touches a device itself: it writes
 
 ## Good to know
 - A switch sends 1/0 and a slider 0..100 by default, which **Device (write)** accepts as-is (digital 1/0, PWM duty 0..100).
-- A **colour**, an option list or a setpoint cannot go to a pin: it goes to a **firmware command**. Write a custom firmware that declares it (`pnex.onCommand("color", …)` in **Edges › Custom firmware**), update the device, and the command appears in **Device (write)** under **Firmware commands** and in **Create the flow…**. The firmware receives the value in `args["value"]` (a colour = 0xRRGGBB as a number).
+- A **colour**, an option list or a setpoint cannot go to a pin: it goes to a **firmware command**. Write a custom firmware that declares it (`pnex.onCommand("color", …)` in **Devices › Custom firmware**), update the device, and the command appears in **Device (write)** under **Firmware commands** and in **Create the flow…**. The firmware receives the value in `args["value"]` (a colour = 0xRRGGBB as a number).
 - One output pin has one writer: deploying is refused if another deployed flow already drives that pin. Stop the other flow or pick another pin.
 - To show the real state rather than the last command, tick **Show the actual state** and choose the pin's telemetry or a memory key.
 - Tick **Resend the last value at start** in the Control source node so outputs recover their state after a restart or redeploy.
