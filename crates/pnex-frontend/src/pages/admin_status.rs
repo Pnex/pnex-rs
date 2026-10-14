@@ -208,10 +208,14 @@ fn metric_value(m: &StatusMetric) -> String {
     match m.unit.as_str() {
         "text" => {
             let text = m.text.clone().unwrap_or_default();
-            if m.key == "machine_kind" {
-                resolve(&format!("system-machine-{}", text.replace('_', "-")), None)
-            } else {
-                text
+            match m.key.as_str() {
+                "machine_kind" => {
+                    resolve(&format!("system-machine-{}", text.replace('_', "-")), None)
+                }
+                "cluster_runtime" | "cluster_mode" | "cluster_node" => {
+                    resolve(&format!("system-cluster-{}", text.replace('_', "-")), None)
+                }
+                _ => text,
             }
         }
         _ => {

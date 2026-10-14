@@ -173,36 +173,6 @@ pub fn machine_kind() -> MachineKind {
     }
 }
 
-/// Total size of a directory tree, bounded by `max_entries` (the result is
-/// flagged partial when the bound is hit). Symlinks are not followed.
-pub fn dir_size(root: &str, max_entries: usize) -> Option<(u64, bool)> {
-    let root = Path::new(root);
-    if !root.exists() {
-        return None;
-    }
-    let mut total = 0u64;
-    let mut seen = 0usize;
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            seen += 1;
-            if seen > max_entries {
-                return Some((total, true));
-            }
-            let Ok(meta) = entry.metadata() else { continue };
-            if meta.is_dir() {
-                stack.push(entry.path());
-            } else if meta.is_file() {
-                total += meta.len();
-            }
-        }
-    }
-    Some((total, false))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,18 +193,5 @@ mod tests {
         );
         assert_eq!(vm_vendor("innotek GmbH", "VirtualBox"), Some("VirtualBox"));
         assert_eq!(vm_vendor("Dell Inc.", "XPS 15"), None);
-    }
-
-    #[test]
-    fn dir_size_counts_files_and_flags_partial() {
-        let dir = std::env::temp_dir().join(format!("pnex-dirsize-{}", std::process::id()));
-        std::fs::create_dir_all(dir.join("sub")).unwrap();
-        std::fs::write(dir.join("a"), [0u8; 10]).unwrap();
-        std::fs::write(dir.join("sub/b"), [0u8; 5]).unwrap();
-        let path = dir.to_str().unwrap();
-        assert_eq!(dir_size(path, 100), Some((15, false)));
-        assert!(dir_size(path, 1).unwrap().1);
-        std::fs::remove_dir_all(&dir).ok();
-        assert_eq!(dir_size("/definitely/missing/pnex", 10), None);
     }
 }

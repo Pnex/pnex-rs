@@ -49,9 +49,9 @@
 | OpenObserve | `/healthz` + streams de chaque org provisionnée | stockage brut/compressé, points, streams, top orgs |
 | Valkey | `PING` + `INFO memory/server` | mémoire utilisée, version |
 | Stockage objets | backends firmware/média ; S3 : `Operator::check()` opendal par bucket distinct | tailles via le catalogue DB (`SUM(size_bytes)`), **jamais de listing de bucket** |
-| Stockage local | parcours borné (200 000 entrées, cache 5 min) des dossiers médias / flow-state / modèles stitch | taille par dossier (mention « partial » si borne atteinte) |
+| Topologie | `KUBERNETES_SERVICE_HOST` / `/.dockerenv` ; abonnés `PUBSUB CHANNELS pnex:devcmd:v1:*` (tout processus serveur) ; `flow_workers` vivants (heartbeat < TTL) ; bail `flow-placement` | environnement, nœud unique ou cluster, contrôleur élu, un nœud par ligne avec son rôle (API, flux, API + flux : rôles séparés dès qu'un processus serveur n'exécute pas de flux) ; dégradé sans flow worker vivant ou sans contrôleur. Les workers de file (builds, stitch) ne publient pas de présence et ne sont pas listés. La carte « Stockage local » est retirée (2026-10-14) : `flow-state` est un scratch par pod reconstruit au boot, les modèles stitch sont livrés dans l'image |
 | Machine hôte | `statvfs` (/ + volume data), `/proc/meminfo`, `/proc/loadavg`, `/proc/uptime` ; type : `/proc/device-tree/model` (Raspberry Pi), DMI (VM), `/.dockerenv`/cgroup (conteneur) | disque, RAM, charge, uptime, arch, cœurs |
-| Service IA | fournisseur par défaut de la plateforme (D116), fournisseurs d'org comptés | fournisseur, modèle, endpoint ; « non configuré » sans défaut plateforme. Les fournisseurs plateforme se gèrent sur la même page (`/api/v1/system/ai/providers`, test live par fournisseur, jamais au chargement : coût LLM) |
+| Service IA | fournisseurs d'org comptés (D119 : pas de LLM plateforme) | nombre de fournisseurs d'org ; « non configuré » tant qu'aucune org n'en a déclaré |
 | Coffre de secrets | trousseau `PNEX_SECRETS_KEYS` + comptage `org_secrets` par `key_id` | clé d'écriture, nombre de clés, secrets stockés, secrets sous une ancienne clé ; dégradé si une ligne est sous une clé absente. Bouton « Rechiffrer les secrets » (`POST /api/v1/system/secrets/rekey`, secrets.md §16) |
 
 ## Vue admin de toutes les organisations

@@ -109,8 +109,8 @@ async fn status_is_reserved_to_platform_admins() {
                 "openobserve",
                 "valkey",
                 "object_storage",
-                "local_storage",
                 "host",
+                "topology",
                 "ai",
                 "secrets"
             ]
