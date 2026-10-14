@@ -152,6 +152,15 @@ fn metric_rows_of(
 
 /// Charge le pinout du device référencé par le nœud courant (cache + effet
 /// graphe-dépendant, école DeviceForm historique). Retourne le pk du device.
+/// Picker label: the slug, marked when the device is offline (O68).
+fn device_option_label(device: &pnex_core::Device) -> String {
+    if device.active {
+        device.device_id.clone()
+    } else {
+        t!("flows-device-offline", name : device.device_id.clone()).to_string()
+    }
+}
+
 fn device_pk_of(devices: &Resource<Vec<pnex_core::Device>>, slug: &str) -> Option<i64> {
     let list = devices.value().read().clone().unwrap_or_default();
     list.iter().find(|d| d.device_id == slug).map(|d| d.id)
@@ -163,13 +172,14 @@ pub(super) fn DeviceReadForm(
     initial: DeviceReadConfig,
     can_write: bool,
 ) -> Element {
+    // Every device of the org, offline ones included (O68): a flow can be
+    // prepared with the board unplugged. Refetched when the picker opens.
+    let mut devices_refresh = use_signal(|| 0u32);
     let devices = use_resource(move || async move {
-        api::devices::list_all(&api::devices::DeviceFilters {
-            active: Some(true),
-            ..Default::default()
-        })
-        .await
-        .unwrap_or_default()
+        let _ = devices_refresh();
+        api::devices::list_all(&api::devices::DeviceFilters::default())
+            .await
+            .unwrap_or_default()
     });
     let mut pins_cache =
         use_signal(std::collections::HashMap::<i64, Vec<api::pins::PinoutPin>>::new);
@@ -246,6 +256,7 @@ pub(super) fn DeviceReadForm(
             select {
                 class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                 disabled: !can_write,
+                onfocus: move |_| devices_refresh += 1,
                 onchange: move |event| {
                     let slug = event.value();
                     patch_selected_and_prune(
@@ -267,7 +278,7 @@ pub(super) fn DeviceReadForm(
                         key: "{device.id}",
                         value: "{device.device_id}",
                         selected: device_slug == device.device_id,
-                        {device.device_id.clone()}
+                        {device_option_label(&device)}
                     }
                 }
             }
@@ -350,13 +361,14 @@ pub(super) fn DeviceWriteForm(
     can_write: bool,
     flow_id: i64,
 ) -> Element {
+    // Every device of the org, offline ones included (O68): a flow can be
+    // prepared with the board unplugged. Refetched when the picker opens.
+    let mut devices_refresh = use_signal(|| 0u32);
     let devices = use_resource(move || async move {
-        api::devices::list_all(&api::devices::DeviceFilters {
-            active: Some(true),
-            ..Default::default()
-        })
-        .await
-        .unwrap_or_default()
+        let _ = devices_refresh();
+        api::devices::list_all(&api::devices::DeviceFilters::default())
+            .await
+            .unwrap_or_default()
     });
     let mut pins_cache =
         use_signal(std::collections::HashMap::<i64, Vec<api::pins::PinoutPin>>::new);
@@ -442,6 +454,7 @@ pub(super) fn DeviceWriteForm(
             select {
                 class: "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm",
                 disabled: !can_write,
+                onfocus: move |_| devices_refresh += 1,
                 onchange: move |event| {
                     let slug = event.value();
                     patch_selected(
@@ -466,7 +479,7 @@ pub(super) fn DeviceWriteForm(
                         key: "{device.id}",
                         value: "{device.device_id}",
                         selected: device_slug == device.device_id,
-                        {device.device_id.clone()}
+                        {device_option_label(&device)}
                     }
                 }
             }

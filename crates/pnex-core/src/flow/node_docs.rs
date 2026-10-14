@@ -75,7 +75,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("topic", "optional string"),
             ("payload", "injected JSON value (null = timestamp)"),
         ],
-        notes: "One of repeat_secs, cron or once_delay_secs is required (no_trigger otherwise).",
+        notes: "One of repeat_secs, cron or once_delay_secs is required (no_trigger otherwise). To drive a device_write output, set payload to 1/0 or true/false: the default timestamp is refused by digital outputs.",
     },
     NodeDoc {
         kind: "device_read",
