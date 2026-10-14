@@ -22,10 +22,8 @@ use crate::models::_entities::{
 };
 use crate::services::ai::config::AiSettings;
 use crate::services::artifact_store::{S3Config, S3Store};
-use crate::services::firmware::FirmwareSettings;
 use crate::services::flow::FlowSettings;
 use crate::services::last_cache::ValkeySettings;
-use crate::services::media::MediaSettings;
 use crate::services::openobserve::{Client as O2Client, OpenobserveSettings};
 use crate::services::retention::DeploymentMode;
 use crate::services::stitch::StitchSettings;
@@ -374,81 +372,30 @@ async fn sum_bytes(ctx: &AppContext, table: &str) -> Option<i64> {
 
 async fn probe_object_storage(ctx: &AppContext) -> ComponentStatus {
     let mut out = component("object_storage", OK);
-    let firmware = FirmwareSettings::from_config(&ctx.config);
-    let media = MediaSettings::from_config(&ctx.config);
-    out.metrics.push(text_metric(
-        "firmware_backend",
-        firmware.storage_backend.clone(),
-    ));
-    out.metrics
-        .push(text_metric("media_backend", media.storage_backend.clone()));
-    // Stored sizes come from the DB catalog: listing a whole bucket is too
+    let target = S3Config::from_config(&ctx.config);
+    // Stored size comes from the DB catalog: listing a whole bucket is too
     // expensive for a status page.
-    let firmware_bytes = sum_bytes(ctx, "firmware_artifacts").await;
     let media_bytes = sum_bytes(ctx, "media_versions").await;
-    out.metrics.push(metric(
-        "firmware_bytes",
-        "bytes",
-        Some(firmware_bytes.unwrap_or(0) as f64),
-    ));
     out.metrics.push(metric(
         "media_bytes",
         "bytes",
         Some(media_bytes.unwrap_or(0) as f64),
     ));
-
-    // S3 connectivity: probe each distinct configured bucket.
-    let mut targets: Vec<S3Config> = Vec::new();
-    if firmware.storage_backend == "s3" {
-        targets.push(S3Config {
-            endpoint: firmware.s3_endpoint.clone(),
-            bucket: firmware.s3_bucket.clone(),
-            region: firmware.s3_region.clone(),
-            access_key: firmware.s3_access_key.clone(),
-            secret_key: firmware.s3_secret_key.clone(),
-            path_style: firmware.s3_path_style,
-        });
-    }
-    if media.storage_backend == "s3"
-        && !targets
-            .iter()
-            .any(|t| t.endpoint == media.s3_endpoint && t.bucket == media.s3_bucket)
-    {
-        targets.push(S3Config {
-            endpoint: media.s3_endpoint.clone(),
-            bucket: media.s3_bucket.clone(),
-            region: media.s3_region.clone(),
-            access_key: media.s3_access_key.clone(),
-            secret_key: media.s3_secret_key.clone(),
-            path_style: media.s3_path_style,
-        });
-    }
-    if targets.is_empty() {
-        // Everything lives in the DB / local filesystem: nothing to reach.
-        out.detail = Some("no S3 backend configured (db/fs storage)".into());
-        return out;
-    }
+    out.metrics.push(StatusMetric {
+        label: Some(target.endpoint.clone()),
+        ..text_metric("s3_bucket", target.bucket.clone())
+    });
     let started = Instant::now();
-    let mut errors = Vec::new();
-    for target in &targets {
-        out.metrics.push(StatusMetric {
-            label: Some(target.endpoint.clone()),
-            ..text_metric("s3_bucket", target.bucket.clone())
-        });
-        let result = match S3Store::connect(target) {
-            Ok(store) => tokio::time::timeout(PROBE_TIMEOUT, store.check())
-                .await
-                .unwrap_or_else(|_| Err("timeout".into())),
-            Err(err) => Err(err),
-        };
-        if let Err(err) = result {
-            errors.push(format!("{}: {err}", target.bucket));
-        }
-    }
+    let result = match S3Store::connect(&target) {
+        Ok(store) => tokio::time::timeout(PROBE_TIMEOUT, store.check())
+            .await
+            .unwrap_or_else(|_| Err("timeout".into())),
+        Err(err) => Err(err),
+    };
     out.latency_ms = elapsed_ms(started);
-    if !errors.is_empty() {
+    if let Err(err) = result {
         out.status = DOWN.into();
-        out.detail = Some(errors.join("; "));
+        out.detail = Some(format!("{}: {err}", target.bucket));
     }
     out
 }
@@ -459,7 +406,6 @@ static DIR_CACHE: Mutex<DirCache> = Mutex::new(None);
 async fn probe_local_storage(ctx: &AppContext) -> ComponentStatus {
     let mut out = component("local_storage", OK);
     let dirs: Vec<(String, String)> = vec![
-        ("media".into(), MediaSettings::from_config(&ctx.config).dir),
         (
             "flow_state".into(),
             FlowSettings::from_config(&ctx.config).state_dir,
@@ -519,14 +465,14 @@ async fn probe_host(ctx: &AppContext) -> ComponentStatus {
         out.detail = Some("host metrics are only collected on Linux".into());
         return out;
     }
-    let media_dir = MediaSettings::from_config(&ctx.config).dir;
+    let state_dir = FlowSettings::from_config(&ctx.config).state_dir;
     let facts = tokio::task::spawn_blocking(move || {
         let mut disks = Vec::new();
         if let Some(root) = host::disk_usage("/") {
             disks.push(root);
         }
         // The data directory often sits on another volume (Docker `/data`).
-        let data_dir = std::path::Path::new(&media_dir)
+        let data_dir = std::path::Path::new(&state_dir)
             .ancestors()
             .find(|p| p.exists())
             .map(|p| p.to_string_lossy().to_string());

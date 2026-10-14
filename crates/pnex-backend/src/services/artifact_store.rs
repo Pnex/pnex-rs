@@ -1,173 +1,95 @@
-//! Backends réels de l'`ArtifactStore` (D5 v2) — la crate builder ne porte
-//! que le trait ; les implémentations vivent ici :
+//! Object storage — the single home of every stored byte: firmware
+//! artifacts and media (assets, video segments, stitch frames, models).
+//! S3-compatible only (AWS, RustFS, Scaleway…) via opendal; the database
+//! keeps metadata and logical keys, never bytes, and nothing is written to
+//! a local disk.
 //!
-//! - [`DbStore`] (`db`, default): binaries in the database, table
-//!   `firmware_artifacts` (stateless API pods, any replica serves the
-//!   download). The logical key is stable per device
-//!   (`org_{id}/firmware/{device}-firmware.bin`) → `put()` is an
-//!   `ON CONFLICT (key) DO UPDATE` upsert: a rebuild overwrites the previous
-//!   row, zero orphan artifact (BYTEA).
-//! - [`S3Store`] (`s3`, tier industriel) : binaires sur stockage compatible
-//!   S3 (AWS, RustFS, Scaleway…) via opendal. La base garde
-//!   données + queue ; seuls les artefacts partent sur S3. Clés logiques
-//!   identiques — la sémantique par device se mappe 1:1 sur PutObject
-//!   (écrasement natif, delete idempotent).
+//! Configuration: `settings.storage` (env `PNEX_S3_*`), one bucket for
+//! everything. Keys are namespaced (`org_{id}/firmware/…`,
+//! `org_{id}/media/…`, `stitch_jobs/…`); writes overwrite, deletes are
+//! idempotent.
+
+use std::collections::HashMap;
 
 use async_trait::async_trait;
+use axum::body::Bytes;
+use loco_rs::config::Config;
 use opendal::layers::RetryLayer;
 use opendal::services::S3;
 use opendal::{ErrorKind, Operator};
-use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
-use sha2::{Digest, Sha256};
+use serde::Deserialize;
 
 use pnex_firmware_builder::{ArtifactStore, BuildError};
 
-use crate::models::_entities::firmware_artifacts;
+use crate::services::media::{MediaError, MediaStore};
 
-/// Backend `db` : magasin d'artefacts adossé à la base de l'app.
-#[derive(Clone)]
-pub struct DbStore {
-    db: DatabaseConnection,
-}
-
-/// Hypothèse documentée du builder : binaires mergés 1–4 Mo. Plafond dur
-/// défensif — au-delà, quelque chose ne va pas (image corrompue, merge raté).
+/// Documented builder assumption: merged binaries are 1–4 MB. Defensive
+/// hard cap — beyond it something is wrong (corrupt image, failed merge).
 const MAX_BYTES: usize = 50 * 1024 * 1024;
 
-impl DbStore {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
-    }
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    let mut hex = String::with_capacity(digest.len() * 2);
-    for b in digest {
-        use std::fmt::Write as _;
-        let _ = write!(hex, "{b:02x}");
-    }
-    hex
-}
-
-#[async_trait]
-impl ArtifactStore for DbStore {
-    async fn put(&self, key: &str, bytes: &[u8]) -> Result<(), BuildError> {
-        if key.is_empty() {
-            return Err(BuildError::Store("clé vide".into()));
-        }
-        if bytes.len() > MAX_BYTES {
-            return Err(BuildError::Store(format!(
-                "artefact {key} trop volumineux : {} o (plafond {MAX_BYTES})",
-                bytes.len()
-            )));
-        }
-        let now: chrono::DateTime<chrono::FixedOffset> = chrono::Utc::now().into();
-        // `updated_at` posé explicitement (les deux branches insert/update) :
-        // le hook `before_save` ne s'exécute pas sur le chemin on-conflict.
-        let am = firmware_artifacts::ActiveModel {
-            key: Set(key.to_string()),
-            bytes: Set(bytes.to_vec()),
-            size_bytes: Set(bytes.len() as i64),
-            sha256: Set(Some(sha256_hex(bytes))),
-            updated_at: Set(now),
-            ..Default::default()
-        };
-        firmware_artifacts::Entity::insert(am)
-            .on_conflict(
-                OnConflict::column(firmware_artifacts::Column::Key)
-                    .update_columns([
-                        firmware_artifacts::Column::Bytes,
-                        firmware_artifacts::Column::SizeBytes,
-                        firmware_artifacts::Column::Sha256,
-                        firmware_artifacts::Column::UpdatedAt,
-                    ])
-                    .to_owned(),
-            )
-            .exec(&self.db)
-            .await
-            .map_err(|e| BuildError::Store(format!("upsert artefact {key} : {e}")))?;
-        Ok(())
-    }
-
-    async fn get(&self, key: &str) -> Result<Vec<u8>, BuildError> {
-        firmware_artifacts::Entity::find()
-            .filter(firmware_artifacts::Column::Key.eq(key))
-            .one(&self.db)
-            .await
-            .map_err(|e| BuildError::Store(format!("get artefact {key} : {e}")))?
-            .map(|m| m.bytes)
-            .ok_or_else(|| BuildError::NotFound(key.to_string()))
-    }
-
-    async fn delete(&self, key: &str) -> Result<(), BuildError> {
-        // Idempotent : absent ≠ erreur (parité S3).
-        firmware_artifacts::Entity::delete_many()
-            .filter(firmware_artifacts::Column::Key.eq(key))
-            .exec(&self.db)
-            .await
-            .map_err(|e| BuildError::Store(format!("delete artefact {key} : {e}")))?;
-        Ok(())
-    }
-
-    async fn exists(&self, key: &str) -> Result<bool, BuildError> {
-        firmware_artifacts::Entity::find()
-            .filter(firmware_artifacts::Column::Key.eq(key))
-            .one(&self.db)
-            .await
-            .map_err(|e| BuildError::Store(format!("exists artefact {key} : {e}")))
-            .map(|row| row.is_some())
-    }
-}
-
-// ─────────────────── Backend s3 (opendal) ───────────────────
-
-/// Backend `s3` : magasin d'artefacts sur stockage compatible S3 (AWS S3,
-/// RustFS, Scaleway…) — tier industriel (D5 v2).
+/// S3 store shared by firmware artifacts and media.
+#[derive(Clone)]
 pub struct S3Store {
     operator: Operator,
 }
 
-/// Réglages de connexion S3 — remplis par [`super::firmware::FirmwareSettings`]
-/// depuis `settings.firmware.storage` (env `PNEX_S3_*`).
-#[derive(Clone, Debug, Default)]
+/// S3 connection settings — `settings.storage` (env `PNEX_S3_*`).
+#[derive(Clone, Default, Deserialize)]
+#[serde(default)]
 pub struct S3Config {
     pub endpoint: String,
     pub bucket: String,
     pub region: String,
     pub access_key: String,
     pub secret_key: String,
-    /// Adressage path-style (`http://host/bucket/key`) — RustFS et la
-    /// plupart des S3 auto-hébergés ; AWS utilise le host virtuel par défaut.
+    /// Path-style addressing (`http://host/bucket/key`): RustFS and most
+    /// self-hosted S3; AWS uses virtual hosts.
     pub path_style: bool,
 }
 
+impl std::fmt::Debug for S3Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("S3Config")
+            .field("endpoint", &self.endpoint)
+            .field("bucket", &self.bucket)
+            .field("region", &self.region)
+            .field("access_key", &self.access_key)
+            .field(
+                "secret_key",
+                &if self.secret_key.is_empty() {
+                    "<empty>"
+                } else {
+                    "<masked>"
+                },
+            )
+            .field("path_style", &self.path_style)
+            .finish()
+    }
+}
+
 impl S3Config {
-    /// Depuis l'env `PNEX_S3_*` (mêmes vars que la config yaml) — pour les
-    /// tests e2e contre un vrai service. `None` si l'endpoint n'est pas
-    /// défini (service absent → test saute).
-    pub fn from_env_if_set() -> Option<Self> {
-        let endpoint = std::env::var("PNEX_S3_ENDPOINT").ok()?;
-        let flag = |v: String| v.eq_ignore_ascii_case("true") || v == "1";
-        Some(Self {
-            endpoint,
-            bucket: std::env::var("PNEX_S3_BUCKET").unwrap_or_default(),
-            region: std::env::var("PNEX_S3_REGION").unwrap_or_default(),
-            access_key: std::env::var("PNEX_S3_ACCESS_KEY").unwrap_or_default(),
-            secret_key: std::env::var("PNEX_S3_SECRET_KEY").unwrap_or_default(),
-            path_style: std::env::var("PNEX_S3_PATH_STYLE")
-                .map(flag)
-                .unwrap_or(true),
-        })
+    /// `settings.storage` of the loaded configuration (missing = empty,
+    /// rejected by [`S3Store::connect`]).
+    pub fn from_config(config: &Config) -> Self {
+        config
+            .settings
+            .as_ref()
+            .and_then(|s| s.get("storage"))
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default()
+    }
+
+    /// The store of this configuration.
+    pub fn store(&self) -> Result<S3Store, String> {
+        S3Store::connect(self)
     }
 }
 
 /// opendal 0.58 serves HTTP services (S3) through a process-wide transport
 /// that its `auto-register-services` feature installs before `main` — off
 /// here (`default-features = false`). Without it every S3 call fails with
-/// "default HTTP transport is not installed" (firmware builds and media on
-/// an S3 backend). Called before building any S3 operator; idempotent.
+/// "default HTTP transport is not installed". Called before building any
+/// S3 operator; idempotent.
 pub(crate) fn ensure_http_transport() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(opendal::install_default);
@@ -180,216 +102,243 @@ impl S3Store {
         self.operator.check().await.map_err(|e| e.to_string())
     }
 
-    /// Construit l'operator. Aucun I/O réseau ici — juste l'assemblage du
-    /// client : une config incomplète échoue maintenant (message explicite),
-    /// pas au premier build.
+    /// Builds the operator. No network I/O: an incomplete configuration
+    /// fails now with an explicit message, not at the first write.
     pub fn connect(config: &S3Config) -> Result<Self, String> {
         if config.bucket.is_empty() {
-            return Err("S3 : bucket requis (PNEX_S3_BUCKET)".into());
+            return Err("S3: bucket required (PNEX_S3_BUCKET)".into());
         }
         if config.endpoint.is_empty() {
-            return Err("S3 : endpoint requis (PNEX_S3_ENDPOINT)".into());
+            return Err("S3: endpoint required (PNEX_S3_ENDPOINT)".into());
         }
         if config.access_key.is_empty() || config.secret_key.is_empty() {
-            return Err("S3 : credentials requis (PNEX_S3_ACCESS_KEY / PNEX_S3_SECRET_KEY)".into());
+            return Err(
+                "S3: credentials required (PNEX_S3_ACCESS_KEY / PNEX_S3_SECRET_KEY)".into(),
+            );
         }
         let mut builder = S3::default()
             .bucket(&config.bucket)
             .endpoint(&config.endpoint)
             .access_key_id(&config.access_key)
             .secret_access_key(&config.secret_key);
-        // opendal 0.57 : le path-style (`http://host/bucket/key`) est le DÉFAUT
-        // — `enable_path_style` a disparu. PNEX_S3_PATH_STYLE=false = host
-        // virtuel AWS (`http://bucket.host/key`) via l'opt-in inverse.
+        // opendal 0.57+: path-style is the default; virtual hosts are opt-in.
         if !config.path_style {
             builder = builder.enable_virtual_host_style();
         }
-        // Région requise par le signer — défaut us-east-1 : valeur ignorée
-        // par RustFS & la plupart des S3 auto-hébergés, valide pour AWS.
+        // The signer needs a region: us-east-1 is ignored by RustFS and most
+        // self-hosted S3, and valid for AWS.
         let region = if config.region.is_empty() {
             "us-east-1"
         } else {
             config.region.as_str()
         };
         builder = builder.region(region);
-        // Retry des erreurs transitives (5xx, timeout) — uploads d'artefacts
-        // idempotents (même clé, même contenu), sans risque de doublon.
-        // opendal 0.58 : `.layer()` renvoie l'Operator directement (plus de `.finish()`)
+        // Retries transient errors (5xx, timeouts): writes are idempotent
+        // (same key, same content).
         ensure_http_transport();
         let operator = Operator::new(builder)
-            .map_err(|e| format!("S3 : initialisation impossible : {e}"))?
+            .map_err(|e| format!("S3: cannot initialise: {e}"))?
             .layer(RetryLayer::default());
         Ok(Self { operator })
     }
+
+    async fn write(&self, key: &str, bytes: Bytes) -> Result<(), String> {
+        if key.is_empty() {
+            return Err("empty key".into());
+        }
+        // Hashing up to 256 MiB is CPU bound: off the async runtime.
+        let hashed = bytes.clone();
+        let sha256 =
+            tokio::task::spawn_blocking(move || crate::services::media::sha256_hex(&hashed))
+                .await
+                .map_err(|e| format!("S3 put {key}: hash: {e}"))?;
+        self.operator
+            .write_with(key, bytes)
+            .user_metadata(object_metadata(key, sha256, chrono::Utc::now()))
+            .await
+            .map(|_| ())
+            .map_err(|e| format!("S3 put {key}: {e}"))
+    }
+
+    /// User metadata of an object (`pnex-*` entries), `Ok(None)` when absent.
+    pub async fn metadata(&self, key: &str) -> Result<Option<HashMap<String, String>>, String> {
+        match self.operator.stat(key).await {
+            Ok(m) => Ok(Some(m.user_metadata().cloned().unwrap_or_default())),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(format!("S3 stat {key}: {e}")),
+        }
+    }
+
+    /// Every object key of the bucket.
+    ///
+    /// shortcut: collects the whole listing in memory, fine up to a few
+    /// million objects; stream it (`lister_with`) beyond.
+    pub async fn list_keys(&self) -> Result<Vec<String>, String> {
+        let entries = self
+            .operator
+            .list_with("")
+            .recursive(true)
+            .await
+            .map_err(|e| format!("S3 list: {e}"))?;
+        Ok(entries
+            .into_iter()
+            .filter(|e| !e.path().ends_with('/'))
+            .map(|e| e.path().to_string())
+            .collect())
+    }
+
+    /// `Ok(None)` when absent.
+    async fn read(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
+        match self.operator.read(key).await {
+            Ok(buf) => Ok(Some(buf.to_vec())),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(format!("S3 get {key}: {e}")),
+        }
+    }
+
+    /// Idempotent: S3 answers 204 on an absent key.
+    async fn remove(&self, key: &str) -> Result<(), String> {
+        self.operator
+            .delete(key)
+            .await
+            .map_err(|e| format!("S3 delete {key}: {e}"))
+    }
+
+    async fn stat(&self, key: &str) -> Result<bool, String> {
+        match self.operator.stat(key).await {
+            Ok(_) => Ok(true),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(format!("S3 stat {key}: {e}")),
+        }
+    }
+}
+
+/// Self-describing metadata written with every object, so a bucket can be
+/// audited, garbage-collected or partly re-indexed without the database:
+/// `pnex-kind` and `pnex-org` (from the key namespace), `pnex-sha256`,
+/// `pnex-written-at`. Stable facts only (S3 metadata is immutable); never a
+/// secret, an email or a user-supplied file name (R4, R16).
+fn object_metadata(
+    key: &str,
+    sha256: String,
+    written_at: chrono::DateTime<chrono::Utc>,
+) -> Vec<(String, String)> {
+    let mut parts = key.split('/');
+    let first = parts.next().unwrap_or_default();
+    let (org, kind) = match first.strip_prefix("org_") {
+        Some(org) => (Some(org), parts.next().unwrap_or_default()),
+        None => (None, first),
+    };
+    let mut meta = vec![
+        ("pnex-kind".to_string(), kind.to_string()),
+        ("pnex-sha256".to_string(), sha256),
+        ("pnex-written-at".to_string(), written_at.to_rfc3339()),
+    ];
+    if let Some(org) = org {
+        meta.push(("pnex-org".to_string(), org.to_string()));
+    }
+    meta
 }
 
 #[async_trait]
 impl ArtifactStore for S3Store {
     async fn put(&self, key: &str, bytes: &[u8]) -> Result<(), BuildError> {
-        if key.is_empty() {
-            return Err(BuildError::Store("clé vide".into()));
-        }
         if bytes.len() > MAX_BYTES {
             return Err(BuildError::Store(format!(
-                "artefact {key} trop volumineux : {} o (plafond {MAX_BYTES})",
+                "artifact {key} too large: {} B (cap {MAX_BYTES})",
                 bytes.len()
             )));
         }
-        self.operator
-            .write(key, bytes.to_vec())
+        self.write(key, Bytes::copy_from_slice(bytes))
             .await
-            .map_err(|e| BuildError::Store(format!("S3 put {key} : {e}")))?;
-        Ok(())
+            .map_err(BuildError::Store)
     }
 
     async fn get(&self, key: &str) -> Result<Vec<u8>, BuildError> {
-        let buf = self.operator.read(key).await.map_err(|e| {
-            if e.kind() == ErrorKind::NotFound {
-                BuildError::NotFound(key.to_string())
-            } else {
-                BuildError::Store(format!("S3 get {key} : {e}"))
-            }
-        })?;
-        Ok(buf.to_vec())
+        self.read(key)
+            .await
+            .map_err(BuildError::Store)?
+            .ok_or_else(|| BuildError::NotFound(key.to_string()))
     }
 
     async fn delete(&self, key: &str) -> Result<(), BuildError> {
-        // Delete S3 idempotent nativement (204 même si absent) — parité
-        // DbStore::delete.
-        self.operator
-            .delete(key)
-            .await
-            .map_err(|e| BuildError::Store(format!("S3 delete {key} : {e}")))
+        self.remove(key).await.map_err(BuildError::Store)
     }
 
     async fn exists(&self, key: &str) -> Result<bool, BuildError> {
-        match self.operator.stat(key).await {
-            Ok(_) => Ok(true),
-            Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
-            Err(e) => Err(BuildError::Store(format!("S3 stat {key} : {e}"))),
-        }
+        self.stat(key).await.map_err(BuildError::Store)
+    }
+}
+
+#[async_trait]
+impl MediaStore for S3Store {
+    async fn put(&self, key: &str, bytes: Bytes) -> Result<(), MediaError> {
+        self.write(key, bytes).await.map_err(MediaError::Store)
+    }
+
+    async fn get(&self, key: &str) -> Result<Vec<u8>, MediaError> {
+        self.read(key)
+            .await
+            .map_err(MediaError::Store)?
+            .ok_or_else(|| MediaError::NotFound(key.to_string()))
+    }
+
+    async fn delete(&self, key: &str) -> Result<(), MediaError> {
+        self.remove(key).await.map_err(MediaError::Store)
+    }
+
+    async fn exists(&self, key: &str) -> Result<bool, MediaError> {
+        self.stat(key).await.map_err(MediaError::Store)
     }
 }
 
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use sea_orm::{Database, PaginatorTrait};
 
-    /// Migrated PostgreSQL test database (same URL as config/test.yaml).
-    pub(crate) async fn migrated_test_db() -> DatabaseConnection {
-        let uri = std::env::var("TEST_DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://pnex:pnex@localhost:5432/pnex_test".into());
-        crate::services::db_lock::migrate_under_lock::<pnex_migration::Migrator>(&uri)
-            .await
-            .expect("migrations");
-        Database::connect(&uri).await.expect("connect test db")
+    /// The test S3 (compose `rustfs`, bucket `pnex-test`), same values as
+    /// `config/test.yaml`.
+    pub(crate) fn test_config() -> S3Config {
+        let config = Config::new(&loco_rs::environment::Environment::Test).unwrap();
+        S3Config::from_config(&config)
     }
 
-    fn oversized() -> Vec<u8> {
-        vec![0u8; MAX_BYTES + 1]
-    }
-
-    #[tokio::test]
-    async fn cycle_complet_et_upsert() {
-        let db = migrated_test_db().await;
-        let store = DbStore::new(db);
-        let key = "org_7/firmware/dev-1-firmware.bin";
-
-        assert!(!store.exists(key).await.expect("exists"));
-        store.put(key, b"octets-v1").await.expect("put v1");
-        assert!(store.exists(key).await.expect("exists"));
-        assert_eq!(store.get(key).await.expect("get"), b"octets-v1");
-
-        // Rebuild = même clé → upsert, pas de doublon.
-        store.put(key, b"octets-v2").await.expect("put v2");
-        assert_eq!(store.get(key).await.expect("get"), b"octets-v2");
-        let count = firmware_artifacts::Entity::find()
-            .filter(firmware_artifacts::Column::Key.eq(key))
-            .count(&store.db)
-            .await
-            .expect("count");
-        assert_eq!(count, 1, "l'upsert ne doit pas créer de doublon");
-
-        store.delete(key).await.expect("delete");
-        assert!(!store.exists(key).await.expect("exists"));
-        store.delete(key).await.expect("delete idempotent");
-        assert!(matches!(store.get(key).await, Err(BuildError::NotFound(_))));
-    }
-
-    #[tokio::test]
-    async fn garde_fous_taille_et_cle() {
-        let db = migrated_test_db().await;
-        let store = DbStore::new(db);
-
-        assert!(matches!(
-            store
-                .put("org_1/firmware/x-firmware.bin", &oversized())
-                .await,
-            Err(BuildError::Store(_))
-        ));
-        assert!(matches!(
-            store.put("", b"x").await,
-            Err(BuildError::Store(_))
-        ));
-    }
-
-    fn s3_config() -> S3Config {
-        S3Config {
-            endpoint: "http://localhost:9000".into(),
-            bucket: "pnex-test".into(),
-            region: String::new(),
-            access_key: "rustfsadmin".into(),
-            secret_key: "rustfsadmin".into(),
-            path_style: true,
-        }
-    }
-
-    /// Validation de la config S3 sans réseau : chaque champ requis manquant
-    /// → erreur explicite ; config complète → operator constructible.
+    /// Each required field missing → explicit error; complete → operator.
     #[test]
-    fn s3_validation_configuration() {
-        for (mutant, attendu) in [
-            (
-                {
-                    let mut c = s3_config();
-                    c.bucket.clear();
-                    c
-                },
-                "bucket",
-            ),
-            (
-                {
-                    let mut c = s3_config();
-                    c.endpoint.clear();
-                    c
-                },
-                "endpoint",
-            ),
-            (
-                {
-                    let mut c = s3_config();
-                    c.access_key.clear();
-                    c
-                },
-                "credentials",
-            ),
-            (
-                {
-                    let mut c = s3_config();
-                    c.secret_key.clear();
-                    c
-                },
-                "credentials",
-            ),
+    fn connect_validates_configuration() {
+        let base = test_config();
+        for (field, expected) in [
+            ("bucket", "bucket"),
+            ("endpoint", "endpoint"),
+            ("access_key", "credentials"),
+            ("secret_key", "credentials"),
         ] {
-            // S3Store n'implémente pas Debug — pas de expect_err, un let-else.
-            let Err(err) = S3Store::connect(&mutant) else {
-                panic!("config incomplète ({attendu} vide) doit être rejetée");
+            let mut c = base.clone();
+            match field {
+                "bucket" => c.bucket.clear(),
+                "endpoint" => c.endpoint.clear(),
+                "access_key" => c.access_key.clear(),
+                _ => c.secret_key.clear(),
+            }
+            let Err(err) = S3Store::connect(&c) else {
+                panic!("{field} empty must be rejected");
             };
-            assert!(err.contains(attendu), "{attendu} attendu dans : {err}");
+            assert!(err.contains(expected), "{expected} expected in: {err}");
         }
-        assert!(S3Store::connect(&s3_config()).is_ok());
+        assert!(S3Store::connect(&base).is_ok());
+    }
+
+    /// The secret never leaks through Debug.
+    #[test]
+    fn debug_masks_secret() {
+        let rendered = format!(
+            "{:?}",
+            S3Config {
+                secret_key: "topsecret".into(),
+                ..Default::default()
+            }
+        );
+        assert!(!rendered.contains("topsecret"));
     }
 
     /// Regression: without the process-wide opendal HTTP transport, an S3
@@ -398,10 +347,10 @@ pub(crate) mod tests {
     /// network instead.
     #[tokio::test]
     async fn s3_write_reaches_the_network() {
-        let mut config = s3_config();
+        let mut config = test_config();
         config.endpoint = "http://127.0.0.1:9".into();
         let store = S3Store::connect(&config).expect("connect");
-        let Err(err) = store.put("org_1/firmware/x.bin", b"x").await else {
+        let Err(err) = ArtifactStore::put(&store, "org_1/firmware/x.bin", b"x").await else {
             panic!("nothing listens on 127.0.0.1:9");
         };
         let msg = format!("{err:?}");
@@ -411,41 +360,75 @@ pub(crate) mod tests {
         );
     }
 
-    /// Cycle complet contre un vrai S3-compatible. Ignored par défaut
-    /// (nécessite un service externe + bucket) — le plus simple : la stack
-    /// compose locale (service `rustfs`, buckets auto-créés) :
-    /// ```sh
-    /// docker compose up -d rustfs rustfs-init
-    /// PNEX_S3_ENDPOINT=http://localhost:9000 PNEX_S3_BUCKET=pnex-test \
-    /// PNEX_S3_ACCESS_KEY=rustfsadmin PNEX_S3_SECRET_KEY=rustfsadmin \
-    /// PNEX_S3_PATH_STYLE=true \
-    ///   cargo test -p pnex-backend --lib s3_cycle_reel -- --ignored
-    /// ```
-    /// (tout S3-compatible avec les mêmes vars d'env fait l'affaire).
+    /// Full cycle against the test S3 (`docker compose up -d rustfs
+    /// rustfs-init`): overwrite, idempotent delete, absent → NotFound, size
+    /// cap.
     #[tokio::test]
-    #[ignore = "nécessite un S3-compatible (rustfs via compose) + bucket pnex-test"]
-    async fn s3_cycle_reel() {
-        let Some(config) = S3Config::from_env_if_set() else {
-            eprintln!("PNEX_S3_ENDPOINT non défini — test ignoré");
-            return;
-        };
-        let store = S3Store::connect(&config).expect("connect");
-        let key = "org_7/firmware/s3-test-firmware.bin";
+    async fn s3_full_cycle() {
+        let store = test_config().store().expect("connect");
+        let key = format!("org_7/firmware/{}-firmware.bin", uuid::Uuid::new_v4());
 
-        store.delete(key).await.expect("delete initial");
-        assert!(!store.exists(key).await.expect("exists"));
-        store.put(key, b"octets-v1").await.expect("put v1");
-        assert!(store.exists(key).await.expect("exists"));
-        assert_eq!(store.get(key).await.expect("get"), b"octets-v1");
+        assert!(!ArtifactStore::exists(&store, &key).await.expect("exists"));
+        ArtifactStore::put(&store, &key, b"bytes-v1")
+            .await
+            .expect("put v1");
+        assert_eq!(
+            ArtifactStore::get(&store, &key).await.expect("get"),
+            b"bytes-v1"
+        );
+        ArtifactStore::put(&store, &key, b"bytes-v2")
+            .await
+            .expect("put v2");
+        assert_eq!(
+            ArtifactStore::get(&store, &key).await.expect("get"),
+            b"bytes-v2"
+        );
+        // Self-describing metadata, refreshed by the overwrite.
+        let meta = store.metadata(&key).await.expect("stat").expect("present");
+        assert_eq!(meta["pnex-kind"], "firmware");
+        assert_eq!(meta["pnex-org"], "7");
+        assert_eq!(
+            meta["pnex-sha256"],
+            crate::services::media::sha256_hex(b"bytes-v2")
+        );
+        assert!(store.list_keys().await.expect("list").contains(&key));
 
-        // Même clé → écrasement (sémantique par device).
-        store.put(key, b"octets-v2").await.expect("put v2");
-        assert_eq!(store.get(key).await.expect("get"), b"octets-v2");
+        ArtifactStore::delete(&store, &key).await.expect("delete");
+        ArtifactStore::delete(&store, &key)
+            .await
+            .expect("delete idempotent");
+        assert!(matches!(
+            ArtifactStore::get(&store, &key).await,
+            Err(BuildError::NotFound(_))
+        ));
+        assert!(matches!(
+            MediaStore::get(&store, &key).await,
+            Err(MediaError::NotFound(_))
+        ));
+        assert!(matches!(
+            ArtifactStore::put(&store, &key, &vec![0u8; MAX_BYTES + 1]).await,
+            Err(BuildError::Store(_))
+        ));
+        assert!(matches!(
+            ArtifactStore::put(&store, "", b"x").await,
+            Err(BuildError::Store(_))
+        ));
+    }
+}
 
-        store.delete(key).await.expect("delete");
-        assert!(!store.exists(key).await.expect("exists"));
-        // Delete idempotent + absent → NotFound (pas Store).
-        store.delete(key).await.expect("delete idempotent");
-        assert!(matches!(store.get(key).await, Err(BuildError::NotFound(_))));
+#[cfg(test)]
+mod metadata_tests {
+    use super::object_metadata;
+
+    #[test]
+    fn kind_and_org_come_from_the_key_namespace() {
+        let at = chrono::DateTime::from_timestamp(0, 0).unwrap();
+        let m = object_metadata("org_3/media/a/1_x.jpg", "abc".into(), at);
+        assert!(m.contains(&("pnex-kind".into(), "media".into())));
+        assert!(m.contains(&("pnex-org".into(), "3".into())));
+        assert!(m.contains(&("pnex-sha256".into(), "abc".into())));
+        let m = object_metadata("stitch_jobs/j/frame_000.jpg", "abc".into(), at);
+        assert!(m.contains(&("pnex-kind".into(), "stitch_jobs".into())));
+        assert!(!m.iter().any(|(k, _)| k == "pnex-org"));
     }
 }

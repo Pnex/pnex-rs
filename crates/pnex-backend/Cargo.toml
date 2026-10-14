@@ -99,8 +99,6 @@ sha2 = "0.10"
 # dans l'arbre.
 opendal = { version = "0.58", default-features = false, features = [
   "services-s3",
-  # Backend `fs` du MediaStore (D21 — blobs média hors DB, disque local dev)
-  "services-fs",
   "reqwest-rustls-tls",
   "layers-retry",
 ] }

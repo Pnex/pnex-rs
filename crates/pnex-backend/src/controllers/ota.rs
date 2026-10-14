@@ -190,9 +190,7 @@ async fn deploy(
         target.fw_version.as_deref().unwrap_or_default(),
     );
     let settings = firmware::FirmwareSettings::from_config(&ctx.config);
-    let store = settings
-        .store(&ctx.db)
-        .map_err(|_| Error::InternalServerError)?;
+    let store = settings.store().map_err(|_| Error::InternalServerError)?;
     let exists = store
         .exists(&key)
         .await
@@ -368,9 +366,7 @@ async fn download_firmware(
     // Artifact key is org-scoped: the authenticated device's own org.
     let key = pnex_firmware_builder::ota_artifact_key(device.org_id, &device.device_id, &version);
     let settings = firmware::FirmwareSettings::from_config(&ctx.config);
-    let store = settings
-        .store(&ctx.db)
-        .map_err(|_| Error::InternalServerError)?;
+    let store = settings.store().map_err(|_| Error::InternalServerError)?;
     let bytes = store
         .get(&key)
         .await

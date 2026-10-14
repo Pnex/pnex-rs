@@ -28,17 +28,6 @@ where
     let base = common::spawn_mock_rauthy().await;
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     unsafe { std::env::set_var("RAUTHY_URL", &base) };
-    unsafe {
-        std::env::set_var(
-            "PNEX_MEDIA_DIR",
-            format!(
-                "{}/pnex-lab-tests-{}",
-                std::env::temp_dir().display(),
-                std::process::id()
-            ),
-        )
-    };
-    unsafe { std::env::set_var("PNEX_MEDIA_BACKEND", "fs") };
     let config: RequestConfig = RequestConfigBuilder::new().build();
     let env = Env {
         alice: common::valid_token(

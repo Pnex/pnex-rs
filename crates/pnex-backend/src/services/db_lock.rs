@@ -143,3 +143,16 @@ pub async fn migrate_under_lock<M: pnex_migration::MigratorTrait>(uri: &str) -> 
     let _ = db.close().await;
     res
 }
+
+/// Migrated PostgreSQL test database (same URL as config/test.yaml).
+#[cfg(test)]
+pub(crate) async fn migrated_test_db() -> sea_orm::DatabaseConnection {
+    let uri = std::env::var("TEST_DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://pnex:pnex@localhost:5432/pnex_test".into());
+    migrate_under_lock::<pnex_migration::Migrator>(&uri)
+        .await
+        .expect("migrations");
+    sea_orm::Database::connect(&uri)
+        .await
+        .expect("connect test db")
+}

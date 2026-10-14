@@ -206,9 +206,6 @@ impl Hooks for App {
         // The secrets keyring is mandatory too (D112).
         crate::services::secrets::boot_guard(&ctx.config)
             .map_err(|e| loco_rs::Error::string(&e.to_string()))?;
-        // Multi-pod deployments must not keep media on a pod-local disk.
-        crate::services::media::media_boot_guard(&ctx.config)
-            .map_err(|e| loco_rs::Error::string(&e))?;
         seed_catalog_at_boot(ctx).await;
         // Batcher télémétrie → OpenObserve (no-op si non configuré : le sink
         // noop reste en place — tests, déploiements sans télémétrie).
@@ -322,6 +319,7 @@ impl Hooks for App {
         tasks.register(crate::tasks::seed::Seed);
         tasks.register(crate::tasks::seed_demo::SeedDemo);
         tasks.register(crate::tasks::secrets_rekey::SecretsRekey);
+        tasks.register(crate::tasks::storage_reconcile::StorageReconcile);
     }
 
     async fn truncate(ctx: &AppContext) -> Result<()> {

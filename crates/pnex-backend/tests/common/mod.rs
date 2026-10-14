@@ -443,3 +443,13 @@ pub async fn ws_ticket(server: &axum_test::TestServer, token: &str, org: i64) ->
         .expect("ws ticket")
         .to_string()
 }
+
+/// The media object store of the test configuration (bucket pnex-test).
+#[allow(dead_code)]
+pub fn media_store() -> std::sync::Arc<dyn pnex_backend::services::media::MediaStore> {
+    let config =
+        loco_rs::config::Config::new(&loco_rs::environment::Environment::Test).expect("config");
+    pnex_backend::services::media::MediaSettings::from_config(&config)
+        .store()
+        .expect("test S3 store")
+}

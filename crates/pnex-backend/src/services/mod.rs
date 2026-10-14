@@ -67,6 +67,7 @@ pub mod settings;
 pub mod shared_valkey;
 pub mod singleton;
 pub mod stitch;
+pub mod storage_reconcile;
 pub mod surface_controls;
 pub mod system_status;
 pub mod telemetry;

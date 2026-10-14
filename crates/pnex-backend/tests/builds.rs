@@ -487,7 +487,7 @@ async fn rebuild_creates_a_new_record_with_a_higher_version() {
 
         // Both OTA artifacts live under their own versioned key.
         let store = pnex_backend::services::firmware::FirmwareSettings::from_config(&ctx.config)
-            .store(&ctx.db)
+            .store()
             .expect("store");
         for id in [second_id, third_id] {
             let key = pnex_firmware_builder::ota_artifact_key(org, "dev-re", &id.to_string());
@@ -526,7 +526,7 @@ async fn successful_build_prunes_old_records_and_artifacts() {
         create_device(&server, &env.alice, org, "dev-ret").await;
         lift_build_interval(&ctx, org).await;
         let store = pnex_backend::services::firmware::FirmwareSettings::from_config(&ctx.config)
-            .store(&ctx.db)
+            .store()
             .expect("store");
         let serial_key = format!("org_{org}/firmware/dev-ret-firmware.bin");
 

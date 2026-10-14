@@ -509,9 +509,7 @@ async fn download(
         return Err(Error::NotFound);
     };
     let settings = FirmwareSettings::from_config(&ctx.config);
-    let store = settings
-        .store(&ctx.db)
-        .map_err(|_| Error::InternalServerError)?;
+    let store = settings.store().map_err(|_| Error::InternalServerError)?;
     let bytes = store.get(&key).await.map_err(|_| Error::NotFound)?;
     let filename = format!(
         "{}-firmware.bin",

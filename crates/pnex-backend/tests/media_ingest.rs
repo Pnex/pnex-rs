@@ -705,8 +705,6 @@ async fn library_file_as_a_stream_source() {
         .unwrap()
         .success());
     let mp4 = std::fs::read(&clip).unwrap();
-    unsafe { std::env::set_var("PNEX_MEDIA_BACKEND", "fs") };
-    unsafe { std::env::set_var("PNEX_MEDIA_DIR", dir.join("store").display().to_string()) };
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let a = &env.alice;

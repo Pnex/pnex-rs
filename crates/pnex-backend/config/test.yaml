@@ -87,10 +87,17 @@ settings:
   # (rapides, échec/timeout pilotés par des valeurs de wifi_ssid).
   # Firmware : source embarquée dans le binaire (aucune config de source —
   # table rase) ; toolchain remplacée par les fixtures (fake pio/esptool).
-  # Artifacts stored in the database (D5 v2).
+  # Object storage: the compose `rustfs` service, bucket pnex-test
+  # (`docker compose up -d rustfs rustfs-init`).
+  storage:
+    # Fixed on purpose: a dev shell exporting PNEX_S3_* never points the
+    # tests at a real bucket.
+    endpoint: http://localhost:9000
+    bucket: pnex-test
+    access_key: rustfsadmin
+    secret_key: rustfsadmin
+    path_style: true
   firmware:
-    storage:
-      backend: db
     pio_cmd: ./tests/fixtures/firmware/fake_pio.sh
     esptool_cmd: ./tests/fixtures/firmware/fake_esptool.sh
     timeout_secs: 2
@@ -98,7 +105,7 @@ settings:
     require_device_ca: false
   # Stitching serveur (Take 360 V2) — activé par défaut ; le test e2e
   # (tests/stitch_jobs.rs) baisse la largeur à 1024 via PNEX_STITCH_OUT_WIDTH
-  # (posée avant le boot, école PNEX_MEDIA_DIR) pour rester < 60 s.
+  # (posée avant le boot) pour rester < 60 s.
   stitch:
     enabled: <%= get_env(name="PNEX_STITCH_ENABLED", default="true") %>
     out_width: <%= get_env(name="PNEX_STITCH_OUT_WIDTH", default="4096") %>
@@ -107,11 +114,6 @@ settings:
     # Nombre de stitches simultanés (knob fixe, décision 2026-09-10) :
     # RPi 8 Go → 2 (l'env surcharge ; les builds firmware partagent la queue).
     max_concurrent: <%= get_env(name="PNEX_STITCH_MAX_CONCURRENT", default="2") %>
-  # Media: every test process runs on one host, so the fs store is shared
-  # by construction (multi-process cluster tests set a cluster token).
-  media:
-    storage:
-      fs_shared: <%= get_env(name="PNEX_MEDIA_FS_SHARED", default="true") %>
   # Flows ETL (D18) : COUPÉ par défaut (aucun process enfant dans les tests).
   # Les tests de flows activent via env avant le boot (#[serial]) :
   #   PNEX_FLOW_ENABLED=true + PNEX_FLOW_RUNTIME_CMD=<runtime réel ou fake>.

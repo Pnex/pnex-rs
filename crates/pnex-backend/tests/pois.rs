@@ -251,7 +251,7 @@ async fn cycle_complet_poi() {
 #[tokio::test]
 #[serial]
 async fn pin_apercu_poi() {
-    with_app(|server, _db, env| async move {
+    with_app(|server, db, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let headers = |r: axum_test::TestRequest| {
             r.add_header("Authorization", bearer(&env.alice))
@@ -331,6 +331,22 @@ async fn pin_apercu_poi() {
         assert_eq!(res.status_code(), 200, "unpin : {}", res.text());
         let dto = res.json::<serde_json::Value>();
         assert!(dto["preview_kind"].is_null(), "kind cleared avec l'id");
+        assert!(dto["preview_id"].is_null());
+
+        // Deleting the pinned resource drops the pin (no viewer on a dead id).
+        let gone = "22222222-3333-4444-5555-666666666666";
+        let res = headers(server.patch(&format!("/api/v1/pois/{poi_id}")))
+            .add_header("Content-Type", "application/json")
+            .json(&serde_json::json!({ "preview_kind": "tour", "preview_id": gone }))
+            .await;
+        assert_eq!(res.status_code(), 200, "pin tour : {}", res.text());
+        pnex_backend::services::resources::purge_for(&db, org, "tour", gone)
+            .await
+            .expect("purge");
+        let dto: serde_json::Value = headers(server.get(&format!("/api/v1/pois/{poi_id}")))
+            .await
+            .json();
+        assert!(dto["preview_kind"].is_null(), "pin dropped with the tour");
         assert!(dto["preview_id"].is_null());
     })
     .await;
