@@ -902,3 +902,439 @@ Contexte : réinstallation à neuf du cluster perso (chart pnex 0.2.0,
   scénario de captures du site (`pnex-website/scripts/capture`) ne peut pas
   être rejoué sans réenregistrer + reflasher les cartes et reconfigurer O2.
 - **Statut** : informatif (session de captures à planifier avec l'opérateur).
+
+### O43 — Libellés UI incohérents relevés en documentant
+
+- `nav-group-devices = Devices` en **français** (`locales/fr-FR.ftl:16`) :
+  attendu « Appareils » (sauf choix délibéré).
+- Contenu des packs non traduit : types, propriétés, actions et liens de
+  `crates/pnex-backend/packs/maintenance.yaml` et `investigation.yaml`
+  apparaissent en anglais dans l'UI française (« Augmented maintenance »,
+  « Start maintenance », « 5 whys »…) ; l'aide
+  `flows-palette-action-trigger-help` (fr-FR.ftl:3208) cite
+  « Mettre en maintenance », jamais affiché.
+- `flows-palette-notify-help` (en-US.ftl:1453 / fr-FR.ftl:1452) : « (websocket/webhook) »
+  alors que le nœud envoie aussi ntfy, Telegram, Slack, Discord, SMTP et
+  des pièces jointes PDF.
+- Vocabulaire de diffusion dans un produit industriel :
+  `flows-palette-range-upsert-help` (« a show, a shift… »,
+  en-US.ftl:2215) et `err-range-upsert-origin-invalid` (« EPG »,
+  en-US.ftl:3747).
+- Pages › Nouvelle page ne propose aucun modèle : les modèles de page ne
+  sont accessibles que depuis un dossier d'enquête.
+- **Statut** : ouvert.
+
+### O44 — Fiches de l'assistant (assistant-kb) en retard sur la navigation
+
+- `media.md:11` et `documents.md:11` : « Data › Library » → aujourd'hui
+  Media › Library ; `documents.md` ne mentionne pas la liste blanche
+  d'upload ni `media-format-unsupported`.
+- `pages.md:11` : « right under Visualisation » → Knowledge › Pages.
+- `calendar.md:43` : nœud « Upsert range » → libellé UI « Time range writer ».
+- `cases.md` : cadrage éditorial (« story », modèle « Script / rundown »,
+  « broadcasts ») et identifiant interne (« K38 ») dans une fiche lue par
+  l'assistant (cf. ton sobre du repo public).
+- **Statut** : ouvert (les gardes KB vérifient routes/nœuds/codes cités,
+  pas les chemins de menu en texte libre).
+
+### O45 — roadmap.md : incohérences internes (relevées en refaisant la roadmap du site)
+
+1. Le journal du 2026-10-13 cite une section « Branches en attente » ; la
+   section s'appelle « Branches mergées le 2026-10-13 ». L'entrée « M2b → M5 »
+   dit encore « Tout sur feat/media-vision-studio ».
+2. P2.15 : « cible après la 0.2.0 sauf exception » et « M5 (studio de
+   rapports) », dépassés par D207–D210.
+3. P2.13, P2.16–P2.19 : « zéro code avant validation » alors que le code est
+   sur main ; même contradiction dans la ligne de statut d'`ontology.md` ;
+   `media-ingest.md` et `geo-layers.md` encore « Proposé ».
+4. `security-tiers.md` : « rien n'est implémenté » alors que V1 est livré
+   (2026-10-09) ; décision #15 « V1 : prochaine passe sécurité » encore ouverte.
+5. Tableau d'état : OTA « OTA sur ESP32 réel » encore à faire ; Organisations
+   « UI arbre » alors que P1.1 a livré Sites + labels ; Android « dérivé du
+   nom du crate » vs P1.2 « PNeX » ; titre P2.10 « L4 partiel » vs tableau
+   L4 complet.
+6. Décision #24 demande encore si C0–C1 peuvent déroger au gel (C0–C7 livrés).
+7. Ordre : décisions 15 avant 14, 19 avant 18, 26 avant 25 ; journal du
+   2026-10-11 après celui du 2026-10-12.
+8. « Aucune fonctionnalité promise pour la 0.2.0 » vs ligne P2.14
+   « 0.2.0 = L0–L5 + pack Maintenance augmentée ».
+- **Statut** : ouvert.
+
+### O46 — assistant-kb : chemins de menu périmés (complément d'O44)
+
+| Chemin périmé | Fiches | Attendu |
+|---|---|---|
+| Data › Audio streams | streams.md:11, cameras.md:20, cameras.md:46 | Media › Audio streams |
+| Data › Cameras | cameras.md:11 | Media › Cameras |
+| Data › Models | cameras.md:20, lab.md:19/31/37, models.md:11 | Automation › Models |
+| Data › Studio Tour / Annotations | studio.md:11/18, map.md:21 | Media › … |
+| Data › Controls | controls.md:11 | Automation › Controls |
+| Visualization › Dashboards / Map / Sites / Quick charts | dashboards.md:11, visualisation.md:11/23, map.md:11, sites.md:11, home.md:25, troubleshooting-dashboard-no-data.md:32 | Monitor › … |
+| (Edges menu) | devices.md:11, catalog.md:11, edge-refs.md:11, firmware.md:11 | groupe Devices |
+
+Autres écarts fiche ↔ app :
+- troubleshooting-stream-silent.md:16-17 : états « Backoff / Running /
+  skipped (backlog) » ≠ UI « Retrying soon / Capturing / Too late (skipped) »
+  (en-US.ftl:3772, 3774, 3809).
+- secrets.md:18 : « Used by » sans flux média ni fournisseur géo (en-US.ftl:3760-3761).
+- assistant.md:11 : bouton « en bas à droite » → pied de la barre latérale
+  (shell.rs:604-633) ; assistant.md:7 : outils ontologie, enquêtes,
+  calendrier absents (services/ai/tools.rs:393-460).
+- profile.md:22 : mode sombre « à venir » → livré.
+- flows.md:17 : « Save Changes » → « Save ».
+- devices.md:15 : « Filter by label (site:serre) » → « Filter by label » (en-US.ftl:1283).
+- cameras.md:42 : un flow déployé garderait la caméra éveillée en « On demand » ;
+  l'UI dit qu'enregistrer exige « Continuous » (en-US.ftl:2232, 2282).
+- cameras.md:35 + notes text_decide / vision_zone de node_docs.rs : routage
+  par un nœud « Switch » qui n'existe pas dans la palette (seulement en
+  builtin Node-RED brut, node_docs.rs:514-520).
+- node_docs.rs:283 : media_source « (Media page) » → Media › Audio streams ;
+  node_docs.rs:364 : text_decide « worst first » ≠ UI « lowest first » (en-US.ftl:2523).
+- **Statut** : ouvert.
+
+### O47 — Libellés UI : suite
+
+- `flows-category-devices = Devices` en français (fr-FR.ftl), comme `nav-group-devices`.
+- en-US.ftl:3787 : liste d'enregistrements vide cite la source « stream »,
+  l'option s'appelle « Media stream (IP camera) » (en-US.ftl:2224).
+- en-US.ftl:3763/3766 : sous-titre et vide des flux ne citent que radio et
+  HLS (pas caméras IP ni fichiers de la bibliothèque).
+- en-US.ftl:4790 (+FR) : Vision Lab « export it for training » alors que
+  l'entraînement se fait désormais dans PNeX.
+- en-US.ftl:1464 : anti-spam « delayed, never dropped » alors que le code
+  bloque et journalise (`pnex-node-notify/src/lib.rs:634-660`).
+- en-US.ftl:1460 : guillemets français « Page PDF » dans une aide anglaise.
+- en-US.ftl:2375 : « Video description » pour media_fuse, qui fusionne aussi
+  les transcriptions audio.
+- fr-FR.ftl:228 : « Enregistrer » = à la fois *register* et *save* sur la
+  page appareils.
+- **Statut** : ouvert.
+
+### O48 — Écarts code ↔ doc d'architecture
+
+- **Itinéraire géo** : `geo-layers.md:367` promet le tracé sur la carte ;
+  le backend a `POST /api/v1/geo/route` (`controllers/geo.rs:309`) mais le
+  front n'a ni appel (`pnex-frontend/src/api/geo.rs`) ni UI.
+- **Boucle de l'assistant** : `services/ai/agent.rs:80` itère
+  `0..=MAX_ITERATIONS` (6) → jusqu'à 7 appels LLM par tour, la doc dit six.
+- **Stockage local encore par défaut malgré la décision #25 (S3 seul)** :
+  `crates/pnex-backend/config/production.yaml:137` (firmware `db`), `:154`
+  (média `fs`), `compose.app.yaml:34` ; côté pnex-deploy, `install.sh`
+  (l. 63, 378) et `compose.yaml` (l. 65-66). Le site décrit `fs` comme « en
+  cours de retrait » en attendant.
+- **Statut** : ouvert.
+
+### O49 — Relecture des tutos sur la nouvelle UI
+
+Libellés :
+- « Devices » en anglais dans l'UI française aussi en bouton
+  (« Depuis un device », fr-FR.ftl:3300) et catégorie de palette (fr-FR.ftl:529).
+- En anglais, le groupe « Devices » contient « Devices / Agents »
+  (en-US.ftl:6, 16) → chemin « Devices → Devices / Agents ».
+- Marque mal orthographiée : « Generic PneX » / « Generic PneX firmware »
+  (en-US.ftl:280, 2697), « PNEX v… » (en-US.ftl:64) → PNeX.
+- Deux « Events » distincts : Monitor › Events (journal des flows,
+  en-US.ftl:2331) et l'onglet Events des notifications (journal d'envoi,
+  en-US.ftl:1377).
+- Plomberie exposée : canal « WebSocket (internal bus) » avec `/ws/notify`
+  (en-US.ftl:1342, 1350-1351) ; « OpenObserve » dans le sous-titre et
+  l'erreur des graphiques rapides (en-US.ftl:351, 364).
+- Accueil : « subscription » sur un produit auto-hébergé (en-US.ftl:137).
+- FR : format « PC » (fr-FR.ftl:994), « Rafraîchissement » sans verbe
+  (:2702), « Lire chaque 15 s » → « toutes les 15 s » (:397-400).
+- Guillemets « » dans des chaînes anglaises (en-US.ftl:289, 599, 601, 1460,
+  1795-1799) ; « WiFi » vs « Wi-Fi » (en-US.ftl:274 vs 3428).
+
+Comportement :
+- Modales de création validées par « New … » au lieu du verbe (règle du
+  design system) : `pages/firmware/mod.rs:264`,
+  `pages/functions/create_modal.rs:52`, `pages/cases/mod.rs:158`.
+- Liste de cadence de lecture du panneau de pins sans libellé visible
+  (aria-label seul, `components/pins_panel.rs:304-308`).
+- Sonde Display rangée dans la catégorie Devices au lieu de Debug
+  (`components/flow_editor/canvas/palette.rs:237`).
+- « New flow » crée « Flow <date> » sans champ de nom ; renommage par un
+  petit crayon seulement (`pages/flows.rs:220-241`,
+  `components/editor_shell/mod.rs:268-281`).
+- Le bouton principal du formulaire de template passe de Create à Save après
+  un Preview/Test (brouillon auto-enregistré,
+  `components/notify_template_form.rs:399-405`) : déroutant.
+
+Manque :
+- Aucun nœud délai/minuterie dans la palette (`palette.rs:228-270`) :
+  « arroser N secondes » n'est pas constructible (tuto arrosage réécrit en
+  seuil hystérésis lecture → calc → écriture).
+- **Statut** : ouvert.
+
+### O50 — Stack conteneurisée : firmwares compilés sur le port 443 au lieu de 4443
+
+- **Symptôme** : carte flashée depuis le serveur en conteneur (`task app:up`
+  avec l'edge local) : Wi-Fi et TLS OK (`101` sur `/ws/device`), puis
+  `[NOISE] closed by the server before its answer (key refused?)` en boucle ;
+  le journal série montre `wss://192.168.1.185/ws/device` (port 443).
+- **Cause** : `apply-edge.sh` écrit `PNEX_DEVICE_HOST=:4443` dans `edge.env`
+  (lu par le backend lancé sur l'hôte) mais n'exporte que
+  `PNEX_DEVICE_PORT` vers compose, et `compose.app.yaml` ne transmet que
+  `PNEX_DEVICE_PORT` au conteneur — variable que le serveur ne lit pas
+  (`services/firmware.rs::device_endpoint_env` lit `PNEX_DEVICE_HOST`). Le
+  point d'accès compilé retombe sur l'hôte nu (443, sans le certificat client
+  vu par l'edge) → refus.
+- **Correction (appliquée 2026-10-13)** : `compose.app.yaml` passe
+  `PNEX_DEVICE_HOST` ; `apply-edge.sh` l'exporte (`:$DEVICE_PORT` par
+  défaut). Vérifié : rebuild + flash ESP32-C6 → `wss://…:4443`, `[NOISE] link
+  established`. Reste : `PNEX_DEVICE_PORT` est mort côté serveur (à retirer
+  ou documenter) ; une garde e2e « firmware conteneur → 4443 » éviterait la
+  récidive.
+- **Statut** : corrigé (non commité).
+
+### O51 — Éditeur de flows : pas de « tout afficher », nœud hors cadre à l'ouverture
+
+- **Constat** : à l'ouverture d'un flow déployé (« Demo – button to LED »),
+  le nœud Inject est coupé au bord gauche du canevas ; aucun bouton « ajuster
+  à la vue » (le tableau de bord en a un, `board-zoom-reset`), seul le
+  glisser du fond recadre.
+- **Correction proposée** : cadrer sur l'emprise des nœuds à l'ouverture +
+  bouton « Tout afficher » dans la barre du canevas.
+- **Statut** : ouvert.
+
+### O52 — Dashboard mobile : deux boutons « modifier » à 390 px
+
+- **Constat** : vue live d'un dashboard mobile (« Demo – Home ») à largeur
+  téléphone : l'en-tête affiche une clé seule (icône) **et** le bouton
+  « Edit » juste dessous — deux entrées pour la même action.
+- **Correction proposée** : un seul bouton (icône seule sous `sm`, libellé
+  au-dessus).
+- **Statut** : ouvert.
+
+### O53 — Calendrier : grille claire et numéros de jour illisibles en mode sombre
+
+- **Constat** : `/calendar` en thème sombre : la grille du mois reste sur fond
+  clair (gris très pâle), les numéros des jours hors aujourd'hui sont
+  quasiment invisibles ; seules les occurrences restent lisibles. La revue
+  sombre du 2026-10-11 a précédé l'arrivée du calendrier (2026-10-13).
+- **Correction proposée** : jetons `surface`/`line`/`slate` (ou classes
+  `gray-*` miroitées) au lieu de couleurs claires fixes ; ajouter la page à
+  `design_guard`/revue sombre.
+- **Statut** : ouvert.
+
+### O54 — Recherche documentaire : Markdown brut dans les extraits
+
+- **Constat** : Media › Library › « Search in documents » : l'extrait d'un
+  `.md` affiche `**4.5 mm/s**` (astérisques) au lieu du texte.
+- **Correction proposée** : retirer la syntaxe Markdown à l'extraction
+  (texte indexé) ou au rendu de l'extrait.
+- **Statut** : ouvert. Note : la recherche globale de la barre latérale ne
+  cherche pas dans le contenu des documents (« No results » pour « bearing
+  vibration ») — à documenter ou à relier.
+
+### O55 — Carte : POI choisi dans la liste non centré, adresses en double
+
+- **Constats** : (1) cliquer un POI dans la liste ouvre son tiroir mais la
+  carte reste à l'échelle Europe ; il faut « Recenter ». (2) la recherche
+  d'adresse (Photon) renvoie deux fois « Avenue Tony Garnier, 69007 Lyon »
+  (deux segments OSM de la même voie) sans déduplication.
+- **Correction proposée** : `flyTo` à la sélection depuis la liste ;
+  dédupliquer les résultats de géocodage par libellé + distance < ~200 m.
+- **Statut** : ouvert.
+
+### O56 — Transcription : runtime whisper.cpp absent des images, boucles de répétition
+
+- **Constats (premier essai réel des flux audio, 2026-10-13)** :
+  1. Un modèle GGML (`ggml-tiny.bin`) est accepté à l'upload (`kind=model`)
+     puis refusé au contrôle : « runtime whisper.cpp not compiled in this
+     pnex-asr build ». L'image ne compile `pnex-asr` qu'avec `sherpa`
+     (`deploy/docker/Dockerfile`, étape `asr`) ; la fiche KB et la liste des
+     formats acceptés (`services/media_sniff.rs`) annoncent pourtant GGML.
+  2. Avec l'export sherpa-onnx de Whisper tiny (contrôle OK, RTF 0,05), le
+     Test sur une radio musicale (FIP) produit une boucle « de plus de plus de
+     plus… » : aucune suppression de répétition / hallucination.
+  3. API : la mise à jour d'un flux est `PATCH` (un `PUT` répond 405) —
+     cohérent avec le reste ? (les fournisseurs géo sont en `PUT`).
+- **Corrections proposées** : (1) refuser GGML à l'upload quand le runtime
+  n'est pas compilé, ou le dire dans l'UI du registre ; (2) filtre de
+  répétition (n-grammes répétés > N → segment marqué douteux) et/ou VAD
+  musique ; (3) harmoniser PUT/PATCH sur les ressources.
+- **Statut** : ouvert.
+- **Compléments O56** : après renommage d'un flux (« FIP » → « franceinfo »),
+  les transcriptions restent étiquetées `fip_radio` (slug figé à la
+  création) ; `words` reste `[]` alors que le profil a `word_timestamps: true`.
+
+### O57 — Page introuvable : texte brut hors coquille
+
+- **Constat** : une route inconnue (ex. `/streams/<uuid>`) affiche « Page not
+  found: streams/… » en texte brut en haut à gauche, sans barre latérale,
+  sans lien de retour ni mise en forme (`pages/not_found.rs`).
+- **Correction proposée** : rendre la page 404 dans la coquille (titre,
+  phrase, bouton « Accueil »), selon les pages vides du design system.
+- **Statut** : ouvert.
+
+### O58 — Flows : second fil d'une sortie de fonction refusé sans retour
+
+- **Constat** : dans l'éditeur, tirer un deuxième fil depuis une sortie
+  nommée d'un nœud Function (règle « 1 fil par ancre ») ne fait rien : ni
+  fil, ni message, ni curseur interdit. Un utilisateur qui veut envoyer la
+  même valeur vers une détection, une alerte et une métrique croit à un bug.
+  Les autres nœuds (ex. Forecast) acceptent plusieurs fils par sortie.
+- **Correction proposée** : retour visible au relâcher (toast « une sortie de
+  fonction ne prend qu'un fil : ajoutez une sortie dans le code ») et/ou
+  curseur `not-allowed` au survol ; documenter la règle dans la NodeDoc
+  `pnex_function` (pièges).
+- **Statut** : ouvert. Le scénario de captures (étape 19) expose désormais
+  une sortie par consommateur.
+
+### O59 — Accueil : quotas de tier affichés en auto-hébergé, séries de flows supprimés
+
+- **Constats** : (1) en `self_hosted` (aucun quota appliqué depuis O37),
+  l'accueil affiche « Tier capacities — Mixed devices 2 / 1 » : un
+  dépassement apparent qui n'en est pas un. (2) « Latest measurements » liste
+  encore les séries de flows supprimés (`flow_58`, `flow_61`).
+- **Corrections proposées** : masquer le bloc tier hors `saas` ; filtrer les
+  séries `flow_<id>` dont le flow n'existe plus (ou les marquer « supprimé »).
+- **Statut** : ouvert.
+
+## 2026-10-13 (soir) — suivi des constats O41–O59
+
+Corrigé (non commité ; `task check` natif + wasm vert, `cargo test --workspace
+--no-fail-fast` : 164 binaires verts, `task fmt` passé) :
+
+- **O41** : l'org personnelle prend le nom neutre de l'utilisateur
+  (`auth/provisioning.rs`), plus de texte français côté serveur.
+- **O43 / O47 / O49 (libellés)** : « Appareils » en français (groupe, palette,
+  bouton), entrée « Devices & agents », marque « PNeX », guillemets droits en
+  anglais, « Wi-Fi », aide du nœud Notification (tous les canaux + PDF),
+  anti-spam « bloqués et journalisés », plages horaires sans vocabulaire de
+  diffusion, sous-titres Vision Lab / flux / enregistrements, plomberie
+  (OpenObserve, `/ws/notify`, « subscription ») retirée de l'UI,
+  « Ordinateur », « Rafraîchir toutes les », « Lire toutes les », « Ajouter un
+  appareil » (plus de collision avec « Enregistrer »).
+- **O44 / O46** : fiches assistant-kb alignées sur la navigation et l'UI
+  réelles (chemins, états, outils, nœuds, liste blanche d'upload) ; cases.md
+  neutre ; modèle « Script / rundown » renommé « Presentation outline ».
+- **O45** : `roadmap.md` — les 8 incohérences reprises.
+- **O48 (assistant)** : exactement 6 appels LLM par tour (5 avec outils + la
+  réponse forcée) ; jetons de l'appel forcé comptés ; test `ai.rs` aligné.
+- **O50** : `PNEX_DEVICE_PORT` retiré de l'env serveur (mort côté code).
+- **O51** : éditeur de flows cadré sur les nœuds à l'ouverture + bouton
+  « Tout afficher » (`geometry::fit_view`, testé).
+- **O52** : un seul bouton « modifier » sur la vue live mobile.
+- **O53** : calendrier sur jetons (lisible en sombre) ; `design_guard`
+  refuse désormais `dark:` sur une nuance numérotée (cause : échelles déjà
+  miroitées par dark.css).
+- **O54** : Markdown retiré à l'extraction (`doc_extract::md_plain`, testé) ;
+  les documents déjà indexés gardent l'ancien texte jusqu'à réindexation.
+- **O55** : choix d'un POI dans la liste → la carte s'y rend ; résultats de
+  géocodage dédupliqués (< 200 m, même libellé ; testé).
+- **O56** : `pnex-asr runtimes` + refus `asr-runtime-unavailable` (422) à
+  l'enregistrement d'un modèle dont le runtime n'est pas compilé ; garde
+  anti-boucle `collapse_repeats` (≤ 3 répétitions d'un n-gramme 1–4 mots,
+  testée). Nécessite de reconstruire l'image (binaire `pnex-asr`).
+- **O57** : page introuvable rendue dans la coquille (titre, chemin, Accueil).
+- **O58** : cause réelle ≠ règle « 1 fil » (inexistante) : l'inspecteur ouvert
+  couvre la droite du canevas et un relâcher hors entrée annulait en
+  silence. Désormais toast `flows-wire-missed` quand un fil est lâché hors
+  d'une entrée ; la note de la NodeDoc pnex_function qui évoquait « un fil par
+  sortie » est retirée (plusieurs fils par sortie sont permis).
+- **O59** : bloc « Tier capacities » masqué hors `saas` ; séries `flow_<id>`
+  de flows supprimés filtrées de « Latest measurements ».
+- Modales de création validées par « Create » ; cadence de lecture du
+  panneau de pins avec libellé visible ; sonde Display rangée en Debug ;
+  bouton du formulaire de template stable (« Save »).
+
+Restent ouverts :
+
+- **O48** : tracé d'itinéraire sur la carte (fonctionnalité) ; **stockage S3
+  par défaut** (décision #25 vs `production.yaml` et `install.sh`) — décision
+  produit.
+- **O56** : `words` vide — l'export sherpa-onnx de Whisper ne fournit pas
+  d'horodatage par jeton ; et `word_timestamps` du profil n'est lu nulle
+  part ; slug de flux figé au renommage (par conception ?).
+- **O43** : contenu des packs non traduisible (pas de champ i18n dans le
+  format de pack) ; Pages › Nouvelle page sans choix de modèle ; deux
+  « Events » distincts (Monitor › Events et onglet des notifications).
+- **O54** : la recherche globale ne cherche pas dans le contenu des documents.
+
+### O60 — Flow arrêté affiché « Deployed »
+
+- **Constat** : un flow dont la version est déployée mais le runtime arrêté
+  (stoppé, ou refusé parce qu'une autre source écrit déjà la pin) montre la
+  pastille verte « Deployed » à côté d'un bouton « Start » : l'état réel
+  (arrêté) n'est pas lisible, ni la raison du refus de démarrer.
+- **Correction proposée** : pastille « Stopped » / « Deployed · stopped » et,
+  si `Start` est refusé (pin-already-assigned), le message avec le flow
+  concurrent.
+- **Statut** : ouvert.
+
+### O61 — POI : aperçu épinglé sur une ressource supprimée
+
+- **Constat** : à l'ouverture d'un POI, le visualiseur affichait
+  « not_found : Resource was not found » avec l'UUID brut en titre. L'aperçu
+  épinglé (`map_pins.preview_kind/preview_id`) pointait une visite 3D
+  supprimée ; son arête `placed_on` était bien fermée, mais pas l'épingle.
+- **Correction** : `resources::purge_for` retire l'épingle des POI qui
+  visaient la ressource supprimée (test `pois::pin_apercu_poi`).
+- **Statut** : corrigé.
+
+## 2026-10-14 — déconnexion
+
+### O62 — Déconnexion : page JSON brute de Rauthy
+
+- **Constat** : `/auth/v1/oidc/logout` affichait `{"error":"BadRequest",
+  "message":"need at least one of id_token_hint, logout_token, or a valid
+  session"}`. Un refresh sans `id_token` effaçait celui stocké, puis la
+  déconnexion POSTait l'end-session sans indice, session Rauthy déjà morte.
+- **Correction** : `id_token` conservé si le refresh n'en renvoie pas ; sans
+  indice, pas d'appel Rauthy (retour à l'écran de login). Résiduel : SEC-41.
+- **Statut** : corrigé (non déployé).
+
+## 2026-10-14 — harmonisation des listes CRUD
+
+Règle posée : `docs/architecture/design-system.md` §6 point 8 (tableau +
+pagination, jamais de tuiles, bouton « Ajouter » toujours visible).
+
+### O63 — Ontologie, dossiers d'enquête, empreintes vocales : listes à part
+
+- **Constat** : en ontologie, le bouton « Nouvel objet » n'apparaissait
+  qu'une fois un type créable choisi dans le filtre ; par défaut (« Tous les
+  types »), on croyait ne rien pouvoir ajouter (ex. une Personne). Les
+  dossiers d'enquête s'affichaient en tuiles, sans pagination. Les empreintes
+  vocales : liste faite main, pas de bouton d'ajout, et un sélecteur de
+  modèle vide quand l'org n'a aucun modèle d'empreinte.
+- **Correction** : ontologie — bouton toujours visible, sélecteur « Que
+  voulez-vous créer ? » (renvoie aux Packs si aucun type créable). Dossiers —
+  `DataTable` + `ListPager`. Empreintes — tableau paginé (côté client),
+  « Nouvelle empreinte » = choix de la personne puis onglet Voix, messages
+  « aucun modèle » / « aucune empreinte prête » à la place du testeur.
+- **Statut** : corrigé (non commité, non déployé).
+
+### O64 — Listes CRUD : lignes manquantes et écarts au socle
+
+Revue de toutes les pages de liste (2026-10-14). Le serveur borne les listes
+(`controllers/pagination.rs` : 10 lignes sans `limit`, 100 au plus) : une
+page qui demande « tout » ou plus de 100 tronque sans le dire.
+
+- **Lignes manquantes (bugs)** :
+  - notifications : canaux et modèles, le pager ne pilote pas la requête
+    (toujours les 10 premiers) ;
+  - mélanges de fluides : aucune `limit` → 10 lignes, pager client sur ces
+    10 ; `can_write: true` en dur (bouton Ajouter visible des lecteurs) ;
+  - organisations, sites (carte) : aucune `limit` → 10 lignes ;
+  - fonctions, documents, contrôles, références Edge (wifi, hôtes),
+    annotations (et leurs sélecteurs média/visites), calendrier : `limit`
+    200/500 ramenée à 100 ;
+  - flux : les onglets Transcriptions et Plages reçoivent la page courante
+    des flux comme liste de choix.
+- **Pas de pager, API déjà paginée** : contrôles, documents, références Edge,
+  annotations, organisations, sites.
+- **Pas de pager, API non paginée (backend à faire)** : firmware, labo,
+  caméras, taxonomies, modèles et profils ASR, types d'objets et types de
+  liens, packs, empreintes vocales (pager client provisoire).
+- **Écarts de forme** : packs d'ontologie en tuiles ; sites en lignes faites
+  main (sans `ListStates`) ; organisations créées par un formulaire inline au
+  lieu du bouton Ajouter ; types de liens avec un bouton sous le tableau ;
+  tableaux écrits à la main au lieu de `DataTable` (modèles ML, onglets de
+  flux, journal d'événements, statut plateforme) ; barres d'onglets hors du
+  slot `tabs` (flux, notifications, références Edge) ; catalogue en pages
+  de 12.
+- **Ordre proposé** : lignes manquantes → pagers sur API existante →
+  harmonisation de forme → pagination backend.
+- **Statut** : ouvert.
