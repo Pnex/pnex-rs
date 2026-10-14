@@ -189,11 +189,11 @@ tâche).
 |---|---|---|
 | **Scale horizontal** (D106–D108) | **Livré 2026-10-01** — flows shardés par org (contrôleur élu, fencing), bus device Valkey par pod, présence device en baux Valkey (Valkey obligatoire), audit multi-pods scale-a→e (quotas atomiques, versions optimistes, listes paginées SQL, single-flight) ; E2E 2 processus | **E2E multi-réplicas réel** (k8s : bascule contrôleur, perte de pod, rolling update) ; manifests k8s dans `pnex-deploy` ; `LAST_VALUES` encore local au pod (flow-engine §7) |
 | **Palette de nœuds** | **Sections par catégorie livrées** (D109, P1.7) : 9 catégories en ordre fixe, recherche transverse | **P2.11** catalogue piloté par descripteurs (parité n8n) |
-| **Firmware ESP générique** (F1/F2) | Consolidé — transport commun dans la lib `firmware/lib/pnex`, `Announce.caps`, StateReport par capacité ; flash F1/F2 validé réel (NodeMCU, ESP32-C3 0639ee4) | **F3 firmware `regulator`** (persist D45, buffer D46, boucle) — hardware requis ; e2e carte réelle Brick 0 jamais flashée ; OTA sur ESP32 réel (8266 OK) |
+| **Firmware ESP générique** (F1/F2) | Consolidé — transport commun dans la lib `firmware/lib/pnex`, `Announce.caps`, StateReport par capacité ; flash F1/F2 validé réel (NodeMCU, ESP32-C3 0639ee4) | **F3 firmware `regulator`** (persist D45, buffer D46, boucle) — hardware requis ; e2e carte réelle Brick 0 jamais flashée |
 | **Flow engine** | Consolidé — ETL full-Rust, device read/write (routage topic 90f23e0), calc, debug, http_fetch (C1a), nœud notify, cache live Valkey (b966c1a→e7257f8), **exclusivité write par pin** (8d60950), nœuds caméra/vision/mémoire/prédictifs, cluster D106 ; deploy de la version affichée + présence multi-utilisateurs dans l'éditeur (2578ffe) | Palette par capacité (ouverture §12, après P1.7 livré), E2E matériel du write/PWM, ack des commandes non persisté (brick0 §10) |
 | **Fonctions custom** | Livré — JS (rquickjs) + Starlark (`_` privé, json en extension) | Limite acceptée : interrupt handler rquickjs ; payload remplacé (pas merge) — rien d'ouvert |
 | **Notifications** | N1–N4 livrées (7 canaux, templates, anti-spam, canaux dédiés D61–D65), D66–D68 (trigger booléen), journal O2 D86, fan-out `/ws/notify` multi-pods | ~~N5 chiffrement AEAD des secrets~~ fermé par le coffre de secrets (2026-10-01) ; N6 points d'extension, canal gotify en réserve |
-| **OTA** | Livré + E2E réel 8266 (2 cycles ~23 s, boucle 4003 anti-clone) | ESP32 réel ; politique de re-flash quand v2 du `.bin` (brick0 §10) |
+| **OTA** | Livré + E2E réel 8266 (2 cycles ~23 s, boucle 4003 anti-clone) ; OTA signée + anti-downgrade validées sur banc 8266 + ESP32-C6 (2026-10-09, SEC-18) | Politique de re-flash quand v2 du `.bin` (brick0 §10) |
 | **Devices / pins** | Consolidé — CRUD, catalogue, quotas, pinout SVG v2, board variants, placements D43 | E2E matériel (write/PWM, fraîcheur read via Valkey) |
 | **TFT / écrans** | V2 livré — barre dès boot, timeline OTA, panneau 21 pins (8e69519) | E2E matériel (tft_dev) |
 | **Média (D21) + Take 360** | Couche 1 livrée ; Take 360 V2 serveur + V3 guidage device-validé + auto-cal focale | Capture portrait 2 anneaux, résolution 1080+, iOS/web, calibration par device |
@@ -204,10 +204,10 @@ tâche).
 | **Extension navigateur (C1b)** | **Spec écrite** (`extension-collector.md`, 10 décisions) — implémentation = jalon C3 | Implémentation après validation de la spec |
 | **Agent local (C2)** | **Livré** (2026-09-30) (`edge-agent.md`, D95–D99) : API locale libre, file disque, enrôlement une commande, Linux musl + Windows | Test Windows réel, macOS, pont WS devices LAN |
 | **M2M résilient (M1–M3)** | PRD posé (`m2m-resilient.md`) | M1 POC zenoh-pico WiFi (zéro achat), M2 6LoWPAN à prototyper avant engagement |
-| **Android** | Build + login PKCE E2E validé ; storage persistant ; scan LAN ; APK arm64 publié à chaque `main` vert (CI Apps, pré-release `nightly`, signé debug → sideload) ; bouton Flash masqué (`flash::offered()`), package `io.pnex.app` (`[bundle]` Dioxus.toml) | Keystore de release (Play Store) ; libellé de l'app encore dérivé du nom du crate |
+| **Android** | Build + login PKCE E2E validé ; storage persistant ; scan LAN ; APK arm64 publié à chaque `main` vert (CI Apps, pré-release `nightly`, signé debug → sideload) ; bouton Flash masqué (`flash::offered()`), package `io.pnex.app` (`[bundle]` Dioxus.toml) | Clé de release à générer et APK release à valider (P1.2) ; libellé de l'app déjà « PNeX » |
 | **Desktop natif** | **Livré 2026-10-01** — Linux x86_64 / aarch64 et Windows x86_64 (cross mingw) : login, flash USB par esptool embarqué ; validé mainteneur sur Linux et Windows ; publié à chaque `main` vert (CI Apps, pré-release `nightly`), smoke test de démarrage sur un runner Windows | Paquets installables (.deb/.msi), signature de code, macOS |
 | **Schéma de base** (D120) | **Livré 2026-10-01** — une migration de base ; **SQLite retiré** le 2026-10-10 (518a069, décision #19), PostgreSQL 18 seul ; migrations 0.2 en `000002`–`000020` | Retrait du stockage `fs` (décision #25) |
-| **Organisations (D42)** | Backend livré (labels, containment, edges) | **UI arbre** (couches org dans l'UI) |
+| **Organisations (D42)** | Backend livré (labels, containment, edges) ; UI livrée (P1.1, 2026-10-09) : page Sites, fil d'Ariane Emplacement, labels D42 partout | Vue arbre « Organisation » dédiée |
 | **Auth (D19)** | Rauthy livré, branding API, password grant, OIDC natif | — |
 | **CoolProp** | In-process mergé (d126225) | — |
 | **Brick 0** (prototypage rapide) | PRD (`brick0.md`) | e2e carte réelle, quota mixed 0→1 à valider, persistance ack |
@@ -249,7 +249,8 @@ Un banc (ESP32, NodeMCU, TFT, relais) déroule la liste :
 1. **Write pin + PWM** (duty 0-100) sur device réel — le write routé par
    topic (90f23e0) et l'exclusivité write (8d60950) n'ont jamais vu de
    carte.
-2. **OTA sur ESP32 réel** (le 8266 est validé, l'ESP32 pas).
+2. ~~**OTA sur ESP32 réel**~~ — validée le 2026-10-09 sur ESP32-C6
+   (OTA signée, anti-downgrade ; SEC-18).
 3. **TFT** : barre dès boot, timeline OTA, panneau de pins (tft_dev).
 4. **Read** : fraîcheur cache-first Valkey contre un device réel.
 5. **Écran debug local** (ScreenChoice) et Brick 0 sur carte réelle (DoD
@@ -496,7 +497,7 @@ client O2 logs de la phase W1 (P2.8). Livré : table supprimée
 interne `/internal/notify/journal` pour le nœud, badge par requête O2
 agrégée, onglet Événements ; détail `notifications.md` §15.
 
-### P2.10 — Firmware custom : IDE intégré (`custom-firmware.md`, D87–D94) — **en cours** (L1/L3/L5 livrés, L2/L4 partiels)
+### P2.10 — Firmware custom : IDE intégré (`custom-firmware.md`, D87–D94) — **en cours** (L1/L3/L4/L5 livrés, L2 partiel)
 
 Écrire son propre `main.cpp` dans l'UI (lib PneX complète, board du
 device, libs d'un catalogue épinglé), versionné en base (révisions
@@ -598,7 +599,7 @@ Jardin. Lots A → E.
 
 ### P2.13 — Ingestion de flux média : transcription, plages (ajout 2026-10-09) — **code des lots 0 → 6 sur `main`** (2026-10-10), runs 24 h et vérifications réelles à faire
 
-PRD `media-ingest.md` (D159–D175), zéro code avant validation. Capter
+PRD `media-ingest.md` (D159–D175) ; code des lots 0 → 6 sur `main`. Capter
 des flux continus (Icecast, HLS, DASH, RTSP, DVB-T via Tvheadend) en
 **audio seul**, les transcrire en quasi temps réel sur un worker GPU
 (job Loco, tag `asr` réglable), ranger le temps en **plages** annoncées/recalées
@@ -635,8 +636,8 @@ Décision #16.
 
 ### P2.14 — 0.2.0 : noyau ontologique (objets, liens, temps, actions) (ajout 2026-10-09) — **L0–L5 livrés 2026-10-10, D183 + calendrier livrés le 2026-10-13**
 
-PRD `ontology.md` (D176–D191), cible de la **version 0.2.0**, zéro code
-avant validation. Généralise la couche Resource D42 : types d'objets
+PRD `ontology.md` (D176–D191), socle de la **version 0.2.0** ; L0–L5
+sur `main`. Généralise la couche Resource D42 : types d'objets
 définis par l'utilisateur (données versionnées, `KindSpec` dérivé),
 propriétés typées dont temporelles (désignent une série ou un stream
 O2, ne copient rien), liens typés à validité temporelle, **le temps
@@ -654,7 +655,7 @@ destructive**.
 | L3 | D178 temporel + D181 : liaisons device → objet | remplacement de capteur sans rupture |
 | L4 | D185–D187 : requête, explorateur, dashboards de type | dashboard de type Pompe |
 | L5 | D184, D189, D191 : provenance, assistant, migration | base 0.1 réelle migrée |
-| 0.2.0 | L0–L5 + pack « Maintenance augmentée » | release |
+| 0.2.0 | L0–L5 + pack « Maintenance augmentée » livrés sur `main` | la release annonce ce qu'elle livre, sans promesse à l'avance (revue du 2026-10-13) |
 | 0.3 | ~~D183 actions~~ (remontées dans la 0.2.0, livrées le 2026-10-13), packs Maison et Couverture médiatique, ACL par objet | — |
 
 **Calendrier de maintenance** (annexe B de `ontology.md`, premier lot
@@ -700,14 +701,16 @@ l'image), `vision_caption` (VLM de l'org, D119), `media_fuse`
 Model Lab de l'axe C : annotation dans PNEX, datasets versionnés, job
 `train_detector` dans la queue Loco (seul composant Python, image YOLOX
 figée hors image serveur), ONNX publié dans le registre existant (D81,
-check D100). Phases M0 (= P2.13 lots 1 et 6) → M5 (studio de rapports,
-qui rouvre D173/D174/D3). Répond à la décision #7 (fine-tuning
-détecteurs). Dépend de P2.7 (GPU) et de P2.13 ; cible après la 0.2.0
-sauf exception. Décision #18.
+check D100). Phases M0 (= P2.13 lots 1 et 6) → M5 (prévu comme studio de rapports,
+qui rouvre D173/D174/D3 ; livré autrement, D207–D210, voir l'état
+ci-dessus). Répond à la décision #7 (fine-tuning
+détecteurs). Dépend de P2.7 (GPU) et de P2.13 ; cible d'origine après la 0.2.0,
+dépassée : gel levé pour ce pilier, mergé dans `main` le 2026-10-13.
+Décision #18.
 
 ### P2.16 — Couches géographiques et fournisseurs géo (ajout 2026-10-10) — **phase F sur `main` (2026-10-10)**, A–E après la 0.2.0
 
-PRD `geo-layers.md`, zéro code avant validation, décisions L1–L28
+PRD `geo-layers.md` (phase F sur `main`), décisions L1–L28
 provisoires (numéros D à la validation). Extension de la base map, pas un
 nouveau pilier : **PostGIS** en extension du Postgres existant (image
 multi-arch, arm64 obligatoire), fichier géo = média (kinds `vector` /
@@ -723,7 +726,7 @@ avant la 0.2.0 (consolidation), A–E après.** Décision #20.
 
 ### P2.17 — Pages : documents collaboratifs reliés à l'ontologie (ajout 2026-10-10) — **L1–L2 sur `main` (2026-10-11)**, export PDF (2026-10-13)
 
-PRD `pages.md`, zéro code avant validation, décisions P1–P16
+PRD `pages.md` (L1–L2 sur `main`), décisions P1–P16
 provisoires. Page = type système `doc` de l'ontologie ; contenu CRDT
 (Loro ou yrs, spike L0) répliqué par le serveur, WS `/ws/doc/{id}` +
 fan-out Valkey multi-pods ; éditeur ProseMirror en bundle IIFE
@@ -736,7 +739,7 @@ au gel (tranché 2026-10-10), L3+ après la 0.2.0.** Décision #21.
 
 ### P2.18 — Documents & recherche IA (RAG hybride) (ajout 2026-10-10) — **P1 sur `main` (2026-10-10)**
 
-PRD `doc-search.md` (v0.2 relue), zéro code avant validation. Fichiers
+PRD `doc-search.md` (v0.2 relue), P1 sur `main`. Fichiers
 du quotidien (txt, md, docx, pdf, csv, xlsx/ods) déposés dans la
 médiathèque, extraits en job, découpés et indexés dans Postgres
 (`tsvector` simple + french, trigrammes pour les codes défaut, pgvector
@@ -749,7 +752,7 @@ index partagés avec P2.17. **P1 seul en exception au gel (tranché
 
 ### P2.19 — Dossiers : enquêter sur données × temps × ontologie × acteurs (ajout 2026-10-11) — **C0–C7 et espace de travail sur `main` (2026-10-12)**
 
-PRD `cases.md`, zéro code avant validation, décisions K1–K19
+PRD `cases.md` (C0–C7 sur `main`), décisions K1–K19
 provisoires (numéros D à la validation). Un **dossier** (`case`, type
 système) est une lentille sur l'ontologie : il référence sans copier
 (lien `in_case` temporel, rôle), porte une fenêtre d'intérêt et une
@@ -765,8 +768,9 @@ Apparitions média (K17) : qui est passé dans quelle émission, à
 l'heure de diffusion (live ou différé), rattaché par grille,
 transcription ou mention, jamais par la voix ; collecte conçue par
 l'assistant, exécutée par des flows déployés par l'humain (K18).
-Lots C0 → C8. Proposé : **C0–C1 comme validation de la 0.2.0**
-(première application du noyau), le reste après. Décision #24.
+Lots C0 → C8. Proposé à l'origine : C0–C1 comme validation de la 0.2.0
+(première application du noyau) ; C0–C7 sont sur `main` depuis le
+2026-10-12. Décision #24.
 
 **Refonte de l'écran (2026-10-12)** — PRD `cases-workspace.md` v0.2
 (K20–K41) : l'écran formulaire devient un espace de travail frise ×
@@ -917,19 +921,19 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 | 11 | API publique : transport des abonnements live (WebSocket vs SSE vs REST), modèle de jetons (portée device/flow, lecture/écriture, rotation), lien avec les déclencheurs webhook de P2.11 | Au passage de P3 à P2 |
 | 12 | ~~Base de dev antérieure à D120~~ — tranché 2026-10-03 : tout détruit, `pnex` recréée (O18) | ✅ |
 | 13 | ~~Jetons device dans l'URL des WebSockets~~ — tranché 2026-10-09 : en-tête `Authorization` partout (lot L2 de D153, `security-tiers.md` §6 bis), jeton en URL ignoré | ✅ |
-| 15 | Profils de sécurité : date de lancement de V1 (correctifs protocole, SEC-17 à SEC-19) ; socle de V4 (ESP-IDF C++ ou firmware Rust) ; statut CRA de PneX (avis juridique) | V1 : prochaine passe sécurité ; V4 : après 1 à 2 ans de communauté |
 | 14 | ~~Version firmware par rebuild~~ — tranché 2026-10-03 : 1 build = 1 enregistrement = 1 version, OTA en lot manuelle (O22) | ✅ |
+| 15 | Profils de sécurité : ~~date de lancement de V1 (correctifs protocole, SEC-17 à SEC-19)~~ ; socle de V4 (ESP-IDF C++ ou firmware Rust) ; statut CRA de PneX (avis juridique) | V1 : ✅ livrée le 2026-10-09 (D153–D158) ; V4 : après 1 à 2 ans de communauté |
 | 16 | Flux média : runtime ASR (sherpa-onnx, whisper.cpp ou les deux), ~~tags Loco ou queue dédiée~~ (tranché à la relecture du 2026-10-09 : tags, ASR configurable), superviseur de capture in-process (proposé), agrégation « par plage » (primitive D182), ~~plafond des extraits, amendement de D3~~ (sans objet : pas de publication), ordre vis-à-vis de l'ontologie (`media-ingest.md` §14) | Lot 0 (POC ASR) ; ordre à la validation |
 | 17 | Ontologie 0.2.0 : ~~**actions D183 remontées dans la 0.2.0 ?**~~ (oui : livrées le 2026-10-13) (au moins une action simple tracée : c'est ce qui rend la plateforme « opérationnelle », et le pack Maintenance et les procédures de `pages.md` en dépendent) ; ~~identifiant d'objet global (UUID vs `ResourceRef`)~~ (tranché 2026-10-10 : UUID par table d'identité universelle), moment du bitemporel, format du schéma de propriétés (maison vs JSON Schema), liaison device → objet (lien générique vs table dédiée), packs forkables ou surcouche, langage de requête textuel, spécification publique du noyau ; ordre P2.13 / P2.14 / P2.1 vu le gel des nouveaux piliers (`ontology.md` §9) | À la validation du PRD |
-| 19 | ~~Garder SQLite à côté de PostgreSQL~~ — tranché 2026-10-10 : **PostgreSQL obligatoire, SQLite abandonné**. La parité coûte à chaque migration et chaque requête (`ilike`, FK par reconstruction de table, pas de PostGIS) et pèse de plus en plus lourd à mesure que le produit grandit ; l'argument Raspberry Pi ne tient pas, Postgres reste léger sur un Pi. Les nouveaux développements ne gèrent plus SQLite | ✅ |
 | 18 | ~~Media & Vision Studio : pose humaine ou poste de travail, tract vs `ort`, entraînement CPU, D174 en usage interne, détection → `device_write`, version cible~~ — **tranché 2026-10-13** (`media-vision-studio.md` §10) : poste de travail, tract seul, entraînement en Rust sans Python, détection → `device_write` régie par D128, pas d'attente de tag | ✅ |
+| 19 | ~~Garder SQLite à côté de PostgreSQL~~ — tranché 2026-10-10 : **PostgreSQL obligatoire, SQLite abandonné**. La parité coûte à chaque migration et chaque requête (`ilike`, FK par reconstruction de table, pas de PostGIS) et pèse de plus en plus lourd à mesure que le produit grandit ; l'argument Raspberry Pi ne tient pas, Postgres reste léger sur un Pi. Les nouveaux développements ne gèrent plus SQLite | ✅ |
 | 20 | Couches géographiques : ~~gel 0.2.0~~ (tranché 2026-10-10 : phase F avant, A–E après), ~~rétention des seeds~~ (génération courante), raster, OGC API – Features, plafonds par tier, lien ontologie (`geo-layers.md` §10) ; image Postgres étendue PostGIS + pgvector commune avec #22 | À la validation du PRD |
 | 21 | Pages : Loro vs yrs (`pages.md` §11). Tranché 2026-10-10 (`pages.md` §13) : L1–L2 en exception au gel, tableau local admis (formule = lecture, `ontology.md` §3 amendé), pas de pages privées (suit D188), mesure publiée en série `*_manual` seulement, signature = trace d'identité en V1, nom « Pages » | Loro/yrs au spike L0 |
 | 22 | Documents & recherche IA : BM25 ParadeDB vs `ts_rank_cd`, rerank, poids de DataFusion sur Pi (`doc-search.md` §10). Tranché 2026-10-10 (§13) : P1 seul en exception au gel, embeddings en tract, index partagé avec les pages | À la validation du PRD ; BM25 au jeu de test |
 | 23 | Hub de kits : kits hardware-first, dépendances entre kits, hébergement de l'index (`hub.md` §19). Tranché 2026-10-10 (§21) : kit = pack D190 (un seul format), identité = compte GitHub seul | Pendant la 0.2.0 (aligner les schémas), implémentation après |
-| 24 | Dossiers : version cible (C0–C1 en exception au gel ?), nom « Dossiers / Cases », ACL par dossier (V2, avec D188), temps flou dans le noyau, pack de base « Acteurs », co-présences GPS, horodatage qualifié des gels, seuil d'écriture automatique des apparitions, identification vocale par enrôlement consenti (K19, avis juridique requis) (`cases.md` §11) | À la validation du PRD |
-| 26 | Calendrier GMAO : vue générique des plages (noyau) ou vue du pack ; ~~occurrence = plage D182 ou table dédiée~~ (plage D182, premier lot) ; mode fixe/flottant ; horizon de matérialisation (90 jours au premier lot) ; calendriers ouvrés en v1 ; date prévisionnelle d'un compteur ; hors ligne terrain (`ontology.md` annexe B11) | À la relecture de `modele-cible.md` (B12) |
+| 24 | Dossiers : ~~version cible (C0–C1 en exception au gel ?)~~ (sans objet : C0–C7 sur `main` le 2026-10-12), nom « Dossiers / Cases », ACL par dossier (V2, avec D188), temps flou dans le noyau, pack de base « Acteurs », co-présences GPS, horodatage qualifié des gels, seuil d'écriture automatique des apparitions, identification vocale par enrôlement consenti (K19, avis juridique requis) (`cases.md` §11) | À la validation du PRD |
 | 25 | ~~Stockage `fs` local à côté de S3~~ — tranché 2026-10-12 : **fin du stockage `fs`, toujours RustFS ou un S3 compatible** (médias, firmware, modèles, frames de stitch). Deux backends = trop de code à maintenir ; l'argument Raspberry Pi ne tient pas, RustFS ne consomme quasiment rien pour le volume de données traité. Les nouveaux développements ne gèrent plus `fs` | ✅ |
+| 26 | Calendrier GMAO : vue générique des plages (noyau) ou vue du pack ; ~~occurrence = plage D182 ou table dédiée~~ (plage D182, premier lot) ; mode fixe/flottant ; horizon de matérialisation (90 jours au premier lot) ; calendriers ouvrés en v1 ; date prévisionnelle d'un compteur ; hors ligne terrain (`ontology.md` annexe B11) | À la relecture de `modele-cible.md` (B12) |
 
 ## Journal de la roadmap
 
@@ -1097,15 +1101,6 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   données, au vidéaste et au journaliste ; chronologie unifiée comme
   primitive du noyau, acteurs humains et affirmations sourcées en pack,
   confinement par org dédiée en V1.
-- **2026-10-12 (analyse du discours)** — PRD `discourse-analysis.md`
-  (DA1–DA10) : formules récurrentes détectées mot pour mot (empreintes de
-  fragments), mesures de pluralisme sourcées, indices de coordination
-  documentés sans conclusion automatique ; emplacement du composant
-  ouvert (proposé : outil de l'assistant depuis une note).
-- **2026-10-12 (dossiers, refonte)** — PRD `cases-workspace.md` v0.2 et
-  benchmark de 6 projets (OpenAleph, OpenCTI, Timesketch, DFIR-IRIS,
-  kepler.gl, MovingPandas) : brut et retenu séparés, événement au noyau,
-  traces O2, graphe natif ; amende K1, K2, K6 de `cases.md`.
 - **2026-10-11 (positionnement)** — PneX passe en mode **plateforme de
   données** sur socle IoT (section « Positionnement ») : la donnée reliée
   (ontologie, séries, médias, documents, pages, géo, dossiers) devient le
@@ -1117,6 +1112,15 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   tutoriels générés dans `pnex-website`. Reticulum écarté (M2M =
   zenoh-pico + OpenThread inchangé) ; pas de plafond < 1 Go.
   Rien d'implémenté.
+- **2026-10-12 (analyse du discours)** — PRD `discourse-analysis.md`
+  (DA1–DA10) : formules récurrentes détectées mot pour mot (empreintes de
+  fragments), mesures de pluralisme sourcées, indices de coordination
+  documentés sans conclusion automatique ; emplacement du composant
+  ouvert (proposé : outil de l'assistant depuis une note).
+- **2026-10-12 (dossiers, refonte)** — PRD `cases-workspace.md` v0.2 et
+  benchmark de 6 projets (OpenAleph, OpenCTI, Timesketch, DFIR-IRIS,
+  kepler.gl, MovingPandas) : brut et retenu séparés, événement au noyau,
+  traces O2, graphe natif ; amende K1, K2, K6 de `cases.md`.
 - **2026-10-12 (S3 seul)** — Décision #25 : fin du stockage `fs`,
   toujours RustFS ou un S3 compatible ; même raisonnement que #19 (coût
   de maintenance de deux backends, RustFS négligeable sur un Pi). Retrait
@@ -1148,7 +1152,8 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   diversité (D205), fichier de la médiathèque comme source de flux
   (D206). Rapports (D207–D210) : pas de studio, une page écrite par des
   nœuds génériques, PDF krilla, pièce jointe e-mail, approbation humaine
-  par défaut. Tout sur `feat/media-vision-studio`.
+  par défaut. Développé sur `feat/media-vision-studio`, mergé dans `main`
+  le 2026-10-13.
 - **2026-10-13 (calendrier GMAO)** — Nouveau P2.20 : phase d'étude
   clean-room de projets GMAO, calendrier et récurrence open source
   (`ontology.md` annexe B), décision #26.
@@ -1159,4 +1164,4 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 - **2026-10-13 (revue)** — Resynchronisation : tableau d'état et titres
   P2.13 → P2.19 alignés sur le code de `main` (géo phase F, pages L1–L2,
   recherche P1, dossiers et espace de travail, empreinte vocale, lots
-  média 0–6) ; nouvelle section « Branches en attente » ; 0.1.0 épinglée.
+  média 0–6) ; nouvelle section « Branches mergées le 2026-10-13 » ; 0.1.0 épinglée.

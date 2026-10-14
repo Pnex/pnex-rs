@@ -169,6 +169,23 @@ Les entrées « bientôt » sans route sont retirées du menu.
    (fond, symbole) reste telle quelle.
 7. Un seul bouton plein par écran : dans un éditeur, « Enregistrer » tant
    qu'il y a des modifications, puis l'action suivante (« Déployer »).
+8. **Toutes les listes CRUD se ressemblent (règle permanente, 2026-10-14).**
+   Une page qui liste des entités = `ListLayout` + `FilterBar` +
+   `ListStates` + `DataTable` + `ListPager` (requête `limit`/`offset` de
+   `PAGE_SIZE`, `count` total renvoyé par l'API). Références :
+   `pages/devices.rs`, `pages/ontology/mod.rs`, `pages/cases/mod.rs`.
+   - **Jamais de tuiles ni de cartes** pour une liste, et jamais un mélange
+     liste + tuiles entre pages. Une vignette (média, caméra) se met dans une
+     colonne du tableau.
+   - **Pagination toujours présente**, même quand la liste est courte
+     aujourd'hui.
+   - **Le bouton « Ajouter » est toujours visible** pour qui peut écrire :
+     jamais caché derrière un filtre ou une sélection préalable. Si plusieurs
+     choses peuvent être créées (types d'objet de l'ontologie), le bouton
+     ouvre d'abord un sélecteur « Que voulez-vous créer ? » ; si rien n'est
+     créable, ce sélecteur dit quoi faire (installer un pack…).
+   - Ce qui n'est pas une liste CRUD (réglages, fiche détail, éditeur,
+     rendu d'un tableau de bord, calendrier) n'est pas concerné.
 
 ## 7. Reste à faire
 
