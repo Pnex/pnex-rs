@@ -42,6 +42,16 @@ pub(crate) fn Canvas(
     pinch::use_pinch_zoom(cx);
     crate::components::dom_rect::use_rect_tracker("flow-canvas");
 
+    // Frame every node once the graph is loaded (O51): a saved layout can
+    // start outside the visible area.
+    let mut fitted = use_signal(|| false);
+    use_effect(move || {
+        let has_nodes = !cx.graph.read().nodes.is_empty();
+        if has_nodes && !*fitted.peek() && fit_to_nodes(cx) {
+            fitted.set(true);
+        }
+    });
+
     // Nœuds en violation (validation sauvegarde + staleness pin/device) —
     // un câble est rouge dès qu'une de ses extrémités l'est.
     let violation_nodes: std::collections::HashSet<String> = cx
@@ -178,7 +188,7 @@ pub(crate) fn Canvas(
                 onpointerup: move |_event| canvas_pointer_up(cx),
                 onpointerleave: move |_| {
                     // Geste orphelin (pointup hors canvas) : annulation.
-                    cx.interaction.set(Interaction::Idle);
+                    end_gesture(cx);
                 },
                 onwheel: move |event| canvas_wheel(event, cx),
                 onkeydown: move |event| {
@@ -270,8 +280,32 @@ pub(crate) fn Canvas(
                     }
                 }
             }
+            button {
+                class: "{crate::components::ui::BTN_SECONDARY_SM} absolute bottom-3 left-3 z-10",
+                r#type: "button",
+                title: t!("flows-fit-view-help"),
+                onclick: move |_| {
+                    fit_to_nodes(cx);
+                },
+                crate::components::icons::Maximize { class: "h-4 w-4" }
+                {t!("flows-fit-view")}
+            }
         }
     }
+}
+
+/// Pans and zooms the canvas onto every node; `false` when there is nothing
+/// to frame or the canvas is not measured yet.
+fn fit_to_nodes(mut cx: EditorCx) -> bool {
+    let Some(rect) = geometry::canvas_rect() else {
+        return false;
+    };
+    let Some((pan, zoom)) = geometry::fit_view(&cx.graph.peek().nodes, rect.2, rect.3) else {
+        return false;
+    };
+    cx.pan.set(pan);
+    cx.zoom.set(zoom);
+    true
 }
 
 /// Un nœud du graphe : rectangle coloré, libellé, ports. Le `pointerdown`

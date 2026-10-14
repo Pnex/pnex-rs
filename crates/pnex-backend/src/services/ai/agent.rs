@@ -77,7 +77,9 @@ pub async fn run_turn(
     let mut trace: Vec<ToolTrace> = Vec::new();
     let mut usage_total = Usage::default();
 
-    for _iteration in 0..=MAX_ITERATIONS {
+    // Tool-enabled calls; the forced final answer below is the last of the
+    // `MAX_ITERATIONS` calls (O48).
+    for _iteration in 0..MAX_ITERATIONS - 1 {
         let req = AiChatRequest {
             system: system.clone(),
             messages: &messages,
@@ -166,6 +168,10 @@ pub async fn run_turn(
         max_tokens: MAX_TOKENS,
     };
     let turn = provider.chat(http, cfg, &req).await?;
+    usage_total = Usage {
+        input_tokens: usage_total.input_tokens + turn.usage.input_tokens,
+        output_tokens: usage_total.output_tokens + turn.usage.output_tokens,
+    };
     Ok(AgentReply {
         answer: turn
             .text

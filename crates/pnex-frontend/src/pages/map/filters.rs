@@ -123,7 +123,15 @@ pub(super) fn PoiRow(
     rsx! {
         button {
             class: "w-full text-left px-4 py-2.5 border-b border-gray-100 hover:bg-gray-50 transition-colors",
-            onclick: move |_| on_select.call(poi.id.clone()),
+            onclick: move |_| {
+                // Fly to the picked POI like « Recenter » (O55); no-op without a map.
+                if let (Some(lat), Some(lon)) = (poi.latitude, poi.longitude) {
+                    spawn(async move {
+                        map_viewer::flyTo(MAP_HOST, lon, lat, 17.0).await;
+                    });
+                }
+                on_select.call(poi.id.clone());
+            },
             div { class: "flex items-center gap-2",
                 span { class: "text-xl leading-none", {poi.emoji.clone()} }
                 span { class: "text-sm font-medium text-gray-900 truncate flex-1", {poi.label.clone()} }

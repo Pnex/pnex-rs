@@ -49,7 +49,7 @@ pub(super) fn CreateFunctionModal(on_close: Callback<()>, on_created: Callback<i
     rsx! {
         FormDialog {
             title: t!("functions-create-title").to_string(),
-            submit_label: t!("functions-new").to_string(),
+            submit_label: t!("common-create").to_string(),
             on_close,
             on_submit: submit,
             busy: creating(),

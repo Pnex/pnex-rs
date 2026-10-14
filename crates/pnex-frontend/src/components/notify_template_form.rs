@@ -396,13 +396,8 @@ pub fn NotifyTemplateForm(
                         class: BTN_PRIMARY,
                         disabled: busy(),
                         onclick: do_save,
-                        {
-                            if saved {
-                                t!("common-save").to_string()
-                            } else {
-                                t!("common-create").to_string()
-                            }
-                        }
+                        // Stable label: a Preview/Test auto-saves the draft (O49).
+                        {t!("common-save")}
                     }
                 }
             }

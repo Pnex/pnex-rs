@@ -166,8 +166,9 @@ pub enum Route {
         // URL direct ; garde de session portée par la Shell).
         #[route("/_showcase")]
         Showcase {},
-    #[end_layout]
 
-    #[route("/:..route")]
-    NotFound { route: Vec<String> },
+        // Unknown route: rendered inside the shell (O57).
+        // The shell layout runs to the end of the enum: no `#[end_layout]` after the last variant.
+        #[route("/:..route")]
+        NotFound { route: Vec<String> },
 }

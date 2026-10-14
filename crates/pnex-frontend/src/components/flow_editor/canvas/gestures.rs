@@ -193,8 +193,40 @@ pub(super) fn canvas_pointer_up(mut cx: EditorCx) {
             });
             cx.interaction.set(Interaction::Idle);
         }
-        _ => cx.interaction.set(Interaction::Idle),
+        _ => end_gesture(cx),
     }
+}
+
+/// Distance (graph px) a wire must travel before a miss is reported: a
+/// plain click on an anchor stays silent.
+const MISSED_WIRE_MIN: f64 = 24.0;
+
+/// Back to idle; a wire released away from any input used to vanish
+/// silently, it now says why (O58).
+pub(super) fn end_gesture(mut cx: EditorCx) {
+    let missed = match &*cx.interaction.peek() {
+        Interaction::Wiring {
+            from_id,
+            port,
+            cursor,
+            hover_target: None,
+            reverse,
+            pin,
+        } => {
+            let graph = cx.graph.peek();
+            let origin = if *reverse {
+                temp_input_origin(&graph, from_id, pin.as_deref())
+            } else {
+                temp_origin(&graph, from_id, *port)
+            };
+            (cursor.0 - origin.0).hypot(cursor.1 - origin.1) > MISSED_WIRE_MIN
+        }
+        _ => false,
+    };
+    if missed {
+        crate::state::toasts::info("flows-wire-missed");
+    }
+    cx.interaction.set(Interaction::Idle);
 }
 
 /// Molette : zoom vers le curseur, borné (`ZOOM_MIN/MAX`).

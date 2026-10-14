@@ -280,7 +280,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
     },
     NodeDoc {
         kind: "media_source",
-        summary: "Event source (no inject needed): one message per transcribed segment of the listed media streams (Media page). payload = {stream, segment_id, started_at, ended_at, text, lang, asr_model, words_ref, speakers, speech_ms?}, topic = stream slug. words_ref names the OpenObserve logs stream (tx_<slug>) holding the word timings. speakers = [{label, start_ms, end_ms}] when the stream's profile has diarization, else []; speech_ms = speech found by the VAD when the profile has one.",
+        summary: "Event source (no inject needed): one message per transcribed segment of the listed media streams (Media › Audio streams). payload = {stream, segment_id, started_at, ended_at, text, lang, asr_model, words_ref, speakers, speech_ms?}, topic = stream slug. words_ref names the OpenObserve logs stream (tx_<slug>) holding the word timings. speakers = [{label, start_ms, end_ms}] when the stream's profile has diarization, else []; speech_ms = speech found by the VAD when the profile has one.",
         config: &[
             ("streams", "[stream slug] — one or more streams of the organization (required)"),
             ("emit", "\"segment\" (default) = one message per segment | \"sentence\" = one message per sentence, payload.text = the sentence, payload.speaker = its speaker label when diarized"),
@@ -361,10 +361,10 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         kind: "text_decide",
         summary: "Asks typed questions about the text of each message (default payload.text: what media_fuse and media_source emit) and adds probabilities, without generating text: the Laya decision model runs on the PneX server. Adds payload.decisions = {question id: {best, probability, probabilities: [[option, p]…], confidence, expected (score)}}, payload.decide_model; the rest of the payload is kept. One output, emitted when the model answered (no text or a failed call = dropped, reason in the node status).",
         config: &[
-            ("questions", "1..8 × {id: [a-z0-9_]{1,32} unique, kind: \"choice\" (one option among 2..20) | \"score\" (levels of an ordered rubric, worst first), instructions: the question (≤ 300 chars), options: labels (≤ 120 chars, unique), descriptions: optional text after each choice label}"),
+            ("questions", "1..8 × {id: [a-z0-9_]{1,32} unique, kind: \"choice\" (one option among 2..20) | \"score\" (levels of an ordered rubric, lowest first), instructions: the question (≤ 300 chars), options: labels (≤ 120 chars, unique), descriptions: optional text after each choice label}"),
             ("text_field", "dotted path of the text in msg.payload, default \"text\"; a non-text value is sent as JSON"),
         ],
-        notes: "Route on the result with a switch on payload.decisions.<id>.best and payload.decisions.<id>.probability (e.g. incident with probability > 0.8 → notify), or wire it before media_fuse so the organization's LLM only describes the windows that matter. Out of the box the model is close to chance on business questions and over-confident: treat probabilities as a ranking until the organization has labelled real examples and calibrated the model. Needs the decision model installed by the platform administrator (node error \"decide-unavailable\" otherwise). Never wire it to anything that acts on a device by itself (D128).",
+        notes: "Route on the result with a Function (pnex_function) that reads payload.decisions.<id>.best and payload.decisions.<id>.probability and emits on a named output only when the condition holds (e.g. incident with probability > 0.8 → notify, or a boolean wired to the notify trigger input), or wire it before media_fuse so the organization's LLM only describes the windows that matter. Out of the box the model is close to chance on business questions and over-confident: treat probabilities as a ranking until the organization has labelled real examples and calibrated the model. Needs the decision model installed by the platform administrator (node error \"decide-unavailable\" otherwise). Never wire it to anything that acts on a device by itself (D128).",
     },
     NodeDoc {
         kind: "vision_caption",
@@ -428,7 +428,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("anchor", "\"bottom\" (default, bottom centre of the box: feet, wheels) | \"center\""),
             ("min_dwell_secs", "0..3600: time in the zone before \"enter\" fires (\"present for more than N s\")"),
         ],
-        notes: "The zones apply to every camera reaching the node: use one vision_zone per camera viewpoint. An object counted in a zone leaves it by \"exit\" (including when its track disappears). Wire it to event_log for searchable events, and to notify behind a switch on payload.event for alerts. It never drives a device by itself (D128).",
+        notes: "The zones apply to every camera reaching the node: use one vision_zone per camera viewpoint. An object counted in a zone leaves it by \"exit\" (including when its track disappears). Wire it to event_log for searchable events, and, for alerts, to notify behind a Function (pnex_function) that filters on payload.event (one named output per event kind, or a boolean wired to the notify trigger input). It never drives a device by itself (D128).",
     },
     NodeDoc {
         kind: "memory_write",

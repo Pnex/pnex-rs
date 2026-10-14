@@ -547,9 +547,56 @@ pub fn pan_to_reveal_node(node_x: f64, pan_x: f64, zoom: f64, canvas_w: f64) -> 
     (node_right > visible_right).then(|| pan_x - (node_right - visible_right))
 }
 
+/// Margin kept around the nodes by [`fit_view`] (room for port labels).
+const FIT_MARGIN: f64 = 60.0;
+
+/// Pan and zoom framing every positioned node in a `canvas_w × canvas_h`
+/// canvas, centred (O51). The zoom never enlarges past 1 (a small flow stays
+/// at its natural size) nor shrinks under `ZOOM_MIN`. `None` = nothing to
+/// frame.
+pub fn fit_view(nodes: &[FlowNode], canvas_w: f64, canvas_h: f64) -> Option<((f64, f64), f64)> {
+    let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    for node in nodes {
+        let Some(p) = node.position else { continue };
+        x0 = x0.min(p.x);
+        y0 = y0.min(p.y);
+        x1 = x1.max(p.x + NODE_W);
+        y1 = y1.max(p.y + node_height_for(node));
+    }
+    if x0 > x1 || canvas_w <= 0.0 || canvas_h <= 0.0 {
+        return None;
+    }
+    let (w, h) = (x1 - x0, y1 - y0);
+    let zoom = ((canvas_w - 2.0 * FIT_MARGIN) / w)
+        .min((canvas_h - 2.0 * FIT_MARGIN) / h)
+        .clamp(ZOOM_MIN, 1.0);
+    let pan = (
+        (canvas_w - w * zoom) / 2.0 - x0 * zoom,
+        (canvas_h - h * zoom) / 2.0 - y0 * zoom,
+    );
+    Some((pan, zoom))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fit_view_frames_every_node() {
+        assert_eq!(fit_view(&[], 800.0, 600.0), None);
+        // A node far left (negative x) is brought back into the frame.
+        let nodes = [inject("a", -300.0, 0.0), inject("b", 200.0, 100.0)];
+        let ((px, py), zoom) = fit_view(&nodes, 800.0, 600.0).unwrap();
+        assert!((ZOOM_MIN..=1.0).contains(&zoom));
+        let left = px + -300.0 * zoom;
+        let right = px + (200.0 + NODE_W) * zoom;
+        assert!(left >= 0.0 && right <= 800.0);
+        assert!(py >= 0.0);
+        // Centred horizontally.
+        assert!((left - (800.0 - right)).abs() < 1e-9);
+        // A single small node keeps zoom 1.
+        assert_eq!(fit_view(&nodes[..1], 800.0, 600.0).unwrap().1, 1.0);
+    }
     use pnex_core::{FlowNode, FlowNodeKind, InjectConfig};
 
     #[test]

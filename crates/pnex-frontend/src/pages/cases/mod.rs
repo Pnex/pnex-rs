@@ -20,6 +20,9 @@ use crate::app::Route;
 use crate::components::crud::filters::FilterBar;
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::ListLayout;
+use crate::components::crud::pager::{ListPager, PAGE_SIZE};
+use crate::components::crud::states::ListStates;
+use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::ontology::short_time;
 use crate::components::ui::{BTN_SECONDARY_SM, FIELD_LABEL, INPUT};
 use crate::state::{org, toasts};
@@ -57,6 +60,7 @@ pub fn Cases() -> Element {
     let mut draft = use_signal(String::new);
     let mut busy = use_signal(|| false);
     let mut creating = use_signal(|| false);
+    let mut page = use_signal(|| 0i64);
     let can_write = org::current_can_write();
     let navigator = use_navigator();
 
@@ -73,7 +77,8 @@ pub fn Cases() -> Element {
                     value: Value::String(st),
                 }]
             },
-            limit: Some(200),
+            limit: Some(PAGE_SIZE as u64),
+            offset: Some((page() * PAGE_SIZE) as u64),
             ..Default::default()
         };
         async move {
@@ -129,12 +134,46 @@ pub fn Cases() -> Element {
             Err(e) => toasts::error(e),
         }
     };
-    let rows: Vec<ObjectView> = match &*list.read() {
-        Some(Ok(r)) => r.rows.iter().map(|r| r.object.clone()).collect(),
-        _ => Vec::new(),
+    let (state, count, rows) = match &*list.read() {
+        None => (None, 0, Vec::new()),
+        Some(Ok(r)) => (
+            Some(Ok(())),
+            r.count,
+            r.rows
+                .iter()
+                .map(|r| r.object.clone())
+                .collect::<Vec<ObjectView>>(),
+        ),
+        Some(Err(e)) => (Some(Err(e.clone())), 0, Vec::new()),
     };
-    let loading = list.read().is_none();
-    let failed = matches!(&*list.read(), Some(Err(_)));
+    let is_empty = rows.is_empty();
+    let columns = vec![
+        Column::new(t!("cases-col-title").to_string(), |c: &ObjectView| {
+            rsx! {
+                span { class: "font-medium text-gray-900", "{c.title}" }
+            }
+        }),
+        Column::new(t!("case-question").to_string(), |c: &ObjectView| {
+            let question = prop_str(c, CASE_QUESTION);
+            rsx! {
+                span { class: "text-sm text-gray-600 line-clamp-2", "{question}" }
+            }
+        })
+        .secondary(),
+        Column::new(t!("cases-col-status").to_string(), |c: &ObjectView| {
+            let st = prop_str(c, CASE_STATUS);
+            rsx! {
+                span { class: status_class(&st), {status_label(&st)} }
+            }
+        }),
+        Column::new(t!("onto-col-updated").to_string(), |c: &ObjectView| {
+            let at = short_time(&c.updated_at);
+            rsx! {
+                span { class: "text-xs text-gray-500", "{at}" }
+            }
+        })
+        .secondary(),
+    ];
     let mut filters: Vec<(String, String)> = CASE_STATUSES
         .iter()
         .map(|s| (s.to_string(), status_label(s)))
@@ -155,7 +194,7 @@ pub fn Cases() -> Element {
             if creating() {
                 FormDialog {
                     title: t!("cases-new").to_string(),
-                    submit_label: t!("case-new").to_string(),
+                    submit_label: t!("common-create").to_string(),
                     on_close: move |_| creating.set(false),
                     on_submit: move |_| create(),
                     busy: busy(),
@@ -195,7 +234,10 @@ pub fn Cases() -> Element {
                 select {
                     class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                     "data-testid": "case-status-filter",
-                    onchange: move |e| status.set(e.value()),
+                    onchange: move |e| {
+                        status.set(e.value());
+                        page.set(0);
+                    },
                     for (key, label) in filters {
                         option {
                             key: "{key}",
@@ -206,45 +248,21 @@ pub fn Cases() -> Element {
                     }
                 }
             }
-            div { class: "space-y-4",
-                if loading {
-                    p { class: "text-sm text-gray-500", {t!("common-loading")} }
-                } else if failed {
-                    p { class: "text-sm text-red-600", {t!("cases-load-error")} }
-                } else if rows.is_empty() {
-                    p { class: "text-sm text-gray-500 py-8 text-center", {t!("cases-empty")} }
-                }
-                ul { class: "grid gap-3 sm:grid-cols-2 xl:grid-cols-3",
-                    for c in rows {
-                        CaseCard { key: "{c.id}", case: c.clone() }
+            ListStates {
+                state,
+                is_empty,
+                empty_message: t!("cases-empty").to_string(),
+                div { class: "relative",
+                    DataTable {
+                        columns,
+                        rows,
+                        row_key: RowKey::new(|c: &ObjectView| c.id.clone()),
+                        on_row_click: move |id: String| {
+                            navigator.push(Route::CaseWorkspace { id });
+                        },
                     }
+                    ListPager { count, page }
                 }
-            }
-        }
-    }
-}
-
-#[component]
-fn CaseCard(case: ObjectView) -> Element {
-    let st = prop_str(&case, CASE_STATUS);
-    let question = prop_str(&case, CASE_QUESTION);
-    let updated = short_time(&case.updated_at);
-    rsx! {
-        li {
-            Link {
-                class: "block h-full bg-white rounded-lg border border-gray-200 p-4 hover:border-signal-400 hover:shadow-sm",
-                "data-testid": "case-card",
-                to: Route::CaseWorkspace {
-                    id: case.id.clone(),
-                },
-                div { class: "flex items-start justify-between gap-2",
-                    span { class: "font-medium text-gray-900", "{case.title}" }
-                    span { class: status_class(&st), {status_label(&st)} }
-                }
-                if !question.is_empty() {
-                    p { class: "mt-1 text-sm text-gray-600 line-clamp-2", "{question}" }
-                }
-                p { class: "mt-2 text-xs text-gray-500", "{updated}" }
             }
         }
     }

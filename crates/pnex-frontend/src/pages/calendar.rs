@@ -34,11 +34,11 @@ fn start_of(r: &TimeRange) -> Option<NaiveDate> {
 
 fn chip_class(state: &str) -> &'static str {
     match state {
-        "done" => "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
-        "cancelled" => "bg-gray-100 text-gray-500 line-through dark:bg-gray-800",
-        "late" => "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200",
-        "due" => "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
-        _ => "bg-signal-100 text-signal-800 dark:bg-signal-900/40 dark:text-signal-200",
+        "done" => "bg-emerald-100 text-emerald-800",
+        "cancelled" => "bg-gray-100 text-gray-500 line-through",
+        "late" => "bg-red-100 text-red-800",
+        "due" => "bg-amber-100 text-amber-800",
+        _ => "bg-signal-100 text-signal-800",
     }
 }
 
@@ -109,11 +109,11 @@ pub fn Calendar() -> Element {
             if let Some(Err(e)) = &*ranges.read() {
                 p { class: "text-sm text-red-600", "{e}" }
             }
-            div { class: "grid grid-cols-7 gap-px rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-200 dark:bg-gray-700 text-xs",
+            div { class: "grid grid-cols-7 gap-px rounded-lg overflow-hidden border border-line bg-line text-xs",
                 for w in 0..7u64 {
                     div {
                         key: "h{w}",
-                        class: "bg-gray-50 dark:bg-gray-900 px-2 py-1 font-medium text-gray-500",
+                        class: "bg-gray-50 px-2 py-1 font-medium text-gray-500",
                         {t!("calendar-weekday", day : w)}
                     }
                 }
@@ -156,10 +156,12 @@ fn DayCell(
     now: DateTime<Utc>,
     on_open: EventHandler<TimeRange>,
 ) -> Element {
+    // Tokens and mirrored scales follow dark.css; `dark:` variants would
+    // mirror twice back to light (O53).
     let shade = if in_month {
-        "bg-white dark:bg-gray-950"
+        "bg-surface text-ink"
     } else {
-        "bg-gray-50 dark:bg-gray-900 text-gray-400"
+        "bg-gray-50 text-gray-400"
     };
     let num = if today {
         "inline-flex h-5 w-5 items-center justify-center rounded-full bg-signal-600 text-white"
@@ -368,7 +370,7 @@ pub fn OccurrencesCard(object_id: String, can_write: bool) -> Element {
     let rows = ranges.read().clone().unwrap_or_default();
     let now = Utc::now();
     rsx! {
-        div { class: "rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-2",
+        div { class: "rounded-lg border border-line p-4 space-y-2",
             h3 { class: "text-sm font-medium", {t!("calendar-occurrences")} }
             if rows.is_empty() {
                 p { class: "text-sm text-gray-500", {t!("calendar-no-occurrence")} }

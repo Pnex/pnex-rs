@@ -675,6 +675,12 @@ fn model_error(e: ModelError) -> Result<Response> {
             err_codes::ASR_MODEL_UNSUPPORTED,
             "The file is not a supported audio model.",
         )),
+        ModelError::RuntimeUnavailable { family } => Err(super::coded_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            err_codes::ASR_RUNTIME_UNAVAILABLE,
+            format!("No runtime of this server can run models of family {family}."),
+            Some(serde_json::json!({ "family": family })),
+        )),
         ModelError::Db(e) => db_error(e),
     }
 }

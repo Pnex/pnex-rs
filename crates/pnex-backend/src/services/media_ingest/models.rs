@@ -32,6 +32,9 @@ pub enum ModelError {
     NameTaken,
     #[error("not a supported audio model")]
     Unsupported,
+    /// The model's runtime is not compiled into this host's `pnex-asr`.
+    #[error("runtime of family {family} not available")]
+    RuntimeUnavailable { family: &'static str },
     #[error(transparent)]
     Db(#[from] DbErr),
 }
@@ -344,6 +347,15 @@ pub async fn create(
         Err(AsrError::Internal(e)) => return Err(ModelError::Db(DbErr::Custom(e))),
         Err(_) => return Err(ModelError::Unsupported),
     };
+    let family = local.inspection.family;
+    if asr::compiled_runtimes(&settings)
+        .await
+        .is_some_and(|r| !r.serves(family))
+    {
+        return Err(ModelError::RuntimeUnavailable {
+            family: family.wire(),
+        });
+    }
     let now: sea_orm::prelude::DateTimeWithTimeZone = chrono::Utc::now().into();
     let row = ml_models::ActiveModel {
         id: Set(Uuid::new_v4()),

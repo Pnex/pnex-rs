@@ -743,13 +743,15 @@ fn LiveSubView(
                     h1 { class: "min-w-0 truncate text-xl font-bold text-gray-900 sm:text-2xl",
                         "{detail_loaded.as_ref().map(|d| d.name.clone()).unwrap_or_default()}"
                     }
+                    // One edit button: icon-only below sm, labelled above (O52).
                     if can_write {
                         button {
-                            class: "{BTN_PRIMARY_SM} ml-auto shrink-0 sm:hidden",
+                            class: "{BTN_PRIMARY_SM} ml-auto shrink-0",
                             title: t!("db-mode-edit"),
                             aria_label: t!("db-mode-edit"),
                             onclick: move |_| on_edit.call(()),
-                            icons::Wrench { class: "h-4 w-4" }
+                            icons::Wrench { class: "h-4 w-4 sm:mr-1" }
+                            span { class: "hidden sm:inline", {t!("db-mode-edit")} }
                         }
                     }
                 }
@@ -759,14 +761,6 @@ fn LiveSubView(
                     }
                     div { class: "ml-auto sm:ml-0",
                         RefreshRateControl { auto }
-                    }
-                    if can_write {
-                        button {
-                            class: "{BTN_PRIMARY} hidden sm:inline-flex",
-                            onclick: move |_| on_edit.call(()),
-                            icons::Wrench { class: "h-4 w-4 mr-2" }
-                            {t!("db-mode-edit")}
-                        }
                     }
                 }
             }
