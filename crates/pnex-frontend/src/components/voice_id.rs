@@ -13,6 +13,7 @@ use pnex_core::voice_id::{
 
 use crate::api;
 use crate::components::confirm::ConfirmDialog;
+use crate::components::transport::MediaPlayer;
 use crate::components::ui::{
     BTN_DANGER, BTN_PRIMARY_SM, BTN_SECONDARY_SM, FIELD_HELP, FIELD_LABEL, INPUT, PANEL,
 };
@@ -499,12 +500,7 @@ fn ClipPicker(profile_id: String, on_change: Callback<()>) -> Element {
                 }
             }
             if let Some(url) = preview {
-                audio {
-                    id: PLAYER_ID,
-                    class: "w-full",
-                    controls: true,
-                    src: "{url}",
-                }
+                MediaPlayer { id: PLAYER_ID, src: url, video: false }
                 p { class: FIELD_HELP, {t!("voice-span-help", max : CLIP_MAX_SECS)} }
                 div { class: "flex flex-wrap items-center gap-3 text-sm",
                     button {

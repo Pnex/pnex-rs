@@ -166,6 +166,9 @@ icon!(ChevronDown, "m6 9 6 6 6-6");
 icon!(ChevronRight, "m9 18 6-6-6-6");
 icon!(ChevronLeft, "m15 18-6-6 6-6");
 icon!(ChevronUp, "m18 15-6-6-6 6");
+// Playback
+icon!(Play, "M6 3l14 9-14 9z");
+icon!(Pause, "M6 4h4v16H6z", "M14 4h4v16h-4z");
 icon!(
     ToggleRight,
     "M8 5h8a7 7 0 0 1 0 14H8A7 7 0 0 1 8 5z",

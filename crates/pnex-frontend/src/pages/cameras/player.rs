@@ -22,7 +22,8 @@ use pnex_core::camera::{annotation_at, FrameAnnotation, VideoSegment};
 
 use crate::api;
 use crate::components::icons;
-use crate::components::ui::{BTN_PRIMARY_SM, BTN_SECONDARY_SM};
+use crate::components::transport::{speed_options, Clock, PlayButton, ScrubBar, SpeedPicker, BAR};
+use crate::components::ui::BTN_SECONDARY_SM;
 use crate::util::sleep;
 
 /// Loaded segment: file bytes + frame index.
@@ -33,7 +34,7 @@ struct Loaded {
 }
 
 /// `(start_ms, end_ms)` of a segment, `None` on unparsable timestamps.
-pub(super) fn span_ms(seg: &VideoSegment) -> Option<(i64, i64)> {
+pub(crate) fn span_ms(seg: &VideoSegment) -> Option<(i64, i64)> {
     let start = chrono::DateTime::parse_from_rfc3339(&seg.started_at).ok()?;
     let end = chrono::DateTime::parse_from_rfc3339(&seg.ended_at).ok()?;
     Some((
@@ -88,6 +89,12 @@ pub(super) fn frame_period_ms(fps: f64, speed: u32) -> u64 {
     ((1000.0 / fps / f64::from(speed.max(1))).round() as u64).max(20)
 }
 
+/// Percent of `ms` inside `window`.
+pub(crate) fn window_pct(window: (i64, i64), ms: i64) -> f64 {
+    let len = (window.1 - window.0).max(1);
+    ((ms - window.0) as f64 / len as f64 * 100.0).clamp(0.0, 100.0)
+}
+
 /// Playback speeds offered.
 const SPEEDS: [u32; 4] = [1, 2, 4, 8];
 
@@ -125,7 +132,7 @@ fn rfc3339(ms: i64) -> String {
 }
 
 #[component]
-pub(super) fn RecordingPlayer(
+pub(crate) fn RecordingPlayer(
     /// Camera (annotation reads).
     device: i64,
     /// Chained segments (ascending, no overlap).
@@ -136,6 +143,13 @@ pub(super) fn RecordingPlayer(
     seek: Signal<Option<i64>>,
     /// Current playhead (wall-clock ms), written by the player.
     position: Signal<Option<i64>>,
+    /// Wall-clock span of the scrub strip (ms).
+    window: (i64, i64),
+    /// Covered spans drawn on the strip (wall-clock ms).
+    blocks: Vec<(i64, i64)>,
+    /// Axis labels under the strip, `(percent, text)`.
+    #[props(default)]
+    ticks: Vec<(f64, String)>,
 ) -> Element {
     let spans: Rc<Vec<(i64, i64)>> = Rc::new(
         segments
@@ -331,14 +345,18 @@ pub(super) fn RecordingPlayer(
     let c = cur();
     let buffering = !cache.read().contains_key(&c) && !failed.read().contains(&c);
     let unreadable = failed.read().contains(&c);
-    let time_label = position()
-        .and_then(|ms| chrono::DateTime::from_timestamp_millis(ms))
-        .map(|t| {
-            t.with_timezone(&chrono::Local)
-                .format("%H:%M:%S")
-                .to_string()
-        })
-        .unwrap_or_default();
+    let local = position()
+        .and_then(chrono::DateTime::from_timestamp_millis)
+        .map(|t| t.with_timezone(&chrono::Local));
+    let time_label = local
+        .map(|t| t.format("%H:%M:%S").to_string())
+        .unwrap_or_else(|| "--:--:--".into());
+    let day_label = local.map(|t| t.format("%Y-%m-%d").to_string());
+    let cursor = position().map(|ms| window_pct(window, ms));
+    let strip: Vec<(f64, f64)> = blocks
+        .iter()
+        .map(|&(s, e)| (window_pct(window, s), window_pct(window, e)))
+        .collect();
     let dims = cache
         .read()
         .get(&c)
@@ -413,18 +431,14 @@ pub(super) fn RecordingPlayer(
                         {t!("cameras-player-unreadable")}
                     }
                 }
-                if !time_label.is_empty() {
-                    span { class: "absolute top-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-xs tabular-nums",
-                        "{time_label}"
-                    }
-                }
             }
-            div { class: "flex flex-wrap items-center gap-2",
+            div { class: BAR,
                 button {
-                    class: BTN_SECONDARY_SM,
+                    class: "{BTN_SECONDARY_SM} h-8 w-8 px-0",
                     r#type: "button",
                     disabled: c == 0,
                     title: t!("cameras-player-prev"),
+                    "aria-label": t!("cameras-player-prev"),
                     onclick: move |_| {
                         let c = cur();
                         if c > 0 {
@@ -434,24 +448,16 @@ pub(super) fn RecordingPlayer(
                     },
                     icons::ChevronLeft { class: "h-4 w-4" }
                 }
-                button {
-                    class: "{BTN_PRIMARY_SM} min-w-20",
-                    r#type: "button",
-                    onclick: move |_| {
-                        let next = !playing();
-                        playing.set(next);
-                    },
-                    if playing() {
-                        {t!("cameras-player-pause")}
-                    } else {
-                        {t!("cameras-player-play")}
-                    }
+                PlayButton {
+                    playing: playing(),
+                    on_toggle: move |_| playing.set(!playing()),
                 }
                 button {
-                    class: BTN_SECONDARY_SM,
+                    class: "{BTN_SECONDARY_SM} h-8 w-8 px-0",
                     r#type: "button",
                     disabled: c + 1 >= count,
                     title: t!("cameras-player-next"),
+                    "aria-label": t!("cameras-player-next"),
                     onclick: move |_| {
                         let c = cur();
                         if c + 1 < count {
@@ -461,23 +467,27 @@ pub(super) fn RecordingPlayer(
                     },
                     icons::ChevronRight { class: "h-4 w-4" }
                 }
-                div { class: "flex rounded-lg border border-gray-300 overflow-hidden",
-                    for s in SPEEDS {
-                        button {
-                            key: "{s}",
-                            class: if speed() == s { "px-2 py-1.5 text-xs bg-gray-800 text-white" } else { "px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50" },
-                            r#type: "button",
-                            onclick: move |_| speed.set(s),
-                            "{s}×"
-                        }
-                    }
+                Clock { time: time_label, sub: day_label }
+                ScrubBar {
+                    cursor,
+                    blocks: strip,
+                    ticks,
+                    on_seek: move |p: f64| {
+                        let at = window.0 + ((window.1 - window.0) as f64 * p / 100.0) as i64;
+                        seek.set(Some(at));
+                    },
                 }
-                span { class: "ml-auto text-xs text-gray-500 tabular-nums",
-                    {t!("cameras-player-segment", index : c + 1, total : count)}
-                    if let Some((w, h, fps)) = dims {
-                        " · "
-                        {t!("cameras-player-info", width : w, height : h, fps : format!("{fps:.1}"))}
-                    }
+                SpeedPicker {
+                    value: speed(),
+                    options: speed_options(&SPEEDS),
+                    on_change: move |v| speed.set(v),
+                }
+            }
+            p { class: "text-right text-xs text-slate tabular-nums",
+                {t!("cameras-player-segment", index : c + 1, total : count)}
+                if let Some((w, h, fps)) = dims {
+                    " · "
+                    {t!("cameras-player-info", width : w, height : h, fps : format!("{fps:.1}"))}
                 }
             }
         }
@@ -510,5 +520,8 @@ mod tests {
         assert_eq!(frame_at((0, 60_000), 301, 30_000), 150);
         assert_eq!(frame_at((0, 60_000), 301, 90_000), 300);
         assert_eq!(frame_time((0, 60_000), 301, 150), 30_000);
+        assert_eq!(window_pct((1_000, 3_000), 2_000), 50.0);
+        assert_eq!(window_pct((1_000, 3_000), 0), 0.0);
+        assert_eq!(window_pct((1_000, 1_000), 5_000), 100.0);
     }
 }

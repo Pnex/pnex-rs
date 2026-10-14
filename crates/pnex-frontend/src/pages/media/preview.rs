@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::transport::MediaPlayer;
 
 /// Preview per kind — photo `<img>` via blob URL; panorama/splat via
 /// `media_viewer` (host div + mount, retry included); `.ksplat`/`.spz` →
@@ -175,7 +176,7 @@ pub(super) fn MediaPreview(
                 match blob_url() {
                     Some(url) => rsx! {
                         div { class: "w-full p-6",
-                            audio { src: "{url}", controls: true, class: "w-full" }
+                            MediaPlayer { id: "media-preview-player", src: url, video: false }
                         }
                     },
                     None => rsx! {
@@ -185,7 +186,9 @@ pub(super) fn MediaPreview(
             } else if is_video {
                 match blob_url() {
                     Some(url) => rsx! {
-                        video { src: "{url}", controls: true, class: "w-full max-h-[420px]" }
+                        div { class: "w-full p-3",
+                            MediaPlayer { id: "media-preview-player", src: url, video: true }
+                        }
                     },
                     None => rsx! {
                         span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-white" }

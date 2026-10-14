@@ -12,12 +12,11 @@ use pnex_core::ontology::EVENT_OCCURRED;
 
 use super::{model, Sel, Target, Ws};
 use crate::components::icons;
+use crate::components::transport::{speed_options, Clock, PlayButton, ScrubBar, SpeedPicker};
 use crate::components::ui::BTN_SECONDARY_SM;
 
 /// Element id of the lanes column: pointer x → instant goes through its rect.
 const CANVAS: &str = "cw-frise";
-/// Element id of the folded timeline's strip.
-const MINI: &str = "cw-mini";
 const RULER_H: f64 = 36.0;
 const ROW_H: f64 = 26.0;
 const LANE_H: f64 = 30.0;
@@ -857,6 +856,8 @@ fn Toolbar() -> Element {
     } else {
         "UTC".to_string()
     };
+    let mut speeds = speed_options(&[1, 3, 8]);
+    speeds.push((0, t!("cw-speed-fit").to_string()));
     // One height for every control of the bar.
     let field = "h-8 rounded-md border border-line-strong bg-surface px-2 text-sm text-ink";
     let fit_window = move |_| {
@@ -872,35 +873,19 @@ fn Toolbar() -> Element {
         div { class: "space-y-2 border-b border-line px-3 py-2",
             // Playback: play, speed, the cursor's time; then the detections.
             div { class: "flex flex-wrap items-center gap-2",
-                button {
-                    class: "{BTN_SECONDARY_SM} h-8 w-9",
-                    r#type: "button",
-                    "aria-label": if playing() { t!("cw-pause") } else { t!("cw-play") },
-                    onclick: move |_| playing.set(!playing()),
-                    if playing() {
-                        "❚❚"
-                    } else {
-                        "▶"
-                    }
+                PlayButton {
+                    playing: playing(),
+                    on_toggle: move |_| playing.set(!playing()),
                 }
-                select {
-                    class: "{field} w-24",
-                    "aria-label": t!("cw-speed"),
-                    onchange: move |e| speed.set(e.value().parse().unwrap_or(3)),
-                    for (v, l) in [(1, "×1"), (3, "×3"), (8, "×8")] {
-                        option {
-                            key: "{v}",
-                            value: "{v}",
-                            selected: speed() == v,
-                            "{l}"
-                        }
-                    }
-                    option { value: "0", selected: speed() == 0, {t!("cw-speed-fit")} }
+                SpeedPicker {
+                    value: speed() as u32,
+                    options: speeds,
+                    on_change: move |v: u32| speed.set(i64::from(v)),
                 }
-                span { class: "font-mono text-base font-medium text-ink",
-                    {model::clock(cursor, local())}
+                Clock {
+                    time: model::clock(cursor, local()),
+                    sub: Some(model::day(cursor, local())),
                 }
-                span { class: "font-mono text-sm text-slate", {model::day(cursor, local())} }
                 button {
                     class: "h-6 rounded border border-line px-1.5 text-xs text-slate hover:border-signal hover:text-signal",
                     r#type: "button",
@@ -1052,32 +1037,22 @@ fn MiniBar() -> Element {
     } else {
         "UTC".to_string()
     };
-    let seek = move |e: PointerEvent| {
-        if let Some((l, _, w, _)) = crate::util::element_rect(MINI) {
-            let p = (e.client_coordinates().x - l) / w.max(1.0) * 100.0;
-            let mut cur = ws.cursor;
-            cur.set(model::Scale::linear(*ws.window.peek()).time_at(p));
-        }
+    let on_seek = move |p: f64| {
+        let mut cur = ws.cursor;
+        cur.set(model::Scale::linear(*ws.window.peek()).time_at(p));
     };
     rsx! {
         section {
             class: "flex h-12 shrink-0 items-center gap-2 border-t border-line-strong bg-surface px-3",
             "aria-label": t!("cw-timeline"),
             "data-testid": "case-minibar",
-            button {
-                class: "{BTN_SECONDARY_SM} h-8 w-9",
-                r#type: "button",
-                "aria-label": if playing() { t!("cw-pause") } else { t!("cw-play") },
-                onclick: move |_| playing.set(!playing()),
-                if playing() {
-                    "❚❚"
-                } else {
-                    "▶"
-                }
+            PlayButton {
+                playing: playing(),
+                on_toggle: move |_| playing.set(!playing()),
             }
-            span { class: "font-mono text-base font-medium text-ink", {model::clock(cursor, local())} }
-            span { class: "hidden font-mono text-sm text-slate sm:inline",
-                {model::day(cursor, local())}
+            Clock {
+                time: model::clock(cursor, local()),
+                sub: Some(model::day(cursor, local())),
             }
             button {
                 class: "h-6 rounded border border-line px-1.5 text-xs text-slate hover:border-signal hover:text-signal",
@@ -1086,26 +1061,8 @@ fn MiniBar() -> Element {
                 onclick: move |_| local.set(!local()),
                 "{zone}"
             }
-            div {
-                id: MINI,
-                class: "relative mx-2 h-8 min-w-24 flex-1 cursor-pointer",
-                onpointerdown: seek,
-                div { class: "absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-line-strong" }
-                div {
-                    class: "absolute left-0 top-1/2 h-0.5 -translate-y-1/2 bg-signal",
-                    style: "width: {scale.pct(cursor).clamp(0.0, 100.0)}%",
-                }
-                for (i, m) in marks.iter().enumerate() {
-                    span {
-                        key: "{i}",
-                        class: "absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border-2 border-ink bg-surface",
-                        style: "left: {m}%",
-                    }
-                }
-                span {
-                    class: "absolute top-0 h-8 w-0.5 bg-signal",
-                    style: "left: {scale.pct(cursor).clamp(0.0, 100.0)}%",
-                }
+            div { class: "mx-2 flex min-w-24 flex-1",
+                ScrubBar { cursor: Some(scale.pct(cursor)), marks, on_seek }
             }
             DetectionsButton {}
             button {
