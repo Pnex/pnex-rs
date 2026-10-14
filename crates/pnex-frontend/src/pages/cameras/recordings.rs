@@ -1,5 +1,5 @@
 //! Continuous recording of one camera, one local day at a time: coverage
-//! timeline (merged segment spans + seek slider), the chained player, a
+//! timeline (merged segment spans on the shared scrub strip), the chained player, a
 //! one-file export of the playhead's hour and a day delete (owner/admin).
 //! The per-minute segments stay a storage detail. Detection layers of the
 //! day (D105) are ticked to draw their boxes over the playback.
@@ -131,7 +131,7 @@ pub(super) fn RecordingsDialog(
     let device = cam.device;
     let mut day = use_signal(|| chrono::Local::now().date_naive());
     let mut reload = use_signal(|| 0u32);
-    let mut seek = use_signal(|| None::<i64>);
+    let seek = use_signal(|| None::<i64>);
     let mut position = use_signal(|| None::<i64>);
     let mut exporting = use_signal(|| false);
     let mut confirm_delete = use_signal(|| false);
@@ -160,7 +160,6 @@ pub(super) fn RecordingsDialog(
     let layer_rows = available_layers.value().read().clone().unwrap_or_default();
 
     let (day_start, day_end) = day_bounds(day()).unwrap_or((0, 86_400_000));
-    let day_len = (day_end - day_start).max(1);
     let (state, chain, total_bytes, truncated) = match &*timeline.value().read() {
         None => (None, Vec::new(), 0, false),
         Some(Ok(tl)) => {
@@ -181,9 +180,7 @@ pub(super) fn RecordingsDialog(
     let blocks = coverage(&chain_spans, MERGE_GAP_MS);
     let recorded_secs: i64 = chain_spans.iter().map(|(s, e)| (e - s) / 1000).sum();
     let is_empty = chain.is_empty();
-    let pct = move |ms: i64| ((ms - day_start) as f64 / day_len as f64 * 100.0).clamp(0.0, 100.0);
     let cursor = position().filter(|&p| p >= day_start && p < day_end);
-    let slider_secs = cursor.map(|p| (p - day_start) / 1000).unwrap_or(0);
     let export_window = cursor.and_then(hour_window);
     let today = chrono::Local::now().date_naive();
     let player_key = format!("player-{device}-{}-{}", day(), reload());
@@ -357,48 +354,17 @@ pub(super) fn RecordingsDialog(
                                     layers,
                                     seek,
                                     position,
+                                    window: (day_start, day_end),
+                                    blocks: blocks.clone(),
+                                    ticks: (0..=24)
+                                        .step_by(3)
+                                        .map(|h| (f64::from(h) / 24.0 * 100.0, format!("{h:02}:00")))
+                                        .collect::<Vec<_>>(),
                                 }
                             }
                         }
-                        // Timeline: covered blocks behind a seek slider.
-                        div { class: "space-y-1",
-                            div { class: "relative h-3 rounded bg-gray-100 overflow-hidden",
-                                for (s, e) in blocks.iter().copied() {
-                                    div {
-                                        key: "{s}",
-                                        class: "absolute inset-y-0 bg-signal-400",
-                                        style: "left: {pct(s)}%; width: max(2px, {pct(e) - pct(s)}%);",
-                                    }
-                                }
-                                if let Some(p) = cursor {
-                                    div {
-                                        class: "absolute inset-y-0 w-0.5 bg-red-600",
-                                        style: "left: {pct(p)}%;",
-                                    }
-                                }
-                            }
-                            input {
-                                class: "w-full accent-signal-600",
-                                r#type: "range",
-                                min: "0",
-                                max: "{day_len / 1000}",
-                                value: "{slider_secs}",
-                                onchange: move |event| {
-                                    if let Ok(v) = event.value().parse::<i64>() {
-                                        seek.set(Some(day_start + v * 1000));
-                                    }
-                                },
-                            }
-                            div { class: "flex justify-between text-xs text-gray-500 tabular-nums",
-                                for h in (0..=24).step_by(3) {
-                                    span { key: "{h}", "{h:02}:00" }
-                                }
-                            }
-                            if truncated {
-                                p { class: "text-xs text-amber-700",
-                                    {t!("cameras-timeline-truncated")}
-                                }
-                            }
+                        if truncated {
+                            p { class: "text-xs text-amber-700", {t!("cameras-timeline-truncated")} }
                         }
                     }
                 }

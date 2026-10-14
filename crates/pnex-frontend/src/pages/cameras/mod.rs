@@ -21,7 +21,7 @@ use crate::util::sleep;
 
 mod flash;
 pub(crate) mod live;
-mod player;
+pub(crate) mod player;
 mod recordings;
 mod settings;
 

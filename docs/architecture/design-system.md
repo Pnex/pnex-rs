@@ -186,6 +186,15 @@ Les entrées « bientôt » sans route sont retirées du menu.
      créable, ce sélecteur dit quoi faire (installer un pack…).
    - Ce qui n'est pas une liste CRUD (réglages, fiche détail, éditeur,
      rendu d'un tableau de bord, calendrier) n'est pas concerné.
+9. **Tout ce qui se lit dans le temps a le même lecteur (règle permanente,
+   2026-10-14).** Audio, vidéo, enregistrement caméra, replay de flux IP,
+   frise d'un dossier d'enquête : `components/transport.rs` —
+   `PlayButton` (icônes lecture/pause), `Clock` (heure en mono + jour ou
+   durée), `ScrubBar` (plages couvertes, repères en losange, progression et
+   curseur `signal`, clic/glisser/flèches), `SpeedPicker` (`×N`), dans une
+   barre `BAR`. Les fichiers audio/vidéo passent par `MediaPlayer`, jamais
+   par les contrôles natifs du navigateur (`controls: true`). Références :
+   `pages/cameras/player.rs`, `pages/cases/workspace/timeline.rs`.
 
 ## 7. Reste à faire
 
@@ -195,3 +204,7 @@ Les entrées « bientôt » sans route sont retirées du menu.
   de chaque type de nœud (31) et de widget (35). Reste à voir au cas par
   cas : visionneuses 360/splat et carte avec un fond configuré.
 - Captures de la documentation et du site à refaire.
+- Lecteur temporel (§6 point 9) : à étendre aux versions — une frise des
+  versions d'un flow, d'un document, d'un tableau de bord ou d'une page
+  (`ScrubBar` avec un repère par version, curseur = version affichée,
+  lecture = défilement des versions). Proposition, non décidée.
