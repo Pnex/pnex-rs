@@ -302,6 +302,24 @@ des orgs), un rolling update (drain ≥ 40 s), et un device connecté au
 pod A dont le flow tourne sur le pod B (bus D107). Livrable annexe : les
 manifests k8s dans `pnex-deploy` (flow-engine §7, point 6).
 
+> **2026-10-14 — déroulé sur dev.pnex.io** (microk8s, 3 pods API+worker,
+> `main-7c42677`, Valkey, ESP32-CAM réelle). **Validé** : bascule du
+> contrôleur en arrêt propre (2,8 s, bail rendu) et en kill brutal
+> (10 s, expiration du bail), tâches singleton reprises ailleurs, reprise
+> de l'org d'un pod tué (flow redémarré en 10 s), device sur le pod A et
+> flow sur le pod B (commandes publiées sur `pnex:devcmd:v1:<pod>`), device
+> reconnecté sur un autre pod et commandes redirigées (~13 s), worker mort
+> inéligible à 10 s et purgé à 10 min (`gc_ms`), zéro erreur HTTP sur les
+> kills isolés. **Écart** : 2 timeouts de 5 s sur 1 365 requêtes pendant
+> un `rollout restart` (O67, pas de `preStop`) → corrigé dans `pnex-deploy`
+> (`preStop.sleep` 10 s) avec l'option `flowWorker.replicas` (pods
+> flow-worker dédiés, API en `PNEX_FLOW_RUN_WORKER=false`,
+> `horizontal-scaling.md` §1). **Après `helm upgrade`** (3 API + 2 flow-workers) :
+> topologie séparée validée (contrôleur sur un pod API, flow sur un
+> flow-worker, caméra sur un pod API, commandes via le bus) ; rolling update
+> rejoué : 1 timeout sur 743, 50 s après la fin du roulement, imputé au
+> contrôleur ingress microk8s en CrashLoopBackOff sur un nœud (hors PneX).
+
 ## P1 — Compléter les troncs inachevés
 
 ### P1.1 — Organisations : UI arbre (D42)
@@ -1174,3 +1192,10 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   P2.13 → P2.19 alignés sur le code de `main` (géo phase F, pages L1–L2,
   recherche P1, dossiers et espace de travail, empreinte vocale, lots
   média 0–6) ; nouvelle section « Branches mergées le 2026-10-13 » ; 0.1.0 épinglée.
+- **2026-10-14 (P0.3)** — Cluster déroulé sur dev.pnex.io (3 pods, device
+  réel) : bascules, reprise d'org et bus device D107 validés ; rolling update
+  à corriger (O67, `preStop` + pods flow-worker dédiés dans `pnex-deploy`).
+  Retours d'usage de l'éditeur de flows consignés (O68–O70) : la partie
+  flows doit devenir intuitive pour un non-développeur, même avec beaucoup
+  de nœuds (groupes, zoom, valeurs déclarées sur le nœud de sortie) —
+  chantier à cadrer après les urgences en cours.
