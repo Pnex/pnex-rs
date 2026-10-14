@@ -122,6 +122,112 @@ PNEX génère, évalue et déploie le modèle.
   rétention **séparée** médias bruts / événements (D161 pour l'audio,
   D79 pour les segments vidéo, rétention O2 pour les événements, D72).
 
+### 4.1bis Analyse d'un fichier de la médiathèque (D211, **proposé, à relire**)
+
+> Branche audio du **pipeline d'import** (`media-import-pipeline.md`,
+> D212–D217) : l'analyse y est lancée par `media_analyses` (D213), qui
+> tranche Q-A (proposé, jamais automatique) et Q-D (flux interne caché,
+> lié à l'analyse).
+
+**Besoin** (Shan, 2026-10-14) : après l'upload d'un audio ou d'une
+vidéo, un bouton **« Analyser »** qui extrait la piste audio, détecte les
+voix, transcrit et range le résultat dans O2, pour enchaîner des analyses
+automatiques (flows, rapports M5).
+
+**Pourquoi D206 ne suffit pas** : D206 rejoue le fichier comme un direct.
+
+| | D206 (aujourd'hui) | Besoin « fichier » |
+|---|---|---|
+| Vitesse | `-re` : 1 h de fichier = 1 h de traitement | aussi vite que l'ASR le permet |
+| Horodatage | heure de relecture (contredit le « horloge = temps du fichier » du §4.1) | position dans le fichier, stable d'une analyse à l'autre |
+| File ASR | segments `live`, abandonnés au-delà de `PNEX_ASR_MAX_LAG_SECS` (600 s) | jamais abandonnés, toujours **derrière** le direct |
+| Parcours UI | créer un flux, l'activer, attendre | un bouton sur l'asset, une progression, un résultat |
+| Fin | flux désactivé, rien d'autre | événement « analyse terminée » exploitable par un flow |
+
+**Principe : pas de second pipeline.** Une analyse **est** un flux
+`media_asset` (D206) avec une **cadence** `pace = batch` au lieu de
+`realtime`. Tout le reste est réutilisé tel quel : décodeur confiné D160
+(+ `moov` en tête D203), segments `media_segments`, worker
+`transcribe_segment`, VAD + diarisation (lot 5), O2 `tx_<slug>`,
+`media_source`, recherche, rétention D161 (l'audio des segments est
+purgé ; l'original reste dans la médiathèque).
+
+Ce qui change, et seulement pour `pace = batch` :
+
+1. **Décodage sans `-re`** (comme le bouton Test aujourd'hui), audio
+   seulement : `tracks: video` refusé en batch (des images à 50× la
+   vitesse inonderaient le bus caméra et `vision_detect` ; la vision sur
+   fichier reste le Lab, D203).
+2. **Contre-pression** : le décodeur s'arrête tant que le flux a plus de
+   N segments en attente (`queued`, N = 4) : pas de file de 200 segments
+   ni de stockage qui gonfle.
+3. **Horloge fichier** : `started_at = base + offset`, `clock_source =
+   file`, avec `base` = date de création de la **version média**
+   analysée (déterministe : ré-analyser la même version retombe sur les
+   mêmes instants). Chaque document O2 porte en plus `offset_ms` (position
+   dans le fichier) que l'UI affiche (« 12:34 »).
+4. **File ASR** : enqueue `live = false` (priorité sous le direct sur une
+   file `asr` dédiée, comportement déjà codé dans `segments::priority`),
+   **exempté** du contrôle `max_lag` (le retard est normal en batch).
+5. **Fin** : quand le dernier segment est transcrit (pas quand le
+   décodeur s'arrête), le flux passe `finished` et publie `{kind:
+   "finished", segments, speech_ms}` sur son canal Valkey ; `media_source`
+   l'émet sur un **second port** `finished` (déclencheur de la chaîne
+   `llm_text` → `page_write` → `page_pdf`, D207).
+
+**UI** (médiathèque, assets `audio` / `video`) :
+
+- bouton **« Analyser »** (éditeurs ; lecteur → 403, R2) → choix du
+  profil ASR (diarisation incluse si le profil l'a) → crée ou réutilise
+  **le** flux batch de cet asset (slug `file-<asset court>`, un par asset)
+  et le démarre ;
+- état sur l'asset : en attente / x % (offset du dernier segment ÷ durée)
+  / terminé / échec (code traduit) ; **« Voir la transcription »** = la
+  vue segments existante, locuteurs S1, S2… ;
+- la liste des flux masque les flux batch par défaut (filtre « fichiers
+  analysés »), ils restent sélectionnables dans `media_source`.
+
+**Garde-fous** :
+
+- org de l'asset re-vérifiée au démarrage et à chaque lecture (R1, déjà
+  fait par D206) ; écriture = `can_write` + test lecteur → 403 ;
+- **une analyse batch à la fois par org** (sémaphore, comme D204 / SEC-37),
+  une seconde → 409 `media-analysis-busy` ; durée ≤ 4 h, taille ≤ 512 Mo
+  (borne D206) → `media-analysis-too-long` ;
+- l'équité ASR par org (`PNEX_ASR_MAX_PER_ORG`) s'applique aussi au batch ;
+- texte transcrit = **donnée non fiable** (comme en direct) : jamais
+  passé comme instruction en aval.
+
+**Hors périmètre de D211** : identification des locuteurs par Voice ID
+(voir questions), vision sur fichier (Lab D203), déclenchement
+automatique à l'upload (voir questions), traduction.
+
+**Livrables du même commit** : migration (`media_streams.pace`,
+`offset_ms` dans le document O2), codes d'erreur (`err_codes::ALL` + deux
+`.ftl`), clés UI, `NodeDoc` de `media_source` (port `finished`), fiches
+KB `media` et `streams`, tests : cadence (aucun `-re`), contre-pression,
+horloge déterministe, exemption `max_lag`, 409 seconde analyse, lecteur
+403, asset d'une autre org → 404, port `finished` émis une fois.
+
+**Questions ouvertes (à trancher avant code)** :
+
+- **Q-A — Déclenchement** : bouton seul (proposé) ou aussi « analyser
+  automatiquement à l'upload » (réglage d'org) ? L'automatique coûte de
+  l'ASR à chaque dépôt, y compris pour des fichiers sans intérêt.
+- **Q-B — Ré-analyse** : remplacer (proposé : les documents O2 de la
+  même version tombent aux mêmes instants ; on ajoute un label `run` et
+  la vue ne montre que le dernier) ou garder chaque analyse comme
+  version comparable (utile pour comparer deux modèles ASR) ?
+- **Q-C — Voice ID** : proposer, à la fin d'une analyse, la mise en
+  correspondance des locuteurs S1/S2 avec les profils vocaux de l'org
+  (K19, **proposition** jamais écrite seule, consentement déjà exigé) ?
+  §4.2 dit « jamais d'identification vocale » dans l'ingestion : ce
+  serait une exception explicite, avec un avis juridique toujours manquant.
+- **Q-D — Un flux par asset ou une table `media_analyses`** : le flux
+  par asset réutilise tout, mais pollue la liste des flux (d'où le
+  filtre). Une table dédiée serait plus propre en UI, au prix d'un
+  second chemin vers les segments et O2. Proposé : flux par asset.
+
 ### 4.2 Branche audio → transcription horodatée
 
 **Entièrement couverte par `media-ingest.md`** (D162–D167) : VAD +
@@ -662,6 +768,7 @@ Corrections apportées à la v0.1 après lecture de la doc existante :
 | **D208** | **`llm_text`** : nœud générique, gabarit de consigne + données entrantes passées au LLM de l'org (D119) comme **données délimitées**, jamais comme instructions, aucun outil ; pas d'option « phrases sourcées » (des phrases sourcées s'obtiennent en amont avec `media_fuse`, dont la sortie peut nourrir `llm_text`) ; plafond quotidien d'appels IA commun (D196) ; sortie `{text, model, took_ms, data_truncated, ai_generated: true}` ; données ≤ 60 000 caractères (tronquées au-delà, signalé), consigne ≤ 4000, réponse 100–20 000 caractères. Route `/internal/flow/ai/text` (jeton + fencing). **Livré** le 2026-10-13. | 2026-10-13 |
 | **D209** | **`page_write` et `page_pdf`** : `page_write` écrit du Markdown dans une page de l'org (nouvelle page depuis un titre à gabarit, ou remplacement d'une section nommée), par le convertisseur serveur existant (`services/pages/seed.rs`), puis crée une **version nommée** ; auteur « flow #id ». `page_pdf` rend une version de page en PDF (en-tête org + titre + version, pied « page N / M » et date, bandeau « généré par IA » si la version contient du texte IA) et le range dans la médiathèque (`kind=document`). Moteur PDF : **krilla** (MIT/Apache, ~24 crates, polices sous-ensemblées, mise en forme du texte) + mise en page PneX (titres, paragraphes, listes, tableaux, images) ; **Typst écarté** (128 crates dont `yaml-rust` non maintenu et un interpréteur WASM inutile). Police : **DejaVu Sans** (licence Bitstream Vera, permissive ; DejaVu au domaine public), notice jointe, pas d'OFL. Le même rendu sert le bouton « Exporter en PDF » de Pages (lot L7). **`page_write` livré** le 2026-10-13 : route `/internal/flow/page-write` (jeton + fencing, page cherchée dans l'org), ajout validé comme une édition (schéma, tailles) et relayé en direct aux éditeurs ouverts, convertisseur Markdown enrichi (gras, italique, code, liens sûrs, citations, filets, blocs de code, titres 1–6 ; tableau → paragraphes), versions `doc_versions.ai_generated / flow_id / approved_by / approved_at` (migration `000019`), `POST /api/v1/docs/{id}/versions/{n}/approve` (éditeurs, idempotent) et badges dans Pages. **`page_pdf` livré** le 2026-10-13 : crate `pnex-pdf` (krilla 0.8 sans ses features par défaut ; mise en forme du texte par **harfrust 0.14**, rustybuzz/ttf-parser étant signalés non maintenus — RUSTSEC-2026-0206/0192), A4 en deux passes (numérotation « Page n / m »), titres, paragraphes, listes, citations, filets, code ; **tableaux et images non rendus** (le schéma des pages n'a pas de tableau ; images = lot ultérieur). Bouton **PDF** par version dans Pages (`GET /api/v1/docs/{id}/versions/{n}/pdf?lang=fr|en`). Nœud `page_pdf` : source « version du message » ou « dernière version envoyable, une fois » (table `doc_version_exports`, migration `000020`, unicité par nœud) ; sortie 0 prêt / sortie 1 à approuver. **Pièce jointe de `pnex_notify` livrée** : champ `attach_field` (chemin de l'id média), seul SMTP joint le fichier (`multipart/mixed`), fichier illisible = envoi en échec ; le runtime lit le PDF par `/internal/flow/media/{id}` (jeton + fencing), qui ne sert **que** les exports `page_pdf` de l'org. | 2026-10-13 |
 | **D210** | **Sortie d'un rapport IA : versions approuvées par défaut**. `page_pdf` et la pièce jointe de `pnex_notify` ont un mode : **« versions approuvées seulement »** (défaut : le flow crée la page et prévient un humain ; l'envoi n'a lieu qu'une fois la version approuvée dans Pages) ou **« automatique »** (envoi immédiat, bandeau « généré par IA, non relu » dans le PDF et le courriel). Raison : texte non fiable (transcriptions, légendes) → risque d'injection dans un document qui quitte PneX. **Livré** le 2026-10-13 : la porte est tenue par `page_pdf` (case « Approbation requise pour le texte IA », cochée par défaut) ; `pnex_notify` joint ce que `page_pdf` a laissé passer, il ne décide rien. Le PDF porte « relu et approuvé par X le … » ou « non relu ». | 2026-10-13 |
+| **D211** | **Analyse d'un fichier de la médiathèque (proposé, à relire)** : bouton « Analyser » sur un asset audio / vidéo = flux `media_asset` (D206) à cadence `batch` : décodage sans `-re`, audio seulement, contre-pression (≤ 4 segments en attente), horloge fichier déterministe (`base` = date de la version média + `offset_ms`), file ASR derrière le direct et exemptée de `max_lag`, fin = port `finished` de `media_source`. Une analyse à la fois par org, ≤ 4 h. Détail et questions Q-A à Q-D : §4.1bis. | 2026-10-14 (proposé) |
 
 ### État des lots
 
