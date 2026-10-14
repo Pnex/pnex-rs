@@ -67,7 +67,9 @@ pub async fn purge_for(
 ) -> Result<(), sea_orm::DbErr> {
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
-    use crate::models::_entities::{resource_containment, resource_edges, resource_labels};
+    use crate::models::_entities::{
+        map_pins, resource_containment, resource_edges, resource_labels,
+    };
 
     // 1. Doc de labels.
     resource_labels::Entity::delete_many()
@@ -126,7 +128,24 @@ pub async fn purge_for(
     )
     .await?;
 
-    // 4. Le kind `folder` est lui-même une entité — sa ligne part avec lui.
+    // 4. A POI whose pinned preview was this resource drops the pin, otherwise
+    //    the drawer keeps opening a viewer on a deleted object (not_found).
+    map_pins::Entity::update_many()
+        .col_expr(
+            map_pins::Column::PreviewKind,
+            sea_orm::sea_query::Expr::value(Option::<String>::None),
+        )
+        .col_expr(
+            map_pins::Column::PreviewId,
+            sea_orm::sea_query::Expr::value(Option::<String>::None),
+        )
+        .filter(map_pins::Column::OrgId.eq(org_id))
+        .filter(map_pins::Column::PreviewKind.eq(kind))
+        .filter(map_pins::Column::PreviewId.eq(id))
+        .exec(db)
+        .await?;
+
+    // 5. Le kind `folder` est lui-même une entité — sa ligne part avec lui.
     if kind == pnex_core::resources::KIND_FOLDER {
         if let Ok(numeric) = id.parse::<i64>() {
             crate::models::_entities::resource_folders::Entity::delete_by_id(numeric)

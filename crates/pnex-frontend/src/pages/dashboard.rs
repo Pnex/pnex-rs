@@ -57,7 +57,10 @@ pub fn Dashboard() -> Element {
                 t!("dash-tier-self-hosted").to_string()
             }
         });
-    let tier = active_org.and_then(|m| m.subscription_tier.as_ref());
+    // Tier quotas only apply in SaaS: hide them when self-hosted (O59).
+    let tier = active_org
+        .and_then(|m| m.subscription_tier.as_ref())
+        .filter(|_| user.deployment_mode == "saas");
     // Ressource : Option<Option<T>> (pending | dégradé) ; None tant que
     // pending ou en erreur (dégradé silencieux).
     let s = match summary.read().as_ref() {

@@ -29,6 +29,17 @@ fn violation(token: &str) -> Option<&'static str> {
     None
 }
 
+/// `dark:` on a scale shade: dark.css already mirrors every scale, so the
+/// variant flips it back to a light shade on the dark theme (O53).
+fn dark_violation(token: &str) -> Option<&'static str> {
+    let rest = token.strip_prefix("dark:")?;
+    let shade = rest.split('/').next()?.rsplit('-').next()?;
+    shade
+        .parse::<u16>()
+        .is_ok()
+        .then_some("dark.css mirrors the scales already: no `dark:` on a shade")
+}
+
 /// Every whitespace-separated token of every string literal of a line.
 fn literal_tokens(line: &str) -> Vec<&str> {
     line.split('"')
@@ -76,7 +87,7 @@ fn class_literals_follow_the_design_system() {
             for token in literal_tokens(line) {
                 // Responsive and state variants carry the same rule.
                 let base = token.rsplit(':').next().unwrap_or(token);
-                if let Some(rule) = violation(base) {
+                if let Some(rule) = violation(base).or_else(|| dark_violation(token)) {
                     findings.push(format!("{}:{} `{token}`: {rule}", path.display(), no + 1));
                 }
             }
@@ -96,5 +107,9 @@ fn violation_rules() {
     assert!(violation("text-[11px]").is_some());
     assert!(violation("text-xs").is_none());
     assert!(violation("text-[var(--x)]").is_none());
+    assert!(dark_violation("dark:bg-gray-950").is_some());
+    assert!(dark_violation("dark:bg-red-900/40").is_some());
+    assert!(dark_violation("dark:bg-black/60").is_none());
+    assert!(dark_violation("dark:hidden").is_none());
     assert_eq!(literal_tokens(r#"class: "a b", x = "c""#), ["a", "b", "c"]);
 }

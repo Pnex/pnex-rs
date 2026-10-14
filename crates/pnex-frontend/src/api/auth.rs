@@ -43,9 +43,10 @@ pub fn store_tokens(tokens: &TokenResponse) {
     let local = storage::local();
     local.set(KEY_ACCESS_TOKEN, &tokens.access_token);
     local.set(KEY_REFRESH_TOKEN, &tokens.refresh_token);
-    match &tokens.id_token {
-        Some(id_token) => local.set(KEY_ID_TOKEN, id_token),
-        None => local.remove(KEY_ID_TOKEN),
+    // A refresh response may omit the id_token: keep the previous one, the
+    // end-session hint only needs to identify the user.
+    if let Some(id_token) = &tokens.id_token {
+        local.set(KEY_ID_TOKEN, id_token);
     }
 }
 

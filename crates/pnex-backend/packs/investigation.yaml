@@ -250,8 +250,8 @@ page_templates:
 
       ## Sources
   - key: script
-    name: Script / rundown
-    description: Sequences of a video or a story, each with its sources.
+    name: Presentation outline
+    description: Sequences of a presentation or a video, each with its sources.
     body: |
       ## Angle
 

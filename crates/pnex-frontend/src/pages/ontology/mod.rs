@@ -22,8 +22,9 @@ use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
+use crate::components::modal::Modal;
 use crate::components::ontology::property_input::PropertyInput;
-use crate::components::ontology::{short_time, type_label, type_label_of};
+use crate::components::ontology::{short_time, type_label, type_label_of, TypeIcon};
 use crate::state::{org, toasts};
 
 pub use object::OntologyObject;
@@ -117,7 +118,14 @@ fn ObjectsTab(initial_type: String, tabs: Element) -> Element {
         Some(Err(e)) => (Some(Err(e.clone())), false, 0, Vec::new()),
     };
     let selected = all_types.iter().find(|t| t.def.key == type_key()).cloned();
-    let can_create = can_write && selected.as_ref().is_some_and(|t| !t.def.native());
+    // Types the user may create objects of, offered by the picker when the
+    // filter has none selected.
+    let creatable: Vec<ObjectTypeView> = all_types
+        .iter()
+        .filter(|t| !t.def.native())
+        .cloned()
+        .collect();
+    let selected_creatable = selected.clone().filter(|t| !t.def.native());
     let label_types = all_types.clone();
     let columns = vec![
         Column::new(t!("onto-col-title").to_string(), |r: &QueryRow| {
@@ -145,7 +153,7 @@ fn ObjectsTab(initial_type: String, tabs: Element) -> Element {
             title: t!("nav-ontology").to_string(),
             subtitle: Some(t!("onto-subtitle").to_string()),
             tabs,
-            can_write: can_create,
+            can_write,
             add_label: Some(t!("onto-new-object").to_string()),
             on_add: move |_| creating.set(true),
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
@@ -194,7 +202,7 @@ fn ObjectsTab(initial_type: String, tabs: Element) -> Element {
                 }
             }
             if creating() {
-                if let Some(t) = selected.clone() {
+                if let Some(t) = selected_creatable.clone() {
                     ObjectForm {
                         type_view: t,
                         initial: None,
@@ -204,8 +212,72 @@ fn ObjectsTab(initial_type: String, tabs: Element) -> Element {
                             navigator.push(Route::OntologyObject { id: o.id });
                         },
                     }
+                } else {
+                    TypePicker {
+                        types: creatable.clone(),
+                        on_close: move |_| creating.set(false),
+                        on_pick: move |key: String| {
+                            type_key.set(key);
+                            page.set(0);
+                        },
+                    }
                 }
             }
+        }
+    }
+}
+
+/// First step of "New object" when no creatable type is selected: what to create.
+#[component]
+fn TypePicker(
+    types: Vec<ObjectTypeView>,
+    on_close: Callback<()>,
+    on_pick: Callback<String>,
+) -> Element {
+    let navigator = use_navigator();
+    rsx! {
+        Modal {
+            title: t!("onto-pick-type").to_string(),
+            max_width: "max-w-md".to_string(),
+            on_close: move |_| on_close.call(()),
+            if types.is_empty() {
+                p { class: "text-sm text-gray-600 mb-3", {t!("onto-pick-type-empty")} }
+                button {
+                    r#type: "button",
+                    class: "px-3 py-2 rounded-lg text-sm bg-signal-600 text-white",
+                    onclick: move |_| {
+                        on_close.call(());
+                        navigator
+                            .push(Route::Ontology {
+                                tab: "packs".to_string(),
+                                type_key: String::new(),
+                            });
+                    },
+                    {t!("onto-pick-type-packs")}
+                }
+            }
+            div { class: "grid grid-cols-2 gap-2",
+                for t in types {
+                    TypePickerItem { type_view: t, on_pick }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn TypePickerItem(type_view: ObjectTypeView, on_pick: Callback<String>) -> Element {
+    let key = type_view.def.key.clone();
+    let icon = type_view.def.icon.clone();
+    let label = type_label(&type_view.def);
+    rsx! {
+        button {
+            r#type: "button",
+            "data-testid": "onto-pick-{key}",
+            class: "flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm text-left hover:bg-gray-50",
+            onclick: move |_| on_pick.call(key.clone()),
+            TypeIcon { icon, class: "h-4 w-4 text-gray-500" }
+            span { class: "truncate", "{label}" }
         }
     }
 }

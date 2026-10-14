@@ -17,7 +17,7 @@ use pnex_core::{BuildStats, DeviceLiveness, LatestMeasurement, LivenessSummary, 
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 
 use crate::models::_entities::{
-    build_records, device_registries, device_types, predefined_devices,
+    build_records, device_registries, device_types, flows, predefined_devices,
 };
 use crate::services::device_liveness;
 use crate::services::openobserve::{self, client::Client};
@@ -289,11 +289,53 @@ pub async fn latest_measurements(
             })
         })
         .collect();
+    // Series of deleted flows (`flow_<id>` virtual devices) are dropped (O59);
+    // on a database error they stay, the summary never fails.
+    let flow_ids: Vec<i64> = latest
+        .iter()
+        .filter_map(|m| flow_series_id(&m.device_id))
+        .collect();
+    if !flow_ids.is_empty() {
+        use sea_orm::QuerySelect;
+        let live = flows::Entity::find()
+            .select_only()
+            .column(flows::Column::Id)
+            .filter(flows::Column::OrgId.eq(org_id))
+            .filter(flows::Column::Id.is_in(flow_ids))
+            .into_tuple::<i64>()
+            .all(db)
+            .await;
+        match live {
+            Ok(live) => {
+                latest.retain(|m| flow_series_id(&m.device_id).is_none_or(|id| live.contains(&id)))
+            }
+            Err(e) => tracing::warn!(org_id, error = %e, "flow series not filtered"),
+        }
+    }
     // RFC 3339 UTC (même convertisseur) : tri lexicographique sûr.
     latest.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
     latest.truncate(LATEST_CAP);
     TelemetrySummary {
         available: true,
         latest,
+    }
+}
+
+/// Flow id of a flow's virtual device series (`flow_<id>`, see
+/// `pnex_core::flow::config`), `None` for a real device.
+fn flow_series_id(device_id: &str) -> Option<i64> {
+    device_id.strip_prefix("flow_")?.parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::flow_series_id;
+
+    #[test]
+    fn only_flow_virtual_devices_have_a_flow_id() {
+        assert_eq!(flow_series_id("flow_58"), Some(58));
+        assert_eq!(flow_series_id("flow_x"), None);
+        assert_eq!(flow_series_id("esp32-a1"), None);
+        assert_eq!(flow_series_id("12"), None);
     }
 }

@@ -213,7 +213,8 @@ where
         );
     }
 
-    let base = format!("Organisation de {display}");
+    // Language-neutral name: the UI renders it as is in every locale (O41).
+    let base = display.to_string();
     // `organizations.name` est unique : on suffixe par l'id user en cas de
     // collision (deux « Alice Martin » peuvent exister).
     let name = match organizations::Entity::find()

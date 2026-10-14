@@ -65,7 +65,11 @@ pub fn logout() {
     crate::media_cache::clear();
     crate::state::org::clear();
     SESSION.with_mut(|s| *s = SessionState::LoggedOut);
-    api::auth::end_session(id_token);
+    // Without a hint Rauthy answers a raw 400 when its SSO cookie is gone:
+    // stay on the app's login screen instead.
+    if id_token.is_some() {
+        api::auth::end_session(id_token);
+    }
 }
 
 /// Session expirée (refresh échoué) — purge + notification.

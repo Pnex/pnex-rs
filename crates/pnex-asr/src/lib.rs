@@ -160,6 +160,67 @@ pub fn words_from_tokens(tokens: &[String], starts: &[f32], end_s: f32) -> Vec<W
     words
 }
 
+/// Most consecutive occurrences of one n-gram kept by [`collapse_repeats`].
+pub const MAX_REPEATS: usize = 3;
+/// Longest n-gram (in words) looked for by [`collapse_repeats`].
+const MAX_NGRAM: usize = 4;
+
+fn repeat_key(w: &str) -> String {
+    w.trim_matches(|c: char| !c.is_alphanumeric())
+        .to_lowercase()
+}
+
+/// Which items survive: in a run where the same 1–4 item n-gram repeats
+/// more than `max` times in a row, only its first `max` occurrences stay.
+fn loop_mask(keys: &[String], max: usize) -> Vec<bool> {
+    let n = keys.len();
+    let mut keep = vec![true; n];
+    let mut i = 0;
+    'outer: while i < n {
+        for size in 1..=MAX_NGRAM.min(n - i) {
+            let gram = &keys[i..i + size];
+            let mut k = 1;
+            while i + (k + 1) * size <= n && keys[i + k * size..i + (k + 1) * size] == *gram {
+                k += 1;
+            }
+            if k > max {
+                keep[i + max * size..i + k * size].fill(false);
+                i += k * size;
+                continue 'outer;
+            }
+        }
+        i += 1;
+    }
+    keep
+}
+
+/// Cuts decoding loops (Whisper on music: "de plus de plus de plus…") from
+/// a transcript's text and words: an n-gram of 1–4 words repeated more than
+/// [`MAX_REPEATS`] times in a row keeps [`MAX_REPEATS`] occurrences (O56).
+/// Case and surrounding punctuation are ignored when comparing words.
+pub fn collapse_repeats(mut t: Transcript) -> Transcript {
+    let cleaned = {
+        let words: Vec<&str> = t.text.split_whitespace().collect();
+        let keys: Vec<String> = words.iter().map(|w| repeat_key(w)).collect();
+        let keep = loop_mask(&keys, MAX_REPEATS);
+        keep.contains(&false).then(|| {
+            let kept: Vec<&str> = words
+                .iter()
+                .zip(&keep)
+                .filter_map(|(w, k)| k.then_some(*w))
+                .collect();
+            kept.join(" ")
+        })
+    };
+    if let Some(text) = cleaned {
+        t.text = text;
+    }
+    let keys: Vec<String> = t.words.iter().map(|w| repeat_key(&w.w)).collect();
+    let mut keep = loop_mask(&keys, MAX_REPEATS).into_iter();
+    t.words.retain(|_| keep.next().unwrap_or(true));
+    t
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,5 +236,54 @@ mod tests {
         assert_eq!(text, ["bonjour", "à", "tous"]);
         assert_eq!((words[0].start_ms, words[0].end_ms), (0, 500));
         assert_eq!(words[2].end_ms, 1000);
+    }
+
+    fn text_of(text: &str) -> String {
+        collapse_repeats(Transcript {
+            text: text.into(),
+            words: Vec::new(),
+        })
+        .text
+    }
+
+    #[test]
+    fn decoding_loops_are_collapsed() {
+        assert_eq!(
+            text_of("de plus de plus de plus de plus de plus fin"),
+            "de plus de plus de plus fin"
+        );
+        assert_eq!(
+            text_of("très très très très très bien"),
+            "très très très bien"
+        );
+        assert_eq!(text_of("Plus, plus, plus. plus plus"), "Plus, plus, plus.");
+        assert_eq!(
+            text_of("a b c d a b c d a b c d a b c d"),
+            "a b c d a b c d a b c d"
+        );
+        // Legitimate repetitions and spacing stay untouched.
+        assert_eq!(text_of("c'est très  très bien"), "c'est très  très bien");
+        assert_eq!(text_of("non non non"), "non non non");
+        assert_eq!(text_of(""), "");
+    }
+
+    #[test]
+    fn looped_words_are_dropped_with_the_text() {
+        let word = |w: &str, ms: u32| Word {
+            w: w.into(),
+            start_ms: ms,
+            end_ms: ms + 100,
+            p: None,
+        };
+        let t = collapse_repeats(Transcript {
+            text: "la la la la la".into(),
+            words: (0..5)
+                .map(|i| word("la", i * 100))
+                .chain([word("fin", 600)])
+                .collect(),
+        });
+        assert_eq!(t.text, "la la la");
+        let kept: Vec<u32> = t.words.iter().map(|w| w.start_ms).collect();
+        assert_eq!(kept, [0, 100, 200, 600]);
     }
 }

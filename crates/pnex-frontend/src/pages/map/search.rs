@@ -35,7 +35,7 @@ pub(super) fn AddressSearch(
             }
             match res {
                 Ok(found) => {
-                    hits.set(found);
+                    hits.set(dedupe_hits(found));
                     error.set(None);
                 }
                 Err(err) => {
@@ -131,9 +131,63 @@ fn AddressHit(
     }
 }
 
+/// Same label within this distance = one place (two OSM segments of one
+/// street, O55).
+const DUPLICATE_RADIUS_M: f64 = 200.0;
+
+/// Drops a hit whose label repeats an earlier hit within
+/// `DUPLICATE_RADIUS_M`; keeps the provider's ranking.
+fn dedupe_hits(found: Vec<pnex_core::geo::GeocodeResult>) -> Vec<pnex_core::geo::GeocodeResult> {
+    let mut kept: Vec<pnex_core::geo::GeocodeResult> = Vec::with_capacity(found.len());
+    for hit in found {
+        let duplicate = kept.iter().any(|k| {
+            k.label == hit.label
+                && pnex_core::track::haversine_m((k.lon, k.lat), (hit.lon, hit.lat))
+                    < DUPLICATE_RADIUS_M
+        });
+        if !duplicate {
+            kept.push(hit);
+        }
+    }
+    kept
+}
+
 fn fly_to_hit(hit: &pnex_core::geo::GeocodeResult) {
     let (lat, lon) = (hit.lat, hit.lon);
     spawn(async move {
         map_viewer::flyTo(MAP_HOST, lon, lat, 16.0).await;
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn hit(label: &str, lat: f64, lon: f64) -> pnex_core::geo::GeocodeResult {
+        pnex_core::geo::GeocodeResult {
+            label: label.into(),
+            lat,
+            lon,
+            bbox: None,
+            kind: None,
+            confidence: None,
+            address: Default::default(),
+        }
+    }
+
+    #[test]
+    fn dedupe_drops_same_label_nearby_only() {
+        let street = "Avenue Tony Garnier, 69007 Lyon";
+        let out = dedupe_hits(vec![
+            hit(street, 45.7300, 4.8300),
+            // ~110 m north: second segment of the same street.
+            hit(street, 45.7310, 4.8300),
+            // Same label far away: a different place.
+            hit(street, 45.7600, 4.8300),
+            hit("Other", 45.7300, 4.8300),
+        ]);
+        assert_eq!(out.len(), 3);
+        assert_eq!(out[0].lat, 45.7300);
+        assert_eq!(out[1].lat, 45.7600);
+    }
 }

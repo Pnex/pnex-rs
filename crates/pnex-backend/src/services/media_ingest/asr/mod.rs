@@ -145,6 +145,37 @@ pub async fn local_model(
     Ok(LocalModel { dir, inspection })
 }
 
+/// Runtimes compiled into this host's `pnex-asr` build, asked once per
+/// process (a failed probe is retried). `None` when unknown (binary
+/// missing, too old or silent): the model check then decides (O56).
+pub async fn compiled_runtimes(settings: &AsrSettings) -> Option<&'static protocol::Runtimes> {
+    static RUNTIMES: tokio::sync::OnceCell<protocol::Runtimes> = tokio::sync::OnceCell::const_new();
+    RUNTIMES
+        .get_or_try_init(|| async { probe_runtimes(settings).await.ok_or(()) })
+        .await
+        .ok()
+}
+
+async fn probe_runtimes(settings: &AsrSettings) -> Option<protocol::Runtimes> {
+    let bin = decoder::resolve(&settings.bin)?;
+    // No model data is read: this probe needs no sandbox.
+    let out = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        tokio::process::Command::new(bin)
+            .arg("runtimes")
+            .env_clear()
+            .stdin(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    serde_json::from_str(stdout.lines().next()?).ok()
+}
+
 /// How to launch `model` for a language.
 pub fn launch(
     settings: &AsrSettings,

@@ -300,6 +300,32 @@ pub struct Fatal {
     pub fatal: String,
 }
 
+/// Output of `pnex-asr runtimes`: the runtimes compiled into that build
+/// (`whisper.cpp`, `sherpa-onnx`), so the server refuses a model no
+/// runtime can serve at registration instead of at the check (O56).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Runtimes {
+    pub runtimes: Vec<String>,
+}
+
+impl Runtimes {
+    /// Runtimes of the build this code is compiled into (the server links
+    /// this crate without runtimes: it asks the `pnex-asr` binary instead).
+    pub fn compiled() -> Self {
+        #[allow(unused_mut)]
+        let mut runtimes = Vec::new();
+        #[cfg(any(feature = "sherpa", feature = "sherpa-shared"))]
+        runtimes.push(Family::Whisper.runtime().to_string());
+        #[cfg(feature = "whisper")]
+        runtimes.push(Family::WhisperGgml.runtime().to_string());
+        Self { runtimes }
+    }
+
+    pub fn serves(&self, family: Family) -> bool {
+        self.runtimes.iter().any(|r| r == family.runtime())
+    }
+}
+
 /// Reference sample of the model check (FLEURS fr, CC BY 4.0, see
 /// `assets/README.md`) and its transcript.
 pub const CHECK_WAV_FR: &[u8] = include_bytes!("../assets/check-fr.wav");
@@ -427,5 +453,15 @@ mod tests {
             16_000
         );
         assert!(CHECK_TEXT_FR.starts_with("La surface de la lune"));
+    }
+
+    #[test]
+    fn runtimes_line_says_which_families_are_served() {
+        let r: Runtimes = serde_json::from_str(r#"{"runtimes":["sherpa-onnx"]}"#).unwrap();
+        assert!(r.serves(Family::Whisper) && r.serves(Family::SileroVad));
+        assert!(!r.serves(Family::WhisperGgml));
+        // A plain build of this crate links no runtime.
+        #[cfg(not(any(feature = "sherpa", feature = "sherpa-shared", feature = "whisper")))]
+        assert!(Runtimes::compiled().runtimes.is_empty());
     }
 }

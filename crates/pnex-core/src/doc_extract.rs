@@ -158,19 +158,24 @@ pub fn extract_text(text: &str, markdown: bool) -> ExtractedDoc {
         let trimmed = line.trim_start();
         if markdown && (trimmed.starts_with("```") || trimmed.starts_with("~~~")) {
             in_fence = !in_fence;
+            continue;
         }
         if markdown && !in_fence && trimmed.starts_with('#') {
-            let heading = trimmed.trim_start_matches('#').trim();
+            let heading = md_plain(trimmed.trim_start_matches('#').trim());
             if !heading.is_empty() {
                 sections.push(Section {
-                    heading: Some(heading.to_string()),
+                    heading: Some(heading),
                     ..Section::default()
                 });
                 continue;
             }
         }
         let cur = sections.last_mut().expect("never empty");
-        cur.text.push_str(line);
+        if markdown && !in_fence {
+            cur.text.push_str(&md_plain(line));
+        } else {
+            cur.text.push_str(line);
+        }
         cur.text.push('\n');
     }
     sections.retain(|s| !s.text.trim().is_empty() || s.heading.is_some());
@@ -178,6 +183,60 @@ pub fn extract_text(text: &str, markdown: bool) -> ExtractedDoc {
         sections,
         page_count: None,
     }
+}
+
+/// Plain text of one Markdown line outside code fences: block markers and
+/// inline syntax dropped so indexed text and search snippets read as prose
+/// (O54). Code spans keep their content, links keep their label.
+fn md_plain(line: &str) -> String {
+    let t = line.trim();
+    // Horizontal rules and table separator rows carry no text.
+    if t.len() >= 3
+        && t.chars()
+            .all(|c| matches!(c, '-' | '*' | '_' | '|' | ':' | ' '))
+    {
+        return String::new();
+    }
+    let t = t.trim_start_matches('>').trim_start();
+    let t = ["- [ ] ", "- [x] ", "- ", "* ", "+ "]
+        .iter()
+        .find_map(|m| t.strip_prefix(m))
+        .unwrap_or(t);
+    let t = match t.split_once(". ") {
+        Some((n, rest)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => rest,
+        _ => t,
+    };
+    let c: Vec<char> = t.chars().collect();
+    let mut out = String::with_capacity(t.len());
+    let mut i = 0;
+    while i < c.len() {
+        match c[i] {
+            '`' => {}
+            '|' => out.push(' '),
+            '~' if c.get(i + 1) == Some(&'~') => i += 1,
+            '_' if c.get(i + 1) == Some(&'_') => i += 1,
+            // A lone `*` between spaces is arithmetic, not emphasis.
+            '*' if !(i > 0 && c[i - 1] == ' ' && c.get(i + 1) == Some(&' ')) => {}
+            '!' if c.get(i + 1) == Some(&'[') => {}
+            '[' => {
+                // `[label](url)` keeps the label; anything else stays verbatim.
+                let close = c[i..].iter().position(|&x| x == ']').map(|p| i + p);
+                let end = close
+                    .filter(|&j| c.get(j + 1) == Some(&'('))
+                    .and_then(|j| c[j..].iter().position(|&x| x == ')').map(|p| (j, j + p)));
+                match end {
+                    Some((j, k)) => {
+                        out.extend(c[i + 1..j].iter().filter(|&&x| !matches!(x, '*' | '`')));
+                        i = k;
+                    }
+                    None => out.push('['),
+                }
+            }
+            ch => out.push(ch),
+        }
+        i += 1;
+    }
+    out.trim_end().to_string()
 }
 
 #[cfg(feature = "doc-extract")]
@@ -614,6 +673,30 @@ mod tests {
         let headings: Vec<_> = doc.sections.iter().map(|s| s.heading.clone()).collect();
         assert_eq!(headings, [None, Some("A".into()), Some("B".into())]);
         assert!(doc.sections[1].text.contains("# not a heading"));
+        assert!(!doc.sections[1].text.contains("```"));
+    }
+
+    #[test]
+    fn markdown_syntax_is_stripped_from_indexed_text() {
+        let md = "# **Bold** title\n> Limit is **4.5 mm/s** for `pump_1`.\n\
+                  - see [the manual](https://x.io/a) and ![img](p.png)\n\
+                  1. ~~old~~ __new__ 2 * 3 [1]\n| a | b |\n|---|---|\n---\n\
+                  ```\n**kept** in code\n```";
+        let doc = extract_text(md, true);
+        assert_eq!(doc.sections[0].heading.as_deref(), Some("Bold title"));
+        let text = &doc.sections[0].text;
+        assert!(text.contains("Limit is 4.5 mm/s for pump_1."), "{text}");
+        assert!(text.contains("see the manual and img"), "{text}");
+        assert!(text.contains("old new 2 * 3 [1]"), "{text}");
+        assert!(text.contains("**kept** in code"), "{text}");
+        assert!(
+            !text.contains("---") && !text.contains("](") && !text.contains('>'),
+            "{text}"
+        );
+        // Plain text is left untouched.
+        assert!(extract_text("**a**", false).sections[0]
+            .text
+            .contains("**a**"));
     }
 
     #[test]

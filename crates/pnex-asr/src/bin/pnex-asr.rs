@@ -4,6 +4,7 @@
 //!
 //! ```text
 //! pnex-asr inspect --dir <model dir>
+//! pnex-asr runtimes
 //! pnex-asr serve --dir <model dir> [--family F] [--language fr]
 //!                [--threads 4] [--provider cpu|cuda] [--gpu] [--gpu-device N]
 //!                [--vad-dir <dir>] [--seg-dir <dir> --emb-dir <dir>]
@@ -44,7 +45,7 @@ fn parse_args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
     let cmd = it
         .next()
-        .ok_or("usage: pnex-asr inspect|serve --dir <model dir>")?;
+        .ok_or("usage: pnex-asr inspect|runtimes|serve --dir <model dir>")?;
     let mut a = Args {
         cmd,
         dir: None,
@@ -215,6 +216,7 @@ impl Pipeline {
         }
         if let Some(asr) = self.asr.as_mut() {
             let t = asr.transcribe(samples).map_err(|e| e.to_string())?;
+            let t = pnex_asr::collapse_repeats(t);
             resp.text = Some(t.text);
             resp.words = t
                 .words
@@ -327,6 +329,7 @@ fn main() {
                 Err(e) => fatal(e),
             }
         }
+        "runtimes" => print_line(&protocol::Runtimes::compiled()),
         "serve" => serve(&a),
         other => fatal(format!("unknown command {other}")),
     }

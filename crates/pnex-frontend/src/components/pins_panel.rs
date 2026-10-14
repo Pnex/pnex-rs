@@ -302,30 +302,37 @@ pub(crate) fn PinCard(
                 }
                 // Input (digital_in/analog_in) : cadence de lecture.
                 if !is_output && can_write {
-                    select {
-                        class: "px-2 py-1.5 border border-gray-300 rounded-lg text-xs",
-                        aria_label: t!("pins-read-interval"),
-                        value: "{interval_sel}",
-                        disabled: busy() || !connected,
-                        onchange: move |e| interval_sel.set(e.value()),
-                        option { value: "0", selected: interval_sel() == "0",
-                            {t!("pins-subscribe-off")}
-                        }
-                        option { value: "1000", selected: interval_sel() == "1000",
-                            {t!("pins-subscribe-1s")}
-                        }
-                        option { value: "5000", selected: interval_sel() == "5000",
-                            {t!("pins-subscribe-5s")}
-                        }
-                        option {
-                            value: "15000",
-                            selected: interval_sel() == "15000",
-                            {t!("pins-subscribe-15s")}
-                        }
-                        option {
-                            value: "60000",
-                            selected: interval_sel() == "60000",
-                            {t!("pins-subscribe-60s")}
+                    // Visible label, not aria-label only (O49).
+                    label { class: "inline-flex items-center gap-1.5 text-xs text-slate",
+                        span { {t!("pins-read-interval")} }
+                        select {
+                            class: "px-2 py-1.5 border border-gray-300 rounded-lg text-xs",
+                            value: "{interval_sel}",
+                            disabled: busy() || !connected,
+                            onchange: move |e| interval_sel.set(e.value()),
+                            option { value: "0", selected: interval_sel() == "0",
+                                {t!("pins-subscribe-off")}
+                            }
+                            option {
+                                value: "1000",
+                                selected: interval_sel() == "1000",
+                                {t!("pins-subscribe-1s")}
+                            }
+                            option {
+                                value: "5000",
+                                selected: interval_sel() == "5000",
+                                {t!("pins-subscribe-5s")}
+                            }
+                            option {
+                                value: "15000",
+                                selected: interval_sel() == "15000",
+                                {t!("pins-subscribe-15s")}
+                            }
+                            option {
+                                value: "60000",
+                                selected: interval_sel() == "60000",
+                                {t!("pins-subscribe-60s")}
+                            }
                         }
                     }
                     button {

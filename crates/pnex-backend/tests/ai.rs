@@ -864,8 +864,8 @@ async fn without_provider_the_assistant_is_not_configured() {
     .await;
 }
 
-/// (9) Borne d'itérations : 7 tool_use consécutifs → la boucle force une
-/// réponse textuelle finale (outils vides), pas de boucle infinie.
+/// (9) Iteration bound: `MAX_ITERATIONS` (6) LLM calls per turn, i.e. 5 tool calls then a
+/// forced text answer (no tools), never an endless loop (O48).
 #[tokio::test]
 #[serial]
 async fn borne_iterations_force_la_reponse_finale() {
@@ -873,7 +873,7 @@ async fn borne_iterations_force_la_reponse_finale() {
         let org = personal_org(&server, &env.alice).await;
         reset_mock();
 
-        for i in 0..7 {
+        for i in 0..pnex_backend::services::ai::agent::MAX_ITERATIONS {
             push_reply(MockReply::Ok(reply_tool_call(
                 &format!("t{i}"),
                 "validate_calc_expression",
@@ -885,7 +885,11 @@ async fn borne_iterations_force_la_reponse_finale() {
         assert_eq!(resp.status_code(), 200, "{}", resp.text());
         let body = resp.json::<serde_json::Value>();
         let trace = body["tool_trace"].as_array().expect("trace");
-        assert_eq!(trace.len(), 7, "7 outils exécutés puis conclusion forcée");
+        assert_eq!(
+            trace.len(),
+            pnex_backend::services::ai::agent::MAX_ITERATIONS - 1,
+            "5 tools run, then the forced final answer"
+        );
         // A successful call carries its fluent summary key + string args.
         assert_eq!(
             trace[0]["summary_key"], "ai-trace-expression-valid",

@@ -234,9 +234,7 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         | PaletteKind::CameraSource
         | PaletteKind::MediaSource
         | PaletteKind::Weather => PaletteCategory::Triggers,
-        PaletteKind::DeviceRead | PaletteKind::DeviceWrite | PaletteKind::Display => {
-            PaletteCategory::Devices
-        }
+        PaletteKind::DeviceRead | PaletteKind::DeviceWrite => PaletteCategory::Devices,
         PaletteKind::RegTtHeat | PaletteKind::RegTtCool | PaletteKind::RegPid => {
             PaletteCategory::Control
         }
@@ -265,7 +263,8 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         | PaletteKind::Anomaly
         | PaletteKind::Forecast => PaletteCategory::Ai,
         PaletteKind::PnexNotify | PaletteKind::HttpFetch => PaletteCategory::Integrations,
-        PaletteKind::Debug => PaletteCategory::Debug,
+        // Display is an inline probe, not a device node (O49).
+        PaletteKind::Debug | PaletteKind::Display => PaletteCategory::Debug,
     }
 }
 
