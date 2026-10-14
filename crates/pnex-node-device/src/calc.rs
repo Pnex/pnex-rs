@@ -25,6 +25,9 @@ use edgelink_macro::*;
 #[derive(Debug, Deserialize)]
 struct CalcNodeConfig {
     expression: String,
+    /// Canvas id, stamped by the projection (status badge matching).
+    #[serde(default)]
+    pnex_node_id: String,
 }
 
 #[derive(Debug)]
@@ -32,6 +35,7 @@ struct CalcNodeConfig {
 struct PnexCalcNode {
     base: BaseFlowNodeState,
     config: CalcNodeConfig,
+    status: crate::status::StatusBoard,
 }
 
 impl PnexCalcNode {
@@ -49,6 +53,11 @@ impl PnexCalcNode {
         }
         Ok(Box::new(PnexCalcNode {
             base: base_node,
+            status: crate::status::StatusBoard::new(
+                cfg.pnex_node_id.clone(),
+                "calc-ok",
+                "calc-input-rejected",
+            ),
             config: cfg,
         }))
     }
@@ -107,9 +116,13 @@ impl FlowNodeBehavior for PnexCalcNode {
                 cancel.child_token(),
                 |node: &PnexCalcNode, msg: MsgHandle| async move {
                     match node.execute(msg.clone(), cancel.child_token()).await {
-                        Ok(()) => Ok(()),
+                        Ok(()) => {
+                            node.status.passed(node);
+                            Ok(())
+                        }
                         Err(e) => {
                             log::warn!("pnex-calc [{}] : message rejeté : {e}", node.name());
+                            node.status.rejected(node, e.to_string());
                             Err(e)
                         }
                     }

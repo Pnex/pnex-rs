@@ -81,8 +81,6 @@ pub const ANOMALY_FILL: &str = "var(--color-red-50, #fef2f2)";
 pub const ANOMALY_STROKE: &str = "var(--color-red-600, #dc2626)";
 pub const FORECAST_FILL: &str = "var(--color-violet-50, #f5f3ff)";
 pub const FORECAST_STROKE: &str = "var(--color-violet-600, #7c3aed)";
-pub const RED_FILL: &str = "var(--color-gray-50, #f9fafb)";
-pub const RED_STROKE: &str = "var(--color-gray-500, #6b7280)";
 /// Nœud en violation (surlignage d'erreur).
 pub const VIOLATION_STROKE: &str = "var(--color-red-600, #dc2626)";
 /// Nœud sélectionné.

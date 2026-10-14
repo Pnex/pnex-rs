@@ -21,6 +21,7 @@ pub mod calc;
 pub mod metric;
 pub mod o2;
 pub mod read;
+mod status;
 pub mod valkey;
 pub mod write;
 

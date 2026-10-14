@@ -180,6 +180,9 @@ pub(crate) fn status_label(st: &pnex_core::vision::NodeStatus) -> String {
             .to_string()
     } else if st.code.starts_with("control-") {
         t!("flow-status-count-commands", commands: stat("commands")).to_string()
+    } else if st.code.starts_with("calc-") || st.code.starts_with("device-write-") {
+        t!("flow-status-count-passed", passed: stat("passed"), rejected: stat("rejected"))
+            .to_string()
     } else {
         t!("flow-status-count-frames", received: stat("received")).to_string()
     };
@@ -202,6 +205,10 @@ pub(crate) fn status_text(code: &str) -> String {
         "weather-updated" => t!("flow-status-weather-updated").to_string(),
         "weather-waiting" => t!("flow-status-weather-waiting").to_string(),
         "weather-unavailable" => t!("flow-status-weather-unavailable").to_string(),
+        "calc-ok" => t!("flow-status-calc-ok").to_string(),
+        "calc-input-rejected" => t!("flow-status-calc-input-rejected").to_string(),
+        "device-write-ok" => t!("flow-status-device-write-ok").to_string(),
+        "device-write-rejected" => t!("flow-status-device-write-rejected").to_string(),
         other => other.to_string(),
     }
 }
@@ -234,6 +241,8 @@ fn status_stat_text(key: &str) -> String {
         "analysed" => t!("flow-status-stat-analysed").to_string(),
         "below_threshold" => t!("flow-status-stat-below-threshold").to_string(),
         "last_infer_ms" => t!("flow-status-stat-last-infer-ms").to_string(),
+        "passed" => t!("flow-status-stat-passed").to_string(),
+        "rejected" => t!("flow-status-stat-rejected").to_string(),
         other => other.to_string(),
     }
 }

@@ -5,9 +5,12 @@ use super::*;
 /// Map numérique extraite d'un payload (clés device sanitisées → valeur).
 pub type NumericMap = std::collections::HashMap<String, f64>;
 
-/// Contrat d'entrée du nœud `calc` / de sortie du nœud `device` : objet JSON
-/// `clé → valeur numérique` (booléens convertis 1/0, parité avec
-/// `handle_state_report`). Rejeté à la frontière — jamais de panic.
+/// Input contract of the `calc` node: a JSON object whose numeric keys are
+/// the variables (booleans as 1/0, parity with `handle_state_report`).
+/// Non-numeric keys (arrays, text, nested objects — e.g. `detections` of a
+/// vision node) are skipped, so `count > 0` works on any rich payload; an
+/// expression naming a skipped key fails as an unknown variable (O66).
+/// A non-object payload is rejected at the boundary — never a panic.
 pub fn numeric_map_from_payload(
     payload: Option<&serde_json::Value>,
     node: &str,
@@ -17,8 +20,8 @@ pub fn numeric_map_from_payload(
             None,
             &format!("{node}_input_contract"),
             format!(
-                "le nœud {node} attend un objet JSON en payload (sortie d'un nœud device), reçu : {}",
-                payload.map(type_of).unwrap_or("payload absent")
+                "the {node} node expects a JSON object payload (e.g. a device read), got: {}",
+                payload.map(type_of).unwrap_or("no payload")
             ),
         ));
     };
@@ -33,16 +36,7 @@ pub fn numeric_map_from_payload(
                     0.0
                 }
             }
-            other => {
-                return Err(FlowViolation::new(
-                    None,
-                    &format!("{node}_input_contract"),
-                    format!(
-                        "valeur non numérique pour la clé « {key} » (reçu : {})",
-                        type_of(other)
-                    ),
-                ));
-            }
+            _ => continue,
         };
         out.insert(key.clone(), v);
     }
@@ -67,8 +61,8 @@ pub fn metric_value_from_payload(
             None,
             "metric_input_contract",
             format!(
-                "le nœud metric attend une valeur numérique en payload (sortie d'un nœud calc), reçu : {}",
-                other.map(type_of).unwrap_or("payload absent")
+                "the metric node expects a numeric payload (e.g. a calc output), got: {}",
+                other.map(type_of).unwrap_or("no payload")
             ),
         )),
     }
@@ -113,10 +107,10 @@ pub fn metric_values_from_payload(
 fn type_of(v: &serde_json::Value) -> &'static str {
     match v {
         serde_json::Value::Null => "null",
-        serde_json::Value::Bool(_) => "booléen",
-        serde_json::Value::Number(_) => "nombre",
-        serde_json::Value::String(_) => "chaîne",
-        serde_json::Value::Array(_) => "tableau",
-        serde_json::Value::Object(_) => "objet",
+        serde_json::Value::Bool(_) => "boolean",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "text",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
     }
 }

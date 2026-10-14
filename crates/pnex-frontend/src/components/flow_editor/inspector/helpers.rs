@@ -151,11 +151,3 @@ pub(super) fn payload_text(value: &serde_json::Value) -> String {
         other => serde_json::to_string_pretty(other).unwrap_or_default(),
     }
 }
-
-/// Config Red → texte d'édition (objet par défaut).
-pub(super) fn value_text(value: &serde_json::Value) -> String {
-    match value {
-        serde_json::Value::Null => "{}".into(),
-        other => serde_json::to_string_pretty(other).unwrap_or_default(),
-    }
-}

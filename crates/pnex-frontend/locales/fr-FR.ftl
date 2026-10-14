@@ -555,8 +555,6 @@ flows-palette-display-help = Affiche le payload (panneau + badge live)
 flows-display-hint = Aucune configuration : cette sonde laisse passer les messages et affiche le dernier payload sous elle (badge live) et dans le panneau Debug.
 flows-palette-debug = Debug
 flows-palette-debug-help = Capture la sortie d'un pipeline
-flows-palette-red = Node-RED brut
-flows-palette-red-help = Type builtin non modélisé (config JSON)
 
 flows-node-name = Nom du nœud
 flows-node-delete = Supprimer le nœud
@@ -569,9 +567,6 @@ flows-inject-payload-invalid = JSON invalide
 flows-debug-active = Capture activée
 flows-debug-complete = Propriété capturée (vide = payload)
 flows-debug-console = Recopie sur la console du runtime
-flows-red-type = Type Node-RED (ex. change, json)
-flows-red-config = Config (JSON)
-flows-red-config-invalid = JSON invalide
 
 flows-wire-remove-title = Couper ce câble ?
 flows-wire-remove-message = Le câblage entre les deux nœuds sera supprimé.
@@ -592,7 +587,6 @@ flows-palette-device-write-help = Écrit les sorties d'un seul appareil — payl
 flow-port-device-name = nom
 flow-port-tracks = suivis
 flow-port-track-events = événements
-flow-port-device-all = tout
 flows-palette-calc = Calcul
 flows-palette-calc-help = Expression sur les lectures (variables = clés de payload)
 flows-palette-metric = Métrique
@@ -2252,7 +2246,6 @@ flows-video-stream = Libellé
 flows-video-stream-hint = Libellé facultatif de l'enregistrement (par défaut, le nom de la caméra ou du flux)
 err-camera-device-missing = Choisissez une caméra
 err-camera-stream-missing = Choisissez un flux média
-err-red-type-forbidden = Le type Node-RED « { $type } » est interdit (accès hôte ou type PNeX réservé)
 err-camera-fps-invalid = Le fps max doit être entre 0 (toutes les images) et 25
 err-video-segment-secs-invalid = La durée d'un segment doit être entre 5 et 3600 secondes
 err-video-record-duplicate = Ce flow enregistre déjà la caméra { $camera } — gardez un seul nœud Enregistrement vidéo par caméra.
@@ -3638,6 +3631,13 @@ flows-weather-ports-help = Sorties : conditions actuelles, prévisions 7 jours, 
 flow-status-weather-updated = À jour
 flow-status-weather-waiting = En attente de la 1re récupération
 flow-status-weather-unavailable = Météo indisponible
+flow-status-calc-ok = Calcul en cours
+flow-status-calc-input-rejected = Message rejeté
+flow-status-device-write-ok = Écrit
+flow-status-device-write-rejected = Rien écrit
+flow-status-count-passed = { $passed } ok / { $rejected } rejetés
+flow-status-stat-passed = Messages traités
+flow-status-stat-rejected = Messages rejetés
 
 # Weather card (D140)
 hcard-weather = Météo

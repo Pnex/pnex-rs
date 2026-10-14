@@ -49,6 +49,9 @@ struct DeviceWriteNodeConfig {
     /// passé tel quel à la route interne (elle résout le device dans l'org).
     #[serde(default)]
     pnex_org_id: i64,
+    /// Canvas id, stamped by the projection (status badge matching).
+    #[serde(default)]
+    pnex_node_id: String,
 }
 
 #[flow_node("pnex-device-write", red_name = "pnex-device-write")]
@@ -59,6 +62,7 @@ struct DeviceWriteNode {
     url: String,
     token: String,
     org_id: i64,
+    status: crate::status::StatusBoard,
 }
 
 impl DeviceWriteNode {
@@ -131,6 +135,11 @@ impl DeviceWriteNode {
         Ok(Box::new(DeviceWriteNode {
             base: base_node,
             org_id: cfg.pnex_org_id,
+            status: crate::status::StatusBoard::new(
+                cfg.pnex_node_id.clone(),
+                "device-write-ok",
+                "device-write-rejected",
+            ),
             config: cfg,
             http,
             url,
@@ -140,6 +149,12 @@ impl DeviceWriteNode {
 }
 
 impl DeviceWriteNode {
+    /// Nothing (or not everything) was written: server log + canvas badge.
+    fn reject(&self, detail: String) {
+        log::warn!("pnex-device-write [{}] : {detail}", self.name());
+        self.status.rejected(self, detail);
+    }
+
     /// Input anchors: pins first, then commands.
     fn anchors(&self) -> impl Iterator<Item = &String> {
         self.config.pins.iter().chain(self.config.commands.iter())
@@ -199,6 +214,7 @@ impl DeviceWriteNode {
                 Variant::String(s) => serde_json::Value::String(s.clone()),
                 Variant::Bool(b) => serde_json::Value::Bool(*b),
                 Variant::Null => {
+                    self.reject("the message carries no value (empty payload)".into());
                     return self.fan_out_done(msg, cancel).await;
                 }
                 _ => serde_json::Value::Null,
@@ -210,12 +226,11 @@ impl DeviceWriteNode {
                         single.insert(name.clone(), scalar);
                         return self.write_values(msg, cancel, single).await;
                     }
-                    log::warn!(
-                        "pnex-device-write [{}] : payload topic \"{topic}\" matches no \
-                         configured pin or command ({}) — nothing to write",
-                        self.name(),
+                    self.reject(format!(
+                        "topic \"{topic}\" matches no configured pin or command ({}): \
+                         nothing written",
                         self.anchors().cloned().collect::<Vec<_>>().join(", ")
-                    );
+                    ));
                     return self.fan_out_done(msg, cancel).await;
                 }
                 let mut anchors = self.anchors();
@@ -225,15 +240,13 @@ impl DeviceWriteNode {
                     return self.write_values(msg, cancel, single).await;
                 }
             }
-            log::warn!(
-                "pnex-device-write [{}] : payload non objet{} — rien à écrire",
-                self.name(),
-                if self.anchors().count() > 1 {
-                    " (N pins configurées : passez une map {pin: valeur})"
-                } else {
-                    ""
-                }
-            );
+            self.reject(if self.anchors().count() > 1 {
+                "one value for several outputs: wire each output on its own input, \
+                 or send a map {output: value}"
+                    .into()
+            } else {
+                "the value is neither a number, a boolean nor a text: nothing written".into()
+            });
             return self.fan_out_done(msg, cancel).await;
         }
         // Map Variant → JSON une seule fois ; le filtrage sur les pins
@@ -272,10 +285,10 @@ impl DeviceWriteNode {
         let values = pick(&self.config.pins);
         let commands = pick(&self.config.commands);
         if values.is_empty() && commands.is_empty() {
-            log::warn!(
-                "pnex-device-write [{}] : no configured pin or command in the payload",
-                self.name()
-            );
+            self.reject(format!(
+                "the message names none of the selected outputs ({}): nothing written",
+                self.anchors().cloned().collect::<Vec<_>>().join(", ")
+            ));
             return self.fan_out_done(msg, cancel).await;
         }
         let mut body = serde_json::json!({
@@ -306,14 +319,15 @@ impl DeviceWriteNode {
                     let status = resp.status();
                     if !status.is_success() {
                         let detail = resp.text().await.unwrap_or_default();
-                        log::warn!(
-                            "pnex-device-write [{}] : écriture {}:{} échouée : {status} {detail}",
-                            self.name(), self.config.device_id,
+                        self.reject(format!(
+                            "write {}:{} failed: {status} {detail}",
+                            self.config.device_id,
                             targets.join(",")
-                        );
+                        ));
                     } else {
                         match resp.json::<serde_json::Value>().await {
                             Ok(out) => {
+                                let mut errors = Vec::new();
                                 for r in out.get("results").and_then(|x| x.as_array()).unwrap_or(&vec![]) {
                                     let ok = r.get("ok").and_then(|x| x.as_bool()).unwrap_or(false);
                                     let pin = r
@@ -323,34 +337,21 @@ impl DeviceWriteNode {
                                         .unwrap_or("?");
                                     if !ok {
                                         let err = r.get("err").and_then(|x| x.as_str()).unwrap_or("?");
-                                        log::warn!(
-                                            "pnex-device-write [{}] : pin {} : {err}",
-                                            self.name(), pin
-                                        );
+                                        errors.push(format!("{pin}: {err}"));
                                     }
                                 }
+                                if errors.is_empty() {
+                                    self.status.passed(self);
+                                } else {
+                                    self.reject(errors.join("; "));
+                                }
                             }
-                            Err(e) => {
-                                log::warn!(
-                                    "pnex-device-write [{}] : réponse illisible : {e}",
-                                    self.name()
-                                );
-                            }
+                            Err(e) => self.reject(format!("unreadable write response: {e}")),
                         }
                     }
                 }
-                Ok(Err(e)) => {
-                    log::warn!(
-                        "pnex-device-write [{}] : requête échouée : {e}",
-                        self.name()
-                    );
-                }
-                Err(_) => {
-                    log::warn!(
-                        "pnex-device-write [{}] : écriture interrompue (timeout)",
-                        self.name()
-                    );
-                }
+                Ok(Err(e)) => self.reject(format!("write request failed: {e}")),
+                Err(_) => self.reject("write timed out (10 s)".into()),
             },
             _ = cancel.cancelled() => return Err(EdgelinkError::TaskCancelled.into()),
         }
@@ -374,10 +375,7 @@ impl FlowNodeBehavior for DeviceWriteNode {
                     match node.execute(msg.clone(), cancel.child_token()).await {
                         Ok(()) => Ok(()),
                         Err(e) => {
-                            log::warn!(
-                                "pnex-device-write [{}] : message rejeté : {e}",
-                                node.name()
-                            );
+                            node.reject(format!("message rejected: {e}"));
                             Err(e)
                         }
                     }

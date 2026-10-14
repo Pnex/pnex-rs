@@ -218,14 +218,6 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::predictive::ForecastConfig,
     },
-    /// Échappement : nœud builtin EdgeLinkd non modélisé, config opaque.
-    Red {
-        /// Nom du type Node-RED cible (ex. `"change"`, `"json"`).
-        type_name: String,
-        /// Config Node-RED brute du nœud.
-        #[serde(default)]
-        config: serde_json::Value,
-    },
 }
 
 // Manual `Deserialize`: internally-tagged enums buffer fields through
@@ -373,14 +365,6 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                 }),
                 "forecast" => Ok(Self::Forecast {
                     config: opt_config(config)?,
-                }),
-                "red" => Ok(Self::Red {
-                    type_name: v
-                        .get("type_name")
-                        .and_then(serde_json::Value::as_str)
-                        .map(str::to_owned)
-                        .ok_or_else(|| "missing field `type_name`".to_string())?,
-                    config: config.cloned().unwrap_or(serde_json::Value::Null),
                 }),
                 other => Err(format!("unknown node kind: {other}")),
             }
