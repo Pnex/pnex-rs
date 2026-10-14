@@ -9,7 +9,6 @@ use pnex_core::ui_control::{
     ControlValue, ControlValuesRequest, ControlValuesResponse, CreateUiControl, UiControl,
     UpdateUiControl, WriteControlValue,
 };
-use pnex_core::Paginated;
 use uuid::Uuid;
 
 use crate::api::client;
@@ -19,21 +18,13 @@ use crate::api::error::ApiError;
 /// and subtitles of the `control-source` nodes (fallback: short id).
 pub static CONTROL_KEYS: GlobalSignal<BTreeMap<Uuid, String>> = GlobalSignal::new(BTreeMap::new);
 
-/// Upper bound of one listing (pickers, not an export).
-const LIST_LIMIT: u32 = 500;
-
 /// `GET /api/v1/controls` — every control of the org (refreshes
 /// [`CONTROL_KEYS`]).
 pub async fn list() -> Result<Vec<UiControl>, ApiError> {
-    let page: Paginated<UiControl> = client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/controls?limit={LIST_LIMIT}"),
-        None,
-    )
-    .await?;
-    let keys: BTreeMap<Uuid, String> = page.results.iter().map(|c| (c.id, c.key.clone())).collect();
+    let controls: Vec<UiControl> = client::request_all("/api/v1/controls").await?;
+    let keys: BTreeMap<Uuid, String> = controls.iter().map(|c| (c.id, c.key.clone())).collect();
     *CONTROL_KEYS.write() = keys;
-    Ok(page.results)
+    Ok(controls)
 }
 
 /// `POST /api/v1/controls`.

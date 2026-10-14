@@ -48,6 +48,7 @@ fn fluid_error_text(err: &FluidError) -> String {
 #[component]
 pub fn FluidMixtures() -> Element {
     let mut reload = use_signal(|| 0u32);
+    let can_write = crate::state::org::current_can_write();
     let search = use_signal(String::new);
     // Formulaire : `None` = fermé ; `Some(id)` = édition, `Some(String::new())`
     // vs création distingue via `editing_id.is_empty()`.
@@ -170,6 +171,9 @@ pub fn FluidMixtures() -> Element {
         Column::new(
             t!("common-actions").to_string(),
             move |m: &pnex_core::FluidMixture| {
+                if !can_write {
+                    return rsx! {};
+                }
                 rsx! {
                     div { class: "flex gap-1",
                         button {
@@ -216,7 +220,7 @@ pub fn FluidMixtures() -> Element {
             title: t!("mixtures-title").to_string(),
             subtitle: Some(t!("mixtures-subtitle").to_string()),
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
-            can_write: true,
+            can_write,
             add_label: Some(t!("mixtures-new").to_string()),
             on_add: move |_| {
                 open_form(

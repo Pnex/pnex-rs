@@ -33,6 +33,24 @@ pub async fn list(
     .await
 }
 
+/// `GET /api/v1/time-ranges`, every page: the calendar shows the whole
+/// window (a `limit` above 100 is clamped by the server).
+pub async fn list_all(
+    scope_kind: &str,
+    scope_id: &str,
+    from: &str,
+    to: &str,
+) -> Result<Vec<TimeRange>, ApiError> {
+    client::request_all(&format!(
+        "/api/v1/time-ranges?scope_kind={}&scope_id={}&from={}&to={}",
+        urlencode(scope_kind),
+        urlencode(scope_id),
+        urlencode(from),
+        urlencode(to),
+    ))
+    .await
+}
+
 /// `POST /api/v1/time-ranges` — 400 body = field tokens.
 pub async fn create(input: &TimeRangeInput) -> Result<TimeRange, ApiError> {
     client::request(

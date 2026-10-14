@@ -358,7 +358,7 @@ pub fn NotifyTemplateForm(
                         {t!("notify-test-send-title")}
                     }
                     match &*test_channels.value().read() {
-                        Some(Ok(paged)) if !paged.results.is_empty() => rsx! {
+                        Some(Ok(channels)) if !channels.is_empty() => rsx! {
                             div { class: "flex gap-2",
                                 select {
                                     id: "notify-template-test-channel",
@@ -369,7 +369,7 @@ pub fn NotifyTemplateForm(
                                         selected: test_target.cloned().map(|v| v.is_empty()).unwrap_or(true),
                                         {t!("notify-test-pick-channel")}
                                     }
-                                    for ch in paged.results.clone() {
+                                    for ch in channels.clone() {
                                         option {
                                             value: "{ch.id}",
                                             selected: test_target.cloned() == Some(ch.id.to_string()),

@@ -164,13 +164,11 @@ pub(super) fn DeviceReadForm(
     can_write: bool,
 ) -> Element {
     let devices = use_resource(move || async move {
-        api::devices::list(&api::devices::DeviceFilters {
+        api::devices::list_all(&api::devices::DeviceFilters {
             active: Some(true),
-            limit: Some(200),
             ..Default::default()
         })
         .await
-        .map(|page| page.results)
         .unwrap_or_default()
     });
     let mut pins_cache =
@@ -353,13 +351,11 @@ pub(super) fn DeviceWriteForm(
     flow_id: i64,
 ) -> Element {
     let devices = use_resource(move || async move {
-        api::devices::list(&api::devices::DeviceFilters {
+        api::devices::list_all(&api::devices::DeviceFilters {
             active: Some(true),
-            limit: Some(200),
             ..Default::default()
         })
         .await
-        .map(|page| page.results)
         .unwrap_or_default()
     });
     let mut pins_cache =

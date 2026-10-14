@@ -22,6 +22,7 @@ use dioxus_i18n::t;
 use crate::api::{self, viz};
 use crate::app::Route;
 use crate::components::confirm::ConfirmDialog;
+use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::icons;
 use crate::components::modal::Modal;
 use crate::components::poi_preview::{PoiPreviewPanel, PreviewTarget};
@@ -90,6 +91,15 @@ pub fn Map() -> Element {
     let mut filter_device = use_signal(|| false);
     let mut filter_position = use_signal(|| false);
     let mut filter_emoji = use_signal(String::new);
+    // Sidebar list page (server-side, D14); back to the first page whenever
+    // a filter changes.
+    let mut poi_page = use_signal(|| 0i64);
+    use_effect(move || {
+        let _ = (search(), filter_emoji(), filter_device(), filter_position());
+        if *poi_page.peek() != 0 {
+            poi_page.set(0);
+        }
+    });
     // POI ouvert dans le drawer de détail.
     let mut selected = use_signal(|| None::<String>);
 
@@ -139,7 +149,11 @@ pub fn Map() -> Element {
     let list_resource = use_resource(move || async move {
         // Création/édition/suppression POI → refetch de la liste.
         reload();
-        let filters = current_filters(search, filter_emoji, filter_device, filter_position);
+        let filters = viz::PoiFilters {
+            limit: Some(PAGE_SIZE),
+            offset: Some(poi_page() * PAGE_SIZE),
+            ..current_filters(search, filter_emoji, filter_device, filter_position)
+        };
         viz::list_pois(&filters).await
     });
 
@@ -370,6 +384,7 @@ pub fn Map() -> Element {
                     }
                     div { class: "px-4 py-2 border-t border-gray-100 text-xs text-gray-500",
                         {t!("poi-count", count : total)}
+                        ListPager { count: total, page: poi_page }
                     }
                 }
             }

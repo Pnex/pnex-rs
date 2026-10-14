@@ -86,6 +86,12 @@ pub async fn list(filters: &DeviceFilters) -> Result<Paginated<Device>, ApiError
     .await
 }
 
+/// `GET /api/v1/devices`, every page (device pickers); the filters' own
+/// `limit`/`offset` must be left unset.
+pub async fn list_all(filters: &DeviceFilters) -> Result<Vec<Device>, ApiError> {
+    client::request_all(&format!("/api/v1/devices{}", filters.to_query())).await
+}
+
 /// `POST /api/v1/devices` — création (201) ou réactivation (200).
 pub async fn create(params: CreateDevice) -> Result<serde_json::Value, ApiError> {
     client::request(

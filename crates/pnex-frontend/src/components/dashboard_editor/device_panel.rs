@@ -195,13 +195,11 @@ fn add_pin_card(
 pub fn DevicePanel(cx: EditorCx, by_source: BTreeMap<String, Vec<String>>) -> Element {
     let mut open = cx.devices_open;
     let devices = use_resource(|| async {
-        api::devices::list(&api::devices::DeviceFilters {
+        api::devices::list_all(&api::devices::DeviceFilters {
             active: Some(true),
-            limit: Some(200),
             ..Default::default()
         })
         .await
-        .map(|p| p.results)
         .unwrap_or_default()
     });
     let mut device = use_signal(|| None::<(i64, String)>);

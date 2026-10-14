@@ -17,18 +17,18 @@ pub struct FluidMixturePage {
     pub results: Vec<FluidMixture>,
 }
 
-/// `GET /api/v1/fluid-mixtures`.
+/// `GET /api/v1/fluid-mixtures` — every mixture of the org (all pages).
 pub async fn list_fluid_mixtures(search: Option<&str>) -> Result<FluidMixturePage, ApiError> {
     let q = match search {
         Some(s) if !s.trim().is_empty() => format!("?search={}", urlencode(s)),
         _ => String::new(),
     };
-    client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/fluid-mixtures{q}"),
-        None,
-    )
-    .await
+    let results: Vec<FluidMixture> =
+        client::request_all(&format!("/api/v1/fluid-mixtures{q}")).await?;
+    Ok(FluidMixturePage {
+        count: results.len() as i64,
+        results,
+    })
 }
 
 /// `POST /api/v1/fluid-mixtures`.

@@ -72,6 +72,12 @@ pub async fn list(filters: &TourFilters) -> Result<Paginated<TourSummary>, ApiEr
     .await
 }
 
+/// `GET /api/v1/tours`, every page; the filters' own `limit`/`offset`
+/// must be left unset.
+pub async fn list_all(filters: &TourFilters) -> Result<Vec<TourSummary>, ApiError> {
+    client::request_all(&format!("/api/v1/tours{}", filters.to_query())).await
+}
+
 /// `POST /api/v1/tours` — création (document minimal = version 1).
 pub async fn create(params: CreateTour) -> Result<TourDetail, ApiError> {
     client::request(

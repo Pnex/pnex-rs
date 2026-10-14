@@ -6,12 +6,14 @@
 use super::*;
 use crate::components::crud::filters::{FilterBar, SearchInput};
 use crate::components::crud::layout::ListLayout;
+use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::ui::BTN_SECONDARY;
 
 #[component]
 pub fn Sites() -> Element {
     let search = use_signal(String::new);
     let mut reload = use_signal(|| 0u32);
+    let mut site_page = use_signal(|| 0i64);
     let mut selected = use_signal(|| None::<String>);
     let mut preview = use_signal(|| None::<PreviewTarget>);
     let mut pinned = use_signal(|| None::<PreviewTarget>);
@@ -37,6 +39,8 @@ pub fn Sites() -> Element {
         reload();
         let filters = viz::PoiFilters {
             search: Some(search()),
+            limit: Some(PAGE_SIZE),
+            offset: Some(site_page() * PAGE_SIZE),
             ..Default::default()
         };
         viz::list_pois(&filters).await
@@ -70,7 +74,10 @@ pub fn Sites() -> Element {
                     SearchInput {
                         placeholder: t!("poi-search-placeholder").to_string(),
                         value: search,
-                        on_submit: move |_| reload += 1,
+                        on_submit: move |_| {
+                            site_page.set(0);
+                            reload += 1;
+                        },
                     }
                 }
             },
@@ -91,6 +98,7 @@ pub fn Sites() -> Element {
                         }
                     }
                     div { class: "px-4 py-2 text-xs text-gray-500", {t!("poi-count", count : total)} }
+                    ListPager { count: total, page: site_page }
                 }
             }
         }

@@ -88,6 +88,14 @@ pub fn Streams() -> Element {
         }
     });
 
+    // The other tabs pick among every stream, not the current page (O64).
+    let all_streams = use_resource(move || async move {
+        let _ = reload();
+        let _ = org::ORG.read();
+        api::media_streams::list_all().await.unwrap_or_default()
+    });
+    let choices = all_streams.value().read().clone().unwrap_or_default();
+
     let (list_state, is_empty, count, rows) = match &*streams.value().read() {
         None => (None, false, 0, Vec::new()),
         Some(Ok(p)) => (
@@ -141,7 +149,7 @@ pub fn Streams() -> Element {
                 }
             },
             if tab() == Tab::Transcripts {
-                TranscriptsTab { streams: rows.clone(), reload }
+                TranscriptsTab { streams: choices.clone(), reload }
             }
             if tab() == Tab::Models {
                 ModelsTab { can_write, reload, importing }
@@ -151,7 +159,7 @@ pub fn Streams() -> Element {
             }
             if tab() == Tab::Ranges {
                 RangesTab {
-                    streams: rows.clone(),
+                    streams: choices.clone(),
                     can_write,
                     reload,
                     creating: creating_range,
