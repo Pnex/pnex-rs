@@ -12,12 +12,10 @@ use pnex_core::{
 use crate::api::client;
 use crate::api::error::ApiError;
 
-/// `GET /api/v1/functions?limit=200` — registre de l'org (le picker et la
+/// `GET /api/v1/functions` (all pages) — registre de l'org (le picker et la
 /// liste ne paginent pas ; recherche côté client).
 pub async fn list() -> Result<Vec<FunctionSummary>, ApiError> {
-    let page: Paginated<FunctionSummary> =
-        client::request(reqwest::Method::GET, "/api/v1/functions?limit=200", None).await?;
-    Ok(page.results)
+    client::request_all("/api/v1/functions").await
 }
 
 /// `POST /api/v1/functions` — création (fonction + version 1, code =

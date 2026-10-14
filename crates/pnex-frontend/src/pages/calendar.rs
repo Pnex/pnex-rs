@@ -17,9 +17,6 @@ use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::{ListLayout, GHOST_BTN, PRIMARY_BTN};
 use crate::state::{org, toasts};
 
-/// Ranges loaded for one month view.
-const MONTH_LIMIT: i64 = 500;
-
 fn parse(s: &Option<String>) -> Option<DateTime<FixedOffset>> {
     s.as_deref()
         .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
@@ -65,9 +62,7 @@ pub fn Calendar() -> Element {
         let _ = reload();
         let first = grid_start(month());
         let last = first + Days::new(42);
-        api::time_ranges::list("", "", &midnight(first), &midnight(last), MONTH_LIMIT, 0)
-            .await
-            .map(|p| p.results)
+        api::time_ranges::list_all("", "", &midnight(first), &midnight(last)).await
     });
     let rows: Vec<TimeRange> = match &*ranges.read() {
         Some(Ok(r)) => r.clone(),
@@ -354,17 +349,9 @@ pub fn OccurrencesCard(object_id: String, can_write: bool) -> Element {
             let _ = reload();
             let today = Utc::now().date_naive();
             let (from, to) = (today - Days::new(30), today + Days::new(90));
-            api::time_ranges::list(
-                "object",
-                &oid,
-                &midnight(from),
-                &midnight(to),
-                MONTH_LIMIT,
-                0,
-            )
-            .await
-            .map(|p| p.results)
-            .unwrap_or_default()
+            api::time_ranges::list_all("object", &oid, &midnight(from), &midnight(to))
+                .await
+                .unwrap_or_default()
         }
     });
     let rows = ranges.read().clone().unwrap_or_default();

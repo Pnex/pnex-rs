@@ -53,13 +53,9 @@ pub fn StreamFormModal(
     let files = use_resource(|| async {
         let filters = api::media::MediaFilters {
             kinds: vec![api::media::MediaKind::Video, api::media::MediaKind::Audio],
-            limit: Some(200),
             ..Default::default()
         };
-        api::media::list(&filters)
-            .await
-            .map(|p| p.results)
-            .unwrap_or_default()
+        api::media::list_all(&filters).await.unwrap_or_default()
     });
     let file_list = files.read().clone().unwrap_or_default();
     let mut tracks = use_signal(|| init.as_ref().map(|s| s.tracks).unwrap_or_default());
@@ -130,13 +126,8 @@ pub fn StreamFormModal(
         }
     }
 
-    let channels = use_resource(|| async move {
-        api::notify::list_channels()
-            .await
-            .ok()
-            .map(|p| p.results)
-            .unwrap_or_default()
-    });
+    let channels =
+        use_resource(|| async move { api::notify::list_channels().await.unwrap_or_default() });
     let channel_rows = channels.value().read().clone().unwrap_or_default();
 
     let editing_id = existing.as_ref().map(|s| s.id.clone());

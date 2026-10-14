@@ -5,16 +5,13 @@ use pnex_core::pages::{
     CreateDoc, CreateDocComment, CreateDocVersion, DocComment, DocSummary, DocVersionState,
     DocVersionSummary, PatchDoc, PatchDocComment,
 };
-use pnex_core::Paginated;
 use uuid::Uuid;
 
 use crate::api::client;
 use crate::api::error::ApiError;
 
 pub async fn list() -> Result<Vec<DocSummary>, ApiError> {
-    let page: Paginated<DocSummary> =
-        client::request(reqwest::Method::GET, "/api/v1/docs?limit=200", None).await?;
-    Ok(page.results)
+    client::request_all("/api/v1/docs").await
 }
 
 pub async fn create(title: String) -> Result<DocSummary, ApiError> {

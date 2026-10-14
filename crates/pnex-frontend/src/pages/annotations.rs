@@ -72,14 +72,13 @@ pub fn Annotations() -> Element {
     let media_res = use_resource(move || {
         let _ = sets_reload();
         async move {
-            api::media::list(&api::media::MediaFilters {
+            api::media::list_all(&api::media::MediaFilters {
                 kinds: vec![
                     api::media::MediaKind::Photo,
                     api::media::MediaKind::Floorplan,
                     api::media::MediaKind::Panorama,
                     api::media::MediaKind::Splat,
                 ],
-                limit: Some(200),
                 ..Default::default()
             })
             .await
@@ -91,9 +90,8 @@ pub fn Annotations() -> Element {
         .read()
         .as_ref()
         .and_then(|o| o.as_ref().ok())
-        .map(|p| {
-            p.results
-                .iter()
+        .map(|all| {
+            all.iter()
                 .map(|m| (m.id.clone(), (m.name.clone(), m.kind.clone())))
                 .collect()
         })
@@ -102,25 +100,14 @@ pub fn Annotations() -> Element {
     // Tours de l'org (noms de la liste + picker du modal) — école media_map.
     let tours_res = use_resource(move || {
         let _ = sets_reload();
-        async move {
-            api::tours::list(&api::tours::TourFilters {
-                limit: Some(200),
-                ..Default::default()
-            })
-            .await
-        }
+        async move { api::tours::list_all(&api::tours::TourFilters::default()).await }
     });
     let tour_map: std::collections::HashMap<String, String> = tours_res
         .value()
         .read()
         .as_ref()
         .and_then(|o| o.as_ref().ok())
-        .map(|p| {
-            p.results
-                .iter()
-                .map(|t| (t.id.clone(), t.name.clone()))
-                .collect()
-        })
+        .map(|all| all.iter().map(|t| (t.id.clone(), t.name.clone())).collect())
         .unwrap_or_default();
 
     let sets_res = use_resource(move || {

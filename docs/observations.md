@@ -1262,7 +1262,14 @@ Restent ouverts :
 - **Correction proposée** : pastille « Stopped » / « Deployed · stopped » et,
   si `Start` est refusé (pin-already-assigned), le message avec le flow
   concurrent.
-- **Statut** : ouvert.
+- **Cause** : `GET /flows/{id}/runtime` renvoyait `running` = processus
+  runtime vivant ; ce processus sert tous les flows de l'org, et la santé
+  par flow est inconnue après un redémarrage du backend → pastille verte.
+- **Correction (2026-10-14)** : `running` faux dès que le flow n'est pas
+  `deployed` (`controllers/flows/lifecycle.rs`, assertion dans
+  `tests/flows.rs`). Le refus de Start passait déjà par le deploy
+  (`pin-already-assigned` + flow concurrent, traduit en toast).
+- **Statut** : corrigé (non commité).
 
 ### O61 — POI : aperçu épinglé sur une ressource supprimée
 
@@ -1337,4 +1344,16 @@ page qui demande « tout » ou plus de 100 tronque sans le dire.
   de 12.
 - **Ordre proposé** : lignes manquantes → pagers sur API existante →
   harmonisation de forme → pagination backend.
-- **Statut** : ouvert.
+- **Lignes manquantes : corrigé (2026-10-14, non commité)**. Helper
+  `api::client::request_all` (pages de 100 jusqu'à la fin) pour les listes
+  « tout » : canaux et modèles de notification (pager client), mélanges
+  (+ `can_write` réel, actions masquées aux lecteurs), organisations (+ pager),
+  fonctions, Pages, contrôles, Wi-Fi, hôtes, médias et visites des
+  annotations, calendrier, choix de flux des onglets Transcriptions/Plages,
+  médias du formulaire de flux, sélecteurs d'appareils (éditeurs de flows et
+  de dashboards : 200 demandés, 100 reçus). Sites et liste latérale de la
+  carte : pager serveur (10 sur N auparavant). Requêtes ontologie à 500 :
+  plafond serveur 500, pas de troncature.
+- **Statut** : ouvert pour la suite (pagers sur API existante — contrôles,
+  documents, références Edge, annotations —, harmonisation de forme,
+  pagination backend).

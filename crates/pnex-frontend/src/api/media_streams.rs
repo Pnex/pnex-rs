@@ -39,6 +39,12 @@ pub async fn list(
     .await
 }
 
+/// `GET /api/v1/media/streams`, every page: stream choices of the
+/// transcript and range tabs.
+pub async fn list_all() -> Result<Vec<MediaStream>, ApiError> {
+    client::request_all("/api/v1/media/streams").await
+}
+
 /// `GET /api/v1/media/capture-devices` — the org's capture boxes (lot 6b).
 pub async fn capture_devices() -> Result<Vec<MediaCaptureDevice>, ApiError> {
     client::request(reqwest::Method::GET, "/api/v1/media/capture-devices", None).await

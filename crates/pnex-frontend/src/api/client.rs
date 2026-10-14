@@ -105,6 +105,28 @@ pub async fn request<T: DeserializeOwned>(
     }
 }
 
+/// Every row of a paginated list (D14 envelope), page after page at the
+/// server maximum: for pickers and client-paged lists. A bare `limit=200`
+/// is silently clamped to 100 by the server (O64).
+pub async fn request_all<T: DeserializeOwned>(path: &str) -> Result<Vec<T>, ApiError> {
+    let sep = if path.contains('?') { '&' } else { '?' };
+    let mut rows = Vec::new();
+    loop {
+        let page: pnex_core::Paginated<T> = request(
+            reqwest::Method::GET,
+            &format!("{path}{sep}limit=100&offset={}", rows.len()),
+            None,
+        )
+        .await?;
+        let last = page.next.is_none() || page.results.is_empty();
+        rows.extend(page.results);
+        let last = last || rows.len() as i64 >= page.count;
+        if last {
+            return Ok(rows);
+        }
+    }
+}
+
 /// Value of an empty 2xx body: `()` (a 204 DELETE/PATCH) reads it as JSON
 /// `null`; any type that needs a real body keeps the empty-body error.
 fn from_empty_body<T: DeserializeOwned>() -> Result<T, ApiError> {

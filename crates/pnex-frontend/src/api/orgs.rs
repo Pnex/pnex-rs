@@ -1,15 +1,13 @@
 //! Endpoints organisations — CRUD + membres (multi-tenant Phase 3).
 
-use pnex_core::{
-    AddMember, CreateOrg, OrgDetail, OrgMember, OrgSummary, Paginated, UpdateMember, UpdateOrg,
-};
+use pnex_core::{AddMember, CreateOrg, OrgDetail, OrgMember, OrgSummary, UpdateMember, UpdateOrg};
 
 use crate::api::client;
 use crate::api::error::ApiError;
 
-/// `GET /api/v1/orgs` — orgs dont je suis membre, enveloppe paginée (D14).
-pub async fn list() -> Result<Paginated<OrgSummary>, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/orgs", None).await
+/// `GET /api/v1/orgs` — every org I am a member of (all pages).
+pub async fn list() -> Result<Vec<OrgSummary>, ApiError> {
+    client::request_all("/api/v1/orgs").await
 }
 
 /// `POST /api/v1/orgs` — création (créateur owner, tier Free).

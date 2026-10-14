@@ -36,20 +36,12 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
     let mut anti_window_min =
         use_signal(move || anti.map_or("10".to_string(), |a| (a.window_secs / 60).to_string()));
 
-    let channels = use_resource(move || async move {
-        api::notify::list_channels()
-            .await
-            .ok()
-            .map(|p| p.results)
-            .unwrap_or_default()
-    });
-    let templates = use_resource(move || async move {
-        api::notify::list_templates()
-            .await
-            .ok()
-            .map(|p| p.results)
-            .unwrap_or_default()
-    });
+    let channels =
+        use_resource(move || async move { api::notify::list_channels().await.unwrap_or_default() });
+    let templates =
+        use_resource(
+            move || async move { api::notify::list_templates().await.unwrap_or_default() },
+        );
 
     // Template pick: the effect below (stamped vars ≠ template vars) does
     // the stamping + pruning — one single path for a pick and a self-heal.

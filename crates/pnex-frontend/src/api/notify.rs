@@ -4,7 +4,7 @@
 
 use pnex_core::{
     NotifyChannel, NotifyDeliveryPage, NotifyKindInfo, NotifyTemplate, NotifyTemplateInput,
-    Paginated, PreviewInput, PreviewResult, TemplateVar,
+    PreviewInput, PreviewResult, TemplateVar,
 };
 
 use crate::api::client;
@@ -16,9 +16,10 @@ pub async fn kinds() -> Result<Vec<NotifyKindInfo>, ApiError> {
     client::request(reqwest::Method::GET, "/api/v1/notify/kinds", None).await
 }
 
-/// `GET /api/v1/notify/channels` — canaux de l'org (secrets masqués).
-pub async fn list_channels() -> Result<Paginated<NotifyChannel>, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/notify/channels", None).await
+/// `GET /api/v1/notify/channels` — every channel of the org, all pages
+/// (secrets masked).
+pub async fn list_channels() -> Result<Vec<NotifyChannel>, ApiError> {
+    client::request_all("/api/v1/notify/channels").await
 }
 
 /// `GET /api/v1/notify/channels/{id}`.
@@ -212,9 +213,9 @@ pub async fn list_deliveries(filters: &DeliveryFilters) -> Result<NotifyDelivery
     .await
 }
 
-/// `GET /api/v1/notify/templates`.
-pub async fn list_templates() -> Result<Paginated<NotifyTemplate>, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/notify/templates", None).await
+/// `GET /api/v1/notify/templates` — every template of the org, all pages.
+pub async fn list_templates() -> Result<Vec<NotifyTemplate>, ApiError> {
+    client::request_all("/api/v1/notify/templates").await
 }
 
 /// `POST /api/v1/notify/templates`.

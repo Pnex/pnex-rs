@@ -174,6 +174,12 @@ pub async fn list(filters: &MediaFilters) -> Result<MediaPage, ApiError> {
     .await
 }
 
+/// `GET /api/v1/media`, every page (pickers and name lookups); the
+/// filters' own `limit`/`offset` must be left unset.
+pub async fn list_all(filters: &MediaFilters) -> Result<Vec<MediaAssetSummary>, ApiError> {
+    client::request_all(&format!("/api/v1/media{}", filters.to_query())).await
+}
+
 /// `GET /api/v1/media/{id}` — détail + versions.
 pub async fn detail(id: &str) -> Result<MediaAsset, ApiError> {
     client::request(reqwest::Method::GET, &format!("/api/v1/media/{id}"), None).await

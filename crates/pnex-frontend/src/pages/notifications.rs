@@ -16,7 +16,7 @@ use pnex_core::{NotifyChannel, NotifyTemplate};
 use crate::api;
 use crate::components::badges::date_label;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
-use crate::components::crud::pager::ListPager;
+use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
@@ -191,14 +191,14 @@ pub fn Notifications() -> Element {
                                 .read()
                                 .as_ref()
                                 .and_then(|r| r.as_ref().ok())
-                                .map(|p| p.results.clone())
+                                .cloned()
                                 .unwrap_or_default(),
                             templates: templates
                                 .value()
                                 .read()
                                 .as_ref()
                                 .and_then(|r| r.as_ref().ok())
-                                .map(|p| p.results.clone())
+                                .cloned()
                                 .unwrap_or_default(),
                             channel_filter: journal_channel,
                             reload,
@@ -287,13 +287,18 @@ fn ChannelsTab(
     mut tab: Signal<Tab>,
 ) -> Element {
     // Lecture synchrone de la ressource (doctrine socle CRUD).
+    // Every row is loaded (the Events tab filters on them): paged here.
     let (list_state, is_empty, count, rows) = match &*channels.value().read() {
         None => (None, false, 0, Vec::new()),
-        Some(Ok(paged)) => (
+        Some(Ok(all)) => (
             Some(Ok(())),
-            paged.results.is_empty() && paged.count == 0,
-            paged.count,
-            paged.results.clone(),
+            all.is_empty(),
+            all.len() as i64,
+            all.iter()
+                .skip((channel_page() * PAGE_SIZE) as usize)
+                .take(PAGE_SIZE as usize)
+                .cloned()
+                .collect(),
         ),
         Some(Err(err)) => (Some(Err(err.clone())), false, 0, Vec::new()),
     };
@@ -473,7 +478,7 @@ fn ChannelsTab(
 }
 
 /// Résultats typés pour les props de tabs (alias lisibles).
-type ChannelListResult = Result<pnex_core::Paginated<NotifyChannel>, crate::api::error::ApiError>;
+type ChannelListResult = Result<Vec<NotifyChannel>, crate::api::error::ApiError>;
 type KindListResult = Result<Vec<pnex_core::NotifyKindInfo>, crate::api::error::ApiError>;
 
 /// Channel card badge: last journaled attempt.
@@ -597,13 +602,18 @@ fn TemplatesTab(
     mut delete_target: Signal<Option<(&'static str, String, String)>>,
 ) -> Element {
     // Lecture synchrone de la ressource (doctrine socle CRUD).
+    // Every row is loaded (the Events tab filters on them): paged here.
     let (list_state, is_empty, count, rows) = match &*templates.value().read() {
         None => (None, false, 0, Vec::new()),
-        Some(Ok(paged)) => (
+        Some(Ok(all)) => (
             Some(Ok(())),
-            paged.results.is_empty() && paged.count == 0,
-            paged.count,
-            paged.results.clone(),
+            all.is_empty(),
+            all.len() as i64,
+            all.iter()
+                .skip((template_page() * PAGE_SIZE) as usize)
+                .take(PAGE_SIZE as usize)
+                .cloned()
+                .collect(),
         ),
         Some(Err(err)) => (Some(Err(err.clone())), false, 0, Vec::new()),
     };
@@ -672,4 +682,4 @@ fn TemplatesTab(
     }
 }
 
-type TemplateListResult = Result<pnex_core::Paginated<NotifyTemplate>, crate::api::error::ApiError>;
+type TemplateListResult = Result<Vec<NotifyTemplate>, crate::api::error::ApiError>;

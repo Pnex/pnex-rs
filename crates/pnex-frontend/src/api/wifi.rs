@@ -2,18 +2,12 @@
 
 use crate::api::client;
 use crate::api::error::ApiError;
-use pnex_core::{Paginated, WifiCredential, WifiCredentialInput};
+use pnex_core::{WifiCredential, WifiCredentialInput};
 
-/// `GET /api/v1/edge/wifi-credentials?limit=200` — référentiel de l'org
-/// (le picker ne pagine pas).
+/// `GET /api/v1/edge/wifi-credentials` — every credential of the org
+/// (all pages).
 pub async fn list() -> Result<Vec<WifiCredential>, ApiError> {
-    let page: Paginated<WifiCredential> = client::request(
-        reqwest::Method::GET,
-        "/api/v1/edge/wifi-credentials?limit=200",
-        None,
-    )
-    .await?;
-    Ok(page.results)
+    client::request_all("/api/v1/edge/wifi-credentials").await
 }
 
 /// `POST /api/v1/edge/wifi-credentials` — upsert (200 ou 201, même

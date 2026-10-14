@@ -10,6 +10,7 @@ use dioxus_i18n::t;
 
 use crate::api;
 use crate::components::crud::layout::ListLayout;
+use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
@@ -51,6 +52,7 @@ fn OrgsPage(initial: Option<i64>) -> Element {
     let mut reload = use_signal(|| 0u32);
     let mut selected = use_signal(|| initial);
     let mut new_name = use_signal(String::new);
+    let page = use_signal(|| 0i64);
 
     let list = use_resource(move || async move {
         let _ = reload();
@@ -58,14 +60,19 @@ fn OrgsPage(initial: Option<i64>) -> Element {
     });
 
     // Lecture synchrone de la ressource (doctrine socle CRUD).
-    let (list_state, is_empty, rows) = match &*list.value().read() {
-        None => (None, false, Vec::new()),
-        Some(Ok(paged)) => (
+    let (list_state, is_empty, count, rows) = match &*list.value().read() {
+        None => (None, false, 0, Vec::new()),
+        Some(Ok(all)) => (
             Some(Ok(())),
-            paged.results.is_empty(),
-            paged.results.clone(),
+            all.is_empty(),
+            all.len() as i64,
+            all.iter()
+                .skip((page() * PAGE_SIZE) as usize)
+                .take(PAGE_SIZE as usize)
+                .cloned()
+                .collect(),
         ),
-        Some(Err(err)) => (Some(Err(err.clone())), false, Vec::new()),
+        Some(Err(err)) => (Some(Err(err.clone())), false, 0, Vec::new()),
     };
 
     // Colonnes de la table — les closures d'action capturent le signal
@@ -189,6 +196,7 @@ fn OrgsPage(initial: Option<i64>) -> Element {
                             rows,
                             row_key: RowKey::new(|summary: &pnex_core::OrgSummary| summary.id.to_string()),
                         }
+                        ListPager { count, page }
                     }
                 },
             }

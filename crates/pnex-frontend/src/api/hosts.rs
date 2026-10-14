@@ -3,14 +3,11 @@
 
 use crate::api::client;
 use crate::api::error::ApiError;
-use pnex_core::{Paginated, PnexHost, PnexHostInput};
+use pnex_core::{PnexHost, PnexHostInput};
 
-/// `GET /api/v1/edge/hosts?limit=200` — référentiel de l'org (le picker ne
-/// pagine pas).
+/// `GET /api/v1/edge/hosts` — every host of the org (all pages).
 pub async fn list() -> Result<Vec<PnexHost>, ApiError> {
-    let page: Paginated<PnexHost> =
-        client::request(reqwest::Method::GET, "/api/v1/edge/hosts?limit=200", None).await?;
-    Ok(page.results)
+    client::request_all("/api/v1/edge/hosts").await
 }
 
 /// `POST /api/v1/edge/hosts` — upsert (200 ou 201, même traitement).
