@@ -13,6 +13,8 @@
 | **Pods flow-worker** | `PNEX_FLOW_RUN_WORKER=true` (défaut) | Exécutent les flows des orgs placées chez eux (D106). Peuvent aussi servir HTTP, mais isoler les rôles simplifie le dimensionnement. |
 | **Workers de queue** (builds firmware, stitch 360, checks firmware) | `pnex-server start --worker-only` (ou `--server-and-worker`) | Doivent tourner là où vit PlatformIO (image `pnex-builder`). |
 
+Chart `pnex-deploy` : `flowWorker.replicas > 0` crée les pods flow-worker (même image, sans Service ni ingress) et passe les pods API en `PNEX_FLOW_RUN_WORKER=false` ; `0` (défaut) = les pods API exécutent aussi les flows.
+
 Tous les pods partagent :
 
 - `PNEX_FLOW_CLUSTER_TOKEN` : **le même** secret partout (routes internes `/internal/flow-cluster/*`, fail-closed).
@@ -28,7 +30,7 @@ Tous les pods partagent :
 2. **Vidage des écrivains bufferisés** (`services/drain.rs`, borné à 10 s) : dernier lot du batcher télémétrie → OpenObserve et entrées en attente du journal notify. Leurs émetteurs vivent dans des statiques : le canal ne se fermait jamais, le « flush final » ne s'exécutait pas et chaque rolling update perdait le dernier lot de chaque pod.
 3. **Libération des baux singleton** `task:*` (`services/singleton.rs::release_all`) : les sweeps (reaper de liveness, watchdog OTA, pruner vidéo, reconcile rétention O2) reprennent tout de suite sur un autre pod au lieu d'attendre l'expiration (3 périodes).
 
-Total ≈ 30 s au pire, d'où **`terminationGracePeriodSeconds` ≥ 40** (k8s envoie SIGKILL au-delà).
+Total ≈ 30 s au pire, d'où **`terminationGracePeriodSeconds` ≥ 40** (k8s envoie SIGKILL au-delà). Le chart y ajoute un `preStop.sleep` de 10 s (grace 45 s) : sans lui, l'ingress route encore quelques secondes vers un pod qui n'accepte plus (O67).
 
 ## 3. Migrations au boot
 

@@ -1388,3 +1388,59 @@ page qui demande « tout » ou plus de 100 tronque sans le dire.
   du calc (`notes` vide aujourd'hui) pour que l'assistant ne génère pas ce
   câblage ; éventuellement accepter les clés numériques et ignorer les autres.
 - **Statut** : ouvert.
+
+## 2026-10-14 — P0.3 : cluster sur dev.pnex.io (3 pods, ESP32-CAM réelle)
+
+### O67 — Rolling update : timeouts pendant l'arrêt des anciens pods
+
+- **Constat** : `rollout restart` de `pnex-server-api` (3 pods) sous sonde
+  HTTP toutes les 0,2 s : 2 requêtes sur 1 365 en timeout de 5 s, chacune
+  4 à 7 s après le SIGTERM d'un ancien pod. Kills isolés (arrêt propre ou
+  `--force`) : zéro erreur.
+- **Cause** : pas de `preStop` ; au SIGTERM le serveur cesse d'accepter
+  pendant qu'ingress-nginx route encore vers le pod.
+- **Correction** (`pnex-deploy`, chart) : `lifecycle.preStop.sleep` 10 s
+  (natif k8s ≥ 1.30, l'image n'a pas de shell), budget 45 s inchangé. Même
+  passe : `flowWorker.replicas` (pods flow-worker dédiés, API en
+  `PNEX_FLOW_RUN_WORKER=false`), ce qui fait taire l'avertissement « API
+  and flow runtime in the same cgroup » des pods.
+- **Statut** : corrigé et déployé sur dev.pnex.io (rejoué : 1 timeout sur
+  743, 50 s après le roulement, dû à un contrôleur ingress microk8s en
+  CrashLoopBackOff depuis 15 jours sur un nœud — infra, hors PneX).
+
+### O68 — Device (écriture) : appareil hors ligne absent du sélecteur
+
+- **Constat** : le sélecteur ne liste que les appareils actifs
+  (`inspector/device.rs`, `active: Some(true)`) et charge la liste une
+  seule fois à l'ouverture de l'éditeur. Une carte en cours de reconnexion
+  ou débranchée disparaît sans explication ; il faut recharger la page.
+- **Correction proposée** : lister tous les appareils de l'org, les hors
+  ligne grisés avec la mention « hors ligne » (on doit pouvoir préparer un
+  flow carte débranchée) ; rafraîchir la liste à l'ouverture du sélecteur.
+- **Statut** : ouvert (chantier flows non-dev, voir O70).
+
+### O69 — Device (écriture) : valeur rejetée invisible dans l'éditeur
+
+- **Constat** : `inject` sans payload (timestamp par défaut) → `Device
+  (écriture)` sur une sortie digitale : `invalid digital value (true/false
+  or 0/1 required)` uniquement en WARN dans les logs serveur ; le flow est
+  « Déployé » au vert et rien ne bouge. Même famille qu'O66.
+- **Correction proposée** : statut de nœud `warn` avec code machine + clé
+  fluent, visible sur le canevas et dans le panneau Debug.
+- **Statut** : ouvert (chantier flows non-dev, voir O70).
+
+### O70 — Flows : le modèle « payload » n'est pas intuitif pour un non-dev
+
+- **Constat** (retour utilisateur) : piloter une LED demande de comprendre
+  que l'`inject` porte la valeur (payload) et que la case cochée du
+  `Device (écriture)` ne dit que *quoi* piloter ; l'aide « payload attendu :
+  une map pin → valeur » suppose le modèle connu.
+- **Direction retenue** : la partie flows doit devenir intuitive pour un
+  non-développeur, même avec beaucoup de nœuds — un nœud de plus ne gêne
+  pas si l'éditeur offre groupes et zoom (lisibilité façon classes).
+  Pistes : valeur déclarée par sortie cochée (interrupteur / curseur /
+  champ, utilisée quand le message n'en porte pas), payload typé dans
+  l'`inject` (aucun / nombre / booléen / texte / JSON), rejets visibles
+  (O66, O69), sélecteur complet (O68). Toute évolution passe par la
+  `NodeDoc` et l'assistant (D142–D145).
+- **Statut** : à cadrer après les urgences en cours.
