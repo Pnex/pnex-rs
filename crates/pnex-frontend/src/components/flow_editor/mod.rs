@@ -13,6 +13,7 @@ pub(crate) mod geometry;
 pub(crate) mod inspector;
 pub(crate) mod state;
 pub(crate) mod versions;
+pub(crate) mod wire_types;
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;

@@ -85,9 +85,6 @@ pub const FORECAST_STROKE: &str = "var(--color-violet-600, #7c3aed)";
 pub const VIOLATION_STROKE: &str = "var(--color-red-600, #dc2626)";
 /// Nœud sélectionné.
 pub const SELECTED_STROKE: &str = "var(--color-signal-600, #2563eb)";
-/// Couleur des câbles.
-pub const WIRE_STROKE: &str = "var(--color-slate-400, #94a3b8)";
-
 /// Arrondit à la grille (positions snapées → rendu stable).
 pub fn snap(value: f64) -> f64 {
     (value / GRID).round() * GRID

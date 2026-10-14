@@ -147,6 +147,12 @@ pub(crate) fn Canvas(
         }
     }
 
+    // Data type of every wire (colour + midpoint label, O70).
+    let wire_kinds: Vec<super::wire_types::DataType> = wires
+        .iter()
+        .map(|(source_id, port, ..)| super::wire_types::output_type(&graph, source_id, *port))
+        .collect();
+
     // Câble temporaire pendant le câblage — origine = ancre de sortie
     // (câblage direct) ou d'entrée (inverse). Pré-calcul hors rsx (pas de
     // `let` dans le rsx).
@@ -249,7 +255,7 @@ pub(crate) fn Canvas(
                             },
                         }
                     }
-                    for (wire_index, (source_id, port, target_id, a, b, pin)) in wires.into_iter().enumerate() {
+                    for (wire_index, ((source_id, port, target_id, a, b, pin), kind)) in wires.into_iter().zip(wire_kinds).enumerate() {
                         path {
                             key: "wire-{wire_index}-{source_id}-{port}-{target_id}-{pin}",
                             d: geometry::wire_path(a, b),
@@ -257,9 +263,26 @@ pub(crate) fn Canvas(
                             // Câble rouge quand une extrémité porte une
                             // violation (graphe invalide ou staleness
                             // pin/device — le lien cassé saute aux yeux).
-                            stroke: if violation_nodes.contains(&source_id) || violation_nodes.contains(&target_id) { geometry::VIOLATION_STROKE } else { geometry::WIRE_STROKE },
+                            stroke: if violation_nodes.contains(&source_id) || violation_nodes.contains(&target_id) { geometry::VIOLATION_STROKE } else { kind.color() },
                             "stroke-width": "2",
                             "pointer-events": "none",
+                        }
+                        // Type label at the wire midpoint (the curve is
+                        // symmetric: t = 0.5 is the chord midpoint).
+                        if kind != super::wire_types::DataType::Any {
+                            text {
+                                key: "wire-type-{wire_index}-{source_id}-{port}-{target_id}-{pin}",
+                                x: "{(a.0 + b.0) / 2.0}",
+                                y: "{(a.1 + b.1) / 2.0 - 4.0}",
+                                "text-anchor": "middle",
+                                "font-size": "9",
+                                fill: kind.color(),
+                                stroke: "var(--color-surface, #ffffff)",
+                                "stroke-width": "3",
+                                "paint-order": "stroke",
+                                "pointer-events": "none",
+                                {kind.label()}
+                            }
                         }
                     }
                     // Câble temporaire pendant le câblage — né sur l'ancre
@@ -865,7 +888,10 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                         cx: "{geometry::NODE_W}",
                         cy: "{port_y}",
                         r: "7",
-                        fill: "{stroke}",
+                        // Port colour = data type (O70), node colour as ring.
+                        fill: super::wire_types::output_type(&cx.graph.read(), &port_node_id, port_index).color(),
+                        stroke: "{stroke}",
+                        "stroke-width": "2",
                         style: "cursor: crosshair",
                         onpointerdown: move |event| {
                             event.stop_propagation();
