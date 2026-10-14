@@ -14,8 +14,7 @@ struct Env {
     bob: String,
 }
 
-/// Boot l'app avec le MediaStore fs pointé sur un répertoire temporaire
-/// jetable par test (env posée AVANT le boot — école RAUTHY_URL).
+/// Boots the app on the test object store (env set BEFORE the boot).
 async fn with_app<F, Fut>(f: F)
 where
     F: FnOnce(axum_test::TestServer, Env) -> Fut,
@@ -24,17 +23,6 @@ where
     let base = common::spawn_mock_rauthy().await;
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     unsafe { std::env::set_var("RAUTHY_URL", &base) };
-    unsafe {
-        std::env::set_var(
-            "PNEX_MEDIA_DIR",
-            format!(
-                "{}/pnex-media-tests-{}",
-                std::env::temp_dir().display(),
-                std::process::id()
-            ),
-        )
-    };
-    unsafe { std::env::set_var("PNEX_MEDIA_BACKEND", "fs") };
     let config: RequestConfig = RequestConfigBuilder::new().build();
     let env = Env {
         alice: common::valid_token(
@@ -239,8 +227,8 @@ async fn cycle_upload_list_detail_versions() {
             .await;
         assert_eq!(res.into_bytes(), plain_jpeg(), "octets exacts de v2");
 
-        // DELETE asset → purge des deux clés du store (vérification directe).
-        let dir = std::env::var("PNEX_MEDIA_DIR").unwrap();
+        // DELETE asset purges both store keys (checked directly).
+        let store = common::media_store();
         let res = server
             .delete(&format!("/api/v1/media/{asset_id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -248,12 +236,12 @@ async fn cycle_upload_list_detail_versions() {
             .await;
         assert_eq!(res.status_code(), 204);
         for blob in [
-            format!("{dir}/org_{org}/media/{asset_id}/1_sphere.jpg"),
-            format!("{dir}/org_{org}/media/{asset_id}/2_fix.jpg"),
+            format!("org_{org}/media/{asset_id}/1_sphere.jpg"),
+            format!("org_{org}/media/{asset_id}/2_fix.jpg"),
         ] {
             assert!(
-                !std::path::Path::new(&blob).exists(),
-                "blob purgé du store fs : {blob}"
+                !store.exists(&blob).await.unwrap(),
+                "blob purged from the store: {blob}"
             );
         }
     })

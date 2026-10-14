@@ -34,7 +34,6 @@ pub mod device_registries;
 pub mod device_states;
 pub mod device_tokens;
 pub mod device_types;
-pub mod firmware_artifacts;
 pub mod firmware_checks;
 pub mod firmware_projects;
 pub mod firmware_revisions;

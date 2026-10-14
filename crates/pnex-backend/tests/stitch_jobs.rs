@@ -23,8 +23,8 @@ struct Env {
     bob: String,
 }
 
-/// Boot l'app avec le MediaStore fs temporaire et le stitch à 1024 px (env
-/// posées AVANT le boot — école RAUTHY_URL / PNEX_MEDIA_DIR de tests/media.rs).
+/// Boots the app on the test object store with stitching at 1024 px (env
+/// set BEFORE the boot).
 /// ForegroundBlocking : le worker tourne inline dans la requête du dernier
 /// POST frame.
 async fn with_app<F, Fut>(stitch_enabled: bool, f: F)
@@ -44,17 +44,6 @@ where
     let base = common::spawn_mock_rauthy().await;
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     unsafe { std::env::set_var("RAUTHY_URL", &base) };
-    unsafe {
-        std::env::set_var(
-            "PNEX_MEDIA_DIR",
-            format!(
-                "{}/pnex-stitch-tests-{}",
-                std::env::temp_dir().display(),
-                std::process::id()
-            ),
-        )
-    };
-    unsafe { std::env::set_var("PNEX_MEDIA_BACKEND", "fs") };
     unsafe { std::env::set_var("PNEX_STITCH_OUT_WIDTH", "1024") };
     unsafe {
         std::env::set_var(
@@ -331,11 +320,11 @@ async fn cycle_job_complet() {
         assert!(head.windows(6).any(|s| s == b"GPano:"), "GPano conservé");
 
         // Frames conservées dans le store (re-stitch hôte futur — plan B2).
-        let dir = std::env::var("PNEX_MEDIA_DIR").unwrap();
+        let store = common::media_store();
         for k in 0..4u32 {
-            let frame = format!("{dir}/stitch_jobs/{job_id}/frame_{k:03}.jpg");
+            let frame = format!("stitch_jobs/{job_id}/frame_{k:03}.jpg");
             assert!(
-                std::path::Path::new(&frame).exists(),
+                store.exists(&frame).await.unwrap(),
                 "frame conservée : {frame}"
             );
         }

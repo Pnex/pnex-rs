@@ -87,6 +87,15 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      # Object storage of every stored byte (config/test.yaml: bucket
+      # pnex-test, created below).
+      rustfs:
+        image: rustfs/rustfs:1.0.0-rc.2
+        env:
+          RUSTFS_ACCESS_KEY: rustfsadmin
+          RUSTFS_SECRET_KEY: rustfsadmin
+        ports:
+          - 9000:9000
     env:
       TEST_DATABASE_URL: postgres://pnex:pnex@localhost:5432/pnex_test
       PNEX_TEST_APP_VALKEY_URL: redis://localhost:6379/0
@@ -114,6 +123,14 @@ jobs:
           test -f crates/pnex-frontend/assets/map.css || printf '/* Stub CI — CSS maplibre genere par bun run js:map */\n' > crates/pnex-frontend/assets/map.css
           test -f crates/pnex-frontend/assets/doc.js || printf '/* Stub CI — bundle reel genere par bun run js:doc */\n' > crates/pnex-frontend/assets/doc.js
           test -f crates/pnex-frontend/assets/graph.js || printf '/* Stub CI — bundle reel genere par bun run js:graph */\n' > crates/pnex-frontend/assets/graph.js
+      - name: Create the test bucket
+        env:
+          AWS_ACCESS_KEY_ID: rustfsadmin
+          AWS_SECRET_ACCESS_KEY: rustfsadmin
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          timeout 120 bash -c "until aws --endpoint-url http://localhost:9000 s3 ls >/dev/null 2>&1; do sleep 1; done"
+          aws --endpoint-url http://localhost:9000 s3api create-bucket --bucket pnex-test
       - run: cargo test --workspace
 
   arm-check:

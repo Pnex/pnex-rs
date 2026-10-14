@@ -125,50 +125,28 @@ settings:
     <% if get_env(name="RAUTHY_ISSUER_URL", default="") != "" %>
     issuer_url: <%= get_env(name="RAUTHY_ISSUER_URL") %>
     <% endif %>
-  # Firmware Phase 6 — source embarquée dans le binaire (self-hosted/edge :
-  # le serveur build sa propre version du firmware, zéro clone git ni
-  # chemin local — aucune config de source). Artefacts en base par défaut
-  # (D5 v2, table firmware_artifacts — pods API stateless) ;
-  # PNEX_STORAGE_BACKEND=s3 = tier industriel (artefacts sur S3-compatible via
-  # opendal — données + queue restent en base). Aucune migration entre
-  # backends : on choisit son tier à l'installation.
+  # Object storage (S3-compatible: RustFS, AWS, Scaleway…) of every stored
+  # byte: firmware artifacts, media, video segments, stitch frames, models.
+  # No local disk, no bytes in the database. Credentials come from the
+  # environment only (the secret is masked in the server logs).
+  storage:
+    endpoint: "<%= get_env(name="PNEX_S3_ENDPOINT", default="") %>"
+    bucket: "<%= get_env(name="PNEX_S3_BUCKET", default="") %>"
+    region: "<%= get_env(name="PNEX_S3_REGION", default="") %>"
+    access_key: "<%= get_env(name="PNEX_S3_ACCESS_KEY", default="") %>"
+    secret_key: "<%= get_env(name="PNEX_S3_SECRET_KEY", default="") %>"
+    path_style: <%= get_env(name="PNEX_S3_PATH_STYLE", default="false") %>
+  # Firmware Phase 6: source embedded in the binary (no source config),
+  # artifacts in the object storage above.
   firmware:
-    storage:
-      backend: <%= get_env(name="PNEX_STORAGE_BACKEND", default="db") %>
-      s3_endpoint: <%= get_env(name="PNEX_S3_ENDPOINT", default="") %>
-      s3_bucket: <%= get_env(name="PNEX_S3_BUCKET", default="") %>
-      s3_region: <%= get_env(name="PNEX_S3_REGION", default="") %>
-      # Credentials injectés par secrets manager (SOPS/age) — jamais dans
-      # la config commitée (secret masqué dans les Debug/logs du serveur).
-      s3_access_key: <%= get_env(name="PNEX_S3_ACCESS_KEY", default="") %>
-      s3_secret_key: <%= get_env(name="PNEX_S3_SECRET_KEY", default="") %>
-      s3_path_style: <%= get_env(name="PNEX_S3_PATH_STYLE", default="false") %>
     pio_cmd: <%= get_env(name="PNEX_PIO_CMD", default="pio") %>
     esptool_cmd: <%= get_env(name="PNEX_ESPTOOL_CMD", default="esptool") %>
     timeout_secs: <%= get_env(name="PNEX_BUILD_TIMEOUT_SECS", default="900") %>
-  # Média (D21) — bibliothèque d'assets versionnée par org ; les octets ne
-  # vivent jamais en base : magasin dédié opendal (fs défaut / s3 RustFS —
-  # réutilise les vars PNEX_S3_* du firmware).
+  # Media (D21): org-versioned asset library, bytes in the object storage.
   media:
-    storage:
-      backend: <%= get_env(name="PNEX_MEDIA_BACKEND", default="fs") %>
-      # Racine du magasin fs (volume persistant requis en prod).
-      dir: <%= get_env(name="PNEX_MEDIA_DIR", default="./storage/media") %>
-      # Multi-pod (flow cluster advertise_url/token or PNEX_CLUSTER_MODE=true)
-      # refuses to boot on fs unless this dir is ONE shared RWX volume
-      # mounted on every pod and worker; prefer PNEX_MEDIA_BACKEND=s3.
-      fs_shared: <%= get_env(name="PNEX_MEDIA_FS_SHARED", default="false") %>
-      # Plafond d'un upload — 413 JSON propre au-delà ; la limite axum
-      # (max+1 Mo, vue routes()) reste le filet.
-      max_bytes: <%= get_env(name="PNEX_MEDIA_MAX_BYTES", default="268435456") %>
-      s3_endpoint: <%= get_env(name="PNEX_S3_ENDPOINT", default="") %>
-      s3_bucket: <%= get_env(name="PNEX_S3_BUCKET", default="") %>
-      s3_region: <%= get_env(name="PNEX_S3_REGION", default="") %>
-      # Credentials injectés par secrets manager (SOPS/age) — jamais dans
-      # la config commitée (secret masqué dans les Debug/logs du serveur).
-      s3_access_key: <%= get_env(name="PNEX_S3_ACCESS_KEY", default="") %>
-      s3_secret_key: <%= get_env(name="PNEX_S3_SECRET_KEY", default="") %>
-      s3_path_style: <%= get_env(name="PNEX_S3_PATH_STYLE", default="false") %>
+    # Upload cap: clean 413 JSON beyond; the axum limit (max+1 MB, see
+    # routes()) stays the safety net.
+    max_bytes: <%= get_env(name="PNEX_MEDIA_MAX_BYTES", default="268435456") %>
   # Flow engine (D18) — the supervisor spawns pnex-flow-runtime (found on
   # PATH in the server image). Debug tools stay off in production.
   flow:

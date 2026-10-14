@@ -16,7 +16,6 @@ pub use super::device_registries::Entity as DeviceRegistries;
 pub use super::device_states::Entity as DeviceStates;
 pub use super::device_tokens::Entity as DeviceTokens;
 pub use super::device_types::Entity as DeviceTypes;
-pub use super::firmware_artifacts::Entity as FirmwareArtifacts;
 pub use super::firmware_projects::Entity as FirmwareProjects;
 pub use super::firmware_revisions::Entity as FirmwareRevisions;
 pub use super::flow_leases::Entity as FlowLeases;

@@ -142,49 +142,29 @@ settings:
     # sur une IP LAN). Doit rester aligné avec PUB_URL du compose.yaml.
     issuer_url: <%= get_env(name="RAUTHY_ISSUER_URL", default="https://192.168.1.185:8443") %>
     client_id: <%= get_env(name="RAUTHY_CLIENT_ID", default="pnex") %>
-  # Firmware Phase 6 (défauts champ par champ — cf. services/firmware.rs).
-  # Source du firmware : embarquée dans le binaire (firmware/ du monorepo,
-  # compilée dedans — aucune config). Artefacts en base par défaut (D5 v2,
-  # table firmware_artifacts) ; PNEX_STORAGE_BACKEND surcharge storage.backend.
-  # S3 = tier industriel (artefacts sur S3-compatible via opendal, données
-  # + queue restent en base). Aucune migration entre backends : on choisit
-  # son tier à l'installation.
+  # Object storage (S3-compatible: RustFS, AWS, Scaleway…) of every stored
+  # byte: firmware artifacts, media, video segments, stitch frames, models.
+  # No local disk, no bytes in the database. Credentials come from the
+  # environment only (the secret is masked in the server logs).
+  storage:
+    endpoint: "<%= get_env(name="PNEX_S3_ENDPOINT", default="http://localhost:9000") %>"
+    bucket: "<%= get_env(name="PNEX_S3_BUCKET", default="pnex") %>"
+    region: "<%= get_env(name="PNEX_S3_REGION", default="") %>"
+    access_key: "<%= get_env(name="PNEX_S3_ACCESS_KEY", default="rustfsadmin") %>"
+    secret_key: "<%= get_env(name="PNEX_S3_SECRET_KEY", default="rustfsadmin") %>"
+    path_style: <%= get_env(name="PNEX_S3_PATH_STYLE", default="true") %>
+  # Firmware Phase 6: source embedded in the binary (no source config),
+  # artifacts in the object storage above.
   firmware:
-    storage:
-      backend: <%= get_env(name="PNEX_STORAGE_BACKEND", default="db") %>
-      s3_endpoint: <%= get_env(name="PNEX_S3_ENDPOINT", default="") %>
-      s3_bucket: <%= get_env(name="PNEX_S3_BUCKET", default="") %>
-      s3_region: <%= get_env(name="PNEX_S3_REGION", default="") %>
-      # Credentials jamais commités — env/secrets manager uniquement
-      # (le secret est masqué dans les Debug/logs du serveur).
-      s3_access_key: <%= get_env(name="PNEX_S3_ACCESS_KEY", default="") %>
-      s3_secret_key: <%= get_env(name="PNEX_S3_SECRET_KEY", default="") %>
-      s3_path_style: <%= get_env(name="PNEX_S3_PATH_STYLE", default="false") %>
     # Machine de dev : `uv run pio` dans le dépôt firmware (sinon `pio`).
     pio_cmd: <%= get_env(name="PNEX_PIO_CMD", default="pio") %>
     esptool_cmd: <%= get_env(name="PNEX_ESPTOOL_CMD", default="esptool") %>
     timeout_secs: <%= get_env(name="PNEX_BUILD_TIMEOUT_SECS", default="900") %>
-  # Média (D21) — bibliothèque d'assets versionnée par org ; les octets ne
-  # vivent jamais en base : magasin dédié opendal (fs défaut / s3 RustFS).
+  # Media (D21): org-versioned asset library, bytes in the object storage.
   media:
-    storage:
-      backend: <%= get_env(name="PNEX_MEDIA_BACKEND", default="fs") %>
-      # Racine du magasin fs (créé au boot si absent).
-      dir: <%= get_env(name="PNEX_MEDIA_DIR", default="./storage/media") %>
-      # Dev runs on one host: the fs dir is shared by every local process
-      # (multi-process cluster dev). Production defaults to false.
-      fs_shared: <%= get_env(name="PNEX_MEDIA_FS_SHARED", default="true") %>
-      # Plafond d'un upload — 413 JSON propre au-delà ; la limite axum
-      # (max+1 Mo, vue routes()) reste le filet.
-      max_bytes: <%= get_env(name="PNEX_MEDIA_MAX_BYTES", default="268435456") %>
-      s3_endpoint: <%= get_env(name="PNEX_S3_ENDPOINT", default="") %>
-      s3_bucket: <%= get_env(name="PNEX_S3_BUCKET", default="") %>
-      s3_region: <%= get_env(name="PNEX_S3_REGION", default="") %>
-      # Credentials jamais commités — env/secrets manager uniquement
-      # (le secret est masqué dans les Debug/logs du serveur).
-      s3_access_key: <%= get_env(name="PNEX_S3_ACCESS_KEY", default="") %>
-      s3_secret_key: <%= get_env(name="PNEX_S3_SECRET_KEY", default="") %>
-      s3_path_style: <%= get_env(name="PNEX_S3_PATH_STYLE", default="false") %>
+    # Upload cap: clean 413 JSON beyond; the axum limit (max+1 MB, see
+    # routes()) stays the safety net.
+    max_bytes: <%= get_env(name="PNEX_MEDIA_MAX_BYTES", default="268435456") %>
   # Stitching serveur (Take 360 V2) — assemblage HD des prises 360° dans le
   # worker `stitch_panorama`. Les frames transitent par le MediaStore
   # (settings.media, aucune config de stockage propre). enabled=false :

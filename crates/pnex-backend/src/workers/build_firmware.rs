@@ -205,7 +205,7 @@ impl BackgroundWorker<BuildFirmwareArgs> for BuildFirmwareWorker {
                 stamp.update(&self.db).await?;
                 // Retention: keep the newest records of the device (each
                 // build is a new row). Best effort, never fails the build.
-                match self.settings.store(&self.db) {
+                match self.settings.store() {
                     Ok(store) => {
                         if let Err(e) = crate::services::build_retention::prune_device_builds(
                             &self.db,
@@ -280,7 +280,7 @@ impl BuildFirmwareWorker {
             timeout_secs: self.settings.timeout_secs,
             store: self
                 .settings
-                .store(&self.db)
+                .store()
                 .map_err(|e| Failure::new("build_store", e))?,
         };
         let ring = self

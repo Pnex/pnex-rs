@@ -612,7 +612,7 @@ mod tests {
     /// from another org stamps nothing (R1).
     #[tokio::test]
     async fn taxonomy_topics_are_stamped_for_the_entry_org_only() {
-        let db = crate::services::artifact_store::tests::migrated_test_db().await;
+        let db = crate::services::db_lock::migrated_test_db().await;
         let (own, other) = (987_001_i64, 987_002_i64);
         db.execute_unprepared(&format!(
             "DELETE FROM organizations WHERE id IN ({own}, {other}); \

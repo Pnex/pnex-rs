@@ -86,7 +86,8 @@ EDGE_SECRET="${EDGE_SECRET:-$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0
 # Device endpoint (D158): its own TLS listener asking for the device client
 # certificate, so browsers on 443 are never asked for one.
 DEVICE_PORT="${PNEX_DEVICE_PORT:-4443}"
-export PNEX_EDGE_SECRET="$EDGE_SECRET" PNEX_DEVICE_PORT="$DEVICE_PORT"
+# The containerised server reads PNEX_DEVICE_HOST (compose.app.yaml), the host-run one edge.env.
+export PNEX_EDGE_SECRET="$EDGE_SECRET" PNEX_DEVICE_PORT="$DEVICE_PORT" PNEX_DEVICE_HOST="${PNEX_DEVICE_HOST:-:$DEVICE_PORT}"
 BACKEND="${PNEX_EDGE_BACKEND:-host}"
 case $BACKEND in
     host|container) ;;

@@ -218,7 +218,6 @@ ENV PATH=/usr/local/bin:/usr/bin:/bin \
     PNEX_FLOW_RUNTIME_CMD=pnex-flow-runtime \
     PNEX_AGENT_DIST_DIR=/opt/pnex/agent-dist \
     PNEX_FLOW_STATE_DIR=/data/flow-state \
-    PNEX_MEDIA_DIR=/data/media \
     PNEX_FFMPEG=/usr/local/bin/ffmpeg \
     PNEX_ASR_BIN=/usr/local/bin/pnex-asr \
     PNEX_ASR_MODELS_DIR=/data/asr-models
@@ -293,7 +292,6 @@ COPY deploy/models/ /app/models/
 COPY --from=build --chown=65532:65532 /out/data/ /data/
 WORKDIR /app/pnex-backend
 ENV LOCO_ENV=production \
-    PNEX_MEDIA_DIR=/data/media \
     PNEX_STITCH_MODELS_DIR=/app/models \
     PNEX_FFMPEG=/usr/local/bin/ffmpeg \
     PNEX_ASR_BIN=/usr/local/bin/pnex-asr \

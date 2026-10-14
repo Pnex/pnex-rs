@@ -31,7 +31,13 @@ x-pnex-env: &pnex-env
   # Flow runtime log level (error|warn|info|debug|trace), relayed into the
   # server logs; debug shows notification deliveries.
   PNEX_FLOW_LOG: ${PNEX_FLOW_LOG:-info}
-  PNEX_STORAGE_BACKEND: ${PNEX_STORAGE_BACKEND:-db}
+  # Object storage: every stored byte (firmware, media) goes to S3.
+  PNEX_S3_ENDPOINT: ${PNEX_S3_ENDPOINT:-http://rustfs:9000}
+  PNEX_S3_BUCKET: ${PNEX_S3_BUCKET:-pnex}
+  PNEX_S3_REGION: ${PNEX_S3_REGION:-}
+  PNEX_S3_ACCESS_KEY: ${PNEX_S3_ACCESS_KEY:-rustfsadmin}
+  PNEX_S3_SECRET_KEY: ${PNEX_S3_SECRET_KEY:-rustfsadmin}
+  PNEX_S3_PATH_STYLE: ${PNEX_S3_PATH_STYLE:-true}
   # D72: platform admins (comma separated emails), deployment mode
   # (self_hosted | saas) and fallback O2 retention in days. The default
   # admin is the Rauthy bootstrap account (example.com is IANA-reserved:
@@ -46,8 +52,9 @@ x-pnex-env: &pnex-env
   PNEX_EDGE_MODE: ${PNEX_EDGE_MODE:-local}
   # Edge headers are trusted only with this secret (set by the edge).
   PNEX_EDGE_SECRET: ${PNEX_EDGE_SECRET:-}
-  # Device endpoint port compiled into firmware (D158).
-  PNEX_DEVICE_PORT: ${PNEX_DEVICE_PORT:-}
+  # Device endpoint compiled into firmware (D158): `:4443` on a LAN edge (set
+  # by apply-edge.sh). The server reads PNEX_DEVICE_HOST, not the port alone.
+  PNEX_DEVICE_HOST: ${PNEX_DEVICE_HOST:-}
   # Production server host imposed on firmware builds; empty = users pick
   # from the org's host referential (docs/architecture/firmware-build.md).
   PNEX_PROD_HOST: ${PNEX_PROD_HOST:-}
@@ -75,6 +82,8 @@ services:
         condition: service_healthy
       rauthy:
         condition: service_started
+      rustfs-init:
+        condition: service_completed_successfully
     environment:
       <<: *pnex-env
     ports:
@@ -97,8 +106,7 @@ services:
     environment:
       <<: *pnex-env
     volumes:
-      # Shared with pnex-server: stitching reads/writes media on the fs
-      # backend.
+      # Shared with pnex-server: ASR models.
       - pnex-appdata:/data
       - ./deploy/edge/pki-data:/pki:ro
 
