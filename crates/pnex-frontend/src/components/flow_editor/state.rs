@@ -52,7 +52,6 @@ pub enum PaletteKind {
     Anomaly,
     Forecast,
     Debug,
-    Red,
 }
 
 /// Crée un nœud neuf d'un kind de palette, avec sa config par défaut :
@@ -276,10 +275,6 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             },
             PaletteKind::Debug => FlowNodeKind::Debug {
                 config: DebugConfig::default(),
-            },
-            PaletteKind::Red => FlowNodeKind::Red {
-                type_name: String::new(),
-                config: Default::default(),
             },
         },
     }

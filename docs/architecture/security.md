@@ -406,6 +406,12 @@ pour `run-as`).
   Tests : `red_node_rejects_host_effect_and_pnex_types`,
   `red_projection_strips_user_tenant_fields`, `tests/flows.rs`
   (`red_type_forbidden`), `env_isolation.rs` (exec jamais exécuté).
+  **2026-10-14** : le kind `red` est retiré (aucun usage) — la surface
+  disparaît ; `RED_ALLOWED_TYPES` supprimée, le registre du runtime se
+  réduit aux builtins émis par la projection (`inject`, `debug`,
+  `function`, `comment`, placeholders) + `pnex-*`. Tests :
+  `raw_red_kind_is_refused`, `tests/flows.rs` (kind `red` → 4xx),
+  `env_isolation.rs`.
 - **SEC-3** — fork `vendor/edgelinkd` : `Engine::with_json` ne copie plus
   l'environnement du process dans le magasin d'env (le JS `env.get`,
   les propriétés `env` des nœuds n'y voient que l'env du flow). Test

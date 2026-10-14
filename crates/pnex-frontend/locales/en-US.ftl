@@ -555,8 +555,6 @@ flows-palette-display-help = Shows the payload (panel + live badge)
 flows-display-hint = No configuration: this probe passes messages through and shows the latest payload under it (live badge) and in the Debug panel.
 flows-palette-debug = Debug
 flows-palette-debug-help = Captures the pipeline output
-flows-palette-red = Raw Node-RED
-flows-palette-red-help = Unmodelled builtin type (JSON config)
 
 flows-node-name = Node name
 flows-node-delete = Delete node
@@ -569,9 +567,6 @@ flows-inject-payload-invalid = Invalid JSON
 flows-debug-active = Capture enabled
 flows-debug-complete = Captured property (empty = payload)
 flows-debug-console = Also on the runtime console
-flows-red-type = Node-RED type (e.g. change, json)
-flows-red-config = Config (JSON)
-flows-red-config-invalid = Invalid JSON
 
 flows-wire-remove-title = Cut this wire?
 flows-wire-remove-message = The wiring between the two nodes will be removed.
@@ -592,7 +587,6 @@ flows-palette-device-write-help = Writes a single device's outputs — payload m
 flow-port-device-name = name
 flow-port-tracks = tracks
 flow-port-track-events = events
-flow-port-device-all = all
 flows-palette-calc = Calc
 flows-palette-calc-help = Expression over the readings (variables = payload keys)
 flows-palette-metric = Metric
@@ -2253,7 +2247,6 @@ flows-video-stream = Label
 flows-video-stream-hint = Optional recording label (defaults to the camera or stream name)
 err-camera-device-missing = Select a camera
 err-camera-stream-missing = Select a media stream
-err-red-type-forbidden = Node-RED type "{ $type }" is not allowed (host access or reserved PNeX type)
 err-camera-fps-invalid = Max fps must be between 0 (every frame) and 25
 err-video-segment-secs-invalid = Segment duration must be between 5 and 3600 seconds
 err-video-record-duplicate = This flow already records camera { $camera } — keep a single Video recording node per camera.
@@ -3639,6 +3632,13 @@ flows-weather-ports-help = Outputs: current conditions, 7-day forecast, 48-hour 
 flow-status-weather-updated = Up to date
 flow-status-weather-waiting = Waiting for the first fetch
 flow-status-weather-unavailable = Weather unavailable
+flow-status-calc-ok = Computing
+flow-status-calc-input-rejected = Message rejected
+flow-status-device-write-ok = Written
+flow-status-device-write-rejected = Nothing written
+flow-status-count-passed = { $passed } ok / { $rejected } rejected
+flow-status-stat-passed = Messages handled
+flow-status-stat-rejected = Messages rejected
 
 # Weather card (D140)
 hcard-weather = Weather

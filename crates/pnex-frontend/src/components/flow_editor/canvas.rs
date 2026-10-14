@@ -363,7 +363,6 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::Anomaly { .. } => kind_labels(PaletteKind::Anomaly),
         pnex_core::FlowNodeKind::Forecast { .. } => kind_labels(PaletteKind::Forecast),
         pnex_core::FlowNodeKind::Debug { .. } => kind_labels(PaletteKind::Debug),
-        pnex_core::FlowNodeKind::Red { .. } => kind_labels(PaletteKind::Red),
     };
 
     let (fill, stroke) = match &node.kind {
@@ -451,7 +450,6 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
             geometry::CONTROL_SOURCE_STROKE,
         ),
         pnex_core::FlowNodeKind::Debug { .. } => (geometry::DEBUG_FILL, geometry::DEBUG_STROKE),
-        pnex_core::FlowNodeKind::Red { .. } => (geometry::RED_FILL, geometry::RED_STROKE),
     };
     let stroke = if has_violation {
         geometry::VIOLATION_STROKE
@@ -479,7 +477,10 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::LlmText { .. }
         | pnex_core::FlowNodeKind::PageWrite { .. }
         | pnex_core::FlowNodeKind::PagePdf { .. }
-        | pnex_core::FlowNodeKind::TextDecide { .. } => {
+        | pnex_core::FlowNodeKind::TextDecide { .. }
+        // Rejected messages surface here (O66, O69).
+        | pnex_core::FlowNodeKind::Calc { .. }
+        | pnex_core::FlowNodeKind::DeviceWrite { .. } => {
             cx.display_values.read().get(&node.id).cloned()
         }
         _ => None,
@@ -544,7 +545,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
             rows.push((
                 config.pins.len(),
                 rel_y(config.pins.len()),
-                t!("flow-port-device-all").to_string(),
+                t!("flow-port-device-name").to_string(),
                 node.id.clone(),
             ));
             rows
@@ -1275,12 +1276,5 @@ fn node_subtitle(node: &FlowNode) -> String {
             }
         }
         pnex_core::FlowNodeKind::Debug { .. } => "debug".into(),
-        pnex_core::FlowNodeKind::Red { type_name, .. } => {
-            if type_name.is_empty() {
-                "—".into()
-            } else {
-                type_name.clone()
-            }
-        }
     }
 }

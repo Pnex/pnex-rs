@@ -1906,13 +1906,11 @@ fn contrats_payload_phase6() {
         numeric_map_from_payload(None, "calc").unwrap_err().code,
         "calc_input_contract"
     );
-    // Valeur non numérique → rejet avec la clé en cause.
-    assert_eq!(
-        numeric_map_from_payload(Some(&json!({"k": "texte"})), "calc")
-            .unwrap_err()
-            .message,
-        "valeur non numérique pour la clé « k » (reçu : chaîne)"
-    );
+    // Non-numeric keys are skipped (vision output wired straight into calc).
+    let rich = json!({"count": 2, "labels": ["person"], "best": {"score": 0.9}, "k": "text"});
+    let map = numeric_map_from_payload(Some(&rich), "calc").unwrap();
+    assert_eq!(map.len(), 1);
+    assert_eq!(map["count"], 2.0);
     // Entrée metric : nombre, bool, sinon rejet.
     assert_eq!(metric_value_from_payload(Some(&json!(21.5))).unwrap(), 21.5);
     assert_eq!(metric_value_from_payload(Some(&json!(true))).unwrap(), 1.0);
@@ -1925,96 +1923,13 @@ fn contrats_payload_phase6() {
 }
 
 #[test]
-fn projection_red_passthrough_conserve_la_config() {
-    let g = FlowGraph {
-        nodes: vec![FlowNode {
-            id: "r1".into(),
-            name: None,
-            position: None,
-            outputs: vec![],
-            inputs: vec![],
-            kind: FlowNodeKind::Red {
-                type_name: "change".into(),
-                config: json!({"rules": [{"p": "payload"}]}),
-            },
-        }],
-    };
-    let out = to_red_flows_json(
-        &g,
-        &FlowArtifactMeta {
-            flow_id: 1,
-            version_number: 1,
-            org_id: 7,
-            o2_org: "o2_7".into(),
-        },
-    );
-    assert_eq!(out[1]["type"], "change");
-    assert_eq!(out[1]["rules"], json!([{"p": "payload"}]));
-    assert_eq!(out[1]["z"], "pnexflow1");
-}
-
-fn red_node(type_name: &str, config: serde_json::Value) -> FlowNode {
-    FlowNode {
-        id: "r1".into(),
-        name: None,
-        position: None,
-        outputs: vec![],
-        inputs: vec![],
-        kind: FlowNodeKind::Red {
-            type_name: type_name.into(),
-            config,
-        },
-    }
-}
-
-#[test]
-fn red_node_rejects_host_effect_and_pnex_types() {
-    // SEC-1 / SEC-2: exec, template, files and PNeX node types are never
-    // reachable from a raw Red node.
-    for t in [
-        "exec",
-        "template",
-        "file in",
-        "pnex-device-write",
-        "pnex-memory-read",
-    ] {
-        let g = FlowGraph {
-            nodes: vec![red_node(t, json!({}))],
-        };
-        let v = validate_graph(&g);
-        assert!(
-            v.iter()
-                .any(|x| x.code == "red_type_forbidden" && x.args.as_ref().unwrap()["type"] == t),
-            "{t}: {v:?}"
-        );
-    }
-    let ok = FlowGraph {
-        nodes: vec![red_node("change", json!({"rules": []}))],
-    };
-    assert!(validate_graph(&ok).is_empty());
-}
-
-#[test]
-fn red_projection_strips_user_tenant_fields() {
-    // SEC-2: a forged pnex_org_id / pnex_o2_org never reaches the artifact.
-    let g = FlowGraph {
-        nodes: vec![red_node(
-            "change",
-            json!({"pnex_org_id": 99, "pnex_o2_org": "o2_99", "pnex_flow_id": 5, "rules": []}),
-        )],
-    };
-    let out = to_red_flows_json(
-        &g,
-        &FlowArtifactMeta {
-            flow_id: 1,
-            version_number: 1,
-            org_id: 7,
-            o2_org: "o2_7".into(),
-        },
-    );
-    let entry = out[1].as_object().unwrap();
-    assert!(entry.keys().all(|k| !k.starts_with("pnex_")), "{entry:?}");
-    assert_eq!(entry["rules"], json!([]));
+fn raw_red_kind_is_refused() {
+    // SEC-1 / SEC-2: the raw Node-RED escape hatch is gone, so a user graph
+    // can name neither a host-effect builtin nor a forged PNeX node.
+    let raw =
+        r#"{"nodes":[{"id":"r1","kind":"red","type_name":"exec","config":{"pnex_org_id":99}}]}"#;
+    let err = serde_json::from_str::<FlowGraph>(raw).unwrap_err();
+    assert!(err.to_string().contains("unknown node kind"), "{err}");
 }
 
 #[test]

@@ -52,8 +52,8 @@ Choix structurants :
   graphe), « Déployer cette version » = rollback serveur (ne crée pas de
   version) ; dirty dérivé au rendu (`graph != saved_graph`, jamais de
   signal dirty à tenir à jour — leçon brick0 « zéro set en render »).
-- **Inspecteur par kind** : inject/debug/red (pnex_sql retiré le 2026-10-01), JSON (payload
-  inject, config red) validés localement avec drapeau d'invalidité (pattern
+- **Inspecteur par kind** : inject/debug (pnex_sql retiré le 2026-10-01, red le 2026-10-14), JSON (payload
+  inject) validé localement avec drapeau d'invalidité (pattern
   `MetadataEditor` devices) ; les violations du nœud sélectionné sont
   listées dans l'inspecteur (messages pnex-core affichés tels quels).
 - **Deploy/rollback** : bouton gated `can_write && !dirty` (deploy =
@@ -227,11 +227,11 @@ Limitations documentées (acceptées, décision 2026-09-15) :
 - le nœud `function` vendor n'a **ni limite CPU/mémoire ni deadline** — une
   boucle infinie pend la tâche du nœud jusqu'au stop du flow ; propriété
   pré-existante, non aggravée. Depuis D130 (SEC-1/SEC-2, 2026-10-04)
-  l'échappatoire `Red` est restreinte à une liste blanche de
-  transformations pures (`pnex_core::flow::RED_ALLOWED_TYPES` : ni
-  `function`, ni `exec`, ni `template`, ni type `pnex-*`), ses clés
-  `pnex_*` sont retirées à la projection, et le registre du runtime
-  n'enregistre que `runtime_type_allowed` ; le magasin d'env des engines
+  l'échappatoire `Red` a d'abord été restreinte à une liste blanche,
+  puis **retirée le 2026-10-14** (aucun usage, source de confusion) :
+  un flow ne contient plus que des kinds typés, et le registre du runtime
+  n'enregistre que `runtime_type_allowed` (builtins émis par la projection
+  + `pnex-*`) ; le magasin d'env des engines
   ne contient plus l'environnement du process (SEC-3, fork edgelinkd) —
   voir `security.md`. Rationale : l'isolation des fonctions « bizarres » est un sujet
   **d'infrastructure** (1 tenant = 1 process/conteneur à l'horizon SaaS),

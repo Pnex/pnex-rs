@@ -69,6 +69,7 @@ pub fn to_red_flows_json_with(
                 "device_id": config.device_id,
                 "pins": config.pins,
                 "commands": config.commands,
+                "pnex_node_id": n.id,
                 "pnex_flow_id": meta.flow_id,
                 "pnex_version": meta.version_number,
                 "pnex_org_id": meta.org_id,
@@ -77,6 +78,7 @@ pub fn to_red_flows_json_with(
             FlowNodeKind::Calc { config } => serde_json::json!({
                 "type": "pnex-calc",
                 "expression": config.expression,
+                "pnex_node_id": n.id,
                 "pnex_flow_id": meta.flow_id,
                 "pnex_version": meta.version_number,
             }),
@@ -510,14 +512,6 @@ pub fn to_red_flows_json_with(
             FlowNodeKind::RegTtHeat { config } => reg_tt_entry("pnex-reg-tt-heat", n, meta, config),
             FlowNodeKind::RegTtCool { config } => reg_tt_entry("pnex-reg-tt-cool", n, meta, config),
             FlowNodeKind::RegPid { config } => reg_pid_entry("pnex-reg-pid", n, meta, config),
-            FlowNodeKind::Red { type_name, config } => {
-                let mut obj = config.as_object().cloned().unwrap_or_default();
-                // Tenant / provenance fields are server-stamped only (SEC-2):
-                // a user config never carries them into the artifact.
-                obj.retain(|k, _| !k.starts_with(super::PNEX_FIELD_PREFIX));
-                obj.insert("type".into(), serde_json::Value::String(type_name.clone()));
-                serde_json::Value::Object(obj)
-            }
         };
 
         // Ids uniques dans l'artefact multi-flows : l'éditeur génère des ids

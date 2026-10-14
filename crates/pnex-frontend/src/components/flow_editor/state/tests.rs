@@ -391,13 +391,6 @@ fn make_node_inject_a_un_declencheur() {
 }
 
 #[test]
-fn make_node_red_viole_volontairement() {
-    let node = make_node("n1", PaletteKind::Red, Position { x: 0.0, y: 0.0 });
-    let violations = pnex_core::validate_graph(&FlowGraph { nodes: vec![node] });
-    assert!(violations.iter().any(|v| v.code == "bad_red_node"));
-}
-
-#[test]
 fn make_node_notify_typed_but_incomplete() {
     // Config typée mais volontairement incomplète : les violations
     // `notify_no_*` du bandeau guident la saisie (école device/red).

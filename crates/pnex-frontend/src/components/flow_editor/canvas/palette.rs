@@ -1,7 +1,7 @@
 use super::*;
 
 /// Liste canonique des kinds proposés à l'ajout (ordre de la maquette).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 40] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 39] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::ActionTrigger,
@@ -41,7 +41,6 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 40] = [
     PaletteKind::Anomaly,
     PaletteKind::Forecast,
     PaletteKind::Debug,
-    PaletteKind::Red,
 ];
 
 /// Clé stable d'un kind — clé de pick de la palette (data plate, jamais
@@ -87,7 +86,6 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::Anomaly => "anomaly",
         PaletteKind::Forecast => "forecast",
         PaletteKind::Debug => "debug",
-        PaletteKind::Red => "red",
     }
 }
 
@@ -146,7 +144,6 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::Anomaly => (PaletteIcon::Activity, "bg-red-50 text-red-600"),
         PaletteKind::Forecast => (PaletteIcon::Spline, "bg-violet-50 text-violet-700"),
         PaletteKind::Debug => (PaletteIcon::Bug, "bg-violet-50 text-violet-600"),
-        PaletteKind::Red => (PaletteIcon::Puzzle, "bg-gray-100 text-gray-600"),
     }
 }
 
@@ -192,7 +189,6 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::Anomaly { .. } => PaletteKind::Anomaly,
         FlowNodeKind::Forecast { .. } => PaletteKind::Forecast,
         FlowNodeKind::Debug { .. } => PaletteKind::Debug,
-        FlowNodeKind::Red { .. } => PaletteKind::Red,
     }
 }
 
@@ -244,7 +240,7 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         | PaletteKind::JsonMerge
         | PaletteKind::TopicClassify
         | PaletteKind::CoolProp => PaletteCategory::Data,
-        PaletteKind::Function | PaletteKind::Red => PaletteCategory::Code,
+        PaletteKind::Function => PaletteCategory::Code,
         PaletteKind::Metric
         | PaletteKind::MemoryWrite
         | PaletteKind::MemoryRead
@@ -471,10 +467,6 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::Debug => (
             t!("flows-palette-debug").to_string(),
             t!("flows-palette-debug-help").to_string(),
-        ),
-        PaletteKind::Red => (
-            t!("flows-palette-red").to_string(),
-            t!("flows-palette-red-help").to_string(),
         ),
     }
 }

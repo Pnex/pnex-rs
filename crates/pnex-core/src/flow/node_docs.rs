@@ -85,7 +85,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("pins", "[pin label, e.g. \"A0\", or a metric a custom firmware publishes, e.g. \"temperature\"] — one output port per entry, in this order"),
             ("window_secs", "freshness window 1..=3600 (default 60); no data = payload {} (never an invented zero)"),
         ],
-        notes: "Ports: one per pin (payload {key: value}), then a last \"all\" port with every pin in one object (to combine pins of the same device in a calc). No telemetry at all usually means no pin is subscribed on the device (Pins page).",
+        notes: "Ports: one per pin (payload = the raw pin value, sent only when fresh), then a last \"name\" port whose payload is the device slug (for templates and labels). No telemetry at all usually means no pin is subscribed on the device (Pins page).",
     },
     NodeDoc {
         kind: "device_write",
@@ -95,13 +95,13 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("pins", "[output pin label (digital_out / pwm_out)] — one input row per pin"),
             ("commands", "[command announced by the device's custom firmware (pnex.onCommand)] — one input row per command, after the pins; pins may then be empty"),
         ],
-        notes: "Incoming payload = map {pin_or_command: value}: only configured names present in the map are written. A scalar payload is routed by the input row it arrives on, or accepted when a single pin/command is configured. A command receives args = {\"value\": payload} (an RGB colour control sends 0xRRGGBB as a number); a name the firmware does not announce is refused by the server (logged, nothing sent). An output pin has one writer: a pin already written by another deployed flow is refused at deploy (pin_already_assigned); commands have no such rule.",
+        notes: "Incoming payload = map {pin_or_command: value}: only configured names present in the map are written. A scalar payload is routed by the input row it arrives on, or accepted when a single pin/command is configured. A command receives args = {\"value\": payload} (an RGB colour control sends 0xRRGGBB as a number); a name the firmware does not announce is refused by the server (nothing sent). Every rejected write (empty payload, value the pin refuses such as a timestamp on a digital output, unknown name) shows an amber \"Nothing written\" badge on the node with the reason. An output pin has one writer: a pin already written by another deployed flow is refused at deploy (pin_already_assigned); commands have no such rule.",
     },
     NodeDoc {
         kind: "calc",
         summary: "Arithmetic expression on the payload keys (operators, ternary, ^, min/max/abs/round…). Check it with validate_calc_expression.",
         config: &[("expression", "string; variables = payload keys, exact case (pin \"A0\" gives …_A0, never …_a0)")],
-        notes: "",
+        notes: "Input = a JSON object: its number and boolean (1/0) keys are the variables, other keys (arrays, text, nested objects) are ignored — so vision_detect → calc \"count > 0\" works directly. A scalar payload, or an expression naming a missing key, rejects the message: the node shows an amber \"Message rejected\" badge with the reason. Output payload = the number.",
     },
     NodeDoc {
         kind: "value",
@@ -509,15 +509,6 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("emit_on_start", "bool, default true: fetch at engine start / redeploy"),
         ],
         notes: "Port 0 = current conditions {temperature, feels_like, humidity, pressure, wind_speed (km/h), wind_gust, wind_direction, precipitation, cloud_cover, condition, condition_code, icon, is_day}; port 1 = 7-day forecast {days: [...], d0_t_min, d0_t_max, d0_precipitation, d0_condition_code, … d6_*}; port 2 = 48-hour forecast {hours: [...], h0_temperature … h23_*}. Wire to memory_write (live values for dashboards) and/or metric.",
-    },
-    NodeDoc {
-        kind: "red",
-        summary: "Raw Node-RED builtin for pure transforms not modelled by PNeX. Avoid unless needed.",
-        config: &[
-            ("type_name", "one of the allowed builtins (see notes)"),
-            ("config", "free Node-RED config object"),
-        ],
-        notes: "Allowed: change, switch, range, rbe, delay, trigger, json, csv, yaml, split, join, sort, batch, link in/out/call, catch, status, complete, comment, junction, inject, debug. Anything with host, file or network access is refused.",
     },
 ];
 

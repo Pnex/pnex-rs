@@ -10,8 +10,8 @@
 //!
 //! Garde-fou PRD : **pas de type-check à l'échelle du graphe** — la validation
 //! couvre la structure du graphe et les contrats aux frontières des nœuds
-//! custom uniquement. Les nœuds builtin EdgeLinkd non modélisés passent par
-//! [`FlowNodeKind::Red`] (config opaque).
+//! custom uniquement. Every node is a typed kind: raw Node-RED builtins are
+//! not reachable from a user flow.
 //!
 //! # Module layout
 //!
@@ -22,7 +22,7 @@
 //! - [`config`] — per-kind node configs + pin/reg extractors
 //! - [`graph`] — node kinds, wiring, graph root types
 //! - [`node_docs`] — assistant documentation of every node kind (D142)
-//! - [`node_types`] — Red / runtime node-type allowlists (security boundary)
+//! - [`node_types`] — runtime node-type allowlist (security boundary)
 //! - [`payload`] — payload boundary helpers
 //! - [`validate`] — graph validation + per-kind contracts
 //! - [`red_flows`] — Node-RED `flows.json` projection
