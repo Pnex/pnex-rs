@@ -44,7 +44,7 @@ export function customFirmwareTests(key: keyof typeof BOARDS): void {
     const create = dialog(page, app.t('firmware-create-title'));
     await create.getByRole('textbox', { name: app.t('firmware-field-name') }).fill(project);
     await create.getByRole('combobox', { name: new RegExp(`^${app.t('firmware-field-chip')}`) }).selectOption({ label: board.chipLabel! });
-    await create.getByRole('button', { name: app.t('firmware-new'), exact: true }).click();
+    await create.getByRole('button', { name: app.t('common-create'), exact: true }).click();
     const code = page.getByRole('main').locator('textarea').first();
     await expect(code).toHaveValue(/PnexDevice pnex;/);
     const sketch = (await code.inputValue())

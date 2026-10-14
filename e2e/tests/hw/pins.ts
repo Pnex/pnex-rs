@@ -147,7 +147,7 @@ export function pinsTests(): void {
     await fieldAfterLabel(main, app.t('vis-device')).selectOption(board.deviceId);
     await main.getByRole('button', { name: app.t('vis-add'), exact: true }).click();
     await expect(main.getByText(app.t('vis-empty'))).toHaveCount(0);
-    await expect(main.getByText(app.t('vis-no-points'))).toHaveCount(0);
+    await expect(main.getByText(app.t('vis-no-data'))).toHaveCount(0);
     await expect(main.locator('svg path, canvas').first()).toBeVisible();
     await capture('quick-charts', { caption: 'Live analog input in quick charts' });
 

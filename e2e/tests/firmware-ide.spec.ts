@@ -12,7 +12,7 @@ test.describe('firmware IDE', { tag: '@firmware' }, () => {
     const dlg = dialog(page, app.t('firmware-create-title'));
     await dlg.getByRole('textbox', { name: app.t('firmware-field-name') }).fill(name);
     await dlg.getByRole('combobox', { name: new RegExp(`^${app.t('firmware-field-chip')}`) }).selectOption({ label: 'ESP32-C3' });
-    await dlg.getByRole('button', { name: app.t('firmware-new'), exact: true }).click();
+    await dlg.getByRole('button', { name: app.t('common-create'), exact: true }).click();
     await expect(dlg).toBeHidden();
 
     const main = page.getByRole('main');
