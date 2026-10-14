@@ -8,7 +8,7 @@ err_codes: platform-admin-required, retention-out-of-range, retention-locked-by-
 tools: 
 tags: platform admin, subscription, tier, quota, abonnement, health, status, infrastructure, monitoring, retention, master key, rekey, uptime, disk, database, administrateur plateforme
 ---
-Platform status is the platform administrator's page: the health of every infrastructure component of the PneX installation, the platform-wide telemetry retention settings per organization, and the secrets master-key rotation. It appears in the menu only for platform administrators; anyone else gets "Reserved to platform administrators".
+Platform status is the platform administrator's page: the health of every infrastructure component of the PNeX installation, the platform-wide telemetry retention settings per organization, and the secrets master-key rotation. It appears in the menu only for platform administrators; anyone else gets "Reserved to platform administrators".
 
 ## What you can do
 - **Component cards** (auto-refreshed every 30 s, or with the refresh button): Database, Rauthy (identity), OpenObserve (telemetry), Valkey (cache), Object storage, Local storage, Host machine, AI service, Secrets vault. Each shows a status (Operational, Degraded, Down, Not configured), its latency and metrics such as database size, stored points, used memory, disk, CPU cores, load and uptime. The header shows the version and the mode (Self-hosted or SaaS).

@@ -8,7 +8,7 @@ err_codes: llm-provider-forbidden, llm-provider-not-found, llm-provider-name-tak
 tools: 
 tags: llm, ai, assistant, anthropic, claude, openai, api key, model, provider, ia, configure assistant, bring your own llm, byo
 ---
-The assistant runs on an LLM that your organization provides: PneX itself supplies none. LLM providers are configured in the organization detail (Organizations → Manage, or the active organization's detail), with the API key stored in the secrets vault.
+The assistant runs on an LLM that your organization provides: PNeX itself supplies none. LLM providers are configured in the organization detail (Organizations → Manage, or the active organization's detail), with the API key stored in the secrets vault.
 
 ## What you can do
 In the **LLM providers** section of the organization detail (Owner or Admin):

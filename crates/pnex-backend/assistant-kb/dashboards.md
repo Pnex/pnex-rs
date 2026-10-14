@@ -8,7 +8,7 @@ err_codes: dashboard-write-forbidden, dashboard-version-conflict, viz-write-forb
 tools: 
 tags: dashboard, range bars, barres, per range, par plage, time slice, tranche horaire, aggregation, agrégation, tableau de bord, scada, synoptic, widget, gauge, jauge, mobile, home, maison, domotique, card, carte, template, modèle, room, pièce, weather, météo, switch, interrupteur
 ---
-Dashboards (Visualization › Dashboards) are live screens built from widgets bound to telemetry, flow memory and controls. A **Desktop** dashboard is a free canvas (SCADA synoptic, process symbols, wires); a **Mobile** dashboard is a thumb-friendly stack of cards (home-automation tiles, rooms, pages). A dashboard only reads data and writes *controls*: it never commands a device directly.
+Dashboards (Monitor › Dashboards) are live screens built from widgets bound to telemetry, flow memory and controls. A **Desktop** dashboard is a free canvas (SCADA synoptic, process symbols, wires); a **Mobile** dashboard is a thumb-friendly stack of cards (home-automation tiles, rooms, pages). A dashboard only reads data and writes *controls*: it never commands a device directly.
 
 ## What you can do
 - **New dashboard**: name it, choose the format (**Desktop** or **Mobile**, fixed once created) and, for Mobile, **Start from** a template: **Empty**, **Home**, **Energy**, **Security**, **Garden & pool**. Template cards show "To configure" until you pick their source.

@@ -8,7 +8,7 @@ err_codes: time-range-not-found, time-range-write-forbidden
 tools: list_calendar, propose_occurrence_change, create_object, update_object
 tags: calendar, calendrier, agenda, planning, planification, maintenance plan, plan de maintenance, préventif, preventive, gmao, cmms, recurrence, récurrence, periodicity, périodicité, every, tous les, floating, flottant, fixed, fixe, occurrence, late, en retard, overdue, done, réalisé, cancel, annuler, move, déplacer, reschedule, replanifier, work order, ordre de travail, intervention
 ---
-The Calendar page (sidebar › Calendar) shows every time range of the organization by month, and in particular the **occurrences of maintenance plans**.
+The Calendar page (Knowledge › Calendar) shows every time range of the organization by month, and in particular the **occurrences of maintenance plans**.
 
 ## Planning a recurring job
 1. Install the *Augmented maintenance* pack (Ontology › Packs). It adds the **Maintenance plan** type.
@@ -40,5 +40,5 @@ Ask for example "what maintenance is late?" or "plan a greasing of pump P12 ever
 
 ## Good to know
 - Viewers read the calendar but change nothing (*time-range-write-forbidden*).
-- Flows can add ranges too (node *Upsert range*), for example a corrective job opened by an anomaly; they show in the same calendar.
+- Flows can add ranges too (node *Time range writer*), for example a corrective job opened by an anomaly; they show in the same calendar.
 - The calendar never starts or stops a machine. To act at the start of a job, run the type's action (for example *Start maintenance* on a pump): a deployed flow decides what happens.

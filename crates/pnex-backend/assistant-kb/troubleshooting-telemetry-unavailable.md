@@ -8,10 +8,10 @@ err_codes: o2-not-configured
 tools: 
 tags: telemetry unavailable, no data, empty chart, no measurements, openobserve, not provisioned, données indisponibles, pas de données, graph vide
 ---
-"Telemetry unavailable" appears on the home page, Visualisation or a dashboard when PneX cannot read any measurement for the active organization. Most often the organization has simply never sent data yet; less often the telemetry store is not configured or unreachable.
+"Telemetry unavailable" appears on the home page, Quick charts or a dashboard when PNeX cannot read any measurement for the active organization. Most often the organization has simply never sent data yet; less often the telemetry store is not configured or unreachable.
 
 ## Symptom
-- Visualisation or a dashboard shows "Telemetry unavailable (OpenObserve unreachable or organization not provisioned)", the home page "Telemetry unavailable (OpenObserve not configured or unreachable)", or a widget "Telemetry unavailable for …".
+- Quick charts or a dashboard shows "Telemetry unavailable (telemetry store unreachable or organization not provisioned)", the home page "Telemetry unavailable (telemetry store not configured or unreachable)", or a widget "Telemetry unavailable for …".
 - The System page may show "No data received yet: the OpenObserve space is created with the first measurement."
 
 ## Cause

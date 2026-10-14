@@ -8,7 +8,7 @@ err_codes: org-name-duplicate, org-delete-forbidden, org-not-empty
 tools: 
 tags: organization, organisation, org, tenant, workspace, team, switch org, active org, create org
 ---
-The Organizations page lists every organization you belong to, with your role in each, lets you create a new one and choose which one is active. Everything you see in PneX (devices, flows, dashboards, secrets, telemetry) belongs to the active organization.
+The Organizations page lists every organization you belong to, with your role in each, lets you create a new one and choose which one is active. Everything you see in PNeX (devices, flows, dashboards, secrets, telemetry) belongs to the active organization.
 
 ## What you can do
 - **Create an organization**: type a name in "New organization name…" and click **Create**. You become its Owner and it becomes the active organization.

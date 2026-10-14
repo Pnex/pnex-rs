@@ -8,7 +8,7 @@ err_codes: events-unavailable, event-stream-invalid
 tools: 
 tags: events, événements, journal, log, history, historique, audit, search, json
 ---
-Events (Automation › Events) searches the JSON events written by your flows with the **Event log** node, stored in OpenObserve. Use it as a searchable history: detections, door openings, alarms, anything a flow decides to record.
+Events (Monitor › Events) searches the JSON events written by your flows with the **Event log** node, kept in the telemetry store. Use it as a searchable history: detections, door openings, alarms, anything a flow decides to record.
 
 ## What you can do
 - Pick the **Stream** (each Event log node writes to a named stream, "events" by default).

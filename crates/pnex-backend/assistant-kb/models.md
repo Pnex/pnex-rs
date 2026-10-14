@@ -8,7 +8,7 @@ err_codes: ml-model-write-forbidden, ml-model-missing-bytes, ml-model-load-faile
 tools: 
 tags: models, modèles, onnx, yolox, vision, object detection, détection, ai, ia, inference, labels, threshold, seuil
 ---
-Models (Data › Models) is the registry of the ONNX object-detection models used by the **Object detection** node of flows. A model is an ONNX file from the media library plus its settings: family (YOLOX), input size, labels, score threshold and NMS IoU.
+Models (Automation › Models) is the registry of the ONNX object-detection models used by the **Object detection** node of flows. A model is an ONNX file from the media library plus its settings: family (YOLOX), input size, labels, score threshold and NMS IoU.
 
 ## What you can do
 - **Add a model**: **Upload an ONNX file** or pick one **From the media library**, then set **Name**, **Family**, **Input width/height**, **Score threshold**, **NMS IoU** and **Labels** (one per line, in class order; **Reset to COCO-80** pre-fills them).

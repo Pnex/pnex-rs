@@ -12,9 +12,9 @@ The Flows page (Automation menu) lists the organization's flows: visual pipeline
 
 ## What you can do
 
-- **New flow** creates and opens a flow; **Open** edits one, **Delete** removes it with all its versions. Filter by status (Draft, Deployed, Stopped, Error) or by label (**Filter by label (site:serre)**).
+- **New flow** creates and opens a flow; **Open** edits one, **Delete** removes it with all its versions. Filter by status (Draft, Deployed, Stopped, Error) or by label (**Filter by label**, e.g. `site:serre`).
 - In the editor, click **+** (Add a node) to pick a node from the palette (Triggers, Devices, Data & math, Code, Storage & series, AI & predictive, Integrations, Debug…), drag from an output port to the next node to wire it, and configure the selected node in the inspector.
-- **Save Changes** stores a new version. **Deploy** runs the saved version; the editor proposes "Deploy vN?" right after a save.
+- **Save** stores a new version. **Deploy** runs the saved version; the editor proposes "Deploy vN?" right after a save.
 - **Stop** pauses a deployed flow, **Start** resumes its last deployed version, **Restart** reloads the engine as-is.
 - **History** lists versions: **Load** one into the editor, or **Deploy** an earlier version (rollback, no new version).
 - **Debug** opens the debug feed (last 100 entries, 5-minute window) when the server enables debug tools; otherwise the full feed is disabled (run mode), but each Debug and Display node still shows the last message it received.

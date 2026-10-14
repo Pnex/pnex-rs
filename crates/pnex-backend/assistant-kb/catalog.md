@@ -8,7 +8,7 @@ err_codes:
 tools: 
 tags: catalog, models, boards, pinout, esp32, esp8266, capabilities, catalogue, modèle, carte
 ---
-The Device Catalog page (Edges menu) lists every device model the platform supports, with its board, type and capabilities, so you can choose hardware before registering a device. It is a read-only reference; registration itself happens on the Devices / Agents page.
+The Device Catalog page (Devices menu) lists every device model the platform supports, with its board, type and capabilities, so you can choose hardware before registering a device. It is a read-only reference; registration itself happens on the Devices & agents page.
 
 ## What you can do
 
@@ -18,10 +18,10 @@ The Device Catalog page (Edges menu) lists every device model the platform suppo
 
 ## Model families
 
-When you register a device (Devices / Agents → **Register**, step Model) the catalog models come in three groups:
+When you register a device (Devices & agents → **Register**, step Model) the catalog models come in three groups:
 
-- **Generic PneX**: inputs and outputs are driven from the UI with no code, or you attach your own firmware written on the Custom firmware page.
-- **Predefined boards**: ready-to-use boards whose firmware is maintained by PneX and fixed by the model (no firmware choice).
+- **Generic PNeX**: inputs and outputs are driven from the UI with no code, or you attach your own firmware written on the Custom firmware page.
+- **Predefined boards**: ready-to-use boards whose firmware is maintained by PNeX and fixed by the model (no firmware choice).
 - **Agents**: software on a computer or Raspberry Pi that pushes values; computers are not boards.
 
 ## Good to know
