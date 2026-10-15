@@ -4746,6 +4746,7 @@ cw-expand-none = No other neighbour over the case window.
 cw-expand-undo = Undo expansion
 cw-expand-keep = Keep (undated)
 cw-map = Map
+cw-event-map = Where
 cw-story = Story
 cw-story-empty = No actor comes back in two events: there is no story to tell in threads yet.
 cw-story-all = All actors ({ $count })

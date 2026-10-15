@@ -430,6 +430,8 @@ fn EventPanel(event: CaseEvent, workspace: CaseWorkspace) -> Element {
                 }
             }
         }
+        // Where it happened, right under when (only if a piece is located).
+        super::map::EventMap { event: event.clone(), workspace: workspace.clone() }
         h3 { class: "text-xs font-medium text-slate",
             {t!("cw-pieces", count : event.attachments.len())}
         }
