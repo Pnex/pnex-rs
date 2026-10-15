@@ -12,12 +12,14 @@ use uuid::Uuid;
 use crate::api;
 use crate::api::error::ApiError;
 use crate::app::Route;
+use crate::components::crud::filters::{FilterBar, LabelFilterInput};
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{page_slice, ListPager};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
+use crate::components::labels_editor::{use_row_labels, LabelChips, LabelsButton};
 use crate::components::ui::{FIELD_LABEL, INPUT};
 use pnex_core::pages::DocSummary;
 
@@ -53,11 +55,21 @@ fn DocList() -> Element {
     let navigator = use_navigator();
     let can_write = crate::state::org::current_can_write();
 
-    let list = use_resource(move || async move {
+    // D218: own label filter ("name" or "name:value"), applied server-side.
+    let filter_label = use_signal(String::new);
+    let list = use_resource(move || {
         let _ = reload();
-        api::docs::list().await
+        let label = Some(filter_label().trim().to_string());
+        async move { api::docs::list_labeled(label).await }
     });
-    let page = use_signal(|| 0i64);
+    // D218: own labels of the loaded rows (whole list, paged client-side).
+    let row_labels = use_row_labels(pnex_core::resources::KIND_DOC, move || {
+        match &*list.value().read() {
+            Some(Ok(all)) => all.iter().map(|d| d.id.to_string()).collect(),
+            _ => Vec::new(),
+        }
+    });
+    let mut page = use_signal(|| 0i64);
     let (state, count, rows) = match &*list.value().read() {
         None => (None, 0, Vec::new()),
         Some(Ok(all)) => (Some(Ok(())), all.len() as i64, page_slice(all, page())),
@@ -95,9 +107,10 @@ fn DocList() -> Element {
             }
         });
     };
-    let mut columns = vec![
-        Column::new(t!("docs-col-title").to_string(), |d: &DocSummary| {
+    let columns = vec![
+        Column::new(t!("docs-col-title").to_string(), move |d: &DocSummary| {
             let id = d.id.to_string();
+            let labels = row_labels.get(&id).cloned().unwrap_or_default();
             rsx! {
                 Link {
                     to: Route::Docs { id },
@@ -105,6 +118,7 @@ fn DocList() -> Element {
                     icons::BookOpen { class: "h-4 w-4 text-gray-500" }
                     {d.title.clone()}
                 }
+                LabelChips { labels }
             }
         }),
         Column::new(t!("docs-col-updated").to_string(), |d: &DocSummary| {
@@ -113,29 +127,36 @@ fn DocList() -> Element {
             }
         })
         .secondary(),
-    ];
-    if can_write {
-        columns.push(
-            Column::new(t!("common-actions").to_string(), move |d: &DocSummary| {
-                let id = d.id;
-                rsx! {
-                    if confirm_delete() == Some(id) {
-                        button { class: DANGER_BTN, onclick: move |_| delete(id),
-                            {t!("docs-confirm-delete")}
-                        }
-                    } else {
-                        button {
-                            class: DANGER_BTN,
-                            onclick: move |_| confirm_delete.set(Some(id)),
-                            icons::Trash2 { class: "h-3.5 w-3.5 inline mr-0.5" }
-                            {t!("docs-delete")}
+        // Viewers get the labels button too (read-only), so the column is always shown.
+        Column::new(t!("common-actions").to_string(), move |d: &DocSummary| {
+            let id = d.id;
+            rsx! {
+                div { class: "flex items-center gap-1.5",
+                    LabelsButton {
+                        kind: pnex_core::resources::KIND_DOC.to_string(),
+                        id: id.to_string(),
+                        can_write,
+                        on_changed: move |_| reload.with_mut(|r| *r += 1),
+                    }
+                    if can_write {
+                        if confirm_delete() == Some(id) {
+                            button { class: DANGER_BTN, onclick: move |_| delete(id),
+                                {t!("docs-confirm-delete")}
+                            }
+                        } else {
+                            button {
+                                class: DANGER_BTN,
+                                onclick: move |_| confirm_delete.set(Some(id)),
+                                icons::Trash2 { class: "h-3.5 w-3.5 inline mr-0.5" }
+                                {t!("docs-delete")}
+                            }
                         }
                     }
                 }
-            })
-            .actions(),
-        );
-    }
+            }
+        })
+        .actions(),
+    ];
 
     rsx! {
         ListLayout {
@@ -149,6 +170,18 @@ fn DocList() -> Element {
                 template.set(String::new());
                 form_error.set(None);
                 creating.set(true);
+            },
+            filters: rsx! {
+                FilterBar {
+                    LabelFilterInput {
+                        placeholder: t!("resources-label-filter-placeholder").to_string(),
+                        value: filter_label,
+                        on_submit: move |_| {
+                            page.set(0);
+                            reload.with_mut(|r| *r += 1);
+                        },
+                    }
+                }
             },
             if creating() {
                 FormDialog {

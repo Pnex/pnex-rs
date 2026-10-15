@@ -28,6 +28,7 @@ mod m20261013_000018_lab_review_queue;
 mod m20261013_000019_doc_version_review;
 mod m20261013_000020_doc_version_exports;
 mod m20261014_000021_drop_firmware_artifacts;
+mod m20261015_000022_label_purge;
 
 pub struct Migrator;
 
@@ -52,6 +53,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261013_000019_doc_version_review::Migration),
             Box::new(m20261013_000020_doc_version_exports::Migration),
             Box::new(m20261014_000021_drop_firmware_artifacts::Migration),
+            Box::new(m20261015_000022_label_purge::Migration),
         ]
     }
 }

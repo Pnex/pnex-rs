@@ -8,12 +8,15 @@ use dioxus_i18n::t;
 use pnex_core::media_ingest::{CaptureState, MediaStream, MediaStreamInput};
 
 use crate::api;
+use crate::api::resources::LabelSet;
 use crate::components::confirm::ConfirmDialog;
+use crate::components::crud::filters::{FilterBar, LabelFilterInput};
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{ACTIONS_TD_CLASS, ACTIONS_TH_CLASS};
 use crate::components::icons;
+use crate::components::labels_editor::{use_row_labels, LabelChips, LabelsButton};
 use crate::state::{org, session, toasts};
 
 mod form;
@@ -70,7 +73,9 @@ enum Dialog {
 
 #[component]
 pub fn Streams() -> Element {
-    let page = use_signal(|| 0i64);
+    let mut page = use_signal(|| 0i64);
+    // D218: label filter of the Streams tab ("name" or "name:value").
+    let filter_label = use_signal(String::new);
     let mut reload = use_signal(|| 0u32);
     let mut dialog = use_signal(|| None::<Dialog>);
     let mut tab = use_signal(|| Tab::Streams);
@@ -81,10 +86,39 @@ pub fn Streams() -> Element {
 
     let streams = use_resource(move || {
         let offset = page() * PAGE_SIZE;
+        let label = {
+            let value = filter_label().trim().to_string();
+            (!value.is_empty()).then_some(value)
+        };
         async move {
             let _ = reload();
             let _ = org::ORG.read();
-            api::media_streams::list(Some(PAGE_SIZE), Some(offset)).await
+            api::media_streams::list_labeled(Some(PAGE_SIZE), Some(offset), label).await
+        }
+    });
+
+    // D218: own labels of the page rows, one batch per list (re)load.
+    let row_labels = use_row_labels(
+        pnex_core::resources::KIND_MEDIA_STREAM,
+        move || match &*streams.value().read() {
+            Some(Ok(p)) => p.results.iter().map(|s| s.id.to_string()).collect(),
+            _ => Vec::new(),
+        },
+    );
+
+    // The label filter only applies to the Streams tab.
+    let label_filter = (tab() == Tab::Streams).then(|| {
+        rsx! {
+            FilterBar {
+                LabelFilterInput {
+                    placeholder: t!("resources-label-filter-placeholder").to_string(),
+                    value: filter_label,
+                    on_submit: move |_| {
+                        page.set(0);
+                        reload.with_mut(|r| *r += 1);
+                    },
+                }
+            }
         }
     });
 
@@ -148,6 +182,7 @@ pub fn Streams() -> Element {
                     }
                 }
             },
+            filters: label_filter,
             if tab() == Tab::Transcripts {
                 TranscriptsTab { streams: choices.clone(), reload }
             }
@@ -196,6 +231,7 @@ pub fn Streams() -> Element {
                                     for s in rows {
                                         StreamRow {
                                             key: "{s.id}",
+                                            labels: row_labels.get(&s.id.to_string()).cloned().unwrap_or_default(),
                                             stream: s.clone(),
                                             can_write,
                                             on_action: move |d: Dialog| dialog.set(Some(d)),
@@ -342,6 +378,8 @@ fn capture_badge(s: &MediaStream) -> (&'static str, String) {
 #[component]
 fn StreamRow(
     stream: MediaStream,
+    /// D218: own labels of the stream.
+    labels: LabelSet,
     can_write: bool,
     on_action: Callback<Dialog>,
     on_changed: Callback<()>,
@@ -386,6 +424,7 @@ fn StreamRow(
             td { class: "td",
                 p { class: "font-medium text-gray-900", "{stream.name}" }
                 p { class: "text-xs text-gray-500 font-mono", "{stream.slug}" }
+                LabelChips { labels }
                 if let Some(name) = stream.capture_device.as_deref() {
                     p { class: "text-xs text-gray-500", {t!("streams-captured-by", name : name)} }
                 }
@@ -425,6 +464,12 @@ fn StreamRow(
                             onclick: move |_| on_action.call(Dialog::Recordings(s_recordings.clone())),
                             {t!("streams-recordings")}
                         }
+                    }
+                    LabelsButton {
+                        kind: pnex_core::resources::KIND_MEDIA_STREAM.to_string(),
+                        id: stream.id.to_string(),
+                        can_write,
+                        on_changed: move |_| on_changed.call(()),
                     }
                     // The URL test runs on the server, never on a box.
                     if can_write && !on_box {

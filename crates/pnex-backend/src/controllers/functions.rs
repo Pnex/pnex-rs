@@ -103,6 +103,8 @@ fn summary_dto(f: &functions::Model, current: i64) -> FunctionSummary {
 struct ListQuery {
     limit: Option<String>,
     offset: Option<String>,
+    /// Label filter `name` / `name:value` (D218).
+    label: Option<String>,
 }
 
 /// `GET /api/v1/functions` — registre de l'org (name ASC). Le numéro de
@@ -113,8 +115,22 @@ async fn list(
     Query(q): Query<ListQuery>,
 ) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let rows = functions::Entity::find()
-        .filter(functions::Column::OrgId.eq(org.org.id))
+    let mut select = functions::Entity::find().filter(functions::Column::OrgId.eq(org.org.id));
+    match pagination::label_ids(
+        &ctx.db,
+        org.org.id,
+        q.label.as_deref(),
+        pnex_core::resources::KIND_FUNCTION,
+    )
+    .await
+    {
+        Ok(None) => {}
+        Ok(Some(ids)) => {
+            select = select.filter(functions::Column::Id.is_in(pagination::parse_ids::<i64>(&ids)))
+        }
+        Err(resp) => return Ok(resp),
+    }
+    let rows = select
         .order_by_asc(functions::Column::Name)
         .all(&ctx.db)
         .await

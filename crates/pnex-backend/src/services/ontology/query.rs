@@ -165,7 +165,7 @@ pub async fn run(
     if let Some(raw) = q.label.as_deref().filter(|l| !l.trim().is_empty()) {
         let (filter, _) = pnex_core::resources::parse_label_filter(raw);
         let filter = filter.ok_or_else(|| invalid("label", FIELD_INVALID))?;
-        let hits = crate::services::resources::labels::ids_with_effective_label(
+        let hits = crate::services::resources::labels::ids_with_label(
             db,
             org_id,
             &filter,

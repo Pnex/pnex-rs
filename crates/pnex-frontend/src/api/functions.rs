@@ -15,7 +15,20 @@ use crate::api::error::ApiError;
 /// `GET /api/v1/functions` (all pages) — registre de l'org (le picker et la
 /// liste ne paginent pas ; recherche côté client).
 pub async fn list() -> Result<Vec<FunctionSummary>, ApiError> {
-    client::request_all("/api/v1/functions").await
+    list_labeled(None).await
+}
+
+/// Same as [`list`], filtered by an effective label (`name` or `name:value`, D42).
+pub async fn list_labeled(label: Option<String>) -> Result<Vec<FunctionSummary>, ApiError> {
+    client::request_all(&labeled_path("/api/v1/functions", label)).await
+}
+
+/// Appends `?label=` when a non-empty label filter is set.
+fn labeled_path(path: &str, label: Option<String>) -> String {
+    match label.filter(|v| !v.is_empty()) {
+        Some(v) => format!("{path}?label={}", crate::api::tours::urlencode(&v)),
+        None => path.to_string(),
+    }
 }
 
 /// `POST /api/v1/functions` — création (fonction + version 1, code =

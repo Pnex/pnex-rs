@@ -312,6 +312,8 @@ struct PageQuery {
     limit: Option<String>,
     offset: Option<String>,
     state: Option<String>,
+    /// Label filter `name` / `name:value` (D218), streams list only.
+    label: Option<String>,
 }
 
 // ───────────────────────────── Streams ─────────────────────────────
@@ -323,8 +325,25 @@ async fn stream_list(
     Query(q): Query<PageQuery>,
 ) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let (count, rows) = match pagination::sql_page(&ctx.db, streams::select(org.org.id), page).await
+    let mut select = streams::select(org.org.id);
+    match pagination::label_ids(
+        &ctx.db,
+        org.org.id,
+        q.label.as_deref(),
+        pnex_core::resources::KIND_MEDIA_STREAM,
+    )
+    .await
     {
+        Ok(None) => {}
+        Ok(Some(ids)) => {
+            select = select.filter(
+                crate::models::_entities::media_streams::Column::Id
+                    .is_in(pagination::parse_ids::<uuid::Uuid>(&ids)),
+            )
+        }
+        Err(resp) => return Ok(resp),
+    }
+    let (count, rows) = match pagination::sql_page(&ctx.db, select, page).await {
         Ok(v) => v,
         Err(e) => return db_error(e),
     };

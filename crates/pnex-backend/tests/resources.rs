@@ -187,38 +187,35 @@ async fn labels_roundtrip_validation_et_isolation() {
     .await;
 }
 
-// ─────────────────────────── labels effectifs ───────────────────────────
+// ─────────────────────────── labels: own only (D218) ───────────────────────────
 
 #[tokio::test]
 #[serial]
-async fn labels_effectifs_heritage_et_override() {
+async fn labels_are_never_inherited_through_folders() {
     with_app(|server, db, env| async move {
         let _ = &db;
         let org = personal_org(&server, &env.alice).await;
         let media = create_media(&server, &env.alice, org, "pano").await;
-
-        // Folder "Serre" taggé site:serre.
-        let res = jpost(
+        let folder_id = jpost(
             &server,
             &env.alice,
             org,
             "/api/v1/resources/folders",
             serde_json::json!({"name": "Serre", "emoji": "🌿"}),
         )
-        .await;
-        assert_eq!(res.status_code(), 201, "{}", res.text());
-        let folder_id = res.json::<serde_json::Value>()["id"].as_i64().unwrap();
+        .await
+        .json::<serde_json::Value>()["id"]
+            .as_i64()
+            .unwrap();
         let res = jput(
             &server,
             &env.alice,
             org,
             &format!("/api/v1/resources/folder/{folder_id}/labels"),
-            serde_json::json!({"labels": {"site": "serre"}}),
+            serde_json::json!({"labels": {"site": "serre", "critique": null}}),
         )
         .await;
         assert_eq!(res.status_code(), 200, "{}", res.text());
-
-        // Média placé dans le folder (containment).
         let res = jput(
             &server,
             &env.alice,
@@ -229,20 +226,17 @@ async fn labels_effectifs_heritage_et_override() {
         .await;
         assert_eq!(res.status_code(), 200, "{}", res.text());
 
-        // Labels effectifs du média : merged = {site: serre}, hérité du folder.
-        let res = jget(
-            &server,
-            &env.alice,
-            org,
-            &format!("/api/v1/resources/media_asset/{media}/labels/effective"),
-        )
-        .await;
-        assert_eq!(res.status_code(), 200, "{}", res.text());
-        let body: serde_json::Value = res.json();
-        assert_eq!(body["merged"]["site"], "serre", "{}", body);
-        assert_eq!(body["inherited"][0]["id"], folder_id.to_string());
-
-        // Override : le média écrase site=exterieur (le plus proche gagne).
+        // The folder's labels stay on the folder.
+        for q in ["site:serre", "critique"] {
+            let res = jget(
+                &server,
+                &env.alice,
+                org,
+                &format!("/api/v1/media?label={q}"),
+            )
+            .await;
+            assert_eq!(res.json::<serde_json::Value>()["count"], 0, "{q}");
+        }
         let res = jput(
             &server,
             &env.alice,
@@ -256,36 +250,19 @@ async fn labels_effectifs_heritage_et_override() {
             &server,
             &env.alice,
             org,
-            &format!("/api/v1/resources/media_asset/{media}/labels/effective"),
+            "/api/v1/media?label=site:exterieur",
         )
         .await;
-        let body: serde_json::Value = res.json();
-        assert_eq!(body["merged"]["site"], "exterieur", "override propre gagne");
-
-        // Le filtre EFFECTIF de la liste médias voit l'héritage…
-        let res = jget(&server, &env.alice, org, "/api/v1/media?label=site:serre").await;
-        assert_eq!(res.status_code(), 200);
-        assert_eq!(
-            res.json::<serde_json::Value>()["count"],
-            0,
-            "média surchargé localement : plus de site:serre effectif"
-        );
-        // …et le filtre par tag nu "critique" (héritage) :
-        let res = jput(
+        assert_eq!(res.json::<serde_json::Value>()["count"], 1);
+        // The inheritance route is gone.
+        let res = jget(
             &server,
             &env.alice,
             org,
-            &format!("/api/v1/resources/folder/{folder_id}/labels"),
-            serde_json::json!({"labels": {"critique": null}}),
+            &format!("/api/v1/resources/media_asset/{media}/labels/effective"),
         )
         .await;
-        assert_eq!(res.status_code(), 200);
-        let res = jget(&server, &env.alice, org, "/api/v1/media?label=critique").await;
-        assert_eq!(
-            res.json::<serde_json::Value>()["count"],
-            1,
-            "héritage d'un tag nu via l'arbre"
-        );
+        assert_eq!(res.status_code(), 404);
     })
     .await;
 }
@@ -711,9 +688,8 @@ async fn recherche_effective_cross_kind_et_folders() {
         .await;
         assert_eq!(res.status_code(), 200, "{}", res.text());
         let body: serde_json::Value = res.json();
-        // 3 porteurs légitimes : device (propre), folder (porteur), média
-        // (hérité du folder — l'arête d'héritage traverse le containment).
-        assert_eq!(body["count"], 3, "device + folder + média : {}", body);
+        // Own labels only (D218): the media in the folder inherits nothing.
+        assert_eq!(body["count"], 2, "device + folder : {}", body);
 
         // Kinds filtrés : device uniquement.
         let res = jpost(
@@ -797,7 +773,7 @@ async fn create_device(
 async fn label_filter_on_devices_and_dashboards_lists() {
     with_app(|server, _db, env| async move {
         let org = personal_org(&server, &env.alice).await;
-        // Two devices, one labelled through a folder (inherited label).
+        // Two devices, one labelled (a folder label is never inherited).
         let mut devices = Vec::new();
         for id in ["lbl-dev-a", "lbl-dev-b"] {
             let res = jpost(
@@ -835,8 +811,17 @@ async fn label_filter_on_devices_and_dashboards_lists() {
             &server,
             &env.alice,
             org,
-            &format!("/api/v1/resources/device/{}/containment", devices[0]),
+            &format!("/api/v1/resources/device/{}/containment", devices[1]),
             serde_json::json!({"parent": {"kind": "folder", "id": folder_id.to_string()}}),
+        )
+        .await
+        .assert_status_ok();
+        jput(
+            &server,
+            &env.alice,
+            org,
+            &format!("/api/v1/resources/device/{}/labels", devices[0]),
+            serde_json::json!({"labels": {"site": "serre"}}),
         )
         .await
         .assert_status_ok();
@@ -1206,6 +1191,110 @@ async fn labels_catalog_lists_org_names_and_values_only() {
         .await
         .json();
         assert_eq!(body["labels"], serde_json::json!([]));
+    })
+    .await;
+}
+
+// ─────────────────────────── label-only kinds (D218) ───────────────────────────
+
+#[tokio::test]
+#[serial]
+async fn label_only_kind_filter_search_and_purge() {
+    with_app(|server, _db, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let org_b = personal_org(&server, &env.bob).await;
+        let tpl = jpost(
+            &server,
+            &env.alice,
+            org,
+            "/api/v1/notify/templates",
+            serde_json::json!({"name": "seuil serre", "subject": "s", "body": "b", "vars": []}),
+        )
+        .await;
+        assert_eq!(tpl.status_code(), 201, "{}", tpl.text());
+        let id = tpl.json::<serde_json::Value>()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let path = format!("/api/v1/resources/notify_template/{id}/labels");
+
+        let res = jput(
+            &server,
+            &env.alice,
+            org,
+            &path,
+            serde_json::json!({"labels": {"site": "serre"}}),
+        )
+        .await;
+        assert_eq!(res.status_code(), 200, "{}", res.text());
+        assert_eq!(
+            jget(&server, &env.alice, org, &path)
+                .await
+                .json::<serde_json::Value>()["labels"]["site"],
+            "serre"
+        );
+        // Another org cannot see or write it; an unknown row is a 404.
+        assert_eq!(
+            jget(&server, &env.bob, org_b, &path).await.status_code(),
+            404
+        );
+        let unknown =
+            "/api/v1/resources/notify_template/00000000-0000-0000-0000-000000000000/labels";
+        assert_eq!(
+            jget(&server, &env.alice, org, unknown).await.status_code(),
+            404
+        );
+
+        // List filter of its own page.
+        let list = jget(
+            &server,
+            &env.alice,
+            org,
+            "/api/v1/notify/templates?label=site:serre",
+        )
+        .await;
+        assert_eq!(list.json::<serde_json::Value>()["count"], 1);
+        let list = jget(
+            &server,
+            &env.alice,
+            org,
+            "/api/v1/notify/templates?label=site:nord",
+        )
+        .await;
+        assert_eq!(list.json::<serde_json::Value>()["count"], 0);
+
+        // Global search: `#value` finds it in the labels group with its kind.
+        let found: serde_json::Value = jget(&server, &env.alice, org, "/api/v1/search?q=%23serre")
+            .await
+            .json();
+        let group = found["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|g| g["entity_type"] == "label")
+            .unwrap_or_else(|| panic!("no label group: {found}"));
+        assert_eq!(group["results"][0]["kind"], "notify_template", "{found}");
+        assert_eq!(group["results"][0]["title"], "seuil serre", "{found}");
+        assert_eq!(group["results"][0]["subtitle"], "site:serre", "{found}");
+
+        // Deleting the row drops its labels (database trigger).
+        let res = jdelete(
+            &server,
+            &env.alice,
+            org,
+            &format!("/api/v1/notify/templates/{id}"),
+        )
+        .await;
+        assert!(res.status_code().is_success(), "{}", res.text());
+        let res = jpost(
+            &server,
+            &env.alice,
+            org,
+            "/api/v1/resources/search",
+            serde_json::json!({"label": "site:serre"}),
+        )
+        .await;
+        assert_eq!(res.json::<serde_json::Value>()["count"], 0, "labels purged");
     })
     .await;
 }

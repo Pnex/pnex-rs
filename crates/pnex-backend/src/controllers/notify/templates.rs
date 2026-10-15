@@ -25,8 +25,24 @@ pub(super) async fn list_templates(
     Query(q): Query<ListQuery>,
 ) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let rows = NotifyTemplates::find()
-        .filter(notify_templates::Column::OrgId.eq(org.org.id))
+    let mut select = NotifyTemplates::find().filter(notify_templates::Column::OrgId.eq(org.org.id));
+    match pagination::label_ids(
+        &ctx.db,
+        org.org.id,
+        q.label.as_deref(),
+        pnex_core::resources::KIND_NOTIFY_TEMPLATE,
+    )
+    .await
+    {
+        Ok(None) => {}
+        Ok(Some(ids)) => {
+            select = select.filter(
+                notify_templates::Column::Id.is_in(pagination::parse_ids::<uuid::Uuid>(&ids)),
+            )
+        }
+        Err(resp) => return Ok(resp),
+    }
+    let rows = select
         .order_by_desc(notify_templates::Column::Id)
         .all(&ctx.db)
         .await

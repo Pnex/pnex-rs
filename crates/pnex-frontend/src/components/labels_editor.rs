@@ -190,15 +190,19 @@ pub fn use_row_labels(
     mut ids: impl FnMut() -> Vec<String> + 'static,
 ) -> HashMap<String, LabelSet> {
     let batch = use_resource(move || {
-        let mut ids = ids();
-        ids.truncate(api::resources::LABELS_BATCH_MAX);
+        let ids = ids();
         async move {
-            if ids.is_empty() {
-                return HashMap::new();
+            // Server batches are capped: a long client-paged list is
+            // fetched in successive chunks, never truncated.
+            let mut all = HashMap::new();
+            for chunk in ids.chunks(api::resources::LABELS_BATCH_MAX) {
+                all.extend(
+                    api::resources::labels_batch(kind, chunk.to_vec())
+                        .await
+                        .unwrap_or_default(),
+                );
             }
-            api::resources::labels_batch(kind, ids)
-                .await
-                .unwrap_or_default()
+            all
         }
     });
     let snapshot = batch.value().read().clone().unwrap_or_default();
@@ -239,6 +243,8 @@ pub fn LabelsButton(
     /// Stringified PK.
     id: String,
     can_write: bool,
+    /// Called after a save, so a list can reload its chips.
+    on_changed: Option<Callback<()>>,
 ) -> Element {
     let mut open = use_signal(|| false);
     let title = t!("resources-labels-title").to_string();
@@ -262,6 +268,7 @@ pub fn LabelsButton(
                     kind: kind.clone(),
                     id: id.clone(),
                     can_write,
+                    on_changed,
                 }
             }
         }

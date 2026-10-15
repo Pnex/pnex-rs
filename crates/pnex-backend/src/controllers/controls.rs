@@ -173,6 +173,8 @@ pub fn routes() -> Routes {
 struct ListControlsQuery {
     search: Option<String>,
     kind: Option<String>,
+    /// Label filter `name` / `name:value` (D218).
+    label: Option<String>,
     limit: Option<String>,
     offset: Option<String>,
 }
@@ -190,6 +192,21 @@ async fn list(
         .order_by_asc(controls::Column::Label);
     if let Some(kind) = q.kind.as_deref().filter(|k| !k.is_empty()) {
         query = query.filter(controls::Column::Kind.eq(kind));
+    }
+    match pagination::label_ids(
+        &ctx.db,
+        org.org.id,
+        q.label.as_deref(),
+        pnex_core::resources::KIND_CONTROL,
+    )
+    .await
+    {
+        Ok(None) => {}
+        Ok(Some(ids)) => {
+            query =
+                query.filter(controls::Column::Id.is_in(pagination::parse_ids::<uuid::Uuid>(&ids)))
+        }
+        Err(resp) => return Ok(resp),
     }
     if let Some(pat) = pagination::sql_search_pattern(q.search.as_deref()) {
         query = query.filter(

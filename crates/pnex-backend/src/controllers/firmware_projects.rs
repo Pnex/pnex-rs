@@ -140,10 +140,37 @@ async fn find_project(
     Ok((project, rev))
 }
 
+#[derive(serde::Deserialize)]
+struct ListQuery {
+    /// Label filter `name` / `name:value` (D218).
+    label: Option<String>,
+}
+
 /// `GET /api/v1/firmware-projects` — org projects (name ASC).
-async fn list(State(ctx): State<AppContext>, org: OrgContext) -> Result<Response> {
-    let rows = firmware_projects::Entity::find()
-        .filter(firmware_projects::Column::OrgId.eq(org.org.id))
+async fn list(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    axum::extract::Query(q): axum::extract::Query<ListQuery>,
+) -> Result<Response> {
+    let mut select =
+        firmware_projects::Entity::find().filter(firmware_projects::Column::OrgId.eq(org.org.id));
+    match super::pagination::label_ids(
+        &ctx.db,
+        org.org.id,
+        q.label.as_deref(),
+        pnex_core::resources::KIND_FIRMWARE_PROJECT,
+    )
+    .await
+    {
+        Ok(None) => {}
+        Ok(Some(ids)) => {
+            select = select.filter(
+                firmware_projects::Column::Id.is_in(super::pagination::parse_ids::<i64>(&ids)),
+            )
+        }
+        Err(resp) => return Ok(resp),
+    }
+    let rows = select
         .order_by_asc(firmware_projects::Column::Name)
         .all(&ctx.db)
         .await

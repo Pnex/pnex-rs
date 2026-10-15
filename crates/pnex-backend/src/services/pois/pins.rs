@@ -147,6 +147,8 @@ pub struct PinFilters<'a> {
     pub emoji: Option<&'a str>,
     pub has_device: bool,
     pub has_position: bool,
+    /// POIs carrying a label (D218): `None` = no label filter.
+    pub ids: Option<Vec<uuid::Uuid>>,
 }
 
 /// SQL select of the org's geo POIs with every filter pushed down: bbox,
@@ -176,6 +178,9 @@ fn filtered_pins_select(
     }
     if let Some(emoji) = f.emoji {
         q = q.filter(map_pins::Column::Emoji.eq(emoji));
+    }
+    if let Some(ids) = &f.ids {
+        q = q.filter(map_pins::Column::Id.is_in(ids.clone()));
     }
     // POIs holding a placement of the org matching `cond`.
     let pins_with_placement = |cond: Option<sea_orm::sea_query::SimpleExpr>| {

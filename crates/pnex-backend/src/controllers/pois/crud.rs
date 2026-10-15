@@ -9,7 +9,19 @@ pub(super) async fn list(
     Query(q): Query<PoiListQuery>,
 ) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let filters = pin_filters(&q.search, &q.emoji, &q.has_device, &q.has_position);
+    let mut filters = pin_filters(&q.search, &q.emoji, &q.has_device, &q.has_position);
+    match pagination::label_ids(
+        &ctx.db,
+        org.org.id,
+        q.label.as_deref(),
+        pnex_core::resources::KIND_MAP_PIN,
+    )
+    .await
+    {
+        Ok(None) => {}
+        Ok(Some(ids)) => filters.ids = Some(pagination::parse_ids::<uuid::Uuid>(&ids)),
+        Err(resp) => return Ok(resp),
+    }
     let (count, page_pins) = svc::list_pins(
         &ctx.db,
         org.org.id,

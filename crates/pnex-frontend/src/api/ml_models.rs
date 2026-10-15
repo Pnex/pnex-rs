@@ -14,7 +14,20 @@ pub type ModelPage = Paginated<MlModel>;
 
 /// `GET /api/v1/ml/models` — D14 envelope.
 pub async fn list(limit: Option<i64>, offset: Option<i64>) -> Result<ModelPage, ApiError> {
+    list_labeled(limit, offset, None).await
+}
+
+/// `GET /api/v1/ml/models[?label=]` — D14 envelope, filtered by label
+/// (`name` or `name:value`, D218).
+pub async fn list_labeled(
+    limit: Option<i64>,
+    offset: Option<i64>,
+    label: Option<String>,
+) -> Result<ModelPage, ApiError> {
     let mut pairs = Vec::new();
+    if let Some(label) = label.as_deref().filter(|v| !v.is_empty()) {
+        pairs.push(format!("label={}", crate::api::tours::urlencode(label)));
+    }
     if let Some(limit) = limit {
         pairs.push(format!("limit={limit}"));
     }

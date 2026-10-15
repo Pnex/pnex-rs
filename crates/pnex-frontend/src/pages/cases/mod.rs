@@ -17,12 +17,13 @@ use serde_json::{Map, Value};
 
 use crate::api;
 use crate::app::Route;
-use crate::components::crud::filters::FilterBar;
+use crate::components::crud::filters::{FilterBar, LabelFilterInput};
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
+use crate::components::labels_editor::{use_row_labels, LabelChips};
 use crate::components::ontology::short_time;
 use crate::components::ui::{BTN_SECONDARY_SM, FIELD_LABEL, INPUT};
 use crate::state::{org, toasts};
@@ -61,6 +62,8 @@ pub fn Cases() -> Element {
     let mut busy = use_signal(|| false);
     let mut creating = use_signal(|| false);
     let mut page = use_signal(|| 0i64);
+    // D218: own label filter ("name" or "name:value").
+    let filter_label = use_signal(String::new);
     let can_write = org::current_can_write();
     let navigator = use_navigator();
 
@@ -68,6 +71,10 @@ pub fn Cases() -> Element {
         let st = status();
         let q = OntologyQuery {
             type_key: Some(KIND_CASE.to_string()),
+            label: {
+                let value = filter_label().trim().to_string();
+                (!value.is_empty()).then_some(value)
+            },
             filters: if st.is_empty() {
                 Vec::new()
             } else {
@@ -85,6 +92,11 @@ pub fn Cases() -> Element {
             let _ = reload();
             api::ontology::query(&q).await
         }
+    });
+    // D218: own labels of the page rows (labels API keys objects by native id).
+    let row_labels = use_row_labels(KIND_CASE, move || match &*list.value().read() {
+        Some(Ok(r)) => r.rows.iter().map(|r| r.object.native_id.clone()).collect(),
+        _ => Vec::new(),
     });
     let mut create = move || {
         let title = draft().trim().to_string();
@@ -148,9 +160,11 @@ pub fn Cases() -> Element {
     };
     let is_empty = rows.is_empty();
     let columns = vec![
-        Column::new(t!("cases-col-title").to_string(), |c: &ObjectView| {
+        Column::new(t!("cases-col-title").to_string(), move |c: &ObjectView| {
+            let labels = row_labels.get(&c.native_id).cloned().unwrap_or_default();
             rsx! {
                 span { class: "font-medium text-gray-900", "{c.title}" }
+                LabelChips { labels }
             }
         }),
         Column::new(t!("case-question").to_string(), |c: &ObjectView| {
@@ -247,6 +261,14 @@ pub fn Cases() -> Element {
                             "{label}"
                         }
                     }
+                }
+                LabelFilterInput {
+                    placeholder: t!("resources-label-filter-placeholder").to_string(),
+                    value: filter_label,
+                    on_submit: move |_| {
+                        page.set(0);
+                        reload.with_mut(|r| *r += 1);
+                    },
                 }
             }
             ListStates {

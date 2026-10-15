@@ -132,6 +132,8 @@ pub struct ListQuery {
     search: Option<String>,
     limit: Option<String>,
     offset: Option<String>,
+    /// Label filter `name` / `name:value` (D218).
+    label: Option<String>,
 }
 
 async fn list(
@@ -140,9 +142,25 @@ async fn list(
     Query(q): Query<ListQuery>,
 ) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let rows = ml_models::Entity::find()
+    let mut select = ml_models::Entity::find()
         .filter(ml_models::Column::OrgId.eq(org.org.id))
-        .filter(ml_models::Column::Task.eq(vision::VISION_TASK))
+        .filter(ml_models::Column::Task.eq(vision::VISION_TASK));
+    match pagination::label_ids(
+        &ctx.db,
+        org.org.id,
+        q.label.as_deref(),
+        pnex_core::resources::KIND_ML_MODEL,
+    )
+    .await
+    {
+        Ok(None) => {}
+        Ok(Some(ids)) => {
+            select = select
+                .filter(ml_models::Column::Id.is_in(pagination::parse_ids::<uuid::Uuid>(&ids)))
+        }
+        Err(resp) => return Ok(resp),
+    }
+    let rows = select
         .order_by_asc(ml_models::Column::Name)
         .all(&ctx.db)
         .await
@@ -162,6 +180,9 @@ async fn list(
     let mut filters = Vec::new();
     if let Some(s) = q.search.as_deref().filter(|s| !s.is_empty()) {
         filters.push(("search".to_string(), s.to_string()));
+    }
+    if let Some(l) = q.label.as_deref().filter(|l| !l.is_empty()) {
+        filters.push(("label".to_string(), l.to_string()));
     }
     format::json(pagination::envelope(
         "/api/v1/ml/models",

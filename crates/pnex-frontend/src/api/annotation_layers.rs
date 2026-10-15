@@ -22,6 +22,8 @@ pub struct LayerFilters {
     pub media: Option<String>,
     /// Filtre exact par tour associé (000028 : les ensembles d'un tour).
     pub tour: Option<String>,
+    /// D218 label filter (`name` or `name:value`).
+    pub label: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -37,6 +39,9 @@ impl LayerFilters {
         }
         if let Some(v) = &self.tour {
             parts.push(format!("tour={}", crate::api::tours::urlencode(v)));
+        }
+        if let Some(v) = self.label.as_deref().filter(|v| !v.is_empty()) {
+            parts.push(format!("label={}", crate::api::tours::urlencode(v)));
         }
         if let Some(v) = self.limit {
             parts.push(format!("limit={v}"));

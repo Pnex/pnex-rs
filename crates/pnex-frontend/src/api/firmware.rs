@@ -19,8 +19,20 @@ struct Results<T> {
 }
 
 pub async fn list() -> Result<Vec<FirmwareProjectSummary>, ApiError> {
+    list_labeled(None).await
+}
+
+/// Same as [`list`], filtered by an effective label (`name` or `name:value`, D42).
+pub async fn list_labeled(label: Option<String>) -> Result<Vec<FirmwareProjectSummary>, ApiError> {
+    let path = match label.filter(|v| !v.is_empty()) {
+        Some(v) => format!(
+            "/api/v1/firmware-projects?label={}",
+            crate::api::tours::urlencode(&v)
+        ),
+        None => "/api/v1/firmware-projects".to_string(),
+    };
     let r: Results<FirmwareProjectSummary> =
-        client::request(reqwest::Method::GET, "/api/v1/firmware-projects", None).await?;
+        client::request(reqwest::Method::GET, &path, None).await?;
     Ok(r.results)
 }
 

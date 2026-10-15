@@ -23,7 +23,7 @@ use crate::api;
 use crate::components::badges::date_label;
 use crate::components::code_highlight::{AreaHandle, FunctionCodeEditor, LineMark, MarkSeverity};
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::{FilterBar, SearchInput};
+use crate::components::crud::filters::{FilterBar, LabelFilterInput, SearchInput};
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
@@ -34,6 +34,7 @@ use crate::components::function_node_preview::FunctionNodePreview;
 use crate::components::function_ports::FunctionPortsPanel;
 use crate::components::functions_reference::FunctionsReferenceModal;
 use crate::components::icons;
+use crate::components::labels_editor::{use_row_labels, LabelChips, LabelsButton};
 use crate::state::functions::OPEN_FUNCTION;
 use crate::state::{org, session, toasts};
 use crate::util;
@@ -67,10 +68,12 @@ pub fn Functions() -> Element {
         }
     });
     let search = use_signal(String::new);
+    // D218: own label filter ("name" or "name:value"), applied server-side.
+    let filter_label = use_signal(String::new);
     // Pagination client-side (la recherche est aussi client-side et l'API
     // plafonne le référentiel à 200 entrées) — page remise à 0 par le clamp
     // ci-dessous quand la recherche réduit le résultat.
-    let page = use_signal(|| 0i64);
+    let mut page = use_signal(|| 0i64);
     let mut create_open = use_signal(|| false);
     // Cible de suppression (id, nom) — confirmation à la demande.
     let mut delete_target = use_signal(|| None::<(i64, String)>);
@@ -79,7 +82,16 @@ pub fn Functions() -> Element {
 
     let list = use_resource(move || {
         let _ = reload();
-        async move { api::functions::list().await }
+        let label = Some(filter_label().trim().to_string());
+        async move { api::functions::list_labeled(label).await }
+    });
+
+    // D218: own labels of the loaded rows (whole list, paged client-side).
+    let row_labels = use_row_labels(pnex_core::resources::KIND_FUNCTION, move || {
+        match &*list.value().read() {
+            Some(Ok(all)) => all.iter().map(|f| f.id.to_string()).collect(),
+            _ => Vec::new(),
+        }
     });
 
     // Lecture synchrone de la ressource (doctrine socle CRUD) + filtre
@@ -113,8 +125,12 @@ pub fn Functions() -> Element {
     let columns = vec![
         Column::new(
             t!("functions-col-name").to_string(),
-            |summary: &FunctionSummary| {
-                rsx! { {summary.name.clone()} }
+            move |summary: &FunctionSummary| {
+                let labels = row_labels.get(&summary.id.to_string()).cloned().unwrap_or_default();
+                rsx! {
+                    {summary.name.clone()}
+                    LabelChips { labels }
+                }
             },
         )
         .with_td_class("font-medium text-gray-900"),
@@ -155,6 +171,12 @@ pub fn Functions() -> Element {
                             class: crate::components::ui::BTN_SECONDARY_SM,
                             onclick: move |_| selected.set(Some(pk)),
                             {t!("functions-open")}
+                        }
+                        LabelsButton {
+                            kind: pnex_core::resources::KIND_FUNCTION.to_string(),
+                            id: pk.to_string(),
+                            can_write,
+                            on_changed: move |_| reload.with_mut(|r| *r += 1),
                         }
                         if can_write {
                             button {
@@ -209,6 +231,14 @@ pub fn Functions() -> Element {
                                 placeholder: t!("functions-search-placeholder").to_string(),
                                 value: search,
                                 on_submit: move |_| {},
+                            }
+                            LabelFilterInput {
+                                placeholder: t!("resources-label-filter-placeholder").to_string(),
+                                value: filter_label,
+                                on_submit: move |_| {
+                                    page.set(0);
+                                    reload.with_mut(|r| *r += 1);
+                                },
                             }
                         }
 

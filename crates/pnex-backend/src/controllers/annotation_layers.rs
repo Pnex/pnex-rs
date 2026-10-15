@@ -291,6 +291,8 @@ struct ListLayersQuery {
     tour: Option<String>,
     limit: Option<String>,
     offset: Option<String>,
+    /// Label filter `name` / `name:value` (D218).
+    label: Option<String>,
 }
 
 /// `GET /api/v1/annotation-layers` — couches de l'org, paginées (D14),
@@ -322,6 +324,22 @@ async fn list(
     }
     if let Some(tour) = tour_filter {
         select = select.filter(annotation_layers::Column::TourId.eq(tour));
+    }
+    match pagination::label_ids(
+        &ctx.db,
+        org.org.id,
+        q.label.as_deref(),
+        pnex_core::resources::KIND_ANNOTATION_LAYER,
+    )
+    .await
+    {
+        Ok(None) => {}
+        Ok(Some(ids)) => {
+            select = select.filter(
+                annotation_layers::Column::Id.is_in(pagination::parse_ids::<uuid::Uuid>(&ids)),
+            )
+        }
+        Err(resp) => return Ok(resp),
     }
     if let Some(pat) = pagination::sql_search_pattern(q.search.as_deref()) {
         select = select.filter(pagination::sql_contains(

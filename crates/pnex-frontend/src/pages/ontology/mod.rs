@@ -16,7 +16,7 @@ use serde_json::{Map, Value};
 
 use crate::api;
 use crate::app::Route;
-use crate::components::crud::filters::{FilterBar, SearchInput};
+use crate::components::crud::filters::{FilterBar, LabelFilterInput, SearchInput};
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
@@ -87,6 +87,8 @@ fn ObjectsTab(initial_type: String, tabs: Element) -> Element {
     let mut reload = use_signal(|| 0u32);
     let mut type_key = use_signal(move || initial_type.clone());
     let search = use_signal(String::new);
+    // D218: own label filter ("name" or "name:value").
+    let filter_label = use_signal(String::new);
     let mut page = use_signal(|| 0i64);
     let mut creating = use_signal(|| false);
     let can_write = org::current_can_write();
@@ -97,6 +99,7 @@ fn ObjectsTab(initial_type: String, tabs: Element) -> Element {
         let q = OntologyQuery {
             type_key: Some(type_key()).filter(|t| !t.is_empty()),
             text: Some(search().trim().to_string()).filter(|t| !t.is_empty()),
+            label: Some(filter_label().trim().to_string()).filter(|t| !t.is_empty()),
             limit: Some(PAGE_SIZE as u64),
             offset: Some((page() * PAGE_SIZE) as u64),
             ..Default::default()
@@ -180,6 +183,14 @@ fn ObjectsTab(initial_type: String, tabs: Element) -> Element {
                     page,
                     placeholder: t!("onto-search").to_string(),
                     value: search,
+                    on_submit: move |_| {
+                        page.set(0);
+                        reload.with_mut(|r| *r += 1);
+                    },
+                }
+                LabelFilterInput {
+                    placeholder: t!("resources-label-filter-placeholder").to_string(),
+                    value: filter_label,
                     on_submit: move |_| {
                         page.set(0);
                         reload.with_mut(|r| *r += 1);
