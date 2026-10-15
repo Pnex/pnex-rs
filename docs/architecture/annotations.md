@@ -1,5 +1,11 @@
 # Annotations sur médias — couches versionnées posées sur les tours (D55–D60)
 
+> **Périmètre (D219, `design-system.md` §7, 2026-10-15)** : une annotation
+> est toujours ancrée sur un média visuel (photo, plan, 360, visite, splat) ;
+> repère, note, lecture ou contrôle. Pas de calque libre ; entrée « Annoter »
+> depuis le média ou la visite. Détections caméra et étiquetage du Vision Lab
+> ne sont pas des annotations.
+
 > **Statut : DOCTRINE (réflexion tranchée le 2026-09-13, implémentation par
 > phases — §8).** Référence pour tout le chantier annotations : ancrage
 > média (D55), versioning + activation (D56), cibles faibles (D57),
