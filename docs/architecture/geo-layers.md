@@ -335,6 +335,15 @@ fonctionne normalement.
    (« profile does not exist »). Le code PneX gère déjà les quatre profils.
    **À valider plus tard** : tests avec tous les profils et une couverture
    monde, une fois le déploiement complet fait.
+9. **Import continu de données externes « non métier »** (2026-10-15). Des
+   référentiels publics tenus par d'autres (annuaire de l'Éducation
+   nationale, établissements du supérieur, etc.) doivent pouvoir se
+   resynchroniser, pas seulement s'importer une fois : source (URL,
+   fréquence), clé stable (UAI…), mises à jour et fermetures, et distinction
+   avec les données métier de l'org. À traiter à l'arrivée sur ce chantier.
+   Banc de départ : 63 000 établissements scolaires chargés comme sites par
+   l'API (`e2e/tests/_import_schools.spec.ts`) le 2026-10-15, pour éprouver la
+   carte : ce chargement ponctuel ne vaut pas import.
 
 ## 11. Tests
 
