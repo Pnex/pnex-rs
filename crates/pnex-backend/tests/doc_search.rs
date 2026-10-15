@@ -159,6 +159,25 @@ async fn upload_index_search_and_read() {
             assert_eq!(hits["hits"][0]["asset_id"], id.as_str(), "{q}: {hits}");
             assert_eq!(hits["hits"][0]["heading"], "Pompe P2", "{q}: {hits}");
         }
+        // Global search (O54): document contents show up as a group.
+        let global: Value = get(&server, &env.alice, org, "/api/v1/search?q=E-0457")
+            .await
+            .json();
+        let docs = global["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|g| g["entity_type"] == "document")
+            .unwrap_or_else(|| panic!("no document group: {global}"));
+        assert_eq!(docs["results"][0]["id"], id.as_str(), "{global}");
+        assert!(
+            !docs["results"][0]["subtitle"]
+                .as_str()
+                .unwrap()
+                .contains('⟦'),
+            "{global}"
+        );
+
         let hits: Value = get(&server, &env.alice, org, "/api/v1/media/search?q=borne")
             .await
             .json();

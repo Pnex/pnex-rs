@@ -13,6 +13,7 @@ Manuals, procedures, reports, datasheets and exports uploaded to the Media libra
 ## What you can do
 - **Upload** the file in the Library like any media: the kind is detected from the file itself and indexing starts at once.
 - **Search** with the search box of the Library: exact codes (`E-0457`, part numbers) and words (plural or conjugated forms match too). Each result shows the document, the page (PDF, or the sheet of a spreadsheet) or the section title, and an excerpt with the matching words highlighted. Only the current version of each document is searched.
+- **Global search**: the search box at the top of the sidebar also finds words and codes inside indexed documents, in a **Documents** group (one row per document, with an excerpt); clicking a row opens the document in the Library.
 - **Indexing state** on the document's page: waiting, extracting, indexed (with page and passage counts), error, or no extractable text. Owners and admins can **Reindex** it.
 - **Ask the assistant**: it searches your documents (`search_docs`), reads a passage with its neighbours (`read_chunk`) or a whole PDF page (`open_page`), and cites the document and page or section of what it quotes.
 
