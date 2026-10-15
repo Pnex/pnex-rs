@@ -594,6 +594,7 @@ fn ImportModel(on_close: Callback<()>, on_saved: Callback<()>) -> Element {
                     class: INPUT,
                     r#type: "file",
                     accept: ".tar,.bz2,.gz,.tgz,.zip,.bin,.gguf,.onnx",
+                    aria_label: t!("asr-models-source-upload"),
                     onchange: move |evt| {
                         if let Some(file) = evt.files().first().cloned() {
                             file_name.set(file.name());

@@ -161,6 +161,7 @@ fn ObjectsTab(initial_type: String, tabs: Element) -> Element {
                 select {
                     class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                     "data-testid": "onto-type-filter",
+                    aria_label: t!("onto-col-type"),
                     onchange: move |e| {
                         type_key.set(e.value());
                         page.set(0);

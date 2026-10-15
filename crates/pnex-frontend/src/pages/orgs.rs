@@ -475,7 +475,7 @@ fn member_row(
             class: "flex items-center justify-between gap-2 p-3 bg-gray-50 rounded-lg",
             div { class: "min-w-0",
                 p { class: "truncate text-sm font-medium text-gray-900", {display} }
-                p { class: "truncate text-xs text-gray-500", {email} }
+                p { class: "truncate text-xs text-gray-600", {email} }
             }
             div { class: "flex shrink-0 items-center gap-2",
                 if can_write {

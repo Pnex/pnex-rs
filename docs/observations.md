@@ -513,6 +513,19 @@ Tous trouvés par la suite e2e, chacun couvert par un test (unitaire ou e2e) :
   `fieldAfterLabel` des tests e2e peuvent désormais migrer vers
   `getByLabel`.
 
+  — 2026-10-15 : passe strict contre la stack (image du 2026-10-14) : 25/28
+  routes vertes ; restaient `select-name` (filtres de /ontology et
+  /cases) et un `color-contrast` (courriel des membres sur fond gris de
+  /orgs/current) → corrigés ; le rapport axe donne désormais les
+  sélecteurs fautifs ; la CI e2e nightly passe le projet a11y en strict
+  (`PNEX_E2E_A11Y_STRICT=1`). Audit des modales ajouté (`axe dialog
+  <route>` : bouton Ajouter du socle, `data-testid="list-add"`) : seul
+  l'import de fichier de /models échouait (`label`) ; champs fichier
+  sans nom rattachés (modèles ML, ASR, image de test, nouvelle version
+  d'un média). Passe strict contre le front local : 44/44 (28 routes,
+  16 modales). Reste : migration `fieldAfterLabel` → `getByLabel`
+  (confort des tests, pas de dette utilisateur).
+- **Statut** : ✅ résolu (strict en CI, routes et modales vertes).
 ### O22 — Rebuild = même build record = même version firmware
 
 - **Constat** : « Rebuild » réutilise l'enregistrement de build (même id) ;

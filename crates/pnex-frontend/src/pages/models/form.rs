@@ -349,6 +349,7 @@ pub(super) fn ModelFormModal(
                                 class: INPUT_CLASS,
                                 r#type: "file",
                                 accept: ".onnx",
+                                aria_label: t!("models-source-upload"),
                                 onchange: move |evt| {
                                     if let Some(file) = evt.files().first().cloned() {
                                         file_name.set(file.name());

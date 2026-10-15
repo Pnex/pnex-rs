@@ -105,6 +105,7 @@ pub fn ListLayout(
                                 button {
                                     class: PRIMARY_BTN,
                                     r#type: "button",
+                                    "data-testid": "list-add",
                                     onclick: move |_| add.call(()),
                                     icons::Plus { class: "h-4 w-4 inline mr-1" }
                                     {label}
