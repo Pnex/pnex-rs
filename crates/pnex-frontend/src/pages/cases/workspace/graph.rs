@@ -342,14 +342,6 @@ impl Fit {
     }
 }
 
-fn short(s: &str) -> String {
-    let mut out: String = s.chars().take(22).collect();
-    if s.chars().count() > 22 {
-        out.push('…');
-    }
-    out
-}
-
 /// Neighbours offered by an expansion: the node, the facets, the ticked ones.
 #[derive(Clone, PartialEq)]
 struct Offer {
@@ -975,7 +967,7 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
                                             text_anchor: "middle",
                                             font_size: "13",
                                             fill: "var(--color-ink, #1b2733)",
-                                            "{short(&n.title)}"
+                                            "{model::short(&n.title, 22)}"
                                         }
                                     }
                                     title { "{n.title}" }

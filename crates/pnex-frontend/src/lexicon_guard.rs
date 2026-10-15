@@ -30,6 +30,13 @@ struct Rule {
 }
 
 const RULES: &[Rule] = &[
+    // The storyline view of a case is the « Histoire » (its tab name).
+    Rule {
+        scope: Scope::Fr,
+        term: "storyline",
+        use_instead: "histoire (vue d'un dossier)",
+        allowed_keys: &[],
+    },
     // D218: free classification of an object is an « étiquette ». CSV/JSON
     // column and field names quoted to the user stay as they are.
     Rule {

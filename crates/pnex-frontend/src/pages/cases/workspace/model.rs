@@ -83,6 +83,83 @@ pub fn anchor(left_pct: f64) -> &'static str {
     }
 }
 
+/// `s` cut to `n` characters, with an ellipsis when it was longer.
+pub fn short(s: &str, n: usize) -> String {
+    let mut out: String = s.chars().take(n).collect();
+    if s.chars().count() > n {
+        out.push('…');
+    }
+    out
+}
+
+/// Order of the storyline threads: the most present first, then each time
+/// the thread that shares the most events with those already placed (the
+/// latest weighing more), so threads that meet often run side by side.
+/// `present[i]` = events of thread `i`; `meets` as in [`storyline`].
+pub fn story_order(present: &[usize], meets: &[Vec<usize>]) -> Vec<usize> {
+    let n = present.len();
+    let mut together = vec![vec![0usize; n]; n];
+    for on in meets {
+        for a in on {
+            for b in on {
+                if a != b {
+                    together[*a][*b] += 1;
+                }
+            }
+        }
+    }
+    let mut order: Vec<usize> = Vec::with_capacity(n);
+    let mut left: Vec<usize> = (0..n).collect();
+    while !left.is_empty() {
+        let pick = left
+            .iter()
+            .copied()
+            .max_by_key(|c| {
+                let near: usize = order
+                    .iter()
+                    .rev()
+                    .enumerate()
+                    .map(|(age, p)| together[*c][*p] * 4 / (age + 1))
+                    .sum();
+                (near, present[*c], usize::MAX - *c)
+            })
+            .unwrap_or(left[0]);
+        order.push(pick);
+        left.retain(|c| *c != pick);
+    }
+    order
+}
+
+/// Storyline layout (xkcd "Movie Narrative Charts"): the y of each line at
+/// each column. `meets[c]` lists the lines sharing event `c`: they gather
+/// `tight` apart around their mean home row; the other lines step out of the
+/// group's band. Home rows are `gap` apart, from 0.
+pub fn storyline(lines: usize, meets: &[Vec<usize>], gap: f64, tight: f64) -> Vec<Vec<f64>> {
+    let home: Vec<f64> = (0..lines).map(|i| i as f64 * gap).collect();
+    meets
+        .iter()
+        .map(|on| {
+            let mut y = home.clone();
+            if on.len() < 2 {
+                return y;
+            }
+            let mid = on.iter().map(|i| home[*i]).sum::<f64>() / on.len() as f64;
+            let half = (on.len() - 1) as f64 / 2.0;
+            for (j, i) in on.iter().enumerate() {
+                y[*i] = mid + (j as f64 - half) * tight;
+            }
+            let lo = mid - (half + 1.0) * tight;
+            let hi = mid + (half + 1.0) * tight;
+            for (i, v) in y.iter_mut().enumerate() {
+                if !on.contains(&i) && *v > lo && *v < hi {
+                    *v = if *v < mid { lo } else { hi };
+                }
+            }
+            y
+        })
+        .collect()
+}
+
 /// Row of each item so that labels never overlap: items sorted by start,
 /// each takes the first row free at its start. `extent` is the item's
 /// width in percent of the window (bar + label).
@@ -519,6 +596,29 @@ pub fn coverage(track: &CaseTrack) -> Vec<(i64, i64)> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn story_order_keeps_companions_side_by_side() {
+        // 0 is most present; 2 meets 0 often, 1 never meets anyone.
+        let order = story_order(&[5, 4, 3], &[vec![0, 2], vec![0, 2], vec![1]]);
+        assert_eq!(order, vec![0, 2, 1]);
+    }
+
+    #[test]
+    fn storyline_gathers_the_lines_of_an_event() {
+        let ys = storyline(4, &[vec![], vec![0, 3]], 40.0, 10.0);
+        assert_eq!(ys[0], vec![0.0, 40.0, 80.0, 120.0]);
+        let (a, b) = (ys[1][0], ys[1][3]);
+        assert!((b - a - 10.0).abs() < 1e-9, "{a} {b}");
+        // The lines in between step out of the group's band.
+        for i in [1, 2] {
+            assert!(
+                ys[1][i] <= a - 10.0 + 1e-9 || ys[1][i] >= b + 10.0 - 1e-9,
+                "{:?}",
+                ys[1]
+            );
+        }
+    }
     use super::*;
     use pnex_core::ontology::api::ObjectRef;
 
