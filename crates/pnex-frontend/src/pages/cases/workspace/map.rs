@@ -57,6 +57,72 @@ fn frame(points: &[(f64, f64)]) -> ((f64, f64), f64) {
     )
 }
 
+const EVENT_MAP_HOST: &str = "pnex-case-event-map";
+
+/// Minimap of an event (in its inspector panel): its located pieces on the
+/// org basemap, framed once. Nothing when no piece of the event is located.
+#[component]
+pub(super) fn EventMap(
+    event: pnex_core::ontology::api::CaseEvent,
+    workspace: pnex_core::ontology::api::CaseWorkspace,
+) -> Element {
+    let pins: Vec<MapItem> = event
+        .attachments
+        .iter()
+        .filter_map(|a| workspace.places.iter().find(|p| p.object.id == a.object.id))
+        .map(|p| MapItem {
+            kind: "pin",
+            id: Some(p.object.id.clone()),
+            lon: p.lon,
+            lat: p.lat,
+            label: p.object.title.clone(),
+            emoji: "📍".into(),
+            count: 0,
+        })
+        .collect();
+    let located = !pins.is_empty();
+    use_effect(use_reactive!(|pins| {
+        if pins.is_empty() {
+            return;
+        }
+        let points: Vec<(f64, f64)> = pins.iter().map(|p| (p.lon, p.lat)).collect();
+        // One place: a town-level view rather than street level.
+        let (center, zoom) = frame(&points);
+        let zoom = if points.len() == 1 {
+            zoom.min(11.0)
+        } else {
+            zoom
+        };
+        spawn(async move {
+            let maps = api::geo::basemaps().await.unwrap_or_default();
+            let chosen = crate::pages::map::pick_basemap(&maps);
+            map_viewer::unmount(EVENT_MAP_HOST);
+            let opts = MapOpts {
+                style_url: chosen.map(|b| b.style_url.clone()).unwrap_or_default(),
+                style_url_dark: chosen.and_then(|b| b.style_url_dark.clone()),
+                center,
+                zoom,
+                items: pins,
+            };
+            map_viewer::mount(EVENT_MAP_HOST, &opts).await;
+        });
+    }));
+    use_drop(|| map_viewer::unmount(EVENT_MAP_HOST));
+    if !located {
+        return rsx! {};
+    }
+    rsx! {
+        div {
+            p { class: crate::components::ui::FIELD_LABEL, {t!("cw-event-map")} }
+            div {
+                id: EVENT_MAP_HOST,
+                class: "h-44 w-full overflow-hidden rounded-md border border-line",
+                "data-testid": "case-event-map",
+            }
+        }
+    }
+}
+
 #[component]
 pub(super) fn CaseMap() -> Element {
     let ws = use_context::<Ws>();

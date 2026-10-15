@@ -4742,6 +4742,7 @@ cw-expand-none = Aucun autre voisin sur la fenêtre du dossier.
 cw-expand-undo = Annuler l'expansion
 cw-expand-keep = Garder (au bac)
 cw-map = Carte
+cw-event-map = Où
 cw-story = Histoire
 cw-story-empty = Aucun acteur ne revient dans deux événements : il n'y a pas encore d'histoire à raconter en fils.
 cw-story-all = Tous les acteurs ({ $count })
