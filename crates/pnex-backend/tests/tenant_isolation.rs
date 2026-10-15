@@ -185,6 +185,30 @@ async fn sso_register_et_reset_pointent_vers_les_pages_rauthy() {
             .to_string();
         assert!(location.contains("/auth/v1/users/register"), "{location}");
 
+        // SEC-41: `prompt=login` is relayed to the authorize request, any
+        // other prompt value is dropped.
+        let location_of = |res: axum_test::TestResponse| {
+            res.headers()
+                .get("location")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or_default()
+                .to_string()
+        };
+        let forced = location_of(
+            server
+                .get(
+                    "/api/v1/oauth2/sso?code_challenge=abc&code_challenge_method=S256&prompt=login",
+                )
+                .await,
+        );
+        assert!(forced.contains("prompt=login"), "{forced}");
+        let other = location_of(
+            server
+                .get("/api/v1/oauth2/sso?code_challenge=abc&code_challenge_method=S256&prompt=none")
+                .await,
+        );
+        assert!(!other.contains("prompt="), "{other}");
+
         // logout : formulaire HTML auto-soumis en POST vers l'end-session
         // Rauthy (navigation top-level — la page logout SPA de Rauthy ne
         // rend jamais la main à l'app, voir le doc-comment du handler).

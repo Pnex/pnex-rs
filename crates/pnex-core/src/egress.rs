@@ -16,6 +16,12 @@
 //! `PNEX_EGRESS_ALLOW_HOSTS` (comma separated) lifts the name rule for
 //! chosen internal names (`ollama`, `homeassistant`); the addresses they
 //! resolve to are still checked.
+//!
+//! `PNEX_EGRESS_DENY_CIDRS` (comma separated, `10.42.0.0/16,fd00::/8`)
+//! refuses extra ranges under every policy but `open`: the infrastructure
+//! network (Docker bridge, k8s pod/service CIDRs) in `lan` mode (SEC-23).
+//! IPv6 addresses that embed an IPv4 (NAT64, 6to4, IPv4-compatible) are
+//! judged by that IPv4.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::OnceLock;
@@ -57,6 +63,55 @@ pub fn init(policy: EgressPolicy) {
 }
 
 static ALLOW_HOSTS: OnceLock<Vec<String>> = OnceLock::new();
+static DENY_CIDRS: OnceLock<Vec<(IpAddr, u8)>> = OnceLock::new();
+
+/// Parses `a.b.c.d/n` / `x::/n` items; malformed items are skipped (logged
+/// by nobody: the env var is operator input, checked by the tests below).
+fn parse_cidrs(v: &str) -> Vec<(IpAddr, u8)> {
+    v.split(',')
+        .filter_map(|item| {
+            let (addr, len) = item.trim().split_once('/')?;
+            let addr: IpAddr = addr.parse().ok()?;
+            let len: u8 = len.parse().ok()?;
+            let max = if addr.is_ipv4() { 32 } else { 128 };
+            (len <= max).then_some((addr, len))
+        })
+        .collect()
+}
+
+fn deny_cidrs() -> &'static [(IpAddr, u8)] {
+    DENY_CIDRS
+        .get_or_init(|| parse_cidrs(&std::env::var("PNEX_EGRESS_DENY_CIDRS").unwrap_or_default()))
+}
+
+fn in_cidr(ip: IpAddr, (net, len): (IpAddr, u8)) -> bool {
+    match (ip, net) {
+        (IpAddr::V4(a), IpAddr::V4(n)) => {
+            let mask = u32::MAX.checked_shl(32 - len as u32).unwrap_or(0);
+            u32::from(a) & mask == u32::from(n) & mask
+        }
+        (IpAddr::V6(a), IpAddr::V6(n)) => {
+            let mask = u128::MAX.checked_shl(128 - len as u32).unwrap_or(0);
+            u128::from(a) & mask == u128::from(n) & mask
+        }
+        _ => false,
+    }
+}
+
+/// The IPv4 an IPv6 address stands for: mapped `::ffff:a.b.c.d`,
+/// IPv4-compatible `::a.b.c.d` (`::1` and `::` included), NAT64
+/// `64:ff9b::/96` and 6to4 `2002:AABB:CCDD::/48`.
+fn embedded_v4(v6: Ipv6Addr) -> Option<Ipv4Addr> {
+    if let Some(v4) = v6.to_ipv4_mapped() {
+        return Some(v4);
+    }
+    let s = v6.segments();
+    let low = |hi: u16, lo: u16| Ipv4Addr::from(((hi as u32) << 16) | lo as u32);
+    if s[..6] == [0; 6] || s[..6] == [0x64, 0xff9b, 0, 0, 0, 0] {
+        return Some(low(s[6], s[7]));
+    }
+    (s[0] == 0x2002).then(|| low(s[1], s[2]))
+}
 
 fn parse_hosts(v: &str) -> Vec<String> {
     v.split(',')
@@ -80,17 +135,16 @@ pub fn ip_allowed(ip: IpAddr, policy: EgressPolicy) -> bool {
     if policy == EgressPolicy::Open {
         return true;
     }
-    let ip = match ip {
-        // ::ffff:a.b.c.d is judged as a.b.c.d.
-        IpAddr::V6(v6) => v6
-            .to_ipv4_mapped()
-            .map(IpAddr::V4)
-            .unwrap_or(IpAddr::V6(v6)),
-        v4 => v4,
-    };
+    if deny_cidrs().iter().any(|&c| in_cidr(ip, c)) {
+        return false;
+    }
     match ip {
+        // An IPv6 that embeds an IPv4 is judged as that IPv4 (SEC-23).
+        IpAddr::V6(v6) => match embedded_v4(v6) {
+            Some(v4) => ip_allowed(IpAddr::V4(v4), policy),
+            None => v6_allowed(v6, policy),
+        },
         IpAddr::V4(v4) => v4_allowed(v4, policy),
-        IpAddr::V6(v6) => v6_allowed(v6, policy),
     }
 }
 
@@ -134,6 +188,9 @@ pub fn host_allowed(host: &str, policy: EgressPolicy) -> bool {
         && host != "localhost"
         && !host.ends_with(".localhost")
         && !host.ends_with(".internal")
+        // Kubernetes service names (SEC-23): `valkey.pnex.svc.cluster.local`.
+        && !host.ends_with(".svc")
+        && !host.ends_with(".cluster.local")
 }
 
 /// Refusal reason of a URL (`None` = allowed): its host name, and its IP
@@ -282,12 +339,42 @@ mod tests {
             "localhost",
             "api.localhost",
             "metadata.google.internal",
+            "valkey.pnex.svc.cluster.local",
+            "postgres.pnex.svc",
         ] {
             assert!(!host_allowed(bad, p), "{bad} must be refused");
         }
         for ok in ["api.open-meteo.com", "shelly.local", "192.168.1.20"] {
             assert!(host_allowed(ok, p), "{ok} must be allowed");
         }
+    }
+
+    #[test]
+    fn embedded_ipv4_is_judged_as_ipv4() {
+        let p = EgressPolicy::Lan;
+        for bad in [
+            "64:ff9b::7f00:1",    // NAT64 of 127.0.0.1
+            "64:ff9b::a9fe:a9fe", // NAT64 of 169.254.169.254
+            "2002:7f00:1::1",     // 6to4 of 127.0.0.1
+            "::7f00:1",           // IPv4-compatible 127.0.0.1
+            "::",
+        ] {
+            assert!(!ip_allowed(ip(bad), p), "{bad} must be refused");
+        }
+        assert!(ip_allowed(ip("64:ff9b::808:808"), p), "NAT64 of 8.8.8.8");
+        assert!(!ip_allowed(ip("64:ff9b::c0a8:114"), EgressPolicy::Public));
+        assert!(ip_allowed(ip("2606:4700::1111"), p));
+    }
+
+    #[test]
+    fn cidr_parsing_and_matching() {
+        let cidrs = parse_cidrs(" 10.42.0.0/16, fd00::/8, junk, 1.2.3.4/40 ");
+        assert_eq!(cidrs.len(), 2);
+        assert!(in_cidr(ip("10.42.7.9"), cidrs[0]));
+        assert!(!in_cidr(ip("10.43.0.1"), cidrs[0]));
+        assert!(in_cidr(ip("fd12::5"), cidrs[1]));
+        assert!(!in_cidr(ip("10.42.0.1"), cidrs[1]));
+        assert!(in_cidr(ip("8.8.8.8"), (ip("0.0.0.0"), 0)));
     }
 
     #[test]

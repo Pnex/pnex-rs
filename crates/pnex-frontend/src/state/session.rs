@@ -69,6 +69,8 @@ pub fn logout() {
     // stay on the app's login screen instead.
     if id_token.is_some() {
         api::auth::end_session(id_token);
+    } else {
+        api::auth::force_next_login();
     }
 }
 

@@ -4,7 +4,9 @@
 //!
 //! Auth: one-time ticket from `POST /api/v1/ws-ticket` (ws_notify school);
 //! the org is the ticket's, membership and role re-read from the database.
-//! A viewer joins read-only: the server drops its updates (R2). Close
+//! A viewer joins read-only: the server drops its updates (R2); the role is
+//! re-read at every heartbeat, so a demotion or removal applies within
+//! 30 s (SEC-29). Close
 //! codes: 4002 no ticket, 4001 bad ticket, 4006 not a member, 4004 page
 //! not found in the org, 4400 unreadable message, 4413 too large, 4422
 //! content refused by the schema, 4429 too many messages, 1011 not saved.
@@ -52,15 +54,9 @@ async fn ws_doc(
     let Some(owner) = crate::services::ws_ticket::redeem(&ctx.config, ticket).await else {
         return reject(ws, 4001, "Invalid ticket");
     };
-    let member = organization_members::Entity::find()
-        .filter(organization_members::Column::UserId.eq(owner.user_id))
-        .filter(organization_members::Column::OrgId.eq(owner.org_id))
-        .one(&ctx.db)
-        .await;
-    let Ok(Some(member)) = member else {
+    let Ok(Some(can_write)) = member_can_write(&ctx.db, owner.user_id, owner.org_id).await else {
         return reject(ws, 4006, "Not a member of this org");
     };
-    let can_write = !matches!(member.role, OrgMemberRole::Viewer);
     if crate::controllers::docs::find_doc(&ctx.db, owner.org_id, id)
         .await
         .is_err()
@@ -88,9 +84,24 @@ async fn ws_doc(
             room: room.clone(),
             session,
         };
-        session_loop(socket, rx, &db, &room, session, owner.user_id, can_write).await;
+        let who = (owner.user_id, owner.org_id);
+        session_loop(socket, rx, &db, &room, session, who, can_write).await;
     })
     .into_response()
+}
+
+/// Write right of a member (`Ok(None)` = not a member).
+async fn member_can_write(
+    db: &DatabaseConnection,
+    user_id: i64,
+    org_id: i64,
+) -> Result<Option<bool>, sea_orm::DbErr> {
+    let member = organization_members::Entity::find()
+        .filter(organization_members::Column::UserId.eq(user_id))
+        .filter(organization_members::Column::OrgId.eq(org_id))
+        .one(db)
+        .await?;
+    Ok(member.map(|m| !matches!(m.role, OrgMemberRole::Viewer)))
 }
 
 struct LeaveGuard {
@@ -125,8 +136,8 @@ async fn session_loop(
     db: &DatabaseConnection,
     room: &room::Room,
     session: Uuid,
-    user_id: i64,
-    can_write: bool,
+    (user_id, org_id): (i64, i64),
+    mut can_write: bool,
 ) {
     let mut tokens = RATE_BURST;
     let mut refilled = std::time::Instant::now();
@@ -147,6 +158,16 @@ async fn session_loop(
                 if last_rx.elapsed() > Duration::from_secs(WATCHDOG_SECS) {
                     tracing::debug!(%session, "ws/doc: silent session closed");
                     break;
+                }
+                // Role re-read (SEC-29): removed → closed, demoted → read-only.
+                // A failed lookup keeps the current right (no mass close on a DB blip).
+                match member_can_write(db, user_id, org_id).await {
+                    Ok(Some(w)) => can_write = w,
+                    Ok(None) => {
+                        close(socket, 4006, "Not a member of this org").await;
+                        return;
+                    }
+                    Err(_) => {}
                 }
                 if socket.send(Message::Ping(vec![].into())).await.is_err() {
                     break;
