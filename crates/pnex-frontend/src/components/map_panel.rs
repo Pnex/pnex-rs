@@ -1,9 +1,8 @@
 //! The one map list panel (design-system.md D223): the main map and the
 //! map of a case show their items in the same panel — title and close,
 //! search, optional filters, a scrolling list, a footer — so both maps look
-//! and behave alike. `docked` = laid over the map's right edge (a case
-//! canvas, where the left corner belongs to the editor's `+`); otherwise a
-//! column on the left (overlay drawer on phones).
+//! and behave alike: a column on the left of the map (overlay drawer on
+//! phones), the round `+` floating at the map's top-left corner.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -18,9 +17,6 @@ pub fn MapPanel(
     /// The page heading (main map): an `h1`; a panel inside a page: `h2`.
     #[props(default)]
     page_heading: bool,
-    /// Docked over the map's right edge instead of a left column.
-    #[props(default)]
-    docked: bool,
     /// Extra header content, before the close button (a link).
     #[props(default)]
     header_extra: Option<Element>,
@@ -35,11 +31,7 @@ pub fn MapPanel(
     children: Element,
 ) -> Element {
     let mut search = search;
-    let panel = if docked {
-        "pnex-drawer-in absolute inset-y-0 right-0 z-20 flex w-80 max-w-[85vw] flex-col border-l border-gray-200 bg-white shadow-xl"
-    } else {
-        "pnex-drawer-in absolute inset-y-0 left-0 z-30 w-80 max-w-[85vw] shrink-0 bg-white border-r border-gray-200 flex flex-col shadow-xl lg:static lg:z-auto lg:max-w-none lg:shadow-none"
-    };
+    let panel = "pnex-drawer-in absolute inset-y-0 left-0 z-30 w-80 max-w-[85vw] shrink-0 bg-white border-r border-gray-200 flex flex-col shadow-xl lg:static lg:z-auto lg:max-w-none lg:shadow-none";
     rsx! {
         aside { class: panel, "data-testid": "map-panel",
             div { class: "flex items-center justify-between px-4 py-3 border-b border-gray-200",
@@ -120,7 +112,7 @@ pub fn MapPanelToggle(onclick: EventHandler<()>) -> Element {
     rsx! {
         button {
             r#type: "button",
-            class: "p-2.5 bg-white rounded-lg shadow border border-gray-200 text-gray-600 hover:text-gray-900 transition-colors",
+            class: crate::components::ui::BTN_FAB_LIGHT,
             title: t!("poi-expand"),
             aria_label: t!("poi-expand"),
             onclick: move |_| onclick.call(()),

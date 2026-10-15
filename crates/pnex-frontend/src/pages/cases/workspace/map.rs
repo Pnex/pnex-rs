@@ -256,10 +256,9 @@ pub(super) fn CaseMap() -> Element {
     };
     // The list panel of every map (components/map_panel.rs): search and a
     // tracked-only filter over the located members.
-    let mut panel_open = use_signal(|| true);
+    let mut panel_open = ws.map_list;
     let search = use_signal(String::new);
     let mut tracked_only = use_signal(|| false);
-    let total = located.len();
     let needle = search().trim().to_lowercase();
     let shown: Vec<(String, String, f64, f64, bool)> = located
         .into_iter()
@@ -269,33 +268,12 @@ pub(super) fn CaseMap() -> Element {
         })
         .collect();
     rsx! {
-        section { class: "absolute inset-0", "aria-label": t!("cw-map"),
-            // MapLibre makes its container `position: relative`: size it
-            // by height, not by `inset`.
-            div {
-                id: MAP_HOST,
-                class: "h-full w-full overflow-hidden",
-                "data-testid": "case-map",
-            }
-            if no_basemap() {
-                p { class: "absolute inset-x-2 bottom-2 z-10 rounded-md border border-line bg-surface px-2 py-1 text-xs text-slate",
-                    {t!("geo-basemap-none")}
-                }
-            }
-            if !has_points {
-                p { class: "absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-full border border-line bg-surface px-3 py-1.5 text-xs text-slate shadow",
-                    {t!("cw-map-empty")}
-                }
-            }
-            if failed() {
-                p { class: "absolute inset-x-2 bottom-2 rounded-md bg-surface px-2 py-1 text-xs text-slate",
-                    {t!("viz-map-unavailable")}
-                }
-            }
-            if total > 0 && panel_open() {
+        section {
+            class: "absolute inset-0 flex overflow-hidden",
+            "aria-label": t!("cw-map"),
+            if panel_open() {
                 MapPanel {
                     title: t!("cw-located").to_string(),
-                    docked: true,
                     on_close: move |_| panel_open.set(false),
                     search,
                     search_placeholder: t!("cw-located-search").to_string(),
@@ -312,6 +290,9 @@ pub(super) fn CaseMap() -> Element {
                     footer: rsx! {
                         {t!("cw-located-count", count : shown.len())}
                     },
+                    if shown.is_empty() {
+                        div { class: "p-6 text-center text-sm text-gray-500", {t!("cw-located-none")} }
+                    }
                     for (id, title, lon, lat, tracked) in shown {
                         MapPanelRow {
                             key: "{id}",
@@ -319,9 +300,15 @@ pub(super) fn CaseMap() -> Element {
                             detail: tracked.then(|| t!("cw-located-tracked").to_string()),
                             selected: selected.as_deref() == Some(id.as_str()),
                             lead: rsx! {
-                                span {
-                                    class: "h-2.5 w-2.5 shrink-0 rounded-full",
-                                    style: if tracked { "background: {super::timeline::ACTOR_COLORS[1]}" } else { "background: var(--color-signal)" },
+                                if tracked {
+                                    span { class: "flex w-5 shrink-0 justify-center",
+                                        span {
+                                            class: "h-2.5 w-2.5 rounded-full",
+                                            style: "background: {super::timeline::ACTOR_COLORS[1]}",
+                                        }
+                                    }
+                                } else {
+                                    span { class: "text-xl leading-none", "📍" }
                                 }
                             },
                             onclick: {
@@ -338,9 +325,34 @@ pub(super) fn CaseMap() -> Element {
                     }
                 }
             }
-            if total > 0 && !panel_open() {
-                div { class: "absolute right-3 top-3 z-20",
-                    MapPanelToggle { onclick: move |_| panel_open.set(true) }
+            div { class: "relative h-full min-w-0 flex-1",
+                // MapLibre makes its container `position: relative`: size it
+                // by height, not by `inset`.
+                div {
+                    id: MAP_HOST,
+                    class: "h-full w-full overflow-hidden",
+                    "data-testid": "case-map",
+                }
+                // Right of the editor's `+` (top-left corner), like the main map.
+                if !panel_open() {
+                    div { class: "absolute left-[4.5rem] top-4 z-20",
+                        MapPanelToggle { onclick: move |_| panel_open.set(true) }
+                    }
+                }
+                if no_basemap() {
+                    p { class: "absolute inset-x-2 bottom-2 z-10 rounded-md border border-line bg-surface px-2 py-1 text-xs text-slate",
+                        {t!("geo-basemap-none")}
+                    }
+                }
+                if !has_points {
+                    p { class: "absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-full border border-line bg-surface px-3 py-1.5 text-xs text-slate shadow",
+                        {t!("cw-map-empty")}
+                    }
+                }
+                if failed() {
+                    p { class: "absolute inset-x-2 bottom-2 rounded-md bg-surface px-2 py-1 text-xs text-slate",
+                        {t!("viz-map-unavailable")}
+                    }
                 }
             }
         }

@@ -8,6 +8,11 @@
 
 use dioxus::prelude::*;
 
+/// The floating round `+` over a canvas or a map (editors, maps alike).
+pub const BTN_FAB: &str = "inline-flex h-11 w-11 items-center justify-center rounded-full bg-signal text-white shadow-lg hover:opacity-90 active:scale-[0.97] motion-reduce:active:scale-100 transition-[opacity,scale] duration-150 ease-out-ui";
+/// Its white companion (reopen a list, a secondary map tool).
+pub const BTN_FAB_LIGHT: &str = "inline-flex h-11 w-11 items-center justify-center rounded-full border border-line bg-surface text-slate shadow-lg hover:text-ink active:scale-[0.97] motion-reduce:active:scale-100 transition-[color,scale] duration-150 ease-out-ui";
+
 /// Main action of a screen: ink fill, one per screen.
 pub const BTN_PRIMARY: &str = "inline-flex items-center justify-center gap-1.5 min-h-10 px-4 py-2 rounded-md bg-ink text-white text-sm font-medium hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97] motion-reduce:active:scale-100 transition-[color,background-color,border-color,scale] duration-150 ease-out-ui";
 

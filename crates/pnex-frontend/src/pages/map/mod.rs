@@ -383,19 +383,24 @@ pub fn Map() -> Element {
                 if !map_failed() {
                     BasemapControl { basemaps, basemap }
                 }
-                // Boutons flottants (repli sidebar + mode ajout).
-                div { class: "absolute top-3 left-3 z-10 flex gap-2",
-                    if !sidebar_open() {
-                        MapPanelToggle { onclick: move |_| sidebar_open.set(true) }
-                    }
+                // Floating tools, as on a case map: the round `+` (add
+                // mode), the list toggle, then the address search.
+                div { class: "absolute top-4 left-4 z-10 flex items-center gap-2",
                     button {
-                        class: if add_active { "px-3 py-2.5 text-sm font-semibold text-white bg-signal-600 rounded-lg shadow border border-signal-700 transition-colors" } else { "px-3 py-2.5 text-sm font-semibold text-signal-700 bg-white rounded-lg shadow border border-signal-200 hover:bg-signal-50 transition-colors" },
+                        r#type: "button",
+                        class: crate::components::ui::BTN_FAB,
+                        title: if add_active { t!("poi-add-cancel") } else { t!("poi-add") },
+                        aria_label: if add_active { t!("poi-add-cancel") } else { t!("poi-add") },
+                        "aria-pressed": add_active,
                         onclick: move |_| add_mode.toggle(),
                         if add_active {
-                            {t!("poi-add-cancel")}
+                            icons::X { class: "h-5 w-5" }
                         } else {
-                            {t!("poi-add")}
+                            icons::Plus { class: "h-5 w-5" }
                         }
+                    }
+                    if !sidebar_open() {
+                        MapPanelToggle { onclick: move |_| sidebar_open.set(true) }
                     }
                     AddressSearch { pending_add, suggested }
                 }
