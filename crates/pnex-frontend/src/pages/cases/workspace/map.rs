@@ -91,7 +91,8 @@ pub(super) fn EventMap(
         let zoom = if points.len() == 1 {
             zoom.min(11.0)
         } else {
-            zoom
+            // The minimap is small: one step out, so every place fits.
+            zoom - 1.0
         };
         spawn(async move {
             let maps = api::geo::basemaps().await.unwrap_or_default();
