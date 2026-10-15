@@ -263,7 +263,13 @@ impl TranscribeSegmentWorker {
         let speakers = link_speakers(stream.id, &mut resp, std::time::Instant::now());
         let text = resp.text.clone().unwrap_or_default();
         if !text.trim().is_empty() {
-            let words_json = serde_json::to_string(&resp.words).unwrap_or_default();
+            // The profile's word_timestamps switch only governs what is
+            // stored; the live event keeps words for speaker attribution.
+            let words_json = if profile.word_timestamps {
+                serde_json::to_string(&resp.words).unwrap_or_default()
+            } else {
+                "[]".to_string()
+            };
             let doc = transcripts::Doc {
                 started_at_us: seg.started_at.timestamp_micros(),
                 ended_at_us: seg.ended_at.timestamp_micros(),

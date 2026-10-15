@@ -34,6 +34,7 @@ Audio streams (Media › Audio streams) lists the radios, live streams and IP ca
 - Addresses inside the server's own network (localhost, cloud metadata, internal service names) are refused with the same "cannot be reached" message on purpose.
 - Moving a stream that holds a secret to another host, scheme or port needs an owner or admin.
 - The short name under the stream (its slug) never changes, even when the stream is renamed: it names the stored transcriptions.
+- Per-word timings depend on the model: a Parakeet (transducer) model gives them, the sherpa-onnx export of Whisper gives the text only, so its transcriptions have no word list.
 - Before capturing a third-party stream, check that the publisher did not opt out of text and data mining (terms, robots.txt, notices) and tick **Text and data mining opt-out checked**; until then the list shows a warning.
 - Each organization has a limited number of streams (3 by default, set by the platform).
 - A model that does not load (transcription runtime missing on the server, unsupported layout) is kept as **Error** with the reason; once the platform installs the runtime, **Check** it again.
