@@ -24,6 +24,7 @@ use crate::app::Route;
 use crate::components::confirm::ConfirmDialog;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::icons;
+use crate::components::map_panel::{MapPanel, MapPanelToggle};
 use crate::components::modal::Modal;
 use crate::components::poi_preview::{PoiPreviewPanel, PreviewTarget};
 use crate::components::poi_tree::PoiTreeSection;
@@ -67,8 +68,8 @@ const PALETTE: [&str; 12] = [
 ];
 
 /// Centre par défaut (France) tant qu'aucun POI ne guide la vue.
-const DEFAULT_CENTER: (f64, f64) = (2.4, 46.6);
-const DEFAULT_ZOOM: f64 = 5.0;
+pub(crate) const DEFAULT_CENTER: (f64, f64) = (2.4, 46.6);
+pub(crate) const DEFAULT_ZOOM: f64 = 5.0;
 
 #[component]
 pub fn Map() -> Element {
@@ -282,37 +283,21 @@ pub fn Map() -> Element {
                     class: "pnex-backdrop-in absolute inset-0 z-20 bg-black/20 lg:hidden",
                     onclick: move |_| sidebar_open.set(false),
                 }
-                aside { class: "pnex-drawer-in absolute inset-y-0 left-0 z-30 w-80 max-w-[85vw] shrink-0 bg-white border-r border-gray-200 flex flex-col shadow-xl lg:static lg:z-auto lg:max-w-none lg:shadow-none",
-                    // En-tête + repli.
-                    div { class: "flex items-center justify-between px-4 py-3 border-b border-gray-200",
-                        h1 { class: "text-base font-semibold text-gray-900", {t!("viz-map-title")} }
+                MapPanel {
+                    title: t!("viz-map-title").to_string(),
+                    page_heading: true,
+                    header_extra: rsx! {
                         Link {
                             to: Route::Sites {},
-                            class: "ml-auto mr-1 text-xs font-medium text-signal-700 hover:underline",
+                            class: "mr-1 text-xs font-medium text-signal-700 hover:underline",
                             {t!("map-open-sites")}
                         }
-                        button {
-                            class: "p-1.5 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors",
-                            title: t!("poi-collapse"),
-                            onclick: move |_| sidebar_open.set(false),
-                            icons::X { class: "h-5 w-5" }
-                        }
-                    }
-                    // Recherche.
-                    div { class: "px-4 py-3 border-b border-gray-100",
-                        input {
-                            class: "{INPUT} w-full",
-                            r#type: "search",
-                            placeholder: t!("poi-search-placeholder"),
-                            value: "{search}",
-                            oninput: move |e| {
-                                search.set(e.value());
-                                filters_rev += 1;
-                            },
-                        }
-                    }
-                    // Filtres.
-                    div { class: "px-4 py-3 border-b border-gray-100 space-y-2",
+                    },
+                    on_close: move |_| sidebar_open.set(false),
+                    search,
+                    search_placeholder: t!("poi-search-placeholder").to_string(),
+                    on_search: move |_| filters_rev += 1,
+                    filters: rsx! {
                         label { class: "flex items-center gap-2 text-sm text-gray-700",
                             input {
                                 r#type: "checkbox",
@@ -362,29 +347,26 @@ pub fn Map() -> Element {
                             },
                             {t!("poi-show-all")}
                         }
-                    }
-                    // Liste des POI.
-                    div { class: "flex-1 overflow-y-auto",
-                        if list_loading {
-                            div { class: "p-6 flex justify-center",
-                                Gerbe { size: 22 }
-                            }
-                        } else if pois.is_empty() {
-                            div { class: "p-6 text-center text-sm text-gray-500", {t!("poi-empty")} }
-                        } else {
-                            for poi in pois.iter() {
-                                PoiRow {
-                                    key: "{poi.id}",
-                                    poi: poi.clone(),
-                                    positions: positions_list.clone(),
-                                    on_select: move |id: String| selected.set(Some(id)),
-                                }
-                            }
-                        }
-                    }
-                    div { class: "px-4 py-2 border-t border-gray-100 text-xs text-gray-500",
+                    },
+                    footer: rsx! {
                         {t!("poi-count", count : total)}
                         ListPager { count: total, page: poi_page }
+                    },
+                    if list_loading {
+                        div { class: "p-6 flex justify-center",
+                            Gerbe { size: 22 }
+                        }
+                    } else if pois.is_empty() {
+                        div { class: "p-6 text-center text-sm text-gray-500", {t!("poi-empty")} }
+                    } else {
+                        for poi in pois.iter() {
+                            PoiRow {
+                                key: "{poi.id}",
+                                poi: poi.clone(),
+                                positions: positions_list.clone(),
+                                on_select: move |id: String| selected.set(Some(id)),
+                            }
+                        }
                     }
                 }
             }
@@ -404,12 +386,7 @@ pub fn Map() -> Element {
                 // Boutons flottants (repli sidebar + mode ajout).
                 div { class: "absolute top-3 left-3 z-10 flex gap-2",
                     if !sidebar_open() {
-                        button {
-                            class: "p-2.5 bg-white rounded-lg shadow border border-gray-200 text-gray-600 hover:text-gray-900 transition-colors",
-                            title: t!("poi-expand"),
-                            onclick: move |_| sidebar_open.set(true),
-                            icons::Menu { class: "h-5 w-5" }
-                        }
+                        MapPanelToggle { onclick: move |_| sidebar_open.set(true) }
                     }
                     button {
                         class: if add_active { "px-3 py-2.5 text-sm font-semibold text-white bg-signal-600 rounded-lg shadow border border-signal-700 transition-colors" } else { "px-3 py-2.5 text-sm font-semibold text-signal-700 bg-white rounded-lg shadow border border-signal-200 hover:bg-signal-50 transition-colors" },
@@ -498,7 +475,6 @@ mod sites;
 pub use sites::Sites;
 
 use crate::components::gerbe::Gerbe;
-use crate::components::ui::INPUT;
 use detail::PoiDetail;
 use filters::{current_filters, handle_click, redraw_with, PoiRow};
 use form::PoiFormModal;
