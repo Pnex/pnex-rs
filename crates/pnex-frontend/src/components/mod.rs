@@ -54,6 +54,7 @@ pub mod lan_detect;
 pub mod llm_providers;
 pub mod loading_overlay;
 pub mod location_breadcrumb;
+pub mod map_panel;
 pub mod markdown;
 pub mod modal;
 /// Notifications (D49–D54) — formulaires canal (field_spec) et template.

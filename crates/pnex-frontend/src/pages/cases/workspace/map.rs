@@ -15,6 +15,7 @@ use serde_json::json;
 
 use super::{model, timeline::actor_color, Sel, Ws};
 use crate::api;
+use crate::components::map_panel::{MapPanel, MapPanelRow, MapPanelToggle};
 use crate::map_viewer::{self, MapItem, MapOpts};
 
 const MAP_HOST: &str = "pnex-case-map";
@@ -147,11 +148,20 @@ pub(super) fn CaseMap() -> Element {
             )
             .chain(places.iter().map(|p| (p.lon, p.lat)))
             .collect();
-        if *mounted.peek() || points.is_empty() {
+        // The basemap shows as soon as the case is loaded, even with nothing
+        // located yet (the hint sits on the map, never on a grey void).
+        if *mounted.peek() || (ws.data)().is_none() {
             return;
         }
         mounted.set(true);
-        let (center, zoom) = frame(&points);
+        let (center, zoom) = if points.is_empty() {
+            (
+                crate::pages::map::DEFAULT_CENTER,
+                crate::pages::map::DEFAULT_ZOOM,
+            )
+        } else {
+            frame(&points)
+        };
         spawn(async move {
             let maps = api::geo::basemaps().await.unwrap_or_default();
             let chosen = crate::pages::map::pick_basemap(&maps);
@@ -244,6 +254,20 @@ pub(super) fn CaseMap() -> Element {
         Sel::Object(id) => Some(id),
         _ => None,
     };
+    // The list panel of every map (components/map_panel.rs): search and a
+    // tracked-only filter over the located members.
+    let mut panel_open = use_signal(|| true);
+    let search = use_signal(String::new);
+    let mut tracked_only = use_signal(|| false);
+    let total = located.len();
+    let needle = search().trim().to_lowercase();
+    let shown: Vec<(String, String, f64, f64, bool)> = located
+        .into_iter()
+        .filter(|(_, title, _, _, tracked)| {
+            (needle.is_empty() || title.to_lowercase().contains(&needle))
+                && (!tracked_only() || *tracked)
+        })
+        .collect();
     rsx! {
         section { class: "absolute inset-0", "aria-label": t!("cw-map"),
             // MapLibre makes its container `position: relative`: size it
@@ -259,7 +283,7 @@ pub(super) fn CaseMap() -> Element {
                 }
             }
             if !has_points {
-                p { class: "absolute inset-0 grid place-items-center p-4 text-center text-sm text-slate",
+                p { class: "absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-full border border-line bg-surface px-3 py-1.5 text-xs text-slate shadow",
                     {t!("cw-map-empty")}
                 }
             }
@@ -268,19 +292,38 @@ pub(super) fn CaseMap() -> Element {
                     {t!("viz-map-unavailable")}
                 }
             }
-            if !located.is_empty() {
-                nav {
-                    class: "absolute left-4 top-20 z-20 flex max-h-[calc(100%-6rem)] w-64 flex-col overflow-auto rounded-lg border border-line bg-surface shadow-sm",
-                    "aria-label": t!("cw-located"),
-                    "data-testid": "case-located",
-                    h2 { class: "sticky top-0 border-b border-line bg-surface px-3 py-2 text-xs font-semibold text-ink",
-                        {t!("cw-located-count", count : located.len())}
-                    }
-                    for (id, title, lon, lat, tracked) in located {
-                        button {
+            if total > 0 && panel_open() {
+                MapPanel {
+                    title: t!("cw-located").to_string(),
+                    docked: true,
+                    on_close: move |_| panel_open.set(false),
+                    search,
+                    search_placeholder: t!("cw-located-search").to_string(),
+                    filters: rsx! {
+                        label { class: "flex items-center gap-2 text-sm text-gray-700",
+                            input {
+                                r#type: "checkbox",
+                                checked: tracked_only(),
+                                onchange: move |_| tracked_only.toggle(),
+                            }
+                            {t!("cw-located-tracked-only")}
+                        }
+                    },
+                    footer: rsx! {
+                        {t!("cw-located-count", count : shown.len())}
+                    },
+                    for (id, title, lon, lat, tracked) in shown {
+                        MapPanelRow {
                             key: "{id}",
-                            r#type: "button",
-                            class: if selected.as_deref() == Some(id.as_str()) { "flex w-full items-center gap-2 border-b border-line bg-signal-soft px-3 py-2 text-left text-sm text-ink" } else { "flex w-full items-center gap-2 border-b border-line px-3 py-2 text-left text-sm text-ink hover:bg-gray-50" },
+                            title,
+                            detail: tracked.then(|| t!("cw-located-tracked").to_string()),
+                            selected: selected.as_deref() == Some(id.as_str()),
+                            lead: rsx! {
+                                span {
+                                    class: "h-2.5 w-2.5 shrink-0 rounded-full",
+                                    style: if tracked { "background: {super::timeline::ACTOR_COLORS[1]}" } else { "background: var(--color-signal)" },
+                                }
+                            },
                             onclick: {
                                 let id = id.clone();
                                 move |_| {
@@ -291,16 +334,13 @@ pub(super) fn CaseMap() -> Element {
                                     });
                                 }
                             },
-                            span {
-                                class: "h-2.5 w-2.5 shrink-0 rounded-full",
-                                style: if tracked { "background: {super::timeline::ACTOR_COLORS[1]}" } else { "background: var(--color-signal)" },
-                            }
-                            span { class: "min-w-0 flex-1 truncate", "{title}" }
-                            if tracked {
-                                span { class: "text-xs text-slate", {t!("cw-located-tracked")} }
-                            }
                         }
                     }
+                }
+            }
+            if total > 0 && !panel_open() {
+                div { class: "absolute right-3 top-3 z-20",
+                    MapPanelToggle { onclick: move |_| panel_open.set(true) }
                 }
             }
         }

@@ -136,6 +136,10 @@ fn list_filter_bars_are_complete() {
         {
             failures.push(format!("{name}: label filter without the name search"));
         }
+        // MapPanel's `filters` slot wraps its content itself.
+        if !text.contains("ListLayout {") {
+            continue;
+        }
         for (i, line) in text.lines().enumerate() {
             if line.trim_start().starts_with("filters: rsx! {") {
                 let next = text.lines().nth(i + 1).unwrap_or_default().trim_start();
