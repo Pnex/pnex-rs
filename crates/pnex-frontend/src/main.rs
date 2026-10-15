@@ -23,6 +23,7 @@ mod graph_viewer;
 mod i18n;
 mod i18n_guard;
 mod js_guard;
+mod lexicon_guard;
 mod map_viewer;
 mod media_cache;
 mod media_viewer;

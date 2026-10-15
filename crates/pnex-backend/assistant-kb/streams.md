@@ -1,6 +1,6 @@
 ---
 id: streams
-title: Audio streams
+title: Streams
 kind: feature
 pages: /streams
 nodes: media_source, range_upsert, camera_source, video_record
@@ -8,7 +8,7 @@ err_codes: asr-test-audio-unsupported, asr-test-failed, media-stream-not-found, 
 tools: 
 tags: replay, rejouer, fichier, file, mp4, streams, flux, radio, audio, icecast, hls, podcast, transcription, transcriptions, asr, speech to text, parole, capture, retention, tdm, parakeet, canary, whisper, sherpa, profile, profil, search, recherche, vad, voice detection, silence, diarization, diarisation, speaker, locuteur, temps de parole, speaking time, rtsp, ip camera, caméra ip, video, vidéo, tracks, pistes, fps, capture box, boîtier de capture, tuner, tnt, tvheadend, raspberry pi
 ---
-Audio streams (Media › Audio streams) lists the radios, live streams and IP cameras the organization captures around the clock. The audio of a stream is cut into short segments, transcribed into timestamped text, and only the text is kept for good; its video, when asked for, feeds the flows' camera nodes.
+Streams (Media › Streams) lists the radios, live streams and IP cameras the organization captures around the clock. The audio of a stream is cut into short segments, transcribed into timestamped text, and only the text is kept for good; its video, when asked for, feeds the flows' camera nodes.
 
 ## What you can do
 - **Add a stream**: give it a **Name**, a **Kind** (`icecast` for a continuous radio stream, `hls` for an `.m3u8` playlist, `http_file` for a single file such as a podcast episode, `rtsp` for an IP camera, URL `rtsp://…`, `media_asset` to replay a video or a sound of the media library) and the **Stream URL** (for `media_asset`, pick the **Media library file** instead: it is replayed once at its normal speed, frames to the camera bus and audio to transcription, then the stream switches itself off; MP4/MOV video or MP3/AAC/OGG/FLAC/WAV audio, at most 512 MB; not on a capture box).

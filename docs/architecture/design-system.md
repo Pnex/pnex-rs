@@ -139,7 +139,7 @@ Les URL ne changent pas, seul le menu est regroupé :
 - Accueil
 - **Surveiller** : Dashboards, Graphes rapides, Carte, Sites, Événements
 - **Connaissance** : Pages, Ontologie, Dossiers
-- **Médias** : Bibliothèque, Caméras, Flux audio, Visites 3D, Annotations
+- **Médias** : Bibliothèque, Caméras, Flux, Visites 3D, Annotations
 - **Devices** : Devices et agents, Catalogue, Firmware custom, Référentiels
 - **Automatisation** : Flows, Fonctions, Contrôles, Notifications, Modèles
   vision, Mélanges fluides
@@ -228,10 +228,21 @@ les règles plus anciennes qui les contredisent.
 | Texte libre d'un dossier d'enquête | Note | Note | une annotation |
 | Discussion sur un passage d'une Page | Commentaire | Comment | une annotation |
 | Lieu sur la carte | Site / repère | Site / place | une annotation |
+| Source continue (pistes audio et/ou vidéo : caméra IP, direct, fichier) | Flux | Stream | une caméra-appareil |
+| Caméra gérée par PNeX (matériel, firmware, réglages de capture) | Caméra | Camera | un flux |
 | État sauvegardé d'un objet | Version | Version | — |
 
 Une chaîne d'interface qui emploie un mot pour une autre notion est un
-défaut, au même titre qu'une chaîne en dur.
+défaut, au même titre qu'une chaîne en dur. **Garde bloquante** :
+`crates/pnex-frontend/src/lexicon_guard.rs` scanne les deux `.ftl` et les
+fiches de l'assistant ; un concept nouveau ajoute sa ligne au lexique
+**et** sa règle à la garde (mot interdit, mot à employer, clés exemptées
+avec leur raison).
+
+**Évolution notée (non planifiée)** : une caméra-appareil apparaîtrait
+aussi comme source dans « Flux » — une seule liste de tout ce qui se
+regarde ou s'écoute ; « Caméras » ne garderait que la configuration du
+matériel (à traiter avec D223).
 
 ### D218 — Étiquettes : un seul mécanisme, sur tout objet, dans la recherche
 

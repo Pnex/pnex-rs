@@ -9,9 +9,10 @@
 use std::path::PathBuf;
 
 /// Files exempted: the dev-only `/_showcase` page (documented exception —
-/// hardcoded French labels assumed out-of-product) and the guard itself
-/// (its stop-word constants would self-flag).
-const EXCLUDED_FILES: &[&str] = &["showcase.rs", "i18n_guard.rs"];
+/// hardcoded French labels assumed out-of-product), the guard itself (its
+/// stop-word constants would self-flag) and the lexicon guard (its rules
+/// quote the French words they ban).
+const EXCLUDED_FILES: &[&str] = &["showcase.rs", "i18n_guard.rs", "lexicon_guard.rs"];
 
 /// Line-level exclusions: log macros + expect/panic (developer-only
 /// output), and the take360 device-side filelog.
