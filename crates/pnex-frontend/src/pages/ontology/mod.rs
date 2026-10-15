@@ -43,6 +43,7 @@ pub fn Ontology(tab: String, type_key: String) -> Element {
     let tabs = [
         ("objects", t!("onto-tab-objects")),
         ("schema", t!("onto-tab-schema")),
+        ("links", t!("onto-link-types")),
         ("packs", t!("onto-tab-packs")),
     ];
     let bar = rsx! {
@@ -73,6 +74,8 @@ pub fn Ontology(tab: String, type_key: String) -> Element {
                 p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
             } else if tab == "schema" {
                 schema::SchemaTab { tabs: bar }
+            } else if tab == "links" {
+                schema::LinkTypesTab { tabs: bar }
             } else if tab == "packs" {
                 packs::PacksTab { tabs: bar }
             } else {

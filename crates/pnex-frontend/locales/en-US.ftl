@@ -4184,6 +4184,7 @@ onto-new-type = New type
 onto-from-pack = pack { $pack }
 onto-org-type = organization
 onto-link-types = Link types
+onto-link-types-subtitle = How objects relate: the system links and your organization's own.
 onto-new-link-type = New link type
 onto-delete-link-type = Delete the link type
 onto-delete-link-type-confirm = Delete link type "{ $key }"? Refused if it was ever used (history is kept).
