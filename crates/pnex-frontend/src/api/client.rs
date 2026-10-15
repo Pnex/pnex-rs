@@ -282,6 +282,7 @@ async fn send(
     if let Some(body) = body {
         req = req.json(&body);
     }
+    let _in_flight = crate::state::ui::InFlight::start();
     req.send().await.map_err(|err| ApiError::network(&err))
 }
 
@@ -305,6 +306,7 @@ async fn send_bytes(
     }
     req = req.header("Content-Type", "application/octet-stream");
     req = req.body(body.to_vec());
+    let _in_flight = crate::state::ui::InFlight::start();
     req.send().await.map_err(|err| ApiError::network(&err))
 }
 

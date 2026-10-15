@@ -28,6 +28,7 @@ mod firmware_pick;
 mod naming;
 mod screen_pick;
 
+use crate::components::gerbe::Gerbe;
 use crate::components::ui::INPUT;
 use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY, BTN_SECONDARY_SM};
 use firmware_pick::*;
@@ -594,7 +595,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                 match build_record() {
                                     None => rsx! {
                                         div { class: "flex items-center gap-3 text-sm text-gray-600",
-                                            span { class: "animate-spin inline-block rounded-full h-5 w-5 border-b-2 border-signal-600" }
+                                            Gerbe { size: 22 }
                                             {t!("wizard-build-pending")}
                                         }
                                     },
@@ -634,7 +635,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                                 }
                                             } else {
                                                 div { class: "flex items-center gap-3 text-sm text-gray-600",
-                                                    span { class: "animate-spin inline-block rounded-full h-5 w-5 border-b-2 border-signal-600" }
+                                                    Gerbe { size: 22 }
                                                     {t!("wizard-build-pending")}
                                                 }
                                             }

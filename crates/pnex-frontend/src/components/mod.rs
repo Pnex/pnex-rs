@@ -44,6 +44,7 @@ pub mod function_templates;
 pub mod functions_reference;
 /// Secret input shared by every functional form (secrets.md D113).
 pub mod geo_providers;
+pub mod gerbe;
 /// Home icon catalog of the dashboard cards (D136).
 pub mod home_icons;
 pub mod icons;

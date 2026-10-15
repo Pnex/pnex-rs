@@ -15,6 +15,7 @@ use crate::components::icons;
 use crate::state::toasts;
 
 use super::EditorCx;
+use crate::components::gerbe::Gerbe;
 
 #[component]
 pub fn VersionsDrawer(
@@ -110,7 +111,7 @@ pub fn VersionsDrawer(
                         },
                         None => rsx! {
                             div { class: "flex-1 flex items-center justify-center",
-                                span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-signal-600" }
+                                Gerbe { size: 36 }
                             }
                         },
                     }

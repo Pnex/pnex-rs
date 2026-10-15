@@ -283,7 +283,7 @@ pub fn Media() -> Element {
                     // watcher cannot touch the UI itself).
                     if capture_running() {
                         div { class: "flex items-center gap-2 text-sm text-gray-600",
-                            span { class: "animate-spin inline-block rounded-full h-4 w-4 border-b-2 border-signal-600" }
+                            Gerbe { size: 18 }
                             {t!("media-upload-progress")}
                         }
                     }
@@ -478,6 +478,7 @@ mod preview;
 mod upload;
 mod util;
 
+use crate::components::gerbe::Gerbe;
 use crate::components::ui::INPUT;
 use detail::MediaDetail;
 use preview::MediaPreview;

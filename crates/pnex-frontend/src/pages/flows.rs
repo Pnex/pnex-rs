@@ -21,6 +21,7 @@ use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
+use crate::components::gerbe::Gerbe;
 use crate::components::icons;
 use crate::components::labels_editor::{use_row_labels, LabelChips};
 use crate::components::loading_overlay::LoadingOverlay;
@@ -178,7 +179,7 @@ pub fn Flows(id: String) -> Element {
                                 disabled: is_deleting,
                                 onclick: move |_| delete_target.set(Some((pk, name_delete.clone()))),
                                 if is_deleting {
-                                    span { class: "animate-spin inline-block rounded-full h-3 w-3 border-2 border-red-400 border-t-transparent align-middle mr-0.5" }
+                                    Gerbe { size: 14, class: "mr-0.5" }
                                 } else {
                                     icons::Trash2 { class: "h-3.5 w-3.5 inline mr-0.5" }
                                 }

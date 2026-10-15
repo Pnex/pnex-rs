@@ -11,6 +11,7 @@ use dioxus_i18n::t;
 
 use crate::api;
 use crate::app::Route;
+use crate::components::gerbe::Gerbe;
 use crate::state;
 
 #[component]
@@ -42,7 +43,7 @@ pub fn AuthCallback(code: String, error: String, error_description: String) -> E
                             alt: "PNeX",
                             class: "h-12 w-auto",
                         }
-                        span { class: "animate-spin inline-block rounded-full h-10 w-10 border-b-2 border-signal-400" }
+                        Gerbe { size: 44 }
                         p { class: "text-sm text-gray-300", {t!("callback-exchanging")} }
                     }
                 },

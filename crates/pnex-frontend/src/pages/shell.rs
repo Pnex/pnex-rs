@@ -7,6 +7,7 @@
 
 use crate::app::Route;
 use crate::components::assistant::AssistantPanel;
+use crate::components::gerbe::Gerbe;
 use crate::components::org_switcher::OrgSwitcher;
 use crate::components::toasts::ToastContainer;
 use crate::state::session::{self, SessionState, SESSION};
@@ -19,7 +20,7 @@ pub fn Shell() -> Element {
     match SESSION.cloned() {
         SessionState::Booting => rsx! {
             div { class: "min-h-screen flex items-center justify-center bg-gray-50",
-                span { class: "animate-spin rounded-full h-10 w-10 border-b-2 border-signal-600" }
+                Gerbe { size: 44 }
             }
         },
         SessionState::LoggedOut => rsx! {
@@ -98,6 +99,7 @@ fn ShellContent() -> Element {
                             alt: "PNeX",
                             class: "h-7 w-7",
                         }
+                        div { class: "h-4", ActivityMark {} }
                         button {
                             class: "inline-flex h-8 w-8 items-center justify-center rounded-md text-slate hover:bg-surface hover:text-ink",
                             r#type: "button",
@@ -109,6 +111,7 @@ fn ShellContent() -> Element {
                     }
                 } else {
                     div { class: "relative flex h-16 items-center justify-center px-3",
+                        div { class: "absolute left-3 top-1/2 -translate-y-1/2", ActivityMark {} }
                         SidebarBrand {}
                         button {
                             class: "absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-md text-slate hover:bg-surface hover:text-ink",
@@ -144,7 +147,7 @@ fn ShellContent() -> Element {
                             crate::components::icons::Menu { class: "h-6 w-6" }
                         }
                         div { class: "flex items-center", SidebarBrand {} }
-                        div { class: "w-11" }
+                        div { class: "flex w-11 justify-center", ActivityMark {} }
                     }
                 }
                 main { class: "flex-1", Outlet::<Route> {} }
@@ -581,6 +584,18 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                 }
             }
         }
+    }
+}
+
+/// The loading mark while API requests are in flight (D224): data arriving,
+/// shown only past 250 ms so quick calls never flash.
+#[component]
+fn ActivityMark() -> Element {
+    if *ui::IN_FLIGHT.read() == 0 {
+        return rsx! {};
+    }
+    rsx! {
+        Gerbe { size: 24, delayed: Some(true) }
     }
 }
 

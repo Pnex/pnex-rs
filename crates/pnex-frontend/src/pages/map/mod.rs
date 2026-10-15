@@ -367,7 +367,7 @@ pub fn Map() -> Element {
                     div { class: "flex-1 overflow-y-auto",
                         if list_loading {
                             div { class: "p-6 flex justify-center",
-                                span { class: "animate-spin rounded-full h-5 w-5 border-b-2 border-signal-600" }
+                                Gerbe { size: 22 }
                             }
                         } else if pois.is_empty() {
                             div { class: "p-6 text-center text-sm text-gray-500", {t!("poi-empty")} }
@@ -429,7 +429,7 @@ pub fn Map() -> Element {
                         div {
                             role: "status",
                             class: "absolute top-3 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white/95 rounded-full shadow border border-gray-200",
-                            span { class: "animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-signal-600" }
+                            Gerbe { size: 16 }
                             {t!("poi-points-loading")}
                         }
                     },
@@ -497,6 +497,7 @@ mod sites;
 
 pub use sites::Sites;
 
+use crate::components::gerbe::Gerbe;
 use crate::components::ui::INPUT;
 use detail::PoiDetail;
 use filters::{current_filters, handle_click, redraw_with, PoiRow};

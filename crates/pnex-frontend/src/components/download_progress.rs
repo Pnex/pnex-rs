@@ -5,6 +5,7 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 
+use crate::components::gerbe::Gerbe;
 use crate::util::DownloadProgress;
 
 /// Overlay shown while `progress` is `Some`; place it in a `relative`
@@ -23,7 +24,7 @@ pub fn MediaDownloadProgress(progress: Option<DownloadProgress>) -> Element {
     rsx! {
         div { class: "absolute inset-0 z-20 flex items-center justify-center bg-gray-900/80 pointer-events-none",
             div { class: "flex w-64 max-w-[80%] flex-col items-center gap-2",
-                span { class: "animate-spin inline-block rounded-full h-8 w-8 border-2 border-white border-t-transparent" }
+                Gerbe { size: 36, inherit: true }
                 span { class: "text-sm font-medium text-white", {t!("media-downloading")} }
                 if let Some(p) = percent {
                     div { class: "h-1.5 w-full overflow-hidden rounded-full bg-white/20",

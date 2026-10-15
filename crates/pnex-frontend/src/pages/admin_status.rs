@@ -17,6 +17,7 @@ use pnex_core::{ComponentStatus, OrgSystemRow, StatusMetric, TierOption};
 use crate::api;
 use crate::api::error_i18n::resolve;
 use crate::components::crud::layout::ListLayout;
+use crate::components::gerbe::Gerbe;
 use crate::components::ui::FIELD_LABEL;
 use crate::components::ui::{BTN_DANGER_SOLID, BTN_PRIMARY_SM, BTN_SECONDARY_SM};
 use crate::pages::system::{format_bytes, parse_days};
@@ -72,7 +73,7 @@ pub fn AdminStatus() -> Element {
             match &*status.value().read() {
                 None => rsx! {
                     div { class: "text-center py-12",
-                        span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-signal-600" }
+                        Gerbe { size: 36 }
                     }
                 },
                 Some(Err(err)) => rsx! {
@@ -358,7 +359,7 @@ fn OrgsOverview() -> Element {
             match &*rows.value().read() {
                 None => rsx! {
                     div { class: "text-center py-6",
-                        span { class: "animate-spin inline-block rounded-full h-6 w-6 border-b-2 border-signal-600" }
+                        Gerbe { size: 28 }
                     }
                 },
                 Some(Err(err)) => rsx! {

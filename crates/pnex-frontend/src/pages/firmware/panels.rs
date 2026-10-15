@@ -7,6 +7,7 @@ use pnex_core::firmware::LibCatalogItem;
 
 use crate::api;
 use crate::components::badges::date_label;
+use crate::components::gerbe::Gerbe;
 use crate::components::icons;
 
 const TOOL_BTN: &str =
@@ -252,7 +253,7 @@ pub(super) fn RevisionsDrawer(
                     },
                     None => rsx! {
                         div { class: "flex-1 flex items-center justify-center",
-                            span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-signal-600" }
+                            Gerbe { size: 36 }
                         }
                     },
                 }

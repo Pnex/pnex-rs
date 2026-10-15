@@ -27,6 +27,7 @@ use super::recording::RecordingImport;
 use super::training::TrainingPanel;
 use super::video::VideoImport;
 use super::ProjectForm;
+use crate::components::gerbe::Gerbe;
 
 /// Box colours by class index (cycled), readable on photos.
 const CLASS_COLORS: [&str; 8] = [
@@ -841,7 +842,7 @@ fn Annotator(
                     draggable: "false",
                 }
             } else {
-                span { class: "absolute inset-0 m-auto h-8 w-8 animate-spin rounded-full border-b-2 border-gray-400" }
+                Gerbe { size: 36 }
             }
             div {
                 class: "absolute inset-0 {cursor}",

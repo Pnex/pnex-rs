@@ -20,6 +20,7 @@
 use dioxus::prelude::*;
 
 use crate::api::error::ApiError;
+use crate::components::gerbe::Gerbe;
 
 #[component]
 pub fn ListStates(
@@ -41,8 +42,8 @@ pub fn ListStates(
 ) -> Element {
     match state {
         None => rsx! {
-            div { class: "py-12 text-center",
-                span { class: "pnex-spinner-delayed inline-block rounded-full h-8 w-8 border-b-2 border-signal" }
+            div { class: "flex justify-center py-12",
+                Gerbe { size: 48 }
             }
         },
         Some(Err(err)) => rsx! {

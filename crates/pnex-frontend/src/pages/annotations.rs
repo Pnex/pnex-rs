@@ -19,6 +19,7 @@ use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{page_slice, ListPager};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
+use crate::components::gerbe::Gerbe;
 use crate::components::icons;
 use crate::components::labels_editor::{use_row_labels, LabelChips, LabelsButton};
 use crate::components::modal::Modal;
@@ -587,7 +588,7 @@ pub fn Annotations() -> Element {
                                     },
                                     None => rsx! {
                                         div { class: "h-[70vh] flex items-center justify-center",
-                                            span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400" }
+                                            Gerbe { size: 36 }
                                         }
                                     },
                                 }
@@ -966,7 +967,7 @@ fn FlatAnnotViewer(media_id: String, cx: AnnotationEditorCx, set_name: String) -
                         }
                     },
                     None => rsx! {
-                        span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-white" }
+                        Gerbe { size: 36, inherit: true }
                     },
                 }
             }

@@ -12,6 +12,7 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::PublicTour;
 
+use crate::components::gerbe::Gerbe;
 use crate::components::tour_viewer::{AssetInfo, TourViewer, ViewerSource};
 
 #[component]
@@ -76,7 +77,7 @@ pub fn ShareTour(token: String) -> Element {
                     },
                     None => rsx! {
                         div { class: "text-center py-16",
-                            span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-signal-600" }
+                            Gerbe { size: 36 }
                         }
                     },
                 }

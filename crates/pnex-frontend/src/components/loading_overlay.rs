@@ -5,6 +5,7 @@
 //! les pages (opérations qui attendent le serveur : delete de flow,
 //! déploiements, builds…).
 
+use crate::components::gerbe::Gerbe;
 use dioxus::prelude::*;
 
 /// Voile translucide + spinner centré, message optionnel. Classes
@@ -18,7 +19,7 @@ pub fn LoadingOverlay(
     rsx! {
         div { class: "absolute inset-0 z-40 flex items-center justify-center bg-white/60 backdrop-blur-[2px] rounded-lg",
             div { class: "flex flex-col items-center gap-2",
-                span { class: "animate-spin inline-block rounded-full h-6 w-6 border-2 border-signal-600 border-t-transparent" }
+                Gerbe { size: 36, delayed: Some(false) }
                 if !message.is_empty() {
                     span { class: "text-sm text-gray-600", {message} }
                 }

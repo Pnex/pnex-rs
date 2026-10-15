@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::gerbe::Gerbe;
 use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY};
 
 /// Asset detail — full-page two columns (2026-09-19 redesign): preview +
@@ -326,7 +327,7 @@ pub(super) fn MediaDetail(
                                         label {
                                         class: "inline-flex cursor-pointer items-center gap-1 rounded-lg bg-signal-50 px-2 py-1 text-xs text-signal-700 hover:bg-signal-100",
                                             if uploading() {
-                                                span { class: "animate-spin inline-block rounded-full h-3 w-3 border-b-2 border-signal-600" }
+                                                Gerbe { size: 14 }
                                             } else {
                                                 icons::Upload { class: "h-3 w-3" }
                                             }
@@ -427,7 +428,7 @@ pub(super) fn MediaDetail(
                                     });
                                 },
                                 if downloading() {
-                                    span { class: "animate-spin inline-block rounded-full h-3 w-3 border-b-2 border-white mr-1" }
+                                    Gerbe { size: 14, class: "mr-1", inherit: true }
                                 } else {
                                     icons::Download { class: "h-4 w-4 inline mr-1" }
                                 }
@@ -445,7 +446,7 @@ pub(super) fn MediaDetail(
                 },
                 None if error().is_empty() => rsx! {
                     div { class: "text-center py-12",
-                        span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-signal-600" }
+                        Gerbe { size: 36 }
                     }
                 },
                 None => rsx! {},
@@ -671,7 +672,7 @@ fn VersionRow(
                             });
                         },
                         if downloading() {
-                            span { class: "animate-spin inline-block rounded-full h-3 w-3 border-b-2 border-signal-600" }
+                            Gerbe { size: 14 }
                         } else {
                             icons::Download { class: "h-4 w-4 inline" }
                         }

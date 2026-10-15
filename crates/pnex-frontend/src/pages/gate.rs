@@ -9,6 +9,7 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 
 use crate::api::meta::MetaError;
+use crate::components::gerbe::Gerbe;
 use crate::state::compat::{GateState, GATE};
 
 #[component]
@@ -16,7 +17,7 @@ pub fn GateScreen() -> Element {
     match GATE.cloned() {
         GateState::Checking => rsx! {
             div { class: "min-h-screen flex flex-col items-center justify-center bg-gray-50 space-y-4",
-                span { class: "animate-spin rounded-full h-10 w-10 border-b-2 border-signal-600" }
+                Gerbe { size: 44 }
                 p { class: "text-sm text-gray-500", {t!("gate-checking")} }
                 // Serveur en cours de vérification — rend l'attente lisible.
                 if !crate::api::config::api_base().is_empty() {

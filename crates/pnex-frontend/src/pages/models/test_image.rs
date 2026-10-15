@@ -8,6 +8,7 @@ use pnex_core::vision::{DetectionResult, MlModel};
 
 use crate::api;
 use crate::api::error::ApiError;
+use crate::components::gerbe::Gerbe;
 use crate::components::modal::Modal;
 use crate::components::ui::INPUT;
 use crate::util::{image_url_from_bytes, release_image_url};
@@ -93,7 +94,7 @@ pub(super) fn TestImageModal(model: MlModel, on_close: Callback<()>) -> Element 
                 p { class: "text-xs text-gray-500", {t!("models-test-hint")} }
                 if running() {
                     div { class: "flex items-center gap-2 text-sm text-gray-600",
-                        span { class: "animate-spin inline-block rounded-full h-4 w-4 border-b-2 border-signal-600" }
+                        Gerbe { size: 18 }
                         {t!("models-test-running")}
                     }
                 }

@@ -150,3 +150,32 @@ fn list_filter_bars_are_complete() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// One loading mark (D224): the gerbe (components/gerbe.rs), never a
+/// hand-made `animate-spin` spinner.
+#[test]
+fn no_hand_made_spinner() {
+    let mut files = Vec::new();
+    rust_files(
+        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src"),
+        &mut files,
+    );
+    let banned = ["animate-", "spin", "pnex-spinner-", "delayed"];
+    let (spin, delayed) = (
+        banned[0].to_string() + banned[1],
+        banned[2].to_string() + banned[3],
+    );
+    let offenders: Vec<String> = files
+        .iter()
+        .filter(|p| !p.ends_with("design_guard.rs"))
+        .filter(|p| {
+            let text = std::fs::read_to_string(p).unwrap_or_default();
+            text.contains(&spin) || text.contains(&delayed)
+        })
+        .map(|p| p.display().to_string())
+        .collect();
+    assert!(
+        offenders.is_empty(),
+        "use components::gerbe::Gerbe: {offenders:?}"
+    );
+}

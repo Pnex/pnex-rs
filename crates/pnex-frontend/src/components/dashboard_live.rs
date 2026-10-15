@@ -17,6 +17,7 @@ use pnex_core::{DashboardFormat, DashboardLayout, TelemetryPoint, VizDashboard, 
 
 use crate::api;
 use crate::components::dashboard_widget::WidgetBody;
+use crate::components::gerbe::Gerbe;
 use crate::util::sleep;
 
 /// Cadence de rafraîchissement live (même cadence que la page Dashboards).
@@ -137,7 +138,7 @@ pub fn DashboardLive(dashboard_id: String) -> Element {
                 },
                 None => rsx! {
                     div { class: "flex justify-center py-12",
-                        span { class: "animate-spin rounded-full h-6 w-6 border-b-2 border-signal-600" }
+                        Gerbe { size: 28 }
                     }
                 },
             }

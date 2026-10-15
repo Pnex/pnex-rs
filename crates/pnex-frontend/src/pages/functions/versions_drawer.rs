@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::gerbe::Gerbe;
 
 /// Version history drawer — list (version_number DESC, note, date). Every
 /// row carries a "Load" action: the version code ships in the summary, so
@@ -71,7 +72,7 @@ pub(super) fn FunctionVersionsDrawer(
                         },
                         None => rsx! {
                             div { class: "flex-1 flex items-center justify-center",
-                                span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-signal-600" }
+                                Gerbe { size: 36 }
                             }
                         },
                     }

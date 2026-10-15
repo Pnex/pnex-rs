@@ -10,6 +10,32 @@ use crate::storage::{self, KeyValueStorage, KEY_SIDEBAR_RAIL};
 /// Sidebar desktop repliée (rail d'icônes `w-16`) — défaut : dépliée.
 pub static RAIL: GlobalSignal<bool> = GlobalSignal::new(|| false);
 
+/// API requests in flight: drives the loading mark next to the logo.
+pub static IN_FLIGHT: GlobalSignal<u32> = GlobalSignal::new(|| 0);
+
+/// Counts one request for its lifetime. Outside the Dioxus runtime (a
+/// detached task) it counts nothing: writing a global signal there panics.
+pub struct InFlight(bool);
+
+impl InFlight {
+    pub fn start() -> Self {
+        let live = dioxus::dioxus_core::Runtime::try_current().is_some();
+        if live {
+            *IN_FLIGHT.write() += 1;
+        }
+        Self(live)
+    }
+}
+
+impl Drop for InFlight {
+    fn drop(&mut self) {
+        if self.0 && dioxus::dioxus_core::Runtime::try_current().is_some() {
+            let mut n = IN_FLIGHT.write();
+            *n = n.saturating_sub(1);
+        }
+    }
+}
+
 /// Number of mounted full-screen editors (`EditorShell`). While > 0 the
 /// mobile app header is hidden: the editor bar carries its own back button.
 /// A counter, not a bool: switching editors may mount the next one before

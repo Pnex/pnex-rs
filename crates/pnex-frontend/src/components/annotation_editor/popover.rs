@@ -10,6 +10,7 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::{AnnotationTarget, ResolvedAnnotationItem};
 
+use crate::components::gerbe::Gerbe;
 use crate::components::icons;
 
 /// Carte ancrée en bas du conteneur parent (`relative`) — le parent gère
@@ -129,7 +130,7 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
                                 }
                             },
                             None => rsx! {
-                                span { class: "animate-spin inline-block rounded-full h-3 w-3 border-b-2 border-gray-400" }
+                                Gerbe { size: 14 }
                             },
                         }
                     }

@@ -9,6 +9,7 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 
 use crate::api;
+use crate::components::gerbe::Gerbe;
 
 /// Drawer latéral du feed debug (nœuds `debug` builtin + sonde
 /// `pnex-display`), pollé 2 s tant qu'il est monté. Les badges Display du
@@ -125,7 +126,7 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
                     },
                     None => rsx! {
                         div { class: "flex-1 flex items-center justify-center",
-                            span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-signal-600" }
+                            Gerbe { size: 36 }
                         }
                     },
                 }

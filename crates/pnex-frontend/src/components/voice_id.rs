@@ -13,6 +13,7 @@ use pnex_core::voice_id::{
 
 use crate::api;
 use crate::components::confirm::ConfirmDialog;
+use crate::components::gerbe::Gerbe;
 use crate::components::transport::MediaPlayer;
 use crate::components::ui::{
     BTN_DANGER, BTN_PRIMARY_SM, BTN_SECONDARY_SM, FIELD_HELP, FIELD_LABEL, INPUT, PANEL,
@@ -325,7 +326,7 @@ fn ProfileCard(profile: VoiceProfileView, can_admin: bool, on_change: Callback<(
                             disabled: busy() || profile.samples.is_empty(),
                             onclick: generate,
                             if busy() {
-                                span { class: "animate-spin inline-block rounded-full h-4 w-4 border-2 border-current border-t-transparent" }
+                                Gerbe { size: 18, inherit: true }
                                 {t!("voice-generating")}
                             } else {
                                 {t!("voice-generate")}
@@ -495,7 +496,7 @@ fn ClipPicker(profile_id: String, on_change: Callback<()>) -> Element {
             }
             if busy() && pending.read().is_none() {
                 p { class: "flex items-center gap-2 text-sm text-slate",
-                    span { class: "animate-spin inline-block rounded-full h-4 w-4 border-2 border-current border-t-transparent" }
+                    Gerbe { size: 18, inherit: true }
                     {t!("voice-reading")}
                 }
             }
@@ -645,7 +646,7 @@ pub fn VoiceTestBox(object_id: Option<String>, model_id: Option<String>) -> Elem
                 disabled: !can_write || busy() || file.read().is_none(),
                 onclick: run,
                 if busy() {
-                    span { class: "animate-spin inline-block rounded-full h-4 w-4 border-2 border-current border-t-transparent" }
+                    Gerbe { size: 18, inherit: true }
                 }
                 {t!("voice-test-run")}
             }

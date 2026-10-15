@@ -11,6 +11,7 @@ use crate::flash::{self, FlashError, FlashEvent};
 use pnex_core::err_codes;
 
 use super::{icons, modal::Modal};
+use crate::components::gerbe::Gerbe;
 use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY};
 
 /// Étape du flow après le clic (« None » = prêt, en attente du clic).
@@ -127,7 +128,7 @@ pub fn FlashModal(device_id: String, on_close: Callback<()>) -> Element {
                     match &*firmware.read() {
                         None => rsx! {
                             div { class: "flex items-center gap-3 text-sm text-gray-600",
-                                span { class: "animate-spin inline-block rounded-full h-5 w-5 border-b-2 border-signal-600" }
+                                Gerbe { size: 22 }
                                 {t!("flash-fetching")}
                             }
                         },

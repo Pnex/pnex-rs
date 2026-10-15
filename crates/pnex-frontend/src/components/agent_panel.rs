@@ -11,6 +11,7 @@ use dioxus_i18n::t;
 use super::badges::date_label;
 use super::icons;
 use crate::api;
+use crate::components::gerbe::Gerbe;
 use crate::components::ui::INPUT;
 use crate::components::ui::{BTN_PRIMARY_SM, BTN_SECONDARY_SM};
 use crate::state::toasts;
@@ -176,7 +177,7 @@ pub fn AgentInstall(device_pk: i64) -> Element {
                 }
             } else {
                 div { class: "flex items-center gap-2 text-sm text-gray-500",
-                    span { class: "inline-block h-3 w-3 animate-spin rounded-full border-b-2 border-signal-600" }
+                    Gerbe { size: 14 }
                     {t!("agent-install-waiting")}
                 }
             }
