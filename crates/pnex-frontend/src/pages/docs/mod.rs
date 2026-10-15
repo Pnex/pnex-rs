@@ -14,6 +14,7 @@ use crate::api::error::ApiError;
 use crate::app::Route;
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
+use crate::components::crud::pager::{page_slice, ListPager};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
@@ -53,12 +54,13 @@ fn DocList() -> Element {
         let _ = reload();
         api::docs::list().await
     });
-    let (state, rows) = match &*list.value().read() {
-        None => (None, Vec::new()),
-        Some(Ok(rows)) => (Some(Ok(())), rows.clone()),
-        Some(Err(err)) => (Some(Err(err.clone())), Vec::new()),
+    let page = use_signal(|| 0i64);
+    let (state, count, rows) = match &*list.value().read() {
+        None => (None, 0, Vec::new()),
+        Some(Ok(all)) => (Some(Ok(())), all.len() as i64, page_slice(all, page())),
+        Some(Err(err)) => (Some(Err(err.clone())), 0, Vec::new()),
     };
-    let is_empty = matches!(state, Some(Ok(()))) && rows.is_empty();
+    let is_empty = matches!(state, Some(Ok(()))) && count == 0;
 
     let delete = move |id: Uuid| {
         spawn(async move {
@@ -188,6 +190,7 @@ fn DocList() -> Element {
                     rows,
                     row_key: RowKey::new(|d: &DocSummary| d.id.to_string()),
                 }
+                ListPager { count, page }
             }
         }
     }

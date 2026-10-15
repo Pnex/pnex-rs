@@ -11,7 +11,7 @@ tags: organization, organisation, org, tenant, workspace, team, switch org, acti
 The Organizations page lists every organization you belong to, with your role in each, lets you create a new one and choose which one is active. Everything you see in PNeX (devices, flows, dashboards, secrets, telemetry) belongs to the active organization.
 
 ## What you can do
-- **Create an organization**: type a name in "New organization name…" and click **Create**. You become its Owner and it becomes the active organization.
+- **Create an organization**: click **New organization** at the top of the list, type a name and click **Create**. You become its Owner and it becomes the active organization.
 - **Switch organization**: click **Set active** on a row. The active one carries the green **Active** badge; all other pages then show that organization's data.
 - **Manage**: opens the organization detail (rename, members, LLM providers, delete). The same detail for the active organization is reachable directly at Organizations → detail (/orgs/current).
 - **Refresh** the list with the refresh button in the header.

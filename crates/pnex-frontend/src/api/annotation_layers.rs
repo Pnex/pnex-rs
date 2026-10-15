@@ -74,15 +74,10 @@ pub async fn media_annotations(
     .await
 }
 
-/// `GET /api/v1/annotation-layers` — couches de l'org courante, enveloppe
-/// paginée.
-pub async fn list(filters: &LayerFilters) -> Result<Paginated<AnnotationLayerSummary>, ApiError> {
-    client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/annotation-layers{}", filters.to_query()),
-        None,
-    )
-    .await
+/// `GET /api/v1/annotation-layers` — every layer of the current org
+/// matching the filters (`limit`/`offset` are driven by `request_all`).
+pub async fn list(filters: &LayerFilters) -> Result<Vec<AnnotationLayerSummary>, ApiError> {
+    client::request_all(&format!("/api/v1/annotation-layers{}", filters.to_query())).await
 }
 
 /// `POST /api/v1/annotation-layers` — création (couche + v1 doc vide).

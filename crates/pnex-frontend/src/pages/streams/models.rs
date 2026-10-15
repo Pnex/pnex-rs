@@ -13,6 +13,7 @@ use crate::api::media::{MediaFilters, MediaKind, UploadParams};
 use crate::components::confirm::ConfirmDialog;
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::DANGER_BTN;
+use crate::components::crud::pager::{page_slice, ListPager};
 use crate::components::ui::BTN_PRIMARY;
 use crate::state::toasts;
 
@@ -51,6 +52,12 @@ pub fn ModelsTab(can_write: bool, reload: Signal<u32>, importing: Signal<bool>) 
         Some(Ok(rows)) => rows.clone(),
         _ => Vec::new(),
     };
+    let model_page = use_signal(|| 0i64);
+    let profile_page = use_signal(|| 0i64);
+    let model_count = model_rows.len() as i64;
+    let profile_count = profile_rows.len() as i64;
+    let model_page_rows = page_slice(&model_rows, model_page());
+    let profile_rows = page_slice(&profile_rows, profile_page());
     let model_name = {
         let rows = model_rows.clone();
         move |id: &str| {
@@ -66,7 +73,7 @@ pub fn ModelsTab(can_write: bool, reload: Signal<u32>, importing: Signal<bool>) 
             section { class: "space-y-2",
                 h3 { class: "text-sm font-semibold text-gray-900", {t!("asr-models-title")} }
                 p { class: "text-xs text-gray-500", {t!("asr-models-help")} }
-                if model_rows.is_empty() {
+                if model_count == 0 {
                     p { class: "text-sm text-gray-500", {t!("asr-models-empty")} }
                 } else {
                     div { class: "overflow-x-auto bg-white rounded-lg shadow border border-gray-200",
@@ -82,7 +89,7 @@ pub fn ModelsTab(can_write: bool, reload: Signal<u32>, importing: Signal<bool>) 
                                 }
                             }
                             tbody { class: "divide-y divide-gray-100",
-                                for m in model_rows.clone() {
+                                for m in model_page_rows {
                                     ModelRow {
                                         key: "{m.id}",
                                         model: m.clone(),
@@ -105,12 +112,13 @@ pub fn ModelsTab(can_write: bool, reload: Signal<u32>, importing: Signal<bool>) 
                             }
                         }
                     }
+                    ListPager { count: model_count, page: model_page }
                 }
             }
             section { class: "space-y-2",
                 h3 { class: "text-sm font-semibold text-gray-900", {t!("asr-profiles-title")} }
                 p { class: "text-xs text-gray-500", {t!("asr-profiles-help")} }
-                if profile_rows.is_empty() {
+                if profile_count == 0 {
                     p { class: "text-sm text-gray-500", {t!("asr-profiles-empty")} }
                 } else {
                     ul { class: "divide-y divide-gray-100 bg-white rounded-lg shadow border border-gray-200",
@@ -138,6 +146,7 @@ pub fn ModelsTab(can_write: bool, reload: Signal<u32>, importing: Signal<bool>) 
                             }
                         }
                     }
+                    ListPager { count: profile_count, page: profile_page }
                 }
                 if can_write && !model_rows.is_empty() {
                     NewProfile {

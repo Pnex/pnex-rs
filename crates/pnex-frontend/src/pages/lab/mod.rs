@@ -12,6 +12,7 @@ use crate::api;
 use crate::app::Route;
 use crate::components::confirm::ConfirmDialog;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
+use crate::components::crud::pager::{page_slice, ListPager};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
@@ -54,16 +55,17 @@ pub fn Lab() -> Element {
             Some(api::lab::projects().await)
         }
     });
-    let rows: Vec<LabProject> = match &*list.read() {
-        Some(Some(Ok(rows))) => rows.clone(),
-        _ => Vec::new(),
+    let page = use_signal(|| 0i64);
+    let (count, rows): (i64, Vec<LabProject>) = match &*list.read() {
+        Some(Some(Ok(all))) => (all.len() as i64, page_slice(all, page())),
+        _ => (0, Vec::new()),
     };
     let list_state = match &*list.read() {
         None | Some(None) => None,
         Some(Some(Ok(_))) => Some(Ok(())),
         Some(Some(Err(e))) => Some(Err(e.clone())),
     };
-    let is_empty = rows.is_empty();
+    let is_empty = count == 0;
     let modal = editing.read().clone();
     let deleting = delete_target.read().clone();
 
@@ -149,6 +151,7 @@ pub fn Lab() -> Element {
                         rows,
                         row_key: RowKey::new(|p: &LabProject| p.id.clone()),
                     }
+                    ListPager { count, page }
                 }
             }
             if let Some(initial) = modal {

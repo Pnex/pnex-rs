@@ -122,6 +122,25 @@ pub fn Notifications() -> Element {
         ListLayout {
             title: t!("nav-notifications").to_string(),
             subtitle: Some(t!("notify-subtitle").to_string()),
+            tabs: rsx! {
+                div { class: crate::components::ui::TAB_BAR, role: "tablist",
+                    for tab_def in [
+                        (Tab::Channels, "notify-tab-connect"),
+                        (Tab::Templates, "notify-tab-templates"),
+                        (Tab::Events, "notify-tab-events"),
+                    ]
+                    {
+                        button {
+                            class: if tab() == tab_def.0 { crate::components::ui::TAB_ACTIVE } else { crate::components::ui::TAB },
+                            r#type: "button",
+                            role: "tab",
+                            aria_selected: tab() == tab_def.0,
+                            onclick: move |_| tab.set(tab_def.0),
+                            {t!(tab_def.1)}
+                        }
+                    }
+                }
+            },
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
             can_write,
             // Header "add" action, like the whole CRUD socle — the label
@@ -139,27 +158,6 @@ pub fn Notifications() -> Element {
             if org::current().is_none() {
                 p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
             } else {
-                // Shared tab bar (ui::TAB_BAR); the "add" action is in the header.
-                div {
-                    class: "mb-6 {crate::components::ui::TAB_BAR}",
-                    role: "tablist",
-                    for tab_def in [
-                        (Tab::Channels, "notify-tab-connect"),
-                        (Tab::Templates, "notify-tab-templates"),
-                        (Tab::Events, "notify-tab-events"),
-                    ]
-                    {
-                        button {
-                            class: if tab() == tab_def.0 { crate::components::ui::TAB_ACTIVE } else { crate::components::ui::TAB },
-                            r#type: "button",
-                            role: "tab",
-                            aria_selected: tab() == tab_def.0,
-                            onclick: move |_| tab.set(tab_def.0),
-                            {t!(tab_def.1)}
-                        }
-                    }
-                }
-
                 match tab() {
                     Tab::Channels => rsx! {
                         ChannelsTab {

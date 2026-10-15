@@ -16,6 +16,7 @@ use crate::components::annotation_editor::state::{
 use crate::components::confirm::ConfirmDialog;
 use crate::components::crud::filters::{FilterBar, SearchInput};
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
+use crate::components::crud::pager::{page_slice, ListPager};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
@@ -65,6 +66,12 @@ pub fn Annotations() -> Element {
     });
     let mut sets_reload = use_signal(|| 0u32);
     let search = use_signal(String::new);
+    let mut sets_page = use_signal(|| 0i64);
+    // Live search narrows the list: restart from the first page.
+    use_effect(move || {
+        let _ = search.read();
+        sets_page.set(0);
+    });
     let mut selected_media_filter = use_signal(String::new);
     let mut new_open = use_signal(|| false);
     let mut delete_target = use_signal(|| None::<pnex_core::AnnotationLayerSummary>);
@@ -126,7 +133,6 @@ pub fn Annotations() -> Element {
                 } else {
                     Some(media.trim().to_string())
                 },
-                limit: Some(100),
                 ..Default::default()
             })
             .await
@@ -137,7 +143,7 @@ pub fn Annotations() -> Element {
         .read()
         .as_ref()
         .and_then(|o| o.as_ref().ok())
-        .map(|p| p.results.clone())
+        .cloned()
         .unwrap_or_default();
 
     // ─── Précalculs rendu ───
@@ -180,7 +186,7 @@ pub fn Annotations() -> Element {
                 .read()
                 .as_ref()
                 .and_then(|o| o.as_ref().ok())
-                .and_then(|p| p.results.iter().find(|s| s.id == id).cloned());
+                .and_then(|all| all.iter().find(|s| s.id == id).cloned());
             if let Some(m) = found.and_then(|s| s.media_asset_id) {
                 if cur_media.cloned().as_deref() != Some(m.as_str()) {
                     cur_media.set(Some(m));
@@ -197,7 +203,7 @@ pub fn Annotations() -> Element {
     let preview_now = preview();
     // Leaving the editor would drop unsaved edits (panel re-boots).
     let preview_disabled = cx.is_dirty();
-    let sets_now = sets.clone();
+    let sets_now = page_slice(&sets, sets_page());
     let sets_other = sets.clone();
     let media_filter_now = selected_media_filter.cloned();
     let open_set = match view.cloned() {
@@ -210,9 +216,10 @@ pub fn Annotations() -> Element {
     // table vide) ; ListStates les introduit.
     let (list_state, is_empty) = match &*sets_res.value().read() {
         None => (None, false),
-        Some(Ok(paged)) => (Some(Ok(())), paged.results.is_empty()),
+        Some(Ok(all)) => (Some(Ok(())), all.is_empty()),
         Some(Err(err)) => (Some(Err(err.clone())), false),
     };
+    let sets_count = sets.len() as i64;
 
     // Colonnes de la table — la ligne entière est cliquable (on_row_click,
     // extension socle motivée par cette page) ; le bouton delete fait
@@ -310,7 +317,10 @@ pub fn Annotations() -> Element {
                             aria_label: t!("annot-page-media-filter"),
                             class: INPUT,
                             value: "{media_filter_now}",
-                            onchange: move |e| selected_media_filter.set(e.value()),
+                            onchange: move |e| {
+                                sets_page.set(0);
+                                selected_media_filter.set(e.value());
+                            },
                             option { value: "", {t!("annot-page-all-medias")} }
                             for (m_id, (m_name, _)) in media_map.clone() {
                                 option { key: "{m_id}", value: "{m_id}", {m_name} }
@@ -327,6 +337,7 @@ pub fn Annotations() -> Element {
                             row_key: RowKey::new(|s: &pnex_core::AnnotationLayerSummary| s.id.clone()),
                             on_row_click: Callback::new(move |id: String| view.set(View::Editor(id))),
                         }
+                        ListPager { count: sets_count, page: sets_page }
                     }
                 }
             },

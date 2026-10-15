@@ -13,6 +13,7 @@ use crate::app::Route;
 use crate::components::confirm::ConfirmDialog;
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
+use crate::components::crud::pager::{page_slice, ListPager};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::ontology::{
@@ -96,9 +97,40 @@ pub fn SchemaTab(tabs: Element) -> Element {
         })
         .secondary(),
     ];
-    let mut new_link = use_signal(|| false);
+    let type_page = use_signal(|| 0i64);
     let mut delete_link = use_signal(|| None::<String>);
+    let link_columns = vec![
+        Column::new(t!("onto-col-type").to_string(), |l: &LinkTypeView| {
+            rsx! {
+                span { class: "font-medium text-gray-900", {link_label(Some(&l.def), &l.def.key, false)} }
+                code { class: "ml-2 text-xs text-gray-500", "{l.def.key}" }
+            }
+        }),
+        Column::new(t!("onto-col-ends").to_string(), |l: &LinkTypeView| {
+            rsx! {
+                span { class: "text-xs text-gray-600",
+                    {format!("{} → {}", set_label(&l.def.from_types), set_label(&l.def.to_types))}
+                }
+            }
+        })
+        .secondary(),
+        Column::new(t!("common-actions").to_string(), move |l: &LinkTypeView| {
+            let key = l.def.key.clone();
+            let system = l.def.system;
+            rsx! {
+                if system {
+                    span { class: "rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600", {t!("onto-system")} }
+                } else if admin {
+                    DeleteButton { value: key, on_delete: move |k| delete_link.set(Some(k)) }
+                }
+            }
+        })
+        .actions(),
+    ];
+    let mut new_link = use_signal(|| false);
     let type_rows = rows.clone();
+    let type_count = rows.len() as i64;
+    let rows = page_slice(&rows, type_page());
     rsx! {
         ListLayout {
             title: t!("onto-types").to_string(),
@@ -115,7 +147,7 @@ pub fn SchemaTab(tabs: Element) -> Element {
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
             ListStates {
                 state,
-                is_empty: rows.is_empty(),
+                is_empty: type_count == 0,
                 empty_message: String::new(),
                 DataTable {
                     columns,
@@ -128,6 +160,7 @@ pub fn SchemaTab(tabs: Element) -> Element {
                             });
                     },
                 }
+                ListPager { count: type_count, page: type_page }
             }
         }
         div { class: "mt-6 space-y-3",
@@ -142,30 +175,10 @@ pub fn SchemaTab(tabs: Element) -> Element {
                     }
                 }
             }
-            ul { class: "divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white",
-                for l in link_rows {
-                    li {
-                        key: "{l.def.key}",
-                        class: "flex flex-wrap items-center gap-2 px-4 py-2 text-sm",
-                        span { class: "font-medium text-gray-900",
-                            {link_label(Some(&l.def), &l.def.key, false)}
-                        }
-                        code { class: "text-xs text-gray-500", "{l.def.key}" }
-                        span { class: "text-xs text-gray-600",
-                            {format!("{} → {}", set_label(&l.def.from_types), set_label(&l.def.to_types))}
-                        }
-                        if l.def.system {
-                            span { class: "ml-auto rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600",
-                                {t!("onto-system")}
-                            }
-                        } else if admin {
-                            DeleteButton {
-                                value: l.def.key.clone(),
-                                on_delete: move |k| delete_link.set(Some(k)),
-                            }
-                        }
-                    }
-                }
+            DataTable {
+                columns: link_columns,
+                rows: link_rows,
+                row_key: RowKey::new(|l: &LinkTypeView| l.def.key.clone()),
             }
         }
         if new_link() {

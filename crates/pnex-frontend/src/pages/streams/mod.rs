@@ -127,7 +127,7 @@ pub fn Streams() -> Element {
                 Tab::Ranges => creating_range.set(true),
                 Tab::Transcripts => {}
             },
-            filters: rsx! {
+            tabs: rsx! {
                 div { class: TAB_BAR, role: "tablist",
                     for (t, label) in [
                         (Tab::Streams, t!("streams-tab-streams")),

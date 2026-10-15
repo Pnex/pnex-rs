@@ -11,6 +11,9 @@ use crate::components::badges::date_label;
 use crate::components::confirm::ConfirmDialog;
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::DANGER_BTN;
+use crate::components::crud::pager::{page_slice, ListPager};
+use crate::components::crud::states::ListStates;
+use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::modal::Modal;
 use crate::state::toasts;
 
@@ -37,41 +40,75 @@ pub fn TaxonomiesTab(can_write: bool, reload: Signal<u32>, creating: Signal<bool
         let _ = reload();
         api::taxonomies::list().await
     });
-    let rows: Vec<Taxonomy> = match &*list.value().read() {
-        Some(Ok(rows)) => rows.clone(),
-        _ => Vec::new(),
+    let page = use_signal(|| 0i64);
+    let (state, count, rows) = match &*list.value().read() {
+        None => (None, 0, Vec::new()),
+        Some(Ok(all)) => (Some(Ok(())), all.len() as i64, page_slice(all, page())),
+        Some(Err(err)) => (Some(Err(err.clone())), 0, Vec::new()),
     };
-    let loaded = list.value().read().is_some();
+    let columns = vec![
+        Column::new(t!("taxonomies-col-name").to_string(), |tx: &Taxonomy| {
+            rsx! {
+                p { class: "font-medium text-gray-900", "{tx.name}" }
+                if !tx.description.is_empty() {
+                    p { class: "text-xs text-gray-500", "{tx.description}" }
+                }
+            }
+        }),
+        Column::new(t!("taxonomies-col-version").to_string(), |tx: &Taxonomy| {
+            let version = tx.current_version.to_string();
+            rsx! { {t!("taxonomies-version", version : version)} }
+        })
+        .with_td_class("text-gray-600"),
+        Column::new(t!("taxonomies-col-topics").to_string(), |tx: &Taxonomy| {
+            let topics = tx.current.as_ref().map_or(0, |v| v.topics.len());
+            rsx! { "{topics}" }
+        })
+        .with_td_class("text-gray-600")
+        .secondary(),
+        Column::new(t!("common-actions").to_string(), move |tx: &Taxonomy| {
+            let (t_edit, t_history, t_delete) = (tx.clone(), tx.clone(), tx.clone());
+            rsx! {
+                div { class: "flex justify-end gap-2",
+                    button {
+                        class: BTN,
+                        r#type: "button",
+                        onclick: move |_| dialog.set(Some(Dialog::History(t_history.clone()))),
+                        {t!("taxonomies-history")}
+                    }
+                    if can_write {
+                        button {
+                            class: BTN,
+                            r#type: "button",
+                            onclick: move |_| dialog.set(Some(Dialog::Edit(t_edit.clone()))),
+                            {t!("taxonomies-new-version")}
+                        }
+                        button {
+                            class: DANGER_BTN,
+                            r#type: "button",
+                            onclick: move |_| dialog.set(Some(Dialog::Delete(t_delete.clone()))),
+                            {t!("streams-delete")}
+                        }
+                    }
+                }
+            }
+        })
+        .actions(),
+    ];
 
     rsx! {
         div { class: "space-y-2",
             p { class: "text-xs text-gray-500", {t!("taxonomies-help")} }
-            if loaded && rows.is_empty() {
-                p { class: "text-sm text-gray-500", {t!("taxonomies-empty")} }
-            }
-            if !rows.is_empty() {
-                div { class: "overflow-x-auto bg-white rounded-lg shadow border border-gray-200",
-                    table { class: "min-w-full divide-y divide-gray-200 text-sm",
-                        thead { class: "bg-gray-50",
-                            tr {
-                                th { class: "th", {t!("taxonomies-col-name")} }
-                                th { class: "th", {t!("taxonomies-col-version")} }
-                                th { class: "th hidden md:table-cell", {t!("taxonomies-col-topics")} }
-                                th { class: "th" }
-                            }
-                        }
-                        tbody { class: "divide-y divide-gray-100",
-                            for tx in rows {
-                                TaxonomyRow {
-                                    key: "{tx.id}",
-                                    taxonomy: tx.clone(),
-                                    can_write,
-                                    on_action: move |d: Dialog| dialog.set(Some(d)),
-                                }
-                            }
-                        }
-                    }
+            ListStates {
+                state,
+                is_empty: count == 0,
+                empty_message: t!("taxonomies-empty").to_string(),
+                DataTable {
+                    columns,
+                    rows,
+                    row_key: RowKey::new(|tx: &Taxonomy| tx.id.clone()),
                 }
+                ListPager { count, page }
             }
         }
         if creating() {
@@ -124,53 +161,6 @@ pub fn TaxonomiesTab(can_write: bool, reload: Signal<u32>, creating: Signal<bool
                 }
             },
             None => rsx! {},
-        }
-    }
-}
-
-#[component]
-fn TaxonomyRow(taxonomy: Taxonomy, can_write: bool, on_action: Callback<Dialog>) -> Element {
-    let topic_count = taxonomy
-        .current
-        .as_ref()
-        .map_or(0, |v| v.topics.len())
-        .to_string();
-    let version = taxonomy.current_version.to_string();
-    let (t_edit, t_history, t_delete) = (taxonomy.clone(), taxonomy.clone(), taxonomy.clone());
-    rsx! {
-        tr {
-            td { class: "td",
-                p { class: "font-medium text-gray-900", "{taxonomy.name}" }
-                if !taxonomy.description.is_empty() {
-                    p { class: "text-xs text-gray-500", "{taxonomy.description}" }
-                }
-            }
-            td { class: "td text-gray-600", {t!("taxonomies-version", version : version)} }
-            td { class: "td hidden text-gray-600 md:table-cell", "{topic_count}" }
-            td { class: "td text-right",
-                div { class: "flex justify-end gap-2",
-                    button {
-                        class: BTN,
-                        r#type: "button",
-                        onclick: move |_| on_action.call(Dialog::History(t_history.clone())),
-                        {t!("taxonomies-history")}
-                    }
-                    if can_write {
-                        button {
-                            class: BTN,
-                            r#type: "button",
-                            onclick: move |_| on_action.call(Dialog::Edit(t_edit.clone())),
-                            {t!("taxonomies-new-version")}
-                        }
-                        button {
-                            class: DANGER_BTN,
-                            r#type: "button",
-                            onclick: move |_| on_action.call(Dialog::Delete(t_delete.clone())),
-                            {t!("streams-delete")}
-                        }
-                    }
-                }
-            }
         }
     }
 }

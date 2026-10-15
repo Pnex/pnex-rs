@@ -7,6 +7,7 @@ use super::*;
 use crate::components::crud::filters::{FilterBar, SearchInput};
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
+use crate::components::crud::states::ListStates;
 use crate::components::ui::BTN_SECONDARY;
 
 #[component]
@@ -45,10 +46,12 @@ pub fn Sites() -> Element {
         };
         viz::list_pois(&filters).await
     });
-    let loading = list.read().is_none();
-    let page = list.read().clone().and_then(Result::ok);
-    let sites = page.as_ref().map(|p| p.results.clone()).unwrap_or_default();
-    let total = page.as_ref().map(|p| p.count).unwrap_or(0);
+    // An API error used to show the empty list; ListStates now surfaces it.
+    let (state, sites, total) = match &*list.read() {
+        None => (None, Vec::new(), 0),
+        Some(Ok(p)) => (Some(Ok(())), p.results.clone(), p.count),
+        Some(Err(err)) => (Some(Err(err.clone())), Vec::new(), 0),
+    };
 
     rsx! {
         ListLayout {
@@ -81,14 +84,11 @@ pub fn Sites() -> Element {
                     }
                 }
             },
-            div { class: "bg-white rounded-lg border border-line overflow-hidden",
-                if loading {
-                    div { class: "p-6 flex justify-center",
-                        span { class: "animate-spin rounded-full h-5 w-5 border-b-2 border-signal-600" }
-                    }
-                } else if sites.is_empty() {
-                    div { class: "p-8 text-center text-sm text-gray-500", {t!("sites-empty")} }
-                } else {
+            ListStates {
+                state,
+                is_empty: total == 0,
+                empty_message: t!("sites-empty").to_string(),
+                div { class: "bg-white rounded-lg border border-line overflow-hidden",
                     for site in sites.iter() {
                         PoiRow {
                             key: "{site.id}",
@@ -98,8 +98,8 @@ pub fn Sites() -> Element {
                         }
                     }
                     div { class: "px-4 py-2 text-xs text-gray-500", {t!("poi-count", count : total)} }
-                    ListPager { count: total, page: site_page }
                 }
+                ListPager { count: total, page: site_page }
             }
         }
         // Same drawer as the map: tree, attached objects, preview, labels.
