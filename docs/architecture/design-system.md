@@ -358,8 +358,12 @@ la classe de tiroir commune.
   segments aux couleurs de la palette du login qui y coulent (SVG + CSS,
   immobile sous `prefers-reduced-motion`, `inherit` sur fond sombre ou
   dans un bouton plein). Différée de 250 ms au-delà de 32 px. Un compteur
-  des requêtes en cours (`state::ui::IN_FLIGHT`) l'affiche à côté du logo :
-  on voit toujours les données arriver. Garde : `design_guard`
+  des requêtes en cours (`state::ui::IN_FLIGHT`) fait couler la vraie
+  gerbe du login (`assets/tron-gerbe.js`, attribut `data-pnex-gerbe`)
+  derrière le logo de la barre latérale : 7 faisceaux fins et rapides,
+  couleur atténuée (`--gerbe-glow` 0,38 en clair, 0,65 en sombre) pour que
+  le logo reste lisible, après 250 ms ; la petite gerbe en barre repliée.
+  On voit toujours les données arriver. Garde : `design_guard`
   (`no_hand_made_spinner`) ;
   **vide** : `ListStates` ou `EmptyState`, jamais un cadre pointillé écrit
   à la main.

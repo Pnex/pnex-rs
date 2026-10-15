@@ -419,6 +419,27 @@
 .pnex-gerbe-delayed {
   animation: pnex-appear 150ms ease-out 250ms both;
 }
+/* Loading gerbe behind the sidebar logo (assets/tron-gerbe.js): fades in
+   past 250 ms of loading, out at once; stronger colour on the dark theme
+   (the light ground needs less to show, the logo must stay readable). */
+[data-pnex-gerbe] {
+  --gerbe-glow: 0.38;
+}
+:where([data-theme="dark"]) [data-pnex-gerbe] {
+  --gerbe-glow: 0.65;
+}
+[data-pnex-gerbe] canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+}
+[data-pnex-gerbe="on"] canvas {
+  opacity: 1;
+  transition-delay: 250ms;
+}
 @media (prefers-reduced-motion: reduce) {
   .pnex-gerbe-flow,
   .pnex-gerbe-color .pnex-gerbe-flow {
