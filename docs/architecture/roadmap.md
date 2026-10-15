@@ -464,6 +464,16 @@ catalogue de P2.11.
 Ordre des catégories = parcours d'un flow (source → traitement → sortie).
 La couleur des nœuds au canevas reste par kind dans cette tranche.
 
+### P1.8 — Clarté de l'UI : vocabulaire, étiquettes, annotations, lecteur, versions (ajout 2026-10-15)
+
+Décisions D218–D224 (`design-system.md` §7) et plan en quatre phases
+(§8) : (1) lexique unique et étiquettes sur tout objet listable, dans la
+recherche globale ; (2) annotations recentrées sur les médias visuels,
+entrée « Annoter » depuis l'objet ; (3) un seul lecteur temporel
+(transcriptions, segments, plages, fenêtres de temps) et un historique de
+versions commun avec frise et trois verbes ; (4) une coquille d'éditeur,
+une forme d'ouverture par usage, primitives sans copie.
+
 ## P2 — Nouveaux chantiers prêts (spec écrite)
 
 ### P2.1 — Extension navigateur (C1b → jalon C3) — **élevé (directive produit)**

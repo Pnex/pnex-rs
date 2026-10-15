@@ -370,9 +370,10 @@ modélisation :
   pour trier, filtrer et regrouper à la volée (« lot:2026 »,
   « à-vérifier »). D185 filtre par labels effectifs : les deux
   cohabitent.
-- Les labels **ne sont pas étendus** à tous les kinds : structurer un
-  objet passe par l'ontologie. Pas d'éditeur de labels ajouté aux pages
-  qui n'en ont pas.
+- ~~Les labels ne sont pas étendus à tous les kinds~~ **Révisé par D218**
+  (`design-system.md` §7, 2026-10-15) : les étiquettes s'appliquent à tout
+  objet listable et alimentent la recherche globale ; structurer un objet
+  passe toujours par l'ontologie.
 - Un label qui porte un fait métier (`marque:grundfos`, `site:serre`) est
   une dette : la bonne place est une propriété ou un lien. Évolution
   possible, non planifiée : « promouvoir ce label en propriété » (même

@@ -94,12 +94,11 @@ les compose hérite de l'identité.
 - **Pages vides** : une seule forme (cadre pointillé, phrase de ce qui manque,
   détail de ce à quoi ça sert). Un message vide distingue « rien dans l'org »
   de « rien ne correspond aux filtres ».
-- **Labels** : saisie et filtres proposent les noms et valeurs déjà utilisés
-  dans l'org (`GET /api/v1/resources/labels/catalog`, `<datalist>` natif).
-  Ce sont des étiquettes de travail, pas un modèle : sur une fiche, le type
-  et les propriétés d'ontologie passent avant, les labels restent discrets
-  et ne sont pas ajoutés aux pages qui n'en ont pas (`ontology.md`, « Labels
-  et ontologie »).
+- **Étiquettes** : saisie et filtres proposent les noms et valeurs déjà
+  utilisés dans l'org (`GET /api/v1/resources/labels/catalog`, `<datalist>`
+  natif). Ce sont des étiquettes de travail, pas un modèle : sur une fiche,
+  le type et les propriétés d'ontologie passent avant, les étiquettes
+  restent discrètes ; elles existent sur tout objet listable (D218, §7).
 
 ### Mouvement (2026-10-12)
 
@@ -204,7 +203,168 @@ Les entrées « bientôt » sans route sont retirées du menu.
    par les contrôles natifs du navigateur (`controls: true`). Références :
    `pages/cameras/player.rs`, `pages/cases/workspace/timeline.rs`.
 
-## 7. Reste à faire
+## 7. Concepts et vocabulaire (D218–D224, 2026-10-15)
+
+Le produit est riche ; l'interface doit rester lisible. Chaque concept a
+**un seul nom** dans chaque langue, **un seul composant** et **une seule
+place**. Les décisions ci-dessous viennent du tour d'horizon du
+2026-10-15 (labels, annotations, lecteur, versions) ; elles priment sur
+les règles plus anciennes qui les contredisent.
+
+### Lexique (une notion = un mot)
+
+| Notion | FR | EN | N'est pas |
+|---|---|---|---|
+| Classement libre d'un objet, pour filtrer et chercher (D42) | Étiquettes | Labels | ni une propriété d'ontologie, ni une annotation |
+| Fait métier typé d'un objet | Propriété | Property | une étiquette |
+| Relation typée entre deux objets | Lien | Link | une étiquette |
+| Ce qui est posé sur un média visuel (D219) | Annotation | Annotation | une note de dossier, une détection |
+| Unité versionnée et publiable d'annotations | Calque d'annotations | Annotation layer | — (plus « ensemble ») |
+| Cadres produits par un modèle sur une vidéo | Détections | Detections | des annotations |
+| Boîtes de vérité terrain d'un jeu d'entraînement | Étiquetage | Labeling | des annotations |
+| Noms des sorties d'un modèle de vision | Classes | Classes | des étiquettes |
+| Clés qui découpent une série temporelle | Dimensions | Dimensions | des étiquettes |
+| Voix distinguées par la diarisation | Locuteurs | Speakers | des étiquettes |
+| Texte libre d'un dossier d'enquête | Note | Note | une annotation |
+| Discussion sur un passage d'une Page | Commentaire | Comment | une annotation |
+| Lieu sur la carte | Site / repère | Site / place | une annotation |
+| État sauvegardé d'un objet | Version | Version | — |
+
+Une chaîne d'interface qui emploie un mot pour une autre notion est un
+défaut, au même titre qu'une chaîne en dur.
+
+### D218 — Étiquettes : un seul mécanisme, sur tout objet, dans la recherche
+
+- Les étiquettes D42 s'appliquent à **tout objet listable** : appareils,
+  médias, tableaux de bord, visites, flows, sites et dossiers de la carte,
+  Pages, dossiers d'enquête, objets d'ontologie, fonctions, firmwares,
+  contrôles, flux, caméras, modèles, canaux et modèles de notification,
+  calques d'annotations. Révise `ontology.md` (« labels non étendus à tous
+  les kinds ») : l'étiquette reste un classement de travail, les faits
+  métier restent des propriétés et des liens.
+- **Même composant partout** : `LabelsEditor` sur la fiche ou dans la
+  barre de l'éditeur (`LabelsButton`), `LabelChips` dans une colonne des
+  listes, `LabelFilterInput` dans la barre de filtres de **chaque** liste.
+- **Recherche globale** : une saisie `#valeur` ou `#clé:valeur` cherche par
+  étiquette sur tous les types (`POST /resources/search`) ; une saisie
+  libre trouve aussi les objets dont une étiquette contient le texte
+  (groupe « Étiquettes »).
+- Un seul mot : « Étiquettes » / « Labels », jamais « label » en français.
+
+### D219 — Annotations : ce qui est posé sur un média visuel
+
+- Une annotation est **toujours ancrée** sur une photo, un plan, un
+  panorama 360, une visite ou un splat ; un calque sans média ni visite
+  n'existe plus (refus à la création, purge des calques libres).
+- Son contenu peut être un **repère** (appareil, pin, état), une **note**,
+  une **lecture** (valeur, sparkline, jauge, indicateur) ou un **contrôle**
+  d'org : un plan ou un 360 « vivant » est l'intérêt même de la
+  fonctionnalité (D128, D147). Ce qui n'est pas posé sur un média n'est
+  pas une annotation (détections, étiquetage, notes de dossier).
+- **Entrée depuis l'objet** : bouton « Annoter » sur la fiche d'un média
+  visuel, dans l'éditeur de visite et sur un splat ; il ouvre l'éditeur
+  d'annotations sur cet objet (créé au besoin). La page Médias ›
+  Annotations reste l'index des calques.
+- Les calques d'annotations portent des étiquettes (D218).
+
+### D220 — Un seul lecteur pour tout ce qui se lit dans le temps
+
+Extension de la règle 9 (§6) :
+
+- **Transcriptions et segments** : un segment s'écoute avec `MediaPlayer`
+  quand son audio est conservé ; un clic sur un horodatage positionne le
+  lecteur.
+- **Plages** (programmes, postes) : barres sur `ScrubBar` avec le curseur
+  « maintenant », plus de frise faite main.
+- **Fenêtre de temps** : un seul `WindowPicker` (`components/transport.rs`)
+  avec les mêmes préréglages partout (1 h, 6 h, 24 h, 7 j, 30 j,
+  personnalisé) ; plus de `select` propre à chaque page ni de
+  `datetime-local` nu.
+- **Bornes d'un extrait** (imports du Vision Lab) : choisies sur la
+  `ScrubBar` du média, pas tapées à l'aveugle.
+
+### D221 — Versions : un composant, une frise, trois verbes
+
+- Un composant `VersionHistory` pour tout objet versionné (flow, tableau
+  de bord, fonction, firmware, visite, calque d'annotations, Page, média,
+  type d'ontologie) : en tête une **frise** (`ScrubBar`, un repère par
+  version, la version active marquée, le curseur sur la version affichée,
+  lecture = défilement des versions), puis la liste paginée.
+- **Trois verbes, partout** : « Ouvrir » (afficher ou charger dans
+  l'éditeur), « Comparer » (avec la version active, quand un diff a du
+  sens), « Rétablir » (devient la version active). Les actions de cycle
+  de vie propres à un objet (« Déployer » un flow, « Publier » une visite
+  ou un calque) restent dans la barre de l'éditeur, pas dans l'historique.
+- Même place : tiroir de droite ouvert par le bouton « Versions » de
+  `EditorShell` ; sur une fiche sans éditeur (média, type), une section
+  de la fiche.
+
+### D222 — Éditeurs : une seule coquille
+
+Tout éditeur plein écran passe par `EditorShell` + `StatusChip` (barre :
+retour, nom, étiquettes, état, versions, action principale) : flows,
+tableaux de bord, visites et dossiers déjà ; à migrer : annotations,
+fonctions, firmware, Pages, Studio, type d'ontologie, pinout.
+
+### D223 — Où s'ouvre un objet
+
+| Forme | Quand |
+|---|---|
+| **Fiche** (route propre, bouton retour, lien partageable) | consulter ou gérer un objet : appareil, média, site, objet, dossier, flux… |
+| **Éditeur** (`EditorShell`) | construire un objet : flow, tableau de bord, visite, annotations, Page… |
+| **Tiroir de droite** | aperçu rapide sans quitter un contexte spatial (carte, canevas) ; il mène à la fiche |
+| **Modale** | créer, confirmer, choisir — jamais consulter |
+
+Conséquences : enregistrements et segments d'un flux passent d'une modale
+à un onglet de sa fiche ; un média et un appareil s'ouvrent sur leur
+route plutôt qu'en remplacement de la liste ; le tiroir des sites prend
+la classe de tiroir commune.
+
+### D224 — Primitives sans copie
+
+- Plus aucune constante locale de bouton ou de champ (`const BTN`,
+  `const INPUT`…) : `ui::BTN_*`, `ui::INPUT`. Une variante manquante
+  s'ajoute à `ui.rs`.
+- **Pastilles** : un composant `Badge` (ton neutre, signal, succès, alerte,
+  danger) au lieu des `span rounded-full` écrits à la main ; `StateMark`
+  pour les états ISA-101.
+- **Chargement** : un seul `Spinner` (celui de `ListStates`, différé) ;
+  **vide** : `ListStates` ou `EmptyState`, jamais un cadre pointillé écrit
+  à la main.
+- **Onglets** : `TAB_BAR` partout (assistant et sélecteur de ressources
+  compris).
+- `design_guard` refuse les constantes locales et les classes de bouton
+  écrites en ligne.
+
+### Mouvement
+
+Les règles de §4 « Mouvement » s'appliquent ; pour ce chantier : tiroirs
+et modales en `ease-out` court (≤ 250 ms), aucune animation sur ce qui
+répond au clavier ou se répète (filtres, onglets, pager), retour de
+pression `scale(0.97)` sur les boutons, `prefers-reduced-motion` respecté.
+
+## 8. Plan de mise en œuvre (2026-10-15)
+
+Chaque phase se termine par une passe clair/sombre, desktop/390 px, et
+l'e2e a11y strict.
+
+1. **Vocabulaire et étiquettes (D218)** : lexique appliqué aux deux `.ftl`
+   et aux fiches de l'assistant ; étiquettes sur tous les objets listables
+   (registre `resources`, éditeur, colonne, filtre) ; étiquettes dans la
+   recherche globale.
+2. **Annotations recentrées (D219)** : bouton « Annoter » sur média,
+   visite et splat ; refus et purge des calques libres ; « Détections »,
+   « Étiquetage », « Calque » dans l'UI ; documentation alignée (les
+   tableaux de bord n'affichent pas les annotations).
+3. **Lecteur partout (D220) et versions (D221)** : `WindowPicker`,
+   transcriptions et segments écoutables, plages sur `ScrubBar`, bornes du
+   Vision Lab ; `VersionHistory` avec frise et trois verbes, porté sur les
+   onze historiques.
+4. **Coquille, formes d'ouverture et primitives (D222–D224)** : éditeurs
+   sur `EditorShell`, fiches en routes, `Badge`/`Spinner`/`EmptyState`,
+   constantes locales supprimées, garde `design_guard` étendue.
+
+## 9. Reste à faire
 
 - Revue sombre faite le 2026-10-11 : toutes les pages de liste, les pages
   de détail (device, média, POI, objet, dossier), les éditeurs plein écran
@@ -212,7 +372,4 @@ Les entrées « bientôt » sans route sont retirées du menu.
   de chaque type de nœud (31) et de widget (35). Reste à voir au cas par
   cas : visionneuses 360/splat et carte avec un fond configuré.
 - Captures de la documentation et du site à refaire.
-- Lecteur temporel (§6 point 9) : à étendre aux versions — une frise des
-  versions d'un flow, d'un document, d'un tableau de bord ou d'une page
-  (`ScrubBar` avec un repère par version, curseur = version affichée,
-  lecture = défilement des versions). Proposition, non décidée.
+- Lecteur temporel étendu aux versions : décidé (D221, §7).
