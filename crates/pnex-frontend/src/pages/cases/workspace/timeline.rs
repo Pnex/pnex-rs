@@ -21,7 +21,7 @@ const RULER_H: f64 = 36.0;
 const ROW_H: f64 = 26.0;
 const LANE_H: f64 = 30.0;
 /// Label rows shown before the rest gathers into "+N" chips.
-const MAX_EVENT_ROWS: usize = 6;
+const MAX_EVENT_ROWS: usize = 12;
 const MAX_SIGNAL_ROWS: usize = 4;
 /// Items within this many percent of each other share one chip.
 const CHIP_NEAR: f64 = 3.0;
@@ -35,9 +35,23 @@ pub(super) fn actor_color(i: usize) -> &'static str {
     ACTOR_COLORS[i % ACTOR_COLORS.len()]
 }
 
+/// Widest event label, in px: longer titles are cut with an ellipsis, so
+/// the stacking estimate below holds (labels never overlap).
+const LABEL_MAX_PX: f64 = 224.0;
+
 /// Approximate width of a label, in percent of a timeline `width_px` wide.
 fn label_pct(title: &str, width_px: f64) -> f64 {
-    (title.chars().count().min(32) as f64 * 7.0 + 30.0) / width_px * 100.0
+    ((title.chars().count() as f64 * 7.0).min(LABEL_MAX_PX) + 30.0) / width_px * 100.0
+}
+
+/// Extent of a mark for the stacking (start, width), in percent: past 80 %
+/// the label sits left of the mark (`model::anchor`), so does its room.
+fn extent(x: f64, bar: f64, label: f64) -> (f64, f64) {
+    if x > 80.0 {
+        (x - label, label + bar)
+    } else {
+        (x, bar + label)
+    }
 }
 
 /// A pointer gesture inside the lanes.
@@ -156,14 +170,15 @@ pub(super) fn Timeline() -> Element {
         .iter()
         .map(|(e, (from, to))| {
             let x = pct(*from);
-            (
+            extent(
                 x,
-                (pct(*to) - x).max(0.0) + label_pct(&e.event.title, width_px),
+                (pct(*to) - x).max(0.0),
+                label_pct(&e.event.title, width_px),
             )
         })
         .collect();
     let (rows, n_rows) = model::rows(&starts);
-    let xs: Vec<f64> = starts.iter().map(|s| s.0).collect();
+    let xs: Vec<f64> = events.iter().map(|(_, (from, _))| pct(*from)).collect();
     let event_chips = model::overflow(&rows, &xs, MAX_EVENT_ROWS, CHIP_NEAR);
     let shown_rows = n_rows.min(MAX_EVENT_ROWS) + usize::from(!event_chips.is_empty());
     let events_h = shown_rows as f64 * ROW_H + 10.0;
@@ -172,14 +187,16 @@ pub(super) fn Timeline() -> Element {
         .iter()
         .enumerate()
         .filter_map(|(i, s)| {
-            Some((
+            Some(extent(
                 pct(model::ms(&s.at)?),
+                0.0,
                 label_pct(&sig_label(i, s), width_px),
             ))
         })
         .chain(pending.iter().filter_map(|p| {
-            Some((
+            Some(extent(
                 pct(model::ms(&p.t_start)?),
+                0.0,
                 label_pct(&super::proposal_title(p), width_px),
             ))
         }))
@@ -190,16 +207,17 @@ pub(super) fn Timeline() -> Element {
         .iter()
         .filter(|s| model::ms(&s.at).is_some())
         .count();
-    let sig_xs: Vec<f64> = sig_starts.iter().map(|s| s.0).collect();
-    let signal_chips = model::overflow(&sig_rows, &sig_xs, MAX_SIGNAL_ROWS, CHIP_NEAR);
-    let sig_shown = n_sig.min(MAX_SIGNAL_ROWS) + usize::from(!signal_chips.is_empty());
-    let signals_h = sig_shown as f64 * 24.0 + 8.0;
     // Instants of the signal-line items, in `sig_starts` order.
     let sig_times: Vec<i64> = signals
         .iter()
         .filter_map(|s| model::ms(&s.at))
         .chain(pending.iter().filter_map(|p| model::ms(&p.t_start)))
         .collect();
+    // Overflow chips sit at the marks, not at the (left-shifted) labels.
+    let sig_xs: Vec<f64> = sig_times.iter().map(|t| pct(*t)).collect();
+    let signal_chips = model::overflow(&sig_rows, &sig_xs, MAX_SIGNAL_ROWS, CHIP_NEAR);
+    let sig_shown = n_sig.min(MAX_SIGNAL_ROWS) + usize::from(!signal_chips.is_empty());
+    let signals_h = sig_shown as f64 * 24.0 + 8.0;
 
     let lanes: Vec<(usize, &CaseTrack)> = tracks
         .iter()
@@ -621,6 +639,12 @@ pub(super) fn Timeline() -> Element {
                     div {
                         class: "pointer-events-none absolute top-0 bottom-0 w-0.5 bg-signal",
                         style: "left: {pct(cursor)}%; height: {RULER_H + events_h + signals_h + lanes_h}px",
+                        // Handle in the ruler (a press there scrubs): easy to
+                        // aim with a mouse or a finger.
+                        span {
+                            class: "absolute left-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface bg-signal shadow pointer-coarse:h-6 pointer-coarse:w-6",
+                            style: "top: {RULER_H / 2.0}px",
+                        }
                     }
                 }
             }
@@ -695,7 +719,13 @@ fn EventMark(
                 class: if selected || targeted { "border-signal text-signal" } else { "border-line-strong text-ink" },
                 class: if targeted { "ring-2 ring-signal" },
                 class: if period { "ml-1.5" },
-                "{title} "
+                span {
+                    class: "inline-block truncate align-bottom",
+                    style: "max-width: {LABEL_MAX_PX}px",
+                    title: "{title}",
+                    "{title}"
+                }
+                " "
                 span { class: "font-mono text-slate", "{count}" }
             }
         }
