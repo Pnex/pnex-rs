@@ -75,7 +75,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("topic", "optional string"),
             ("payload", "injected JSON value (null = timestamp)"),
         ],
-        notes: "One of repeat_secs, cron or once_delay_secs is required (no_trigger otherwise). To drive a device_write output, set payload to 1/0 or true/false: the default timestamp is refused by digital outputs.",
+        notes: "One of repeat_secs, cron or once_delay_secs is required (no_trigger otherwise). To drive a device_write output, set payload to 1/0 or true/false, or declare the value on the device_write pin (values): the default timestamp is refused by digital outputs.",
     },
     NodeDoc {
         kind: "device_read",
@@ -94,8 +94,9 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("device_id", "device slug — one device per node"),
             ("pins", "[output pin label (digital_out / pwm_out)] — one input row per pin"),
             ("commands", "[command announced by the device's custom firmware (pnex.onCommand)] — one input row per command, after the pins; pins may then be empty"),
+            ("values", "optional {pin: value} declared per selected pin — true/false on a digital output, duty 0..100 on PWM; any message reaching that pin writes this value"),
         ],
-        notes: "Incoming payload = map {pin_or_command: value}: only configured names present in the map are written. A scalar payload is routed by the input row it arrives on, or accepted when a single pin/command is configured. A command receives args = {\"value\": payload} (an RGB colour control sends 0xRRGGBB as a number); a name the firmware does not announce is refused by the server (nothing sent). Every rejected write (empty payload, value the pin refuses such as a timestamp on a digital output, unknown name) shows an amber \"Nothing written\" badge on the node with the reason. An output pin has one writer: a pin already written by another deployed flow is refused at deploy (pin_already_assigned); commands have no such rule.",
+        notes: "With values, the message is only a trigger: an inject with no payload on the pin's row writes the declared value (a message on no particular row writes every declared value) — the simplest way to switch an output on or off. Incoming payload = map {pin_or_command: value}: only configured names present in the map are written. A scalar payload is routed by the input row it arrives on, or accepted when a single pin/command is configured. A command receives args = {\"value\": payload} (an RGB colour control sends 0xRRGGBB as a number); a name the firmware does not announce is refused by the server (nothing sent). Every rejected write (empty payload, value the pin refuses such as a timestamp on a digital output, unknown name) shows an amber \"Nothing written\" badge on the node with the reason. An output pin has one writer: a pin already written by another deployed flow is refused at deploy (pin_already_assigned); commands have no such rule.",
     },
     NodeDoc {
         kind: "calc",

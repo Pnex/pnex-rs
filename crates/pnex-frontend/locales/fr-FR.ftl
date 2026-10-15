@@ -615,6 +615,13 @@ flows-device-read-help = Un seul appareil par nœud. Cochez les pins à lire, ou
 flows-device-metric = métrique
 flows-device-write-help = Un seul appareil par nœud. Cochez les sorties à piloter (digital_out ou pwm_out) et, pour un firmware custom, ses commandes. Câblez une valeur sur une ligne, ou envoyez une map « nom → valeur ».
 flows-device-write-payload = Payload attendu : une map pin → valeur (ex. relais_1 = 1, chauffage = 75).
+flows-device-write-value = Valeur
+flows-device-write-value-message = Celle du message
+flows-device-write-value-on = Toujours allumé
+flows-device-write-value-off = Toujours éteint
+flows-device-write-value-fixed = Fixe
+flows-device-write-value-duty = Rapport cyclique (%)
+flows-device-write-value-help = Avec une valeur fixe, tout message qui arrive sur cette sortie écrit cette valeur : le message ne fait que déclencher l'écriture (un inject sans valeur suffit).
 flows-device-write-commands = Commandes du firmware
 flows-device-write-command = commande
 flows-device-write-commands-help = Commandes déclarées par le firmware custom du device (pnex.onCommand). La valeur câblée sur une ligne de commande arrive au firmware dans args["value"] (un contrôle couleur envoie 0xRRGGBB sous forme de nombre).

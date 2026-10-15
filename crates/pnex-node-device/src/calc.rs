@@ -121,8 +121,14 @@ impl FlowNodeBehavior for PnexCalcNode {
                             Ok(())
                         }
                         Err(e) => {
-                            log::warn!("pnex-calc [{}] : message rejeté : {e}", node.name());
-                            node.status.rejected(node, e.to_string());
+                            let detail = e.to_string();
+                            if node.status.log_due(&detail) {
+                                log::warn!(
+                                    "pnex-calc [{}]: message rejected: {detail}",
+                                    node.name()
+                                );
+                            }
+                            node.status.rejected(node, detail);
                             Err(e)
                         }
                     }

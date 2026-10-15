@@ -271,11 +271,23 @@ pub(super) fn parse_runtime_log(line: &str) -> Option<RuntimeLog> {
     })
 }
 
+/// Warnings the engine prints on every (re)load of a valid flow: canvas ids
+/// that are not hex (hashed, as intended) and terminal nodes without output
+/// wires. One line per node per deploy buried the real warnings.
+fn is_benign(log: &RuntimeLog) -> bool {
+    log.level == tracing::Level::WARN
+        && (log.message.starts_with("Failed to parse ID ")
+            || log.message.starts_with("No output wires in this node"))
+}
+
 /// Re-emits a runtime log line. The runtime already filters on
 /// `PNEX_FLOW_LOG`, so info/debug/trace all surface as `info!` (the server
 /// itself runs at info: a `debug!` here would be dropped silently); the
 /// original level stays visible in the `level` field.
 fn emit_runtime_log(log: &RuntimeLog) {
+    if is_benign(log) {
+        return;
+    }
     let (level, target, message) = (log.level.as_str(), &log.target, &log.message);
     match log.level {
         tracing::Level::ERROR => {
@@ -314,6 +326,22 @@ mod runtime_log_tests {
             let line = format!(r#"{{"ts":1,"level":"{raw}","target":"t","message":"m"}}"#);
             assert_eq!(parse_runtime_log(&line).map(|l| l.level), Some(level));
         }
+    }
+
+    #[test]
+    fn load_noise_is_benign_real_warnings_are_not() {
+        let warn = |message: &str| RuntimeLog {
+            level: tracing::Level::WARN,
+            target: "edgelink_core".into(),
+            message: message.into(),
+        };
+        assert!(is_benign(&warn(
+            "Failed to parse ID 'pnexflow1_n2' as hex, converting to hash"
+        )));
+        assert!(is_benign(&warn(
+            "No output wires in this node: Node(id='42fd', name='')"
+        )));
+        assert!(!is_benign(&warn("pnex-device-write [] : write failed")));
     }
 
     #[test]

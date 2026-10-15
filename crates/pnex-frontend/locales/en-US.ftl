@@ -615,6 +615,13 @@ flows-device-read-help = One device per node. Check the pins to read, or the met
 flows-device-metric = metric
 flows-device-write-help = One device per node. Check the outputs to drive (digital_out or pwm_out) and, for a custom firmware, its commands. Wire a value on a row, or send a "name → value" map.
 flows-device-write-payload = Expected payload: a pin → value map (e.g. relay_1 = 1, heater = 75).
+flows-device-write-value = Value
+flows-device-write-value-message = From the message
+flows-device-write-value-on = Always on
+flows-device-write-value-off = Always off
+flows-device-write-value-fixed = Fixed
+flows-device-write-value-duty = Duty (%)
+flows-device-write-value-help = With a fixed value, any message reaching this output writes that value: the message only triggers the write (an inject without value is enough).
 flows-device-write-commands = Firmware commands
 flows-device-write-command = command
 flows-device-write-commands-help = Commands declared by the device's custom firmware (pnex.onCommand). The value wired on a command row reaches the firmware as args["value"] (a colour control sends 0xRRGGBB as a number).

@@ -201,6 +201,11 @@ pub fn warn_colocated_runtime(config: &loco_rs::config::Config) {
     if !cluster.worker {
         return;
     }
+    // Dedicated flow-worker pods (chart: no Service in front of them) run
+    // flows only: sharing their cgroup with the runtime is the design.
+    if std::env::var("PNEX_SERVES_API").is_ok_and(|v| v == "false") {
+        return;
+    }
     tracing::warn!(
         worker = %cluster.worker_id,
         memory_limit_mb = ?process::runtime_memory_limit_bytes().map(|b| b / (1024 * 1024)),

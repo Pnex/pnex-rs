@@ -428,26 +428,33 @@ pub(super) fn DeviceWriteForm(
     // ANOTHER deployed flow renders greyed and uncheckable — claims of THIS
     // flow (or an already-checked pin) stay editable so the user can release
     // them. The deploy gate remains the hard stop server-side.
-    let pin_rows: Vec<(api::pins::PinoutPin, bool, bool, Option<String>)> =
-        output_pins_of(&devices, &pins_cache, &device_slug)
-            .into_iter()
-            .map(|pin| {
-                let checked = initial.pins.iter().any(|p| p == &pin.label);
-                let other_owners: Vec<String> = pin
-                    .reserved_by
-                    .iter()
-                    .filter(|r| r.flow_id != flow_id)
-                    .map(|r| r.flow_name.clone())
-                    .collect();
-                let disabled = !other_owners.is_empty() && !checked;
-                let hint = if disabled {
-                    Some(t!("flows-pin-reserved", flow: other_owners.join(", ")))
-                } else {
-                    None
-                };
-                (pin, checked, disabled, hint)
-            })
-            .collect();
+    let pin_rows: Vec<(
+        api::pins::PinoutPin,
+        bool,
+        bool,
+        Option<String>,
+        Option<serde_json::Value>,
+    )> = output_pins_of(&devices, &pins_cache, &device_slug)
+        .into_iter()
+        .map(|pin| {
+            let checked = initial.pins.iter().any(|p| p == &pin.label);
+            let other_owners: Vec<String> = pin
+                .reserved_by
+                .iter()
+                .filter(|r| r.flow_id != flow_id)
+                .map(|r| r.flow_name.clone())
+                .collect();
+            let disabled = !other_owners.is_empty() && !checked;
+            let hint = if disabled {
+                Some(t!("flows-pin-reserved", flow: other_owners.join(", ")))
+            } else {
+                None
+            };
+            let declared = initial.values.get(&pin.label).cloned();
+            (pin, checked, disabled, hint, declared)
+        })
+        .collect();
+    let pin_rows_any_checked = pin_rows.iter().any(|r| r.1);
     rsx! {
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-device-write-help")} }
@@ -468,6 +475,7 @@ pub(super) fn DeviceWriteForm(
                                 config.device_id = slug;
                                 config.pins.clear();
                                 config.commands.clear();
+                                config.values.clear();
                                 node.inputs.clear();
                             }
                         },
@@ -484,7 +492,7 @@ pub(super) fn DeviceWriteForm(
                 }
             }
             div { class: "space-y-1.5",
-                for (pin, checked, reserved_elsewhere, hint) in pin_rows {
+                for (i, (pin, checked, reserved_elsewhere, hint, declared)) in pin_rows.into_iter().enumerate() {
                     label {
                         key: "{pin.gpio.unwrap_or(-1)}-{pin.label}",
                         class: "flex items-start gap-2 text-sm",
@@ -506,6 +514,8 @@ pub(super) fn DeviceWriteForm(
                                                 config.pins.retain(|p| p != &label);
                                             }
                                             config.pins = geometry::sorted_pins(&config.pins);
+                                            let pins = config.pins.clone();
+                                            config.values.retain(|pin, _| pins.contains(pin));
                                             node.inputs.retain(|w| config.anchors().any(|a| a == &w.pin));
                                         }
                                     },
@@ -537,7 +547,21 @@ pub(super) fn DeviceWriteForm(
                             }
                         }
                     }
+                    if checked {
+                        DeclaredValuePicker {
+                            key: "value-{pin.label}",
+                            cx,
+                            pin: pin.label.clone(),
+                            field_id: format!("dw-value-{i}"),
+                            pwm: pin.mode.as_deref() == Some("pwm_out"),
+                            value: declared,
+                            can_write,
+                        }
+                    }
                 }
+            }
+            if pin_rows_any_checked {
+                p { class: "text-xs text-gray-500", {t!("flows-device-write-value-help")} }
             }
             if !command_rows.is_empty() {
                 div { class: "space-y-1.5",
@@ -582,6 +606,100 @@ pub(super) fn DeviceWriteForm(
             p { class: "text-xs text-gray-500 font-mono", {t!("flows-device-write-payload")} }
         }
     }
+}
+
+/// Value declared for one checked output pin (O70): the message value, or a
+/// fixed on/off (digital) or duty (PWM) written by every message.
+#[component]
+fn DeclaredValuePicker(
+    mut cx: EditorCx,
+    pin: String,
+    field_id: String,
+    pwm: bool,
+    value: Option<serde_json::Value>,
+    can_write: bool,
+) -> Element {
+    let choice = match &value {
+        None => "message",
+        Some(_) if pwm => "fixed",
+        Some(v) if v.as_bool().unwrap_or(v.as_f64() != Some(0.0)) => "on",
+        Some(_) => "off",
+    };
+    let duty = value.as_ref().and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let pin_for_duty = pin.clone();
+    rsx! {
+        div { class: "ml-6 flex flex-wrap items-center gap-2",
+            label { r#for: "{field_id}", class: "text-xs text-gray-500",
+                {t!("flows-device-write-value")}
+            }
+            select {
+                id: "{field_id}",
+                class: "px-2 py-0.5 border border-gray-300 rounded text-xs",
+                disabled: !can_write,
+                onchange: move |event| {
+                    let declared = match event.value().as_str() {
+                        "on" => Some(serde_json::json!(true)),
+                        "off" => Some(serde_json::json!(false)),
+                        "fixed" => Some(serde_json::json!(duty as u8)),
+                        _ => None,
+                    };
+                    set_declared(&mut cx, pin.clone(), declared);
+                },
+                option { value: "message", selected: choice == "message",
+                    {t!("flows-device-write-value-message")}
+                }
+                if pwm {
+                    option { value: "fixed", selected: choice == "fixed",
+                        {t!("flows-device-write-value-fixed")}
+                    }
+                } else {
+                    option { value: "on", selected: choice == "on",
+                        {t!("flows-device-write-value-on")}
+                    }
+                    option { value: "off", selected: choice == "off",
+                        {t!("flows-device-write-value-off")}
+                    }
+                }
+            }
+            if pwm && value.is_some() {
+                // Field and unit wrap together.
+                span { class: "inline-flex items-center gap-1",
+                    input {
+                        r#type: "number",
+                        class: "w-16 px-2 py-0.5 border border-gray-300 rounded text-xs",
+                        aria_label: t!("flows-device-write-value-duty"),
+                        min: "0",
+                        max: "100",
+                        step: "1",
+                        disabled: !can_write,
+                        value: "{duty}",
+                        onchange: move |event| {
+                            if let Ok(d) = event.value().trim().parse::<f64>() {
+                                let d = d.clamp(0.0, 100.0).round();
+                                set_declared(
+                                    &mut cx,
+                                    pin_for_duty.clone(),
+                                    Some(serde_json::json!(d as u8)),
+                                );
+                            }
+                        },
+                    }
+                    span { class: "text-xs text-gray-500", "%" }
+                }
+            }
+        }
+    }
+}
+
+fn set_declared(cx: &mut EditorCx, pin: String, value: Option<serde_json::Value>) {
+    patch_selected(cx, move |node: &mut FlowNode| {
+        if let FlowNodeKind::DeviceWrite { config } = &mut node.kind {
+            match value {
+                Some(v) => config.values.insert(pin, v),
+                None => config.values.remove(&pin),
+            };
+        }
+    });
 }
 
 #[cfg(test)]

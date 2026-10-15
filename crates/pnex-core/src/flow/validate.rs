@@ -738,6 +738,16 @@ fn validate_device_write(id: &str, c: &DeviceWriteConfig, v: &mut Vec<FlowViolat
     // optional, but the node still needs at least one anchor.
     validate_device_common(id, &c.device_id, &c.pins, c.commands.is_empty(), v);
     let mut seen: std::collections::HashSet<_> = c.pins.iter().map(|p| pin_key(p)).collect();
+    for (pin, value) in &c.values {
+        if !is_fixed_write_value(value) || !c.pins.contains(pin) {
+            v.push(FlowViolation::with_args(
+                Some(id),
+                "device_bad_fixed_value",
+                "declared value: a selected output pin, with on/off or a duty from 0 to 100",
+                serde_json::json!({ "pin": pin }),
+            ));
+        }
+    }
     for cmd in &c.commands {
         if !valid_command_name(cmd) {
             v.push(FlowViolation::with_args(
@@ -757,6 +767,12 @@ fn validate_device_write(id: &str, c: &DeviceWriteConfig, v: &mut Vec<FlowViolat
             ));
         }
     }
+}
+
+/// A declared pin value: a boolean, or a number from 0 to 100 (0/1 for a
+/// digital output, a duty for PWM — the pin mode is checked at write time).
+fn is_fixed_write_value(v: &serde_json::Value) -> bool {
+    v.is_boolean() || v.as_f64().is_some_and(|n| (0.0..=100.0).contains(&n))
 }
 
 /// Name of a custom-firmware command (`pnex.onCommand`): the announced cap

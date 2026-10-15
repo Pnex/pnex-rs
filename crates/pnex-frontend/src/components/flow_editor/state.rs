@@ -84,9 +84,7 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             },
             PaletteKind::DeviceWrite => FlowNodeKind::DeviceWrite {
                 config: DeviceWriteConfig {
-                    device_id: String::new(),
-                    pins: vec![],
-                    commands: vec![],
+                    ..Default::default()
                 },
             },
             PaletteKind::Calc => FlowNodeKind::Calc {
