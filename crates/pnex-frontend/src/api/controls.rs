@@ -21,20 +21,19 @@ pub static CONTROL_KEYS: GlobalSignal<BTreeMap<Uuid, String>> = GlobalSignal::ne
 /// `GET /api/v1/controls` — every control of the org (refreshes
 /// [`CONTROL_KEYS`]).
 pub async fn list() -> Result<Vec<UiControl>, ApiError> {
-    list_labeled(None).await
+    list_filtered(None, None).await
 }
 
-/// Same as [`list`], filtered by an effective label (`name` or `name:value`, D42).
+/// Same as [`list`], narrowed by a search (label or key) and a label (D218).
 /// A filtered call only adds to [`CONTROL_KEYS`]: it sees a subset of the org.
-pub async fn list_labeled(label: Option<String>) -> Result<Vec<UiControl>, ApiError> {
-    let label = label.filter(|v| !v.is_empty());
-    let path = match &label {
-        Some(v) => format!("/api/v1/controls?label={}", crate::api::tours::urlencode(v)),
-        None => "/api/v1/controls".to_string(),
-    };
-    let controls: Vec<UiControl> = client::request_all(&path).await?;
+pub async fn list_filtered(
+    search: Option<&str>,
+    label: Option<&str>,
+) -> Result<Vec<UiControl>, ApiError> {
+    let query = client::filter_query(&[("search", search), ("label", label)]);
+    let controls: Vec<UiControl> = client::request_all(&format!("/api/v1/controls{query}")).await?;
     let keys = controls.iter().map(|c| (c.id, c.key.clone()));
-    if label.is_some() {
+    if !query.is_empty() {
         CONTROL_KEYS.write().extend(keys);
     } else {
         *CONTROL_KEYS.write() = keys.collect();

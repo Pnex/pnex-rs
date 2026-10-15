@@ -26,6 +26,12 @@ pub(super) async fn list_templates(
 ) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
     let mut select = NotifyTemplates::find().filter(notify_templates::Column::OrgId.eq(org.org.id));
+    if let Some(pat) = pagination::sql_search_pattern(q.search.as_deref()) {
+        select = select.filter(pagination::sql_contains(
+            (notify_templates::Entity, notify_templates::Column::Name),
+            &pat,
+        ));
+    }
     match pagination::label_ids(
         &ctx.db,
         org.org.id,

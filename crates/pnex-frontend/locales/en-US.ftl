@@ -111,6 +111,7 @@ orgs-col-role = Your role
 orgs-member-role = Role
 orgs-col-tier = Tier
 common-actions = Actions
+common-search-name = Search by name…
 orgs-current = Active
 orgs-select = Set active
 orgs-manage = Manage

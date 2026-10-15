@@ -105,6 +105,24 @@ pub async fn request<T: DeserializeOwned>(
     }
 }
 
+/// `?key=value&…` of the non-empty list filters (`search`, `label`…),
+/// values url-encoded; empty string when no filter is set.
+pub fn filter_query(pairs: &[(&str, Option<&str>)]) -> String {
+    let parts: Vec<String> = pairs
+        .iter()
+        .filter_map(|(k, v)| {
+            v.map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(|v| format!("{k}={}", crate::api::tours::urlencode(v)))
+        })
+        .collect();
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!("?{}", parts.join("&"))
+    }
+}
+
 /// Every row of a paginated list (D14 envelope), page after page at the
 /// server maximum: for pickers and client-paged lists. A bare `limit=200`
 /// is silently clamped to 100 by the server (O64).

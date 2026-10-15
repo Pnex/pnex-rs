@@ -13,7 +13,7 @@ use pnex_core::{DashboardFormat, TelemetryPoint, VizDashboard, VizDashboardSumma
 use crate::api;
 use crate::components::badges::date_label;
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::{FilterBar, LabelFilterInput};
+use crate::components::crud::filters::{FilterBar, LabelFilterInput, SearchInput};
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
@@ -148,8 +148,9 @@ fn ListView(
     on_open: EventHandler<(String, bool)>,
 ) -> Element {
     let mut page = use_signal(|| 0i64);
-    // D42: effective label filter ("name" or "name:value").
+    // D218: own label filter ("name" or "name:value") and name search.
     let filter_label = use_signal(String::new);
+    let filter_search = use_signal(String::new);
     let mut delete_target = use_signal(|| None::<(String, String)>);
     let mut choosing = use_signal(|| false);
 
@@ -163,6 +164,7 @@ fn ListView(
             let value = filter_label().trim().to_string();
             (!value.is_empty()).then_some(value)
         };
+        let search = Some(filter_search()).filter(|v| !v.trim().is_empty());
         let has_org = org::current().is_some();
         async move {
             let _ = reload();
@@ -171,7 +173,7 @@ fn ListView(
             }
             Some(
                 api::dashboards::list(&api::dashboards::DashboardFilters {
-                    search: None,
+                    search,
                     label,
                     limit: Some(PAGE_SIZE),
                     offset: Some(offset),
@@ -306,7 +308,14 @@ fn ListView(
                 p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
             } else {
                 FilterBar {
-                    // D42: effective label filter (inheritance included).
+                    SearchInput {
+                        placeholder: t!("common-search-name").to_string(),
+                        value: filter_search,
+                        on_submit: move |_| {
+                            page.set(0);
+                            reload.with_mut(|r| *r += 1);
+                        },
+                    }
                     LabelFilterInput {
                         placeholder: t!("resources-label-filter-placeholder").to_string(),
                         value: filter_label,

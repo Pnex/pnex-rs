@@ -115,6 +115,8 @@ struct ListQuery {
     offset: Option<String>,
     /// Label filter `name` / `name:value` (D218).
     label: Option<String>,
+    /// Title contains (case-insensitive).
+    search: Option<String>,
 }
 
 /// `GET /api/v1/docs` — pages of the org, most recently edited first.
@@ -125,6 +127,12 @@ async fn list(
 ) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
     let mut scope = sea_orm::Condition::all().add(docs::Column::OrgId.eq(org.org.id));
+    if let Some(pat) = pagination::sql_search_pattern(q.search.as_deref()) {
+        scope = scope.add(pagination::sql_contains(
+            (docs::Entity, docs::Column::Title),
+            &pat,
+        ));
+    }
     match pagination::label_ids(
         &ctx.db,
         org.org.id,

@@ -16,6 +16,8 @@ pub(super) struct ListQuery {
     pub(super) offset: Option<String>,
     /// Label filter `name` / `name:value` (D218).
     pub(super) label: Option<String>,
+    /// Name contains (case-insensitive).
+    pub(super) search: Option<String>,
 }
 
 /// `GET /api/v1/notify/channels` — canaux de l'org (secrets masqués).
@@ -26,6 +28,12 @@ pub(super) async fn list_channels(
 ) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
     let mut select = NotifyChannels::find().filter(notify_channels::Column::OrgId.eq(org.org.id));
+    if let Some(pat) = pagination::sql_search_pattern(q.search.as_deref()) {
+        select = select.filter(pagination::sql_contains(
+            (notify_channels::Entity, notify_channels::Column::Name),
+            &pat,
+        ));
+    }
     match pagination::label_ids(
         &ctx.db,
         org.org.id,

@@ -17,7 +17,7 @@ use serde_json::{Map, Value};
 
 use crate::api;
 use crate::app::Route;
-use crate::components::crud::filters::{FilterBar, LabelFilterInput};
+use crate::components::crud::filters::{FilterBar, LabelFilterInput, SearchInput};
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
@@ -25,7 +25,7 @@ use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::labels_editor::{use_row_labels, LabelChips};
 use crate::components::ontology::short_time;
-use crate::components::ui::{BTN_SECONDARY_SM, FIELD_LABEL, INPUT};
+use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::state::{org, toasts};
 
 pub use workspace::CaseWorkspace;
@@ -64,6 +64,7 @@ pub fn Cases() -> Element {
     let mut page = use_signal(|| 0i64);
     // D218: own label filter ("name" or "name:value").
     let filter_label = use_signal(String::new);
+    let filter_search = use_signal(String::new);
     let can_write = org::current_can_write();
     let navigator = use_navigator();
 
@@ -71,6 +72,7 @@ pub fn Cases() -> Element {
         let st = status();
         let q = OntologyQuery {
             type_key: Some(KIND_CASE.to_string()),
+            text: Some(filter_search()).filter(|v| !v.trim().is_empty()),
             label: {
                 let value = filter_label().trim().to_string();
                 (!value.is_empty()).then_some(value)
@@ -200,6 +202,21 @@ pub fn Cases() -> Element {
             subtitle: t!("cases-subtitle").to_string(),
             can_write,
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
+            // Importing a case is an action of the list, not a filter.
+            actions: rsx! {
+                if can_write {
+                    label { class: "{crate::components::ui::BTN_SECONDARY} cursor-pointer",
+                        {t!("cases-import")}
+                        input {
+                            class: "hidden",
+                            r#type: "file",
+                            accept: ".json,application/json",
+                            "data-testid": "case-import-file",
+                            onchange: import,
+                        }
+                    }
+                }
+            },
             add_label: Some(t!("cases-new").to_string()),
             on_add: move |_| {
                 draft.set(String::new());
@@ -233,18 +250,6 @@ pub fn Cases() -> Element {
                 }
             }
             FilterBar {
-                if can_write {
-                    label { class: "{BTN_SECONDARY_SM} cursor-pointer",
-                        {t!("cases-import")}
-                        input {
-                            class: "hidden",
-                            r#type: "file",
-                            accept: ".json,application/json",
-                            "data-testid": "case-import-file",
-                            onchange: import,
-                        }
-                    }
-                }
                 select {
                     class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                     "data-testid": "case-status-filter",
@@ -261,6 +266,14 @@ pub fn Cases() -> Element {
                             "{label}"
                         }
                     }
+                }
+                SearchInput {
+                    placeholder: t!("common-search-name").to_string(),
+                    value: filter_search,
+                    on_submit: move |_| {
+                        page.set(0);
+                        reload.with_mut(|r| *r += 1);
+                    },
                 }
                 LabelFilterInput {
                     placeholder: t!("resources-label-filter-placeholder").to_string(),

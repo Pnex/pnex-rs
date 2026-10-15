@@ -314,6 +314,8 @@ struct PageQuery {
     state: Option<String>,
     /// Label filter `name` / `name:value` (D218), streams list only.
     label: Option<String>,
+    /// Name contains (case-insensitive), streams list only.
+    search: Option<String>,
 }
 
 // ───────────────────────────── Streams ─────────────────────────────
@@ -326,6 +328,15 @@ async fn stream_list(
 ) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
     let mut select = streams::select(org.org.id);
+    if let Some(pat) = pagination::sql_search_pattern(q.search.as_deref()) {
+        select = select.filter(pagination::sql_contains(
+            (
+                crate::models::_entities::media_streams::Entity,
+                crate::models::_entities::media_streams::Column::Name,
+            ),
+            &pat,
+        ));
+    }
     match pagination::label_ids(
         &ctx.db,
         org.org.id,
