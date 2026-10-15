@@ -32,3 +32,26 @@ pub fn ListPager(
         }
     }
 }
+
+/// Rows of page `page` (0-based) out of a fully loaded list.
+// shortcut: client-side paging over `request_all`; move to server offsets if a list grows past a few hundred rows.
+pub fn page_slice<T: Clone>(all: &[T], page: i64) -> Vec<T> {
+    all.iter()
+        .skip((page.max(0) * PAGE_SIZE) as usize)
+        .take(PAGE_SIZE as usize)
+        .cloned()
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn page_slice_bounds() {
+        let all: Vec<i64> = (0..23).collect();
+        assert_eq!(page_slice(&all, 0), (0..10).collect::<Vec<_>>());
+        assert_eq!(page_slice(&all, 2), vec![20, 21, 22]);
+        assert!(page_slice(&all, 5).is_empty());
+    }
+}

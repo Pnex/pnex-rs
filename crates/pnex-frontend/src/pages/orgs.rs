@@ -9,6 +9,7 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 
 use crate::api;
+use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
@@ -52,6 +53,8 @@ fn OrgsPage(initial: Option<i64>) -> Element {
     let mut reload = use_signal(|| 0u32);
     let mut selected = use_signal(|| initial);
     let mut new_name = use_signal(String::new);
+    let mut creating = use_signal(|| false);
+    let mut busy = use_signal(|| false);
     let page = use_signal(|| 0i64);
 
     let list = use_resource(move || async move {
@@ -135,47 +138,9 @@ fn OrgsPage(initial: Option<i64>) -> Element {
             subtitle: Some(t!("orgs-subtitle").to_string()),
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
             can_write: true,
-            // Harmonisation socle : rafraîchissement manuel dans l'en-tête
-            // (la page n'a pas de barre de filtres).
             // Creation belongs to the list, not to an org's detail.
-            if selected().is_none() {
-                form {
-                    class: "mb-6 flex gap-2",
-                    onsubmit: move |event| {
-                        // Bloque la soumission native (rechargement du SPA).
-                        event.prevent_default();
-                        let name = field(&event, "name");
-                        let name = name.trim().to_string();
-                        if name.is_empty() {
-                            return;
-                        }
-                        new_name.set(String::new());
-                        spawn(async move {
-                            match api::orgs::create(&name).await {
-                                Ok(created) => {
-                                    toasts::success("toast-saved");
-                                    org::set(created.id);
-                                }
-                                Err(err) => toasts::error(err),
-                            }
-                            // recharge la liste (la ressource lit `reload`)
-                            reload.with_mut(|r| *r += 1);
-                        });
-                    },
-                    input {
-                        class: "{INPUT} flex-1",
-                        r#type: "text",
-                        name: "name",
-                        placeholder: t!("orgs-new-placeholder"),
-                        value: "{new_name}",
-                    }
-                    button { class: BTN_PRIMARY, r#type: "submit",
-                        icons::Plus { class: "h-4 w-4 mr-2" }
-                        {t!("orgs-create")}
-                    }
-                }
-            }
-
+            add_label: selected().is_none().then(|| t!("orgs-new").to_string()),
+            on_add: move |_| creating.set(true),
             match selected() {
                 // Détail (remonté à chaque changement d'id via key)
                 Some(org_id) => rsx! {
@@ -199,6 +164,40 @@ fn OrgsPage(initial: Option<i64>) -> Element {
                         ListPager { count, page }
                     }
                 },
+            }
+        }
+        if creating() {
+            FormDialog {
+                title: t!("orgs-new").to_string(),
+                submit_label: t!("orgs-create").to_string(),
+                busy: busy(),
+                valid: !new_name().trim().is_empty(),
+                on_close: move |_| creating.set(false),
+                on_submit: move |_| {
+                    let name = new_name().trim().to_string();
+                    busy.set(true);
+                    spawn(async move {
+                        match api::orgs::create(&name).await {
+                            Ok(created) => {
+                                toasts::success("toast-saved");
+                                org::set(created.id);
+                                new_name.set(String::new());
+                                creating.set(false);
+                            }
+                            Err(err) => toasts::error(err),
+                        }
+                        busy.set(false);
+                        reload.with_mut(|r| *r += 1);
+                    });
+                },
+                input {
+                    class: INPUT,
+                    r#type: "text",
+                    aria_label: t!("orgs-new-placeholder"),
+                    placeholder: t!("orgs-new-placeholder"),
+                    value: "{new_name}",
+                    oninput: move |e| new_name.set(e.value()),
+                }
             }
         }
     }

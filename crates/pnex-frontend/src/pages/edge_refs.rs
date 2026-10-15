@@ -17,6 +17,7 @@ use crate::api;
 use crate::components::badges::date_label;
 use crate::components::confirm::ConfirmDialog;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
+use crate::components::crud::pager::{page_slice, ListPager};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
@@ -81,26 +82,8 @@ pub fn EdgeRefs() -> Element {
         ListLayout {
             title: t!("edgerefs-title").to_string(),
             subtitle: Some(t!("edgerefs-subtitle").to_string()),
-            on_refresh: move |_| reload.with_mut(|r| *r += 1),
-            can_write: can_write && !(tab() == Tab::Hosts && hosts_locked),
-            // Le libellé « ajouter » suit l'onglet actif (WiFi vs serveurs).
-            add_label: Some(
-                if tab() == Tab::Wifi {
-                    t!("edgerefs-new-wifi").to_string()
-                } else {
-                    t!("edgerefs-new-host").to_string()
-                },
-            ),
-            on_add: move |_| match tab() {
-                Tab::Wifi => edit_wifi.set(Some(None)),
-                Tab::Hosts => edit_host.set(Some(None)),
-            },
-            if org::current().is_none() {
-                p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
-            } else {
-                div {
-                    class: "mb-6 {crate::components::ui::TAB_BAR}",
-                    role: "tablist",
+            tabs: rsx! {
+                div { class: crate::components::ui::TAB_BAR, role: "tablist",
                     for tab_def in [(Tab::Wifi, "edgerefs-tab-wifi"), (Tab::Hosts, "edgerefs-tab-hosts")] {
                         button {
                             key: "{tab_def.1}",
@@ -123,7 +106,24 @@ pub fn EdgeRefs() -> Element {
                         }
                     }
                 }
-
+            },
+            on_refresh: move |_| reload.with_mut(|r| *r += 1),
+            can_write: can_write && !(tab() == Tab::Hosts && hosts_locked),
+            // Le libellé « ajouter » suit l'onglet actif (WiFi vs serveurs).
+            add_label: Some(
+                if tab() == Tab::Wifi {
+                    t!("edgerefs-new-wifi").to_string()
+                } else {
+                    t!("edgerefs-new-host").to_string()
+                },
+            ),
+            on_add: move |_| match tab() {
+                Tab::Wifi => edit_wifi.set(Some(None)),
+                Tab::Hosts => edit_host.set(Some(None)),
+            },
+            if org::current().is_none() {
+                p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
+            } else {
                 match tab() {
                     Tab::Wifi => rsx! {
                         WifiTab {
@@ -221,10 +221,16 @@ fn WifiTab(
     mut delete_target: Signal<Option<(&'static str, i64, String)>>,
 ) -> Element {
     // Lecture synchrone de la ressource (doctrine socle CRUD).
-    let (list_state, is_empty, rows) = match &*wifis.value().read() {
-        None => (None, false, Vec::new()),
-        Some(Ok(rows)) => (Some(Ok(())), rows.is_empty(), rows.clone()),
-        Some(Err(err)) => (Some(Err(err.clone())), false, Vec::new()),
+    let page = use_signal(|| 0i64);
+    let (list_state, is_empty, count, rows) = match &*wifis.value().read() {
+        None => (None, false, 0, Vec::new()),
+        Some(Ok(all)) => (
+            Some(Ok(())),
+            all.is_empty(),
+            all.len() as i64,
+            page_slice(all, page()),
+        ),
+        Some(Err(err)) => (Some(Err(err.clone())), false, 0, Vec::new()),
     };
 
     let columns = vec![
@@ -281,6 +287,7 @@ fn WifiTab(
                 rows,
                 row_key: RowKey::new(|wifi: &WifiCredential| wifi.id.to_string()),
             }
+            ListPager { count, page }
         }
     }
 }
@@ -293,10 +300,16 @@ fn HostsTab(
     mut delete_target: Signal<Option<(&'static str, i64, String)>>,
 ) -> Element {
     // Lecture synchrone de la ressource (doctrine socle CRUD).
-    let (list_state, is_empty, rows) = match &*hosts.value().read() {
-        None => (None, false, Vec::new()),
-        Some(Ok(rows)) => (Some(Ok(())), rows.is_empty(), rows.clone()),
-        Some(Err(err)) => (Some(Err(err.clone())), false, Vec::new()),
+    let page = use_signal(|| 0i64);
+    let (list_state, is_empty, count, rows) = match &*hosts.value().read() {
+        None => (None, false, 0, Vec::new()),
+        Some(Ok(all)) => (
+            Some(Ok(())),
+            all.is_empty(),
+            all.len() as i64,
+            page_slice(all, page()),
+        ),
+        Some(Err(err)) => (Some(Err(err.clone())), false, 0, Vec::new()),
     };
 
     let columns = vec![
@@ -342,6 +355,7 @@ fn HostsTab(
                 rows,
                 row_key: RowKey::new(|host: &PnexHost| host.id.to_string()),
             }
+            ListPager { count, page }
         }
     }
 }

@@ -32,8 +32,10 @@ test.describe('settings', { tag: '@settings' }, () => {
   test('organization: create, manage, delete', async ({ app, page, api, prefix }) => {
     const name = `${prefix} org`;
     await app.goto('/orgs');
-    await page.getByRole('textbox', { name: app.t('orgs-new-placeholder') }).fill(name);
-    await page.getByRole('main').getByRole('button', { name: app.t('orgs-create'), exact: true }).click();
+    await page.getByRole('main').getByRole('button', { name: app.t('orgs-new') }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('textbox', { name: app.t('orgs-new-placeholder') }).fill(name);
+    await dialog.getByRole('button', { name: app.t('orgs-create'), exact: true }).click();
     const row = page.locator('main tr').filter({ hasText: name });
     await expect(row).toBeVisible();
 

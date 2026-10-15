@@ -12,6 +12,7 @@ use pnex_core::camera::{CameraView, CaptureMode};
 
 use crate::api;
 use crate::components::crud::layout::ListLayout;
+use crate::components::crud::pager::{page_slice, ListPager};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
@@ -73,10 +74,16 @@ pub fn Cameras() -> Element {
         }
     });
 
-    let (list_state, is_empty, rows) = match &*cameras.value().read() {
-        None => (None, false, Vec::new()),
-        Some(Ok(list)) => (Some(Ok(())), list.is_empty(), list.clone()),
-        Some(Err(err)) => (Some(Err(err.clone())), false, Vec::new()),
+    let page = use_signal(|| 0i64);
+    let (list_state, is_empty, count, rows) = match &*cameras.value().read() {
+        None => (None, false, 0, Vec::new()),
+        Some(Ok(list)) => (
+            Some(Ok(())),
+            list.is_empty(),
+            list.len() as i64,
+            page_slice(list, page()),
+        ),
+        Some(Err(err)) => (Some(Err(err.clone())), false, 0, Vec::new()),
     };
     let now_ms = chrono::Utc::now().timestamp_millis();
 
@@ -182,6 +189,7 @@ pub fn Cameras() -> Element {
                     rows,
                     row_key: RowKey::new(|c: &CameraView| c.device.to_string()),
                 }
+                ListPager { count, page }
             }
         }
         if let Some(cam) = live_for() {

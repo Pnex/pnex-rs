@@ -7,6 +7,7 @@ use pnex_core::ontology::api::PackView;
 
 use crate::api;
 use crate::components::crud::layout::{ListLayout, PRIMARY_BTN};
+use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::state::{org, toasts};
 
 #[component]
@@ -18,6 +19,63 @@ pub fn PacksTab(tabs: Element) -> Element {
         api::ontology::packs().await.unwrap_or_default()
     });
     let rows: Vec<PackView> = packs.read().clone().unwrap_or_default();
+    // Pack being installed (one at a time): disables its button.
+    let mut installing = use_signal(|| None::<String>);
+    let columns = vec![
+        Column::new(t!("onto-packs").to_string(), |pack: &PackView| {
+            let installed = pack.installed_version.clone();
+            rsx! {
+                div { "data-pack": "{pack.key}",
+                    div { class: "flex flex-wrap items-center gap-2",
+                        span { class: "font-medium text-gray-900", "{pack.name}" }
+                        span { class: "text-xs text-gray-500", "v{pack.version}" }
+                        if let Some(v) = installed {
+                            span { class: "rounded bg-green-50 px-2 py-0.5 text-xs text-green-700",
+                                {t!("onto-pack-installed", version : v)}
+                            }
+                        }
+                    }
+                    p { class: "text-xs text-gray-600", "{pack.description}" }
+                }
+            }
+        }),
+        Column::new(t!("common-actions").to_string(), move |pack: &PackView| {
+            let installed = pack.installed_version.is_some();
+            let up_to_date = pack.installed_version.as_deref() == Some(pack.version.as_str());
+            let key = pack.key.clone();
+            let busy = installing().is_some();
+            rsx! {
+                if admin && !up_to_date {
+                    button {
+                        class: "{PRIMARY_BTN} disabled:opacity-40",
+                        "data-testid": "onto-install-pack",
+                        disabled: busy,
+                        onclick: move |_| {
+                            let key = key.clone();
+                            installing.set(Some(key.clone()));
+                            let done = t!("onto-pack-done").to_string();
+                            spawn(async move {
+                                match api::ontology::install_pack(&key).await {
+                                    Ok(_) => {
+                                        toasts::success(done);
+                                        reload.with_mut(|r| *r += 1);
+                                    }
+                                    Err(e) => toasts::error(e),
+                                }
+                                installing.set(None);
+                            });
+                        },
+                        if installed {
+                            {t!("onto-pack-upgrade")}
+                        } else {
+                            {t!("onto-pack-install")}
+                        }
+                    }
+                }
+            }
+        })
+        .actions(),
+    ];
     let mut yaml = use_signal(String::new);
     let mut busy = use_signal(|| false);
     rsx! {
@@ -28,15 +86,10 @@ pub fn PacksTab(tabs: Element) -> Element {
             subtitle: Some(t!("onto-packs-subtitle").to_string()),
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
             div { class: "space-y-6",
-                ul { class: "grid grid-cols-1 gap-3 md:grid-cols-2",
-                    for p in rows {
-                        PackCard {
-                            key: "{p.key}",
-                            pack: p.clone(),
-                            admin,
-                            on_installed: move |_| reload.with_mut(|r| *r += 1),
-                        }
-                    }
+                DataTable {
+                    columns,
+                    rows,
+                    row_key: RowKey::new(|pack: &PackView| pack.key.clone()),
                 }
                 div { class: "bg-white rounded-lg border border-gray-200 p-4 space-y-3",
                     h3 { class: "text-sm font-medium text-gray-900", {t!("onto-as-code")} }
@@ -90,57 +143,6 @@ pub fn PacksTab(tabs: Element) -> Element {
                             },
                             {t!("onto-import")}
                         }
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn PackCard(pack: PackView, admin: bool, on_installed: Callback<()>) -> Element {
-    let mut busy = use_signal(|| false);
-    let installed = pack.installed_version.clone();
-    let up_to_date = installed.as_deref() == Some(pack.version.as_str());
-    let key = pack.key.clone();
-    rsx! {
-        li {
-            class: "bg-white rounded-lg border border-gray-200 p-4 space-y-2",
-            "data-pack": "{pack.key}",
-            div { class: "flex items-center gap-2",
-                h3 { class: "text-sm font-semibold text-gray-900", "{pack.name}" }
-                span { class: "text-xs text-gray-500", "v{pack.version}" }
-                if let Some(v) = installed.clone() {
-                    span { class: "ml-auto rounded bg-green-50 px-2 py-0.5 text-xs text-green-700",
-                        {t!("onto-pack-installed", version : v)}
-                    }
-                }
-            }
-            p { class: "text-sm text-gray-600", "{pack.description}" }
-            if admin && !up_to_date {
-                button {
-                    class: "{PRIMARY_BTN} disabled:opacity-40",
-                    "data-testid": "onto-install-pack",
-                    disabled: busy(),
-                    onclick: move |_| {
-                        let key = key.clone();
-                        busy.set(true);
-                        let done = t!("onto-pack-done").to_string();
-                        spawn(async move {
-                            match api::ontology::install_pack(&key).await {
-                                Ok(_) => {
-                                    toasts::success(done);
-                                    on_installed.call(());
-                                }
-                                Err(e) => toasts::error(e),
-                            }
-                            busy.set(false);
-                        });
-                    },
-                    if installed.is_some() {
-                        {t!("onto-pack-upgrade")}
-                    } else {
-                        {t!("onto-pack-install")}
                     }
                 }
             }

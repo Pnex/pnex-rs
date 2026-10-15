@@ -9,11 +9,11 @@ blocs ci-dessous, sans jamais réécrire la coquille.
 
 | Composant | Rôle | Points clés |
 |---|---|---|
-| `layout::ListLayout` | Coquille : header (titre, sous-titre, retour, « ajouter », slot `actions`), slot filtres, corps | `on_back` → bouton borduré icône `h-5 w-5` (agrandi) ; slot `actions` pour les en-têtes multi-boutons (media) ; bouton ajouter rendu ssi `can_write && on_add`+`add_label` |
+| `layout::ListLayout` | Coquille : header (titre, sous-titre, retour, « ajouter », slot `actions`), slot `tabs` (barre d'onglets, sous l'en-tête), slot filtres, corps | `on_back` → bouton borduré icône `h-5 w-5` (agrandi) ; slot `actions` pour les en-têtes multi-boutons (media) ; bouton ajouter rendu ssi `can_write && on_add`+`add_label` |
 | `states::ListStates` | Zones loading / empty / error | `state: Option<Result<(), ApiError>>` — **non générique** ; empty enrichi via `empty_icon`/`empty_detail` (catalog, media) |
 | `table::DataTable<T>` / `table::Column<T>` | Table (tokens `.th`/`.td`, markup historique) | Colonnes déclaratives, cellule = `Fn(&T) -> Element` **sans** le `<td>` ; `on_row_click` (reçoit la clé de ligne — annotations) ; pas de tri (V2), pagination hors table |
 | `filters::FilterBar` / `SearchInput` / `RefreshButton` | Barre de filtres | Search : saisie **live** (refetch à la frappe quand le signal est lu en synchrone de la resource), Enter → `on_submit` (reset page 0 côté page) ; `RefreshButton` icône seule partout (un seul idiome, tooltip i18n) — **jamais posé à la main dans une page** : passer `on_refresh` à `ListLayout` |
-| `pager::ListPager` | Pagination | Délègue au `Pager` existant (D14) ; câblage `page.set` intégré, `page_size` défaut 10 (`PAGE_SIZE`) |
+| `pager::ListPager` / `pager::page_slice` | Pagination | Délègue au `Pager` existant (D14) ; câblage `page.set` intégré, `page_size` défaut 10 (`PAGE_SIZE`) ; `page_slice(&all, page())` découpe une liste chargée en entier (`api::client::request_all`) |
 | `form::FormDialog` | Modal création/édition | `Modal` + pied cancel/submit (`busy`, `valid`) ; champs et signaux restent à la page |
 
 Réutilisés tels quels : `Modal`, `ConfirmDialog`,

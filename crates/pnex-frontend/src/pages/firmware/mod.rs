@@ -14,6 +14,7 @@ use crate::components::confirm::ConfirmDialog;
 use crate::components::crud::filters::{FilterBar, SearchInput};
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
+use crate::components::crud::pager::{page_slice, ListPager};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
@@ -61,6 +62,12 @@ pub fn Firmware() -> Element {
         async move { api::firmware::list().await }
     });
 
+    let mut page = use_signal(|| 0i64);
+    // A new search term restarts from the first page.
+    use_effect(move || {
+        let _ = search.read();
+        page.set(0);
+    });
     let (list_state, is_empty, rows) = match &*list.value().read() {
         Some(Ok(all)) => {
             let needle = search().trim().to_lowercase();
@@ -74,6 +81,8 @@ pub fn Firmware() -> Element {
         Some(Err(err)) => (Some(Err(err.clone())), false, Vec::new()),
         None => (None, false, Vec::new()),
     };
+    let count = rows.len() as i64;
+    let rows = page_slice(&rows, page());
 
     let columns = vec![
         Column::new(
@@ -181,6 +190,7 @@ pub fn Firmware() -> Element {
                                 rows,
                                 row_key: RowKey::new(|p: &FirmwareProjectSummary| p.id.to_string()),
                             }
+                            ListPager { count, page }
                         }
                         if let Some((project_id, project_name)) = delete_target() {
                             ConfirmDialog {
