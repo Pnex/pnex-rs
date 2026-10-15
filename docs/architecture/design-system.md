@@ -353,7 +353,14 @@ la classe de tiroir commune.
 - **Pastilles** : un composant `Badge` (ton neutre, signal, succès, alerte,
   danger) au lieu des `span rounded-full` écrits à la main ; `StateMark`
   pour les états ISA-101.
-- **Chargement** : un seul `Spinner` (celui de `ListStates`, différé) ;
+- **Chargement** : une seule marque, la **gerbe** (`components/gerbe.rs`),
+  miniature de la gerbe de faisceaux du login : faisceaux qui convergent,
+  segments aux couleurs de la palette du login qui y coulent (SVG + CSS,
+  immobile sous `prefers-reduced-motion`, `inherit` sur fond sombre ou
+  dans un bouton plein). Différée de 250 ms au-delà de 32 px. Un compteur
+  des requêtes en cours (`state::ui::IN_FLIGHT`) l'affiche à côté du logo :
+  on voit toujours les données arriver. Garde : `design_guard`
+  (`no_hand_made_spinner`) ;
   **vide** : `ListStates` ou `EmptyState`, jamais un cadre pointillé écrit
   à la main.
 - **Onglets** : `TAB_BAR` partout (assistant et sélecteur de ressources
