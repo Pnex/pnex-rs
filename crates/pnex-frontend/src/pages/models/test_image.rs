@@ -63,6 +63,7 @@ pub(super) fn TestImageModal(model: MlModel, on_close: Callback<()>) -> Element 
                     class: "{INPUT} w-full",
                     r#type: "file",
                     accept: "image/jpeg,image/png",
+                    aria_label: t!("models-test-image-file"),
                     onchange: move |evt| {
                         let Some(file) = evt.files().first().cloned() else {
                             return;

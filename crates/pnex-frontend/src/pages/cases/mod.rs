@@ -234,6 +234,7 @@ pub fn Cases() -> Element {
                 select {
                     class: "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                     "data-testid": "case-status-filter",
+                    aria_label: t!("case-filter-status"),
                     onchange: move |e| {
                         status.set(e.value());
                         page.set(0);

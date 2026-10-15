@@ -55,7 +55,8 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], viewport: { width: 1600, height: 1000 }, locale: 'fr-FR' },
     },
     {
-      // Accessibility report, only when asked: `task e2e -- --project=a11y`.
+      // Accessibility (axe) of every route: `task e2e -- --project=a11y`;
+      // strict (fails on serious/critical) with PNEX_E2E_A11Y_STRICT=1, as in CI.
       name: 'a11y',
       grep: /@a11y/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1600, height: 1000 }, locale: 'en-US' },

@@ -333,6 +333,7 @@ pub(super) fn MediaDetail(
                                             input {
                                                 class: "hidden",
                                                 r#type: "file",
+                                                aria_label: t!("media-version-upload"),
                                                 onchange: move |evt| {
                                                     let files = evt.files();
                                                     let Some(file) = files.first().cloned() else {
