@@ -7,96 +7,115 @@
 # Since 1.2.0 maintenance plans carry a recurrence: their occurrences are
 # time ranges of the plan (ontology.md annex B); a plan maintains any
 # object, a bare device included.
+# Since 1.3.0 names carry their French translation (`names`, O43).
 key: maintenance
 name: Augmented maintenance
-version: "1.2.0"
+names: {fr: "Maintenance augmentée"}
+version: "1.3.0"
 description: Sites, lines, machines and pumps; sensors bound to equipment series survive sensor replacements.
+descriptions: {fr: "Sites, lignes, machines et pompes ; les capteurs liés aux séries des équipements survivent à leur remplacement."}
 types:
   - key: site
     name: Site
+    names: {fr: "Site"}
     icon: map-pin
     may_contain: [line]
     may_be_contained_in: [folder]
     properties:
-      - { key: address, name: Address, kind: text, max_len: 500 }
-      - { key: location, name: Location, kind: geo_point }
+      - { key: address, name: Address, names: {fr: "Adresse"}, kind: text, max_len: 500 }
+      - { key: location, name: Location, names: {fr: "Position"}, kind: geo_point }
   - key: line
     name: Production line
+    names: {fr: "Ligne de production"}
     icon: workflow
     may_contain: [machine, pump]
     may_be_contained_in: [site, folder]
     properties:
-      - { key: code, name: Code, kind: text, max_len: 64, indexed: true }
+      - { key: code, name: Code, names: {fr: "Code"}, kind: text, max_len: 64, indexed: true }
       - key: shift_pattern
         name: Shift pattern
+        names: {fr: "Organisation des postes"}
         kind: enum
         values: ["1x8", "2x8", "3x8", "continuous"]
   - key: machine
     name: Machine
+    names: {fr: "Machine"}
     icon: cog
     may_be_contained_in: [line, folder]
     properties:
-      - { key: serial, name: Serial number, kind: text, max_len: 64, required: true, indexed: true }
-      - { key: manufacturer, name: Manufacturer, kind: text, max_len: 255 }
-      - { key: commissioned, name: Commissioned on, kind: date }
+      - { key: serial, name: Serial number, names: {fr: "Numéro de série"}, kind: text, max_len: 64, required: true, indexed: true }
+      - { key: manufacturer, name: Manufacturer, names: {fr: "Fabricant"}, kind: text, max_len: 255 }
+      - { key: commissioned, name: Commissioned on, names: {fr: "Mise en service le"}, kind: date }
       - key: status
         name: Status
+        names: {fr: "Statut"}
         kind: enum
         values: [running, stopped, maintenance, retired]
         indexed: true
-      - { key: manual, name: Manual, kind: url }
-      - { key: power, name: Power, kind: series, unit: kW }
+      - { key: manual, name: Manual, names: {fr: "Manuel"}, kind: url }
+      - { key: power, name: Power, names: {fr: "Puissance"}, kind: series, unit: kW }
     actions:
       - key: start_maintenance
         name: Start maintenance
+        names: {fr: "Mettre en maintenance"}
         confirm: true
         params:
-          - { key: reason, name: Reason, kind: text, max_len: 500, required: true }
-          - { key: planned_end, name: Planned end, kind: date }
+          - { key: reason, name: Reason, names: {fr: "Motif"}, kind: text, max_len: 500, required: true }
+          - { key: planned_end, name: Planned end, names: {fr: "Fin prévue"}, kind: date }
   - key: pump
     name: Pump
+    names: {fr: "Pompe"}
     icon: droplet
     may_be_contained_in: [line, folder]
     properties:
-      - { key: serial, name: Serial number, kind: text, max_len: 64, required: true, indexed: true }
-      - { key: rated_flow, name: Rated flow, kind: number, unit: m3/h, min: 0 }
+      - { key: serial, name: Serial number, names: {fr: "Numéro de série"}, kind: text, max_len: 64, required: true, indexed: true }
+      - { key: rated_flow, name: Rated flow, names: {fr: "Débit nominal"}, kind: number, unit: m3/h, min: 0 }
       - key: status
         name: Status
+        names: {fr: "Statut"}
         kind: enum
         values: [running, stopped, maintenance, retired]
         indexed: true
-      - { key: last_service, name: Last service, kind: date }
-      - { key: temperature, name: Temperature, kind: series, unit: "°C" }
-      - { key: vibration, name: Vibration, kind: series, unit: mm/s }
-      - { key: pressure, name: Pressure, kind: series, unit: bar }
+      - { key: last_service, name: Last service, names: {fr: "Dernière intervention"}, kind: date }
+      - { key: temperature, name: Temperature, names: {fr: "Température"}, kind: series, unit: "°C" }
+      - { key: vibration, name: Vibration, names: {fr: "Vibration"}, kind: series, unit: mm/s }
+      - { key: pressure, name: Pressure, names: {fr: "Pression"}, kind: series, unit: bar }
     actions:
       - key: start_maintenance
         name: Start maintenance
+        names: {fr: "Mettre en maintenance"}
         confirm: true
         params:
-          - { key: reason, name: Reason, kind: text, max_len: 500, required: true }
-          - { key: planned_end, name: Planned end, kind: date }
+          - { key: reason, name: Reason, names: {fr: "Motif"}, kind: text, max_len: 500, required: true }
+          - { key: planned_end, name: Planned end, names: {fr: "Fin prévue"}, kind: date }
   - key: maintenance_plan
     name: Maintenance plan
+    names: {fr: "Plan de maintenance"}
     icon: cog
     may_be_contained_in: [folder]
     properties:
-      - { key: schedule, name: Schedule, kind: recurrence, required: true }
-      - { key: instructions, name: Instructions, kind: text, max_len: 2000 }
+      - { key: schedule, name: Schedule, names: {fr: "Récurrence"}, kind: recurrence, required: true }
+      - { key: instructions, name: Instructions, names: {fr: "Consignes"}, kind: text, max_len: 2000 }
 link_types:
   - key: maintains
     name: maintains
+    names: {fr: "maintient"}
     inverse_name: is maintained by
+    inverse_names: {fr: "est maintenu par"}
     from_types: [maintenance_plan]
     to_types: "*"
   - key: feeds
     name: feeds
+    names: {fr: "alimente"}
     inverse_name: is fed by
+    inverse_names: {fr: "est alimenté par"}
     from_types: [pump, machine]
     to_types: [pump, machine, line]
   - key: backup_of
     name: is the backup of
+    names: {fr: "est le secours de"}
     inverse_name: is backed up by
+    inverse_names: {fr: "est secouru par"}
     from_types: [pump, machine]
     to_types: [pump, machine]
     one_target: true

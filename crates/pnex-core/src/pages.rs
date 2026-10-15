@@ -82,6 +82,9 @@ pub struct DocSummary {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CreateDoc {
     pub title: String,
+    /// Key of a page template of an installed pack (O43); absent = blank.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
 }
 
 /// `PATCH /api/v1/docs/{id}` (rename; the content goes through the

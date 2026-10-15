@@ -256,6 +256,40 @@ async fn crud_versions_isolation_and_viewer() {
         assert_eq!(st, 204);
         let (st, _) = call(&server, "GET", &path, &env.alice, org_a, None).await;
         assert_eq!(st, 404);
+
+        // Page templates of the installed packs (O43): unknown → invalid,
+        // a template of an installed pack seeds the page.
+        let tpl = |key: &str| Some(json!({ "title": "5 whys on P2", "template": key }));
+        let (st, e) = call(
+            &server,
+            "POST",
+            "/api/v1/docs",
+            &env.alice,
+            org_a,
+            tpl("five_whys"),
+        )
+        .await;
+        assert_eq!((st, e["template"].as_str()), (400, Some("invalid")), "{e}");
+        let (st, _) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/packs/investigation/install",
+            &env.alice,
+            org_a,
+            None,
+        )
+        .await;
+        assert!(st == 200 || st == 201, "{st}");
+        let (st, d) = call(
+            &server,
+            "POST",
+            "/api/v1/docs",
+            &env.alice,
+            org_a,
+            tpl("five_whys"),
+        )
+        .await;
+        assert_eq!(st, 201, "{d}");
     })
     .await;
 }

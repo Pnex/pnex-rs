@@ -17,6 +17,20 @@ use serde::{Deserialize, Serialize};
 
 pub use schema::{PropertyDef, PropertyKind};
 
+/// Translations of a display name by language (`fr`, `en`…): the UI shows
+/// the one of its language, else `name`. Packs fill them (O43); an org type
+/// may leave them empty.
+pub type Names = std::collections::BTreeMap<String, String>;
+
+/// Display text of `name` in `lang` (`fr-FR` or `fr`), else `name` itself.
+pub fn localized<'a>(name: &'a str, names: &'a Names, lang: &str) -> &'a str {
+    let short = lang.split(['-', '_']).next().unwrap_or(lang);
+    names
+        .get(short)
+        .filter(|n| !n.trim().is_empty())
+        .map_or(name, String::as_str)
+}
+
 use crate::err_codes::{FIELD_INVALID, FIELD_MAX_LENGTH, FIELD_REQUIRED};
 use crate::resources::{
     KIND_DASHBOARD, KIND_DEVICE, KIND_DOC, KIND_FLOW, KIND_FOLDER, KIND_MAP_PIN, KIND_MEDIA_ASSET,
@@ -90,6 +104,8 @@ pub struct ObjectTypeDef {
     /// Display name; empty for system types (the UI translates their key).
     #[serde(default)]
     pub name: String,
+    #[serde(default, skip_serializing_if = "Names::is_empty")]
+    pub names: Names,
     /// Icon name of the UI icon set.
     #[serde(default)]
     pub icon: String,
@@ -120,6 +136,8 @@ pub struct ActionDef {
     /// `[a-z][a-z0-9_]*`, unique within the type.
     pub key: String,
     pub name: String,
+    #[serde(default, skip_serializing_if = "Names::is_empty")]
+    pub names: Names,
     /// Parameters asked at invocation (scalar properties only).
     #[serde(default)]
     pub params: Vec<PropertyDef>,
@@ -134,9 +152,13 @@ pub struct LinkTypeDef {
     pub key: String,
     #[serde(default)]
     pub name: String,
+    #[serde(default, skip_serializing_if = "Names::is_empty")]
+    pub names: Names,
     /// Name read from the target side (« is measured by »).
     #[serde(default)]
     pub inverse_name: String,
+    #[serde(default, skip_serializing_if = "Names::is_empty")]
+    pub inverse_names: Names,
     #[serde(default)]
     pub system: bool,
     pub from_types: TypeSet,
@@ -264,6 +286,7 @@ impl LinkTypeDef {
 pub fn system_object_types() -> Vec<ObjectTypeDef> {
     // Business objects: stored in a folder, contain nothing.
     let leaf = |key: &str| ObjectTypeDef {
+        names: Default::default(),
         key: key.into(),
         name: String::new(),
         icon: String::new(),
@@ -344,6 +367,7 @@ fn event_properties() -> Vec<PropertyDef> {
 
 fn prop(key: &str, kind: PropertyKind) -> PropertyDef {
     PropertyDef {
+        names: Default::default(),
         key: key.into(),
         name: String::new(),
         kind,
@@ -443,6 +467,7 @@ pub const REL_TRACKS: &str = "tracks";
 /// The system link types.
 pub fn system_link_types() -> Vec<LinkTypeDef> {
     let text = |key: &str| PropertyDef {
+        names: Default::default(),
         key: key.into(),
         name: String::new(),
         kind: PropertyKind::Text { max_len: Some(255) },
@@ -450,6 +475,8 @@ pub fn system_link_types() -> Vec<LinkTypeDef> {
         indexed: false,
     };
     let link = |key: &str, from: TypeSet, to: TypeSet| LinkTypeDef {
+        inverse_names: Default::default(),
+        names: Default::default(),
         key: key.into(),
         name: String::new(),
         inverse_name: String::new(),
@@ -519,6 +546,16 @@ pub const MEASURES_PROPERTY: &str = "property";
 mod tests {
     use super::*;
     use crate::resources::KINDS;
+
+    #[test]
+    fn localized_picks_the_language_then_the_name() {
+        let names: Names = [("fr".to_string(), "Pompe".to_string())].into();
+        assert_eq!(localized("Pump", &names, "fr-FR"), "Pompe");
+        assert_eq!(localized("Pump", &names, "fr"), "Pompe");
+        assert_eq!(localized("Pump", &names, "en-US"), "Pump");
+        let blank: Names = [("fr".to_string(), " ".to_string())].into();
+        assert_eq!(localized("Pump", &blank, "fr-FR"), "Pump");
+    }
 
     #[test]
     fn system_types_are_the_live_kinds() {

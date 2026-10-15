@@ -58,8 +58,7 @@ pub fn ActionDialog(
         };
     };
     let params = action.params.clone();
-    let title =
-        t!("onto-action-title", action : action.name.clone(), object : object.title.clone());
+    let title = t!("onto-action-title", action : super::tr(&action.name, &action.names), object : object.title.clone());
 
     rsx! {
         FormDialog {

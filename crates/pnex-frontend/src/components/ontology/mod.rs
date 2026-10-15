@@ -16,10 +16,15 @@ use pnex_core::ontology::{LinkTypeDef, ObjectTypeDef};
 
 use crate::components::icons;
 
+/// `name` in the UI language when a translation exists (packs, O43).
+pub fn tr(name: &str, names: &pnex_core::ontology::Names) -> String {
+    pnex_core::ontology::localized(name, names, &crate::i18n::current_tag()).to_string()
+}
+
 /// Display name of a type: its own name, or the translated system key.
 pub fn type_label(def: &ObjectTypeDef) -> String {
     if !def.name.trim().is_empty() {
-        return def.name.clone();
+        return tr(&def.name, &def.names);
     }
     key_label(&def.key)
 }
@@ -42,9 +47,15 @@ pub fn type_label_of(types: &[ObjectTypeView], key: &str) -> String {
 
 /// Link label read from the source (`inverse` = read from the target).
 pub fn link_label(def: Option<&LinkTypeDef>, key: &str, inverse: bool) -> String {
-    let own = def.map(|d| if inverse { &d.inverse_name } else { &d.name });
-    match own.filter(|n| !n.trim().is_empty()) {
-        Some(n) => n.clone(),
+    let own = def.map(|d| {
+        if inverse {
+            (&d.inverse_name, &d.inverse_names)
+        } else {
+            (&d.name, &d.names)
+        }
+    });
+    match own.filter(|(n, _)| !n.trim().is_empty()) {
+        Some((n, names)) => tr(n, names),
         None => {
             let k = if inverse {
                 format!("onto-link-{key}-inverse")

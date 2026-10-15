@@ -59,6 +59,8 @@ pub async fn list(db: &DatabaseConnection, org_id: i64) -> Result<Vec<PackView>>
     Ok(shipped()
         .into_iter()
         .map(|p| PackView {
+            descriptions: p.descriptions.clone(),
+            names: p.names.clone(),
             installed_version: installed
                 .iter()
                 .find(|i| i.key == p.key)
@@ -140,6 +142,8 @@ async fn install_locked(
         .await?;
     if installed.is_some_and(|p| p.version == pack.version) {
         return Ok(PackView {
+            descriptions: pack.descriptions.clone(),
+            names: pack.names.clone(),
             key: pack.key.clone(),
             name: pack.name.clone(),
             version: pack.version.clone(),
@@ -220,6 +224,8 @@ async fn install_locked(
         }
     }
     Ok(PackView {
+        descriptions: pack.descriptions.clone(),
+        names: pack.names.clone(),
         key: pack.key.clone(),
         name: pack.name.clone(),
         version: pack.version.clone(),
@@ -261,6 +267,8 @@ async fn install_link(
 pub async fn export(db: &DatabaseConnection, org_id: i64) -> Result<String> {
     let s = schema(db, org_id).await?;
     let pack = Pack {
+        descriptions: Default::default(),
+        names: Default::default(),
         key: "org".into(),
         name: "Organization schema".into(),
         version: chrono::Utc::now().format("%Y%m%d%H%M%S").to_string(),

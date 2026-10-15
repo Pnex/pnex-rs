@@ -14,7 +14,7 @@ pub fn prop_label(d: &PropertyDef) -> String {
     if d.name.trim().is_empty() {
         d.key.clone()
     } else {
-        d.name.clone()
+        super::tr(&d.name, &d.names)
     }
 }
 
